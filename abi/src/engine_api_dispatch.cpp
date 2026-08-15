@@ -59,6 +59,9 @@ extern "C" void AetherInternalPrefetchTextTranslation(
 extern "C" void AetherInternalSetTextTranslationSkipping(
     const char* runtime_id_utf8, uint32_t skipping);
 #endif
+#if defined(AETHERKIRI_INTERNAL_QLIE)
+extern "C" void AetherInternalRegisterQlieRuntime(void);
+#endif
 
 namespace {
 
@@ -819,6 +822,7 @@ engine_result_t engine_create(const engine_create_desc_t* desc,
                        "engine_create requires non-null desc and out_handle");
   }
   *out_handle = nullptr;
+<<<<<<< HEAD:abi/src/engine_api_dispatch.cpp
   aetherkiri::engine_api::InstallCrashCapture();
   // Private runtime providers (CatSystem2 / Artemis / WA2) are compiled into
   // the KiriKiri glue and register through the installed services table; the
@@ -828,6 +832,13 @@ engine_result_t engine_create(const engine_create_desc_t* desc,
       services->register_private_runtimes();
     }
   }
+#if defined(AETHERKIRI_INTERNAL_ARTEMIS) && \
+    defined(AETHERKIRI_ENABLE_ARTEMIS_RUNTIME)
+  AetherInternalRegisterArtemisRuntime();
+#endif
+#if defined(AETHERKIRI_INTERNAL_QLIE)
+  AetherInternalRegisterQlieRuntime();
+#endif
   if (desc->struct_size < sizeof(engine_create_desc_t)) {
     return ThreadError(ENGINE_RESULT_INVALID_ARGUMENT,
                        "engine_create_desc_t.struct_size is too small");

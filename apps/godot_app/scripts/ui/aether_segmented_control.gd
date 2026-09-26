@@ -1,8 +1,14 @@
 extends Control
 
+# Glass segmented control: a frosted track with a sliding gradient pill. The
+# pill follows the finger elastically, squashes while travelling and lands
+# with a jelly wobble; the selected label cross-fades to full contrast.
+
+const AetherSurface = preload("res://scripts/ui/aether_surface.gd")
+
 signal item_selected(index: int)
 
-const TRACK_INSET := 3.0
+const TRACK_INSET := 4.0
 const CONTROL_HEIGHT := 44.0
 
 var tokens
@@ -10,6 +16,7 @@ var motion
 var buttons: Array[Button] = []
 var selected_index := 0
 var indicator: PanelContainer
+var indicator_surface: Control
 var drag_active := false
 var drag_x := -1.0
 
@@ -23,20 +30,27 @@ func setup(design_tokens, motion_system, labels: PackedStringArray, initial_inde
     focus_mode = Control.FOCUS_ALL
     mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
 
-    # Subtle neutral track: no heavy gray, no borders
+    # Frosted neutral track: no borders, the pill carries all emphasis.
     var track := PanelContainer.new()
     track.mouse_filter = Control.MOUSE_FILTER_IGNORE
     track.set_anchors_preset(Control.PRESET_FULL_RECT)
-    var track_style: StyleBoxFlat = tokens.panel(Color(tokens.text_primary.r, tokens.text_primary.g, tokens.text_primary.b, 0.05), 8)
+    var track_style: StyleBoxFlat = tokens.panel(tokens.tint(tokens.text_primary, 0.06), 14)
     track.add_theme_stylebox_override("panel", track_style)
     add_child(track)
 
-    # Sliding jelly indicator: the only selection visual
+    # Sliding jelly indicator: the only selection visual. The panel keeps a
+    # transparent style; the gradient is a GPU surface inside it.
     indicator = PanelContainer.new()
     indicator.mouse_filter = Control.MOUSE_FILTER_IGNORE
-    var indicator_style: StyleBoxFlat = tokens.panel(tokens.accent_fill, 6)
+    var indicator_style: StyleBoxFlat = tokens.panel(Color.TRANSPARENT, 11)
     indicator.add_theme_stylebox_override("panel", indicator_style)
     add_child(indicator)
+    indicator_surface = AetherSurface.new()
+    indicator_surface.configure(tokens.tint(tokens.accent, 0.92), tokens.tint(tokens.accent_2, 0.92), 11.0, 0.0)
+    indicator_surface.rim(Color(1, 1, 1, 0.30), 1.0, 1.0)
+    indicator_surface.set_param("highlight", 1.0)
+    indicator_surface.glow(tokens.tint(tokens.accent, 0.30), 10.0)
+    indicator.add_child(indicator_surface)
 
     var row := HBoxContainer.new()
     row.set_anchors_preset(Control.PRESET_FULL_RECT)
@@ -133,15 +147,15 @@ func _drag_to(x: float) -> void:
     if motion.reduced_motion:
         indicator.position = Vector2(drag_x, TRACK_INSET)
         return
-    # Elastic finger-follow: fast spring with slight elasticity, squashed while dragging
+    # Elastic finger-follow: fast spring, squashed while dragging.
     motion.spring_property(indicator, "position", Vector2(drag_x, TRACK_INSET), 0.07, 1.0)
-    motion.spring_property(indicator, "scale", Vector2(1.05, 0.93), 0.10, 0.9)
+    motion.spring_property(indicator, "scale", Vector2(1.06, 0.92), 0.10, 0.9)
 
 func _end_drag() -> void:
     drag_x = -1.0
     if motion.reduced_motion:
         return
-    motion.spring_property(indicator, "scale", Vector2.ONE, 0.26, 0.55)
+    motion.spring_property(indicator, "scale", Vector2.ONE, 0.26, 0.52)
 
 func _select(index: int, animate: bool) -> void:
     if index < 0 or index >= buttons.size():
@@ -151,16 +165,18 @@ func _select(index: int, animate: bool) -> void:
     _sync_button_colors()
     _layout_indicator(animate)
     if changed:
+        if animate and not motion.reduced_motion and indicator_surface != null:
+            indicator_surface.sweep(0.55, 0.30)
         item_selected.emit(selected_index)
 
 func _sync_button_colors() -> void:
     for index in range(buttons.size()):
         var button := buttons[index]
-        var color: Color = tokens.text_primary if index == selected_index else tokens.text_secondary
+        var color: Color = tokens.text_on_accent if index == selected_index else tokens.text_secondary
         button.add_theme_color_override("font_color", color)
         button.add_theme_color_override("font_pressed_color", color)
         button.add_theme_color_override("font_focus_color", color)
-        button.add_theme_color_override("font_hover_color", color)
+        button.add_theme_color_override("font_hover_color", color if index == selected_index else tokens.text_primary)
 
 func _layout_indicator(animate: bool = false) -> void:
     if indicator == null or buttons.is_empty() or size.x <= 0.0:
@@ -175,15 +191,15 @@ func _layout_indicator(animate: bool = false) -> void:
         indicator.size = target_size
         indicator.scale = Vector2.ONE
         return
-    # Jelly slide: under-damped position spring + squash then wobble back
+    # Jelly slide: under-damped position spring + squash then wobble back.
     motion.spring_property(indicator, "position", target_position, 0.36, 0.55)
     motion.spring_property(indicator, "size", target_size, 0.30, 1.0)
-    motion.spring_property(indicator, "scale", Vector2(1.05, 0.90), 0.12, 0.8)
+    motion.spring_property(indicator, "scale", Vector2(1.06, 0.90), 0.12, 0.8)
     var tree := get_tree()
     if tree != null:
         tree.create_timer(0.09).timeout.connect(
             func():
                 if indicator != null and is_instance_valid(indicator):
-                    motion.spring_property(indicator, "scale", Vector2.ONE, 0.28, 0.55),
+                    motion.spring_property(indicator, "scale", Vector2.ONE, 0.28, 0.52),
             CONNECT_ONE_SHOT
         )

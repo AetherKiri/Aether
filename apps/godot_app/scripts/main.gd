@@ -159,6 +159,20 @@ const UI_TEXT := {
         "dash.top": "游玩时长排行",
         "dash.recent": "最近游玩",
         "dash.empty": "还没有游玩记录，开始一段故事吧。",
+        "dash.greeting.morning": "早上好",
+        "dash.greeting.afternoon": "下午好",
+        "dash.greeting.evening": "晚上好",
+        "dash.greeting.night": "夜深了，故事还在",
+        "dash.subtitle.stats": "你已游玩 %d 部作品，共度过 %s 的故事时光。",
+        "dash.ring.milestone": "时长里程碑",
+        "dash.ring.library": "书库探索",
+        "dash.ring.days": "活跃天数",
+        "dash.week_trail": "近七天足迹",
+        "dash.week_summary": "过去一周有 %d 天打开过故事",
+        "dash.weekdays": "日,一,二,三,四,五,六",
+        "dash.day_idle": "这天没有游玩",
+        "dash.continue_eyebrow": "继续阅读",
+        "dash.continue": "继续",
         "home.empty_title": "尚未添加任何游戏",
         "home.game_count": "%d 个游戏",
         "video.video_count": "%d 个视频",
@@ -775,6 +789,20 @@ const UI_TEXT := {
         "dash.top": "Most played",
         "dash.recent": "Recently played",
         "dash.empty": "No play history yet. Start a story.",
+        "dash.greeting.morning": "Good morning",
+        "dash.greeting.afternoon": "Good afternoon",
+        "dash.greeting.evening": "Good evening",
+        "dash.greeting.night": "Late night, the story goes on",
+        "dash.subtitle.stats": "%d titles played, %s spent inside their stories.",
+        "dash.ring.milestone": "Milestone",
+        "dash.ring.library": "Library explored",
+        "dash.ring.days": "Active days",
+        "dash.week_trail": "Last 7 days",
+        "dash.week_summary": "Stories opened on %d of the last 7 days",
+        "dash.weekdays": "Su,Mo,Tu,We,Th,Fr,Sa",
+        "dash.day_idle": "Nothing played this day",
+        "dash.continue_eyebrow": "CONTINUE READING",
+        "dash.continue": "Continue",
         "home.empty_title": "No games added yet",
         "home.game_count": "%d games",
         "video.video_count": "%d videos",
@@ -17536,11 +17564,16 @@ func _show_dashboard() -> void:
 func _dashboard_stats() -> Dictionary:
     var games := _load_game_list()
     var now := int(Time.get_unix_time_from_system())
+    var bias := int(Time.get_time_zone_from_system().get("bias", 0)) * 60
+    var today := (now + bias) / 86400
     var total := 0
     var played := 0
     var week := 0
     var ranked: Array = []
     var recent: Array = []
+    var days: Array = []
+    for i in range(7):
+        days.append([])
     for game in games:
         var seconds := int(game.get("playDurationSeconds", 0))
         var last := int(game.get("lastPlayed", 0))
@@ -17553,15 +17586,26 @@ func _dashboard_stats() -> Dictionary:
             ranked.append(game)
         if last > 0:
             recent.append(game)
+            var offset := today - (last + bias) / 86400
+            if offset >= 0 and offset < 7:
+                days[6 - offset].append(_game_display_title(game))
     ranked.sort_custom(func(a, b): return int(a.get("playDurationSeconds", 0)) > int(b.get("playDurationSeconds", 0)))
     recent.sort_custom(func(a, b): return int(a.get("lastPlayed", 0)) > int(b.get("lastPlayed", 0)))
+    var active_days := 0
+    for day in days:
+        if not (day as Array).is_empty():
+            active_days += 1
     return {
         "games": games.size(),
         "total": total,
         "played": played,
         "week": week,
+        "days": days,
+        "active_days": active_days,
+        "today": today,
         "ranked": ranked.slice(0, 5),
         "recent": recent.slice(0, 5),
+        "spotlight": recent[0] if not recent.is_empty() else {},
     }
 
 func _rebuild_dashboard_view(animate: bool) -> void:
@@ -17589,7 +17633,7 @@ func _rebuild_dashboard_view(animate: bool) -> void:
     margin.add_child(center)
     var page := VBoxContainer.new()
     page.custom_minimum_size = Vector2(content_width, 0)
-    page.add_theme_constant_override("separation", 14 if compact else 22)
+    page.add_theme_constant_override("separation", 14 if compact else 20)
     center.add_child(page)
 
     var hero := _dashboard_hero(stats, compact, animate)
@@ -17598,8 +17642,8 @@ func _rebuild_dashboard_view(animate: bool) -> void:
 
     var grid := GridContainer.new()
     grid.columns = 2 if compact else 4
-    grid.add_theme_constant_override("h_separation", 12 if compact else 18)
-    grid.add_theme_constant_override("v_separation", 12 if compact else 18)
+    grid.add_theme_constant_override("h_separation", 12 if compact else 20)
+    grid.add_theme_constant_override("v_separation", 12 if compact else 20)
     page.add_child(grid)
     var total := int(stats["total"])
     var played := int(stats["played"])
@@ -17614,20 +17658,33 @@ func _rebuild_dashboard_view(animate: bool) -> void:
     ]
     for i in range(cards.size()):
         var spec: Array = cards[i]
-        var card := _dash_stat_card(spec[0], spec[1], spec[2], spec[3], spec[4], 0.10 + 0.06 * i, animate)
+        var card := _dash_stat_card(spec[0], spec[1], spec[2], spec[3], spec[4], 0.12 + 0.07 * i, animate)
         grid.add_child(card)
         _dash_enter(card, 0.08 + 0.06 * i, animate)
 
+    var middle: BoxContainer = VBoxContainer.new() if compact else HBoxContainer.new()
+    middle.add_theme_constant_override("separation", 14 if compact else 20)
+    page.add_child(middle)
+    var spotlight: Dictionary = stats["spotlight"]
+    if not spotlight.is_empty():
+        var feature := _dash_spotlight_card(spotlight, animate)
+        feature.size_flags_stretch_ratio = 1.3
+        middle.add_child(feature)
+        _dash_enter(feature, 0.28, animate)
+    var week := _dash_week_card(stats, animate)
+    middle.add_child(week)
+    _dash_enter(week, 0.34, animate)
+
     var lower: BoxContainer = VBoxContainer.new() if compact else HBoxContainer.new()
-    lower.add_theme_constant_override("separation", 14 if compact else 18)
+    lower.add_theme_constant_override("separation", 14 if compact else 20)
     page.add_child(lower)
     var top := _dash_top_card(stats["ranked"], animate)
     top.size_flags_stretch_ratio = 1.2
     lower.add_child(top)
-    _dash_enter(top, 0.32, animate)
+    _dash_enter(top, 0.40, animate)
     var recent := _dash_recent_card(stats["recent"])
     lower.add_child(recent)
-    _dash_enter(recent, 0.40, animate)
+    _dash_enter(recent, 0.46, animate)
 
 func _dash_enter(control: Control, delay: float, animate: bool) -> void:
     if not animate:
@@ -17642,11 +17699,12 @@ func _dash_when_ready(node: Node, action: Callable) -> void:
     else:
         node.tree_entered.connect(action, CONNECT_ONE_SHOT)
 
-func _dash_panel(radius: int = ui_tokens.RADIUS_CARD) -> PanelContainer:
+# Same flat card as the settings sections: hairline edge, no drop shadow.
+func _dash_panel(radius: int = ui_tokens.RADIUS_LARGE) -> PanelContainer:
     var card := PanelContainer.new()
     card.size_flags_horizontal = Control.SIZE_EXPAND_FILL
     card.mouse_filter = Control.MOUSE_FILTER_PASS
-    var style: StyleBoxFlat = ui_tokens.raised(radius, 1, ui_tokens.surface_raised)
+    var style: StyleBoxFlat = ui_tokens.raised(radius, 0, ui_tokens.surface_raised)
     var pad := 16 if dashboard_compact else 22
     style.content_margin_left = pad
     style.content_margin_right = pad
@@ -17654,6 +17712,15 @@ func _dash_panel(radius: int = ui_tokens.RADIUS_CARD) -> PanelContainer:
     style.content_margin_bottom = pad
     card.add_theme_stylebox_override("panel", style)
     return card
+
+# Hover warms the card edge with its tone.
+func _dash_bind_card_glow(card: PanelContainer, tone: Color) -> void:
+    var rest := card.get_theme_stylebox("panel") as StyleBoxFlat
+    var lit := rest.duplicate() as StyleBoxFlat
+    lit.border_color = ui_tokens.tint(tone, 0.42)
+    ui_motion.bind_hover(card, func(active: bool):
+        card.add_theme_stylebox_override("panel", lit if active else rest)
+    , 0.3)
 
 func _dash_header(title: String, icon_path: String, tone: Color) -> HBoxContainer:
     var header := HBoxContainer.new()
@@ -17663,7 +17730,6 @@ func _dash_header(title: String, icon_path: String, tone: Color) -> HBoxContaine
     badge.size_flags_vertical = Control.SIZE_SHRINK_CENTER
     badge.add_theme_stylebox_override("panel", ui_tokens.panel(ui_tokens.tint(tone, 0.14), 10))
     badge.add_child(_centered_icon(icon_path, Vector2(16, 16), tone))
-    badge.resized.connect(func(): badge.pivot_offset = badge.size * 0.5)
     header.add_child(badge)
     header.set_meta("badge", badge)
     var label := Label.new()
@@ -17676,19 +17742,52 @@ func _dash_header(title: String, icon_path: String, tone: Color) -> HBoxContaine
     header.add_child(label)
     return header
 
+func _dash_greeting_key() -> String:
+    var hour := int(Time.get_datetime_dict_from_system().get("hour", 12))
+    if hour < 5:
+        return "dash.greeting.night"
+    if hour < 12:
+        return "dash.greeting.morning"
+    if hour < 18:
+        return "dash.greeting.afternoon"
+    if hour < 23:
+        return "dash.greeting.evening"
+    return "dash.greeting.night"
+
+func _dash_live_dot(tone: Color, size: float = 7.0) -> Panel:
+    var dot := Panel.new()
+    dot.mouse_filter = Control.MOUSE_FILTER_IGNORE
+    dot.custom_minimum_size = Vector2(size, size)
+    dot.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+    var style: StyleBoxFlat = ui_tokens.panel(tone, 999)
+    style.shadow_color = ui_tokens.tint(tone, 0.55)
+    style.shadow_size = 6
+    dot.add_theme_stylebox_override("panel", style)
+    _dash_when_ready(dot, func(): ui_motion.pulse(dot, 0.3, 2.2))
+    return dot
+
+# Hero: three concentric activity rings (milestone, library explored, active
+# days) beside a time-of-day greeting; the legend rows spotlight their ring.
 func _dashboard_hero(stats: Dictionary, compact: bool, animate: bool) -> PanelContainer:
     var hero := _dash_panel(ui_tokens.RADIUS_LARGE)
     var style := hero.get_theme_stylebox("panel") as StyleBoxFlat
-    style.content_margin_left = 20 if compact else 36
-    style.content_margin_right = 20 if compact else 36
-    style.content_margin_top = 22 if compact else 30
-    style.content_margin_bottom = 22 if compact else 30
+    style.content_margin_left = 20 if compact else 40
+    style.content_margin_right = 20 if compact else 40
+    style.content_margin_top = 22 if compact else 34
+    style.content_margin_bottom = 22 if compact else 34
     hero.clip_children = CanvasItem.CLIP_CHILDREN_AND_DRAW
-    hero.add_child(_dash_aurora())
+    var aurora := _dash_aurora()
+    hero.add_child(aurora)
+    var aurora_state: Dictionary = aurora.get_meta("state")
+    hero.gui_input.connect(func(event: InputEvent):
+        if event is InputEventMouseMotion and hero.size.x > 0.0:
+            aurora_state["goal"] = (event as InputEventMouseMotion).position / hero.size
+    )
+    hero.mouse_exited.connect(func(): aurora_state["goal"] = Vector2(0.72, 0.4))
 
     var box: BoxContainer = VBoxContainer.new() if compact else HBoxContainer.new()
     box.alignment = BoxContainer.ALIGNMENT_CENTER
-    box.add_theme_constant_override("separation", 20 if compact else 44)
+    box.add_theme_constant_override("separation", 22 if compact else 52)
     hero.add_child(box)
 
     var total := int(stats["total"])
@@ -17698,43 +17797,45 @@ func _dashboard_hero(stats: Dictionary, compact: bool, animate: bool) -> PanelCo
         if hours_f < float(milestone):
             goal = int(milestone)
             break
-    var diameter := 188.0 if compact else 236.0
-    var ring := _dash_ring(diameter, 16.0 if compact else 18.0, clampf(hours_f / float(goal), 0.0, 1.0), animate)
-    ring.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
-    ring.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-    box.add_child(ring)
+    var games := int(stats["games"])
+    var played := int(stats["played"])
+    var active_days := int(stats["active_days"])
+    var specs := [
+        {"p": clampf(hours_f / float(goal), 0.0, 1.0), "from": ui_tokens.accent, "to": ui_tokens.accent_3},
+        {"p": float(played) / float(games) if games > 0 else 0.0, "from": ui_tokens.accent_2, "to": ui_tokens.accent},
+        {"p": float(active_days) / 7.0, "from": ui_tokens.success, "to": ui_tokens.success.lightened(0.35)},
+    ]
+    var diameter := 228.0 if compact else 272.0
+    var rings := _dash_rings(diameter, 12.0 if compact else 14.0, specs, animate)
+    rings.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+    rings.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+    box.add_child(rings)
     var ring_center := CenterContainer.new()
     ring_center.mouse_filter = Control.MOUSE_FILTER_IGNORE
     ring_center.set_anchors_preset(Control.PRESET_FULL_RECT)
-    ring.add_child(ring_center)
+    rings.add_child(ring_center)
     var ring_labels := VBoxContainer.new()
     ring_labels.alignment = BoxContainer.ALIGNMENT_CENTER
-    ring_labels.add_theme_constant_override("separation", 0)
+    ring_labels.add_theme_constant_override("separation", -2)
     ring_center.add_child(ring_labels)
     var hours_label := Label.new()
     hours_label.text = str(total / 3600)
     hours_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
     hours_label.add_theme_font_override("font", TITLE_FONT)
-    hours_label.add_theme_font_size_override("font_size", 46 if compact else 58)
+    hours_label.add_theme_font_size_override("font_size", 38 if compact else 46)
     hours_label.add_theme_color_override("font_color", ui_tokens.text_primary)
     ring_labels.add_child(hours_label)
     if animate:
         _dash_when_ready(hours_label, func():
-            ui_motion.count_up(hours_label, 0, total / 3600, func(v: int) -> String: return str(v), 1.4)
+            ui_motion.count_up(hours_label, 0, total / 3600, func(v: int) -> String: return str(v), 1.6)
         )
     var unit := Label.new()
     unit.text = "%s · %s" % [_t("dash.hours"), _t("dash.minutes", [(total % 3600) / 60])]
     unit.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
     unit.add_theme_font_override("font", DISPLAY_FONT)
-    unit.add_theme_font_size_override("font_size", 13)
+    unit.add_theme_font_size_override("font_size", 12)
     unit.add_theme_color_override("font_color", ui_tokens.text_secondary)
     ring_labels.add_child(unit)
-    var caption := Label.new()
-    caption.text = _t("dash.total_time")
-    caption.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-    caption.add_theme_font_size_override("font_size", 11)
-    caption.add_theme_color_override("font_color", ui_tokens.text_tertiary)
-    ring_labels.add_child(caption)
 
     var copy := VBoxContainer.new()
     copy.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -17742,126 +17843,200 @@ func _dashboard_hero(stats: Dictionary, compact: bool, animate: bool) -> PanelCo
     copy.add_theme_constant_override("separation", 8)
     box.add_child(copy)
     var align := HORIZONTAL_ALIGNMENT_CENTER if compact else HORIZONTAL_ALIGNMENT_LEFT
+    var eyebrow_row := HBoxContainer.new()
+    eyebrow_row.alignment = BoxContainer.ALIGNMENT_CENTER if compact else BoxContainer.ALIGNMENT_BEGIN
+    eyebrow_row.add_theme_constant_override("separation", 8)
+    copy.add_child(eyebrow_row)
+    eyebrow_row.add_child(_dash_live_dot(ui_tokens.accent))
     var eyebrow := Label.new()
-    eyebrow.text = "AetherKiri  ·  %s" % _t("dash.title")
-    eyebrow.horizontal_alignment = align
+    eyebrow.text = "AETHERKIRI  ·  %s" % _t("dash.title")
     eyebrow.add_theme_font_override("font", TITLE_FONT)
     eyebrow.add_theme_font_size_override("font_size", 12)
     eyebrow.add_theme_color_override("font_color", ui_tokens.accent_text)
-    copy.add_child(eyebrow)
+    eyebrow_row.add_child(eyebrow)
     var title := Label.new()
-    title.text = _t("dash.greeting")
+    title.text = _t(_dash_greeting_key())
     title.horizontal_alignment = align
     title.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
     title.add_theme_font_override("font", TITLE_FONT)
-    title.add_theme_font_size_override("font_size", 28 if compact else 38)
+    title.add_theme_font_size_override("font_size", 30 if compact else 42)
     title.add_theme_color_override("font_color", ui_tokens.text_primary)
     copy.add_child(title)
     if animate:
-        _dash_when_ready(title, func(): ui_motion.wipe_in(title, 0.12, 0.7))
+        _dash_when_ready(title, func(): ui_motion.wipe_in(title, 0.12, 0.8))
     var subtitle := Label.new()
-    subtitle.text = _t("dash.subtitle")
+    subtitle.text = _t("dash.subtitle.stats", [played, _format_play_duration(total)]) if total >= 60 else _t("dash.subtitle")
     subtitle.horizontal_alignment = align
     subtitle.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
     subtitle.add_theme_font_size_override("font_size", 14)
     subtitle.add_theme_color_override("font_color", ui_tokens.text_secondary)
     copy.add_child(subtitle)
+    if animate:
+        _dash_when_ready(subtitle, func(): ui_motion.wipe_in(subtitle, 0.35, 0.9))
 
     var spacer := Control.new()
-    spacer.custom_minimum_size = Vector2(0, 6)
+    spacer.custom_minimum_size = Vector2(0, 8)
     copy.add_child(spacer)
-    var games := int(stats["games"])
-    var played := int(stats["played"])
-    copy.add_child(_dash_meter(_t("dash.milestone", [goal]), "%d%%" % int(round(hours_f / float(goal) * 100.0)), clampf(hours_f / float(goal), 0.0, 1.0), ui_tokens.accent, 0.3, animate))
-    copy.add_child(_dash_meter(_t("dash.completion"), "%d / %d" % [played, games], float(played) / float(games) if games > 0 else 0.0, ui_tokens.accent_2, 0.42, animate))
+    var legend := [
+        [_t("dash.ring.milestone"), _t("dash.milestone", [goal]), "%d%%" % int(round(hours_f / float(goal) * 100.0))],
+        [_t("dash.ring.library"), _t("dash.completion"), "%d / %d" % [played, games]],
+        [_t("dash.ring.days"), _t("dash.week_trail"), "%d / 7" % active_days],
+    ]
+    for i in range(legend.size()):
+        var entry: Array = legend[i]
+        var row := _dash_legend_row(entry[0], entry[1], entry[2], specs[i]["from"], specs[i]["to"], rings, i)
+        copy.add_child(row)
+        _dash_enter(row, 0.3 + 0.08 * i, animate)
 
+    var cta_gap := Control.new()
+    cta_gap.custom_minimum_size = Vector2(0, 6)
+    copy.add_child(cta_gap)
     var cta := _pill_button(_t("dash.open_library"), ICON_CHEVRON_RIGHT)
     cta.custom_minimum_size = Vector2(220, 46)
     cta.size_flags_horizontal = Control.SIZE_SHRINK_CENTER if compact else Control.SIZE_SHRINK_BEGIN
     cta.pressed.connect(_show_home)
     copy.add_child(cta)
-
-    ui_motion.bind_hover(hero, func(active: bool):
-        if active:
-            ui_motion.jelly(ring, Vector2(1.04, 0.97))
-    )
-    ring.resized.connect(func(): ring.pivot_offset = ring.size * 0.5)
     return hero
 
-func _dash_meter(label_text: String, value_text: String, progress: float, tone: Color, delay: float, animate: bool) -> VBoxContainer:
-    var meter := VBoxContainer.new()
-    meter.add_theme_constant_override("separation", 6)
-    var row := HBoxContainer.new()
-    meter.add_child(row)
-    var label := Label.new()
-    label.text = label_text
-    label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-    label.add_theme_font_size_override("font_size", 12)
-    label.add_theme_color_override("font_color", ui_tokens.text_tertiary)
-    row.add_child(label)
+# One legend line: gradient swatch, name, hint and value. Hovering it
+# spotlights the matching ring and dims the others.
+func _dash_legend_row(name_text: String, hint: String, value_text: String, from_color: Color, to_color: Color, rings: Control, index: int) -> PanelContainer:
+    var row := PanelContainer.new()
+    row.mouse_filter = Control.MOUSE_FILTER_PASS
+    var rest: StyleBoxFlat = ui_tokens.panel(Color.TRANSPARENT, 12)
+    rest.content_margin_left = 10
+    rest.content_margin_right = 12
+    rest.content_margin_top = 7
+    rest.content_margin_bottom = 7
+    var lit := rest.duplicate() as StyleBoxFlat
+    lit.bg_color = ui_tokens.tint(from_color, 0.10)
+    row.add_theme_stylebox_override("panel", rest)
+    var line := HBoxContainer.new()
+    line.mouse_filter = Control.MOUSE_FILTER_IGNORE
+    line.add_theme_constant_override("separation", 12)
+    row.add_child(line)
+    var swatch := TextureRect.new()
+    swatch.mouse_filter = Control.MOUSE_FILTER_IGNORE
+    swatch.texture = ui_tokens.linear_texture(from_color, to_color, true, 64)
+    swatch.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+    swatch.stretch_mode = TextureRect.STRETCH_SCALE
+    swatch.custom_minimum_size = Vector2(4, 30)
+    swatch.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+    line.add_child(swatch)
+    var labels := VBoxContainer.new()
+    labels.mouse_filter = Control.MOUSE_FILTER_IGNORE
+    labels.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+    labels.add_theme_constant_override("separation", 0)
+    line.add_child(labels)
+    var name_label := Label.new()
+    name_label.text = name_text
+    name_label.add_theme_font_override("font", DISPLAY_FONT)
+    name_label.add_theme_font_size_override("font_size", 13)
+    name_label.add_theme_color_override("font_color", ui_tokens.text_primary)
+    labels.add_child(name_label)
+    var hint_label := Label.new()
+    hint_label.text = hint
+    hint_label.clip_text = true
+    hint_label.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+    hint_label.add_theme_font_size_override("font_size", 11)
+    hint_label.add_theme_color_override("font_color", ui_tokens.text_tertiary)
+    labels.add_child(hint_label)
     var value := Label.new()
     value.text = value_text
-    value.add_theme_font_override("font", DISPLAY_FONT)
-    value.add_theme_font_size_override("font_size", 12)
-    value.add_theme_color_override("font_color", tone)
-    row.add_child(value)
-    meter.add_child(_dash_bar(progress, tone, delay, animate, 8.0))
-    return meter
+    value.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+    value.add_theme_font_override("font", TITLE_FONT)
+    value.add_theme_font_size_override("font_size", 16)
+    value.add_theme_color_override("font_color", from_color)
+    line.add_child(value)
+    ui_motion.bind_hover(row, func(active: bool):
+        row.add_theme_stylebox_override("panel", lit if active else rest)
+        _dash_rings_focus(rings, index, active)
+    , 0.3)
+    return row
 
-# Progress ring: gradient arc with round caps, a pulsing glow on the head
-# and three satellites slowly orbiting the track.
-func _dash_ring(diameter: float, width: float, progress: float, animate: bool) -> Control:
-    var ring := Control.new()
-    ring.custom_minimum_size = Vector2(diameter, diameter)
-    ring.mouse_filter = Control.MOUSE_FILTER_IGNORE
-    var state := {"p": 0.0 if animate else progress, "spin": 0.0}
-    var track: Color = ui_tokens.tint(ui_tokens.text_primary, 0.07)
-    var from_color: Color = ui_tokens.accent
-    var to_color: Color = ui_tokens.accent_2
-    ring.draw.connect(func():
-        var c := ring.size * 0.5
-        var r := minf(c.x, c.y) - width * 0.5 - 12.0
-        ring.draw_arc(c, r, 0.0, TAU, 128, track, width, true)
+
+# Concentric activity rings: gradient arcs with round caps, a glowing head,
+# a shimmer that travels along each arc and sparks orbiting the outer track.
+func _dash_rings(diameter: float, width: float, specs: Array, animate: bool) -> Control:
+    var rings := Control.new()
+    rings.custom_minimum_size = Vector2(diameter, diameter)
+    rings.mouse_filter = Control.MOUSE_FILTER_IGNORE
+    var state := {"spin": 0.0, "p": [], "dim": []}
+    for spec in specs:
+        state["p"].append(0.0 if animate else float(spec["p"]))
+        state["dim"].append(1.0)
+    rings.set_meta("state", state)
+    var track: Color = ui_tokens.tint(ui_tokens.text_primary, 0.06)
+    var gap := width * 0.55
+    rings.draw.connect(func():
+        var c := rings.size * 0.5
+        var outer := minf(c.x, c.y) - width * 0.5 - 14.0
         var spin: float = state["spin"]
         for k in range(3):
-            var ang := spin * TAU + float(k) * TAU / 3.0
-            var orbit := r + width * 0.5 + 7.0
-            ring.draw_circle(c + Vector2(cos(ang), sin(ang)) * orbit, 2.2 - 0.5 * float(k), Color(from_color, 0.45 - 0.1 * float(k)))
-        var p: float = state["p"]
-        if p <= 0.002:
-            return
-        var start := -PI * 0.5
-        var steps := maxi(2, int(120.0 * p))
-        for i in range(steps):
-            var t0 := float(i) / float(steps)
-            var t1 := float(i + 1) / float(steps)
-            ring.draw_arc(c, r, start + TAU * p * t0, start + TAU * p * t1 + 0.004, 3, from_color.lerp(to_color, t0), width, true)
-        ring.draw_circle(c + Vector2(cos(start), sin(start)) * r, width * 0.5, from_color)
-        var head_angle := start + TAU * p
-        var head := c + Vector2(cos(head_angle), sin(head_angle)) * r
-        var glow := 0.5 + 0.5 * sin(spin * TAU * 3.0)
-        ring.draw_circle(head, width * (0.95 + 0.45 * glow), Color(to_color, 0.12 + 0.10 * glow))
-        ring.draw_circle(head, width * 0.5, to_color)
-        ring.draw_circle(head, width * 0.2, Color(1, 1, 1, 0.92))
+            var ang := spin * TAU * 0.6 + float(k) * TAU / 3.0
+            var orbit := outer + width * 0.5 + 8.0
+            var twinkle := 0.5 + 0.5 * sin(spin * TAU * 4.0 + float(k) * 2.0)
+            rings.draw_circle(c + Vector2(cos(ang), sin(ang)) * orbit, 1.6 + 1.0 * twinkle, Color(specs[0]["from"], 0.25 + 0.35 * twinkle))
+        for k in range(specs.size()):
+            var r := outer - float(k) * (width + gap)
+            var dim: float = state["dim"][k]
+            var from_color: Color = specs[k]["from"]
+            var to_color: Color = specs[k]["to"]
+            rings.draw_arc(c, r, 0.0, TAU, 96, Color(from_color, 0.10 * dim) if dim > 0.0 else track, width, true)
+            var p: float = state["p"][k]
+            if p <= 0.002:
+                continue
+            var start := -PI * 0.5
+            var steps := maxi(2, int(96.0 * p))
+            var shimmer := fposmod(spin * 2.0 + float(k) * 0.3, 1.0)
+            for i in range(steps):
+                var t0 := float(i) / float(steps)
+                var t1 := float(i + 1) / float(steps)
+                var col := from_color.lerp(to_color, t0)
+                var lift := exp(-pow((t0 - shimmer) * 9.0, 2.0)) * 0.35
+                col = col.lightened(lift)
+                col.a *= dim
+                rings.draw_arc(c, r, start + TAU * p * t0, start + TAU * p * t1 + 0.004, 3, col, width, true)
+            rings.draw_circle(c + Vector2(cos(start), sin(start)) * r, width * 0.5, Color(from_color, dim))
+            var head_angle := start + TAU * p
+            var head := c + Vector2(cos(head_angle), sin(head_angle)) * r
+            var glow := 0.5 + 0.5 * sin(spin * TAU * 3.0 + float(k))
+            rings.draw_circle(head, width * (0.9 + 0.5 * glow), Color(to_color, (0.10 + 0.10 * glow) * dim))
+            rings.draw_circle(head, width * 0.5, Color(to_color, dim))
+            rings.draw_circle(head, width * 0.18, Color(1, 1, 1, 0.9 * dim))
     )
-    _dash_when_ready(ring, func():
+    _dash_when_ready(rings, func():
         if ui_motion.reduced_motion:
             return
-        var redraw := func(): ring.queue_redraw()
-        var spin_tween := ring.create_tween().set_loops()
+        var spin_tween := rings.create_tween().set_loops()
         spin_tween.tween_method(func(v: float):
             state["spin"] = v
-            redraw.call()
-        , 0.0, 1.0, 9.0)
+            rings.queue_redraw()
+        , 0.0, 1.0, 12.0)
         if animate:
-            var fill := ring.create_tween()
-            fill.tween_interval(0.18)
-            fill.tween_method(func(v: float):
-                state["p"] = v
-                redraw.call()
-            , 0.0, progress, 1.5).set_trans(Tween.TRANS_EXPO).set_ease(Tween.EASE_OUT)
+            for k in range(specs.size()):
+                var fill := rings.create_tween()
+                fill.tween_interval(0.2 + 0.14 * k)
+                fill.tween_method(func(v: float):
+                    state["p"][k] = v
+                    rings.queue_redraw()
+                , 0.0, float(specs[k]["p"]), 1.6).set_trans(Tween.TRANS_EXPO).set_ease(Tween.EASE_OUT)
     )
-    return ring
+    return rings
+
+func _dash_rings_focus(rings: Control, index: int, active: bool) -> void:
+    if not is_instance_valid(rings) or not rings.is_inside_tree():
+        return
+    var state: Dictionary = rings.get_meta("state")
+    var dims: Array = state["dim"]
+    var tween := rings.create_tween().set_parallel(true)
+    for k in range(dims.size()):
+        var goal := 1.0 if not active or k == index else 0.22
+        tween.tween_method(func(v: float):
+            dims[k] = v
+            rings.queue_redraw()
+        , float(dims[k]), goal, 0.28).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
+    ui_motion.jelly(rings, Vector2(1.03, 0.98) if active else Vector2(0.99, 1.01))
 
 func _dash_bar(progress: float, tone: Color, delay: float, animate: bool, height: float = 8.0) -> Control:
     var bar := Control.new()
@@ -17890,25 +18065,37 @@ func _dash_bar(progress: float, tone: Color, delay: float, animate: bool, height
         )
     return bar
 
-# Slow drifting colour blobs behind the hero copy.
+# Drifting colour blobs behind the hero; the brightest one leans toward the
+# pointer so the light seems to follow the hand.
 func _dash_aurora() -> Control:
     var layer := Control.new()
     layer.mouse_filter = Control.MOUSE_FILTER_IGNORE
-    var state := {"t": 0.0}
+    var state := {"t": 0.0, "focus": Vector2(0.72, 0.4), "goal": Vector2(0.72, 0.4)}
+    layer.set_meta("state", state)
     var colors := [ui_tokens.accent, ui_tokens.accent_2, ui_tokens.accent_3]
-    var alpha := 0.011 if ui_tokens.is_dark() else 0.016
+    var alpha := 0.012 if ui_tokens.is_dark() else 0.017
     layer.draw.connect(func():
         var s := layer.size
         var t: float = float(state["t"]) * TAU
+        var focus: Vector2 = state["focus"]
         for k in range(3):
             var center := Vector2(
-                s.x * (0.74 + 0.2 * sin(t + float(k) * 2.1)),
+                s.x * (0.72 + 0.2 * sin(t + float(k) * 2.1)),
                 s.y * (0.35 + 0.4 * cos(t * 2.0 + float(k) * 1.7))
             )
-            var base := s.y * (0.6 + 0.14 * float(k))
+            if k == 0:
+                center = center.lerp(focus * s, 0.55)
+            var base := s.y * (0.62 + 0.14 * float(k))
             for i in range(10):
                 var f := float(i) / 10.0
                 layer.draw_circle(center, base * (1.0 - f * 0.85), Color(colors[k], alpha))
+        # Fine grain of stars drifting upward.
+        for i in range(18):
+            var seed := float(i) * 12.9898
+            var x := fposmod(sin(seed) * 43758.5453, 1.0)
+            var y := fposmod(fposmod(cos(seed) * 24634.6345, 1.0) - float(state["t"]) * (0.6 + 0.4 * x), 1.0)
+            var tw := 0.5 + 0.5 * sin(t * 6.0 + seed)
+            layer.draw_circle(Vector2(x, y) * s, 0.8 + 0.8 * tw, Color(ui_tokens.text_primary, 0.05 + 0.10 * tw))
     )
     _dash_when_ready(layer, func():
         if ui_motion.reduced_motion:
@@ -17916,19 +18103,32 @@ func _dash_aurora() -> Control:
         var tween := layer.create_tween().set_loops()
         tween.tween_method(func(v: float):
             state["t"] = v
+            var focus: Vector2 = state["focus"]
+            state["focus"] = focus.lerp(state["goal"], 0.04)
             layer.queue_redraw()
-        , 0.0, 1.0, 26.0)
+        , 0.0, 1.0, 30.0)
     )
     return layer
 
 func _dash_stat_card(title: String, icon_path: String, value: int, formatter: Callable, tone: Color, delay: float, animate: bool) -> PanelContainer:
-    var card := _dash_panel()
+    var card := _dash_panel(ui_tokens.RADIUS_CARD)
+    card.clip_children = CanvasItem.CLIP_CHILDREN_AND_DRAW
     var rest := card.get_theme_stylebox("panel") as StyleBoxFlat
     var lit := rest.duplicate() as StyleBoxFlat
-    lit.border_color = ui_tokens.tint(tone, 0.55)
-    lit.shadow_color = ui_tokens.tint(tone, 0.22)
-    lit.shadow_size = 22
-    lit.shadow_offset = Vector2(0, 8)
+    lit.border_color = ui_tokens.tint(tone, 0.5)
+    # Corner glow that swells on hover.
+    var glow := Control.new()
+    glow.mouse_filter = Control.MOUSE_FILTER_IGNORE
+    var glow_state := {"k": 0.0}
+    glow.draw.connect(func():
+        var s := glow.size
+        var k: float = glow_state["k"]
+        var radius := s.y * (0.9 + 0.5 * k)
+        for i in range(8):
+            var f := float(i) / 8.0
+            glow.draw_circle(Vector2(s.x, 0.0), radius * (1.0 - f * 0.8), Color(tone, 0.010 + 0.012 * k))
+    )
+    card.add_child(glow)
     var stack := VBoxContainer.new()
     stack.add_theme_constant_override("separation", 10)
     card.add_child(stack)
@@ -17939,7 +18139,6 @@ func _dash_stat_card(title: String, icon_path: String, value: int, formatter: Ca
     badge.custom_minimum_size = Vector2(34, 34)
     badge.add_theme_stylebox_override("panel", ui_tokens.panel(ui_tokens.tint(tone, 0.15), 11))
     badge.add_child(_centered_icon(icon_path, Vector2(17, 17), tone))
-    badge.resized.connect(func(): badge.pivot_offset = badge.size * 0.5)
     header.add_child(badge)
     var label := Label.new()
     label.text = title
@@ -17960,7 +18159,7 @@ func _dash_stat_card(title: String, icon_path: String, value: int, formatter: Ca
             number.text = formatter.call(0)
             get_tree().create_timer(delay).timeout.connect(func():
                 if is_instance_valid(number):
-                    ui_motion.count_up(number, 0, value, formatter, 1.1)
+                    ui_motion.count_up(number, 0, value, formatter, 1.2)
             , CONNECT_ONE_SHOT)
         )
     var accent_line := _dash_bar(1.0, tone, delay + 0.1, animate, 3.0)
@@ -17969,12 +18168,233 @@ func _dash_stat_card(title: String, icon_path: String, value: int, formatter: Ca
     stack.add_child(accent_line)
     ui_motion.bind_hover(card, func(active: bool):
         card.add_theme_stylebox_override("panel", lit if active else rest)
-        ui_motion.spring_property(accent_line, "custom_minimum_size:x", 72.0 if active else 28.0, 0.3, 0.62)
+        ui_motion.spring_property(accent_line, "custom_minimum_size:x", 88.0 if active else 28.0, 0.3, 0.62)
+        if glow.is_inside_tree():
+            var tween := glow.create_tween()
+            tween.tween_method(func(v: float):
+                glow_state["k"] = v
+                glow.queue_redraw()
+            , float(glow_state["k"]), 1.0 if active else 0.0, 0.45).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
         if active:
             ui_motion.jelly(badge, Vector2(1.16, 0.86))
     , 0.3)
     ui_motion.bind_hover_lift(card, 1.025)
     return card
+
+
+# Spotlight: the latest title on its own blurred artwork, one tap from
+# picking up where the reader left off.
+func _dash_spotlight_card(game: Dictionary, animate: bool) -> PanelContainer:
+    var card := _dash_panel(ui_tokens.RADIUS_LARGE)
+    card.clip_children = CanvasItem.CLIP_CHILDREN_AND_DRAW
+    card.custom_minimum_size = Vector2(0, 220 if dashboard_compact else 250)
+    var style := card.get_theme_stylebox("panel") as StyleBoxFlat
+    style.content_margin_left = 20 if dashboard_compact else 28
+    style.content_margin_right = 20 if dashboard_compact else 28
+    style.content_margin_top = 20 if dashboard_compact else 26
+    style.content_margin_bottom = 20 if dashboard_compact else 26
+    var texture := _load_cover_texture(game, Vector2i(480, 640))
+    var backdrop_mat: ShaderMaterial = null
+    if texture != null:
+        var backdrop := TextureRect.new()
+        backdrop.mouse_filter = Control.MOUSE_FILTER_IGNORE
+        backdrop.texture = _mipmapped_texture(texture)
+        backdrop.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+        backdrop.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_COVERED
+        backdrop.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
+        backdrop_mat = AetherShaders.material(AetherShaders.image())
+        backdrop_mat.set_shader_parameter("radius", 0.0)
+        backdrop_mat.set_shader_parameter("zoom", 1.08)
+        backdrop_mat.set_shader_parameter("blur", 3.5)
+        backdrop_mat.set_shader_parameter("dim", 0.45 if ui_tokens.is_dark() else 0.15)
+        backdrop_mat.set_shader_parameter("fade_bottom", 0.8)
+        backdrop_mat.set_shader_parameter("fade_color", ui_tokens.tint(ui_tokens.surface_raised, 0.92))
+        backdrop.material = backdrop_mat
+        backdrop.resized.connect(func(): backdrop_mat.set_shader_parameter("rect_size", backdrop.size))
+        card.add_child(backdrop)
+        var veil := ColorRect.new()
+        veil.mouse_filter = Control.MOUSE_FILTER_IGNORE
+        veil.color = ui_tokens.tint(ui_tokens.surface_raised, 0.35 if ui_tokens.is_dark() else 0.55)
+        card.add_child(veil)
+    var row := HBoxContainer.new()
+    row.add_theme_constant_override("separation", 18 if dashboard_compact else 26)
+    card.add_child(row)
+    var poster := Control.new()
+    poster.mouse_filter = Control.MOUSE_FILTER_IGNORE
+    poster.custom_minimum_size = Vector2(112, 156) if dashboard_compact else Vector2(140, 196)
+    poster.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+    row.add_child(poster)
+    var shade := Panel.new()
+    shade.mouse_filter = Control.MOUSE_FILTER_IGNORE
+    shade.set_anchors_preset(Control.PRESET_FULL_RECT)
+    var shade_style: StyleBoxFlat = ui_tokens.panel(ui_tokens.surface_hover, 14, ui_tokens.outline, 1)
+    shade_style.shadow_color = ui_tokens.tint(ui_tokens.shadow, 0.45)
+    shade_style.shadow_size = 18
+    shade_style.shadow_offset = Vector2(0, 8)
+    shade.add_theme_stylebox_override("panel", shade_style)
+    poster.add_child(shade)
+    if texture != null:
+        poster.add_child(_rounded_cover_rect(_mipmapped_texture(texture), 14.0))
+    else:
+        poster.add_child(_cover_placeholder(ICON_GAMEPAD, 14.0, ui_tokens.accent, 40.0))
+    var copy := VBoxContainer.new()
+    copy.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+    copy.alignment = BoxContainer.ALIGNMENT_CENTER
+    copy.add_theme_constant_override("separation", 8)
+    row.add_child(copy)
+    var eyebrow_row := HBoxContainer.new()
+    eyebrow_row.add_theme_constant_override("separation", 8)
+    copy.add_child(eyebrow_row)
+    eyebrow_row.add_child(_dash_live_dot(ui_tokens.success, 6.0))
+    var eyebrow := Label.new()
+    eyebrow.text = _t("dash.continue_eyebrow")
+    eyebrow.add_theme_font_override("font", TITLE_FONT)
+    eyebrow.add_theme_font_size_override("font_size", 11)
+    eyebrow.add_theme_color_override("font_color", ui_tokens.success)
+    eyebrow_row.add_child(eyebrow)
+    var title := Label.new()
+    title.text = _game_display_title(game)
+    title.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+    title.max_lines_visible = 2
+    title.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+    title.add_theme_font_override("font", TITLE_FONT)
+    title.add_theme_font_size_override("font_size", 20 if dashboard_compact else 24)
+    title.add_theme_color_override("font_color", ui_tokens.text_primary)
+    copy.add_child(title)
+    if animate:
+        _dash_when_ready(title, func(): ui_motion.wipe_in(title, 0.45, 0.7))
+    var meta := Label.new()
+    meta.text = "%s  ·  %s" % [_last_played_label(game), _format_play_duration(int(game.get("playDurationSeconds", 0)))]
+    meta.add_theme_font_override("font", DISPLAY_FONT)
+    meta.add_theme_font_size_override("font_size", 12)
+    meta.add_theme_color_override("font_color", ui_tokens.text_secondary)
+    copy.add_child(meta)
+    var gap := Control.new()
+    gap.custom_minimum_size = Vector2(0, 4)
+    copy.add_child(gap)
+    var resume := Button.new()
+    resume.text = _t("dash.continue")
+    resume.icon = _load_ui_icon(ICON_CHEVRON_RIGHT)
+    resume.icon_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+    resume.expand_icon = false
+    resume.focus_mode = Control.FOCUS_ALL
+    ui_widgets.soft_button(resume)
+    resume.custom_minimum_size = Vector2(150, 42)
+    resume.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
+    var target := game.duplicate(true)
+    resume.pressed.connect(func(): _show_detail(target))
+    copy.add_child(resume)
+    poster.resized.connect(func(): poster.pivot_offset = poster.size * 0.5)
+    ui_motion.bind_hover(card, func(active: bool):
+        ui_motion.spring_property(poster, "rotation", -0.045 if active else 0.0, 0.34, 0.5)
+        ui_motion.spring_property(poster, "scale", Vector2.ONE * (1.05 if active else 1.0), 0.34, 0.6)
+        if backdrop_mat != null and card.is_inside_tree():
+            var tween := card.create_tween()
+            tween.tween_method(func(v: float): backdrop_mat.set_shader_parameter("zoom", v),
+                float(backdrop_mat.get_shader_parameter("zoom")), 1.16 if active else 1.08, 0.9).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
+    , 0.3)
+    _dash_bind_card_glow(card, ui_tokens.success)
+    return card
+
+# Seven-day trail: one capsule per day, filled by how many titles were last
+# opened that day; today wears a breathing halo.
+func _dash_week_card(stats: Dictionary, animate: bool) -> PanelContainer:
+    var card := _dash_panel(ui_tokens.RADIUS_LARGE)
+    var stack := VBoxContainer.new()
+    stack.add_theme_constant_override("separation", 14)
+    card.add_child(stack)
+    var header := _dash_header(_t("dash.week_trail"), ICON_REFRESH, ui_tokens.success)
+    stack.add_child(header)
+    var summary := Label.new()
+    summary.text = _t("dash.week_summary", [int(stats["active_days"])])
+    summary.add_theme_font_size_override("font_size", 12)
+    summary.add_theme_color_override("font_color", ui_tokens.text_tertiary)
+    stack.add_child(summary)
+    var days: Array = stats["days"]
+    var peak := 1
+    for day in days:
+        peak = maxi(peak, (day as Array).size())
+    var names := _t("dash.weekdays").split(",")
+    var today_weekday := int(Time.get_datetime_dict_from_system().get("weekday", 0))
+    var columns := HBoxContainer.new()
+    columns.size_flags_vertical = Control.SIZE_EXPAND_FILL
+    columns.add_theme_constant_override("separation", 8)
+    stack.add_child(columns)
+    for i in range(7):
+        var titles: Array = days[i]
+        var weekday := (today_weekday - (6 - i) + 7) % 7
+        var column := _dash_day_column(titles, float(titles.size()) / float(peak), names[weekday] if weekday < names.size() else "", i == 6, 0.35 + 0.05 * i, animate)
+        columns.add_child(column)
+    _dash_bind_card_glow(card, ui_tokens.success)
+    return card
+
+func _dash_day_column(titles: Array, level: float, day_name: String, is_today: bool, delay: float, animate: bool) -> VBoxContainer:
+    var column := VBoxContainer.new()
+    column.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+    column.add_theme_constant_override("separation", 8)
+    column.mouse_filter = Control.MOUSE_FILTER_PASS
+    column.tooltip_text = "\n".join(PackedStringArray(titles)) if not titles.is_empty() else _t("dash.day_idle")
+    var capsule := Control.new()
+    capsule.custom_minimum_size = Vector2(0, 118 if dashboard_compact else 136)
+    capsule.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+    capsule.mouse_filter = Control.MOUSE_FILTER_IGNORE
+    column.add_child(capsule)
+    var goal := 0.0 if titles.is_empty() else clampf(0.28 + 0.72 * level, 0.0, 1.0)
+    var state := {"p": 0.0 if animate else goal, "hover": 0.0, "t": 0.0}
+    var from_color: Color = ui_tokens.success if is_today else ui_tokens.accent
+    var to_color: Color = ui_tokens.success.lightened(0.3) if is_today else ui_tokens.accent_2
+    capsule.draw.connect(func():
+        var s := capsule.size
+        var w := minf(22.0, s.x * 0.62)
+        var x := (s.x - w) * 0.5
+        var track: StyleBoxFlat = ui_tokens.panel(ui_tokens.tint(ui_tokens.text_primary, 0.05 + 0.03 * float(state["hover"])), 999)
+        capsule.draw_style_box(track, Rect2(x, 0.0, w, s.y))
+        var p: float = state["p"]
+        if p > 0.01:
+            var h := maxf(w, s.y * p)
+            var fill_box: StyleBoxFlat = ui_tokens.panel(from_color.lerp(to_color, p).lightened(0.15 * float(state["hover"])), 999)
+            fill_box.shadow_color = ui_tokens.tint(from_color, 0.30 + 0.25 * float(state["hover"]))
+            fill_box.shadow_size = 8
+            capsule.draw_style_box(fill_box, Rect2(x, s.y - h, w, h))
+            capsule.draw_circle(Vector2(x + w * 0.5, s.y - h + w * 0.5), w * 0.2, Color(1, 1, 1, 0.8))
+        if is_today:
+            var halo := 0.5 + 0.5 * sin(float(state["t"]) * TAU)
+            capsule.draw_arc(Vector2(x + w * 0.5, s.y - w * 0.5), w * (0.75 + 0.35 * halo), 0.0, TAU, 32, Color(ui_tokens.success, 0.45 * (1.0 - halo)), 2.0, true)
+    )
+    var label := Label.new()
+    label.text = day_name
+    label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+    label.add_theme_font_override("font", DISPLAY_FONT)
+    label.add_theme_font_size_override("font_size", 12)
+    label.add_theme_color_override("font_color", ui_tokens.success if is_today else ui_tokens.text_tertiary)
+    column.add_child(label)
+    _dash_when_ready(capsule, func():
+        if animate:
+            var fill := capsule.create_tween()
+            fill.tween_interval(delay)
+            fill.tween_method(func(v: float):
+                state["p"] = v
+                capsule.queue_redraw()
+            , 0.0, goal, 1.1).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+        if is_today and not ui_motion.reduced_motion:
+            var loop := capsule.create_tween().set_loops()
+            loop.tween_method(func(v: float):
+                state["t"] = v
+                capsule.queue_redraw()
+            , 0.0, 1.0, 2.2)
+    )
+    ui_motion.bind_hover(column, func(active: bool):
+        if not capsule.is_inside_tree():
+            return
+        var tween := capsule.create_tween()
+        tween.tween_method(func(v: float):
+            state["hover"] = v
+            capsule.queue_redraw()
+        , float(state["hover"]), 1.0 if active else 0.0, 0.25)
+        if active:
+            ui_motion.jelly(capsule, Vector2(0.94, 1.05))
+    , 0.3)
+    return column
 
 func _dash_empty_label(text: String) -> Label:
     var empty := Label.new()
@@ -17990,6 +18410,7 @@ func _dash_top_card(ranked: Array, animate: bool) -> PanelContainer:
     stack.add_theme_constant_override("separation", 16)
     card.add_child(stack)
     stack.add_child(_dash_header(_t("dash.top"), ICON_PERFORMANCE, ui_tokens.accent))
+    _dash_bind_card_glow(card, ui_tokens.accent)
     if ranked.is_empty():
         stack.add_child(_dash_empty_label(_t("dash.empty")))
         return card
@@ -18037,7 +18458,8 @@ func _dash_recent_card(recent: Array) -> PanelContainer:
     var stack := VBoxContainer.new()
     stack.add_theme_constant_override("separation", 6)
     card.add_child(stack)
-    var header := _dash_header(_t("dash.recent"), ICON_REFRESH, ui_tokens.accent_2)
+    var header := _dash_header(_t("dash.recent"), ICON_PLAY, ui_tokens.accent_2)
+    _dash_bind_card_glow(card, ui_tokens.accent_2)
     stack.add_child(header)
     var gap := Control.new()
     gap.custom_minimum_size = Vector2(0, 6)

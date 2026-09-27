@@ -3020,6 +3020,8 @@ func _build_shell_chrome() -> void:
     shell_sidebar_brand = HBoxContainer.new()
     shell_sidebar_brand.add_theme_constant_override("separation", 12)
     shell_sidebar_brand.mouse_filter = Control.MOUSE_FILTER_PASS
+    # The brand lockup is kept as a node for layout references but not shown.
+    shell_sidebar_brand.visible = false
     bar_row.add_child(shell_sidebar_brand)
     shell_brand_mark = _brand_mark(34.0)
     shell_brand_mark.size_flags_vertical = Control.SIZE_SHRINK_CENTER
@@ -3100,6 +3102,7 @@ func _build_shell_chrome() -> void:
     shell_compact_topbar.add_child(compact_margin)
     var compact_mark := _brand_mark(28.0)
     compact_mark.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+    compact_mark.visible = false
     compact_row.add_child(compact_mark)
     shell_route_label = Label.new()
     shell_route_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL

@@ -74,8 +74,7 @@ func setup(design_tokens, motion_system, initial_value: bool) -> void:
     button_down.connect(_press_in)
     button_up.connect(_press_out)
     mouse_exited.connect(_press_out)
-    mouse_entered.connect(func(): _hover(true))
-    mouse_exited.connect(func(): _hover(false))
+    motion.bind_hover(self, func(active: bool): _hover(active))
     toggled.connect(func(value: bool): _sync(value, true))
     _sync(initial_value, false)
 

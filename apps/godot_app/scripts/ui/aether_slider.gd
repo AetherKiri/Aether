@@ -57,6 +57,14 @@ func setup(design_tokens, initial_value: float) -> void:
         if not scrubbing:
             _animate_thickness(0.0)
     )
+    # Touch: the rail thickens as soon as a finger lands, not only on drag.
+    gui_input.connect(func(event: InputEvent):
+        if event is InputEventScreenTouch:
+            if event.pressed:
+                _animate_thickness(1.0)
+            elif not scrubbing:
+                _animate_thickness(0.0)
+    )
     value_changed.connect(func(_v: float): _sync_bubble())
     resized.connect(_sync_bubble)
     gui_input.connect(_on_slider_gui_input)

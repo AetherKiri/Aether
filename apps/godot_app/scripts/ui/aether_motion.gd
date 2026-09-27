@@ -22,12 +22,16 @@ const HERO_MAX_ARC := 96.0
 const CASCADE_OFFSET := 26.0
 
 var reduced_motion := false
+# Touch platforms have no hover: hover-driven effects run on press instead.
+var touch_input := false
 var active_tweens: Dictionary = {}
 var active_springs: Dictionary = {}
 
 func _init() -> void:
     var value := OS.get_environment("AETHERKIRI_REDUCED_MOTION").strip_edges().to_lower()
     reduced_motion = value in ["1", "true", "yes", "on"]
+    var touch_env := OS.get_environment("AETHERKIRI_TOUCH_UI").strip_edges().to_lower()
+    touch_input = OS.get_name() in ["iOS", "Android"] or touch_env in ["1", "true", "yes", "on"]
     set_process(false)
 
 # ---------------------------------------------------------------------------
@@ -164,6 +168,9 @@ func bind_hover_lift(control: Control, hover_scale: float = 1.02) -> void:
     if control == null or control.has_meta("aether_hover_lift"):
         return
     control.set_meta("aether_hover_lift", hover_scale)
+    if touch_input:
+        # No pointer to hover with: the release blooms past the hover size.
+        return
     control.mouse_entered.connect(func():
         control.set_meta("aether_hovered", true)
         if control is BaseButton and (control as BaseButton).disabled:
@@ -173,6 +180,43 @@ func bind_hover_lift(control: Control, hover_scale: float = 1.02) -> void:
     control.mouse_exited.connect(func():
         control.set_meta("aether_hovered", false)
         _animate_scale(control, REST_SCALE, HOVER_RESPONSE, 0.9)
+    )
+
+# Hover state that also works on touch: the finger acts as the pointer while
+# it is down, and the state lingers briefly after lift so the effect reads.
+func bind_hover(control: Control, callback: Callable, linger: float = 0.22) -> void:
+    if control == null or not callback.is_valid():
+        return
+    if not touch_input:
+        control.mouse_entered.connect(func(): callback.call(true))
+        control.mouse_exited.connect(func(): callback.call(false))
+        return
+    var serial := [0]
+    var press := func(active: bool):
+        serial[0] += 1
+        if active:
+            callback.call(true)
+            return
+        var token: int = serial[0]
+        _after(control, linger, func(_current: Control):
+            if serial[0] == token:
+                callback.call(false)
+        )
+    if control is BaseButton:
+        (control as BaseButton).button_down.connect(func(): press.call(true))
+        (control as BaseButton).button_up.connect(func(): press.call(false))
+    else:
+        control.gui_input.connect(func(event: InputEvent):
+            if event is InputEventScreenTouch:
+                press.call(event.pressed)
+            elif event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT:
+                press.call(event.pressed)
+        )
+    control.mouse_exited.connect(func(): press.call(false))
+    control.visibility_changed.connect(func():
+        if not control.is_visible_in_tree():
+            serial[0] += 1
+            callback.call(false)
     )
 
 func cancel_press(control: Control) -> void:
@@ -187,7 +231,14 @@ func bind_magnet(control: Control, target: CanvasItem, strength: float = 6.0) ->
         return
     control.set_meta("aether_magnet", true)
     control.gui_input.connect(func(event: InputEvent):
-        if reduced_motion or not event is InputEventMouseMotion or control.size.x <= 0.0:
+        if reduced_motion or control.size.x <= 0.0:
+            return
+        if event is InputEventScreenTouch and not event.pressed:
+            spring_property(target, "position", Vector2.ZERO, 0.45, 0.6)
+            return
+        var tracked: bool = event is InputEventMouseMotion or event is InputEventScreenDrag
+        tracked = tracked or (event is InputEventScreenTouch and event.pressed)
+        if not tracked:
             return
         var n: Vector2 = (event.position / control.size) * 2.0 - Vector2.ONE
         spring_property(target, "position", n.clamp(-Vector2.ONE, Vector2.ONE) * strength, 0.34, 0.8)
@@ -644,6 +695,13 @@ func _press_out(control: Control) -> void:
         return
     var hovered := bool(control.get_meta("aether_hovered", false))
     var rest := Vector2.ONE * float(control.get_meta("aether_hover_lift", 1.0)) if hovered else REST_SCALE
+    if touch_input and control.has_meta("aether_hover_lift"):
+        var bloom := Vector2.ONE * (1.0 + (float(control.get_meta("aether_hover_lift")) - 1.0) * 2.0)
+        _animate_scale(control, bloom, 0.12, 0.7)
+        _after(control, 0.1, func(current: Control):
+            _animate_scale(current, REST_SCALE, RELEASE_RESPONSE, float(current.get_meta("aether_release_damping", 1.0)))
+        )
+        return
     _animate_scale(control, rest, RELEASE_RESPONSE, float(control.get_meta("aether_release_damping", 1.0)))
 
 func _animate_scale(control: Control, target: Vector2, response: float, damping: float = 1.0) -> void:

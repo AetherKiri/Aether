@@ -237,6 +237,7 @@ func _menu_item(index: int) -> Button:
         button.add_theme_color_override("icon_hover_color", tokens.accent_text)
     button.pressed.connect(func(): _choose(index))
     button.mouse_entered.connect(func(): _slide_menu_highlight(true, index))
+    button.button_down.connect(func(): _slide_menu_highlight(true, index))
     button.focus_entered.connect(func(): _slide_menu_highlight(true, index))
     motion.bind_pressable(button)
     return button

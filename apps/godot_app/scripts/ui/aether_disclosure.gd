@@ -1,7 +1,7 @@
 extends Button
 
-# Disclosure row: a chevron inside a small glass orb that spins open with a
-# spring, while the orb warms to the accent when expanded.
+# Disclosure row: the label on the left and a round badge on the right whose
+# chevron springs a quarter turn open while the badge floods with the accent.
 
 signal expanded_changed(expanded: bool)
 
@@ -9,7 +9,7 @@ var tokens
 var motion
 var expanded := false
 var chevron: TextureRect
-var orb: PanelContainer
+var badge: Panel
 
 func setup(design_tokens, motion_system, label: String, chevron_texture: Texture2D, initial_value: bool) -> void:
     tokens = design_tokens
@@ -22,18 +22,18 @@ func setup(design_tokens, motion_system, label: String, chevron_texture: Texture
     mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
     custom_minimum_size.y = 52
 
-    orb = PanelContainer.new()
-    orb.mouse_filter = Control.MOUSE_FILTER_IGNORE
-    orb.anchor_left = 1.0
-    orb.anchor_top = 0.5
-    orb.anchor_right = 1.0
-    orb.anchor_bottom = 0.5
-    orb.offset_left = -38
-    orb.offset_top = -14
-    orb.offset_right = -10
-    orb.offset_bottom = 14
-    orb.pivot_offset = Vector2(14, 14)
-    add_child(orb)
+    badge = Panel.new()
+    badge.mouse_filter = Control.MOUSE_FILTER_IGNORE
+    badge.anchor_left = 1.0
+    badge.anchor_top = 0.5
+    badge.anchor_right = 1.0
+    badge.anchor_bottom = 0.5
+    badge.offset_left = -40
+    badge.offset_top = -14
+    badge.offset_right = -12
+    badge.offset_bottom = 14
+    badge.pivot_offset = Vector2(14, 14)
+    add_child(badge)
 
     chevron = TextureRect.new()
     chevron.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -44,14 +44,14 @@ func setup(design_tokens, motion_system, label: String, chevron_texture: Texture
     chevron.anchor_top = 0.5
     chevron.anchor_right = 1.0
     chevron.anchor_bottom = 0.5
-    chevron.offset_left = -31
-    chevron.offset_top = -8
-    chevron.offset_right = -15
-    chevron.offset_bottom = 8
-    chevron.pivot_offset = Vector2(8, 8)
+    chevron.offset_left = -33
+    chevron.offset_top = -7
+    chevron.offset_right = -19
+    chevron.offset_bottom = 7
+    chevron.pivot_offset = Vector2(7, 7)
     chevron.rotation = PI * 0.5 if expanded else 0.0
     add_child(chevron)
-    _sync_orb()
+    _sync_badge()
     pressed.connect(func(): set_expanded(not expanded, true))
 
 func set_expanded(value: bool, animate: bool) -> void:
@@ -59,17 +59,17 @@ func set_expanded(value: bool, animate: bool) -> void:
         return
     expanded = value
     var target := PI * 0.5 if expanded else 0.0
-    _sync_orb()
+    _sync_badge()
     if not animate or motion.reduced_motion:
         chevron.rotation = target
     else:
-        motion.spring_property(chevron, "rotation", target, 0.30, 0.62)
-        motion.jelly(orb, Vector2(1.18, 1.18), 0.32, 0.5)
+        motion.spring_property(chevron, "rotation", target, 0.30, 0.60)
+        motion.jelly(badge, Vector2(1.22, 1.22), 0.30, 0.48)
     expanded_changed.emit(expanded)
 
-func _sync_orb() -> void:
-    if orb == null:
+func _sync_badge() -> void:
+    if badge == null:
         return
-    var fill: Color = tokens.accent_fill if expanded else tokens.tint(tokens.text_primary, 0.06)
-    orb.add_theme_stylebox_override("panel", tokens.panel(fill, 14, tokens.rim if not expanded else tokens.tint(tokens.accent, 0.4), 1))
-    chevron.modulate = tokens.accent if expanded else tokens.text_secondary
+    var fill: Color = tokens.accent if expanded else tokens.surface_hover
+    badge.add_theme_stylebox_override("panel", tokens.panel(fill, 14))
+    chevron.modulate = tokens.text_on_accent if expanded else tokens.text_secondary

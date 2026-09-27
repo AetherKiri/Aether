@@ -1,30 +1,25 @@
 extends Node
 
-# Aurora motion engine. A fixed-step spring integrator drives every
-# interactive property (scale, position, size, rotation, colour, floats) and
-# keeps velocity across retargets, so interrupted gestures never snap. Tween
-# choreography builds on top for entrances, route changes, modals, ripples,
-# count-ups and idle breathing loops.
+# Lumen motion engine. A fixed-step spring integrator drives interactive
+# properties (scale, position, size, rotation, colour, floats) and preserves
+# velocity across retargets so interrupted gestures never snap. Tween
+# choreography on top handles page changes, sheets, cascades and counters.
 
-const AetherShaders = preload("res://scripts/ui/aether_shaders.gd")
-
-const PRESS_SCALE := Vector2(0.950, 0.950)
-const TACTILE_PRESS_SCALE := Vector2(0.935, 0.935)
-const HOVER_SCALE := Vector2(1.022, 1.022)
+const PRESS_SCALE := Vector2(0.955, 0.955)
+const TACTILE_PRESS_SCALE := Vector2(0.94, 0.94)
 const REST_SCALE := Vector2.ONE
-const ENTER_OFFSET := Vector2(0, 14)
-const ENTER_DURATION := 0.34
-const ROUTE_EXIT_DURATION := 0.20
-const ROUTE_ENTER_DELAY := 0.06
-const PRESS_RESPONSE := 0.10
-const RELEASE_RESPONSE := 0.26
-const HOVER_RESPONSE := 0.22
+const PRESS_RESPONSE := 0.09
+const RELEASE_RESPONSE := 0.28
+const HOVER_RESPONSE := 0.24
 const SPRING_STEP := 1.0 / 120.0
-const HERO_DURATION := 0.46
+const ROUTE_EXIT_DURATION := 0.18
+const ROUTE_ENTER_DURATION := 0.46
+const ROUTE_ENTER_DELAY := 0.05
+const ROUTE_LIFT := 40.0
+const HERO_DURATION := 0.50
 const HERO_MIN_ARC := 24.0
-const HERO_MAX_ARC := 84.0
-const RISE_START_SCALE := Vector2(0.94, 0.86)
-const RISE_START_ROTATION := -0.035
+const HERO_MAX_ARC := 96.0
+const CASCADE_OFFSET := 26.0
 
 var reduced_motion := false
 var active_tweens: Dictionary = {}
@@ -35,41 +30,41 @@ func _init() -> void:
     reduced_motion = value in ["1", "true", "yes", "on"]
     set_process(false)
 
+# ---------------------------------------------------------------------------
+# Spring core
+# ---------------------------------------------------------------------------
+
 func _process(delta: float) -> void:
     if active_springs.is_empty():
         set_process(false)
         return
-    var clamped_delta := minf(delta, 1.0 / 30.0)
-    var step_count := maxi(1, ceili(clamped_delta / SPRING_STEP))
-    var step_delta := clamped_delta / float(step_count)
+    var clamped := minf(delta, 1.0 / 30.0)
+    var steps := maxi(1, ceili(clamped / SPRING_STEP))
+    var step_delta := clamped / float(steps)
     var completed: Array[String] = []
     var callbacks: Array[Callable] = []
     for key_variant in active_springs.keys():
         var key := String(key_variant)
         var state: Dictionary = active_springs[key]
-        # Keep the stored reference untyped until validity is checked. GDScript
-        # raises when assigning a freed Object to a typed local before the
-        # is_instance_valid guard can run.
+        # Untyped until validated: assigning a freed Object to a typed local
+        # raises before is_instance_valid can run.
         var owner = state.get("owner")
         if owner == null or not is_instance_valid(owner):
             completed.append(key)
             continue
-        var property: NodePath = state.get("property")
+        var property: NodePath = state["property"]
         var current = owner.get_indexed(property)
-        var target = state.get("target")
-        var velocity = state.get("velocity")
-        var response: float = state.get("response", 0.32)
-        var damping_ratio: float = state.get("damping", 1.0)
-        var omega := TAU / maxf(0.06, response)
+        var target = state["target"]
+        var velocity = state["velocity"]
+        var omega := TAU / maxf(0.06, float(state["response"]))
         var stiffness := omega * omega
-        var damping := 2.0 * damping_ratio * omega
-        for _step in range(step_count):
+        var damping := 2.0 * float(state["damping"]) * omega
+        for _i in range(steps):
             velocity += ((target - current) * stiffness - velocity * damping) * step_delta
             current += velocity * step_delta
         owner.set_indexed(property, current)
         state["velocity"] = velocity
-        active_springs[key] = state
-        var epsilon: float = state.get("epsilon", 0.001)
+        var epsilon: float = state["epsilon"]
         if _value_length(target - current) <= epsilon and _value_length(velocity) <= epsilon * 4.0:
             owner.set_indexed(property, target)
             completed.append(key)
@@ -123,16 +118,19 @@ func stop_spring(owner: Object, property: StringName) -> void:
     if owner != null:
         active_springs.erase(_motion_key(owner, property))
 
-# Quick stretch along one axis followed by a wobbly settle: the signature
-# "jelly" used by nav pills, segmented indicators and select triggers.
-func jelly(control: Control, stretch: Vector2, settle_response: float = 0.30, settle_damping: float = 0.52) -> void:
+# Stretch along one axis, then wobble back to rest.
+func jelly(control: Control, stretch: Vector2, settle_response: float = 0.30, settle_damping: float = 0.50) -> void:
     if control == null or not is_instance_valid(control) or reduced_motion:
         return
     _update_pivot(control)
-    spring_property(control, "scale", stretch, 0.12, 0.72)
-    _after(control, 0.09, func(current: Control):
+    spring_property(control, "scale", stretch, 0.11, 0.75)
+    _after(control, 0.08, func(current: Control):
         spring_property(current, "scale", REST_SCALE, settle_response, settle_damping)
     )
+
+# ---------------------------------------------------------------------------
+# Interaction bindings
+# ---------------------------------------------------------------------------
 
 func bind_pressable(control: Control) -> void:
     if control == null or control.has_meta("aether_motion_bound"):
@@ -160,74 +158,68 @@ func bind_tactile(control: Control) -> void:
     control.set_meta("aether_release_damping", 0.66)
     bind_pressable(control)
 
+# Pointer hover grows the control a touch; release returns to the hovered
+# size instead of rest so the press → hover chain stays continuous.
+func bind_hover_lift(control: Control, hover_scale: float = 1.02) -> void:
+    if control == null or control.has_meta("aether_hover_lift"):
+        return
+    control.set_meta("aether_hover_lift", hover_scale)
+    control.mouse_entered.connect(func():
+        control.set_meta("aether_hovered", true)
+        if control is BaseButton and (control as BaseButton).disabled:
+            return
+        _animate_scale(control, Vector2.ONE * hover_scale, HOVER_RESPONSE, 0.62)
+    )
+    control.mouse_exited.connect(func():
+        control.set_meta("aether_hovered", false)
+        _animate_scale(control, REST_SCALE, HOVER_RESPONSE, 0.9)
+    )
+
 func cancel_press(control: Control) -> void:
     if control == null or not is_instance_valid(control):
         return
     active_springs.erase(_motion_key(control, "scale"))
     control.scale = REST_SCALE
 
-func bind_lift(control: Control, highlight: CanvasItem = null, rest_alpha: float = 0.0, hover_alpha: float = 1.0) -> void:
-    if control == null or control.has_meta("aether_lift_bound"):
+# Magnetic drift: the control leans a few pixels toward the pointer.
+func bind_magnet(control: Control, target: CanvasItem, strength: float = 6.0) -> void:
+    if control == null or target == null or control.has_meta("aether_magnet"):
         return
-    control.set_meta("aether_lift_bound", true)
-    control.set_meta("aether_hovered", false)
-    _update_pivot(control)
-    control.resized.connect(func(): _update_pivot(control))
-    if highlight != null:
-        highlight.modulate.a = rest_alpha
-    control.mouse_entered.connect(func(): _set_lift_hover(control, highlight, true, rest_alpha, hover_alpha))
-    control.mouse_exited.connect(func(): _set_lift_hover(control, highlight, false, rest_alpha, hover_alpha))
-    control.focus_entered.connect(func(): _set_lift_hover(control, highlight, true, rest_alpha, hover_alpha))
-    control.focus_exited.connect(func():
-        if not control.get_global_rect().has_point(control.get_global_mouse_position()):
-            _set_lift_hover(control, highlight, false, rest_alpha, hover_alpha)
-    )
-    if control is BaseButton:
-        var button := control as BaseButton
-        button.button_down.connect(func(): _press_in(button))
-        button.button_up.connect(func():
-            var hovered := bool(button.get_meta("aether_hovered", false))
-            _animate_scale(button, HOVER_SCALE if hovered else REST_SCALE, RELEASE_RESPONSE, 0.58)
-        )
-
-# Pointer-follow tilt: the control leans a fraction of a degree toward the
-# pointer and springs back when it leaves. Rotation never touches layout.
-func bind_tilt(control: Control, max_angle: float = 0.018) -> void:
-    if control == null or control.has_meta("aether_tilt_bound"):
-        return
-    control.set_meta("aether_tilt_bound", true)
+    control.set_meta("aether_magnet", true)
     control.gui_input.connect(func(event: InputEvent):
         if reduced_motion or not event is InputEventMouseMotion or control.size.x <= 0.0:
             return
-        var nx := clampf((event.position.x / control.size.x) * 2.0 - 1.0, -1.0, 1.0)
-        spring_property(control, "rotation", nx * max_angle, 0.30, 0.8)
+        var n: Vector2 = (event.position / control.size) * 2.0 - Vector2.ONE
+        spring_property(target, "position", n.clamp(-Vector2.ONE, Vector2.ONE) * strength, 0.34, 0.8)
     )
-    control.mouse_exited.connect(func():
-        spring_property(control, "rotation", 0.0, 0.42, 0.55)
-    )
+    control.mouse_exited.connect(func(): spring_property(target, "position", Vector2.ZERO, 0.45, 0.6))
 
-func enter(control: Control, offset: Vector2 = ENTER_OFFSET, delay: float = 0.0) -> void:
+# ---------------------------------------------------------------------------
+# Page choreography
+# ---------------------------------------------------------------------------
+
+func enter(control: Control, offset: Vector2 = Vector2(0, 18), delay: float = 0.0) -> void:
     if control == null or not is_instance_valid(control):
         return
     _stop_tweens(control)
-    var target_position := control.position
+    var rest := control.position
     control.modulate.a = 0.0
     if not reduced_motion:
-        control.position = target_position + offset
-    var enter_key := _tween_key(control, "enter")
+        control.position = rest + offset
+    var key := _tween_key(control, "enter")
     var tween := control.create_tween().set_parallel(true)
-    active_tweens[enter_key] = tween
-    var duration := 0.12 if reduced_motion else ENTER_DURATION
-    tween.tween_property(control, "modulate:a", 1.0, duration * 0.8).set_delay(delay).set_trans(Tween.TRANS_QUART).set_ease(Tween.EASE_OUT)
+    active_tweens[key] = tween
+    var duration := 0.12 if reduced_motion else 0.42
+    tween.tween_property(control, "modulate:a", 1.0, duration * 0.7).set_delay(delay).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
     if not reduced_motion:
-        tween.tween_property(control, "position", target_position, duration).set_delay(delay).set_trans(Tween.TRANS_EXPO).set_ease(Tween.EASE_OUT)
-    tween.chain().tween_callback(func(): _finish_tween_key(enter_key))
+        tween.tween_property(control, "position", rest, duration).set_delay(delay).set_trans(Tween.TRANS_EXPO).set_ease(Tween.EASE_OUT)
+    tween.chain().tween_callback(func(): _finish_tween_key(key))
 
 func route_in(control: Control, direction: float = 1.0) -> void:
-    enter(control, Vector2(0.0, 12.0 * (1.0 if direction >= 0.0 else -1.0)))
+    enter(control, Vector2(0.0, 16.0 * (1.0 if direction >= 0.0 else -1.0)))
 
-# Page change: the outgoing page recedes (fade, shrink, drift up) while the
-# incoming page rises from below with a slight zoom. The two overlap so the
+# Page change: the outgoing page sinks back and fades while the incoming page
+# rises into place from below, slightly zoomed out. They overlap so the
 # content area never flashes empty.
 func route_transition(
     outgoing: Control,
@@ -243,7 +235,8 @@ func route_transition(
         return
     _stop_tweens(incoming)
     active_springs.erase(_motion_key(incoming, "scale"))
-    if outgoing != null and is_instance_valid(outgoing) and outgoing != incoming:
+    var has_outgoing := outgoing != null and is_instance_valid(outgoing) and outgoing != incoming
+    if has_outgoing:
         _stop_tweens(outgoing)
         active_springs.erase(_motion_key(outgoing, "scale"))
     var incoming_rest: Vector2 = incoming.get_meta("aether_route_rest_position", incoming.position)
@@ -251,36 +244,35 @@ func route_transition(
     incoming.visible = true
     incoming.modulate.a = 0.0
     _update_pivot(incoming)
-    var enter_offset := Vector2(72.0 * direction, 0.0) if horizontal else Vector2(0.0, 34.0)
-    var exit_offset := Vector2(-56.0 * direction, 0.0) if horizontal else Vector2(0.0, -18.0)
-    var animate_geometry := lift and not reduced_motion
-    incoming.position = incoming_rest + enter_offset if animate_geometry else incoming_rest
-    incoming.scale = Vector2(0.975, 0.975) if animate_geometry else REST_SCALE
+    var geometry := lift and not reduced_motion
+    var enter_offset := Vector2(64.0 * direction, 0.0) if horizontal else Vector2(0.0, ROUTE_LIFT)
+    var exit_offset := Vector2(-48.0 * direction, 0.0) if horizontal else Vector2(0.0, -12.0)
+    incoming.position = incoming_rest + enter_offset if geometry else incoming_rest
+    incoming.scale = Vector2(0.985, 0.985) if geometry else REST_SCALE
     var outgoing_rest := Vector2.ZERO
-    var has_outgoing := outgoing != null and is_instance_valid(outgoing) and outgoing != incoming
     if has_outgoing:
         outgoing_rest = outgoing.get_meta("aether_route_rest_position", outgoing.position)
         outgoing.set_meta("aether_route_rest_position", outgoing_rest)
         outgoing.visible = true
         _update_pivot(outgoing)
     var incoming_ref: WeakRef = weakref(incoming)
-    var incoming_key := _tween_key(incoming, "route")
     var outgoing_ref: Variant = weakref(outgoing) if has_outgoing else null
+    var incoming_key := _tween_key(incoming, "route")
     var outgoing_key := _tween_key(outgoing, "route") if has_outgoing else ""
     var tween := incoming.create_tween().set_parallel(true)
     active_tweens[incoming_key] = tween
     if has_outgoing:
         active_tweens[outgoing_key] = tween
-        tween.tween_property(outgoing, "modulate:a", 0.0, ROUTE_EXIT_DURATION).set_trans(Tween.TRANS_QUART).set_ease(Tween.EASE_OUT)
-        if animate_geometry:
-            tween.tween_property(outgoing, "position", outgoing_rest + exit_offset, ROUTE_EXIT_DURATION).set_trans(Tween.TRANS_QUART).set_ease(Tween.EASE_IN)
-            tween.tween_property(outgoing, "scale", Vector2(0.965, 0.965), ROUTE_EXIT_DURATION).set_trans(Tween.TRANS_QUART).set_ease(Tween.EASE_OUT)
-    var enter_duration := 0.14 if reduced_motion else 0.42
-    var enter_delay := 0.0 if reduced_motion else ROUTE_ENTER_DELAY
-    tween.tween_property(incoming, "modulate:a", 1.0, enter_duration * 0.7).set_delay(enter_delay).set_trans(Tween.TRANS_QUART).set_ease(Tween.EASE_OUT)
-    if animate_geometry:
-        tween.tween_property(incoming, "position", incoming_rest, enter_duration).set_delay(enter_delay).set_trans(Tween.TRANS_EXPO).set_ease(Tween.EASE_OUT)
-        tween.tween_property(incoming, "scale", REST_SCALE, enter_duration).set_delay(enter_delay).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+        tween.tween_property(outgoing, "modulate:a", 0.0, ROUTE_EXIT_DURATION).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
+        if geometry:
+            tween.tween_property(outgoing, "position", outgoing_rest + exit_offset, ROUTE_EXIT_DURATION).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_IN)
+            tween.tween_property(outgoing, "scale", Vector2(0.97, 0.97), ROUTE_EXIT_DURATION).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
+    var duration := 0.14 if reduced_motion else ROUTE_ENTER_DURATION
+    var delay := 0.0 if reduced_motion else ROUTE_ENTER_DELAY
+    tween.tween_property(incoming, "modulate:a", 1.0, duration * 0.6).set_delay(delay).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
+    if geometry:
+        tween.tween_property(incoming, "position", incoming_rest, duration).set_delay(delay).set_trans(Tween.TRANS_EXPO).set_ease(Tween.EASE_OUT)
+        tween.tween_property(incoming, "scale", REST_SCALE, duration).set_delay(delay).set_trans(Tween.TRANS_EXPO).set_ease(Tween.EASE_OUT)
     tween.chain().tween_callback(func():
         var incoming_control: Variant = incoming_ref.get_ref()
         if incoming_control != null and is_instance_valid(incoming_control):
@@ -309,6 +301,7 @@ func settle_route(control: Control, show: bool) -> void:
     control.scale = REST_SCALE
     control.visible = show
 
+# Shared-element flight along a shallow arc.
 func hero_rect(control: Control, target_rect: Rect2, finished: Callable = Callable()) -> void:
     if control == null or not is_instance_valid(control):
         if finished.is_valid():
@@ -324,33 +317,27 @@ func hero_rect(control: Control, target_rect: Rect2, finished: Callable = Callab
     active_springs.erase(_motion_key(control, "size"))
     _stop_tweens(control)
     var start_rect := Rect2(control.position, control.size)
-    var bank := 0.035 * (1.0 if target_rect.get_center().x >= start_rect.get_center().x else -1.0)
     var control_ref: WeakRef = weakref(control)
-    var hero_key := _tween_key(control, "hero")
+    var key := _tween_key(control, "hero")
     var tween := control.create_tween()
-    active_tweens[hero_key] = tween
+    active_tweens[key] = tween
     tween.tween_method(
         func(progress: float):
-            var current_control: Variant = control_ref.get_ref()
-            if current_control != null and is_instance_valid(current_control):
+            var current: Variant = control_ref.get_ref()
+            if current != null and is_instance_valid(current):
                 var frame := hero_arc_rect(start_rect, target_rect, progress)
-                current_control.position = frame.position
-                current_control.size = frame.size
-                # A gentle bank into the arc and back out makes the flight
-                # read as a physical object instead of a rect lerp.
-                current_control.pivot_offset = frame.size * 0.5
-                current_control.rotation = sin(progress * PI) * bank,
+                current.position = frame.position
+                current.size = frame.size,
         0.0,
         1.0,
         HERO_DURATION
-    ).set_trans(Tween.TRANS_QUINT).set_ease(Tween.EASE_IN_OUT)
+    ).set_trans(Tween.TRANS_QUART).set_ease(Tween.EASE_IN_OUT)
     tween.tween_callback(func():
-        var current_control: Variant = control_ref.get_ref()
-        if current_control != null and is_instance_valid(current_control):
-            current_control.position = target_rect.position
-            current_control.size = target_rect.size
-            current_control.rotation = 0.0
-        _finish_tween_key(hero_key)
+        var current: Variant = control_ref.get_ref()
+        if current != null and is_instance_valid(current):
+            current.position = target_rect.position
+            current.size = target_rect.size
+        _finish_tween_key(key)
         if finished.is_valid():
             finished.call()
     )
@@ -363,19 +350,19 @@ func hero_arc_rect(start_rect: Rect2, target_rect: Rect2, progress: float) -> Re
     var distance := delta.length()
     if distance < 0.001:
         return Rect2(start_rect.position.lerp(target_rect.position, t), start_rect.size.lerp(target_rect.size, t))
-    var arc_height := clampf(distance * 0.14, HERO_MIN_ARC, HERO_MAX_ARC)
+    var arc := clampf(distance * 0.16, HERO_MIN_ARC, HERO_MAX_ARC)
     var control := (start_center + target_center) * 0.5
     if absf(delta.x) >= absf(delta.y):
-        control.y = minf(start_center.y, target_center.y) - arc_height
+        control.y = minf(start_center.y, target_center.y) - arc
     else:
-        control.x = maxf(start_center.x, target_center.x) + arc_height
-    var one_minus_t := 1.0 - t
-    var center := one_minus_t * one_minus_t * start_center \
-        + 2.0 * one_minus_t * t * control \
-        + t * t * target_center
+        control.x = maxf(start_center.x, target_center.x) + arc
+    var u := 1.0 - t
+    var center := u * u * start_center + 2.0 * u * t * control + t * t * target_center
     var size := start_rect.size.lerp(target_rect.size, t)
     return Rect2(center - size * 0.5, size)
 
+# Sheet entrance: the dialog rises from below on a soft spring while the page
+# behind it recedes.
 func modal_in(scrim: CanvasItem, dialog: Control, background: Control = null) -> void:
     if scrim == null or dialog == null:
         return
@@ -384,38 +371,34 @@ func modal_in(scrim: CanvasItem, dialog: Control, background: Control = null) ->
     scrim.modulate.a = 0.0
     dialog.modulate.a = 0.0
     _update_pivot(dialog)
-    var rest_position := dialog.position
-    dialog.set_meta("aether_modal_rest_position", rest_position)
-    if not reduced_motion:
-        dialog.position = rest_position + Vector2(0, 28)
-        dialog.scale = Vector2(0.90, 0.90)
-        dialog.rotation = -0.02
-        spring_property(dialog, "position", rest_position, 0.40, 0.72)
-        spring_property(dialog, "scale", REST_SCALE, 0.36, 0.60)
-        spring_property(dialog, "rotation", 0.0, 0.42, 0.62)
-    else:
+    var rest := dialog.position
+    dialog.set_meta("aether_modal_rest_position", rest)
+    if reduced_motion:
         dialog.scale = REST_SCALE
-    _fade(scrim, 1.0, 0.24 if not reduced_motion else 0.12, "modal")
-    _fade(dialog, 1.0, 0.18 if not reduced_motion else 0.12, "modal")
+    else:
+        dialog.position = rest + Vector2(0, 56)
+        dialog.scale = Vector2(0.96, 0.96)
+        spring_property(dialog, "position", rest, 0.42, 0.78)
+        spring_property(dialog, "scale", REST_SCALE, 0.40, 0.70)
+    _fade(scrim, 1.0, 0.26 if not reduced_motion else 0.12, "modal")
+    _fade(dialog, 1.0, 0.20 if not reduced_motion else 0.12, "modal")
     if background != null and is_instance_valid(background):
         _update_pivot(background)
-        spring_property(background, "scale", Vector2(0.975, 0.975), 0.42, 1.0)
-        _fade(background, 0.86, 0.24, "modal_background")
+        spring_property(background, "scale", Vector2(0.965, 0.965), 0.46, 1.0)
 
 func modal_out(scrim: CanvasItem, dialog: Control, background: Control = null, finished: Callable = Callable()) -> void:
     if scrim == null or dialog == null:
         if finished.is_valid():
             finished.call()
         return
-    var rest_position: Vector2 = dialog.get_meta("aether_modal_rest_position", dialog.position)
+    var rest: Vector2 = dialog.get_meta("aether_modal_rest_position", dialog.position)
     if not reduced_motion:
-        spring_property(dialog, "position", rest_position + Vector2(0, 16), 0.22, 1.0)
-        spring_property(dialog, "scale", Vector2(0.94, 0.94), 0.22, 1.0)
+        spring_property(dialog, "position", rest + Vector2(0, 32), 0.24, 1.0)
+        spring_property(dialog, "scale", Vector2(0.97, 0.97), 0.24, 1.0)
     _fade(scrim, 0.0, 0.18 if not reduced_motion else 0.10, "modal")
-    _fade(dialog, 0.0, 0.15 if not reduced_motion else 0.10, "modal", finished)
+    _fade(dialog, 0.0, 0.16 if not reduced_motion else 0.10, "modal", finished)
     if background != null and is_instance_valid(background):
-        spring_property(background, "scale", REST_SCALE, 0.36, 0.9)
-        _fade(background, 1.0, 0.18, "modal_background")
+        spring_property(background, "scale", REST_SCALE, 0.38, 0.9)
 
 func loading_in(panel: Control, card: Control, immediate: bool = false) -> void:
     if panel == null or card == null:
@@ -431,8 +414,8 @@ func loading_in(panel: Control, card: Control, immediate: bool = false) -> void:
     panel.modulate.a = 0.0
     _update_pivot(card)
     if not reduced_motion:
-        card.scale = Vector2(0.88, 0.88)
-        spring_property(card, "scale", REST_SCALE, 0.38, 0.62)
+        card.scale = Vector2(0.92, 0.92)
+        spring_property(card, "scale", REST_SCALE, 0.40, 0.66)
     _fade(panel, 1.0, 0.22 if not reduced_motion else 0.12, "loading")
 
 func loading_out(panel: Control, card: Control, finished: Callable = Callable()) -> void:
@@ -441,7 +424,7 @@ func loading_out(panel: Control, card: Control, finished: Callable = Callable())
             finished.call()
         return
     if card != null and is_instance_valid(card) and not reduced_motion:
-        spring_property(card, "scale", Vector2(1.04, 1.04), 0.22, 1.0)
+        spring_property(card, "scale", Vector2(0.96, 0.96), 0.22, 1.0)
     var panel_ref: WeakRef = weakref(panel)
     var card_ref: Variant = weakref(card) if card != null and is_instance_valid(card) else null
     _fade(panel, 0.0, 0.18 if not reduced_motion else 0.10, "loading", func():
@@ -456,77 +439,49 @@ func loading_out(panel: Control, card: Control, finished: Callable = Callable())
             finished.call()
     )
 
+# ---------------------------------------------------------------------------
+# Content reveals
+# ---------------------------------------------------------------------------
+
 func reveal(control: Control, delay: float = 0.0) -> void:
     if control == null or not is_instance_valid(control):
         return
     _stop_tweens(control)
-    _update_pivot(control)
     control.modulate.a = 0.0
-    control.scale = REST_SCALE if reduced_motion else Vector2(0.97, 0.97)
-    var reveal_key := _tween_key(control, "reveal")
-    var tween := control.create_tween().set_parallel(true)
-    active_tweens[reveal_key] = tween
-    var duration := 0.12 if reduced_motion else 0.30
-    tween.tween_property(control, "modulate:a", 1.0, duration * 0.8).set_delay(delay).set_trans(Tween.TRANS_QUART).set_ease(Tween.EASE_OUT)
-    if not reduced_motion:
-        tween.tween_property(control, "scale", REST_SCALE, duration).set_delay(delay).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
-    tween.chain().tween_callback(func(): _finish_tween_key(reveal_key))
-
-func spring_reveal(control: Control, delay: float = 0.0) -> void:
-    # Livelier cascade step: fade paired with an under-damped scale spring so
-    # each row pops past rest and wobbles back into place.
-    if control == null or not is_instance_valid(control):
-        return
-    _stop_tweens(control)
-    active_springs.erase(_motion_key(control, "scale"))
-    _update_pivot(control)
-    control.modulate.a = 0.0
-    control.scale = REST_SCALE if reduced_motion else Vector2(0.92, 0.92)
-    var reveal_key := _tween_key(control, "reveal")
+    var key := _tween_key(control, "reveal")
     var tween := control.create_tween()
-    active_tweens[reveal_key] = tween
-    var duration := 0.10 if reduced_motion else 0.18
-    tween.tween_property(control, "modulate:a", 1.0, duration).set_delay(delay).set_trans(Tween.TRANS_QUART).set_ease(Tween.EASE_OUT)
-    tween.tween_callback(func(): _finish_tween_key(reveal_key))
-    if reduced_motion:
-        control.scale = REST_SCALE
-        return
-    _after(control, delay, func(current: Control):
-        spring_property(current, "scale", REST_SCALE, 0.36, 0.56)
-    )
+    active_tweens[key] = tween
+    tween.tween_property(control, "modulate:a", 1.0, 0.12 if reduced_motion else 0.32).set_delay(delay).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
+    tween.tween_callback(func(): _finish_tween_key(key))
 
-# Rise-in used for card grids and section rows. Containers own `position`, so
-# the rise is expressed through a bottom-anchored squash, a slight counter
-# rotation and a fade: properties layout never overwrites.
+# Cascade step for container children. Containers own `position`, so the
+# rise is carried by a child-local transform: a vertical squash from the
+# bottom edge plus a fade, both properties layout never overwrites.
 func rise(control: Control, delay: float = 0.0) -> void:
     if control == null or not is_instance_valid(control):
         return
     _stop_tweens(control)
     active_springs.erase(_motion_key(control, "scale"))
-    active_springs.erase(_motion_key(control, "rotation"))
     control.modulate.a = 0.0
     if reduced_motion:
         control.scale = REST_SCALE
-        control.rotation = 0.0
         _fade(control, 1.0, 0.12, "reveal")
         return
-    control.pivot_offset = Vector2(control.size.x * 0.5, control.size.y)
-    control.scale = RISE_START_SCALE
-    control.rotation = RISE_START_ROTATION
-    var fade_key := _tween_key(control, "reveal")
+    control.pivot_offset = Vector2(control.size.x * 0.5, control.size.y + CASCADE_OFFSET)
+    control.scale = Vector2(0.94, 0.94)
+    var key := _tween_key(control, "reveal")
     var tween := control.create_tween()
-    active_tweens[fade_key] = tween
-    tween.tween_property(control, "modulate:a", 1.0, 0.26).set_delay(delay).set_trans(Tween.TRANS_QUART).set_ease(Tween.EASE_OUT)
-    tween.tween_callback(func(): _finish_tween_key(fade_key))
+    active_tweens[key] = tween
+    tween.tween_property(control, "modulate:a", 1.0, 0.30).set_delay(delay).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
+    tween.tween_callback(func(): _finish_tween_key(key))
     _after(control, delay, func(current: Control):
-        spring_property(current, "scale", REST_SCALE, 0.44, 0.58, func():
+        spring_property(current, "scale", REST_SCALE, 0.46, 0.72, func():
             if is_instance_valid(current):
                 _update_pivot(current)
         )
-        spring_property(current, "rotation", 0.0, 0.50, 0.55)
     )
 
-func cascade_children(parent: Node, step: float = 0.045, base_delay: float = 0.0, max_items: int = 14) -> void:
+func cascade_children(parent: Node, step: float = 0.04, base_delay: float = 0.0, max_items: int = 16) -> void:
     if parent == null or not is_instance_valid(parent):
         return
     var index := 0
@@ -537,7 +492,20 @@ func cascade_children(parent: Node, step: float = 0.045, base_delay: float = 0.0
             rise(child, base_delay + step * float(index))
             index += 1
 
-# Staggered pop with a springy overshoot, for small decorative items.
+# Grid cascade that ripples diagonally from the top-left cell.
+func cascade_grid(grid: GridContainer, step: float = 0.045, max_items: int = 30) -> void:
+    if grid == null or not is_instance_valid(grid):
+        return
+    var columns := maxi(1, grid.columns)
+    var index := 0
+    for child in grid.get_children():
+        if not child is Control or child.is_queued_for_deletion():
+            continue
+        if index < max_items:
+            var wave := float(index / columns) + float(index % columns) * 0.7
+            rise(child, 0.02 + wave * step)
+        index += 1
+
 func pop_in(control: Control, delay: float = 0.0, from_scale: float = 0.6) -> void:
     if control == null or not is_instance_valid(control):
         return
@@ -549,13 +517,13 @@ func pop_in(control: Control, delay: float = 0.0, from_scale: float = 0.6) -> vo
         return
     control.scale = Vector2(from_scale, from_scale)
     var tween := control.create_tween()
-    tween.tween_property(control, "modulate:a", 1.0, 0.18).set_delay(delay)
+    tween.tween_property(control, "modulate:a", 1.0, 0.16).set_delay(delay)
     _after(control, delay, func(current: Control):
-        spring_property(current, "scale", REST_SCALE, 0.40, 0.45)
+        spring_property(current, "scale", REST_SCALE, 0.38, 0.48)
     )
 
-# Typewriter-style reveal for headings: characters stream in left to right.
-func type_in(label: Label, delay: float = 0.0, duration: float = 0.42) -> void:
+# Heading reveal: the text wipes in from the left while sliding up a little.
+func wipe_in(label: Label, delay: float = 0.0, duration: float = 0.5) -> void:
     if label == null or not is_instance_valid(label):
         return
     if reduced_motion or label.text.length() <= 1:
@@ -563,10 +531,8 @@ func type_in(label: Label, delay: float = 0.0, duration: float = 0.42) -> void:
         return
     label.visible_ratio = 0.0
     var tween := label.create_tween()
-    tween.tween_property(label, "visible_ratio", 1.0, duration).set_delay(delay).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
+    tween.tween_property(label, "visible_ratio", 1.0, duration).set_delay(delay).set_trans(Tween.TRANS_QUART).set_ease(Tween.EASE_OUT)
 
-# Animated number: counts `label` from `from_value` to `to_value` using the
-# provided formatter callable (int -> String).
 func count_up(label: Label, from_value: int, to_value: int, formatter: Callable, duration: float = 0.6) -> void:
     if label == null or not is_instance_valid(label):
         return
@@ -587,44 +553,19 @@ func count_up(label: Label, from_value: int, to_value: int, formatter: Callable,
     ).set_trans(Tween.TRANS_EXPO).set_ease(Tween.EASE_OUT)
     tween.tween_callback(func(): _finish_tween_key(key))
 
-# Ripple from a local point, clipped to the control's rounded shape. The
-# ripple rect frees itself once the wave has faded.
-func ripple(control: Control, local_point: Vector2, tint: Color, radius: float = 14.0) -> void:
-    if control == null or not is_instance_valid(control) or reduced_motion or control.size.x <= 0.0:
-        return
-    var wave := ColorRect.new()
-    wave.mouse_filter = Control.MOUSE_FILTER_IGNORE
-    wave.set_anchors_preset(Control.PRESET_FULL_RECT)
-    var mat := AetherShaders.material(AetherShaders.ripple())
-    mat.set_shader_parameter("rect_size", control.size)
-    mat.set_shader_parameter("radius", radius)
-    mat.set_shader_parameter("center", local_point)
-    var far := maxf(
-        maxf(local_point.length(), (local_point - Vector2(control.size.x, 0)).length()),
-        maxf((local_point - Vector2(0, control.size.y)).length(), (local_point - control.size).length())
-    )
-    mat.set_shader_parameter("reach", far + 8.0)
-    mat.set_shader_parameter("tint", tint)
-    mat.set_shader_parameter("progress", 0.0)
-    wave.material = mat
-    control.add_child(wave)
-    var tween := wave.create_tween()
-    tween.tween_property(mat, "shader_parameter/progress", 1.0, 0.62).set_trans(Tween.TRANS_LINEAR)
-    tween.tween_callback(wave.queue_free)
+# Endless opacity pulse for status dots and live indicators.
+func pulse(item: CanvasItem, low: float = 0.35, period: float = 2.0) -> Tween:
+    if item == null or not is_instance_valid(item) or reduced_motion:
+        return null
+    var key := _tween_key(item, "pulse")
+    _stop_tween_key(key)
+    var tween := item.create_tween().set_loops()
+    active_tweens[key] = tween
+    tween.tween_property(item, "modulate:a", low, period * 0.5).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+    tween.tween_property(item, "modulate:a", 1.0, period * 0.5).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+    return tween
 
-func bind_ripple(button: BaseButton, tint: Color, radius: float = 14.0) -> void:
-    if button == null or button.has_meta("aether_ripple_bound"):
-        return
-    button.set_meta("aether_ripple_bound", true)
-    button.gui_input.connect(func(event: InputEvent):
-        if event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT:
-            ripple(button, event.position, tint, radius)
-        elif event is InputEventScreenTouch and event.pressed:
-            ripple(button, event.position, tint, radius)
-    )
-
-# Continuous gentle breathing: idle hero icons and the loading orb.
-func breathe(control: Control, amount: float = 0.05, period: float = 2.6) -> Tween:
+func breathe(control: Control, amount: float = 0.04, period: float = 2.8) -> Tween:
     if control == null or not is_instance_valid(control) or reduced_motion:
         return null
     _update_pivot(control)
@@ -636,19 +577,6 @@ func breathe(control: Control, amount: float = 0.05, period: float = 2.6) -> Twe
     tween.tween_property(control, "scale", REST_SCALE, period * 0.5).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
     return tween
 
-func float_idle(control: Control, amplitude: float = 0.05, period: float = 4.2) -> Tween:
-    if control == null or not is_instance_valid(control) or reduced_motion:
-        return null
-    _update_pivot(control)
-    var key := _tween_key(control, "float")
-    _stop_tween_key(key)
-    var tween := control.create_tween().set_loops()
-    active_tweens[key] = tween
-    tween.tween_property(control, "rotation", amplitude, period * 0.5).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
-    tween.tween_property(control, "rotation", -amplitude, period * 0.5).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
-    return tween
-
-# Horizontal error shake with decaying amplitude.
 func shake(control: Control, strength: float = 10.0) -> void:
     if control == null or not is_instance_valid(control) or reduced_motion:
         return
@@ -676,17 +604,21 @@ func set_visible(control: Control, show: bool) -> void:
         control.visible = true
         if control.modulate.a >= 0.99:
             control.modulate.a = 0.0
-            control.scale = REST_SCALE if reduced_motion else Vector2(0.97, 0.94)
+            control.scale = REST_SCALE if reduced_motion else Vector2(1.0, 0.94)
     if not reduced_motion:
-        spring_property(control, "scale", REST_SCALE if show else Vector2(0.97, 0.94), 0.32 if show else 0.22, 0.62 if show else 1.0)
+        spring_property(control, "scale", REST_SCALE if show else Vector2(1.0, 0.94), 0.30 if show else 0.20, 0.7 if show else 1.0)
     var control_ref: WeakRef = weakref(control)
     _fade(control, 1.0 if show else 0.0, 0.22 if show else 0.14, "visibility", func():
-        var current_control: Variant = control_ref.get_ref()
-        if not show and current_control != null and is_instance_valid(current_control):
-            current_control.visible = false
-            current_control.modulate.a = 1.0
-            current_control.scale = REST_SCALE
+        var current: Variant = control_ref.get_ref()
+        if not show and current != null and is_instance_valid(current):
+            current.visible = false
+            current.modulate.a = 1.0
+            current.scale = REST_SCALE
     )
+
+# ---------------------------------------------------------------------------
+# Internals
+# ---------------------------------------------------------------------------
 
 func _after(control: Control, delay: float, callback: Callable) -> void:
     if delay <= 0.0 or not control.is_inside_tree():
@@ -704,27 +636,15 @@ func _after(control: Control, delay: float, callback: Callable) -> void:
 func _press_in(control: Control) -> void:
     if reduced_motion:
         return
-    var target: Vector2 = control.get_meta("aether_press_scale", PRESS_SCALE)
-    _animate_scale(control, target, PRESS_RESPONSE)
+    _animate_scale(control, control.get_meta("aether_press_scale", PRESS_SCALE), PRESS_RESPONSE)
 
 func _press_out(control: Control) -> void:
     if reduced_motion:
         control.scale = REST_SCALE
         return
-    var damping := float(control.get_meta("aether_release_damping", 1.0))
-    _animate_scale(control, REST_SCALE, RELEASE_RESPONSE, damping)
-
-func _set_lift_hover(control: Control, highlight: CanvasItem, active: bool, rest_alpha: float, hover_alpha: float) -> void:
-    if control == null or not is_instance_valid(control):
-        return
-    control.set_meta("aether_hovered", active)
-    _animate_scale(control, HOVER_SCALE if active else REST_SCALE, HOVER_RESPONSE, 0.68 if active else 0.9)
-    if highlight == null or not is_instance_valid(highlight):
-        return
-    if reduced_motion:
-        highlight.modulate.a = hover_alpha if active else rest_alpha
-        return
-    _fade(highlight, hover_alpha if active else rest_alpha, 0.18, "hover")
+    var hovered := bool(control.get_meta("aether_hovered", false))
+    var rest := Vector2.ONE * float(control.get_meta("aether_hover_lift", 1.0)) if hovered else REST_SCALE
+    _animate_scale(control, rest, RELEASE_RESPONSE, float(control.get_meta("aether_release_damping", 1.0)))
 
 func _animate_scale(control: Control, target: Vector2, response: float, damping: float = 1.0) -> void:
     if control == null or not is_instance_valid(control):
@@ -741,7 +661,7 @@ func _fade(item: CanvasItem, target: float, duration: float, channel: String, fi
     _stop_tween_key(key)
     var tween := item.create_tween()
     active_tweens[key] = tween
-    tween.tween_property(item, "modulate:a", target, duration).set_trans(Tween.TRANS_QUART).set_ease(Tween.EASE_OUT)
+    tween.tween_property(item, "modulate:a", target, duration).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
     tween.tween_callback(func():
         active_tweens.erase(key)
         if finished.is_valid():
@@ -769,10 +689,6 @@ func _stop_tween_key(key: String) -> void:
 
 func _finish_tween_key(key: String) -> void:
     active_tweens.erase(key)
-
-func _finish_tween(owner: Object, channel: String) -> void:
-    if owner != null and is_instance_valid(owner):
-        active_tweens.erase(_tween_key(owner, channel))
 
 func _motion_key(owner: Object, property: StringName) -> String:
     return "%d:%s" % [owner.get_instance_id(), String(property)]

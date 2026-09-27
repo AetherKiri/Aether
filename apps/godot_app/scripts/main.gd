@@ -47,9 +47,8 @@ const IOS_STATEMENT_KO := "res://legal/ios_app_store_statement_ko.txt"
 const MOBILE_ORIENTATION_SCHEMA_VERSION := 1
 const UI_FONT := preload("res://assets/fonts/aetherkiri-runtime-cjk.otf")
 const BODY_FONT := preload("res://assets/fonts/Inter-Variable.ttf")
-const DISPLAY_FONT := preload("res://assets/fonts/aether_display.tres")
-const HEADING_FONT := preload("res://assets/fonts/aether_heading.tres")
-const SERIF_FONT := preload("res://assets/fonts/CormorantGaramond-Variable.ttf")
+const DISPLAY_FONT := preload("res://assets/fonts/lumen_display.tres")
+const TITLE_FONT := preload("res://assets/fonts/lumen_title.tres")
 const DISPLAY_CJK_FONT := preload("res://assets/fonts/NotoSerifCJKsc-Regular.otf")
 const UI_SYMBOL_FONT := preload("res://assets/fonts/aetherkiri-runtime-symbols.ttf")
 const RUNTIME_FONT_DIR := "user://runtime_fonts"
@@ -77,7 +76,6 @@ const AetherDisclosure = preload("res://scripts/ui/aether_disclosure.gd")
 const AetherSelect = preload("res://scripts/ui/aether_select.gd")
 const AetherDisplayScale = preload("res://scripts/ui/aether_display_scale.gd")
 const AetherShaders = preload("res://scripts/ui/aether_shaders.gd")
-const AetherSurface = preload("res://scripts/ui/aether_surface.gd")
 const UI_ICON_DIR := "res://assets/ui/icons/"
 const ICON_SETTINGS := UI_ICON_DIR + "gear-fill.svg"
 const ICON_SAVE := UI_ICON_DIR + "save-fill.svg"
@@ -1774,7 +1772,7 @@ var detail_hero_cover: Control
 var hero_source_rect := Rect2()
 var hero_source_path := ""
 var hero_source_texture: Texture2D
-var hero_overlay: PanelContainer
+var hero_overlay: Control
 var hero_hidden_target: CanvasItem
 var hero_transition_id := 0
 var known_games: Array[Dictionary] = []
@@ -1884,20 +1882,19 @@ var ui_motion = AetherMotion.new()
 var ui_widgets = AetherWidgets.new(ui_tokens, ui_motion)
 var backdrop_material: ShaderMaterial
 var backdrop_pointer := Vector2(0.5, 0.5)
-var backdrop_pointer_target := Vector2(0.5, 0.5)
 var backdrop_pointer_strength := 0.0
 var backdrop_focus_color := Color(0, 0, 0, 0)
+var shell_compact_topbar: PanelContainer
+var shell_brand_mark: Control
 var cover_tint_cache := {}
-var shell_brand_orb: Control
-var shell_brand_ring: Control
 var home_count_value := 0
-var home_spotlight: Control
-var home_stack: VBoxContainer
-var home_search_glow: Control
-var loading_orb: Control
-var loading_progress_bar: Control
-var loading_dots: Array[Control] = []
-var loading_content: Control
+var settings_index: VBoxContainer
+var settings_index_host: Control
+var settings_index_marker: Panel
+var settings_index_entries: Array = []
+var settings_index_active := -1
+var detail_backdrop: TextureRect
+var loading_ring: Control
 
 var player = null
 var current_player_runtime_kind := RUNTIME_KIRIKIRI
@@ -2154,11 +2151,13 @@ const PILL_ICON_VISUAL_OFFSET_Y := 2.0
 const SETTINGS_ACTION_BUTTON_SIZE := Vector2(150, 54)
 const HOME_CARD_SIZE := Vector2(312, 272)
 const HOME_CARD_COVER_HEIGHT := 154.0
-const HOME_TILE_MIN_WIDTH := 360.0
-const HOME_TILE_HEIGHT := 164.0
-const HOME_TILE_COVER_WIDTH := 112.0
-const HOME_ROW_HEIGHT := 112.0
-const HOME_ROW_COVER_WIDTH := 80.0
+const HOME_TILE_MIN_WIDTH := 184.0
+const HOME_TILE_HEIGHT := 328.0
+const HOME_TILE_COVER_WIDTH := 184.0
+const HOME_ROW_HEIGHT := 104.0
+const HOME_ROW_COVER_WIDTH := 70.0
+const HOME_POSTER_ASPECT := 1.38
+const SHELL_NAV_UNDERLINE := 3.0
 const HOME_COMPACT_BREAKPOINT := 760.0
 const HOME_PHONE_BREAKPOINT := 520.0
 const DETAIL_COMPACT_BREAKPOINT := 960.0
@@ -2192,13 +2191,12 @@ func _apply_style_mode(update_theme: bool = true) -> void:
     color_text = ui_tokens.text_primary
     color_muted = ui_tokens.text_secondary
     color_accent = ui_tokens.accent
-    color_accent_soft = ui_tokens.accent.lerp(ui_tokens.accent_2, 0.35)
+    color_accent_soft = ui_tokens.accent_text
     color_accent_dim = ui_tokens.accent_fill
     color_warn = ui_tokens.warning
     color_danger = ui_tokens.danger
     color_success = ui_tokens.success
     color_line = ui_tokens.separator
-    _refresh_feather_colors()
     _sync_backdrop_palette()
 
     if update_theme:
@@ -2207,12 +2205,6 @@ func _apply_style_mode(update_theme: bool = true) -> void:
         _set_game_background(game_running)
     else:
         RenderingServer.set_default_clear_color(color_game_bg if game_running else color_bg)
-
-# ---------------------------------------------------------------------------
-# Ambient aurora backdrop: a full-screen shader with three drifting colour
-# fields, a slow focus tint that follows the hovered/selected cover, and a
-# soft light that trails the pointer.
-# ---------------------------------------------------------------------------
 
 func _normalize_language_mode(value: String) -> String:
     return value if value in LANGUAGE_MODES else LANG_SYSTEM
@@ -2322,68 +2314,59 @@ func _apply_ui_font() -> void:
     UI_FONT.set_fallbacks(fallbacks)
     BODY_FONT.set_fallbacks([UI_FONT, UI_SYMBOL_FONT])
     DISPLAY_CJK_FONT.set_fallbacks([BODY_FONT, UI_FONT, UI_SYMBOL_FONT])
-    SERIF_FONT.set_fallbacks([DISPLAY_CJK_FONT, BODY_FONT, UI_FONT, UI_SYMBOL_FONT])
     DISPLAY_FONT.set_fallbacks([UI_FONT, UI_SYMBOL_FONT])
-    HEADING_FONT.set_fallbacks([UI_FONT, UI_SYMBOL_FONT])
+    TITLE_FONT.set_fallbacks([UI_FONT, UI_SYMBOL_FONT])
     var ui_theme := Theme.new()
     ui_theme.set_default_font(BODY_FONT)
-    ui_theme.set_color("font_color", "Label", color_text)
-    ui_theme.set_color("font_color", "Button", color_text)
-    ui_theme.set_color("font_color", "OptionButton", color_text)
-    ui_theme.set_color("font_hover_color", "OptionButton", color_text)
-    ui_theme.set_color("font_pressed_color", "OptionButton", color_text)
-    ui_theme.set_color("font_color", "LineEdit", color_text)
-    ui_theme.set_color("font_color", "TextEdit", color_text)
-    ui_theme.set_color("font_placeholder_color", "LineEdit", color_muted)
-    ui_theme.set_color("caret_color", "LineEdit", ui_tokens.accent)
-    ui_theme.set_color("selection_color", "LineEdit", ui_tokens.tint(ui_tokens.accent, 0.32))
+    for type_name in ["Label", "Button", "OptionButton", "LineEdit", "TextEdit", "CheckButton", "PopupMenu"]:
+        ui_theme.set_color("font_color", type_name, color_text)
+    for type_name in ["Button", "OptionButton", "CheckButton"]:
+        ui_theme.set_color("font_hover_color", type_name, color_text)
+        ui_theme.set_color("font_pressed_color", type_name, color_text)
+        ui_theme.set_color("font_focus_color", type_name, color_text)
     ui_theme.set_color("font_disabled_color", "Button", _disabled_text_color())
-    ui_theme.set_color("font_color", "CheckButton", color_text)
-    ui_theme.set_color("font_hover_color", "CheckButton", color_text)
-    ui_theme.set_color("font_pressed_color", "CheckButton", color_text)
+    ui_theme.set_color("font_placeholder_color", "LineEdit", ui_tokens.text_tertiary)
+    ui_theme.set_color("caret_color", "LineEdit", ui_tokens.accent)
+    ui_theme.set_color("selection_color", "LineEdit", ui_tokens.tint(ui_tokens.accent, 0.28))
 
-    # Default Button chrome: frosted glass with a light rim; hover warms the
-    # rim to the accent. Specialised widgets override this per control.
-    var button_normal := _panel_style(14, ui_tokens.tint(ui_tokens.text_primary, 0.05), ui_tokens.rim, 1)
-    var button_hover := _panel_style(14, ui_tokens.accent_fill, ui_tokens.tint(ui_tokens.accent, 0.5), 1)
-    var button_pressed := _panel_style(14, ui_tokens.tint(ui_tokens.accent, 0.26), ui_tokens.accent, 1)
-    var button_disabled := _panel_style(14, ui_tokens.tint(ui_tokens.surface_raised, 0.3), ui_tokens.separator, 1)
-    var button_focus := _panel_style(14, Color(0, 0, 0, 0), ui_tokens.tint(ui_tokens.accent, 0.8), 2)
-    button_focus.draw_center = false
+    # Default Button: surface block with a hairline; hover lifts the fill.
+    var button_normal := _panel_style(12, ui_tokens.surface_raised, ui_tokens.outline, 1)
+    var button_hover := _panel_style(12, ui_tokens.surface_hover, ui_tokens.outline_strong, 1)
+    var button_pressed := _panel_style(12, ui_tokens.accent_fill, ui_tokens.accent, 1)
+    var button_disabled := _panel_style(12, ui_tokens.tint(ui_tokens.surface_hover, 0.5), ui_tokens.separator, 1)
+    var button_focus := _focus_outline(12)
     for style in [button_normal, button_hover, button_pressed, button_disabled, button_focus]:
-        style.content_margin_top = 10
-        style.content_margin_bottom = 10
+        style.content_margin_top = 9
+        style.content_margin_bottom = 9
     ui_theme.set_stylebox("normal", "Button", button_normal)
     ui_theme.set_stylebox("hover", "Button", button_hover)
     ui_theme.set_stylebox("pressed", "Button", button_pressed)
     ui_theme.set_stylebox("disabled", "Button", button_disabled)
     ui_theme.set_stylebox("focus", "Button", button_focus)
-    ui_theme.set_color("font_hover_color", "Button", color_text)
-    ui_theme.set_color("font_pressed_color", "Button", color_text)
-    ui_theme.set_color("font_focus_color", "Button", color_text)
 
-    ui_theme.set_stylebox("normal", "OptionButton", _panel_style(14, ui_tokens.tint(ui_tokens.text_primary, 0.05), ui_tokens.rim, 1))
-    ui_theme.set_stylebox("hover", "OptionButton", _panel_style(14, ui_tokens.accent_fill, ui_tokens.tint(ui_tokens.accent, 0.5), 1))
-    ui_theme.set_stylebox("pressed", "OptionButton", _panel_style(14, ui_tokens.tint(ui_tokens.accent, 0.26), ui_tokens.accent, 1))
-    ui_theme.set_stylebox("focus", "OptionButton", _focus_outline(14))
-    ui_theme.set_stylebox("normal", "LineEdit", _panel_style(14, ui_tokens.tint(ui_tokens.background_raised, 0.7), ui_tokens.rim, 1))
-    ui_theme.set_stylebox("focus", "LineEdit", _panel_style(14, ui_tokens.tint(ui_tokens.background_raised, 0.85), ui_tokens.accent, 2))
-    ui_theme.set_stylebox("normal", "TextEdit", _panel_style(14, Color(0, 0, 0, 0.18), ui_tokens.separator, 1))
-    ui_theme.set_stylebox("focus", "TextEdit", _panel_style(14, Color(0, 0, 0, 0.24), ui_tokens.separator, 1))
-    ui_theme.set_stylebox("panel", "PopupMenu", _panel_style(14, ui_tokens.popover, ui_tokens.rim, 1))
-    ui_theme.set_stylebox("hover", "PopupMenu", _panel_style(10, ui_tokens.accent_fill, Color.TRANSPARENT, 0))
-    ui_theme.set_color("font_color", "PopupMenu", color_text)
+    ui_theme.set_stylebox("normal", "OptionButton", _panel_style(12, ui_tokens.background_raised, ui_tokens.outline, 1))
+    ui_theme.set_stylebox("hover", "OptionButton", _panel_style(12, ui_tokens.surface_hover, ui_tokens.outline_strong, 1))
+    ui_theme.set_stylebox("pressed", "OptionButton", _panel_style(12, ui_tokens.surface_hover, ui_tokens.accent, 1))
+    ui_theme.set_stylebox("focus", "OptionButton", _focus_outline(12))
+    ui_theme.set_stylebox("normal", "LineEdit", ui_widgets.field_box(false))
+    ui_theme.set_stylebox("focus", "LineEdit", ui_widgets.field_box(true))
+    ui_theme.set_stylebox("normal", "TextEdit", _panel_style(12, ui_tokens.background_raised, ui_tokens.separator, 1))
+    ui_theme.set_stylebox("focus", "TextEdit", _panel_style(12, ui_tokens.background_raised, ui_tokens.outline, 1))
+    var popup := _panel_style(12, ui_tokens.popover, ui_tokens.outline, 1)
+    ui_tokens.elevate(popup, 2)
+    ui_theme.set_stylebox("panel", "PopupMenu", popup)
+    ui_theme.set_stylebox("hover", "PopupMenu", _panel_style(8, ui_tokens.surface_hover, Color.TRANSPARENT, 0))
     ui_theme.set_color("font_hover_color", "PopupMenu", color_text)
-    ui_theme.set_color("font_color", "TooltipLabel", ui_tokens.text_primary)
-    var tooltip := _panel_style(10, ui_tokens.popover, ui_tokens.rim, 1)
+    var tooltip := _panel_style(8, ui_tokens.text_primary, Color.TRANSPARENT, 0)
     tooltip.content_margin_left = 10
     tooltip.content_margin_right = 10
-    tooltip.content_margin_top = 6
-    tooltip.content_margin_bottom = 6
+    tooltip.content_margin_top = 5
+    tooltip.content_margin_bottom = 5
     ui_theme.set_stylebox("panel", "TooltipPanel", tooltip)
+    ui_theme.set_color("font_color", "TooltipLabel", ui_tokens.background)
     ui_theme.set_stylebox("scroll", "VScrollBar", _scroll_track_style())
-    ui_theme.set_stylebox("grabber", "VScrollBar", _scroll_thumb_style(ui_tokens.tint(color_muted, 0.45)))
-    ui_theme.set_stylebox("grabber_highlight", "VScrollBar", _scroll_thumb_style(color_muted))
+    ui_theme.set_stylebox("grabber", "VScrollBar", _scroll_thumb_style(ui_tokens.tint(color_muted, 0.35)))
+    ui_theme.set_stylebox("grabber_highlight", "VScrollBar", _scroll_thumb_style(ui_tokens.tint(color_muted, 0.7)))
     ui_theme.set_stylebox("grabber_pressed", "VScrollBar", _scroll_thumb_style(ui_tokens.accent))
     ui_theme.set_constant("minimum_grab_thickness", "VScrollBar", 36)
     theme = ui_theme
@@ -2442,7 +2425,7 @@ func _stage_runtime_fonts() -> void:
 
 func _build_ui() -> void:
     bg_rect = ColorRect.new()
-    bg_rect.name = "AuroraBackdrop"
+    bg_rect.name = "LumenBackdrop"
     bg_rect.color = color_bg
     bg_rect.set_anchors_preset(Control.PRESET_FULL_RECT)
     bg_rect.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -2526,12 +2509,10 @@ func _build_ui() -> void:
     perf_panel = PanelContainer.new()
     perf_panel.name = "PerformancePanel"
     perf_panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
-    var perf_style: StyleBoxFlat = ui_tokens.glass_panel(16, true, ui_tokens.popover)
-    perf_style.content_margin_left = 14
-    perf_style.content_margin_right = 14
-    perf_style.content_margin_top = 10
-    perf_style.content_margin_bottom = 10
-    perf_panel.add_theme_stylebox_override("panel", perf_style)
+    perf_panel.add_theme_stylebox_override(
+        "panel",
+        ui_tokens.material_panel(true)
+    )
     perf_panel.visible = false
     perf_layer.add_child(perf_panel)
 
@@ -2545,7 +2526,7 @@ func _build_ui() -> void:
     restart_notice = Label.new()
     restart_notice.position = Vector2(24, 44)
     restart_notice.add_theme_font_size_override("font_size", 14)
-    restart_notice.add_theme_color_override("font_color", ui_tokens.warning)
+    restart_notice.add_theme_color_override("font_color", Color(1, 0.82, 0.65, 1))
     restart_notice.visible = false
     game_view.add_child(restart_notice)
 
@@ -2603,12 +2584,7 @@ func _build_video_view() -> void:
     video_seek_feedback.mouse_filter = Control.MOUSE_FILTER_IGNORE
     video_seek_feedback.add_theme_stylebox_override(
         "panel",
-        _panel_style(
-            14,
-            Color(0.015, 0.018, 0.026, 0.82),
-            Color(1, 1, 1, 0.18),
-            1
-        )
+        _panel_style(14, Color(0.06, 0.06, 0.08, 0.88), Color(1, 1, 1, 0.14), 1)
     )
     video_seek_feedback.visible = false
     video_view.add_child(video_seek_feedback)
@@ -2623,7 +2599,7 @@ func _build_video_view() -> void:
     video_top_bar = PanelContainer.new()
     video_top_bar.anchor_right = 1.0
     video_top_bar.offset_bottom = 76.0
-    video_top_bar.add_theme_stylebox_override("panel", _panel_style(0, Color(0.015, 0.018, 0.026, 0.68), Color(0, 0, 0, 0), 0))
+    video_top_bar.add_theme_stylebox_override("panel", _video_scrim_style(true))
     video_view.add_child(video_top_bar)
     video_top_margin = MarginContainer.new()
     video_top_margin.add_theme_constant_override("margin_left", 20)
@@ -2655,7 +2631,7 @@ func _build_video_view() -> void:
     video_controls.anchor_right = 1.0
     video_controls.anchor_bottom = 1.0
     video_controls.offset_top = -144.0
-    video_controls.add_theme_stylebox_override("panel", _panel_style(0, Color(0.015, 0.018, 0.026, 0.74), Color(0, 0, 0, 0), 0))
+    video_controls.add_theme_stylebox_override("panel", _video_scrim_style(false))
     video_view.add_child(video_controls)
     video_controls_margin = MarginContainer.new()
     video_controls_margin.add_theme_constant_override("margin_left", 22)
@@ -2986,189 +2962,174 @@ func _finish_video_seek_gesture(position: Vector2) -> void:
 func _build_shell_chrome() -> void:
     shell_safe_top_fill = ColorRect.new()
     shell_safe_top_fill.name = "ShellSafeTopFill"
-    shell_safe_top_fill.color = ui_tokens.tint(ui_tokens.background, 0.0)
     shell_safe_top_fill.mouse_filter = Control.MOUSE_FILTER_IGNORE
     shell_root.add_child(shell_safe_top_fill)
-
-    shell_sidebar_backdrop = PanelContainer.new()
-    shell_sidebar_backdrop.name = "ShellSidebarBackdrop"
-    shell_sidebar_backdrop.mouse_filter = Control.MOUSE_FILTER_IGNORE
-    shell_sidebar_backdrop.add_theme_stylebox_override("panel", ui_tokens.sidebar_panel())
-    shell_root.add_child(shell_sidebar_backdrop)
 
     shell_content = Control.new()
     shell_content.name = "ShellContent"
     shell_content.set_anchors_preset(Control.PRESET_FULL_RECT)
     shell_root.add_child(shell_content)
 
-    # Floating glass rail: inset from the window edges, rounded, with a rim
-    # that catches the aurora and a deep soft shadow.
+    # Desktop: a slim top bar. Brand on the left, route tabs centred with a
+    # sliding signal-colour underline, version stamp on the right.
     shell_sidebar = PanelContainer.new()
-    shell_sidebar.name = "ShellSidebar"
-    shell_sidebar.clip_contents = false
-    shell_sidebar.add_theme_stylebox_override("panel", _sidebar_glass_style())
+    shell_sidebar.name = "ShellTopBar"
+    shell_sidebar.add_theme_stylebox_override("panel", _topbar_style(false))
     shell_root.add_child(shell_sidebar)
 
-    # Host keeps the sliding selection pill (drawn behind nav items) and the
-    # rail column.
-    var sidebar_host := Control.new()
-    sidebar_host.name = "SidebarHost"
-    sidebar_host.set_anchors_preset(Control.PRESET_FULL_RECT)
-    sidebar_host.mouse_filter = Control.MOUSE_FILTER_IGNORE
-    shell_sidebar.add_child(sidebar_host)
+    var bar_host := Control.new()
+    bar_host.name = "TopBarHost"
+    bar_host.mouse_filter = Control.MOUSE_FILTER_IGNORE
+    shell_sidebar.add_child(bar_host)
 
-    shell_nav_indicator = _nav_pill_panel("NavIndicator", false)
-    sidebar_host.add_child(shell_nav_indicator)
-
-    var sidebar := VBoxContainer.new()
-    sidebar.set_anchors_preset(Control.PRESET_FULL_RECT)
-    sidebar.add_theme_constant_override("separation", 6)
-    sidebar.mouse_filter = Control.MOUSE_FILTER_PASS
-    sidebar_host.add_child(sidebar)
+    var bar_row := HBoxContainer.new()
+    bar_row.set_anchors_preset(Control.PRESET_FULL_RECT)
+    bar_row.offset_left = 28
+    bar_row.offset_right = -28
+    bar_row.mouse_filter = Control.MOUSE_FILTER_IGNORE
+    bar_row.add_theme_constant_override("separation", 12)
+    bar_host.add_child(bar_row)
 
     shell_sidebar_brand = HBoxContainer.new()
-    shell_sidebar_brand.custom_minimum_size = Vector2(0, 64)
     shell_sidebar_brand.add_theme_constant_override("separation", 12)
-    sidebar.add_child(shell_sidebar_brand)
-    var orb_holder := CenterContainer.new()
-    orb_holder.custom_minimum_size = Vector2(44, 44)
-    orb_holder.mouse_filter = Control.MOUSE_FILTER_IGNORE
-    shell_sidebar_brand.add_child(orb_holder)
-    shell_brand_orb = _brand_orb(42.0)
-    orb_holder.add_child(shell_brand_orb)
-
+    shell_sidebar_brand.mouse_filter = Control.MOUSE_FILTER_PASS
+    bar_row.add_child(shell_sidebar_brand)
+    shell_brand_mark = _brand_mark(34.0)
+    shell_brand_mark.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+    shell_sidebar_brand.add_child(shell_brand_mark)
     shell_sidebar_brand_labels = VBoxContainer.new()
-    shell_sidebar_brand_labels.size_flags_horizontal = Control.SIZE_EXPAND_FILL
     shell_sidebar_brand_labels.alignment = BoxContainer.ALIGNMENT_CENTER
-    shell_sidebar_brand_labels.add_theme_constant_override("separation", 0)
+    shell_sidebar_brand_labels.add_theme_constant_override("separation", -2)
     shell_sidebar_brand.add_child(shell_sidebar_brand_labels)
     var brand_title := Label.new()
     brand_title.text = APP_DISPLAY_NAME
-    brand_title.add_theme_font_override("font", HEADING_FONT)
-    brand_title.add_theme_font_size_override("font_size", 21)
+    brand_title.add_theme_font_override("font", TITLE_FONT)
+    brand_title.add_theme_font_size_override("font_size", 18)
     brand_title.add_theme_color_override("font_color", ui_tokens.text_primary)
     shell_sidebar_brand_labels.add_child(brand_title)
     var brand_caption := Label.new()
     brand_caption.text = _t("home.subtitle")
-    brand_caption.clip_text = true
     brand_caption.add_theme_font_size_override("font_size", 11)
     brand_caption.add_theme_color_override("font_color", ui_tokens.text_tertiary)
     shell_sidebar_brand_labels.add_child(brand_caption)
+    shell_sidebar_brand.mouse_entered.connect(func(): ui_motion.jelly(shell_brand_mark, Vector2(1.14, 0.9)))
 
-    var nav_rule := _gradient_rule(1.0, 0.0)
-    nav_rule.custom_minimum_size = Vector2(0, 1)
-    sidebar.add_child(nav_rule)
-    var nav_spacer := Control.new()
-    nav_spacer.custom_minimum_size = Vector2(0, 10)
-    sidebar.add_child(nav_spacer)
+    var spacer := Control.new()
+    spacer.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+    spacer.mouse_filter = Control.MOUSE_FILTER_IGNORE
+    bar_row.add_child(spacer)
 
-    shell_library_button = _shell_nav_button(_t("nav.library"), ICON_LIBRARY, _show_home)
-    sidebar.add_child(shell_library_button)
-    shell_video_button = _shell_nav_button(_t("nav.videos"), ICON_VIDEO, _show_video_library)
-    sidebar.add_child(shell_video_button)
-    shell_settings_button = _shell_nav_button(_t("settings.title"), ICON_SETTINGS, _show_settings)
-    sidebar.add_child(shell_settings_button)
-
-    var flexible_space := Control.new()
-    flexible_space.size_flags_vertical = Control.SIZE_EXPAND_FILL
-    sidebar.add_child(flexible_space)
-
-    var version_chip := PanelContainer.new()
-    version_chip.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
-    var chip_style: StyleBoxFlat = ui_tokens.panel(ui_tokens.tint(ui_tokens.text_primary, 0.05), 999, ui_tokens.separator, 1)
-    chip_style.content_margin_left = 10
-    chip_style.content_margin_right = 12
-    chip_style.content_margin_top = 4
-    chip_style.content_margin_bottom = 4
-    version_chip.add_theme_stylebox_override("panel", chip_style)
-    sidebar.add_child(version_chip)
-    var chip_row := HBoxContainer.new()
-    chip_row.add_theme_constant_override("separation", 7)
-    version_chip.add_child(chip_row)
-    var status_dot := _status_dot(ui_tokens.success)
-    chip_row.add_child(status_dot)
+    var stamp := HBoxContainer.new()
+    stamp.add_theme_constant_override("separation", 8)
+    stamp.mouse_filter = Control.MOUSE_FILTER_IGNORE
+    bar_row.add_child(stamp)
+    stamp.add_child(_status_dot(ui_tokens.success))
     shell_sidebar_version = Label.new()
     shell_sidebar_version.text = _application_version_text()
-    shell_sidebar_version.add_theme_font_size_override("font_size", 10)
+    shell_sidebar_version.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+    shell_sidebar_version.add_theme_font_size_override("font_size", 12)
     shell_sidebar_version.add_theme_color_override("font_color", ui_tokens.text_tertiary)
-    chip_row.add_child(shell_sidebar_version)
+    stamp.add_child(shell_sidebar_version)
 
-    shell_compact_header = PanelContainer.new()
-    shell_compact_header.name = "ShellCompactHeader"
-    shell_compact_header.anchor_right = 1.0
-    shell_compact_header.add_theme_stylebox_override("panel", _compact_header_style())
-    shell_root.add_child(shell_compact_header)
+    # Tabs sit in their own centred layer so the brand and stamp widths never
+    # push them off the bar's centre line.
+    var tabs_center := CenterContainer.new()
+    tabs_center.set_anchors_preset(Control.PRESET_FULL_RECT)
+    tabs_center.mouse_filter = Control.MOUSE_FILTER_IGNORE
+    bar_host.add_child(tabs_center)
+    var tabs := HBoxContainer.new()
+    tabs.add_theme_constant_override("separation", 6)
+    tabs_center.add_child(tabs)
+    shell_library_button = _shell_nav_button(_t("nav.library"), ICON_LIBRARY, _show_home)
+    tabs.add_child(shell_library_button)
+    shell_video_button = _shell_nav_button(_t("nav.videos"), ICON_VIDEO, _show_video_library)
+    tabs.add_child(shell_video_button)
+    shell_settings_button = _shell_nav_button(_t("settings.title"), ICON_SETTINGS, _show_settings)
+    tabs.add_child(shell_settings_button)
 
-    # Host keeps the sliding nav pill behind the compact header row.
-    var compact_host := Control.new()
-    compact_host.name = "CompactHeaderHost"
-    compact_host.set_anchors_preset(Control.PRESET_FULL_RECT)
-    compact_host.mouse_filter = Control.MOUSE_FILTER_IGNORE
-    shell_compact_header.add_child(compact_host)
+    shell_nav_indicator = PanelContainer.new()
+    shell_nav_indicator.name = "NavUnderline"
+    shell_nav_indicator.visible = false
+    shell_nav_indicator.add_theme_stylebox_override("panel", ui_tokens.panel(ui_tokens.accent, 2))
+    bar_host.add_child(shell_nav_indicator)
 
-    shell_compact_indicator = _nav_pill_panel("CompactNavIndicator", true)
-    compact_host.add_child(shell_compact_indicator)
-
-    var compact_margin := MarginContainer.new()
-    compact_margin.set_anchors_preset(Control.PRESET_FULL_RECT)
-    compact_margin.add_theme_constant_override("margin_left", 12)
-    compact_margin.add_theme_constant_override("margin_top", 6)
-    compact_margin.add_theme_constant_override("margin_right", 10)
-    compact_margin.add_theme_constant_override("margin_bottom", 6)
-    compact_host.add_child(compact_margin)
+    # Compact: a quiet header with the brand, and a bottom dock carrying the
+    # three routes with a sliding pill behind the active icon.
+    shell_compact_topbar = PanelContainer.new()
+    shell_compact_topbar.name = "ShellCompactTopBar"
+    shell_compact_topbar.add_theme_stylebox_override("panel", _topbar_style(false))
+    shell_root.add_child(shell_compact_topbar)
     var compact_row := HBoxContainer.new()
-    compact_row.add_theme_constant_override("separation", 8)
+    compact_row.add_theme_constant_override("separation", 10)
+    compact_row.mouse_filter = Control.MOUSE_FILTER_IGNORE
+    var compact_margin := MarginContainer.new()
+    compact_margin.add_theme_constant_override("margin_left", 16)
+    compact_margin.add_theme_constant_override("margin_right", 16)
+    compact_margin.mouse_filter = Control.MOUSE_FILTER_IGNORE
     compact_margin.add_child(compact_row)
-    var compact_orb_holder := CenterContainer.new()
-    compact_orb_holder.custom_minimum_size = Vector2(34, 34)
-    compact_orb_holder.mouse_filter = Control.MOUSE_FILTER_IGNORE
-    compact_row.add_child(compact_orb_holder)
-    compact_orb_holder.add_child(_brand_orb(32.0))
+    shell_compact_topbar.add_child(compact_margin)
+    var compact_mark := _brand_mark(28.0)
+    compact_mark.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+    compact_row.add_child(compact_mark)
     shell_route_label = Label.new()
     shell_route_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
     shell_route_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-    shell_route_label.add_theme_font_override("font", HEADING_FONT)
-    shell_route_label.add_theme_font_size_override("font_size", 19)
+    shell_route_label.add_theme_font_override("font", TITLE_FONT)
+    shell_route_label.add_theme_font_size_override("font_size", 17)
     shell_route_label.add_theme_color_override("font_color", ui_tokens.text_primary)
     compact_row.add_child(shell_route_label)
-    shell_compact_library_button = _shell_compact_button(ICON_LIBRARY, _t("nav.library"), _show_home)
-    compact_row.add_child(shell_compact_library_button)
-    shell_compact_video_button = _shell_compact_button(ICON_VIDEO, _t("nav.videos"), _show_video_library)
-    compact_row.add_child(shell_compact_video_button)
-    shell_compact_settings_button = _shell_compact_button(ICON_SETTINGS, _t("settings.title"), _show_settings)
-    compact_row.add_child(shell_compact_settings_button)
 
-    # Both nav pills are directly draggable along their axis.
-    var sidebar_specs := [
+    shell_compact_header = PanelContainer.new()
+    shell_compact_header.name = "ShellDock"
+    shell_compact_header.add_theme_stylebox_override("panel", _topbar_style(true))
+    shell_root.add_child(shell_compact_header)
+    var dock_host := Control.new()
+    dock_host.name = "DockHost"
+    dock_host.mouse_filter = Control.MOUSE_FILTER_IGNORE
+    shell_compact_header.add_child(dock_host)
+    shell_compact_indicator = PanelContainer.new()
+    shell_compact_indicator.name = "DockIndicator"
+    shell_compact_indicator.visible = false
+    shell_compact_indicator.add_theme_stylebox_override("panel", ui_tokens.panel(ui_tokens.accent_fill, 15))
+    dock_host.add_child(shell_compact_indicator)
+    var dock_row := HBoxContainer.new()
+    dock_row.set_anchors_preset(Control.PRESET_FULL_RECT)
+    dock_row.offset_top = 6
+    dock_row.offset_bottom = -8
+    dock_row.alignment = BoxContainer.ALIGNMENT_CENTER
+    dock_row.add_theme_constant_override("separation", 0)
+    dock_row.mouse_filter = Control.MOUSE_FILTER_IGNORE
+    dock_host.add_child(dock_row)
+    shell_compact_library_button = _shell_compact_button(ICON_LIBRARY, _t("nav.library"), _show_home)
+    dock_row.add_child(shell_compact_library_button)
+    shell_compact_video_button = _shell_compact_button(ICON_VIDEO, _t("nav.videos"), _show_video_library)
+    dock_row.add_child(shell_compact_video_button)
+    shell_compact_settings_button = _shell_compact_button(ICON_SETTINGS, _t("settings.title"), _show_settings)
+    dock_row.add_child(shell_compact_settings_button)
+
+    var bar_specs := [
         {"button": shell_library_button, "action": _show_home, "route": "library"},
         {"button": shell_video_button, "action": _show_video_library, "route": "videos"},
         {"button": shell_settings_button, "action": _show_settings, "route": "settings"},
     ]
-    _bind_nav_pill_drag(shell_nav_indicator, sidebar_specs, 1)
-    var compact_specs := [
+    var dock_specs := [
         {"button": shell_compact_library_button, "action": _show_home, "route": "library"},
         {"button": shell_compact_video_button, "action": _show_video_library, "route": "videos"},
         {"button": shell_compact_settings_button, "action": _show_settings, "route": "settings"},
     ]
-    _bind_nav_pill_drag(shell_compact_indicator, compact_specs, 0)
-    # The pill is mostly covered by its nav buttons. Letting a drag start on
-    # a button itself is what makes the pill feel responsive instead of only
-    # grabbable in the tiny gaps.
-    for spec in sidebar_specs:
-        _bind_nav_button_drag_proxy(spec["button"], shell_nav_indicator, sidebar_specs, 1)
-    for spec in compact_specs:
-        _bind_nav_button_drag_proxy(spec["button"], shell_compact_indicator, compact_specs, 0)
+    for spec in bar_specs:
+        _bind_nav_button_drag_proxy(spec["button"], shell_nav_indicator, bar_specs, 0)
+    for spec in dock_specs:
+        _bind_nav_button_drag_proxy(spec["button"], shell_compact_indicator, dock_specs, 0)
+    _bind_nav_pill_drag(shell_compact_indicator, dock_specs, 0)
 
-    # Deterministic resync whenever the header/sidebar layout settles; the
-    # per-frame follow then keeps the pills locked onto the live button rects.
     shell_content.resized.connect(func():
         call_deferred("_update_nav_indicator", false)
         call_deferred("_update_compact_indicator", false)
     )
-    compact_margin.resized.connect(func(): call_deferred("_update_compact_indicator", false))
-    sidebar_host.resized.connect(func(): call_deferred("_update_nav_indicator", false))
+    bar_host.resized.connect(func(): call_deferred("_update_nav_indicator", false))
+    dock_host.resized.connect(func(): call_deferred("_update_compact_indicator", false))
 
-    call_deferred("_create_scroll_feathers")
     _sync_shell_route(shell_route)
     _apply_sidebar_presentation(false)
     call_deferred("_animate_shell_chrome_in")
@@ -3183,26 +3144,12 @@ func _nav_pill_goal(pill: Control, buttons: Array, compact: bool) -> Variant:
     var parent := pill.get_parent() as Control
     if parent == null or parent.size == Vector2.ZERO:
         return null
-    var parent_rect := parent.get_global_rect()
-    var button_rect := button.get_global_rect()
-    if button_rect.size == Vector2.ZERO:
-        return null
-    var target_size: Vector2
-    var target_pos: Vector2
-    if compact:
-        target_size = button_rect.size + Vector2(6.0, 6.0)
-        target_pos = button_rect.position - parent_rect.position - Vector2(3.0, 3.0)
-    else:
-        # Wrap the whole row content: the pill extends past the button rect on
-        # every side so the icon and label sit fully inside the highlight.
-        target_size = button_rect.size + Vector2(12.0, 6.0)
-        target_pos = button_rect.position - parent_rect.position - Vector2(6.0, 3.0)
-    return {"pos": target_pos, "size": target_size}
+    var rect := _nav_indicator_rect(button, parent, compact)
+    return {"pos": rect.position, "size": rect.size}
 
 func _follow_nav_pills() -> void:
-    # Live magnetic follow: pills chase the real button rects every frame so
-    # container sorting, font loading, resize or rotation can never leave them
-    # offset. Spring physics keep the chase smooth; it settles once aligned.
+    # Live follow: indicators chase the real button rects every frame so
+    # font loading, resize or rotation never leave them offset.
     if nav_pill_drag.get("active", false) or ui_motion.reduced_motion:
         return
     if shell_nav_indicator != null and is_instance_valid(shell_nav_indicator) \
@@ -3245,40 +3192,25 @@ func _move_nav_pill(pill: Control, specs: Array, axis: int, pointer_axis: float)
     if ui_motion.reduced_motion:
         pill.position = target
         return
-    # Elastic finger-follow plus squash along the travel axis, exactly the
-    # select-menu highlight behaviour.
     ui_motion.spring_property(pill, "position", target, 0.06, 1.0)
-    var stretch := Vector2(1.05, 0.93) if axis == 0 else Vector2(0.93, 1.05)
-    ui_motion.spring_property(pill, "scale", stretch, 0.10, 0.8)
+    ui_motion.spring_property(pill, "scale", Vector2(1.12, 0.9) if axis == 0 else Vector2(0.9, 1.12), 0.10, 0.8)
 
 func _slide_pill_to_button(pill: Control, axis: int, target_button: Button) -> void:
-    # Hover preview: glide the pill onto the hovered row like the dropdown
-    # menu highlight does, without committing the route.
+    # Hover preview: the indicator glides onto the hovered route without
+    # committing it.
     if pill == null or target_button == null or not is_instance_valid(target_button):
         return
     var host := pill.get_parent() as Control
-    if host == null or host.size == Vector2.ZERO:
-        return
-    var button_rect := target_button.get_global_rect()
-    var parent_rect := host.get_global_rect()
-    if button_rect.size == Vector2.ZERO:
+    if host == null or host.size == Vector2.ZERO or target_button.size == Vector2.ZERO:
         return
     pill.visible = true
-    var target_size: Vector2
-    var target_pos: Vector2
-    if axis == 0:
-        target_size = button_rect.size + Vector2(6.0, 6.0)
-        target_pos = button_rect.position - parent_rect.position - Vector2(3.0, 3.0)
-    else:
-        # Same wrap-around geometry as _nav_pill_goal's expanded branch.
-        target_size = button_rect.size + Vector2(12.0, 6.0)
-        target_pos = button_rect.position - parent_rect.position - Vector2(6.0, 3.0)
+    var rect := _nav_indicator_rect(target_button, host, pill == shell_compact_indicator)
     if ui_motion.reduced_motion:
-        pill.position = target_pos
-        pill.size = target_size
+        pill.position = rect.position
+        pill.size = rect.size
         return
-    ui_motion.spring_property(pill, "position", target_pos, 0.30, 0.55)
-    ui_motion.spring_property(pill, "size", target_size, 0.24, 1.0)
+    ui_motion.spring_property(pill, "position", rect.position, 0.30, 0.6)
+    ui_motion.spring_property(pill, "size", rect.size, 0.24, 1.0)
 
 func _on_nav_pill_input(pill: Control, specs: Array, axis: int, event: InputEvent) -> void:
     if event is InputEventScreenTouch:
@@ -3404,39 +3336,14 @@ func _snap_nav_pill(pill: Control, specs: Array, axis: int) -> void:
     if action.is_valid():
         action.call()
 
-func _create_scroll_feathers() -> void:
-    # The aurora backdrop is not a flat colour, so solid-colour feathers would
-    # draw visible bands. Page edges instead fade via the floating chrome.
-    _sync_feather_visibility()
-
-func _sync_feather_visibility() -> void:
-    var visible := not game_running
-    for strip in scroll_feathers:
-        if strip != null and is_instance_valid(strip):
-            strip.visible = visible
-
-func _refresh_feather_colors() -> void:
-    for strip in scroll_feathers:
-        if strip == null or not is_instance_valid(strip):
-            continue
-        var grad: Gradient = strip.get_meta("feather_gradient")
-        if grad == null:
-            continue
-        var c: Color = ui_tokens.background
-        grad.colors = PackedColorArray([Color(c.r, c.g, c.b, 1.0), Color(c.r, c.g, c.b, 0.0)])
-
 func _shell_nav_button(text: String, icon_path: String, callback: Callable) -> Button:
     var button := Button.new()
     button.text = text
     button.icon = _load_ui_icon(icon_path)
     button.expand_icon = true
     button.icon_alignment = HORIZONTAL_ALIGNMENT_LEFT
-    button.alignment = HORIZONTAL_ALIGNMENT_LEFT
-    button.custom_minimum_size = Vector2(0, 48)
-    button.add_theme_constant_override("icon_max_width", 20)
-    button.add_theme_constant_override("h_separation", 12)
+    button.add_theme_constant_override("icon_max_width", 18)
     button.add_theme_font_override("font", DISPLAY_FONT)
-    button.add_theme_font_size_override("font_size", 15)
     button.focus_mode = Control.FOCUS_ALL
     button.pressed.connect(callback)
     return button
@@ -3445,15 +3352,12 @@ func _shell_compact_button(icon_path: String, tooltip: String, callback: Callabl
     var button := Button.new()
     button.icon = _load_ui_icon(icon_path)
     button.expand_icon = true
-    # Icon-only square button: lock 44x44, centered glyph, so the nav pill
-    # overlay and the icon always share the same visual center.
-    button.custom_minimum_size = Vector2(44, 44)
-    button.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
-    button.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-    button.icon_alignment = HORIZONTAL_ALIGNMENT_CENTER
-    button.alignment = HORIZONTAL_ALIGNMENT_CENTER
+    button.text = tooltip
     button.tooltip_text = tooltip
-    button.add_theme_constant_override("icon_max_width", 21)
+    button.clip_text = true
+    button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+    button.add_theme_constant_override("icon_max_width", 22)
+    button.add_theme_constant_override("h_separation", 2)
     button.focus_mode = Control.FOCUS_ALL
     button.pressed.connect(callback)
     return button
@@ -3476,48 +3380,13 @@ func _sync_shell_route(route: String) -> void:
 func _update_nav_indicator(spring: bool) -> void:
     if shell_nav_indicator == null or not is_instance_valid(shell_nav_indicator):
         return
-    if shell_sidebar == null or not is_instance_valid(shell_sidebar) or not shell_sidebar.visible:
+    if shell_sidebar == null or not is_instance_valid(shell_sidebar) or not shell_sidebar.visible or shell_route == "detail":
         shell_nav_indicator.visible = false
-        return
-    var button: Button = null
-    match shell_route:
-        "library":
-            button = shell_library_button
-        "videos":
-            button = shell_video_button
-        "settings":
-            button = shell_settings_button
-        _:
-            button = null
-    if button == null or not is_instance_valid(button):
-        shell_nav_indicator.visible = false
-        return
-    var host := shell_nav_indicator.get_parent() as Control
-    if host == null or host.size.x <= 0.0 or button.size.y <= 0.0:
         return
     var goal = _nav_pill_goal(shell_nav_indicator, [shell_library_button, shell_video_button, shell_settings_button], false)
     if goal == null:
         return
-    var target_pos: Vector2 = goal["pos"]
-    var target_size: Vector2 = goal["size"]
-    var was_hidden := not shell_nav_indicator.visible
-    shell_nav_indicator.visible = true
-    if spring and not ui_motion.reduced_motion:
-        if was_hidden:
-            # First appearance: no cross-screen flight, just jelly in place.
-            shell_nav_indicator.position = target_pos
-            shell_nav_indicator.size = target_size
-        else:
-            ui_motion.spring_property(shell_nav_indicator, "position", target_pos, 0.42, 0.55)
-            ui_motion.spring_property(shell_nav_indicator, "size", target_size, 0.30, 1.0)
-            _sweep_pill(shell_nav_indicator)
-        _jelly_pill(shell_nav_indicator, false)
-    else:
-        ui_motion.active_springs.erase(ui_motion._motion_key(shell_nav_indicator, "position"))
-        ui_motion.active_springs.erase(ui_motion._motion_key(shell_nav_indicator, "size"))
-        shell_nav_indicator.position = target_pos
-        shell_nav_indicator.size = target_size
-        shell_nav_indicator.scale = Vector2.ONE
+    _place_route_indicator(shell_nav_indicator, goal, spring, true)
 
 func _jelly_pill(pill: Control, horizontal: bool = false) -> void:
     if pill == null or not is_instance_valid(pill):
@@ -3540,91 +3409,40 @@ func _jelly_pill(pill: Control, horizontal: bool = false) -> void:
 func _update_compact_indicator(spring: bool) -> void:
     if shell_compact_indicator == null or not is_instance_valid(shell_compact_indicator):
         return
-    if shell_compact_header == null or not is_instance_valid(shell_compact_header) or not shell_compact_header.visible:
+    if shell_compact_header == null or not is_instance_valid(shell_compact_header) or not shell_compact_header.visible or shell_route == "detail":
         shell_compact_indicator.visible = false
-        return
-    var button: Button = null
-    match shell_route:
-        "library":
-            button = shell_compact_library_button
-        "videos":
-            button = shell_compact_video_button
-        "settings":
-            button = shell_compact_settings_button
-        _:
-            button = null
-    if button == null or not is_instance_valid(button):
-        shell_compact_indicator.visible = false
-        return
-    var host := shell_compact_indicator.get_parent() as Control
-    if host == null or host.size == Vector2.ZERO:
         return
     var goal = _nav_pill_goal(shell_compact_indicator, [shell_compact_library_button, shell_compact_video_button, shell_compact_settings_button], true)
     if goal == null:
         return
-    var target_pos: Vector2 = goal["pos"]
-    var target_size: Vector2 = goal["size"]
-    var was_hidden := not shell_compact_indicator.visible
-    shell_compact_indicator.visible = true
-    if spring and not ui_motion.reduced_motion:
-        if was_hidden:
-            shell_compact_indicator.position = target_pos
-            shell_compact_indicator.size = target_size
-        else:
-            ui_motion.spring_property(shell_compact_indicator, "position", target_pos, 0.42, 0.55)
-            ui_motion.spring_property(shell_compact_indicator, "size", target_size, 0.30, 1.0)
-            _sweep_pill(shell_compact_indicator)
-        _jelly_pill(shell_compact_indicator, true)
-    else:
-        ui_motion.active_springs.erase(ui_motion._motion_key(shell_compact_indicator, "position"))
-        ui_motion.active_springs.erase(ui_motion._motion_key(shell_compact_indicator, "size"))
-        shell_compact_indicator.position = target_pos
-        shell_compact_indicator.size = target_size
-        shell_compact_indicator.scale = Vector2.ONE
+    _place_route_indicator(shell_compact_indicator, goal, spring, true)
 
 func _apply_shell_nav_state(button: Button, selected: bool) -> void:
     if button == null:
         return
-    button.custom_minimum_size = Vector2(0, 48)
-    button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-    # Dropdown-menu-like rail: rows carry no button chrome at all; the sliding
-    # accent pill is the only selection surface (same language as the select
-    # menu highlight).
-    ui_widgets.ghost_nav_button(button, selected)
+    ui_widgets.tab_button(button, selected)
 
 func _apply_shell_compact_state(button: Button, selected: bool) -> void:
     if button == null:
         return
-    ui_widgets.ghost_nav_button(button, selected)
+    ui_widgets.dock_button(button, selected)
 
-func _apply_sidebar_presentation(animate_labels: bool) -> void:
-    if shell_sidebar_brand_labels == null:
+func _apply_sidebar_presentation(_animate_labels: bool) -> void:
+    if shell_library_button == null:
         return
-    shell_sidebar_brand.alignment = BoxContainer.ALIGNMENT_BEGIN
-    shell_sidebar_brand_labels.visible = true
-    shell_sidebar_version.visible = true
     shell_library_button.text = _t("nav.library")
     shell_video_button.text = _t("nav.videos")
     shell_settings_button.text = _t("settings.title")
-    shell_library_button.tooltip_text = ""
-    shell_video_button.tooltip_text = ""
-    shell_settings_button.tooltip_text = ""
-    shell_library_button.icon_alignment = HORIZONTAL_ALIGNMENT_LEFT
-    shell_video_button.icon_alignment = HORIZONTAL_ALIGNMENT_LEFT
-    shell_settings_button.icon_alignment = HORIZONTAL_ALIGNMENT_LEFT
-    shell_library_button.alignment = HORIZONTAL_ALIGNMENT_LEFT
-    shell_video_button.alignment = HORIZONTAL_ALIGNMENT_LEFT
-    shell_settings_button.alignment = HORIZONTAL_ALIGNMENT_LEFT
+    for pair in [
+        [shell_compact_library_button, "nav.library"],
+        [shell_compact_video_button, "nav.videos"],
+        [shell_compact_settings_button, "settings.title"],
+    ]:
+        var button: Button = pair[0]
+        if is_instance_valid(button):
+            button.text = _t(String(pair[1]))
+            button.tooltip_text = button.text
     _update_nav_indicator(false)
-    _apply_shell_nav_state(shell_library_button, shell_route == "library")
-    _apply_shell_nav_state(shell_video_button, shell_route == "videos")
-    _apply_shell_nav_state(shell_settings_button, shell_route == "settings")
-    if animate_labels:
-        ui_motion.enter(shell_sidebar_brand_labels, Vector2.ZERO, 0.03)
-        ui_motion.enter(shell_library_button, Vector2.ZERO, 0.04)
-        ui_motion.enter(shell_video_button, Vector2.ZERO, 0.06)
-        ui_motion.enter(shell_settings_button, Vector2.ZERO, 0.08)
-        ui_motion.enter(shell_sidebar_version, Vector2.ZERO, 0.10)
 
 func _layout_shell(window_size: Vector2) -> void:
     if shell_content == null or shell_sidebar == null or shell_compact_header == null:
@@ -3632,20 +3450,26 @@ func _layout_shell(window_size: Vector2) -> void:
     var compact := AetherDisplayScale.use_compact_shell(window_size)
     shell_sidebar.visible = not compact
     shell_compact_header.visible = compact
-    var inset: float = ui_tokens.SIDEBAR_INSET
-    shell_sidebar_layout_width = ui_tokens.SIDEBAR_WIDTH
+    if is_instance_valid(shell_compact_topbar):
+        shell_compact_topbar.visible = compact
+    shell_sidebar_layout_width = 0.0
+    var bar_height: float = ui_tokens.TOPBAR_HEIGHT
+    var header_height: float = ui_tokens.COMPACT_HEADER_HEIGHT
+    var dock_height: float = ui_tokens.DOCK_HEIGHT
     if not shell_sidebar.has_meta("aether_entering"):
-        shell_sidebar.position = Vector2(inset, inset)
-    shell_sidebar.size = Vector2(shell_sidebar_layout_width - inset, window_size.y - inset * 2.0)
-    shell_compact_header.offset_left = 10.0
-    shell_compact_header.offset_top = 8.0
-    shell_compact_header.offset_right = -10.0
-    shell_compact_header.offset_bottom = ui_tokens.TOOLBAR_HEIGHT - 6.0
+        shell_sidebar.position = Vector2.ZERO
+    shell_sidebar.size = Vector2(window_size.x, bar_height)
+    if is_instance_valid(shell_compact_topbar):
+        shell_compact_topbar.position = Vector2.ZERO
+        shell_compact_topbar.size = Vector2(window_size.x, header_height)
+    if not shell_compact_header.has_meta("aether_entering"):
+        shell_compact_header.position = Vector2(0.0, window_size.y - dock_height)
+    shell_compact_header.size = Vector2(window_size.x, dock_height)
     shell_content.set_anchors_preset(Control.PRESET_FULL_RECT)
-    shell_content.offset_left = 0.0 if compact else shell_sidebar_layout_width
-    shell_content.offset_top = ui_tokens.TOOLBAR_HEIGHT if compact else 0.0
+    shell_content.offset_left = 0.0
+    shell_content.offset_top = header_height if compact else bar_height
     shell_content.offset_right = 0.0
-    shell_content.offset_bottom = 0.0
+    shell_content.offset_bottom = -dock_height if compact else 0.0
 
 func _load_shell_settings() -> void:
     var cfg := ConfigFile.new()
@@ -4006,11 +3830,7 @@ func _sync_save_button_enabled() -> void:
         save_button.disabled = not dirty_settings
         _sync_pill_button_content_state(save_button)
         if was_disabled and dirty_settings:
-            # Unsaved changes: the save action pops and glints once.
-            ui_motion.jelly(save_button, Vector2(1.12, 0.92), 0.34, 0.45)
-            var surface = save_button.get_node_or_null(AetherWidgets.SURFACE_NAME)
-            if surface != null:
-                surface.sweep(0.7, 0.35)
+            ui_motion.jelly(save_button, Vector2(1.12, 0.9), 0.32, 0.42)
 
 func _refresh_settings_dirty() -> void:
     if settings_draft.is_empty():
@@ -4540,12 +4360,7 @@ func _fit_full_rects() -> void:
         game_virtual_controls.layout(window_size, safe_rect)
     _layout_shell(safe_rect.size)
     _layout_shell_safe_area_fills(window_size, safe_rect)
-    var compact_shell := AetherDisplayScale.use_compact_shell(safe_rect.size)
-    var shell_size := Vector2(
-        safe_rect.size.x if compact_shell else safe_rect.size.x - shell_sidebar_layout_width,
-        safe_rect.size.y - (ui_tokens.TOOLBAR_HEIGHT if compact_shell else 0.0)
-    )
-    _layout_home_view(shell_size)
+    _layout_home_view(_shell_content_size(safe_rect.size))
     _layout_perf_overlay(safe_rect)
 
 func _sidebar_backdrop_rect(window_size: Vector2, safe_rect: Rect2, width: float) -> Rect2:
@@ -4558,27 +4373,15 @@ func _layout_shell_safe_area_fills(window_size: Vector2, safe_rect: Rect2) -> vo
     if not is_instance_valid(shell_safe_top_fill):
         return
     var top_inset := maxf(0.0, safe_rect.position.y)
-    var compact_shell := AetherDisplayScale.use_compact_shell(safe_rect.size)
-    shell_safe_top_fill.visible = OS.get_name() == "iOS" and compact_shell and top_inset > 0.0
-    # The compact header uses the sidebar material.  Keep the status-bar
-    # extension on that same surface so the native time/battery region and the
-    # first app row read as one continuous header on iPhone.
-    shell_safe_top_fill.color = ui_tokens.sidebar_material
+    # The status-bar region continues the bar surface so the native clock
+    # row and the first app row read as one header on iPhone/iPad.
+    shell_safe_top_fill.visible = OS.get_name() == "iOS" and top_inset > 0.0
+    shell_safe_top_fill.color = ui_tokens.tint(ui_tokens.background, 0.92)
     if shell_safe_top_fill.visible:
-        # shell_root starts at the safe-area origin. Extending this
-        # non-interactive fill upward colors the status-bar region without
-        # moving app controls into the sensor housing.
         shell_safe_top_fill.position = Vector2(-safe_rect.position.x, -top_inset)
         shell_safe_top_fill.size = Vector2(window_size.x, top_inset + 1.0)
-
     if is_instance_valid(shell_sidebar_backdrop):
-        shell_sidebar_backdrop.visible = OS.get_name() == "iOS" and not compact_shell
-        shell_sidebar_backdrop.add_theme_stylebox_override("panel", ui_tokens.sidebar_panel())
-        if shell_sidebar_backdrop.visible:
-            _set_control_rect(
-                shell_sidebar_backdrop,
-                _sidebar_backdrop_rect(window_size, safe_rect, shell_sidebar_layout_width)
-            )
+        shell_sidebar_backdrop.visible = false
 
 func _layout_perf_overlay(safe_rect: Rect2) -> void:
     if perf_panel == null:
@@ -4769,47 +4572,47 @@ func _set_game_background(active: bool) -> void:
     var color := color_game_bg if active else color_bg
     if bg_rect != null:
         bg_rect.color = color
-        # The aurora shader paints over ColorRect.color; games need a pure
-        # black letterbox, so the shader is detached while a runtime is live.
+        # Games need a pure black letterbox: detach the dot field while a
+        # runtime is live.
         bg_rect.material = null if active else backdrop_material
     RenderingServer.set_default_clear_color(color)
-    _sync_feather_visibility()
+
+# ---------------------------------------------------------------------------
+# Living dot-field backdrop
+# ---------------------------------------------------------------------------
 
 func _layout_home_view(window_size: Vector2) -> void:
     if home_page_margin == null or home_header_box == null or game_list == null:
         return
     var compact := window_size.x < HOME_COMPACT_BREAKPOINT
     var phone := minf(window_size.x, window_size.y) < HOME_PHONE_BREAKPOINT
-    var margin: float = 14.0 if phone else (22.0 if compact else ui_tokens.PAGE_GUTTER)
+    var margin: float = 16.0 if phone else (22.0 if compact else ui_tokens.PAGE_GUTTER)
     home_page_margin.add_theme_constant_override("margin_left", int(margin))
-    home_page_margin.add_theme_constant_override("margin_top", 16 if phone else (24 if compact else 34))
+    home_page_margin.add_theme_constant_override("margin_top", 14 if phone else (20 if compact else 30))
     home_page_margin.add_theme_constant_override("margin_right", int(margin))
     home_page_margin.add_theme_constant_override("margin_bottom", 0)
-    home_header_box.vertical = false
-    home_header_box.custom_minimum_size = Vector2(0, 58 if phone else (66 if compact else 76))
-    home_header_box.add_theme_constant_override("separation", 12 if phone else (16 if compact else 24))
-    home_title_label.add_theme_font_size_override("font_size", 28 if phone else (34 if compact else 40))
-    home_subtitle_label.add_theme_font_size_override("font_size", 13 if phone else 14)
+    home_header_box.vertical = compact
+    home_header_box.add_theme_constant_override("separation", 12 if compact else 24)
+    home_title_label.add_theme_font_size_override("font_size", 30 if phone else (38 if compact else 48))
+    home_subtitle_label.add_theme_font_size_override("font_size", 13)
     if is_instance_valid(home_search_host):
-        home_search_host.custom_minimum_size.y = 54.0 if phone else 58.0
-    if is_instance_valid(home_search_input):
-        home_search_input.add_theme_font_size_override("font_size", 15 if phone else 16)
+        home_search_host.custom_minimum_size = Vector2(0 if compact else 320, 46)
+        home_search_host.size_flags_horizontal = Control.SIZE_EXPAND_FILL if compact else Control.SIZE_SHRINK_END
     home_actions.alignment = BoxContainer.ALIGNMENT_END
-    home_primary_button.text = ""
     _sync_home_action_labels()
     var scroll_bar_width := game_scroll.get_v_scroll_bar().get_combined_minimum_size().x
     var list_width := maxf(HOME_TILE_MIN_WIDTH, window_size.x - margin * 2.0 - scroll_bar_width)
-    var gap := 12.0 if phone else (16.0 if compact else 22.0)
-    var columns := AetherDisplayScale.home_columns(list_width, HOME_TILE_MIN_WIDTH, gap, compact)
-    game_list.columns = columns
-    game_list.add_theme_constant_override("h_separation", int(gap))
-    game_list.add_theme_constant_override("v_separation", int(gap))
-    game_list.custom_minimum_size = Vector2(list_width, 0)
-    if video_list != null:
-        video_list.columns = columns
-        video_list.add_theme_constant_override("h_separation", int(gap))
-        video_list.add_theme_constant_override("v_separation", int(gap))
-        video_list.custom_minimum_size = Vector2(list_width, 0)
+    var gap := 12.0 if phone else (16.0 if compact else 24.0)
+    var columns := 1
+    if not compact:
+        columns = maxi(1, int(floor((list_width + gap) / (HOME_TILE_MIN_WIDTH + gap))))
+    for grid in [game_list, video_list]:
+        if grid == null:
+            continue
+        grid.columns = columns
+        grid.add_theme_constant_override("h_separation", int(gap))
+        grid.add_theme_constant_override("v_separation", int(gap + (0.0 if compact else 8.0)))
+        grid.custom_minimum_size = Vector2(list_width, 0)
     if not home_layout_initialized or home_compact_layout != compact:
         home_compact_layout = compact
         home_layout_initialized = true
@@ -4853,10 +4656,9 @@ func _sync_home_subtitle_text() -> void:
         if searching:
             return _t("search.filtered_count", [value, total])
         return _t(key, [value])
-    # The count rolls to its new value instead of jumping.
     var start := home_count_value if home_subtitle_label.is_visible_in_tree() else target
     home_count_value = target
-    ui_motion.count_up(home_subtitle_label, start, target, formatter, 0.55)
+    ui_motion.count_up(home_subtitle_label, start, target, formatter, 0.5)
 
 func _library_search_matches(values: Array, query: String) -> bool:
     var normalized_query := query.strip_edges().to_lower()
@@ -4895,11 +4697,11 @@ func _on_home_search_text_changed(value: String) -> void:
         _rebuild_game_cards(false)
 
 func _home_search_outer_style() -> StyleBoxFlat:
-    var style: StyleBoxFlat = ui_tokens.glass_panel(29, false)
-    style.content_margin_left = 20
-    style.content_margin_top = 4
-    style.content_margin_right = 12
-    style.content_margin_bottom = 4
+    var style: StyleBoxFlat = ui_tokens.panel(ui_tokens.background_raised, 12, ui_tokens.outline, 1)
+    style.content_margin_left = 14
+    style.content_margin_top = 0
+    style.content_margin_right = 8
+    style.content_margin_bottom = 0
     return style
 
 func _sync_home_action_labels() -> void:
@@ -4928,106 +4730,99 @@ func _build_home_view() -> void:
     var page := VBoxContainer.new()
     page.size_flags_horizontal = Control.SIZE_EXPAND_FILL
     page.size_flags_vertical = Control.SIZE_EXPAND_FILL
-    page.add_theme_constant_override("separation", 18)
+    page.add_theme_constant_override("separation", 22)
     home_page_margin.add_child(page)
-    home_stack = page
 
+    # Header: oversized title with an accent tick and a rolling count on the
+    # left; search, guide and the primary action on the right.
     home_header_box = BoxContainer.new()
     home_header_box.size_flags_horizontal = Control.SIZE_EXPAND_FILL
     page.add_child(home_header_box)
 
     var title_stack := VBoxContainer.new()
     title_stack.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-    title_stack.alignment = BoxContainer.ALIGNMENT_CENTER
-    title_stack.add_theme_constant_override("separation", 2)
+    title_stack.alignment = BoxContainer.ALIGNMENT_END
+    title_stack.add_theme_constant_override("separation", 4)
     home_header_box.add_child(title_stack)
+
+    var eyebrow := HBoxContainer.new()
+    eyebrow.add_theme_constant_override("separation", 8)
+    title_stack.add_child(eyebrow)
+    var tick := Panel.new()
+    tick.custom_minimum_size = Vector2(22, 3)
+    tick.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+    tick.add_theme_stylebox_override("panel", ui_tokens.panel(ui_tokens.accent, 2))
+    eyebrow.add_child(tick)
+    home_subtitle_label = Label.new()
+    home_subtitle_label.text = _t("home.game_count", [0])
+    home_subtitle_label.add_theme_font_override("font", DISPLAY_FONT)
+    home_subtitle_label.add_theme_font_size_override("font_size", 13)
+    home_subtitle_label.add_theme_color_override("font_color", ui_tokens.accent_text)
+    eyebrow.add_child(home_subtitle_label)
 
     home_title_label = Label.new()
     home_title_label.text = _t("nav.library")
-    home_title_label.add_theme_font_override("font", HEADING_FONT)
-    home_title_label.add_theme_font_size_override("font_size", 40)
+    home_title_label.add_theme_font_override("font", TITLE_FONT)
+    home_title_label.add_theme_font_size_override("font_size", 48)
     home_title_label.add_theme_color_override("font_color", ui_tokens.text_primary)
     title_stack.add_child(home_title_label)
 
-    var subtitle_row := HBoxContainer.new()
-    subtitle_row.add_theme_constant_override("separation", 8)
-    title_stack.add_child(subtitle_row)
-    subtitle_row.add_child(_status_dot(ui_tokens.accent_2))
-    home_subtitle_label = Label.new()
-    home_subtitle_label.text = _t("home.game_count", [0])
-    home_subtitle_label.add_theme_font_size_override("font_size", 14)
-    home_subtitle_label.add_theme_color_override("font_color", ui_tokens.text_secondary)
-    subtitle_row.add_child(home_subtitle_label)
-
     home_actions = HBoxContainer.new()
-    home_actions.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+    home_actions.size_flags_vertical = Control.SIZE_SHRINK_END
     home_actions.add_theme_constant_override("separation", 10)
     home_header_box.add_child(home_actions)
 
-    home_guide_button = _shell_compact_button(ICON_HELP, _t("home.import_guide"), _show_import_guide)
-    home_guide_button.custom_minimum_size = Vector2(ui_tokens.CONTROL_HEIGHT, ui_tokens.CONTROL_HEIGHT)
-    ui_widgets.toolbar_button(home_guide_button)
-    home_guide_button.custom_minimum_size = Vector2(ui_tokens.CONTROL_HEIGHT, ui_tokens.CONTROL_HEIGHT)
-    home_actions.add_child(home_guide_button)
-
     home_search_host = PanelContainer.new()
     home_search_host.name = "LibrarySearchBar"
-    home_search_host.custom_minimum_size = Vector2(0, 58)
-    home_search_host.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+    home_search_host.custom_minimum_size = Vector2(320, 46)
     home_search_host.add_theme_stylebox_override("panel", _home_search_outer_style())
-    page.add_child(home_search_host)
-
+    home_actions.add_child(home_search_host)
     var search_row := HBoxContainer.new()
-    search_row.add_theme_constant_override("separation", 12)
+    search_row.add_theme_constant_override("separation", 10)
     home_search_host.add_child(search_row)
-
-    var search_icon := _icon_rect(ICON_SEARCH, Vector2(21, 21), ui_tokens.text_secondary)
+    var search_icon := _icon_rect(ICON_SEARCH, Vector2(18, 18), ui_tokens.text_tertiary)
     search_icon.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-    search_icon.pivot_offset = Vector2(10.5, 10.5)
+    search_icon.resized.connect(func(): search_icon.pivot_offset = search_icon.size * 0.5)
     search_row.add_child(search_icon)
-
     home_search_input = LineEdit.new()
     home_search_input.name = "LibrarySearch"
     home_search_input.clear_button_enabled = true
-    home_search_input.custom_minimum_size = Vector2(0, 44)
     home_search_input.size_flags_horizontal = Control.SIZE_EXPAND_FILL
     home_search_input.max_length = 200
-    home_search_input.add_theme_font_size_override("font_size", 16)
+    home_search_input.add_theme_font_size_override("font_size", 15)
     home_search_input.add_theme_color_override("font_color", ui_tokens.text_primary)
     home_search_input.add_theme_color_override("font_placeholder_color", ui_tokens.text_tertiary)
     home_search_input.add_theme_color_override("caret_color", ui_tokens.accent)
-    home_search_input.add_theme_color_override("clear_button_color", ui_tokens.text_secondary)
+    home_search_input.add_theme_color_override("clear_button_color", ui_tokens.text_tertiary)
     home_search_input.add_theme_color_override("clear_button_color_pressed", ui_tokens.accent)
     home_search_input.caret_blink = true
-    home_search_input.caret_blink_interval = 0.5
-    home_search_input.add_theme_stylebox_override("normal", _empty_style())
-    home_search_input.add_theme_stylebox_override("focus", _empty_style())
-    home_search_input.add_theme_stylebox_override("read_only", _empty_style())
+    for state in ["normal", "focus", "read_only"]:
+        home_search_input.add_theme_stylebox_override(state, _empty_style())
     home_search_input.text_changed.connect(_on_home_search_text_changed)
     search_row.add_child(home_search_input)
-    # Focus lights the bar with an accent rim + glow and pops the magnifier.
     home_search_input.focus_entered.connect(func():
         home_search_host.add_theme_stylebox_override("panel", _home_search_focus_style())
         search_icon.modulate = ui_tokens.accent
-        ui_motion.jelly(search_icon, Vector2(1.25, 1.25), 0.3, 0.45)
+        ui_motion.jelly(search_icon, Vector2(1.3, 1.3))
     )
     home_search_input.focus_exited.connect(func():
         home_search_host.add_theme_stylebox_override("panel", _home_search_outer_style())
-        search_icon.modulate = ui_tokens.text_secondary
-    )
-    home_search_host.mouse_entered.connect(func():
-        if not home_search_input.has_focus():
-            ui_motion.spring_property(search_icon, "rotation", -0.18, 0.2, 0.5)
-    )
-    home_search_host.mouse_exited.connect(func():
-        ui_motion.spring_property(search_icon, "rotation", 0.0, 0.3, 0.45)
+        search_icon.modulate = ui_tokens.text_tertiary
     )
     _sync_home_search_box()
+
+    home_guide_button = _shell_compact_button(ICON_HELP, _t("home.import_guide"), _show_import_guide)
+    home_guide_button.text = ""
+    home_guide_button.size_flags_horizontal = Control.SIZE_FILL
+    ui_widgets.toolbar_button(home_guide_button)
+    home_guide_button.add_theme_constant_override("icon_max_width", 20)
+    home_actions.add_child(home_guide_button)
+
     home_primary_button = _pill_button(
         _t("home.refresh") if OS.get_name() == "iOS" else _t("home.import"),
         ICON_REFRESH if OS.get_name() == "iOS" else ICON_ADD
     )
-    home_primary_button.custom_minimum_size = Vector2(136, ui_tokens.CONTROL_HEIGHT)
+    home_primary_button.custom_minimum_size = Vector2(124, 46)
     home_primary_button.pressed.connect(_on_refresh_or_import)
     home_actions.add_child(home_primary_button)
 
@@ -5040,7 +4835,6 @@ func _build_home_view() -> void:
     game_scroll.set_anchors_preset(Control.PRESET_FULL_RECT)
     _configure_shell_scroll(game_scroll)
     library_body.add_child(game_scroll)
-
     game_list = _home_grid()
     game_scroll.add_child(game_list)
 
@@ -5049,7 +4843,6 @@ func _build_home_view() -> void:
     _configure_shell_scroll(video_scroll)
     video_scroll.visible = false
     library_body.add_child(video_scroll)
-
     video_list = _home_grid()
     video_scroll.add_child(video_list)
 
@@ -5067,19 +4860,17 @@ func _build_home_view() -> void:
     video_empty_state.mouse_filter = Control.MOUSE_FILTER_IGNORE
     video_empty_state.visible = false
     library_body.add_child(video_empty_state)
-    var video_empty_parts := _empty_state_panel(ICON_VIDEO, _t("video.empty_title"), _video_empty_help_text())
-    video_empty_state.add_child(video_empty_parts["root"])
-    video_empty_title_label = video_empty_parts["title"]
-    video_empty_help_label = video_empty_parts["body"]
+    var video_parts := _empty_state_panel(ICON_VIDEO, _t("video.empty_title"), _video_empty_help_text())
+    video_empty_state.add_child(video_parts["root"])
+    video_empty_title_label = video_parts["title"]
+    video_empty_help_label = video_parts["body"]
     _apply_home_library_visibility()
     call_deferred("_animate_home_header")
 
 func _animate_home_header() -> void:
     if home_header_box != null and is_instance_valid(home_header_box):
-        ui_motion.enter(home_header_box, Vector2(0, 10))
-        ui_motion.type_in(home_title_label, 0.05, 0.38)
-    if is_instance_valid(home_search_host):
-        ui_motion.enter(home_search_host, Vector2(0, 14), 0.08)
+        ui_motion.enter(home_header_box, Vector2(0, 14))
+        ui_motion.wipe_in(home_title_label, 0.06, 0.5)
 
 func _build_settings_view() -> void:
     settings_view = ScrollContainer.new()
@@ -5087,6 +4878,10 @@ func _build_settings_view() -> void:
     _configure_shell_scroll(settings_view)
     settings_view.visible = false
     shell_content.add_child(settings_view)
+    settings_view.get_v_scroll_bar().value_changed.connect(func(_v: float): _sync_settings_index())
+
+# Keeps the index column pinned to the viewport while its host scrolls, and
+# moves the marker to the section currently under the page's reading line.
 
 func _settings_layout_spec(available_size: Vector2, scroll_bar_width: float = 0.0) -> Dictionary:
     var measured_size := available_size
@@ -5141,6 +4936,8 @@ func _rebuild_settings_view() -> void:
     for child in settings_view.get_children():
         settings_view.remove_child(child)
         child.queue_free()
+    settings_index_entries.clear()
+    settings_index_active = -1
 
     var available_size := shell_content.size
     if available_size.x <= 0.0 or available_size.y <= 0.0:
@@ -5159,63 +4956,81 @@ func _rebuild_settings_view() -> void:
     var margin := MarginContainer.new()
     margin.size_flags_horizontal = Control.SIZE_EXPAND_FILL
     margin.add_theme_constant_override("margin_left", gutter)
-    margin.add_theme_constant_override("margin_top", 12 if compact else 28)
+    margin.add_theme_constant_override("margin_top", 14 if compact else 30)
     margin.add_theme_constant_override("margin_right", gutter)
-    margin.add_theme_constant_override("margin_bottom", 28 if compact else 40)
+    margin.add_theme_constant_override("margin_bottom", 32 if compact else 56)
     settings_view.add_child(margin)
-
     var center := CenterContainer.new()
     center.size_flags_horizontal = Control.SIZE_EXPAND_FILL
     margin.add_child(center)
-
     var page := VBoxContainer.new()
     page.custom_minimum_size = Vector2(settings_content_width, 0)
-    page.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
-    page.add_theme_constant_override("separation", 14 if compact else 24)
+    page.add_theme_constant_override("separation", 18 if compact else 30)
     center.add_child(page)
 
     var top := HBoxContainer.new()
-    top.custom_minimum_size = Vector2(0, 56 if compact else 84)
-    top.add_theme_constant_override("separation", 14 if compact else 18)
+    top.add_theme_constant_override("separation", 16)
     page.add_child(top)
-
     var title_stack := VBoxContainer.new()
     title_stack.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-    title_stack.alignment = BoxContainer.ALIGNMENT_CENTER
-    title_stack.add_theme_constant_override("separation", 2)
+    title_stack.add_theme_constant_override("separation", 4)
     top.add_child(title_stack)
-    var title := Label.new()
-    title.text = _t("settings.title")
-    title.add_theme_font_override("font", HEADING_FONT)
-    title.add_theme_font_size_override("font_size", 26 if compact else 40)
-    title.add_theme_color_override("font_color", ui_tokens.text_primary)
-    title_stack.add_child(title)
-    var subtitle_row := HBoxContainer.new()
-    subtitle_row.add_theme_constant_override("separation", 8)
-    title_stack.add_child(subtitle_row)
-    subtitle_row.add_child(_status_dot(ui_tokens.accent))
+    var eyebrow := HBoxContainer.new()
+    eyebrow.add_theme_constant_override("separation", 8)
+    title_stack.add_child(eyebrow)
+    var tick := Panel.new()
+    tick.custom_minimum_size = Vector2(22, 3)
+    tick.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+    tick.add_theme_stylebox_override("panel", ui_tokens.panel(ui_tokens.accent, 2))
+    eyebrow.add_child(tick)
     var subtitle := Label.new()
     subtitle.text = "AetherKiri  ·  %s" % _application_version_text()
-    subtitle.add_theme_font_size_override("font_size", 12 if compact else 13)
-    subtitle.add_theme_color_override("font_color", ui_tokens.text_secondary)
-    subtitle_row.add_child(subtitle)
+    subtitle.add_theme_font_override("font", TITLE_FONT)
+    subtitle.add_theme_font_size_override("font_size", 12)
+    subtitle.add_theme_color_override("font_color", ui_tokens.accent_text)
+    eyebrow.add_child(subtitle)
+    var title := Label.new()
+    title.text = _t("settings.title")
+    title.add_theme_font_override("font", TITLE_FONT)
+    title.add_theme_font_size_override("font_size", 30 if compact else 48)
+    title.add_theme_color_override("font_color", ui_tokens.text_primary)
+    title_stack.add_child(title)
 
     save_button = _pill_button(_t("settings.save"), ICON_SAVE)
     save_button.tooltip_text = _t("settings.save")
     save_button.accessibility_name = _t("settings.save")
-    save_button.custom_minimum_size = Vector2(112 if compact else 128, 46)
+    save_button.custom_minimum_size = Vector2(112 if compact else 132, 46)
+    save_button.size_flags_vertical = Control.SIZE_SHRINK_END
     save_button.pressed.connect(_save_settings_draft)
     save_button.disabled = not dirty_settings
     _sync_pill_button_content_state(save_button)
-    save_button.size_flags_horizontal = Control.SIZE_SHRINK_END
-    save_button.size_flags_vertical = Control.SIZE_SHRINK_CENTER
     top.add_child(save_button)
 
-    # Timeline sections: one vertical flow shared by desktop and mobile
+    # Wide: sticky index column + section flow. Compact: flow only.
+    var columns := HBoxContainer.new()
+    columns.add_theme_constant_override("separation", 40)
+    page.add_child(columns)
+    settings_index_host = null
+    settings_index = null
+    if not compact:
+        settings_index_host = Control.new()
+        settings_index_host.custom_minimum_size = Vector2(200, 0)
+        settings_index_host.mouse_filter = Control.MOUSE_FILTER_IGNORE
+        columns.add_child(settings_index_host)
+        settings_index = VBoxContainer.new()
+        settings_index.add_theme_constant_override("separation", 2)
+        settings_index.custom_minimum_size = Vector2(200, 0)
+        settings_index_host.add_child(settings_index)
+        settings_index_marker = Panel.new()
+        settings_index_marker.mouse_filter = Control.MOUSE_FILTER_IGNORE
+        settings_index_marker.add_theme_stylebox_override("panel", ui_tokens.panel(ui_tokens.accent, 2))
+        settings_index_marker.size = Vector2(3, 20)
+        settings_index_marker.visible = false
+        settings_index_host.add_child(settings_index_marker)
     var flow := VBoxContainer.new()
     flow.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-    flow.add_theme_constant_override("separation", 12 if compact else 18)
-    page.add_child(flow)
+    flow.add_theme_constant_override("separation", 22 if compact else 34)
+    columns.add_child(flow)
 
     var interface_rows := _settings_section(flow, _t("settings.section.interface"), animate_page, 0.04)
     _add_settings_row(interface_rows, _settings_row(_t("settings.style"), _t("settings.style_desc"), _style_select(), stack_settings_controls))
@@ -5239,35 +5054,15 @@ func _rebuild_settings_view() -> void:
     _add_settings_row(render_rows, _settings_row(_t("settings.render_backend"), _t("settings.render_backend_desc"), _backend_segment(), stack_settings_controls))
     _add_settings_row(render_rows, _settings_row(_t("settings.surface_mode"), _t("settings.surface_mode_desc"), _surface_mode_select(), stack_settings_controls))
     _add_settings_row(render_rows, _settings_row(_t("settings.upscale"), _t("settings.upscale_desc"), _upscale_select(), stack_settings_controls))
-    _add_settings_row(render_rows, _settings_row(
-        _t("settings.output_resolution"),
-        _t("settings.output_resolution_desc"),
-        _output_resolution_select(),
-        stack_settings_controls
-    ))
-    _add_settings_row(render_rows, _settings_row(
-        _t("settings.frame_enhancement"),
-        _frame_enhancement_description(),
-        _frame_enhancement_kind_select(),
-        stack_settings_controls
-    ))
+    _add_settings_row(render_rows, _settings_row(_t("settings.output_resolution"), _t("settings.output_resolution_desc"), _output_resolution_select(), stack_settings_controls))
+    _add_settings_row(render_rows, _settings_row(_t("settings.frame_enhancement"), _frame_enhancement_description(), _frame_enhancement_kind_select(), stack_settings_controls))
     var enhancement_kind := _normalize_frame_enhancement_kind(
         _settings_draft_string("frame_enhancement_kind", frame_enhancement_kind)
     )
     if enhancement_kind == "preset":
-        _add_settings_row(render_rows, _settings_row(
-            _t("settings.frame_enhancement_mode"),
-            _t("settings.frame_enhancement_mode_desc"),
-            _frame_enhancement_mode_select(),
-            stack_settings_controls
-        ))
+        _add_settings_row(render_rows, _settings_row(_t("settings.frame_enhancement_mode"), _t("settings.frame_enhancement_mode_desc"), _frame_enhancement_mode_select(), stack_settings_controls))
     elif enhancement_kind == "custom":
-        _add_settings_row(render_rows, _settings_row(
-            _t("settings.frame_enhancement_mode"),
-            _t("settings.frame_enhancement_custom_desc"),
-            _frame_enhancement_custom_editor(),
-            true
-        ))
+        _add_settings_row(render_rows, _settings_row(_t("settings.frame_enhancement_mode"), _t("settings.frame_enhancement_custom_desc"), _frame_enhancement_custom_editor(), true))
     _add_settings_row(render_rows, _settings_toggle_row(_t("settings.fps_limit"), _t("settings.fps_limit_desc"), _settings_draft_bool("fps_limit_enabled", frame_limit_enabled), "fps_limit"))
     if _settings_draft_bool("fps_limit_enabled", frame_limit_enabled):
         _add_settings_row(render_rows, _settings_fps_row())
@@ -5283,14 +5078,9 @@ func _rebuild_settings_view() -> void:
             _t("settings.translation_model_select"),
             _choose_translation_model
         ))
-        var draft_model_path := _settings_draft_string(
-            "text_translation_model_path", text_translation_model_path
-        )
+        var draft_model_path := _settings_draft_string("text_translation_model_path", text_translation_model_path)
         if not draft_model_path.is_empty():
-            _add_settings_row(compatibility_rows, _settings_value_row(
-                _t("settings.translation_model_selected"),
-                draft_model_path.get_file()
-            ))
+            _add_settings_row(compatibility_rows, _settings_value_row(_t("settings.translation_model_selected"), draft_model_path.get_file()))
             _add_settings_row(compatibility_rows, _settings_action_row(
                 _t("settings.translation_model_clear"),
                 _t("settings.translation_model_clear_desc"),
@@ -5299,21 +5089,14 @@ func _rebuild_settings_view() -> void:
             ))
     _add_settings_row(compatibility_rows, _settings_toggle_row(_t("settings.mock"), _t("settings.mock_desc"), _settings_draft_bool("mock_enabled", mock_enabled), "mock"))
 
-
-    var diagnostic_rows := _settings_section(flow, _t("settings.section.diagnostics"), animate_page, 0.12)
+    var diagnostic_rows := _settings_section(flow, _t("settings.section.diagnostics"), animate_page, 0.14)
     _add_settings_row(diagnostic_rows, _settings_row(_t("settings.diagnostic_profile"), _t("settings.diagnostic_profile_desc"), _diagnostic_profile_select(), stack_settings_controls))
     _add_settings_row(diagnostic_rows, _settings_row(_t("settings.debug_overlay"), _t("settings.debug_overlay_desc"), _debug_overlay_select(), stack_settings_controls))
     _add_settings_row(diagnostic_rows, _settings_toggle_row(_t("settings.error_dialog_logs"), _t("settings.error_dialog_logs_desc"), _settings_draft_bool("error_dialog_logs", error_dialog_logs), "error_dialog_logs"))
 
     var advanced_rows := _settings_section(flow, _t("settings.section.advanced"), animate_page, 0.16)
     var advanced_disclosure = AetherDisclosure.new()
-    advanced_disclosure.setup(
-        ui_tokens,
-        ui_motion,
-        _t("settings.advanced_desc"),
-        _load_ui_icon(ICON_CHEVRON_RIGHT),
-        advanced_tool_expanded
-    )
+    advanced_disclosure.setup(ui_tokens, ui_motion, _t("settings.advanced_desc"), _load_ui_icon(ICON_CHEVRON_RIGHT), advanced_tool_expanded)
     ui_widgets.disclosure_button(advanced_disclosure)
     _add_settings_row(advanced_rows, advanced_disclosure)
     var advanced_content := VBoxContainer.new()
@@ -5325,81 +5108,50 @@ func _rebuild_settings_view() -> void:
     _add_settings_row(advanced_content, _settings_toggle_row(_t("settings.trace_log"), _t("settings.trace_log_desc"), trace_log, "advanced_trace_log"))
     _add_settings_row(advanced_content, _settings_toggle_row(_t("settings.console_log"), _t("settings.console_log_desc"), console_log_file, "advanced_console_log"))
     _add_settings_row(advanced_content, _settings_toggle_row(_t("settings.export_tjs"), _t("settings.export_tjs_desc"), export_scripts, "advanced_export_tjs"))
-    _add_settings_row(advanced_content, _settings_row(
-        _t("settings.scene_test"),
-        _t("settings.scene_test_desc"),
-        _scene_test_control(),
-        stack_settings_controls
-    ))
+    _add_settings_row(advanced_content, _settings_row(_t("settings.scene_test"), _t("settings.scene_test_desc"), _scene_test_control(), stack_settings_controls))
     advanced_disclosure.expanded_changed.connect(func(value: bool):
         advanced_tool_expanded = value
         ui_motion.set_visible(advanced_content, value)
     )
 
+    var groups: Array = [interface_rows, render_rows, compatibility_rows, diagnostic_rows, advanced_rows]
     if _iap_supported_platform():
-        var purchase_rows := _settings_section(flow, _t("settings.section.purchases"), animate_page, 0.24)
+        var purchase_rows := _settings_section(flow, _t("settings.section.purchases"), animate_page, 0.20)
         _add_settings_row(purchase_rows, _settings_iap_product_row())
         _add_settings_row(purchase_rows, _settings_iap_coffee_row())
-        _add_settings_row(purchase_rows, _settings_action_row(
-            _t("iap.restore"),
-            _t("iap.restore_desc"),
-            _t("iap.restore_action"),
-            func(): _begin_iap_restore()
-        ))
+        _add_settings_row(purchase_rows, _settings_action_row(_t("iap.restore"), _t("iap.restore_desc"), _t("iap.restore_action"), func(): _begin_iap_restore()))
+        groups.append(purchase_rows)
 
-    var about_rows := _settings_section(flow, _t("settings.section.about"), animate_page, 0.28)
+    var about_rows := _settings_section(flow, _t("settings.section.about"), animate_page, 0.24)
     if OS.get_name() == "Android":
-        _add_settings_row(about_rows, _settings_action_row(
-            _t("support.coffee.title"),
-            _t("support.coffee.desc"),
-            _t("support.coffee.open"),
-            _open_android_coffee
-        ))
-    _add_settings_row(about_rows, _settings_action_row(
-        _t("settings.legal"),
-        _t("settings.legal_desc"),
-        _t("settings.legal_open"),
-        func(): _show_legal_agreement(false)
-    ))
+        _add_settings_row(about_rows, _settings_action_row(_t("support.coffee.title"), _t("support.coffee.desc"), _t("support.coffee.open"), _open_android_coffee))
+    _add_settings_row(about_rows, _settings_action_row(_t("settings.legal"), _t("settings.legal_desc"), _t("settings.legal_open"), func(): _show_legal_agreement(false)))
     if _apple_app_store_platform():
-        _add_settings_row(about_rows, _settings_action_row(
-            _t("settings.ios_statement"),
-            _t("settings.ios_statement_desc"),
-            _t("settings.ios_statement_open"),
-            _show_ios_additional_statement
-        ))
-    var version_row := _settings_value_row(
-        _t("settings.version"),
-        _application_version_text()
-    )
+        _add_settings_row(about_rows, _settings_action_row(_t("settings.ios_statement"), _t("settings.ios_statement_desc"), _t("settings.ios_statement_open"), _show_ios_additional_statement))
+    var version_row := _settings_value_row(_t("settings.version"), _application_version_text())
     _attach_secret_version_tap(version_row)
     _add_settings_row(about_rows, version_row)
+    groups.append(about_rows)
 
     if animate_page:
-        ui_motion.reveal(top)
-        ui_motion.type_in(title, 0.04, 0.36)
-        # Cascade level 2: every row inside every section card
-        call_deferred("_cascade_settings_rows", [
-            interface_rows, render_rows, compatibility_rows,
-            diagnostic_rows, advanced_rows, about_rows,
-        ])
+        ui_motion.enter(top, Vector2(0, 12))
+        ui_motion.wipe_in(title, 0.04, 0.45)
+        if settings_index != null:
+            ui_motion.cascade_children(settings_index, 0.04, 0.08)
+        call_deferred("_cascade_settings_rows", groups)
+    call_deferred("_sync_settings_index")
     if input_trace_enabled:
         call_deferred("_write_ui_probe_snapshot", "settings_rebuilt")
 
 func _cascade_settings_rows(groups: Array) -> void:
     if not is_instance_valid(settings_view) or not settings_view.visible:
         return
-    var section_delay := 0.10
+    var delay := 0.08
     for rows in groups:
         if rows == null or not is_instance_valid(rows):
             continue
-        var row_delay := section_delay
-        for row in rows.get_children():
-            if row is Control and is_instance_valid(row) and not row.is_queued_for_deletion() and not row is ColorRect:
-                # Rows slide up and pop with a spring as each card fills in.
-                ui_motion.spring_reveal(row, row_delay)
-                row_delay += 0.028
-        section_delay += 0.06
+        ui_motion.cascade_children(rows, 0.03, delay, 12)
+        delay += 0.05
 
 func _application_version_text() -> String:
     return str(ProjectSettings.get_setting("application/config/version", "development"))
@@ -5408,7 +5160,26 @@ func _build_detail_view() -> void:
     detail_view = Control.new()
     detail_view.set_anchors_preset(Control.PRESET_FULL_RECT)
     detail_view.visible = false
+    detail_view.clip_contents = true
     shell_content.add_child(detail_view)
+
+    detail_backdrop = TextureRect.new()
+    detail_backdrop.name = "DetailBackdrop"
+    detail_backdrop.mouse_filter = Control.MOUSE_FILTER_IGNORE
+    detail_backdrop.anchor_right = 1.0
+    detail_backdrop.offset_bottom = 420.0
+    detail_backdrop.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+    detail_backdrop.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_COVERED
+    detail_backdrop.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
+    var mat := AetherShaders.material(AetherShaders.image())
+    mat.set_shader_parameter("radius", 0.0)
+    mat.set_shader_parameter("blur", 4.5)
+    mat.set_shader_parameter("zoom", 1.25)
+    mat.set_shader_parameter("fade_bottom", 0.85)
+    mat.set_shader_parameter("fade_color", ui_tokens.background)
+    detail_backdrop.material = mat
+    detail_backdrop.resized.connect(func(): mat.set_shader_parameter("rect_size", detail_backdrop.size))
+    detail_view.add_child(detail_backdrop)
 
     detail_scroll = ScrollContainer.new()
     detail_scroll.set_anchors_preset(Control.PRESET_FULL_RECT)
@@ -5496,10 +5267,9 @@ func _show_ios_additional_statement(first_use: bool = false) -> void:
 
     var title := Label.new()
     title.text = _t("ios_statement.title")
-    title.add_theme_font_override("font", HEADING_FONT)
     title.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
     title.add_theme_font_size_override("font_size", 22 if compact and not first_use else (24 if compact else 30))
-    title.add_theme_color_override("font_color", color_text)
+    title.add_theme_color_override("font_color", ui_tokens.text_primary)
     content.add_child(title)
 
     if first_use:
@@ -5507,7 +5277,7 @@ func _show_ios_additional_statement(first_use: bool = false) -> void:
         summary.text = _t("ios_statement.first_summary")
         summary.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
         summary.add_theme_font_size_override("font_size", 15 if compact else 17)
-        summary.add_theme_color_override("font_color", color_accent_soft)
+        summary.add_theme_color_override("font_color", ui_tokens.accent_text)
         content.add_child(summary)
 
     var scroll := ScrollContainer.new()
@@ -5523,7 +5293,7 @@ func _show_ios_additional_statement(first_use: bool = false) -> void:
     statement.size_flags_horizontal = Control.SIZE_EXPAND_FILL
     statement.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
     statement.add_theme_font_size_override("font_size", 15 if compact else 17)
-    statement.add_theme_color_override("font_color", color_text)
+    statement.add_theme_color_override("font_color", ui_tokens.text_primary)
     statement.add_theme_constant_override("line_spacing", 4 if compact else 6)
     scroll.add_child(statement)
 
@@ -5642,10 +5412,9 @@ func _show_legal_agreement(first_use: bool) -> void:
 
     var title := Label.new()
     title.text = _t("legal.title")
-    title.add_theme_font_override("font", HEADING_FONT)
     title.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
     title.add_theme_font_size_override("font_size", 22 if compact and not first_use else (24 if compact else 30))
-    title.add_theme_color_override("font_color", color_text)
+    title.add_theme_color_override("font_color", ui_tokens.text_primary)
     content.add_child(title)
 
     if first_use:
@@ -5657,7 +5426,7 @@ func _show_legal_agreement(first_use: bool) -> void:
         )
         summary.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
         summary.add_theme_font_size_override("font_size", 15 if compact else 17)
-        summary.add_theme_color_override("font_color", color_accent_soft)
+        summary.add_theme_color_override("font_color", ui_tokens.accent_text)
         content.add_child(summary)
 
     var scroll := ScrollContainer.new()
@@ -5673,7 +5442,7 @@ func _show_legal_agreement(first_use: bool) -> void:
     policy.size_flags_horizontal = Control.SIZE_EXPAND_FILL
     policy.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
     policy.add_theme_font_size_override("font_size", 15 if compact else 17)
-    policy.add_theme_color_override("font_color", color_text)
+    policy.add_theme_color_override("font_color", ui_tokens.text_primary)
     policy.add_theme_constant_override("line_spacing", 4 if compact else 6)
     scroll.add_child(policy)
 
@@ -5769,9 +5538,8 @@ func _show_legal_declined_screen() -> void:
 
     var title := Label.new()
     title.text = _t("legal.declined_title")
-    title.add_theme_font_override("font", HEADING_FONT)
     title.add_theme_font_size_override("font_size", 30)
-    title.add_theme_color_override("font_color", color_text)
+    title.add_theme_color_override("font_color", ui_tokens.text_primary)
     box.add_child(title)
 
     var body := Label.new()
@@ -5779,7 +5547,7 @@ func _show_legal_declined_screen() -> void:
     body.size_flags_vertical = Control.SIZE_EXPAND_FILL
     body.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
     body.add_theme_font_size_override("font_size", 20)
-    body.add_theme_color_override("font_color", color_text)
+    body.add_theme_color_override("font_color", ui_tokens.text_primary)
     box.add_child(body)
 
     var review := _pill_button(_t("legal.review_again"))
@@ -5793,13 +5561,8 @@ func _build_loading_panel() -> void:
     loading_panel.set_anchors_preset(Control.PRESET_FULL_RECT)
     loading_panel.mouse_filter = Control.MOUSE_FILTER_STOP
     loading_panel.visible = false
-    loading_panel.add_theme_stylebox_override("panel", _empty_style())
+    loading_panel.add_theme_stylebox_override("panel", ui_tokens.panel(ui_tokens.tint(ui_tokens.background, 0.84), 0))
     add_child(loading_panel)
-    # Frosted scrim: blurs whatever sits behind the sheet.
-    var frost := ColorRect.new()
-    frost.mouse_filter = Control.MOUSE_FILTER_IGNORE
-    frost.material = AetherShaders.frost_material(ui_tokens.tint(ui_tokens.background, 0.55 if ui_tokens.is_dark() else 0.45), 3.0)
-    loading_panel.add_child(frost)
 
     loading_center = CenterContainer.new()
     loading_panel.add_child(loading_center)
@@ -5807,149 +5570,76 @@ func _build_loading_panel() -> void:
     loading_card = PanelContainer.new()
     var viewport_width := get_viewport_rect().size.x
     var with_log := ui_log_enabled and not _mobile_runtime()
-    var preferred_width := 720.0 if with_log else 440.0
-    loading_card.custom_minimum_size = Vector2(minf(preferred_width, maxf(300.0, viewport_width - 40.0)), 420 if with_log else 180)
-    var loading_style := ui_tokens.panel(Color.TRANSPARENT, ui_tokens.RADIUS_LARGE)
-    loading_style.content_margin_left = 26
-    loading_style.content_margin_top = 24
-    loading_style.content_margin_right = 26
-    loading_style.content_margin_bottom = 22
+    var preferred_width := 720.0 if with_log else 400.0
+    loading_card.custom_minimum_size = Vector2(minf(preferred_width, maxf(300.0, viewport_width - 40.0)), 420 if with_log else 0)
+    var loading_style := ui_tokens.raised(ui_tokens.RADIUS_LARGE, 2, ui_tokens.popover)
+    loading_style.content_margin_left = 28
+    loading_style.content_margin_top = 28
+    loading_style.content_margin_right = 28
+    loading_style.content_margin_bottom = 24
     loading_card.add_theme_stylebox_override("panel", loading_style)
-    var card_surface = ui_widgets.glass_surface(loading_card, float(ui_tokens.RADIUS_LARGE), true)
-    card_surface.set_param("color_a", ui_tokens.popover)
-    card_surface.set_param("color_b", ui_tokens.tint(ui_tokens.popover, ui_tokens.popover.a * 0.9))
     loading_center.add_child(loading_card)
 
     var box := VBoxContainer.new()
     box.size_flags_horizontal = Control.SIZE_EXPAND_FILL
     box.size_flags_vertical = Control.SIZE_EXPAND_FILL
-    box.add_theme_constant_override("separation", 16)
+    box.add_theme_constant_override("separation", 18)
     if not with_log:
         box.alignment = BoxContainer.ALIGNMENT_CENTER
     loading_card.add_child(box)
-    # Looping loader tweens are bound to descendants of this box; disabling
-    # it while hidden keeps the game frame budget free of UI animation.
-    loading_content = box
-    box.process_mode = Node.PROCESS_MODE_DISABLED
 
-    var status_row := HBoxContainer.new()
-    status_row.custom_minimum_size = Vector2(0, 68)
-    status_row.add_theme_constant_override("separation", 18)
-    box.add_child(status_row)
-
-    # Orbit spinner: a glowing gradient orb with two counter-rotating arcs
-    # and the refresh glyph spinning at its heart.
-    var spinner_holder := Control.new()
-    spinner_holder.custom_minimum_size = Vector2(60, 60)
-    spinner_holder.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-    status_row.add_child(spinner_holder)
-    loading_orb = AetherSurface.new()
-    loading_orb.set_anchors_preset(Control.PRESET_TOP_LEFT)
-    loading_orb.position = Vector2(8, 8)
-    loading_orb.size = Vector2(44, 44)
-    loading_orb.pivot_offset = Vector2(22, 22)
-    loading_orb.configure(ui_tokens.accent, ui_tokens.accent_2, 22.0, 0.8)
-    loading_orb.rim(Color(1, 1, 1, 0.4), 1.0, 1.0)
-    loading_orb.set_param("highlight", 1.0)
-    loading_orb.glow(ui_tokens.tint(ui_tokens.accent, 0.5), 18.0)
-    spinner_holder.add_child(loading_orb)
-    var arcs := Control.new()
-    arcs.mouse_filter = Control.MOUSE_FILTER_IGNORE
-    arcs.size = Vector2(60, 60)
-    arcs.pivot_offset = Vector2(30, 30)
-    var arc_a: Color = ui_tokens.accent_3
-    var arc_b: Color = ui_tokens.accent_2
-    arcs.draw.connect(func():
-        arcs.draw_arc(Vector2(30, 30), 29.0, 0.0, TAU * 0.30, 32, arc_a, 2.5, true)
-        arcs.draw_arc(Vector2(30, 30), 29.0, PI, PI + TAU * 0.18, 24, ui_tokens.tint(arc_b, 0.85), 2.5, true)
+    # Spinner: a signal-colour arc chasing round a faint track, with the
+    # mirrored refresh glyph turning at its centre.
+    var spinner_holder := CenterContainer.new()
+    spinner_holder.custom_minimum_size = Vector2(0, 64)
+    box.add_child(spinner_holder)
+    var spinner_box := Control.new()
+    spinner_box.custom_minimum_size = Vector2(56, 56)
+    spinner_holder.add_child(spinner_box)
+    loading_ring = Control.new()
+    loading_ring.mouse_filter = Control.MOUSE_FILTER_IGNORE
+    loading_ring.size = Vector2(56, 56)
+    loading_ring.pivot_offset = Vector2(28, 28)
+    var track_color: Color = ui_tokens.tint(ui_tokens.text_primary, 0.08)
+    var arc_color: Color = ui_tokens.accent
+    loading_ring.draw.connect(func():
+        loading_ring.draw_arc(Vector2(28, 28), 25.0, 0.0, TAU, 48, track_color, 3.0, true)
+        loading_ring.draw_arc(Vector2(28, 28), 25.0, -PI * 0.5, PI * 0.25, 32, arc_color, 3.5, true)
     )
-    spinner_holder.add_child(arcs)
-    loading_spinner = _icon_rect(ICON_REFRESH, Vector2(20, 20), Color.WHITE)
-    loading_spinner.position = Vector2(20, 20)
+    spinner_box.add_child(loading_ring)
+    loading_spinner = _icon_rect(ICON_REFRESH, Vector2(20, 20), ui_tokens.text_secondary)
+    loading_spinner.position = Vector2(18, 18)
     loading_spinner.size = Vector2(20, 20)
     loading_spinner.pivot_offset = Vector2(10, 10)
     loading_spinner.flip_h = LOADING_SPINNER_FLIP_H
-    spinner_holder.add_child(loading_spinner)
+    spinner_box.add_child(loading_spinner)
 
     var loading_labels := VBoxContainer.new()
-    loading_labels.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-    loading_labels.size_flags_vertical = Control.SIZE_EXPAND_FILL
     loading_labels.alignment = BoxContainer.ALIGNMENT_CENTER
-    loading_labels.add_theme_constant_override("separation", 3)
-    status_row.add_child(loading_labels)
-
+    loading_labels.add_theme_constant_override("separation", 4)
+    box.add_child(loading_labels)
     loading_title_label = Label.new()
     loading_title_label.text = _t("loading.title")
-    loading_title_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-    loading_title_label.add_theme_font_override("font", HEADING_FONT)
-    loading_title_label.add_theme_font_size_override("font_size", 19)
+    loading_title_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+    loading_title_label.add_theme_font_override("font", TITLE_FONT)
+    loading_title_label.add_theme_font_size_override("font_size", 18)
     loading_title_label.add_theme_color_override("font_color", ui_tokens.text_primary)
     loading_labels.add_child(loading_title_label)
-
     loading_detail_label = Label.new()
     loading_detail_label.text = ""
+    loading_detail_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
     loading_detail_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
     loading_detail_label.add_theme_font_size_override("font_size", 13)
     loading_detail_label.add_theme_color_override("font_color", ui_tokens.text_secondary)
     loading_detail_label.visible = false
     loading_labels.add_child(loading_detail_label)
 
-    var dots := HBoxContainer.new()
-    dots.add_theme_constant_override("separation", 6)
-    loading_labels.add_child(dots)
-    loading_dots.clear()
-    for index in range(3):
-        var dot := PanelContainer.new()
-        dot.custom_minimum_size = Vector2(6, 6)
-        dot.pivot_offset = Vector2(3, 3)
-        dot.add_theme_stylebox_override("panel", ui_tokens.panel(ui_tokens.accent.lerp(ui_tokens.accent_2, float(index) * 0.5), 3))
-        dots.add_child(dot)
-        loading_dots.append(dot)
-
-    # Indeterminate progress: a gradient comet sliding along a glass track.
-    var track := Control.new()
-    track.custom_minimum_size = Vector2(0, 4)
-    track.clip_contents = true
-    box.add_child(track)
-    var track_bg := Panel.new()
-    track_bg.set_anchors_preset(Control.PRESET_FULL_RECT)
-    track_bg.mouse_filter = Control.MOUSE_FILTER_IGNORE
-    track_bg.add_theme_stylebox_override("panel", ui_tokens.panel(ui_tokens.tint(ui_tokens.text_primary, 0.08), 2))
-    track.add_child(track_bg)
-    loading_progress_bar = TextureRect.new()
-    loading_progress_bar.mouse_filter = Control.MOUSE_FILTER_IGNORE
-    var comet := Gradient.new()
-    comet.offsets = PackedFloat32Array([0.0, 0.5, 1.0])
-    comet.colors = PackedColorArray([ui_tokens.tint(ui_tokens.accent, 0.0), ui_tokens.accent, ui_tokens.tint(ui_tokens.accent_2, 0.0)])
-    var comet_texture := GradientTexture2D.new()
-    comet_texture.gradient = comet
-    comet_texture.width = 256
-    comet_texture.height = 4
-    loading_progress_bar.texture = comet_texture
-    loading_progress_bar.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
-    loading_progress_bar.stretch_mode = TextureRect.STRETCH_SCALE
-    loading_progress_bar.size = Vector2(160, 4)
-    track.add_child(loading_progress_bar)
-
     if not ui_motion.reduced_motion:
+        # Clockwise motion; the refresh glyph is mirrored so it agrees.
         var spinner_tween := loading_spinner.create_tween().set_loops()
-        # Mirror the counter-clockwise refresh glyph so it follows this
-        # clockwise loading motion without changing shared refresh icons.
-        spinner_tween.tween_property(
-            loading_spinner, "rotation", LOADING_SPINNER_ROTATION, 0.85
-        ).from(0.0).set_trans(Tween.TRANS_LINEAR).set_ease(Tween.EASE_IN_OUT)
-        var arc_tween := arcs.create_tween().set_loops()
-        arc_tween.tween_property(arcs, "rotation", -TAU, 1.6).from(0.0).set_trans(Tween.TRANS_LINEAR)
-        ui_motion.breathe(loading_orb, 0.08, 1.8)
-        for index in range(loading_dots.size()):
-            var dot := loading_dots[index]
-            var dot_tween := dot.create_tween().set_loops()
-            dot_tween.tween_interval(0.14 * float(index))
-            dot_tween.tween_property(dot, "scale", Vector2(1.7, 1.7), 0.3).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
-            dot_tween.tween_property(dot, "scale", Vector2.ONE, 0.36).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN)
-            dot_tween.tween_interval(0.42 - 0.14 * float(index))
-        var comet_tween := loading_progress_bar.create_tween().set_loops()
-        comet_tween.tween_method(_place_loading_comet.bind(track), 0.0, 1.0, 1.3)             .set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+        spinner_tween.tween_property(loading_spinner, "rotation", LOADING_SPINNER_ROTATION, 1.4).from(0.0).set_trans(Tween.TRANS_LINEAR)
+        var ring_tween := loading_ring.create_tween().set_loops()
+        ring_tween.tween_property(loading_ring, "rotation", TAU, 0.9).from(0.0).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
 
     if with_log:
         log_view = TextEdit.new()
@@ -5959,15 +5649,13 @@ func _build_loading_panel() -> void:
         log_view.editable = false
         log_view.wrap_mode = TextEdit.LINE_WRAPPING_BOUNDARY
         log_view.scroll_fit_content_height = false
-        log_view.add_theme_font_size_override("font_size", 13)
+        log_view.add_theme_font_size_override("font_size", 12)
         log_view.add_theme_color_override("font_color", ui_tokens.text_secondary)
         log_view.add_theme_color_override("background_color", Color(0, 0, 0, 0))
         box.add_child(log_view)
 
 func _show_loading_overlay(immediate: bool = false) -> void:
     loading_hiding = false
-    if is_instance_valid(loading_content):
-        loading_content.process_mode = Node.PROCESS_MODE_INHERIT
     loading_panel.move_to_front()
     if loading_card != null:
         ui_motion.loading_in(loading_panel, loading_card, immediate)
@@ -6002,8 +5690,6 @@ func _hide_loading_overlay(finished: Callable = Callable()) -> void:
     loading_hiding = true
     ui_motion.loading_out(loading_panel, loading_card, func():
         loading_hiding = false
-        if is_instance_valid(loading_content):
-            loading_content.process_mode = Node.PROCESS_MODE_DISABLED
         if finished.is_valid():
             finished.call()
     )
@@ -6019,25 +5705,29 @@ func _panel_style(radius: int, fill: Color, border: Color, border_width: int = 1
 func _scroll_track_style() -> StyleBoxFlat:
     var style := StyleBoxFlat.new()
     style.bg_color = Color(0, 0, 0, 0)
-    style.content_margin_left = 5
-    style.content_margin_right = 5
+    style.content_margin_left = 4
+    style.content_margin_right = 4
     return style
 
 func _scroll_thumb_style(fill: Color) -> StyleBoxFlat:
     var style := StyleBoxFlat.new()
-    style.bg_color = Color(fill.r, fill.g, fill.b, maxf(fill.a, 0.6))
-    style.set_corner_radius_all(4)
+    style.bg_color = fill
+    style.set_corner_radius_all(3)
     style.anti_aliasing = true
-    style.expand_margin_left = -3
-    style.expand_margin_right = -3
+    style.expand_margin_left = -2
+    style.expand_margin_right = -2
     return style
 
 func _empty_style() -> StyleBoxEmpty:
     return StyleBoxEmpty.new()
 
 func _focus_outline(radius: int = 8) -> StyleBoxFlat:
-    var style := _panel_style(radius, Color.TRANSPARENT, ui_tokens.tint(ui_tokens.accent, 0.8), 2)
+    var style := _panel_style(radius, Color.TRANSPARENT, ui_tokens.tint(ui_tokens.accent, 0.85), 2)
     style.draw_center = false
+    style.expand_margin_left = 2
+    style.expand_margin_right = 2
+    style.expand_margin_top = 2
+    style.expand_margin_bottom = 2
     return style
 
 func _load_ui_icon(icon_path: String):
@@ -6353,54 +6043,31 @@ func _begin_scroll_overscroll_spring(scroll: ScrollContainer, offset: float) -> 
     }
 
 func _process_scroll_flair(delta: float) -> void:
-    # Lively-but-ordered scroll dynamics: the card grid leans slightly with
-    # the scroll direction and settles back, while covers zoom gently with
-    # distance from the viewport centre and hover.
-    var target_speed := 0.0
-    var direction := scroll_flair_dir
-    for entry in shell_scroll_momentum.values():
-        var v: float = absf(float(entry.get("velocity", 0.0)))
-        if v > target_speed:
-            target_speed = v
-            direction = signf(float(entry.get("velocity", 1.0)))
-    for state in shell_scroll_drag_states.values():
-        if bool(state.get("dragging", false)):
-            var drag_v: float = absf(float(state.get("velocity_y", 0.0)))
-            if drag_v > target_speed:
-                target_speed = drag_v
-                direction = signf(-float(state.get("velocity_y", 1.0)))
-    if target_speed > 1.0:
-        scroll_flair_dir = direction
-    scroll_flair_speed = lerpf(scroll_flair_speed, target_speed, 1.0 - exp(-6.0 * delta))
-
-    var intensity := clampf(scroll_flair_speed / 2600.0, 0.0, 1.0)
-    var lean := scroll_flair_dir * intensity * 0.006
+    # Depth cue: posters zoom a touch as they approach the viewport edges and
+    # further under the pointer; the grid itself never moves.
     var viewport_height := maxf(1.0, get_viewport_rect().size.y)
-    var viewport_center_y := viewport_height * 0.5
+    var center_y := viewport_height * 0.5
     var settle := 1.0 - exp(-10.0 * delta)
     for grid in [game_list, video_list]:
-        if grid == null or not is_instance_valid(grid):
-            continue
-        if grid.pivot_offset != grid.size * 0.5:
-            grid.pivot_offset = grid.size * 0.5
-        grid.rotation = lerpf(grid.rotation, lean, settle)
-        if not grid.is_visible_in_tree():
+        if grid == null or not is_instance_valid(grid) or not grid.is_visible_in_tree():
             continue
         for card in grid.get_children():
             if card == null or not is_instance_valid(card) or not card.is_visible_in_tree():
                 continue
-            var cover: Control = card.get_meta("hero_cover", null)
-            if cover == null or not is_instance_valid(cover):
+            var holder: Node = card
+            if not card.has_meta("hero_cover") and card.get_child_count() > 0:
+                holder = card.get_child(0)
+            var poster: Control = holder.get_meta("hero_cover", null)
+            if poster == null or not is_instance_valid(poster):
                 continue
-            var image := cover.get_node_or_null("CoverImage") as TextureRect
+            var image := poster.get_node_or_null("CoverImage") as TextureRect
             if image == null or image.material == null:
                 continue
-            var card_center_y: float = card.get_global_rect().get_center().y
-            var distance := clampf(absf(card_center_y - viewport_center_y) / (viewport_height * 0.5), 0.0, 1.0)
-            var zoom := (1.0 + distance * 0.08) * float(cover.get_meta("hover_zoom", 1.0))
+            var distance := clampf(absf(card.get_global_rect().get_center().y - center_y) / (viewport_height * 0.5), 0.0, 1.0)
+            var zoom := (1.0 + distance * 0.06) * float(poster.get_meta("hover_zoom", 1.0))
             var mat := image.material as ShaderMaterial
-            var stored_zoom = mat.get_shader_parameter("zoom")
-            var current: float = stored_zoom if stored_zoom is float else 1.0
+            var stored = mat.get_shader_parameter("zoom")
+            var current: float = stored if stored is float else 1.0
             mat.set_shader_parameter("zoom", lerpf(current, zoom, settle))
 
 func _process_shell_scroll_physics(delta: float) -> void:
@@ -6661,13 +6328,7 @@ func _disabled_text_color() -> Color:
 func _library_tab_button(text: String) -> Button:
     var button := Button.new()
     button.text = text
-    button.alignment = HORIZONTAL_ALIGNMENT_LEFT
-    button.clip_text = true
-    button.focus_mode = Control.FOCUS_ALL
-    button.add_theme_font_size_override("font_size", 15)
-    button.add_theme_color_override("font_color", color_accent_soft)
-    button.add_theme_stylebox_override("focus", _focus_outline(8))
-    _set_home_tab_active(button, false)
+    ui_widgets.tab_button(button, false)
     return button
 
 func _video_overlay_button(text: String, min_width: float) -> Button:
@@ -6680,42 +6341,23 @@ func _video_overlay_button(text: String, min_width: float) -> Button:
     button.custom_minimum_size = Vector2(min_width, 48)
     button.add_theme_font_override("font", DISPLAY_FONT)
     button.add_theme_font_size_override("font_size", 15)
-    button.add_theme_color_override("font_color", Color.WHITE)
-    button.add_theme_color_override("font_hover_color", Color.WHITE)
-    button.add_theme_color_override("font_pressed_color", Color.WHITE)
-    button.add_theme_stylebox_override("normal", _panel_style(24, Color(1, 1, 1, 0.08), Color(1, 1, 1, 0.16), 1))
-    button.add_theme_stylebox_override("hover", _panel_style(24, Color(1, 1, 1, 0.16), Color(1, 1, 1, 0.34), 1))
-    button.add_theme_stylebox_override("pressed", _panel_style(24, ui_tokens.tint(ui_tokens.accent, 0.5), ui_tokens.accent, 1))
-    button.add_theme_stylebox_override("hover_pressed", _panel_style(24, ui_tokens.tint(ui_tokens.accent, 0.5), ui_tokens.accent, 1))
-    button.add_theme_stylebox_override("focus", _focus_outline(24))
-    for style_name in ["normal", "hover", "pressed", "hover_pressed"]:
-        var style := button.get_theme_stylebox(style_name) as StyleBoxFlat
-        style.content_margin_top = 8
-        style.content_margin_bottom = 8
-        style.content_margin_left = 12
-        style.content_margin_right = 12
+    for state in ["", "_hover", "_pressed", "_hover_pressed", "_focus"]:
+        button.add_theme_color_override("font%s_color" % state, Color.WHITE)
+    _apply_video_chrome_boxes(button)
     ui_motion.bind_tactile(button)
-    ui_motion.bind_ripple(button, Color(1, 1, 1, 0.22), 24.0)
+    ui_motion.bind_hover_lift(button, 1.04)
     return button
 
 func _style_video_option_button(button: OptionButton) -> void:
     button.add_theme_font_size_override("font_size", 14)
-    button.add_theme_color_override("font_color", Color.WHITE)
-    button.add_theme_color_override("font_hover_color", Color.WHITE)
-    button.add_theme_color_override("font_pressed_color", Color.WHITE)
-    button.add_theme_stylebox_override("normal", _panel_style(24, Color(1, 1, 1, 0.08), Color(1, 1, 1, 0.16), 1))
-    button.add_theme_stylebox_override("hover", _panel_style(24, Color(1, 1, 1, 0.16), Color(1, 1, 1, 0.34), 1))
-    button.add_theme_stylebox_override("pressed", _panel_style(24, ui_tokens.tint(ui_tokens.accent, 0.5), ui_tokens.accent, 1))
-    button.add_theme_stylebox_override("focus", _focus_outline(24))
-    for style_name in ["normal", "hover", "pressed"]:
-        var style := button.get_theme_stylebox(style_name) as StyleBoxFlat
-        style.content_margin_top = 8
-        style.content_margin_bottom = 8
+    for state in ["", "_hover", "_pressed", "_focus"]:
+        button.add_theme_color_override("font%s_color" % state, Color.WHITE)
+    _apply_video_chrome_boxes(button)
     var popup := button.get_popup()
-    popup.add_theme_stylebox_override("panel", _panel_style(16, Color(0.06, 0.06, 0.09, 0.96), Color(1, 1, 1, 0.14), 1))
-    popup.add_theme_stylebox_override("hover", _panel_style(10, ui_tokens.tint(ui_tokens.accent, 0.4), Color.TRANSPARENT, 0))
-    popup.add_theme_color_override("font_color", Color(1, 1, 1, 0.82))
-    popup.add_theme_color_override("font_hover_color", Color.WHITE)
+    popup.add_theme_stylebox_override("panel", _panel_style(12, Color(0.07, 0.07, 0.09, 0.97), Color(1, 1, 1, 0.12), 1))
+    popup.add_theme_stylebox_override("hover", _panel_style(8, ui_tokens.accent, Color.TRANSPARENT, 0))
+    popup.add_theme_color_override("font_color", Color(1, 1, 1, 0.8))
+    popup.add_theme_color_override("font_hover_color", ui_tokens.text_on_accent)
     ui_motion.bind_tactile(button)
 
 func _configure_video_option_popup(button: OptionButton) -> void:
@@ -6747,9 +6389,7 @@ func _pill_button(text: String, icon_path: String = "") -> Button:
     button.text = text if icon_path.is_empty() else ""
     button.alignment = HORIZONTAL_ALIGNMENT_CENTER
     button.clip_text = true
-    button.clip_contents = true
     button.focus_mode = Control.FOCUS_ALL
-    button.add_theme_font_size_override("font_size", 15)
     if not icon_path.is_empty():
         _attach_pill_button_content(button, text, icon_path)
     ui_widgets.primary_button(button)
@@ -6769,35 +6409,39 @@ func _icon_action_button(
     button.expand_icon = true
     button.tooltip_text = tooltip
     button.accessibility_name = tooltip
-    button.custom_minimum_size = Vector2(control_size, control_size)
     button.add_theme_constant_override("icon_max_width", int(control_size * 0.42))
-    if destructive:
-        ui_widgets.toolbar_button(button)
-        for state in ["normal", "hover", "pressed", "focus"]:
-            button.add_theme_color_override("icon_%s_color" % state, ui_tokens.danger)
-        button.add_theme_stylebox_override("hover", _round_hover_box(ui_tokens.danger))
-    elif primary:
+    if primary:
         ui_widgets.primary_button(button)
-        for state in ["normal", "hover", "pressed", "focus"]:
-            button.add_theme_color_override("icon_%s_color" % state, Color.WHITE)
     else:
-        ui_widgets.toolbar_button(button)
-        # Glass chip at rest so the tools read as buttons on the detail page.
-        var rest := _round_hover_box(ui_tokens.text_primary)
-        rest.bg_color = ui_tokens.tint(ui_tokens.text_primary, 0.05)
-        rest.border_color = ui_tokens.rim
-        button.add_theme_stylebox_override("normal", rest)
+        ui_widgets.secondary_button(button, destructive)
+        var tint: Color = ui_tokens.danger if destructive else ui_tokens.text_secondary
+        for state in ["normal", "focus"]:
+            button.add_theme_color_override("icon_%s_color" % state, tint)
+        for state in ["hover", "pressed", "hover_pressed"]:
+            button.add_theme_color_override("icon_%s_color" % state, ui_tokens.danger if destructive else ui_tokens.text_primary)
+    for style_name in ["normal", "hover", "pressed", "hover_pressed", "focus", "disabled"]:
+        var style := button.get_theme_stylebox(style_name) as StyleBoxFlat
+        if style != null:
+            style = style.duplicate()
+            style.content_margin_left = 13
+            style.content_margin_right = 13
+            button.add_theme_stylebox_override(style_name, style)
     button.custom_minimum_size = Vector2(control_size, control_size)
     if callback.is_valid():
         button.pressed.connect(callback)
     return button
 
+# Icon buttons unfold their label on hover/focus with a quick squash.
+
 func _reveal_icon_action_label_on_hover(button: Button, label: String) -> Button:
     button.tooltip_text = ""
     button.add_theme_constant_override("h_separation", 8)
     var expand := func(active: bool):
-        button.text = label if active else ""
-        ui_motion.jelly(button, Vector2(1.06, 0.95), 0.3, 0.55)
+        var next := label if active else ""
+        if button.text == next:
+            return
+        button.text = next
+        ui_motion.jelly(button, Vector2(1.05, 0.94), 0.3, 0.55)
     button.mouse_entered.connect(func(): expand.call(true))
     button.mouse_exited.connect(func():
         if not button.has_focus():
@@ -6815,24 +6459,19 @@ func _attach_pill_button_content(button: Button, text: String, icon_path: String
     center.mouse_filter = Control.MOUSE_FILTER_IGNORE
     center.set_anchors_preset(Control.PRESET_FULL_RECT)
     button.add_child(center)
-
     var row := HBoxContainer.new()
     row.mouse_filter = Control.MOUSE_FILTER_IGNORE
     row.add_theme_constant_override("separation", 8)
     center.add_child(row)
-
     var icon_holder := Control.new()
     icon_holder.mouse_filter = Control.MOUSE_FILTER_IGNORE
-    icon_holder.custom_minimum_size = PILL_ICON_SIZE
+    icon_holder.custom_minimum_size = Vector2(18, 18)
     icon_holder.size_flags_vertical = Control.SIZE_SHRINK_CENTER
     row.add_child(icon_holder)
-
-    var icon := _icon_rect(icon_path, PILL_ICON_SIZE, Color.WHITE)
-    icon.position = Vector2(0, 0)
-    icon.size = PILL_ICON_SIZE
-    icon.pivot_offset = PILL_ICON_SIZE * 0.5
+    var icon := _icon_rect(icon_path, Vector2(18, 18), ui_tokens.text_on_accent)
+    icon.size = Vector2(18, 18)
+    icon.pivot_offset = Vector2(9, 9)
     icon_holder.add_child(icon)
-
     var label := Label.new()
     label.text = text
     label.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -6840,15 +6479,14 @@ func _attach_pill_button_content(button: Button, text: String, icon_path: String
     label.size_flags_vertical = Control.SIZE_SHRINK_CENTER
     label.add_theme_font_override("font", DISPLAY_FONT)
     label.add_theme_font_size_override("font_size", 15)
-    label.add_theme_color_override("font_color", Color.WHITE)
+    label.add_theme_color_override("font_color", ui_tokens.text_on_accent)
     row.add_child(label)
-
-    # The glyph gives a small spin-hop on hover.
+    # The glyph slides a few pixels right while hovered, like a nudge.
     button.mouse_entered.connect(func():
         if not button.disabled:
-            ui_motion.jelly(icon, Vector2(1.22, 1.22), 0.3, 0.42)
+            ui_motion.spring_property(icon, "position:x", 3.0, 0.24, 0.5)
     )
-
+    button.mouse_exited.connect(func(): ui_motion.spring_property(icon, "position:x", 0.0, 0.3, 0.6))
     button.set_meta("pill_icon_path", button.get_path_to(icon))
     button.set_meta("pill_label_path", button.get_path_to(label))
 
@@ -6872,12 +6510,10 @@ func _set_pill_button_text(button: Button, text: String) -> void:
 
 func _sync_pill_button_content_state(button: Button) -> void:
     var tint: Color = _disabled_text_color() if button.disabled else ui_tokens.text_on_accent
-    var label_path = button.get_meta("pill_label_path", NodePath(""))
-    var label := button.get_node_or_null(label_path) as Label
+    var label := button.get_node_or_null(button.get_meta("pill_label_path", NodePath(""))) as Label
     if label != null:
         label.add_theme_color_override("font_color", tint)
-    var icon_path = button.get_meta("pill_icon_path", NodePath(""))
-    var icon := button.get_node_or_null(icon_path) as TextureRect
+    var icon := button.get_node_or_null(button.get_meta("pill_icon_path", NodePath(""))) as TextureRect
     if icon != null:
         icon.modulate = tint
 
@@ -6896,98 +6532,101 @@ func _settings_section(page: VBoxContainer, title: String, animate: bool, delay:
     var compact := settings_compact_layout
     var section := VBoxContainer.new()
     section.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-    section.add_theme_constant_override("separation", 8 if compact else 10)
+    section.add_theme_constant_override("separation", 10 if compact else 14)
     page.add_child(section)
 
-    # Section header: glowing gradient orb, uppercase label, fading rule.
     var header := HBoxContainer.new()
     header.add_theme_constant_override("separation", 10)
     section.add_child(header)
-    var dot_holder := CenterContainer.new()
-    dot_holder.custom_minimum_size = Vector2(12, 12)
-    header.add_child(dot_holder)
-    var dot = AetherSurface.new()
-    dot.set_anchors_preset(Control.PRESET_TOP_LEFT)
-    dot.custom_minimum_size = Vector2(9, 9)
-    dot.configure(ui_tokens.accent, ui_tokens.accent_2, 4.5, 0.8)
-    dot.glow(ui_tokens.tint(ui_tokens.accent, 0.6), 6.0)
-    dot_holder.add_child(dot)
+    var number := Label.new()
+    number.text = "%02d" % (settings_index_entries.size() + 1)
+    number.add_theme_font_override("font", DISPLAY_FONT)
+    number.add_theme_font_size_override("font_size", 12)
+    number.add_theme_color_override("font_color", ui_tokens.accent_text)
+    header.add_child(number)
     var title_label := Label.new()
-    title_label.text = title.to_upper()
-    title_label.add_theme_font_override("font", HEADING_FONT)
-    title_label.add_theme_font_size_override("font_size", 11 if compact else 12)
-    title_label.add_theme_color_override("font_color", ui_tokens.accent.lerp(ui_tokens.text_primary, 0.2))
+    title_label.text = title
+    title_label.add_theme_font_override("font", TITLE_FONT)
+    title_label.add_theme_font_size_override("font_size", 17 if compact else 20)
+    title_label.add_theme_color_override("font_color", ui_tokens.text_primary)
     header.add_child(title_label)
-    var rule := _gradient_rule(0.8, 0.0)
-    rule.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-    rule.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-    rule.custom_minimum_size = Vector2(0, 1)
-    header.add_child(rule)
 
-    # Frosted glass card holding the rows.
     var panel := PanelContainer.new()
     panel.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-    var panel_style: StyleBoxFlat = ui_tokens.panel(Color.TRANSPARENT, 18 if compact else 22)
-    panel_style.content_margin_left = 12 if compact else 20
-    panel_style.content_margin_top = 4 if compact else 8
-    panel_style.content_margin_right = 12 if compact else 20
-    panel_style.content_margin_bottom = 4 if compact else 8
-    panel.add_theme_stylebox_override("panel", panel_style)
-    ui_widgets.glass_surface(panel, 18.0 if compact else 22.0, false)
+    var style: StyleBoxFlat = ui_tokens.raised(ui_tokens.RADIUS_CARD, 0)
+    style.content_margin_left = 14 if compact else 22
+    style.content_margin_right = 14 if compact else 22
+    style.content_margin_top = 4
+    style.content_margin_bottom = 4
+    panel.add_theme_stylebox_override("panel", style)
     section.add_child(panel)
-
     var rows := VBoxContainer.new()
     rows.size_flags_horizontal = Control.SIZE_EXPAND_FILL
     rows.add_theme_constant_override("separation", 0)
     panel.add_child(rows)
+
+    if settings_index != null and is_instance_valid(settings_index):
+        var entry := Button.new()
+        entry.text = title
+        entry.alignment = HORIZONTAL_ALIGNMENT_LEFT
+        entry.focus_mode = Control.FOCUS_ALL
+        entry.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
+        entry.custom_minimum_size = Vector2(0, 38)
+        entry.add_theme_font_override("font", DISPLAY_FONT)
+        entry.add_theme_font_size_override("font_size", 14)
+        entry.add_theme_color_override("font_color", ui_tokens.text_tertiary)
+        entry.add_theme_color_override("font_hover_color", ui_tokens.text_primary)
+        entry.add_theme_color_override("font_pressed_color", ui_tokens.accent_text)
+        var rest := ui_tokens.panel(Color.TRANSPARENT, 8)
+        rest.content_margin_left = 16
+        for state in ["normal", "pressed", "hover_pressed", "disabled"]:
+            entry.add_theme_stylebox_override(state, rest)
+        var hover := ui_tokens.panel(ui_tokens.tint(ui_tokens.text_primary, 0.04), 8)
+        hover.content_margin_left = 16
+        entry.add_theme_stylebox_override("hover", hover)
+        entry.add_theme_stylebox_override("focus", ui_tokens.focus_style(8))
+        entry.pressed.connect(func(): _scroll_settings_to(section))
+        settings_index.add_child(entry)
+        settings_index_entries.append({"button": entry, "section": section})
+    else:
+        settings_index_entries.append({"button": null, "section": section})
     if animate:
-        ui_motion.reveal(section, delay)
-        ui_motion.pop_in(dot, delay + 0.12, 0.2)
+        ui_motion.enter(header, Vector2(-10, 0), delay)
     return rows
 
 func _add_settings_row(group: VBoxContainer, row: Control) -> void:
     if group.get_child_count() > 0:
         group.add_child(_detail_separator())
     group.add_child(row)
-    _bind_row_hover(row)
-
-# Rows light up with a soft accent wash under the pointer.
 
 func _settings_row(title: String, subtitle: String, control: Control, stack_control: bool = false) -> Control:
     var compact := settings_compact_layout
     var margin := MarginContainer.new()
     margin.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-    margin.add_theme_constant_override("margin_left", 2 if compact else 6)
-    margin.add_theme_constant_override("margin_top", 8 if compact else 12)
-    margin.add_theme_constant_override("margin_right", 2 if compact else 6)
-    margin.add_theme_constant_override("margin_bottom", 8 if compact else 12)
-
+    margin.add_theme_constant_override("margin_top", 10 if compact else 14)
+    margin.add_theme_constant_override("margin_bottom", 10 if compact else 14)
     var box: BoxContainer = VBoxContainer.new() if stack_control else HBoxContainer.new()
-    box.custom_minimum_size = Vector2(0, (64 if compact else 78) if stack_control else (46 if compact else 56))
-    box.add_theme_constant_override("separation", 10 if compact else 22)
+    box.custom_minimum_size = Vector2(0, 0 if stack_control else 40)
+    box.add_theme_constant_override("separation", 10 if (compact or stack_control) else 24)
     margin.add_child(box)
-
     var labels := VBoxContainer.new()
     labels.size_flags_horizontal = Control.SIZE_EXPAND_FILL
     labels.alignment = BoxContainer.ALIGNMENT_CENTER
     labels.add_theme_constant_override("separation", 3)
     box.add_child(labels)
-
     var title_label := Label.new()
     title_label.text = title
     title_label.add_theme_font_override("font", DISPLAY_FONT)
     title_label.add_theme_font_size_override("font_size", 15)
     title_label.add_theme_color_override("font_color", ui_tokens.text_primary)
     labels.add_child(title_label)
-
     if not subtitle.is_empty():
         var sub := Label.new()
         sub.text = subtitle
         sub.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
         sub.add_theme_font_size_override("font_size", 12)
-        sub.add_theme_color_override("font_color", ui_tokens.text_secondary)
+        sub.add_theme_color_override("font_color", ui_tokens.text_tertiary)
         labels.add_child(sub)
-
     control.size_flags_horizontal = Control.SIZE_EXPAND_FILL if stack_control else Control.SIZE_SHRINK_END
     control.size_flags_vertical = Control.SIZE_SHRINK_CENTER
     box.add_child(control)
@@ -7011,70 +6650,47 @@ func _settings_switch(initial: bool, key: String) -> Button:
 func _settings_value_row(title: String, value: String) -> Control:
     var margin := MarginContainer.new()
     margin.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-    margin.add_theme_constant_override("margin_left", 6)
-    margin.add_theme_constant_override("margin_top", 10)
-    margin.add_theme_constant_override("margin_right", 6)
-    margin.add_theme_constant_override("margin_bottom", 10)
-    var row := HBoxContainer.new()
-    row.custom_minimum_size = Vector2(0, 44)
-    row.add_theme_constant_override("separation", 18)
-    margin.add_child(row)
-    var label := Label.new()
-    label.text = title
-    label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-    label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-    # Same family + size scale as _settings_row so every settings row reads
-    # with one voice.
-    label.add_theme_font_override("font", DISPLAY_FONT)
-    label.add_theme_font_size_override("font_size", 15)
-    label.add_theme_color_override("font_color", ui_tokens.text_primary)
-    row.add_child(label)
-    var chip := PanelContainer.new()
-    chip.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-    var chip_style: StyleBoxFlat = ui_tokens.panel(ui_tokens.tint(ui_tokens.text_primary, 0.05), 999, ui_tokens.separator, 1)
-    chip_style.content_margin_left = 12
-    chip_style.content_margin_right = 12
-    chip_style.content_margin_top = 4
-    chip_style.content_margin_bottom = 4
-    chip.add_theme_stylebox_override("panel", chip_style)
-    row.add_child(chip)
-    var value_label := Label.new()
-    value_label.text = value
-    value_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-    value_label.add_theme_font_size_override("font_size", 12)
-    value_label.add_theme_color_override("font_color", ui_tokens.text_secondary)
-    chip.add_child(value_label)
-    return margin
-
-func _settings_action_row(title: String, subtitle: String, action_text: String, action: Callable) -> Control:
-    var margin := MarginContainer.new()
-    margin.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-    margin.add_theme_constant_override("margin_left", 6)
     margin.add_theme_constant_override("margin_top", 12)
-    margin.add_theme_constant_override("margin_right", 6)
     margin.add_theme_constant_override("margin_bottom", 12)
-    var compact := settings_compact_layout
-    var row: BoxContainer = VBoxContainer.new() if compact else HBoxContainer.new()
-    row.custom_minimum_size = Vector2(0, 110 if compact else 72)
-    row.add_theme_constant_override("separation", 12 if compact else 20)
+    var row := HBoxContainer.new()
+    row.custom_minimum_size = Vector2(0, 40)
+    row.add_theme_constant_override("separation", 18)
     margin.add_child(row)
     var labels := VBoxContainer.new()
     labels.size_flags_horizontal = Control.SIZE_EXPAND_FILL
     labels.alignment = BoxContainer.ALIGNMENT_CENTER
-    labels.add_theme_constant_override("separation", 4)
+    labels.add_theme_constant_override("separation", 3)
     row.add_child(labels)
-    var title_label := Label.new()
-    title_label.text = title
-    title_label.add_theme_font_override("font", DISPLAY_FONT)
-    title_label.add_theme_font_size_override("font_size", 15)
-    title_label.add_theme_color_override("font_color", ui_tokens.text_primary)
-    labels.add_child(title_label)
-    var sub := Label.new()
-    sub.text = subtitle
-    sub.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-    sub.add_theme_font_size_override("font_size", 12)
-    sub.add_theme_color_override("font_color", ui_tokens.text_secondary)
-    labels.add_child(sub)
+    var label := Label.new()
+    label.text = title
+    label.add_theme_font_override("font", DISPLAY_FONT)
+    label.add_theme_font_size_override("font_size", 15)
+    label.add_theme_color_override("font_color", ui_tokens.text_primary)
+    labels.add_child(label)
+    var value_label := Label.new()
+    value_label.text = value
+    value_label.add_theme_font_size_override("font_size", 12)
+    value_label.add_theme_color_override("font_color", ui_tokens.text_tertiary)
+    labels.add_child(value_label)
+    var chip := PanelContainer.new()
+    chip.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+    var chip_style := ui_tokens.panel(ui_tokens.surface_hover, 6)
+    chip_style.content_margin_left = 10
+    chip_style.content_margin_right = 10
+    chip_style.content_margin_top = 3
+    chip_style.content_margin_bottom = 3
+    chip.add_theme_stylebox_override("panel", chip_style)
+    row.add_child(chip)
+    var chip_label := Label.new()
+    chip_label.text = value
+    chip_label.add_theme_font_override("font", DISPLAY_FONT)
+    chip_label.add_theme_font_size_override("font_size", 12)
+    chip_label.add_theme_color_override("font_color", ui_tokens.text_secondary)
+    chip.add_child(chip_label)
+    return margin
+
+func _settings_action_row(title: String, subtitle: String, action_text: String, action: Callable) -> Control:
+    var compact := settings_compact_layout
     var open := Button.new()
     open.text = action_text
     open.clip_text = true
@@ -7082,8 +6698,7 @@ func _settings_action_row(title: String, subtitle: String, action_text: String, 
     _configure_settings_action_button(open)
     if action.is_valid():
         open.pressed.connect(action)
-    row.add_child(open)
-    return margin
+    return _settings_row(title, subtitle, open, compact)
 
 func _configure_settings_action_button(button: Button) -> void:
     button.custom_minimum_size = SETTINGS_ACTION_BUTTON_SIZE
@@ -7293,8 +6908,8 @@ func _show_secret_unlock_dialog() -> void:
     if is_inside_tree():
         width = minf(width, get_viewport_rect().size.x * 0.92)
     var dialog := PanelContainer.new()
-    _mark_centered_safe_dialog(dialog, Vector2(width, 400.0))
-    _layout_safe_dialog(dialog, _ui_safe_rect(get_viewport_rect().size) if is_inside_tree() else Rect2(Vector2.ZERO, Vector2(width, 400.0)))
+    _mark_centered_safe_dialog(dialog, Vector2(width, 380.0))
+    _layout_safe_dialog(dialog, _ui_safe_rect(get_viewport_rect().size) if is_inside_tree() else Rect2(Vector2.ZERO, Vector2(width, 380.0)))
     dialog.add_theme_stylebox_override("panel", _dialog_style())
     _present_modal(dialog, 0.52)
     var box := _modal_stack(dialog, _t("secret.unlock.title"), ICON_PLUGIN)
@@ -7305,7 +6920,7 @@ func _show_secret_unlock_dialog() -> void:
     input.placeholder_text = _t("secret.unlock.placeholder")
     input.size_flags_horizontal = Control.SIZE_EXPAND_FILL
     ui_widgets.line_edit(input)
-    input.custom_minimum_size = Vector2(0, 54)
+    input.custom_minimum_size = Vector2(0, 52)
     input.add_theme_font_size_override("font_size", 18)
     box.add_child(input)
     var error_label := Label.new()
@@ -7315,18 +6930,16 @@ func _show_secret_unlock_dialog() -> void:
     error_label.add_theme_font_size_override("font_size", 14)
     error_label.add_theme_color_override("font_color", ui_tokens.danger)
     box.add_child(error_label)
-    var buttons := _dialog_button_row(52.0)
+    var buttons := _dialog_button_row(50.0)
     box.add_child(buttons)
-    var cancel := _secondary_dialog_button(_t("dialog.cancel"), Vector2(124, 50))
+    var cancel := _secondary_dialog_button(_t("dialog.cancel"), Vector2(120, 48))
     cancel.pressed.connect(func(): _dismiss_modal())
     buttons.add_child(cancel)
     var confirm := _pill_button(_t("secret.unlock.confirm"))
-    confirm.custom_minimum_size = Vector2(170, 50)
+    confirm.custom_minimum_size = Vector2(168, 48)
     confirm.pressed.connect(func(): _submit_secret_unlock(input, error_label))
     buttons.add_child(confirm)
-    input.text_submitted.connect(func(_text: String):
-        _submit_secret_unlock(input, error_label)
-    )
+    input.text_submitted.connect(func(_text: String): _submit_secret_unlock(input, error_label))
     if input.is_inside_tree():
         input.call_deferred("grab_focus")
 
@@ -7335,10 +6948,7 @@ func _submit_secret_unlock(input: LineEdit, error_label: Label) -> void:
     if _verify_secret_unlock(candidate):
         modal_layer.visible = false
         _apply_secret_unlock()
-        _show_system_alert(
-            _t("secret.unlock.success", [_secret_coffee_expiry_text()]),
-            _t("secret.unlock.title")
-        )
+        _show_system_alert(_t("secret.unlock.success", [_secret_coffee_expiry_text()]), _t("secret.unlock.title"))
         return
     input.text = ""
     if is_instance_valid(error_label):
@@ -7360,35 +6970,26 @@ func _apple_select(width: float = 220.0):
 func _keyboard_controls_opacity_control() -> Control:
     var row := HBoxContainer.new()
     row.name = "KeyboardControlsOpacityControl"
-    row.custom_minimum_size = Vector2(332.0, 46.0)
+    row.custom_minimum_size = Vector2(320.0, 40.0)
     row.add_theme_constant_override("separation", 12)
-
     var slider = AetherSlider.new()
     slider.name = "KeyboardControlsOpacitySlider"
     slider.min_value = GAME_VIRTUAL_KEYBOARD_OPACITY_MIN
     slider.max_value = GAME_VIRTUAL_KEYBOARD_OPACITY_MAX
     slider.step = GAME_VIRTUAL_KEYBOARD_OPACITY_STEP
     slider.bubble_formatter = func(value: float) -> String: return _opacity_percentage_text(value)
-    slider.setup(
-        ui_tokens,
-        _normalize_game_virtual_keyboard_opacity(_settings_draft_float(
-            "game_virtual_keyboard_opacity",
-            game_virtual_keyboard_opacity
-        ))
-    )
+    slider.setup(ui_tokens, _normalize_game_virtual_keyboard_opacity(_settings_draft_float("game_virtual_keyboard_opacity", game_virtual_keyboard_opacity)))
     row.add_child(slider)
-
     var value_label := Label.new()
     value_label.name = "KeyboardControlsOpacityValue"
-    value_label.custom_minimum_size = Vector2(48.0, 40.0)
+    value_label.custom_minimum_size = Vector2(46.0, 36.0)
     value_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
     value_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
     value_label.add_theme_font_override("font", DISPLAY_FONT)
     value_label.add_theme_font_size_override("font_size", 13)
-    value_label.add_theme_color_override("font_color", ui_tokens.accent)
+    value_label.add_theme_color_override("font_color", ui_tokens.accent_text)
     value_label.text = _opacity_percentage_text(slider.value)
     row.add_child(value_label)
-
     slider.value_changed.connect(func(value: float):
         var normalized := _normalize_game_virtual_keyboard_opacity(value)
         value_label.text = _opacity_percentage_text(normalized)
@@ -7400,33 +7001,6 @@ func _opacity_percentage_text(value: float) -> String:
     return "%d%%" % int(round(clampf(value, 0.0, 1.0) * 100.0))
 
 func _settings_fps_row() -> Control:
-    var margin := MarginContainer.new()
-    margin.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-    margin.add_theme_constant_override("margin_left", 6)
-    margin.add_theme_constant_override("margin_top", 12)
-    margin.add_theme_constant_override("margin_right", 6)
-    margin.add_theme_constant_override("margin_bottom", 12)
-    var row := HBoxContainer.new()
-    row.custom_minimum_size = Vector2(0, 56)
-    row.add_theme_constant_override("separation", 16)
-    margin.add_child(row)
-    var labels := VBoxContainer.new()
-    labels.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-    labels.alignment = BoxContainer.ALIGNMENT_CENTER
-    labels.add_theme_constant_override("separation", 3)
-    var title_label := Label.new()
-    title_label.text = _t("settings.target_fps")
-    title_label.add_theme_font_override("font", DISPLAY_FONT)
-    title_label.add_theme_font_size_override("font_size", 15)
-    title_label.add_theme_color_override("font_color", ui_tokens.text_primary)
-    labels.add_child(title_label)
-    var sub := Label.new()
-    sub.text = _t("settings.target_fps_desc")
-    sub.add_theme_font_size_override("font_size", 12)
-    sub.add_theme_color_override("font_color", ui_tokens.text_secondary)
-    labels.add_child(sub)
-    row.add_child(labels)
-
     var fps_select = _apple_select(150)
     var options := [60, 80, 90, 120, 144]
     var selected_index := 0
@@ -7440,8 +7014,7 @@ func _settings_fps_row() -> Control:
     fps_select.item_selected.connect(func(index: int):
         _set_settings_draft_value("target_fps", int(fps_select.get_item_metadata(index)))
     )
-    row.add_child(fps_select)
-    return margin
+    return _settings_row(_t("settings.target_fps"), _t("settings.target_fps_desc"), fps_select, false)
 
 func _language_select() -> Control:
     var select = _apple_select()
@@ -8006,10 +7579,6 @@ func _apply_home_library_visibility() -> void:
     if is_instance_valid(video_empty_state):
         video_empty_state.visible = video_mode and home_filtered_video_count == 0
     _sync_home_empty_state_text()
-    if is_instance_valid(home_game_tab):
-        _set_home_tab_active(home_game_tab, not video_mode)
-    if is_instance_valid(home_video_tab):
-        _set_home_tab_active(home_video_tab, video_mode)
 
 func _sync_home_empty_state_text() -> void:
     var searching := not _current_home_search_query().is_empty()
@@ -8026,12 +7595,10 @@ func _sync_home_empty_state_text() -> void:
 
 func _set_home_tab_active(button: Button, active: bool) -> void:
     button.disabled = false
-    button.add_theme_stylebox_override("normal", _panel_style(8, color_card_alt, color_line, 1))
-    button.add_theme_stylebox_override("hover", _panel_style(8, color_card_hover, color_accent_soft, 1))
-    button.add_theme_stylebox_override("pressed", _panel_style(8, color_card_alt.darkened(0.08), color_accent_soft, 1))
-    button.add_theme_color_override("font_color", color_accent_soft if active else color_muted)
-    button.add_theme_color_override("font_hover_color", color_accent_soft)
-    button.add_theme_color_override("font_pressed_color", color_accent_soft)
+    ui_widgets.tab_button(button, active)
+
+# Video player chrome: dark translucent blocks over the picture, square-ish
+# with a hairline; the pressed state flashes the signal colour.
 
 func _shell_view_for_route(route: String) -> Control:
     match route:
@@ -8065,18 +7632,13 @@ func _animate_shell_route(outgoing: Control, incoming: Control, lift: bool = tru
 func _cascade_home_cards() -> void:
     if not is_instance_valid(home_view) or not home_view.visible:
         return
-    # Fast cascade level 1: header elements
     if is_instance_valid(home_header_box):
-        var header_index := 0
-        for child in home_header_box.get_children():
-            if child is Control and is_instance_valid(child) and not child.is_queued_for_deletion():
-                ui_motion.reveal(child, 0.04 + 0.05 * float(header_index))
-                header_index += 1
-    # Level 2: cards fan in quickly with spring reveal
-    if home_library_mode == "video" and video_list != null and is_instance_valid(video_list):
-        ui_motion.cascade_children(video_list, 0.035, 0.14)
-    elif game_list != null and is_instance_valid(game_list):
-        ui_motion.cascade_children(game_list, 0.035, 0.14)
+        ui_motion.enter(home_header_box, Vector2(0, 12))
+        ui_motion.wipe_in(home_title_label, 0.04, 0.45)
+    if home_library_mode == "video":
+        ui_motion.cascade_grid(video_list)
+    else:
+        ui_motion.cascade_grid(game_list)
 
 func _show_home() -> void:
     _show_library("game")
@@ -8091,7 +7653,6 @@ func _show_library(mode: String) -> void:
         Callable(self, "_show_library").bind(mode)
     ):
         return
-    _set_backdrop_focus(Color(0, 0, 0, 0))
     var previous_route := shell_route
     var returning_from_detail := previous_route == "detail" and not hero_source_path.is_empty()
     var detail_rect := detail_hero_cover.get_global_rect() if is_instance_valid(detail_hero_cover) else Rect2()
@@ -8119,17 +7680,11 @@ func _show_library(mode: String) -> void:
 func _animate_library_swap() -> void:
     if not is_instance_valid(home_view):
         return
-    # Whole-view breath + header fade, then cards cascade in slowly
-    home_view.modulate.a = 0.35
-    ui_motion._fade(home_view, 1.0, 0.22, "route")
-    if is_instance_valid(home_header_box):
-        ui_motion.reveal(home_header_box, 0.0)
     call_deferred("_cascade_home_cards")
 
 func _show_settings() -> void:
     if shell_route == "settings":
         return
-    _set_backdrop_focus(Color(0, 0, 0, 0))
     var previous_route := shell_route
     var outgoing := _stage_shell_route(previous_route, settings_view)
     _finish_hero_overlay()
@@ -8226,7 +7781,7 @@ func _rebuild_detail_contents(game: Dictionary, animate_hero: bool, animate_cont
     for child in detail_scroll.get_children():
         detail_scroll.remove_child(child)
         child.queue_free()
-    _refresh_detail_ambience(game)
+    _refresh_detail_backdrop(game)
 
     var available_size := shell_content.size
     if available_size.x <= 0.0 or available_size.y <= 0.0:
@@ -8243,9 +7798,9 @@ func _rebuild_detail_contents(game: Dictionary, animate_hero: bool, animate_cont
     content.custom_minimum_size = Vector2(maxf(360.0, available_size.x), 0)
     content.size_flags_horizontal = Control.SIZE_EXPAND_FILL
     content.add_theme_constant_override("margin_left", gutter)
-    content.add_theme_constant_override("margin_top", 18 if compact else 26)
+    content.add_theme_constant_override("margin_top", 16 if compact else 22)
     content.add_theme_constant_override("margin_right", gutter)
-    content.add_theme_constant_override("margin_bottom", 40)
+    content.add_theme_constant_override("margin_bottom", 44)
     detail_scroll.add_child(content)
 
     var center := CenterContainer.new()
@@ -8255,49 +7810,40 @@ func _rebuild_detail_contents(game: Dictionary, animate_hero: bool, animate_cont
     var page := VBoxContainer.new()
     page.custom_minimum_size = Vector2(detail_content_width, 0)
     page.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
-    page.add_theme_constant_override("separation", 24)
+    page.add_theme_constant_override("separation", 22 if compact else 30)
     center.add_child(page)
 
     var top := HBoxContainer.new()
-    top.custom_minimum_size = Vector2(0, 52)
-    top.add_theme_constant_override("separation", 14)
+    top.custom_minimum_size = Vector2(0, 44)
+    top.add_theme_constant_override("separation", 10)
     page.add_child(top)
-
-    var back := _shell_compact_button(ICON_BACK, _t("nav.library"), _show_home)
-    ui_widgets.toolbar_button(back)
-    back.custom_minimum_size = Vector2(46, 46)
-    var back_rest := ui_tokens.button_style(ui_tokens.tint(ui_tokens.text_primary, 0.06), ui_tokens.rim, 23)
-    back.add_theme_stylebox_override("normal", back_rest)
-    back.mouse_entered.connect(func(): ui_motion.spring_property(back, "position:x", back.position.x - 4.0, 0.2, 0.5))
+    var back := Button.new()
+    back.text = _t("nav.library")
+    back.icon = _load_ui_icon(ICON_BACK)
+    back.expand_icon = true
+    back.tooltip_text = _t("nav.library")
+    back.add_theme_constant_override("icon_max_width", 16)
+    ui_widgets.quiet_button(back)
+    back.add_theme_stylebox_override("normal", ui_tokens.panel(ui_tokens.tint(ui_tokens.background, 0.55), 12))
+    back.pressed.connect(_show_home)
+    back.mouse_entered.connect(func(): ui_motion.jelly(back, Vector2(1.06, 0.94)))
     top.add_child(back)
-
-    var crumbs := VBoxContainer.new()
-    crumbs.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-    crumbs.alignment = BoxContainer.ALIGNMENT_CENTER
-    crumbs.add_theme_constant_override("separation", 0)
-    top.add_child(crumbs)
     var eyebrow := Label.new()
     eyebrow.text = _t("detail.eyebrow").to_upper()
+    eyebrow.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+    eyebrow.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
     eyebrow.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-    eyebrow.add_theme_font_override("font", HEADING_FONT)
+    eyebrow.add_theme_font_override("font", DISPLAY_FONT)
     eyebrow.add_theme_font_size_override("font_size", 11)
-    eyebrow.add_theme_color_override("font_color", ui_tokens.accent.lerp(ui_tokens.text_primary, 0.2))
-    crumbs.add_child(eyebrow)
-    var crumb := Label.new()
-    crumb.text = "%s  ›  %s" % [_t("nav.library"), _game_display_title(game)]
-    crumb.clip_text = true
-    crumb.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
-    crumb.add_theme_font_size_override("font_size", 12)
-    crumb.add_theme_color_override("font_color", ui_tokens.text_tertiary)
-    crumbs.add_child(crumb)
+    eyebrow.add_theme_color_override("font_color", ui_tokens.text_tertiary)
+    top.add_child(eyebrow)
 
     var body := _build_compact_detail(game) if compact else _build_desktop_detail(game, phone_landscape)
     page.add_child(body)
 
     if animate_content:
-        ui_motion.reveal(top)
+        ui_motion.enter(top, Vector2(-12, 0))
     if animate_hero:
-        # Zero-latency hero launch: start on the same frame without delay.
         detail_view.visible = true
         detail_view.modulate.a = 1.0
         body.modulate.a = 0.0
@@ -8309,15 +7855,14 @@ func _rebuild_detail_contents(game: Dictionary, animate_hero: bool, animate_cont
 func _build_desktop_detail(game: Dictionary, phone_landscape: bool = false) -> Control:
     var body := HBoxContainer.new()
     body.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-    body.add_theme_constant_override("separation", 24 if phone_landscape else 40)
-    body.add_child(_detail_cover_with_action(game, Vector2(176, 248) if phone_landscape else Vector2(260, 364)))
+    body.add_theme_constant_override("separation", 28 if phone_landscape else 48)
+    body.add_child(_detail_cover_with_action(game, Vector2(180, 250) if phone_landscape else Vector2(280, 392)))
 
     var information := VBoxContainer.new()
     information.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-    information.add_theme_constant_override("separation", 18)
+    information.add_theme_constant_override("separation", 22)
     body.add_child(information)
     information.add_child(_detail_identity(game, false))
-    information.add_child(_detail_stat_strip(game))
     information.add_child(_detail_tools(game))
     information.add_child(_detail_information_panel(game))
     return body
@@ -8325,16 +7870,15 @@ func _build_desktop_detail(game: Dictionary, phone_landscape: bool = false) -> C
 func _build_compact_detail(game: Dictionary) -> Control:
     var body := VBoxContainer.new()
     body.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-    body.add_theme_constant_override("separation", 16)
+    body.add_theme_constant_override("separation", 18)
 
     var summary := HBoxContainer.new()
     summary.size_flags_horizontal = Control.SIZE_EXPAND_FILL
     summary.add_theme_constant_override("separation", 16)
     body.add_child(summary)
-    # The action row is wider than the portrait cover. Let it overflow below
-    # the cover without making the summary column that wide; otherwise the
-    # title starts hundreds of points away from the cover on iPhone.
-    summary.add_child(_detail_cover_with_action(game, Vector2(112, 158), true))
+    # The action row can be wider than the portrait cover; it overflows below
+    # the cover without widening the column, so the title stays close.
+    summary.add_child(_detail_cover_with_action(game, Vector2(112, 156), true))
 
     var primary := VBoxContainer.new()
     primary.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -8342,43 +7886,34 @@ func _build_compact_detail(game: Dictionary) -> Control:
     summary.add_child(primary)
     primary.add_child(_detail_identity(game, true))
 
-    body.add_child(_detail_stat_strip(game))
     body.add_child(_detail_tools(game))
     body.add_child(_detail_information_panel(game))
     return body
 
-func _detail_cover(game: Dictionary, cover_size: Vector2) -> PanelContainer:
-    var cover := PanelContainer.new()
-    cover.clip_contents = false
+func _detail_cover(game: Dictionary, cover_size: Vector2) -> Control:
+    var cover := Control.new()
     cover.custom_minimum_size = cover_size
     cover.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
     cover.size_flags_vertical = Control.SIZE_SHRINK_BEGIN
-    cover.add_theme_stylebox_override("panel", _empty_style())
+    cover.mouse_filter = Control.MOUSE_FILTER_PASS
     detail_hero_cover = cover
-    var tint := _cover_tint(game)
-    # Coloured bloom under the artwork.
-    var bloom = AetherSurface.new()
-    bloom.show_behind_parent = true
-    bloom.configure(ui_tokens.tint(tint, 0.0), ui_tokens.tint(tint, 0.0), 22.0)
-    bloom.glow(ui_tokens.tint(tint, 0.55 if ui_tokens.is_dark() else 0.38), 42.0)
-    cover.add_child(bloom)
+    var plate := Panel.new()
+    plate.mouse_filter = Control.MOUSE_FILTER_IGNORE
+    plate.set_anchors_preset(Control.PRESET_FULL_RECT)
+    var plate_style: StyleBoxFlat = ui_tokens.raised(16, 2, ui_tokens.surface_raised)
+    plate_style.shadow_color = ui_tokens.tint(_cover_tint(game).darkened(0.35), 0.55 if ui_tokens.is_dark() else 0.30)
+    plate_style.shadow_size = 34
+    plate_style.shadow_offset = Vector2(0, 18)
+    plate.add_theme_stylebox_override("panel", plate_style)
+    cover.add_child(plate)
     var cover_texture := _load_cover_texture(game, Vector2i(int(cover_size.x * 2.0), int(cover_size.y * 2.0)), 0)
     if cover_texture != null:
-        cover.add_child(_rounded_cover_rect(cover_texture, 22.0))
+        cover.add_child(_rounded_cover_rect(cover_texture, 16.0))
     else:
-        cover.add_child(_cover_placeholder(ICON_GAMEPAD, 22.0, tint, 56.0))
-    var frame = AetherSurface.new()
-    frame.configure(Color(0, 0, 0, 0), Color(0, 0, 0, 0), 22.0)
-    frame.rim(ui_tokens.tint(Color.WHITE, 0.30), 1.0, 0.7)
-    cover.add_child(frame)
-    ui_motion.bind_tilt(cover, 0.025)
-    cover.mouse_filter = Control.MOUSE_FILTER_PASS
-    cover.mouse_entered.connect(func():
-        frame.sweep(0.8, 0.28)
-        ui_motion.spring_property(cover, "scale", Vector2(1.03, 1.03), 0.3, 0.6)
-    )
-    cover.mouse_exited.connect(func(): ui_motion.spring_property(cover, "scale", Vector2.ONE, 0.3, 0.7))
+        cover.add_child(_cover_placeholder(ICON_GAMEPAD, 16.0, _cover_tint(game), 54.0))
     cover.resized.connect(func(): cover.pivot_offset = cover.size * 0.5)
+    cover.mouse_entered.connect(func(): ui_motion.spring_property(cover, "rotation", -0.02, 0.36, 0.55))
+    cover.mouse_exited.connect(func(): ui_motion.spring_property(cover, "rotation", 0.0, 0.40, 0.5))
     return cover
 
 func _detail_cover_with_action(
@@ -8389,43 +7924,41 @@ func _detail_cover_with_action(
     var cover_path := _resolve_cover_path(game)
     var has_cover := not cover_path.is_empty() and FileAccess.file_exists(cover_path)
     var actions := HBoxContainer.new()
-    actions.alignment = BoxContainer.ALIGNMENT_CENTER
-    actions.add_theme_constant_override("separation", 8)
+    actions.alignment = BoxContainer.ALIGNMENT_BEGIN
+    actions.add_theme_constant_override("separation", 6)
     var action := Button.new()
     action.text = _t("detail.set_cover")
     action.icon = _load_ui_icon(ICON_PAGE)
     action.expand_icon = true
     action.add_theme_constant_override("icon_max_width", 16)
-    ui_widgets.secondary_button(action)
-    action.custom_minimum_size = Vector2(128, 42)
-    action.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+    ui_widgets.quiet_button(action)
+    action.custom_minimum_size = Vector2(0, 38)
     action.pressed.connect(_set_cover_for_selected)
     actions.add_child(action)
     if has_cover:
-        var clear := _icon_action_button(ICON_REFRESH, _t("detail.clear_cover"), _clear_cover_for_selected)
+        var clear := Button.new()
         clear.text = _t("detail.clear_cover")
-        clear.add_theme_constant_override("h_separation", 8)
-        clear.custom_minimum_size = Vector2(112, 42)
-        clear.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+        clear.icon = _load_ui_icon(ICON_REFRESH)
+        clear.expand_icon = true
+        clear.add_theme_constant_override("icon_max_width", 16)
+        ui_widgets.quiet_button(clear)
+        clear.custom_minimum_size = Vector2(0, 38)
+        clear.pressed.connect(_clear_cover_for_selected)
         actions.add_child(clear)
 
     if constrain_portrait_width:
-        # A plain Control keeps the cover column's minimum width fixed. The
-        # action row is laid out manually and may extend to the right below
-        # the cover, where it cannot push the identity column away.
+        # A plain Control keeps the cover column's minimum width fixed; the
+        # action row is placed manually and may extend right under the cover.
         var compact_column := Control.new()
         compact_column.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
         compact_column.size_flags_vertical = Control.SIZE_SHRINK_BEGIN
-        compact_column.custom_minimum_size = Vector2(cover_size.x, cover_size.y + 52.0)
-
+        compact_column.custom_minimum_size = Vector2(cover_size.x, cover_size.y + 48.0)
         var compact_cover := _detail_cover(game, cover_size)
         compact_cover.position = Vector2.ZERO
         compact_cover.size = cover_size
         compact_column.add_child(compact_cover)
-
-        var action_width := maxf(cover_size.x, actions.get_combined_minimum_size().x)
-        actions.position = Vector2(0.0, cover_size.y + 8.0)
-        actions.size = Vector2(action_width, 42.0)
+        actions.position = Vector2(-8.0, cover_size.y + 8.0)
+        actions.size = Vector2(maxf(cover_size.x, actions.get_combined_minimum_size().x), 38.0)
         compact_column.add_child(actions)
         return compact_column
 
@@ -8441,20 +7974,33 @@ func _detail_identity(game: Dictionary, compact: bool) -> VBoxContainer:
     identity.size_flags_horizontal = Control.SIZE_EXPAND_FILL
     identity.add_theme_constant_override("separation", 8)
 
-    identity.add_child(_type_chip(_game_type_label(String(game.get("type", "Directory"))), _cover_tint(game)))
+    var kind_row := HBoxContainer.new()
+    kind_row.add_theme_constant_override("separation", 8)
+    identity.add_child(kind_row)
+    var tick := Panel.new()
+    tick.custom_minimum_size = Vector2(18, 3)
+    tick.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+    tick.add_theme_stylebox_override("panel", ui_tokens.panel(ui_tokens.accent, 2))
+    kind_row.add_child(tick)
+    var type_label := Label.new()
+    type_label.text = _game_type_label(String(game.get("type", "Directory"))).to_upper()
+    type_label.add_theme_font_override("font", DISPLAY_FONT)
+    type_label.add_theme_font_size_override("font_size", 11 if compact else 12)
+    type_label.add_theme_color_override("font_color", ui_tokens.accent_text)
+    kind_row.add_child(type_label)
 
     var title := Label.new()
     title.text = _game_display_title(game)
-    title.custom_minimum_size = Vector2(0, 72 if compact else 96)
-    title.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
+    title.custom_minimum_size = Vector2(0, 64 if compact else 0)
     title.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-    title.max_lines_visible = 3 if compact else 2
+    title.max_lines_visible = 3
     title.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
-    title.add_theme_font_override("font", HEADING_FONT)
-    title.add_theme_font_size_override("font_size", 24 if compact else 38)
+    title.add_theme_font_override("font", TITLE_FONT)
+    title.add_theme_font_size_override("font_size", 24 if compact else 44)
     title.add_theme_color_override("font_color", ui_tokens.text_primary)
+    title.add_theme_constant_override("line_spacing", -2)
     identity.add_child(title)
-    ui_motion.type_in(title, 0.18, 0.55)
+    ui_motion.wipe_in(title, 0.12, 0.6)
 
     if not compact:
         var subtitle := Label.new()
@@ -8464,31 +8010,26 @@ func _detail_identity(game: Dictionary, compact: bool) -> VBoxContainer:
         identity.add_child(subtitle)
     return identity
 
-# Three glass stat tiles: last played, total play time and runtime type.
-
 func _detail_launch_button() -> Button:
-    # Use the explicit content row here instead of Button.icon + Button.text.
-    # FlowContainer sizes a native Button from its text first, which can clip
-    # the icon when the action is laid out at its shrink-to-fit width.
+    # Explicit content row instead of Button.icon + text: FlowContainer sizes
+    # a native Button from its text first, which can clip the icon.
     var start := _pill_button(_t("detail.launch"), ICON_PLAY)
-    # Keep enough room for the longest localized label as well as the icon.
     start.custom_minimum_size = Vector2(230, 54)
     start.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
+    start.add_theme_font_size_override("font_size", 16)
     start.pressed.connect(_start_selected_game)
     start.button_down.connect(func(): _android_input_debug_log("detail launch button_down"))
     start.button_up.connect(func(): _android_input_debug_log("detail launch button_up"))
     start.pressed.connect(func(): _android_input_debug_log("detail launch pressed"))
-    # The primary call-to-action glows softly and glints on an idle loop.
-    var surface = start.get_node_or_null(AetherWidgets.SURFACE_NAME)
-    if surface != null:
-        surface.set_param("glow_color", ui_tokens.tint(ui_tokens.accent, 0.32))
-        if not ui_motion.reduced_motion:
-            var loop := start.create_tween().set_loops()
-            loop.tween_interval(3.2)
-            loop.tween_callback(func():
-                if is_instance_valid(surface) and not start.is_hovered():
-                    surface.sweep(0.9, 0.26)
-            )
+    # Idle nudge: the play glyph hops every few seconds to invite a launch.
+    var icon := start.get_node_or_null(start.get_meta("pill_icon_path", NodePath(""))) as Control
+    if icon != null and not ui_motion.reduced_motion:
+        var loop := icon.create_tween().set_loops()
+        loop.tween_interval(3.0)
+        loop.tween_callback(func():
+            if is_instance_valid(icon) and not start.is_hovered():
+                ui_motion.jelly(icon, Vector2(1.3, 0.8))
+        )
     return start
 
 func _detail_tools(game: Dictionary) -> FlowContainer:
@@ -8498,22 +8039,12 @@ func _detail_tools(game: Dictionary) -> FlowContainer:
     tools.add_theme_constant_override("v_separation", 8)
     tools.add_child(_detail_launch_button())
     if _can_configure_launch_file(game):
-        var set_launch := _icon_action_button(
-            ICON_PLAY,
-            _t("detail.set_launch_file"),
-            func(): _set_launch_file_for_selected()
-        )
+        var set_launch := _icon_action_button(ICON_PLAY, _t("detail.set_launch_file"), func(): _set_launch_file_for_selected())
         _reveal_icon_action_label_on_hover(set_launch, _t("detail.set_launch_file"))
-        set_launch.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
         tools.add_child(set_launch)
         if not GameLaunchEntry.configured_relative_path(game).is_empty():
-            var reset_launch := _icon_action_button(
-                ICON_REFRESH,
-                _t("detail.reset_launch_file"),
-                func(): _reset_launch_file_for_selected()
-            )
+            var reset_launch := _icon_action_button(ICON_REFRESH, _t("detail.reset_launch_file"), func(): _reset_launch_file_for_selected())
             _reveal_icon_action_label_on_hover(reset_launch, _t("detail.reset_launch_file"))
-            reset_launch.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
             tools.add_child(reset_launch)
     var rename := _icon_action_button(ICON_RENAME, _t("detail.rename"), func(): _rename_selected_game())
     _reveal_icon_action_label_on_hover(rename, _t("detail.rename"))
@@ -8524,13 +8055,12 @@ func _detail_tools(game: Dictionary) -> FlowContainer:
 func _detail_information_panel(game: Dictionary) -> PanelContainer:
     var info_panel := PanelContainer.new()
     info_panel.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-    var style: StyleBoxFlat = ui_tokens.panel(Color.TRANSPARENT, ui_tokens.RADIUS_CARD)
-    style.content_margin_left = 18
-    style.content_margin_right = 18
+    var style: StyleBoxFlat = ui_tokens.raised(ui_tokens.RADIUS_CARD, 0)
+    style.content_margin_left = 20
+    style.content_margin_right = 20
     style.content_margin_top = 6
     style.content_margin_bottom = 6
     info_panel.add_theme_stylebox_override("panel", style)
-    ui_widgets.glass_surface(info_panel, float(ui_tokens.RADIUS_CARD), false)
     var info := VBoxContainer.new()
     info.add_theme_constant_override("separation", 0)
     info_panel.add_child(info)
@@ -8549,19 +8079,17 @@ func _detail_remove_button(game: Dictionary) -> Button:
     var remove_label := "detail.delete_builtin" if builtin_demo.is_game(game) else "detail.remove"
     var remove := _icon_action_button(ICON_DELETE, _t(remove_label), func(): _confirm_remove_selected(), false, true)
     _reveal_icon_action_label_on_hover(remove, _t(remove_label))
-    remove.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
     return remove
+
+# Facts grid: label over value, two columns on desktop, hairlines between.
 
 func _detail_line(icon_path: String, text: String) -> HBoxContainer:
     var row := HBoxContainer.new()
     row.custom_minimum_size = Vector2(0, 48)
     row.add_theme_constant_override("separation", 14)
-    var plate := PanelContainer.new()
-    plate.custom_minimum_size = Vector2(30, 30)
-    plate.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-    plate.add_theme_stylebox_override("panel", ui_tokens.panel(ui_tokens.accent_fill, 10))
-    plate.add_child(_centered_icon(icon_path, Vector2(16, 16), ui_tokens.accent))
-    row.add_child(plate)
+    var icon := _icon_rect(icon_path, Vector2(16, 16), ui_tokens.accent_text)
+    icon.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+    row.add_child(icon)
     var label := Label.new()
     label.text = text
     label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -8587,18 +8115,14 @@ func _detail_action(icon_path: String, text: String, callback: Callable = Callab
     button.icon_alignment = HORIZONTAL_ALIGNMENT_LEFT
     button.alignment = HORIZONTAL_ALIGNMENT_LEFT
     button.clip_text = true
-    button.focus_mode = Control.FOCUS_ALL
     button.custom_minimum_size = Vector2(0, 54)
     button.add_theme_constant_override("icon_max_width", 20)
     button.add_theme_constant_override("h_separation", 12)
     button.add_theme_font_override("font", DISPLAY_FONT)
-    button.add_theme_font_size_override("font_size", 15)
-    var foreground: Color = ui_tokens.danger if destructive else ui_tokens.text_primary
-    button.add_theme_color_override("font_color", foreground)
-    button.add_theme_color_override("icon_normal_color", ui_tokens.danger if destructive else ui_tokens.accent)
-    button.add_theme_color_override("icon_hover_color", foreground)
-    button.add_theme_color_override("icon_pressed_color", foreground)
     ui_widgets.secondary_button(button, destructive)
+    var icon_color: Color = ui_tokens.danger if destructive else ui_tokens.accent_text
+    for state in ["normal", "hover", "pressed", "focus"]:
+        button.add_theme_color_override("icon_%s_color" % state, icon_color)
     if callback.is_valid():
         button.pressed.connect(callback)
     return button
@@ -8606,8 +8130,7 @@ func _detail_action(icon_path: String, text: String, callback: Callable = Callab
 func _danger_button(text: String) -> Button:
     var button := Button.new()
     button.text = text
-    button.focus_mode = Control.FOCUS_ALL
-    button.custom_minimum_size = Vector2(136, 48)
+    button.custom_minimum_size = Vector2(136, 46)
     ui_widgets.destructive_button(button)
     return button
 
@@ -8625,38 +8148,27 @@ func _modal_stack(dialog: PanelContainer, title_text: String, icon_path: String)
     var box := VBoxContainer.new()
     box.size_flags_horizontal = Control.SIZE_EXPAND_FILL
     box.size_flags_vertical = Control.SIZE_EXPAND_FILL
-    box.add_theme_constant_override("separation", 18)
+    box.add_theme_constant_override("separation", 16)
     dialog.add_child(box)
-
     var header := HBoxContainer.new()
-    header.custom_minimum_size = Vector2(0, 48)
+    header.custom_minimum_size = Vector2(0, 44)
     header.add_theme_constant_override("separation", 14)
     box.add_child(header)
-
-    var icon_plate := Control.new()
-    icon_plate.custom_minimum_size = Vector2(46, 46)
-    icon_plate.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-    icon_plate.mouse_filter = Control.MOUSE_FILTER_IGNORE
-    header.add_child(icon_plate)
-    var plate = AetherSurface.new()
-    plate.configure(ui_tokens.accent, ui_tokens.accent_2, 15.0, 0.8)
-    plate.rim(Color(1, 1, 1, 0.35), 1.0, 1.0)
-    plate.set_param("highlight", 1.0)
-    plate.glow(ui_tokens.tint(ui_tokens.accent, 0.4), 14.0)
-    icon_plate.add_child(plate)
-    var glyph := _centered_icon(icon_path, Vector2(22, 22), Color.WHITE)
-    glyph.set_anchors_preset(Control.PRESET_FULL_RECT)
-    icon_plate.add_child(glyph)
-    icon_plate.pivot_offset = Vector2(23, 23)
-    ui_motion.pop_in(icon_plate, 0.10, 0.4)
-
+    var badge := PanelContainer.new()
+    badge.custom_minimum_size = Vector2(42, 42)
+    badge.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+    badge.add_theme_stylebox_override("panel", ui_tokens.panel(ui_tokens.accent, 12))
+    badge.add_child(_centered_icon(icon_path, Vector2(20, 20), ui_tokens.text_on_accent))
+    header.add_child(badge)
+    badge.resized.connect(func(): badge.pivot_offset = badge.size * 0.5)
+    ui_motion.pop_in(badge, 0.08, 0.3)
     var title := Label.new()
     title.text = title_text
     title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
     title.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
     title.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-    title.add_theme_font_override("font", HEADING_FONT)
-    title.add_theme_font_size_override("font_size", 21)
+    title.add_theme_font_override("font", TITLE_FONT)
+    title.add_theme_font_size_override("font_size", 20)
     title.add_theme_color_override("font_color", ui_tokens.text_primary)
     header.add_child(title)
     return box
@@ -8682,11 +8194,11 @@ func _show_import_guide() -> void:
     if home_library_mode == "video":
         guide_title = _t("video.guide_title")
         guide_body = _t("video.guide_body_ios") if OS.get_name() == "iOS" else _t("video.guide_body_desktop")
-    var dialog := _modal_dialog(Vector2(580, 420), 0.46)
+    var dialog := _modal_dialog(Vector2(560, 400), 0.46)
     var box := _modal_stack(dialog, guide_title, ICON_HELP)
     box.add_child(_dialog_body_label(guide_body))
     var ok := _pill_button(_t("dialog.ok"))
-    ok.custom_minimum_size = Vector2(120, 46)
+    ok.custom_minimum_size = Vector2(112, 46)
     ok.size_flags_horizontal = Control.SIZE_SHRINK_END
     ok.pressed.connect(_dismiss_modal)
     box.add_child(ok)
@@ -8869,17 +8381,11 @@ func _show_iap_progress_dialog(title_text: String, body_text: String) -> void:
     _create_iap_modal(title_text, body_text, 660.0, 310.0)
 
 func _show_iap_limit_prompt() -> void:
-    var box := _create_iap_modal(
-        _t("iap.limit_title"),
-        _t("iap.limit_body"),
-        720.0,
-        350.0
-    )
+    var box := _create_iap_modal(_t("iap.limit_title"), _t("iap.limit_body"), 720.0, 350.0)
     var compact := _ui_safe_rect(get_viewport_rect().size).size.x < 520.0
-    var buttons := _dialog_button_row(56.0 if compact else 58.0)
-    buttons.add_theme_constant_override("separation", 10 if compact else 14)
+    var buttons := _dialog_button_row(52.0)
     box.add_child(buttons)
-    var cancel := _secondary_dialog_button(_t("dialog.cancel"), Vector2(0 if compact else 130, 52))
+    var cancel := _secondary_dialog_button(_t("dialog.cancel"), Vector2(0 if compact else 130, 50))
     cancel.size_flags_horizontal = Control.SIZE_EXPAND_FILL if compact else Control.SIZE_FILL
     cancel.size_flags_stretch_ratio = 0.75 if compact else 1.0
     cancel.pressed.connect(func():
@@ -8888,7 +8394,7 @@ func _show_iap_limit_prompt() -> void:
     )
     buttons.add_child(cancel)
     var purchase := _pill_button(_iap_purchase_button_text())
-    purchase.custom_minimum_size = Vector2(0 if compact else 210, 52)
+    purchase.custom_minimum_size = Vector2(0 if compact else 210, 50)
     purchase.size_flags_horizontal = Control.SIZE_EXPAND_FILL if compact else Control.SIZE_FILL
     purchase.size_flags_stretch_ratio = 1.25 if compact else 1.0
     purchase.pressed.connect(func(): _begin_iap_purchase("limit"))
@@ -9186,16 +8692,16 @@ func _release_file_dialog(dialog: FileDialog) -> void:
         dialog.queue_free()
 
 func _offer_scrape_after_add(game: Dictionary) -> void:
-    var dialog := _modal_dialog(Vector2(540, 290))
+    var dialog := _modal_dialog(Vector2(520, 280))
     var box := _modal_stack(dialog, _t("dialog.scrape_title"), ICON_GAMEPAD)
     box.add_child(_dialog_body_label(_t("dialog.scrape_body", [_game_display_title(game)])))
     var buttons := _dialog_button_row()
     box.add_child(buttons)
-    var no := _secondary_dialog_button(_t("dialog.later"), Vector2(108, 46))
+    var no := _secondary_dialog_button(_t("dialog.later"), Vector2(104, 46))
     no.pressed.connect(_dismiss_modal)
     buttons.add_child(no)
     var yes := _pill_button(_t("dialog.open_detail"))
-    yes.custom_minimum_size = Vector2(148, 46)
+    yes.custom_minimum_size = Vector2(140, 46)
     yes.pressed.connect(func():
         _dismiss_modal(func(): _show_detail(game))
     )
@@ -9432,20 +8938,16 @@ func _rename_selected_game() -> void:
     var path := String(selected_game.get("path", ""))
     if path.is_empty():
         return
-    var dialog := _modal_dialog(Vector2(540, 280))
+    var dialog := _modal_dialog(Vector2(520, 260))
     var box := _modal_stack(dialog, _t("dialog.rename"), ICON_RENAME)
     var input := LineEdit.new()
     input.text = _game_display_title(selected_game)
     ui_widgets.line_edit(input)
-    input.custom_minimum_size = Vector2(0, 50)
+    input.custom_minimum_size = Vector2(0, 48)
     box.add_child(input)
-    var buttons := _dialog_button_row()
-    box.add_child(buttons)
-    var cancel := _secondary_dialog_button(_t("dialog.cancel"), Vector2(108, 46))
-    cancel.pressed.connect(_dismiss_modal)
-    buttons.add_child(cancel)
-    var save := _pill_button(_t("settings.save"), ICON_SAVE)
-    save.custom_minimum_size = Vector2(124, 46)
+    var save := _pill_button(_t("settings.save"))
+    save.custom_minimum_size = Vector2(112, 46)
+    save.size_flags_horizontal = Control.SIZE_SHRINK_END
     var commit := func():
         var new_title := input.text.strip_edges()
         if new_title.is_empty():
@@ -9457,9 +8959,9 @@ func _rename_selected_game() -> void:
         )
     save.pressed.connect(commit)
     input.text_submitted.connect(func(_text: String): commit.call())
-    buttons.add_child(save)
-    input.call_deferred("grab_focus")
-    input.call_deferred("select_all")
+    box.add_child(save)
+    if input.is_inside_tree():
+        input.call_deferred("grab_focus")
 
 func _confirm_remove_selected() -> void:
     var path := String(selected_game.get("path", ""))
@@ -9467,7 +8969,7 @@ func _confirm_remove_selected() -> void:
         return
     var deleting_builtin := builtin_demo.is_game(selected_game)
     var remove_label := "detail.delete_builtin" if deleting_builtin else "detail.remove"
-    var dialog := _modal_dialog(Vector2(540, 280))
+    var dialog := _modal_dialog(Vector2(520, 260))
     var box := _modal_stack(dialog, _t(remove_label), ICON_DELETE)
     var body_key := "dialog.delete_builtin_body" if deleting_builtin else "dialog.remove_body"
     box.add_child(_dialog_body_label(_t(body_key, [_game_display_title(selected_game)])))
@@ -9505,14 +9007,14 @@ func _on_refresh_or_import() -> void:
     _show_import_picker()
 
 func _show_import_picker() -> void:
-    var dialog := _modal_dialog(Vector2(500, 250))
+    var dialog := _modal_dialog(Vector2(480, 240))
     var box := _modal_stack(dialog, _t("dialog.import_title"), ICON_ADD)
     var dir_button := _detail_action(ICON_LIBRARY, _t("dialog.select_game_dir"))
     dir_button.pressed.connect(func():
         _dismiss_modal(func(): _open_import_dialog())
     )
     box.add_child(dir_button)
-    var cancel := _secondary_dialog_button(_t("dialog.cancel"), Vector2(108, 46))
+    var cancel := _secondary_dialog_button(_t("dialog.cancel"), Vector2(108, 44))
     cancel.size_flags_horizontal = Control.SIZE_SHRINK_END
     cancel.pressed.connect(_dismiss_modal)
     box.add_child(cancel)
@@ -9737,17 +9239,14 @@ func _show_web_import_picker() -> void:
     if not bool(support.get("directory", false)) and dev_games.is_empty():
         _show_message(_t("message.web_picker_unsupported_long"))
         return
-
     var dialog := _modal_dialog(Vector2(600, 400))
     var box := _modal_stack(dialog, _t("dialog.import_title"), ICON_ADD)
-
     if bool(support.get("directory", false)):
         var dir_button := _detail_action(ICON_LIBRARY, _t("dialog.select_local_game_dir"))
         dir_button.pressed.connect(func():
             _dismiss_modal(func(): _pick_web_local_game("directory"))
         )
         box.add_child(dir_button)
-
     for item in dev_games:
         if not item is Dictionary:
             continue
@@ -9762,11 +9261,8 @@ func _show_web_import_picker() -> void:
             )
         )
         box.add_child(button)
-    var cancel := Button.new()
-    cancel.text = _t("dialog.cancel")
-    cancel.custom_minimum_size = Vector2(108, 44)
+    var cancel := _secondary_dialog_button(_t("dialog.cancel"), Vector2(108, 44))
     cancel.size_flags_horizontal = Control.SIZE_SHRINK_END
-    ui_widgets.secondary_button(cancel)
     cancel.pressed.connect(_dismiss_modal)
     box.add_child(cancel)
 
@@ -9841,12 +9337,10 @@ func _rebuild_game_cards(animate_cards: bool = false) -> void:
     for child in game_list.get_children():
         game_list.remove_child(child)
         child.queue_free()
-    for index in range(filtered_games.size()):
-        var card := _game_card(filtered_games[index])
-        game_list.add_child(card)
+    for game in filtered_games:
+        game_list.add_child(_game_card(game))
     if animate_cards and not filtered_games.is_empty():
         home_cards_animated_once = true
-    # Every rebuild (first load, search, import) staggers the grid in.
     if not filtered_games.is_empty():
         call_deferred("_cascade_grid", game_list)
     _sync_home_header_text()
@@ -10020,10 +9514,7 @@ func _video_card(video: Dictionary) -> Control:
     if position > 1.0:
         detail = "%s  ·  %s" % [
             detail,
-            _t("video.progress", [
-                _format_video_time(position),
-                _format_video_time(duration),
-            ]),
+            _t("video.progress", [_format_video_time(position), _format_video_time(duration)]),
         ]
 
     var card := Control.new()
@@ -10039,34 +9530,48 @@ func _video_card(video: Dictionary) -> Control:
     var captured := video.duplicate(true)
     button.pressed.connect(func(): _open_video_player(captured))
     card.add_child(button)
-    var tint: Color = ui_tokens.accent_2.lerp(ui_tokens.accent, 0.3)
-    var chrome := _card_chrome(button, tint)
 
     if home_compact_layout:
         _build_compact_video_card(button, video, detail)
     else:
         _build_desktop_video_card(button, video, detail)
-
-    _bind_card_motion(button, chrome, tint)
-    _add_video_card_progress(card, position, duration)
+    _bind_card_motion(button, ui_tokens.accent_2)
+    var poster: Control = button.get_meta("hero_cover", null)
+    _add_video_card_progress(poster if poster != null else card, position, duration)
 
     var remove := Button.new()
     remove.tooltip_text = _t("video.remove")
     remove.accessibility_name = _t("video.remove")
     remove.focus_mode = Control.FOCUS_ALL
     ui_widgets.toolbar_button(remove)
-    _attach_centered_button_icon(remove, ICON_DELETE, Vector2(17, 17))
-    remove.anchor_left = 1.0
-    remove.anchor_top = 0.5
-    remove.anchor_right = 1.0
-    remove.anchor_bottom = 0.5
-    var remove_size := 38.0 if home_compact_layout else 36.0
-    remove.offset_left = -remove_size - 12.0
-    remove.offset_top = -remove_size * 0.5
-    remove.offset_right = -12.0
-    remove.offset_bottom = remove_size * 0.5
+    remove.add_theme_stylebox_override("normal", ui_tokens.panel(ui_tokens.tint(ui_tokens.background, 0.72), 10))
+    remove.add_theme_stylebox_override("hover", ui_tokens.panel(ui_tokens.danger, 10))
+    _attach_centered_button_icon(remove, ICON_DELETE, Vector2(16, 16))
+    var remove_size := 36.0
     remove.custom_minimum_size = Vector2(remove_size, remove_size)
-    remove.modulate = ui_tokens.danger.lerp(Color.WHITE, 0.25)
+    if home_compact_layout:
+        remove.anchor_left = 1.0
+        remove.anchor_right = 1.0
+        remove.anchor_top = 0.5
+        remove.anchor_bottom = 0.5
+        remove.offset_left = -remove_size - 10.0
+        remove.offset_right = -10.0
+        remove.offset_top = -remove_size * 0.5
+        remove.offset_bottom = remove_size * 0.5
+    else:
+        remove.anchor_left = 1.0
+        remove.anchor_right = 1.0
+        remove.offset_left = -remove_size - 10.0
+        remove.offset_right = -10.0
+        remove.offset_top = 10.0
+        remove.offset_bottom = 10.0 + remove_size
+        remove.modulate.a = 0.0
+        button.mouse_entered.connect(func(): ui_motion._fade(remove, 1.0, 0.16, "reveal_remove"))
+        button.mouse_exited.connect(func():
+            if not remove.get_global_rect().has_point(remove.get_global_mouse_position()):
+                ui_motion._fade(remove, 0.0, 0.2, "reveal_remove")
+        )
+        remove.mouse_entered.connect(func(): remove.modulate.a = 1.0)
     remove.pressed.connect(func(): _confirm_remove_video(captured))
     card.add_child(remove)
     return card
@@ -10078,16 +9583,15 @@ func _add_video_card_progress(card: Control, position: float, duration: float) -
     var track := ColorRect.new()
     track.name = "PlaybackProgressTrack"
     track.mouse_filter = Control.MOUSE_FILTER_IGNORE
-    track.color = ui_tokens.tint(ui_tokens.text_tertiary, 0.22)
+    track.color = Color(0, 0, 0, 0.45)
     track.anchor_top = 1.0
     track.anchor_right = 1.0
     track.anchor_bottom = 1.0
-    track.offset_left = 22.0
-    track.offset_right = -22.0
-    track.offset_top = -7.0
-    track.offset_bottom = -4.0
+    track.offset_left = 10.0
+    track.offset_right = -10.0
+    track.offset_top = -12.0
+    track.offset_bottom = -8.0
     card.add_child(track)
-
     var fill := ColorRect.new()
     fill.name = "PlaybackProgressFill"
     fill.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -10095,162 +9599,60 @@ func _add_video_card_progress(card: Control, position: float, duration: float) -
     fill.anchor_right = ratio
     fill.anchor_bottom = 1.0
     track.add_child(fill)
-    var sheen := TextureRect.new()
-    sheen.mouse_filter = Control.MOUSE_FILTER_IGNORE
-    sheen.texture = ui_tokens.gradient_texture(ui_tokens.accent, ui_tokens.accent_2)
-    sheen.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
-    sheen.stretch_mode = TextureRect.STRETCH_SCALE
-    sheen.set_anchors_preset(Control.PRESET_FULL_RECT)
-    fill.add_child(sheen)
-    # The fill grows from zero the first time the card appears.
     if not ui_motion.reduced_motion:
         if card.is_inside_tree():
-            _grow_progress_fill(fill, ratio)
+            _grow_progress_fill(fill)
         else:
-            card.tree_entered.connect(_grow_progress_fill.bind(fill, ratio), CONNECT_ONE_SHOT)
-
-func _grow_progress_fill(fill: Control, _ratio: float) -> void:
-    # Layout keeps the real ratio in anchor_right; the grow is purely visual
-    # (a left-pivoted horizontal scale), so progress is never misreported.
-    if not is_instance_valid(fill):
-        return
-    fill.pivot_offset = Vector2.ZERO
-    fill.scale = Vector2(0.0, 1.0)
-    var tween := fill.create_tween()
-    tween.tween_property(fill, "scale", Vector2.ONE, 0.9).set_delay(0.25).set_trans(Tween.TRANS_EXPO).set_ease(Tween.EASE_OUT)
+            card.tree_entered.connect(_grow_progress_fill.bind(fill), CONNECT_ONE_SHOT)
 
 func _build_desktop_video_card(button: Button, video: Dictionary, detail: String) -> void:
-    var content_margin := MarginContainer.new()
-    content_margin.mouse_filter = Control.MOUSE_FILTER_IGNORE
-    content_margin.set_anchors_preset(Control.PRESET_FULL_RECT)
-    content_margin.add_theme_constant_override("margin_left", 10)
-    content_margin.add_theme_constant_override("margin_top", 10)
-    content_margin.add_theme_constant_override("margin_right", 14)
-    content_margin.add_theme_constant_override("margin_bottom", 12)
-    button.add_child(content_margin)
-
-    var frame := HBoxContainer.new()
-    frame.mouse_filter = Control.MOUSE_FILTER_IGNORE
-    frame.add_theme_constant_override("separation", 16)
-    content_margin.add_child(frame)
-
-    var cover_host := Control.new()
-    cover_host.mouse_filter = Control.MOUSE_FILTER_IGNORE
-    cover_host.custom_minimum_size = Vector2(HOME_TILE_COVER_WIDTH, HOME_TILE_HEIGHT - 22.0)
-    cover_host.size_flags_vertical = Control.SIZE_EXPAND_FILL
-    frame.add_child(cover_host)
-    _populate_video_card_cover(cover_host, false)
-
-    var metadata := PanelContainer.new()
-    metadata.mouse_filter = Control.MOUSE_FILTER_IGNORE
-    metadata.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-    metadata.size_flags_vertical = Control.SIZE_EXPAND_FILL
-    metadata.add_theme_stylebox_override("panel", _empty_style())
-    frame.add_child(metadata)
-    _populate_video_card_metadata(metadata, video, detail, false)
-
-    var action_space := Control.new()
-    action_space.mouse_filter = Control.MOUSE_FILTER_IGNORE
-    action_space.custom_minimum_size = Vector2(40, 0)
-    frame.add_child(action_space)
+    var column := VBoxContainer.new()
+    column.mouse_filter = Control.MOUSE_FILTER_IGNORE
+    column.set_anchors_preset(Control.PRESET_FULL_RECT)
+    column.add_theme_constant_override("separation", 10)
+    button.add_child(column)
+    var poster := _card_poster(button, {}, ICON_VIDEO)
+    poster.size_flags_vertical = Control.SIZE_EXPAND_FILL
+    column.add_child(poster)
+    _populate_video_card_metadata(column, video, detail, false)
 
 func _build_compact_video_card(button: Button, video: Dictionary, detail: String) -> void:
-    var content_margin := MarginContainer.new()
-    content_margin.mouse_filter = Control.MOUSE_FILTER_IGNORE
-    content_margin.set_anchors_preset(Control.PRESET_FULL_RECT)
-    for side in ["left", "top", "bottom"]:
-        content_margin.add_theme_constant_override("margin_%s" % side, 10)
-    content_margin.add_theme_constant_override("margin_right", 8)
-    button.add_child(content_margin)
-    var frame := HBoxContainer.new()
-    frame.mouse_filter = Control.MOUSE_FILTER_IGNORE
-    frame.add_theme_constant_override("separation", 14)
-    content_margin.add_child(frame)
-
-    var cover_host := Control.new()
-    cover_host.mouse_filter = Control.MOUSE_FILTER_IGNORE
-    cover_host.custom_minimum_size = Vector2(HOME_ROW_COVER_WIDTH, HOME_ROW_HEIGHT - 20.0)
-    cover_host.size_flags_vertical = Control.SIZE_EXPAND_FILL
-    frame.add_child(cover_host)
-    _populate_video_card_cover(cover_host, true)
-
-    var metadata := PanelContainer.new()
-    metadata.mouse_filter = Control.MOUSE_FILTER_IGNORE
-    metadata.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-    metadata.size_flags_vertical = Control.SIZE_EXPAND_FILL
-    metadata.add_theme_stylebox_override("panel", _empty_style())
-    frame.add_child(metadata)
-    _populate_video_card_metadata(metadata, video, detail, true)
-
-    var action_space := Control.new()
-    action_space.mouse_filter = Control.MOUSE_FILTER_IGNORE
-    action_space.custom_minimum_size = Vector2(46, 0)
-    frame.add_child(action_space)
+    var row := HBoxContainer.new()
+    row.mouse_filter = Control.MOUSE_FILTER_IGNORE
+    row.set_anchors_preset(Control.PRESET_FULL_RECT)
+    row.offset_left = 8
+    row.offset_top = 8
+    row.offset_right = -56
+    row.offset_bottom = -8
+    row.add_theme_constant_override("separation", 14)
+    button.add_child(row)
+    var poster := _card_poster(button, {}, ICON_VIDEO)
+    poster.custom_minimum_size = Vector2(HOME_ROW_COVER_WIDTH, 0)
+    row.add_child(poster)
+    _populate_video_card_metadata(row, video, detail, true)
 
 func _populate_video_card_cover(cover_host: Control, compact: bool) -> void:
-    var tint: Color = ui_tokens.accent_2.lerp(ui_tokens.accent, 0.3)
-    cover_host.add_child(_cover_placeholder(ICON_VIDEO, 12.0 if compact else 14.0, tint, 28.0 if compact else 32.0))
+    cover_host.add_child(_cover_placeholder(ICON_VIDEO, 12.0, ui_tokens.accent_2, 28.0 if compact else 34.0))
 
-func _populate_video_card_metadata(
-    metadata: PanelContainer,
-    video: Dictionary,
-    detail: String,
-    compact: bool
-) -> void:
-    var text_margin := MarginContainer.new()
-    text_margin.mouse_filter = Control.MOUSE_FILTER_IGNORE
-    text_margin.add_theme_constant_override("margin_left", 14 if compact else 2)
-    text_margin.add_theme_constant_override("margin_top", 13 if compact else 7)
-    text_margin.add_theme_constant_override("margin_right", 8 if compact else 2)
-    text_margin.add_theme_constant_override("margin_bottom", 10 if compact else 7)
-    metadata.add_child(text_margin)
-
-    var labels := VBoxContainer.new()
-    labels.mouse_filter = Control.MOUSE_FILTER_IGNORE
-    labels.alignment = BoxContainer.ALIGNMENT_CENTER if compact else BoxContainer.ALIGNMENT_BEGIN
-    labels.add_theme_constant_override("separation", 4)
-    text_margin.add_child(labels)
-
-    if not compact:
-        var kicker := Label.new()
-        var extension := String(video.get("fileName", "")).get_extension().to_upper()
-        kicker.text = extension if not extension.is_empty() else _t("nav.videos").to_upper()
-        kicker.mouse_filter = Control.MOUSE_FILTER_IGNORE
-        kicker.add_theme_font_size_override("font_size", 9)
-        kicker.add_theme_color_override("font_color", ui_tokens.text_tertiary)
-        labels.add_child(kicker)
-
-    var title := Label.new()
-    title.text = String(video.get("name", String(video.get("path", "")).get_file()))
-    title.mouse_filter = Control.MOUSE_FILTER_IGNORE
-    title.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-    title.max_lines_visible = 2
-    title.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
-    title.custom_minimum_size = Vector2(0, 42 if compact else 34)
-    title.add_theme_font_override("font", _game_title_font())
-    title.add_theme_font_size_override("font_size", 16 if compact else 15)
-    title.add_theme_color_override("font_color", ui_tokens.text_primary)
-    labels.add_child(title)
-
-    if not compact:
-        var spacer := Control.new()
-        spacer.mouse_filter = Control.MOUSE_FILTER_IGNORE
-        spacer.size_flags_vertical = Control.SIZE_EXPAND_FILL
-        labels.add_child(spacer)
-
-    var sub := Label.new()
-    sub.text = "%s  /  %s" % [_t("nav.videos"), detail] if compact else detail
-    sub.mouse_filter = Control.MOUSE_FILTER_IGNORE
-    sub.clip_text = true
-    sub.add_theme_font_size_override("font_size", 12 if compact else 11)
-    sub.add_theme_color_override("font_color", ui_tokens.text_secondary)
-    labels.add_child(sub)
+func _populate_video_card_metadata(host: Control, video: Dictionary, detail: String, compact: bool) -> void:
+    var button := host.get_parent() as Button
+    var extension := String(video.get("fileName", "")).get_extension().to_upper()
+    var caption := _card_caption(
+        button,
+        String(video.get("name", String(video.get("path", "")).get_file())),
+        detail,
+        extension if not extension.is_empty() else _t("nav.videos")
+    )
+    if compact:
+        caption.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+        caption.alignment = BoxContainer.ALIGNMENT_CENTER
+    host.add_child(caption)
 
 func _confirm_remove_video(video: Dictionary) -> void:
     var path := String(video.get("path", ""))
     if path.is_empty():
         return
-    var dialog := _modal_dialog(Vector2(560, 280), 0.40)
+    var dialog := _modal_dialog(Vector2(560, 270), 0.40)
     var box := _modal_stack(dialog, _t("video.remove"), ICON_DELETE)
     box.add_child(_dialog_body_label(_t("video.remove_body", [String(video.get("name", path.get_file()))]), 16))
     var buttons := _dialog_button_row()
@@ -11044,135 +10446,111 @@ func _game_card(game: Dictionary) -> Button:
     var button := Button.new()
     button.custom_minimum_size = _home_card_minimum_size(home_compact_layout)
     button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-    button.clip_contents = false
     button.focus_mode = Control.FOCUS_ALL
     button.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
     button.text = ""
     _style_home_card_button(button, home_compact_layout)
     button.set_meta("game_path", String(game.get("path", "")))
     button.pressed.connect(func(): _open_game_detail_with_iap(game, button))
-    var tint: Color = _cover_tint(game)
-    var chrome := _card_chrome(button, tint)
+    var tint := _cover_tint(game)
     if home_compact_layout:
         _build_compact_game_card(button, game)
     else:
         _build_desktop_game_card(button, game)
-    _bind_card_motion(button, chrome, tint)
+    _bind_card_motion(button, tint)
     return button
 
 func _home_card_minimum_size(compact: bool) -> Vector2:
     return Vector2(HOME_TILE_MIN_WIDTH, HOME_ROW_HEIGHT if compact else HOME_TILE_HEIGHT)
 
 func _style_home_card_button(button: Button, compact: bool) -> void:
-    var radius: int = 18 if compact else ui_tokens.RADIUS_CARD
-    for state in ["normal", "hover", "pressed", "hover_pressed", "disabled"]:
-        button.add_theme_stylebox_override(state, ui_tokens.panel(Color.TRANSPARENT, radius))
-    var focus: StyleBoxFlat = ui_tokens.panel(Color.TRANSPARENT, radius, ui_tokens.tint(ui_tokens.accent, 0.9), 2)
-    focus.draw_center = false
-    focus.expand_margin_left = 3
-    focus.expand_margin_right = 3
-    focus.expand_margin_top = 3
-    focus.expand_margin_bottom = 3
-    button.add_theme_stylebox_override("focus", focus)
+    var radius: int = ui_tokens.RADIUS_CARD
+    var rest: StyleBoxFlat = ui_tokens.panel(Color.TRANSPARENT, radius)
+    var hover: StyleBoxFlat = ui_tokens.panel(ui_tokens.tint(ui_tokens.text_primary, 0.04) if compact else Color.TRANSPARENT, radius)
+    for state in ["normal", "disabled"]:
+        button.add_theme_stylebox_override(state, rest)
+    for state in ["hover", "pressed", "hover_pressed"]:
+        button.add_theme_stylebox_override(state, hover)
+    button.add_theme_stylebox_override("focus", _focus_outline(radius))
 
-# Card chrome: a glass surface whose fill is washed with the cover's dominant
-# colour, plus a coloured glow that blooms under the card on hover.
+# Poster card: a tall cover floating on its own shadow, with the title and
+# play history underneath. Hover lifts the poster, zooms the art and slides a
+# signal-colour bar in under the title.
 
-func _build_desktop_game_card(button: Button, game: Dictionary) -> CanvasItem:
-    var content_margin := MarginContainer.new()
-    content_margin.mouse_filter = Control.MOUSE_FILTER_IGNORE
-    content_margin.set_anchors_preset(Control.PRESET_FULL_RECT)
-    content_margin.add_theme_constant_override("margin_left", 10)
-    content_margin.add_theme_constant_override("margin_top", 10)
-    content_margin.add_theme_constant_override("margin_right", 14)
-    content_margin.add_theme_constant_override("margin_bottom", 10)
-    button.add_child(content_margin)
-
-    var frame := HBoxContainer.new()
-    frame.mouse_filter = Control.MOUSE_FILTER_IGNORE
-    frame.add_theme_constant_override("separation", 16)
-    content_margin.add_child(frame)
-
-    var cover_host := Control.new()
-    cover_host.mouse_filter = Control.MOUSE_FILTER_IGNORE
-    cover_host.custom_minimum_size = Vector2(HOME_TILE_COVER_WIDTH, HOME_TILE_HEIGHT - 20.0)
-    cover_host.size_flags_vertical = Control.SIZE_EXPAND_FILL
-    frame.add_child(cover_host)
-    button.set_meta("hero_cover", cover_host)
-    _populate_game_card_cover(
-        cover_host,
-        game,
-        Vector2i(int(HOME_TILE_COVER_WIDTH * 2.0), int((HOME_TILE_HEIGHT - 20.0) * 2.0))
-    )
-
-    var metadata := PanelContainer.new()
-    metadata.mouse_filter = Control.MOUSE_FILTER_IGNORE
-    metadata.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-    metadata.size_flags_vertical = Control.SIZE_EXPAND_FILL
-    metadata.add_theme_stylebox_override("panel", _empty_style())
-    frame.add_child(metadata)
-    _populate_game_card_metadata(metadata, game, false)
-
-    var affordance := _card_affordance(ICON_CHEVRON_RIGHT)
-    frame.add_child(affordance)
-    return affordance
-
-# Round glass chevron that slides right and lights up on hover.
+func _build_desktop_game_card(button: Button, game: Dictionary) -> Control:
+    var column := VBoxContainer.new()
+    column.mouse_filter = Control.MOUSE_FILTER_IGNORE
+    column.set_anchors_preset(Control.PRESET_FULL_RECT)
+    column.add_theme_constant_override("separation", 10)
+    button.add_child(column)
+    var poster := _card_poster(button, game, ICON_GAMEPAD)
+    poster.size_flags_vertical = Control.SIZE_EXPAND_FILL
+    column.add_child(poster)
+    column.add_child(_card_caption(button, _game_display_title(game), _game_subtitle(game), _game_type_label(String(game.get("type", "Directory")))))
+    return poster
 
 func _build_compact_game_card(button: Button, game: Dictionary) -> void:
-    var content_margin := MarginContainer.new()
-    content_margin.mouse_filter = Control.MOUSE_FILTER_IGNORE
-    content_margin.set_anchors_preset(Control.PRESET_FULL_RECT)
-    for side in ["left", "top", "bottom"]:
-        content_margin.add_theme_constant_override("margin_%s" % side, 10)
-    content_margin.add_theme_constant_override("margin_right", 8)
-    button.add_child(content_margin)
-    var frame := HBoxContainer.new()
-    frame.mouse_filter = Control.MOUSE_FILTER_IGNORE
-    frame.add_theme_constant_override("separation", 14)
-    content_margin.add_child(frame)
-
-    var cover_host := Control.new()
-    cover_host.mouse_filter = Control.MOUSE_FILTER_IGNORE
-    cover_host.custom_minimum_size = Vector2(HOME_ROW_COVER_WIDTH, HOME_ROW_HEIGHT - 20.0)
-    cover_host.size_flags_vertical = Control.SIZE_EXPAND_FILL
-    frame.add_child(cover_host)
-    button.set_meta("hero_cover", cover_host)
-    _populate_game_card_cover(
-        cover_host,
-        game,
-        Vector2i(int(HOME_ROW_COVER_WIDTH * 2.0), int((HOME_ROW_HEIGHT - 20.0) * 2.0))
-    )
-
-    var metadata := PanelContainer.new()
-    metadata.mouse_filter = Control.MOUSE_FILTER_IGNORE
-    metadata.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-    metadata.size_flags_vertical = Control.SIZE_EXPAND_FILL
-    metadata.add_theme_stylebox_override("panel", _empty_style())
-    frame.add_child(metadata)
-    _populate_game_card_metadata(metadata, game, true)
-
-    frame.add_child(_card_affordance(ICON_CHEVRON_RIGHT))
-
-# Cover artwork rendered through the rounded-image shader, so the corner mask
-# stays exact while the image zooms with scroll depth and hover.
+    var row := HBoxContainer.new()
+    row.mouse_filter = Control.MOUSE_FILTER_IGNORE
+    row.set_anchors_preset(Control.PRESET_FULL_RECT)
+    row.offset_left = 8
+    row.offset_top = 8
+    row.offset_right = -12
+    row.offset_bottom = -8
+    row.add_theme_constant_override("separation", 14)
+    button.add_child(row)
+    var poster := _card_poster(button, game, ICON_GAMEPAD)
+    poster.custom_minimum_size = Vector2(HOME_ROW_COVER_WIDTH, 0)
+    row.add_child(poster)
+    var caption := _card_caption(button, _game_display_title(game), _game_subtitle(game), _game_type_label(String(game.get("type", "Directory"))))
+    caption.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+    caption.alignment = BoxContainer.ALIGNMENT_CENTER
+    row.add_child(caption)
+    row.add_child(_card_chevron())
 
 func _populate_game_card_cover(cover_host: Control, game: Dictionary, target_size: Vector2i) -> void:
-    var radius := 12.0 if home_compact_layout else 14.0
     var cover_texture := _load_cover_texture(game, target_size, 0)
     if cover_texture != null:
-        cover_host.add_child(_rounded_cover_rect(cover_texture, radius))
+        var cover := TextureRect.new()
+        cover.texture = cover_texture
+        cover.mouse_filter = Control.MOUSE_FILTER_IGNORE
+        cover.set_anchors_preset(Control.PRESET_FULL_RECT)
+        cover.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+        cover.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_COVERED
+        cover_host.add_child(cover)
     else:
-        cover_host.add_child(_cover_placeholder(ICON_GAMEPAD, radius, _cover_tint(game), 30.0 if home_compact_layout else 34.0))
+        var placeholder := PanelContainer.new()
+        placeholder.mouse_filter = Control.MOUSE_FILTER_IGNORE
+        placeholder.set_anchors_preset(Control.PRESET_FULL_RECT)
+        placeholder.add_theme_stylebox_override("panel", ui_tokens.panel(ui_tokens.surface_raised, 8 if not home_compact_layout else 0))
+        cover_host.add_child(placeholder)
+        var icon_size := Vector2(34, 34) if home_compact_layout else Vector2(28, 28)
+        var icon := _centered_icon(ICON_GAMEPAD, icon_size, ui_tokens.accent)
+        icon.set_anchors_preset(Control.PRESET_FULL_RECT)
+        placeholder.add_child(icon)
 
 func _populate_game_card_metadata(metadata: PanelContainer, game: Dictionary, compact: bool) -> void:
+    var text_margin := MarginContainer.new()
+    text_margin.mouse_filter = Control.MOUSE_FILTER_IGNORE
+    text_margin.add_theme_constant_override("margin_left", 14 if compact else 2)
+    text_margin.add_theme_constant_override("margin_top", 13 if compact else 7)
+    text_margin.add_theme_constant_override("margin_right", 8 if compact else 2)
+    text_margin.add_theme_constant_override("margin_bottom", 10 if compact else 7)
+    metadata.add_child(text_margin)
+
     var labels := VBoxContainer.new()
     labels.mouse_filter = Control.MOUSE_FILTER_IGNORE
     labels.alignment = BoxContainer.ALIGNMENT_CENTER if compact else BoxContainer.ALIGNMENT_BEGIN
-    labels.add_theme_constant_override("separation", 5)
-    metadata.add_child(labels)
+    labels.add_theme_constant_override("separation", 4)
+    text_margin.add_child(labels)
 
-    labels.add_child(_type_chip(_game_type_label(String(game.get("type", "Directory"))), _cover_tint(game)))
+    if not compact:
+        var kicker := Label.new()
+        kicker.text = _game_type_label(String(game.get("type", "Directory"))).to_upper()
+        kicker.mouse_filter = Control.MOUSE_FILTER_IGNORE
+        kicker.add_theme_font_size_override("font_size", 9)
+        kicker.add_theme_color_override("font_color", ui_tokens.text_tertiary)
+        labels.add_child(kicker)
 
     var title := Label.new()
     title.text = _game_display_title(game)
@@ -11180,9 +10558,9 @@ func _populate_game_card_metadata(metadata: PanelContainer, game: Dictionary, co
     title.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
     title.max_lines_visible = 2
     title.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
-    title.custom_minimum_size = Vector2(0, 40 if compact else 44)
-    title.add_theme_font_override("font", DISPLAY_FONT)
-    title.add_theme_font_size_override("font_size", 16 if compact else 17)
+    title.custom_minimum_size = Vector2(0, 42 if compact else 34)
+    title.add_theme_font_override("font", _game_title_font())
+    title.add_theme_font_size_override("font_size", 16 if compact else 15)
     title.add_theme_color_override("font_color", ui_tokens.text_primary)
     labels.add_child(title)
 
@@ -11193,47 +10571,12 @@ func _populate_game_card_metadata(metadata: PanelContainer, game: Dictionary, co
         labels.add_child(spacer)
 
     var sub := Label.new()
-    sub.text = _game_subtitle(game)
+    sub.text = "%s  /  %s" % [_game_type_label(String(game.get("type", "Directory"))), _game_subtitle(game)] if compact else _game_subtitle(game)
     sub.mouse_filter = Control.MOUSE_FILTER_IGNORE
     sub.clip_text = true
-    sub.add_theme_font_size_override("font_size", 12)
+    sub.add_theme_font_size_override("font_size", 12 if compact else 11)
     sub.add_theme_color_override("font_color", ui_tokens.text_secondary)
     labels.add_child(sub)
-
-func _start_hero_forward_instant(body: Control, compact: bool, available_size: Vector2, gutter: int) -> void:
-    if hero_source_rect.size == Vector2.ZERO or not is_instance_valid(detail_hero_cover):
-        ui_motion.reveal(body)
-        return
-
-    # Calculate exact destination rect immediately with mathematical precision (0ms latency)
-    var cover_size := Vector2(128.0, 180.0) if compact else Vector2(300.0, 420.0)
-    var page_width: float = available_size.x - float(gutter * 2) if compact else minf(1120.0, maxf(320.0, available_size.x - float(gutter * 2)))
-    var page_left: float = float(gutter) if compact else (available_size.x - page_width) * 0.5
-    var top_y: float = (20.0 if compact else 28.0) + 52.0 + 28.0
-    var destination_global := Rect2(
-        shell_content.global_position + Vector2(page_left, top_y),
-        cover_size
-    )
-
-    _finish_hero_overlay()
-    detail_hero_cover.modulate.a = 0.0
-    hero_hidden_target = detail_hero_cover
-
-    # Fade in body smoothly without scaling distortion so layout coordinates stay anchored
-    var body_key := ui_motion._tween_key(body, "reveal")
-    ui_motion._stop_tween_key(body_key)
-    body.modulate.a = 0.0
-    body.scale = Vector2.ONE
-    var body_tween := body.create_tween()
-    ui_motion.active_tweens[body_key] = body_tween
-    body_tween.tween_property(body, "modulate:a", 1.0, 0.22).set_trans(Tween.TRANS_QUART).set_ease(Tween.EASE_OUT)
-    body_tween.chain().tween_callback(func(): ui_motion._finish_tween_key(body_key))
-
-    var overlay := _create_hero_overlay(hero_source_rect, hero_source_texture)
-    var transition_id := hero_transition_id
-    var overlay_ref: WeakRef = weakref(overlay)
-    ui_motion.hero_rect(overlay, _hero_local_rect(destination_global), func(): _complete_hero_overlay_ref(overlay_ref, transition_id, false))
-    _arm_hero_watchdog(overlay, transition_id, false)
 
 func _animate_hero_forward(body: Control) -> void:
     if not is_instance_valid(detail_hero_cover) or hero_source_rect.size == Vector2.ZERO:
@@ -11279,25 +10622,24 @@ func _animate_hero_back(source_rect: Rect2) -> void:
     ui_motion.hero_rect(overlay, _hero_local_rect(target_cover.get_global_rect()), func(): _complete_hero_overlay_ref(overlay_ref, transition_id, true))
     _arm_hero_watchdog(overlay, transition_id, true)
 
-func _create_hero_overlay(global_rect: Rect2, texture: Texture2D) -> PanelContainer:
-    hero_overlay = PanelContainer.new()
-    hero_overlay.mouse_filter = Control.MOUSE_FILTER_IGNORE
-    hero_overlay.clip_contents = false
-    hero_overlay.position = _hero_local_rect(global_rect).position
-    hero_overlay.size = global_rect.size
-    hero_overlay.add_theme_stylebox_override("panel", _empty_style())
-    var glow = AetherSurface.new()
-    glow.show_behind_parent = true
-    glow.configure(Color(0, 0, 0, 0), Color(0, 0, 0, 0), 18.0)
-    glow.glow(ui_tokens.tint(ui_tokens.accent, 0.45), 34.0)
-    hero_overlay.add_child(glow)
+func _create_hero_overlay(global_rect: Rect2, texture: Texture2D) -> Control:
+    var overlay := Control.new()
+    overlay.mouse_filter = Control.MOUSE_FILTER_IGNORE
+    overlay.position = _hero_local_rect(global_rect).position
+    overlay.size = global_rect.size
+    var plate := Panel.new()
+    plate.mouse_filter = Control.MOUSE_FILTER_IGNORE
+    plate.set_anchors_preset(Control.PRESET_FULL_RECT)
+    plate.add_theme_stylebox_override("panel", ui_tokens.raised(14, 2, ui_tokens.surface_raised))
+    overlay.add_child(plate)
     if texture != null:
-        hero_overlay.add_child(_rounded_cover_rect(texture, 18.0))
+        overlay.add_child(_rounded_cover_rect(texture, 14.0))
     else:
-        hero_overlay.add_child(_cover_placeholder(ICON_GAMEPAD, 18.0, ui_tokens.accent, 48.0))
-    shell_content.add_child(hero_overlay)
-    hero_overlay.move_to_front()
-    return hero_overlay
+        overlay.add_child(_cover_placeholder(ICON_GAMEPAD, 14.0, ui_tokens.accent, 44.0))
+    shell_content.add_child(overlay)
+    overlay.move_to_front()
+    hero_overlay = overlay
+    return overlay
 
 func _hero_local_rect(global_rect: Rect2) -> Rect2:
     return Rect2(global_rect.position - shell_content.global_position, global_rect.size)
@@ -12185,10 +11527,7 @@ func _show_runtime_dialog(values: Dictionary) -> void:
     _mark_centered_safe_dialog(dialog, Vector2(780, 520))
     _layout_safe_dialog(dialog, _ui_safe_rect(get_viewport_rect().size))
     dialog.mouse_filter = Control.MOUSE_FILTER_STOP
-    dialog.add_theme_stylebox_override(
-        "panel",
-        _dialog_style(true)
-    )
+    dialog.add_theme_stylebox_override("panel", _dialog_style(true))
     modal_layer.add_child(dialog)
     active_modal_scrim = dim
     active_modal_dialog = dialog
@@ -12217,9 +11556,8 @@ func _build_runtime_dialog_content(
     var title := Label.new()
     title.text = String(values.get("title", ""))
     title.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-    title.add_theme_font_override("font", HEADING_FONT)
-    title.add_theme_font_size_override("font_size", 28)
-    title.add_theme_color_override("font_color", color_text)
+    title.add_theme_font_size_override("font_size", 30)
+    title.add_theme_color_override("font_color", ui_tokens.text_primary)
     box.add_child(title)
 
     var message_scroll := ScrollContainer.new()
@@ -12240,7 +11578,7 @@ func _build_runtime_dialog_content(
     message.size_flags_horizontal = Control.SIZE_EXPAND_FILL
     message.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
     message.add_theme_font_size_override("font_size", 23)
-    message.add_theme_color_override("font_color", color_text)
+    message.add_theme_color_override("font_color", ui_tokens.text_primary)
     message_scroll.add_child(message)
 
     var text_field := String(values.get("text_field", "0")) == "1"
@@ -12251,8 +11589,6 @@ func _build_runtime_dialog_content(
         runtime_dialog_input.name = "ArtemisDialogInput"
         runtime_dialog_input.custom_minimum_size = Vector2(0, 68)
         runtime_dialog_input.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-        ui_widgets.line_edit(runtime_dialog_input)
-        runtime_dialog_input.custom_minimum_size = Vector2(0, 68)
         runtime_dialog_input.add_theme_font_size_override("font_size", 25)
         var maximum_characters := int(
             String(values.get("maximum_characters", "0"))
@@ -12268,7 +11604,7 @@ func _build_runtime_dialog_content(
     box.add_child(buttons)
 
     if yes_no:
-        var no := _secondary_dialog_button("No", Vector2(150, 60))
+        var no := _pill_button("No")
         no.custom_minimum_size = Vector2(150, 60)
         no.pressed.connect(
             _complete_runtime_dialog.bind(0, runtime_dialog_input)
@@ -12491,15 +11827,9 @@ func _show_android_storage_permission_prompt(
 ) -> void:
     var dialog := _modal_dialog(Vector2(640, 320), 0.46)
     var box := _modal_stack(dialog, APP_DISPLAY_NAME, ICON_LIBRARY)
-    var body := Label.new()
-    body.text = _t(message_key)
-    body.size_flags_vertical = Control.SIZE_EXPAND_FILL
-    body.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-    body.add_theme_font_size_override("font_size", 15)
-    body.add_theme_color_override("font_color", ui_tokens.text_secondary)
-    box.add_child(body)
+    box.add_child(_dialog_body_label(_t(message_key)))
     var ok := _pill_button(_t("dialog.ok"))
-    ok.custom_minimum_size = Vector2(128, 44)
+    ok.custom_minimum_size = Vector2(128, 46)
     ok.size_flags_horizontal = Control.SIZE_SHRINK_END
     ok.pressed.connect(func():
         _dismiss_modal(func():
@@ -12726,9 +12056,6 @@ func _capture_ui_after_ready() -> void:
             rate_popup.size,
             video_rate_button.get_global_rect(),
         ])
-    var settle_text := OS.get_environment("AETHERKIRI_CAPTURE_UI_SETTLE_SEC").strip_edges()
-    if not settle_text.is_empty():
-        await get_tree().create_timer(maxf(0.0, settle_text.to_float())).timeout
     await get_tree().process_frame
     var path := OS.get_environment("AETHERKIRI_CAPTURE_UI")
     var image := get_viewport().get_texture().get_image()
@@ -17111,12 +16438,8 @@ func _sync_backdrop_palette() -> void:
     if backdrop_material == null:
         return
     backdrop_material.set_shader_parameter("base", ui_tokens.background)
-    backdrop_material.set_shader_parameter("blob_a", ui_tokens.aurora_a)
-    backdrop_material.set_shader_parameter("blob_b", ui_tokens.aurora_b)
-    backdrop_material.set_shader_parameter("blob_c", ui_tokens.aurora_c)
-    backdrop_material.set_shader_parameter("pointer_color", ui_tokens.tint(ui_tokens.accent_2, 1.0))
-    backdrop_material.set_shader_parameter("grain", 0.022 if ui_tokens.is_dark() else 0.012)
-    backdrop_material.set_shader_parameter("vignette", 0.42 if ui_tokens.is_dark() else 0.10)
+    backdrop_material.set_shader_parameter("dot_color", ui_tokens.dot)
+    backdrop_material.set_shader_parameter("glow_color", ui_tokens.tint(ui_tokens.accent, 0.10 if ui_tokens.is_dark() else 0.07))
     backdrop_material.set_shader_parameter("speed", 0.0 if ui_motion.reduced_motion else 1.0)
 
 func _set_backdrop_focus(color: Color) -> void:
@@ -17128,240 +16451,198 @@ func _process_backdrop(delta: float) -> void:
     var viewport_size := get_viewport_rect().size
     if viewport_size.x <= 0.0 or viewport_size.y <= 0.0:
         return
-    backdrop_material.set_shader_parameter("aspect", viewport_size.x / viewport_size.y)
+    backdrop_material.set_shader_parameter("view_size", viewport_size)
     var mouse := get_viewport().get_mouse_position()
-    backdrop_pointer_target = Vector2(mouse.x / viewport_size.x, mouse.y / viewport_size.y)
-    var follow := 1.0 - exp(-3.2 * delta)
-    backdrop_pointer = backdrop_pointer.lerp(backdrop_pointer_target, follow)
-    var strength_target: float = 0.0 if _is_touch_platform() or ui_motion.reduced_motion else (0.10 if ui_tokens.is_dark() else 0.06)
+    var follow := 1.0 - exp(-6.0 * delta)
+    backdrop_pointer = backdrop_pointer.lerp(mouse / viewport_size, follow)
+    var strength_target := 0.0 if _is_touch_platform() or ui_motion.reduced_motion else 1.0
     backdrop_pointer_strength = lerpf(backdrop_pointer_strength, strength_target, follow)
     backdrop_material.set_shader_parameter("pointer", backdrop_pointer)
     backdrop_material.set_shader_parameter("pointer_strength", backdrop_pointer_strength)
     var stored = backdrop_material.get_shader_parameter("focus_tint")
     var current: Color = stored if stored is Color else Color(0, 0, 0, 0)
-    var settle := 1.0 - exp(-2.2 * delta)
-    backdrop_material.set_shader_parameter("focus_tint", current.lerp(backdrop_focus_color, settle))
+    backdrop_material.set_shader_parameter("focus_tint", current.lerp(backdrop_focus_color, 1.0 - exp(-2.5 * delta)))
 
-func _sidebar_glass_style() -> StyleBoxFlat:
-    var style: StyleBoxFlat = ui_tokens.glass_panel(26, true, ui_tokens.sidebar_material)
-    style.content_margin_left = 14
-    style.content_margin_top = 16
-    style.content_margin_right = 14
-    style.content_margin_bottom = 16
+func _topbar_style(dock: bool) -> StyleBoxFlat:
+    var style: StyleBoxFlat = ui_tokens.panel(ui_tokens.tint(ui_tokens.background, 0.92), 0)
+    style.border_color = ui_tokens.separator
+    if dock:
+        style.border_width_top = 1
+    else:
+        style.border_width_bottom = 1
+    style.content_margin_left = 0
+    style.content_margin_right = 0
+    style.content_margin_top = 0
+    style.content_margin_bottom = 0
     return style
 
-func _compact_header_style() -> StyleBoxFlat:
-    var style: StyleBoxFlat = ui_tokens.glass_panel(22, true, ui_tokens.sidebar_material)
-    style.shadow_size = 18
-    style.shadow_offset = Vector2(0, 8)
-    return style
+# Brand mark: a signal-colour tile holding the gamepad glyph, with an outline
+# twin rotated behind it that slowly turns.
 
-func _nav_pill_panel(node_name: String, compact: bool) -> PanelContainer:
-    var pill := PanelContainer.new()
-    pill.name = node_name
-    pill.mouse_filter = Control.MOUSE_FILTER_IGNORE
-    pill.visible = false
-    pill.add_theme_stylebox_override("panel", ui_tokens.panel(Color.TRANSPARENT, 14))
-    var surface = AetherSurface.new()
-    surface.name = "PillSurface"
-    surface.configure(
-        ui_tokens.tint(ui_tokens.accent, 0.30 if ui_tokens.is_dark() else 0.18),
-        ui_tokens.tint(ui_tokens.accent_2, 0.14 if ui_tokens.is_dark() else 0.10),
-        14.0,
-        0.0
-    )
-    surface.rim(ui_tokens.tint(ui_tokens.accent, 0.55), 1.0, 0.55)
-    surface.set_param("highlight", 0.6)
-    surface.glow(ui_tokens.tint(ui_tokens.accent, 0.20), 12.0)
-    pill.add_child(surface)
-    if not compact:
-        # Bright accent tick on the leading edge of the rail pill.
-        var tick := PanelContainer.new()
-        tick.name = "PillTick"
-        tick.mouse_filter = Control.MOUSE_FILTER_IGNORE
-        tick.add_theme_stylebox_override("panel", ui_tokens.panel(ui_tokens.accent, 2))
-        tick.anchor_top = 0.5
-        tick.anchor_bottom = 0.5
-        tick.offset_left = 5
-        tick.offset_right = 8
-        tick.offset_top = -10
-        tick.offset_bottom = 10
-        # PanelContainer stretches direct children; the surface is a plain
-        # Control, so anchors on the tick are honoured there.
-        surface.add_child(tick)
-    return pill
-
-func _brand_orb(diameter: float) -> Control:
-    var orb := Control.new()
-    orb.custom_minimum_size = Vector2(diameter, diameter)
-    orb.size = Vector2(diameter, diameter)
-    orb.mouse_filter = Control.MOUSE_FILTER_IGNORE
-    orb.pivot_offset = Vector2(diameter, diameter) * 0.5
-    var disc = AetherSurface.new()
-    disc.configure(ui_tokens.accent, ui_tokens.accent_2, diameter * 0.5, 0.8)
-    disc.rim(Color(1, 1, 1, 0.45), 1.0, 1.0)
-    disc.set_param("highlight", 1.0)
-    disc.glow(ui_tokens.tint(ui_tokens.accent, 0.45), diameter * 0.36)
-    orb.add_child(disc)
-    var ring := Control.new()
-    ring.mouse_filter = Control.MOUSE_FILTER_IGNORE
-    ring.set_anchors_preset(Control.PRESET_FULL_RECT)
-    ring.pivot_offset = Vector2(diameter, diameter) * 0.5
-    var ring_color: Color = ui_tokens.accent_3
-    ring.draw.connect(func():
-        var r := diameter * 0.5 + 4.0
-        ring.draw_arc(Vector2(diameter, diameter) * 0.5, r, 0.0, TAU * 0.28, 24, ring_color, 2.0, true)
-        ring.draw_arc(Vector2(diameter, diameter) * 0.5, r, PI, PI + TAU * 0.12, 16, ui_tokens.tint(ui_tokens.accent_2, 0.9), 2.0, true)
-    )
-    orb.add_child(ring)
-    var icon := _icon_rect(ICON_GAMEPAD, Vector2(diameter, diameter) * 0.52, Color.WHITE)
-    icon.custom_minimum_size = Vector2.ZERO
-    icon.set_anchors_preset(Control.PRESET_FULL_RECT)
-    icon.offset_left = diameter * 0.24
-    icon.offset_top = diameter * 0.24
-    icon.offset_right = -diameter * 0.24
-    icon.offset_bottom = -diameter * 0.24
-    orb.add_child(icon)
-    orb.set_meta("orb_disc", disc)
+func _brand_mark(extent: float) -> Control:
+    var mark := Control.new()
+    mark.custom_minimum_size = Vector2(extent, extent)
+    mark.mouse_filter = Control.MOUSE_FILTER_IGNORE
+    var twin := Panel.new()
+    twin.mouse_filter = Control.MOUSE_FILTER_IGNORE
+    twin.size = Vector2(extent, extent)
+    twin.pivot_offset = Vector2(extent, extent) * 0.5
+    twin.rotation = 0.26
+    twin.add_theme_stylebox_override("panel", ui_tokens.panel(Color.TRANSPARENT, int(extent * 0.3), ui_tokens.tint(ui_tokens.accent, 0.55), 2))
+    mark.add_child(twin)
+    var tile := Panel.new()
+    tile.mouse_filter = Control.MOUSE_FILTER_IGNORE
+    tile.size = Vector2(extent, extent)
+    tile.add_theme_stylebox_override("panel", ui_tokens.panel(ui_tokens.accent, int(extent * 0.3)))
+    mark.add_child(tile)
+    var glyph := _icon_rect(ICON_GAMEPAD, Vector2(extent, extent) * 0.56, ui_tokens.text_on_accent)
+    glyph.position = Vector2(extent, extent) * 0.22
+    glyph.size = Vector2(extent, extent) * 0.56
+    mark.add_child(glyph)
+    mark.resized.connect(func(): mark.pivot_offset = mark.size * 0.5)
     if not ui_motion.reduced_motion:
-        var spin := ring.create_tween().set_loops()
-        spin.tween_property(ring, "rotation", TAU, 7.0).from(0.0)
-        ui_motion.breathe(orb, 0.045, 3.4)
-        var shine := orb.create_tween().set_loops()
-        shine.tween_interval(4.5)
-        shine.tween_callback(func():
-            if is_instance_valid(disc):
-                disc.sweep(0.9, 0.35)
-        )
-    return orb
+        var spin := twin.create_tween().set_loops()
+        spin.tween_property(twin, "rotation", 0.26 + PI * 0.5, 2.4).set_delay(4.0).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_IN_OUT)
+        spin.tween_property(twin, "rotation", 0.26, 0.0)
+    return mark
 
 func _status_dot(color: Color) -> Control:
     var holder := CenterContainer.new()
-    holder.custom_minimum_size = Vector2(8, 8)
+    holder.custom_minimum_size = Vector2(10, 10)
     holder.mouse_filter = Control.MOUSE_FILTER_IGNORE
-    var dot := PanelContainer.new()
-    dot.custom_minimum_size = Vector2(6, 6)
+    var dot := Panel.new()
+    dot.custom_minimum_size = Vector2(7, 7)
     dot.mouse_filter = Control.MOUSE_FILTER_IGNORE
-    var style: StyleBoxFlat = ui_tokens.panel(color, 3)
-    style.shadow_color = ui_tokens.tint(color, 0.7)
-    style.shadow_size = 4
-    dot.add_theme_stylebox_override("panel", style)
+    dot.add_theme_stylebox_override("panel", ui_tokens.panel(color, 4))
     holder.add_child(dot)
-    if not ui_motion.reduced_motion:
-        var pulse := dot.create_tween().set_loops()
-        pulse.tween_property(dot, "modulate:a", 0.35, 1.1).set_trans(Tween.TRANS_SINE)
-        pulse.tween_property(dot, "modulate:a", 1.0, 1.1).set_trans(Tween.TRANS_SINE)
+    ui_motion.pulse(dot, 0.3, 2.4)
     return holder
 
-# Hairline that fades from the accent into transparency (or both ways).
+func _nav_indicator_rect(button: Control, parent: Control, compact: bool) -> Rect2:
+    var button_rect := button.get_global_rect()
+    var parent_rect := parent.get_global_rect()
+    var local := Rect2(button_rect.position - parent_rect.position, button_rect.size)
+    if compact:
+        # Pill behind the dock icon.
+        var width := minf(local.size.x - 8.0, 58.0)
+        return Rect2(Vector2(local.get_center().x - width * 0.5, local.position.y + 1.0), Vector2(width, 30.0))
+    # Underline resting on the top bar's bottom hairline.
+    var inset := 14.0
+    return Rect2(
+        Vector2(local.position.x + inset, parent.size.y - SHELL_NAV_UNDERLINE),
+        Vector2(maxf(8.0, local.size.x - inset * 2.0), SHELL_NAV_UNDERLINE)
+    )
 
-func _gradient_rule(start_alpha: float, end_alpha: float, from: Color = Color(-1, -1, -1, -1)) -> TextureRect:
-    var base: Color = ui_tokens.accent if from.a < 0.0 else from
-    var rule := TextureRect.new()
-    rule.mouse_filter = Control.MOUSE_FILTER_IGNORE
-    rule.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
-    rule.stretch_mode = TextureRect.STRETCH_SCALE
-    var gradient := Gradient.new()
-    gradient.offsets = PackedFloat32Array([0.0, 0.5, 1.0])
-    gradient.colors = PackedColorArray([
-        ui_tokens.tint(base, start_alpha * 0.55),
-        ui_tokens.tint(ui_tokens.accent_2, (start_alpha + end_alpha) * 0.25),
-        ui_tokens.tint(ui_tokens.accent_2, end_alpha * 0.55),
-    ])
-    var texture := GradientTexture2D.new()
-    texture.gradient = gradient
-    texture.width = 256
-    texture.height = 2
-    rule.texture = texture
-    return rule
+func _place_route_indicator(pill: Control, goal, spring: bool, horizontal: bool) -> void:
+    var target_pos: Vector2 = goal["pos"]
+    var target_size: Vector2 = goal["size"]
+    var was_hidden := not pill.visible
+    pill.visible = true
+    if spring and not ui_motion.reduced_motion:
+        if was_hidden:
+            pill.position = target_pos
+            pill.size = target_size
+            ui_motion.pop_in(pill, 0.0, 0.4)
+        else:
+            ui_motion.spring_property(pill, "position", target_pos, 0.40, 0.62)
+            ui_motion.spring_property(pill, "size", target_size, 0.30, 1.0)
+            _jelly_pill(pill, horizontal)
+        return
+    ui_motion.active_springs.erase(ui_motion._motion_key(pill, "position"))
+    ui_motion.active_springs.erase(ui_motion._motion_key(pill, "size"))
+    pill.position = target_pos
+    pill.size = target_size
+    pill.scale = Vector2.ONE
+
+func _shell_content_size(safe_size: Vector2) -> Vector2:
+    if AetherDisplayScale.use_compact_shell(safe_size):
+        return Vector2(safe_size.x, safe_size.y - ui_tokens.COMPACT_HEADER_HEIGHT - ui_tokens.DOCK_HEIGHT)
+    return Vector2(safe_size.x, safe_size.y - ui_tokens.TOPBAR_HEIGHT)
 
 func _animate_shell_chrome_in() -> void:
     if ui_motion.reduced_motion:
         return
-    if is_instance_valid(shell_sidebar) and shell_sidebar.visible:
-        # _layout_shell re-pins the rail every frame; the meta flag hands
-        # position ownership to this entrance tween until it lands.
-        var rest := shell_sidebar.position
-        shell_sidebar.set_meta("aether_entering", true)
-        shell_sidebar.modulate.a = 0.0
-        shell_sidebar.position = rest - Vector2(28, 0)
-        var tween := shell_sidebar.create_tween().set_parallel(true)
-        tween.tween_property(shell_sidebar, "modulate:a", 1.0, 0.36).set_trans(Tween.TRANS_QUART).set_ease(Tween.EASE_OUT)
-        tween.tween_property(shell_sidebar, "position", rest, 0.6).set_trans(Tween.TRANS_EXPO).set_ease(Tween.EASE_OUT)
-        tween.chain().tween_callback(func():
-            if is_instance_valid(shell_sidebar):
-                shell_sidebar.remove_meta("aether_entering")
-        )
-        var index := 0
-        for item in [shell_sidebar_brand, shell_library_button, shell_video_button, shell_settings_button]:
-            if is_instance_valid(item):
-                ui_motion.pop_in(item, 0.10 + 0.06 * float(index), 0.82)
-                index += 1
+    for bar in [shell_sidebar, shell_compact_topbar]:
+        if is_instance_valid(bar) and bar.visible:
+            ui_motion.enter(bar, Vector2(0, -16), 0.0)
     if is_instance_valid(shell_compact_header) and shell_compact_header.visible:
-        ui_motion.enter(shell_compact_header, Vector2(0, -18), 0.0)
-
-func _sweep_pill(pill: Control) -> void:
-    var surface = pill.get_node_or_null("PillSurface")
-    if surface != null:
-        surface.sweep(0.6, 0.30)
+        var rest := shell_compact_header.position
+        shell_compact_header.set_meta("aether_entering", true)
+        shell_compact_header.position = rest + Vector2(0, 40)
+        var tween := shell_compact_header.create_tween()
+        tween.tween_property(shell_compact_header, "position", rest, 0.6).set_delay(0.08).set_trans(Tween.TRANS_EXPO).set_ease(Tween.EASE_OUT)
+        tween.tween_callback(func():
+            if is_instance_valid(shell_compact_header):
+                shell_compact_header.remove_meta("aether_entering")
+        )
+    var index := 0
+    for item in [shell_brand_mark, shell_library_button, shell_video_button, shell_settings_button]:
+        if is_instance_valid(item) and item.is_visible_in_tree():
+            ui_motion.pop_in(item, 0.06 + 0.06 * float(index), 0.7)
+            index += 1
 
 func _home_search_focus_style() -> StyleBoxFlat:
     var style := _home_search_outer_style()
-    style.border_color = ui_tokens.tint(ui_tokens.accent, 0.85)
+    style.border_color = ui_tokens.accent
     style.set_border_width_all(2)
-    style.shadow_color = ui_tokens.tint(ui_tokens.accent, 0.30)
-    style.shadow_size = 18
+    style.shadow_color = ui_tokens.tint(ui_tokens.accent, 0.16)
+    style.shadow_size = 8
     return style
 
 func _home_grid() -> GridContainer:
     var grid := GridContainer.new()
     grid.columns = 1
     grid.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-    grid.add_theme_constant_override("h_separation", 20)
-    grid.add_theme_constant_override("v_separation", 20)
     return grid
 
-# Empty library: a floating glass tile with a breathing gradient orb, a
-# bold headline and helper copy. The orb gently floats while idle.
+# Empty library: a stack of three offset "sleeves" hinting at covers, with a
+# headline and helper copy. The sleeves fan out and back on a slow loop.
 
 func _empty_state_panel(icon_path: String, title_text: String, body_text: String) -> Dictionary:
     var box := VBoxContainer.new()
-    box.custom_minimum_size = Vector2(360, 0)
+    box.custom_minimum_size = Vector2(340, 0)
     box.alignment = BoxContainer.ALIGNMENT_CENTER
-    box.add_theme_constant_override("separation", 14)
-
-    var orb_holder := CenterContainer.new()
-    orb_holder.custom_minimum_size = Vector2(0, 120)
-    orb_holder.mouse_filter = Control.MOUSE_FILTER_IGNORE
-    box.add_child(orb_holder)
-    var orb := Control.new()
-    orb.custom_minimum_size = Vector2(92, 92)
-    orb.size = Vector2(92, 92)
-    orb.pivot_offset = Vector2(46, 46)
-    orb.mouse_filter = Control.MOUSE_FILTER_IGNORE
-    orb_holder.add_child(orb)
-    var disc = AetherSurface.new()
-    disc.configure(ui_tokens.tint(ui_tokens.accent, 0.35), ui_tokens.tint(ui_tokens.accent_2, 0.22), 46.0, 0.8)
-    disc.rim(ui_tokens.tint(ui_tokens.rim, 1.0), 1.0, 0.6)
-    disc.set_param("highlight", 0.8)
-    disc.glow(ui_tokens.tint(ui_tokens.accent, 0.35), 34.0)
-    orb.add_child(disc)
-    var icon := _icon_rect(icon_path, Vector2(40, 40), ui_tokens.text_primary)
-    icon.position = Vector2(26, 26)
-    icon.size = Vector2(40, 40)
-    orb.add_child(icon)
-    ui_motion.breathe(orb, 0.06, 3.2)
-    ui_motion.float_idle(icon, 0.08, 4.0)
-
+    box.add_theme_constant_override("separation", 12)
+    var art_holder := CenterContainer.new()
+    art_holder.custom_minimum_size = Vector2(0, 150)
+    art_holder.mouse_filter = Control.MOUSE_FILTER_IGNORE
+    box.add_child(art_holder)
+    var art := Control.new()
+    art.custom_minimum_size = Vector2(120, 130)
+    art.mouse_filter = Control.MOUSE_FILTER_IGNORE
+    art_holder.add_child(art)
+    var sleeves: Array[Panel] = []
+    for i in range(3):
+        var sleeve := Panel.new()
+        sleeve.mouse_filter = Control.MOUSE_FILTER_IGNORE
+        sleeve.size = Vector2(84, 112)
+        sleeve.position = Vector2(18, 9)
+        sleeve.pivot_offset = Vector2(42, 112)
+        var fill: Color = ui_tokens.accent if i == 2 else ui_tokens.surface_raised
+        sleeve.add_theme_stylebox_override("panel", ui_tokens.raised(10, 1, fill))
+        art.add_child(sleeve)
+        sleeves.append(sleeve)
+    var glyph := _icon_rect(icon_path, Vector2(34, 34), ui_tokens.text_on_accent)
+    glyph.position = Vector2(25, 39)
+    glyph.size = Vector2(34, 34)
+    sleeves[2].add_child(glyph)
+    var angles := [-0.22, 0.2, 0.0]
+    for i in range(3):
+        sleeves[i].rotation = angles[i]
+    if not ui_motion.reduced_motion:
+        for i in range(2):
+            var fan := sleeves[i].create_tween().set_loops()
+            fan.tween_property(sleeves[i], "rotation", angles[i] * 1.5, 1.8).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+            fan.tween_property(sleeves[i], "rotation", angles[i], 1.8).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+        ui_motion.breathe(sleeves[2], 0.03, 3.6)
     var title := Label.new()
     title.text = title_text
     title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
     title.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-    title.add_theme_font_override("font", HEADING_FONT)
-    title.add_theme_font_size_override("font_size", 24)
+    title.add_theme_font_override("font", TITLE_FONT)
+    title.add_theme_font_size_override("font_size", 22)
     title.add_theme_color_override("font_color", ui_tokens.text_primary)
     box.add_child(title)
-
     var body := Label.new()
     body.text = body_text
     body.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
@@ -17372,48 +16653,115 @@ func _empty_state_panel(icon_path: String, title_text: String, body_text: String
     box.add_child(body)
     return {"root": box, "title": title, "body": body}
 
-func _card_chrome(host: Control, tint: Color) -> Control:
-    var radius: float = 18.0 if home_compact_layout else float(ui_tokens.RADIUS_CARD)
-    var surface = AetherSurface.new()
-    surface.name = "CardSurface"
-    surface.show_behind_parent = true
-    var wash_alpha: float = 0.22 if ui_tokens.is_dark() else 0.14
-    surface.configure(
-        ui_tokens.glass_material.lerp(ui_tokens.tint(tint, ui_tokens.glass_material.a), wash_alpha),
-        ui_tokens.tint(ui_tokens.glass_material, ui_tokens.glass_material.a * 0.82),
-        radius,
-        0.55
-    )
-    surface.rim(ui_tokens.rim, 1.0, 0.65)
-    surface.glow(ui_tokens.tint(tint, 0.0), 26.0)
-    host.add_child(surface, false, Node.INTERNAL_MODE_FRONT)
-    return surface
+func _cascade_grid(grid: GridContainer) -> void:
+    if grid != null and is_instance_valid(grid) and grid.is_visible_in_tree():
+        ui_motion.cascade_grid(grid)
 
-func _bind_card_motion(card: BaseButton, chrome: Control, tint: Color) -> void:
-    ui_motion.bind_lift(card)
-    ui_motion.bind_tilt(card, 0.012)
-    ui_motion.bind_ripple(card, ui_tokens.tint(tint.lerp(Color.WHITE, 0.4), 0.18), 20.0)
-    var glow_on: Color = ui_tokens.tint(tint.lerp(ui_tokens.accent, 0.35), 0.45 if ui_tokens.is_dark() else 0.30)
-    var hover_on := func(active: bool):
-        if not is_instance_valid(chrome):
-            return
-        chrome.tween_param("glow_color", glow_on if active else ui_tokens.tint(tint, 0.0), 0.3)
-        chrome.tween_param("border_color", ui_tokens.tint(tint.lerp(ui_tokens.accent, 0.4), 0.8) if active else ui_tokens.rim, 0.3)
-        if active:
-            chrome.sweep(0.8, 0.14)
-            _set_backdrop_focus(ui_tokens.tint(tint, 0.30 if ui_tokens.is_dark() else 0.20))
-        else:
-            _set_backdrop_focus(Color(0, 0, 0, 0))
-        var cover: Control = card.get_meta("hero_cover", null)
-        if cover != null and is_instance_valid(cover):
-            cover.set_meta("hover_zoom", 1.07 if active else 1.0)
-    card.mouse_entered.connect(func(): hover_on.call(true))
-    card.mouse_exited.connect(func(): hover_on.call(false))
-    card.focus_entered.connect(func(): hover_on.call(true))
-    card.focus_exited.connect(func(): hover_on.call(false))
+func _card_poster(button: Button, game: Dictionary, placeholder_icon: String) -> Control:
+    # The poster is a plain Control so the hero flight can read its exact
+    # rect; the shadow plate and artwork are anchored children.
+    var poster := Control.new()
+    poster.name = "Poster"
+    poster.mouse_filter = Control.MOUSE_FILTER_IGNORE
+    var plate := Panel.new()
+    plate.name = "PosterPlate"
+    plate.mouse_filter = Control.MOUSE_FILTER_IGNORE
+    plate.set_anchors_preset(Control.PRESET_FULL_RECT)
+    plate.add_theme_stylebox_override("panel", ui_tokens.raised(12, 1, ui_tokens.surface_raised))
+    poster.add_child(plate)
+    var target := Vector2i(int(HOME_TILE_COVER_WIDTH * 2.0), int(HOME_TILE_COVER_WIDTH * HOME_POSTER_ASPECT * 2.0))
+    var texture := _load_cover_texture(game, target, 0) if not game.is_empty() else null
+    if texture != null:
+        poster.add_child(_rounded_cover_rect(texture, 12.0))
+    else:
+        poster.add_child(_cover_placeholder(placeholder_icon, 12.0, _cover_tint(game) if not game.is_empty() else ui_tokens.accent, 34.0))
+    button.set_meta("hero_cover", poster)
+    poster.resized.connect(func(): poster.pivot_offset = Vector2(poster.size.x * 0.5, poster.size.y))
+    return poster
 
-# Average colour of the cover (cached per file + mtime), saturated a touch so
-# it reads as a tint. Falls back to the accent for cover-less items.
+func _card_caption(button: Button, title_text: String, subtitle_text: String, kind: String) -> VBoxContainer:
+    var labels := VBoxContainer.new()
+    labels.mouse_filter = Control.MOUSE_FILTER_IGNORE
+    labels.add_theme_constant_override("separation", 3)
+    var title := Label.new()
+    title.text = title_text
+    title.mouse_filter = Control.MOUSE_FILTER_IGNORE
+    title.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+    title.max_lines_visible = 2
+    title.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+    title.custom_minimum_size = Vector2(0, 40 if not home_compact_layout else 0)
+    title.add_theme_font_override("font", TITLE_FONT)
+    title.add_theme_font_size_override("font_size", 15)
+    title.add_theme_color_override("font_color", ui_tokens.text_primary)
+    labels.add_child(title)
+    var meta_row := HBoxContainer.new()
+    meta_row.mouse_filter = Control.MOUSE_FILTER_IGNORE
+    meta_row.add_theme_constant_override("separation", 8)
+    labels.add_child(meta_row)
+    var chip := Label.new()
+    chip.text = kind.to_upper()
+    chip.mouse_filter = Control.MOUSE_FILTER_IGNORE
+    chip.add_theme_font_override("font", DISPLAY_FONT)
+    chip.add_theme_font_size_override("font_size", 10)
+    chip.add_theme_color_override("font_color", ui_tokens.accent_text)
+    meta_row.add_child(chip)
+    var sub := Label.new()
+    sub.text = subtitle_text
+    sub.mouse_filter = Control.MOUSE_FILTER_IGNORE
+    sub.clip_text = true
+    sub.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+    sub.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+    sub.add_theme_font_size_override("font_size", 12)
+    sub.add_theme_color_override("font_color", ui_tokens.text_tertiary)
+    meta_row.add_child(sub)
+    # Hover bar under the title.
+    var bar := Panel.new()
+    bar.mouse_filter = Control.MOUSE_FILTER_IGNORE
+    bar.custom_minimum_size = Vector2(0, 2)
+    bar.add_theme_stylebox_override("panel", ui_tokens.panel(ui_tokens.accent, 1))
+    bar.scale = Vector2(0, 1)
+    labels.add_child(bar)
+    button.set_meta("card_title", title)
+    button.set_meta("card_bar", bar)
+    return labels
+
+func _card_chevron() -> Control:
+    var holder := CenterContainer.new()
+    holder.mouse_filter = Control.MOUSE_FILTER_IGNORE
+    holder.custom_minimum_size = Vector2(24, 0)
+    var chevron := _icon_rect(ICON_CHEVRON_RIGHT, Vector2(14, 14), ui_tokens.text_tertiary)
+    holder.add_child(chevron)
+    return holder
+
+func _bind_card_motion(card: Button, tint: Color) -> void:
+    ui_motion.bind_pressable(card)
+    var hover := func(active: bool):
+        var poster: Control = card.get_meta("hero_cover", null)
+        if poster != null and is_instance_valid(poster):
+            poster.set_meta("hover_zoom", 1.08 if active else 1.0)
+            if not home_compact_layout:
+                ui_motion.spring_property(poster, "position:y", -8.0 if active else 0.0, 0.30, 0.62)
+                var plate := poster.get_node_or_null("PosterPlate") as Panel
+                if plate != null:
+                    var style := ui_tokens.raised(12, 2 if active else 1, ui_tokens.surface_raised)
+                    if active:
+                        style.shadow_color = ui_tokens.tint(tint.darkened(0.3), 0.5 if ui_tokens.is_dark() else 0.32)
+                    plate.add_theme_stylebox_override("panel", style)
+        var title: Label = card.get_meta("card_title", null)
+        if title != null and is_instance_valid(title):
+            title.add_theme_color_override("font_color", ui_tokens.accent_text if active else ui_tokens.text_primary)
+        var bar: Control = card.get_meta("card_bar", null)
+        if bar != null and is_instance_valid(bar):
+            bar.pivot_offset = Vector2.ZERO
+            ui_motion.spring_property(bar, "scale", Vector2(1.0 if active else 0.0, 1.0), 0.32, 0.8)
+        _set_backdrop_focus(ui_tokens.tint(tint, 0.16 if ui_tokens.is_dark() else 0.10) if active else Color(0, 0, 0, 0))
+    card.mouse_entered.connect(func(): hover.call(true))
+    card.mouse_exited.connect(func(): hover.call(false))
+    card.focus_entered.connect(func(): hover.call(true))
+    card.focus_exited.connect(func(): hover.call(false))
+
+# Average colour of the cover (cached per file + mtime), used for the card
+# shadow tint and the backdrop focus wash.
 
 func _cover_tint(game: Dictionary) -> Color:
     var cover_path := _resolve_cover_path(game)
@@ -17429,21 +16777,9 @@ func _cover_tint(game: Dictionary) -> Color:
         if image != null:
             image.resize(1, 1, Image.INTERPOLATE_BILINEAR)
             var c := image.get_pixel(0, 0)
-            tint = Color.from_hsv(c.h, clampf(c.s * 1.35, 0.35, 0.85), clampf(c.v * 1.15, 0.55, 0.95))
+            tint = Color.from_hsv(c.h, clampf(c.s * 1.3, 0.3, 0.85), clampf(c.v * 1.1, 0.5, 0.95))
     cover_tint_cache[key] = tint
     return tint
-
-func _card_affordance(icon_path: String) -> Control:
-    var holder := CenterContainer.new()
-    holder.mouse_filter = Control.MOUSE_FILTER_IGNORE
-    holder.custom_minimum_size = Vector2(34, 0)
-    var orb := PanelContainer.new()
-    orb.mouse_filter = Control.MOUSE_FILTER_IGNORE
-    orb.custom_minimum_size = Vector2(30, 30)
-    orb.add_theme_stylebox_override("panel", ui_tokens.panel(ui_tokens.tint(ui_tokens.text_primary, 0.06), 15, ui_tokens.separator, 1))
-    holder.add_child(orb)
-    orb.add_child(_centered_icon(icon_path, Vector2(14, 14), ui_tokens.text_secondary))
-    return holder
 
 func _rounded_cover_rect(texture: Texture2D, radius: float) -> TextureRect:
     var cover := TextureRect.new()
@@ -17460,115 +16796,172 @@ func _rounded_cover_rect(texture: Texture2D, radius: float) -> TextureRect:
     cover.resized.connect(func(): mat.set_shader_parameter("rect_size", cover.size))
     return cover
 
+# Cover-less artwork: a tinted block with a large faint glyph and diagonal
+# stripes, so empty posters still read as posters.
+
 func _cover_placeholder(icon_path: String, radius: float, tint: Color, icon_size: float) -> Control:
-    var placeholder = AetherSurface.new()
-    placeholder.configure(ui_tokens.tint(tint, 0.34), ui_tokens.tint(ui_tokens.accent_2, 0.16), radius, 0.9)
-    placeholder.rim(ui_tokens.tint(ui_tokens.rim, 1.0), 1.0, 0.8)
-    placeholder.set_param("highlight", 0.6)
-    var icon := _centered_icon(icon_path, Vector2(icon_size, icon_size), ui_tokens.tint(Color.WHITE, 0.92) if ui_tokens.is_dark() else ui_tokens.tint(tint.darkened(0.3), 0.95))
-    icon.set_anchors_preset(Control.PRESET_FULL_RECT)
-    placeholder.add_child(icon)
-    return placeholder
+    var block := Panel.new()
+    block.mouse_filter = Control.MOUSE_FILTER_IGNORE
+    block.set_anchors_preset(Control.PRESET_FULL_RECT)
+    var fill: Color = tint.darkened(0.55) if ui_tokens.is_dark() else tint.lightened(0.72)
+    block.add_theme_stylebox_override("panel", ui_tokens.panel(fill, int(radius)))
+    var stripes := Control.new()
+    stripes.mouse_filter = Control.MOUSE_FILTER_IGNORE
+    stripes.set_anchors_preset(Control.PRESET_FULL_RECT)
+    stripes.clip_contents = true
+    var stripe_color: Color = ui_tokens.tint(tint, 0.14 if ui_tokens.is_dark() else 0.18)
+    stripes.draw.connect(func():
+        var s := stripes.size
+        var step := 14.0
+        var x := -s.y
+        while x < s.x:
+            stripes.draw_line(Vector2(x, s.y), Vector2(x + s.y, 0), stripe_color, 3.0, true)
+            x += step
+    )
+    block.add_child(stripes)
+    var glyph := _centered_icon(icon_path, Vector2(icon_size, icon_size), ui_tokens.tint(tint.lightened(0.2) if ui_tokens.is_dark() else tint.darkened(0.25), 0.9))
+    glyph.set_anchors_preset(Control.PRESET_FULL_RECT)
+    block.add_child(glyph)
+    return block
 
-func _type_chip(text: String, tint: Color) -> Control:
-    var row := HBoxContainer.new()
-    row.mouse_filter = Control.MOUSE_FILTER_IGNORE
-    var chip := PanelContainer.new()
-    chip.mouse_filter = Control.MOUSE_FILTER_IGNORE
-    var accent_tint: Color = tint.lerp(ui_tokens.accent, 0.35)
-    var style: StyleBoxFlat = ui_tokens.panel(ui_tokens.tint(accent_tint, 0.16), 999, ui_tokens.tint(accent_tint, 0.35), 1)
-    style.content_margin_left = 8
-    style.content_margin_right = 8
-    style.content_margin_top = 1
-    style.content_margin_bottom = 1
-    chip.add_theme_stylebox_override("panel", style)
-    row.add_child(chip)
-    var label := Label.new()
-    label.text = text.to_upper()
-    label.mouse_filter = Control.MOUSE_FILTER_IGNORE
-    label.add_theme_font_override("font", DISPLAY_FONT)
-    label.add_theme_font_size_override("font_size", 9)
-    label.add_theme_color_override("font_color", accent_tint.lightened(0.25) if ui_tokens.is_dark() else accent_tint.darkened(0.25))
-    chip.add_child(label)
-    return row
-
-func _cascade_grid(grid: GridContainer) -> void:
-    if grid == null or not is_instance_valid(grid) or not grid.is_visible_in_tree():
+func _grow_progress_fill(fill: Control) -> void:
+    # anchor_right keeps the true ratio; the grow is a left-pivoted scale.
+    if not is_instance_valid(fill):
         return
-    var columns := maxi(1, grid.columns)
-    var index := 0
-    for child in grid.get_children():
-        if not child is Control or child.is_queued_for_deletion():
-            continue
-        # Diagonal wave: row + column, so the grid ripples in from the top left.
-        var wave := float(index / columns) + float(index % columns) * 0.6
-        if index < 24:
-            ui_motion.rise(child, 0.03 + wave * 0.055)
-        index += 1
+    fill.pivot_offset = Vector2.ZERO
+    fill.scale = Vector2(0.0, 1.0)
+    var tween := fill.create_tween()
+    tween.tween_property(fill, "scale", Vector2.ONE, 0.8).set_delay(0.3).set_trans(Tween.TRANS_EXPO).set_ease(Tween.EASE_OUT)
 
-func _bind_row_hover(row: Control) -> void:
-    if row == null or row.has_meta("aether_row_hover"):
+func _cascade_detail_body(body: Control) -> void:
+    if not is_instance_valid(body):
         return
-    row.set_meta("aether_row_hover", true)
-    var wash := Panel.new()
-    wash.name = "RowHover"
-    wash.mouse_filter = Control.MOUSE_FILTER_IGNORE
-    wash.show_behind_parent = true
-    wash.set_anchors_preset(Control.PRESET_FULL_RECT)
-    wash.offset_left = -10
-    wash.offset_right = 10
-    wash.offset_top = 2
-    wash.offset_bottom = -2
-    wash.add_theme_stylebox_override("panel", ui_tokens.panel(ui_tokens.tint(ui_tokens.accent, 0.07), 14))
-    wash.modulate.a = 0.0
-    row.add_child(wash)
-    row.mouse_filter = Control.MOUSE_FILTER_PASS
-    row.mouse_entered.connect(func(): ui_motion._fade(wash, 1.0, 0.18, "row_hover"))
-    row.mouse_exited.connect(func():
-        if not row.get_global_rect().has_point(row.get_global_mouse_position()):
-            ui_motion._fade(wash, 0.0, 0.26, "row_hover")
+    ui_motion.cascade_children(body, 0.07, 0.06)
+    for child in body.get_children():
+        if child is VBoxContainer:
+            ui_motion.cascade_children(child, 0.06, 0.14)
+
+# The cover artwork, blurred and dimmed, fills a band behind the detail page
+# header and fades into the page colour.
+
+func _refresh_detail_backdrop(game: Dictionary) -> void:
+    if detail_backdrop == null or not is_instance_valid(detail_backdrop):
+        return
+    var texture := _load_cover_texture(game, Vector2i(480, 480), 0)
+    var tint := _cover_tint(game)
+    _set_backdrop_focus(ui_tokens.tint(tint, 0.20 if ui_tokens.is_dark() else 0.12))
+    detail_backdrop.texture = texture
+    detail_backdrop.visible = texture != null
+    var mat := detail_backdrop.material as ShaderMaterial
+    if mat != null:
+        mat.set_shader_parameter("fade_color", ui_tokens.background)
+        mat.set_shader_parameter("dim", 0.45 if ui_tokens.is_dark() else 0.0)
+    if texture != null and not ui_motion.reduced_motion:
+        detail_backdrop.modulate.a = 0.0
+        ui_motion._fade(detail_backdrop, 0.55 if ui_tokens.is_dark() else 0.35, 0.6, "backdrop")
+    else:
+        detail_backdrop.modulate.a = 0.55 if ui_tokens.is_dark() else 0.35
+
+func _sync_settings_index() -> void:
+    if settings_index == null or not is_instance_valid(settings_index) or not is_instance_valid(settings_view):
+        return
+    var host_top := settings_index_host.global_position.y
+    var view_top := settings_view.global_position.y
+    var pinned := maxf(0.0, view_top + 12.0 - host_top)
+    pinned = minf(pinned, maxf(0.0, settings_index_host.size.y - settings_index.size.y))
+    settings_index.position.y = pinned
+    var reading_line := view_top + settings_view.size.y * 0.28
+    var active := 0
+    for i in range(settings_index_entries.size()):
+        var section: Control = settings_index_entries[i]["section"]
+        if is_instance_valid(section) and section.global_position.y <= reading_line:
+            active = i
+    var bar := settings_view.get_v_scroll_bar()
+    if bar.value >= bar.max_value - bar.page - 2.0 and not settings_index_entries.is_empty():
+        active = settings_index_entries.size() - 1
+    if active == settings_index_active:
+        settings_index_marker.position.y = pinned + _settings_index_entry_y(active)
+        return
+    settings_index_active = active
+    for i in range(settings_index_entries.size()):
+        var entry: Button = settings_index_entries[i]["button"]
+        if is_instance_valid(entry):
+            var color: Color = ui_tokens.text_primary if i == active else ui_tokens.text_tertiary
+            entry.add_theme_color_override("font_color", color)
+            entry.add_theme_color_override("font_focus_color", color)
+    settings_index_marker.visible = true
+    var target := Vector2(0, pinned + _settings_index_entry_y(active))
+    if ui_motion.reduced_motion or settings_index_marker.position == Vector2.ZERO:
+        settings_index_marker.position = target
+    else:
+        ui_motion.spring_property(settings_index_marker, "position", target, 0.30, 0.6)
+        ui_motion.jelly(settings_index_marker, Vector2(1.0, 1.6))
+
+func _settings_index_entry_y(index: int) -> float:
+    if index < 0 or index >= settings_index_entries.size():
+        return 0.0
+    var entry: Button = settings_index_entries[index]["button"]
+    if not is_instance_valid(entry):
+        return 0.0
+    return entry.position.y + (entry.size.y - 20.0) * 0.5
+
+func _scroll_settings_to(section: Control) -> void:
+    if not is_instance_valid(section) or not is_instance_valid(settings_view):
+        return
+    var target := settings_view.scroll_vertical + int(section.global_position.y - settings_view.global_position.y - 16.0)
+    var bar := settings_view.get_v_scroll_bar()
+    target = clampi(target, 0, int(maxf(0.0, bar.max_value - bar.page)))
+    _stop_shell_scroll_momentum(settings_view)
+    _stop_shell_scroll_tween(settings_view)
+    if ui_motion.reduced_motion:
+        settings_view.scroll_vertical = target
+        return
+    var tween := settings_view.create_tween()
+    tween.tween_property(settings_view, "scroll_vertical", target, 0.55).set_trans(Tween.TRANS_EXPO).set_ease(Tween.EASE_OUT)
+    tween.tween_callback(func():
+        if is_instance_valid(settings_view):
+            shell_scroll_targets[settings_view.get_instance_id()] = float(settings_view.scroll_vertical)
     )
 
-func _round_hover_box(tint: Color) -> StyleBoxFlat:
-    var style: StyleBoxFlat = ui_tokens.button_style(ui_tokens.tint(tint, 0.12), ui_tokens.tint(tint, 0.45), 14)
-    style.content_margin_left = 12
-    style.content_margin_right = 12
+func _apply_video_chrome_boxes(button: Button) -> void:
+    var normal := _panel_style(12, Color(0.08, 0.08, 0.1, 0.72), Color(1, 1, 1, 0.12), 1)
+    var hover := _panel_style(12, Color(0.16, 0.16, 0.2, 0.86), Color(1, 1, 1, 0.26), 1)
+    var pressed := _panel_style(12, ui_tokens.accent, ui_tokens.accent, 1)
+    for style in [normal, hover, pressed]:
+        style.content_margin_top = 8
+        style.content_margin_bottom = 8
+        style.content_margin_left = 12
+        style.content_margin_right = 12
+    button.add_theme_stylebox_override("normal", normal)
+    button.add_theme_stylebox_override("hover", hover)
+    button.add_theme_stylebox_override("pressed", pressed)
+    button.add_theme_stylebox_override("hover_pressed", pressed)
+    button.add_theme_stylebox_override("focus", _focus_outline(12))
+# Video bars fade from near-black at the screen edge into the picture.
+func _video_scrim_style(top: bool) -> StyleBoxTexture:
+    var style := StyleBoxTexture.new()
+    var dark := Color(0, 0, 0, 0.82)
+    var clear := Color(0, 0, 0, 0.0)
+    style.texture = ui_tokens.linear_texture(dark if top else clear, clear if top else dark, true, 64)
     return style
 
-func _place_loading_comet(t: float, track: Control) -> void:
-    if not is_instance_valid(loading_progress_bar) or not is_instance_valid(track):
-        return
-    var width := maxf(1.0, track.size.x)
-    loading_progress_bar.size = Vector2(width * 0.4, 4)
-    loading_progress_bar.position.x = lerpf(-width * 0.4, width, t)
 
 func _dialog_style(accented: bool = false) -> StyleBoxFlat:
-    var style: StyleBoxFlat = ui_tokens.panel(
-        ui_tokens.popover,
-        ui_tokens.RADIUS_LARGE,
-        ui_tokens.tint(ui_tokens.accent, 0.55) if accented else ui_tokens.rim,
-        2 if accented else 1
-    )
-    style.shadow_color = ui_tokens.tint(ui_tokens.shadow, minf(1.0, ui_tokens.shadow.a * 1.4))
-    style.shadow_size = 36
-    style.shadow_offset = Vector2(0, 18)
-    style.content_margin_left = 24
-    style.content_margin_top = 22
-    style.content_margin_right = 24
+    var style: StyleBoxFlat = ui_tokens.raised(ui_tokens.RADIUS_LARGE, 2, ui_tokens.popover)
+    if accented:
+        style.border_color = ui_tokens.accent
+        style.set_border_width_all(2)
+    style.content_margin_left = 26
+    style.content_margin_top = 24
+    style.content_margin_right = 26
     style.content_margin_bottom = 22
     return style
 
-# Frosted modal scrim. Blurs and tints the page behind the dialog; the
-# ColorRect colour stays as a cheap fallback for renderers without screen
-# textures.
-
 func _modal_scrim(dim_alpha: float) -> ColorRect:
     var dim := ColorRect.new()
-    dim.color = Color(ui_tokens.scrim.r, ui_tokens.scrim.g, ui_tokens.scrim.b, dim_alpha)
+    dim.color = Color(ui_tokens.scrim.r, ui_tokens.scrim.g, ui_tokens.scrim.b, clampf(dim_alpha + 0.08, 0.3, 0.9))
     dim.set_anchors_preset(Control.PRESET_FULL_RECT)
     dim.mouse_filter = Control.MOUSE_FILTER_STOP
-    var tint_alpha := clampf(dim_alpha + (0.0 if ui_tokens.is_dark() else -0.12), 0.18, 0.85)
-    dim.material = AetherShaders.frost_material(Color(ui_tokens.scrim.r, ui_tokens.scrim.g, ui_tokens.scrim.b, tint_alpha), 3.2)
     return dim
 
 func _prepare_modal_layer() -> void:
@@ -17579,8 +16972,8 @@ func _prepare_modal_layer() -> void:
     active_modal_scrim = null
     active_modal_dialog = null
 
-# Shared presenter for dialogs that build their own content: installs the
-# frosted scrim + glass panel and plays the spring entrance.
+# Shared presenter: scrim + raised sheet + spring entrance. Optional scrim
+# tap dismisses.
 
 func _present_modal(dialog: Control, dim_alpha: float, dismiss_on_scrim: bool = false) -> ColorRect:
     var dim := _modal_scrim(dim_alpha)
@@ -17609,70 +17002,17 @@ func _dialog_body_label(text: String, font_size: int = 15) -> Label:
     body.add_theme_constant_override("line_spacing", 4)
     return body
 
-func _dialog_button_row(min_height: float = 48.0) -> HBoxContainer:
+func _dialog_button_row(min_height: float = 46.0) -> HBoxContainer:
     var buttons := HBoxContainer.new()
-    buttons.add_theme_constant_override("separation", 12)
+    buttons.add_theme_constant_override("separation", 10)
     buttons.size_flags_horizontal = Control.SIZE_EXPAND_FILL
     buttons.alignment = BoxContainer.ALIGNMENT_END
     buttons.custom_minimum_size = Vector2(0, min_height)
     return buttons
 
-func _secondary_dialog_button(text: String, min_size: Vector2 = Vector2(116, 48)) -> Button:
+func _secondary_dialog_button(text: String, min_size: Vector2 = Vector2(112, 46)) -> Button:
     var button := Button.new()
     button.text = text
-    button.custom_minimum_size = min_size
     ui_widgets.secondary_button(button)
     button.custom_minimum_size = min_size
     return button
-
-func _cascade_detail_body(body: Control) -> void:
-    if not is_instance_valid(body):
-        return
-    # Recursive cascade: cover, identity, tools and panels stagger in.
-    ui_motion.cascade_children(body, 0.07, 0.10)
-    for child in body.get_children():
-        if child is VBoxContainer:
-            ui_motion.cascade_children(child, 0.06, 0.18)
-
-# While the detail page is open the aurora picks up the cover's colour.
-
-func _refresh_detail_ambience(game: Dictionary) -> void:
-    var tint := _cover_tint(game)
-    _set_backdrop_focus(ui_tokens.tint(tint, 0.42 if ui_tokens.is_dark() else 0.26))
-
-func _detail_stat_strip(game: Dictionary) -> Control:
-    var strip := HBoxContainer.new()
-    strip.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-    strip.add_theme_constant_override("separation", 10)
-    var stats := [
-        [ICON_REFRESH, _last_played_label(game)],
-        [ICON_PERFORMANCE, _format_play_duration(int(game.get("playDurationSeconds", 0)))],
-        [ICON_PLAY, _game_launch_entry_label(game)],
-    ]
-    for stat in stats:
-        var tile := PanelContainer.new()
-        tile.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-        var style: StyleBoxFlat = ui_tokens.panel(Color.TRANSPARENT, 16)
-        style.content_margin_left = 14
-        style.content_margin_right = 14
-        style.content_margin_top = 10
-        style.content_margin_bottom = 10
-        tile.add_theme_stylebox_override("panel", style)
-        ui_widgets.glass_surface(tile, 16.0, false)
-        var row := HBoxContainer.new()
-        row.add_theme_constant_override("separation", 10)
-        tile.add_child(row)
-        var icon := _icon_rect(String(stat[0]), Vector2(18, 18), ui_tokens.accent)
-        icon.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-        row.add_child(icon)
-        var value := Label.new()
-        value.text = String(stat[1])
-        value.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-        value.clip_text = true
-        value.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
-        value.add_theme_font_override("font", DISPLAY_FONT)
-        value.add_theme_font_size_override("font_size", 14)
-        value.add_theme_color_override("font_color", ui_tokens.text_primary)
-        row.add_child(value)
-        strip.add_child(tile)
-    return strip

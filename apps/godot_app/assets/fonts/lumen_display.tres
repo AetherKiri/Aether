@@ -5,6 +5,5 @@
 [resource]
 base_font = ExtResource("1")
 variation_opentype = {
-2003265652: 600
+2003265652: 590
 }
-spacing_glyph = 0

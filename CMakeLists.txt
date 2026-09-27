@@ -89,6 +89,10 @@ option(AETHERKIRI_ENABLE_SIGLUS
        "enable the bundled siglus_rs runtime (requires a Rust toolchain)" ON)
 option(AETHERKIRI_ENABLE_MINORI
        "enable the independent Rust Minori runtime" ON)
+option(AETHERKIRI_ENABLE_NEXAS
+       "enable the independent C++ NeXAS runtime provider" OFF)
+set(AETHERKIRI_NEXAS_RUNTIME_DIR "" CACHE PATH
+    "path to the independent AetherNeXAS runtime provider repository")
 option(AETHERKIRI_ENABLE_CODE_OBFUSCATION
        "obfuscate private Internal translation units in release builds" OFF)
 set(AETHERKIRI_OBFUSCATOR_PLUGIN "" CACHE FILEPATH
@@ -235,6 +239,23 @@ if(AETHERKIRI_ENABLE_MINORI AND BUILD_GODOT_EXTENSION AND
 endif()
 if(AETHERKIRI_ENABLE_RFVP)
     add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/bridge/rfvp_runtime)
+endif()
+if(AETHERKIRI_ENABLE_NEXAS)
+    if(NOT BUILD_ENGINE_API OR NOT BUILD_GODOT_EXTENSION)
+        message(FATAL_ERROR
+            "NeXAS requires both BUILD_ENGINE_API and BUILD_GODOT_EXTENSION")
+    endif()
+    if(NOT EXISTS "${AETHERKIRI_NEXAS_RUNTIME_DIR}/aether_runtime/CMakeLists.txt" OR
+       NOT EXISTS "${AETHERKIRI_NEXAS_RUNTIME_DIR}/cmake/AetherNeXASConfig.cmake")
+        message(FATAL_ERROR
+            "AETHERKIRI_NEXAS_RUNTIME_DIR must name an AetherNeXAS runtime provider checkout")
+    endif()
+    set(AetherNeXAS_DIR "${AETHERKIRI_NEXAS_RUNTIME_DIR}/cmake")
+    find_package(AetherNeXAS CONFIG REQUIRED NO_DEFAULT_PATH)
+    if(NOT AETHERNEXAS_PACKAGE_API_VERSION EQUAL 2 OR
+       NOT COMMAND aethernexas_extend_godot_extension)
+        message(FATAL_ERROR "The AetherNeXAS provider package is incompatible")
+    endif()
 endif()
 if(BUILD_GODOT_EXTENSION)
     add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/bridge/godot_extension)

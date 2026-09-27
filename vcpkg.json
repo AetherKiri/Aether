@@ -121,6 +121,7 @@
       ]
     },
     "spdlog",
+    "stb",
     "highway",
     "uchardet",
     "unrar",
@@ -132,7 +133,8 @@
       "name": "vcpkg-cmake",
       "host": true
     },
-    "zstd"
+    "zstd",
+    "zlib"
   ],
   "overrides": [
     {

@@ -149,6 +149,15 @@ Useful environment variables:
 
 Use `./build.sh <platform> <debug|release>`.
 
+The independent C++ NeXAS provider can be linked into the GDExtension by
+configuring with `-DAETHERKIRI_ENABLE_NEXAS=ON` and
+`-DAETHERKIRI_NEXAS_RUNTIME_DIR=/absolute/path/to/AetherNeXAS-runtime-provider`.
+The external repository owns its native runtime and provider adapter; this
+checkout only compiles, links and registers it. On macOS, set `-DMACOS=ON` as
+in the normal macOS preset. The default build leaves this optional provider
+disabled. The provider accepts a PC game directory or a launcher file inside
+it when Aether selects a runtime automatically.
+
 ```bash
 ./build.sh macos debug
 ./build.sh macos release

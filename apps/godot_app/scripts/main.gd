@@ -5112,7 +5112,8 @@ func _rebuild_settings_view() -> void:
     groups.append(about_rows)
 
     if animate_page:
-        ui_motion.enter(hero, Vector2(0, 16))
+        hero.modulate.a = 0.0
+        ui_motion.rise.call_deferred(hero)
         var hero_title: Label = hero.get_meta("title", null)
         if hero_title != null:
             ui_motion.wipe_in(hero_title, 0.06, 0.5)
@@ -6613,7 +6614,9 @@ func _settings_section(page: VBoxContainer, title: String, animate: bool, delay:
         settings_index.add_child(entry)
     settings_index_entries.append({"button": entry, "section": section, "badge": badge})
     if animate:
-        ui_motion.enter(section, Vector2(0, 26), delay)
+        # Containers own position; rise animates scale + fade only.
+        section.modulate.a = 0.0
+        ui_motion.rise.call_deferred(section, delay)
     return rows
 
 func _add_settings_row(group: VBoxContainer, row: Control) -> void:
@@ -16499,9 +16502,15 @@ func _process_backdrop(delta: float) -> void:
     var point := get_viewport().get_mouse_position() / viewport_size
     var strength_target := 1.0
     if ui_motion.touch_input:
-        point = get_meta("backdrop_touch_point", backdrop_pointer)
-        backdrop_touch_energy = maxf(0.0, backdrop_touch_energy - delta * 0.7)
-        strength_target = backdrop_touch_energy
+        # No hover on touch: the glow drifts on its own along a slow
+        # Lissajous path, and a touch pulls it to the finger for a while.
+        var t := Time.get_ticks_msec() / 1000.0
+        var drift := Vector2(0.5 + 0.34 * sin(t * 0.23), 0.42 + 0.28 * sin(t * 0.31 + 1.3))
+        backdrop_touch_energy = maxf(0.0, backdrop_touch_energy - delta * 0.35)
+        var touch_point: Vector2 = get_meta("backdrop_touch_point", drift)
+        point = drift.lerp(touch_point, clampf(backdrop_touch_energy * 1.6, 0.0, 1.0))
+        strength_target = 0.55 + 0.45 * backdrop_touch_energy
+        follow = 1.0 - exp(-3.0 * delta)
     if ui_motion.reduced_motion:
         strength_target = 0.0
     backdrop_pointer = backdrop_pointer.lerp(point, follow)
@@ -16764,12 +16773,18 @@ func _card_caption(button: Button, title_text: String, subtitle_text: String, ki
     sub.add_theme_color_override("font_color", ui_tokens.text_tertiary)
     meta_row.add_child(sub)
     # Hover bar under the title.
+    # Containers reset child scale on every sort, so the bar lives inside a
+    # plain holder and only the holder is laid out.
+    var bar_holder := Control.new()
+    bar_holder.mouse_filter = Control.MOUSE_FILTER_IGNORE
+    bar_holder.custom_minimum_size = Vector2(0, 2)
+    labels.add_child(bar_holder)
     var bar := Panel.new()
     bar.mouse_filter = Control.MOUSE_FILTER_IGNORE
-    bar.custom_minimum_size = Vector2(0, 2)
+    bar.set_anchors_preset(Control.PRESET_FULL_RECT)
     bar.add_theme_stylebox_override("panel", ui_tokens.panel(ui_tokens.accent, 1))
     bar.scale = Vector2(0, 1)
-    labels.add_child(bar)
+    bar_holder.add_child(bar)
     button.set_meta("card_title", title)
     button.set_meta("card_bar", bar)
     return labels

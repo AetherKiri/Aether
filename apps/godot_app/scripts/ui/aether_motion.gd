@@ -232,7 +232,7 @@ func bind_hover(control: Control, callback: Callable, linger: float = 0.22) -> v
 func cancel_press(control: Control) -> void:
     if control == null or not is_instance_valid(control):
         return
-    var cancel_hover: Variant = control.get_meta("aether_hover_cancel", null)
+    var cancel_hover: Variant = control.get_meta("aether_hover_cancel") if control.has_meta("aether_hover_cancel") else null
     if cancel_hover is Callable and (cancel_hover as Callable).is_valid():
         (cancel_hover as Callable).call()
     active_springs.erase(_motion_key(control, "scale"))

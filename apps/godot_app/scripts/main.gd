@@ -10731,6 +10731,12 @@ func _backfill_game_metadata(games: Array[Dictionary]) -> bool:
         var path := String(game.get("path", ""))
         if path.is_empty() or builtin_demo.is_game(game):
             continue
+        # Imported entries already have these fields. Reopening every game
+        # directory on launch can block on a protected or unavailable folder.
+        if not String(game.get("engine", "")).is_empty() \
+                and not String(game.get("title", "")).is_empty() \
+                and game.has("titleCandidates") and game.has("launchFile"):
+            continue
         var metadata := GameMetadata.inspect(path)
         var engine := String(metadata.get("engine", RUNTIME_KIRIKIRI))
         if String(game.get("engine", "")).is_empty() or String(game.get("engine", "")) == RUNTIME_KIRIKIRI:
@@ -10760,6 +10766,10 @@ func _backfill_default_game_covers(games: Array[Dictionary]) -> bool:
         var game_path := String(game.get("path", ""))
         var stored_cover_path := String(game.get("coverPath", ""))
         var resolved_cover_path := _resolve_cover_path(game)
+        if bool(game.get(GAME_AUTO_COVER_SCANNED_FIELD, false)):
+            if stored_cover_path.is_empty() \
+                    or (not resolved_cover_path.is_empty() and FileAccess.file_exists(resolved_cover_path)):
+                continue
         var next_cover_path := stored_cover_path
         if not resolved_cover_path.is_empty() \
                 and FileAccess.file_exists(resolved_cover_path):

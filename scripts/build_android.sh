@@ -57,7 +57,37 @@ ensure_vcpkg() {
     fi
 }
 
+ensure_host_rust() {
+    # Cargo resolves rustc by bare command name from PATH at build time, so a
+    # Homebrew rust shadowing the rustup proxies links Minori against a
+    # different std than Siglus (which pins its own toolchain) and the final
+    # extension link fails with duplicate _rust_eh_personality symbols. Pin
+    # the whole build to one toolchain by prepending the rustup-resolved bin
+    # directory (same normalization build_macos.sh/build_ios.sh/build_linux.sh apply).
+    if [[ -n "${CARGO:-}" ]]; then
+        local cargo_dir
+        cargo_dir="$(dirname "$CARGO")"
+        case ":$PATH:" in
+            *":$cargo_dir:"*) ;;
+            *) export PATH="$cargo_dir:$PATH" ;;
+        esac
+        return 0
+    fi
+    command -v rustup >/dev/null || return 0
+    local rustc_bin
+    rustc_bin="$(rustup which rustc 2>/dev/null || true)"
+    [[ -n "$rustc_bin" && -x "$rustc_bin" ]] || return 0
+    local toolchain_bin
+    toolchain_bin="$(dirname "$rustc_bin")"
+    [[ -x "$toolchain_bin/cargo" ]] || return 0
+    case ":$PATH:" in
+        *":$toolchain_bin:"*) ;;
+        *) export PATH="$toolchain_bin:$PATH" ;;
+    esac
+}
+
 ensure_vcpkg
+ensure_host_rust
 
 # Resolve a Rust toolchain that can build for the requested Android target.
 # Homebrew's Rust formula ships without Android targets, so a cargo found in
@@ -88,12 +118,23 @@ ensure_android_rust() {
         exit 1
     fi
 
+    local rustup_home="${RUSTUP_HOME:-$HOME/.rustup}"
     sysroot="$(rustc --print sysroot 2>/dev/null || true)"
     if [[ -n "$sysroot" && -d "$sysroot/lib/rustlib/$triple" ]]; then
+        local rustc_bin
+        rustc_bin="$(rustup which rustc 2>/dev/null || true)"
+        if [[ -n "$rustc_bin" && -x "$rustc_bin" ]]; then
+            toolchain_bin="$(dirname "$rustc_bin")"
+            if [[ -x "$toolchain_bin/cargo" ]]; then
+                case ":$PATH:" in
+                    *":$toolchain_bin:"*) ;;
+                    *) export PATH="$toolchain_bin:$PATH" ;;
+                esac
+            fi
+        fi
         return 0
     fi
 
-    local rustup_home="${RUSTUP_HOME:-$HOME/.rustup}"
     if [[ -d "$rustup_home/toolchains" ]]; then
         # Prefer a stable toolchain when several provide the target.
         for candidate in "$rustup_home"/toolchains/*/; do

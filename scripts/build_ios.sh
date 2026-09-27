@@ -121,7 +121,37 @@ ensure_vcpkg() {
     fi
 }
 
+ensure_host_rust() {
+    # Cargo resolves rustc by bare command name from PATH at build time, so a
+    # Homebrew rust shadowing the rustup proxies links Minori against a
+    # different std than Siglus (which pins its own toolchain) and the final
+    # extension link fails with duplicate _rust_eh_personality symbols. Pin
+    # the whole build to one toolchain by prepending the rustup-resolved bin
+    # directory (same normalization build_android.sh applies).
+    if [[ -n "${CARGO:-}" ]]; then
+        local cargo_dir
+        cargo_dir="$(dirname "$CARGO")"
+        case ":$PATH:" in
+            *":$cargo_dir:"*) ;;
+            *) export PATH="$cargo_dir:$PATH" ;;
+        esac
+        return 0
+    fi
+    command -v rustup >/dev/null || return 0
+    local rustc_bin
+    rustc_bin="$(rustup which rustc 2>/dev/null || true)"
+    [[ -n "$rustc_bin" && -x "$rustc_bin" ]] || return 0
+    local toolchain_bin
+    toolchain_bin="$(dirname "$rustc_bin")"
+    [[ -x "$toolchain_bin/cargo" ]] || return 0
+    case ":$PATH:" in
+        *":$toolchain_bin:"*) ;;
+        *) export PATH="$toolchain_bin:$PATH" ;;
+    esac
+}
+
 ensure_vcpkg
+ensure_host_rust
 
 command -v cmake >/dev/null
 NINJA_BIN="${CMAKE_MAKE_PROGRAM:-$(command -v ninja || command -v ninja-build || true)}"

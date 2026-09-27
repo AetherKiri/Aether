@@ -149,6 +149,9 @@ set(AETHERKIRI_RFVP_DIR
     CACHE PATH "path to an rfvp runtime checkout")
 
 include(cmake/AetherKiriBinaryProtection.cmake)
+# Unify the Rust toolchain resolution before any runtime subproject runs its
+# own find_program(cargo) (see cmake/RustToolchain.cmake).
+include(cmake/RustToolchain.cmake)
 
 set(AETHERKIRI_INTERNAL_ENABLED OFF)
 if(AETHERKIRI_ENABLE_INTERNAL)

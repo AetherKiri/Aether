@@ -91,7 +91,8 @@ jobs:
       - name: Set up Rust for Minori
         uses: dtolnay/rust-toolchain@stable
         with:
-          targets: aarch64-linux-android
+          targets: aarch64-linux-android, armv7-linux-androideabi, x86_64-linux-android, i686-linux-android
+          components: rust-src
 
       - name: Resolve private runtime dependency cache
         id: private-runtime-cache-key

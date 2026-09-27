@@ -31,12 +31,8 @@ updates:
         patterns:
           - "*"
 
-  # GitHub Actions 版本升级
+  # GitHub Actions 版本升级（不使用 groups，避免因子模块工作区状态导致 commit 失败）
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:
       interval: "weekly"
-    groups:
-      github-actions:
-        patterns:
-          - "*"

@@ -1720,6 +1720,7 @@ const RUNTIME_ONSCRIPTER := "onscripter"
 const RUNTIME_MINORI := "minori"
 const RUNTIME_CATSYSTEM2 := "catsystem2"
 const RUNTIME_SIGLUS := "siglus"
+const RUNTIME_WA2 := "wa2"
 const RUNTIME_PLAYER_CLASS := "AetherRuntimePlayer"
 const ONSCRIPTER_SCRIPT_MARKERS := [
     "0.txt",
@@ -10323,6 +10324,14 @@ func _game_runtime_kind(path: String) -> String:
             return RUNTIME_CATSYSTEM2
         if int(player.probe_runtime(RUNTIME_MINORI, root)) > 0:
             return RUNTIME_MINORI
+        # Leaf TtT installs (WHITE ALBUM2) ship .pak archives that carry no
+        # loose KiriKiri marker, and their backfilled launch file points at
+        # the WA2.exe launcher. Only the provider's install fingerprint can
+        # claim the directory; without this probe the launch path resolves
+        # to the executable and auto-selection falls back to the legacy
+        # KiriKiri host.
+        if int(player.probe_runtime(RUNTIME_WA2, root)) > 0:
+            return RUNTIME_WA2
     return runtime_kind
 
 func _backfill_game_metadata(games: Array[Dictionary]) -> bool:

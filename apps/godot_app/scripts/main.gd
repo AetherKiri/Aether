@@ -142,6 +142,23 @@ const UI_TEXT := {
         "home.status": "视觉小说库",
         "nav.library": "视觉小说",
         "nav.videos": "视频库",
+        "nav.dashboard": "主页",
+        "dash.title": "游玩统计",
+        "dash.greeting": "欢迎回来",
+        "dash.subtitle": "你在这里读过的每一段故事，都被悄悄记录着。",
+        "dash.total_time": "累计游玩",
+        "dash.hours": "小时",
+        "dash.minutes": "%d 分钟",
+        "dash.milestone": "距离 %d 小时里程碑",
+        "dash.completion": "已游玩作品",
+        "dash.open_library": "打开视觉小说库",
+        "dash.games": "作品总数",
+        "dash.played": "已游玩",
+        "dash.week": "本周活跃",
+        "dash.average": "平均时长",
+        "dash.top": "游玩时长排行",
+        "dash.recent": "最近游玩",
+        "dash.empty": "还没有游玩记录，开始一段故事吧。",
         "home.empty_title": "尚未添加任何游戏",
         "home.game_count": "%d 个游戏",
         "video.video_count": "%d 个视频",
@@ -741,6 +758,23 @@ const UI_TEXT := {
         "home.status": "Visual Novel Library",
         "nav.library": "Visual Novels",
         "nav.videos": "Videos",
+        "nav.dashboard": "Home",
+        "dash.title": "Play Stats",
+        "dash.greeting": "Welcome back",
+        "dash.subtitle": "Every story you have read here is quietly kept.",
+        "dash.total_time": "Total play",
+        "dash.hours": "hours",
+        "dash.minutes": "%d min",
+        "dash.milestone": "Toward %d-hour milestone",
+        "dash.completion": "Titles played",
+        "dash.open_library": "Open library",
+        "dash.games": "Titles",
+        "dash.played": "Played",
+        "dash.week": "Active this week",
+        "dash.average": "Average time",
+        "dash.top": "Most played",
+        "dash.recent": "Recently played",
+        "dash.empty": "No play history yet. Start a story.",
         "home.empty_title": "No games added yet",
         "home.game_count": "%d games",
         "video.video_count": "%d videos",
@@ -1735,6 +1769,10 @@ var launch_transition_tween: Tween
 var shell_library_button: Button
 var shell_video_button: Button
 var shell_settings_button: Button
+var shell_dashboard_button: Button
+var shell_compact_dashboard_button: Button
+var dashboard_view: ScrollContainer
+var dashboard_compact := false
 var shell_compact_library_button: Button
 var shell_compact_video_button: Button
 var shell_compact_settings_button: Button
@@ -2176,6 +2214,7 @@ const MOBILE_EDGE_BACK_MIN_TRIGGER_DISTANCE := 64.0
 const PILL_ICON_SIZE := Vector2(24, 24)
 const PILL_ICON_VISUAL_OFFSET_Y := 2.0
 const SETTINGS_ACTION_BUTTON_SIZE := Vector2(150, 54)
+const SETTINGS_ACTION_BUTTON_HEIGHT := 44.0
 const HOME_CARD_SIZE := Vector2(312, 272)
 const HOME_CARD_COVER_HEIGHT := 154.0
 const HOME_TILE_MIN_WIDTH := 184.0
@@ -2522,6 +2561,7 @@ func _build_ui() -> void:
 
     _build_shell_chrome()
     _build_home_view()
+    _build_dashboard_view()
     _build_settings_view()
     _build_detail_view()
     _build_modal_layer()
@@ -3072,6 +3112,8 @@ func _build_shell_chrome() -> void:
     var tabs := HBoxContainer.new()
     tabs.add_theme_constant_override("separation", 6)
     tabs_center.add_child(tabs)
+    shell_dashboard_button = _shell_nav_button(_t("nav.dashboard"), ICON_HOME, _show_dashboard)
+    tabs.add_child(shell_dashboard_button)
     shell_library_button = _shell_nav_button(_t("nav.library"), ICON_LIBRARY, _show_home)
     tabs.add_child(shell_library_button)
     shell_video_button = _shell_nav_button(_t("nav.videos"), ICON_VIDEO, _show_video_library)
@@ -3133,6 +3175,8 @@ func _build_shell_chrome() -> void:
     dock_row.add_theme_constant_override("separation", 0)
     dock_row.mouse_filter = Control.MOUSE_FILTER_IGNORE
     dock_host.add_child(dock_row)
+    shell_compact_dashboard_button = _shell_compact_button(ICON_HOME, _t("nav.dashboard"), _show_dashboard)
+    dock_row.add_child(shell_compact_dashboard_button)
     shell_compact_library_button = _shell_compact_button(ICON_LIBRARY, _t("nav.library"), _show_home)
     dock_row.add_child(shell_compact_library_button)
     shell_compact_video_button = _shell_compact_button(ICON_VIDEO, _t("nav.videos"), _show_video_library)
@@ -3141,11 +3185,13 @@ func _build_shell_chrome() -> void:
     dock_row.add_child(shell_compact_settings_button)
 
     var bar_specs := [
+        {"button": shell_dashboard_button, "action": _show_dashboard, "route": "dashboard"},
         {"button": shell_library_button, "action": _show_home, "route": "library"},
         {"button": shell_video_button, "action": _show_video_library, "route": "videos"},
         {"button": shell_settings_button, "action": _show_settings, "route": "settings"},
     ]
     var dock_specs := [
+        {"button": shell_compact_dashboard_button, "action": _show_dashboard, "route": "dashboard"},
         {"button": shell_compact_library_button, "action": _show_home, "route": "library"},
         {"button": shell_compact_video_button, "action": _show_video_library, "route": "videos"},
         {"button": shell_compact_settings_button, "action": _show_settings, "route": "settings"},
@@ -3168,7 +3214,7 @@ func _build_shell_chrome() -> void:
     call_deferred("_animate_shell_chrome_in")
 
 func _nav_pill_goal(pill: Control, buttons: Array, compact: bool) -> Variant:
-    var route_index: int = {"library": 0, "videos": 1, "settings": 2}.get(shell_route, -1)
+    var route_index: int = {"dashboard": 0, "library": 1, "videos": 2, "settings": 3}.get(shell_route, -1)
     if route_index < 0 or route_index >= buttons.size():
         return null
     var button: Button = buttons[route_index]
@@ -3187,13 +3233,13 @@ func _follow_nav_pills() -> void:
         return
     if shell_nav_indicator != null and is_instance_valid(shell_nav_indicator) \
             and shell_nav_indicator.visible and shell_sidebar != null and is_instance_valid(shell_sidebar) and shell_sidebar.visible:
-        var goal = _nav_pill_goal(shell_nav_indicator, [shell_library_button, shell_video_button, shell_settings_button], false)
+        var goal = _nav_pill_goal(shell_nav_indicator, [shell_dashboard_button, shell_library_button, shell_video_button, shell_settings_button], false)
         if goal != null:
             ui_motion.spring_property(shell_nav_indicator, "position", goal["pos"], 0.30, 1.0)
             ui_motion.spring_property(shell_nav_indicator, "size", goal["size"], 0.18, 1.0)
     if shell_compact_indicator != null and is_instance_valid(shell_compact_indicator) \
             and shell_compact_indicator.visible and shell_compact_header != null and is_instance_valid(shell_compact_header) and shell_compact_header.visible:
-        var goal_compact = _nav_pill_goal(shell_compact_indicator, [shell_compact_library_button, shell_compact_video_button, shell_compact_settings_button], true)
+        var goal_compact = _nav_pill_goal(shell_compact_indicator, [shell_compact_dashboard_button, shell_compact_library_button, shell_compact_video_button, shell_compact_settings_button], true)
         if goal_compact != null:
             ui_motion.spring_property(shell_compact_indicator, "position", goal_compact["pos"], 0.30, 1.0)
             ui_motion.spring_property(shell_compact_indicator, "size", goal_compact["size"], 0.18, 1.0)
@@ -3399,9 +3445,11 @@ func _sync_shell_route(route: String) -> void:
     shell_route = route
     if shell_route_label != null:
         shell_route_label.text = APP_DISPLAY_NAME
+    _apply_shell_nav_state(shell_dashboard_button, route == "dashboard")
     _apply_shell_nav_state(shell_library_button, route == "library")
     _apply_shell_nav_state(shell_video_button, route == "videos")
     _apply_shell_nav_state(shell_settings_button, route == "settings")
+    _apply_shell_compact_state(shell_compact_dashboard_button, route == "dashboard")
     _apply_shell_compact_state(shell_compact_library_button, route == "library")
     _apply_shell_compact_state(shell_compact_video_button, route == "videos")
     _apply_shell_compact_state(shell_compact_settings_button, route == "settings")
@@ -3416,7 +3464,7 @@ func _update_nav_indicator(spring: bool) -> void:
     if shell_sidebar == null or not is_instance_valid(shell_sidebar) or not shell_sidebar.visible or shell_route == "detail":
         shell_nav_indicator.visible = false
         return
-    var goal = _nav_pill_goal(shell_nav_indicator, [shell_library_button, shell_video_button, shell_settings_button], false)
+    var goal = _nav_pill_goal(shell_nav_indicator, [shell_dashboard_button, shell_library_button, shell_video_button, shell_settings_button], false)
     if goal == null:
         return
     _place_route_indicator(shell_nav_indicator, goal, spring, true)
@@ -3445,7 +3493,7 @@ func _update_compact_indicator(spring: bool) -> void:
     if shell_compact_header == null or not is_instance_valid(shell_compact_header) or not shell_compact_header.visible or shell_route == "detail":
         shell_compact_indicator.visible = false
         return
-    var goal = _nav_pill_goal(shell_compact_indicator, [shell_compact_library_button, shell_compact_video_button, shell_compact_settings_button], true)
+    var goal = _nav_pill_goal(shell_compact_indicator, [shell_compact_dashboard_button, shell_compact_library_button, shell_compact_video_button, shell_compact_settings_button], true)
     if goal == null:
         return
     _place_route_indicator(shell_compact_indicator, goal, spring, true)
@@ -3466,7 +3514,10 @@ func _apply_sidebar_presentation(_animate_labels: bool) -> void:
     shell_library_button.text = _t("nav.library")
     shell_video_button.text = _t("nav.videos")
     shell_settings_button.text = _t("settings.title")
+    if is_instance_valid(shell_dashboard_button):
+        shell_dashboard_button.text = _t("nav.dashboard")
     for pair in [
+        [shell_compact_dashboard_button, "nav.dashboard"],
         [shell_compact_library_button, "nav.library"],
         [shell_compact_video_button, "nav.videos"],
         [shell_compact_settings_button, "settings.title"],
@@ -4007,6 +4058,8 @@ func _save_settings_draft() -> void:
         _refresh_language_texts()
         if settings_view != null and settings_view.visible:
             call_deferred("_rebuild_settings_view")
+        if dashboard_view != null and dashboard_view.visible:
+            call_deferred("_rebuild_dashboard_view", false)
         if detail_view != null and detail_view.visible and not selected_game.is_empty():
             call_deferred("_show_detail", selected_game)
         _refresh_games()
@@ -4370,7 +4423,7 @@ func _fit_full_rects() -> void:
     anchor_bottom = 0.0
     position = Vector2.ZERO
     size = window_size
-    var controls: Array[Control] = [bg_rect, game_view, video_view, shell_root, home_view, settings_view, detail_view, detail_scroll, modal_layer]
+    var controls: Array[Control] = [bg_rect, game_view, video_view, shell_root, home_view, dashboard_view, settings_view, detail_view, detail_scroll, modal_layer]
     for control in controls:
         if control == null:
             continue
@@ -5810,7 +5863,7 @@ func _nearest_scroll_container(control: Control) -> ScrollContainer:
     return null
 
 func _find_shell_scroll_at_position(position: Vector2) -> ScrollContainer:
-    var scrolls: Array[ScrollContainer] = [settings_view, detail_scroll, game_scroll, video_scroll]
+    var scrolls: Array[ScrollContainer] = [settings_view, dashboard_view, detail_scroll, game_scroll, video_scroll]
     for scroll in scrolls:
         if scroll != null and scroll.is_visible_in_tree() and scroll.get_global_rect().has_point(position):
             return scroll
@@ -6560,12 +6613,16 @@ func _settings_section(page: VBoxContainer, title: String, animate: bool, delay:
     var section := PanelContainer.new()
     section.size_flags_horizontal = Control.SIZE_EXPAND_FILL
     section.mouse_filter = Control.MOUSE_FILTER_PASS
-    var style: StyleBoxFlat = ui_tokens.raised(ui_tokens.RADIUS_CARD, 1, ui_tokens.surface_raised)
+    # Same flat card as the hero: hairline edge, no drop shadow; hover warms
+    # the edge with the signal colour.
+    var style: StyleBoxFlat = ui_tokens.raised(ui_tokens.RADIUS_LARGE, 0, ui_tokens.surface_raised)
     style.content_margin_left = 6 if compact else 10
     style.content_margin_right = 6 if compact else 10
     style.content_margin_top = 12 if compact else 16
     style.content_margin_bottom = 6 if compact else 8
     section.add_theme_stylebox_override("panel", style)
+    var section_lit := style.duplicate() as StyleBoxFlat
+    section_lit.border_color = ui_tokens.tint(ui_tokens.accent, 0.34)
     page.add_child(section)
     var stack := VBoxContainer.new()
     stack.add_theme_constant_override("separation", 8)
@@ -6582,7 +6639,7 @@ func _settings_section(page: VBoxContainer, title: String, animate: bool, delay:
     var badge := PanelContainer.new()
     badge.custom_minimum_size = Vector2(34, 34)
     badge.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-    badge.add_theme_stylebox_override("panel", ui_tokens.panel(ui_tokens.accent_fill, 10))
+    badge.add_theme_stylebox_override("panel", ui_tokens.panel(ui_tokens.accent_fill, 11))
     badge.add_child(_centered_icon(path, Vector2(17, 17), ui_tokens.accent_text))
     badge.resized.connect(func(): badge.pivot_offset = badge.size * 0.5)
     header.add_child(badge)
@@ -6602,6 +6659,7 @@ func _settings_section(page: VBoxContainer, title: String, animate: bool, delay:
     number.add_theme_color_override("font_color", ui_tokens.text_tertiary)
     header.add_child(number)
     ui_motion.bind_hover(section, func(active: bool):
+        section.add_theme_stylebox_override("panel", section_lit if active else style)
         ui_motion.spring_property(badge, "rotation", -0.14 if active else 0.0, 0.3, 0.5)
         ui_motion.spring_property(badge, "scale", Vector2.ONE * (1.08 if active else 1.0), 0.28, 0.55)
     , 0.4)
@@ -6675,6 +6733,7 @@ func _settings_row(title: String, subtitle: String, control: Control, stack_cont
     labels.alignment = BoxContainer.ALIGNMENT_CENTER
     labels.add_theme_constant_override("separation", 3)
     box.add_child(labels)
+    shell.set_meta("row_labels", labels)
     var title_label := Label.new()
     title_label.text = title
     title_label.add_theme_font_override("font", DISPLAY_FONT)
@@ -6754,9 +6813,12 @@ func _settings_action_row(title: String, subtitle: String, action_text: String, 
     open.expand_icon = true
     open.icon_alignment = HORIZONTAL_ALIGNMENT_RIGHT
     open.add_theme_constant_override("icon_max_width", 14)
-    ui_widgets.secondary_button(open)
+    ui_widgets.soft_button(open)
     _configure_settings_action_button(open)
-    ui_motion.bind_hover_lift(open, 1.03)
+    ui_motion.bind_hover(open, func(active: bool):
+        if active:
+            ui_motion.jelly(open, Vector2(1.05, 0.95), 0.3, 0.55)
+    , 0.2)
     if action.is_valid():
         open.pressed.connect(action)
     return _settings_row(title, subtitle, open, compact)
@@ -6764,60 +6826,29 @@ func _settings_action_row(title: String, subtitle: String, action_text: String, 
 func _configure_settings_action_button(button: Button) -> void:
     button.custom_minimum_size = SETTINGS_ACTION_BUTTON_SIZE
     button.size_flags_horizontal = Control.SIZE_SHRINK_END
+    button.set_meta("settings_action", true)
     button.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 
 func _settings_iap_product_row() -> Control:
-    var margin := MarginContainer.new()
-    margin.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-    margin.add_theme_constant_override("margin_left", 2)
-    margin.add_theme_constant_override("margin_top", 10)
-    margin.add_theme_constant_override("margin_right", 2)
-    margin.add_theme_constant_override("margin_bottom", 10)
-    var compact := settings_compact_layout
-    var row: BoxContainer = VBoxContainer.new() if compact else HBoxContainer.new()
-    row.custom_minimum_size = Vector2(0, 150 if compact else 112)
-    row.add_theme_constant_override("separation", 12 if compact else 18)
-    margin.add_child(row)
-
-    var labels := VBoxContainer.new()
-    labels.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-    labels.add_theme_constant_override("separation", 6)
-    row.add_child(labels)
-
-    var title_label := Label.new()
-    title_label.text = _t("iap.list_limit.title")
-    title_label.add_theme_font_override("font", DISPLAY_FONT)
-    title_label.add_theme_font_size_override("font_size", 14 if compact else 15)
-    title_label.add_theme_color_override("font_color", ui_tokens.text_primary)
-    labels.add_child(title_label)
-
-    var description := Label.new()
-    description.text = _t("iap.list_limit.desc")
-    description.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-    description.add_theme_font_size_override("font_size", 11 if compact else 12)
-    description.add_theme_color_override("font_color", ui_tokens.text_secondary)
-    labels.add_child(description)
-
-    var status := Label.new()
-    status.text = _iap_product_status_text()
-    status.add_theme_font_size_override("font_size", 11 if compact else 12)
-    status.add_theme_color_override("font_color", ui_tokens.accent)
-    labels.add_child(status)
-
     var entitled := bool(iap_state.get("entitled", false)) or _secret_iap_unlock_active()
     var product_ready := String(iap_state.get("product_state", "idle")) == "ready"
     var price := String(iap_state.get("display_price", ""))
     var action_text := _t("iap.status.purchased") if entitled else _t("iap.buy")
     if not entitled and not price.is_empty():
         action_text = "%s  %s" % [_t("iap.buy"), price]
-    var purchase := _pill_button(action_text)
-    _configure_settings_action_button(purchase)
-    purchase.tooltip_text = action_text
+    var purchase := _settings_purchase_button(action_text)
     purchase.disabled = entitled or not product_ready or iap_pending_operation_id > 0
     _sync_pill_button_content_state(purchase)
     purchase.pressed.connect(func(): _begin_iap_purchase("settings"))
-    row.add_child(purchase)
-    return margin
+    var shell := _settings_row(_t("iap.list_limit.title"), _t("iap.list_limit.desc"), purchase, settings_compact_layout)
+    _settings_status_chip(shell, _iap_product_status_text(), ui_tokens.success if entitled else ui_tokens.accent_text)
+    return shell
+
+func _settings_purchase_button(action_text: String) -> Button:
+    var purchase := _pill_button(action_text)
+    _configure_settings_action_button(purchase)
+    purchase.tooltip_text = action_text
+    return purchase
 
 func _iap_product_status_text() -> String:
     if bool(iap_state.get("entitled", false)) or _secret_iap_unlock_active():
@@ -6833,52 +6864,12 @@ func _iap_product_status_text() -> String:
     return "%s  ·  %s" % [_t("iap.status.not_purchased"), price]
 
 func _settings_iap_coffee_row() -> Control:
-    var margin := MarginContainer.new()
-    margin.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-    margin.add_theme_constant_override("margin_left", 2)
-    margin.add_theme_constant_override("margin_top", 10)
-    margin.add_theme_constant_override("margin_right", 2)
-    margin.add_theme_constant_override("margin_bottom", 10)
-    var compact := settings_compact_layout
-    var row: BoxContainer = VBoxContainer.new() if compact else HBoxContainer.new()
-    row.custom_minimum_size = Vector2(0, 150 if compact else 112)
-    row.add_theme_constant_override("separation", 12 if compact else 18)
-    margin.add_child(row)
-
-    var labels := VBoxContainer.new()
-    labels.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-    labels.add_theme_constant_override("separation", 6)
-    row.add_child(labels)
-
-    var title_label := Label.new()
-    title_label.text = _t("iap.coffee.title")
-    title_label.add_theme_font_override("font", DISPLAY_FONT)
-    title_label.add_theme_font_size_override("font_size", 14 if compact else 15)
-    title_label.add_theme_color_override("font_color", ui_tokens.text_primary)
-    labels.add_child(title_label)
-
-    var description := Label.new()
-    description.text = _t("iap.coffee.desc")
-    description.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-    description.add_theme_font_size_override("font_size", 11 if compact else 12)
-    description.add_theme_color_override("font_color", ui_tokens.text_secondary)
-    labels.add_child(description)
-
-    var status := Label.new()
-    status.text = _iap_coffee_status_text()
-    status.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-    status.add_theme_font_size_override("font_size", 11 if compact else 12)
-    status.add_theme_color_override("font_color", ui_tokens.accent)
-    labels.add_child(status)
-
     var product_ready := String(iap_coffee_state.get("product_state", "idle")) == "ready"
     var price := String(iap_coffee_state.get("display_price", ""))
     var action_text := _t("iap.buy")
     if not price.is_empty():
         action_text = "%s  %s" % [_t("iap.buy"), price]
-    var purchase := _pill_button(action_text)
-    _configure_settings_action_button(purchase)
-    purchase.tooltip_text = action_text
+    var purchase := _settings_purchase_button(action_text)
     # This is a consumable product. Keep it purchasable while an earlier
     # 30-day grant is active so another purchase can extend the expiry.
     purchase.disabled = not product_ready or iap_pending_operation_id > 0
@@ -6886,8 +6877,10 @@ func _settings_iap_coffee_row() -> Control:
     purchase.pressed.connect(func():
         _begin_iap_purchase("settings", IAP_COFFEE_PRODUCT_ID)
     )
-    row.add_child(purchase)
-    return margin
+    var active := bool(iap_coffee_state.get("entitled", false)) or _secret_coffee_active()
+    var shell := _settings_row(_t("iap.coffee.title"), _t("iap.coffee.desc"), purchase, settings_compact_layout)
+    _settings_status_chip(shell, _iap_coffee_status_text(), ui_tokens.success if active else ui_tokens.accent_text)
+    return shell
 
 func _iap_coffee_status_text() -> String:
     var expiration := String(iap_coffee_state.get(
@@ -7283,14 +7276,10 @@ func _frame_enhancement_custom_row(index: int, algorithm_id: String) -> Control:
     remove.accessibility_name = remove.tooltip_text
     remove.custom_minimum_size = Vector2(40, 40)
     remove.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+    ui_widgets.secondary_button(remove, true)
+    remove.custom_minimum_size = Vector2(40, 40)
     remove.add_theme_font_size_override("font_size", 20)
-    remove.add_theme_color_override("font_color", ui_tokens.text_secondary)
-    remove.add_theme_color_override("font_hover_color", ui_tokens.danger)
-    remove.add_theme_stylebox_override("normal", ui_tokens.button_style(Color.TRANSPARENT, ui_tokens.separator, 8))
-    remove.add_theme_stylebox_override("hover", ui_tokens.button_style(ui_tokens.surface_hover, ui_tokens.danger, 8))
-    remove.add_theme_stylebox_override("pressed", ui_tokens.button_style(ui_tokens.accent_fill, ui_tokens.danger, 8))
     remove.pressed.connect(func(): _remove_frame_enhancement_custom_algorithm(index))
-    ui_motion.bind_pressable(remove)
     row.add_child(remove)
     return row
 
@@ -7531,6 +7520,7 @@ func _rebuild_shell_views_after_style_change() -> void:
     var was_home := is_instance_valid(home_view) and home_view.visible
     var was_settings := is_instance_valid(settings_view) and settings_view.visible
     var was_detail := is_instance_valid(detail_view) and detail_view.visible
+    var was_dashboard := is_instance_valid(dashboard_view) and dashboard_view.visible
 
     _remove_shell_view(shell_root)
     shell_root = Control.new()
@@ -7538,6 +7528,7 @@ func _rebuild_shell_views_after_style_change() -> void:
     add_child(shell_root)
     _build_shell_chrome()
     _build_home_view()
+    _build_dashboard_view()
     _build_settings_view()
     _build_detail_view()
     _fit_full_rects()
@@ -7551,6 +7542,12 @@ func _rebuild_shell_views_after_style_change() -> void:
         detail_view.visible = false
         settings_view.visible = true
         _rebuild_settings_view()
+    elif was_dashboard:
+        home_view.visible = false
+        settings_view.visible = false
+        detail_view.visible = false
+        dashboard_view.visible = true
+        _rebuild_dashboard_view(false)
     elif was_detail and not selected_game.is_empty():
         _show_detail(selected_game)
     else:
@@ -7572,6 +7569,10 @@ func _refresh_language_texts() -> void:
         diagnostic_session.refresh_language()
     if debug_console != null:
         debug_console.refresh_language()
+    if is_instance_valid(shell_dashboard_button):
+        shell_dashboard_button.text = _t("nav.dashboard")
+    if is_instance_valid(shell_compact_dashboard_button):
+        shell_compact_dashboard_button.tooltip_text = _t("nav.dashboard")
     if is_instance_valid(shell_library_button):
         shell_library_button.text = _t("nav.library")
     if is_instance_valid(shell_video_button):
@@ -7667,6 +7668,8 @@ func _shell_view_for_route(route: String) -> Control:
             return settings_view
         "detail":
             return detail_view
+        "dashboard":
+            return dashboard_view
         "videos":
             return home_view
         _:
@@ -7674,7 +7677,7 @@ func _shell_view_for_route(route: String) -> Control:
 
 func _stage_shell_route(previous_route: String, incoming: Control) -> Control:
     var outgoing := _shell_view_for_route(previous_route)
-    for view in [home_view, settings_view, detail_view]:
+    for view in [home_view, dashboard_view, settings_view, detail_view]:
         if view == null:
             continue
         ui_motion.settle_route(view, view == incoming or view == outgoing)
@@ -15189,7 +15192,7 @@ func _perform_mobile_shell_back() -> bool:
     if shell_route == "detail":
         _show_library("game")
         return true
-    if shell_route == "settings":
+    if shell_route == "settings" or shell_route == "dashboard":
         _show_library(home_library_mode)
         return true
     return false
@@ -16666,7 +16669,7 @@ func _animate_shell_chrome_in() -> void:
                 shell_compact_header.remove_meta("aether_entering")
         )
     var index := 0
-    for item in [shell_brand_mark, shell_library_button, shell_video_button, shell_settings_button]:
+    for item in [shell_brand_mark, shell_dashboard_button, shell_library_button, shell_video_button, shell_settings_button]:
         if is_instance_valid(item) and item.is_visible_in_tree():
             ui_motion.pop_in(item, 0.06 + 0.06 * float(index), 0.7)
             index += 1
@@ -17480,3 +17483,670 @@ func _show_notice() -> void:
         _dismiss_modal()
     )
     buttons.add_child(today)
+
+# Dashboard
+# ---------
+# Play overview left of the library: a hero ring filling toward the next
+# play-time milestone, a stat grid, the most-played ranking and the titles
+# played most recently. Everything is drawn live so it can animate in.
+
+const DASH_MILESTONES := [1, 5, 10, 25, 50, 100, 250, 500, 1000, 2500, 5000, 10000]
+
+func _build_dashboard_view() -> void:
+    dashboard_view = ScrollContainer.new()
+    dashboard_view.name = "DashboardView"
+    dashboard_view.set_anchors_preset(Control.PRESET_FULL_RECT)
+    _configure_shell_scroll(dashboard_view)
+    dashboard_view.visible = false
+    shell_content.add_child(dashboard_view)
+    dashboard_view.resized.connect(func(): call_deferred("_on_dashboard_resized"))
+
+func _on_dashboard_resized() -> void:
+    if not is_instance_valid(dashboard_view) or not dashboard_view.visible:
+        return
+    if _dashboard_is_compact() != dashboard_compact or dashboard_view.get_child_count() == 0:
+        _rebuild_dashboard_view(false)
+
+func _dashboard_width() -> float:
+    var width := shell_content.size.x if is_instance_valid(shell_content) else 0.0
+    return width if width > 0.0 else get_viewport_rect().size.x
+
+func _dashboard_is_compact() -> bool:
+    return _dashboard_width() < 860.0
+
+func _show_dashboard() -> void:
+    if shell_route == "dashboard":
+        return
+    if _request_settings_navigation(Callable(self, "_show_dashboard")):
+        return
+    var previous_route := shell_route
+    var outgoing := _stage_shell_route(previous_route, dashboard_view)
+    _finish_hero_overlay()
+    _clear_hero_state()
+    _reset_shell_scroll_drag()
+    _discard_settings_draft()
+    _set_game_background(false)
+    modal_layer.visible = false
+    _sync_shell_route("dashboard")
+    _fit_full_rects()
+    _rebuild_dashboard_view(true)
+    dashboard_view.scroll_vertical = 0
+    _animate_shell_route(outgoing, dashboard_view)
+
+func _dashboard_stats() -> Dictionary:
+    var games := _load_game_list()
+    var now := int(Time.get_unix_time_from_system())
+    var total := 0
+    var played := 0
+    var week := 0
+    var ranked: Array = []
+    var recent: Array = []
+    for game in games:
+        var seconds := int(game.get("playDurationSeconds", 0))
+        var last := int(game.get("lastPlayed", 0))
+        total += seconds
+        if seconds > 0 or last > 0:
+            played += 1
+        if last > 0 and now - last < 7 * 86400:
+            week += 1
+        if seconds >= 60:
+            ranked.append(game)
+        if last > 0:
+            recent.append(game)
+    ranked.sort_custom(func(a, b): return int(a.get("playDurationSeconds", 0)) > int(b.get("playDurationSeconds", 0)))
+    recent.sort_custom(func(a, b): return int(a.get("lastPlayed", 0)) > int(b.get("lastPlayed", 0)))
+    return {
+        "games": games.size(),
+        "total": total,
+        "played": played,
+        "week": week,
+        "ranked": ranked.slice(0, 5),
+        "recent": recent.slice(0, 5),
+    }
+
+func _rebuild_dashboard_view(animate: bool) -> void:
+    if not is_instance_valid(dashboard_view):
+        return
+    for child in dashboard_view.get_children():
+        dashboard_view.remove_child(child)
+        child.queue_free()
+    var compact := _dashboard_is_compact()
+    dashboard_compact = compact
+    animate = animate and not ui_motion.reduced_motion
+    var stats := _dashboard_stats()
+    var gutter := 16 if compact else 32
+    var content_width := minf(1120.0, maxf(300.0, _dashboard_width() - float(gutter * 2) - 12.0))
+
+    var margin := MarginContainer.new()
+    margin.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+    margin.add_theme_constant_override("margin_left", gutter)
+    margin.add_theme_constant_override("margin_top", 12 if compact else 28)
+    margin.add_theme_constant_override("margin_right", gutter)
+    margin.add_theme_constant_override("margin_bottom", 36 if compact else 64)
+    dashboard_view.add_child(margin)
+    var center := CenterContainer.new()
+    center.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+    margin.add_child(center)
+    var page := VBoxContainer.new()
+    page.custom_minimum_size = Vector2(content_width, 0)
+    page.add_theme_constant_override("separation", 14 if compact else 22)
+    center.add_child(page)
+
+    var hero := _dashboard_hero(stats, compact, animate)
+    page.add_child(hero)
+    _dash_enter(hero, 0.0, animate)
+
+    var grid := GridContainer.new()
+    grid.columns = 2 if compact else 4
+    grid.add_theme_constant_override("h_separation", 12 if compact else 18)
+    grid.add_theme_constant_override("v_separation", 12 if compact else 18)
+    page.add_child(grid)
+    var total := int(stats["total"])
+    var played := int(stats["played"])
+    var average_minutes := (total / played) / 60 if played > 0 else 0
+    var plain := func(value: int) -> String: return str(value)
+    var as_duration := func(value: int) -> String: return _format_play_duration(value * 60)
+    var cards := [
+        [_t("dash.games"), ICON_LIBRARY, int(stats["games"]), plain, ui_tokens.accent],
+        [_t("dash.played"), ICON_PLAY, played, plain, ui_tokens.accent_2],
+        [_t("dash.week"), ICON_REFRESH, int(stats["week"]), plain, ui_tokens.success],
+        [_t("dash.average"), ICON_PERFORMANCE, average_minutes, as_duration, ui_tokens.accent_3],
+    ]
+    for i in range(cards.size()):
+        var spec: Array = cards[i]
+        var card := _dash_stat_card(spec[0], spec[1], spec[2], spec[3], spec[4], 0.10 + 0.06 * i, animate)
+        grid.add_child(card)
+        _dash_enter(card, 0.08 + 0.06 * i, animate)
+
+    var lower: BoxContainer = VBoxContainer.new() if compact else HBoxContainer.new()
+    lower.add_theme_constant_override("separation", 14 if compact else 18)
+    page.add_child(lower)
+    var top := _dash_top_card(stats["ranked"], animate)
+    top.size_flags_stretch_ratio = 1.2
+    lower.add_child(top)
+    _dash_enter(top, 0.32, animate)
+    var recent := _dash_recent_card(stats["recent"])
+    lower.add_child(recent)
+    _dash_enter(recent, 0.40, animate)
+
+func _dash_enter(control: Control, delay: float, animate: bool) -> void:
+    if not animate:
+        return
+    control.modulate.a = 0.0
+    ui_motion.rise.call_deferred(control, delay)
+
+# Runs `action` once the node is in the tree (tweens need a SceneTree).
+func _dash_when_ready(node: Node, action: Callable) -> void:
+    if node.is_inside_tree():
+        action.call()
+    else:
+        node.tree_entered.connect(action, CONNECT_ONE_SHOT)
+
+func _dash_panel(radius: int = ui_tokens.RADIUS_CARD) -> PanelContainer:
+    var card := PanelContainer.new()
+    card.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+    card.mouse_filter = Control.MOUSE_FILTER_PASS
+    var style: StyleBoxFlat = ui_tokens.raised(radius, 1, ui_tokens.surface_raised)
+    var pad := 16 if dashboard_compact else 22
+    style.content_margin_left = pad
+    style.content_margin_right = pad
+    style.content_margin_top = pad - 2
+    style.content_margin_bottom = pad
+    card.add_theme_stylebox_override("panel", style)
+    return card
+
+func _dash_header(title: String, icon_path: String, tone: Color) -> HBoxContainer:
+    var header := HBoxContainer.new()
+    header.add_theme_constant_override("separation", 12)
+    var badge := PanelContainer.new()
+    badge.custom_minimum_size = Vector2(32, 32)
+    badge.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+    badge.add_theme_stylebox_override("panel", ui_tokens.panel(ui_tokens.tint(tone, 0.14), 10))
+    badge.add_child(_centered_icon(icon_path, Vector2(16, 16), tone))
+    badge.resized.connect(func(): badge.pivot_offset = badge.size * 0.5)
+    header.add_child(badge)
+    header.set_meta("badge", badge)
+    var label := Label.new()
+    label.text = title
+    label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+    label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+    label.add_theme_font_override("font", TITLE_FONT)
+    label.add_theme_font_size_override("font_size", 17)
+    label.add_theme_color_override("font_color", ui_tokens.text_primary)
+    header.add_child(label)
+    return header
+
+func _dashboard_hero(stats: Dictionary, compact: bool, animate: bool) -> PanelContainer:
+    var hero := _dash_panel(ui_tokens.RADIUS_LARGE)
+    var style := hero.get_theme_stylebox("panel") as StyleBoxFlat
+    style.content_margin_left = 20 if compact else 36
+    style.content_margin_right = 20 if compact else 36
+    style.content_margin_top = 22 if compact else 30
+    style.content_margin_bottom = 22 if compact else 30
+    hero.clip_children = CanvasItem.CLIP_CHILDREN_AND_DRAW
+    hero.add_child(_dash_aurora())
+
+    var box: BoxContainer = VBoxContainer.new() if compact else HBoxContainer.new()
+    box.alignment = BoxContainer.ALIGNMENT_CENTER
+    box.add_theme_constant_override("separation", 20 if compact else 44)
+    hero.add_child(box)
+
+    var total := int(stats["total"])
+    var hours_f := float(total) / 3600.0
+    var goal := int(DASH_MILESTONES[DASH_MILESTONES.size() - 1])
+    for milestone in DASH_MILESTONES:
+        if hours_f < float(milestone):
+            goal = int(milestone)
+            break
+    var diameter := 188.0 if compact else 236.0
+    var ring := _dash_ring(diameter, 16.0 if compact else 18.0, clampf(hours_f / float(goal), 0.0, 1.0), animate)
+    ring.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+    ring.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+    box.add_child(ring)
+    var ring_center := CenterContainer.new()
+    ring_center.mouse_filter = Control.MOUSE_FILTER_IGNORE
+    ring_center.set_anchors_preset(Control.PRESET_FULL_RECT)
+    ring.add_child(ring_center)
+    var ring_labels := VBoxContainer.new()
+    ring_labels.alignment = BoxContainer.ALIGNMENT_CENTER
+    ring_labels.add_theme_constant_override("separation", 0)
+    ring_center.add_child(ring_labels)
+    var hours_label := Label.new()
+    hours_label.text = str(total / 3600)
+    hours_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+    hours_label.add_theme_font_override("font", TITLE_FONT)
+    hours_label.add_theme_font_size_override("font_size", 46 if compact else 58)
+    hours_label.add_theme_color_override("font_color", ui_tokens.text_primary)
+    ring_labels.add_child(hours_label)
+    if animate:
+        _dash_when_ready(hours_label, func():
+            ui_motion.count_up(hours_label, 0, total / 3600, func(v: int) -> String: return str(v), 1.4)
+        )
+    var unit := Label.new()
+    unit.text = "%s · %s" % [_t("dash.hours"), _t("dash.minutes", [(total % 3600) / 60])]
+    unit.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+    unit.add_theme_font_override("font", DISPLAY_FONT)
+    unit.add_theme_font_size_override("font_size", 13)
+    unit.add_theme_color_override("font_color", ui_tokens.text_secondary)
+    ring_labels.add_child(unit)
+    var caption := Label.new()
+    caption.text = _t("dash.total_time")
+    caption.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+    caption.add_theme_font_size_override("font_size", 11)
+    caption.add_theme_color_override("font_color", ui_tokens.text_tertiary)
+    ring_labels.add_child(caption)
+
+    var copy := VBoxContainer.new()
+    copy.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+    copy.alignment = BoxContainer.ALIGNMENT_CENTER
+    copy.add_theme_constant_override("separation", 8)
+    box.add_child(copy)
+    var align := HORIZONTAL_ALIGNMENT_CENTER if compact else HORIZONTAL_ALIGNMENT_LEFT
+    var eyebrow := Label.new()
+    eyebrow.text = "AetherKiri  ·  %s" % _t("dash.title")
+    eyebrow.horizontal_alignment = align
+    eyebrow.add_theme_font_override("font", TITLE_FONT)
+    eyebrow.add_theme_font_size_override("font_size", 12)
+    eyebrow.add_theme_color_override("font_color", ui_tokens.accent_text)
+    copy.add_child(eyebrow)
+    var title := Label.new()
+    title.text = _t("dash.greeting")
+    title.horizontal_alignment = align
+    title.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+    title.add_theme_font_override("font", TITLE_FONT)
+    title.add_theme_font_size_override("font_size", 28 if compact else 38)
+    title.add_theme_color_override("font_color", ui_tokens.text_primary)
+    copy.add_child(title)
+    if animate:
+        _dash_when_ready(title, func(): ui_motion.wipe_in(title, 0.12, 0.7))
+    var subtitle := Label.new()
+    subtitle.text = _t("dash.subtitle")
+    subtitle.horizontal_alignment = align
+    subtitle.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+    subtitle.add_theme_font_size_override("font_size", 14)
+    subtitle.add_theme_color_override("font_color", ui_tokens.text_secondary)
+    copy.add_child(subtitle)
+
+    var spacer := Control.new()
+    spacer.custom_minimum_size = Vector2(0, 6)
+    copy.add_child(spacer)
+    var games := int(stats["games"])
+    var played := int(stats["played"])
+    copy.add_child(_dash_meter(_t("dash.milestone", [goal]), "%d%%" % int(round(hours_f / float(goal) * 100.0)), clampf(hours_f / float(goal), 0.0, 1.0), ui_tokens.accent, 0.3, animate))
+    copy.add_child(_dash_meter(_t("dash.completion"), "%d / %d" % [played, games], float(played) / float(games) if games > 0 else 0.0, ui_tokens.accent_2, 0.42, animate))
+
+    var cta := _pill_button(_t("dash.open_library"), ICON_CHEVRON_RIGHT)
+    cta.custom_minimum_size = Vector2(220, 46)
+    cta.size_flags_horizontal = Control.SIZE_SHRINK_CENTER if compact else Control.SIZE_SHRINK_BEGIN
+    cta.pressed.connect(_show_home)
+    copy.add_child(cta)
+
+    ui_motion.bind_hover(hero, func(active: bool):
+        if active:
+            ui_motion.jelly(ring, Vector2(1.04, 0.97))
+    )
+    ring.resized.connect(func(): ring.pivot_offset = ring.size * 0.5)
+    return hero
+
+func _dash_meter(label_text: String, value_text: String, progress: float, tone: Color, delay: float, animate: bool) -> VBoxContainer:
+    var meter := VBoxContainer.new()
+    meter.add_theme_constant_override("separation", 6)
+    var row := HBoxContainer.new()
+    meter.add_child(row)
+    var label := Label.new()
+    label.text = label_text
+    label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+    label.add_theme_font_size_override("font_size", 12)
+    label.add_theme_color_override("font_color", ui_tokens.text_tertiary)
+    row.add_child(label)
+    var value := Label.new()
+    value.text = value_text
+    value.add_theme_font_override("font", DISPLAY_FONT)
+    value.add_theme_font_size_override("font_size", 12)
+    value.add_theme_color_override("font_color", tone)
+    row.add_child(value)
+    meter.add_child(_dash_bar(progress, tone, delay, animate, 8.0))
+    return meter
+
+# Progress ring: gradient arc with round caps, a pulsing glow on the head
+# and three satellites slowly orbiting the track.
+func _dash_ring(diameter: float, width: float, progress: float, animate: bool) -> Control:
+    var ring := Control.new()
+    ring.custom_minimum_size = Vector2(diameter, diameter)
+    ring.mouse_filter = Control.MOUSE_FILTER_IGNORE
+    var state := {"p": 0.0 if animate else progress, "spin": 0.0}
+    var track: Color = ui_tokens.tint(ui_tokens.text_primary, 0.07)
+    var from_color: Color = ui_tokens.accent
+    var to_color: Color = ui_tokens.accent_2
+    ring.draw.connect(func():
+        var c := ring.size * 0.5
+        var r := minf(c.x, c.y) - width * 0.5 - 12.0
+        ring.draw_arc(c, r, 0.0, TAU, 128, track, width, true)
+        var spin: float = state["spin"]
+        for k in range(3):
+            var ang := spin * TAU + float(k) * TAU / 3.0
+            var orbit := r + width * 0.5 + 7.0
+            ring.draw_circle(c + Vector2(cos(ang), sin(ang)) * orbit, 2.2 - 0.5 * float(k), Color(from_color, 0.45 - 0.1 * float(k)))
+        var p: float = state["p"]
+        if p <= 0.002:
+            return
+        var start := -PI * 0.5
+        var steps := maxi(2, int(120.0 * p))
+        for i in range(steps):
+            var t0 := float(i) / float(steps)
+            var t1 := float(i + 1) / float(steps)
+            ring.draw_arc(c, r, start + TAU * p * t0, start + TAU * p * t1 + 0.004, 3, from_color.lerp(to_color, t0), width, true)
+        ring.draw_circle(c + Vector2(cos(start), sin(start)) * r, width * 0.5, from_color)
+        var head_angle := start + TAU * p
+        var head := c + Vector2(cos(head_angle), sin(head_angle)) * r
+        var glow := 0.5 + 0.5 * sin(spin * TAU * 3.0)
+        ring.draw_circle(head, width * (0.95 + 0.45 * glow), Color(to_color, 0.12 + 0.10 * glow))
+        ring.draw_circle(head, width * 0.5, to_color)
+        ring.draw_circle(head, width * 0.2, Color(1, 1, 1, 0.92))
+    )
+    _dash_when_ready(ring, func():
+        if ui_motion.reduced_motion:
+            return
+        var redraw := func(): ring.queue_redraw()
+        var spin_tween := ring.create_tween().set_loops()
+        spin_tween.tween_method(func(v: float):
+            state["spin"] = v
+            redraw.call()
+        , 0.0, 1.0, 9.0)
+        if animate:
+            var fill := ring.create_tween()
+            fill.tween_interval(0.18)
+            fill.tween_method(func(v: float):
+                state["p"] = v
+                redraw.call()
+            , 0.0, progress, 1.5).set_trans(Tween.TRANS_EXPO).set_ease(Tween.EASE_OUT)
+    )
+    return ring
+
+func _dash_bar(progress: float, tone: Color, delay: float, animate: bool, height: float = 8.0) -> Control:
+    var bar := Control.new()
+    bar.custom_minimum_size = Vector2(0, height)
+    bar.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+    bar.mouse_filter = Control.MOUSE_FILTER_IGNORE
+    var state := {"p": 0.0 if animate else progress}
+    var track_box: StyleBoxFlat = ui_tokens.panel(ui_tokens.tint(ui_tokens.text_primary, 0.07), 999)
+    var fill_box: StyleBoxFlat = ui_tokens.panel(tone, 999)
+    fill_box.shadow_color = ui_tokens.tint(tone, 0.35)
+    fill_box.shadow_size = 6
+    bar.draw.connect(func():
+        bar.draw_style_box(track_box, Rect2(Vector2.ZERO, bar.size))
+        var w := bar.size.x * clampf(float(state["p"]), 0.0, 1.0)
+        if w >= 1.0:
+            bar.draw_style_box(fill_box, Rect2(0.0, 0.0, maxf(w, bar.size.y), bar.size.y))
+    )
+    if animate:
+        _dash_when_ready(bar, func():
+            var tween := bar.create_tween()
+            tween.tween_interval(delay)
+            tween.tween_method(func(v: float):
+                state["p"] = v
+                bar.queue_redraw()
+            , 0.0, progress, 1.2).set_trans(Tween.TRANS_EXPO).set_ease(Tween.EASE_OUT)
+        )
+    return bar
+
+# Slow drifting colour blobs behind the hero copy.
+func _dash_aurora() -> Control:
+    var layer := Control.new()
+    layer.mouse_filter = Control.MOUSE_FILTER_IGNORE
+    var state := {"t": 0.0}
+    var colors := [ui_tokens.accent, ui_tokens.accent_2, ui_tokens.accent_3]
+    var alpha := 0.011 if ui_tokens.is_dark() else 0.016
+    layer.draw.connect(func():
+        var s := layer.size
+        var t: float = float(state["t"]) * TAU
+        for k in range(3):
+            var center := Vector2(
+                s.x * (0.74 + 0.2 * sin(t + float(k) * 2.1)),
+                s.y * (0.35 + 0.4 * cos(t * 2.0 + float(k) * 1.7))
+            )
+            var base := s.y * (0.6 + 0.14 * float(k))
+            for i in range(10):
+                var f := float(i) / 10.0
+                layer.draw_circle(center, base * (1.0 - f * 0.85), Color(colors[k], alpha))
+    )
+    _dash_when_ready(layer, func():
+        if ui_motion.reduced_motion:
+            return
+        var tween := layer.create_tween().set_loops()
+        tween.tween_method(func(v: float):
+            state["t"] = v
+            layer.queue_redraw()
+        , 0.0, 1.0, 26.0)
+    )
+    return layer
+
+func _dash_stat_card(title: String, icon_path: String, value: int, formatter: Callable, tone: Color, delay: float, animate: bool) -> PanelContainer:
+    var card := _dash_panel()
+    var rest := card.get_theme_stylebox("panel") as StyleBoxFlat
+    var lit := rest.duplicate() as StyleBoxFlat
+    lit.border_color = ui_tokens.tint(tone, 0.55)
+    lit.shadow_color = ui_tokens.tint(tone, 0.22)
+    lit.shadow_size = 22
+    lit.shadow_offset = Vector2(0, 8)
+    var stack := VBoxContainer.new()
+    stack.add_theme_constant_override("separation", 10)
+    card.add_child(stack)
+    var header := HBoxContainer.new()
+    header.add_theme_constant_override("separation", 10)
+    stack.add_child(header)
+    var badge := PanelContainer.new()
+    badge.custom_minimum_size = Vector2(34, 34)
+    badge.add_theme_stylebox_override("panel", ui_tokens.panel(ui_tokens.tint(tone, 0.15), 11))
+    badge.add_child(_centered_icon(icon_path, Vector2(17, 17), tone))
+    badge.resized.connect(func(): badge.pivot_offset = badge.size * 0.5)
+    header.add_child(badge)
+    var label := Label.new()
+    label.text = title
+    label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+    label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+    label.clip_text = true
+    label.add_theme_font_size_override("font_size", 13)
+    label.add_theme_color_override("font_color", ui_tokens.text_secondary)
+    header.add_child(label)
+    var number := Label.new()
+    number.text = formatter.call(value)
+    number.add_theme_font_override("font", TITLE_FONT)
+    number.add_theme_font_size_override("font_size", 28 if dashboard_compact else 34)
+    number.add_theme_color_override("font_color", ui_tokens.text_primary)
+    stack.add_child(number)
+    if animate:
+        _dash_when_ready(number, func():
+            number.text = formatter.call(0)
+            get_tree().create_timer(delay).timeout.connect(func():
+                if is_instance_valid(number):
+                    ui_motion.count_up(number, 0, value, formatter, 1.1)
+            , CONNECT_ONE_SHOT)
+        )
+    var accent_line := _dash_bar(1.0, tone, delay + 0.1, animate, 3.0)
+    accent_line.custom_minimum_size.x = 28
+    accent_line.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
+    stack.add_child(accent_line)
+    ui_motion.bind_hover(card, func(active: bool):
+        card.add_theme_stylebox_override("panel", lit if active else rest)
+        ui_motion.spring_property(accent_line, "custom_minimum_size:x", 72.0 if active else 28.0, 0.3, 0.62)
+        if active:
+            ui_motion.jelly(badge, Vector2(1.16, 0.86))
+    , 0.3)
+    ui_motion.bind_hover_lift(card, 1.025)
+    return card
+
+func _dash_empty_label(text: String) -> Label:
+    var empty := Label.new()
+    empty.text = text
+    empty.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+    empty.add_theme_font_size_override("font_size", 13)
+    empty.add_theme_color_override("font_color", ui_tokens.text_tertiary)
+    return empty
+
+func _dash_top_card(ranked: Array, animate: bool) -> PanelContainer:
+    var card := _dash_panel()
+    var stack := VBoxContainer.new()
+    stack.add_theme_constant_override("separation", 16)
+    card.add_child(stack)
+    stack.add_child(_dash_header(_t("dash.top"), ICON_PERFORMANCE, ui_tokens.accent))
+    if ranked.is_empty():
+        stack.add_child(_dash_empty_label(_t("dash.empty")))
+        return card
+    var peak := maxi(1, int(ranked[0].get("playDurationSeconds", 0)))
+    var tones := [ui_tokens.accent, ui_tokens.accent_2, ui_tokens.accent_3, ui_tokens.success, ui_tokens.warning]
+    for i in range(ranked.size()):
+        var game: Dictionary = ranked[i]
+        var seconds := int(game.get("playDurationSeconds", 0))
+        var row := HBoxContainer.new()
+        row.add_theme_constant_override("separation", 14)
+        stack.add_child(row)
+        var rank := Label.new()
+        rank.text = "%02d" % (i + 1)
+        rank.custom_minimum_size = Vector2(24, 0)
+        rank.add_theme_font_override("font", DISPLAY_FONT)
+        rank.add_theme_font_size_override("font_size", 13)
+        rank.add_theme_color_override("font_color", tones[i] if i == 0 else ui_tokens.text_tertiary)
+        row.add_child(rank)
+        var mid := VBoxContainer.new()
+        mid.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+        mid.add_theme_constant_override("separation", 7)
+        row.add_child(mid)
+        var name_row := HBoxContainer.new()
+        mid.add_child(name_row)
+        var name_label := Label.new()
+        name_label.text = _game_display_title(game)
+        name_label.clip_text = true
+        name_label.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+        name_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+        name_label.add_theme_font_override("font", DISPLAY_FONT)
+        name_label.add_theme_font_size_override("font_size", 14)
+        name_label.add_theme_color_override("font_color", ui_tokens.text_primary)
+        name_row.add_child(name_label)
+        var duration := Label.new()
+        duration.text = _format_play_duration(seconds)
+        duration.add_theme_font_override("font", DISPLAY_FONT)
+        duration.add_theme_font_size_override("font_size", 13)
+        duration.add_theme_color_override("font_color", ui_tokens.text_secondary)
+        name_row.add_child(duration)
+        mid.add_child(_dash_bar(float(seconds) / float(peak), tones[i % tones.size()], 0.45 + 0.08 * i, animate, 6.0))
+    return card
+
+func _dash_recent_card(recent: Array) -> PanelContainer:
+    var card := _dash_panel()
+    var stack := VBoxContainer.new()
+    stack.add_theme_constant_override("separation", 6)
+    card.add_child(stack)
+    var header := _dash_header(_t("dash.recent"), ICON_REFRESH, ui_tokens.accent_2)
+    stack.add_child(header)
+    var gap := Control.new()
+    gap.custom_minimum_size = Vector2(0, 6)
+    stack.add_child(gap)
+    if recent.is_empty():
+        stack.add_child(_dash_empty_label(_t("dash.empty")))
+        return card
+    for game in recent:
+        stack.add_child(_dash_recent_row(game))
+    return card
+
+func _dash_recent_row(game: Dictionary) -> Button:
+    var button := Button.new()
+    button.custom_minimum_size = Vector2(0, 68)
+    button.focus_mode = Control.FOCUS_ALL
+    ui_widgets.quiet_button(button)
+    button.custom_minimum_size = Vector2(0, 68)
+    var content := MarginContainer.new()
+    content.mouse_filter = Control.MOUSE_FILTER_IGNORE
+    content.set_anchors_preset(Control.PRESET_FULL_RECT)
+    content.add_theme_constant_override("margin_left", 8)
+    content.add_theme_constant_override("margin_right", 10)
+    button.add_child(content)
+    var row := HBoxContainer.new()
+    row.mouse_filter = Control.MOUSE_FILTER_IGNORE
+    row.add_theme_constant_override("separation", 14)
+    content.add_child(row)
+    var thumb := Control.new()
+    thumb.mouse_filter = Control.MOUSE_FILTER_IGNORE
+    thumb.custom_minimum_size = Vector2(40, 54)
+    thumb.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+    row.add_child(thumb)
+    var plate := Panel.new()
+    plate.mouse_filter = Control.MOUSE_FILTER_IGNORE
+    plate.set_anchors_preset(Control.PRESET_FULL_RECT)
+    plate.add_theme_stylebox_override("panel", ui_tokens.panel(ui_tokens.surface_hover, 8, ui_tokens.outline, 1))
+    thumb.add_child(plate)
+    var texture := _load_cover_texture(game, Vector2i(80, 108))
+    if texture != null:
+        thumb.add_child(_rounded_cover_rect(texture, 8.0))
+    var labels := VBoxContainer.new()
+    labels.mouse_filter = Control.MOUSE_FILTER_IGNORE
+    labels.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+    labels.alignment = BoxContainer.ALIGNMENT_CENTER
+    labels.add_theme_constant_override("separation", 3)
+    row.add_child(labels)
+    var title := Label.new()
+    title.text = _game_display_title(game)
+    title.clip_text = true
+    title.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+    title.add_theme_font_override("font", DISPLAY_FONT)
+    title.add_theme_font_size_override("font_size", 14)
+    title.add_theme_color_override("font_color", ui_tokens.text_primary)
+    labels.add_child(title)
+    var meta := Label.new()
+    meta.text = _game_subtitle(game)
+    meta.clip_text = true
+    meta.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+    meta.add_theme_font_size_override("font_size", 12)
+    meta.add_theme_color_override("font_color", ui_tokens.text_tertiary)
+    labels.add_child(meta)
+    var chevron_holder := Control.new()
+    chevron_holder.mouse_filter = Control.MOUSE_FILTER_IGNORE
+    chevron_holder.custom_minimum_size = Vector2(16, 16)
+    chevron_holder.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+    row.add_child(chevron_holder)
+    var chevron := _icon_rect(ICON_CHEVRON_RIGHT, Vector2(16, 16), ui_tokens.text_tertiary)
+    chevron.size = Vector2(16, 16)
+    chevron_holder.add_child(chevron)
+    ui_motion.bind_hover(button, func(active: bool):
+        ui_motion.spring_property(chevron, "position:x", 4.0 if active else 0.0, 0.26, 0.55)
+        chevron.modulate = ui_tokens.accent_text if active else ui_tokens.text_tertiary
+        ui_motion.spring_property(thumb, "rotation", -0.05 if active else 0.0, 0.3, 0.5)
+    )
+    thumb.resized.connect(func(): thumb.pivot_offset = thumb.size * 0.5)
+    var target := game.duplicate(true)
+    button.pressed.connect(func(): _show_detail(target))
+    return button
+
+# Settings: status pill under a row's copy (purchases).
+func _settings_status_chip(shell: Control, text: String, tone: Color) -> void:
+    var labels: VBoxContainer = shell.get_meta("row_labels", null)
+    if labels == null or text.is_empty():
+        return
+    var chip := PanelContainer.new()
+    chip.mouse_filter = Control.MOUSE_FILTER_IGNORE
+    chip.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
+    var style: StyleBoxFlat = ui_tokens.panel(ui_tokens.tint(tone, 0.12), 999, ui_tokens.tint(tone, 0.28), 1)
+    style.content_margin_left = 10
+    style.content_margin_right = 12
+    style.content_margin_top = 3
+    style.content_margin_bottom = 3
+    chip.add_theme_stylebox_override("panel", style)
+    var row := HBoxContainer.new()
+    row.add_theme_constant_override("separation", 6)
+    chip.add_child(row)
+    var dot := Panel.new()
+    dot.custom_minimum_size = Vector2(6, 6)
+    dot.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+    dot.add_theme_stylebox_override("panel", ui_tokens.panel(tone, 3))
+    row.add_child(dot)
+    var label := Label.new()
+    label.text = text
+    label.add_theme_font_override("font", DISPLAY_FONT)
+    label.add_theme_font_size_override("font_size", 11)
+    label.add_theme_color_override("font_color", tone)
+    row.add_child(label)
+    var spacer := Control.new()
+    spacer.custom_minimum_size = Vector2(0, 4)
+    labels.add_child(spacer)
+    labels.add_child(chip)
+    _dash_when_ready(dot, func(): ui_motion.pulse(dot, 0.35, 1.8))

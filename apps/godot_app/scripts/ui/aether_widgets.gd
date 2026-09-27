@@ -9,6 +9,7 @@ extends RefCounted
 const CONTROL_HEIGHT := 44.0
 const ICON_BUTTON_SIZE := 44.0
 const RADIUS := 12
+const PILL := 999
 
 var tokens
 var motion
@@ -30,13 +31,33 @@ func secondary_button(button: Button, destructive: bool = false) -> Button:
     var hover_edge: Color = tokens.tint(tokens.danger, 0.55) if destructive else tokens.outline_strong
     _set_button_boxes(
         button,
-        _box(tokens.surface_raised, tokens.outline),
-        _box(tokens.surface_hover, hover_edge),
-        _box(tokens.tint(foreground, 0.10), hover_edge),
-        tokens.focus_style(RADIUS),
-        _box(tokens.tint(tokens.surface_hover, 0.5), tokens.separator)
+        _box(tokens.surface_raised, tokens.outline, PILL),
+        _box(tokens.surface_hover, hover_edge, PILL),
+        _box(tokens.tint(foreground, 0.10), hover_edge, PILL),
+        tokens.focus_style(PILL),
+        _box(tokens.tint(tokens.surface_hover, 0.5), tokens.separator, PILL)
     )
-    motion.bind_hover_lift(button, 1.015)
+    motion.bind_hover_lift(button, 1.02)
+    return button
+
+# Tinted action: the signal colour at low strength with a hairline of the
+# same hue; hover deepens the tint and lifts a soft coloured glow.
+func soft_button(button: Button) -> Button:
+    _prepare_button(button, 14)
+    var tone: Color = tokens.accent_text
+    _set_font_colors(button, tone, tone, tokens.text_tertiary)
+    for state in ["normal", "hover", "pressed", "focus", "hover_pressed"]:
+        button.add_theme_color_override("icon_%s_color" % state, tone)
+    button.add_theme_color_override("icon_disabled_color", tokens.text_tertiary)
+    var normal := _box(tokens.tint(tokens.accent, 0.10), tokens.tint(tokens.accent, 0.24), PILL)
+    var hover := _box(tokens.tint(tokens.accent, 0.17), tokens.tint(tokens.accent, 0.46), PILL)
+    hover.shadow_color = tokens.tint(tokens.accent, 0.20)
+    hover.shadow_size = 14
+    hover.shadow_offset = Vector2(0, 4)
+    var pressed := _box(tokens.tint(tokens.accent, 0.25), tokens.tint(tokens.accent, 0.55), PILL)
+    var focus := _box(tokens.tint(tokens.accent, 0.12), tokens.tint(tokens.accent, 0.75), PILL, 18, 2)
+    _set_button_boxes(button, normal, hover, pressed, focus, _box(tokens.tint(tokens.surface_hover, 0.5), tokens.separator, PILL))
+    motion.bind_hover_lift(button, 1.03)
     return button
 
 func quiet_button(button: Button) -> Button:
@@ -181,20 +202,20 @@ func _solid_button(button: Button, fill: Color, foreground: Color) -> Button:
     _set_font_colors(button, foreground, foreground, tokens.text_tertiary)
     for state in ["normal", "hover", "pressed", "focus", "hover_pressed"]:
         button.add_theme_color_override("icon_%s_color" % state, foreground)
-    var normal := _box(fill)
+    var normal := _sheen(_box(fill, Color.TRANSPARENT, PILL), fill)
     normal.shadow_color = tokens.tint(fill, 0.30 if tokens.is_dark() else 0.26)
     normal.shadow_size = 10
     normal.shadow_offset = Vector2(0, 4)
-    var hover := _box(fill.lightened(0.08))
+    var hover := _sheen(_box(fill.lightened(0.08), Color.TRANSPARENT, PILL), fill.lightened(0.08))
     hover.shadow_color = tokens.tint(fill, 0.42 if tokens.is_dark() else 0.34)
     hover.shadow_size = 18
     hover.shadow_offset = Vector2(0, 6)
-    var pressed := _box(fill.darkened(0.10))
+    var pressed := _box(fill.darkened(0.10), Color.TRANSPARENT, PILL)
     pressed.shadow_color = tokens.tint(fill, 0.24)
     pressed.shadow_size = 4
     pressed.shadow_offset = Vector2(0, 1)
-    var focus := _box(fill.lightened(0.04), tokens.tint(foreground, 0.55), RADIUS, 18, 2)
-    _set_button_boxes(button, normal, hover, pressed, focus, _box(tokens.surface_hover, tokens.separator))
+    var focus := _box(fill.lightened(0.04), tokens.tint(foreground, 0.55), PILL, 18, 2)
+    _set_button_boxes(button, normal, hover, pressed, focus, _box(tokens.surface_hover, tokens.separator, PILL))
     motion.bind_hover_lift(button, 1.025)
     return button
 
@@ -236,4 +257,11 @@ func _round(fill: Color) -> StyleBoxFlat:
     style.content_margin_top = 0
     style.content_margin_right = 0
     style.content_margin_bottom = 0
+    return style
+
+# A lighter hairline along the top edge reads as light catching the button.
+func _sheen(style: StyleBoxFlat, fill: Color) -> StyleBoxFlat:
+    style.border_color = fill.lightened(0.28)
+    style.border_width_top = 1
+    style.border_blend = true
     return style

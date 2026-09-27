@@ -195,7 +195,13 @@ func bind_hover(control: Control, callback: Callable, linger: float = 0.22) -> v
     var press := func(active: bool):
         serial[0] += 1
         if active:
-            callback.call(true)
+            # A short hold before lighting up keeps scroll swipes from
+            # flashing every card the finger passes over.
+            var armed: int = serial[0]
+            _after(control, 0.08, func(_current: Control):
+                if serial[0] == armed:
+                    callback.call(true)
+            )
             return
         var token: int = serial[0]
         _after(control, linger, func(_current: Control):
@@ -213,6 +219,10 @@ func bind_hover(control: Control, callback: Callable, linger: float = 0.22) -> v
                 press.call(event.pressed)
         )
     control.mouse_exited.connect(func(): press.call(false))
+    control.set_meta("aether_hover_cancel", func():
+        serial[0] += 1
+        callback.call(false)
+    )
     control.visibility_changed.connect(func():
         if not control.is_visible_in_tree():
             serial[0] += 1
@@ -222,6 +232,9 @@ func bind_hover(control: Control, callback: Callable, linger: float = 0.22) -> v
 func cancel_press(control: Control) -> void:
     if control == null or not is_instance_valid(control):
         return
+    var cancel_hover: Variant = control.get_meta("aether_hover_cancel", null)
+    if cancel_hover is Callable and (cancel_hover as Callable).is_valid():
+        (cancel_hover as Callable).call()
     active_springs.erase(_motion_key(control, "scale"))
     control.scale = REST_SCALE
 

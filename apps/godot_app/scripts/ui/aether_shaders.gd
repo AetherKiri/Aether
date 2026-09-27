@@ -57,6 +57,7 @@ uniform float zoom = 1.0;
 uniform float blur = 0.0;
 uniform float dim = 0.0;
 uniform float fade_bottom = 0.0;
+uniform float feather = 0.0;
 uniform vec4 fade_color : source_color = vec4(0.0);
 
 varying vec2 local_pos;
@@ -83,7 +84,7 @@ void fragment() {
     vec2 half_box = rect_size * 0.5;
     float d = round_box(local_pos - half_box, half_box, min(radius, min(half_box.x, half_box.y)));
     float aa = max(fwidth(d), 0.0001);
-    c.a *= clamp(0.5 - d / aa, 0.0, 1.0);
+    c.a *= feather > 0.0 ? 1.0 - smoothstep(-feather, feather * 0.25, d) : clamp(0.5 - d / aa, 0.0, 1.0);
     COLOR = c * COLOR;
 }
 """

@@ -1628,7 +1628,7 @@ const ONSCRIPTER_SCRIPT_MARKERS := [
     "onscript.nt3",
 ]
 const SHELL_SCROLL_DRAG_THRESHOLD := 4.0
-const SHELL_SCROLL_BUTTON_DRAG_THRESHOLD := 28.0
+const SHELL_SCROLL_BUTTON_DRAG_THRESHOLD := 12.0
 const SHELL_SCROLL_SLIDER_AXIS_THRESHOLD := 10.0
 const SHELL_SCROLL_SLIDER_VERTICAL_DOMINANCE := 1.25
 const SHELL_SCROLL_AXIS_NONE := ""
@@ -5826,6 +5826,9 @@ func _start_shell_scroll_drag(key: int, position: Vector2) -> void:
     if scroll == null:
         shell_scroll_drag_states.erase(key)
         return
+    # A touch that lands while the list is still gliding only catches the
+    # scroll; it must not also open whatever card slid under the finger.
+    var catching := shell_scroll_momentum.has(scroll.get_instance_id()) or shell_scroll_tweens.has(scroll.get_instance_id())
     _stop_shell_scroll_tween(scroll)
     _stop_shell_scroll_momentum(scroll)
     _clear_scroll_overscroll(scroll)
@@ -5857,6 +5860,7 @@ func _start_shell_scroll_drag(key: int, position: Vector2) -> void:
         "scroll_locked": horizontal_control != null,
         "axis_lock": SHELL_SCROLL_AXIS_PENDING if horizontal_control != null else SHELL_SCROLL_AXIS_NONE,
         "gesture_delta": Vector2.ZERO,
+        "catching": catching,
     }
     if input_trace_enabled:
         _write_probe_marker("ui_scroll_start key=%d scroll=%d pos=%.1f,%.1f deadzone=%d" % [
@@ -5956,6 +5960,10 @@ func _update_shell_scroll_drag(
 func _finish_shell_scroll_drag(key: int) -> bool:
     var state: Dictionary = shell_scroll_drag_states.get(key, {})
     var dragging := bool(state.get("dragging", false))
+    if bool(state.get("catching", false)) and not dragging:
+        _cancel_shell_scroll_press(state)
+        shell_scroll_drag_states.erase(key)
+        return true
     if dragging:
         _cancel_shell_scroll_press(state)
     # Drag state stores instance IDs deliberately, because a rebuilt settings
@@ -7873,6 +7881,8 @@ func _rebuild_detail_contents(game: Dictionary, animate_hero: bool, animate_cont
     elif animate_content:
         ui_motion.reveal(body, 0.04)
         call_deferred("_cascade_detail_body", body)
+        if is_instance_valid(detail_hero_cover):
+            _bloom_in_cover(detail_hero_cover)
 
 func _build_desktop_detail(game: Dictionary, phone_landscape: bool = false) -> Control:
     var body := HBoxContainer.new()
@@ -7930,7 +7940,7 @@ func _detail_cover(game: Dictionary, cover_size: Vector2) -> Control:
     cover.add_child(plate)
     var cover_texture := _load_cover_texture(game, Vector2i(int(cover_size.x * 2.0), int(cover_size.y * 2.0)), 0)
     if cover_texture != null:
-        cover.add_child(_rounded_cover_rect(cover_texture, 16.0))
+        cover.add_child(_rounded_cover_rect(_mipmapped_texture(cover_texture), 16.0))
     else:
         cover.add_child(_cover_placeholder(ICON_GAMEPAD, 16.0, _cover_tint(game), 54.0))
     cover.resized.connect(func(): cover.pivot_offset = cover.size * 0.5)
@@ -10618,6 +10628,10 @@ func _animate_hero_forward(body: Control) -> void:
     ui_motion.reveal(body, 0.02)
     _cascade_detail_body(body)
     var overlay := _create_hero_overlay(hero_source_rect, hero_source_texture)
+    var source_card := _find_game_card(hero_source_path)
+    var source_poster: Control = source_card.get_meta("hero_cover", null) if source_card != null else null
+    var from_plate: Panel = source_poster.get_node_or_null("PosterPlate") as Panel if source_poster != null and is_instance_valid(source_poster) else null
+    _hero_flight_fx(overlay, from_plate, detail_hero_cover.get_child(0) as Panel, 12.0, 16.0)
     var transition_id := hero_transition_id
     var overlay_ref: WeakRef = weakref(overlay)
     ui_motion.hero_rect(overlay, _hero_local_rect(destination), func(): _complete_hero_overlay_ref(overlay_ref, transition_id, false))
@@ -10641,6 +10655,7 @@ func _animate_hero_back(source_rect: Rect2) -> void:
     target_cover.modulate.a = 0.0
     hero_hidden_target = target_cover
     var overlay := _create_hero_overlay(source_rect, hero_source_texture)
+    _hero_flight_fx(overlay, null, target_cover.get_node_or_null("PosterPlate") as Panel, 16.0, 12.0)
     var transition_id := hero_transition_id
     var overlay_ref: WeakRef = weakref(overlay)
     ui_motion.hero_rect(overlay, _hero_local_rect(target_cover.get_global_rect()), func(): _complete_hero_overlay_ref(overlay_ref, transition_id, true))
@@ -10652,12 +10667,13 @@ func _create_hero_overlay(global_rect: Rect2, texture: Texture2D) -> Control:
     overlay.position = _hero_local_rect(global_rect).position
     overlay.size = global_rect.size
     var plate := Panel.new()
+    plate.name = "HeroPlate"
     plate.mouse_filter = Control.MOUSE_FILTER_IGNORE
     plate.set_anchors_preset(Control.PRESET_FULL_RECT)
-    plate.add_theme_stylebox_override("panel", ui_tokens.raised(14, 2, ui_tokens.surface_raised))
+    plate.add_theme_stylebox_override("panel", ui_tokens.raised(14, 1, ui_tokens.surface_raised))
     overlay.add_child(plate)
     if texture != null:
-        overlay.add_child(_rounded_cover_rect(texture, 14.0))
+        overlay.add_child(_rounded_cover_rect(_mipmapped_texture(texture), 14.0))
     else:
         overlay.add_child(_cover_placeholder(ICON_GAMEPAD, 14.0, ui_tokens.accent, 44.0))
     shell_content.add_child(overlay)
@@ -13322,6 +13338,8 @@ func _process(delta: float) -> void:
     _process_backdrop(delta)
     _process_shell_scroll_physics(delta)
     _process_scroll_flair(delta)
+    if is_instance_valid(settings_view) and settings_view.is_visible_in_tree():
+        _sync_settings_index()
     _sync_game_virtual_controls()
     _process_iap(delta)
     _update_advanced_tool_timeouts()
@@ -16819,6 +16837,7 @@ func _rounded_cover_rect(texture: Texture2D, radius: float) -> TextureRect:
     cover.set_anchors_preset(Control.PRESET_FULL_RECT)
     cover.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
     cover.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_COVERED
+    cover.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
     var mat := AetherShaders.material(AetherShaders.image())
     mat.set_shader_parameter("radius", radius)
     mat.set_shader_parameter("zoom", 1.0)
@@ -16900,19 +16919,28 @@ func _sync_settings_index() -> void:
     var rail: Control = settings_index_host.get_meta("rail", null)
     if rail == null or not is_instance_valid(rail):
         return
-    var host_rect := settings_index_host.get_global_rect()
-    var view_top := settings_view.global_position.y
-    rail.custom_minimum_size.x = host_rect.size.x
-    rail.size = Vector2(host_rect.size.x, 0.0)
-    var y := host_rect.position.y
+    var overlay := rail.get_parent() as Control
+    if overlay == null or not settings_index_host.is_inside_tree():
+        return
+    # Work in the overlay's local space: page transitions scale and slide the
+    # whole view, and global rects measured mid-flight would fling the rail.
+    var to_local := overlay.get_global_transform().affine_inverse()
+    var host_position: Vector2 = to_local * settings_index_host.global_position
+    var host_size := settings_index_host.size
+    var view_top: float = (to_local * settings_view.global_position).y
+    if host_size.x <= 0.0:
+        return
+    rail.custom_minimum_size.x = host_size.x
+    rail.size = Vector2(host_size.x, 0.0)
+    var y := host_position.y
     if settings_compact_layout:
         y = maxf(y, view_top + 6.0)
     else:
-        var lowest := maxf(host_rect.position.y, host_rect.end.y - rail.size.y)
-        y = clampf(view_top + 16.0, host_rect.position.y, lowest)
-    rail.global_position = Vector2(host_rect.position.x, y)
+        var lowest := maxf(host_position.y, host_position.y + host_size.y - rail.size.y)
+        y = clampf(view_top + 16.0, host_position.y, lowest)
+    rail.position = Vector2(host_position.x, y)
 
-    var reading_line := view_top + settings_view.size.y * 0.3
+    var reading_line := settings_view.global_position.y + settings_view.size.y * 0.3
     var active := 0
     for i in range(settings_index_entries.size()):
         var section: Control = settings_index_entries[i]["section"]
@@ -17261,3 +17289,85 @@ func _settings_marker_springing(control: Control) -> bool:
     if control == null:
         return false
     return ui_motion.active_springs.has(ui_motion._motion_key(control, "position"))
+
+# Hero flight styling: the artwork travels slightly defocused with a feathered
+# edge that resolves as it lands, while the plate shadow grows from the card's
+# contact shadow into the destination's deep tinted one.
+
+func _hero_flight_fx(overlay: Control, from_plate: Panel, to_plate: Panel, from_radius: float, to_radius: float) -> void:
+    if overlay == null or not is_instance_valid(overlay):
+        return
+    var plate := overlay.get_node_or_null("HeroPlate") as Panel
+    var image := overlay.get_node_or_null("CoverImage") as TextureRect
+    var mat: ShaderMaterial = image.material as ShaderMaterial if image != null else null
+    var start: StyleBoxFlat = ui_tokens.raised(int(from_radius), 1, ui_tokens.surface_raised)
+    if from_plate != null and is_instance_valid(from_plate) and from_plate.get_theme_stylebox("panel") is StyleBoxFlat:
+        start = (from_plate.get_theme_stylebox("panel") as StyleBoxFlat).duplicate()
+    var finish: StyleBoxFlat = ui_tokens.raised(int(to_radius), 2, ui_tokens.surface_raised)
+    if to_plate != null and is_instance_valid(to_plate) and to_plate.get_theme_stylebox("panel") is StyleBoxFlat:
+        finish = (to_plate.get_theme_stylebox("panel") as StyleBoxFlat).duplicate()
+    var live: StyleBoxFlat = start.duplicate()
+    if plate != null:
+        plate.add_theme_stylebox_override("panel", live)
+    var apply := func(t: float):
+        var e := ease(t, -2.2)
+        var swell := sin(t * PI)
+        live.shadow_size = int(lerpf(float(start.shadow_size), float(finish.shadow_size), e))
+        live.shadow_offset = start.shadow_offset.lerp(finish.shadow_offset, e)
+        live.shadow_color = start.shadow_color.lerp(finish.shadow_color, e)
+        live.set_corner_radius_all(int(lerpf(from_radius, to_radius, e)))
+        if mat != null:
+            mat.set_shader_parameter("radius", lerpf(from_radius, to_radius, e))
+            mat.set_shader_parameter("blur", swell * 2.2)
+            mat.set_shader_parameter("feather", swell * 9.0)
+    apply.call(0.0)
+    if ui_motion.reduced_motion:
+        apply.call(1.0)
+        return
+    var tween := overlay.create_tween()
+    tween.tween_method(apply, 0.0, 1.0, ui_motion.HERO_DURATION)
+
+# Cover entrance without a hero flight: it condenses out of a soft blur and
+# its shadow spreads underneath instead of popping in fully formed.
+func _bloom_in_cover(cover: Control) -> void:
+    if cover == null or not is_instance_valid(cover) or ui_motion.reduced_motion:
+        return
+    var plate := cover.get_child(0) as Panel if cover.get_child_count() > 0 else null
+    var image := cover.get_node_or_null("CoverImage") as TextureRect
+    var mat: ShaderMaterial = image.material as ShaderMaterial if image != null else null
+    var finish: StyleBoxFlat = null
+    var live: StyleBoxFlat = null
+    if plate != null and plate.get_theme_stylebox("panel") is StyleBoxFlat:
+        finish = (plate.get_theme_stylebox("panel") as StyleBoxFlat).duplicate()
+        live = finish.duplicate()
+        plate.add_theme_stylebox_override("panel", live)
+    cover.modulate.a = 0.0
+    var apply := func(t: float):
+        var e := ease(t, 0.35)
+        cover.modulate.a = clampf(t * 1.8, 0.0, 1.0)
+        if live != null:
+            live.shadow_size = int(float(finish.shadow_size) * e)
+            live.shadow_offset = finish.shadow_offset * e
+            live.shadow_color = Color(finish.shadow_color, finish.shadow_color.a * e)
+        if mat != null:
+            mat.set_shader_parameter("blur", (1.0 - e) * 3.0)
+            mat.set_shader_parameter("feather", (1.0 - e) * 14.0)
+    apply.call(0.0)
+    var tween := cover.create_tween()
+    tween.tween_interval(0.06)
+    tween.tween_method(apply, 0.0, 1.0, 0.62)
+
+func _mipmapped_texture(texture: Texture2D) -> Texture2D:
+    if texture == null:
+        return null
+    var key := "mip|%d" % texture.get_instance_id()
+    if cover_texture_cache.has(key):
+        return cover_texture_cache[key]
+    var image := texture.get_image()
+    if image == null or image.is_compressed():
+        return texture
+    image = image.duplicate()
+    image.generate_mipmaps()
+    var result := ImageTexture.create_from_image(image)
+    cover_texture_cache[key] = result
+    return result

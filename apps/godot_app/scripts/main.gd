@@ -23,6 +23,9 @@ const DEFAULT_COVER_BASENAMES := [
 ]
 const GAME_COVER_PATH_PREFIX := "game://"
 const SETTINGS_FILE := "user://aetherkiri_settings.cfg"
+const NOTICE_FILE := "user://aetherkiri_notice.cfg"
+const NOTICE_ID := "qq_group_2026_09"
+const QQ_GROUP_URL := "https://aetherkiri.github.io/qq/"
 const SCENE_TEST_SETTINGS_KEY := "aether_kiri/scene_test"
 const IAP_LIST_LIMIT_PRODUCT_ID := "com.aether.list.limit"
 const IAP_COFFEE_PRODUCT_ID := "com.aether.coffee"
@@ -163,6 +166,17 @@ const UI_TEXT := {
         "settings.section.render": "渲染",
         "settings.section.developer": "开发者",
         "settings.section.about": "关于",
+        "settings.section.community": "QQ 交流群",
+        "settings.qq_group": "加入 QQ 交流群",
+        "settings.qq_group_desc": "反馈问题、获取更新、与其他玩家交流",
+        "settings.qq_group_open": "前往",
+        "notice.title": "公告",
+        "notice.qq_body": "欢迎加入 AetherKiri QQ 交流群，反馈问题、获取最新版本与其他玩家交流。
+
+之后也可以在「设置 → QQ 交流群」中随时查看。",
+        "notice.open": "加入交流群",
+        "notice.remind_week": "一周后提醒",
+        "notice.skip_today": "今天不再弹出",
         "settings.section.purchases": "内购项目",
         "settings.language": "语言",
         "settings.language_desc": "默认跟随系统；也可以固定为简体中文、繁体中文、英语、日语或韩语",
@@ -751,6 +765,17 @@ const UI_TEXT := {
         "settings.section.render": "Rendering",
         "settings.section.developer": "Developer",
         "settings.section.about": "About",
+        "settings.section.community": "QQ Group",
+        "settings.qq_group": "Join the QQ group",
+        "settings.qq_group_desc": "Report issues, get updates and chat with other players",
+        "settings.qq_group_open": "Open",
+        "notice.title": "Announcement",
+        "notice.qq_body": "Join the AetherKiri QQ group to report issues, get the latest builds and chat with other players.
+
+You can find it any time under Settings → QQ Group.",
+        "notice.open": "Join group",
+        "notice.remind_week": "Remind me in a week",
+        "notice.skip_today": "Not again today",
         "settings.section.purchases": "In-App Purchases",
         "settings.language": "Language",
         "settings.language_desc": "Defaults to the system language; you can pin Simplified Chinese, Traditional Chinese, English, Japanese, or Korean",
@@ -5007,6 +5032,9 @@ func _rebuild_settings_view() -> void:
     var rail := _settings_rail(compact)
     overlay.add_child(rail)
     settings_index_host.set_meta("rail", rail)
+
+    var community_rows := _settings_section(flow, _t("settings.section.community"), animate_page, 0.02, ICON_HELP)
+    _add_settings_row(community_rows, _settings_action_row(_t("settings.qq_group"), _t("settings.qq_group_desc"), _t("settings.qq_group_open"), _open_qq_group))
 
     var interface_rows := _settings_section(flow, _t("settings.section.interface"), animate_page, 0.04, ICON_PAGE)
     _add_settings_row(interface_rows, _settings_row(_t("settings.style"), _t("settings.style_desc"), _style_select(), stack_settings_controls))
@@ -11766,6 +11794,7 @@ func _continue_ready_after_legal_gate() -> void:
     if _show_next_required_legal_document():
         return
     legal_gate_completed = true
+    call_deferred("_maybe_show_notice")
     call_deferred("_refresh_games_after_web_local_restore")
     call_deferred("_auto_start_web_dev_game")
 
@@ -17158,13 +17187,13 @@ func _note_backdrop_touch(event: InputEvent) -> void:
 func _settings_hero(compact: bool) -> PanelContainer:
     var hero := PanelContainer.new()
     hero.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-    var style: StyleBoxFlat = ui_tokens.raised(ui_tokens.RADIUS_LARGE, 1, ui_tokens.surface_raised)
+    var style: StyleBoxFlat = ui_tokens.raised(ui_tokens.RADIUS_LARGE, 0, ui_tokens.surface_raised)
     style.content_margin_left = 16 if compact else 28
     style.content_margin_right = 16 if compact else 28
     style.content_margin_top = 14 if compact else 24
     style.content_margin_bottom = 14 if compact else 24
     hero.add_theme_stylebox_override("panel", style)
-    hero.clip_contents = true
+    hero.clip_children = CanvasItem.CLIP_CHILDREN_AND_DRAW
     hero.mouse_filter = Control.MOUSE_FILTER_PASS
 
     # A soft accent wash sweeps across the card behind the copy.
@@ -17386,3 +17415,65 @@ func _mipmapped_texture(texture: Texture2D) -> Texture2D:
     var result := ImageTexture.create_from_image(image)
     cover_texture_cache[key] = result
     return result
+
+# Announcements
+# -------------
+# One hard-coded notice shown after the legal gate. It can be snoozed for a
+# week or silenced until local midnight; the choice is stored per notice id.
+
+func _open_qq_group() -> void:
+    var result := OS.shell_open(QQ_GROUP_URL)
+    if result != OK:
+        _show_message(QQ_GROUP_URL)
+
+func _notice_snoozed_until() -> int:
+    var cfg := ConfigFile.new()
+    if cfg.load(NOTICE_FILE) != OK:
+        return 0
+    return int(cfg.get_value(NOTICE_ID, "snoozed_until", 0))
+
+func _snooze_notice(seconds: int) -> void:
+    var cfg := ConfigFile.new()
+    cfg.load(NOTICE_FILE)
+    cfg.set_value(NOTICE_ID, "snoozed_until", int(Time.get_unix_time_from_system()) + maxi(0, seconds))
+    cfg.save(NOTICE_FILE)
+
+func _seconds_until_local_midnight() -> int:
+    var now := Time.get_time_dict_from_system()
+    return 86400 - (int(now.hour) * 3600 + int(now.minute) * 60 + int(now.second))
+
+func _maybe_show_notice() -> void:
+    if DisplayServer.get_name() == "headless" or not OS.get_environment("AETHERKIRI_CAPTURE_UI").is_empty():
+        return
+    if int(Time.get_unix_time_from_system()) < _notice_snoozed_until():
+        return
+    await get_tree().create_timer(0.6).timeout
+    if game_running or (modal_layer != null and modal_layer.visible):
+        return
+    _show_notice()
+
+func _show_notice() -> void:
+    var dialog := _modal_dialog(Vector2(560, 360), 0.46)
+    var box := _modal_stack(dialog, _t("notice.title"), ICON_HELP)
+    box.add_child(_dialog_body_label(_t("notice.qq_body")))
+    var link := _pill_button(_t("notice.open"), ICON_CHEVRON_RIGHT)
+    link.custom_minimum_size = Vector2(0, 48)
+    link.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+    link.pressed.connect(_open_qq_group)
+    box.add_child(link)
+    var buttons := _dialog_button_row()
+    box.add_child(buttons)
+    var week := _secondary_dialog_button(_t("notice.remind_week"), Vector2(0, 46))
+    week.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+    week.pressed.connect(func():
+        _snooze_notice(7 * 86400)
+        _dismiss_modal()
+    )
+    buttons.add_child(week)
+    var today := _secondary_dialog_button(_t("notice.skip_today"), Vector2(0, 46))
+    today.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+    today.pressed.connect(func():
+        _snooze_notice(_seconds_until_local_midnight())
+        _dismiss_modal()
+    )
+    buttons.add_child(today)

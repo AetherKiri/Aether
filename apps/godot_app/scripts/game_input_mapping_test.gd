@@ -24,11 +24,11 @@ func _initialize() -> void:
         _fail("frame coordinate was rescaled to the stale surface")
         return
 
-    # RFVP, ONScripter, and Minori consume native content coordinates rather
-    # than the presentation surface. Using the shell surface moves clicks out
-    # of the logical frame and makes controls appear unresponsive.
+    # RFVP, ONScripter, Minori, and Siglus consume native content coordinates
+    # rather than the presentation surface. Using the shell surface moves
+    # clicks out of the logical frame and makes controls appear unresponsive.
     var native_frame := Vector2(1024, 640)
-    for runtime_kind in ["minori", "onscripter", "rfvp"]:
+    for runtime_kind in ["minori", "onscripter", "rfvp", "siglus"]:
         var input_surface := GameInputMapping.input_surface_size(
             runtime_kind, native_frame, requested_surface
         )
@@ -141,6 +141,18 @@ func _initialize() -> void:
     )
     if not real_drag.is_equal_approx(Vector2(150, 80)):
         _fail("real drag lost its release point: %s" % real_drag)
+        return
+
+    if not GameInputMapping.touch_drag_release_is_cancelled(
+        "CatSystem2", true
+    ):
+        _fail("CatSystem2 touch drag did not cancel its trailing click")
+        return
+    if GameInputMapping.touch_drag_release_is_cancelled("catsystem2", false):
+        _fail("CatSystem2 tap was misclassified as a cancelled drag")
+        return
+    if GameInputMapping.touch_drag_release_is_cancelled("artemis", true):
+        _fail("Artemis layer drag unexpectedly lost its release")
         return
 
     print("game_input_mapping_test: PASS")

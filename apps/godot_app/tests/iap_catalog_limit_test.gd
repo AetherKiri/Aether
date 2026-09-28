@@ -32,6 +32,9 @@ func _initialize() -> void:
     assert(not app._runtime_requires_beta_access(app.RUNTIME_ONSCRIPTER))
     assert(app._runtime_requires_beta_access(app.RUNTIME_MINORI))
     assert(not app._runtime_requires_beta_access(app.RUNTIME_KIRIKIRI))
+    # CatSystem2 is a released runtime and must not enter the coffee-only
+    # entitlement path.  WA2 remains the explicitly provider-gated runtime.
+    assert(not app._runtime_requires_beta_access(app.RUNTIME_CATSYSTEM2))
     assert(not app._beta_access_enforcement_enabled("Android"))
     assert(not app._beta_access_enforcement_enabled("iOS"))
 
@@ -49,6 +52,7 @@ func _initialize() -> void:
         assert(not String(app._t("iap.coffee.title")).is_empty())
         assert(not String(app._t("iap.coffee.desc")).is_empty())
         assert(not String(app._t("iap.coffee.active_until", ["2030-01-01"])).is_empty())
+        assert(not String(app._t("iap.runtime_unavailable")).is_empty())
         assert(not String(app._t("iap.beta_runtime_unavailable")).is_empty())
 
     settings_action.free()

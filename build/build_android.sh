@@ -59,6 +59,63 @@ ensure_vcpkg() {
 
 ensure_vcpkg
 
+# Resolve a Rust toolchain that can build for the requested Android target.
+# Homebrew's Rust formula ships without Android targets, so a cargo found in
+# PATH may fail with E0463 ("can't find crate for core") even though rustup
+# toolchains with the target exist on the machine. CMake locates cargo via
+# find_program(), so the fix is to prepend the right toolchain's bin directory
+# to PATH before configure time.
+ensure_android_rust() {
+    local triple="$1"
+    local cargo_dir
+    local sysroot
+    local toolchain_bin
+    local candidate
+
+    # An explicit CARGO override always wins; make sure CMake can see it.
+    if [[ -n "${CARGO:-}" ]]; then
+        cargo_dir="$(dirname "$CARGO")"
+        case ":$PATH:" in
+            *":$cargo_dir:"*) ;;
+            *) export PATH="$cargo_dir:$PATH" ;;
+        esac
+        return 0
+    fi
+
+    if [[ -z "$(command -v cargo || true)" ]]; then
+        echo "Error: cargo not found in PATH. Install Rust from https://rustup.rs," >&2
+        echo "       then add the Android target: rustup target add $triple" >&2
+        exit 1
+    fi
+
+    sysroot="$(rustc --print sysroot 2>/dev/null || true)"
+    if [[ -n "$sysroot" && -d "$sysroot/lib/rustlib/$triple" ]]; then
+        return 0
+    fi
+
+    local rustup_home="${RUSTUP_HOME:-$HOME/.rustup}"
+    if [[ -d "$rustup_home/toolchains" ]]; then
+        # Prefer a stable toolchain when several provide the target.
+        for candidate in "$rustup_home"/toolchains/*/; do
+            candidate="${candidate%/}"
+            [[ -x "$candidate/bin/cargo" && -d "$candidate/lib/rustlib/$triple" ]] || continue
+            if [[ "$(basename "$candidate")" == stable-* || -z "$toolchain_bin" ]]; then
+                toolchain_bin="$candidate/bin"
+            fi
+        done
+    fi
+
+    if [[ -z "$toolchain_bin" ]]; then
+        echo "Error: The active Rust toolchain lacks the '$triple' target and no rustup" >&2
+        echo "       toolchain in $rustup_home/toolchains provides it." >&2
+        echo "       Fix with: rustup target add $triple" >&2
+        exit 1
+    fi
+
+    echo "[INFO] Active cargo is missing '$triple'; using rustup toolchain: $toolchain_bin"
+    export PATH="$toolchain_bin:$PATH"
+}
+
 find_android_ndk() {
     local candidate
     # A caller-selected NDK must win over SDK auto-discovery. This lets the
@@ -109,6 +166,27 @@ export ANDROID_HOME
 export ANDROID_SDK_ROOT="$ANDROID_HOME"
 export ANDROID_NDK_HOME="$ANDROID_NDK_HOME_RESOLVED"
 export ANDROID_NDK="$ANDROID_NDK_HOME_RESOLVED"
+
+# The Android export uses a custom Gradle build template (minSdk 26 lives in
+# export_presets.cfg). The template is generated content and gitignored;
+# materialize it from the installed Godot export templates when missing.
+# Layout mirrors Godot's official installer (ExportTemplateManager::
+# install_android_template): <android>/.build_version marks the template
+# version, <android>/build/.gdignore keeps Godot from scanning it.
+if [[ ! -f "$GODOT_APP_DIR/android/.build_version" || ! -f "$GODOT_APP_DIR/android/build/build.gradle" ]]; then
+    if [[ ! -f "$GODOT_TEMPLATE_DIR/android_source.zip" ]]; then
+        echo "Error: Android build template missing and " >&2
+        echo "       $GODOT_TEMPLATE_DIR/android_source.zip not found." >&2
+        echo "       Install Godot export templates or set GODOT_TEMPLATE_DIR." >&2
+        exit 1
+    fi
+    echo "Installing Godot Android build template into apps/godot_app/android/build"
+    rm -rf "$GODOT_APP_DIR/android"
+    mkdir -p "$GODOT_APP_DIR/android/build"
+    unzip -qo "$GODOT_TEMPLATE_DIR/android_source.zip" -d "$GODOT_APP_DIR/android/build"
+    printf '%s\n' "${GODOT_TEMPLATE_DIR##*/}" > "$GODOT_APP_DIR/android/.build_version"
+    : > "$GODOT_APP_DIR/android/build/.gdignore"
+fi
 
 command -v cmake >/dev/null
 NINJA_BIN="${CMAKE_MAKE_PROGRAM:-$(command -v ninja || command -v ninja-build || true)}"
@@ -211,6 +289,7 @@ build_abi() {
         arm64-v8a)
             cmake_config_preset="Android arm64 ${BUILD_TYPE_CAP} Config"
             cmake_build_preset="Android arm64 ${BUILD_TYPE_CAP} Build"
+            ensure_android_rust "aarch64-linux-android"
             ;;
         *)
             echo "Error: Android ABI '$abi' is not wired for the Godot migration yet. Use arm64-v8a." >&2

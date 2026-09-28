@@ -21,7 +21,9 @@ func _initialize() -> void:
     test_config = ProbeConfig.load()
     var configured_output_dir := OS.get_environment("AETHERKIRI_PROBE_OUTPUT_DIR").strip_edges()
     if not configured_output_dir.is_empty():
-        output_dir = configured_output_dir
+        output_dir = ProjectSettings.globalize_path(configured_output_dir) \
+            if configured_output_dir.begins_with("user://") \
+            else configured_output_dir
         DirAccess.make_dir_recursive_absolute(output_dir)
     root.size = ProbeConfig.window_size(test_config, Vector2i(
         _env_int("AETHERKIRI_PROBE_WINDOW_W", 1600),
@@ -152,6 +154,10 @@ func _save_step(index: int, label: String) -> void:
     ])
     if not runtime_debug.is_empty():
         print("step %02d runtime_debug=%s" % [index, runtime_debug])
+    if bool(test_config.get("runtime_logs", false)):
+        var runtime_logs := String(player.drain_startup_logs()).strip_edges()
+        if not runtime_logs.is_empty():
+            print("step %02d runtime_logs=%s" % [index, runtime_logs])
 
 func _capture_frame_image() -> Image:
     var prefer_engine_frame := OS.get_environment("AETHERKIRI_PROBE_PREFER_ENGINE_FRAME") == "1"

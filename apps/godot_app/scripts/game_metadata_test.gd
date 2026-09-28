@@ -28,6 +28,30 @@ func _init() -> void:
         "structural Artemis signal"
     )
 
+    var archived_artemis_root := fixture_root.path_join("archived_artemis")
+    DirAccess.make_dir_recursive_absolute(archived_artemis_root)
+    _write(archived_artemis_root.path_join("root.pfs"), "pf fixture")
+    var archived_artemis := GameMetadata.inspect(archived_artemis_root)
+    _expect_equal(String(archived_artemis.engine), "artemis", "archived Artemis detection")
+    _expect_true(
+        Array(archived_artemis.signals).has("artemis-pfs-archive"),
+        "archived Artemis signal"
+    )
+
+    var catsystem2_root := fixture_root.path_join("amakano2plus")
+    DirAccess.make_dir_recursive_absolute(catsystem2_root)
+    _write(catsystem2_root.path_join("cs2.exe"), "launcher")
+    _write(catsystem2_root.path_join("cs2confx.dll"), "config")
+    _write(catsystem2_root.path_join("boot.dfn"), "boot cs2.exe")
+    _write(catsystem2_root.path_join("kcs.int"), "packed script")
+    var catsystem2 := GameMetadata.inspect(catsystem2_root)
+    _expect_equal(String(catsystem2.engine), "catsystem2", "CatSystem2 marker detection")
+    _expect_equal(String(catsystem2.launchFile), "", "CatSystem2 keeps directory launch")
+    _expect_true(
+        Array(catsystem2.signals).has("catsystem2-marker"),
+        "CatSystem2 signal"
+    )
+
     var kirikiri_root := fixture_root.path_join("kirikiri")
     DirAccess.make_dir_recursive_absolute(kirikiri_root)
     _write(kirikiri_root.path_join("game.exe"), "launcher")
@@ -42,6 +66,13 @@ func _init() -> void:
     _write(exe_only_root.path_join("game.exe"), "launcher")
     var exe_only := GameMetadata.inspect(exe_only_root)
     _expect_equal(String(exe_only.launchFile), "game.exe", "KiriKiri executable fallback")
+
+    for marker in ["Gameexe.ini", "Gameexe.dat", "Scene.pck"]:
+        var siglus_root := fixture_root.path_join("siglus_" + marker.replace(".", "_"))
+        DirAccess.make_dir_recursive_absolute(siglus_root)
+        _write(siglus_root.path_join(marker), "siglus fixture")
+        var siglus := GameMetadata.inspect(siglus_root)
+        _expect_equal(String(siglus.engine), "siglus", "Siglus marker %s" % marker)
 
     var rfvp_root := fixture_root.path_join("rfvp")
     DirAccess.make_dir_recursive_absolute(rfvp_root)

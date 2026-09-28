@@ -13,6 +13,9 @@
 #if defined(AETHERKIRI_WITH_ONSCRIPTER)
 #include "onscripter_runtime.h"
 #endif
+#if defined(AETHERKIRI_WITH_SIGLUS)
+#include "siglus_runtime.h"
+#endif
 #if defined(AETHERKIRI_WITH_MINORI)
 extern "C" engine_result_t aetherkiri_minori_register_runtime_provider();
 #endif
@@ -162,6 +165,7 @@ struct GodotGpuTextureRecord {
     Ref<Texture2DRD> texture;
     uint32_t width = 0;
     uint32_t height = 0;
+    RenderingDevice::DataFormat format = RenderingDevice::DATA_FORMAT_R8G8B8A8_UNORM;
     // AlphaBlend_d dispatches are asynchronous. A following scratch-layer
     // clear must not rewrite this RID until the queued shader has sampled it.
     bool requires_alpha_d_clear_version = false;
@@ -211,6 +215,114 @@ std::atomic<uint64_t> g_gpu_textures_created{0};
 std::atomic<uint64_t> g_gpu_textures_released{0};
 std::atomic<uint64_t> g_gpu_texture_bytes_created{0};
 std::atomic<uint64_t> g_gpu_texture_bytes_released{0};
+
+// Retired RGBA surfaces are recycled by size instead of being handed back to
+// the RenderingDevice on every release.  Scripted layer resizes (the KAG
+// backlog repaints rebuild their text surfaces on every repaint, plus the
+// per-line layer resizes while reading) create and drop same-size surfaces
+// hundreds of times per second; letting the driver allocate and free each one
+// grows its transient allocation pool until macOS reports gigabytes of
+// graphics memory for the process.
+//
+// A surface only enters the pool from the GPU queue's Release step, so no
+// queued operation can still be sampling it when it is handed out again.
+// Only the driver resource is kept: the engine-side Texture2DRD wrapper is
+// re-created on hand-out because the retired record may have been re-pointed
+// at a replacement RID in the meantime.
+struct GodotGpuTexturePoolEntry {
+    RID rid;
+    uint32_t width = 0;
+    uint32_t height = 0;
+};
+
+std::mutex g_gpu_texture_pool_mutex;
+std::unordered_map<uint64_t, std::vector<GodotGpuTexturePoolEntry>>
+    g_gpu_texture_pool;
+uint64_t g_gpu_texture_pool_bytes = 0;
+size_t g_gpu_texture_pool_entries = 0;
+// Cleared during teardown so pooled surfaces are released instead of kept.
+std::atomic<bool> g_gpu_texture_pool_enabled{true};
+
+uint64_t GpuTexturePoolLimitBytes() {
+    static const uint64_t limit = []() {
+        constexpr uint64_t kDefaultLimit = 64ull * 1024ull * 1024ull;
+        const char *value = std::getenv("AETHERKIRI_GPU_TEXTURE_POOL_MB");
+        if (value == nullptr || value[0] == '\0') return kDefaultLimit;
+        char *end = nullptr;
+        const long parsed = std::strtol(value, &end, 10);
+        if (end == value || parsed < 0) return kDefaultLimit;
+        return static_cast<uint64_t>(
+            static_cast<uint64_t>(parsed) * 1024ull * 1024ull);
+    }();
+    return limit;
+}
+
+uint64_t GpuTexturePoolKey(uint32_t width, uint32_t height) {
+    return (static_cast<uint64_t>(width) << 32u) | height;
+}
+
+// Keeps a released surface for reuse.  Returns false when the pool is full, in
+// which case the caller has to release the RID as usual.
+bool RetireGpuTextureToPool(const RID &rid, uint32_t width, uint32_t height) {
+    if(!g_gpu_texture_pool_enabled.load(std::memory_order_relaxed)) return false;
+    const uint64_t limit = GpuTexturePoolLimitBytes();
+    if(limit == 0 || !rid.is_valid() || width == 0 || height == 0) {
+        return false;
+    }
+    const uint64_t bytes =
+        static_cast<uint64_t>(width) * height * 4u;
+    if(bytes == 0 || bytes > limit) return false;
+    std::lock_guard<std::mutex> lock(g_gpu_texture_pool_mutex);
+    if(g_gpu_texture_pool_bytes + bytes > limit ||
+       g_gpu_texture_pool_entries >= 64) {
+        return false;
+    }
+    GodotGpuTexturePoolEntry entry;
+    entry.rid = rid;
+    entry.width = width;
+    entry.height = height;
+    g_gpu_texture_pool[GpuTexturePoolKey(width, height)].push_back(entry);
+    g_gpu_texture_pool_bytes += bytes;
+    ++g_gpu_texture_pool_entries;
+    return true;
+}
+
+RID TakeGpuTextureFromPool(uint32_t width, uint32_t height) {
+    if(width == 0 || height == 0) return RID();
+    if(!g_gpu_texture_pool_enabled.load(std::memory_order_relaxed)) return RID();
+    std::lock_guard<std::mutex> lock(g_gpu_texture_pool_mutex);
+    auto it = g_gpu_texture_pool.find(GpuTexturePoolKey(width, height));
+    if(it == g_gpu_texture_pool.end() || it->second.empty()) return RID();
+    const RID rid = it->second.back().rid;
+    it->second.pop_back();
+    if(it->second.empty()) g_gpu_texture_pool.erase(it);
+    const uint64_t bytes = static_cast<uint64_t>(width) * height * 4u;
+    g_gpu_texture_pool_bytes =
+        g_gpu_texture_pool_bytes > bytes ? g_gpu_texture_pool_bytes - bytes : 0;
+    if(g_gpu_texture_pool_entries > 0) --g_gpu_texture_pool_entries;
+    return rid;
+}
+
+// Drops every recycled surface.  Called while the runtime shuts down so the
+// RenderingDevice does not report pooled textures as leaked RIDs.
+void ReleaseGpuTexturePool(RenderingDevice *rd) {
+    g_gpu_texture_pool_enabled.store(false, std::memory_order_relaxed);
+    std::vector<GodotGpuTexturePoolEntry> entries;
+    {
+        std::lock_guard<std::mutex> lock(g_gpu_texture_pool_mutex);
+        for(auto &item : g_gpu_texture_pool) {
+            for(auto &entry : item.second) entries.push_back(entry);
+        }
+        g_gpu_texture_pool.clear();
+        g_gpu_texture_pool_bytes = 0;
+        g_gpu_texture_pool_entries = 0;
+    }
+    if(rd == nullptr) return;
+    for(const auto &entry : entries) {
+        if(entry.rid.is_valid()) rd->free_rid(entry.rid);
+    }
+}
+
 struct GodotGpuOp {
     enum class Type {
         Update,
@@ -267,6 +379,15 @@ struct GodotGpuOp {
     uint32_t native_height = 0;
     uint64_t imported_texture = 0;
     uint64_t queue_sequence = 0;
+    // Sub-rectangle uploads carry the packed region plus its destination
+    // offset; the executor blits a pooled staging surface into place because
+    // RenderingDevice::texture_update replaces whole surfaces only.
+    tTVPRect region{};
+    bool has_region = false;
+    // Set for Release ops whose surface may be recycled by the texture pool.
+    RID pool_rid;
+    uint32_t pool_width = 0;
+    uint32_t pool_height = 0;
     // Timestamp assigned when the operation enters the bridge queue.  This is
     // intentionally separate from profile_enqueued_at, which is also used to
     // measure the CPU packing interval for texture updates.
@@ -1434,6 +1555,8 @@ std::unordered_map<int64_t, RID> g_live2d_framebuffer_cache;
 Ref<RDTextureFormat> MakeRgbaTextureFormat(uint32_t width, uint32_t height);
 bool ExecuteArtemisGpuShader(
     RenderingDevice *rd, const std::shared_ptr<GodotGpuOp> &op);
+bool ExecuteGodotGpuRegionUpload(RenderingDevice *rd,
+                                 const std::shared_ptr<GodotGpuOp> &op);
 void FinishGodotGpuOp(const std::shared_ptr<GodotGpuOp> &op, bool result);
 
 const char *NormalizeBackend(const String &backend) {
@@ -1514,6 +1637,11 @@ bool SupportsGodotRenderingDeviceGpu() {
            method.find("gl_compatibility") == std::string::npos &&
            driver.find("opengl") == std::string::npos &&
            driver.find("OpenGL") == std::string::npos;
+}
+
+bool GodotUsesNativeMetal() {
+    auto *server = RenderingServer::get_singleton();
+    return server != nullptr && server->get_current_rendering_driver_name().to_lower() == "metal";
 }
 
 bool DirectPresentGodotNativeFrameEnabled() {
@@ -1695,9 +1823,10 @@ bool DeferredGodotGpuDrainEnabled() {
         const char *value = std::getenv("AETHERKIRI_GODOT_DEFER_GPU_DRAIN");
         // Deferring operations created on Godot's render thread lets a clear
         // become visible before the following blends during fast page
-        // transitions on Metal.  Execute those operations immediately by
-        // default; the old batched behavior remains available for profiling
-        // with AETHERKIRI_GODOT_DEFER_GPU_DRAIN=1.
+        // transitions on Metal. Desktop keeps the historical immediate
+        // behavior, while Android defaults to the ordered deferred queue so
+        // a provider tick does not wait on the separate Godot render thread.
+        // AETHERKIRI_GODOT_DEFER_GPU_DRAIN overrides either platform default.
         if (value == nullptr || value[0] == '\0') {
             return TVP_GODOT_DEFER_GPU_DRAIN_DEFAULT;
         }
@@ -2005,6 +2134,20 @@ uint alpha_blend_d(uint d, uint s, uint opa) {
     return (out_alpha << 24) | r | (g << 8) | (b << 16);
 }
 
+uint const_alpha_blend(uint d, uint s, uint opa) {
+    int opacity = int(opa);
+    int dr = int(d & 0xffu);
+    int dg = int((d >> 8) & 0xffu);
+    int db = int((d >> 16) & 0xffu);
+    int sr = int(s & 0xffu);
+    int sg = int((s >> 8) & 0xffu);
+    int sb = int((s >> 16) & 0xffu);
+    uint r = uint(dr + (((sr - dr) * opacity) >> 8));
+    uint g = uint(dg + (((sg - dg) * opacity) >> 8));
+    uint b = uint(db + (((sb - db) * opacity) >> 8));
+    return (d & 0xff000000u) | r | (g << 8) | (b << 16);
+}
+
 uint const_alpha_blend_d(uint d, uint s, uint opa) {
     uint dest_alpha = (d >> 24) & 0xffu;
     uint blend_alpha = opacity_on_opacity(dest_alpha, opa);
@@ -2171,23 +2314,6 @@ uint remove_const_opacity(uint d, uint strength) {
     return (d & 0x00ffffffu) | (a << 24);
 }
 
-uint alpha_to_additive_alpha(uint c) {
-    uint alpha = (c >> 24) & 0xffu;
-    uint r = ((c & 0xffu) * alpha) >> 8;
-    uint g = (((c >> 8) & 0xffu) * alpha) >> 8;
-    uint b = (((c >> 16) & 0xffu) * alpha) >> 8;
-    return (c & 0xff000000u) | r | (g << 8) | (b << 16);
-}
-
-uint additive_alpha_to_alpha(uint c) {
-    uint alpha = (c >> 24) & 0xffu;
-    if (alpha == 0u) return c & 0xff000000u;
-    uint r = min((c & 0xffu) * 255u / alpha, 255u);
-    uint g = min(((c >> 8) & 0xffu) * 255u / alpha, 255u);
-    uint b = min(((c >> 16) & 0xffu) * 255u / alpha, 255u);
-    return (c & 0xff000000u) | r | (g << 8) | (b << 16);
-}
-
 int reflect101_index(int value, int extent) {
     if (extent <= 1) return 0;
     int period = (extent - 1) * 2;
@@ -2262,6 +2388,8 @@ void main() {
         out_color = alpha_blend_hda_o(d, s, opa);
         } else if (pc.rect1.z == 2) {
         out_color = alpha_blend_d(d, s, opa);
+        } else if (pc.rect1.z == 31) {
+        out_color = const_alpha_blend(d, s, opa);
         } else if (pc.rect1.z == 3) {
         out_color = (d & 0xff000000u) + (s & 0x00ffffffu);
         } else if (pc.rect1.z == 10) {
@@ -2286,10 +2414,6 @@ void main() {
         out_color = additive_alpha_blend_a(d, s, opa);
         } else if (pc.rect1.z == 8) {
         out_color = remove_const_opacity(d, opa);
-        } else if (pc.rect1.z == 29) {
-        out_color = alpha_to_additive_alpha(s);
-        } else if (pc.rect1.z == 30) {
-        out_color = additive_alpha_to_alpha(s);
         }
         }
     }
@@ -5523,7 +5647,9 @@ bool ExecuteGodotGpuOp(RenderingDevice *rd, const std::shared_ptr<GodotGpuOp> &o
                           update_started - op->profile_enqueued_at)
                           .count()
                     : 0.0;
-            result = rd->texture_update(op->dst, 0, op->data) == OK;
+            result = op->has_region
+                         ? ExecuteGodotGpuRegionUpload(rd, op)
+                         : rd->texture_update(op->dst, 0, op->data) == OK;
             const double update_ms =
                 std::chrono::duration<double, std::milli>(
                     std::chrono::steady_clock::now() - update_started)
@@ -5617,7 +5743,7 @@ bool ExecuteGodotGpuOp(RenderingDevice *rd, const std::shared_ptr<GodotGpuOp> &o
             return AetherApplePollMetalCommandQueue(
                 rd->get_driver_resource(
                     RenderingDevice::DRIVER_RESOURCE_COMMAND_QUEUE,
-                    RID(), 0));
+                    RID(), 0), GodotUsesNativeMetal());
 #else
             ApplyGodotGpuBarrier(rd);
             return true;
@@ -5634,7 +5760,7 @@ bool ExecuteGodotGpuOp(RenderingDevice *rd, const std::shared_ptr<GodotGpuOp> &o
                 RenderingDevice::DRIVER_RESOURCE_LOGICAL_DEVICE, RID(), 0);
             void *vulkan_external_texture = nullptr;
             RID rid;
-#if defined(IOS_ENABLED)
+            if (GodotUsesNativeMetal()) {
             const uint64_t native_texture =
                 AetherAppleCreateMetalTextureFromPixelBuffer(
                     device, op->native_image, op->native_width,
@@ -5653,7 +5779,8 @@ bool ExecuteGodotGpuOp(RenderingDevice *rd, const std::shared_ptr<GodotGpuOp> &o
                 AetherAppleReleaseMetalTexture(native_texture);
                 return false;
             }
-#else
+            } else {
+#if !defined(IOS_ENABLED)
             const uint64_t physical_device = rd->get_driver_resource(
                 RenderingDevice::DRIVER_RESOURCE_PHYSICAL_DEVICE, RID(), 0);
             const uint64_t command_queue = rd->get_driver_resource(
@@ -5685,13 +5812,17 @@ bool ExecuteGodotGpuOp(RenderingDevice *rd, const std::shared_ptr<GodotGpuOp> &o
                 AetherAppleReleaseVulkanTexture(vulkan_external_texture);
                 return false;
             }
+#else
+            return false;
 #endif
+            }
 
             GodotGpuTextureRecord record;
             record.rid = rid;
             record.width = op->native_width;
             record.height = op->native_height;
             record.apple_pixel_buffer = op->native_image;
+            record.format = RenderingDevice::DATA_FORMAT_B8G8R8A8_UNORM;
             record.apple_vulkan_external_texture = vulkan_external_texture;
             AetherAppleRetainPixelBuffer(record.apple_pixel_buffer);
             record.texture.instantiate();
@@ -5768,6 +5899,14 @@ bool ExecuteGodotGpuOp(RenderingDevice *rd, const std::shared_ptr<GodotGpuOp> &o
             InvalidateLive2DFramebuffer(rd, op->dst);
             InvalidateGodotGpuUniformSetsForResource(rd, op->dst);
 #if defined(__APPLE__)
+            if (op->dst.is_valid() &&
+                (op->native_resource == nullptr) &&
+                (op->native_image == nullptr) &&
+                RetireGpuTextureToPool(op->dst, op->pool_width,
+                                       op->pool_height)) {
+                // Kept for reuse by a later same-size surface.
+                return true;
+            }
             if (op->dst.is_valid()) rd->free_rid(op->dst);
 #if !defined(IOS_ENABLED)
             AetherAppleReleaseVulkanTexture(op->native_resource);
@@ -6552,6 +6691,90 @@ Ref<RDTextureFormat> MakeRgbaTextureFormat(uint32_t width, uint32_t height) {
     return format;
 }
 
+PackedByteArray PackRgbaRegionBytes(const void *pixels, uint32_t stride_bytes,
+                                    uint32_t image_width, uint32_t left,
+                                    uint32_t top, uint32_t width,
+                                    uint32_t height) {
+    PackedByteArray data;
+    const uint32_t tight_stride = width * 4u;
+    data.resize(static_cast<int64_t>(tight_stride) * height);
+    if (width == 0 || height == 0) return data;
+    uint8_t *dst = data.ptrw();
+    if (dst == nullptr) return data;
+    if (pixels == nullptr) {
+        std::memset(dst, 0, static_cast<size_t>(tight_stride) * height);
+        return data;
+    }
+    const auto *src = static_cast<const uint8_t *>(pixels);
+    const uint32_t src_stride =
+        stride_bytes != 0 ? stride_bytes : image_width * 4u;
+    for (uint32_t y = 0; y < height; ++y) {
+        const uint8_t *row =
+            src + static_cast<size_t>(top + y) * src_stride +
+            static_cast<size_t>(left) * 4u;
+        std::memcpy(dst + static_cast<size_t>(y) * tight_stride, row,
+                    tight_stride);
+    }
+    return data;
+}
+
+// RenderingDevice::texture_update replaces a whole surface, so a sub-rectangle
+// upload is expressed as "fill a pooled staging surface with the packed region,
+// then blit it into place". Text batching rewrites a small glyph run inside a
+// multi-megabyte scratch surface thousands of times per backlog repaint, and
+// the full-surface upload used to dominate both the stall and the transient
+// graphics footprint.
+bool ExecuteGodotGpuRegionUpload(RenderingDevice *rd,
+                                 const std::shared_ptr<GodotGpuOp> &op) {
+    if (rd == nullptr || op == nullptr) return false;
+    const int region_width = op->region.get_width();
+    const int region_height = op->region.get_height();
+    if (region_width <= 0 || region_height <= 0) return false;
+    const uint32_t width = static_cast<uint32_t>(region_width);
+    const uint32_t height = static_cast<uint32_t>(region_height);
+    if (static_cast<uint64_t>(op->data.size()) !=
+        static_cast<uint64_t>(width) * height * 4u) {
+        return false;
+    }
+    RID staging = TakeGpuTextureFromPool(width, height);
+    if (!staging.is_valid()) {
+        Ref<RDTextureView> view;
+        view.instantiate();
+        TypedArray<PackedByteArray> initial_data;
+        staging =
+            rd->texture_create(MakeRgbaTextureFormat(width, height), view,
+                               initial_data);
+    }
+    if (!staging.is_valid()) return false;
+    if (rd->texture_update(staging, 0, op->data) != OK) {
+        rd->free_rid(staging);
+        return false;
+    }
+    const Vector3 dst_pos(static_cast<float>(op->region.left),
+                          static_cast<float>(op->region.top), 0.0f);
+    const Vector3 size(static_cast<float>(width), static_cast<float>(height),
+                       1.0f);
+    if (rd->texture_copy(staging, op->dst, Vector3(), dst_pos, size, 0, 0, 0,
+                         0) != OK) {
+        rd->free_rid(staging);
+        return false;
+    }
+    // Hand the staging surface back to the pool in queue order, so a later
+    // upload can only reuse it after this copy has been encoded.
+    auto release = std::make_shared<GodotGpuOp>();
+    release->type = GodotGpuOp::Type::Release;
+    release->dst = staging;
+    release->pool_rid = staging;
+    release->pool_width = width;
+    release->pool_height = height;
+    if (!RunGodotGpuOpAsync(release)) {
+        // The upload already landed; the staging surface just cannot be
+        // recycled, so return it to the driver instead of leaking it.
+        rd->free_rid(staging);
+    }
+    return true;
+}
+
 std::string ReplaceShaderMatches(
     const std::string &input, const std::regex &pattern,
     const std::function<std::string(const std::smatch &)> &replacement) {
@@ -7264,21 +7487,41 @@ uint64_t BridgeCreateRgba(uint32_t width, uint32_t height, const void *pixels,
     const bool on_render_thread =
         server != nullptr && server->is_on_render_thread();
     const bool use_device_clear = pixels == nullptr && on_render_thread;
+    PackedByteArray packed_data;
     if (!use_device_clear) {
-        initial_data.push_back(
-            PackRgbaBytes(pixels, width, height, stride_bytes));
+        packed_data = PackRgbaBytes(pixels, width, height, stride_bytes);
+        initial_data.push_back(packed_data);
     }
-    RID rid = rd->texture_create(MakeRgbaTextureFormat(width, height), view,
+    // A surface retired at this exact size can be initialized in place instead
+    // of asking the driver for a new allocation, which is what keeps the
+    // per-frame layer resizes from inflating the process graphics footprint.
+    RID rid = TakeGpuTextureFromPool(width, height);
+    if (rid.is_valid()) {
+        if (use_device_clear) {
+            if (rd->texture_clear(rid, Color(0.0, 0.0, 0.0, 0.0), 0, 1, 0,
+                                  1) != OK) {
+                rd->free_rid(rid);
+                rid = RID();
+            }
+        } else if (rd->texture_update(rid, 0, packed_data) != OK) {
+            rd->free_rid(rid);
+            rid = RID();
+        }
+    } else {
+        rid = rd->texture_create(MakeRgbaTextureFormat(width, height), view,
                                  initial_data);
-    // RenderingDevice accepts an empty initial-data array, but its contents
-    // are undefined. Fresh KiriKiri render targets require transparent black,
-    // so establish the same state with a device-side clear. This avoids
-    // allocating, zeroing and uploading a width*height*4 staging array for
-    // large PSD/transition scratch textures.
-    if (rid.is_valid() && use_device_clear &&
-        rd->texture_clear(rid, Color(0.0, 0.0, 0.0, 0.0), 0, 1, 0, 1) != OK) {
-        rd->free_rid(rid);
-        rid = RID();
+        // RenderingDevice accepts an empty initial-data array, but its
+        // contents are undefined. Fresh KiriKiri render targets require
+        // transparent black, so establish the same state with a device-side
+        // clear. This avoids allocating, zeroing and uploading a
+        // width*height*4 staging array for large PSD/transition scratch
+        // textures.
+        if (rid.is_valid() && use_device_clear &&
+            rd->texture_clear(rid, Color(0.0, 0.0, 0.0, 0.0), 0, 1, 0,
+                              1) != OK) {
+            rd->free_rid(rid);
+            rid = RID();
+        }
     }
     const double create_ms = std::chrono::duration<double, std::milli>(
                                  std::chrono::steady_clock::now() -
@@ -7381,7 +7624,8 @@ bool BridgePublishNativeWrite(uint64_t texture) {
     // and PrepareForExport() flush make this generation visible; no second
     // Metal copy or out-of-band write to a MoltenVK-owned texture is needed.
     return record.rid.is_valid() &&
-           record.apple_vulkan_external_texture != nullptr;
+           (record.apple_vulkan_external_texture != nullptr ||
+            (GodotUsesNativeMetal() && record.apple_pixel_buffer != nullptr));
 #else
     (void)texture;
     return true;
@@ -7434,6 +7678,11 @@ void BridgeReleaseTexture(uint64_t texture) {
         op->native_resource = record.apple_vulkan_external_texture != nullptr
             ? record.apple_vulkan_external_texture
             : record.android_external_texture;
+        // Surfaces without an external backing can be recycled by size; the
+        // pool rejects anything that still owns native handles.
+        op->pool_rid = record.rid;
+        op->pool_width = record.width;
+        op->pool_height = record.height;
         // Texture operations are consumed in queue order. Waiting here turns
         // every short-lived E-mote scratch layer into a render-thread round
         // trip; enqueue the release after its last use instead.
@@ -7451,10 +7700,62 @@ bool BridgeUpdateRgba(uint64_t texture, const void *pixels,
         if (it == g_gpu_textures.end()) return false;
         record = it->second;
     }
-    if (rect == nullptr || rect->left != 0 || rect->top != 0 ||
-        rect->right != static_cast<int>(record.width) ||
-        rect->bottom != static_cast<int>(record.height)) {
-        return false;
+    int region_left = 0;
+    int region_top = 0;
+    int region_right = static_cast<int>(record.width);
+    int region_bottom = static_cast<int>(record.height);
+    if (rect != nullptr) {
+        region_left = rect->left;
+        region_top = rect->top;
+        region_right = rect->right;
+        region_bottom = rect->bottom;
+        if (region_left < 0) region_left = 0;
+        if (region_top < 0) region_top = 0;
+        if (region_right > static_cast<int>(record.width)) {
+            region_right = static_cast<int>(record.width);
+        }
+        if (region_bottom > static_cast<int>(record.height)) {
+            region_bottom = static_cast<int>(record.height);
+        }
+        if (region_right <= region_left || region_bottom <= region_top) {
+            return true;
+        }
+    }
+    const bool full_surface_upload =
+        region_left == 0 && region_top == 0 &&
+        region_right == static_cast<int>(record.width) &&
+        region_bottom == static_cast<int>(record.height);
+    // Backing-store imports (Apple pixel buffers, Android hardware buffers and
+    // extension textures) are owned by another API and may not be valid copy
+    // destinations, so they keep receiving whole-surface uploads.
+    const bool region_upload_supported =
+        record.apple_pixel_buffer == nullptr &&
+        record.apple_vulkan_external_texture == nullptr &&
+        record.android_external_texture == nullptr;
+    if (!full_surface_upload && region_upload_supported) {
+        // Glyph batches rewrite a small rectangle inside a multi-megabyte
+        // scratch surface. Packing and uploading the whole surface for each of
+        // them cost gigabytes of transient graphics memory per backlog
+        // repaint; a packed region plus one staged blit is enough.
+        auto region_op = std::make_shared<GodotGpuOp>();
+        region_op->type = GodotGpuOp::Type::Update;
+        region_op->dst = record.rid;
+        region_op->data = PackRgbaRegionBytes(
+            pixels, stride_bytes, record.width,
+            static_cast<uint32_t>(region_left),
+            static_cast<uint32_t>(region_top),
+            static_cast<uint32_t>(region_right - region_left),
+            static_cast<uint32_t>(region_bottom - region_top));
+        region_op->region =
+            tTVPRect(region_left, region_top, region_right, region_bottom);
+        region_op->has_region = true;
+        region_op->profile_width =
+            static_cast<uint32_t>(region_right - region_left);
+        region_op->profile_height =
+            static_cast<uint32_t>(region_bottom - region_top);
+        region_op->profile_pack_ms = 0.0;
+        region_op->profile_enqueued_at = std::chrono::steady_clock::now();
+        return RunGodotGpuOpAsync(region_op);
     }
     const auto bridge_started = std::chrono::steady_clock::now();
     PackedByteArray data =
@@ -7487,11 +7788,26 @@ bool BridgeUpdateRgba(uint64_t texture, const void *pixels,
         view.instantiate();
         TypedArray<PackedByteArray> initial_data;
         initial_data.push_back(data);
-        RID replacement = rd != nullptr
-            ? rd->texture_create(
-                  MakeRgbaTextureFormat(record.width, record.height), view,
-                  initial_data)
-            : RID();
+        // The replacement surface can come from the pool as well: these
+        // versioned uploads retire their predecessor every time, so a pool hit
+        // keeps the driver from allocating a new texture per full-surface
+        // upload.
+        RID replacement = TakeGpuTextureFromPool(record.width, record.height);
+        if (replacement.is_valid()) {
+            // texture_update accepts one PackedByteArray. Passing the
+            // texture_create TypedArray here is converted as a one-element
+            // array, which makes Godot report a one-byte upload for a full
+            // RGBA surface and leaves the replacement texture stale.
+            if (rd->texture_update(replacement, 0, data) != OK) {
+                rd->free_rid(replacement);
+                replacement = RID();
+            }
+        }
+        if (!replacement.is_valid() && rd != nullptr) {
+            replacement = rd->texture_create(
+                MakeRgbaTextureFormat(record.width, record.height), view,
+                initial_data);
+        }
         if (replacement.is_valid()) {
             bool replaced = false;
             {
@@ -7512,6 +7828,9 @@ bool BridgeUpdateRgba(uint64_t texture, const void *pixels,
                 auto release = std::make_shared<GodotGpuOp>();
                 release->type = GodotGpuOp::Type::Release;
                 release->dst = record.rid;
+                release->pool_rid = record.rid;
+                release->pool_width = record.width;
+                release->pool_height = record.height;
                 const bool result = RunGodotGpuOpAsync(release);
                 const double bridge_ms =
                     std::chrono::duration<double, std::milli>(
@@ -7666,8 +7985,16 @@ bool BridgeCopyRect(uint64_t dst, uint64_t src, const tTVPRect *dst_rect,
     // otherwise terminates that batch for every child layer, creating hundreds
     // of Metal submissions per frame. The shader path uses integer imageLoad /
     // imageStore conversion and copies all RGBA channels exactly.
-    op->type =
-        dst == src ? GodotGpuOp::Type::CopySelf : GodotGpuOp::Type::Blend;
+    // Keep non-aliasing copies as their own queue operation.  A copy is often
+    // immediately followed by a blend that samples the same scratch layer
+    // (PackinOne/PSD atlas slices do this for every UI state).  Treating the
+    // copy as a regular blend lets it join a large compute batch; on Metal the
+    // following dispatch can then observe the previous scratch contents even
+    // though a compute-list barrier was recorded.  A standalone copy keeps
+    // the producer/consumer boundary explicit without forcing the pixels
+    // through a CPU readback.
+    op->type = dst == src ? GodotGpuOp::Type::CopySelf
+                          : GodotGpuOp::Type::Copy;
     op->src = src_record.rid;
     op->dst = dst_record.rid;
     op->src_pos = Vector3(src_rect->left, src_rect->top, 0);
@@ -8312,6 +8639,19 @@ uint32_t CpuAlphaBlendD(uint32_t d, uint32_t s, int opacity) {
            (blend((d >> 16) & 0xffu, (s >> 16) & 0xffu) << 16);
 }
 
+uint32_t CpuConstAlphaBlend(uint32_t d, uint32_t s, int opacity) {
+    const int opa = std::clamp(opacity, 0, 255);
+    const auto blend = [opa](uint32_t dc, uint32_t sc) -> uint32_t {
+        const int value = static_cast<int>(dc) +
+                          ((static_cast<int>(sc) - static_cast<int>(dc)) * opa >> 8);
+        return static_cast<uint32_t>(value);
+    };
+    return (d & 0xff000000u) |
+           blend(d & 0xffu, s & 0xffu) |
+           (blend((d >> 8) & 0xffu, (s >> 8) & 0xffu) << 8) |
+           (blend((d >> 16) & 0xffu, (s >> 16) & 0xffu) << 16);
+}
+
 uint32_t CpuCopyColor(uint32_t d, uint32_t s) {
     return (d & 0xff000000u) | (s & 0x00ffffffu);
 }
@@ -8585,6 +8925,8 @@ uint32_t CpuBlendReference(uint32_t mode, uint32_t d, uint32_t s,
             return CpuAlphaBlendHda(d, s, opacity);
         case TVP_GODOT_GPU_BLEND_ALPHA_D:
             return CpuAlphaBlendD(d, s, opacity);
+        case TVP_GODOT_GPU_BLEND_CONST_ALPHA:
+            return CpuConstAlphaBlend(d, s, opacity);
         case TVP_GODOT_GPU_BLEND_COPY_COLOR:
             return CpuCopyColor(d, s);
         case TVP_GODOT_GPU_BLEND_FILL_ARGB:
@@ -8676,6 +9018,9 @@ uint32_t BlendModeFromName(const String &mode_name) {
     }
     if (lower == "alphablend_d" || lower == "alpha_blend_d") {
         return TVP_GODOT_GPU_BLEND_ALPHA_D;
+    }
+    if (lower == "constalphablend" || lower == "const_alpha_blend") {
+        return TVP_GODOT_GPU_BLEND_CONST_ALPHA;
     }
     if (lower == "copycolor" || lower == "copy_color") {
         return TVP_GODOT_GPU_BLEND_COPY_COLOR;
@@ -8861,6 +9206,7 @@ void ReleaseGodotGpuPipeline() {
 }
 
 void ReleaseRemainingGodotGpuTextures() {
+    ReleaseGpuTexturePool(MainRenderingDevice());
     {
         std::lock_guard<std::mutex> lock(g_gpu_readbacks_mutex);
         g_gpu_readbacks.clear();
@@ -8994,6 +9340,7 @@ public:
         clear_runtime_save_slots();
         runtime_presentation_sprite_.Clear();
         reset_runtime_tick_timing();
+        frame_rendered_this_tick_ = false;
         if (handle_ == nullptr) {
             return;
         }
@@ -9021,6 +9368,11 @@ public:
         release_rd_texture(true);
         release_presentation_textures(true);
         frame_texture_.unref();
+        last_native_texture_id_ = 0;
+        last_native_texture_.unref();
+        last_native_texture_width_ = 0;
+        last_native_texture_height_ = 0;
+        last_native_texture_serial_ = UINT64_MAX;
         frame_texture_backend_ = "none";
     }
 
@@ -9189,6 +9541,8 @@ public:
 
     bool is_game_open() const { return game_open_; }
 
+    bool frame_rendered_this_tick() const { return frame_rendered_this_tick_; }
+
     String get_last_result() const { return last_result_; }
 
     String get_last_error() const { return last_error_; }
@@ -9292,6 +9646,7 @@ public:
             ? engine_open_game_async(handle_, path_utf8.get_data(), nullptr)
             : engine_open_game(handle_, path_utf8.get_data(), nullptr);
         game_open_ = result == ENGINE_RESULT_OK;
+        frame_rendered_this_tick_ = false;
         if (!game_open_) {
             artemis_logical_frame_pacing_ = false;
         }
@@ -9303,6 +9658,7 @@ public:
     }
 
     int tick(double delta_seconds) {
+        frame_rendered_this_tick_ = false;
         if (handle_ == nullptr) {
             return ENGINE_RESULT_INVALID_STATE;
         }
@@ -9321,6 +9677,18 @@ public:
         const uint32_t delta_ms =
             runtime_tick_quantizer_.Quantize(runtime_delta_seconds);
         const engine_result_t result = engine_tick(handle_, delta_ms);
+        if (result == ENGINE_RESULT_OK) {
+            // Keep the old always-present behavior for providers that do not
+            // implement the optional flag. The KiriKiri/Godot provider does,
+            // so skipped engine renders no longer trigger a duplicate full
+            // GPU presentation copy from the Godot host.
+            frame_rendered_this_tick_ = true;
+            uint32_t rendered = 0;
+            if (engine_get_frame_rendered_flag(handle_, &rendered) ==
+                ENGINE_RESULT_OK) {
+                frame_rendered_this_tick_ = rendered != 0;
+            }
+        }
         update_runtime_message_reveal(runtime_delta_seconds);
         drain_platform_requests();
         update_runtime_message_layout();
@@ -9585,6 +9953,20 @@ public:
         }
         update_last_error(result);
         return result;
+    }
+
+    int send_ime_preedit(const String& text, int start, int length) {
+        if (handle_ == nullptr) return ENGINE_RESULT_INVALID_STATE;
+        const CharString cursor = (String::num_int64(start) + "," + String::num_int64(length)).utf8();
+        engine_option_t option{};
+        option.key_utf8 = "ime_preedit_cursor";
+        option.value_utf8 = cursor.get_data();
+        const auto result = engine_set_option(handle_, &option);
+        if (result != ENGINE_RESULT_OK) return result;
+        const CharString utf8 = text.utf8();
+        option.key_utf8 = "ime_preedit";
+        option.value_utf8 = utf8.get_data();
+        return engine_set_option(handle_, &option);
     }
 
     Dictionary get_text_input_state() {
@@ -9964,6 +10346,13 @@ public:
                     // Discard the delayed slot so the deleted character is
                     // not presented once more before the new source.
                     release_presentation_textures(true);
+                    // The provider replaced its GPU scene with a CPU handoff.
+                    // Do not reuse the old native texture across that boundary.
+                    last_native_texture_id_ = 0;
+                    last_native_texture_.unref();
+                    last_native_texture_width_ = 0;
+                    last_native_texture_height_ = 0;
+                    last_native_texture_serial_ = UINT64_MAX;
                 }
                 if (normalized_backend == ENGINE_RENDERER_GPU_BRIDGE) {
                     const auto present_started = std::chrono::steady_clock::now();
@@ -9995,7 +10384,14 @@ public:
                         return bridge_texture;
                     }
                 } else {
-                    if (DirectPresentGodotNativeFrameEnabled()) {
+                    // Artemis publishes a persistent Metal texture whose
+                    // contents are complete at the end of the engine tick.
+                    // The generic two-slot presentation ring intentionally
+                    // waits for a later RenderingServer submission; for
+                    // Artemis that extra slot is the previous E-mote pose and
+                    // becomes a visible one-frame flash after a tap.
+                    if (DirectPresentGodotNativeFrameEnabled() ||
+                        artemis_logical_frame_pacing_) {
                         Ref<Texture2D> native_texture =
                             ResolveBridgeTexture(texture_id);
                         if (native_texture.is_valid()) {
@@ -10004,6 +10400,11 @@ public:
                             frame_texture_.unref();
                             frame_texture_serial_ = serial;
                             frame_texture_backend_ = "godot_native_gpu_direct";
+                            last_native_texture_id_ = texture_id;
+                            last_native_texture_ = native_texture;
+                            last_native_texture_width_ = width;
+                            last_native_texture_height_ = height;
+                            last_native_texture_serial_ = serial;
                             return native_texture;
                         }
                     }
@@ -10025,10 +10426,37 @@ public:
                         frame_texture_.unref();
                         frame_texture_serial_ = serial;
                         frame_texture_backend_ = "godot_native_gpu";
+                        last_native_texture_id_ = texture_id;
+                        last_native_texture_ = native_texture;
+                        last_native_texture_width_ = width;
+                        last_native_texture_height_ = height;
+                        last_native_texture_serial_ = serial;
                         return native_texture;
                     }
                 }
             }
+        }
+
+        // Artemis can briefly report that its current native texture is not
+        // available while a click is committing the next E-mote composition.
+        // Falling through to engine_read_frame_rgba here publishes the older
+        // CPU compatibility frame for one host frame, which is the visible
+        // flash back to the previous pose. Keep the last valid provider-owned
+        // Metal texture on screen until the next native texture is available.
+        if (artemis_logical_frame_pacing_ && last_native_texture_id_ != 0) {
+            Ref<Texture2D> held_texture =
+                ResolveBridgeTexture(last_native_texture_id_);
+            if (held_texture.is_valid()) {
+                frame_texture_serial_ = last_native_texture_serial_;
+                frame_texture_backend_ = "godot_native_gpu_direct_hold";
+                last_native_texture_ = held_texture;
+                return held_texture;
+            }
+            last_native_texture_id_ = 0;
+            last_native_texture_.unref();
+            last_native_texture_width_ = 0;
+            last_native_texture_height_ = 0;
+            last_native_texture_serial_ = UINT64_MAX;
         }
 
         engine_frame_desc_t desc{};
@@ -11045,6 +11473,8 @@ protected:
                              &AetherRuntimePlayer::open_game, DEFVAL(true));
         ClassDB::bind_method(D_METHOD("tick", "delta_seconds"),
                              &AetherRuntimePlayer::tick);
+        ClassDB::bind_method(D_METHOD("frame_rendered_this_tick"),
+                             &AetherRuntimePlayer::frame_rendered_this_tick);
         ClassDB::bind_method(D_METHOD("pause"), &AetherRuntimePlayer::pause);
         ClassDB::bind_method(D_METHOD("resume"), &AetherRuntimePlayer::resume);
         ClassDB::bind_method(D_METHOD("media_open", "path"),
@@ -11080,6 +11510,8 @@ protected:
                              &AetherRuntimePlayer::send_text_input);
         ClassDB::bind_method(D_METHOD("get_text_input_state"),
                              &AetherRuntimePlayer::get_text_input_state);
+        ClassDB::bind_method(D_METHOD("send_ime_preedit", "text", "start", "length"),
+                             &AetherRuntimePlayer::send_ime_preedit);
         ClassDB::bind_method(D_METHOD("get_startup_state"),
                              &AetherRuntimePlayer::get_startup_state);
         ClassDB::bind_method(D_METHOD("drain_startup_logs"),
@@ -11811,7 +12243,7 @@ private:
         return frame_rd_texture_;
     }
 
-    bool ensure_presentation_textures(uint32_t width, uint32_t height) {
+    bool ensure_presentation_textures(uint32_t width, uint32_t height, RenderingDevice::DataFormat source_format) {
         RenderingDevice *rd = main_rendering_device();
         if (rd == nullptr || !SupportsGodotRenderingDeviceGpu() ||
             width == 0 || height == 0) {
@@ -11821,6 +12253,7 @@ private:
         const bool reusable =
             frame_present_width_ == width &&
             frame_present_height_ == height &&
+            frame_present_format_ == source_format &&
             frame_present_rids_[0].is_valid() &&
             frame_present_rids_[1].is_valid() &&
             frame_present_textures_[0].is_valid() &&
@@ -11831,6 +12264,9 @@ private:
 
         release_presentation_textures(true);
         Ref<RDTextureFormat> format = MakeRgbaTextureFormat(width, height);
+        // texture_copy preserves bytes; it cannot convert BGRA to RGBA.
+        // Keep the producer format through the presentation ring.
+        format->set_format(source_format);
         Ref<RDTextureView> view;
         view.instantiate();
         TypedArray<PackedByteArray> initial_data;
@@ -11846,6 +12282,7 @@ private:
         }
         frame_present_width_ = width;
         frame_present_height_ = height;
+        frame_present_format_ = source_format;
         frame_present_current_slot_ = 0;
         frame_present_pending_slot_ = 0;
         frame_present_has_current_ = false;
@@ -11868,7 +12305,7 @@ private:
             !source.rid.is_valid()) {
             return Ref<Texture2D>();
         }
-        if (!ensure_presentation_textures(width, height)) {
+        if (!ensure_presentation_textures(width, height, source.format)) {
             return Ref<Texture2D>();
         }
         // The texture contents can change while the engine serial remains the
@@ -11994,7 +12431,7 @@ private:
 
         RID imported_rid = rd->texture_create_from_extension(
             RenderingDevice::TEXTURE_TYPE_2D,
-            RenderingDevice::DATA_FORMAT_R8G8B8A8_UNORM,
+            source.format,
             RenderingDevice::TEXTURE_SAMPLES_1,
             BitField<RenderingDevice::TextureUsageBits>(
                 RenderingDevice::TEXTURE_USAGE_SAMPLING_BIT |
@@ -12077,6 +12514,7 @@ private:
     engine_handle_t handle_ = nullptr;
     engine_media_handle_t media_ = nullptr;
     bool game_open_ = false;
+    bool frame_rendered_this_tick_ = false;
     String backend_ = "Godot Native";
     String last_result_;
     String last_error_;
@@ -12090,6 +12528,14 @@ private:
         runtime_tick_quantizer_;
     bool artemis_logical_frame_pacing_ = false;
     Ref<ImageTexture> frame_texture_;
+    // Keep the last provider-owned native texture alive across a transient
+    // native-frame query failure. Artemis otherwise falls through to the CPU
+    // compatibility frame for one tick, producing a visible stale-pose flash.
+    uint64_t last_native_texture_id_ = 0;
+    Ref<Texture2D> last_native_texture_;
+    uint32_t last_native_texture_width_ = 0;
+    uint32_t last_native_texture_height_ = 0;
+    uint64_t last_native_texture_serial_ = UINT64_MAX;
     PackedByteArray frame_rgba_buffer_;
     Ref<Texture2DRD> frame_rd_texture_;
     RID frame_rd_rid_;
@@ -12104,6 +12550,7 @@ private:
     std::array<RID, 2> frame_present_rids_;
     uint32_t frame_present_width_ = 0;
     uint32_t frame_present_height_ = 0;
+    RenderingDevice::DataFormat frame_present_format_ = RenderingDevice::DATA_FORMAT_R8G8B8A8_UNORM;
     size_t frame_present_current_slot_ = 0;
     size_t frame_present_pending_slot_ = 0;
     bool frame_present_has_current_ = false;
@@ -12163,6 +12610,9 @@ void InitializeAetherRuntime(ModuleInitializationLevel level) {
 #endif
 #if defined(AETHERKIRI_WITH_ONSCRIPTER)
     aetherkiri::onscripter::RegisterRuntimeProvider();
+#endif
+#if defined(AETHERKIRI_WITH_SIGLUS)
+    aetherkiri::siglus::RegisterRuntimeProvider();
 #endif
 #if defined(AETHERKIRI_WITH_MINORI)
     if (aetherkiri_minori_register_runtime_provider() != ENGINE_RESULT_OK) {

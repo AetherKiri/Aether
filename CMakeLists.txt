@@ -85,6 +85,8 @@ option(AETHERKIRI_ENABLE_RFVP "build the experimental native FVP runtime (requir
 option(BUILD_GPU_BRIDGE "build legacy external GPU bridge renderer" OFF)
 option(AETHERKIRI_ENABLE_ONSCRIPTER
        "enable the bundled OnscripterYuri runtime" ON)
+option(AETHERKIRI_ENABLE_SIGLUS
+       "enable the bundled siglus_rs runtime (requires a Rust toolchain)" ON)
 option(AETHERKIRI_ENABLE_MINORI
        "enable the independent Rust Minori runtime" ON)
 option(AETHERKIRI_ENABLE_CODE_OBFUSCATION
@@ -124,6 +126,10 @@ if(AETHERKIRI_ENABLE_INTERNAL)
            NOT COMMAND aetherinternal_extend_psbfile OR
            NOT COMMAND aetherinternal_extend_legacy_plugins OR
            NOT COMMAND aetherinternal_extend_live2d OR
+           NOT COMMAND aetherinternal_extend_catsystem2 OR
+           NOT COMMAND aetherinternal_extend_catsystem2_tests OR
+           NOT COMMAND aetherinternal_add_catsystem2_probe OR
+           NOT COMMAND aetherinternal_add_artemis_tests OR
            NOT COMMAND aetherinternal_extend_artemis OR
            NOT COMMAND aetherinternal_extend_text_translation OR
            NOT COMMAND aetherinternal_extend_godot_extension OR
@@ -216,6 +222,11 @@ endif()
 if(AETHERKIRI_ENABLE_ONSCRIPTER AND
    (BUILD_GODOT_EXTENSION OR AETHERKIRI_BUILD_NATIVE_ONSCRIPTER_TESTS))
     add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/bridge/onscripter_runtime)
+endif()
+if(AETHERKIRI_ENABLE_SIGLUS AND BUILD_GODOT_EXTENSION AND
+   NOT (WEB OR EMSCRIPTEN))
+    # Web stays excluded until the wasm host path is designed (phase 5).
+    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/bridge/siglus_runtime)
 endif()
 # The Rust provider has targets for Linux, Apple, Android, and Emscripten.
 # Keep it out of unsupported native targets, but do not make Linux the only

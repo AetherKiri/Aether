@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <array>
 #include <atomic>
+#include <chrono>
 #include <cstring>
 #include <string>
 #include <thread>
@@ -11,8 +12,13 @@
 #include "engine_api.h"
 #include "engine_input_queue_gate.h"
 #include "engine_runtime_provider.h"
+#include "engine_startup_thread.h"
 
 namespace {
+
+#if defined(__APPLE__)
+std::atomic<size_t> fake_open_stack_size{0};
+#endif
 
 struct Handle {
   engine_handle_t value = nullptr;
@@ -90,8 +96,15 @@ engine_result_t FakeCreate(void*, const engine_runtime_host_v1_t* host,
 
 void FakeDestroy(void* runtime) { delete static_cast<FakeRuntime*>(runtime); }
 
-engine_result_t FakeOpen(void* runtime, const char*, const char*) {
+engine_result_t FakeOpen(void* runtime, const char* root, const char*) {
+#if defined(__APPLE__)
+  fake_open_stack_size.store(pthread_get_stacksize_np(pthread_self()));
+#endif
   auto* fake = static_cast<FakeRuntime*>(runtime);
+  if (root != nullptr && std::strstr(root, ".artemis-test-fail") != nullptr) {
+    fake->error = "PF entry payload range is outside the archive";
+    return ENGINE_RESULT_IO_ERROR;
+  }
   fake->opened = true;
   if (fake->host.platform_request != nullptr) {
     fake->host.platform_request(fake->host.user_data, "purchase",
@@ -166,6 +179,16 @@ engine_result_t FakeGetTextInputState(void* runtime,
   return ENGINE_RESULT_OK;
 }
 
+engine_result_t FakeGetMemoryStats(void* runtime,
+                                  engine_memory_stats_t* stats) {
+  if (runtime == nullptr || stats == nullptr ||
+      stats->struct_size < sizeof(engine_memory_stats_t)) {
+    return ENGINE_RESULT_INVALID_ARGUMENT;
+  }
+  stats->graphic_cache_bytes = 4096u;
+  return ENGINE_RESULT_OK;
+}
+
 const engine_runtime_provider_v1_t kFakeProvider = [] {
   engine_runtime_provider_v1_t provider{};
   provider.struct_size = sizeof(provider);
@@ -185,6 +208,7 @@ const engine_runtime_provider_v1_t kFakeProvider = [] {
   provider.get_last_error = FakeLastError;
   provider.submit_platform_response = FakeSubmitPlatformResponse;
   provider.get_text_input_state = FakeGetTextInputState;
+  provider.get_memory_stats = FakeGetMemoryStats;
   return provider;
 }();
 
@@ -196,7 +220,93 @@ const engine_runtime_provider_v1_t kArtemisGateProvider = [] {
   return provider;
 }();
 
+const engine_runtime_provider_v1_t kCatSystem2GateProvider = [] {
+  engine_runtime_provider_v1_t provider = kFakeProvider;
+  provider.runtime_id_utf8 = "catsystem2";
+  provider.display_name_utf8 = "CatSystem2 gate test provider";
+  provider.probe = ArtemisGateProbe;
+  return provider;
+}();
+
+const engine_runtime_provider_v1_t kRfvpGateProvider = [] {
+  engine_runtime_provider_v1_t provider = kFakeProvider;
+  provider.runtime_id_utf8 = "rfvp";
+  provider.display_name_utf8 = "RFVP gate test provider";
+  provider.probe = ArtemisGateProbe;
+  return provider;
+}();
+
 }  // namespace
+
+TEST_CASE("provider startup worker preserves ownership and has enough Apple stack") {
+  using aetherkiri::engine_api::StartupThread;
+  bool ran = false;
+#if defined(__APPLE__)
+  size_t stack_size = 0;
+#endif
+  StartupThread worker([&] {
+#if defined(__APPLE__)
+    stack_size = pthread_get_stacksize_np(pthread_self());
+#endif
+    ran = true;
+  });
+  StartupThread moved(std::move(worker));
+  CHECK_FALSE(worker.joinable());
+  StartupThread joined;
+  joined = std::move(moved);
+  CHECK_FALSE(moved.joinable());
+  CHECK(joined.joinable());
+  joined.join();
+  CHECK_FALSE(joined.joinable());
+  CHECK(ran);
+#if defined(__APPLE__)
+  CHECK(stack_size >= aetherkiri::engine_api::kStartupThreadStackSize);
+#endif
+}
+
+TEST_CASE("runtime provider asynchronous startup completes and is joined on destroy") {
+  REQUIRE(engine_register_runtime_provider(&kFakeProvider) == ENGINE_RESULT_OK);
+  Handle handle;
+  engine_option_t runtime_option{};
+  runtime_option.key_utf8 = "runtime";
+  runtime_option.value_utf8 = "fake-artemis-test";
+  REQUIRE(engine_set_option(handle.value, &runtime_option) == ENGINE_RESULT_OK);
+#if defined(__APPLE__)
+  fake_open_stack_size.store(0);
+#endif
+  REQUIRE(engine_open_game_async(handle.value, ".artemis-test", "first.iet") ==
+          ENGINE_RESULT_OK);
+  uint32_t state = ENGINE_STARTUP_STATE_RUNNING;
+  for (int attempt = 0; attempt < 1000 && state == ENGINE_STARTUP_STATE_RUNNING; ++attempt) {
+    REQUIRE(engine_get_startup_state(handle.value, &state) == ENGINE_RESULT_OK);
+    std::this_thread::sleep_for(std::chrono::milliseconds(1));
+  }
+  REQUIRE(state == ENGINE_STARTUP_STATE_SUCCEEDED);
+#if defined(__APPLE__)
+  CHECK(fake_open_stack_size.load() >= aetherkiri::engine_api::kStartupThreadStackSize);
+#endif
+  REQUIRE(engine_tick(handle.value, 16) == ENGINE_RESULT_OK);
+}
+
+TEST_CASE("runtime provider startup failure retains its diagnostic after polling") {
+  REQUIRE(engine_register_runtime_provider(&kFakeProvider) == ENGINE_RESULT_OK);
+  Handle handle;
+  engine_option_t runtime_option{};
+  runtime_option.key_utf8 = "runtime";
+  runtime_option.value_utf8 = "fake-artemis-test";
+  REQUIRE(engine_set_option(handle.value, &runtime_option) == ENGINE_RESULT_OK);
+  REQUIRE(engine_open_game_async(handle.value, ".artemis-test-fail", nullptr) ==
+          ENGINE_RESULT_OK);
+  uint32_t state = ENGINE_STARTUP_STATE_RUNNING;
+  for (int attempt = 0; attempt < 1000 && state == ENGINE_STARTUP_STATE_RUNNING;
+       ++attempt) {
+    REQUIRE(engine_get_startup_state(handle.value, &state) == ENGINE_RESULT_OK);
+    std::this_thread::sleep_for(std::chrono::milliseconds(1));
+  }
+  REQUIRE(state == ENGINE_STARTUP_STATE_FAILED);
+  CHECK(std::string(engine_get_last_error(handle.value)) ==
+        "PF entry payload range is outside the archive");
+}
 
 TEST_CASE("primary click queue gate bounds rapid primary gestures") {
   aetherkiri::engine_api::PrimaryClickQueueGate gate;
@@ -345,24 +455,87 @@ TEST_CASE("primary click queue gate preserves every secondary pointer edge") {
   gate.on_dequeued(queued_primary_release);
 }
 
-TEST_CASE("Artemis runtime opens without a beta entitlement") {
-  const engine_result_t registration =
-      engine_register_runtime_provider(&kArtemisGateProvider);
-  REQUIRE(registration == ENGINE_RESULT_OK);
+TEST_CASE("Beta runtime providers require active coffee access") {
+  REQUIRE(engine_register_runtime_provider(&kArtemisGateProvider) ==
+          ENGINE_RESULT_OK);
+  REQUIRE(engine_register_runtime_provider(&kCatSystem2GateProvider) ==
+          ENGINE_RESULT_OK);
+  REQUIRE(engine_register_runtime_provider(&kRfvpGateProvider) ==
+          ENGINE_RESULT_OK);
 
-  Handle handle;
-  engine_option_t runtime_option{};
-  runtime_option.key_utf8 = "runtime";
-  runtime_option.value_utf8 = "artemis";
-  REQUIRE(engine_set_option(handle.value, &runtime_option) == ENGINE_RESULT_OK);
-  // Older hosts may still send this option. A false value must no longer
-  // block the generally available runtime.
-  engine_option_t beta_option{};
-  beta_option.key_utf8 = "artemis_beta_allowed";
-  beta_option.value_utf8 = "0";
-  REQUIRE(engine_set_option(handle.value, &beta_option) == ENGINE_RESULT_OK);
-  REQUIRE(engine_open_game(handle.value, ".artemis-debug-gate-test",
+  // CatSystem2 is a released runtime.  A stale beta_runtime_allowed=0 must
+  // not bring back the old coffee-only restriction.
+  {
+    Handle handle;
+    engine_option_t runtime_option{};
+    runtime_option.key_utf8 = "runtime";
+    runtime_option.value_utf8 = "catsystem2";
+    REQUIRE(engine_set_option(handle.value, &runtime_option) ==
+            ENGINE_RESULT_OK);
+    engine_option_t beta_option{};
+    beta_option.key_utf8 = "beta_runtime_allowed";
+    beta_option.value_utf8 = "0";
+    REQUIRE(engine_set_option(handle.value, &beta_option) == ENGINE_RESULT_OK);
+    REQUIRE(engine_open_game(handle.value, ".artemis-debug-gate-test",
+                             "first.iet") == ENGINE_RESULT_OK);
+  }
+
+  // RFVP remains an explicitly gated provider until its compatibility work is
+  // released.
+  {
+    const std::array<const char*, 2> runtime{{
+        "rfvp", "RFVP runtime requires active beta access"}};
+    {
+      Handle default_handle;
+      engine_option_t default_runtime_option{};
+      default_runtime_option.key_utf8 = "runtime";
+      default_runtime_option.value_utf8 = runtime[0];
+      REQUIRE(engine_set_option(default_handle.value, &default_runtime_option) ==
+              ENGINE_RESULT_OK);
+#if defined(NDEBUG)
+      REQUIRE(engine_open_game(default_handle.value,
+                               ".artemis-debug-gate-test", "first.iet") ==
+              ENGINE_RESULT_NOT_SUPPORTED);
+      REQUIRE(std::string(engine_get_last_error(default_handle.value)) ==
+              runtime[1]);
+#else
+      REQUIRE(engine_open_game(default_handle.value,
+                               ".artemis-debug-gate-test", "first.iet") ==
+              ENGINE_RESULT_OK);
+#endif
+    }
+
+    Handle handle;
+    engine_option_t runtime_option{};
+    runtime_option.key_utf8 = "runtime";
+    runtime_option.value_utf8 = runtime[0];
+    REQUIRE(engine_set_option(handle.value, &runtime_option) == ENGINE_RESULT_OK);
+
+    engine_option_t beta_option{};
+    beta_option.key_utf8 = "beta_runtime_allowed";
+    beta_option.value_utf8 = "0";
+    REQUIRE(engine_set_option(handle.value, &beta_option) == ENGINE_RESULT_OK);
+    REQUIRE(engine_open_game(handle.value, ".artemis-debug-gate-test",
+                             "first.iet") == ENGINE_RESULT_NOT_SUPPORTED);
+    REQUIRE(std::string(engine_get_last_error(handle.value)) == runtime[1]);
+
+    beta_option.value_utf8 = "1";
+    REQUIRE(engine_set_option(handle.value, &beta_option) == ENGINE_RESULT_OK);
+    REQUIRE(engine_open_game(handle.value, ".artemis-debug-gate-test",
+                             "first.iet") == ENGINE_RESULT_OK);
+  }
+
+  // Artemis is a released provider and must stay available in Release builds
+  // without a coffee entitlement or beta_runtime_allowed override.
+  Handle artemis_handle;
+  engine_option_t artemis_runtime_option{};
+  artemis_runtime_option.key_utf8 = "runtime";
+  artemis_runtime_option.value_utf8 = "artemis";
+  REQUIRE(engine_set_option(artemis_handle.value, &artemis_runtime_option) ==
+          ENGINE_RESULT_OK);
+  REQUIRE(engine_open_game(artemis_handle.value, ".artemis-debug-gate-test",
                            "first.iet") == ENGINE_RESULT_OK);
+
 }
 
 TEST_CASE("versioned runtime provider is selected and routed end to end") {
@@ -432,6 +605,30 @@ TEST_CASE("surface request made before provider selection is replayed") {
   REQUIRE(frame.width == 1920u);
   REQUIRE(frame.height == 1080u);
   REQUIRE(frame.stride_bytes == 1920u * 4u);
+}
+
+TEST_CASE("runtime providers receive host process memory statistics") {
+  REQUIRE(engine_register_runtime_provider(&kFakeProvider) == ENGINE_RESULT_OK);
+  Handle handle;
+  engine_option_t runtime_option{};
+  runtime_option.key_utf8 = "runtime";
+  runtime_option.value_utf8 = "fake-artemis-test";
+  REQUIRE(engine_set_option(handle.value, &runtime_option) == ENGINE_RESULT_OK);
+  REQUIRE(engine_open_game(handle.value, ".artemis-test", "first.iet") ==
+          ENGINE_RESULT_OK);
+
+  engine_memory_stats_t stats{};
+  stats.struct_size = sizeof(stats);
+  REQUIRE(engine_get_memory_stats(handle.value, &stats) == ENGINE_RESULT_OK);
+  CHECK(stats.graphic_cache_bytes == 4096u);
+#if defined(__APPLE__)
+  CHECK(stats.self_used_mb > 0u);
+  CHECK(stats.system_total_mb > 0u);
+  CHECK(stats.process_resident_bytes > 0u);
+  CHECK(stats.process_physical_footprint_bytes > 0u);
+  CHECK(stats.process_peak_physical_footprint_bytes >=
+        stats.process_physical_footprint_bytes);
+#endif
 }
 
 TEST_CASE("standalone media is routed through the legacy host service") {

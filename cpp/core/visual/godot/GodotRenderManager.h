@@ -77,6 +77,16 @@ public:
     }
     uint64_t GetGodotGpuHandle() const { return gpu_handle_; }
     bool HasGodotGpuHandle() const { return gpu_handle_ != 0; }
+    bool HasCurrentCpuPixels() const {
+        return !pixels_.empty() && (cpu_dirty_ || !gpu_dirty_);
+    }
+    bool PrefersCpuOperations() const {
+        return cpu_access_expected_ && HasCurrentCpuPixels();
+    }
+    void ExpectCpuAccess() {
+        cpu_access_expected_ = true;
+        retain_cpu_shadow_ = true;
+    }
     bool HasPendingGpuWrites() const { return gpu_dirty_ && !cpu_dirty_; }
     bool RequiresGpuReadback() const {
         return gpu_handle_ != 0 && gpu_dirty_ && !cpu_dirty_;
@@ -87,6 +97,8 @@ public:
                          bool *ready) const;
     void DiscardGpuReadback(uint64_t request) const;
     bool EnsureGpuHandle();
+    void ResizeCpuStorage(size_t bytes, bool zero_fill = true);
+    void ReleaseCpuStorage();
     bool ClearGpu(uint32_t rgba, const tTVPRect &rc);
     bool CopyGpuFrom(GodotTexture2D *src, const tTVPRect &dst_rc,
                      const tTVPRect &src_rc);
@@ -128,19 +140,70 @@ public:
                        uint32_t color);
     bool UploadCpuToGpu(bool flush_pending_gpu_writes = true);
     bool UpdateGpuRgba(const void *pixels, uint32_t stride_bytes);
-    void MarkGpuDirty() { gpu_dirty_ = true; }
+    void MarkGpuDirty() {
+        CancelPendingGpuReadback();
+        gpu_dirty_ = true;
+    }
     void MarkCpuDirty() {
+        CancelPendingGpuReadback();
         cpu_dirty_ = true;
         gpu_dirty_ = false;
         cpu_pixels_known_zero_ = false;
+        cpu_dirty_full_ = true;
+        cpu_dirty_rect_.clear();
+    }
+    // Marks a bounded region of CPU pixels as newer than the GPU image so the
+    // upload can update only what the script actually touched.  An empty
+    // rectangle means "whole texture", which stays the safe default for the
+    // unconditional MarkCpuDirty() above.
+    void MarkCpuDirtyRect(const tTVPRect &rc) {
+        CancelPendingGpuReadback();
+        cpu_dirty_ = true;
+        gpu_dirty_ = false;
+        cpu_pixels_known_zero_ = false;
+        if(rc.is_empty()) {
+            cpu_dirty_full_ = true;
+            cpu_dirty_rect_.clear();
+            return;
+        }
+        // The pending region accumulates until it is actually uploaded or the
+        // CPU copy is resynchronized with the GPU, so an interleaved GPU-side
+        // draw can never drop an already-notified change.
+        if(cpu_dirty_full_)
+            return;
+        if(cpu_dirty_rect_.is_empty()) {
+            cpu_dirty_rect_ = rc;
+            return;
+        }
+        cpu_dirty_rect_.do_union(rc);
+    }
+    void ClearCpuDirtyRegion() {
+        cpu_dirty_full_ = false;
+        cpu_dirty_rect_.clear();
+    }
+    bool CpuDirtyRegionIsFull() const { return cpu_dirty_full_; }
+    bool CpuDirtyRegion(tTVPRect &out) const {
+        if(cpu_dirty_full_ || cpu_dirty_rect_.is_empty())
+            return false;
+        out = cpu_dirty_rect_;
+        return true;
     }
     void EnsureCpuReadable();
+    // Starts a non-blocking readback for a texture that will soon cross back
+    // into the CPU bitmap API.  EnsureCpuReadable consumes it when the
+    // caller actually asks for pixels, falling back to the synchronous path
+    // if the GPU has not finished yet.
+    bool BeginCpuReadback();
 
 private:
+    friend class GodotRenderManager;
+    bool CopyCpuSnapshotFrom(GodotTexture2D &source);
     void CreateGpuHandle(const void *pixel, int pitch);
     void ReleaseGpuHandle();
-    void EnsureCpuStorage();
+    void EnsureCpuStorage(bool zero_fill = true);
     void DiscardCpuStorage();
+    void CancelPendingGpuReadback();
+    bool CompletePendingGpuReadback();
     void SetOpacityFromPixels(const void *pixel, int pitch);
     void MarkOpacityUnknown();
     void MarkTransparentKnown();
@@ -156,12 +219,17 @@ private:
     bool opaque_ = false;
     bool cpu_composite_target_ = false;
     bool retain_cpu_shadow_ = false;
+    bool cpu_access_expected_ = false;
     bool discard_unwritten_on_partial_update_ = false;
+    mutable uint64_t pending_cpu_readback_ = 0;
+    mutable std::vector<uint8_t> pending_cpu_readback_pixels_;
     // Fresh render targets are initialized to transparent black. Preserve
     // that fact until the first CPU write so the Godot bridge can allocate
     // and clear the GPU image without packing and uploading a multi-megabyte
     // zero-filled staging buffer.
     bool cpu_pixels_known_zero_ = false;
+    bool cpu_dirty_full_ = true;
+    tTVPRect cpu_dirty_rect_{};
 };
 
 class GodotRenderManager final : public iTVPRenderManager {
@@ -214,6 +282,26 @@ private:
 void TVPForceRegisterGodotRenderManager();
 void TVPSetGodotRenderManagerGpuFastPathEnabled(bool enabled);
 std::string TVPGetGodotRenderManagerFallbackStats();
+
+// Marks only the final MotionPlayer presentation target that is safe to keep
+// GPU-resident for the duration of one ordered command list. Private command
+// layers remain on the conservative CPU-visible path.
+class TVPGodotGpuMotionRenderTargetScope {
+public:
+    explicit TVPGodotGpuMotionRenderTargetScope(const void *target);
+    ~TVPGodotGpuMotionRenderTargetScope() noexcept;
+
+    TVPGodotGpuMotionRenderTargetScope(
+        const TVPGodotGpuMotionRenderTargetScope &) = delete;
+    TVPGodotGpuMotionRenderTargetScope &operator=(
+        const TVPGodotGpuMotionRenderTargetScope &) = delete;
+
+private:
+    const void *previous_ = nullptr;
+    bool active_ = false;
+};
+
+bool TVPGodotGpuMotionRenderTargetActive(const void *target);
 
 class iTVPBaseBitmap;
 

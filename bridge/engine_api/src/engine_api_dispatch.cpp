@@ -6,7 +6,9 @@
 #include <cctype>
 #include <cstring>
 #include <deque>
+#include <exception>
 #include <functional>
+#include <memory>
 #include <mutex>
 #include <new>
 #include <string>
@@ -16,8 +18,14 @@
 #include <utility>
 #include <vector>
 
+#include <spdlog/spdlog.h>
+#include <spdlog/sinks/basic_file_sink.h>
+
 #if defined(__APPLE__)
 #include <TargetConditionals.h>
+#include <mach/mach.h>
+#include <mach/task_info.h>
+#include <sys/sysctl.h>
 #endif
 
 #if defined(__ANDROID__)
@@ -29,11 +37,17 @@
 #endif
 
 #include "engine_runtime_provider_registry.h"
+#include "engine_startup_thread.h"
+#include "engine_api_crash_capture.h"
 #include "legacy_engine_api.h"
 #include "TextTransform.h"
 #if defined(ENGINE_API_USE_KRKR2_RUNTIME)
 #include "environ/Platform.h"
 #include "visual/RenderManager.h"
+#endif
+
+#if defined(AETHERKIRI_INTERNAL_CATSYSTEM2)
+extern "C" void AetherInternalRegisterCatSystem2Runtime(void);
 #endif
 
 #if defined(AETHERKIRI_INTERNAL_TEXT_TRANSLATION)
@@ -64,6 +78,8 @@ extern "C" void AetherInternalRegisterWa2Runtime(void);
 
 namespace {
 
+using aetherkiri::engine_api::StartupThread;
+
 enum class BackendKind { kUndecided, kLegacy, kProvider };
 
 struct DispatchHandle {
@@ -76,13 +92,18 @@ struct DispatchHandle {
   std::string writable_path;
   std::string cache_path;
   std::string requested_runtime = "auto";
+#if defined(NDEBUG) && !defined(__ANDROID__)
+  bool beta_runtime_allowed = false;
+#else
+  bool beta_runtime_allowed = true;
+#endif
   std::unordered_map<std::string, std::string> pending_options;
   uint32_t surface_width = 0;
   uint32_t surface_height = 0;
   bool has_surface_size = false;
   engine_runtime_host_v1_t host{};
   engine_runtime_fragment_shader_host_v1_t fragment_shader_host{};
-  std::thread startup_thread;
+  StartupThread startup_thread;
   uint32_t startup_state = ENGINE_STARTUP_STATE_IDLE;
   std::deque<std::string> startup_logs;
   struct PlatformRequest {
@@ -100,12 +121,85 @@ std::unordered_map<engine_media_handle_t, engine_handle_t>
     g_dispatch_media_handles;
 thread_local std::string g_dispatch_thread_error;
 
+engine_result_t RunProviderOpen(DispatchHandle* handle, const char* path,
+                                const char* startup_script) {
+  try {
+    return handle->provider->open_game(handle->runtime, path, startup_script);
+  } catch (const std::exception& error) {
+    aetherkiri::engine_api::WriteCrashReport(
+        "runtime provider open_game threw std::exception", error.what());
+    return ENGINE_RESULT_INTERNAL_ERROR;
+  } catch (...) {
+    aetherkiri::engine_api::WriteCrashReport(
+        "runtime provider open_game threw unknown exception", nullptr);
+    return ENGINE_RESULT_INTERNAL_ERROR;
+  }
+}
+
+engine_result_t RunProviderTick(DispatchHandle* handle, uint32_t delta_ms) {
+  try {
+    return handle->provider->tick(handle->runtime, delta_ms);
+  } catch (const std::exception& error) {
+    aetherkiri::engine_api::WriteCrashReport(
+        "runtime provider tick threw std::exception", error.what());
+    return ENGINE_RESULT_INTERNAL_ERROR;
+  } catch (...) {
+    aetherkiri::engine_api::WriteCrashReport(
+        "runtime provider tick threw unknown exception", nullptr);
+    return ENGINE_RESULT_INTERNAL_ERROR;
+  }
+}
+
 bool ActivateProviderAudioSessionForHost() {
 #if defined(__APPLE__) && TARGET_OS_IPHONE && \
     defined(ENGINE_API_USE_KRKR2_RUNTIME)
   return TVPActivateAudioSessionForHost();
 #else
   return true;
+#endif
+}
+
+void PopulateHostMemoryStats(engine_memory_stats_t* stats) {
+  if (stats == nullptr) return;
+#if defined(__APPLE__)
+  task_vm_info_data_t vm_info{};
+  mach_msg_type_number_t vm_info_count = TASK_VM_INFO_COUNT;
+  if (task_info(mach_task_self(), TASK_VM_INFO,
+                reinterpret_cast<task_info_t>(&vm_info),
+                &vm_info_count) == KERN_SUCCESS) {
+    stats->process_resident_bytes = vm_info.resident_size;
+    stats->process_physical_footprint_bytes = vm_info.phys_footprint;
+    stats->process_peak_physical_footprint_bytes = std::max<uint64_t>(
+        stats->process_physical_footprint_bytes,
+        vm_info.ledger_phys_footprint_peak > 0
+            ? static_cast<uint64_t>(vm_info.ledger_phys_footprint_peak)
+            : 0u);
+    if (stats->self_used_mb == 0u && stats->process_resident_bytes != 0u) {
+      stats->self_used_mb = static_cast<uint32_t>(
+          stats->process_resident_bytes / (1024u * 1024u));
+    }
+  }
+
+  uint64_t total_bytes = 0u;
+  size_t total_size = sizeof(total_bytes);
+  if (sysctlbyname("hw.memsize", &total_bytes, &total_size, nullptr, 0) == 0) {
+    stats->system_total_mb =
+        static_cast<uint32_t>(total_bytes / (1024u * 1024u));
+  }
+  const mach_port_t host = mach_host_self();
+  vm_size_t page_size = 0u;
+  vm_statistics64_data_t vm_stats{};
+  mach_msg_type_number_t stats_count = HOST_VM_INFO64_COUNT;
+  if (host_page_size(host, &page_size) == KERN_SUCCESS &&
+      host_statistics64(host, HOST_VM_INFO64,
+                        reinterpret_cast<host_info64_t>(&vm_stats),
+                        &stats_count) == KERN_SUCCESS) {
+    const uint64_t available_pages =
+        static_cast<uint64_t>(vm_stats.free_count) + vm_stats.inactive_count;
+    stats->system_free_mb = static_cast<uint32_t>(
+        available_pages * page_size / (1024u * 1024u));
+  }
+  mach_port_deallocate(mach_task_self(), host);
 #endif
 }
 
@@ -164,6 +258,8 @@ void SetProviderError(DispatchHandle* handle, engine_result_t result,
                            ? provider_error
                            : fallback;
   SetThreadError(handle->last_error.c_str());
+  spdlog::error("runtime provider failure: {} ({})", handle->last_error,
+                fallback != nullptr ? fallback : "");
 }
 
 void SetLegacyError(DispatchHandle* handle, engine_result_t result,
@@ -187,6 +283,22 @@ engine_result_t Unsupported(DispatchHandle* handle, const char* operation) {
   handle->last_error = std::string("runtime provider does not implement ") + operation;
   SetThreadError(handle->last_error.c_str());
   return ENGINE_RESULT_NOT_SUPPORTED;
+}
+
+engine_result_t CheckBetaRuntimeAccess(DispatchHandle* handle) {
+  if (handle->backend != BackendKind::kProvider || handle->provider == nullptr) {
+    return ENGINE_RESULT_OK;
+  }
+  const std::string runtime_id = Normalize(handle->provider->runtime_id_utf8);
+  // CatSystem2 is a released runtime now.  Keep the entitlement gate only
+  // for RFVP; older hosts may still send beta_runtime_allowed, but it must not
+  // turn CatSystem2 launches back into a coffee-only feature.
+  if (runtime_id != "rfvp" ||
+      handle->beta_runtime_allowed) {
+    return ENGINE_RESULT_OK;
+  }
+  handle->last_error = "RFVP runtime requires active beta access";
+  return ThreadError(ENGINE_RESULT_NOT_SUPPORTED, handle->last_error.c_str());
 }
 
 bool IsTextTranslationOption(const std::string& key) {
@@ -245,6 +357,60 @@ void StartTextTranslationLoading() {
 #endif
 }
 
+std::mutex g_provider_log_sink_mutex;
+std::shared_ptr<spdlog::sinks::sink> g_provider_log_sink;
+
+// Runtime-provider engines (CatSystem2, Artemis, WA2) emit their logs through
+// the provider host callback instead of the legacy KiriKiri "core"/"tjs2"
+// loggers, so krkr2.log never receives them. Attach a per-game sidecar file
+// sink to the spdlog default logger so provider diagnostics survive windowed
+// release exports that have no console. The sink flushes on every message to
+// keep the tail readable after a hard crash.
+void AttachProviderGameLogFileSink(const std::string& game_root,
+                                   const std::string& writable_path) {
+  std::lock_guard<std::mutex> sink_guard(g_provider_log_sink_mutex);
+  std::vector<std::string> candidates;
+  if (!game_root.empty()) {
+    std::string root = game_root;
+    while (!root.empty() && (root.back() == '/' || root.back() == '\\')) {
+      root.pop_back();
+    }
+    if (!root.empty()) candidates.push_back(root + "/aetherkiri-engine.log");
+  }
+  if (!writable_path.empty()) {
+    std::string root = writable_path;
+    while (!root.empty() && (root.back() == '/' || root.back() == '\\')) {
+      root.pop_back();
+    }
+    if (!root.empty()) candidates.push_back(root + "/aetherkiri-engine.log");
+  }
+  for (const std::string& candidate : candidates) {
+    try {
+      auto sink = std::make_shared<spdlog::sinks::basic_file_sink_mt>(
+          candidate, true);
+      auto logger = spdlog::default_logger();
+      // Drop any previously attached provider sink before adding the new one.
+      if (g_provider_log_sink != nullptr) {
+        auto& sinks = logger->sinks();
+        sinks.erase(
+            std::remove_if(sinks.begin(), sinks.end(),
+                           [previous = g_provider_log_sink.get()](
+                               const std::shared_ptr<spdlog::sinks::sink>& s) {
+                             return s.get() == previous;
+                           }),
+            sinks.end());
+      }
+      logger->sinks().push_back(sink);
+      g_provider_log_sink = sink;
+      logger->flush_on(spdlog::level::trace);
+      spdlog::info("aetherkiri provider engine log attached: {}", candidate);
+      return;
+    } catch (const std::exception&) {
+      // Game roots can be read-only; fall through to the next candidate.
+    }
+  }
+}
+
 void HostLog(void* user_data, uint32_t level, const char* subsystem,
              const char* message) {
   auto* handle = static_cast<DispatchHandle*>(user_data);
@@ -264,6 +430,16 @@ void HostLog(void* user_data, uint32_t level, const char* subsystem,
     line += "] ";
   }
   line += message != nullptr ? message : "";
+  // Mirror into the spdlog default logger so provider logs reach the per-game
+  // sidecar file even when the UI log view is disabled. This must run before
+  // line is moved into the startup log queue.
+  const spdlog::level::level_enum spdlog_level =
+      level == ENGINE_RUNTIME_LOG_ERROR   ? spdlog::level::err
+      : level == ENGINE_RUNTIME_LOG_WARNING ? spdlog::level::warn
+      : level == ENGINE_RUNTIME_LOG_DEBUG  ? spdlog::level::debug
+      : level == ENGINE_RUNTIME_LOG_TRACE  ? spdlog::level::trace
+                                            : spdlog::level::info;
+  spdlog::default_logger()->log(spdlog_level, "{}", line);
   handle->startup_logs.push_back(std::move(line));
 }
 
@@ -367,6 +543,15 @@ engine_result_t SelectBackendLocked(DispatchHandle* handle,
       option.key_utf8 = option_value.first.c_str();
       option.value_utf8 = option_value.second.c_str();
       result = handle->provider->set_option(handle->runtime, &option);
+      if (result == ENGINE_RESULT_NOT_SUPPORTED) {
+        // Options queued before auto-detection may belong to another engine
+        // (the common shell configures KiriKiri tracing, plugin loading, etc.).
+        // Providers must be able to reject those without pretending they were
+        // applied. Only this pre-selection replay is optional; direct option
+        // calls still return NOT_SUPPORTED to the caller.
+        handle->startup_logs.push_back("runtime option not applicable: " + option_value.first);
+        continue;
+      }
       if (result != ENGINE_RESULT_OK) {
         SetProviderError(handle, result, "runtime provider rejected an option");
         return result;
@@ -470,6 +655,10 @@ engine_result_t engine_create(const engine_create_desc_t* desc,
                        "engine_create requires non-null desc and out_handle");
   }
   *out_handle = nullptr;
+  aetherkiri::engine_api::InstallCrashCapture();
+#if defined(AETHERKIRI_INTERNAL_CATSYSTEM2)
+  AetherInternalRegisterCatSystem2Runtime();
+#endif
 #if defined(AETHERKIRI_INTERNAL_ARTEMIS) && \
     defined(AETHERKIRI_ENABLE_ARTEMIS_RUNTIME)
   AetherInternalRegisterArtemisRuntime();
@@ -628,7 +817,7 @@ engine_result_t engine_destroy(engine_handle_t public_handle) {
     handle = Cast(public_handle);
   }
 
-  std::thread startup_thread;
+  StartupThread startup_thread;
   {
     std::lock_guard<std::recursive_mutex> guard(handle->mutex);
     startup_thread = std::move(handle->startup_thread);
@@ -794,6 +983,8 @@ engine_result_t engine_open_game(engine_handle_t public_handle,
   }
   result = SelectBackendLocked(handle, game_root_path_utf8);
   if (result != ENGINE_RESULT_OK) return result;
+  result = CheckBetaRuntimeAccess(handle);
+  if (result != ENGINE_RESULT_OK) return result;
   result = PrepareTextTranslationLocked(handle);
   if (result != ENGINE_RESULT_OK) return result;
   if (handle->backend == BackendKind::kLegacy) {
@@ -803,9 +994,9 @@ engine_result_t engine_open_game(engine_handle_t public_handle,
     return result;
   }
   handle->startup_state = ENGINE_STARTUP_STATE_RUNNING;
+  AttachProviderGameLogFileSink(game_root_path_utf8, handle->writable_path);
   AETHER_DISPATCH_DIAG_LOG("engine_open_game before provider open_game");
-  result = handle->provider->open_game(handle->runtime, game_root_path_utf8,
-                                       startup_script_utf8);
+  result = RunProviderOpen(handle, game_root_path_utf8, startup_script_utf8);
   AETHER_DISPATCH_DIAG_LOG("engine_open_game after provider open_game");
   handle->startup_state = result == ENGINE_RESULT_OK
                               ? ENGINE_STARTUP_STATE_SUCCEEDED
@@ -841,6 +1032,8 @@ engine_result_t engine_open_game_async(engine_handle_t public_handle,
     }
     return ThreadError(result, handle->last_error.c_str());
   }
+  result = CheckBetaRuntimeAccess(handle);
+  if (result != ENGINE_RESULT_OK) return result;
   result = PrepareTextTranslationLocked(handle);
   if (result != ENGINE_RESULT_OK) return result;
   if (handle->backend == BackendKind::kLegacy) {
@@ -853,23 +1046,31 @@ engine_result_t engine_open_game_async(engine_handle_t public_handle,
                                   ? startup_script_utf8
                                   : "";
   handle->startup_state = ENGINE_STARTUP_STATE_RUNNING;
-  handle->startup_thread = std::thread([handle, root, startup]() {
-    const char* startup_value = startup.empty() ? nullptr : startup.c_str();
-    AETHER_DISPATCH_DIAG_LOG("engine_open_game_async before provider open_game");
-    const auto open_result = handle->provider->open_game(
-        handle->runtime, root.c_str(), startup_value);
-    AETHER_DISPATCH_DIAG_LOG("engine_open_game_async after provider open_game");
-    std::lock_guard<std::recursive_mutex> thread_guard(handle->mutex);
-    handle->startup_state = open_result == ENGINE_RESULT_OK
-                                ? ENGINE_STARTUP_STATE_SUCCEEDED
-                                : ENGINE_STARTUP_STATE_FAILED;
-    handle->startup_logs.push_back(open_result == ENGINE_RESULT_OK
-                                       ? "runtime provider open_game => OK"
-                                       : "runtime provider open_game => FAILED");
-    SetProviderError(handle, open_result,
-                     "runtime provider failed to open game asynchronously");
-    if (open_result == ENGINE_RESULT_OK) StartTextTranslationLoading();
-  });
+  AttachProviderGameLogFileSink(game_root_path_utf8, handle->writable_path);
+  try {
+    handle->startup_thread = StartupThread([handle, root, startup]() {
+      const char* startup_value = startup.empty() ? nullptr : startup.c_str();
+      AETHER_DISPATCH_DIAG_LOG("engine_open_game_async before provider open_game");
+      const auto open_result = RunProviderOpen(handle, root.c_str(),
+                                               startup_value);
+      AETHER_DISPATCH_DIAG_LOG("engine_open_game_async after provider open_game");
+      std::lock_guard<std::recursive_mutex> thread_guard(handle->mutex);
+      handle->startup_state = open_result == ENGINE_RESULT_OK
+                                  ? ENGINE_STARTUP_STATE_SUCCEEDED
+                                  : ENGINE_STARTUP_STATE_FAILED;
+      handle->startup_logs.push_back(open_result == ENGINE_RESULT_OK
+                                         ? "runtime provider open_game => OK"
+                                         : "runtime provider open_game => FAILED");
+      SetProviderError(handle, open_result,
+                       "runtime provider failed to open game asynchronously");
+      if (open_result == ENGINE_RESULT_OK) StartTextTranslationLoading();
+    });
+  } catch (const std::exception& error) {
+    handle->startup_state = ENGINE_STARTUP_STATE_FAILED;
+    handle->last_error =
+        std::string("failed to start runtime provider: ") + error.what();
+    return ThreadError(ENGINE_RESULT_INTERNAL_ERROR, handle->last_error.c_str());
+  }
   SetThreadError(nullptr);
   return ENGINE_RESULT_OK;
 }
@@ -879,15 +1080,24 @@ engine_result_t engine_get_startup_state(engine_handle_t public_handle,
   if (out_state == nullptr) {
     return ThreadError(ENGINE_RESULT_INVALID_ARGUMENT, "out_state is null");
   }
-  const engine_result_t result = Route(
-      public_handle, "get_startup_state",
-      [&](engine_handle_t legacy) {
-        return engine_legacy_get_startup_state(legacy, out_state);
-      },
-      [&](DispatchHandle* handle) {
-        *out_state = handle->startup_state;
-        return ENGINE_RESULT_OK;
-      });
+  engine_result_t result;
+  {
+    std::lock_guard<std::recursive_mutex> registry_guard(g_dispatch_registry_mutex);
+    DispatchHandle* handle = nullptr;
+    result = ValidateHandleLocked(public_handle, &handle);
+    if (result != ENGINE_RESULT_OK) return result;
+    std::lock_guard<std::recursive_mutex> guard(handle->mutex);
+    if (handle->backend == BackendKind::kProvider) {
+      // A failed asynchronous open stores its diagnostic on the handle.
+      // Route() clears it after every successful query, leaving callers with
+      // an empty error precisely when startup reaches FAILED.
+      *out_state = handle->startup_state;
+      SetThreadError(nullptr);
+      result = ENGINE_RESULT_OK;
+    } else {
+      result = engine_legacy_get_startup_state(handle->legacy, out_state);
+    }
+  }
   if (result == ENGINE_RESULT_OK &&
       *out_state == ENGINE_STARTUP_STATE_SUCCEEDED) {
     StartTextTranslationLoading();
@@ -935,7 +1145,7 @@ engine_result_t engine_tick(engine_handle_t public_handle, uint32_t delta_ms) {
                    handle->provider_resume_pending = false;
                  }
                  const engine_result_t result =
-                     handle->provider->tick(handle->runtime, delta_ms);
+                     RunProviderTick(handle, delta_ms);
 #if defined(ENGINE_API_USE_KRKR2_RUNTIME)
                  // Provider runtimes bypass the legacy EngineLoop, which is
                  // normally responsible for draining textures whose intrusive
@@ -991,8 +1201,15 @@ engine_result_t engine_set_option(engine_handle_t public_handle,
   std::lock_guard<std::recursive_mutex> guard(handle->mutex);
   const std::string key = Normalize(option->key_utf8);
   if (key == "artemis_beta_allowed") {
-    // Kept as a no-op for compatibility with older hosts. Artemis is now a
-    // generally available runtime and no longer accepts an entitlement gate.
+    // Kept as a no-op for compatibility with older hosts. The explicit
+    // beta_runtime_allowed option controls provider-gated runtimes.
+    SetThreadError(nullptr);
+    return ENGINE_RESULT_OK;
+  }
+  if (key == "beta_runtime_allowed") {
+    const std::string value = Normalize(option->value_utf8);
+    handle->beta_runtime_allowed =
+        value == "1" || value == "true" || value == "yes" || value == "on";
     SetThreadError(nullptr);
     return ENGINE_RESULT_OK;
   }
@@ -1292,6 +1509,9 @@ engine_result_t engine_get_text_input_state(
                [&](DispatchHandle* handle) {
                  engine_text_input_state_t snapshot{};
                  snapshot.struct_size = sizeof(snapshot);
+                 if (PROVIDER_HAS(handle->provider, get_text_input_details)) {
+                   return handle->provider->get_text_input_details(handle->runtime, out_state);
+                 }
                  if (!PROVIDER_HAS(handle->provider, get_text_input_state)) {
                    *out_state = snapshot;
                    return ENGINE_RESULT_OK;
@@ -1333,7 +1553,11 @@ engine_result_t engine_copy_text_input_text(engine_handle_t public_handle,
                  return engine_legacy_copy_text_input_text(
                      legacy, out_buffer, buffer_size, out_bytes_written);
                },
-               [&](DispatchHandle*) { return ENGINE_RESULT_OK; });
+               [&](DispatchHandle* handle) {
+                 return PROVIDER_HAS(handle->provider, copy_text_input_text)
+                     ? handle->provider->copy_text_input_text(handle->runtime, out_buffer, buffer_size, out_bytes_written)
+                     : ENGINE_RESULT_OK;
+               });
 }
 
 engine_result_t engine_get_main_menu_json(engine_handle_t public_handle,
@@ -1443,10 +1667,22 @@ engine_result_t engine_get_memory_stats(engine_handle_t public_handle,
                  return engine_legacy_get_memory_stats(legacy, out_stats);
                },
                [&](DispatchHandle* handle) {
-                 return PROVIDER_HAS(handle->provider, get_memory_stats)
-                            ? handle->provider->get_memory_stats(handle->runtime,
-                                                                 out_stats)
-                            : ENGINE_RESULT_NOT_SUPPORTED;
+                 if (out_stats == nullptr ||
+                     out_stats->struct_size < sizeof(engine_memory_stats_t)) {
+                   return ENGINE_RESULT_INVALID_ARGUMENT;
+                 }
+                 if (!PROVIDER_HAS(handle->provider, get_memory_stats)) {
+                   return ENGINE_RESULT_NOT_SUPPORTED;
+                 }
+                 std::memset(out_stats, 0, sizeof(*out_stats));
+                 out_stats->struct_size = sizeof(*out_stats);
+                 const engine_result_t result =
+                     handle->provider->get_memory_stats(handle->runtime,
+                                                        out_stats);
+                 if (result == ENGINE_RESULT_OK) {
+                   PopulateHostMemoryStats(out_stats);
+                 }
+                 return result;
                });
 }
 

@@ -5,6 +5,7 @@ add_executable(engine-api-diagnostics
     diagnostics.cpp
     ${CMAKE_SOURCE_DIR}/bridge/engine_api/src/engine_api.cpp
     ${CMAKE_SOURCE_DIR}/bridge/engine_api/src/engine_api_dispatch.cpp
+    ${CMAKE_SOURCE_DIR}/bridge/engine_api/src/engine_api_crash_capture.cpp
     ${CMAKE_SOURCE_DIR}/bridge/engine_api/src/engine_runtime_provider.cpp
     ${CMAKE_SOURCE_DIR}/cpp/core/utils/TextTransform.cpp
 )
@@ -18,6 +19,10 @@ target_include_directories(engine-api-diagnostics PRIVATE
 target_link_libraries(engine-api-diagnostics PRIVATE
     Catch2::Catch2WithMain
 )
+
+if(WIN32)
+    target_link_libraries(engine-api-diagnostics PRIVATE dbghelp)
+endif()
 
 if(AETHERKIRI_INTERNAL_ENABLED AND
    COMMAND aetherinternal_extend_catsystem2_tests)

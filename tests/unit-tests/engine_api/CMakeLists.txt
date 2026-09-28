@@ -1,6 +1,9 @@
 cmake_minimum_required(VERSION 3.16)
 project(TestEngineApiDiagnostics LANGUAGES CXX)
 
+find_package(fmt CONFIG REQUIRED)
+find_package(spdlog CONFIG REQUIRED)
+
 add_executable(engine-api-diagnostics
     diagnostics.cpp
     ${CMAKE_SOURCE_DIR}/bridge/engine_api/src/engine_api.cpp
@@ -18,6 +21,8 @@ target_include_directories(engine-api-diagnostics PRIVATE
 )
 target_link_libraries(engine-api-diagnostics PRIVATE
     Catch2::Catch2WithMain
+    fmt::fmt
+    spdlog::spdlog
 )
 
 if(WIN32)

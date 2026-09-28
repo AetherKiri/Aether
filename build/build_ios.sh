@@ -289,6 +289,11 @@ combine_ios_static_extension() {
         "$CMAKE_BUILD_DIR/cpp/core/visual/libcore_visual_module.a"
         "$CMAKE_BUILD_DIR/cpp/core/visual/simd/libtvpgl_simd.a"
         "$CMAKE_BUILD_DIR/cpp/plugins/libkrkr2plugin.a"
+        # krkr2plugin links the Hxv4 provider as a static dependency, but
+        # static archives do not contain their dependent archive members.
+        # Merge it explicitly so pluginAnchors.cpp's registration symbol is
+        # present in the archive consumed by Godot's iOS exporter.
+        "$CMAKE_BUILD_DIR/cpp/plugins/Crypt/hxv4/libhxv4_decoder.a"
         "$CMAKE_BUILD_DIR/cpp/plugins/extkagparser/libextkagparser.a"
         "$CMAKE_BUILD_DIR/cpp/plugins/kagparserex/libkagparserex.a"
         "$CMAKE_BUILD_DIR/cpp/plugins/layerex_draw/liblayerExDraw.a"

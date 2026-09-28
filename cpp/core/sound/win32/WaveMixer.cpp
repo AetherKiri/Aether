@@ -593,7 +593,6 @@ public:
     }
 
     bool Init() override {
-        InitMixer();
         // Create a builder
         oboe::AudioStreamBuilder builder;
         // builder.setFormat(oboe::AudioFormat::I16);

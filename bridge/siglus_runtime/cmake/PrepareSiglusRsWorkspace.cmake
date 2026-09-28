@@ -30,6 +30,9 @@ set(SIGLUS_COPY_ITEMS
     "${SIGLUS_RS_SRC}/Cargo.toml"
     "${SIGLUS_RS_SRC}/Cargo.lock"
     "${SIGLUS_RS_SRC}/crates")
+if(EXISTS "${SIGLUS_RS_SRC}/vendor")
+    list(APPEND SIGLUS_COPY_ITEMS "${SIGLUS_RS_SRC}/vendor")
+endif()
 
 set(fingerprint "")
 foreach(item IN LISTS SIGLUS_COPY_ITEMS)

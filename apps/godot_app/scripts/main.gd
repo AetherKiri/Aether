@@ -1630,6 +1630,7 @@ const RUNTIME_KIRIKIRI := "kirikiri"
 const RUNTIME_ONSCRIPTER := "onscripter"
 const RUNTIME_MINORI := "minori"
 const RUNTIME_CATSYSTEM2 := "catsystem2"
+const RUNTIME_SIGLUS := "siglus"
 const RUNTIME_PLAYER_CLASS := "AetherRuntimePlayer"
 const ONSCRIPTER_SCRIPT_MARKERS := [
     "0.txt",
@@ -2022,6 +2023,7 @@ var log_lines: PackedStringArray = []
 var last_tick_ms := 0.0
 var last_update_ms := 0.0
 var last_frame_ms := 0.0
+var last_probe_wait_ms := 0.0
 var debug_last_input_event := ""
 var debug_last_input_target := ""
 var debug_last_input_position := Vector2.ZERO
@@ -3762,6 +3764,9 @@ func _load_shell_settings() -> void:
     debug_overlay_mode = String(cfg.get_value("diagnostics", "overlay_mode", "summary" if legacy_perf_overlay else "off"))
     if not debug_overlay_mode in DEBUG_OVERLAY_MODES:
         debug_overlay_mode = "off"
+    var perf_overlay_env := OS.get_environment("AETHERKIRI_PERF_OVERLAY").strip_edges().to_lower()
+    if perf_overlay_env in DEBUG_OVERLAY_MODES:
+        debug_overlay_mode = perf_overlay_env
     show_perf_monitor = debug_overlay_mode != "off"
     diagnostic_profile = String(cfg.get_value("diagnostics", "profile", diagnostic_profile))
     if not diagnostic_profile in DIAGNOSTIC_PROFILES:
@@ -12015,7 +12020,12 @@ func _create_runtime_player(runtime_kind: String = RUNTIME_KIRIKIRI) -> bool:
 
 func _switch_runtime_player(runtime_kind: String) -> bool:
     var normalized := runtime_kind
-    if normalized != RUNTIME_ONSCRIPTER and normalized != RUNTIME_MINORI:
+    if normalized not in [
+        RUNTIME_ONSCRIPTER,
+        RUNTIME_MINORI,
+        RUNTIME_CATSYSTEM2,
+        RUNTIME_SIGLUS,
+    ]:
         normalized = RUNTIME_KIRIKIRI
     if player != null and current_player_runtime_kind == normalized:
         return true
@@ -12046,6 +12056,10 @@ func _switch_runtime_player(runtime_kind: String) -> bool:
         if normalized == RUNTIME_ONSCRIPTER
         else "MinoriRust"
         if normalized == RUNTIME_MINORI
+        else "CatSystem2"
+        if normalized == RUNTIME_CATSYSTEM2
+        else "Siglus"
+        if normalized == RUNTIME_SIGLUS
         else "KiriKiri"
     ))
     return true
@@ -12281,7 +12295,12 @@ func _ensure_player_initialized() -> bool:
         return false
 
     var runtime_id := "auto"
-    if current_player_runtime_kind in [RUNTIME_ONSCRIPTER, RUNTIME_MINORI]:
+    if current_player_runtime_kind in [
+        RUNTIME_ONSCRIPTER,
+        RUNTIME_MINORI,
+        RUNTIME_CATSYSTEM2,
+        RUNTIME_SIGLUS,
+    ]:
         runtime_id = current_player_runtime_kind
     var runtime_result := int(player.set_engine_option("runtime", runtime_id))
     if runtime_result != ENGINE_RESULT_OK:
@@ -12294,7 +12313,15 @@ func _ensure_player_initialized() -> bool:
         return false
 
     _append_log("%s engine initialized." % (
-        "OnscripterYuri" if current_player_runtime_kind == RUNTIME_ONSCRIPTER else "AetherKiri"
+        "OnscripterYuri"
+        if current_player_runtime_kind == RUNTIME_ONSCRIPTER
+        else "MinoriRust"
+        if current_player_runtime_kind == RUNTIME_MINORI
+        else "CatSystem2"
+        if current_player_runtime_kind == RUNTIME_CATSYSTEM2
+        else "Siglus"
+        if current_player_runtime_kind == RUNTIME_SIGLUS
+        else "AetherKiri"
     ))
     return true
 
@@ -12942,6 +12969,9 @@ func _probe_open_game(config: Dictionary, target_game_path: String, backend_env:
     if not _switch_runtime_player(runtime_kind):
         _write_probe_marker("probe_open_game runtime_switch_failed kind=%s" % runtime_kind)
         return false
+    # CLI probes bypass _on_open_game(), so keep the input mapper in the same
+    # runtime coordinate space as the player selected above.
+    active_runtime_kind = runtime_kind
     if GameLaunchEntry.runtime_uses_directory(runtime_kind):
         target_game_path = _game_runtime_root(target_game_path)
     selected_backend = ProbeConfig.backend(config, backend_env)
@@ -13084,6 +13114,9 @@ func _run_cli_step_probe(config: Dictionary, target_game_path: String) -> void:
     if not await _probe_wait_startup(config, 900):
         await _probe_cleanup_and_quit(1)
         return
+    if show_perf_monitor:
+        _set_perf_visible(true)
+        _layout_perf_overlay(get_viewport_rect())
     if not await _probe_advance(ProbeConfig.int_value(config, "warmup_frames", _runtime_int("AETHERKIRI_PROBE_WARMUP_FRAMES", 180))):
         await _probe_cleanup_and_quit(1)
         return
@@ -13366,6 +13399,12 @@ func _probe_run_click_stream(config: Dictionary, step: int, label: String, actio
                 0.0,
                 (sample_elapsed_ms - sample_frame_total) / sample_divisor
             )
+            # CLI probes drive the runtime outside the normal game loop. Feed
+            # their measured work into the existing detail overlay so device
+            # screenshots show where a slow frame spends its time.
+            last_tick_ms = sample_tick_total / sample_divisor
+            last_update_ms = sample_update_total / sample_divisor
+            last_probe_wait_ms = sample_wait_ms
             var sample_line := "click_stream_sample label=%s index=%d frames=%d clicks=%d elapsed_ms=%.2f fps=%.2f avg_input_ms=%.2f avg_tick_ms=%.2f avg_update_ms=%.2f avg_active_ms=%.2f avg_wait_ms=%.2f max_input_ms=%.2f max_tick_ms=%.2f max_update_ms=%.2f max_active_ms=%.2f spikes=%d spike_ms=%.2f texture_backend=%s renderer=\"%s\"" % [
                 label,
                 sample_index,
@@ -13455,7 +13494,7 @@ func _probe_save_step(index: int, label: String, wait_frames: int = 2) -> void:
     if cli_probe_runtime_debug:
         var runtime_debug := String(player.get_plugin_debug_info())
         print("step %02d runtime_debug=%s" % [index, runtime_debug])
-        var parsed = JSON.parse_string(runtime_debug)
+        var parsed = JSON.parse_string(runtime_debug) if runtime_debug.strip_edges().begins_with("{") else null
         if parsed is Dictionary:
             var runtime_state := {}
             for key in [
@@ -14204,17 +14243,56 @@ func _process(delta: float) -> void:
                     float(translation.get("last_synchronous_wait_us", 0)) / 1000.0,
                     float(translation.get("last_inference_us", 0)) / 1000.0,
                 ]
-        if debug_overlay_mode == "detail" and diagnostic_session != null:
-            var frame_summary: Dictionary = diagnostic_session.latest_frame_summary
-            summary_text += "\nTick: %.2f ms | Update: %.2f ms | P50/P95/P99/Max: %.2f / %.2f / %.2f / %.2f ms | Dropped: %d" % [
-                last_tick_ms,
-                last_update_ms,
-                float(frame_summary.get("p50_ms", 0.0)),
-                float(frame_summary.get("p95_ms", 0.0)),
-                float(frame_summary.get("p99_ms", 0.0)),
-                float(frame_summary.get("max_ms", 0.0)),
-                diagnostic_session.dropped_events,
-            ]
+        if debug_overlay_mode == "detail":
+            if not cli_probe_script.is_empty():
+                summary_text += "\nProbe avg: Tick %.2f ms | Update %.2f ms | Wait %.2f ms" % [
+                    last_tick_ms, last_update_ms, last_probe_wait_ms,
+                ]
+            elif diagnostic_session != null:
+                var frame_summary: Dictionary = diagnostic_session.latest_frame_summary
+                summary_text += "\nTick: %.2f ms | Update: %.2f ms | P50/P95/P99/Max: %.2f / %.2f / %.2f / %.2f ms | Dropped: %d" % [
+                    last_tick_ms,
+                    last_update_ms,
+                    float(frame_summary.get("p50_ms", 0.0)),
+                    float(frame_summary.get("p95_ms", 0.0)),
+                    float(frame_summary.get("p99_ms", 0.0)),
+                    float(frame_summary.get("max_ms", 0.0)),
+                    diagnostic_session.dropped_events,
+                ]
+        if debug_overlay_mode == "detail" and not cli_probe_script.is_empty() and player != null and player.has_method("get_plugin_debug_info"):
+            var runtime_debug = JSON.parse_string(String(player.get_plugin_debug_info()))
+            if runtime_debug is Dictionary and String(runtime_debug.get("runtime", "")) == "catsystem2":
+                summary_text += "\nCat: FES %.2f/%.2f ms (%d) | progress %.2f/%.2f | render %.2f/%.2f | Composite %.2f/%.2f ms | Emote %d | Cache %s" % [
+                    float(runtime_debug.get("lastFesUpdateMs", 0.0)),
+                    float(runtime_debug.get("maxFesUpdateMs", 0.0)),
+                    int(runtime_debug.get("fesObjects", 0)),
+                    float(runtime_debug.get("lastEmoteProgressMs", 0.0)),
+                    float(runtime_debug.get("maxEmoteProgressMs", 0.0)),
+                    float(runtime_debug.get("lastRenderMs", 0.0)),
+                    float(runtime_debug.get("maxRenderMs", 0.0)),
+                    float(runtime_debug.get("lastCompositeMs", 0.0)),
+                    float(runtime_debug.get("maxCompositeMs", 0.0)),
+                    int(runtime_debug.get("emoteLayers", 0)),
+                    _format_monitor_bytes(int(runtime_debug.get("cachedImageBytes", 0))),
+                ]
+                summary_text += "\nCat phases: refresh %.2f/%.2f | preFES %.2f/%.2f | VM %.2f/%.2f | KCS %.2f/%.2f ms" % [
+                    float(runtime_debug.get("lastEmoteRefreshMs", 0.0)),
+                    float(runtime_debug.get("maxEmoteRefreshMs", 0.0)),
+                    float(runtime_debug.get("lastPreFesMs", 0.0)),
+                    float(runtime_debug.get("maxPreFesMs", 0.0)),
+                    float(runtime_debug.get("lastVmUpdateMs", 0.0)),
+                    float(runtime_debug.get("maxVmUpdateMs", 0.0)),
+                    float(runtime_debug.get("lastPumpKcsMs", 0.0)),
+                    float(runtime_debug.get("maxPumpKcsMs", 0.0)),
+                ]
+                summary_text += "\nCat SDK: readback wait %.2f/%.2f | copy %.2f/%.2f | draw %.2f/%.2f ms" % [
+                    float(runtime_debug.get("lastEmoteReadbackWaitMs", 0.0)),
+                    float(runtime_debug.get("maxEmoteReadbackWaitMs", 0.0)),
+                    float(runtime_debug.get("lastEmoteReadbackCopyMs", 0.0)),
+                    float(runtime_debug.get("maxEmoteReadbackCopyMs", 0.0)),
+                    float(runtime_debug.get("lastEmoteSdkDrawMs", 0.0)),
+                    float(runtime_debug.get("maxEmoteSdkDrawMs", 0.0)),
+                ]
         perf.text = summary_text
 func _log_live_perf(delta: float, tick_ms: float, update_ms: float) -> void:
     if not _should_emit_runtime_perf_logs():
@@ -15071,8 +15149,8 @@ func _game_input_content_size() -> Vector2:
     return Vector2(maxi(1, last_texture_size.x), maxi(1, last_texture_size.y))
 
 func _game_input_surface_size() -> Vector2:
-    # ONS and Minori consume coordinates in their published content space.
-    if active_runtime_kind in [RUNTIME_ONSCRIPTER, RUNTIME_MINORI]:
+    # These providers consume coordinates in their published content space.
+    if active_runtime_kind in [RUNTIME_ONSCRIPTER, RUNTIME_MINORI, RUNTIME_SIGLUS]:
         return _game_input_content_size()
     if current_surface_size.x > 0 and current_surface_size.y > 0:
         return Vector2(current_surface_size)

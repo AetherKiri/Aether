@@ -7487,9 +7487,10 @@ uint64_t BridgeCreateRgba(uint32_t width, uint32_t height, const void *pixels,
     const bool on_render_thread =
         server != nullptr && server->is_on_render_thread();
     const bool use_device_clear = pixels == nullptr && on_render_thread;
+    PackedByteArray packed_data;
     if (!use_device_clear) {
-        initial_data.push_back(
-            PackRgbaBytes(pixels, width, height, stride_bytes));
+        packed_data = PackRgbaBytes(pixels, width, height, stride_bytes);
+        initial_data.push_back(packed_data);
     }
     // A surface retired at this exact size can be initialized in place instead
     // of asking the driver for a new allocation, which is what keeps the
@@ -7502,7 +7503,7 @@ uint64_t BridgeCreateRgba(uint32_t width, uint32_t height, const void *pixels,
                 rd->free_rid(rid);
                 rid = RID();
             }
-        } else if (rd->texture_update(rid, 0, initial_data) != OK) {
+        } else if (rd->texture_update(rid, 0, packed_data) != OK) {
             rd->free_rid(rid);
             rid = RID();
         }
@@ -7793,7 +7794,11 @@ bool BridgeUpdateRgba(uint64_t texture, const void *pixels,
         // upload.
         RID replacement = TakeGpuTextureFromPool(record.width, record.height);
         if (replacement.is_valid()) {
-            if (rd->texture_update(replacement, 0, initial_data) != OK) {
+            // texture_update accepts one PackedByteArray. Passing the
+            // texture_create TypedArray here is converted as a one-element
+            // array, which makes Godot report a one-byte upload for a full
+            // RGBA surface and leaves the replacement texture stale.
+            if (rd->texture_update(replacement, 0, data) != OK) {
                 rd->free_rid(replacement);
                 replacement = RID();
             }

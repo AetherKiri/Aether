@@ -18,8 +18,11 @@ target_include_directories(engine-api-diagnostics PRIVATE
 )
 target_link_libraries(engine-api-diagnostics PRIVATE
     Catch2::Catch2WithMain
-    dbghelp
 )
+
+if(WIN32)
+    target_link_libraries(engine-api-diagnostics PRIVATE dbghelp)
+endif()
 
 if(AETHERKIRI_INTERNAL_ENABLED AND
    COMMAND aetherinternal_extend_catsystem2_tests)

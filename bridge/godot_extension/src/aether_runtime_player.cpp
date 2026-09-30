@@ -1,11 +1,15 @@
 #include "engine_api.h"
 #include "engine_options.h"
 #include "engine_runtime_provider.h"
+#if defined(AETHERKIRI_WITH_RENPY)
+#include "renpy_runtime.h"
+#endif
 #if defined(AETHERKIRI_WITH_RFVP)
 #include "rfvp_runtime_provider.h"
 #endif
-#include "engine_gpu_bridge.h"
+#include "GodotGpuBridge.h"
 #include "GodotGpuBarrierShadowPlanner.h"
+#include "ComplexRect.h"
 #include "RuntimeTickPacer.h"
 #include "presentation/RuntimePresentationSprite.h"
 #include "frame_effect_host.h"
@@ -12621,6 +12625,9 @@ void InitializeAetherRuntime(ModuleInitializationLevel level) {
 #if defined(AETHERKIRI_WITH_RFVP)
     aetherkiri::rfvp::RegisterRuntimeProvider();
 #endif
+#if defined(AETHERKIRI_WITH_RENPY)
+    aetherkiri::renpy::RegisterRuntimeProvider();
+#endif
     const engine_result_t shader_result =
         engine_set_runtime_fragment_shader_executor(
             ExecuteArtemisFragmentShader, nullptr);
@@ -12659,13 +12666,6 @@ GDExtensionBool GDE_EXPORT aether_kiri_library_init(
     GDExtensionInterfaceGetProcAddress get_proc_address,
     GDExtensionClassLibraryPtr library,
     GDExtensionInitialization *initialization) {
-#if defined(AETHERKIRI_WITH_KRKR2)
-    // Phase 2d link flip: the KiriKiri runtime glue is linked into this
-    // extension instead of engine_api, so its engine_legacy_* surface must be
-    // installed as the dispatch services table before any engine_create call.
-    extern engine_result_t aether_krkr2_install_legacy_services(void);
-    aether_krkr2_install_legacy_services();
-#endif
     godot::GDExtensionBinding::InitObject init_obj(
         get_proc_address, library, initialization);
     init_obj.register_initializer(godot::InitializeAetherRuntime);

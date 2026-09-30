@@ -1717,10 +1717,10 @@ const POINTER_MOD_CANCEL := 1 << 30
 const KEY_MOD_CONTROL := 0x04
 const RUNTIME_KIRIKIRI := "kirikiri"
 const RUNTIME_ONSCRIPTER := "onscripter"
+const RUNTIME_RENPY := "renpy"
 const RUNTIME_MINORI := "minori"
 const RUNTIME_CATSYSTEM2 := "catsystem2"
 const RUNTIME_SIGLUS := "siglus"
-const RUNTIME_WA2 := "wa2"
 const RUNTIME_PLAYER_CLASS := "AetherRuntimePlayer"
 const ONSCRIPTER_SCRIPT_MARKERS := [
     "0.txt",
@@ -10305,6 +10305,9 @@ func _game_info_from_path(path: String) -> Dictionary:
 
 func _game_runtime_root(path: String) -> String:
     var resolved := _resolve_game_path(path)
+    var renpy_root := GameMetadata.renpy_project_root(resolved)
+    if not renpy_root.is_empty():
+        return renpy_root
     if FileAccess.file_exists(resolved):
         return resolved.get_base_dir()
     return resolved
@@ -10324,14 +10327,6 @@ func _game_runtime_kind(path: String) -> String:
             return RUNTIME_CATSYSTEM2
         if int(player.probe_runtime(RUNTIME_MINORI, root)) > 0:
             return RUNTIME_MINORI
-        # Leaf TtT installs (WHITE ALBUM2) ship .pak archives that carry no
-        # loose KiriKiri marker, and their backfilled launch file points at
-        # the WA2.exe launcher. Only the provider's install fingerprint can
-        # claim the directory; without this probe the launch path resolves
-        # to the executable and auto-selection falls back to the legacy
-        # KiriKiri host.
-        if int(player.probe_runtime(RUNTIME_WA2, root)) > 0:
-            return RUNTIME_WA2
     return runtime_kind
 
 func _backfill_game_metadata(games: Array[Dictionary]) -> bool:
@@ -11542,6 +11537,7 @@ func _switch_runtime_player(runtime_kind: String) -> bool:
     var normalized := runtime_kind
     if normalized not in [
         RUNTIME_ONSCRIPTER,
+        RUNTIME_RENPY,
         RUNTIME_MINORI,
         RUNTIME_CATSYSTEM2,
         RUNTIME_SIGLUS,
@@ -11576,6 +11572,8 @@ func _switch_runtime_player(runtime_kind: String) -> bool:
         if normalized == RUNTIME_ONSCRIPTER
         else "MinoriRust"
         if normalized == RUNTIME_MINORI
+        else "Ren'Py"
+        if normalized == RUNTIME_RENPY
         else "CatSystem2"
         if normalized == RUNTIME_CATSYSTEM2
         else "Siglus"
@@ -11814,6 +11812,7 @@ func _ensure_player_initialized() -> bool:
     var runtime_id := "auto"
     if current_player_runtime_kind in [
         RUNTIME_ONSCRIPTER,
+        RUNTIME_RENPY,
         RUNTIME_MINORI,
         RUNTIME_CATSYSTEM2,
         RUNTIME_SIGLUS,
@@ -11834,6 +11833,8 @@ func _ensure_player_initialized() -> bool:
         if current_player_runtime_kind == RUNTIME_ONSCRIPTER
         else "MinoriRust"
         if current_player_runtime_kind == RUNTIME_MINORI
+        else "Ren'Py"
+        if current_player_runtime_kind == RUNTIME_RENPY
         else "CatSystem2"
         if current_player_runtime_kind == RUNTIME_CATSYSTEM2
         else "Siglus"

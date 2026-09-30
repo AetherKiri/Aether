@@ -53,7 +53,36 @@ else()
     set(CMAKE_TOOLCHAIN_FILE $ENV{VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake)
 endif()
 
-project(krkr2)
+project(AetherKiri)
+
+# vcpkg's OpenAL target carries raw "-Wl,-framework,..." items in its
+# interface. Imported targets are directory-scoped: every scope that calls
+# find_package(OpenAL) gets a fresh copy with the raw flags, and the mixed
+# C++/Swift Godot extension is linked by swiftc, which rejects the -Wl
+# spelling. Each scope that creates an OpenAL::OpenAL copy must sanitize it
+# to the driver-neutral LINKER: form (see aetherkiri_sanitize_openal_link).
+function(aetherkiri_sanitize_openal_link)
+    if(NOT TARGET OpenAL::OpenAL)
+        return()
+    endif()
+    get_target_property(_aetherkiri_openal_interface OpenAL::OpenAL
+        INTERFACE_LINK_LIBRARIES)
+    if(NOT _aetherkiri_openal_interface)
+        return()
+    endif()
+    list(FIND _aetherkiri_openal_interface "-Wl,-framework,AudioToolbox"
+        _aetherkiri_openal_raw_index)
+    if(_aetherkiri_openal_raw_index EQUAL -1)
+        return()
+    endif()
+    list(TRANSFORM _aetherkiri_openal_interface REPLACE
+        "^-Wl,-framework,(.+)$" "LINKER:-framework,\\1")
+    # macOS pthreads live in libSystem; the bare -pthread driver flag would
+    # reach swiftc-driven links (which reject it) through this interface.
+    list(REMOVE_ITEM _aetherkiri_openal_interface "$<LINK_ONLY:-pthread>")
+    set_target_properties(OpenAL::OpenAL PROPERTIES
+        INTERFACE_LINK_LIBRARIES "${_aetherkiri_openal_interface}")
+endfunction()
 
 if(ANDROID)
     add_compile_options(-Wno-inconsistent-missing-override)
@@ -103,8 +132,26 @@ set(AETHERKIRI_FRAME_EFFECT_HOST_API_VERSION 2)
 set(AETHERKIRI_INTERNAL_DIR
     "${CMAKE_CURRENT_SOURCE_DIR}/packages/AetherInternal"
     CACHE PATH "path to an AetherInternal package checkout")
+# Local checkouts for the runtime submodules. Point these at a working copy
+# to iterate on a runtime without committing a gitlink bump (same pattern as
+# AETHERKIRI_INTERNAL_DIR).
+set(AETHERKIRI_ONSCRIPTERYURI_DIR
+    "${CMAKE_CURRENT_SOURCE_DIR}/packages/OnscripterYuri"
+    CACHE PATH "path to an OnscripterYuri runtime checkout")
+set(AETHERKIRI_SIGLUS_DIR
+    "${CMAKE_CURRENT_SOURCE_DIR}/packages/AetherSiglus"
+    CACHE PATH "path to a siglus_rs runtime checkout")
+set(AETHERKIRI_MINORI_DIR
+    "${CMAKE_CURRENT_SOURCE_DIR}/packages/AetherMinori"
+    CACHE PATH "path to an AetherMinori runtime checkout")
+set(AETHERKIRI_RFVP_DIR
+    "${CMAKE_CURRENT_SOURCE_DIR}/packages/rfvp"
+    CACHE PATH "path to an rfvp runtime checkout")
 
 include(cmake/AetherKiriBinaryProtection.cmake)
+# Unify the Rust toolchain resolution before any runtime subproject runs its
+# own find_program(cargo) (see cmake/RustToolchain.cmake).
+include(cmake/RustToolchain.cmake)
 
 set(AETHERKIRI_INTERNAL_ENABLED OFF)
 if(AETHERKIRI_ENABLE_INTERNAL)
@@ -115,7 +162,7 @@ if(AETHERKIRI_ENABLE_INTERNAL)
     find_package(AetherInternal CONFIG QUIET
         NO_DEFAULT_PATH)
     if(AetherInternal_FOUND)
-        if(NOT AETHERINTERNAL_PACKAGE_API_VERSION EQUAL 7 OR
+        if(NOT AETHERINTERNAL_PACKAGE_API_VERSION EQUAL 8 OR
            NOT AETHERINTERNAL_REQUIRED_MOTIONPLAYER_API_VERSION EQUAL
                AETHERKIRI_MOTIONPLAYER_BACKEND_API_VERSION OR
            NOT AETHERINTERNAL_REQUIRED_LIVE2D_HOST_API_VERSION EQUAL
@@ -153,8 +200,18 @@ set(CMAKE_C_STANDARD 17)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 
-set(KRKR2CORE_PATH ${CMAKE_CURRENT_SOURCE_DIR}/cpp/core)
-set(KRKR2PLUGIN_PATH ${CMAKE_CURRENT_SOURCE_DIR}/cpp/plugins)
+# The krkr2 engine runtime lives in its own repository (issue #241 Phase 2,
+# AetherKiri/AetherKrkr) and is embedded as the packages/AetherKrkr submodule. This consuming build
+# injects the two paths the engine repository needs: the engine_api ABI
+# headers (engine_gpu_bridge.h / TextTransform.h consumed by the core
+# visual/utils modules) and the psdfile adapter package.
+set(AETHERKIRI_KRKR_DIR
+    "${CMAKE_CURRENT_SOURCE_DIR}/packages/AetherKrkr"
+    CACHE PATH "path to a krkr2 engine checkout")
+set(KRKR2_ENGINE_ABI_INCLUDE_DIR
+    "${CMAKE_CURRENT_SOURCE_DIR}/abi/include")
+set(KRKR2_PSDFILE_PACKAGE_ROOT
+    "${CMAKE_CURRENT_SOURCE_DIR}/packages/psdfile")
 
 if(MSVC)
     add_compile_options("$<$<COMPILE_LANGUAGE:CXX>:/EHsc>" "/MP" "/utf-8")
@@ -172,12 +229,9 @@ endif()
 # Godot is the product app shell on the wired platforms. This native build
 # produces engine libraries and the GDExtension host, not standalone launchers.
 
-# external lib
-add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/cpp/external)
-
-# build library
-add_subdirectory(${KRKR2CORE_PATH})
-add_subdirectory(${KRKR2PLUGIN_PATH})
+# The krkr2 engine repository defines the engine targets (external/, core/,
+# plugins/); its integration glue stays in bridge/krkr2_runtime.
+add_subdirectory(${AETHERKIRI_KRKR_DIR})
 
 # AetherInternal contributes sources to public targets but does not own the
 # obfuscation policy. Register only package-owned source units for protected
@@ -214,8 +268,13 @@ if(ENABLE_TESTS AND AETHERKIRI_ENABLE_ONSCRIPTER AND
     set(AETHERKIRI_BUILD_NATIVE_ONSCRIPTER_TESTS ON)
 endif()
 
+# The KiriKiri runtime glue owns the legacy engine implementation and the
+# krkr2core/krkr2plugin linkage; the Godot extension host links the glue and
+# installs its engine_legacy_* surface into engine_api through the legacy
+# services table (Phase 2d link flip — engine_api itself never links it).
 if(BUILD_ENGINE_API OR AETHERKIRI_BUILD_NATIVE_ONSCRIPTER_TESTS OR AETHERKIRI_ENABLE_RFVP)
-    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/bridge/engine_api)
+    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/bridge/krkr2_runtime)
+    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/abi)
 endif()
 
 
@@ -232,8 +291,8 @@ endif()
 # Keep it out of unsupported native targets, but do not make Linux the only
 # product platform that can register Minori.
 if(AETHERKIRI_ENABLE_MINORI AND BUILD_GODOT_EXTENSION AND
-   (LINUX OR APPLE OR ANDROID OR EMSCRIPTEN))
-    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/rust/minori_runtime)
+    (LINUX OR APPLE OR ANDROID OR EMSCRIPTEN))
+    add_subdirectory(${AETHERKIRI_MINORI_DIR})
 endif()
 if(AETHERKIRI_ENABLE_RFVP)
     add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/bridge/rfvp_runtime)

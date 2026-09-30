@@ -23,3 +23,11 @@
 	path = packages/AetherSiglus
 	url = https://github.com/AetherKiri/siglus_rs.git
 	ignore = dirty
+[submodule "packages/AetherMinori"]
+	path = packages/AetherMinori
+	url = git@github.com:AetherKiri/AetherMinori.git
+	ignore = dirty
+[submodule "packages/AetherKrkr"]
+	path = packages/AetherKrkr
+	url = git@github.com:AetherKiri/AetherKrkr.git
+	ignore = dirty

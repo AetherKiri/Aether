@@ -3,16 +3,8 @@
 /**/cmake-build-android-release/
 /**/cmake-build-android-debug/
 /**/build/
-!/build/
-/build/*
-!/build/build_web.sh
-!/build/patch_web_export.mjs
-!/build/web_export_local_picker.js
-!/build/web_export_range_fs.js
 /**/out/
 /**/bin/
-!/rust/minori_runtime/src/bin/
-!/rust/minori_runtime/src/bin/*.rs
 vcpkg_installed/
 
 .idea/
@@ -57,9 +49,6 @@ java_pid*.hprof
 *.log
 latest_log_path.txt
 
-# Cubism SDK (proprietary binary, download from live2d.com)
-cpp/plugins/cubism/Core/lib/
-cpp/plugins/cubism/Framework/
 apps/godot_app/.godot/
 apps/godot_app/.godot
 plugin_trace.log

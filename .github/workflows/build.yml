@@ -91,7 +91,8 @@ jobs:
       - name: Set up Rust for Minori
         uses: dtolnay/rust-toolchain@stable
         with:
-          targets: aarch64-linux-android
+          targets: aarch64-linux-android, armv7-linux-androideabi, x86_64-linux-android, i686-linux-android
+          components: rust-src
 
       - name: Resolve private runtime dependency cache
         id: private-runtime-cache-key
@@ -119,6 +120,8 @@ jobs:
           git -c submodule.packages/psdfile.url=https://github.com/AetherKiri/psdfile.git \
             submodule update --init --recursive --depth 1 packages/psdfile
           git submodule update --init --depth 1 packages/AetherSiglus
+          git submodule update --init --depth 1 packages/AetherMinori
+          git submodule update --init --depth 1 packages/AetherKrkr
 
       - name: Set application release version
         if: env.AETHERKIRI_RELEASE_VERSION != ''
@@ -397,6 +400,8 @@ jobs:
           git -c submodule.packages/psdfile.url=https://github.com/AetherKiri/psdfile.git \
             submodule update --init --recursive --depth 1 packages/psdfile
           git submodule update --init --depth 1 packages/AetherSiglus
+          git submodule update --init --depth 1 packages/AetherMinori
+          git submodule update --init --depth 1 packages/AetherKrkr
 
       - name: Set application release version
         if: env.AETHERKIRI_RELEASE_VERSION != ''
@@ -696,6 +701,8 @@ jobs:
           git -c submodule.packages/psdfile.url=https://github.com/AetherKiri/psdfile.git \
             submodule update --init --recursive --depth 1 packages/psdfile
           git submodule update --init --depth 1 packages/AetherSiglus
+          git submodule update --init --depth 1 packages/AetherMinori
+          git submodule update --init --depth 1 packages/AetherKrkr
 
       - name: Set application release version
         if: env.AETHERKIRI_RELEASE_VERSION != ''
@@ -850,7 +857,7 @@ jobs:
           cmake --preset "MacOS Debug Config" --fresh \
             -B "$test_build_dir" \
             -D ENABLE_TESTS=ON \
-            -D BUILD_TOOLS=OFF \
+            -D BUILD_TOOLS=ON \
             -D BUILD_ENGINE_API=OFF \
             -D BUILD_GODOT_EXTENSION=OFF \
             -D VCPKG_MANIFEST_INSTALL=OFF \
@@ -872,6 +879,11 @@ jobs:
             --output-on-failure \
             --no-tests=error \
             --parallel 4
+
+          # The xp3 archive tools are built in this step so their standalone
+          # links cannot silently regress again (issue #241 Phase 2 fallout).
+          tools/bin/mac/dbg/xp3 --help >/dev/null
+          tools/bin/mac/dbg/xp3_select --help >/dev/null
 
       - name: Verify built .app
         run: |

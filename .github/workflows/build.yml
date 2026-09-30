@@ -91,8 +91,7 @@ jobs:
       - name: Set up Rust for Minori
         uses: dtolnay/rust-toolchain@stable
         with:
-          targets: aarch64-linux-android, armv7-linux-androideabi, x86_64-linux-android, i686-linux-android
-          components: rust-src
+          targets: aarch64-linux-android
 
       - name: Resolve private runtime dependency cache
         id: private-runtime-cache-key
@@ -120,8 +119,6 @@ jobs:
           git -c submodule.packages/psdfile.url=https://github.com/AetherKiri/psdfile.git \
             submodule update --init --recursive --depth 1 packages/psdfile
           git submodule update --init --depth 1 packages/AetherSiglus
-          git submodule update --init --depth 1 packages/AetherMinori
-          git submodule update --init --depth 1 packages/AetherKrkr
 
       - name: Set application release version
         if: env.AETHERKIRI_RELEASE_VERSION != ''
@@ -400,8 +397,6 @@ jobs:
           git -c submodule.packages/psdfile.url=https://github.com/AetherKiri/psdfile.git \
             submodule update --init --recursive --depth 1 packages/psdfile
           git submodule update --init --depth 1 packages/AetherSiglus
-          git submodule update --init --depth 1 packages/AetherMinori
-          git submodule update --init --depth 1 packages/AetherKrkr
 
       - name: Set application release version
         if: env.AETHERKIRI_RELEASE_VERSION != ''
@@ -701,8 +696,6 @@ jobs:
           git -c submodule.packages/psdfile.url=https://github.com/AetherKiri/psdfile.git \
             submodule update --init --recursive --depth 1 packages/psdfile
           git submodule update --init --depth 1 packages/AetherSiglus
-          git submodule update --init --depth 1 packages/AetherMinori
-          git submodule update --init --depth 1 packages/AetherKrkr
 
       - name: Set application release version
         if: env.AETHERKIRI_RELEASE_VERSION != ''
@@ -748,6 +741,37 @@ jobs:
           echo "$(brew --prefix gettext)/bin" >> $GITHUB_PATH
           echo "$(brew --prefix bison)/bin" >> $GITHUB_PATH
           rustup target add aarch64-apple-darwin
+
+      - name: Validate Ren'Py SDK installer
+        run: tools/test_install_renpy_sdk.sh
+
+      - name: Restore Ren'Py SDK archive cache
+        id: restore-renpy-sdk
+        uses: actions/cache/restore@v5
+        with:
+          path: .aetherkiri-cache/renpy-sdk/downloads
+          key: ${{ runner.os }}-renpy-sdk-8.5.3-arm64-${{ hashFiles('tools/install_renpy_sdk.sh') }}
+          restore-keys: |
+            ${{ runner.os }}-renpy-sdk-8.5.3-arm64-
+
+      - name: Install pinned Ren'Py SDK
+        run: |
+          set -euo pipefail
+          sdk_root="${RUNNER_TEMP}/aetherkiri-renpy-sdk"
+          ./tools/install_renpy_sdk.sh \
+            --platform darwin \
+            --arch arm64 \
+            --destination "$sdk_root" \
+            --cache-dir "${GITHUB_WORKSPACE}/.aetherkiri-cache/renpy-sdk/downloads"
+          {
+            echo "AETHERKIRI_ENABLE_RENPY=ON"
+            echo "AETHERKIRI_RENPY_SDK_ROOT=$sdk_root"
+            echo "RENPY_SDK=$sdk_root"
+          } >> "$GITHUB_ENV"
+          test -x "$sdk_root/renpy.sh"
+
+      - name: Run Ren'Py SDK smoke fixture
+        run: tools/run_renpy_smoke.sh
 
       - name: Install Godot export tools
         run: |
@@ -857,9 +881,10 @@ jobs:
           cmake --preset "MacOS Debug Config" --fresh \
             -B "$test_build_dir" \
             -D ENABLE_TESTS=ON \
-            -D BUILD_TOOLS=ON \
+            -D BUILD_TOOLS=OFF \
             -D BUILD_ENGINE_API=OFF \
             -D BUILD_GODOT_EXTENSION=OFF \
+            -D AETHERKIRI_ENABLE_RENPY=OFF \
             -D VCPKG_MANIFEST_INSTALL=OFF \
             -D VCPKG_INSTALLED_DIR="${GITHUB_WORKSPACE}/out/macos/debug/vcpkg_installed" \
             -D CMAKE_C_COMPILER_LAUNCHER=ccache \
@@ -879,11 +904,6 @@ jobs:
             --output-on-failure \
             --no-tests=error \
             --parallel 4
-
-          # The xp3 archive tools are built in this step so their standalone
-          # links cannot silently regress again (issue #241 Phase 2 fallout).
-          tools/bin/mac/dbg/xp3 --help >/dev/null
-          tools/bin/mac/dbg/xp3_select --help >/dev/null
 
       - name: Verify built .app
         run: |
@@ -953,6 +973,14 @@ jobs:
           path: out/godot/macos/release/
           retention-days: 7
 
+      - name: Upload Ren'Py SDK for release artifact
+        if: success() && env.AETHERKIRI_RELEASE_VERSION != ''
+        uses: actions/upload-artifact@v7
+        with:
+          name: macos-release-renpy-sdk
+          path: ${{ env.AETHERKIRI_RENPY_SDK_ROOT }}/
+          retention-days: 7
+
       - name: Upload Mac App Store installer
         if: success() && env.MACOS_APP_STORE_SIGNING == '1'
         uses: actions/upload-artifact@v7
@@ -960,6 +988,13 @@ jobs:
           name: macos-release-app-store-pkg
           path: out/godot/macos/app-store/Aether-Mac-App-Store.pkg
           retention-days: 7
+
+      - name: Save Ren'Py SDK archive cache
+        if: always() && steps.restore-renpy-sdk.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v5
+        with:
+          path: .aetherkiri-cache/renpy-sdk/downloads
+          key: ${{ runner.os }}-renpy-sdk-8.5.3-arm64-${{ hashFiles('tools/install_renpy_sdk.sh') }}
 
       - name: Save ccache
         if: success() && github.event_name != 'pull_request' && steps.restore-ccache.outputs.cache-hit != 'true'

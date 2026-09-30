@@ -38,37 +38,7 @@ ensure_vcpkg() {
     fi
 }
 
-ensure_host_rust() {
-    # Cargo resolves rustc by bare command name from PATH at build time, so a
-    # distro rust shadowing the rustup proxies links Minori against a
-    # different std than Siglus (which pins its own toolchain) and the final
-    # extension link fails with duplicate _rust_eh_personality symbols. Pin
-    # the whole build to one toolchain by prepending the rustup-resolved bin
-    # directory (same normalization build_android.sh applies).
-    if [[ -n "${CARGO:-}" ]]; then
-        local cargo_dir
-        cargo_dir="$(dirname "$CARGO")"
-        case ":$PATH:" in
-            *":$cargo_dir:"*) ;;
-            *) export PATH="$cargo_dir:$PATH" ;;
-        esac
-        return 0
-    fi
-    command -v rustup >/dev/null || return 0
-    local rustc_bin
-    rustc_bin="$(rustup which rustc 2>/dev/null || true)"
-    [[ -n "$rustc_bin" && -x "$rustc_bin" ]] || return 0
-    local toolchain_bin
-    toolchain_bin="$(dirname "$rustc_bin")"
-    [[ -x "$toolchain_bin/cargo" ]] || return 0
-    case ":$PATH:" in
-        *":$toolchain_bin:"*) ;;
-        *) export PATH="$toolchain_bin:$PATH" ;;
-    esac
-}
-
 ensure_vcpkg
-ensure_host_rust
 
 ensure_godot_project_cache() {
     local project_metadata_dir="$GODOT_APP_DIR/.godot"
@@ -183,14 +153,38 @@ stage_release_extension_for_editor_scan() {
         -exec cp -Lf {} "$debug_dir/" \;
 }
 
+renpy_cmake_args=()
+renpy_enabled="${AETHERKIRI_ENABLE_RENPY:-OFF}"
+case "$(printf '%s' "$renpy_enabled" | tr '[:lower:]' '[:upper:]')" in
+    ON|TRUE|YES|1)
+        renpy_sdk_root="${AETHERKIRI_RENPY_SDK_ROOT:-}"
+        if [[ -z "$renpy_sdk_root" || ! -d "$renpy_sdk_root" ]]; then
+            echo "Error: AETHERKIRI_ENABLE_RENPY requires AETHERKIRI_RENPY_SDK_ROOT" >&2
+            exit 1
+        fi
+        renpy_cmake_args+=(
+            -D "AETHERKIRI_ENABLE_RENPY=ON"
+            -D "AETHERKIRI_RENPY_SDK_ROOT=$renpy_sdk_root"
+        )
+        ;;
+    OFF|FALSE|NO|0|'')
+        renpy_cmake_args+=( -D "AETHERKIRI_ENABLE_RENPY=OFF" )
+        ;;
+    *)
+        echo "Error: AETHERKIRI_ENABLE_RENPY must be ON/OFF or true/false" >&2
+        exit 1
+        ;;
+esac
+
 echo "==> Building Linux engine and Godot extension"
 cmake --preset "$CMAKE_CONFIG_PRESET" \
     -D "CMAKE_MAKE_PROGRAM=$CMAKE_MAKE_PROGRAM" \
-    -D "AETHERKIRI_ENABLE_INTERNAL=${AETHERKIRI_ENABLE_INTERNAL:-ON}"
+    -D "AETHERKIRI_ENABLE_INTERNAL=${AETHERKIRI_ENABLE_INTERNAL:-ON}" \
+    "${renpy_cmake_args[@]}"
 cmake --build --preset "$CMAKE_BUILD_PRESET" -- -j"$PARALLEL_JOBS"
 
 mkdir -p "$GODOT_BIN_DIR"
-cp -f "$CMAKE_BUILD_DIR/abi/libengine_api.so" "$GODOT_BIN_DIR/"
+cp -f "$CMAKE_BUILD_DIR/bridge/engine_api/libengine_api.so" "$GODOT_BIN_DIR/"
 cp -f "$CMAKE_BUILD_DIR/bridge/godot_extension/libaether_kiri_godot.so" "$GODOT_BIN_DIR/"
 stage_all_vcpkg_runtime_libraries
 if [[ "$BUILD_TYPE_LOWER" == "release" ]]; then

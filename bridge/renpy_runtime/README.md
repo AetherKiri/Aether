@@ -1,0 +1,54 @@
+# Ren'Py SDK provider
+
+This is an explicitly opt-in bootstrap milestone. Configure
+`AETHERKIRI_ENABLE_RENPY=ON` and point `AETHERKIRI_RENPY_SDK_ROOT` at an
+official desktop Ren'Py SDK checkout. The provider validates a `game/script.rpy`
+project and launches the SDK executable directly, without a shell.
+
+The provider stages an opt-in Python overlay into `game/libs` while a game is
+open. The overlay exports real renderer pixels through the AKRF1 transport and
+forwards input through JSONL; staging is removed when the provider closes. A
+read-only game root returns `ENGINE_RESULT_NOT_SUPPORTED` with a diagnostic.
+Native GPU texture import remains unsupported, so hosts use the RGBA frame
+path while the SDK-owned window stays available for debugging.
+
+The process is started with an argv array and an exec-error pipe, polled with
+`waitpid`/`WaitForSingleObject`, and terminated during provider destruction.
+Paths are validated before launch and are never passed through a shell.
+
+## Experimental Python overlay
+
+`python/aether_renpy_overlay.py` is an opt-in Ren'Py-side prototype. Set
+`AETHERKIRI_RENPY_OVERLAY=1` and import `install()` from the game's
+`game/options.rpy` to hook `renpy.display.core.Interface.draw_screen`.
+
+The hook uses the active SDK renderer (`renpy.display.draw`) after the real
+draw. On Ren'Py 8.5.x, the compatibility `pygame.image` module does not
+provide `tostring`; the overlay copies the live `Surface._pixels_address`
+using its pitch and channel masks, then emits tightly packed RGBA bytes. The
+frame file is atomically replaced on each draw and has this little-endian
+layout:
+
+```
+AKRF1\0\0\0 | u32 width | u32 height | u64 serial | u32 payload_len | RGBA...
+```
+
+Set `AETHERKIRI_RENPY_FRAME` to select the frame path. Input is consumed from
+`AETHERKIRI_RENPY_INPUT` as JSON lines during Ren'Py periodic callbacks:
+`{"type": 768, "attributes": {"key": 13, "mod": 0, "unicode": "\r", "scancode": 40, "repeat": false}}`
+is a `KEYDOWN` event; `mod`, `unicode`, `scancode`, and `repeat` default to
+zero, empty, zero, and false when omitted. Mouse events use the usual `pos`,
+`button`, and `rel` attributes. Set `AETHERKIRI_RENPY_ERROR` to an optional
+append-only diagnostics path; frame and input failures are reported there
+without terminating the SDK process.
+
+The reproducible desktop probe is `tools/run_renpy_overlay_probe.sh`; run it
+with `RENPY_SDK=/path/to/renpy-8.5.3-sdk`. It launches the official SDK with
+SDL's dummy drivers, verifies a nonblank 640x360 frame, injects Down+Return,
+and checks that the Ren'Py menu selection reaches script code. It uses the
+SDK's `gl2` renderer by default; set `RENPY_RENDERER=sw` to exercise the
+software renderer instead.
+
+The overlay is desktop-only and remains unsupported on iOS. The provider's
+desktop integration is guarded by `AETHERKIRI_ENABLE_RENPY` and requires a
+writable `game/libs` directory to stage the hook.

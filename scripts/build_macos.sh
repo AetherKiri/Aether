@@ -161,6 +161,27 @@ cmake_config_args=(
     -D "CMAKE_MAKE_PROGRAM=$CMAKE_MAKE_PROGRAM"
     -D "AETHERKIRI_ENABLE_INTERNAL=${AETHERKIRI_ENABLE_INTERNAL:-ON}"
 )
+renpy_enabled="${AETHERKIRI_ENABLE_RENPY:-OFF}"
+case "$(printf '%s' "$renpy_enabled" | tr '[:lower:]' '[:upper:]')" in
+    ON|TRUE|YES|1)
+        renpy_sdk_root="${AETHERKIRI_RENPY_SDK_ROOT:-}"
+        if [[ -z "$renpy_sdk_root" || ! -d "$renpy_sdk_root" ]]; then
+            echo "Error: AETHERKIRI_ENABLE_RENPY requires AETHERKIRI_RENPY_SDK_ROOT" >&2
+            exit 1
+        fi
+        cmake_config_args+=(
+            -D "AETHERKIRI_ENABLE_RENPY=ON"
+            -D "AETHERKIRI_RENPY_SDK_ROOT=$renpy_sdk_root"
+        )
+        ;;
+    OFF|FALSE|NO|0|'')
+        cmake_config_args+=( -D "AETHERKIRI_ENABLE_RENPY=OFF" )
+        ;;
+    *)
+        echo "Error: AETHERKIRI_ENABLE_RENPY must be ON/OFF or true/false" >&2
+        exit 1
+        ;;
+esac
 if [[ "${SKIP_VCPKG_INSTALL:-}" == "1" ]]; then
     if [[ ! -d "$VCPKG_ROOT/installed/$VCPKG_TRIPLET" ]]; then
         echo "Error: SKIP_VCPKG_INSTALL=1 but prebuilt vcpkg triplet is missing: $VCPKG_ROOT/installed/$VCPKG_TRIPLET" >&2

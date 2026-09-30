@@ -183,10 +183,34 @@ stage_release_extension_for_editor_scan() {
         -exec cp -Lf {} "$debug_dir/" \;
 }
 
+renpy_cmake_args=()
+renpy_enabled="${AETHERKIRI_ENABLE_RENPY:-OFF}"
+case "$(printf '%s' "$renpy_enabled" | tr '[:lower:]' '[:upper:]')" in
+    ON|TRUE|YES|1)
+        renpy_sdk_root="${AETHERKIRI_RENPY_SDK_ROOT:-}"
+        if [[ -z "$renpy_sdk_root" || ! -d "$renpy_sdk_root" ]]; then
+            echo "Error: AETHERKIRI_ENABLE_RENPY requires AETHERKIRI_RENPY_SDK_ROOT" >&2
+            exit 1
+        fi
+        renpy_cmake_args+=(
+            -D "AETHERKIRI_ENABLE_RENPY=ON"
+            -D "AETHERKIRI_RENPY_SDK_ROOT=$renpy_sdk_root"
+        )
+        ;;
+    OFF|FALSE|NO|0|'')
+        renpy_cmake_args+=( -D "AETHERKIRI_ENABLE_RENPY=OFF" )
+        ;;
+    *)
+        echo "Error: AETHERKIRI_ENABLE_RENPY must be ON/OFF or true/false" >&2
+        exit 1
+        ;;
+esac
+
 echo "==> Building Linux engine and Godot extension"
 cmake --preset "$CMAKE_CONFIG_PRESET" \
     -D "CMAKE_MAKE_PROGRAM=$CMAKE_MAKE_PROGRAM" \
-    -D "AETHERKIRI_ENABLE_INTERNAL=${AETHERKIRI_ENABLE_INTERNAL:-ON}"
+    -D "AETHERKIRI_ENABLE_INTERNAL=${AETHERKIRI_ENABLE_INTERNAL:-ON}" \
+    "${renpy_cmake_args[@]}"
 cmake --build --preset "$CMAKE_BUILD_PRESET" -- -j"$PARALLEL_JOBS"
 
 mkdir -p "$GODOT_BIN_DIR"

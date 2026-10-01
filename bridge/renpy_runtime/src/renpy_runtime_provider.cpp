@@ -7,6 +7,7 @@
 #include <cerrno>
 #include <chrono>
 #include <cmath>
+#include <cstdlib>
 #include <cwchar>
 #include <cstring>
 #include <filesystem>
@@ -25,6 +26,8 @@
 #if defined(_WIN32)
 #define NOMINMAX
 #include <Windows.h>
+#elif defined(__APPLE__)
+#include <mach-o/dyld.h>
 #else
 #include <fcntl.h>
 #include <signal.h>
@@ -32,11 +35,6 @@
 #include <sys/types.h>
 #include <sys/wait.h>
 #include <unistd.h>
-#if defined(__APPLE__)
-#include <crt_externs.h>
-#else
-extern char** environ;
-#endif
 #endif
 
 #ifndef AETHERKIRI_RENPY_SDK_ROOT
@@ -50,15 +48,95 @@ namespace aetherkiri::renpy {
 namespace {
 namespace fs = std::filesystem;
 
-#if !defined(_WIN32)
-char** ProcessEnvironment() {
-#if defined(__APPLE__)
-    return *_NSGetEnviron();
+constexpr const char* kOverlayFileName = "aetherkiri-renpy-overlay.py";
+
+fs::path CurrentExecutablePath() {
+#if defined(_WIN32)
+    std::wstring buffer(MAX_PATH, L'\\0');
+    for (;;) {
+        const DWORD size = GetModuleFileNameW(
+            nullptr, buffer.data(), static_cast<DWORD>(buffer.size()));
+        if (size == 0) return {};
+        if (size < buffer.size() - 1) {
+            buffer.resize(size);
+            return fs::path(buffer);
+        }
+        buffer.resize(buffer.size() * 2);
+    }
+#elif defined(__APPLE__)
+    uint32_t size = 0;
+    if (_NSGetExecutablePath(nullptr, &size) != -1 || size == 0) return {};
+    std::string buffer(size, '\\0');
+    if (_NSGetExecutablePath(buffer.data(), &size) != 0) return {};
+    return fs::path(buffer.c_str());
 #else
-    return environ;
+    std::error_code ec;
+    const fs::path path = fs::read_symlink("/proc/self/exe", ec);
+    return ec ? fs::path() : path;
 #endif
 }
+
+fs::path BundledResourcePath(const char* filename) {
+    const fs::path executable = CurrentExecutablePath();
+    if (executable.empty()) return {};
+    const fs::path executable_dir = executable.parent_path();
+#if defined(__APPLE__)
+    const std::array<fs::path, 3> candidates = {
+        executable_dir / filename,
+        executable_dir / ".." / "Resources" / filename,
+        executable_dir / ".." / "Frameworks" / filename,
+    };
+#else
+    const std::array<fs::path, 2> candidates = {
+        executable_dir / filename,
+        executable_dir / "resources" / filename,
+    };
 #endif
+    std::error_code ec;
+    for (const fs::path& candidate : candidates) {
+        if (fs::is_regular_file(candidate, ec)) return candidate;
+    }
+    return {};
+}
+
+fs::path BundledSdkPath() {
+    const fs::path executable = CurrentExecutablePath();
+    if (executable.empty()) return {};
+    const fs::path executable_dir = executable.parent_path();
+#if defined(__APPLE__)
+    const std::array<fs::path, 4> candidates = {
+        executable_dir / ".." / "Resources" / "renpy-sdk",
+        executable_dir / ".." / "Frameworks" / "renpy-sdk",
+        executable_dir / "renpy-sdk",
+        executable_dir / ".." / "Resources" / "RenPy",
+    };
+#else
+    const std::array<fs::path, 2> candidates = {
+        executable_dir / "renpy-sdk",
+        executable_dir / "resources" / "renpy-sdk",
+    };
+#endif
+    std::error_code ec;
+    for (const fs::path& candidate : candidates) {
+        if (fs::is_directory(candidate, ec)) return candidate;
+    }
+    return {};
+}
+
+fs::path ResolveOverlaySource() {
+    std::error_code ec;
+    if (const char* configured = std::getenv("AETHERKIRI_RENPY_OVERLAY_SOURCE");
+        configured && *configured &&
+        fs::is_regular_file(fs::u8path(configured), ec)) {
+        return fs::u8path(configured);
+    }
+    const fs::path compiled = fs::u8path(AETHERKIRI_RENPY_OVERLAY_SOURCE);
+    if (!compiled.empty() && fs::is_regular_file(compiled, ec)) return compiled;
+    const fs::path bundled = BundledResourcePath(kOverlayFileName);
+    if (!bundled.empty()) return bundled;
+    const fs::path cwd = fs::current_path(ec) / kOverlayFileName;
+    return fs::is_regular_file(cwd, ec) ? cwd : fs::path();
+}
 
 const char* UnsupportedFrameMessage() {
     return "Ren'Py frame bridge has not published a frame yet";
@@ -322,7 +400,7 @@ public:
         std::vector<std::string> environment_storage;
         std::vector<char*> environment_argv;
         if (!environment.empty()) {
-            for (char** entry = ProcessEnvironment(); entry != nullptr && *entry != nullptr;
+            for (char** entry = environ; entry != nullptr && *entry != nullptr;
                  ++entry)
                 environment_storage.emplace_back(*entry);
             for (const auto& [key, value] : environment) {
@@ -358,7 +436,7 @@ public:
         pid_t child = -1;
         if (result == 0) {
             result = posix_spawn(&child, exe.c_str(), nullptr, &attributes,
-                                 argv, environment.empty() ? ProcessEnvironment()
+                                 argv, environment.empty() ? environ
                                                              : environment_argv.data());
         }
         (void)posix_spawnattr_destroy(&attributes);
@@ -612,12 +690,12 @@ bool WriteTextFile(const fs::path& path, const std::string& text,
 
 bool PrepareBridge(Runtime& runtime) {
     runtime.CleanupBridge();
-    const fs::path source = fs::u8path(AETHERKIRI_RENPY_OVERLAY_SOURCE);
+    const fs::path source = ResolveOverlaySource();
     std::error_code ec;
     if (source.empty() || !fs::is_regular_file(source, ec)) {
         runtime.error =
-            "Ren'Py overlay source is unavailable in this build; frame bridge "
-            "cannot be activated";
+            "Ren'Py overlay source is unavailable in this build or bundle; "
+            "frame bridge cannot be activated";
         return false;
     }
     std::ifstream source_stream(source, std::ios::binary);
@@ -793,6 +871,14 @@ engine_result_t Open(void* value, const char* path, const char* startup) {
     (void)startup;  // Ren'Py selects its own script from game/options.rpy.
     runtime.project = fs::u8path(path);
     std::error_code ec;
+    if (const char* configured = std::getenv("AETHERKIRI_RENPY_SDK_ROOT");
+        configured && *configured) {
+        runtime.sdk_root = fs::u8path(configured);
+    } else if (runtime.sdk_root.empty() ||
+               !fs::is_directory(runtime.sdk_root, ec)) {
+        const fs::path bundled = BundledSdkPath();
+        if (!bundled.empty()) runtime.sdk_root = bundled;
+    }
     if (!HasRenpyProject(runtime.project)) {
         runtime.error = "directory is not a Ren'Py project (expected game/script.rpy)";
         return ENGINE_RESULT_INVALID_ARGUMENT;

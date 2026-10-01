@@ -57,6 +57,7 @@ cat > "$config" <<JSON
 {
   "game_path": "$fixture",
   "surface_size": [640, 360],
+  "window_size": [640, 360],
   "warmup_frames": 120,
   "measure_frames": 30,
   "capture_startup": false,

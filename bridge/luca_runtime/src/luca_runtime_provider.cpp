@@ -462,14 +462,48 @@ namespace aetherkiri::luca {
                event == nullptr || event->struct_size < sizeof(engine_input_event_t)) {
                 return ENGINE_RESULT_INVALID_ARGUMENT;
             }
+            const bool pointer_down = event->type == ENGINE_INPUT_EVENT_POINTER_DOWN &&
+                                      event->button == 0;
+            const bool key_confirm =
+                event->type == ENGINE_INPUT_EVENT_KEY_DOWN &&
+                (event->key_code == 0x20 || event->key_code == 0x0D);
+
+            // SELECT window (content-space coordinates): pointer hover /
+            // click rows, arrows move the cursor, confirm decides.
+            if(luca_ak_waiting_select(instance->ak) != 0) {
+                int32_t kind = -1;
+                if(event->type == ENGINE_INPUT_EVENT_POINTER_MOVE) {
+                    kind = LUCA_AK_SELECT_HOVER;
+                } else if(pointer_down) {
+                    kind = LUCA_AK_SELECT_CLICK;
+                } else if(event->type == ENGINE_INPUT_EVENT_KEY_DOWN) {
+                    if(event->key_code == 0x28) {  // VK_DOWN
+                        kind = LUCA_AK_SELECT_MOVE_DOWN;
+                    } else if(event->key_code == 0x26) {  // VK_UP
+                        kind = LUCA_AK_SELECT_MOVE_UP;
+                    } else if(key_confirm) {
+                        kind = LUCA_AK_SELECT_CONFIRM;
+                    }
+                }
+                if(kind >= 0) {
+                    const int32_t result =
+                        luca_ak_select_input(instance->ak, kind,
+                                             static_cast<int32_t>(event->x),
+                                             static_cast<int32_t>(event->y));
+                    // INVALID_STATE: the window was closing while the
+                    // input landed — not an error.
+                    if(result < 0 && result != LUCA_AK_INVALID_STATE) {
+                        return Fail(instance->error, result, instance->ak,
+                                    "luca_ak_select_input");
+                    }
+                }
+                return ENGINE_RESULT_OK;
+            }
+
             // Confirm inputs advance the message window (the fiber-yield
             // handshake in the script VM): left click or space/enter.
-            const bool confirm =
-                (event->type == ENGINE_INPUT_EVENT_POINTER_DOWN &&
-                 event->button == 0) ||
-                (event->type == ENGINE_INPUT_EVENT_KEY_DOWN &&
-                 (event->key_code == 0x20 || event->key_code == 0x0D));
-            if(confirm && luca_ak_waiting_message(instance->ak) != 0) {
+            if((pointer_down || key_confirm) &&
+               luca_ak_waiting_message(instance->ak) != 0) {
                 const int32_t result = luca_ak_advance(instance->ak);
                 if(result < 0) {
                     return Fail(instance->error, result, instance->ak,

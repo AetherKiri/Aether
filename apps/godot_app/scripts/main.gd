@@ -12509,12 +12509,16 @@ func _probe_open_game(config: Dictionary, target_game_path: String, backend_env:
             player.set_engine_option(String(key), String(engine_options[key]))
     var surface_size := ProbeConfig.surface_size(config)
     _write_probe_marker("probe_open_game surface=%dx%d fps_limit=%d" % [surface_size.x, surface_size.y, fps_limit])
-    var surface_result: int = int(player.set_surface_size(surface_size.x, surface_size.y))
+    var surface_result: int = ENGINE_RESULT_OK
+    # Ren'Py publishes its own frame dimensions; host resize is unsupported.
+    if runtime_kind != RUNTIME_RENPY:
+        surface_result = int(player.set_surface_size(surface_size.x, surface_size.y))
     if surface_result != ENGINE_RESULT_OK:
         _write_probe_marker("probe_open_game set_surface_failed error=%s" % player.get_last_error())
         printerr("set_surface_size failed: %s" % player.get_last_error())
         return false
-    current_surface_size = surface_size
+    if runtime_kind != RUNTIME_RENPY:
+        current_surface_size = surface_size
     game_path.text = target_game_path
     var result: int = int(player.open_game(target_game_path, true))
     if result != ENGINE_RESULT_OK:
@@ -14540,6 +14544,8 @@ func _env_vector2i(key: String, fallback: Vector2i) -> Vector2i:
 func _sync_player_surface_size(force: bool) -> void:
     if player == null:
         return
+    if active_runtime_kind == RUNTIME_RENPY:
+        return
     var target_size := _desired_render_surface_size()
     if not force and target_size == current_surface_size:
         return
@@ -14578,6 +14584,8 @@ func _sync_player_surface_size(force: bool) -> void:
     current_surface_size = target_size
 
 func _sync_game_surface_to_texture(texture_size: Vector2i) -> void:
+    if active_runtime_kind == RUNTIME_RENPY:
+        return
     if render_surface_mode != RENDER_SURFACE_MODE_GAME:
         return
     if not follow_texture_surface_size:
@@ -14675,7 +14683,7 @@ func _game_input_content_size() -> Vector2:
 
 func _game_input_surface_size() -> Vector2:
     # These providers consume coordinates in their published content space.
-    if active_runtime_kind in [RUNTIME_ONSCRIPTER, RUNTIME_MINORI, RUNTIME_SIGLUS]:
+    if active_runtime_kind in [RUNTIME_ONSCRIPTER, RUNTIME_MINORI, RUNTIME_SIGLUS, RUNTIME_RENPY]:
         return _game_input_content_size()
     if current_surface_size.x > 0 and current_surface_size.y > 0:
         return Vector2(current_surface_size)

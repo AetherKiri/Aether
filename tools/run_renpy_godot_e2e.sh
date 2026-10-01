@@ -62,6 +62,7 @@ cat > "$config" <<JSON
   "capture_startup": false,
   "actions": [
     {"type": "key", "key_code": 13, "unicode": 13, "label": "advance-dialogue", "after_frames": 120},
+    {"type": "key", "key_code": 13, "unicode": 13, "label": "open-menu", "after_frames": 120},
     {"type": "key", "key_code": 13, "unicode": 13, "label": "choose-continue", "after_frames": 120}
   ]
 }
@@ -94,7 +95,7 @@ grep -F 'AKRF1 RGBA bridge' "$log" >/dev/null || {
     printf 'Godot probe did not use the Ren\x27Py RGBA bridge.\n' >&2
     exit 1
 }
-grep -F 'step 02 label=choose-continue' "$log" >/dev/null || {
+grep -F 'step 03 label=choose-continue' "$log" >/dev/null || {
     printf 'Godot probe did not finish the dialogue/choice action sequence.\n' >&2
     exit 1
 }

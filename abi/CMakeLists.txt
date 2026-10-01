@@ -51,6 +51,10 @@ target_include_directories(engine_api
         ${CMAKE_CURRENT_SOURCE_DIR}/src
 )
 
+# engine_api_dispatch.cpp uses spdlog unconditionally (provider log routing and
+# failure diagnostics), so the ABI library always needs it. Previously spdlog was
+# only linked through the private text-translation extension; a minimal host-only
+# build has no such extension but still compiles the dispatch translation unit.
 find_package(spdlog CONFIG REQUIRED)
 target_link_libraries(engine_api PRIVATE spdlog::spdlog)
 

@@ -63,7 +63,7 @@ cat > "$config" <<JSON
   "capture_startup": false,
   "actions": [
     {"type": "key", "key_code": 13, "unicode": 13, "label": "open-choice", "after_frames": 120},
-    {"type": "click", "x": 800, "y": 350, "label": "choose-continue", "after_frames": 120}
+    {"type": "key", "key_code": 13, "unicode": 13, "label": "choose-continue", "after_frames": 120}
   ]
 }
 JSON

@@ -10,8 +10,6 @@ label start:
     with None
 
     "AetherKiri Ren'Py SDK smoke fixture."
-    smoke "The official SDK can parse and execute this project."
-
     call screen aetherkiri_e2e_choice
 
     $ open(renpy.config.gamedir + "/aetherkiri-choice", "w").write(smoke_choice + "\n")

@@ -76,6 +76,7 @@ void Send(engine_handle_t handle, uint32_t type, int button = 0,
 }
 
 void CheckInputMapping() {
+    aetherkiri::renpy::RegisterRuntimeProvider();
     const fs::path root = fs::temp_directory_path() /
                           ("aetherkiri-renpy-input-mapping-" +
                            std::to_string(std::chrono::steady_clock::now()

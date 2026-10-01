@@ -169,6 +169,29 @@ stage_export_runtime_libraries() {
         -exec cp -Lf {} "$GODOT_EXPORT_DIR/" \;
 }
 
+stage_renpy_overlay() {
+    [[ "${renpy_enabled_normalized:-OFF}" == "ON" ]] || return 0
+    local destination="$1"
+    local source="$PROJECT_ROOT/bridge/renpy_runtime/python/aether_renpy_overlay.py"
+    [[ -f "$source" ]] || {
+        echo "Error: Ren'Py overlay source is missing: $source" >&2
+        exit 1
+    }
+    cp -f "$source" "$destination/aetherkiri-renpy-overlay.py"
+}
+
+stage_renpy_sdk() {
+    [[ "${renpy_enabled_normalized:-OFF}" == "ON" ]] || return 0
+    local destination="$1/renpy-sdk"
+    [[ -d "${renpy_sdk_root:-}" ]] || {
+        echo "Error: Ren'Py SDK root is missing: ${renpy_sdk_root:-}" >&2
+        exit 1
+    }
+    rm -rf "$destination"
+    mkdir -p "$(dirname "$destination")"
+    cp -a "$renpy_sdk_root" "$destination"
+}
+
 stage_release_extension_for_editor_scan() {
     if [[ "$BUILD_TYPE_LOWER" != "release" ]]; then
         return
@@ -185,8 +208,10 @@ stage_release_extension_for_editor_scan() {
 
 renpy_cmake_args=()
 renpy_enabled="${AETHERKIRI_ENABLE_RENPY:-OFF}"
-case "$(printf '%s' "$renpy_enabled" | tr '[:lower:]' '[:upper:]')" in
+renpy_enabled_normalized="$(printf '%s' "$renpy_enabled" | tr '[:lower:]' '[:upper:]')"
+case "$renpy_enabled_normalized" in
     ON|TRUE|YES|1)
+        renpy_enabled_normalized="ON"
         renpy_sdk_root="${AETHERKIRI_RENPY_SDK_ROOT:-}"
         if [[ -z "$renpy_sdk_root" || ! -d "$renpy_sdk_root" ]]; then
             echo "Error: AETHERKIRI_ENABLE_RENPY requires AETHERKIRI_RENPY_SDK_ROOT" >&2
@@ -216,6 +241,7 @@ cmake --build --preset "$CMAKE_BUILD_PRESET" -- -j"$PARALLEL_JOBS"
 mkdir -p "$GODOT_BIN_DIR"
 cp -f "$CMAKE_BUILD_DIR/abi/libengine_api.so" "$GODOT_BIN_DIR/"
 cp -f "$CMAKE_BUILD_DIR/bridge/godot_extension/libaether_kiri_godot.so" "$GODOT_BIN_DIR/"
+stage_renpy_overlay "$GODOT_BIN_DIR"
 stage_all_vcpkg_runtime_libraries
 if [[ "$BUILD_TYPE_LOWER" == "release" ]]; then
     echo "==> Removing non-runtime symbols from staged Linux Release libraries"
@@ -249,6 +275,8 @@ echo "==> Exporting Linux Godot application"
     "$GODOT_EXPORT_MODE" "$GODOT_EXPORT_PRESET" "$GODOT_EXPORT_APP"
 
 stage_export_runtime_libraries
+stage_renpy_overlay "$GODOT_EXPORT_DIR"
+stage_renpy_sdk "$GODOT_EXPORT_DIR"
 if [[ "$BUILD_TYPE_LOWER" == "release" ]]; then
     echo "==> Removing non-runtime symbols from exported Linux Release application"
     strip_linux_runtime_symbols "$GODOT_EXPORT_DIR"

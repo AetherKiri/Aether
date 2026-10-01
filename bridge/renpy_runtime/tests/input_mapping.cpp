@@ -130,7 +130,7 @@ void CheckInputMapping() {
     Send(handle, ENGINE_INPUT_EVENT_KEY_DOWN, 0, 0x09); // VK_TAB
     Send(handle, ENGINE_INPUT_EVENT_KEY_DOWN, 0, 0x0d); // VK_RETURN
     Send(handle, ENGINE_INPUT_EVENT_KEY_DOWN, 0, 0x20); // VK_SPACE
-    Send(handle, ENGINE_INPUT_EVENT_KEY_DOWN, 0, 0x00a5); // Unicode yen
+    Send(handle, ENGINE_INPUT_EVENT_KEY_DOWN, 0, 0x00a5); // VK_RALT
     // Existing SDL/Pygame values remain valid for compatibility.
     Send(handle, ENGINE_INPUT_EVENT_KEY_UP, 0, 1073741905);
     std::this_thread::sleep_for(std::chrono::milliseconds(20));
@@ -149,7 +149,7 @@ void CheckInputMapping() {
     assert(lines.find("\"key\":9,\"mod\":0") != std::string::npos);
     assert(lines.find("\"key\":13,\"mod\":0") != std::string::npos);
     assert(lines.find("\"key\":32,\"mod\":0") != std::string::npos);
-    assert(lines.find("\"key\":165,\"mod\":0") != std::string::npos);
+    assert(lines.find("\"key\":1073742054,\"mod\":0") != std::string::npos);
     assert(lines.find("\"type\":769,\"attributes\":{\"key\":1073741905") !=
            std::string::npos);
 

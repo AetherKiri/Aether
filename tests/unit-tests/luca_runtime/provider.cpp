@@ -149,7 +149,7 @@ TEST_CASE("Luca probe matches only PAK game roots") {
     fs::remove_all(root, ec);
 }
 
-TEST_CASE("Luca vertical slice decodes the first image PAK frame") {
+TEST_CASE("Luca vertical slice runs the script and composes the frame") {
     aetherkiri::luca::RegisterRuntimeProvider();
     Instance game;
 
@@ -163,15 +163,19 @@ TEST_CASE("Luca vertical slice decodes the first image PAK frame") {
 
     REQUIRE(provider->tick(game.value, 16) == ENGINE_RESULT_OK);
     const auto desc = game.frame();
-    CHECK(desc.width == 64);
-    CHECK(desc.height == 48);
-    CHECK(desc.stride_bytes == 64 * 4);
+    // Virtual screen (engine 1920x1080) with the fixture script's 64x48 CZ3
+    // blitted at (100, 50).
+    CHECK(desc.width == 1920);
+    CHECK(desc.height == 1080);
+    CHECK(desc.stride_bytes == 1920 * 4);
     CHECK(desc.pixel_format == ENGINE_PIXEL_FORMAT_RGBA8888);
     CHECK(desc.frame_serial == 1);
 
     const auto pixels = game.pixels(desc);
-    CHECK(PixelIs(pixels, desc, 8, 8, 255, 0, 0, 255));
-    CHECK(PixelIs(pixels, desc, 56, 8, 0, 0, 255, 255));
+    CHECK(PixelIs(pixels, desc, 108, 58, 255, 0, 0, 255));
+    CHECK(PixelIs(pixels, desc, 156, 58, 0, 0, 255, 255));
+    CHECK(PixelIs(pixels, desc, 10, 10, 0, 0, 0, 0));
+    CHECK(PixelIs(pixels, desc, 164, 58, 0, 0, 0, 0));
 
     // Short output buffers are rejected without touching the cache.
     std::vector<uint8_t> short_buffer(pixels);

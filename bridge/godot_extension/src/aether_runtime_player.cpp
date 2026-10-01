@@ -41,6 +41,7 @@ extern "C" void AetherNeXASRegisterRuntime(void);
 #include <godot_cpp/classes/font.hpp>
 #include <godot_cpp/classes/image.hpp>
 #include <godot_cpp/classes/image_texture.hpp>
+#include <godot_cpp/classes/input.hpp>
 #include <godot_cpp/classes/java_class.hpp>
 #include <godot_cpp/classes/java_class_wrapper.hpp>
 #include <godot_cpp/classes/java_object.hpp>
@@ -9333,6 +9334,7 @@ public:
     }
 
     void destroy_engine() {
+        restore_native_cursor_mode();
         media_close();
         clear_runtime_message();
         clear_runtime_save_slots();
@@ -9625,6 +9627,8 @@ public:
         AndroidBridgeLog("event=open_game_begin path=%s async=%d runtime=%s",
                          game_root_path.utf8().get_data(), async ? 1 : 0,
                          runtime_id_.utf8().get_data());
+
+        restore_native_cursor_mode();
 
         CharString path_utf8 = game_root_path.utf8();
         const String normalized_runtime = runtime_id_.strip_edges().to_lower();
@@ -11543,6 +11547,14 @@ protected:
     }
 
 private:
+    void restore_native_cursor_mode() {
+        if (!native_cursor_mode_saved_) return;
+        if (Input* input = Input::get_singleton()) {
+            input->set_mouse_mode(native_cursor_previous_mode_);
+        }
+        native_cursor_mode_saved_ = false;
+    }
+
     void drain_platform_requests() {
         std::array<char, 64> operation{};
         std::array<char, 8192> argument{};
@@ -11557,7 +11569,17 @@ private:
             }
             const String name = String::utf8(operation.data());
             const String value = String::utf8(argument.data());
-            if (name == "open_browser") {
+            if (name == "cursor_visible" &&
+                (value == "visible=0" || value == "visible=1")) {
+                if (Input* input = Input::get_singleton()) {
+                    if (!native_cursor_mode_saved_) {
+                        native_cursor_previous_mode_ = input->get_mouse_mode();
+                        native_cursor_mode_saved_ = true;
+                    }
+                    input->set_mouse_mode(value == "visible=1" ?
+                        Input::MOUSE_MODE_VISIBLE : Input::MOUSE_MODE_HIDDEN);
+                }
+            } else if (name == "open_browser") {
                 OS::get_singleton()->shell_open(value);
             } else if (name == "call_native") {
                 if (has_connections("platform_request")) {
@@ -12442,6 +12464,8 @@ private:
     engine_handle_t handle_ = nullptr;
     engine_media_handle_t media_ = nullptr;
     bool game_open_ = false;
+    bool native_cursor_mode_saved_ = false;
+    Input::MouseMode native_cursor_previous_mode_ = Input::MOUSE_MODE_VISIBLE;
     String backend_ = "Godot Native";
     String last_result_;
     String last_error_;

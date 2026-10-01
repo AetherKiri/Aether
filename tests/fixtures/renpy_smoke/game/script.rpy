@@ -15,8 +15,12 @@ label start:
     menu:
         "Continue the smoke test":
             $ smoke_choice = "continue"
+            $ open(renpy.config.gamedir + "/aetherkiri-choice", "w").write("continue\n")
+            $ renpy.quit()
         "Finish the smoke test":
             $ smoke_choice = "finish"
+            $ open(renpy.config.gamedir + "/aetherkiri-choice", "w").write("finish\n")
+            $ renpy.quit()
 
     if smoke_choice == "continue":
         smoke "Choice input is working."

@@ -866,6 +866,14 @@ jobs:
             --path apps/godot_app \
             --script res://scripts/smoke_test.gd
 
+      - name: Run Ren'Py Godot gameplay E2E
+        env:
+          AETHERKIRI_RENPY_FIXTURE: ${{ github.workspace }}/tests/fixtures/renpy_smoke
+        run: |
+          set -euo pipefail
+          chmod +x tools/run_renpy_godot_e2e.sh
+          tools/run_renpy_godot_e2e.sh
+
       - name: Run complete public and integrated private unit tests
         run: |
           set -euo pipefail

@@ -1092,6 +1092,7 @@ engine_result_t Open(void* value, const char* path, const char* startup) {
         {"AETHERKIRI_RENPY_FRAME", runtime.frame_path.string()},
         {"AETHERKIRI_RENPY_INPUT", runtime.input_path.string()},
         {"AETHERKIRI_RENPY_ERROR", runtime.error_path.string()},
+        {"RENPY_RENDERER", "sw"},
     };
     if (!runtime.process.Start(launcher, runtime.project, environment,
                                &runtime.error)) {

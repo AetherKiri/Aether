@@ -24,7 +24,7 @@ target_compile_definitions(aether_renpy_runtime PRIVATE
     AETHERKIRI_RENPY_OVERLAY_SOURCE="${CMAKE_CURRENT_SOURCE_DIR}/python/aether_renpy_overlay.py")
 target_include_directories(aether_renpy_runtime PUBLIC
     "${CMAKE_CURRENT_SOURCE_DIR}/include"
-    "${CMAKE_CURRENT_SOURCE_DIR}/../engine_api/include")
+    "${CMAKE_CURRENT_SOURCE_DIR}/../../abi/include")
 if(NOT TARGET engine_api)
     message(FATAL_ERROR "Ren'Py provider requires the engine_api target")
 endif()

@@ -462,8 +462,20 @@ namespace aetherkiri::luca {
                event == nullptr || event->struct_size < sizeof(engine_input_event_t)) {
                 return ENGINE_RESULT_INVALID_ARGUMENT;
             }
-            // Input routing lands with the script VM (Phase 3). Events are
-            // validated and accepted so hosts keep their event pipelines.
+            // Confirm inputs advance the message window (the fiber-yield
+            // handshake in the script VM): left click or space/enter.
+            const bool confirm =
+                (event->type == ENGINE_INPUT_EVENT_POINTER_DOWN &&
+                 event->button == 0) ||
+                (event->type == ENGINE_INPUT_EVENT_KEY_DOWN &&
+                 (event->key_code == 0x20 || event->key_code == 0x0D));
+            if(confirm && luca_ak_waiting_message(instance->ak) != 0) {
+                const int32_t result = luca_ak_advance(instance->ak);
+                if(result < 0) {
+                    return Fail(instance->error, result, instance->ak,
+                                "luca_ak_advance");
+                }
+            }
             return ENGINE_RESULT_OK;
         }
 

@@ -32,6 +32,11 @@
 #include <sys/types.h>
 #include <sys/wait.h>
 #include <unistd.h>
+#if defined(__APPLE__)
+#include <crt_externs.h>
+#else
+extern char** environ;
+#endif
 #endif
 
 #ifndef AETHERKIRI_RENPY_SDK_ROOT
@@ -44,6 +49,16 @@
 namespace aetherkiri::renpy {
 namespace {
 namespace fs = std::filesystem;
+
+#if !defined(_WIN32)
+char** ProcessEnvironment() {
+#if defined(__APPLE__)
+    return *_NSGetEnviron();
+#else
+    return environ;
+#endif
+}
+#endif
 
 const char* UnsupportedFrameMessage() {
     return "Ren'Py frame bridge has not published a frame yet";
@@ -307,7 +322,7 @@ public:
         std::vector<std::string> environment_storage;
         std::vector<char*> environment_argv;
         if (!environment.empty()) {
-            for (char** entry = environ; entry != nullptr && *entry != nullptr;
+            for (char** entry = ProcessEnvironment(); entry != nullptr && *entry != nullptr;
                  ++entry)
                 environment_storage.emplace_back(*entry);
             for (const auto& [key, value] : environment) {
@@ -343,7 +358,7 @@ public:
         pid_t child = -1;
         if (result == 0) {
             result = posix_spawn(&child, exe.c_str(), nullptr, &attributes,
-                                 argv, environment.empty() ? environ
+                                 argv, environment.empty() ? ProcessEnvironment()
                                                              : environment_argv.data());
         }
         (void)posix_spawnattr_destroy(&attributes);

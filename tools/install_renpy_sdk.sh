@@ -158,14 +158,14 @@ cleanup() { rm -rf "$extract_root"; }
 trap cleanup EXIT
 # Ensure tar cannot write outside the temporary extraction root. The official
 # archive has one relative top-level directory; reject malformed archives.
-if tar -tjf "$archive_path" | awk -F/ '
-    NF && ($1 == "" || $1 == "." || $1 == ".." ||
-           $1 ~ /\\/ || $1 ~ /[^A-Za-z0-9_.-]/ ||
-           $0 ~ /^\\// || $0 ~ /(^|\\/)\\.\\.?($|\\/)/) { bad=1 }
-    END { exit bad }'; then
-    :
-else
-    echo "Refusing archive with an unsafe path" >&2
+if ! tar -tjf "$archive_path" | while IFS= read -r member; do
+    case "$member" in
+        /*|../*|*/../*|*/..|..|*\\*)
+            echo "Refusing archive with an unsafe path: $member" >&2
+            exit 1
+            ;;
+    esac
+done; then
     exit 1
 fi
 tar -xjf "$archive_path" -C "$extract_root"

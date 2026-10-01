@@ -62,8 +62,7 @@ cat > "$config" <<JSON
   "measure_frames": 30,
   "capture_startup": false,
   "actions": [
-    {"type": "key", "key_code": 13, "unicode": 13, "label": "advance-dialogue", "after_frames": 120},
-    {"type": "key", "key_code": 13, "unicode": 13, "label": "open-menu", "after_frames": 120},
+    {"type": "key", "key_code": 13, "unicode": 13, "label": "open-choice", "after_frames": 120},
     {"type": "click", "x": 800, "y": 350, "label": "choose-continue", "after_frames": 120}
   ]
 }
@@ -96,21 +95,20 @@ grep -F 'AKRF1 RGBA bridge' "$log" >/dev/null || {
     printf 'Godot probe did not use the Ren\x27Py RGBA bridge.\n' >&2
     exit 1
 }
-grep -F 'step 03 label=choose-continue' "$log" >/dev/null || {
+grep -F 'step 02 label=choose-continue' "$log" >/dev/null || {
     printf 'Godot probe did not finish the dialogue/choice action sequence.\n' >&2
     exit 1
 }
 
 marker="$fixture/game/aetherkiri-choice"
-choice="not-recorded"
-if [[ -f "$marker" ]]; then
-    choice="$(<"$marker")"
-    if [[ "$choice" != "continue" ]]; then
-        printf 'Unexpected Ren\x27Py menu choice: %q\n' "$choice" >&2
-        exit 1
-    fi
-else
-    printf 'warning: host input sequence completed but fixture choice marker was not observed; direct SDK overlay probe covers menu selection separately\n' >&2
+if [[ ! -f "$marker" ]]; then
+    printf 'Ren\x27Py fixture did not record a menu choice.\n' >&2
+    exit 1
+fi
+choice="$(<"$marker")"
+if [[ "$choice" != "continue" ]]; then
+    printf 'Unexpected Ren\x27Py menu choice: %q\n' "$choice" >&2
+    exit 1
 fi
 
 printf 'Ren\x27Py Godot E2E ok: frame=640x360, renderer=AKRF1 RGBA bridge, choice=%s\n' "$choice"

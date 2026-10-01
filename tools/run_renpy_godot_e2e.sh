@@ -62,6 +62,7 @@ cat > "$config" <<JSON
   "measure_frames": 30,
   "capture_startup": false,
   "actions": [
+    {"type": "wait_ms", "duration_ms": 12000, "label": "wait-first-frame", "after_frames": 0},
     {"type": "key", "key_code": 13, "unicode": 13, "label": "open-choice", "after_frames": 120},
     {"type": "key", "key_code": 13, "unicode": 13, "label": "choose-continue", "after_frames": 120}
   ]

@@ -23,6 +23,7 @@ label start:
 
 screen aetherkiri_e2e_choice():
     modal True
+    key "K_RETURN" action [SetVariable("smoke_choice", "continue"), Return()]
     button:
         xysize (640, 360)
         action [SetVariable("smoke_choice", "continue"), Return()]

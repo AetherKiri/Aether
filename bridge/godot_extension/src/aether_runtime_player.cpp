@@ -38,6 +38,9 @@
 #if defined(AETHERKIRI_WITH_CMVS)
 #include "cmvs_runtime_provider.h"
 #endif
+#if defined(AETHERKIRI_WITH_LUCA)
+#include "luca_runtime.h"
+#endif
 #if defined(AETHERKIRI_WITH_MINORI)
 extern "C" engine_result_t aetherkiri_minori_register_runtime_provider();
 #endif
@@ -14191,6 +14194,9 @@ void InitializeAetherRuntime(ModuleInitializationLevel level) {
 #endif
 #if defined(AETHERKIRI_WITH_CMVS)
     aetherkiri::cmvs::RegisterRuntimeProvider();
+#endif
+#if defined(AETHERKIRI_WITH_LUCA)
+    aetherkiri::luca::RegisterRuntimeProvider();
 #endif
 #if defined(AETHERKIRI_WITH_MINORI)
     if (aetherkiri_minori_register_runtime_provider() != ENGINE_RESULT_OK) {

@@ -148,10 +148,12 @@ option(AETHERKIRI_ENABLE_SIGLUS
 option(AETHERKIRI_ENABLE_CMVS "enable the CMVS runtime on macOS, iOS, Android and Linux" ON)
 option(AETHERKIRI_ENABLE_MINORI
        "enable the independent Rust Minori runtime" ON)
-option(AETHERKIRI_ENABLE_ENTISGLS
-       "enable the public EntisGLS / Cotopha runtime" ON)
 option(AETHERKIRI_ENABLE_BGI
        "enable the optional private BGI/Ethornell provider" ON)
+option(AETHERKIRI_ENABLE_ENTISGLS
+       "enable the public EntisGLS / Cotopha runtime" ON)
+option(AETHERKIRI_ENABLE_LUCA
+       "enable the AetherLuca LucaSystem runtime (requires a Rust toolchain)" ON)
 option(AETHERKIRI_ENABLE_CODE_OBFUSCATION
        "obfuscate private Internal translation units in release builds" OFF)
 set(AETHERKIRI_OBFUSCATOR_PLUGIN "" CACHE FILEPATH
@@ -203,6 +205,9 @@ option(AETHERKIRI_ENABLE_MAGES
 set(AETHERKIRI_MAGES_DIR
     "${CMAKE_CURRENT_SOURCE_DIR}/packages/AetherMAGES"
     CACHE PATH "path to an AetherMAGES (impacto) runtime submodule checkout")
+set(AETHERKIRI_LUCA_DIR
+    "${CMAKE_CURRENT_SOURCE_DIR}/packages/AetherLuca"
+    CACHE PATH "path to an AetherLuca runtime checkout")
 
 include(cmake/AetherKiriBinaryProtection.cmake)
 # Unify the Rust toolchain resolution before any runtime subproject runs its
@@ -348,6 +353,15 @@ if(ENABLE_TESTS AND AETHERKIRI_ENABLE_ONSCRIPTER AND
     set(AETHERKIRI_BUILD_NATIVE_ONSCRIPTER_TESTS ON)
 endif()
 
+set(AETHERKIRI_BUILD_NATIVE_LUCA_TESTS OFF)
+if(ENABLE_TESTS AND AETHERKIRI_ENABLE_LUCA AND
+   NOT (IOS OR ANDROID OR WEB OR EMSCRIPTEN))
+    # Wide gate (deliberate deviation from the siglus bridge, which is gated
+    # on BUILD_GODOT_EXTENSION): the luca provider contract test runs in the
+    # native test-only configuration used by CI even without the Godot host.
+    set(AETHERKIRI_BUILD_NATIVE_LUCA_TESTS ON)
+endif()
+
 # The KiriKiri runtime glue owns the legacy engine implementation and the
 # krkr2core/krkr2plugin linkage; the Godot extension host links the glue and
 # installs its engine_legacy_* surface into engine_api through the legacy
@@ -391,6 +405,14 @@ endif()
 if(AETHERKIRI_ENABLE_CMVS AND BUILD_GODOT_EXTENSION AND
    (APPLE OR ANDROID OR CMAKE_SYSTEM_NAME STREQUAL "Linux") AND NOT (WEB OR EMSCRIPTEN))
     add_subdirectory(packages/cmvs-rs/integrations/aether)
+endif()
+if(AETHERKIRI_ENABLE_LUCA AND
+   (BUILD_GODOT_EXTENSION OR AETHERKIRI_BUILD_NATIVE_LUCA_TESTS) AND
+   NOT (IOS OR ANDROID OR WEB OR EMSCRIPTEN))
+    # The LucaSystem bridge follows the rfvp pattern (no engine_api link), so
+    # it can build in test-only configurations; mobile/wasm targets are wired
+    # with the presentation phase (Phase 4+).
+    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/bridge/luca_runtime)
 endif()
 # The Rust provider has targets for Linux, Apple, Android, and Emscripten.
 # Keep it out of unsupported native targets, but do not make Linux the only

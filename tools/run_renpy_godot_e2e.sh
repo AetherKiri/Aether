@@ -61,7 +61,7 @@ cat > "$config" <<JSON
   "measure_frames": 30,
   "capture_startup": false,
   "actions": [
-    {"type": "key", "key_code": 13, "label": "advance-dialogue", "after_frames": 30, "capture": false},
+    {"type": "key", "key_code": 13, "label": "advance-dialogue", "after_frames": 30},
     {"type": "key", "key_code": 13, "label": "choose-continue", "after_frames": 30, "capture": false}
   ]
 }

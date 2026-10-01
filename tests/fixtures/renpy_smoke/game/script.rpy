@@ -12,16 +12,9 @@ label start:
     "AetherKiri Ren'Py SDK smoke fixture."
     smoke "The official SDK can parse and execute this project."
 
-    menu:
-        "Continue the smoke test":
-            $ smoke_choice = "continue"
-            $ open(renpy.config.gamedir + "/aetherkiri-choice", "w").write("continue\n")
-            $ renpy.quit()
-        "Finish the smoke test":
-            $ smoke_choice = "finish"
-            $ open(renpy.config.gamedir + "/aetherkiri-choice", "w").write("finish\n")
-            $ renpy.quit()
+    call screen aetherkiri_e2e_choice
 
+    $ open(renpy.config.gamedir + "/aetherkiri-choice", "w").write(smoke_choice + "\n")
     if smoke_choice == "continue":
         smoke "Choice input is working."
     else:
@@ -29,3 +22,12 @@ label start:
 
     "Ren'Py smoke test complete."
     return
+
+screen aetherkiri_e2e_choice():
+    modal True
+    textbutton "Continue the smoke test":
+        pos (220, 120)
+        action [SetVariable("smoke_choice", "continue"), Return()]
+    textbutton "Finish the smoke test":
+        pos (220, 200)
+        action [SetVariable("smoke_choice", "finish"), Return()]

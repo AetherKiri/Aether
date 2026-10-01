@@ -25,9 +25,7 @@ label start:
 
 screen aetherkiri_e2e_choice():
     modal True
-    textbutton "Continue the smoke test":
-        pos (220, 120)
+    button:
+        xysize (640, 360)
         action [SetVariable("smoke_choice", "continue"), Return()]
-    textbutton "Finish the smoke test":
-        pos (220, 200)
-        action [SetVariable("smoke_choice", "finish"), Return()]
+        text "Continue the smoke test"

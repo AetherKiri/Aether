@@ -57,14 +57,14 @@ cat > "$config" <<JSON
 {
   "game_path": "$fixture",
   "surface_size": [640, 360],
-  "window_size": [640, 360],
+  "window_size": [1600, 900],
   "warmup_frames": 120,
   "measure_frames": 30,
   "capture_startup": false,
   "actions": [
     {"type": "key", "key_code": 13, "unicode": 13, "label": "advance-dialogue", "after_frames": 120},
     {"type": "key", "key_code": 13, "unicode": 13, "label": "open-menu", "after_frames": 120},
-    {"type": "click", "x": 320, "y": 140, "label": "choose-continue", "after_frames": 120}
+    {"type": "click", "x": 800, "y": 350, "label": "choose-continue", "after_frames": 120}
   ]
 }
 JSON

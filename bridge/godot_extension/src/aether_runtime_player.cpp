@@ -11579,6 +11579,12 @@ private:
                     input->set_mouse_mode(value == "visible=1" ?
                         Input::MOUSE_MODE_VISIBLE : Input::MOUSE_MODE_HIDDEN);
                 }
+            } else if (name == "joy_vibration" && value == "stop=all") {
+                if (Input* input = Input::get_singleton()) {
+                    const auto joypads = input->get_connected_joypads();
+                    for (int32_t index = 0; index < joypads.size(); ++index)
+                        input->stop_joy_vibration(int32_t(joypads[index]));
+                }
             } else if (name == "open_browser") {
                 OS::get_singleton()->shell_open(value);
             } else if (name == "call_native") {

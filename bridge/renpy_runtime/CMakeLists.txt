@@ -40,4 +40,8 @@ if(ENABLE_TESTS)
         AETHERKIRI_RENPY_TEST_SDK_ROOT="${AETHERKIRI_RENPY_SDK_ROOT}")
     target_link_libraries(renpy-provider-test PRIVATE aether_renpy_runtime)
     add_test(NAME renpy-provider COMMAND renpy-provider-test)
+
+    add_executable(renpy-input-mapping-test tests/input_mapping.cpp)
+    target_link_libraries(renpy-input-mapping-test PRIVATE aether_renpy_runtime)
+    add_test(NAME renpy-input-mapping COMMAND renpy-input-mapping-test)
 endif()

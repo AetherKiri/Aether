@@ -305,9 +305,15 @@ in upstream or third-party material on behalf of other copyright holders nor
 revokes rights already granted by the GPL.
 
 
-## Ren'Py desktop support
+## Ren'Py support
 
-Ren'Py support is an opt-in desktop provider. CI and local builds download the official Ren'Py 8.5.3 SDK through `tools/install_renpy_sdk.sh` and verify its pinned SHA-256 before extraction. Set `AETHERKIRI_RENPY_SDK_ROOT` to the extracted SDK when launching a desktop build. iOS, Android, and Web builds leave this desktop-only provider disabled.
+Ren'Py desktop support is an opt-in provider. CI and local builds download the
+official Ren'Py 8.5.3 SDK through `tools/install_renpy_sdk.sh` and verify its
+pinned SHA-256 before extraction. Set `AETHERKIRI_RENPY_SDK_ROOT` to the
+extracted SDK when launching a desktop build. Android and iOS builds may link
+the provider registration stub, but opening a game returns
+`ENGINE_RESULT_NOT_SUPPORTED` until the native mobile adapter is implemented;
+Web builds keep Ren'Py disabled.
 
 The official Ren'Py 8.5.3 Android and iOS support inputs can be downloaded and
 staged with `tools/install_renpy_mobile_support.sh`. This verifies the

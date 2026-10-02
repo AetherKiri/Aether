@@ -100,6 +100,14 @@ set(AETHERKIRI_GODOT_SOURCES
     src/presentation/RuntimePresentationSprite.cpp
 )
 
+if(IOS OR ANDROID)
+    # iOS/Android link the guarded mobile provider directly into the Godot
+    # static archive. Static archive dependencies are not propagated to the
+    # final Xcode/Gradle application link.
+    list(APPEND AETHERKIRI_GODOT_SOURCES
+        ../renpy_runtime/src/renpy_runtime_mobile_provider.cpp)
+endif()
+
 if(WEB OR EMSCRIPTEN)
     add_executable(aether_kiri_godot ${AETHERKIRI_GODOT_SOURCES})
 elseif(IOS)

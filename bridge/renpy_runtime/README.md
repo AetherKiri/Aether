@@ -58,3 +58,14 @@ software renderer instead.
 The overlay is desktop-only and remains unsupported on iOS. The provider's
 desktop integration is guarded by `AETHERKIRI_ENABLE_RENPY` and requires a
 writable `game/libs` directory to stage the hook.
+
+## Mobile dependency staging
+
+The official mobile support packages are staged separately with
+`tools/install_renpy_mobile_support.sh --platform android|ios|both`. The
+script verifies the Ren'Py 8.5.3 RAPT and Renios archives before extracting
+them and records the verified checksums beside each staged package. These
+inputs are not a mobile runtime: Android still needs the
+`PythonSDLActivity`/JNI bootstrap, iOS still needs an in-process Xcode
+adapter, and both platforms still need lifecycle, input, and Godot rendering
+integration.

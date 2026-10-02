@@ -348,6 +348,7 @@ jobs:
         run: |
           set -euo pipefail
           grep -F 'renpy_runtime_mobile_provider.cpp' out/android/arm64-v8a/debug/compile_commands.json
+          grep -F 'renpy_mobile_adapter.cpp' out/android/arm64-v8a/debug/compile_commands.json
 
       - name: Verify exported APKs
         run: |

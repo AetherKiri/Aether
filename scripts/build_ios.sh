@@ -645,6 +645,9 @@ cmake_config_args=(
     -D "AETHERKIRI_OBFUSCATOR_PLUGIN=${AETHERKIRI_OBFUSCATOR_PLUGIN:-}"
     -D "AETHERKIRI_OBFUSCATION_BUILD_ID=${AETHERKIRI_OBFUSCATION_BUILD_ID:-local}"
     -D "AETHERKIRI_ENABLE_RFVP=${AETHERKIRI_ENABLE_RFVP:-OFF}"
+    # iOS links the Ren'Py mobile registration stub.  It deliberately returns
+    # NOT_SUPPORTED until the Renios/Xcode bootstrap is wired.
+    -D "AETHERKIRI_ENABLE_RENPY=${AETHERKIRI_ENABLE_RENPY:-OFF}"
 )
 if [[ -n "${RFVP_CARGO:-}" ]]; then
     cmake_config_args+=(-D "RFVP_CARGO=$RFVP_CARGO")

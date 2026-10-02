@@ -55,9 +55,13 @@ and checks that the Ren'Py menu selection reaches script code. It uses the
 SDK's `gl2` renderer by default; set `RENPY_RENDERER=sw` to exercise the
 software renderer instead.
 
-The overlay is desktop-only and remains unsupported on iOS. The provider's
-desktop integration is guarded by `AETHERKIRI_ENABLE_RENPY` and requires a
-writable `game/libs` directory to stage the hook.
+The overlay is desktop-only. On Android and iOS, `AETHERKIRI_ENABLE_RENPY`
+builds a provider registration stub that reports an explicit
+`ENGINE_RESULT_NOT_SUPPORTED` from game open and all runtime operations; this
+prevents a staged archive from being mistaken for playable mobile support.
+The provider's desktop integration remains guarded by
+`AETHERKIRI_ENABLE_RENPY` and requires a writable `game/libs` directory to
+stage the hook.
 
 ## Mobile dependency staging
 

@@ -324,6 +324,11 @@ build_abi() {
     local cmake_config_args=(
         -D "CMAKE_MAKE_PROGRAM=$CMAKE_MAKE_PROGRAM"
         -D "AETHERKIRI_ENABLE_INTERNAL=${AETHERKIRI_ENABLE_INTERNAL:-ON}"
+        # Android links the Ren'Py mobile registration stub.  It deliberately
+        # returns NOT_SUPPORTED until the RAPT/JNI bootstrap is wired; keeping
+        # this opt-in here makes mobile CI compile the guard instead of only
+        # staging archives.
+        -D "AETHERKIRI_ENABLE_RENPY=${AETHERKIRI_ENABLE_RENPY:-OFF}"
     )
 
     case "$abi" in

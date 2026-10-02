@@ -73,3 +73,25 @@ inputs are not a mobile runtime: Android still needs the
 `PythonSDLActivity`/JNI bootstrap, iOS still needs an in-process Xcode
 adapter, and both platforms still need lifecycle, input, and Godot rendering
 integration.
+
+### iOS in-process adapter boundary
+
+The staged Renios prototype is an application template whose `main.c` calls
+`SDL_UIKitRunApp(..., launcher_main)`. AetherKiri already owns the Godot
+application and run loop, so the mobile provider does not copy that entrypoint
+or call `UIApplicationMain`. `renpy_runtime_ios_adapter.h` defines the small
+host-owned adapter registration boundary that a future iOS integration can
+install after linking the complete Renios static-library closure. Until that
+adapter, lifecycle, input, and surface bridge are linked, `runtime=renpy`
+continues to return `ENGINE_RESULT_NOT_SUPPORTED` with an explicit diagnostic.
+
+### Android in-process adapter boundary
+
+The staged RAPT prototype is a `PythonSDLActivity` that loads
+`librenpython.so`, prepares Android storage/assets, and owns an SDL surface.
+The Android provider now has a compile-tested `BootstrapAdapter` boundary that
+accepts an opaque pointer to the existing host Activity through the host
+extension slot `reserved_ptr[1]`. It never creates a second Activity. Until
+the staged Java classes, native library, asset extraction, SDL surface, and
+Godot lifecycle/input bridge are linked, `Start` and provider open return
+`ENGINE_RESULT_NOT_SUPPORTED` with an explicit diagnostic.

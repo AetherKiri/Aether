@@ -50,7 +50,7 @@ cat "$log"
 [[ "$rc" -eq 0 ]] || { echo "Godot Ren'Py E2E exited with status $rc" >&2; exit "$rc"; }
 grep -F 'step probe fps=' "$log" >/dev/null
 grep -F 'AKRF1 RGBA bridge' "$log" >/dev/null
-grep -F 'step 03 label=choose-continue' "$log" >/dev/null
+grep -F 'step 02 label=choose-continue' "$log" >/dev/null
 marker="$fixture/game/aetherkiri-choice"
 [[ -f "$marker" ]] || { echo "Ren'Py fixture did not record a menu choice." >&2; exit 1; }
 choice="$(<"$marker")"

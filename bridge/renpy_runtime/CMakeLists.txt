@@ -8,7 +8,12 @@ if(IOS OR ANDROID)
     # Keep a provider registration stub so selecting runtime=renpy fails with
     # an explicit NOT_SUPPORTED result until the native RAPT/Renios bootstrap
     # and lifecycle/rendering adapters are implemented.
-    set(AETHERKIRI_RENPY_SOURCES src/renpy_runtime_mobile_provider.cpp)
+    set(AETHERKIRI_RENPY_SOURCES
+        src/renpy_runtime_mobile_provider.cpp
+        src/renpy_runtime_ios_adapter.cpp)
+    if(ANDROID)
+        list(APPEND AETHERKIRI_RENPY_SOURCES src/renpy_mobile_adapter.cpp)
+    endif()
 else()
     if(NOT (WIN32 OR APPLE OR LINUX))
         message(FATAL_ERROR
@@ -30,7 +35,11 @@ endif()
 add_library(aether_renpy_runtime STATIC ${AETHERKIRI_RENPY_SOURCES})
 target_compile_features(aether_renpy_runtime PUBLIC cxx_std_17)
 set_target_properties(aether_renpy_runtime PROPERTIES POSITION_INDEPENDENT_CODE ON)
-if(IOS OR ANDROID)
+if(IOS)
+    target_compile_definitions(aether_renpy_runtime PRIVATE
+        AETHERKIRI_RENPY_MOBILE_STUB=1
+        AETHERKIRI_RENPY_IOS=1)
+elseif(ANDROID)
     target_compile_definitions(aether_renpy_runtime PRIVATE
         AETHERKIRI_RENPY_MOBILE_STUB=1)
 else()
@@ -60,10 +69,35 @@ if(ENABLE_TESTS AND NOT (IOS OR ANDROID))
     add_executable(renpy-input-mapping-test tests/input_mapping.cpp)
     target_link_libraries(renpy-input-mapping-test PRIVATE aether_renpy_runtime)
     add_test(NAME renpy-input-mapping COMMAND renpy-input-mapping-test)
+
+    add_executable(renpy-mobile-adapter-test
+        tests/mobile_adapter.cpp src/renpy_mobile_adapter.cpp)
+    target_include_directories(renpy-mobile-adapter-test PRIVATE
+        "${CMAKE_CURRENT_SOURCE_DIR}/include"
+        "${CMAKE_CURRENT_SOURCE_DIR}/../../abi/include")
+    add_test(NAME renpy-mobile-adapter COMMAND renpy-mobile-adapter-test)
+
+    add_executable(renpy-ios-adapter-test
+        tests/ios_adapter.cpp src/renpy_runtime_ios_adapter.cpp)
+    target_include_directories(renpy-ios-adapter-test PRIVATE
+        "${CMAKE_CURRENT_SOURCE_DIR}/include"
+        "${CMAKE_CURRENT_SOURCE_DIR}/../../abi/include")
+    add_test(NAME renpy-ios-adapter COMMAND renpy-ios-adapter-test)
 elseif(ENABLE_TESTS AND (IOS OR ANDROID))
     # This target is compile-only in cross builds.  It verifies the mobile
     # provider ABI and its deliberate NOT_SUPPORTED contract without trying
     # to execute an iOS/Android binary on the build host.
     add_executable(renpy-mobile-provider-test tests/mobile_provider.cpp)
     target_link_libraries(renpy-mobile-provider-test PRIVATE aether_renpy_runtime)
+    if(ANDROID)
+        # Compile the Android JNI/bootstrap boundary as a standalone test
+        # target as well. Cross builds do not execute this binary on the host.
+        add_executable(renpy-mobile-adapter-test tests/mobile_adapter.cpp)
+        target_link_libraries(renpy-mobile-adapter-test PRIVATE
+            aether_renpy_runtime)
+    endif()
+    if(IOS)
+        add_executable(renpy-ios-adapter-test tests/ios_adapter.cpp)
+        target_link_libraries(renpy-ios-adapter-test PRIVATE aether_renpy_runtime)
+    endif()
 endif()

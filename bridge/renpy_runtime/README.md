@@ -12,6 +12,12 @@ read-only game root returns `ENGINE_RESULT_NOT_SUPPORTED` with a diagnostic.
 Native GPU texture import remains unsupported, so hosts use the RGBA frame
 path while the SDK-owned window stays available for debugging.
 
+The Ren'Py game keeps its own logical canvas size from `game/options.rpy` (for
+example 640x360). AetherKiri presents that frame in the same aspect-preserving
+host surface used by the AR/KrKr runtimes, so a 16:9 Ren'Py game is enlarged to
+the available display without stretching. Pointer coordinates are mapped back
+from the enlarged display to the logical Ren'Py canvas before input is sent.
+
 The process is started with an argv array and an exec-error pipe, polled with
 `waitpid`/`WaitForSingleObject`, and terminated during provider destruction.
 Paths are validated before launch and are never passed through a shell.

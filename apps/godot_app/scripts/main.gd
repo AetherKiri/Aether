@@ -12788,13 +12788,22 @@ func _probe_run_actions(config: Dictionary, step: int) -> int:
         elif kind == "click_stream":
             step = await _probe_run_click_stream(config, step, label, action)
             continue
+        elif kind == "wait_ms":
+            # Ren'Py starts in a separate SDK process. A frame-count-only
+            # warmup can finish before that process has initialized its
+            # renderer, so permit probes to wait on wall-clock time while
+            # continuing to pump the runtime and transport.
+            var duration_ms: int = max(0, int(action.get("duration_ms", action.get("milliseconds", 0))))
+            if not await _probe_advance_for_ms(duration_ms):
+                return -1
         elif kind == "wait" or kind == "capture":
             pass
         else:
             print("skip unknown action: %s" % kind)
             continue
 
-        var after_frames := int(action.get("after_frames", ProbeConfig.int_value(config, "after_click_frames", _runtime_int("AETHERKIRI_PROBE_AFTER_CLICK_FRAMES", 180))))
+        var default_after_frames := 0 if kind == "wait_ms" else ProbeConfig.int_value(config, "after_click_frames", _runtime_int("AETHERKIRI_PROBE_AFTER_CLICK_FRAMES", 180))
+        var after_frames := int(action.get("after_frames", default_after_frames))
         if not await _probe_advance(after_frames):
             return -1
         if bool(action.get("capture", true)):

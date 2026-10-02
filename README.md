@@ -308,3 +308,11 @@ revokes rights already granted by the GPL.
 ## Ren'Py desktop support
 
 Ren'Py support is an opt-in desktop provider. CI and local builds download the official Ren'Py 8.5.3 SDK through `tools/install_renpy_sdk.sh` and verify its pinned SHA-256 before extraction. Set `AETHERKIRI_RENPY_SDK_ROOT` to the extracted SDK when launching a desktop build. iOS, Android, and Web builds leave this desktop-only provider disabled.
+
+The official Ren'Py 8.5.3 Android and iOS support inputs can be downloaded and
+staged with `tools/install_renpy_mobile_support.sh`. This verifies the
+published RAPT and Renios SHA-256 values and stages the native package
+templates, libraries, and project support files under a separate mobile root.
+Staging these inputs does not enable mobile gameplay: the Android JNI/Activity
+bootstrap, iOS in-process adapter, Godot rendering/input bridge, and
+device/simulator E2E remain required before a mobile provider can be enabled.

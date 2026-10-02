@@ -38,6 +38,8 @@ engine_result_t engine_legacy_media_open(engine_handle_t engine,
                                          engine_media_handle_t* out_media);
 engine_result_t engine_legacy_media_destroy(engine_media_handle_t media);
 engine_result_t engine_legacy_media_play(engine_media_handle_t media);
+engine_result_t engine_legacy_media_set_volume(engine_media_handle_t media,
+                                               uint32_t percent);
 engine_result_t engine_legacy_media_pause(engine_media_handle_t media);
 engine_result_t engine_legacy_media_seek(engine_media_handle_t media,
                                          int64_t position_ms);

@@ -460,6 +460,10 @@ ENGINE_API_EXPORT engine_result_t engine_media_destroy(
 ENGINE_API_EXPORT engine_result_t engine_media_play(
     engine_media_handle_t media);
 
+/* Sets the standalone movie audio level from 0 (silent) to 100. */
+ENGINE_API_EXPORT engine_result_t engine_media_set_volume(
+    engine_media_handle_t media, uint32_t percent);
+
 ENGINE_API_EXPORT engine_result_t engine_media_pause(
     engine_media_handle_t media);
 

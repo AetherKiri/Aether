@@ -9685,7 +9685,10 @@ public:
             return ENGINE_RESULT_INVALID_STATE;
         }
         const engine_result_t result = engine_pause(handle_);
-        if (result == ENGINE_RESULT_OK) reset_runtime_tick_timing(false);
+        if (result == ENGINE_RESULT_OK) {
+            reset_runtime_tick_timing(false);
+            if (runtime_movie_active_ && media_ != nullptr) media_pause();
+        }
         update_last_error(result);
         return result;
     }
@@ -9695,7 +9698,10 @@ public:
             return ENGINE_RESULT_INVALID_STATE;
         }
         const engine_result_t result = engine_resume(handle_);
-        if (result == ENGINE_RESULT_OK) reset_runtime_tick_timing(false);
+        if (result == ENGINE_RESULT_OK) {
+            reset_runtime_tick_timing(false);
+            if (runtime_movie_active_ && media_ != nullptr) media_play();
+        }
         update_last_error(result);
         return result;
     }
@@ -9715,6 +9721,9 @@ public:
     }
 
     void media_close() {
+        runtime_movie_active_ = false;
+        runtime_movie_skippable_ = false;
+        runtime_movie_operation_ = "";
         if (media_ != nullptr) {
             engine_media_destroy(media_);
             media_ = nullptr;
@@ -9729,6 +9738,16 @@ public:
     int media_play() {
         if (media_ == nullptr) return ENGINE_RESULT_INVALID_STATE;
         const engine_result_t result = engine_media_play(media_);
+        update_last_error(result);
+        return result;
+    }
+
+    int media_set_volume(int percent) {
+        if (media_ == nullptr || percent < 0 || percent > 100) {
+            return ENGINE_RESULT_INVALID_ARGUMENT;
+        }
+        const engine_result_t result = engine_media_set_volume(
+            media_, static_cast<uint32_t>(percent));
         update_last_error(result);
         return result;
     }
@@ -10296,7 +10315,7 @@ public:
         if (runtime_movie_active_) {
             Ref<Texture2D> texture = media_update_texture();
             if (texture.is_valid()) {
-                frame_texture_backend_ = "minori_movie";
+                frame_texture_backend_ = "runtime_movie";
                 return texture;
             }
         }
@@ -11644,7 +11663,31 @@ private:
                     media_close();
                 } else {
                     runtime_movie_active_ = true;
+                    runtime_movie_operation_ = name;
                     runtime_movie_skippable_ = fields[5] == "1";
+                    update_runtime_movie();
+                }
+            } else if (name == "runtime_movie") {
+                const PackedStringArray fields = value.split("\t");
+                const bool valid = fields.size() == 3 &&
+                    !fields[0].is_empty() && fields[1].is_valid_int() &&
+                    (fields[2] == "0" || fields[2] == "1") &&
+                    fields[1].to_int() >= 0 && fields[1].to_int() <= 100;
+                if (!valid) {
+                    submit_platform_response(
+                        name, "result=error&message=invalid_movie_request");
+                } else if (!media_open(fields[0]) ||
+                           media_set_volume(static_cast<int>(fields[1].to_int())) !=
+                               ENGINE_RESULT_OK ||
+                           media_play() != ENGINE_RESULT_OK) {
+                    const String message = last_error_.replace("\n", " ");
+                    submit_platform_response(
+                        name, "result=error&message=" + message);
+                    media_close();
+                } else {
+                    runtime_movie_active_ = true;
+                    runtime_movie_operation_ = name;
+                    runtime_movie_skippable_ = fields[2] == "1";
                     update_runtime_movie();
                 }
             } else {
@@ -12047,8 +12090,10 @@ private:
         if (!runtime_movie_active_) return;
         runtime_movie_active_ = false;
         runtime_movie_skippable_ = false;
+        const String operation = runtime_movie_operation_;
+        runtime_movie_operation_ = "";
         media_close();
-        submit_platform_response("minori_movie", result);
+        submit_platform_response(operation, result);
     }
 
     void update_runtime_movie() {
@@ -12529,6 +12574,7 @@ private:
     uint32_t media_height_ = 0;
     bool runtime_movie_active_ = false;
     bool runtime_movie_skippable_ = false;
+    String runtime_movie_operation_;
     Label *runtime_message_speaker_label_ = nullptr;
     Label *runtime_message_label_ = nullptr;
     RuntimePresentationSprite runtime_presentation_sprite_;

@@ -801,6 +801,14 @@ engine_result_t engine_media_play(engine_media_handle_t media) {
                     });
 }
 
+engine_result_t engine_media_set_volume(engine_media_handle_t media,
+                                        uint32_t percent) {
+  return RouteMedia(media, "legacy media player failed to set volume",
+                    [&](engine_media_handle_t legacy) {
+                      return engine_legacy_media_set_volume(legacy, percent);
+                    });
+}
+
 engine_result_t engine_media_pause(engine_media_handle_t media) {
   return RouteMedia(media, "legacy media player failed to pause media",
                     [](engine_media_handle_t legacy) {

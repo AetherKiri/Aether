@@ -18,6 +18,7 @@
 #define engine_media_open engine_legacy_media_open
 #define engine_media_destroy engine_legacy_media_destroy
 #define engine_media_play engine_legacy_media_play
+#define engine_media_set_volume engine_legacy_media_set_volume
 #define engine_media_pause engine_legacy_media_pause
 #define engine_media_seek engine_legacy_media_seek
 #define engine_media_set_rate engine_legacy_media_set_rate

@@ -312,6 +312,13 @@ renios_enabled() {
     esac
 }
 
+renios_link_enabled() {
+    case "${AETHERKIRI_RENPY_RENIOS_LINK:-OFF}" in
+        ON|TRUE|YES|1|on|true|yes) return 0 ;;
+        *) return 1 ;;
+    esac
+}
+
 renios_prototype_root() {
     [[ -n "$RENPY_MOBILE_ROOT" ]] || return 1
     local root="$RENPY_MOBILE_ROOT/renios/prototype"
@@ -552,7 +559,7 @@ combine_ios_static_extension() {
     # prototype's application entrypoint and test harness,
     # which must never be introduced into the Godot application.
     local renios_prebuilt=""
-    if renios_enabled; then
+    if renios_enabled && renios_link_enabled; then
         renios_prebuilt="$(renios_prebuilt_root 2>/dev/null || true)"
         if [[ -n "$renios_prebuilt" ]]; then
             local renios_archive
@@ -618,7 +625,7 @@ stage_force_load_plugin_archives() {
         # Renios supplies the iOS SDL archive in its merged native closure.
         # Do not copy/force-load the vcpkg SDL archive as well, otherwise the
         # final Xcode link sees duplicate SDL symbols.
-        if renios_enabled && [[ "$(basename "$source")" == "libSDL2.a" ]]; then
+        if renios_enabled && renios_link_enabled && [[ "$(basename "$source")" == "libSDL2.a" ]]; then
             continue
         fi
         resolved="$source"
@@ -753,7 +760,7 @@ patch_ios_export_project() {
     flags+=" -Wl,-force_load,Aether/bin/ios/$export_build_type/$IOS_SDK_COMPAT_ARCHIVE"
     local archive
     for archive in "${FORCE_LOAD_PLUGIN_ARCHIVES[@]}"; do
-        if renios_enabled && [[ "$archive" == "libSDL2.a" ]]; then
+        if renios_enabled && renios_link_enabled && [[ "$archive" == "libSDL2.a" ]]; then
             continue
         fi
         flags+=" -Wl,-force_load,Aether/bin/ios/$export_build_type/$archive"

@@ -2,6 +2,7 @@
 
 #include "engine_runtime_provider.h"
 #include "luca_ffi.h"
+#include "luca_audio_output.h"
 
 #include <algorithm>
 #include <cctype>
@@ -291,6 +292,7 @@ namespace aetherkiri::luca {
             if(instance == nullptr) {
                 return;
             }
+            audio::StopOutput();
             if(instance->ak != nullptr) {
                 luca_ak_destroy(instance->ak);
                 instance->ak = nullptr;
@@ -365,6 +367,14 @@ namespace aetherkiri::luca {
             instance->delivered_frame_serial = 0;
             instance->error.clear();
             LogHost(instance, ENGINE_RUNTIME_LOG_INFO, "luca game opened");
+            // Wire the mixer FIFO to an OpenAL streaming output; failure
+            // only downgrades to silence, the game itself stays usable.
+            audio::SetPaused(false);
+            std::string audio_error;
+            if(!audio::StartOutput(audio_error)) {
+                LogHost(instance, ENGINE_RUNTIME_LOG_WARNING,
+                        ("luca audio disabled: " + audio_error).c_str());
+            }
             return ENGINE_RESULT_OK;
         }
 
@@ -372,7 +382,10 @@ namespace aetherkiri::luca {
             auto *instance = Cast(runtime);
             if(instance == nullptr || !instance->opened) return ENGINE_RESULT_INVALID_STATE;
             const auto result = luca_ak_set_paused(instance->ak, 1);
-            if(result >= 0) instance->paused = true;
+            if(result >= 0) {
+                instance->paused = true;
+                audio::SetPaused(true);
+            }
             return OkOr(instance->error, result, instance->ak, "luca pause");
         }
 
@@ -380,7 +393,10 @@ namespace aetherkiri::luca {
             auto *instance = Cast(runtime);
             if(instance == nullptr || !instance->opened) return ENGINE_RESULT_INVALID_STATE;
             const auto result = luca_ak_set_paused(instance->ak, 0);
-            if(result >= 0) instance->paused = false;
+            if(result >= 0) {
+                instance->paused = false;
+                audio::SetPaused(false);
+            }
             return OkOr(instance->error, result, instance->ak, "luca resume");
         }
 

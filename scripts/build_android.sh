@@ -260,7 +260,7 @@ stage_renpy_android_support() {
         stage_args+=(--private-assets "$AETHERKIRI_RENPY_ANDROID_PRIVATE_ASSETS")
     fi
     echo "==> Staging official Ren'Py RAPT Android support into the Godot export"
-    "$PROJECT_ROOT/tools/stage_renpy_android_support.sh" "${stage_args[@]}"
+    bash "$PROJECT_ROOT/tools/stage_renpy_android_support.sh" "${stage_args[@]}"
 }
 
 stage_renpy_android_support

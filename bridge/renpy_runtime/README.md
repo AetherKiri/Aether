@@ -118,6 +118,13 @@ running Godot Activity to the engine JNI bridge; it does not launch RAPT or
 load its SDL loop. Set `AETHERKIRI_RENPY_ANDROID_PRIVATE_ASSETS` when a built
 Ren'Py game's private payload is available.
 
+The export also compiles two host-owned, non-Activity signature shims at
+`org.libsdl.app.SDLActivity` and `org.renpy.android.PythonSDLActivity`. They
+only bind the existing Activity and declare the callbacks that preflight
+checks; the complete RAPT Activity remains under `assets/renpy_mobile/rapt`.
+If a Godot template already owns either class, staging fails closed instead of
+overwriting a possible SDL singleton.
+
 The Android provider also has a compile-tested `BootstrapAdapter` boundary that
 accepts an opaque pointer to the existing host Activity through the host
 extension slot `reserved_ptr[1]` or the JNI shim. It never creates a second

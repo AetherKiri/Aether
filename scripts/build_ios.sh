@@ -312,15 +312,6 @@ renios_enabled() {
     esac
 }
 
-# Native Renios archive linking is opt-in until the complete in-process
-# lifecycle/render/input adapter and dependency closure are validated on device.
-renios_link_enabled() {
-    case "${AETHERKIRI_RENPY_RENIOS_LINK:-OFF}" in
-        ON|TRUE|YES|1|on|true|yes) return 0 ;;
-        *) return 1 ;;
-    esac
-}
-
 renios_prototype_root() {
     [[ -n "$RENPY_MOBILE_ROOT" ]] || return 1
     local root="$RENPY_MOBILE_ROOT/renios/prototype"
@@ -394,6 +385,12 @@ renios_archive_names() {
     collect_renios_archives "$prebuilt" | xargs -n1 basename | paste -sd, -
 }
 
+renios_launcher_probe() {
+    renios_enabled || return 0
+    "$PROJECT_ROOT/tools/test_renios_ios_launcher.sh" \
+        "$RENPY_MOBILE_ROOT" "$(renios_configuration)"
+}
+
 stage_renios_ios_resources() {
     local export_root="$1"
     if ! renios_enabled; then
@@ -465,6 +462,10 @@ stage_renios_ios_resources() {
 combine_ios_static_extension() {
     local output="$1"
     local triplet="$2"
+    # Verify that the staged closure still has the known blocking launcher
+    # contract before merging it into the host archive. This probe never
+    # invokes launcher_main and cannot turn the provider on by itself.
+    renios_launcher_probe
     local vcpkg_triplet_root="$CMAKE_BUILD_DIR/vcpkg_installed/$triplet"
     local vcpkg_lib_dir="$vcpkg_triplet_root/lib"
     local cubism_package_root="${AETHERKIRI_INTERNAL_DIR:-$PROJECT_ROOT/packages/AetherInternal}"
@@ -551,7 +552,7 @@ combine_ios_static_extension() {
     # prototype's application entrypoint and test harness,
     # which must never be introduced into the Godot application.
     local renios_prebuilt=""
-    if renios_link_enabled && renios_enabled; then
+    if renios_enabled; then
         renios_prebuilt="$(renios_prebuilt_root 2>/dev/null || true)"
         if [[ -n "$renios_prebuilt" ]]; then
             local renios_archive
@@ -617,7 +618,7 @@ stage_force_load_plugin_archives() {
         # Renios supplies the iOS SDL archive in its merged native closure.
         # Do not copy/force-load the vcpkg SDL archive as well, otherwise the
         # final Xcode link sees duplicate SDL symbols.
-        if renios_link_enabled && renios_enabled && [[ "$(basename "$source")" == "libSDL2.a" ]]; then
+        if renios_enabled && [[ "$(basename "$source")" == "libSDL2.a" ]]; then
             continue
         fi
         resolved="$source"

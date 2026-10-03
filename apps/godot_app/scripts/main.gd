@@ -10353,7 +10353,9 @@ func _backfill_game_metadata(games: Array[Dictionary]) -> bool:
                 if String(game.get("name", "")).is_empty():
                     game["name"] = title
                 changed = true
-        for key in ["titleCandidates", "metadataSignals", "launchFile"]:
+        if GameLaunchEntry.backfill(game, metadata):
+            changed = true
+        for key in ["titleCandidates", "metadataSignals"]:
             var value = metadata.get(key, null)
             if value != null and JSON.stringify(game.get(key, null)) != JSON.stringify(value):
                 game[key] = value

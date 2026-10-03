@@ -639,6 +639,7 @@ jobs:
         run: |
           set -euo pipefail
           grep -F 'renpy_runtime_mobile_provider.cpp' out/ios/debug/compile_commands.json
+          grep -F 'renpy_runtime_ios_adapter.cpp' out/ios/debug/compile_commands.json
 
       - name: Verify exported Xcode project and IPA
         run: |

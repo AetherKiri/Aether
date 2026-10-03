@@ -154,9 +154,11 @@ renpy_build_source_preflight() {
     # They are intentionally checked rather than downloaded implicitly: iOS
     # SDK tarballs are licensed inputs and must be supplied by the builder.
     local archive
-    local ndk_version=""
-    ndk_version="$(sed -n 's/.*c.var("ndk_version", "\([^"]*\)").*/\1/p' "$renpy_build/renpybuild/run.py" | head -1)"
-    [[ -n "$ndk_version" ]] || ndk_version="android-ndk-r29"
+    local ndk_version="android-ndk-r29"
+    if [[ -f "$renpy_build/renpybuild/run.py" ]]; then
+        ndk_version="$(sed -n 's/.*c.var("ndk_version", "\([^"]*\)").*/\1/p' "$renpy_build/renpybuild/run.py" | head -1)"
+        [[ -n "$ndk_version" ]] || ndk_version="android-ndk-r29"
+    fi
     for archive in \
         "$renpy_build/tars/${ndk_version}-linux.zip" \
         "$renpy_build/tars/iPhoneOS.sdk.tar.gz" \

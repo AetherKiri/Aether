@@ -26,12 +26,12 @@ fi
 
 mobile_root="${RENPY_MOBILE_TEST_ROOT:-}"
 if [[ -z "$mobile_root" ]]; then
-    "$launcher_probe"
+    bash "$launcher_probe"
     echo "Renios iOS bundle boundary validation ok (archive inspection not requested)"
     exit 0
 fi
 
-"$launcher_probe" "$mobile_root" "${RENPY_MOBILE_TEST_CONFIG:-release}"
+bash "$launcher_probe" "$mobile_root" "${RENPY_MOBILE_TEST_CONFIG:-release}"
 
 prototype="$mobile_root/renios/prototype"
 prebuilt="$prototype/prebuilt/${RENPY_MOBILE_TEST_CONFIG:-release}"

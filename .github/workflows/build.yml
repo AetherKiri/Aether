@@ -152,11 +152,11 @@ jobs:
         run: |
           set -euo pipefail
           mobile_root="${RUNNER_TEMP}/aetherkiri-renpy-mobile/android"
-          tools/install_renpy_mobile_support.sh \
+          bash tools/install_renpy_mobile_support.sh \
             --platform android \
             --destination "$mobile_root"
           test -f "$mobile_root/rapt/prototype/renpyandroid/src/main/jniLibs/arm64-v8a/librenpython.so"
-          RENPY_MOBILE_STAGE_TEST_ROOT="$mobile_root" tools/test_stage_renpy_android_support.sh
+          RENPY_MOBILE_STAGE_TEST_ROOT="$mobile_root" bash tools/test_stage_renpy_android_support.sh
           echo "RENPY_MOBILE_ROOT=$mobile_root" >> "$GITHUB_ENV"
 
       - name: Restore ccache
@@ -486,7 +486,7 @@ jobs:
         run: |
           set -euo pipefail
           mobile_root="${RUNNER_TEMP}/aetherkiri-renpy-mobile/ios"
-          tools/install_renpy_mobile_support.sh \
+          bash tools/install_renpy_mobile_support.sh \
             --platform ios \
             --destination "$mobile_root"
           test -f "$mobile_root/renios/prototype/prebuilt/release/librenpython.a"

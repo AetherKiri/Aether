@@ -6,8 +6,11 @@ set -euo pipefail
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 build_script="$repo_root/scripts/build_ios.sh"
+launcher_probe="$repo_root/tools/test_renios_ios_launcher.sh"
 [[ -x "$build_script" ]] || { echo "iOS build script is not executable" >&2; exit 1; }
+[[ -x "$launcher_probe" ]] || { echo "Renios launcher probe is not executable" >&2; exit 1; }
 bash -n "$build_script"
+bash -n "$launcher_probe"
 
 grep -Fq 'AETHERKIRI_RENPY_MOBILE_ROOT' "$build_script"
 grep -Fq 'collect_renios_archives' "$build_script"
@@ -23,9 +26,12 @@ fi
 
 mobile_root="${RENPY_MOBILE_TEST_ROOT:-}"
 if [[ -z "$mobile_root" ]]; then
+    "$launcher_probe"
     echo "Renios iOS bundle boundary validation ok (archive inspection not requested)"
     exit 0
 fi
+
+"$launcher_probe" "$mobile_root" "${RENPY_MOBILE_TEST_CONFIG:-release}"
 
 prototype="$mobile_root/renios/prototype"
 prebuilt="$prototype/prebuilt/${RENPY_MOBILE_TEST_CONFIG:-release}"

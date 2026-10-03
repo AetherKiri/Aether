@@ -396,6 +396,8 @@ const UI_TEXT := {
         "detail.default_launch_entry": "游戏目录（自动检测）",
         "detail.set_launch_file": "切换启动文件",
         "detail.reset_launch_file": "恢复目录自动检测",
+        "detail.rfvp_encoding": "RFVP 文本编码",
+        "detail.rfvp_encoding_value": "文本编码：%s",
         "detail.set_cover": "设置封面",
         "detail.delete_cover": "删除封面",
         "detail.clear_cover": "清除封面",
@@ -694,6 +696,8 @@ const UI_TEXT := {
         "detail.default_launch_entry": "遊戲目錄（自動偵測）",
         "detail.set_launch_file": "切換啟動檔案",
         "detail.reset_launch_file": "恢復目錄自動偵測",
+        "detail.rfvp_encoding": "RFVP 文字編碼",
+        "detail.rfvp_encoding_value": "文字編碼：%s",
         "detail.set_cover": "設定封面",
         "detail.rename": "重新命名",
         "detail.remove": "移除視覺小說",
@@ -1032,6 +1036,8 @@ You can find it any time under Settings → QQ Group.",
         "detail.default_launch_entry": "Game folder (auto-detect)",
         "detail.set_launch_file": "Change Launch File",
         "detail.reset_launch_file": "Restore Folder Auto-detect",
+        "detail.rfvp_encoding": "RFVP Text Encoding",
+        "detail.rfvp_encoding_value": "Text encoding: %s",
         "detail.set_cover": "Set Cover",
         "detail.delete_cover": "Delete Cover",
         "detail.clear_cover": "Clear Cover",
@@ -1330,6 +1336,8 @@ You can find it any time under Settings → QQ Group.",
         "detail.default_launch_entry": "ゲームフォルダー（自動検出）",
         "detail.set_launch_file": "起動ファイルを変更",
         "detail.reset_launch_file": "フォルダーの自動検出に戻す",
+        "detail.rfvp_encoding": "RFVP 文字エンコーディング",
+        "detail.rfvp_encoding_value": "文字エンコーディング：%s",
         "detail.set_cover": "カバーを設定",
         "detail.rename": "名前を変更",
         "detail.remove": "ビジュアルノベルを削除",
@@ -1626,6 +1634,8 @@ You can find it any time under Settings → QQ Group.",
         "detail.default_launch_entry": "게임 폴더(자동 감지)",
         "detail.set_launch_file": "실행 파일 변경",
         "detail.reset_launch_file": "폴더 자동 감지 복원",
+        "detail.rfvp_encoding": "RFVP 텍스트 인코딩",
+        "detail.rfvp_encoding_value": "텍스트 인코딩: %s",
         "detail.set_cover": "표지 설정",
         "detail.rename": "이름 변경",
         "detail.remove": "비주얼 노벨 제거",
@@ -8164,6 +8174,10 @@ func _detail_tools(game: Dictionary) -> FlowContainer:
             var reset_launch := _icon_action_button(ICON_REFRESH, _t("detail.reset_launch_file"), func(): _reset_launch_file_for_selected())
             _reveal_icon_action_label_on_hover(reset_launch, _t("detail.reset_launch_file"))
             tools.add_child(reset_launch)
+    if _game_runtime_kind(String(game.get("path", ""))) == "rfvp":
+        var set_encoding := _icon_action_button(ICON_SETTINGS, _t("detail.rfvp_encoding"), func(): _show_rfvp_encoding_dialog())
+        _reveal_icon_action_label_on_hover(set_encoding, _t("detail.rfvp_encoding"))
+        tools.add_child(set_encoding)
     var rename := _icon_action_button(ICON_RENAME, _t("detail.rename"), func(): _rename_selected_game())
     _reveal_icon_action_label_on_hover(rename, _t("detail.rename"))
     tools.add_child(rename)
@@ -8191,6 +8205,9 @@ func _detail_information_panel(game: Dictionary) -> PanelContainer:
     info.add_child(_detail_line(ICON_LIBRARY, _game_type_label(String(game.get("type", "Directory")))))
     info.add_child(_detail_separator())
     info.add_child(_detail_line(ICON_PLAY, _t("detail.launch_entry", [_game_launch_entry_label(game)])))
+    if _game_runtime_kind(String(game.get("path", ""))) == "rfvp":
+        info.add_child(_detail_separator())
+        info.add_child(_detail_line(ICON_SETTINGS, _t("detail.rfvp_encoding_value", [GameLaunchEntry.rfvp_encoding(game).to_upper()])))
     return info_panel
 
 func _detail_remove_button(game: Dictionary) -> Button:
@@ -9051,6 +9068,29 @@ func _reset_launch_file_for_selected() -> void:
         return
     _update_game(library_path, {GameLaunchEntry.FIELD: ""})
     _show_detail(selected_game)
+
+func _show_rfvp_encoding_dialog() -> void:
+    var library_path := String(selected_game.get("path", ""))
+    if library_path.is_empty():
+        return
+    var dialog := _modal_dialog(Vector2(520, 380))
+    var box := _modal_stack(dialog, _t("detail.rfvp_encoding"), ICON_SETTINGS)
+    box.add_child(_dialog_body_label(_t("detail.rfvp_encoding_value", [GameLaunchEntry.rfvp_encoding(selected_game).to_upper()])))
+    for choice in [["sjis", "Shift-JIS"], ["gbk", "GBK"], ["utf8", "UTF-8"]]:
+        var button := _secondary_dialog_button(choice[1])
+        button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+        button.pressed.connect(_set_rfvp_encoding_for_selected.bind(library_path, choice[0]))
+        box.add_child(button)
+    var cancel := _secondary_dialog_button(_t("dialog.cancel"))
+    cancel.size_flags_horizontal = Control.SIZE_SHRINK_END
+    cancel.pressed.connect(func(): _dismiss_modal())
+    box.add_child(cancel)
+
+func _set_rfvp_encoding_for_selected(library_path: String, encoding: String) -> void:
+    _dismiss_modal(func():
+        _update_game(library_path, {GameLaunchEntry.RFVP_ENCODING_FIELD: encoding})
+        _show_detail(selected_game)
+    )
 
 func _rename_selected_game() -> void:
     var path := String(selected_game.get("path", ""))
@@ -11006,6 +11046,14 @@ func _start_selected_game_after_entitlements() -> void:
     active_runtime_kind = _game_runtime_kind(library_path)
     if not _switch_runtime_player(active_runtime_kind):
         return
+    if active_runtime_kind == "rfvp":
+        var rfvp_encoding := GameLaunchEntry.rfvp_encoding(
+            selected_game, OS.get_environment("AETHERKIRI_RFVP_ENCODING")
+        )
+        var option_result := int(player.set_engine_option("rfvp_encoding", rfvp_encoding))
+        if option_result != ENGINE_RESULT_OK:
+            _show_system_alert(String(player.get_last_error()), _t("alert.error_title"))
+            return
     var launch_uses_directory := GameLaunchEntry.runtime_uses_directory(
         active_runtime_kind
     )
@@ -14655,12 +14703,11 @@ func _game_input_content_size() -> Vector2:
     return Vector2(maxi(1, last_texture_size.x), maxi(1, last_texture_size.y))
 
 func _game_input_surface_size() -> Vector2:
-    # These providers consume coordinates in their published content space.
-    if active_runtime_kind in [RUNTIME_ONSCRIPTER, RUNTIME_MINORI, RUNTIME_SIGLUS]:
-        return _game_input_content_size()
-    if current_surface_size.x > 0 and current_surface_size.y > 0:
-        return Vector2(current_surface_size)
-    return _game_input_content_size()
+    return GameInputMapping.input_surface_size(
+        active_runtime_kind,
+        _game_input_content_size(),
+        Vector2(current_surface_size)
+    )
 
 func _update_frame() -> void:
     if present_hold_frames > 0:

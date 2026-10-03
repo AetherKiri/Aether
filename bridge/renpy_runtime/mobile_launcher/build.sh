@@ -15,6 +15,8 @@ usage() {
 Usage:
   build.sh --check --renpy-build PATH
   build.sh --compile-contract --renpy-build PATH [--output-dir PATH]
+  build.sh --check-python-patch --renpy-src PATH
+  build.sh --apply-python-patch --renpy-src PATH
   build.sh --print-plan --renpy-build PATH
   build.sh --install --renpy-build PATH --stage PATH \
       [--android-so-arm64 PATH] [--android-so-armv7 PATH]
@@ -24,6 +26,10 @@ Usage:
 launcher is still the blocking SDL_main/launcher_main implementation.
 --compile-contract compiles the Android/iOS templates as contract-only objects;
 those objects deliberately return NOT_IMPLEMENTED and are never packaged.
+--check-python-patch validates the Ren'Py Python cooperative-loop patch against
+an official Ren'Py source checkout. --apply-python-patch applies it in place
+only after `git apply --check`; it refuses a dirty checkout. The patch is an
+opt-in skeleton and does not make the runtime playable by itself.
 --print-plan prints the upstream renpy-build commands and replacement paths.
 --install copies caller-supplied, already-built lifecycle artifacts into the
 staged RAPT/Renios tree after checking the required exported symbol names.
@@ -35,6 +41,7 @@ USAGE
 
 mode=""
 renpy_build=""
+renpy_src=""
 stage=""
 android_so_arm64=""
 android_so_armv7=""
@@ -45,13 +52,17 @@ output_dir=""
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
-        --check|--compile-contract|--print-plan|--install)
+        --check|--compile-contract|--check-python-patch|--apply-python-patch|--print-plan|--install)
             [[ -z "$mode" ]] || { echo "choose one mode" >&2; exit 2; }
             mode="${1#--}"
             ;;
         --renpy-build)
             [[ $# -ge 2 ]] || { echo "--renpy-build requires a path" >&2; exit 2; }
             renpy_build="$2"; shift
+            ;;
+        --renpy-src)
+            [[ $# -ge 2 ]] || { echo "--renpy-src requires a path" >&2; exit 2; }
+            renpy_src="$2"; shift
             ;;
         --stage)
             [[ $# -ge 2 ]] || { echo "--stage requires a path" >&2; exit 2; }
@@ -92,8 +103,35 @@ while [[ $# -gt 0 ]]; do
 done
 
 [[ -n "$mode" ]] || { usage >&2; exit 2; }
-[[ -n "$renpy_build" ]] || { echo "--renpy-build is required" >&2; exit 2; }
 [[ -f "$contract_header" ]] || { echo "missing lifecycle contract: $contract_header" >&2; exit 1; }
+
+python_patch="$repo_root/bridge/renpy_runtime/mobile_launcher/patches/python/0001-cooperative-loop-skeleton.patch"
+if [[ "$mode" == "check-python-patch" || "$mode" == "apply-python-patch" ]]; then
+    [[ -n "$renpy_src" ]] || { echo "--renpy-src is required" >&2; exit 2; }
+    [[ -d "$renpy_src" ]] || { echo "Ren'Py source checkout not found: $renpy_src" >&2; exit 1; }
+    [[ -f "$python_patch" ]] || { echo "missing cooperative-loop patch: $python_patch" >&2; exit 1; }
+    git -C "$renpy_src" rev-parse --is-inside-work-tree >/dev/null 2>&1 || {
+        echo "--renpy-src must be a git checkout" >&2; exit 1;
+    }
+    git -C "$renpy_src" apply --check "$python_patch"
+    if [[ "$mode" == "check-python-patch" ]]; then
+        echo "Ren'Py Python cooperative-loop patch applies cleanly"
+        echo "  skeleton only: Python/SDL lifecycle integration remains required"
+        exit 0
+    fi
+    if [[ -n "$(git -C "$renpy_src" status --porcelain --untracked-files=no)" ]]; then
+        echo "refusing to apply cooperative-loop patch to a dirty Ren'Py checkout" >&2
+        exit 1
+    fi
+    git -C "$renpy_src" apply "$python_patch"
+    python3 -m py_compile "$renpy_src/renpy/main.py" \
+        "$renpy_src/renpy/execution.py" "$renpy_src/renpy/display/core.py"
+    echo "applied and syntax-checked Ren'Py Python cooperative-loop skeleton"
+    echo "  this does not make the mobile runtime playable"
+    exit 0
+fi
+
+[[ -n "$renpy_build" ]] || { echo "--renpy-build is required" >&2; exit 2; }
 [[ -d "$renpy_build" ]] || { echo "renpy-build directory not found: $renpy_build" >&2; exit 1; }
 
 runtime="$renpy_build/runtime"

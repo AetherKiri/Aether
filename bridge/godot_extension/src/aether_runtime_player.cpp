@@ -37,6 +37,7 @@ extern "C" void AetherNeXASRegisterRuntime(void);
 #include <godot_cpp/classes/audio_stream_ogg_vorbis.hpp>
 #include <godot_cpp/classes/audio_stream_player.hpp>
 #include <godot_cpp/classes/confirmation_dialog.hpp>
+#include <godot_cpp/classes/display_server.hpp>
 #include <godot_cpp/classes/engine.hpp>
 #include <godot_cpp/classes/font.hpp>
 #include <godot_cpp/classes/image.hpp>
@@ -11597,6 +11598,13 @@ private:
                     }
                     input->set_mouse_mode(value == "visible=1" ?
                         Input::MOUSE_MODE_VISIBLE : Input::MOUSE_MODE_HIDDEN);
+                }
+            } else if (name == "window_mode" &&
+                       (value == "fullscreen" || value == "windowed")) {
+                if (DisplayServer* display = DisplayServer::get_singleton()) {
+                    display->window_set_mode(value == "fullscreen" ?
+                        DisplayServer::WINDOW_MODE_FULLSCREEN :
+                        DisplayServer::WINDOW_MODE_WINDOWED);
                 }
             } else if (name == "joy_vibration" && value == "stop=all") {
                 if (Input* input = Input::get_singleton()) {

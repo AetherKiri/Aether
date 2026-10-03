@@ -809,7 +809,7 @@ jobs:
         run: tools/test_renios_ios_bundle.sh
 
       - name: Validate Ren'Py mobile native source-build plan
-        run: tools/test_renpy_mobile_source_build_plan.sh
+        run: bash tools/test_renpy_mobile_source_build_plan.sh
 
       - name: Install pinned Ren'Py SDK
         run: |

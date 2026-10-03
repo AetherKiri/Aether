@@ -90,7 +90,7 @@ FORCE_LOAD_PLUGIN_SOURCES=(
 PRIVATE_RUNTIME_ARCHIVE_LISTER="$PROJECT_ROOT/packages/AetherInternal/tools/list_ios_runtime_archives.sh"
 if [[ -x "$PRIVATE_RUNTIME_ARCHIVE_LISTER" ]]; then
     private_runtime_target="device"
-    if [[ "$SIMULATOR" == true ]]; then
+    if [[ "${SIMULATOR:-false}" == true ]]; then
         private_runtime_target="simulator-$SIMULATOR_ARCH"
     fi
     while IFS=$'\t' read -r archive source; do
@@ -320,11 +320,23 @@ renios_prototype_root() {
     printf '%s\n' "$root"
 }
 
+renios_configuration() {
+    if [[ "${SIMULATOR:-false}" == true ]]; then
+        printf 'debug\n'
+    else
+        printf '%s\n' "$BUILD_TYPE_LOWER"
+    fi
+}
+
 renios_prebuilt_root() {
     local prototype
     prototype="$(renios_prototype_root 2>/dev/null || true)"
     [[ -n "$prototype" ]] || return 1
-    local configuration="$BUILD_TYPE_LOWER"
+    # Renios release archives are device arm64 only.  The debug archive is a
+    # universal simulator/device slice, so use it for every simulator export
+    # even when the surrounding Godot export is a release configuration.
+    local configuration
+    configuration="$(renios_configuration)"
     local prebuilt="$prototype/prebuilt/$configuration"
     if [[ ! -d "$prebuilt" ]]; then
         echo "Error: Renios prebuilt directory is missing: $prebuilt" >&2
@@ -425,7 +437,7 @@ stage_renios_ios_resources() {
     fi
     {
         printf 'Renios archive: %s\n' "$RENPY_MOBILE_ROOT"
-        printf 'Configuration: %s\n' "$BUILD_TYPE_LOWER"
+        printf 'Configuration: %s\n' "$(renios_configuration)"
         printf 'Static closure: %s\n' "$(renios_archive_names "$prebuilt")"
         if [[ -d "$resource_root/base" ]]; then
             printf 'Base resources: bundled\n'

@@ -57,6 +57,7 @@ if command -v nm >/dev/null 2>&1; then
             | awk '{ print $3 }' | grep -Fx "$symbol" >/dev/null
     done
 fi
+grep -Fq 'Java_org_libsdl_app_SDLActivity_*' "$repo_root/cmake/engine_api_elf.map"
 [[ -s "$main/java/org/github/krkr2/aetherkiri/RenPyMobileBridge.java" ]]
 [[ -s "$main/java/org/libsdl/app/SDLActivity.java" ]]
 [[ -s "$main/java/org/renpy/android/PythonSDLActivity.java" ]]
@@ -65,7 +66,7 @@ grep -Fq 'renpy-python-host-shim-v1' "$main/java/org/renpy/android/PythonSDLActi
 for callback in \
     nativeSetupJNI nativeRunMain nativeSetScreenResolution onNativeResize \
     onNativeKeyDown onNativeKeyUp onNativeTouch nativePause nativeResume \
-    nativeQuit; do
+    nativeQuit getNativeSurface getContext; do
     grep -Fq "$callback" "$main/java/org/libsdl/app/SDLActivity.java"
 done
 grep -Fq 'nativeSetEnv' "$main/java/org/renpy/android/PythonSDLActivity.java"

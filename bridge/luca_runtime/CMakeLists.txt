@@ -22,8 +22,26 @@ if(NOT luca_runtime_rs_FOUND)
     return()
 endif()
 
+find_package(OpenAL CONFIG REQUIRED)
+
+if(APPLE)
+    # vcpkg's static OpenAL target exports clang-driver flags. They are either
+    # redundant (-pthread) or rejected when CMake uses swiftc as the final link
+    # driver for the mixed Swift/C++ Godot extension. BuildLucaRs.cmake lists
+    # the required Apple frameworks as normal CMake link items instead.
+    get_target_property(AETHERKIRI_OPENAL_LINK_LIBRARIES
+        OpenAL::OpenAL INTERFACE_LINK_LIBRARIES)
+    if(AETHERKIRI_OPENAL_LINK_LIBRARIES)
+        list(FILTER AETHERKIRI_OPENAL_LINK_LIBRARIES
+            EXCLUDE REGEX "pthread|^-Wl,-framework")
+        set_property(TARGET OpenAL::OpenAL PROPERTY
+            INTERFACE_LINK_LIBRARIES "${AETHERKIRI_OPENAL_LINK_LIBRARIES}")
+    endif()
+endif()
+
 add_library(aether_luca_runtime STATIC
     src/luca_runtime_provider.cpp
+    src/luca_audio_output.cpp
 )
 
 target_compile_features(aether_luca_runtime PUBLIC cxx_std_17)
@@ -42,4 +60,5 @@ target_include_directories(aether_luca_runtime PUBLIC
 # builds in test-only configurations without the engine_api target.
 target_link_libraries(aether_luca_runtime PUBLIC
     luca_runtime_rs
+    OpenAL::OpenAL
 )

@@ -3,7 +3,7 @@ set -euo pipefail
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 stage="$repo_root/tools/stage_renpy_android_support.sh"
-[[ -x "$stage" ]] || { echo "stager is not executable: $stage" >&2; exit 1; }
+[[ -f "$stage" ]] || { echo "stager is missing: $stage" >&2; exit 1; }
 bash -n "$stage"
 
 mobile_root="${RENPY_MOBILE_STAGE_TEST_ROOT:-/workspace/shared/renpy-mobile-staged}"

@@ -13,7 +13,8 @@ if [[ ! -f "$mobile_root/rapt/prototype/renpyandroid/src/main/jniLibs/arm64-v8a/
 fi
 
 tmp_root="$(mktemp -d "${TMPDIR:-/tmp}/aetherkiri-renpy-android-stage.XXXXXX")"
-trap 'rm -rf "$tmp_root"' EXIT
+conflict_root="$(mktemp -d "${TMPDIR:-/tmp}/aetherkiri-renpy-android-conflict.XXXXXX")"
+trap 'rm -rf "$tmp_root" "$conflict_root"' EXIT
 mkdir -p "$tmp_root/android-build/src/main" "$tmp_root/private"
 printf 'private fixture\n' > "$tmp_root/private/private.mp3"
 
@@ -57,11 +58,33 @@ if command -v nm >/dev/null 2>&1; then
     done
 fi
 [[ -s "$main/java/org/github/krkr2/aetherkiri/RenPyMobileBridge.java" ]]
+[[ -s "$main/java/org/libsdl/app/SDLActivity.java" ]]
+[[ -s "$main/java/org/renpy/android/PythonSDLActivity.java" ]]
+grep -Fq 'renpy-sdl-host-shim-v1' "$main/java/org/libsdl/app/SDLActivity.java"
+grep -Fq 'renpy-python-host-shim-v1' "$main/java/org/renpy/android/PythonSDLActivity.java"
 grep -Fx 'playable=false' "$main/assets/renpy_mobile/manifest.properties"
 grep -Fx 'manifest_merged=false' "$main/assets/renpy_mobile/manifest.properties"
+grep -Fx 'java_host_shims=org/libsdl/app/SDLActivity.java,org/renpy/android/PythonSDLActivity.java' \
+    "$main/assets/renpy_mobile/manifest.properties"
 # The RAPT manifest is an asset only; no second Activity is added to the host
 # source tree.
 [[ ! -f "$main/AndroidManifest.xml" ]]
-! find "$main/java" -path '*/org/renpy/android/PythonSDLActivity.java' -print -quit | grep -q .
+# The official PythonSDLActivity remains assets-only; the compiled source is
+# the explicit host shim above.
+grep -Fq 'Host-side signature shim' "$main/java/org/renpy/android/PythonSDLActivity.java"
+grep -Fq 'PythonSDLActivity' "$main/assets/renpy_mobile/rapt/java/org/renpy/android/PythonSDLActivity.java"
+
+# A Godot template that already owns either SDL class must fail closed rather
+# than silently replacing its singleton with the RAPT shim.
+mkdir -p "$conflict_root/android-build/src/main/java/org/libsdl/app"
+printf 'package org.libsdl.app; public final class SDLActivity {}\n' \
+    > "$conflict_root/android-build/src/main/java/org/libsdl/app/SDLActivity.java"
+if "$stage" --mobile-root "$mobile_root" \
+        --godot-build "$conflict_root/android-build" \
+        >"$conflict_root/stdout" 2>"$conflict_root/stderr"; then
+    echo "stager overwrote an unrelated SDLActivity shim" >&2
+    exit 1
+fi
+grep -Fq 'Refusing to overwrite unrelated Android Java class' "$conflict_root/stderr"
 
 echo "Ren'Py Android staging/package smoke ok"

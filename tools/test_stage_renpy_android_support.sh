@@ -43,6 +43,14 @@ if command -v nm >/dev/null 2>&1; then
         Java_org_libsdl_app_SDLActivity_onNativeSurfaceCreated \
         Java_org_libsdl_app_SDLActivity_onNativeSurfaceChanged \
         Java_org_libsdl_app_SDLActivity_onNativeSurfaceDestroyed \
+        Java_org_libsdl_app_SDLActivity_nativeSetScreenResolution \
+        Java_org_libsdl_app_SDLActivity_onNativeResize \
+        Java_org_libsdl_app_SDLActivity_onNativeKeyDown \
+        Java_org_libsdl_app_SDLActivity_onNativeKeyUp \
+        Java_org_libsdl_app_SDLActivity_onNativeTouch \
+        Java_org_libsdl_app_SDLActivity_nativePause \
+        Java_org_libsdl_app_SDLActivity_nativeResume \
+        Java_org_libsdl_app_SDLActivity_nativeQuit \
         Java_org_renpy_android_PythonSDLActivity_nativeSetEnv; do
         nm -D --defined-only "$main/jniLibs/arm64-v8a/librenpython.so" \
             | awk '{ print $3 }' | grep -Fx "$symbol" >/dev/null

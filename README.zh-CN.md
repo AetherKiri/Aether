@@ -150,8 +150,9 @@ git config --global url."https://github.com/".insteadOf git@github.com:
   ```
 
   `build.sh` 检测到检出后自动启用；设置
-  `AETHERKIRI_ENABLE_SOFTPAL_RUNTIME=OFF` 可验证禁用后的构建。可信 CI 会
-  检出固定提交并编译 provider；fork 与 Dependabot 构建保持禁用。
+  `AETHERKIRI_ENABLE_SOFTPAL_RUNTIME=OFF` 可验证禁用后的构建。可信 CI 使用
+  只读 `AETHER_SOFTPAL_DEPLOY_KEY` 密钥检出固定提交并编译 provider；fork 与
+  Dependabot 构建保持禁用。
 
 - **Runtime 检出覆盖**——每个 submodule 都接受本地检出路径，便于引擎侧热
   迭代而无需提交 gitlink：`AETHERKIRI_KRKR_DIR`、

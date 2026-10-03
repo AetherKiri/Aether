@@ -84,9 +84,15 @@ jobs:
       - name: Checkout Repository
         uses: actions/checkout@v6
         with:
-          submodules: ${{ env.AETHERKIRI_WITH_INTERNAL == 'true' && 'recursive' || 'false' }}
-          ssh-key: ${{ env.AETHERKIRI_WITH_INTERNAL == 'true' && secrets.AETHERSECRET || '' }}
+          submodules: false
           persist-credentials: false
+
+      - name: Initialize private runtime submodules
+        if: env.AETHERKIRI_WITH_INTERNAL == 'true'
+        env:
+          AETHER_INTERNAL_DEPLOY_KEY: ${{ secrets.AETHERSECRET }}
+          AETHER_SOFTPAL_DEPLOY_KEY: ${{ secrets.AETHER_SOFTPAL_DEPLOY_KEY }}
+        run: .github/scripts/initialize-private-runtime-submodules.sh
 
       - name: Set up Rust for Minori
         uses: dtolnay/rust-toolchain@stable
@@ -374,9 +380,15 @@ jobs:
       - name: Checkout Repository
         uses: actions/checkout@v6
         with:
-          submodules: ${{ env.AETHERKIRI_WITH_INTERNAL == 'true' && 'recursive' || 'false' }}
-          ssh-key: ${{ env.AETHERKIRI_WITH_INTERNAL == 'true' && secrets.AETHERSECRET || '' }}
+          submodules: false
           persist-credentials: false
+
+      - name: Initialize private runtime submodules
+        if: env.AETHERKIRI_WITH_INTERNAL == 'true'
+        env:
+          AETHER_INTERNAL_DEPLOY_KEY: ${{ secrets.AETHERSECRET }}
+          AETHER_SOFTPAL_DEPLOY_KEY: ${{ secrets.AETHER_SOFTPAL_DEPLOY_KEY }}
+        run: .github/scripts/initialize-private-runtime-submodules.sh
 
       - name: Set up Rust for Minori
         uses: dtolnay/rust-toolchain@stable
@@ -684,9 +696,15 @@ jobs:
       - name: Checkout Repository
         uses: actions/checkout@v6
         with:
-          submodules: ${{ env.AETHERKIRI_WITH_INTERNAL == 'true' && 'recursive' || 'false' }}
-          ssh-key: ${{ env.AETHERKIRI_WITH_INTERNAL == 'true' && secrets.AETHERSECRET || '' }}
+          submodules: false
           persist-credentials: false
+
+      - name: Initialize private runtime submodules
+        if: env.AETHERKIRI_WITH_INTERNAL == 'true'
+        env:
+          AETHER_INTERNAL_DEPLOY_KEY: ${{ secrets.AETHERSECRET }}
+          AETHER_SOFTPAL_DEPLOY_KEY: ${{ secrets.AETHER_SOFTPAL_DEPLOY_KEY }}
+        run: .github/scripts/initialize-private-runtime-submodules.sh
 
       - name: Set up Rust for Minori
         uses: dtolnay/rust-toolchain@stable

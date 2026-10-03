@@ -164,7 +164,8 @@ executable.
 
   `build.sh` enables it when checked out; an explicit
   `AETHERKIRI_ENABLE_SOFTPAL_RUNTIME=OFF` tests the build without it. Trusted
-  CI checks out the pinned commit and builds the provider, while fork and
+  CI checks out the pinned commit with the read-only
+  `AETHER_SOFTPAL_DEPLOY_KEY` secret and builds the provider, while fork and
   Dependabot builds leave it disabled.
 
 - **Runtime checkout overrides** — each submodule accepts a local checkout

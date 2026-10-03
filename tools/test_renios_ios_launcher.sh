@@ -27,7 +27,19 @@ done
 
 has_symbol() {
     local archive="$1" symbol="$2"
-    strings "$archive" | grep -Fqx "$symbol"
+    # Apple's strings only scans initialized data by default.  In the Renios
+    # Mach-O archive that includes the archive symbol index (so
+    # _launcher_main is found) but can skip the undefined _Py_RunMain entry in
+    # the member object.  Prefer the symbol table, and retain a full-file
+    # strings fallback for portable fixture archives and hosts without nm.
+    if command -v nm >/dev/null 2>&1; then
+        local symbols
+        if symbols="$(nm "$archive" 2>/dev/null)"; then
+            awk -v wanted="$symbol" '$NF == wanted { found = 1 } END { exit !found }' <<<"$symbols"
+            return $?
+        fi
+    fi
+    strings -a "$archive" | grep -Fqx "$symbol"
 }
 
 # librenpython.a exports the launcher, but its relocation set calls

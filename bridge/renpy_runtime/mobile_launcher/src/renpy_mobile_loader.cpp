@@ -2,22 +2,8 @@
 
 #include <cstring>
 
-#if defined(__ANDROID__)
+#if defined(__ANDROID__) || defined(__APPLE__)
 #include <dlfcn.h>
-#elif defined(__APPLE__)
-/* The optional lifecycle fork is linked as a static Renios archive. Weak
- * imports keep the normal staged/official archive linkable until that fork is
- * supplied. */
-extern "C" {
-int renpy_mobile_init(const renpy_mobile_config_t*,
-                      const renpy_mobile_host_t*) __attribute__((weak_import));
-int renpy_mobile_tick(uint32_t) __attribute__((weak_import));
-int renpy_mobile_frame(renpy_mobile_frame_t*) __attribute__((weak_import));
-int renpy_mobile_input(const renpy_mobile_input_t*) __attribute__((weak_import));
-int renpy_mobile_pause(void) __attribute__((weak_import));
-int renpy_mobile_resume(void) __attribute__((weak_import));
-void renpy_mobile_shutdown(void) __attribute__((weak_import));
-}
 #endif
 
 namespace aetherkiri::renpy::mobile {
@@ -25,7 +11,7 @@ namespace {
 
 constexpr int kOk = RENPY_MOBILE_OK;
 
-#if defined(__ANDROID__)
+#if defined(__ANDROID__) || defined(__APPLE__)
 template <typename Function>
 Function ResolveSymbol(void* handle, const char* name) {
   return reinterpret_cast<Function>(dlsym(handle, name));
@@ -66,13 +52,16 @@ bool Launcher::Resolve() {
   resume_ = ResolveSymbol<ResumeFn>(library_handle_, "renpy_mobile_resume");
   shutdown_ = ResolveSymbol<ShutdownFn>(library_handle_, "renpy_mobile_shutdown");
 #elif defined(__APPLE__)
-  init_ = renpy_mobile_init;
-  tick_ = renpy_mobile_tick;
-  frame_ = renpy_mobile_frame;
-  input_ = renpy_mobile_input;
-  pause_ = renpy_mobile_pause;
-  resume_ = renpy_mobile_resume;
-  shutdown_ = renpy_mobile_shutdown;
+  // Resolve against the host image instead of emitting strong references to
+  // optional symbols. This keeps the normal official Renios archive linkable
+  // while allowing a rebuilt lifecycle archive to export the same ABI.
+  init_ = ResolveSymbol<InitFn>(RTLD_DEFAULT, "renpy_mobile_init");
+  tick_ = ResolveSymbol<TickFn>(RTLD_DEFAULT, "renpy_mobile_tick");
+  frame_ = ResolveSymbol<FrameFn>(RTLD_DEFAULT, "renpy_mobile_frame");
+  input_ = ResolveSymbol<InputFn>(RTLD_DEFAULT, "renpy_mobile_input");
+  pause_ = ResolveSymbol<PauseFn>(RTLD_DEFAULT, "renpy_mobile_pause");
+  resume_ = ResolveSymbol<ResumeFn>(RTLD_DEFAULT, "renpy_mobile_resume");
+  shutdown_ = ResolveSymbol<ShutdownFn>(RTLD_DEFAULT, "renpy_mobile_shutdown");
 #else
   last_error_ = "host lifecycle launcher unavailable on this platform";
 #endif

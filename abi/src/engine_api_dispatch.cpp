@@ -478,8 +478,10 @@ engine_result_t HostMediaOpen(void* user_data, const char* path,
   }
   *out_media = nullptr;
   std::lock_guard<std::recursive_mutex> guard(handle->mutex);
+  const auto ready = EnsureLegacyLocked(handle);
+  if (ready != ENGINE_RESULT_OK) return ready;
   engine_media_handle_t media = nullptr;
-  const auto result = engine_legacy_media_open(handle->legacy, path, &media);
+  const auto result = LegacyServices()->media_open(handle->legacy, path, &media);
   SetLegacyError(handle, result, "runtime media host failed to open media");
   if (result != ENGINE_RESULT_OK) return result;
   if (media == nullptr) {
@@ -498,7 +500,7 @@ engine_result_t HostMediaDestroy(void* user_data, engine_media_handle_t media) {
   std::lock_guard<std::recursive_mutex> guard(handle->mutex);
   if (handle->provider_media_handles.erase(media) == 0)
     return ENGINE_RESULT_INVALID_ARGUMENT;
-  const auto result = engine_legacy_media_destroy(media);
+  const auto result = LegacyServices()->media_destroy(media);
   SetLegacyError(handle, result, "runtime media host failed to close media");
   return result;
 }
@@ -518,19 +520,23 @@ engine_result_t HostMediaCall(void* user_data, engine_media_handle_t media,
 
 engine_result_t HostMediaPlay(void* user_data, engine_media_handle_t media) {
   return HostMediaCall(user_data, media, "runtime media host failed to play media",
-                       engine_legacy_media_play);
+                       [](engine_media_handle_t value) {
+                         return LegacyServices()->media_play(value);
+                       });
 }
 
 engine_result_t HostMediaPause(void* user_data, engine_media_handle_t media) {
   return HostMediaCall(user_data, media, "runtime media host failed to pause media",
-                       engine_legacy_media_pause);
+                       [](engine_media_handle_t value) {
+                         return LegacyServices()->media_pause(value);
+                       });
 }
 
 engine_result_t HostMediaSeek(void* user_data, engine_media_handle_t media,
                               int64_t position_ms) {
   return HostMediaCall(user_data, media, "runtime media host failed to seek media",
       [position_ms](engine_media_handle_t value) {
-        return engine_legacy_media_seek(value, position_ms);
+        return LegacyServices()->media_seek(value, position_ms);
       });
 }
 
@@ -539,7 +545,7 @@ engine_result_t HostMediaSetRate(void* user_data, engine_media_handle_t media,
   return HostMediaCall(user_data, media,
       "runtime media host failed to set playback rate",
       [rate](engine_media_handle_t value) {
-        return engine_legacy_media_set_rate(value, rate);
+        return LegacyServices()->media_set_rate(value, rate);
       });
 }
 
@@ -548,7 +554,13 @@ engine_result_t HostMediaSetVolume(void* user_data, engine_media_handle_t media,
   return HostMediaCall(user_data, media,
       "runtime media host failed to set volume",
       [volume](engine_media_handle_t value) {
-        return engine_legacy_media_set_volume(value, volume);
+        const auto* services = LegacyServices();
+        return services->struct_size >=
+                       offsetof(engine_legacy_services_v1_t, media_set_volume) +
+                           sizeof(services->media_set_volume) &&
+                       services->media_set_volume != nullptr
+                   ? services->media_set_volume(value, volume)
+                   : ENGINE_RESULT_NOT_SUPPORTED;
       });
 }
 
@@ -558,7 +570,7 @@ engine_result_t HostMediaGetState(void* user_data, engine_media_handle_t media,
   return HostMediaCall(user_data, media,
       "runtime media host failed to read media state",
       [out_state](engine_media_handle_t value) {
-        return engine_legacy_media_get_state(value, out_state);
+        return LegacyServices()->media_get_state(value, out_state);
       });
 }
 
@@ -570,8 +582,8 @@ engine_result_t HostMediaReadFrame(void* user_data, engine_media_handle_t media,
   return HostMediaCall(user_data, media,
       "runtime media host failed to read video frame",
       [pixels, size, out_frame](engine_media_handle_t value) {
-        return engine_legacy_media_read_frame_rgba(value, pixels, size,
-                                                   out_frame);
+        return LegacyServices()->media_read_frame_rgba(value, pixels, size,
+                                                       out_frame);
       });
 }
 
@@ -1010,7 +1022,7 @@ engine_result_t engine_destroy(engine_handle_t public_handle) {
     handle->runtime = nullptr;
   }
   for (const auto media : handle->provider_media_handles) {
-    engine_legacy_media_destroy(media);
+    LegacyServices()->media_destroy(media);
   }
   handle->provider_media_handles.clear();
   for (const auto media : owned_media) {
@@ -1122,7 +1134,14 @@ engine_result_t engine_media_set_volume(engine_media_handle_t media,
                                         double volume) {
   return RouteMedia(media, "legacy media player failed to set volume",
                     [&](engine_media_handle_t legacy) {
-                      return engine_legacy_media_set_volume(legacy, volume);
+                      const auto* services = LegacyServices();
+                      return services->struct_size >=
+                                     offsetof(engine_legacy_services_v1_t,
+                                              media_set_volume) +
+                                         sizeof(services->media_set_volume) &&
+                                     services->media_set_volume != nullptr
+                                 ? services->media_set_volume(legacy, volume)
+                                 : ENGINE_RESULT_NOT_SUPPORTED;
                     });
 }
 

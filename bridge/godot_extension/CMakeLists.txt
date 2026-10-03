@@ -196,6 +196,14 @@ if(AETHERKIRI_INTERNAL_ENABLED AND
         "${CMAKE_CURRENT_SOURCE_DIR}/src")
 endif()
 
+if(AETHERKIRI_ENABLE_SOFTPAL_RUNTIME)
+    # The provider registers alongside the other independent runtimes in the
+    # Godot host. Its private sources stay in the AetherSoftPal submodule.
+    aethersoftpal_extend_engine_api(aether_kiri_godot)
+    target_compile_definitions(aether_kiri_godot PRIVATE
+        AETHERKIRI_WITH_SOFTPAL=1)
+endif()
+
 if(TARGET engine_api)
     target_link_libraries(aether_kiri_godot PRIVATE engine_api)
 endif()

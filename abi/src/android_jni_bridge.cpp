@@ -128,9 +128,21 @@ static std::mutex g_surface_mutex;
 static jobject g_app_context = nullptr;  // global ref
 static std::mutex g_context_mutex;
 
+// The host Activity is optional during the staging milestone.  When the
+// generated Godot Activity calls RenPyMobileBridge.bindHostActivity, keep a
+// global JNI reference so a future in-process adapter can attach without
+// constructing a second Activity.
+static jobject g_host_activity = nullptr;  // global ref
+static std::mutex g_host_activity_mutex;
+
 __attribute__((visibility("default"))) jobject krkr_GetApplicationContext() {
     std::lock_guard<std::mutex> lock(g_context_mutex);
     return g_app_context;
+}
+
+__attribute__((visibility("default"))) jobject krkr_GetHostActivity() {
+    std::lock_guard<std::mutex> lock(g_host_activity_mutex);
+    return g_host_activity;
 }
 
 __attribute__((visibility("default"))) ANativeWindow* krkr_GetNativeWindow() {
@@ -238,5 +250,27 @@ Java_org_github_krkr2_aetherkiri_EngineBridge_nativeSetApplicationContext(
         LOGI("nativeSetApplicationContext: Application Context stored");
     } else {
         LOGW("nativeSetApplicationContext: null context passed");
+    }
+}
+
+// ---------------------------------------------------------------------------
+// JNI bridge: host-owned Ren'Py handoff
+// ---------------------------------------------------------------------------
+
+extern "C" JNIEXPORT void JNICALL
+Java_org_github_krkr2_aetherkiri_RenPyMobileBridge_nativeSetHostActivity(
+    JNIEnv* env, jclass /* clazz */, jobject activity) {
+    std::lock_guard<std::mutex> lock(g_host_activity_mutex);
+
+    if (g_host_activity) {
+        env->DeleteGlobalRef(g_host_activity);
+        g_host_activity = nullptr;
+    }
+
+    if (activity) {
+        g_host_activity = env->NewGlobalRef(activity);
+        LOGI("RenPyMobileBridge: host Activity bound");
+    } else {
+        LOGI("RenPyMobileBridge: host Activity cleared");
     }
 }

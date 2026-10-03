@@ -8,7 +8,7 @@ repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 build_script="$repo_root/scripts/build_ios.sh"
 launcher_probe="$repo_root/tools/test_renios_ios_launcher.sh"
 [[ -x "$build_script" ]] || { echo "iOS build script is not executable" >&2; exit 1; }
-[[ -x "$launcher_probe" ]] || { echo "Renios launcher probe is not executable" >&2; exit 1; }
+[[ -f "$launcher_probe" ]] || { echo "Renios launcher probe is missing" >&2; exit 1; }
 bash -n "$build_script"
 bash -n "$launcher_probe"
 

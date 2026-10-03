@@ -64,39 +64,41 @@ jclass FindRequiredClass(JNIEnv* env, const char* class_name,
   jobject activity = krkr_GetHostActivity();
   if (activity != nullptr) {
     jclass activity_class = env->GetObjectClass(activity);
-    jmethodID get_loader =
-        env->GetMethodID(activity_class, "getClassLoader",
-                         "()Ljava/lang/ClassLoader;");
-    if (get_loader != nullptr) {
-      jobject loader = env->CallObjectMethod(activity, get_loader);
-      jclass loader_class = env->FindClass("java/lang/ClassLoader");
-      ClearJavaException(env);
-      if (loader != nullptr && loader_class != nullptr) {
-        jmethodID load_class =
-            env->GetMethodID(loader_class, "loadClass",
-                             "(Ljava/lang/String;)Ljava/lang/Class;");
-        if (load_class != nullptr) {
-          std::string binary_name(class_name);
-          for (char& character : binary_name) {
-            if (character == '/') character = '.';
+    if (activity_class != nullptr) {
+      jmethodID get_loader =
+          env->GetMethodID(activity_class, "getClassLoader",
+                           "()Ljava/lang/ClassLoader;");
+      if (get_loader != nullptr) {
+        jobject loader = env->CallObjectMethod(activity, get_loader);
+        jclass loader_class = env->FindClass("java/lang/ClassLoader");
+        ClearJavaException(env);
+        if (loader != nullptr && loader_class != nullptr) {
+          jmethodID load_class =
+              env->GetMethodID(loader_class, "loadClass",
+                               "(Ljava/lang/String;)Ljava/lang/Class;");
+          if (load_class != nullptr) {
+            std::string binary_name(class_name);
+            for (char& character : binary_name) {
+              if (character == '/') character = '.';
+            }
+            jstring name = env->NewStringUTF(binary_name.c_str());
+            jobject loaded = env->CallObjectMethod(loader, load_class, name);
+            env->DeleteLocalRef(name);
+            if (loaded != nullptr && !ClearJavaException(env)) {
+              env->DeleteLocalRef(loader);
+              env->DeleteLocalRef(loader_class);
+              env->DeleteLocalRef(activity_class);
+              return reinterpret_cast<jclass>(loaded);
+            }
+            ClearJavaException(env);
           }
-          jstring name = env->NewStringUTF(binary_name.c_str());
-          jobject loaded = env->CallObjectMethod(loader, load_class, name);
-          env->DeleteLocalRef(name);
-          if (loaded != nullptr && !ClearJavaException(env)) {
-            env->DeleteLocalRef(loader);
-            env->DeleteLocalRef(loader_class);
-            env->DeleteLocalRef(activity_class);
-            return reinterpret_cast<jclass>(loaded);
-          }
-          ClearJavaException(env);
         }
+        if (loader != nullptr) env->DeleteLocalRef(loader);
+        if (loader_class != nullptr) env->DeleteLocalRef(loader_class);
       }
-      if (loader != nullptr) env->DeleteLocalRef(loader);
-      if (loader_class != nullptr) env->DeleteLocalRef(loader_class);
+      ClearJavaException(env);
+      env->DeleteLocalRef(activity_class);
     }
-    ClearJavaException(env);
-    env->DeleteLocalRef(activity_class);
   }
   *error = "Ren'Py mobile preflight: required Java class " +
            std::string(class_name) +
@@ -136,7 +138,12 @@ bool CheckJavaCallbacks(JNIEnv* env, std::string* error) {
       RequireStaticMethod(env, sdl, "org.libsdl.app.SDLActivity",
                           "nativeResume", "()V", error) &&
       RequireStaticMethod(env, sdl, "org.libsdl.app.SDLActivity",
-                          "nativeQuit", "()V", error);
+                          "nativeQuit", "()V", error) &&
+      RequireStaticMethod(env, sdl, "org.libsdl.app.SDLActivity",
+                          "getNativeSurface", "()Landroid/view/Surface;",
+                          error) &&
+      RequireStaticMethod(env, sdl, "org.libsdl.app.SDLActivity",
+                          "getContext", "()Landroid/content/Context;", error);
   env->DeleteLocalRef(sdl);
   if (!sdl_ok) return false;
 
@@ -170,6 +177,8 @@ const char* MissingNativeExport(void* handle) {
       "Java_org_libsdl_app_SDLActivity_nativePause",
       "Java_org_libsdl_app_SDLActivity_nativeResume",
       "Java_org_libsdl_app_SDLActivity_nativeQuit",
+      "Java_org_libsdl_app_SDLActivity_getNativeSurface",
+      "Java_org_libsdl_app_SDLActivity_getContext",
       "Java_org_renpy_android_PythonSDLActivity_nativeSetEnv",
   };
   for (const char* symbol : kRequired) {

@@ -8,6 +8,7 @@
 // constructing or launching a second Activity.
 extern JavaVM* krkr_GetJavaVM();
 extern jobject krkr_GetApplicationContext();
+extern jobject krkr_GetHostActivity();
 #endif
 
 namespace aetherkiri::renpy::mobile {
@@ -26,7 +27,16 @@ engine_result_t BootstrapAdapter::Start(const BootstrapRequest& request) {
   // There is deliberately no Activity construction here.  The host must
   // provide its existing Activity once the Godot Android plugin owns that
   // handoff; without it, starting RAPT would create a second UI owner.
-  if (request.existing_host_activity == nullptr) {
+  void* host_activity = request.existing_host_activity;
+#if defined(__ANDROID__)
+  if (host_activity == nullptr) {
+    // The generated Godot Activity can bind itself through the staged
+    // RenPyMobileBridge. This is a global JNI reference owned by engine_api;
+    // no second Activity is ever constructed here.
+    host_activity = krkr_GetHostActivity();
+  }
+#endif
+  if (host_activity == nullptr) {
     last_error_ =
         "Ren'Py mobile bootstrap requires the existing host Activity; "
         "a second Activity is never created";

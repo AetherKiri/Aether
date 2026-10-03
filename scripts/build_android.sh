@@ -245,9 +245,9 @@ stage_renpy_android_support() {
             ;;
     esac
 
-    local mobile_root="${AETHERKIRI_RENPY_MOBILE_ROOT:-}"
+    local mobile_root="${AETHERKIRI_RENPY_MOBILE_ROOT:-${RENPY_MOBILE_ROOT:-}}"
     if [[ -z "$mobile_root" ]]; then
-        echo "Error: AETHERKIRI_ENABLE_RENPY=ON requires AETHERKIRI_RENPY_MOBILE_ROOT" >&2
+        echo "Error: AETHERKIRI_ENABLE_RENPY=ON requires AETHERKIRI_RENPY_MOBILE_ROOT or RENPY_MOBILE_ROOT" >&2
         echo "       Stage official RAPT inputs with tools/install_renpy_mobile_support.sh first." >&2
         exit 1
     fi

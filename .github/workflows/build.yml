@@ -114,7 +114,7 @@ jobs:
 
       - name: Initialize private runtime dependencies
         if: env.AETHERKIRI_WITH_INTERNAL == 'true'
-        run: packages/AetherInternal/tools/prepare_ci_dependencies.sh --platform android
+        run: bash packages/AetherInternal/tools/prepare_ci_dependencies.sh --platform android
 
       - name: Initialize public runtime packages
         if: env.AETHERKIRI_WITH_INTERNAL != 'true'
@@ -416,7 +416,7 @@ jobs:
 
       - name: Initialize private runtime dependencies
         if: env.AETHERKIRI_WITH_INTERNAL == 'true'
-        run: packages/AetherInternal/tools/prepare_ci_dependencies.sh --platform apple
+        run: bash packages/AetherInternal/tools/prepare_ci_dependencies.sh --platform apple
 
       - name: Initialize public runtime packages
         if: env.AETHERKIRI_WITH_INTERNAL != 'true'
@@ -742,7 +742,7 @@ jobs:
 
       - name: Initialize private runtime dependencies
         if: env.AETHERKIRI_WITH_INTERNAL == 'true'
-        run: packages/AetherInternal/tools/prepare_ci_dependencies.sh --platform macos
+        run: bash packages/AetherInternal/tools/prepare_ci_dependencies.sh --platform macos
 
       - name: Initialize public runtime packages
         if: env.AETHERKIRI_WITH_INTERNAL != 'true'

@@ -40,3 +40,14 @@ Once an audited fork exports the ABI, the host loader in
 Activity, or UIKit entrypoint. It is deliberately inert for the official
 blocking libraries, so staging those archives alone cannot accidentally enable
 mobile gameplay.
+
+## Python cooperative-loop seam
+
+`python/0001-cooperative-loop-skeleton.patch` is an opt-in, syntax-checked
+patch for `renpy/main.py`, `renpy/execution.py`, and
+`renpy/display/core.py`. The scaffold validates or applies it with
+`--check-python-patch` / `--apply-python-patch`. It adds deadline state,
+`CooperativeYield`, non-blocking event polling, and host-safe shutdown seams
+while preserving default launcher behavior. It is intentionally incomplete:
+`run_context`, `main.run`, and `Interface.interact_core` still require a real
+resumable implementation before mobile gameplay can be enabled.

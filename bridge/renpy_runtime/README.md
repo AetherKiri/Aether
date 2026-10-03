@@ -74,6 +74,20 @@ inputs are not a mobile runtime: Android still needs the
 adapter, and both platforms still need lifecycle, input, and Godot rendering
 integration.
 
+When `AETHERKIRI_ENABLE_RENPY=ON` and
+`AETHERKIRI_RENPY_MOBILE_ROOT` points at that staged root, `scripts/build_ios.sh`
+folds the selected Renios `prebuilt/{debug,release}` static-library closure
+into the Godot iOS extension archive and bundles the official Renios resources
+plus `MetalANGLE.xcframework` under `Aether/renios` and `Aether/Frameworks`.
+If a generated Renios game `base/` directory is available, set
+`AETHERKIRI_RENPY_RENIOS_BASE` to bundle it alongside those resources.
+The prototype's entrypoint source and `libSDL2main.a` are intentionally omitted;
+Godot remains the sole UIKit/SDL application host. The generated
+`renios/renios-manifest.txt` records the exact closure. This is a link/bundle
+smoke only: the provider continues to return `ENGINE_RESULT_NOT_SUPPORTED`
+until the host-owned lifecycle, surface rendering, and input adapter are
+implemented and validated on a device or simulator.
+
 ### iOS in-process adapter boundary
 
 The staged Renios prototype is an application template whose `main.c` calls
@@ -89,9 +103,20 @@ continues to return `ENGINE_RESULT_NOT_SUPPORTED` with an explicit diagnostic.
 
 The staged RAPT prototype is a `PythonSDLActivity` that loads
 `librenpython.so`, prepares Android storage/assets, and owns an SDL surface.
-The Android provider now has a compile-tested `BootstrapAdapter` boundary that
+`scripts/build_android.sh` now stages the arm64 library, private/assets
+directory, and the official Java/resource templates under
+`assets/renpy_mobile/rapt` in the existing Godot export. The RAPT manifest and
+`PythonSDLActivity` remain assets and are never merged into the host manifest,
+so the export still has one Activity. A small host-owned
+`org.github.krkr2.aetherkiri.RenPyMobileBridge` Java shim binds an already
+running Godot Activity to the engine JNI bridge; it does not launch RAPT or
+load its SDL loop. Set `AETHERKIRI_RENPY_ANDROID_PRIVATE_ASSETS` when a built
+Ren'Py game's private payload is available.
+
+The Android provider also has a compile-tested `BootstrapAdapter` boundary that
 accepts an opaque pointer to the existing host Activity through the host
-extension slot `reserved_ptr[1]`. It never creates a second Activity. Until
-the staged Java classes, native library, asset extraction, SDL surface, and
-Godot lifecycle/input bridge are linked, `Start` and provider open return
-`ENGINE_RESULT_NOT_SUPPORTED` with an explicit diagnostic.
+extension slot `reserved_ptr[1]` or the JNI shim. It never creates a second
+Activity. Because RAPT embeds its own SDL/Python runtime and lifecycle,
+asset/JNI staging alone is not a playable integration: until SDL surface,
+lifecycle, input, and Godot rendering handoff are complete, `Start` and
+provider open return `ENGINE_RESULT_NOT_SUPPORTED` with an explicit diagnostic.

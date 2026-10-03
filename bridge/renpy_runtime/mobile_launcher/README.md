@@ -26,8 +26,18 @@ the `renpy-build` repository:
 
 The official command-line hooks are documented by `build.sh --print-plan`:
 
-- Android: `./build.sh --platform android rebuild renpython rapt rapt-sdl2`
-- iOS: `./build.sh --platform ios rebuild renpython renios`
+- Android: `./build.sh --platform android rebuild rapt rapt-sdl2`
+- iOS: `./build.sh --platform ios rebuild renios`
+
+`build.sh --source-build-plan --renpy-build /path/to/renpy-build` prints the
+Ubuntu 24.04 prerequisites, source patch commands, build commands, and exact
+RAPT/Renios artifact destinations. `--check-renpy-build` performs a strict
+read-only preflight for the source checkout, patch applicability, host tools,
+64 GiB disk requirement, and supplied Android/iOS SDK archives. These commands
+are opt-in and are not part of the normal mobile CI build because the official
+renpy-build process is a large, multi-hour source rebuild and requires licensed
+iOS SDK tarballs. CI only validates the plan; it does not pretend to build a
+playable fork.
 
 The current official outputs are process launchers. Do not call them from a
 Godot frame callback and do not copy `renios/prototype/main.c` into the host

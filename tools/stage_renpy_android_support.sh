@@ -107,6 +107,8 @@ asset_private="$asset_root/private"
 private_archive="$asset_rapt/private.mp3"
 jni_root="$main_src/jniLibs/arm64-v8a"
 java_root="$main_src/java/org/github/krkr2/aetherkiri"
+java_sdl_root="$main_src/java/org/libsdl/app"
+java_renpy_root="$main_src/java/org/renpy/android"
 
 mkdir -p "$asset_rapt" "$asset_private" "$jni_root" "$java_root"
 
@@ -114,6 +116,29 @@ mkdir -p "$asset_rapt" "$asset_private" "$jni_root" "$java_root"
 # the existing Godot Activity to engine_api without creating a second owner.
 cp -f "$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/bridge/renpy_runtime/android/RenPyMobileBridge.java" \
     "$java_root/RenPyMobileBridge.java"
+
+# Compile only the host-owned callback signatures. The official RAPT Java
+# sources remain assets and its PythonSDLActivity manifest is never merged;
+# compiling the full Activity would create a second SDL singleton. Refuse to
+# overwrite an unrelated class if a Godot template starts shipping one.
+repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+install_host_shim() {
+    local source="$1" destination="$2" marker="$3"
+    mkdir -p "$(dirname "$destination")"
+    if [[ -f "$destination" ]] && ! grep -Fq "$marker" "$destination"; then
+        echo "Refusing to overwrite unrelated Android Java class: $destination" >&2
+        exit 1
+    fi
+    cp -f "$source" "$destination"
+}
+install_host_shim \
+    "$repo_root/bridge/renpy_runtime/android/org/libsdl/app/SDLActivity.java" \
+    "$java_sdl_root/SDLActivity.java" \
+    'renpy-sdl-host-shim-v1'
+install_host_shim \
+    "$repo_root/bridge/renpy_runtime/android/org/renpy/android/PythonSDLActivity.java" \
+    "$java_renpy_root/PythonSDLActivity.java" \
+    'renpy-python-host-shim-v1'
 
 # The source tree is deliberately copied below assets rather than src/main/java
 # or src/main/res. RAPT's manifest names PythonSDLActivity as its launcher;
@@ -201,6 +226,7 @@ fi
     printf 'private_assets=assets/renpy_mobile/private\n'
     printf 'private_archive=%s\n' "$( [[ -f "$private_archive" ]] && printf 'assets/renpy_mobile/rapt/private.mp3' || true )"
     printf 'manifest_merged=false\n'
+    printf 'java_host_shims=org/libsdl/app/SDLActivity.java,org/renpy/android/PythonSDLActivity.java\n'
 } > "$asset_root/manifest.properties"
 
 echo "Ren'Py Android support staged into $godot_build"

@@ -9,7 +9,7 @@
         _Z20krkr_GetNativeWindowv;
         _Z25krkr_GetSurfaceDimensions*;
         _Z26krkr_GetApplicationContextv;
-        _Z21krkr_GetHostActivityv;
+        _Z20krkr_GetHostActivityv;
         _Z16TVPTransformText*;
         _Z15TVPPrefetchText*;
         _Z27TVPSetTextTransformCallback*;

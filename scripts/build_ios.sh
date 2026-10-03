@@ -58,7 +58,7 @@ RUNTIME_SYMBOL_FONT_SOURCE="$GODOT_APP_DIR/assets/fonts/aetherkiri-runtime-symbo
 # copies only its resources/framework into the exported app.  It must never
 # copy or compile Renios' prototype main.c: Godot already owns the process and
 # the UIKit/SDL application entrypoint.
-RENPY_MOBILE_ROOT="${AETHERKIRI_RENPY_MOBILE_ROOT:-}"
+RENPY_MOBILE_ROOT="${AETHERKIRI_RENPY_MOBILE_ROOT:-${RENPY_MOBILE_ROOT:-}}"
 # Renios archives contain the native prototype/resources but intentionally do
 # not contain a game-specific `base/` directory.  A caller may provide the
 # generated Renios base explicitly for a bundle smoke; gameplay remains gated
@@ -437,6 +437,9 @@ stage_renios_ios_resources() {
     fi
     {
         printf 'Renios archive: %s\n' "$RENPY_MOBILE_ROOT"
+        if [[ -f "$RENPY_MOBILE_ROOT/renios/.aetherkiri-sha256" ]]; then
+            printf 'Renios archive SHA-256: %s\n' "$(cat "$RENPY_MOBILE_ROOT/renios/.aetherkiri-sha256")"
+        fi
         printf 'Configuration: %s\n' "$(renios_configuration)"
         printf 'Static closure: %s\n' "$(renios_archive_names "$prebuilt")"
         if [[ -d "$resource_root/base" ]]; then

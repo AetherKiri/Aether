@@ -21,6 +21,33 @@ extern "C" {
  */
 #define AETHERKIRI_RENPY_IOS_ADAPTER_API_VERSION 0x01000000u
 
+/* Build-time inspection of the official Renios closure. The shipped
+ * launcher_main entrypoint reaches Py_RunMain and owns a blocking Python
+ * main loop; it is not a host-tick API. Keep this fact explicit so a caller
+ * cannot mistake the linked archives for a playable adapter. */
+#define AETHERKIRI_RENPY_IOS_LAUNCHER_CONTRACT_API_VERSION 0x01000000u
+
+typedef enum renpy_ios_launcher_mode_v1_t {
+  RENPY_IOS_LAUNCHER_MODE_UNAVAILABLE = 0,
+  RENPY_IOS_LAUNCHER_MODE_BLOCKING_PY_MAIN = 1,
+  RENPY_IOS_LAUNCHER_MODE_HOST_TICK = 2
+} renpy_ios_launcher_mode_v1_t;
+
+typedef struct renpy_ios_launcher_contract_v1_t {
+  uint32_t struct_size;
+  uint32_t api_version;
+  uint32_t mode;
+  const char* launcher_symbol_utf8;
+  const char* blocking_symbol_utf8;
+  const char* limitation_utf8;
+} renpy_ios_launcher_contract_v1_t;
+
+/* Returns the static contract discovered by the build probe. The current
+ * Renios archive reports BLOCKING_PY_MAIN and therefore cannot be driven by
+ * the Godot frame loop. */
+ENGINE_API_EXPORT const renpy_ios_launcher_contract_v1_t*
+renpy_get_ios_launcher_contract(void);
+
 typedef struct renpy_ios_inprocess_adapter_v1_t {
   uint32_t struct_size;
   uint32_t api_version;

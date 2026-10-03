@@ -40,7 +40,7 @@ jobs:
       - name: Checkout Repository
         uses: actions/checkout@v6
         with:
-          fetch-depth: 2
+          fetch-depth: ${{ (inputs.target_commit != '' && inputs.target_commit != 'HEAD') && 0 || 2 }}
           persist-credentials: true
 
       - name: Fetch target commit history

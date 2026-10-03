@@ -202,7 +202,8 @@ def main():
     parser = argparse.ArgumentParser(
         description="Inspect and update submodules that changed in the target commit."
     )
-    parser.add_argument("--commit", default="HEAD", help="Target commit SHA on main (default: HEAD)")
+    parser.add_argument("--commit", default="HEAD", help="Target commit SHA on main to inspect for changed submodules (default: HEAD)")
+    parser.add_argument("--current-ref", default="HEAD", help="Git ref of current checked-out base to compare and update (default: HEAD)")
     parser.add_argument("--base", default=None, help="Base commit to diff against (default: <commit>^1)")
     parser.add_argument("--submodule", default=None, help="Explicit submodule path to check")
     parser.add_argument("--all", action="store_true", help="Inspect all submodules in repo")
@@ -250,23 +251,28 @@ def main():
         url = cfg["url"]
         branch_cfg = cfg["branch"]
 
-        pinned_sha = get_pinned_commit(args.commit, path)
+        # Resolve pinned commit from the checked-out base (HEAD) where changes will be committed
+        pinned_sha = get_pinned_commit(args.current_ref, path)
         if not pinned_sha:
-            print(f"[{name}] Could not resolve currently pinned commit at {args.commit}, skipping.")
+            print(f"[{name}] Could not resolve currently pinned commit at {args.current_ref}, skipping.")
             continue
+
+        if args.commit != args.current_ref:
+            historical_sha = get_pinned_commit(args.commit, path)
+            print(f"[{name}] Inspected commit {args.commit[:8]} had pin: {historical_sha[:8] if historical_sha else 'None'}")
 
         target_branch, remote_sha = get_remote_branch_and_head(url, branch_cfg)
         if not remote_sha:
             print(f"[{name}] Could not retrieve remote branch/head for {url}, skipping.")
             continue
 
-        print(f"[{name}] Target branch: {target_branch} | Current pin: {pinned_sha[:8]} | Remote HEAD: {remote_sha[:8]}")
+        print(f"[{name}] Target branch: {target_branch} | Checked-out pin ({args.current_ref}): {pinned_sha[:8]} | Remote HEAD: {remote_sha[:8]}")
 
         if remote_sha != pinned_sha:
             if not args.allow_non_forward:
                 print(f"[{name}] Verifying {pinned_sha[:8]} is an ancestor of remote {remote_sha[:8]}...")
                 if not is_ancestor_commit(url, pinned_sha, remote_sha):
-                    print(f"[{name}] Remote HEAD {remote_sha[:8]} is not a forward descendant of current pin {pinned_sha[:8]} (not an ancestor). Skipping.")
+                    print(f"[{name}] Remote HEAD {remote_sha[:8]} is not a forward descendant of checked-out pin {pinned_sha[:8]} (not an ancestor). Skipping.")
                     continue
             print(f"[{name}] Update available! {pinned_sha[:8]} -> {remote_sha[:8]}")
             gh_base_url = normalize_github_url(url)
@@ -282,7 +288,7 @@ def main():
                 "new_short": remote_sha[:8],
             })
         else:
-            print(f"[{name}] Submodule is already up to date with remote {target_branch}.")
+            print(f"[{name}] Submodule is already up to date with remote {target_branch} in checked-out base ({args.current_ref}).")
 
     if not updates:
         print("No submodule updates found.")

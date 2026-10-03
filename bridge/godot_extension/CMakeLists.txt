@@ -239,7 +239,7 @@ endif()
 if(IOS)
     # Godot links this static extension archive directly into the app; it
     # does not follow CMake target dependencies. Include the isolated Swift
-    # objects and, when enabled, Minori's Rust provider in that one archive.
+    # objects and optional native provider archives in that one archive.
     find_program(AETHERKIRI_LIBTOOL_EXECUTABLE libtool REQUIRED)
     set(AETHERKIRI_MERGED_GODOT_ARCHIVE
         "${CMAKE_CURRENT_BINARY_DIR}/libaether_kiri_godot_merged.a")
@@ -249,6 +249,10 @@ if(IOS)
     if(TARGET aether_minori_runtime)
         list(APPEND AETHERKIRI_IOS_ARCHIVES
             "$<TARGET_FILE:aether_minori_runtime>")
+    endif()
+    if(TARGET softpal_runtime)
+        list(APPEND AETHERKIRI_IOS_ARCHIVES
+            "$<TARGET_FILE:softpal_runtime>")
     endif()
     add_custom_command(TARGET aether_kiri_godot POST_BUILD
         COMMAND "${AETHERKIRI_LIBTOOL_EXECUTABLE}" -static

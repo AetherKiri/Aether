@@ -51,8 +51,38 @@ and make every lifecycle call return promptly. The calls must not invoke
 or create an Android Activity. `frame` returns a borrowed RGBA view for the
 host to copy; the host callback and ownership rules are in the header.
 
-The header is only an ABI contract. There is no stub implementation that could
-be mistaken for a functioning engine.
+The header is only an ABI contract. The `.c.template` files under
+`patches/android` and `patches/ios` are deliberately non-playable starting
+points: init returns `RENPY_MOBILE_NOT_IMPLEMENTED`, all runtime calls remain
+invalid until a real implementation initializes them, and no output object is
+copied into a mobile package.
+
+`build.sh --compile-contract` compiles those templates with `-Wall -Wextra
+-Werror` on the host so CI can validate the C ABI and required exported names.
+This is a source-level check, not a Ren'Py SDK rebuild:
+
+```text
+bridge/renpy_runtime/mobile_launcher/build.sh --compile-contract \
+  --renpy-build /path/to/renpy-build --output-dir /tmp/renpy-mobile-contract
+```
+
+The native templates identify the real remaining patch points. In addition to
+factoring the C launcher, Ren'Py's Python `renpy/bootstrap.py`, `renpy/main.py`,
+and `renpy/display/core.py` must be made cooperatively resumable. Their current
+call chain enters `renpy.execution.run_context(True)` and
+`Interface.interact_core`, both of which keep control until a script or user
+interaction completes. Splitting only `Py_InitializeFromConfig` from
+`Py_RunMain` does not make a frame-driven engine. Android also exits through
+`android.activity.finishAndRemoveTask()` and Java `System.exit(0)` in
+`bootstrap.py` cleanup, which an embedded fork must replace with host-owned
+shutdown.
+
+The host-side `src/renpy_mobile_loader.cpp` resolves this ABI when a real
+fork is supplied: Android loads all seven symbols from `librenpython.so`, and
+iOS uses weak imports from the optional `librenpython.a`. The mobile provider
+forwards lifecycle and input calls and copies the borrowed RGBA frame into the
+normal Aether frame API. With the official blocking archive, symbol resolution
+fails and the provider remains `ENGINE_RESULT_NOT_SUPPORTED`.
 
 ## Rebuild and replacement hook
 

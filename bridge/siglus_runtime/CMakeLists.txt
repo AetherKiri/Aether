@@ -5,8 +5,7 @@ project(aether_siglus_runtime LANGUAGES CXX)
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
 include(BuildSiglusRs)
 
-set(SIGLUS_RS_ROOT
-    "${CMAKE_SOURCE_DIR}/packages/AetherSiglus")
+set(SIGLUS_RS_ROOT "${AETHERKIRI_SIGLUS_DIR}")
 if(NOT EXISTS "${SIGLUS_RS_ROOT}/crates/siglus_scene_vm/Cargo.toml")
     message(FATAL_ERROR
         "siglus_rs submodule is unavailable. Run "
@@ -47,7 +46,7 @@ add_library(aether_siglus_runtime STATIC
 if(APPLE)
     enable_language(OBJCXX)
     target_sources(aether_siglus_runtime PRIVATE src/siglus_shared_frame.mm)
-    target_include_directories(aether_siglus_runtime PRIVATE "${CMAKE_SOURCE_DIR}/cpp/core/visual/godot")
+    target_include_directories(aether_siglus_runtime PRIVATE "${CMAKE_SOURCE_DIR}/abi/include")
     target_link_libraries(aether_siglus_runtime PRIVATE "-framework CoreVideo" "-framework Metal")
 else()
     target_sources(aether_siglus_runtime PRIVATE src/siglus_shared_frame.cpp)

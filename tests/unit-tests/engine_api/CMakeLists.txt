@@ -1,23 +1,32 @@
 cmake_minimum_required(VERSION 3.16)
 project(TestEngineApiDiagnostics LANGUAGES CXX)
 
+find_package(fmt CONFIG REQUIRED)
+find_package(spdlog CONFIG REQUIRED)
+
 add_executable(engine-api-diagnostics
     diagnostics.cpp
-    ${CMAKE_SOURCE_DIR}/bridge/engine_api/src/engine_api.cpp
-    ${CMAKE_SOURCE_DIR}/bridge/engine_api/src/engine_api_dispatch.cpp
-    ${CMAKE_SOURCE_DIR}/bridge/engine_api/src/engine_runtime_provider.cpp
-    ${CMAKE_SOURCE_DIR}/cpp/core/utils/TextTransform.cpp
+    ${CMAKE_SOURCE_DIR}/abi/src/engine_api_stub.cpp
+    ${CMAKE_SOURCE_DIR}/abi/src/engine_api_dispatch.cpp
+    ${CMAKE_SOURCE_DIR}/abi/src/engine_api_crash_capture.cpp
+    ${CMAKE_SOURCE_DIR}/abi/src/engine_runtime_provider.cpp
+    ${CMAKE_SOURCE_DIR}/abi/src/TextTransform.cpp
 )
 
 target_compile_features(engine-api-diagnostics PRIVATE cxx_std_17)
 target_include_directories(engine-api-diagnostics PRIVATE
-    ${CMAKE_SOURCE_DIR}/bridge/engine_api/include
-    ${CMAKE_SOURCE_DIR}/bridge/engine_api/src
-    ${CMAKE_SOURCE_DIR}/cpp/core/utils
+    ${CMAKE_SOURCE_DIR}/abi/include
+    ${CMAKE_SOURCE_DIR}/abi/src
 )
 target_link_libraries(engine-api-diagnostics PRIVATE
     Catch2::Catch2WithMain
+    fmt::fmt
+    spdlog::spdlog
 )
+
+if(WIN32)
+    target_link_libraries(engine-api-diagnostics PRIVATE dbghelp)
+endif()
 
 if(AETHERKIRI_INTERNAL_ENABLED AND
    COMMAND aetherinternal_extend_catsystem2_tests)

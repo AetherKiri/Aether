@@ -1,0 +1,1974 @@
+#include "engine_api.h"
+#include "engine_options.h"
+
+#include <algorithm>
+#include <atomic>
+#include <chrono>
+#include <cctype>
+#include <cstring>
+#include <deque>
+#include <exception>
+#include <functional>
+#include <memory>
+#include <mutex>
+#include <new>
+#include <string>
+#include <thread>
+#include <unordered_map>
+#include <unordered_set>
+#include <utility>
+#include <vector>
+
+#include <spdlog/spdlog.h>
+#include <spdlog/sinks/basic_file_sink.h>
+
+#if defined(__APPLE__)
+#include <TargetConditionals.h>
+#include <mach/mach.h>
+#include <mach/task_info.h>
+#include <sys/sysctl.h>
+#endif
+
+#if defined(__ANDROID__)
+#include <android/log.h>
+#define AETHER_DISPATCH_DIAG_LOG(message) \
+  __android_log_print(ANDROID_LOG_INFO, "AetherArtemisDiag", "%s", message)
+#else
+#define AETHER_DISPATCH_DIAG_LOG(message) ((void)0)
+#endif
+
+#include "engine_runtime_provider_registry.h"
+#include "engine_startup_thread.h"
+#include "engine_api_crash_capture.h"
+#include "engine_legacy_services.h"
+#include "TextTransform.h"
+
+#if defined(AETHERKIRI_INTERNAL_TEXT_TRANSLATION)
+extern "C" bool AetherInternalConfigureTextTranslation(
+    const char* key_utf8, const char* value_utf8, char* error_buffer,
+    uint32_t error_buffer_size);
+extern "C" bool AetherInternalPrepareTextTranslation(
+    char* error_buffer, uint32_t error_buffer_size);
+extern "C" void AetherInternalReleaseTextTranslation(void);
+extern "C" uint32_t AetherInternalGetTextTranslationState(void);
+extern "C" bool AetherInternalGetTextTranslationStats(
+    engine_text_translation_stats_t* out_stats);
+extern "C" void AetherInternalStartTextTranslationLoading(void);
+extern "C" void AetherInternalPrefetchTextTranslation(
+    const char* runtime_id_utf8, const char* input_utf8);
+extern "C" void AetherInternalSetTextTranslationSkipping(
+    const char* runtime_id_utf8, uint32_t skipping);
+#endif
+
+namespace {
+
+using aetherkiri::engine_api::StartupThread;
+
+enum class BackendKind { kUndecided, kLegacy, kProvider };
+
+/* The KiriKiri legacy services table is installed once by the host before the
+ * first engine_create call (see engine_install_legacy_services); dispatch
+ * reads it without ever linking the KiriKiri runtime. */
+std::atomic<const engine_legacy_services_v1_t*> g_legacy_services{nullptr};
+
+const engine_legacy_services_v1_t* LegacyServices() {
+  return g_legacy_services.load(std::memory_order_acquire);
+}
+
+struct DispatchHandle {
+  std::recursive_mutex mutex;
+  engine_handle_t legacy = nullptr;
+  BackendKind backend = BackendKind::kUndecided;
+  const engine_runtime_provider_v1_t* provider = nullptr;
+  void* runtime = nullptr;
+  engine_create_desc_t create_desc{};
+  std::string writable_path;
+  std::string cache_path;
+  std::string requested_runtime = "auto";
+#if defined(NDEBUG) && !defined(__ANDROID__)
+  bool beta_runtime_allowed = false;
+#else
+  bool beta_runtime_allowed = true;
+#endif
+  std::unordered_map<std::string, std::string> pending_options;
+  uint32_t surface_width = 0;
+  uint32_t surface_height = 0;
+  bool has_surface_size = false;
+  engine_runtime_host_v1_t host{};
+  engine_runtime_fragment_shader_host_v1_t fragment_shader_host{};
+  engine_runtime_media_host_v1_t media_host{};
+  std::unordered_set<engine_media_handle_t> provider_media_handles;
+  StartupThread startup_thread;
+  uint32_t startup_state = ENGINE_STARTUP_STATE_IDLE;
+  std::deque<std::string> startup_logs;
+  struct PlatformRequest {
+    std::string operation;
+    std::string argument;
+  };
+  std::deque<PlatformRequest> platform_requests;
+  std::string last_error;
+  bool provider_resume_pending = false;
+};
+
+std::recursive_mutex g_dispatch_registry_mutex;
+std::unordered_set<engine_handle_t> g_dispatch_handles;
+std::unordered_map<engine_media_handle_t, engine_handle_t>
+    g_dispatch_media_handles;
+thread_local std::string g_dispatch_thread_error;
+
+engine_result_t RunProviderOpen(DispatchHandle* handle, const char* path,
+                                const char* startup_script) {
+  try {
+    return handle->provider->open_game(handle->runtime, path, startup_script);
+  } catch (const std::exception& error) {
+    aetherkiri::engine_api::WriteCrashReport(
+        "runtime provider open_game threw std::exception", error.what());
+    return ENGINE_RESULT_INTERNAL_ERROR;
+  } catch (...) {
+    aetherkiri::engine_api::WriteCrashReport(
+        "runtime provider open_game threw unknown exception", nullptr);
+    return ENGINE_RESULT_INTERNAL_ERROR;
+  }
+}
+
+engine_result_t RunProviderTick(DispatchHandle* handle, uint32_t delta_ms) {
+  try {
+    return handle->provider->tick(handle->runtime, delta_ms);
+  } catch (const std::exception& error) {
+    aetherkiri::engine_api::WriteCrashReport(
+        "runtime provider tick threw std::exception", error.what());
+    return ENGINE_RESULT_INTERNAL_ERROR;
+  } catch (...) {
+    aetherkiri::engine_api::WriteCrashReport(
+        "runtime provider tick threw unknown exception", nullptr);
+    return ENGINE_RESULT_INTERNAL_ERROR;
+  }
+}
+
+bool ActivateProviderAudioSessionForHost() {
+  const engine_legacy_services_v1_t* services = LegacyServices();
+  if (services == nullptr ||
+      services->activate_audio_session_for_host == nullptr) {
+    // No KiriKiri glue installed: nothing owns a host audio session, so
+    // provider resume is never held back (the stub behaves the same way).
+    return true;
+  }
+  return services->activate_audio_session_for_host();
+}
+
+void PopulateHostMemoryStats(engine_memory_stats_t* stats) {
+  if (stats == nullptr) return;
+#if defined(__APPLE__)
+  task_vm_info_data_t vm_info{};
+  mach_msg_type_number_t vm_info_count = TASK_VM_INFO_COUNT;
+  if (task_info(mach_task_self(), TASK_VM_INFO,
+                reinterpret_cast<task_info_t>(&vm_info),
+                &vm_info_count) == KERN_SUCCESS) {
+    stats->process_resident_bytes = vm_info.resident_size;
+    stats->process_physical_footprint_bytes = vm_info.phys_footprint;
+    stats->process_peak_physical_footprint_bytes = std::max<uint64_t>(
+        stats->process_physical_footprint_bytes,
+        vm_info.ledger_phys_footprint_peak > 0
+            ? static_cast<uint64_t>(vm_info.ledger_phys_footprint_peak)
+            : 0u);
+    if (stats->self_used_mb == 0u && stats->process_resident_bytes != 0u) {
+      stats->self_used_mb = static_cast<uint32_t>(
+          stats->process_resident_bytes / (1024u * 1024u));
+    }
+  }
+
+  uint64_t total_bytes = 0u;
+  size_t total_size = sizeof(total_bytes);
+  if (sysctlbyname("hw.memsize", &total_bytes, &total_size, nullptr, 0) == 0) {
+    stats->system_total_mb =
+        static_cast<uint32_t>(total_bytes / (1024u * 1024u));
+  }
+  const mach_port_t host = mach_host_self();
+  vm_size_t page_size = 0u;
+  vm_statistics64_data_t vm_stats{};
+  mach_msg_type_number_t stats_count = HOST_VM_INFO64_COUNT;
+  if (host_page_size(host, &page_size) == KERN_SUCCESS &&
+      host_statistics64(host, HOST_VM_INFO64,
+                        reinterpret_cast<host_info64_t>(&vm_stats),
+                        &stats_count) == KERN_SUCCESS) {
+    const uint64_t available_pages =
+        static_cast<uint64_t>(vm_stats.free_count) + vm_stats.inactive_count;
+    stats->system_free_mb = static_cast<uint32_t>(
+        available_pages * page_size / (1024u * 1024u));
+  }
+  mach_port_deallocate(mach_task_self(), host);
+#endif
+}
+
+#define PROVIDER_HAS(provider, member)                                      \
+  ((provider) != nullptr &&                                                  \
+   (provider)->struct_size >=                                                \
+       offsetof(engine_runtime_provider_v1_t, member) +                      \
+           sizeof(((engine_runtime_provider_v1_t*)0)->member) &&             \
+   (provider)->member != nullptr)
+
+std::string Normalize(const char* value) {
+  std::string normalized = value != nullptr ? value : "";
+  std::transform(normalized.begin(), normalized.end(), normalized.begin(),
+                 [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+  return normalized;
+}
+
+void SetThreadError(const char* message) {
+  g_dispatch_thread_error = message != nullptr ? message : "";
+}
+
+engine_result_t ThreadError(engine_result_t result, const char* message) {
+  SetThreadError(message);
+  return result;
+}
+
+DispatchHandle* Cast(engine_handle_t handle) {
+  return reinterpret_cast<DispatchHandle*>(handle);
+}
+
+engine_result_t ValidateHandleLocked(engine_handle_t handle,
+                                     DispatchHandle** out_handle) {
+  if (handle == nullptr) {
+    return ThreadError(ENGINE_RESULT_INVALID_ARGUMENT, "engine handle is null");
+  }
+  if (g_dispatch_handles.find(handle) == g_dispatch_handles.end()) {
+    return ThreadError(ENGINE_RESULT_INVALID_ARGUMENT,
+                       "engine handle is invalid or already destroyed");
+  }
+  *out_handle = Cast(handle);
+  return ENGINE_RESULT_OK;
+}
+
+void SetProviderError(DispatchHandle* handle, engine_result_t result,
+                      const char* fallback) {
+  if (result == ENGINE_RESULT_OK) {
+    handle->last_error.clear();
+    SetThreadError(nullptr);
+    return;
+  }
+  const char* provider_error = nullptr;
+  if (PROVIDER_HAS(handle->provider, get_last_error)) {
+    provider_error = handle->provider->get_last_error(handle->runtime);
+  }
+  handle->last_error = provider_error != nullptr && provider_error[0] != '\0'
+                           ? provider_error
+                           : fallback;
+  SetThreadError(handle->last_error.c_str());
+  spdlog::error("runtime provider failure: {} ({})", handle->last_error,
+                fallback != nullptr ? fallback : "");
+}
+
+void SetLegacyError(DispatchHandle* handle, engine_result_t result,
+                    const char* fallback) {
+  if (result == ENGINE_RESULT_OK) {
+    handle->last_error.clear();
+    SetThreadError(nullptr);
+    return;
+  }
+  const char* legacy_error = LegacyServices()->get_last_error(handle->legacy);
+  if (legacy_error == nullptr || legacy_error[0] == '\0') {
+    legacy_error = LegacyServices()->get_last_error(nullptr);
+  }
+  handle->last_error = legacy_error != nullptr && legacy_error[0] != '\0'
+                           ? legacy_error
+                           : fallback;
+  SetThreadError(handle->last_error.c_str());
+}
+
+/* The legacy KiriKiri backend is created lazily: hosts that only drive
+ * provider runtimes never pay for a second engine handle, while media,
+ * diagnostics and the legacy backend itself all share one handle exactly
+ * like the eager engine_create-time construction did. */
+engine_result_t EnsureLegacyLocked(DispatchHandle* handle) {
+  if (handle->legacy != nullptr) return ENGINE_RESULT_OK;
+  const engine_legacy_services_v1_t* services = LegacyServices();
+  if (services == nullptr || services->create == nullptr) {
+    handle->last_error =
+        "KiriKiri backend services are not installed in this host";
+    return ThreadError(ENGINE_RESULT_NOT_SUPPORTED,
+                       handle->last_error.c_str());
+  }
+  engine_handle_t legacy = nullptr;
+  const engine_result_t result = services->create(&handle->create_desc, &legacy);
+  if (result != ENGINE_RESULT_OK) {
+    SetLegacyError(handle, result, "failed to create the KiriKiri backend");
+    return result;
+  }
+  handle->legacy = legacy;
+  return ENGINE_RESULT_OK;
+}
+
+engine_result_t Unsupported(DispatchHandle* handle, const char* operation) {
+  handle->last_error = std::string("runtime provider does not implement ") + operation;
+  SetThreadError(handle->last_error.c_str());
+  return ENGINE_RESULT_NOT_SUPPORTED;
+}
+
+engine_result_t CheckBetaRuntimeAccess(DispatchHandle* handle) {
+  if (handle->backend != BackendKind::kProvider || handle->provider == nullptr) {
+    return ENGINE_RESULT_OK;
+  }
+  const std::string runtime_id = Normalize(handle->provider->runtime_id_utf8);
+  // CatSystem2 is a released runtime now.  Keep the entitlement gate only
+  // for RFVP; older hosts may still send beta_runtime_allowed, but it must not
+  // turn CatSystem2 launches back into a coffee-only feature.
+  if (runtime_id != "rfvp" ||
+      handle->beta_runtime_allowed) {
+    return ENGINE_RESULT_OK;
+  }
+  handle->last_error = "RFVP runtime requires active beta access";
+  return ThreadError(ENGINE_RESULT_NOT_SUPPORTED, handle->last_error.c_str());
+}
+
+bool IsTextTranslationOption(const std::string& key) {
+  return key == ENGINE_OPTION_TEXT_TRANSLATION_ENABLED ||
+         key == ENGINE_OPTION_TEXT_TRANSLATION_MODEL_PATH ||
+         key == ENGINE_OPTION_TEXT_TRANSLATION_TARGET_LANGUAGE;
+}
+
+engine_result_t ConfigureTextTranslationLocked(DispatchHandle* handle,
+                                               const char* key,
+                                               const char* value) {
+#if defined(AETHERKIRI_INTERNAL_TEXT_TRANSLATION)
+  char error[1024] = {};
+  if (AetherInternalConfigureTextTranslation(key, value, error,
+                                             sizeof(error))) {
+    handle->last_error.clear();
+    SetThreadError(nullptr);
+    return ENGINE_RESULT_OK;
+  }
+  handle->last_error = error[0] != '\0'
+                           ? error
+                           : "private text translation rejected an option";
+  return ThreadError(ENGINE_RESULT_INVALID_ARGUMENT,
+                     handle->last_error.c_str());
+#else
+  (void)key;
+  (void)value;
+  handle->last_error =
+      "local-model text translation is unavailable in this build";
+  return ThreadError(ENGINE_RESULT_NOT_SUPPORTED, handle->last_error.c_str());
+#endif
+}
+
+engine_result_t PrepareTextTranslationLocked(DispatchHandle* handle) {
+#if defined(AETHERKIRI_INTERNAL_TEXT_TRANSLATION)
+  char error[1024] = {};
+  if (AetherInternalPrepareTextTranslation(error, sizeof(error))) {
+    handle->startup_logs.push_back("text translation model prepare => OK");
+    return ENGINE_RESULT_OK;
+  }
+  handle->last_error = error[0] != '\0'
+                           ? error
+                           : "failed to prepare local translation model";
+  handle->startup_logs.push_back("text translation model prepare => FAILED");
+  return ThreadError(ENGINE_RESULT_INTERNAL_ERROR,
+                     handle->last_error.c_str());
+#else
+  (void)handle;
+  return ENGINE_RESULT_OK;
+#endif
+}
+
+void StartTextTranslationLoading() {
+#if defined(AETHERKIRI_INTERNAL_TEXT_TRANSLATION)
+  AetherInternalStartTextTranslationLoading();
+#endif
+}
+
+std::mutex g_provider_log_sink_mutex;
+std::shared_ptr<spdlog::sinks::sink> g_provider_log_sink;
+
+// Runtime-provider engines (CatSystem2, Artemis, WA2) emit their logs through
+// the provider host callback instead of the legacy KiriKiri "core"/"tjs2"
+// loggers, so krkr2.log never receives them. Attach a per-game sidecar file
+// sink to the spdlog default logger so provider diagnostics survive windowed
+// release exports that have no console. The sink flushes on every message to
+// keep the tail readable after a hard crash.
+void AttachProviderGameLogFileSink(const std::string& game_root,
+                                   const std::string& writable_path) {
+  std::lock_guard<std::mutex> sink_guard(g_provider_log_sink_mutex);
+  std::vector<std::string> candidates;
+  if (!game_root.empty()) {
+    std::string root = game_root;
+    while (!root.empty() && (root.back() == '/' || root.back() == '\\')) {
+      root.pop_back();
+    }
+    if (!root.empty()) candidates.push_back(root + "/aetherkiri-engine.log");
+  }
+  if (!writable_path.empty()) {
+    std::string root = writable_path;
+    while (!root.empty() && (root.back() == '/' || root.back() == '\\')) {
+      root.pop_back();
+    }
+    if (!root.empty()) candidates.push_back(root + "/aetherkiri-engine.log");
+  }
+  for (const std::string& candidate : candidates) {
+    try {
+      auto sink = std::make_shared<spdlog::sinks::basic_file_sink_mt>(
+          candidate, true);
+      auto logger = spdlog::default_logger();
+      // Drop any previously attached provider sink before adding the new one.
+      if (g_provider_log_sink != nullptr) {
+        auto& sinks = logger->sinks();
+        sinks.erase(
+            std::remove_if(sinks.begin(), sinks.end(),
+                           [previous = g_provider_log_sink.get()](
+                               const std::shared_ptr<spdlog::sinks::sink>& s) {
+                             return s.get() == previous;
+                           }),
+            sinks.end());
+      }
+      logger->sinks().push_back(sink);
+      g_provider_log_sink = sink;
+      logger->flush_on(spdlog::level::trace);
+      spdlog::info("aetherkiri provider engine log attached: {}", candidate);
+      return;
+    } catch (const std::exception&) {
+      // Game roots can be read-only; fall through to the next candidate.
+    }
+  }
+}
+
+void HostLog(void* user_data, uint32_t level, const char* subsystem,
+             const char* message) {
+  auto* handle = static_cast<DispatchHandle*>(user_data);
+  if (handle == nullptr) return;
+  std::lock_guard<std::recursive_mutex> guard(handle->mutex);
+  std::string line;
+  switch (level) {
+    case ENGINE_RUNTIME_LOG_ERROR: line = "error "; break;
+    case ENGINE_RUNTIME_LOG_WARNING: line = "warning "; break;
+    case ENGINE_RUNTIME_LOG_DEBUG: line = "debug "; break;
+    case ENGINE_RUNTIME_LOG_TRACE: line = "trace "; break;
+    default: line = "info "; break;
+  }
+  if (subsystem != nullptr && subsystem[0] != '\0') {
+    line += "[";
+    line += subsystem;
+    line += "] ";
+  }
+  line += message != nullptr ? message : "";
+  // Mirror into the spdlog default logger so provider logs reach the per-game
+  // sidecar file even when the UI log view is disabled. This must run before
+  // line is moved into the startup log queue.
+  const spdlog::level::level_enum spdlog_level =
+      level == ENGINE_RUNTIME_LOG_ERROR   ? spdlog::level::err
+      : level == ENGINE_RUNTIME_LOG_WARNING ? spdlog::level::warn
+      : level == ENGINE_RUNTIME_LOG_DEBUG  ? spdlog::level::debug
+      : level == ENGINE_RUNTIME_LOG_TRACE  ? spdlog::level::trace
+                                            : spdlog::level::info;
+  spdlog::default_logger()->log(spdlog_level, "{}", line);
+  handle->startup_logs.push_back(std::move(line));
+}
+
+uint64_t HostMonotonicTimeMicros(void*) {
+  return static_cast<uint64_t>(std::chrono::duration_cast<std::chrono::microseconds>(
+                                   std::chrono::steady_clock::now().time_since_epoch())
+                                   .count());
+}
+
+engine_result_t HostMediaOpen(void* user_data, const char* path,
+                              engine_media_handle_t* out_media) {
+  auto* handle = static_cast<DispatchHandle*>(user_data);
+  if (handle == nullptr || path == nullptr || path[0] == '\0' ||
+      out_media == nullptr) {
+    return ENGINE_RESULT_INVALID_ARGUMENT;
+  }
+  *out_media = nullptr;
+  std::lock_guard<std::recursive_mutex> guard(handle->mutex);
+  engine_media_handle_t media = nullptr;
+  const auto result = engine_legacy_media_open(handle->legacy, path, &media);
+  SetLegacyError(handle, result, "runtime media host failed to open media");
+  if (result != ENGINE_RESULT_OK) return result;
+  if (media == nullptr) {
+    return ThreadError(ENGINE_RESULT_INTERNAL_ERROR,
+                       "runtime media host returned an empty handle");
+  }
+  handle->provider_media_handles.insert(media);
+  *out_media = media;
+  return ENGINE_RESULT_OK;
+}
+
+engine_result_t HostMediaDestroy(void* user_data, engine_media_handle_t media) {
+  auto* handle = static_cast<DispatchHandle*>(user_data);
+  if (handle == nullptr) return ENGINE_RESULT_INVALID_ARGUMENT;
+  if (media == nullptr) return ENGINE_RESULT_OK;
+  std::lock_guard<std::recursive_mutex> guard(handle->mutex);
+  if (handle->provider_media_handles.erase(media) == 0)
+    return ENGINE_RESULT_INVALID_ARGUMENT;
+  const auto result = engine_legacy_media_destroy(media);
+  SetLegacyError(handle, result, "runtime media host failed to close media");
+  return result;
+}
+
+template <typename Callback>
+engine_result_t HostMediaCall(void* user_data, engine_media_handle_t media,
+                              const char* fallback, Callback&& callback) {
+  auto* handle = static_cast<DispatchHandle*>(user_data);
+  if (handle == nullptr || media == nullptr) return ENGINE_RESULT_INVALID_ARGUMENT;
+  std::lock_guard<std::recursive_mutex> guard(handle->mutex);
+  if (handle->provider_media_handles.count(media) == 0)
+    return ENGINE_RESULT_INVALID_ARGUMENT;
+  const auto result = callback(media);
+  SetLegacyError(handle, result, fallback);
+  return result;
+}
+
+engine_result_t HostMediaPlay(void* user_data, engine_media_handle_t media) {
+  return HostMediaCall(user_data, media, "runtime media host failed to play media",
+                       engine_legacy_media_play);
+}
+
+engine_result_t HostMediaPause(void* user_data, engine_media_handle_t media) {
+  return HostMediaCall(user_data, media, "runtime media host failed to pause media",
+                       engine_legacy_media_pause);
+}
+
+engine_result_t HostMediaSeek(void* user_data, engine_media_handle_t media,
+                              int64_t position_ms) {
+  return HostMediaCall(user_data, media, "runtime media host failed to seek media",
+      [position_ms](engine_media_handle_t value) {
+        return engine_legacy_media_seek(value, position_ms);
+      });
+}
+
+engine_result_t HostMediaSetRate(void* user_data, engine_media_handle_t media,
+                                 double rate) {
+  return HostMediaCall(user_data, media,
+      "runtime media host failed to set playback rate",
+      [rate](engine_media_handle_t value) {
+        return engine_legacy_media_set_rate(value, rate);
+      });
+}
+
+engine_result_t HostMediaSetVolume(void* user_data, engine_media_handle_t media,
+                                   double volume) {
+  return HostMediaCall(user_data, media,
+      "runtime media host failed to set volume",
+      [volume](engine_media_handle_t value) {
+        return engine_legacy_media_set_volume(value, volume);
+      });
+}
+
+engine_result_t HostMediaGetState(void* user_data, engine_media_handle_t media,
+                                  engine_media_state_t* out_state) {
+  if (out_state == nullptr) return ENGINE_RESULT_INVALID_ARGUMENT;
+  return HostMediaCall(user_data, media,
+      "runtime media host failed to read media state",
+      [out_state](engine_media_handle_t value) {
+        return engine_legacy_media_get_state(value, out_state);
+      });
+}
+
+engine_result_t HostMediaReadFrame(void* user_data, engine_media_handle_t media,
+                                   void* pixels, size_t size,
+                                   engine_frame_desc_t* out_frame) {
+  if (pixels == nullptr || out_frame == nullptr)
+    return ENGINE_RESULT_INVALID_ARGUMENT;
+  return HostMediaCall(user_data, media,
+      "runtime media host failed to read video frame",
+      [pixels, size, out_frame](engine_media_handle_t value) {
+        return engine_legacy_media_read_frame_rgba(value, pixels, size,
+                                                   out_frame);
+      });
+}
+
+void HostPlatformRequest(void* user_data, const char* operation,
+                         const char* argument) {
+  auto* handle = static_cast<DispatchHandle*>(user_data);
+  if (handle == nullptr || operation == nullptr || operation[0] == '\0') {
+    return;
+  }
+  std::lock_guard<std::recursive_mutex> guard(handle->mutex);
+  // Bound hostile or broken script spam without losing the newest request.
+  if (handle->platform_requests.size() >= 256u) {
+    handle->platform_requests.pop_front();
+  }
+  handle->platform_requests.push_back(
+      {operation, argument != nullptr ? argument : ""});
+}
+
+engine_result_t SelectBackendLocked(DispatchHandle* handle,
+                                    const char* game_root_path_utf8) {
+  if (handle->backend != BackendKind::kUndecided) return ENGINE_RESULT_OK;
+
+  std::string requested = Normalize(handle->requested_runtime.c_str());
+  // Older hosts may still request the pre-registry "legacy" spelling.
+  if (requested == "legacy") requested = "kirikiri";
+
+  const auto providers = aetherkiri::runtime::SnapshotProviders();
+  const aetherkiri::runtime::RegisteredProvider* selected = nullptr;
+  if (requested.empty() || requested == "auto") {
+    int32_t selected_score = 0;
+    for (const auto& candidate : providers) {
+      // The built-in KiriKiri backend is the automatic fallback when no other
+      // runtime claims a directory, not a probe participant; probing it would
+      // let it steal directories that other providers already recognize.
+      if (candidate.is_legacy_builtin) continue;
+      int32_t score = 0;
+      try {
+        score = candidate.api->probe(candidate.api->provider_user_data,
+                                     game_root_path_utf8);
+      } catch (...) {
+        score = 0;
+      }
+      if (score <= 0) continue;
+      if (selected == nullptr || score > selected_score ||
+          (score == selected_score &&
+           candidate.api->priority > selected->api->priority) ||
+          (score == selected_score &&
+           candidate.api->priority == selected->api->priority &&
+           candidate.registration_order < selected->registration_order)) {
+        selected = &candidate;
+        selected_score = score;
+      }
+    }
+    if (selected == nullptr) {
+      // Nothing claimed the directory: KiriKiri stays the default engine,
+      // exactly like the pre-registry behavior.
+      handle->backend = BackendKind::kLegacy;
+      return EnsureLegacyLocked(handle);
+    }
+  } else {
+    const auto found = std::find_if(
+        providers.begin(), providers.end(), [&](const auto& candidate) {
+          return candidate.runtime_id == requested;
+        });
+    if (found == providers.end()) {
+      handle->last_error = "requested runtime provider is not registered: " + requested;
+      SetThreadError(handle->last_error.c_str());
+      return ENGINE_RESULT_NOT_SUPPORTED;
+    }
+    if (found->is_legacy_builtin) {
+      handle->backend = BackendKind::kLegacy;
+      return EnsureLegacyLocked(handle);
+    }
+    selected = &*found;
+  }
+
+  handle->provider = selected->api;
+
+  void* runtime = nullptr;
+  engine_result_t result = ENGINE_RESULT_INTERNAL_ERROR;
+  try {
+    AETHER_DISPATCH_DIAG_LOG("SelectBackend before provider create");
+    result = handle->provider->create(handle->provider->provider_user_data,
+                                      &handle->host, &handle->create_desc,
+                                      &runtime);
+    AETHER_DISPATCH_DIAG_LOG("SelectBackend after provider create");
+  } catch (...) {
+    result = ENGINE_RESULT_INTERNAL_ERROR;
+  }
+  handle->runtime = runtime;
+  if (result != ENGINE_RESULT_OK || runtime == nullptr) {
+    SetProviderError(handle,
+                     result == ENGINE_RESULT_OK ? ENGINE_RESULT_INTERNAL_ERROR : result,
+                     "runtime provider creation failed");
+    if (runtime != nullptr) handle->provider->destroy(runtime);
+    handle->runtime = nullptr;
+    return result == ENGINE_RESULT_OK ? ENGINE_RESULT_INTERNAL_ERROR : result;
+  }
+  handle->backend = BackendKind::kProvider;
+
+  if (PROVIDER_HAS(handle->provider, set_option)) {
+    for (const auto& option_value : handle->pending_options) {
+      engine_option_t option{};
+      option.key_utf8 = option_value.first.c_str();
+      option.value_utf8 = option_value.second.c_str();
+      result = handle->provider->set_option(handle->runtime, &option);
+      if (result == ENGINE_RESULT_NOT_SUPPORTED) {
+        // Options queued before auto-detection may belong to another engine
+        // (the common shell configures KiriKiri tracing, plugin loading, etc.).
+        // Providers must be able to reject those without pretending they were
+        // applied. Only this pre-selection replay is optional; direct option
+        // calls still return NOT_SUPPORTED to the caller.
+        handle->startup_logs.push_back("runtime option not applicable: " + option_value.first);
+        continue;
+      }
+      if (result != ENGINE_RESULT_OK) {
+        SetProviderError(handle, result, "runtime provider rejected an option");
+        return result;
+      }
+    }
+  }
+  if (handle->has_surface_size) {
+    if (!PROVIDER_HAS(handle->provider, set_surface_size)) {
+      return Unsupported(handle, "set_surface_size");
+    }
+    result = handle->provider->set_surface_size(
+        handle->runtime, handle->surface_width, handle->surface_height);
+    if (result != ENGINE_RESULT_OK) {
+      SetProviderError(handle, result,
+                       "runtime provider rejected the render surface size");
+      return result;
+    }
+  }
+  handle->last_error.clear();
+  SetThreadError(nullptr);
+  return ENGINE_RESULT_OK;
+}
+
+template <typename LegacyCall, typename ProviderCall>
+engine_result_t Route(engine_handle_t public_handle, const char* operation,
+                      LegacyCall&& legacy_call, ProviderCall&& provider_call) {
+  std::lock_guard<std::recursive_mutex> registry_guard(g_dispatch_registry_mutex);
+  DispatchHandle* handle = nullptr;
+  auto result = ValidateHandleLocked(public_handle, &handle);
+  if (result != ENGINE_RESULT_OK) return result;
+  std::lock_guard<std::recursive_mutex> guard(handle->mutex);
+  if (handle->backend != BackendKind::kProvider) {
+    result = EnsureLegacyLocked(handle);
+    if (result != ENGINE_RESULT_OK) return result;
+    return legacy_call(handle->legacy);
+  }
+  result = provider_call(handle);
+  if (result == ENGINE_RESULT_NOT_SUPPORTED) {
+    // A provider can expose an operation and still report that a particular
+    // script request is unsupported. Preserve its diagnostic in that case;
+    // the generic "does not implement" message is only correct when the
+    // provider did not supply a more specific error.
+    const char* provider_error = nullptr;
+    if (PROVIDER_HAS(handle->provider, get_last_error)) {
+      provider_error = handle->provider->get_last_error(handle->runtime);
+    }
+    if (provider_error == nullptr || provider_error[0] == '\0') {
+      return Unsupported(handle, operation);
+    }
+  }
+  SetProviderError(handle, result, operation);
+  return result;
+}
+
+template <typename LegacyCall>
+engine_result_t RouteMedia(engine_media_handle_t media, const char* operation,
+                           LegacyCall&& legacy_call) {
+  if (media == nullptr) {
+    return ThreadError(ENGINE_RESULT_INVALID_ARGUMENT, "media handle is null");
+  }
+  std::lock_guard<std::recursive_mutex> registry_guard(
+      g_dispatch_registry_mutex);
+  const auto found = g_dispatch_media_handles.find(media);
+  if (found == g_dispatch_media_handles.end()) {
+    return ThreadError(ENGINE_RESULT_INVALID_ARGUMENT,
+                       "media handle is invalid or already destroyed");
+  }
+  DispatchHandle* owner = nullptr;
+  const auto validation = ValidateHandleLocked(found->second, &owner);
+  if (validation != ENGINE_RESULT_OK) return validation;
+  std::lock_guard<std::recursive_mutex> guard(owner->mutex);
+  const auto result = legacy_call(media);
+  SetLegacyError(owner, result, operation);
+  return result;
+}
+
+engine_result_t DrainProviderStartupLogs(DispatchHandle* handle, char* out_buffer,
+                                         uint32_t buffer_size,
+                                         uint32_t* out_bytes_written) {
+  if (out_bytes_written == nullptr || out_buffer == nullptr || buffer_size == 0) {
+    return ENGINE_RESULT_INVALID_ARGUMENT;
+  }
+  uint32_t written = 0;
+  while (!handle->startup_logs.empty()) {
+    const std::string& line = handle->startup_logs.front();
+    const size_t needed = line.size() + 1u;
+    if (needed > buffer_size - written) break;
+    std::memcpy(out_buffer + written, line.data(), line.size());
+    written += static_cast<uint32_t>(line.size());
+    out_buffer[written++] = '\n';
+    handle->startup_logs.pop_front();
+  }
+  out_buffer[std::min(written, buffer_size - 1u)] = '\0';
+  *out_bytes_written = written;
+  return ENGINE_RESULT_OK;
+}
+
+}  // namespace
+
+extern "C" {
+
+/* Exported explicitly (the TU compiles with -fvisibility=hidden in Release;
+ * the version script cannot promote hidden symbols). */
+ENGINE_API_EXPORT engine_result_t engine_install_legacy_services(
+    const engine_legacy_services_v1_t* services) {
+  if (services == nullptr ||
+      services->struct_size < ENGINE_LEGACY_SERVICES_V1_REQUIRED_SIZE ||
+      services->create == nullptr ||
+      services->get_last_error == nullptr ||
+      services->activate_audio_session_for_host == nullptr ||
+      services->drain_texture_recycle == nullptr) {
+    return ENGINE_RESULT_INVALID_ARGUMENT;
+  }
+  const engine_legacy_services_v1_t* current =
+      g_legacy_services.load(std::memory_order_acquire);
+  if (current == services) return ENGINE_RESULT_OK;
+  if (current != nullptr) {
+    // Two runtimes must not silently fight over the built-in "kirikiri"
+    // registry entry.
+    return ENGINE_RESULT_INVALID_STATE;
+  }
+  g_legacy_services.store(services, std::memory_order_release);
+  return ENGINE_RESULT_OK;
+}
+
+engine_result_t engine_get_runtime_api_version(uint32_t* out_api_version) {
+  if (out_api_version == nullptr) {
+    return ThreadError(ENGINE_RESULT_INVALID_ARGUMENT, "out_api_version is null");
+  }
+  *out_api_version = ENGINE_API_VERSION;
+  SetThreadError(nullptr);
+  return ENGINE_RESULT_OK;
+}
+
+engine_result_t engine_create(const engine_create_desc_t* desc,
+                              engine_handle_t* out_handle) {
+  if (desc == nullptr || out_handle == nullptr) {
+    return ThreadError(ENGINE_RESULT_INVALID_ARGUMENT,
+                       "engine_create requires non-null desc and out_handle");
+  }
+  *out_handle = nullptr;
+  aetherkiri::engine_api::InstallCrashCapture();
+  // Private runtime providers (CatSystem2 / Artemis / WA2) are compiled into
+  // the KiriKiri glue and register through the installed services table; the
+  // call is idempotent exactly like the direct registration calls it replaces.
+  if (const engine_legacy_services_v1_t* services = LegacyServices()) {
+    if (services->register_private_runtimes != nullptr) {
+      services->register_private_runtimes();
+    }
+  }
+  if (desc->struct_size < sizeof(engine_create_desc_t)) {
+    return ThreadError(ENGINE_RESULT_INVALID_ARGUMENT,
+                       "engine_create_desc_t.struct_size is too small");
+  }
+  const uint32_t host_major = (ENGINE_API_VERSION >> 24u) & 0xffu;
+  const uint32_t caller_major = (desc->api_version >> 24u) & 0xffu;
+  if (host_major != caller_major) {
+    return ThreadError(ENGINE_RESULT_NOT_SUPPORTED,
+                       "unsupported engine API major version");
+  }
+
+  auto* handle = new (std::nothrow) DispatchHandle();
+  if (handle == nullptr) {
+    return ThreadError(ENGINE_RESULT_INTERNAL_ERROR,
+                       "failed to allocate engine dispatch handle");
+  }
+  handle->writable_path = desc->writable_path_utf8 != nullptr
+                              ? desc->writable_path_utf8
+                              : "";
+  handle->cache_path = desc->cache_path_utf8 != nullptr ? desc->cache_path_utf8 : "";
+  handle->create_desc = *desc;
+  handle->create_desc.writable_path_utf8 = handle->writable_path.empty()
+                                                ? nullptr
+                                                : handle->writable_path.c_str();
+  handle->create_desc.cache_path_utf8 = handle->cache_path.empty()
+                                             ? nullptr
+                                             : handle->cache_path.c_str();
+  handle->host.struct_size = sizeof(handle->host);
+  handle->host.api_version = ENGINE_RUNTIME_PROVIDER_API_VERSION;
+  handle->host.user_data = handle;
+  handle->host.log = HostLog;
+  handle->host.monotonic_time_micros = HostMonotonicTimeMicros;
+  handle->host.platform_request = HostPlatformRequest;
+  handle->fragment_shader_host =
+      aetherkiri::runtime::SnapshotFragmentShaderHost();
+  if (handle->fragment_shader_host.execute != nullptr) {
+    handle->host.reserved_ptr[0] = &handle->fragment_shader_host;
+  }
+  handle->media_host.struct_size = sizeof(handle->media_host);
+  handle->media_host.api_version = ENGINE_RUNTIME_MEDIA_HOST_API_VERSION;
+  handle->media_host.user_data = handle;
+  handle->media_host.open = HostMediaOpen;
+  handle->media_host.destroy = HostMediaDestroy;
+  handle->media_host.play = HostMediaPlay;
+  handle->media_host.pause = HostMediaPause;
+  handle->media_host.seek = HostMediaSeek;
+  handle->media_host.set_rate = HostMediaSetRate;
+  handle->media_host.set_volume = HostMediaSetVolume;
+  handle->media_host.get_state = HostMediaGetState;
+  handle->media_host.read_frame_rgba = HostMediaReadFrame;
+  handle->host.reserved_ptr[1] = &handle->media_host;
+
+  // The legacy KiriKiri handle is created lazily on first use (backend
+  // selection, media, diagnostics), so provider-only hosts never pay for a
+  // second engine handle.
+  const auto public_handle = reinterpret_cast<engine_handle_t>(handle);
+  {
+    std::lock_guard<std::recursive_mutex> guard(g_dispatch_registry_mutex);
+    g_dispatch_handles.insert(public_handle);
+  }
+  *out_handle = public_handle;
+  SetThreadError(nullptr);
+  return ENGINE_RESULT_OK;
+}
+
+engine_result_t engine_poll_platform_request(
+    engine_handle_t public_handle, char* operation_buffer,
+    uint32_t operation_buffer_size, char* argument_buffer,
+    uint32_t argument_buffer_size, uint32_t* out_available) {
+  if (out_available == nullptr) {
+    return ThreadError(ENGINE_RESULT_INVALID_ARGUMENT,
+                       "engine_poll_platform_request requires out_available");
+  }
+  *out_available = 0;
+  std::lock_guard<std::recursive_mutex> registry_guard(
+      g_dispatch_registry_mutex);
+  DispatchHandle* handle = nullptr;
+  const engine_result_t validation =
+      ValidateHandleLocked(public_handle, &handle);
+  if (validation != ENGINE_RESULT_OK) return validation;
+  std::lock_guard<std::recursive_mutex> guard(handle->mutex);
+  if (handle->platform_requests.empty()) return ENGINE_RESULT_OK;
+  if (operation_buffer == nullptr || operation_buffer_size == 0 ||
+      argument_buffer == nullptr || argument_buffer_size == 0) {
+    return ThreadError(ENGINE_RESULT_INVALID_ARGUMENT,
+                       "platform request output buffers are invalid");
+  }
+  const DispatchHandle::PlatformRequest& request =
+      handle->platform_requests.front();
+  if (request.operation.size() + 1u > operation_buffer_size ||
+      request.argument.size() + 1u > argument_buffer_size) {
+    return ThreadError(ENGINE_RESULT_INVALID_ARGUMENT,
+                       "platform request output buffer is too small");
+  }
+  std::memcpy(operation_buffer, request.operation.c_str(),
+              request.operation.size() + 1u);
+  std::memcpy(argument_buffer, request.argument.c_str(),
+              request.argument.size() + 1u);
+  handle->platform_requests.pop_front();
+  *out_available = 1;
+  SetThreadError(nullptr);
+  return ENGINE_RESULT_OK;
+}
+
+engine_result_t engine_submit_platform_response(
+    engine_handle_t public_handle, const char* operation_utf8,
+    const char* argument_utf8) {
+  if (operation_utf8 == nullptr || operation_utf8[0] == '\0') {
+    return ThreadError(ENGINE_RESULT_INVALID_ARGUMENT,
+                       "platform response operation is empty");
+  }
+  std::lock_guard<std::recursive_mutex> registry_guard(
+      g_dispatch_registry_mutex);
+  DispatchHandle* handle = nullptr;
+  const engine_result_t validation =
+      ValidateHandleLocked(public_handle, &handle);
+  if (validation != ENGINE_RESULT_OK) return validation;
+  std::lock_guard<std::recursive_mutex> guard(handle->mutex);
+  if (handle->backend != BackendKind::kProvider ||
+      handle->provider == nullptr || handle->runtime == nullptr) {
+    return Unsupported(handle, "platform responses");
+  }
+  if (!PROVIDER_HAS(handle->provider, submit_platform_response)) {
+    return Unsupported(handle, "platform responses");
+  }
+  const engine_result_t result =
+      handle->provider->submit_platform_response(
+          handle->runtime, operation_utf8,
+          argument_utf8 != nullptr ? argument_utf8 : "");
+  SetProviderError(handle, result, "runtime rejected platform response");
+  return result;
+}
+
+engine_result_t engine_destroy(engine_handle_t public_handle) {
+  if (public_handle == nullptr) {
+    SetThreadError(nullptr);
+    return ENGINE_RESULT_OK;
+  }
+  DispatchHandle* handle = nullptr;
+  std::vector<engine_media_handle_t> owned_media;
+  bool release_text_translation = false;
+  {
+    std::lock_guard<std::recursive_mutex> guard(g_dispatch_registry_mutex);
+    const auto found = g_dispatch_handles.find(public_handle);
+    if (found == g_dispatch_handles.end()) {
+      return ThreadError(ENGINE_RESULT_INVALID_ARGUMENT,
+                         "engine handle is invalid or already destroyed");
+    }
+    for (auto media = g_dispatch_media_handles.begin();
+         media != g_dispatch_media_handles.end();) {
+      if (media->second == public_handle) {
+        owned_media.push_back(media->first);
+        media = g_dispatch_media_handles.erase(media);
+      } else {
+        ++media;
+      }
+    }
+    g_dispatch_handles.erase(found);
+    release_text_translation = g_dispatch_handles.empty();
+    handle = Cast(public_handle);
+  }
+
+  StartupThread startup_thread;
+  {
+    std::lock_guard<std::recursive_mutex> guard(handle->mutex);
+    startup_thread = std::move(handle->startup_thread);
+  }
+  if (startup_thread.joinable()) startup_thread.join();
+  if (handle->provider != nullptr && handle->runtime != nullptr) {
+    handle->provider->destroy(handle->runtime);
+    handle->runtime = nullptr;
+  }
+  for (const auto media : handle->provider_media_handles) {
+    engine_legacy_media_destroy(media);
+  }
+  handle->provider_media_handles.clear();
+  for (const auto media : owned_media) {
+    LegacyServices()->media_destroy(media);
+  }
+  // The legacy handle is created lazily; a provider-only host that never
+  // touched media or diagnostics has nothing to destroy here.
+  const auto result = handle->legacy != nullptr
+                          ? LegacyServices()->destroy(handle->legacy)
+                          : ENGINE_RESULT_OK;
+  delete handle;
+#if defined(AETHERKIRI_INTERNAL_TEXT_TRANSLATION)
+  if (release_text_translation) {
+    std::lock_guard<std::recursive_mutex> guard(g_dispatch_registry_mutex);
+    if (g_dispatch_handles.empty()) AetherInternalReleaseTextTranslation();
+  }
+#else
+  (void)release_text_translation;
+#endif
+  SetThreadError(nullptr);
+  return result;
+}
+
+engine_result_t engine_media_open(engine_handle_t public_handle,
+                                  const char* path_utf8,
+                                  engine_media_handle_t* out_media) {
+  if (path_utf8 == nullptr || path_utf8[0] == '\0' || out_media == nullptr) {
+    return ThreadError(ENGINE_RESULT_INVALID_ARGUMENT,
+                       "media path and output handle are required");
+  }
+  *out_media = nullptr;
+  std::lock_guard<std::recursive_mutex> registry_guard(
+      g_dispatch_registry_mutex);
+  DispatchHandle* handle = nullptr;
+  const auto validation = ValidateHandleLocked(public_handle, &handle);
+  if (validation != ENGINE_RESULT_OK) return validation;
+  std::lock_guard<std::recursive_mutex> guard(handle->mutex);
+  const auto ensure_result = EnsureLegacyLocked(handle);
+  if (ensure_result != ENGINE_RESULT_OK) return ensure_result;
+  engine_media_handle_t legacy_media = nullptr;
+  const auto result = LegacyServices()->media_open(handle->legacy, path_utf8,
+                                               &legacy_media);
+  SetLegacyError(handle, result, "legacy media player failed to open media");
+  if (result != ENGINE_RESULT_OK) return result;
+  if (legacy_media == nullptr) {
+    handle->last_error = "legacy media player returned an empty handle";
+    SetThreadError(handle->last_error.c_str());
+    return ENGINE_RESULT_INTERNAL_ERROR;
+  }
+  g_dispatch_media_handles.emplace(legacy_media, public_handle);
+  *out_media = legacy_media;
+  return ENGINE_RESULT_OK;
+}
+
+engine_result_t engine_media_destroy(engine_media_handle_t media) {
+  if (media == nullptr) {
+    SetThreadError(nullptr);
+    return ENGINE_RESULT_OK;
+  }
+  std::lock_guard<std::recursive_mutex> registry_guard(
+      g_dispatch_registry_mutex);
+  const auto found = g_dispatch_media_handles.find(media);
+  if (found == g_dispatch_media_handles.end()) {
+    return ThreadError(ENGINE_RESULT_INVALID_ARGUMENT,
+                       "media handle is invalid or already destroyed");
+  }
+  DispatchHandle* owner = nullptr;
+  const auto validation = ValidateHandleLocked(found->second, &owner);
+  if (validation != ENGINE_RESULT_OK) return validation;
+  std::lock_guard<std::recursive_mutex> guard(owner->mutex);
+  const auto result = LegacyServices()->media_destroy(media);
+  g_dispatch_media_handles.erase(found);
+  SetLegacyError(owner, result, "legacy media player failed to close media");
+  return result;
+}
+
+engine_result_t engine_media_play(engine_media_handle_t media) {
+  return RouteMedia(media, "legacy media player failed to play media",
+                    [](engine_media_handle_t legacy) {
+                      return LegacyServices()->media_play(legacy);
+                    });
+}
+
+engine_result_t engine_media_pause(engine_media_handle_t media) {
+  return RouteMedia(media, "legacy media player failed to pause media",
+                    [](engine_media_handle_t legacy) {
+                      return LegacyServices()->media_pause(legacy);
+                    });
+}
+
+engine_result_t engine_media_seek(engine_media_handle_t media,
+                                  int64_t position_ms) {
+  return RouteMedia(media, "legacy media player failed to seek media",
+                    [&](engine_media_handle_t legacy) {
+                      return LegacyServices()->media_seek(legacy, position_ms);
+                    });
+}
+
+engine_result_t engine_media_set_rate(engine_media_handle_t media,
+                                      double playback_rate) {
+  return RouteMedia(media, "legacy media player failed to set playback rate",
+                    [&](engine_media_handle_t legacy) {
+                      return LegacyServices()->media_set_rate(legacy,
+                                                          playback_rate);
+                    });
+}
+
+engine_result_t engine_media_set_volume(engine_media_handle_t media,
+                                        double volume) {
+  return RouteMedia(media, "legacy media player failed to set volume",
+                    [&](engine_media_handle_t legacy) {
+                      return engine_legacy_media_set_volume(legacy, volume);
+                    });
+}
+
+engine_result_t engine_media_get_state(engine_media_handle_t media,
+                                       engine_media_state_t* out_state) {
+  return RouteMedia(media, "legacy media player failed to read media state",
+                    [&](engine_media_handle_t legacy) {
+                      return LegacyServices()->media_get_state(legacy, out_state);
+                    });
+}
+
+engine_result_t engine_media_get_subtitle_tracks_json(
+    engine_media_handle_t media, char* out_buffer, uint32_t buffer_size,
+    uint32_t* out_bytes_written) {
+  return RouteMedia(
+      media, "legacy media player failed to list subtitle tracks",
+      [&](engine_media_handle_t legacy) {
+        return LegacyServices()->media_get_subtitle_tracks_json(
+            legacy, out_buffer, buffer_size, out_bytes_written);
+      });
+}
+
+engine_result_t engine_media_extract_subtitle(
+    engine_media_handle_t media, int32_t stream_index,
+    const char* output_path_utf8) {
+  return RouteMedia(media, "legacy media player failed to extract subtitles",
+                    [&](engine_media_handle_t legacy) {
+                      return LegacyServices()->media_extract_subtitle(
+                          legacy, stream_index, output_path_utf8);
+                    });
+}
+
+engine_result_t engine_media_read_frame_rgba(
+    engine_media_handle_t media, void* out_pixels, size_t out_pixels_size,
+    engine_frame_desc_t* out_frame_desc) {
+  return RouteMedia(media, "legacy media player failed to read video frame",
+                    [&](engine_media_handle_t legacy) {
+                      return LegacyServices()->media_read_frame_rgba(
+                          legacy, out_pixels, out_pixels_size, out_frame_desc);
+                    });
+}
+
+engine_result_t engine_open_game(engine_handle_t public_handle,
+                                 const char* game_root_path_utf8,
+                                 const char* startup_script_utf8) {
+  if (game_root_path_utf8 == nullptr || game_root_path_utf8[0] == '\0') {
+    return ThreadError(ENGINE_RESULT_INVALID_ARGUMENT,
+                       "game_root_path_utf8 is null or empty");
+  }
+  std::lock_guard<std::recursive_mutex> registry_guard(g_dispatch_registry_mutex);
+  DispatchHandle* handle = nullptr;
+  auto result = ValidateHandleLocked(public_handle, &handle);
+  if (result != ENGINE_RESULT_OK) return result;
+  std::lock_guard<std::recursive_mutex> guard(handle->mutex);
+  if (handle->startup_thread.joinable()) {
+    return ThreadError(ENGINE_RESULT_INVALID_STATE,
+                       "an asynchronous startup task must finish before reopening");
+  }
+  result = SelectBackendLocked(handle, game_root_path_utf8);
+  if (result != ENGINE_RESULT_OK) return result;
+  result = CheckBetaRuntimeAccess(handle);
+  if (result != ENGINE_RESULT_OK) return result;
+  result = PrepareTextTranslationLocked(handle);
+  if (result != ENGINE_RESULT_OK) return result;
+  if (handle->backend == BackendKind::kLegacy) {
+    result = EnsureLegacyLocked(handle);
+    if (result != ENGINE_RESULT_OK) return result;
+    result = LegacyServices()->open_game(handle->legacy, game_root_path_utf8,
+                                     startup_script_utf8);
+    if (result == ENGINE_RESULT_OK) StartTextTranslationLoading();
+    return result;
+  }
+  handle->startup_state = ENGINE_STARTUP_STATE_RUNNING;
+  AttachProviderGameLogFileSink(game_root_path_utf8, handle->writable_path);
+  AETHER_DISPATCH_DIAG_LOG("engine_open_game before provider open_game");
+  result = RunProviderOpen(handle, game_root_path_utf8, startup_script_utf8);
+  AETHER_DISPATCH_DIAG_LOG("engine_open_game after provider open_game");
+  handle->startup_state = result == ENGINE_RESULT_OK
+                              ? ENGINE_STARTUP_STATE_SUCCEEDED
+                              : ENGINE_STARTUP_STATE_FAILED;
+  handle->startup_logs.push_back(result == ENGINE_RESULT_OK
+                                     ? "runtime provider open_game => OK"
+                                     : "runtime provider open_game => FAILED");
+  SetProviderError(handle, result, "runtime provider failed to open game");
+  if (result == ENGINE_RESULT_OK) StartTextTranslationLoading();
+  return result;
+}
+
+engine_result_t engine_open_game_async(engine_handle_t public_handle,
+                                       const char* game_root_path_utf8,
+                                       const char* startup_script_utf8) {
+  if (game_root_path_utf8 == nullptr || game_root_path_utf8[0] == '\0') {
+    return ThreadError(ENGINE_RESULT_INVALID_ARGUMENT,
+                       "game_root_path_utf8 is null or empty");
+  }
+  std::lock_guard<std::recursive_mutex> registry_guard(g_dispatch_registry_mutex);
+  DispatchHandle* handle = nullptr;
+  auto result = ValidateHandleLocked(public_handle, &handle);
+  if (result != ENGINE_RESULT_OK) return result;
+  std::lock_guard<std::recursive_mutex> guard(handle->mutex);
+  if (handle->startup_thread.joinable()) {
+    handle->last_error = "an asynchronous startup task already exists";
+    return ThreadError(ENGINE_RESULT_INVALID_STATE, handle->last_error.c_str());
+  }
+  result = SelectBackendLocked(handle, game_root_path_utf8);
+  if (result != ENGINE_RESULT_OK) {
+    if (handle->last_error.empty()) {
+      handle->last_error = "failed to select a runtime backend";
+    }
+    return ThreadError(result, handle->last_error.c_str());
+  }
+  result = CheckBetaRuntimeAccess(handle);
+  if (result != ENGINE_RESULT_OK) return result;
+  result = PrepareTextTranslationLocked(handle);
+  if (result != ENGINE_RESULT_OK) return result;
+  if (handle->backend == BackendKind::kLegacy) {
+    result = EnsureLegacyLocked(handle);
+    if (result != ENGINE_RESULT_OK) return result;
+    return LegacyServices()->open_game_async(handle->legacy, game_root_path_utf8,
+                                         startup_script_utf8);
+  }
+
+  const std::string root(game_root_path_utf8);
+  const std::string startup = startup_script_utf8 != nullptr
+                                  ? startup_script_utf8
+                                  : "";
+  handle->startup_state = ENGINE_STARTUP_STATE_RUNNING;
+  AttachProviderGameLogFileSink(game_root_path_utf8, handle->writable_path);
+  try {
+    handle->startup_thread = StartupThread([handle, root, startup]() {
+      const char* startup_value = startup.empty() ? nullptr : startup.c_str();
+      AETHER_DISPATCH_DIAG_LOG("engine_open_game_async before provider open_game");
+      const auto open_result = RunProviderOpen(handle, root.c_str(),
+                                               startup_value);
+      AETHER_DISPATCH_DIAG_LOG("engine_open_game_async after provider open_game");
+      std::lock_guard<std::recursive_mutex> thread_guard(handle->mutex);
+      handle->startup_state = open_result == ENGINE_RESULT_OK
+                                  ? ENGINE_STARTUP_STATE_SUCCEEDED
+                                  : ENGINE_STARTUP_STATE_FAILED;
+      handle->startup_logs.push_back(open_result == ENGINE_RESULT_OK
+                                         ? "runtime provider open_game => OK"
+                                         : "runtime provider open_game => FAILED");
+      SetProviderError(handle, open_result,
+                       "runtime provider failed to open game asynchronously");
+      if (open_result == ENGINE_RESULT_OK) StartTextTranslationLoading();
+    });
+  } catch (const std::exception& error) {
+    handle->startup_state = ENGINE_STARTUP_STATE_FAILED;
+    handle->last_error =
+        std::string("failed to start runtime provider: ") + error.what();
+    return ThreadError(ENGINE_RESULT_INTERNAL_ERROR, handle->last_error.c_str());
+  }
+  SetThreadError(nullptr);
+  return ENGINE_RESULT_OK;
+}
+
+engine_result_t engine_get_startup_state(engine_handle_t public_handle,
+                                         uint32_t* out_state) {
+  if (out_state == nullptr) {
+    return ThreadError(ENGINE_RESULT_INVALID_ARGUMENT, "out_state is null");
+  }
+  engine_result_t result;
+  {
+    std::lock_guard<std::recursive_mutex> registry_guard(g_dispatch_registry_mutex);
+    DispatchHandle* handle = nullptr;
+    result = ValidateHandleLocked(public_handle, &handle);
+    if (result != ENGINE_RESULT_OK) return result;
+    std::lock_guard<std::recursive_mutex> guard(handle->mutex);
+    if (handle->backend == BackendKind::kProvider) {
+      // A failed asynchronous open stores its diagnostic on the handle.
+      // Route() clears it after every successful query, leaving callers with
+      // an empty error precisely when startup reaches FAILED.
+      *out_state = handle->startup_state;
+      SetThreadError(nullptr);
+      result = ENGINE_RESULT_OK;
+    } else {
+      result = LegacyServices()->get_startup_state(handle->legacy, out_state);
+    }
+  }
+  if (result == ENGINE_RESULT_OK &&
+      *out_state == ENGINE_STARTUP_STATE_SUCCEEDED) {
+    StartTextTranslationLoading();
+  }
+  return result;
+}
+
+engine_result_t engine_drain_startup_logs(engine_handle_t public_handle,
+                                          char* out_buffer,
+                                          uint32_t buffer_size,
+                                          uint32_t* out_bytes_written) {
+  return Route(public_handle, "drain_startup_logs",
+               [&](engine_handle_t legacy) {
+                 return LegacyServices()->drain_startup_logs(
+                     legacy, out_buffer, buffer_size, out_bytes_written);
+               },
+               [&](DispatchHandle* handle) {
+                 return DrainProviderStartupLogs(handle, out_buffer, buffer_size,
+                                                 out_bytes_written);
+               });
+}
+
+engine_result_t engine_tick(engine_handle_t public_handle, uint32_t delta_ms) {
+  return Route(public_handle, "tick",
+               [&](engine_handle_t legacy) {
+                 return LegacyServices()->tick(legacy, delta_ms);
+               },
+               [&](DispatchHandle* handle) {
+                 if (handle->provider_resume_pending) {
+                   if (!ActivateProviderAudioSessionForHost()) {
+                     // UIApplication may still be foreground-inactive when
+                     // Godot emits APPLICATION_RESUMED. Keep the provider
+                     // paused and retry on the next host tick instead of
+                     // reopening its audio device against an inactive route.
+                     return ENGINE_RESULT_OK;
+                   }
+                   if (!PROVIDER_HAS(handle->provider, resume)) {
+                     return ENGINE_RESULT_NOT_SUPPORTED;
+                   }
+                   const engine_result_t resume_result =
+                       handle->provider->resume(handle->runtime);
+                   if (resume_result != ENGINE_RESULT_OK) {
+                     return resume_result;
+                   }
+                   handle->provider_resume_pending = false;
+                 }
+                  const engine_result_t result =
+                      RunProviderTick(handle, delta_ms);
+                  // Provider runtimes bypass the legacy EngineLoop; drain the
+                  // shared KiriKiri texture recycle queue through the
+                  // installed services table (nothing to drain when no
+                  // KiriKiri glue is installed).
+                  if (const engine_legacy_services_v1_t* services =
+                          LegacyServices()) {
+                    services->drain_texture_recycle();
+                  }
+                  return result;
+               });
+}
+
+engine_result_t engine_pause(engine_handle_t public_handle) {
+  return Route(public_handle, "pause", LegacyServices()->pause,
+               [](DispatchHandle* handle) {
+                 handle->provider_resume_pending = false;
+                 return PROVIDER_HAS(handle->provider, pause)
+                            ? handle->provider->pause(handle->runtime)
+                            : ENGINE_RESULT_NOT_SUPPORTED;
+               });
+}
+
+engine_result_t engine_resume(engine_handle_t public_handle) {
+  return Route(public_handle, "resume", LegacyServices()->resume,
+               [](DispatchHandle* handle) {
+                 if (!PROVIDER_HAS(handle->provider, resume)) {
+                   return ENGINE_RESULT_NOT_SUPPORTED;
+                 }
+                 if (!ActivateProviderAudioSessionForHost()) {
+                   handle->provider_resume_pending = true;
+                   return ENGINE_RESULT_OK;
+                 }
+                 const engine_result_t result =
+                     handle->provider->resume(handle->runtime);
+                 if (result == ENGINE_RESULT_OK) {
+                   handle->provider_resume_pending = false;
+                 }
+                 return result;
+               });
+}
+
+engine_result_t engine_set_option(engine_handle_t public_handle,
+                                  const engine_option_t* option) {
+  if (option == nullptr || option->key_utf8 == nullptr ||
+      option->key_utf8[0] == '\0' || option->value_utf8 == nullptr) {
+    return ThreadError(ENGINE_RESULT_INVALID_ARGUMENT,
+                       "option key/value must be non-null and key must be non-empty");
+  }
+  std::lock_guard<std::recursive_mutex> registry_guard(g_dispatch_registry_mutex);
+  DispatchHandle* handle = nullptr;
+  auto result = ValidateHandleLocked(public_handle, &handle);
+  if (result != ENGINE_RESULT_OK) return result;
+  std::lock_guard<std::recursive_mutex> guard(handle->mutex);
+  const std::string key = Normalize(option->key_utf8);
+  if (key == "artemis_beta_allowed") {
+    // Kept as a no-op for compatibility with older hosts. The explicit
+    // beta_runtime_allowed option controls provider-gated runtimes.
+    SetThreadError(nullptr);
+    return ENGINE_RESULT_OK;
+  }
+  if (key == "beta_runtime_allowed") {
+    const std::string value = Normalize(option->value_utf8);
+    handle->beta_runtime_allowed =
+        value == "1" || value == "true" || value == "yes" || value == "on";
+    SetThreadError(nullptr);
+    return ENGINE_RESULT_OK;
+  }
+  if (key == "runtime") {
+    if (handle->backend != BackendKind::kUndecided) {
+      handle->last_error = "runtime option must be set before opening a game";
+      return ThreadError(ENGINE_RESULT_INVALID_STATE, handle->last_error.c_str());
+    }
+    const std::string requested_runtime = Normalize(option->value_utf8);
+#if !defined(AETHERKIRI_ENABLE_ARTEMIS_RUNTIME)
+    if (requested_runtime == "artemis") {
+      handle->last_error =
+          "Artemis runtime is available only in internal Debug builds";
+      return ThreadError(ENGINE_RESULT_NOT_SUPPORTED,
+                         handle->last_error.c_str());
+    }
+#endif
+    handle->requested_runtime = requested_runtime;
+    SetThreadError(nullptr);
+    return ENGINE_RESULT_OK;
+  }
+  if (IsTextTranslationOption(key)) {
+    return ConfigureTextTranslationLocked(handle, key.c_str(),
+                                          option->value_utf8);
+  }
+  handle->pending_options[option->key_utf8] = option->value_utf8;
+  if (handle->backend == BackendKind::kProvider) {
+    if (!PROVIDER_HAS(handle->provider, set_option)) {
+      return Unsupported(handle, "set_option");
+    }
+    result = handle->provider->set_option(handle->runtime, option);
+    SetProviderError(handle, result, "runtime provider rejected option");
+    return result;
+  }
+  result = EnsureLegacyLocked(handle);
+  if (result != ENGINE_RESULT_OK) return result;
+  return LegacyServices()->set_option(handle->legacy, option);
+}
+
+uint32_t engine_is_text_translation_available(void) {
+#if defined(AETHERKIRI_INTERNAL_TEXT_TRANSLATION)
+  return 1u;
+#else
+  return 0u;
+#endif
+}
+
+uint32_t engine_get_text_translation_state(void) {
+#if defined(AETHERKIRI_INTERNAL_TEXT_TRANSLATION)
+  return AetherInternalGetTextTranslationState();
+#else
+  return ENGINE_TEXT_TRANSLATION_DISABLED;
+#endif
+}
+
+engine_result_t engine_get_text_translation_stats(
+    engine_text_translation_stats_t* out_stats) {
+  if (out_stats == nullptr) {
+    return ThreadError(ENGINE_RESULT_INVALID_ARGUMENT,
+                       "translation statistics output is required");
+  }
+  if (out_stats->struct_size < sizeof(engine_text_translation_stats_t)) {
+    return ThreadError(
+        ENGINE_RESULT_INVALID_ARGUMENT,
+        "engine_text_translation_stats_t.struct_size is too small");
+  }
+  const uint32_t requested_size = out_stats->struct_size;
+  std::memset(out_stats, 0, sizeof(*out_stats));
+  out_stats->struct_size = requested_size;
+#if defined(AETHERKIRI_INTERNAL_TEXT_TRANSLATION)
+  if (!AetherInternalGetTextTranslationStats(out_stats)) {
+    return ThreadError(ENGINE_RESULT_INTERNAL_ERROR,
+                       "private translation statistics query failed");
+  }
+#else
+  out_stats->state = ENGINE_TEXT_TRANSLATION_DISABLED;
+  out_stats->backend = ENGINE_TEXT_TRANSLATION_BACKEND_NONE;
+#endif
+  SetThreadError(nullptr);
+  return ENGINE_RESULT_OK;
+}
+
+engine_result_t engine_transform_text_utf8(const char* runtime_id_utf8,
+                                           const char* input_utf8,
+                                           char* out_buffer,
+                                           uint32_t buffer_size,
+                                           uint32_t* out_required_size) {
+  if (input_utf8 == nullptr || out_required_size == nullptr) {
+    return ThreadError(ENGINE_RESULT_INVALID_ARGUMENT,
+                       "text transform input and size output are required");
+  }
+  const std::string transformed =
+      TVPTransformText(runtime_id_utf8 != nullptr ? runtime_id_utf8 : "",
+                       input_utf8);
+  if (transformed.size() >= UINT32_MAX) {
+    return ThreadError(ENGINE_RESULT_INVALID_ARGUMENT,
+                       "transformed text is too large");
+  }
+  *out_required_size = static_cast<uint32_t>(transformed.size() + 1u);
+  if (out_buffer == nullptr || buffer_size < *out_required_size) {
+    SetThreadError(nullptr);
+    return ENGINE_RESULT_OK;
+  }
+  std::memcpy(out_buffer, transformed.c_str(), transformed.size() + 1u);
+  SetThreadError(nullptr);
+  return ENGINE_RESULT_OK;
+}
+
+engine_result_t engine_prefetch_text_utf8(const char* runtime_id_utf8,
+                                          const char* input_utf8) {
+  if (runtime_id_utf8 == nullptr || input_utf8 == nullptr) {
+    return ThreadError(ENGINE_RESULT_INVALID_ARGUMENT,
+                       "translation prefetch runtime and input are required");
+  }
+#if defined(AETHERKIRI_INTERNAL_TEXT_TRANSLATION)
+  AetherInternalPrefetchTextTranslation(runtime_id_utf8, input_utf8);
+#endif
+  SetThreadError(nullptr);
+  return ENGINE_RESULT_OK;
+}
+
+engine_result_t engine_set_text_translation_skipping(
+    const char* runtime_id_utf8, uint32_t skipping) {
+  if (runtime_id_utf8 == nullptr) {
+    return ThreadError(ENGINE_RESULT_INVALID_ARGUMENT,
+                       "translation skip runtime is required");
+  }
+#if defined(AETHERKIRI_INTERNAL_TEXT_TRANSLATION)
+  AetherInternalSetTextTranslationSkipping(runtime_id_utf8,
+                                            skipping != 0 ? 1u : 0u);
+#endif
+  SetThreadError(nullptr);
+  return ENGINE_RESULT_OK;
+}
+
+engine_result_t engine_set_surface_size(engine_handle_t public_handle,
+                                        uint32_t width, uint32_t height) {
+  if (width == 0 || height == 0) {
+    return ThreadError(ENGINE_RESULT_INVALID_ARGUMENT,
+                       "surface width and height must be greater than zero");
+  }
+  std::lock_guard<std::recursive_mutex> registry_guard(g_dispatch_registry_mutex);
+  DispatchHandle* handle = nullptr;
+  auto result = ValidateHandleLocked(public_handle, &handle);
+  if (result != ENGINE_RESULT_OK) return result;
+  std::lock_guard<std::recursive_mutex> guard(handle->mutex);
+
+  if (handle->backend == BackendKind::kProvider) {
+    if (!PROVIDER_HAS(handle->provider, set_surface_size)) {
+      return Unsupported(handle, "set_surface_size");
+    }
+    result =
+        handle->provider->set_surface_size(handle->runtime, width, height);
+    SetProviderError(handle, result, "set_surface_size");
+  } else {
+    result = EnsureLegacyLocked(handle);
+    if (result == ENGINE_RESULT_OK) {
+      result = LegacyServices()->set_surface_size(handle->legacy, width, height);
+    }
+  }
+  if (result == ENGINE_RESULT_OK) {
+    handle->surface_width = width;
+    handle->surface_height = height;
+    handle->has_surface_size = true;
+  }
+  return result;
+}
+
+engine_result_t engine_get_frame_desc(engine_handle_t public_handle,
+                                      engine_frame_desc_t* out_frame_desc) {
+  return Route(public_handle, "get_frame_desc",
+               [&](engine_handle_t legacy) {
+                 return LegacyServices()->get_frame_desc(legacy, out_frame_desc);
+               },
+               [&](DispatchHandle* handle) {
+                 return PROVIDER_HAS(handle->provider, get_frame_desc)
+                            ? handle->provider->get_frame_desc(handle->runtime,
+                                                               out_frame_desc)
+                            : ENGINE_RESULT_NOT_SUPPORTED;
+               });
+}
+
+engine_result_t engine_read_frame_rgba(engine_handle_t public_handle,
+                                       void* out_pixels,
+                                       size_t out_pixels_size) {
+  return Route(public_handle, "read_frame_rgba",
+               [&](engine_handle_t legacy) {
+                 return LegacyServices()->read_frame_rgba(legacy, out_pixels,
+                                                      out_pixels_size);
+               },
+               [&](DispatchHandle* handle) {
+                 return PROVIDER_HAS(handle->provider, read_frame_rgba)
+                            ? handle->provider->read_frame_rgba(
+                                  handle->runtime, out_pixels, out_pixels_size)
+                            : ENGINE_RESULT_NOT_SUPPORTED;
+               });
+}
+
+engine_result_t engine_get_godot_native_frame_texture(
+    engine_handle_t public_handle, uint64_t* out_texture_id,
+    uint32_t* out_width, uint32_t* out_height, uint64_t* out_frame_serial) {
+  return Route(public_handle, "get_godot_native_frame_texture",
+                [&](engine_handle_t legacy) {
+                  return LegacyServices()->get_godot_native_frame_texture(
+                      legacy, out_texture_id, out_width, out_height,
+                      out_frame_serial);
+                },
+               [&](DispatchHandle* handle) {
+                 return PROVIDER_HAS(handle->provider,
+                                     get_godot_native_frame_texture)
+                            ? handle->provider->get_godot_native_frame_texture(
+                                  handle->runtime, out_texture_id, out_width,
+                                  out_height, out_frame_serial)
+                            : ENGINE_RESULT_NOT_SUPPORTED;
+               });
+}
+
+engine_result_t engine_get_godot_presentation_state(
+    engine_handle_t public_handle, uint32_t* out_state_flags) {
+  if (out_state_flags == nullptr) {
+    return ThreadError(ENGINE_RESULT_INVALID_ARGUMENT,
+                       "Godot presentation state output is null");
+  }
+  *out_state_flags = ENGINE_GODOT_PRESENTATION_STATE_NONE;
+  return Route(public_handle, "get_godot_presentation_state",
+               [&](engine_handle_t legacy) {
+                 (void)legacy;
+                 return ENGINE_RESULT_OK;
+               },
+               [&](DispatchHandle* handle) {
+                 if (!PROVIDER_HAS(handle->provider,
+                                   get_godot_presentation_state)) {
+                   return ENGINE_RESULT_OK;
+                 }
+                 return handle->provider->get_godot_presentation_state(
+                     handle->runtime, out_state_flags);
+               });
+}
+
+engine_result_t engine_get_host_native_window(engine_handle_t public_handle,
+                                              void** out_window_handle) {
+  return Route(public_handle, "get_host_native_window",
+               [&](engine_handle_t legacy) {
+                 return LegacyServices()->get_host_native_window(legacy,
+                                                              out_window_handle);
+               },
+               [&](DispatchHandle* handle) {
+                 return PROVIDER_HAS(handle->provider, get_host_native_window)
+                            ? handle->provider->get_host_native_window(
+                                  handle->runtime, out_window_handle)
+                            : ENGINE_RESULT_NOT_SUPPORTED;
+               });
+}
+
+engine_result_t engine_get_host_native_view(engine_handle_t public_handle,
+                                            void** out_view_handle) {
+  return Route(public_handle, "get_host_native_view",
+               [&](engine_handle_t legacy) {
+                 return LegacyServices()->get_host_native_view(legacy,
+                                                            out_view_handle);
+               },
+               [&](DispatchHandle* handle) {
+                 return PROVIDER_HAS(handle->provider, get_host_native_view)
+                            ? handle->provider->get_host_native_view(
+                                  handle->runtime, out_view_handle)
+                            : ENGINE_RESULT_NOT_SUPPORTED;
+               });
+}
+
+engine_result_t engine_send_input(engine_handle_t public_handle,
+                                  const engine_input_event_t* event) {
+  return Route(public_handle, "send_input",
+               [&](engine_handle_t legacy) {
+                 return LegacyServices()->send_input(legacy, event);
+               },
+               [&](DispatchHandle* handle) {
+                 return PROVIDER_HAS(handle->provider, send_input)
+                            ? handle->provider->send_input(handle->runtime, event)
+                            : ENGINE_RESULT_NOT_SUPPORTED;
+               });
+}
+
+engine_result_t engine_get_text_input_state(
+    engine_handle_t public_handle, engine_text_input_state_t* out_state) {
+  if (out_state == nullptr) {
+    return ThreadError(ENGINE_RESULT_INVALID_ARGUMENT,
+                       "text input state output is null");
+  }
+  if (out_state->struct_size < sizeof(engine_text_input_state_t)) {
+    return ThreadError(ENGINE_RESULT_INVALID_ARGUMENT,
+                       "engine_text_input_state_t.struct_size is too small");
+  }
+  return Route(public_handle, "get_text_input_state",
+               [&](engine_handle_t legacy) {
+                 return LegacyServices()->get_text_input_state(legacy, out_state);
+               },
+               [&](DispatchHandle* handle) {
+                 engine_text_input_state_t snapshot{};
+                 snapshot.struct_size = sizeof(snapshot);
+                 if (PROVIDER_HAS(handle->provider, get_text_input_details)) {
+                   return handle->provider->get_text_input_details(handle->runtime, out_state);
+                 }
+                 if (!PROVIDER_HAS(handle->provider, get_text_input_state)) {
+                   *out_state = snapshot;
+                   return ENGINE_RESULT_OK;
+                 }
+                 uint32_t state_flags = ENGINE_TEXT_INPUT_STATE_NONE;
+                 const engine_result_t result =
+                     handle->provider->get_text_input_state(
+                         handle->runtime, &state_flags);
+                 if (result != ENGINE_RESULT_OK) return result;
+                 if ((state_flags & ENGINE_TEXT_INPUT_STATE_ACTIVE) != 0) {
+                   snapshot.ime_active = 1;
+                   snapshot.attention_point_valid = 1;
+                   snapshot.attention_x = static_cast<int32_t>(
+                       handle->surface_width > 0 ? handle->surface_width / 2u
+                                                 : 640u);
+                   snapshot.attention_y = static_cast<int32_t>(
+                       handle->surface_height > 0 ? handle->surface_height / 2u
+                                                  : 360u);
+                 }
+                 *out_state = snapshot;
+                 return ENGINE_RESULT_OK;
+               });
+}
+
+engine_result_t engine_copy_text_input_text(engine_handle_t public_handle,
+                                            char* out_buffer,
+                                            uint32_t buffer_size,
+                                            uint32_t* out_bytes_written) {
+  if (out_buffer == nullptr || buffer_size == 0 ||
+      out_bytes_written == nullptr) {
+    return ThreadError(
+        ENGINE_RESULT_INVALID_ARGUMENT,
+        "engine_copy_text_input_text requires a buffer and byte count");
+  }
+  out_buffer[0] = '\0';
+  *out_bytes_written = 0;
+  return Route(public_handle, "copy_text_input_text",
+               [&](engine_handle_t legacy) {
+                 return LegacyServices()->copy_text_input_text(
+                     legacy, out_buffer, buffer_size, out_bytes_written);
+               },
+               [&](DispatchHandle* handle) {
+                 return PROVIDER_HAS(handle->provider, copy_text_input_text)
+                     ? handle->provider->copy_text_input_text(handle->runtime, out_buffer, buffer_size, out_bytes_written)
+                     : ENGINE_RESULT_OK;
+               });
+}
+
+engine_result_t engine_get_main_menu_json(engine_handle_t public_handle,
+                                          char* out_buffer,
+                                          uint32_t buffer_size,
+                                          uint32_t* out_bytes_written) {
+  return Route(public_handle, "get_main_menu_json",
+               [&](engine_handle_t legacy) {
+                 return LegacyServices()->get_main_menu_json(
+                     legacy, out_buffer, buffer_size, out_bytes_written);
+               },
+               [&](DispatchHandle* handle) {
+                 return PROVIDER_HAS(handle->provider, get_main_menu_json)
+                            ? handle->provider->get_main_menu_json(
+                                  handle->runtime, out_buffer, buffer_size,
+                                  out_bytes_written)
+                            : ENGINE_RESULT_NOT_SUPPORTED;
+               });
+}
+
+engine_result_t engine_activate_menu_item(engine_handle_t public_handle,
+                                          const char* item_path_utf8) {
+  return Route(public_handle, "activate_menu_item",
+               [&](engine_handle_t legacy) {
+                 return LegacyServices()->activate_menu_item(legacy,
+                                                          item_path_utf8);
+               },
+               [&](DispatchHandle* handle) {
+                 return PROVIDER_HAS(handle->provider, activate_menu_item)
+                            ? handle->provider->activate_menu_item(
+                                  handle->runtime, item_path_utf8)
+                            : ENGINE_RESULT_NOT_SUPPORTED;
+               });
+}
+
+engine_result_t engine_set_render_target_iosurface(engine_handle_t public_handle,
+                                                   uint32_t iosurface_id,
+                                                   uint32_t width,
+                                                   uint32_t height) {
+  return Route(public_handle, "set_render_target_iosurface",
+               [&](engine_handle_t legacy) {
+                 return LegacyServices()->set_render_target_iosurface(
+                     legacy, iosurface_id, width, height);
+               },
+               [&](DispatchHandle* handle) {
+                 return PROVIDER_HAS(handle->provider,
+                                     set_render_target_iosurface)
+                            ? handle->provider->set_render_target_iosurface(
+                                  handle->runtime, iosurface_id, width, height)
+                            : ENGINE_RESULT_NOT_SUPPORTED;
+               });
+}
+
+engine_result_t engine_set_render_target_surface(engine_handle_t public_handle,
+                                                 void* native_window,
+                                                 uint32_t width,
+                                                 uint32_t height) {
+  return Route(public_handle, "set_render_target_surface",
+               [&](engine_handle_t legacy) {
+                 return LegacyServices()->set_render_target_surface(
+                     legacy, native_window, width, height);
+               },
+               [&](DispatchHandle* handle) {
+                 return PROVIDER_HAS(handle->provider, set_render_target_surface)
+                            ? handle->provider->set_render_target_surface(
+                                  handle->runtime, native_window, width, height)
+                            : ENGINE_RESULT_NOT_SUPPORTED;
+               });
+}
+
+engine_result_t engine_get_frame_rendered_flag(engine_handle_t public_handle,
+                                               uint32_t* out_rendered) {
+  return Route(public_handle, "get_frame_rendered_flag",
+               [&](engine_handle_t legacy) {
+                 return LegacyServices()->get_frame_rendered_flag(legacy,
+                                                               out_rendered);
+               },
+               [&](DispatchHandle* handle) {
+                 return PROVIDER_HAS(handle->provider,
+                                     get_frame_rendered_flag)
+                            ? handle->provider->get_frame_rendered_flag(
+                                  handle->runtime, out_rendered)
+                            : ENGINE_RESULT_NOT_SUPPORTED;
+               });
+}
+
+engine_result_t engine_get_renderer_info(engine_handle_t public_handle,
+                                         char* out_buffer,
+                                         uint32_t buffer_size) {
+  return Route(public_handle, "get_renderer_info",
+               [&](engine_handle_t legacy) {
+                 return LegacyServices()->get_renderer_info(legacy, out_buffer,
+                                                         buffer_size);
+               },
+               [&](DispatchHandle* handle) {
+                 return PROVIDER_HAS(handle->provider, get_renderer_info)
+                            ? handle->provider->get_renderer_info(
+                                  handle->runtime, out_buffer, buffer_size)
+                            : ENGINE_RESULT_NOT_SUPPORTED;
+               });
+}
+
+engine_result_t engine_get_memory_stats(engine_handle_t public_handle,
+                                        engine_memory_stats_t* out_stats) {
+  return Route(public_handle, "get_memory_stats",
+               [&](engine_handle_t legacy) {
+                 return LegacyServices()->get_memory_stats(legacy, out_stats);
+               },
+               [&](DispatchHandle* handle) {
+                 if (out_stats == nullptr ||
+                     out_stats->struct_size < sizeof(engine_memory_stats_t)) {
+                   return ENGINE_RESULT_INVALID_ARGUMENT;
+                 }
+                 if (!PROVIDER_HAS(handle->provider, get_memory_stats)) {
+                   return ENGINE_RESULT_NOT_SUPPORTED;
+                 }
+                 std::memset(out_stats, 0, sizeof(*out_stats));
+                 out_stats->struct_size = sizeof(*out_stats);
+                 const engine_result_t result =
+                     handle->provider->get_memory_stats(handle->runtime,
+                                                        out_stats);
+                 if (result == ENGINE_RESULT_OK) {
+                   PopulateHostMemoryStats(out_stats);
+                 }
+                 return result;
+               });
+}
+
+engine_result_t engine_get_plugin_debug_info(engine_handle_t public_handle,
+                                             char* out_buffer,
+                                             uint32_t buffer_size,
+                                             uint32_t* out_bytes_written) {
+  return Route(public_handle, "get_plugin_debug_info",
+               [&](engine_handle_t legacy) {
+                 return LegacyServices()->get_plugin_debug_info(
+                     legacy, out_buffer, buffer_size, out_bytes_written);
+               },
+               [&](DispatchHandle* handle) {
+                 return PROVIDER_HAS(handle->provider, get_plugin_debug_info)
+                            ? handle->provider->get_plugin_debug_info(
+                                  handle->runtime, out_buffer, buffer_size,
+                                  out_bytes_written)
+                            : ENGINE_RESULT_NOT_SUPPORTED;
+               });
+}
+
+/* Diagnostics are host-owned and deliberately remain available for every
+ * provider through the legacy diagnostic queue. */
+engine_result_t engine_set_diagnostic_config(
+    engine_handle_t public_handle, const engine_diagnostic_config_t* config) {
+  std::lock_guard<std::recursive_mutex> registry_guard(g_dispatch_registry_mutex);
+  DispatchHandle* handle = nullptr;
+  auto result = ValidateHandleLocked(public_handle, &handle);
+  if (result != ENGINE_RESULT_OK) return result;
+  std::lock_guard<std::recursive_mutex> guard(handle->mutex);
+  result = EnsureLegacyLocked(handle);
+  if (result != ENGINE_RESULT_OK) return result;
+  return LegacyServices()->set_diagnostic_config(handle->legacy, config);
+}
+
+engine_result_t engine_mark_diagnostic_event(engine_handle_t public_handle,
+                                             const char* label_utf8,
+                                             uint64_t* out_sequence) {
+  std::lock_guard<std::recursive_mutex> registry_guard(g_dispatch_registry_mutex);
+  DispatchHandle* handle = nullptr;
+  auto result = ValidateHandleLocked(public_handle, &handle);
+  if (result != ENGINE_RESULT_OK) return result;
+  std::lock_guard<std::recursive_mutex> guard(handle->mutex);
+  result = EnsureLegacyLocked(handle);
+  if (result != ENGINE_RESULT_OK) return result;
+  return LegacyServices()->mark_diagnostic_event(handle->legacy, label_utf8,
+                                              out_sequence);
+}
+
+engine_result_t engine_drain_diagnostic_events(engine_handle_t public_handle,
+                                               char* out_buffer,
+                                               uint32_t buffer_size,
+                                               uint32_t* out_bytes_written) {
+  std::lock_guard<std::recursive_mutex> registry_guard(g_dispatch_registry_mutex);
+  DispatchHandle* handle = nullptr;
+  auto result = ValidateHandleLocked(public_handle, &handle);
+  if (result != ENGINE_RESULT_OK) return result;
+  std::lock_guard<std::recursive_mutex> guard(handle->mutex);
+  result = EnsureLegacyLocked(handle);
+  if (result != ENGINE_RESULT_OK) return result;
+  return LegacyServices()->drain_diagnostic_events(
+      handle->legacy, out_buffer, buffer_size, out_bytes_written);
+}
+
+const char* engine_get_last_error(engine_handle_t public_handle) {
+  if (!g_dispatch_thread_error.empty()) {
+    return g_dispatch_thread_error.c_str();
+  }
+  if (public_handle == nullptr) return g_dispatch_thread_error.c_str();
+  std::lock_guard<std::recursive_mutex> registry_guard(g_dispatch_registry_mutex);
+  DispatchHandle* handle = nullptr;
+  if (ValidateHandleLocked(public_handle, &handle) != ENGINE_RESULT_OK) {
+    return g_dispatch_thread_error.c_str();
+  }
+  std::lock_guard<std::recursive_mutex> guard(handle->mutex);
+  if (handle->backend == BackendKind::kProvider || !handle->last_error.empty()) {
+    return handle->last_error.c_str();
+  }
+  if (handle->legacy == nullptr) {
+    return g_dispatch_thread_error.c_str();
+  }
+  return LegacyServices()->get_last_error(handle->legacy);
+}
+
+}  // extern "C"

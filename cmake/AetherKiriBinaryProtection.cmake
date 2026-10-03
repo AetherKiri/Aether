@@ -51,10 +51,22 @@ function(aetherkiri_limit_runtime_exports target_name export_surface)
         target_link_options("${target_name}" PRIVATE
             "$<$<CONFIG:Release>:-Wl,--gc-sections>"
             "$<$<CONFIG:Release>:-Wl,--version-script=${version_script}>"
-            "$<$<CONFIG:Release>:-Wl,--exclude-libs,ALL>"
         )
         set_property(TARGET "${target_name}" APPEND PROPERTY
             LINK_DEPENDS "${version_script}")
+        # Since the Phase 2d link flip the engine_api objects define the
+        # whole engine_* export surface themselves, but --exclude-libs,ALL
+        # would still be wrong there: the Android JNI bridge object exports
+        # JNI_OnLoad / Java_* / krkr_Get* from this library's own sources, and
+        # the version script's "local: *" catch-all demotes everything that
+        # does not match a global pattern. Keep --exclude-libs for the
+        # extension only: it folds static runtime archives (krkr2 glue,
+        # onscripter/siglus/minori/rfvp) whose symbols are all internal to
+        # the extension.
+        if(export_surface STREQUAL "GODOT_EXTENSION")
+            target_link_options("${target_name}" PRIVATE
+                "$<$<CONFIG:Release>:-Wl,--exclude-libs,ALL>")
+        endif()
     endif()
 endfunction()
 

@@ -5,6 +5,8 @@
 #include <atomic>
 #include <chrono>
 #include <cstring>
+#include <filesystem>
+#include <fstream>
 #include <string>
 #include <thread>
 #include <vector>
@@ -13,6 +15,18 @@
 #include "engine_input_queue_gate.h"
 #include "engine_runtime_provider.h"
 #include "engine_startup_thread.h"
+
+/* dispatch routes the built-in "kirikiri" entry through the installable
+ * legacy services table; every test process (catch_discover_tests spawns one
+ * per TEST_CASE) must install the standalone stub table before the first
+ * engine_create call. */
+extern "C" engine_result_t engine_stub_install_legacy_services(void);
+namespace {
+const bool kStubLegacyServicesInstalled = [] {
+  engine_stub_install_legacy_services();
+  return true;
+}();
+}  // namespace
 
 namespace {
 
@@ -96,11 +110,15 @@ engine_result_t FakeCreate(void*, const engine_runtime_host_v1_t* host,
 
 void FakeDestroy(void* runtime) { delete static_cast<FakeRuntime*>(runtime); }
 
-engine_result_t FakeOpen(void* runtime, const char*, const char*) {
+engine_result_t FakeOpen(void* runtime, const char* root, const char*) {
 #if defined(__APPLE__)
   fake_open_stack_size.store(pthread_get_stacksize_np(pthread_self()));
 #endif
   auto* fake = static_cast<FakeRuntime*>(runtime);
+  if (root != nullptr && std::strstr(root, ".artemis-test-fail") != nullptr) {
+    fake->error = "PF entry payload range is outside the archive";
+    return ENGINE_RESULT_IO_ERROR;
+  }
   fake->opened = true;
   if (fake->host.platform_request != nullptr) {
     fake->host.platform_request(fake->host.user_data, "purchase",
@@ -282,6 +300,26 @@ TEST_CASE("runtime provider asynchronous startup completes and is joined on dest
   CHECK(fake_open_stack_size.load() >= aetherkiri::engine_api::kStartupThreadStackSize);
 #endif
   REQUIRE(engine_tick(handle.value, 16) == ENGINE_RESULT_OK);
+}
+
+TEST_CASE("runtime provider startup failure retains its diagnostic after polling") {
+  REQUIRE(engine_register_runtime_provider(&kFakeProvider) == ENGINE_RESULT_OK);
+  Handle handle;
+  engine_option_t runtime_option{};
+  runtime_option.key_utf8 = "runtime";
+  runtime_option.value_utf8 = "fake-artemis-test";
+  REQUIRE(engine_set_option(handle.value, &runtime_option) == ENGINE_RESULT_OK);
+  REQUIRE(engine_open_game_async(handle.value, ".artemis-test-fail", nullptr) ==
+          ENGINE_RESULT_OK);
+  uint32_t state = ENGINE_STARTUP_STATE_RUNNING;
+  for (int attempt = 0; attempt < 1000 && state == ENGINE_STARTUP_STATE_RUNNING;
+       ++attempt) {
+    REQUIRE(engine_get_startup_state(handle.value, &state) == ENGINE_RESULT_OK);
+    std::this_thread::sleep_for(std::chrono::milliseconds(1));
+  }
+  REQUIRE(state == ENGINE_STARTUP_STATE_FAILED);
+  CHECK(std::string(engine_get_last_error(handle.value)) ==
+        "PF entry payload range is outside the archive");
 }
 
 TEST_CASE("primary click queue gate bounds rapid primary gestures") {
@@ -794,4 +832,91 @@ TEST_CASE("text translation state is disabled without the private provider") {
           ENGINE_RESULT_INVALID_ARGUMENT);
   REQUIRE(engine_set_text_translation_skipping(nullptr, 1) ==
           ENGINE_RESULT_INVALID_ARGUMENT);
+}
+
+TEST_CASE("built-in kirikiri backend is exposed through the provider registry") {
+  const uint32_t count = engine_get_runtime_provider_count();
+  REQUIRE(count >= 1);
+  bool listed = false;
+  for (uint32_t index = 0; index < count; ++index) {
+    std::array<char, 32> id{};
+    uint32_t written = 0;
+    REQUIRE(engine_get_runtime_provider_id(
+                index, id.data(), static_cast<uint32_t>(id.size()), &written) ==
+            ENGINE_RESULT_OK);
+    if (std::string(id.data()) == "kirikiri") {
+      listed = true;
+      REQUIRE(written == static_cast<uint32_t>(std::strlen(id.data())));
+    }
+  }
+  REQUIRE(listed);
+
+  // The reserved selection ids stay unclaimable, and the built-in backend
+  // owns "kirikiri" before any external registration can take it.
+  engine_runtime_provider_v1_t claim = kFakeProvider;
+  claim.runtime_id_utf8 = "kirikiri";
+  REQUIRE(engine_register_runtime_provider(&claim) ==
+          ENGINE_RESULT_INVALID_STATE);
+  claim.runtime_id_utf8 = "legacy";
+  REQUIRE(engine_register_runtime_provider(&claim) ==
+          ENGINE_RESULT_INVALID_ARGUMENT);
+  claim.runtime_id_utf8 = "auto";
+  REQUIRE(engine_register_runtime_provider(&claim) ==
+          ENGINE_RESULT_INVALID_ARGUMENT);
+}
+
+TEST_CASE("kirikiri registry entry probes KiriKiri directories") {
+  std::error_code error;
+  const std::filesystem::path fixture = "kirikiri-probe-fixture";
+  std::filesystem::remove_all(fixture, error);
+  REQUIRE(std::filesystem::create_directories(fixture, error));
+  {
+    std::ofstream marker(fixture / "data.xp3", std::ios::binary);
+    marker.close();
+  }
+  REQUIRE(engine_probe_runtime_provider("kirikiri",
+                                        fixture.string().c_str()) == 100);
+  REQUIRE(std::filesystem::remove_all(fixture, error) > 0u);
+
+  REQUIRE(std::filesystem::create_directories(fixture, error));
+  {
+    std::ofstream marker(fixture / "Patch.xp3", std::ios::binary);
+    marker.close();
+  }
+  REQUIRE(engine_probe_runtime_provider("kirikiri",
+                                        fixture.string().c_str()) == 80);
+  REQUIRE(std::filesystem::remove_all(fixture, error) > 0u);
+
+  REQUIRE(std::filesystem::create_directories(fixture, error));
+  REQUIRE(engine_probe_runtime_provider("kirikiri",
+                                        fixture.string().c_str()) == 0);
+  REQUIRE(std::filesystem::remove_all(fixture, error) > 0u);
+}
+
+TEST_CASE("runtime option kirikiri and legacy resolve to the built-in backend") {
+  for (const char* spelling : {"kirikiri", "legacy"}) {
+    Handle handle;
+    engine_option_t runtime_option{};
+    runtime_option.key_utf8 = "runtime";
+    runtime_option.value_utf8 = spelling;
+    REQUIRE(engine_set_option(handle.value, &runtime_option) ==
+            ENGINE_RESULT_OK);
+    REQUIRE(engine_open_game(handle.value, ".", nullptr) == ENGINE_RESULT_OK);
+  }
+}
+
+TEST_CASE("explicit kirikiri selection keeps standalone media available") {
+  Handle handle;
+  engine_option_t runtime_option{};
+  runtime_option.key_utf8 = "runtime";
+  runtime_option.value_utf8 = "kirikiri";
+  REQUIRE(engine_set_option(handle.value, &runtime_option) ==
+          ENGINE_RESULT_OK);
+  REQUIRE(engine_open_game(handle.value, ".", nullptr) == ENGINE_RESULT_OK);
+  engine_media_handle_t media = nullptr;
+  REQUIRE(engine_media_open(handle.value, "missing-video.mp4", &media) ==
+          ENGINE_RESULT_NOT_SUPPORTED);
+  REQUIRE(media == nullptr);
+  REQUIRE(std::string(engine_get_last_error(handle.value)) ==
+          "standalone media playback is not supported in stub builds");
 }

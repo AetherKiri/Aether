@@ -39,9 +39,9 @@ Native first, then GPU Bridge where native coverage is incomplete.
 | --- | --- |
 | `apps/godot_app/` | Godot project, scene, scripts, assets, export presets, and GDExtension descriptor. |
 | `bridge/godot_extension/` | C++ GDExtension classes exposed to Godot, including the host node/player binding. |
-| `bridge/engine_api/` | Stable C ABI between the Godot host and the engine core. Keep this narrow and versionable. |
-| `cpp/core/` | KiriKiri runtime core: script VM, storage, events, window/layer system, rendering, audio, movie, and plugin infrastructure. |
-| `cpp/plugins/` | Built-in plugin implementations and compatibility adapters registered as KiriKiri plugins. |
+| `abi/` | Stable C ABI between the Godot host and the engine core. Keep this narrow and versionable. |
+| `packages/AetherKrkr/` | KiriKiri engine runtime submodule: script VM, storage, events, window/layer system, rendering, audio, movie, and plugin infrastructure (`core/`, `plugins/`, `external/`). |
+| `bridge/krkr2_runtime/` | KiriKiri integration glue: the legacy engine_api implementation, host hooks, and the krkr2core/krkr2plugin linkage. |
 | `build/` | Platform build entry scripts and validation scripts. |
 | `tests/` | Unit tests, fixtures, and generic probe profiles. Committed test profiles must not contain local absolute game paths. |
 | `tools/` | Developer tools such as XP3 helpers and plugin audit utilities. |
@@ -54,10 +54,10 @@ Native first, then GPU Bridge where native coverage is incomplete.
 | File | Purpose |
 | --- | --- |
 | `build.sh` | Unified build entry point. Dispatches to platform scripts in `build/`. |
-| `build/build_macos.sh` | Builds C++ core/GDExtension for macOS, stages dylibs, exports the Godot macOS app. |
-| `build/build_ios.sh` | Builds iOS device or simulator static libraries, exports and patches the Xcode project. |
-| `build/build_android.sh` | Builds Android native libraries and exports APKs through Godot. |
-| `build/build_web.sh` | Builds the Emscripten Web GDExtension side module and exports the Godot Web app when dlink templates are installed. |
+| `scripts/build_macos.sh` | Builds C++ core/GDExtension for macOS, stages dylibs, exports the Godot macOS app. |
+| `scripts/build_ios.sh` | Builds iOS device or simulator static libraries, exports and patches the Xcode project. |
+| `scripts/build_android.sh` | Builds Android native libraries and exports APKs through Godot. |
+| `scripts/build_web.sh` | Builds the Emscripten Web GDExtension side module and exports the Godot Web app when dlink templates are installed. |
 | `CMakeLists.txt` | Top-level native build. Adds engine API, GDExtension, core, plugins, tests, and tools. |
 | `CMakePresets.json` | Named CMake presets for macOS, iOS, Android, Web, and related build directories. |
 | `vcpkg.json` | Native dependency manifest. Godot Native must not depend on ANGLE. |
@@ -77,20 +77,24 @@ Native first, then GPU Bridge where native coverage is incomplete.
 | `apps/godot_app/scripts/gui_render_probe.gd` | GUI render screenshot probe. |
 | `apps/godot_app/scripts/gpu_blend_self_test.gd` | Godot GPU blend self-test harness. |
 | `bridge/godot_extension/src/aether_runtime_player.cpp` | Godot-visible `AetherRuntimePlayer` implementation and Godot method bindings. |
-| `bridge/engine_api/include/engine_api.h` | C ABI exported by the engine bridge. |
-| `bridge/engine_api/include/engine_runtime_provider.h` | Versioned runtime-provider ABI behind `AetherRuntimePlayer`. New engines implement this contract instead of another Godot Player. |
-| `bridge/engine_api/include/engine_options.h` | Engine option keys/values shared with host code. |
-| `bridge/engine_api/src/engine_api.cpp` | C ABI implementation that creates, opens, ticks, renders, and receives input. |
+| `abi/include/engine_api.h` | C ABI exported by the engine bridge. |
+| `abi/include/engine_runtime_provider.h` | Versioned runtime-provider ABI behind `AetherRuntimePlayer`. New engines implement this contract instead of another Godot Player. |
+| `abi/include/engine_options.h` | Engine option keys/values shared with host code. |
+| `abi/include/engine_gpu_bridge.h` | Shared GPU bridge ABI (callback tables, blend modes, `tTVPRect`/`tTVPPointD` geometry) consumed by the Godot extension and every engine runtime without krkr2 header paths. |
+| `abi/src/engine_api_dispatch.cpp` | C ABI dispatch: creates, opens, ticks, renders, receives input, and routes between the legacy backend and registered runtime providers. |
+| `bridge/krkr2_runtime/src/krkr2_legacy_engine_api.cpp` | Legacy KiriKiri (krkr2core) implementation of the engine ABI, linked into `engine_api` through the runtime glue. |
+| `bridge/krkr2_runtime/src/krkr2_host_hooks.cpp` | Host services (audio session, texture recycle) the dispatch layer borrows from the KiriKiri runtime. |
+| `abi/src/engine_api_stub.cpp` | Standalone stub of the legacy engine surface used when no KiriKiri runtime is linked (unit tests, provider-only configs). |
 | `bridge/onscripter_runtime/src/onscripter_runtime_provider.cpp` | ONScripterYuri adapter for the shared runtime-provider ABI. |
 | `bridge/siglus_runtime/src/siglus_runtime_provider.cpp` | SiglusEngine (siglus_rs) adapter for the shared runtime-provider ABI. |
 | `bridge/siglus_runtime/cmake/PrepareSiglusRsWorkspace.cmake` | Build-time overlay: copies pristine `packages/AetherSiglus` into the build tree and applies `bridge/siglus_runtime/overlay/` patches there, keeping the submodule untouched. |
-| `cpp/core/environ/EngineLoop.*` | Main runtime lifecycle, tick loop, and host input conversion into TVP events. |
-| `cpp/core/visual/LayerManager.*` | Layer hit testing, focus/capture, mouse/touch/key dispatch, and compatibility input behavior. |
-| `cpp/core/visual/impl/DrawDevice.*` | Draw device bridge between window/layer updates and render managers. |
-| `cpp/core/visual/impl/LayerBitmapImpl.*` | Bitmap/layer pixel operations and text drawing. |
-| `cpp/core/visual/godot/` | Godot Native render manager and texture/backend code, when present in the branch. |
-| `cpp/core/plugin/PluginImpl.cpp` | Plugin registration/loading path for internal KiriKiri plugin modules. |
-| `cpp/plugins/CMakeLists.txt` | Plugin build wiring. Use this when adding or enabling plugin modules. |
+| `packages/AetherKrkr/core/environ/EngineLoop.*` | Main runtime lifecycle, tick loop, and host input conversion into TVP events. |
+| `packages/AetherKrkr/core/visual/LayerManager.*` | Layer hit testing, focus/capture, mouse/touch/key dispatch, and compatibility input behavior. |
+| `packages/AetherKrkr/core/visual/impl/DrawDevice.*` | Draw device bridge between window/layer updates and render managers. |
+| `packages/AetherKrkr/core/visual/impl/LayerBitmapImpl.*` | Bitmap/layer pixel operations and text drawing. |
+| `packages/AetherKrkr/core/visual/godot/` | Godot Native render manager and texture/backend code, when present in the branch. |
+| `packages/AetherKrkr/core/plugin/PluginImpl.cpp` | Plugin registration/loading path for internal KiriKiri plugin modules. |
+| `packages/AetherKrkr/plugins/CMakeLists.txt` | Plugin build wiring (krkr2 repository). Use this when adding or enabling plugin modules. |
 | `tests/profiles/kr37s.json` | Generic probe profile. It intentionally has an empty `game_path`; use environment variables for local paths. |
 | `doc/krkr2_plugins.md` | Reference list of known KiriKiri2 plugin names and source locations. |
 
@@ -267,7 +271,7 @@ Cross-Origin-Resource-Policy: same-origin
 Also configure `application/wasm` for `.wasm` files and
 `application/octet-stream` for `.pck` files. Web currently uses Emscripten's
 virtual filesystem through a conservative platform shim in
-`cpp/core/environ/web/Platform.cpp`. Cloud Web deployments cannot read user game
+`packages/AetherKrkr/core/environ/web/Platform.cpp`. Cloud Web deployments cannot read user game
 files from server environment variables; the product import path is the browser
 file/directory picker. After user authorization, local `File`/`Blob` objects are
 mounted read-only under `/webgames/<id>` with Range reads, so multi-GB packages
@@ -431,11 +435,9 @@ Renderer migration checks:
 
 ```bash
 rg "F[l]utter|f[l]utter|A[N]GLE|Platform[ ]Graphics" \
-  README.md README.zh-CN.md apps bridge build CMakeLists.txt
+  README.md README.zh-CN.md apps bridge scripts CMakeLists.txt
 rg "u[n]official-angle|l[i]bEGL|l[i]bGLESv2" \
-  CMakeLists.txt bridge cpp build vcpkg.json
-build/validate_godot_native.sh
-build/validate_gpu_bridge.sh
+  CMakeLists.txt bridge cpp scripts vcpkg.json
 ```
 
 Manual game smoke:
@@ -554,7 +556,7 @@ scripts, extracted bytecode, DLLs, or machine-local paths.
 - Keep local test paths out of committed project settings and profiles.
 - Prefer backend-specific fixes over broad behavior changes in the engine core.
 - Do not silently downgrade performance paths to Debug CPU.
-- Treat `bridge/engine_api` as a stable boundary.
+- Treat `abi` as a stable boundary.
 - Add plugin compatibility only when behavior is real or intentionally
   documented; avoid pretending unsupported APIs succeeded.
 - Preserve user work in the working tree. Do not reset or revert unrelated

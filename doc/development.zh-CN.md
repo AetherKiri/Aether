@@ -36,9 +36,9 @@ CPU 上传只能作为 debug fallback。性能优化应优先落到 Godot Native
 | --- | --- |
 | `apps/godot_app/` | Godot 项目、场景、脚本、资源、导出配置和 GDExtension 描述文件。 |
 | `bridge/godot_extension/` | 暴露给 Godot 的 C++ GDExtension 类和 host/player 绑定。 |
-| `bridge/engine_api/` | Godot host 与 C++ engine core 之间的稳定 C ABI。这个边界应保持窄且可版本化。 |
-| `cpp/core/` | KiriKiri 运行时核心：脚本 VM、存储、事件、窗口/图层系统、渲染、音频、视频和插件基础设施。 |
-| `cpp/plugins/` | 内置插件实现和兼容适配模块，以 KiriKiri 插件名注册。 |
+| `abi/` | Godot host 与 C++ engine core 之间的稳定 C ABI。这个边界应保持窄且可版本化。 |
+| `packages/AetherKrkr/` | KiriKiri 引擎运行时 submodule：脚本 VM、存储、事件、窗口/图层系统、渲染、音频、视频和插件基础设施（`core/`、`plugins/`、`external/`）。 |
+| `bridge/krkr2_runtime/` | KiriKiri 集成胶水：legacy engine_api 实现、host hooks 与 krkr2core/krkr2plugin 链接块。 |
 | `build/` | 各平台构建脚本和验证脚本。 |
 | `tests/` | 单元测试、fixture 和通用 probe profile。提交的 profile 不能包含本机绝对游戏路径。 |
 | `tools/` | 开发工具，例如 XP3 工具和插件审计工具。 |
@@ -51,10 +51,10 @@ CPU 上传只能作为 debug fallback。性能优化应优先落到 Godot Native
 | 文件 | 作用 |
 | --- | --- |
 | `build.sh` | 统一构建入口，根据平台分发到 `build/` 下的脚本。 |
-| `build/build_macos.sh` | 构建 macOS C++ core/GDExtension，复制 dylib，并导出 Godot macOS app。 |
-| `build/build_ios.sh` | 构建 iOS 真机或模拟器静态库，导出并 patch Xcode 工程。 |
-| `build/build_android.sh` | 构建 Android native 库，并通过 Godot 导出 APK。 |
-| `build/build_web.sh` | 构建 Emscripten Web GDExtension side module，并在 dlink 模板可用时导出 Godot Web app。 |
+| `scripts/build_macos.sh` | 构建 macOS C++ core/GDExtension，复制 dylib，并导出 Godot macOS app。 |
+| `scripts/build_ios.sh` | 构建 iOS 真机或模拟器静态库，导出并 patch Xcode 工程。 |
+| `scripts/build_android.sh` | 构建 Android native 库，并通过 Godot 导出 APK。 |
+| `scripts/build_web.sh` | 构建 Emscripten Web GDExtension side module，并在 dlink 模板可用时导出 Godot Web app。 |
 | `CMakeLists.txt` | 顶层 native build，组织 engine API、GDExtension、core、plugins、tests 和 tools。 |
 | `CMakePresets.json` | macOS、iOS、Android、Web 等平台的 CMake preset 和输出目录。 |
 | `vcpkg.json` | native 依赖清单。Godot Native 默认路径不能依赖 ANGLE。 |
@@ -74,20 +74,24 @@ CPU 上传只能作为 debug fallback。性能优化应优先落到 Godot Native
 | `apps/godot_app/scripts/gui_render_probe.gd` | GUI 渲染截图 probe。 |
 | `apps/godot_app/scripts/gpu_blend_self_test.gd` | Godot GPU blend 自测入口。 |
 | `bridge/godot_extension/src/aether_runtime_player.cpp` | Godot 可见的 `AetherRuntimePlayer` 实现和方法绑定。 |
-| `bridge/engine_api/include/engine_api.h` | engine bridge 导出的 C ABI。 |
-| `bridge/engine_api/include/engine_runtime_provider.h` | `AetherRuntimePlayer` 背后的版本化 Runtime Provider ABI；新增引擎实现该接口，不再新增 Godot Player。 |
-| `bridge/engine_api/include/engine_options.h` | host 与 engine 共享的 option key/value。 |
-| `bridge/engine_api/src/engine_api.cpp` | C ABI 实现，负责创建、打开、tick、render 和输入传递。 |
+| `abi/include/engine_api.h` | engine bridge 导出的 C ABI。 |
+| `abi/include/engine_runtime_provider.h` | `AetherRuntimePlayer` 背后的版本化 Runtime Provider ABI；新增引擎实现该接口，不再新增 Godot Player。 |
+| `abi/include/engine_options.h` | host 与 engine 共享的 option key/value。 |
+| `abi/include/engine_gpu_bridge.h` | 共享 GPU bridge ABI（回调表、混合模式、`tTVPRect`/`tTVPPointD` 几何），Godot 扩展与各引擎运行时无需 krkr2 头文件路径即可使用。 |
+| `abi/src/engine_api_dispatch.cpp` | C ABI 派发层：创建、打开、tick、render、输入传递，并在 legacy 后端与已注册 runtime provider 之间路由。 |
+| `bridge/krkr2_runtime/src/krkr2_legacy_engine_api.cpp` | KiriKiri（krkr2core）的 legacy 引擎 ABI 实现，经 runtime 胶水链接进 `engine_api`。 |
+| `bridge/krkr2_runtime/src/krkr2_host_hooks.cpp` | 派发层向 KiriKiri 运行时借用的 host 服务（音频会话、纹理回收）。 |
+| `abi/src/engine_api_stub.cpp` | 未链接 KiriKiri 运行时（单测、纯 provider 配置）使用的 legacy 引擎桩实现。 |
 | `bridge/onscripter_runtime/src/onscripter_runtime_provider.cpp` | ONScripterYuri 到统一 Runtime Provider ABI 的适配器。 |
 | `bridge/siglus_runtime/src/siglus_runtime_provider.cpp` | SiglusEngine（siglus_rs）到统一 Runtime Provider ABI 的适配器。 |
 | `bridge/siglus_runtime/cmake/PrepareSiglusRsWorkspace.cmake` | 构建期 overlay：把 pristine 的 `packages/AetherSiglus` 拷贝进构建树并应用 `bridge/siglus_runtime/overlay/` 补丁，submodule 本体保持只读。 |
-| `cpp/core/environ/EngineLoop.*` | 运行时生命周期、tick loop，以及 host input 到 TVP 事件的转换。 |
-| `cpp/core/visual/LayerManager.*` | 图层命中测试、焦点/capture、鼠标/触摸/键盘派发和兼容输入逻辑。 |
-| `cpp/core/visual/impl/DrawDevice.*` | Window/layer 更新与 render manager 之间的 draw device 桥。 |
-| `cpp/core/visual/impl/LayerBitmapImpl.*` | Bitmap/layer 像素操作和文字绘制。 |
-| `cpp/core/visual/godot/` | Godot Native render manager、texture 和后端代码。具体文件随分支演进。 |
-| `cpp/core/plugin/PluginImpl.cpp` | 内部 KiriKiri 插件模块注册和加载路径。 |
-| `cpp/plugins/CMakeLists.txt` | 插件构建接线。添加或启用插件时通常需要修改这里。 |
+| `packages/AetherKrkr/core/environ/EngineLoop.*` | 运行时生命周期、tick loop，以及 host input 到 TVP 事件的转换。 |
+| `packages/AetherKrkr/core/visual/LayerManager.*` | 图层命中测试、焦点/capture、鼠标/触摸/键盘派发和兼容输入逻辑。 |
+| `packages/AetherKrkr/core/visual/impl/DrawDevice.*` | Window/layer 更新与 render manager 之间的 draw device 桥。 |
+| `packages/AetherKrkr/core/visual/impl/LayerBitmapImpl.*` | Bitmap/layer 像素操作和文字绘制。 |
+| `packages/AetherKrkr/core/visual/godot/` | Godot Native render manager、texture 和后端代码。具体文件随分支演进。 |
+| `packages/AetherKrkr/core/plugin/PluginImpl.cpp` | 内部 KiriKiri 插件模块注册和加载路径。 |
+| `packages/AetherKrkr/plugins/CMakeLists.txt` | 插件构建接线（krkr2 仓库）。添加或启用插件时通常需要修改这里。 |
 | `tests/profiles/kr37s.json` | 通用 probe profile，`game_path` 故意为空。本地路径通过环境变量传入。 |
 | `doc/krkr2_plugins.md` | KiriKiri2 插件名和来源位置参考表。 |
 
@@ -259,7 +263,7 @@ Cross-Origin-Resource-Policy: same-origin
 ```
 
 同时需要配置 `.wasm` 的 MIME 为 `application/wasm`，`.pck` 为
-`application/octet-stream`。Web 当前通过 `cpp/core/environ/web/Platform.cpp`
+`application/octet-stream`。Web 当前通过 `packages/AetherKrkr/core/environ/web/Platform.cpp`
 里的保守 platform shim 使用 Emscripten 虚拟文件系统。云端 Web 版不能依赖服务器
 环境变量读取用户电脑上的游戏；正式导入路径是浏览器文件/目录选择器，用户授权后将
 本地 `File`/`Blob` 对象以只读 Range FS 挂载到 `/webgames/<id>`。这样 2-3G 游戏包
@@ -408,11 +412,9 @@ out/godot/macos/debug/AetherKiri.app/Contents/MacOS/AetherKiri \
 
 ```bash
 rg "F[l]utter|f[l]utter|A[N]GLE|Platform[ ]Graphics" \
-  README.md README.zh-CN.md apps bridge build CMakeLists.txt
+  README.md README.zh-CN.md apps bridge scripts CMakeLists.txt
 rg "u[n]official-angle|l[i]bEGL|l[i]bGLESv2" \
-  CMakeLists.txt bridge cpp build vcpkg.json
-build/validate_godot_native.sh
-build/validate_gpu_bridge.sh
+  CMakeLists.txt bridge cpp scripts vcpkg.json
 ```
 
 手动游戏冒烟：
@@ -521,6 +523,6 @@ packages/tjs2Decompiler/target/release/tjs2dec emit-tjs /path/to/script.tjs
 - 不要把本地测试游戏路径写入提交的项目设置或 profile。
 - 优先做后端内聚的修复，避免无边界修改 engine core 行为。
 - 不要把性能路径静默降级到 Debug CPU。
-- `bridge/engine_api` 是稳定边界，接口应保持窄。
+- `abi` 是稳定边界，接口应保持窄。
 - 插件兼容只能实现真实行为，或明确记录为未实现；不要用假成功掩盖缺口。
 - 保留用户工作区改动，不要 reset 或 revert 无关文件。

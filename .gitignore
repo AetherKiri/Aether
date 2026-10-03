@@ -3,16 +3,8 @@
 /**/cmake-build-android-release/
 /**/cmake-build-android-debug/
 /**/build/
-!/build/
-/build/*
-!/build/build_web.sh
-!/build/patch_web_export.mjs
-!/build/web_export_local_picker.js
-!/build/web_export_range_fs.js
 /**/out/
 /**/bin/
-!/rust/minori_runtime/src/bin/
-!/rust/minori_runtime/src/bin/*.rs
 vcpkg_installed/
 
 .idea/
@@ -29,6 +21,15 @@ node_modules/
 .vite/
 /stats_server
 local.properties
+
+# Local experiment folders
+Freemote/
+Ginka Port/
+hxv4_unhash_tools-refactor-dynamic-plaintext-providers/
+templates/
+doc/CXDEC/
+drip_program.json
+Godot_v4.7-stable_export_templates.tpz
 
 # Live2D Cubism Core is distributed under Live2D's proprietary license.
 third_party/live2d/Core/live2dcubismcore*.js
@@ -48,9 +49,6 @@ java_pid*.hprof
 *.log
 latest_log_path.txt
 
-# Cubism SDK (proprietary binary, download from live2d.com)
-cpp/plugins/cubism/Core/lib/
-cpp/plugins/cubism/Framework/
 apps/godot_app/.godot/
 apps/godot_app/.godot
 plugin_trace.log

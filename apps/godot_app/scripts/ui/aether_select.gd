@@ -1,11 +1,15 @@
 extends Button
 
+# Lumen dropdown: a solid field whose chevron flips open, and a popover card
+# that springs out of the trigger with an overshoot, cascades its rows in and
+# tracks the pointer with a sliding highlight marked by a signal-colour bar.
+
 signal item_selected(index: int)
 
-const CONTROL_HEIGHT := 40.0
+const CONTROL_HEIGHT := 42.0
 const MENU_GAP := 6.0
 const MENU_PADDING := 6.0
-const ITEM_HEIGHT := 40.0
+const ITEM_HEIGHT := 42.0
 const OVERLAY_INPUT_GROUP := "aether_select_input_overlay"
 const TOUCH_DRAG_THRESHOLD := 6.0
 const TOUCH_MOUSE_SUPPRESS_MS := 500
@@ -52,11 +56,12 @@ func setup(design_tokens, motion_system, next_chevron: Texture2D, next_check: Te
     add_theme_color_override("font_pressed_color", tokens.text_primary)
     add_theme_color_override("font_focus_color", tokens.text_primary)
     add_theme_color_override("font_disabled_color", tokens.text_tertiary)
-    add_theme_stylebox_override("normal", _field_box(tokens.glass_material, Color.TRANSPARENT, 0))
-    add_theme_stylebox_override("hover", _field_box(tokens.accent_fill, Color.TRANSPARENT, 0))
-    add_theme_stylebox_override("pressed", _field_box(tokens.accent_fill, Color.TRANSPARENT, 0))
-    add_theme_stylebox_override("focus", tokens.focus_style(14))
-    add_theme_stylebox_override("disabled", _field_box(Color(tokens.surface_raised.r, tokens.surface_raised.g, tokens.surface_raised.b, 0.34), Color.TRANSPARENT, 0))
+    add_theme_stylebox_override("normal", _field_box(tokens.background_raised, tokens.outline, 1))
+    add_theme_stylebox_override("hover", _field_box(tokens.surface_hover, tokens.outline_strong, 1))
+    add_theme_stylebox_override("pressed", _field_box(tokens.surface_hover, tokens.accent, 1))
+    add_theme_stylebox_override("hover_pressed", _field_box(tokens.surface_hover, tokens.accent, 1))
+    add_theme_stylebox_override("focus", tokens.focus_style(12))
+    add_theme_stylebox_override("disabled", _field_box(tokens.tint(tokens.surface_hover, 0.5), Color.TRANSPARENT, 0))
 
     chevron = TextureRect.new()
     chevron.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -158,12 +163,25 @@ func _open_popup() -> void:
         maxf(ITEM_HEIGHT, menu_height - MENU_PADDING * 2.0)
     )
     popup_panel.add_child(popup_scroll)
-    # Sliding jelly highlight lives inside the scroll so it moves with the rows
+    # The sliding highlight lives inside the scroll so it moves with the rows.
     menu_highlight = PanelContainer.new()
     menu_highlight.name = "MenuHighlight"
     menu_highlight.mouse_filter = Control.MOUSE_FILTER_IGNORE
     menu_highlight.visible = false
-    menu_highlight.add_theme_stylebox_override("panel", tokens.panel(tokens.accent_fill, 6))
+    menu_highlight.add_theme_stylebox_override("panel", tokens.panel(tokens.surface_hover, 8))
+    var mark_host := Control.new()
+    mark_host.mouse_filter = Control.MOUSE_FILTER_IGNORE
+    menu_highlight.add_child(mark_host)
+    var mark := Panel.new()
+    mark.mouse_filter = Control.MOUSE_FILTER_IGNORE
+    mark.add_theme_stylebox_override("panel", tokens.panel(tokens.accent, 2))
+    mark.anchor_top = 0.5
+    mark.anchor_bottom = 0.5
+    mark.offset_left = 4
+    mark.offset_right = 7
+    mark.offset_top = -9
+    mark.offset_bottom = 9
+    mark_host.add_child(mark)
     popup_scroll.add_child(menu_highlight)
     popup_menu = VBoxContainer.new()
     popup_menu.name = "MenuItems"
@@ -206,16 +224,20 @@ func _menu_item(index: int) -> Button:
     button.add_theme_color_override("font_focus_color", tokens.text_primary)
     # The sliding jelly highlight is the only selection/hover visual
     for state in ["normal", "hover", "pressed", "hover_pressed", "focus"]:
-        button.add_theme_stylebox_override(state, tokens.panel(Color.TRANSPARENT, 6))
+        var row_box: StyleBoxFlat = tokens.panel(Color.TRANSPARENT, 8)
+        row_box.content_margin_left = 16
+        row_box.content_margin_right = 12
+        button.add_theme_stylebox_override(state, row_box)
     if selected:
         button.icon = check_texture
         button.expand_icon = true
         button.icon_alignment = HORIZONTAL_ALIGNMENT_RIGHT
         button.add_theme_constant_override("icon_max_width", 17)
-        button.add_theme_color_override("icon_normal_color", tokens.accent)
-        button.add_theme_color_override("icon_hover_color", tokens.accent)
+        button.add_theme_color_override("icon_normal_color", tokens.accent_text)
+        button.add_theme_color_override("icon_hover_color", tokens.accent_text)
     button.pressed.connect(func(): _choose(index))
     button.mouse_entered.connect(func(): _slide_menu_highlight(true, index))
+    button.button_down.connect(func(): _slide_menu_highlight(true, index))
     button.focus_entered.connect(func(): _slide_menu_highlight(true, index))
     motion.bind_pressable(button)
     return button
@@ -284,7 +306,7 @@ func _choose(index: int) -> void:
     select(index)
     _close_popup()
     if changed:
-        # Jelly pulse on the trigger button so the new value lands with a wobble
+        # The trigger squashes and wobbles as the new value lands.
         if not motion.reduced_motion:
             motion._update_pivot(self)
             motion.spring_property(self, "scale", Vector2(1.04, 0.94), 0.12, 0.8)
@@ -399,6 +421,7 @@ func _animate_popup(show: bool) -> void:
 
 func _animate_chevron(open: bool) -> void:
     var target := PI if open else 0.0
+    chevron.modulate = tokens.accent_text if open else tokens.text_secondary
     if motion.reduced_motion:
         chevron.rotation = target
         return
@@ -434,24 +457,22 @@ func _exit_tree() -> void:
         overlay.queue_free()
 
 func _field_box(fill: Color, border: Color, border_width: int) -> StyleBoxFlat:
-    var style: StyleBoxFlat = tokens.button_style(fill, Color.TRANSPARENT, 14)
-    style.content_margin_left = 14
-    style.content_margin_right = 42
+    var style: StyleBoxFlat = tokens.panel(fill, 12, border, border_width)
+    style.content_margin_left = 16
+    style.content_margin_top = 8
+    style.content_margin_right = 44
+    style.content_margin_bottom = 8
     style.shadow_color = Color.TRANSPARENT
     style.shadow_size = 0
-    style.border_width_left = 0
-    style.border_width_top = 0
-    style.border_width_right = 0
-    style.border_width_bottom = 0
     return style
 
 func _popup_box() -> StyleBoxFlat:
-    var style: StyleBoxFlat = tokens.panel(tokens.surface, 12)
+    var style: StyleBoxFlat = tokens.panel(tokens.popover, 14, tokens.outline, 1)
     style.content_margin_left = MENU_PADDING
     style.content_margin_top = MENU_PADDING
     style.content_margin_right = MENU_PADDING
     style.content_margin_bottom = MENU_PADDING
-    style.shadow_color = Color(tokens.shadow.r, tokens.shadow.g, tokens.shadow.b, 0.32 if tokens.mode == "dark" else 0.14)
-    style.shadow_size = 9 if tokens.mode == "dark" else 6
-    style.shadow_offset = Vector2(0, 4 if tokens.mode == "dark" else 3)
+    style.shadow_color = Color(tokens.shadow.r, tokens.shadow.g, tokens.shadow.b, 0.40 if tokens.is_dark() else 0.18)
+    style.shadow_size = 9 if tokens.is_dark() else 7
+    style.shadow_offset = Vector2(0, 4 if tokens.is_dark() else 3)
     return style

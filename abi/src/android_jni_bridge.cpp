@@ -1,0 +1,242 @@
+/**
+ * @file android_jni_bridge.cpp
+ * @brief Android JNI entry point for the engine_api host surface.
+ *
+ * engine_api.so is loaded by the Godot Android app. This file provides the
+ * Android-specific host services: JavaVM storage for JNI calls from native
+ * threads, the SurfaceTexture bridge and the Application Context holder.
+ * Since the Phase 2d link flip it lives in engine_api (not the KiriKiri
+ * runtime glue) because the Java host binds the Java_org_github_krkr2
+ * natives and JNI_OnLoad to this library; consumers on the engine side
+ * (krkr2core's KrkrJniHelper, the Godot extension) resolve the exported
+ * krkr_Get* accessors across the DSO boundary.
+ */
+
+#include <jni.h>
+#include <android/log.h>
+#include <android/native_window.h>
+#include <android/native_window_jni.h>
+#include <dlfcn.h>
+#include <chrono>
+#include <mutex>
+
+#define LOG_TAG "krkr2"
+#define LOGI(...) __android_log_print(ANDROID_LOG_INFO, LOG_TAG, __VA_ARGS__)
+#define LOGW(...) __android_log_print(ANDROID_LOG_WARN, LOG_TAG, __VA_ARGS__)
+#define LOGE(...) __android_log_print(ANDROID_LOG_ERROR, LOG_TAG, __VA_ARGS__)
+
+// ---------------------------------------------------------------------------
+// JavaVM global storage
+// ---------------------------------------------------------------------------
+
+static JavaVM* g_javaVM = nullptr;
+static std::mutex g_jvm_mutex;
+static std::chrono::steady_clock::time_point g_last_jvm_recovery_attempt;
+
+namespace {
+
+using GetCreatedJavaVMsFn = jint (*)(JavaVM**, jsize, jsize*);
+
+JavaVM* RecoverJavaVMFromRuntime() {
+    auto fn = reinterpret_cast<GetCreatedJavaVMsFn>(
+        dlsym(RTLD_DEFAULT, "JNI_GetCreatedJavaVMs"));
+    void* artHandle = nullptr;
+    if (!fn) {
+        artHandle = dlopen("libart.so", RTLD_NOW | RTLD_LOCAL);
+        if (artHandle) {
+            fn = reinterpret_cast<GetCreatedJavaVMsFn>(
+                dlsym(artHandle, "JNI_GetCreatedJavaVMs"));
+        }
+    }
+    if (!fn) {
+        LOGE("krkr_GetJavaVM: JNI_GetCreatedJavaVMs is unavailable");
+        return nullptr;
+    }
+
+    JavaVM* vm = nullptr;
+    jsize vmCount = 0;
+    const jint result = fn(&vm, 1, &vmCount);
+    if (result == JNI_OK && vmCount > 0 && vm) {
+        LOGI("krkr_GetJavaVM: recovered JavaVM from Android runtime");
+        return vm;
+    }
+
+    LOGE("krkr_GetJavaVM: JNI_GetCreatedJavaVMs failed result=%d count=%d",
+         result, static_cast<int>(vmCount));
+    return nullptr;
+}
+
+} // namespace
+
+__attribute__((visibility("default"))) JavaVM* krkr_GetJavaVM() {
+    const auto now = std::chrono::steady_clock::now();
+    {
+        std::lock_guard<std::mutex> lock(g_jvm_mutex);
+        if (g_javaVM) return g_javaVM;
+        // The Godot extension can be called before the Android VM is fully
+        // visible through the process linker namespace. Do not permanently
+        // cache that early failure; retry at a low rate until JNI_OnLoad or
+        // JNI_GetCreatedJavaVMs becomes available.
+        if (g_last_jvm_recovery_attempt.time_since_epoch().count() != 0 &&
+            now - g_last_jvm_recovery_attempt < std::chrono::seconds(1)) {
+            return nullptr;
+        }
+        g_last_jvm_recovery_attempt = now;
+    }
+
+    JavaVM* vm = RecoverJavaVMFromRuntime();
+    if (!vm) return nullptr;
+
+    {
+        std::lock_guard<std::mutex> lock(g_jvm_mutex);
+        g_javaVM = vm;
+    }
+    return vm;
+}
+
+__attribute__((visibility("default"))) JNIEnv* krkr_GetJNIEnv() {
+    JavaVM* vm = krkr_GetJavaVM();
+    if (!vm) return nullptr;
+
+    JNIEnv* env = nullptr;
+    jint status = vm->GetEnv(reinterpret_cast<void**>(&env), JNI_VERSION_1_6);
+    if (status == JNI_EDETACHED) {
+        if (vm->AttachCurrentThread(&env, nullptr) != JNI_OK) {
+            LOGE("Failed to attach current thread to JVM");
+            return nullptr;
+        }
+    }
+    return env;
+}
+
+// ---------------------------------------------------------------------------
+// ANativeWindow global storage for SurfaceTexture bridge
+// ---------------------------------------------------------------------------
+
+static ANativeWindow* g_native_window = nullptr;
+static uint32_t g_surface_width = 0;
+static uint32_t g_surface_height = 0;
+static std::mutex g_surface_mutex;
+
+// ---------------------------------------------------------------------------
+// Global Application Context
+// The Godot Android host loads engine_api.so directly; the bridge can receive
+// an Application Context via JNI so engine code can call Context methods like
+// getExternalFilesDirs, getFilesDir, etc.
+// ---------------------------------------------------------------------------
+
+static jobject g_app_context = nullptr;  // global ref
+static std::mutex g_context_mutex;
+
+__attribute__((visibility("default"))) jobject krkr_GetApplicationContext() {
+    std::lock_guard<std::mutex> lock(g_context_mutex);
+    return g_app_context;
+}
+
+__attribute__((visibility("default"))) ANativeWindow* krkr_GetNativeWindow() {
+    std::lock_guard<std::mutex> lock(g_surface_mutex);
+    if (g_native_window) {
+        ANativeWindow_acquire(g_native_window);
+    }
+    return g_native_window;
+}
+
+__attribute__((visibility("default"))) void krkr_GetSurfaceDimensions(
+    uint32_t* out_width, uint32_t* out_height) {
+    std::lock_guard<std::mutex> lock(g_surface_mutex);
+    if (out_width) *out_width = g_surface_width;
+    if (out_height) *out_height = g_surface_height;
+}
+
+// ---------------------------------------------------------------------------
+// JNI_OnLoad
+// ---------------------------------------------------------------------------
+
+extern "C" JNIEXPORT jint JNI_OnLoad(JavaVM* vm, void* reserved) {
+    (void)reserved;
+
+    {
+        std::lock_guard<std::mutex> lock(g_jvm_mutex);
+        g_javaVM = vm;
+        g_last_jvm_recovery_attempt = std::chrono::steady_clock::now();
+    }
+
+    // KiriKiri-core consumers read the JavaVM through krkr_GetJavaVM() below;
+    // this library no longer links the engine, so there is no
+    // krkr::JniHelper::setJavaVM() to forward to.
+    LOGI("krkr2 JNI_OnLoad: JavaVM stored");
+    return JNI_VERSION_1_6;
+}
+
+// ---------------------------------------------------------------------------
+// JNI bridge: Android host -> C++ engine
+// Sets the Android Surface (from SurfaceTexture) as the render target.
+// ---------------------------------------------------------------------------
+
+extern "C" JNIEXPORT void JNICALL
+Java_org_github_krkr2_aetherkiri_EngineBridge_nativeSetSurface(
+    JNIEnv* env, jobject /* thiz */, jobject surface, jint width, jint height) {
+
+    std::lock_guard<std::mutex> lock(g_surface_mutex);
+
+    // Release previous window if any
+    if (g_native_window) {
+        ANativeWindow_release(g_native_window);
+        g_native_window = nullptr;
+        g_surface_width = 0;
+        g_surface_height = 0;
+    }
+
+    if (surface) {
+        g_native_window = ANativeWindow_fromSurface(env, surface);
+        if (g_native_window) {
+            g_surface_width = static_cast<uint32_t>(width);
+            g_surface_height = static_cast<uint32_t>(height);
+            LOGI("nativeSetSurface: ANativeWindow acquired (%dx%d)", width, height);
+        } else {
+            LOGE("nativeSetSurface: ANativeWindow_fromSurface failed");
+        }
+    } else {
+        LOGI("nativeSetSurface: Surface detached (null)");
+    }
+}
+
+extern "C" JNIEXPORT void JNICALL
+Java_org_github_krkr2_aetherkiri_EngineBridge_nativeDetachSurface(
+    JNIEnv* /* env */, jobject /* thiz */) {
+
+    std::lock_guard<std::mutex> lock(g_surface_mutex);
+    if (g_native_window) {
+        ANativeWindow_release(g_native_window);
+        g_native_window = nullptr;
+        g_surface_width = 0;
+        g_surface_height = 0;
+        LOGI("nativeDetachSurface: ANativeWindow released");
+    }
+}
+
+// ---------------------------------------------------------------------------
+// JNI bridge: Android host -> C++ engine
+// Passes the Android Application Context for use by engine code that
+// needs a Context (storage paths, font enumeration, etc.)
+// ---------------------------------------------------------------------------
+
+extern "C" JNIEXPORT void JNICALL
+Java_org_github_krkr2_aetherkiri_EngineBridge_nativeSetApplicationContext(
+    JNIEnv* env, jobject /* thiz */, jobject context) {
+
+    std::lock_guard<std::mutex> lock(g_context_mutex);
+
+    // Release previous global ref if any
+    if (g_app_context) {
+        env->DeleteGlobalRef(g_app_context);
+        g_app_context = nullptr;
+    }
+
+    if (context) {
+        g_app_context = env->NewGlobalRef(context);
+        LOGI("nativeSetApplicationContext: Application Context stored");
+    } else {
+        LOGW("nativeSetApplicationContext: null context passed");
+    }
+}

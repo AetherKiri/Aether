@@ -1,6 +1,8 @@
 package org.libsdl.app;
 
 import android.app.Activity;
+import android.content.Context;
+import android.view.Surface;
 import java.lang.ref.WeakReference;
 
 /**
@@ -32,6 +34,12 @@ public final class SDLActivity {
     public static Activity getHostActivity() {
         return hostActivity.get();
     }
+
+    /** Returns the Surface already bound by EngineBridge, never a new view. */
+    public static native Surface getNativeSurface();
+
+    /** Returns the existing Application Context held by EngineBridge. */
+    public static native Context getContext();
 
     public static native int nativeSetupJNI();
     public static native int nativeRunMain(String library, String function,

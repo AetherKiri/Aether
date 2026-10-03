@@ -35,6 +35,7 @@ jobs:
     env:
       FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: 'true'
       GH_TOKEN: ${{ secrets.GH_PAT || github.token }}
+      HAS_AETHERSECRET: ${{ secrets.AETHERSECRET != '' }}
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v6
@@ -42,8 +43,16 @@ jobs:
           fetch-depth: 2
           persist-credentials: true
 
+      - name: Fetch target commit history
+        if: ${{ inputs.target_commit != '' && inputs.target_commit != 'HEAD' }}
+        env:
+          TARGET_COMMIT: ${{ inputs.target_commit }}
+        run: |
+          echo "Fetching target commit $TARGET_COMMIT..."
+          git fetch --depth=2 origin "$TARGET_COMMIT" || git fetch origin "$TARGET_COMMIT"
+
       - name: Configure SSH for private submodules
-        if: ${{ secrets.AETHERSECRET != '' }}
+        if: env.HAS_AETHERSECRET == 'true'
         env:
           AETHERSECRET: ${{ secrets.AETHERSECRET }}
         run: |
@@ -57,17 +66,31 @@ jobs:
 
       - name: Check submodule updates
         id: check
+        env:
+          INPUT_TARGET_COMMIT: ${{ inputs.target_commit }}
+          INPUT_FORCE_ALL: ${{ inputs.force_all }}
+          INPUT_SUBMODULE_PATH: ${{ inputs.submodule_path }}
+          GITHUB_RUN_NUMBER: ${{ github.run_number }}
         run: |
-          python3 .github/scripts/check-submodule-updates.py \
-            --commit "${{ inputs.target_commit || 'HEAD' }}" \
-            ${{ inputs.force_all == true && '--all' || '' }} \
-            ${{ inputs.submodule_path != '' && format('--submodule {0}', inputs.submodule_path) || '' }} \
-            --run-number "${{ github.run_number }}" \
-            --apply \
-            --github-output "$GITHUB_OUTPUT" \
-            --github-summary "$GITHUB_STEP_SUMMARY" \
-            --pr-body-file "${RUNNER_TEMP}/submodule_pr_body.md" \
-            --commit-msg-file "${RUNNER_TEMP}/submodule_commit_msg.txt"
+          cmd=(python3 .github/scripts/check-submodule-updates.py)
+          if [ -n "$INPUT_TARGET_COMMIT" ]; then
+            cmd+=(--commit "$INPUT_TARGET_COMMIT")
+          else
+            cmd+=(--commit "HEAD")
+          fi
+          if [ "$INPUT_FORCE_ALL" = "true" ]; then
+            cmd+=(--all)
+          fi
+          if [ -n "$INPUT_SUBMODULE_PATH" ]; then
+            cmd+=(--submodule "$INPUT_SUBMODULE_PATH")
+          fi
+          cmd+=(--run-number "$GITHUB_RUN_NUMBER")
+          cmd+=(--apply)
+          cmd+=(--github-output "$GITHUB_OUTPUT")
+          cmd+=(--github-summary "$GITHUB_STEP_SUMMARY")
+          cmd+=(--pr-body-file "${RUNNER_TEMP}/submodule_pr_body.md")
+          cmd+=(--commit-msg-file "${RUNNER_TEMP}/submodule_commit_msg.txt")
+          "${cmd[@]}"
 
       - name: Close existing PR and open new pull request
         if: steps.check.outputs.has_updates == 'true'
@@ -77,6 +100,7 @@ jobs:
           TITLE: ${{ steps.check.outputs.pr_title }}
           PR_BODY_FILE: ${{ steps.check.outputs.pr_body_file }}
           COMMIT_MSG_FILE: ${{ steps.check.outputs.commit_msg_file }}
+          GITHUB_RUN_NUMBER: ${{ github.run_number }}
         run: |
           set -euo pipefail
           git config user.name "github-actions[bot]"
@@ -87,7 +111,7 @@ jobs:
           old_prs="$(gh pr list --base main --state open --json number,headRefName --jq ".[] | select(.headRefName | startswith(\"$BRANCH_PREFIX\")) | .number")"
           for pr in $old_prs; do
             echo "Closing superseded PR #$pr..."
-            gh pr close "$pr" --comment "Superseded by newer submodule update in run #${{ github.run_number }}. Opening fresh PR." --delete-branch || true
+            gh pr close "$pr" --comment "Superseded by newer submodule update in run #${GITHUB_RUN_NUMBER}. Opening fresh PR." --delete-branch || true
           done
 
           echo "Switching to new branch: $BRANCH"

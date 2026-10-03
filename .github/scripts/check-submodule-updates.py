@@ -10,6 +10,7 @@ import os
 import re
 import subprocess
 import sys
+import tempfile
 from typing import Dict, List, Optional, Tuple
 
 
@@ -39,6 +40,27 @@ def normalize_github_url(url: str) -> Optional[str]:
     if https_match:
         return f"https://github.com/{https_match.group(1)}/{https_match.group(2)}"
     return None
+
+
+def is_ancestor_commit(url: str, ancestor_sha: str, descendant_sha: str) -> bool:
+    """
+    Verify that ancestor_sha is indeed an ancestor of descendant_sha in the remote repo.
+    Uses a minimal treeless bare clone to fetch only commit metadata.
+    """
+    with tempfile.TemporaryDirectory() as td:
+        repo_dir = os.path.join(td, "repo.git")
+        try:
+            # Treeless clone downloads only commit objects without tree or blob data (<200KB)
+            run_git(["clone", "--bare", "--filter=tree:0", url, repo_dir])
+            res = subprocess.run(
+                ["git", "merge-base", "--is-ancestor", ancestor_sha, descendant_sha],
+                cwd=repo_dir,
+                capture_output=True,
+            )
+            return res.returncode == 0
+        except Exception as e:
+            print(f"Warning: Failed to check commit ancestry for {url}: {e}", file=sys.stderr)
+            return False
 
 
 def get_submodules_config() -> Dict[str, Dict[str, Optional[str]]]:
@@ -84,14 +106,28 @@ def get_changed_submodules(commit: str, base: Optional[str] = None) -> List[str]
     Find submodules whose commit hash changed between base and commit.
     Uses diff-tree to find mode 160000 changes.
     """
+    # Ensure commit exists locally
+    try:
+        run_git(["rev-parse", "--verify", commit])
+    except subprocess.CalledProcessError:
+        try:
+            run_git(["fetch", "--depth=2", "origin", commit])
+        except subprocess.CalledProcessError:
+            pass
+
     if not base:
         # Check if parent commit exists (e.g. commit^1)
         try:
             run_git(["rev-parse", "--verify", f"{commit}^1"])
             base = f"{commit}^1"
         except subprocess.CalledProcessError:
-            # First commit or shallow clone without parent
-            return []
+            try:
+                run_git(["fetch", "--deepen=1", "origin", commit])
+                run_git(["rev-parse", "--verify", f"{commit}^1"])
+                base = f"{commit}^1"
+            except subprocess.CalledProcessError:
+                # First commit or shallow clone without parent
+                return []
 
     try:
         diff_out = run_git(["diff-tree", "-r", "--no-commit-id", "-m", base, commit])
@@ -175,6 +211,7 @@ def main():
     parser.add_argument("--github-summary", default=None, help="Path to $GITHUB_STEP_SUMMARY")
     parser.add_argument("--pr-body-file", default=None, help="Path to write generated PR markdown body")
     parser.add_argument("--run-number", default="", help="GitHub Actions run number or unique suffix")
+    parser.add_argument("--allow-non-forward", action="store_true", help="Allow updating even if current pin is not an ancestor of remote HEAD")
     parser.add_argument("--commit-msg-file", default=None, help="Path to write commit message")
 
     args = parser.parse_args()
@@ -226,6 +263,11 @@ def main():
         print(f"[{name}] Target branch: {target_branch} | Current pin: {pinned_sha[:8]} | Remote HEAD: {remote_sha[:8]}")
 
         if remote_sha != pinned_sha:
+            if not args.allow_non_forward:
+                print(f"[{name}] Verifying {pinned_sha[:8]} is an ancestor of remote {remote_sha[:8]}...")
+                if not is_ancestor_commit(url, pinned_sha, remote_sha):
+                    print(f"[{name}] Remote HEAD {remote_sha[:8]} is not a forward descendant of current pin {pinned_sha[:8]} (not an ancestor). Skipping.")
+                    continue
             print(f"[{name}] Update available! {pinned_sha[:8]} -> {remote_sha[:8]}")
             gh_base_url = normalize_github_url(url)
             updates.append({

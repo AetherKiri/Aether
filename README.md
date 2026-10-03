@@ -322,3 +322,22 @@ templates, libraries, and project support files under a separate mobile root.
 Staging these inputs does not enable mobile gameplay: the Android JNI/Activity
 bootstrap, iOS in-process adapter, Godot rendering/input bridge, and
 device/simulator E2E remain required before a mobile provider can be enabled.
+
+When `AETHERKIRI_ENABLE_RENPY=ON`, `scripts/build_android.sh` copies the
+official RAPT arm64 `librenpython.so`, Java/resource templates, and any
+`AETHERKIRI_RENPY_ANDROID_PRIVATE_ASSETS` into the existing Godot Android
+template. The RAPT launcher is packaged as assets rather than merged into the
+manifest, and `RenPyMobileBridge` only binds the Activity Godot already owns.
+This is a package/JNI smoke milestone; Ren'Py mobile open remains explicitly
+`ENGINE_RESULT_NOT_SUPPORTED` until lifecycle, SDL surface, input, and render
+handoff are implemented.
+
+For an iOS link/bundle smoke, set `AETHERKIRI_ENABLE_RENPY=ON` and
+`AETHERKIRI_RENPY_MOBILE_ROOT` to the staged root before running
+`scripts/build_ios.sh`. The build folds the official Renios static dependency
+closure into the Godot extension and bundles its resources and MetalANGLE
+framework, while deliberately omitting the prototype application entrypoint
+and retaining `ENGINE_RESULT_NOT_SUPPORTED` until lifecycle, rendering, and
+input integration are complete.
+Provide `AETHERKIRI_RENPY_RENIOS_BASE` when a generated game `base/` directory
+should be included in that smoke bundle.

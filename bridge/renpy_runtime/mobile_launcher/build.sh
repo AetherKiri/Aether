@@ -178,8 +178,17 @@ required_symbols=(
 check_symbols() {
     local artifact="$1"
     [[ -f "$artifact" ]] || { echo "artifact not found: $artifact" >&2; exit 1; }
+    local format
+    format="$(file -b "$artifact" 2>/dev/null || true)"
     for symbol in "${required_symbols[@]}"; do
-        if ! strings "$artifact" | grep -Fqx "$symbol"; then
+        if [[ "$format" == *ELF* ]] && command -v nm >/dev/null 2>&1; then
+            if ! nm -D --defined-only "$artifact" 2>/dev/null | awk '{print $3}' | grep -Fxq "$symbol"; then
+                echo "artifact lacks required lifecycle export $symbol: $artifact" >&2
+                exit 1
+            fi
+        elif ! strings "$artifact" | grep -Fqx "$symbol"; then
+            # Linux nm cannot inspect the Mach-O universal archives emitted by
+            # the iOS hook; strings is the portable fallback for those files.
             echo "artifact lacks required lifecycle export $symbol: $artifact" >&2
             exit 1
         fi

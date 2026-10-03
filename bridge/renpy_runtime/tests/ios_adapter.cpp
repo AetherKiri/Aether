@@ -21,6 +21,16 @@ const char* Error(void*) { return "test adapter"; }
 }  // namespace
 
 int main() {
+    const auto* contract = renpy_get_ios_launcher_contract();
+    assert(contract != nullptr);
+    assert(contract->struct_size == sizeof(*contract));
+    assert(contract->api_version ==
+           AETHERKIRI_RENPY_IOS_LAUNCHER_CONTRACT_API_VERSION);
+    assert(contract->mode == RENPY_IOS_LAUNCHER_MODE_BLOCKING_PY_MAIN);
+    assert(contract->launcher_symbol_utf8 != nullptr);
+    assert(contract->blocking_symbol_utf8 != nullptr);
+    assert(contract->limitation_utf8 != nullptr);
+
     // The default product build has no linked Renios closure.
     assert(renpy_get_ios_inprocess_adapter() == nullptr);
 

@@ -125,3 +125,9 @@ Activity. Because RAPT embeds its own SDL/Python runtime and lifecycle,
 asset/JNI staging alone is not a playable integration: until SDL surface,
 lifecycle, input, and Godot rendering handoff are complete, `Start` and
 provider open return `ENGINE_RESULT_NOT_SUPPORTED` with an explicit diagnostic.
+Before attempting that handoff, the Android `BootstrapAdapter::Preflight`
+loader checks the bound host Activity, required `SDLActivity` and
+`PythonSDLActivity` JNI methods, a live host `ANativeWindow`, and the exported
+`librenpython.so` entrypoints (`SDL_main`, SDL Android accessors, and RAPT JNI
+callbacks). Missing pieces produce a stable diagnostic and never call
+`SDL_main` or create another Activity.

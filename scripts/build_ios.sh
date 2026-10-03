@@ -442,6 +442,7 @@ stage_renios_ios_resources() {
         fi
         printf 'Configuration: %s\n' "$(renios_configuration)"
         printf 'Static closure: %s\n' "$(renios_archive_names "$prebuilt")"
+        printf 'Excluded archives: libSDL2main.a,libSDL2_test.a (host entrypoint/test)\n'
         if [[ -d "$resource_root/base" ]]; then
             printf 'Base resources: bundled\n'
         else

@@ -3,8 +3,8 @@ set -euo pipefail
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 stage="$repo_root/tools/stage_renpy_android_support.sh"
-[[ -f bash "$stage" ]] || { echo "stager is missing: $stage" >&2; exit 1; }
-bash -n bash "$stage"
+[[ -f "$stage" ]] || { echo "stager is missing: $stage" >&2; exit 1; }
+bash -n "$stage"
 
 mobile_root="${RENPY_MOBILE_STAGE_TEST_ROOT:-/workspace/shared/renpy-mobile-staged}"
 if [[ ! -f "$mobile_root/rapt/prototype/renpyandroid/src/main/jniLibs/arm64-v8a/librenpython.so" ]]; then

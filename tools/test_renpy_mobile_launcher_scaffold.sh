@@ -8,6 +8,7 @@ script="$scaffold/build.sh"
 header="$scaffold/include/renpy_mobile_launcher.h"
 loader="$scaffold/src/renpy_mobile_loader.cpp"
 renpy_build="${RENPY_BUILD_TEST_ROOT:-/tmp/renpy-build-src}"
+renpy_source="${RENPY_SOURCE_TEST_ROOT:-/tmp/renpy-src}"
 
 [[ -x "$script" ]] || { echo "missing launcher scaffold script" >&2; exit 1; }
 [[ -f "$header" ]] || { echo "missing launcher lifecycle header" >&2; exit 1; }
@@ -31,6 +32,11 @@ done
 grep -Fq 'Py_RunMain' "$scaffold/README.md"
 grep -Fq 'SDL_main' "$scaffold/README.md"
 grep -Fq 'renpy-build' "$scaffold/patches/README.md"
+grep -Fq 'cooperative-loop-skeleton.patch' "$scaffold/patches/python/README.md"
+if [[ -d "$renpy_source" ]]; then
+    patch_output="$($script --check-python-patch --renpy-src "$renpy_source")"
+    grep -Fq 'applies cleanly' <<<"$patch_output"
+fi
 for template in \
     "$scaffold/patches/android/librenpython_android_host.c.template" \
     "$scaffold/patches/ios/librenpython_ios_host.c.template"; do

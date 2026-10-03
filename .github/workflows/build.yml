@@ -79,7 +79,8 @@ jobs:
       GODOT_RELEASE: 4.7-stable
       GODOT_TEMPLATE_VERSION: 4.7.stable
       ANDROID_NDK_VERSION: 28.1.13356709
-      # Compile the guarded Ren'Py mobile provider stub. It still returns NOT_SUPPORTED.
+      # Compile the guarded Ren'Py mobile provider stub.  The provider still
+      # returns NOT_SUPPORTED until the official RAPT/JNI bootstrap is wired.
       AETHERKIRI_ENABLE_RENPY: ON
 
     steps:
@@ -147,17 +148,16 @@ jobs:
           sudo apt-get install -y cmake ninja-build pkg-config autoconf autoconf-archive automake libtool gettext bison flex curl unzip zip zstd ccache jq mono-complete
           rustup target add aarch64-linux-android armv7-linux-androideabi x86_64-linux-android i686-linux-android
 
-
       - name: Stage official Ren'Py Android support inputs
         run: |
           set -euo pipefail
           mobile_root="${RUNNER_TEMP}/aetherkiri-renpy-mobile/android"
-          bash tools/install_renpy_mobile_support.sh \
+          tools/install_renpy_mobile_support.sh \
             --platform android \
             --destination "$mobile_root"
           test -f "$mobile_root/rapt/prototype/renpyandroid/src/main/jniLibs/arm64-v8a/librenpython.so"
+          RENPY_MOBILE_STAGE_TEST_ROOT="$mobile_root" tools/test_stage_renpy_android_support.sh
           echo "RENPY_MOBILE_ROOT=$mobile_root" >> "$GITHUB_ENV"
-          RENPY_MOBILE_STAGE_TEST_ROOT="$mobile_root" bash tools/test_stage_renpy_android_support.sh
 
       - name: Restore ccache
         id: restore-ccache
@@ -348,8 +348,10 @@ jobs:
       - name: Verify Android Ren'Py mobile guard was compiled
         run: |
           set -euo pipefail
-          grep -F 'renpy_runtime_mobile_provider.cpp' out/android/arm64-v8a/debug/compile_commands.json
-          grep -F 'renpy_mobile_adapter.cpp' out/android/arm64-v8a/debug/compile_commands.json
+          grep -F 'renpy_runtime_mobile_provider.cpp' \
+            out/android/arm64-v8a/debug/compile_commands.json
+          grep -F 'renpy_mobile_adapter.cpp' \
+            out/android/arm64-v8a/debug/compile_commands.json
 
       - name: Verify exported APKs
         run: |
@@ -380,7 +382,8 @@ jobs:
       CCACHE_DIR: ${{ github.workspace }}/.ccache
       GODOT_RELEASE: 4.7-stable
       GODOT_TEMPLATE_VERSION: 4.7.stable
-      # Compile the guarded Ren'Py mobile provider stub. It still returns NOT_SUPPORTED.
+      # Compile the guarded Ren'Py mobile provider stub.  The provider still
+      # returns NOT_SUPPORTED until the official Renios/Xcode adapter is wired.
       AETHERKIRI_ENABLE_RENPY: ON
 
     steps:
@@ -477,23 +480,17 @@ jobs:
           brew install cmake ninja pkg-config autoconf automake autoconf-archive libtool gettext coreutils bison nasm ccache mono
           echo "$(brew --prefix gettext)/bin" >> $GITHUB_PATH
           echo "$(brew --prefix bison)/bin" >> $GITHUB_PATH
-          for attempt in 1 2 3 4 5; do
-            rustup target add aarch64-apple-ios aarch64-apple-ios-sim x86_64-apple-ios && break
-            if [[ "$attempt" == 5 ]]; then exit 1; fi
-            sleep $((attempt * 15))
-          done
-
+          rustup target add aarch64-apple-ios aarch64-apple-ios-sim x86_64-apple-ios
 
       - name: Stage official Ren'Py iOS support inputs
         run: |
           set -euo pipefail
           mobile_root="${RUNNER_TEMP}/aetherkiri-renpy-mobile/ios"
-          bash tools/install_renpy_mobile_support.sh \
+          tools/install_renpy_mobile_support.sh \
             --platform ios \
             --destination "$mobile_root"
           test -f "$mobile_root/renios/prototype/prebuilt/release/librenpython.a"
           echo "RENPY_MOBILE_ROOT=$mobile_root" >> "$GITHUB_ENV"
-          RENPY_MOBILE_TEST_ROOT="$mobile_root" bash tools/test_renios_ios_bundle.sh
 
       - name: Install Godot export tools
         run: |
@@ -642,8 +639,10 @@ jobs:
       - name: Verify iOS Ren'Py mobile guard was compiled
         run: |
           set -euo pipefail
-          grep -F 'renpy_runtime_mobile_provider.cpp' out/ios/debug/compile_commands.json
-          grep -F 'renpy_runtime_ios_adapter.cpp' out/ios/debug/compile_commands.json
+          grep -F 'renpy_runtime_mobile_provider.cpp' \
+            out/ios/debug/compile_commands.json
+          grep -F 'renpy_runtime_ios_adapter.cpp' \
+            out/ios/debug/compile_commands.json
 
       - name: Verify exported Xcode project and IPA
         run: |
@@ -660,6 +659,13 @@ jobs:
             build_type_cap="$(echo "${build_type:0:1}" | tr '[:lower:]' '[:upper:]')${build_type:1}"
             if [[ ! -f "out/godot/ios/${build_type}/Aether-${build_type_cap}-Unsigned.ipa" ]]; then
               echo "Godot iOS ${build_type} unsigned IPA not found" >&2
+              exit 1
+            fi
+            test -f "out/godot/ios/${build_type}/Aether/renios/renios-manifest.txt"
+            test -f "out/godot/ios/${build_type}/Aether/Frameworks/MetalANGLE.xcframework/Info.plist"
+            if [[ -e "out/godot/ios/${build_type}/Aether/renios/main.c" ||
+                  -e "out/godot/ios/${build_type}/Aether/renios/prototype.xcodeproj" ]]; then
+              echo "Renios bundle unexpectedly includes a prototype entrypoint/project" >&2
               exit 1
             fi
           done
@@ -797,7 +803,13 @@ jobs:
         run: tools/test_install_renpy_sdk.sh
 
       - name: Validate Ren'Py mobile support staging
-        run: bash tools/test_install_renpy_mobile_support.sh
+        run: tools/test_install_renpy_mobile_support.sh
+
+      - name: Validate Ren'Py iOS link and bundle boundary
+        run: tools/test_renios_ios_bundle.sh
+
+      - name: Validate Ren'Py mobile native source-build plan
+        run: tools/test_renpy_mobile_source_build_plan.sh
 
       - name: Install pinned Ren'Py SDK
         run: |

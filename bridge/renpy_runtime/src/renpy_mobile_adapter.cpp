@@ -57,6 +57,47 @@ jclass FindRequiredClass(JNIEnv* env, const char* class_name,
   jclass klass = env->FindClass(class_name);
   if (klass != nullptr) return klass;
   ClearJavaException(env);
+
+  // Preflight normally runs from a native Godot thread. FindClass uses that
+  // thread's loader, which may not be the APK class loader, so retry through
+  // the already-bound Activity before declaring a callback unavailable.
+  jobject activity = krkr_GetHostActivity();
+  if (activity != nullptr) {
+    jclass activity_class = env->GetObjectClass(activity);
+    jmethodID get_loader =
+        env->GetMethodID(activity_class, "getClassLoader",
+                         "()Ljava/lang/ClassLoader;");
+    if (get_loader != nullptr) {
+      jobject loader = env->CallObjectMethod(activity, get_loader);
+      jclass loader_class = env->FindClass("java/lang/ClassLoader");
+      ClearJavaException(env);
+      if (loader != nullptr && loader_class != nullptr) {
+        jmethodID load_class =
+            env->GetMethodID(loader_class, "loadClass",
+                             "(Ljava/lang/String;)Ljava/lang/Class;");
+        if (load_class != nullptr) {
+          std::string binary_name(class_name);
+          for (char& character : binary_name) {
+            if (character == '/') character = '.';
+          }
+          jstring name = env->NewStringUTF(binary_name.c_str());
+          jobject loaded = env->CallObjectMethod(loader, load_class, name);
+          env->DeleteLocalRef(name);
+          if (loaded != nullptr && !ClearJavaException(env)) {
+            env->DeleteLocalRef(loader);
+            env->DeleteLocalRef(loader_class);
+            env->DeleteLocalRef(activity_class);
+            return reinterpret_cast<jclass>(loaded);
+          }
+          ClearJavaException(env);
+        }
+      }
+      if (loader != nullptr) env->DeleteLocalRef(loader);
+      if (loader_class != nullptr) env->DeleteLocalRef(loader_class);
+    }
+    ClearJavaException(env);
+    env->DeleteLocalRef(activity_class);
+  }
   *error = "Ren'Py mobile preflight: required Java class " +
            std::string(class_name) +
            " is unavailable; the staged RAPT sources are assets-only and "

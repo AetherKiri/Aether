@@ -800,13 +800,13 @@ jobs:
           rustup target add aarch64-apple-darwin
 
       - name: Validate Ren'Py SDK installer
-        run: tools/test_install_renpy_sdk.sh
+        run: bash tools/test_install_renpy_sdk.sh
 
       - name: Validate Ren'Py mobile support staging
-        run: tools/test_install_renpy_mobile_support.sh
+        run: bash tools/test_install_renpy_mobile_support.sh
 
       - name: Validate Ren'Py iOS link and bundle boundary
-        run: tools/test_renios_ios_bundle.sh
+        run: bash tools/test_renios_ios_bundle.sh
 
       - name: Validate Ren'Py mobile native source-build plan
         run: bash tools/test_renpy_mobile_source_build_plan.sh
@@ -824,7 +824,7 @@ jobs:
           test -x "$sdk_root/renpy.sh"
 
       - name: Run Ren'Py SDK smoke fixture
-        run: tools/run_renpy_smoke.sh
+        run: bash tools/run_renpy_smoke.sh
 
       - name: Install Godot export tools
         run: |

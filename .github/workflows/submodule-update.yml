@@ -1,0 +1,107 @@
+name: Submodule Auto Update
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+    inputs:
+      target_commit:
+        description: 'Target commit SHA on main to inspect (default: HEAD)'
+        required: false
+        default: 'HEAD'
+      force_all:
+        description: 'Inspect all submodules in repo rather than only changed ones in target commit'
+        required: false
+        type: boolean
+        default: false
+      submodule_path:
+        description: 'Explicit submodule path to inspect (optional, e.g. packages/AetherKrkr)'
+        required: false
+        default: ''
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: submodule-update-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  check-and-update:
+    name: Check & Update Submodules
+    runs-on: ubuntu-latest
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: 'true'
+      GH_TOKEN: ${{ secrets.GH_PAT || github.token }}
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 2
+          persist-credentials: true
+
+      - name: Configure SSH for private submodules
+        if: ${{ secrets.AETHERSECRET != '' }}
+        env:
+          AETHERSECRET: ${{ secrets.AETHERSECRET }}
+        run: |
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          ssh-keyscan -t rsa,ed25519 github.com >> ~/.ssh/known_hosts 2>/dev/null
+          eval "$(ssh-agent -s)"
+          echo "$AETHERSECRET" | tr -d '\r' | ssh-add -
+          echo "SSH_AUTH_SOCK=$SSH_AUTH_SOCK" >> "$GITHUB_ENV"
+          echo "SSH_AGENT_PID=$SSH_AGENT_PID" >> "$GITHUB_ENV"
+
+      - name: Check submodule updates
+        id: check
+        run: |
+          python3 .github/scripts/check-submodule-updates.py \
+            --commit "${{ inputs.target_commit || 'HEAD' }}" \
+            ${{ inputs.force_all == true && '--all' || '' }} \
+            ${{ inputs.submodule_path != '' && format('--submodule {0}', inputs.submodule_path) || '' }} \
+            --run-number "${{ github.run_number }}" \
+            --apply \
+            --github-output "$GITHUB_OUTPUT" \
+            --github-summary "$GITHUB_STEP_SUMMARY" \
+            --pr-body-file "${RUNNER_TEMP}/submodule_pr_body.md" \
+            --commit-msg-file "${RUNNER_TEMP}/submodule_commit_msg.txt"
+
+      - name: Close existing PR and open new pull request
+        if: steps.check.outputs.has_updates == 'true'
+        env:
+          BRANCH: ${{ steps.check.outputs.branch_name }}
+          BRANCH_PREFIX: ${{ steps.check.outputs.branch_prefix }}
+          TITLE: ${{ steps.check.outputs.pr_title }}
+          PR_BODY_FILE: ${{ steps.check.outputs.pr_body_file }}
+          COMMIT_MSG_FILE: ${{ steps.check.outputs.commit_msg_file }}
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          # Close any existing open PRs created for this submodule update
+          echo "Checking for existing open PRs with prefix '$BRANCH_PREFIX'..."
+          old_prs="$(gh pr list --base main --state open --json number,headRefName --jq ".[] | select(.headRefName | startswith(\"$BRANCH_PREFIX\")) | .number")"
+          for pr in $old_prs; do
+            echo "Closing superseded PR #$pr..."
+            gh pr close "$pr" --comment "Superseded by newer submodule update in run #${{ github.run_number }}. Opening fresh PR." --delete-branch || true
+          done
+
+          echo "Switching to new branch: $BRANCH"
+          git checkout -B "$BRANCH"
+
+          echo "Committing updated submodule gitlinks..."
+          git commit -F "$COMMIT_MSG_FILE"
+
+          echo "Pushing new branch to remote..."
+          git push origin "$BRANCH" --force
+
+          echo "Opening fresh pull request for branch $BRANCH..."
+          gh pr create \
+            --base main \
+            --head "$BRANCH" \
+            --title "$TITLE" \
+            --body-file "$PR_BODY_FILE"

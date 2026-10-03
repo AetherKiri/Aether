@@ -1,5 +1,11 @@
 #include "renpy_runtime.h"
 #include "engine_runtime_provider.h"
+#if defined(__ANDROID__)
+#include "renpy_mobile_adapter.h"
+#endif
+#if defined(AETHERKIRI_RENPY_IOS)
+#include "renpy_runtime_ios_adapter.h"
+#endif
 
 #include <cstring>
 #include <memory>
@@ -18,9 +24,12 @@ namespace {
 
 struct MobileRuntime final {
     engine_runtime_host_v1_t host{};
+#if defined(__ANDROID__)
+    mobile::BootstrapAdapter bootstrap;
+#endif
     std::string error =
-        "Ren'Py mobile bootstrap is not available; stage official RAPT/Renios "
-        "inputs before enabling the native adapter";
+        "Ren'Py mobile runtime is not supported: official RAPT/Renios inputs "
+        "may be staged, but the native adapter is not linked";
 };
 
 MobileRuntime* Cast(void* value) {
@@ -52,15 +61,52 @@ engine_result_t Create(void*, const engine_runtime_host_v1_t* host,
 }
 
 void Destroy(void* value) {
+#if defined(__ANDROID__)
+    if (value) Cast(value)->bootstrap.Stop();
+#endif
     delete Cast(value);
 }
 
-engine_result_t Open(void* value, const char*, const char*) {
+engine_result_t Open(void* value, const char* game_root_path,
+                     const char* startup_script) {
     if (!value) return ENGINE_RESULT_INVALID_ARGUMENT;
+#if defined(__ANDROID__)
+    auto* runtime = Cast(value);
+    mobile::BootstrapRequest request{};
+    request.game_root_path_utf8 = game_root_path;
+    request.startup_script_utf8 = startup_script;
+    // reserved_ptr[1] is intentionally host-owned.  The current Godot
+    // Android host does not populate it, so the adapter returns
+    // NOT_SUPPORTED rather than constructing a second Activity.
+    request.existing_host_activity = runtime->host.reserved_ptr[1];
+    const auto result = runtime->bootstrap.Start(request);
+    runtime->error = runtime->bootstrap.last_error();
+    return result;
+#elif defined(AETHERKIRI_RENPY_IOS)
+    (void)game_root_path;
+    (void)startup_script;
+    const auto* contract = renpy_get_ios_launcher_contract();
+    if (renpy_get_ios_inprocess_adapter() == nullptr) {
+        Cast(value)->error =
+            "Ren'Py iOS mobile runtime is not supported: the official Renios "
+            "libraries are staged, but no host-owned in-process adapter is "
+            "linked (a second UIKit/SDL application entrypoint is forbidden)";
+    } else {
+        Cast(value)->error =
+            "Ren'Py iOS mobile runtime is not supported: the host-owned Renios "
+            "adapter is present, but lifecycle, input, and surface rendering "
+            "integration is not enabled";
+    }
+    if (contract && contract->limitation_utf8) {
+        Cast(value)->error.append(" ");
+        Cast(value)->error.append(contract->limitation_utf8);
+    }
+#else
     Cast(value)->error =
-        "Ren'Py mobile runtime is not playable yet: native RAPT/Renios "
-        "bootstrap, lifecycle, input, and surface rendering adapters are "
-        "required";
+        "Ren'Py Android runtime is not supported: the official RAPT "
+        "libraries are staged, but the JNI/Activity and rendering adapters "
+        "are not linked";
+#endif
     return ENGINE_RESULT_NOT_SUPPORTED;
 }
 

@@ -28,6 +28,10 @@ class BootstrapAdapter final {
  public:
   BootstrapAdapter() = default;
 
+  /* Validate the host-owned Android handoff and the staged RAPT payload.
+   * This never calls SDL_main or starts a second Activity. */
+  engine_result_t Preflight(const BootstrapRequest& request);
+
   engine_result_t Start(const BootstrapRequest& request);
   engine_result_t Stop();
 
@@ -37,6 +41,7 @@ class BootstrapAdapter final {
  private:
   bool running_ = false;
   std::string last_error_;
+  void* native_library_handle_ = nullptr;
 };
 
 }  // namespace aetherkiri::renpy::mobile

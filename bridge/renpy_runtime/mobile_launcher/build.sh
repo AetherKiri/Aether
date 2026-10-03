@@ -14,6 +14,7 @@ usage() {
     cat <<'USAGE'
 Usage:
   build.sh --check --renpy-build PATH
+  build.sh --compile-contract --renpy-build PATH [--output-dir PATH]
   build.sh --print-plan --renpy-build PATH
   build.sh --install --renpy-build PATH --stage PATH \
       [--android-so-arm64 PATH] [--android-so-armv7 PATH]
@@ -21,6 +22,8 @@ Usage:
 
 --check validates the official source layout and confirms that the current
 launcher is still the blocking SDL_main/launcher_main implementation.
+--compile-contract compiles the Android/iOS templates as contract-only objects;
+those objects deliberately return NOT_IMPLEMENTED and are never packaged.
 --print-plan prints the upstream renpy-build commands and replacement paths.
 --install copies caller-supplied, already-built lifecycle artifacts into the
 staged RAPT/Renios tree after checking the required exported symbol names.
@@ -38,10 +41,11 @@ android_so_armv7=""
 android_so_x86_64=""
 ios_debug_a=""
 ios_release_a=""
+output_dir=""
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
-        --check|--print-plan|--install)
+        --check|--compile-contract|--print-plan|--install)
             [[ -z "$mode" ]] || { echo "choose one mode" >&2; exit 2; }
             mode="${1#--}"
             ;;
@@ -52,6 +56,10 @@ while [[ $# -gt 0 ]]; do
         --stage)
             [[ $# -ge 2 ]] || { echo "--stage requires a path" >&2; exit 2; }
             stage="$2"; shift
+            ;;
+        --output-dir)
+            [[ $# -ge 2 ]] || { echo "--output-dir requires a path" >&2; exit 2; }
+            output_dir="$2"; shift
             ;;
         --android-so|--android-so-arm64)
             [[ $# -ge 2 ]] || { echo "--android-so-arm64 requires a path" >&2; exit 2; }
@@ -161,6 +169,22 @@ if [[ "$mode" == "check" ]]; then
     exit 0
 fi
 
+if [[ "$mode" == "compile-contract" ]]; then
+    compiler="${CC:-cc}"
+    output_dir="${output_dir:-$repo_root/out/renpy-mobile-contract}"
+    mkdir -p "$output_dir"
+    common=(-std=c11 -Wall -Wextra -Werror -fPIC -I"$repo_root/bridge/renpy_runtime/mobile_launcher/include" -DAETHERKIRI_RENPY_LIFECYCLE_CONTRACT_ONLY=1)
+    "$compiler" "${common[@]}" -x c -c \
+        "$repo_root/bridge/renpy_runtime/mobile_launcher/patches/android/librenpython_android_host.c.template" \
+        -o "$output_dir/librenpython_android_host.o"
+    "$compiler" "${common[@]}" -x c -c \
+        "$repo_root/bridge/renpy_runtime/mobile_launcher/patches/ios/librenpython_ios_host.c.template" \
+        -o "$output_dir/librenpython_ios_host.o"
+    echo "compiled contract-only launcher objects in $output_dir"
+    echo "these objects intentionally return RENPY_MOBILE_NOT_IMPLEMENTED and are not runtime artifacts"
+    exit 0
+fi
+
 print_plan
 [[ "$mode" == "print-plan" ]] && exit 0
 
@@ -178,6 +202,10 @@ required_symbols=(
 check_symbols() {
     local artifact="$1"
     [[ -f "$artifact" ]] || { echo "artifact not found: $artifact" >&2; exit 1; }
+    if strings "$artifact" | grep -Fq 'AETHERKIRI_RENPY_LIFECYCLE_STUB'; then
+        echo "refusing contract-only lifecycle stub as runtime artifact: $artifact" >&2
+        exit 1
+    fi
     local format
     format="$(file -b "$artifact" 2>/dev/null || true)"
     for symbol in "${required_symbols[@]}"; do

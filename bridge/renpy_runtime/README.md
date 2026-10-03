@@ -95,9 +95,14 @@ The staged Renios prototype is an application template whose `main.c` calls
 application and run loop, so the mobile provider does not copy that entrypoint
 or call `UIApplicationMain`. `renpy_runtime_ios_adapter.h` defines the small
 host-owned adapter registration boundary that a future iOS integration can
-install after linking the complete Renios static-library closure. Until that
-adapter, lifecycle, input, and surface bridge are linked, `runtime=renpy`
-continues to return `ENGINE_RESULT_NOT_SUPPORTED` with an explicit diagnostic.
+install after linking the complete Renios static-library closure. The same
+header exposes `renpy_get_ios_launcher_contract()`: the build probe confirms
+that the shipped `launcher_main` reaches blocking `Py_RunMain`, so it cannot be
+called from a Godot frame callback. Run
+`tools/test_renios_ios_launcher.sh <mobile-root> <debug|release>` to repeat
+that archive check. Until a split init/tick/shutdown launcher and its
+lifecycle, surface, and input bridge are linked, `runtime=renpy` continues to
+return `ENGINE_RESULT_NOT_SUPPORTED` with an explicit diagnostic.
 
 ### Android in-process adapter boundary
 

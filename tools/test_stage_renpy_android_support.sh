@@ -62,6 +62,13 @@ fi
 [[ -s "$main/java/org/renpy/android/PythonSDLActivity.java" ]]
 grep -Fq 'renpy-sdl-host-shim-v1' "$main/java/org/libsdl/app/SDLActivity.java"
 grep -Fq 'renpy-python-host-shim-v1' "$main/java/org/renpy/android/PythonSDLActivity.java"
+for callback in \
+    nativeSetupJNI nativeRunMain nativeSetScreenResolution onNativeResize \
+    onNativeKeyDown onNativeKeyUp onNativeTouch nativePause nativeResume \
+    nativeQuit; do
+    grep -Fq "$callback" "$main/java/org/libsdl/app/SDLActivity.java"
+done
+grep -Fq 'nativeSetEnv' "$main/java/org/renpy/android/PythonSDLActivity.java"
 grep -Fx 'playable=false' "$main/assets/renpy_mobile/manifest.properties"
 grep -Fx 'manifest_merged=false' "$main/assets/renpy_mobile/manifest.properties"
 grep -Fx 'java_host_shims=org/libsdl/app/SDLActivity.java,org/renpy/android/PythonSDLActivity.java' \

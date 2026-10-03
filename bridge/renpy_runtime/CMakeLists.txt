@@ -10,7 +10,8 @@ if(IOS OR ANDROID)
     # and lifecycle/rendering adapters are implemented.
     set(AETHERKIRI_RENPY_SOURCES
         src/renpy_runtime_mobile_provider.cpp
-        src/renpy_runtime_ios_adapter.cpp)
+        src/renpy_runtime_ios_adapter.cpp
+        mobile_launcher/src/renpy_mobile_loader.cpp)
     if(ANDROID)
         list(APPEND AETHERKIRI_RENPY_SOURCES src/renpy_mobile_adapter.cpp)
     endif()
@@ -49,6 +50,7 @@ else()
 endif()
 target_include_directories(aether_renpy_runtime PUBLIC
     "${CMAKE_CURRENT_SOURCE_DIR}/include"
+    "${CMAKE_CURRENT_SOURCE_DIR}/mobile_launcher/include"
     "${CMAKE_CURRENT_SOURCE_DIR}/../../abi/include")
 if(NOT TARGET engine_api)
     message(FATAL_ERROR "Ren'Py provider requires the engine_api target")

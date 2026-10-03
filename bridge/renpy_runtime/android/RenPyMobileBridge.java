@@ -3,6 +3,8 @@ package org.github.krkr2.aetherkiri;
 import android.app.Activity;
 import android.content.Context;
 
+import org.libsdl.app.SDLActivity;
+
 import java.io.File;
 
 /**
@@ -29,6 +31,7 @@ public final class RenPyMobileBridge {
             throw new IllegalArgumentException("host Activity must not be null");
         }
         ensureNativeBridge();
+        SDLActivity.bindHostActivity(activity);
         nativeSetHostActivity(activity);
     }
 
@@ -37,6 +40,7 @@ public final class RenPyMobileBridge {
         if (nativeBridgeLoaded || tryLoadNativeBridge()) {
             nativeSetHostActivity(null);
         }
+        SDLActivity.clearHostActivity();
     }
 
     /** Returns true when the native bridge has loaded in the host process. */

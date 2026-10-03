@@ -79,7 +79,23 @@ bool CheckJavaCallbacks(JNIEnv* env, std::string* error) {
       RequireStaticMethod(env, sdl, "org.libsdl.app.SDLActivity",
                           "onNativeSurfaceChanged", "()V", error) &&
       RequireStaticMethod(env, sdl, "org.libsdl.app.SDLActivity",
-                          "onNativeSurfaceDestroyed", "()V", error);
+                          "onNativeSurfaceDestroyed", "()V", error) &&
+      RequireStaticMethod(env, sdl, "org.libsdl.app.SDLActivity",
+                          "nativeSetScreenResolution", "(IIIIF)V", error) &&
+      RequireStaticMethod(env, sdl, "org.libsdl.app.SDLActivity",
+                          "onNativeResize", "()V", error) &&
+      RequireStaticMethod(env, sdl, "org.libsdl.app.SDLActivity",
+                          "onNativeKeyDown", "(I)V", error) &&
+      RequireStaticMethod(env, sdl, "org.libsdl.app.SDLActivity",
+                          "onNativeKeyUp", "(I)V", error) &&
+      RequireStaticMethod(env, sdl, "org.libsdl.app.SDLActivity",
+                          "onNativeTouch", "(IIIFFF)V", error) &&
+      RequireStaticMethod(env, sdl, "org.libsdl.app.SDLActivity",
+                          "nativePause", "()V", error) &&
+      RequireStaticMethod(env, sdl, "org.libsdl.app.SDLActivity",
+                          "nativeResume", "()V", error) &&
+      RequireStaticMethod(env, sdl, "org.libsdl.app.SDLActivity",
+                          "nativeQuit", "()V", error);
   env->DeleteLocalRef(sdl);
   if (!sdl_ok) return false;
 
@@ -105,6 +121,14 @@ const char* MissingNativeExport(void* handle) {
       "Java_org_libsdl_app_SDLActivity_onNativeSurfaceCreated",
       "Java_org_libsdl_app_SDLActivity_onNativeSurfaceChanged",
       "Java_org_libsdl_app_SDLActivity_onNativeSurfaceDestroyed",
+      "Java_org_libsdl_app_SDLActivity_nativeSetScreenResolution",
+      "Java_org_libsdl_app_SDLActivity_onNativeResize",
+      "Java_org_libsdl_app_SDLActivity_onNativeKeyDown",
+      "Java_org_libsdl_app_SDLActivity_onNativeKeyUp",
+      "Java_org_libsdl_app_SDLActivity_onNativeTouch",
+      "Java_org_libsdl_app_SDLActivity_nativePause",
+      "Java_org_libsdl_app_SDLActivity_nativeResume",
+      "Java_org_libsdl_app_SDLActivity_nativeQuit",
       "Java_org_renpy_android_PythonSDLActivity_nativeSetEnv",
   };
   for (const char* symbol : kRequired) {

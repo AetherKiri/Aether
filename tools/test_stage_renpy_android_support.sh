@@ -18,7 +18,7 @@ trap 'rm -rf "$tmp_root" "$conflict_root"' EXIT
 mkdir -p "$tmp_root/android-build/src/main" "$tmp_root/private"
 printf 'private fixture\n' > "$tmp_root/private/private.mp3"
 
-"$stage" \
+bash "$stage" \
     --mobile-root "$mobile_root" \
     --godot-build "$tmp_root/android-build" \
     --private-assets "$tmp_root/private" >/dev/null

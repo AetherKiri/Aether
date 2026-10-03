@@ -87,7 +87,7 @@ grep -Fq 'PythonSDLActivity' "$main/assets/renpy_mobile/rapt/java/org/renpy/andr
 mkdir -p "$conflict_root/android-build/src/main/java/org/libsdl/app"
 printf 'package org.libsdl.app; public final class SDLActivity {}\n' \
     > "$conflict_root/android-build/src/main/java/org/libsdl/app/SDLActivity.java"
-if "$stage" --mobile-root "$mobile_root" \
+if bash "$stage" --mobile-root "$mobile_root" \
         --godot-build "$conflict_root/android-build" \
         >"$conflict_root/stdout" 2>"$conflict_root/stderr"; then
     echo "stager overwrote an unrelated SDLActivity shim" >&2

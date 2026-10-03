@@ -125,6 +125,15 @@ checks; the complete RAPT Activity remains under `assets/renpy_mobile/rapt`.
 If a Godot template already owns either class, staging fails closed instead of
 overwriting a possible SDL singleton.
 
+The SDL shim's `getNativeSurface()` and `getContext()` callbacks return the
+same Java `Surface` and Application Context already held by `EngineBridge`; no
+new View or Surface is allocated. This is safe for inspection and preflight,
+but the official `librenpython.so` still has no host-tick or
+`SDL_AndroidSetActivity`/`SDL_AndroidSetSurface` API. Enabling gameplay next
+requires rebuilding the RAPT native payload around an explicit
+`init(context, surface)`, `tick`, `pause/resume`, input, and `shutdown`
+interface rather than calling its blocking `SDL_main` entrypoint.
+
 The Android provider also has a compile-tested `BootstrapAdapter` boundary that
 accepts an opaque pointer to the existing host Activity through the host
 extension slot `reserved_ptr[1]` or the JNI shim. It never creates a second

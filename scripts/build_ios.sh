@@ -387,7 +387,7 @@ renios_archive_names() {
 
 renios_launcher_probe() {
     renios_enabled || return 0
-    "$PROJECT_ROOT/tools/test_renios_ios_launcher.sh" \
+    bash "$PROJECT_ROOT/tools/test_renios_ios_launcher.sh" \
         "$RENPY_MOBILE_ROOT" "$(renios_configuration)"
 }
 

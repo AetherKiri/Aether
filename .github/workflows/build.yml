@@ -157,6 +157,7 @@ jobs:
             --destination "$mobile_root"
           test -f "$mobile_root/rapt/prototype/renpyandroid/src/main/jniLibs/arm64-v8a/librenpython.so"
           echo "RENPY_MOBILE_ROOT=$mobile_root" >> "$GITHUB_ENV"
+          RENPY_MOBILE_STAGE_TEST_ROOT="$mobile_root" bash tools/test_stage_renpy_android_support.sh
 
       - name: Restore ccache
         id: restore-ccache
@@ -488,6 +489,7 @@ jobs:
             --destination "$mobile_root"
           test -f "$mobile_root/renios/prototype/prebuilt/release/librenpython.a"
           echo "RENPY_MOBILE_ROOT=$mobile_root" >> "$GITHUB_ENV"
+          RENPY_MOBILE_TEST_ROOT="$mobile_root" bash tools/test_renios_ios_bundle.sh
 
       - name: Install Godot export tools
         run: |

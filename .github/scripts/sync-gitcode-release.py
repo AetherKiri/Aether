@@ -66,6 +66,47 @@ def get_existing_release(owner: str, repo: str, tag: str, token: str):
     return None
 
 
+def is_tag_present(owner: str, repo: str, tag: str, token: str):
+    """Check if tag exists in GitCode repository."""
+    try:
+        tags = api_request("GET", f"/repos/{owner}/{repo}/tags", token)
+        if isinstance(tags, list):
+            for t in tags:
+                if isinstance(t, dict) and t.get("name") == tag:
+                    return True
+    except Exception as e:
+        print(f"Warning: Failed to fetch tags from GitCode: {e}", file=sys.stderr)
+    return False
+
+
+def ensure_gitcode_tag(owner: str, repo: str, tag: str, token: str, username: str = "yorkyang2333"):
+    """Ensure tag exists on GitCode; if missing, push an empty release tag directly to GitCode."""
+    if is_tag_present(owner, repo, tag, token):
+        print(f"Tag {tag} is already present on GitCode.")
+        return True
+
+    print(f"Tag {tag} not found on GitCode. Pushing tag {tag} to GitCode...")
+    import subprocess
+    import tempfile
+
+    gitcode_url = f"https://{username}:{token}@gitcode.com/{owner}/{repo}.git"
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        try:
+            # Clone shallow or init to create tag
+            subprocess.run(["git", "clone", "--depth", "1", gitcode_url, "."], cwd=tmpdir, check=True, capture_output=True)
+            subprocess.run(["git", "config", "user.name", username], cwd=tmpdir, check=True)
+            subprocess.run(["git", "config", "user.email", f"{username}@users.noreply.gitcode.com"], cwd=tmpdir, check=True)
+            subprocess.run(["git", "commit", "--allow-empty", "-m", f"Release {tag}"], cwd=tmpdir, check=True)
+            subprocess.run(["git", "tag", tag], cwd=tmpdir, check=True)
+            subprocess.run(["git", "push", gitcode_url, "main", tag], cwd=tmpdir, check=True, capture_output=True)
+            print(f"Successfully pushed tag {tag} to GitCode.")
+            return True
+        except Exception as e:
+            print(f"Failed to push tag to GitCode: {e}", file=sys.stderr)
+            return False
+
+
 def create_release(owner: str, repo: str, tag: str, token: str, name: str, body: str, prerelease: bool):
     """Create a new release on GitCode."""
     data = {
@@ -136,6 +177,9 @@ def main():
     if release:
         print(f"Found existing release on GitCode for tag {tag}")
     else:
+        # Ensure tag exists on GitCode release mirror
+        ensure_gitcode_tag(args.owner, args.repo, tag, token)
+
         print(f"Creating release on GitCode for tag {tag}...")
         try:
             created = create_release(args.owner, args.repo, tag, token, title, body, args.prerelease)

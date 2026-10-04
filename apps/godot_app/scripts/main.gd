@@ -8543,21 +8543,24 @@ func _show_app_update_dialog(info: Dictionary) -> void:
         notes_header.add_theme_color_override("font_color", ui_tokens.text_primary)
         box.add_child(notes_header)
 
-        var scroll := ScrollContainer.new()
-        scroll.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-        scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
-        scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
-        scroll.vertical_scroll_mode = ScrollContainer.SCROLL_MODE_AUTO
-        box.add_child(scroll)
-
-        var notes_label := Label.new()
-        notes_label.text = release_notes
+        var notes_label := RichTextLabel.new()
+        notes_label.bbcode_enabled = true
+        notes_label.text = AppUpdater.markdown_to_bbcode(release_notes)
+        notes_label.fit_content = false
+        notes_label.scroll_active = true
         notes_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
         notes_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-        notes_label.add_theme_font_size_override("font_size", 13)
-        notes_label.add_theme_color_override("font_color", ui_tokens.text_secondary)
-        notes_label.add_theme_constant_override("line_spacing", 4)
-        scroll.add_child(notes_label)
+        notes_label.size_flags_vertical = Control.SIZE_EXPAND_FILL
+        notes_label.add_theme_font_size_override("normal_font_size", 13)
+        notes_label.add_theme_font_size_override("bold_font_size", 13)
+        notes_label.add_theme_color_override("default_color", ui_tokens.text_secondary)
+        notes_label.add_theme_constant_override("line_separation", 4)
+        notes_label.meta_clicked.connect(func(meta):
+            var url := str(meta)
+            if url.begins_with("http://") or url.begins_with("https://"):
+                OS.shell_open(url)
+        )
+        box.add_child(notes_label)
 
     var buttons := _dialog_button_row(48.0)
     buttons.add_theme_constant_override("separation", 10)

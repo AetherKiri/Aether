@@ -76,6 +76,93 @@ static func _parse_version(v: String) -> Dictionary:
         "prerelease": prerelease,
     }
 
+## Converts common Markdown release notes syntax to Godot BBCode.
+static func markdown_to_bbcode(md: String) -> String:
+    if md.is_empty():
+        return ""
+
+    var lines := md.split("\n")
+    var out_lines: PackedStringArray = []
+    var in_code_block := false
+
+    for line in lines:
+        var raw_line := line.strip_edges(false, true) # strip right trailing spaces
+
+        # Strip HTML comments like <!-- ... -->
+        var comment_start := raw_line.find("<!--")
+        var comment_end := raw_line.find("-->")
+        if comment_start != -1 and comment_end != -1 and comment_end > comment_start:
+            raw_line = raw_line.substr(0, comment_start) + raw_line.substr(comment_end + 3)
+            raw_line = raw_line.strip_edges()
+            if raw_line.is_empty():
+                continue
+
+        # Code block fence
+        if raw_line.begins_with("```"):
+            if in_code_block:
+                out_lines.append("[/code]")
+                in_code_block = false
+            else:
+                out_lines.append("[code]")
+                in_code_block = true
+            continue
+
+        if in_code_block:
+            out_lines.append(raw_line)
+            continue
+
+        var trimmed := raw_line.strip_edges()
+
+        # Headings: ### Header -> [b][color=...]Header[/color][/b]
+        if trimmed.begins_with("### "):
+            var h := _format_inline_markdown(trimmed.substr(4).strip_edges())
+            out_lines.append("[font_size=15][b]%s[/b][/font_size]" % h)
+            continue
+        elif trimmed.begins_with("## "):
+            var h := _format_inline_markdown(trimmed.substr(3).strip_edges())
+            out_lines.append("[font_size=17][b]%s[/b][/font_size]" % h)
+            continue
+        elif trimmed.begins_with("# "):
+            var h := _format_inline_markdown(trimmed.substr(2).strip_edges())
+            out_lines.append("[font_size=19][b]%s[/b][/font_size]" % h)
+            continue
+
+        # List items: * item or - item
+        if trimmed.begins_with("* ") or trimmed.begins_with("- "):
+            var item_text := _format_inline_markdown(trimmed.substr(2).strip_edges())
+            out_lines.append("  • %s" % item_text)
+            continue
+
+        # Regular paragraph line
+        out_lines.append(_format_inline_markdown(raw_line))
+
+    return "\n".join(out_lines)
+
+static func _format_inline_markdown(text: String) -> String:
+    var res := text
+
+    # Regex for links: [text](url) -> [url=url]text[/url]
+    var link_regex := RegEx.new()
+    link_regex.compile("\\[([^\\]]+)\\]\\(([^\\)]+)\\)")
+    res = link_regex.sub(res, "[url=$2]$1[/url]", true)
+
+    # Bold: **text** -> [b]text[/b]
+    var bold_regex := RegEx.new()
+    bold_regex.compile("\\*\\*([^*]+)\\*\\*")
+    res = bold_regex.sub(res, "[b]$1[/b]", true)
+
+    # Inline code: `text` -> [code]$1[/code]
+    var code_regex := RegEx.new()
+    code_regex.compile("`([^`]+)`")
+    res = code_regex.sub(res, "[code]$1[/code]", true)
+
+    # Mentions: @username -> [b]@username[/b]
+    var user_regex := RegEx.new()
+    user_regex.compile("(?<=^|\\s)@([a-zA-Z0-9_-]+)")
+    res = user_regex.sub(res, "[b]@$1[/b]", true)
+
+    return res
+
 ## Checks for update asynchronously using an HTTPRequest node added to caller's tree.
 ## callback signature: func(status: int, info: Dictionary)
 ## info contains:

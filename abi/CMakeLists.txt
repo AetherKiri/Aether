@@ -51,13 +51,11 @@ target_include_directories(engine_api
         ${CMAKE_CURRENT_SOURCE_DIR}/src
 )
 
+find_package(spdlog CONFIG REQUIRED)
+target_link_libraries(engine_api PRIVATE spdlog::spdlog)
+
 if(AETHERKIRI_INTERNAL_ENABLED AND COMMAND aetherinternal_extend_text_translation)
     aetherinternal_extend_text_translation(engine_api)
-    # LocalTextTranslation logs through spdlog/fmt; the KiriKiri glue link
-    # that used to satisfy those symbols is gone (Phase 2d), so link them
-    # into engine_api explicitly.
-    find_package(spdlog CONFIG REQUIRED)
-    target_link_libraries(engine_api PRIVATE spdlog::spdlog)
 endif()
 
 # The KiriKiri runtime glue (aether_krkr2_runtime) is linked by the Godot

@@ -164,6 +164,34 @@ jobs:
 
           gh release create "$tag" "${assets[@]}" "${release_args[@]}"
 
+      - name: Sync release to Gitee
+        shell: bash
+        env:
+          GITEE_TOKEN: ${{ secrets.GITEE_TOKEN }}
+        run: |
+          set -euo pipefail
+
+          if [[ -z "${GITEE_TOKEN:-}" ]]; then
+            echo "GITEE_TOKEN secret is not set; skipping Gitee release sync."
+            exit 0
+          fi
+
+          tag="${GITHUB_REF_NAME}"
+          assets=(release-assets/*)
+          sync_args=(
+            --owner "AetherKiri"
+            --repo "AetherKiri"
+            --tag "$tag"
+            --title "$tag"
+          )
+          if [[ "$tag" == *-* ]]; then
+            sync_args+=(--prerelease)
+          fi
+
+          python3 .github/scripts/sync-gitee-release.py "${sync_args[@]}" "${assets[@]}" || {
+            echo "Warning: Gitee release sync encountered an issue, but GitHub release succeeded."
+          }
+
   update-version:
     name: Open repository version update
     needs: publish

@@ -79,6 +79,7 @@ const AetherDisclosure = preload("res://scripts/ui/aether_disclosure.gd")
 const AetherSelect = preload("res://scripts/ui/aether_select.gd")
 const AetherDisplayScale = preload("res://scripts/ui/aether_display_scale.gd")
 const AetherShaders = preload("res://scripts/ui/aether_shaders.gd")
+const AppUpdater = preload("res://scripts/app_updater.gd")
 const UI_ICON_DIR := "res://assets/ui/icons/"
 const ICON_SETTINGS := UI_ICON_DIR + "gear-fill.svg"
 const ICON_SAVE := UI_ICON_DIR + "save-fill.svg"
@@ -373,6 +374,23 @@ const UI_TEXT := {
         "settings.legal": "隐私与免责协议",
         "settings.legal_desc": "查看当前版本的隐私政策、使用规则、风险提示与免责声明",
         "settings.legal_open": "阅读协议",
+        "settings.check_update": "检查更新",
+        "settings.check_update_desc": "检测最新版本与功能改进",
+        "settings.check_update_action": "检查",
+        "settings.check_update_checking": "正在检查…",
+        "settings.include_prerelease": "接收测试版更新",
+        "settings.include_prerelease_desc": "开启后将检测包括 Alpha / Beta 在内的预发布测试版本",
+        "update.dialog_title": "发现新版本",
+        "update.current_version": "当前版本：%s",
+        "update.latest_version": "最新版本：%s",
+        "update.prerelease_badge": "（测试版）",
+        "update.notes_title": "更新日志：",
+        "update.download_gitee": "前往 Gitee 下载（推荐）",
+        "update.download_github": "前往 GitHub 下载",
+        "update.open_app_store": "前往 App Store 更新",
+        "update.later": "稍后提醒",
+        "update.already_latest": "当前已是最新版本 (%s)",
+        "update.check_failed": "检查更新失败，请稍后重试",
         "settings.ios_statement": "Apple App Store 额外声明",
         "settings.ios_statement_desc": "查看 GPLv3、App Store 分发附加许可、源码义务及适用范围",
         "settings.ios_statement_open": "阅读声明",
@@ -673,6 +691,23 @@ const UI_TEXT := {
         "settings.legal": "隱私與免責協議",
         "settings.legal_desc": "查看目前版本的隱私政策、使用規則、風險提示與免責聲明",
         "settings.legal_open": "閱讀協議",
+        "settings.check_update": "檢查更新",
+        "settings.check_update_desc": "檢測最新版本與功能改進",
+        "settings.check_update_action": "檢查",
+        "settings.check_update_checking": "正在檢查…",
+        "settings.include_prerelease": "接收測試版更新",
+        "settings.include_prerelease_desc": "開啟後將檢測包括 Alpha / Beta 在內的預發布測試版本",
+        "update.dialog_title": "發現新版本",
+        "update.current_version": "目前版本：%s",
+        "update.latest_version": "最新版本：%s",
+        "update.prerelease_badge": "（測試版）",
+        "update.notes_title": "更新日誌：",
+        "update.download_gitee": "前往 Gitee 下載（推薦）",
+        "update.download_github": "前往 GitHub 下載",
+        "update.open_app_store": "前往 App Store 更新",
+        "update.later": "稍後提醒",
+        "update.already_latest": "目前已是最新版本 (%s)",
+        "update.check_failed": "檢查更新失敗，請稍後重試",
         "settings.ios_statement": "Apple App Store 額外聲明",
         "settings.ios_statement_desc": "查看 GPLv3、App Store 發布附加許可、原始碼義務及適用範圍",
         "settings.ios_statement_open": "閱讀聲明",
@@ -1013,6 +1048,23 @@ You can find it any time under Settings → QQ Group.",
         "settings.legal": "Privacy & Disclaimer",
         "settings.legal_desc": "Read the current privacy policy, terms of use, risk notice, and disclaimer",
         "settings.legal_open": "Read",
+        "settings.check_update": "Check for Updates",
+        "settings.check_update_desc": "Check for the latest version and improvements",
+        "settings.check_update_action": "Check",
+        "settings.check_update_checking": "Checking…",
+        "settings.include_prerelease": "Receive Beta Updates",
+        "settings.include_prerelease_desc": "Include pre-release builds (Alpha / Beta) when checking for updates",
+        "update.dialog_title": "New Version Available",
+        "update.current_version": "Current version: %s",
+        "update.latest_version": "Latest version: %s",
+        "update.prerelease_badge": " (Beta)",
+        "update.notes_title": "Release Notes:",
+        "update.download_gitee": "Download from Gitee (Recommended)",
+        "update.download_github": "Download from GitHub",
+        "update.open_app_store": "Update in App Store",
+        "update.later": "Remind Me Later",
+        "update.already_latest": "You are on the latest version (%s)",
+        "update.check_failed": "Failed to check for updates. Please try again later.",
         "settings.ios_statement": "Apple App Store Notice",
         "settings.ios_statement_desc": "Review the GPLv3 App Store distribution permission, source obligations, and scope",
         "settings.ios_statement_open": "Read Notice",
@@ -1313,6 +1365,23 @@ You can find it any time under Settings → QQ Group.",
         "settings.legal": "プライバシーと免責事項",
         "settings.legal_desc": "現在のプライバシーポリシー、利用条件、リスクおよび免責事項を確認します",
         "settings.legal_open": "読む",
+        "settings.check_update": "アップデートを確認",
+        "settings.check_update_desc": "最新バージョンと機能改善を確認します",
+        "settings.check_update_action": "確認",
+        "settings.check_update_checking": "確認中…",
+        "settings.include_prerelease": "ベータ版の更新を受け取る",
+        "settings.include_prerelease_desc": "有効にすると、Alpha / Beta などのプレリリース版も検出します",
+        "update.dialog_title": "新しいバージョンが見つかりました",
+        "update.current_version": "現在のバージョン：%s",
+        "update.latest_version": "最新のバージョン：%s",
+        "update.prerelease_badge": "（ベータ版）",
+        "update.notes_title": "更新履歴：",
+        "update.download_gitee": "Gitee からダウンロード（推奨）",
+        "update.download_github": "GitHub からダウンロード",
+        "update.open_app_store": "App Store でアップデート",
+        "update.later": "あとで",
+        "update.already_latest": "最新バージョンを使用しています (%s)",
+        "update.check_failed": "アップデートの確認に失敗しました。後でもう一度お試しください",
         "settings.ios_statement": "Apple App Store 追加声明",
         "settings.ios_statement_desc": "GPLv3、App Store 配布の追加許諾、ソース提供義務および適用範囲を確認します",
         "settings.ios_statement_open": "声明を読む",
@@ -1611,6 +1680,23 @@ You can find it any time under Settings → QQ Group.",
         "settings.legal": "개인정보 및 면책 조항",
         "settings.legal_desc": "현재 개인정보 처리방침, 이용 조건, 위험 고지 및 면책 조항을 확인합니다",
         "settings.legal_open": "읽기",
+        "settings.check_update": "업데이트 확인",
+        "settings.check_update_desc": "최신 버전 및 개선 사항을 확인합니다",
+        "settings.check_update_action": "확인",
+        "settings.check_update_checking": "확인 중…",
+        "settings.include_prerelease": "베타 업데이트 받기",
+        "settings.include_prerelease_desc": "활성화하면 Alpha / Beta 등 시험판 버전도 포함하여 감지합니다",
+        "update.dialog_title": "새 버전 사용 가능",
+        "update.current_version": "현재 버전: %s",
+        "update.latest_version": "최신 버전: %s",
+        "update.prerelease_badge": " (베타)",
+        "update.notes_title": "릴리스 노트:",
+        "update.download_gitee": "Gitee에서 다운로드(추천)",
+        "update.download_github": "GitHub에서 다운로드",
+        "update.open_app_store": "App Store에서 업데이트",
+        "update.later": "나중에 알림",
+        "update.already_latest": "최신 버전을 사용 중입니다 (%s)",
+        "update.check_failed": "업데이트 확인 실패. 잠시 후 다시 시도해 주세요",
         "settings.ios_statement": "Apple App Store 추가 고지",
         "settings.ios_statement_desc": "GPLv3, App Store 배포 추가 허가, 소스 제공 의무 및 적용 범위를 확인합니다",
         "settings.ios_statement_open": "고지 읽기",
@@ -1935,6 +2021,8 @@ var legal_accepted_at := 0
 var ios_statement_accepted_version := ""
 var ios_statement_accepted_at := 0
 var legal_gate_completed := false
+var include_prerelease := false
+var update_checking := false
 var secret_iap_unlocked := false
 var secret_coffee_until_unix := 0
 var secret_version_tap_count := 0
@@ -3755,6 +3843,7 @@ func _load_shell_settings() -> void:
     ios_statement_accepted_at = int(cfg.get_value("legal", "ios_statement_accepted_at", 0))
     secret_iap_unlocked = bool(cfg.get_value("unlock", "secret_iap_unlocked", false))
     secret_coffee_until_unix = int(cfg.get_value("unlock", "secret_coffee_until_unix", 0))
+    include_prerelease = bool(cfg.get_value("update", "include_prerelease", false))
 
 func _configure_runtime_diagnostics() -> void:
     diagnostics_enabled = _runtime_flag("AETHERKIRI_DIAGNOSTICS")
@@ -3838,6 +3927,7 @@ func _save_shell_settings() -> void:
     cfg.set_value("legal", "ios_statement_accepted_at", ios_statement_accepted_at)
     cfg.set_value("unlock", "secret_iap_unlocked", secret_iap_unlocked)
     cfg.set_value("unlock", "secret_coffee_until_unix", secret_coffee_until_unix)
+    cfg.set_value("update", "include_prerelease", include_prerelease)
     cfg.save(SETTINGS_FILE)
     ProjectSettings.set_setting(SETTINGS_KEY, selected_backend)
     _apply_engine_options()
@@ -5249,6 +5339,10 @@ func _rebuild_settings_view() -> void:
     _add_settings_row(about_rows, _settings_action_row(_t("settings.legal"), _t("settings.legal_desc"), _t("settings.legal_open"), func(): _show_legal_agreement(false)))
     if _apple_app_store_platform():
         _add_settings_row(about_rows, _settings_action_row(_t("settings.ios_statement"), _t("settings.ios_statement_desc"), _t("settings.ios_statement_open"), _show_ios_additional_statement))
+    var check_update_action_text := _t("settings.check_update_checking") if update_checking else _t("settings.check_update_action")
+    _add_settings_row(about_rows, _settings_action_row(_t("settings.check_update"), _t("settings.check_update_desc"), check_update_action_text, func(): _check_app_update_manually()))
+    if not _apple_app_store_platform():
+        _add_settings_row(about_rows, _settings_toggle_row(_t("settings.include_prerelease"), _t("settings.include_prerelease_desc"), include_prerelease, "include_prerelease"))
     var version_row := _settings_value_row(_t("settings.version"), _application_version_text())
     _attach_secret_version_tap(version_row)
     _add_settings_row(about_rows, version_row)
@@ -7435,6 +7529,12 @@ func _on_setting_toggle(key: String, value: bool) -> void:
         _set_settings_draft_value("mock_enabled", value)
     elif key == "error_dialog_logs":
         _set_settings_draft_value("error_dialog_logs", value)
+    elif key == "include_prerelease":
+        include_prerelease = value
+        var cfg := ConfigFile.new()
+        cfg.load(SETTINGS_FILE)
+        cfg.set_value("update", "include_prerelease", include_prerelease)
+        cfg.save(SETTINGS_FILE)
     elif key.begins_with("advanced_"):
         var option: String = String({
             "advanced_plugin_trace": "plugin_trace",
@@ -8367,6 +8467,140 @@ func _open_android_coffee() -> void:
             _t("support.coffee.open_failed"),
             _t("support.coffee.title")
         )
+
+func _check_app_update_silently() -> void:
+    if update_checking:
+        return
+    update_checking = true
+    var current_ver := _application_version_text()
+    var is_store := _apple_app_store_platform()
+    AppUpdater.check_for_updates(
+        self,
+        current_ver,
+        is_store,
+        include_prerelease,
+        func(status: int, info: Dictionary):
+            update_checking = false
+            if status == AppUpdater.CheckStatus.SUCCESS_HAS_UPDATE:
+                _show_app_update_dialog(info)
+    )
+
+func _check_app_update_manually() -> void:
+    if update_checking:
+        return
+    update_checking = true
+    call_deferred("_rebuild_settings_view")
+
+    var current_ver := _application_version_text()
+    var is_store := _apple_app_store_platform()
+    AppUpdater.check_for_updates(
+        self,
+        current_ver,
+        is_store,
+        include_prerelease,
+        func(status: int, info: Dictionary):
+            update_checking = false
+            call_deferred("_rebuild_settings_view")
+            if status == AppUpdater.CheckStatus.SUCCESS_HAS_UPDATE:
+                _show_app_update_dialog(info)
+            elif status == AppUpdater.CheckStatus.SUCCESS_NO_UPDATE:
+                _show_system_alert(_t("update.already_latest", [current_ver]), "Aether")
+            else:
+                _show_system_alert(_t("update.check_failed"), "Aether")
+    )
+
+func _show_app_update_dialog(info: Dictionary) -> void:
+    var latest_ver: String = str(info.get("latest_version", ""))
+    var current_ver: String = str(info.get("current_version", _application_version_text()))
+    var is_pre: bool = bool(info.get("is_prerelease", false))
+    var release_notes: String = str(info.get("release_notes", "")).strip_edges()
+    var is_store: bool = bool(info.get("is_app_store", false))
+    var gitee_url: String = str(info.get("gitee_url", ""))
+    var github_url: String = str(info.get("github_url", ""))
+    var app_store_url: String = str(info.get("app_store_url", ""))
+
+    var title_text := _t("update.dialog_title")
+    if is_pre:
+        title_text += _t("update.prerelease_badge")
+
+    var dialog := _modal_dialog(Vector2(640, 480), 0.50)
+    var box := _modal_stack(dialog, title_text, ICON_HELP)
+
+    var version_info := Label.new()
+    version_info.text = "%s  →  %s" % [
+        _t("update.current_version", [current_ver]),
+        _t("update.latest_version", [latest_ver])
+    ]
+    version_info.add_theme_font_size_override("font_size", 14)
+    version_info.add_theme_color_override("font_color", ui_tokens.text_secondary)
+    box.add_child(version_info)
+
+    if not release_notes.is_empty():
+        var notes_header := Label.new()
+        notes_header.text = _t("update.notes_title")
+        notes_header.add_theme_font_override("font", TITLE_FONT)
+        notes_header.add_theme_font_size_override("font_size", 14)
+        notes_header.add_theme_color_override("font_color", ui_tokens.text_primary)
+        box.add_child(notes_header)
+
+        var scroll := ScrollContainer.new()
+        scroll.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+        scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
+        scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+        scroll.vertical_scroll_mode = ScrollContainer.SCROLL_MODE_AUTO
+        box.add_child(scroll)
+
+        var notes_label := Label.new()
+        notes_label.text = release_notes
+        notes_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+        notes_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+        notes_label.add_theme_font_size_override("font_size", 13)
+        notes_label.add_theme_color_override("font_color", ui_tokens.text_secondary)
+        notes_label.add_theme_constant_override("line_spacing", 4)
+        scroll.add_child(notes_label)
+
+    var buttons := _dialog_button_row(48.0)
+    buttons.add_theme_constant_override("separation", 10)
+    box.add_child(buttons)
+
+    var later_btn := _pill_button(_t("update.later"))
+    later_btn.custom_minimum_size = Vector2(96, 42)
+    later_btn.size_flags_horizontal = Control.SIZE_SHRINK_END
+    ui_widgets.secondary_button(later_btn)
+    later_btn.pressed.connect(func(): _dismiss_modal())
+    buttons.add_child(later_btn)
+
+    if is_store:
+        var store_btn := _pill_button(_t("update.open_app_store"))
+        store_btn.custom_minimum_size = Vector2(160, 42)
+        store_btn.pressed.connect(func():
+            _dismiss_modal(func():
+                var target_url := app_store_url if not app_store_url.is_empty() else AppUpdater.APPLE_STORE_URL
+                OS.shell_open(target_url)
+            )
+        )
+        buttons.add_child(store_btn)
+    else:
+        var gh_btn := _pill_button(_t("update.download_github"))
+        gh_btn.custom_minimum_size = Vector2(130, 42)
+        ui_widgets.secondary_button(gh_btn)
+        gh_btn.pressed.connect(func():
+            _dismiss_modal(func():
+                var target_url := github_url if not github_url.is_empty() else AppUpdater.GITHUB_REPO_RELEASES_PAGE
+                OS.shell_open(target_url)
+            )
+        )
+        buttons.add_child(gh_btn)
+
+        var gitee_btn := _pill_button(_t("update.download_gitee"))
+        gitee_btn.custom_minimum_size = Vector2(170, 42)
+        gitee_btn.pressed.connect(func():
+            _dismiss_modal(func():
+                var target_url := gitee_url if not gitee_url.is_empty() else AppUpdater.GITEE_REPO_RELEASES_PAGE
+                OS.shell_open(target_url)
+            )
+        )
+        buttons.add_child(gitee_btn)
 
 func _iap_supported_platform() -> bool:
     return OS.get_name() in ["iOS", "macOS"]
@@ -11948,6 +12182,8 @@ func _continue_ready_after_legal_gate() -> void:
         _append_log("Native auto-start ignored. Set AETHERKIRI_ENABLE_AUTO_START=1 for automation runs.")
     if not OS.get_environment("AETHERKIRI_CAPTURE_UI").is_empty():
         call_deferred("_capture_ui_after_ready")
+    var update_timer := get_tree().create_timer(2.0)
+    update_timer.timeout.connect(func(): _check_app_update_silently())
 
 func _request_android_storage_permissions() -> void:
     if OS.get_name() != "Android":

@@ -336,8 +336,32 @@ namespace aetherkiri::luca {
             }
             instance->native_width = 0;
             instance->native_height = 0;
-            const int32_t result = luca_ak_open(
-                instance->ak, game_root_path_utf8);
+            // Engine boot order (notes/018): title screen first, the flow
+            // script starts on the START decision (routed through
+            // SendInput → luca_ak_select_input). The title needs the SYSCG
+            // art family; roots without it (smoke fixtures) boot straight
+            // into the script. Falls back to the direct script boot when
+            // the title mode open fails.
+            const bool has_title_assets = [game_root_path_utf8]() {
+                const std::string syscg =
+                    std::string(game_root_path_utf8) + "/files/image/SYSCG.PAK";
+                FILE *const probe = std::fopen(syscg.c_str(), "rb");
+                if(probe == nullptr) return false;
+                std::fclose(probe);
+                return true;
+            }();
+            int32_t result = has_title_assets
+                ? luca_ak_open_with_title(instance->ak, game_root_path_utf8)
+                : luca_ak_open(instance->ak, game_root_path_utf8);
+            if(result < 0 && has_title_assets) {
+                const std::string detail = SafeLast(instance->ak);
+                LogHost(instance, ENGINE_RUNTIME_LOG_WARNING,
+                        ("luca_ak_open_with_title failed (" +
+                         (detail.empty() ? std::string("no detail") : detail) +
+                         "); falling back to the direct script boot")
+                            .c_str());
+                result = luca_ak_open(instance->ak, game_root_path_utf8);
+            }
             if(result < 0) {
                 const std::string detail = SafeLast(instance->ak);
                 LogHost(instance, ENGINE_RUNTIME_LOG_ERROR,
@@ -684,8 +708,13 @@ namespace aetherkiri::luca {
                 info += pending == 1
                             ? std::string(" movieWaiting=1 pendingMovie=") + path.data()
                             : std::string(" movieWaiting=0");
+                // Title-layer state (engine boot order, notes/018): the
+                // cTitleMenu phase runs before any script.
+                info += luca_ak_waiting_title(instance->ak) != 0
+                            ? " titleWaiting=1"
+                            : " titleWaiting=0";
             } else {
-                info += " movieWaiting=0";
+                info += " movieWaiting=0 titleWaiting=0";
             }
             return CopyString(info, output, output_size, bytes_written);
         }

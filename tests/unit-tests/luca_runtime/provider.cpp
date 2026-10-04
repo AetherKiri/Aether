@@ -285,3 +285,72 @@ TEST_CASE("Luca movie latch reports idle and finishes idempotently") {
             ENGINE_RESULT_OK);
     CHECK(std::string(debug).find("movieWaiting=0") != std::string::npos);
 }
+
+TEST_CASE("Luca title screen boots the engine boot order") {
+    // Title mode needs the SYSCG art family; the smoke fixture has none
+    // (it boots straight into the script — covered by the vertical-slice
+    // test). When a real game root is available, the provider opens with
+    // the title screen: pointer events route through the select channel
+    // and START launches the flow script.
+    const char *root_env = std::getenv("AETHERLUCA_GAME_ROOT");
+    fs::path root = root_env != nullptr
+        ? fs::path(root_env)
+        : fs::path("/Volumes/yorkyang2333/LUCA/Summer Pockets REFLECTION BLUE");
+    if(!fs::is_regular_file(root / "files" / "image" / "SYSCG.PAK")) {
+        SKIP("no real game root with SYSCG assets");
+    }
+
+    aetherkiri::luca::RegisterRuntimeProvider();
+    Instance game;
+    REQUIRE(game.open(root) == ENGINE_RESULT_OK);
+    REQUIRE(provider->tick(game.value, 16) == ENGINE_RESULT_OK);
+
+    // Debug info mirrors the title phase (engine cTitleMenu before any
+    // script — notes/018).
+    {
+        char debug[2048] = {};
+        REQUIRE(provider->get_plugin_debug_info(game.value, debug,
+                                                sizeof(debug), nullptr) ==
+                ENGINE_RESULT_OK);
+        CHECK(std::string(debug).find("titleWaiting=1") != std::string::npos);
+    }
+
+    // The title renders the white engine fill (65001) with art on top:
+    // sample a corner far from the right-side art and menu.
+    const auto desc = game.frame();
+    REQUIRE(desc.width == 1920);
+    REQUIRE(desc.height == 1080);
+    const auto pixels = game.pixels(desc);
+    const size_t corner = 4 * (40 * 1920 + 40);
+    CHECK(pixels[corner + 3] == 255);
+    CHECK(pixels[corner] > 200);
+    CHECK(pixels[corner + 1] > 200);
+    CHECK(pixels[corner + 2] > 200);
+
+    // Pointer events are consumed through the select channel (title).
+    engine_input_event_t event{};
+    event.struct_size = sizeof(event);
+    event.type = ENGINE_INPUT_EVENT_POINTER_MOVE;
+    event.x = 300;
+    event.y = 600;
+    REQUIRE(provider->send_input(game.value, &event) == ENGINE_RESULT_OK);
+    // Fade-in completes, then START (x≈300, y≈600) launches the game.
+    for(int i = 0; i < 48; ++i) {
+        REQUIRE(provider->tick(game.value, 16) == ENGINE_RESULT_OK);
+    }
+    event.type = ENGINE_INPUT_EVENT_POINTER_DOWN;
+    event.button = 0;
+    REQUIRE(provider->send_input(game.value, &event) == ENGINE_RESULT_OK);
+    // The title layer closes: debug info mirrors the transition
+    // (titleWaiting flips to 0 once the flow script owns the frame).
+    char debug[2048] = {};
+    bool closed = false;
+    for(int i = 0; i < 96 && !closed; ++i) {
+        REQUIRE(provider->tick(game.value, 16) == ENGINE_RESULT_OK);
+        REQUIRE(provider->get_plugin_debug_info(game.value, debug,
+                                                sizeof(debug), nullptr) ==
+                ENGINE_RESULT_OK);
+        closed = std::string(debug).find("titleWaiting=0") != std::string::npos;
+    }
+    CHECK(closed);
+}

@@ -106,18 +106,20 @@ if(WEB OR EMSCRIPTEN)
     )
 endif()
 
-option(ENABLE_TESTS "enable tests execute build(exclude android)" ON)
-option(BUILD_TOOLS "build tools execute build(exclude android ios)" ON)
+option(ENABLE_TESTS "enable tests execute build(exclude android)" OFF)
+option(BUILD_TOOLS "build tools execute build(exclude android ios)" OFF)
 option(BUILD_ENGINE_API "build engine_api bridge shared library" ON)
 option(BUILD_GODOT_EXTENSION "build Godot GDExtension host library" ON)
 option(AETHERKIRI_ENABLE_RFVP "build the experimental native FVP runtime (requires Rust)" OFF)
 option(BUILD_GPU_BRIDGE "build legacy external GPU bridge renderer" OFF)
 option(AETHERKIRI_ENABLE_ONSCRIPTER
-       "enable the bundled OnscripterYuri runtime" ON)
+       "enable the bundled OnscripterYuri runtime" OFF)
 option(AETHERKIRI_ENABLE_SIGLUS
-       "enable the bundled siglus_rs runtime (requires a Rust toolchain)" ON)
+       "enable the bundled siglus_rs runtime (requires a Rust toolchain)" OFF)
 option(AETHERKIRI_ENABLE_MINORI
-       "enable the independent Rust Minori runtime" ON)
+       "enable the independent Rust Minori runtime" OFF)
+option(AETHERKIRI_ENABLE_EXHIBIT
+       "enable the bundled ExHIBIT runtime" OFF)
 option(AETHERKIRI_ENABLE_CODE_OBFUSCATION
        "obfuscate private Internal translation units in release builds" OFF)
 set(AETHERKIRI_OBFUSCATOR_PLUGIN "" CACHE FILEPATH
@@ -125,7 +127,14 @@ set(AETHERKIRI_OBFUSCATOR_PLUGIN "" CACHE FILEPATH
 set(AETHERKIRI_OBFUSCATION_BUILD_ID "local" CACHE STRING
     "non-secret identifier mixed into deterministic obfuscation output")
 option(AETHERKIRI_ENABLE_INTERNAL
-       "enable optional private AetherInternal packages when available" ON)
+       "enable optional private AetherInternal packages when available" OFF)
+# Minimal host-only build switch. When OFF, the packages/AetherKrkr engine and
+# its bridge/krkr2_runtime glue are NOT added, so the Godot host extension and
+# the engine_api ABI configure and build without any visual-novel engine
+# submodule. A new engine integrates behind the engine_runtime_provider_v1_t ABI
+# (see abi/include/engine_runtime_provider.h) and does not require KiriKiri.
+option(AETHERKIRI_ENABLE_KRKR
+       "build the KiriKiri2 engine runtime (packages/AetherKrkr) and its bridge glue" OFF)
 set(AETHERKIRI_MOTIONPLAYER_BACKEND_API_VERSION 4)
 set(AETHERKIRI_LIVE2D_HOST_API_VERSION 1)
 set(AETHERKIRI_FRAME_EFFECT_HOST_API_VERSION 2)
@@ -147,6 +156,13 @@ set(AETHERKIRI_MINORI_DIR
 set(AETHERKIRI_RFVP_DIR
     "${CMAKE_CURRENT_SOURCE_DIR}/packages/rfvp"
     CACHE PATH "path to an rfvp runtime checkout")
+# Unlike every other entry in this group, AetherExhibit is checked in
+# directly rather than tracked as a submodule: there is no upstream ExHIBIT
+# core to follow, because the engine semantics were derived from binary
+# analysis of a specific title.
+set(AETHERKIRI_EXHIBIT_DIR
+    "${CMAKE_CURRENT_SOURCE_DIR}/packages/AetherExhibit"
+    CACHE PATH "path to the bundled AetherExhibit runtime")
 
 include(cmake/AetherKiriBinaryProtection.cmake)
 # Unify the Rust toolchain resolution before any runtime subproject runs its
@@ -231,7 +247,10 @@ endif()
 
 # The krkr2 engine repository defines the engine targets (external/, core/,
 # plugins/); its integration glue stays in bridge/krkr2_runtime.
-add_subdirectory(${AETHERKIRI_KRKR_DIR})
+# Guarded so a minimal host-only build can omit the KiriKiri engine entirely.
+if(AETHERKIRI_ENABLE_KRKR)
+    add_subdirectory(${AETHERKIRI_KRKR_DIR})
+endif()
 
 # AetherInternal contributes sources to public targets but does not own the
 # obfuscation policy. Register only package-owned source units for protected
@@ -272,9 +291,17 @@ endif()
 # krkr2core/krkr2plugin linkage; the Godot extension host links the glue and
 # installs its engine_legacy_* surface into engine_api through the legacy
 # services table (Phase 2d link flip — engine_api itself never links it).
-if(BUILD_ENGINE_API OR AETHERKIRI_BUILD_NATIVE_ONSCRIPTER_TESTS OR AETHERKIRI_ENABLE_RFVP)
-    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/bridge/krkr2_runtime)
+if(BUILD_ENGINE_API OR AETHERKIRI_BUILD_NATIVE_ONSCRIPTER_TESTS OR
+   AETHERKIRI_ENABLE_RFVP OR AETHERKIRI_ENABLE_EXHIBIT)
+    # The engine_api ABI (dispatcher + runtime-provider registry) carries no
+    # KiriKiri dependency, so it is added whenever the host ABI is requested.
     add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/abi)
+    # The KiriKiri glue links krkr2core/krkr2plugin; add it only when the engine
+    # submodule is enabled. Minimal host-only builds omit it, and engine_api then
+    # returns ENGINE_RESULT_NOT_SUPPORTED for the built-in "kirikiri" backend.
+    if(AETHERKIRI_ENABLE_KRKR)
+        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/bridge/krkr2_runtime)
+    endif()
 endif()
 
 
@@ -296,6 +323,14 @@ if(AETHERKIRI_ENABLE_MINORI AND BUILD_GODOT_EXTENSION AND
 endif()
 if(AETHERKIRI_ENABLE_RFVP)
     add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/bridge/rfvp_runtime)
+endif()
+if(AETHERKIRI_ENABLE_EXHIBIT AND NOT (WEB OR EMSCRIPTEN))
+    # The core is pure C++ logic and software compositing, so it builds on
+    # every native target and can be ctested headless without the extension.
+    add_subdirectory(${AETHERKIRI_EXHIBIT_DIR})
+    if(BUILD_GODOT_EXTENSION)
+        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/bridge/exhibit_runtime)
+    endif()
 endif()
 if(BUILD_GODOT_EXTENSION)
     add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/bridge/godot_extension)

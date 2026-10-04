@@ -3,134 +3,19 @@
   "name": "aetherkiri",
   "version-string": "1.5.0",
   "dependencies": [
-    "7zip",
-    "libsodium",
-    {
-      "name": "argparse",
-      "platform": "linux | windows | osx"
-    },
-    "bzip2",
-    {
-      "name": "boost-locale",
-      "default-features": false
-    },
-    "curl",
-    {
-      "name": "catch2",
-      "default-features": false,
-      "platform": "!android & !ios & !emscripten"
-    },
-    "minizip",
-    "tinyxml2",
-    {
-      "name": "dirent",
-      "platform": "windows"
-    },
-    "ffmpeg",
-    "expat",
-    "fmt",
-    "freetype",
     "godot-cpp",
-    "jxrlib",
-    "libarchive",
-    {
-      "name": "libb2",
-      "platform": "osx"
-    },
-    "libxml2",
-    {
-      "name": "libgdiplus",
-      "platform": "!windows & !emscripten"
-    },
-    "libjpeg-turbo",
-    "lua",
-    {
-      "name": "llama-cpp",
-      "platform": "!emscripten"
-    },
-    {
-      "name": "ggml",
-      "features": [
-        "metal"
-      ],
-      "platform": "osx"
-    },
-    {
-      "name": "libogg",
-      "platform": "android"
-    },
-    {
-      "name": "libpng",
-      "platform": "!linux"
-    },
-    "libvorbis",
-    "libwebp",
-    "lz4",
-    {
-      "name": "oboe",
-      "platform": "android"
-    },
-    "oniguruma",
-    "openal-soft",
-    "openssl",
-    {
-      "name": "opencv4",
-      "default-features": false,
-      "features": [
-        {
-          "name": "openmp",
-          "platform": "!ios & !emscripten"
-        }
-      ]
-    },
-    {
-      "name": "opus",
-      "platform": "android"
-    },
-    {
-      "name": "opusfile",
-      "default-features": false
-    },
-    {
-      "name": "sdl2",
-      "default-features": false
-    },
-    {
-      "name": "sdl2-image",
-      "features": [
-        "libjpeg-turbo",
-        "libwebp"
-      ]
-    },
-    "sdl2-mixer",
-    {
-      "name": "sdl2-ttf",
-      "features": [
-        "harfbuzz"
-      ]
-    },
     "spdlog",
-    "highway",
-    "uchardet",
-    "unrar",
     {
-      "name": "vulkan-headers",
-      "platform": "osx"
+      "name": "freetype",
+      "default-features": false
     },
     {
       "name": "vcpkg-cmake",
       "host": true
     },
-    "zstd"
-  ],
-  "overrides": [
     {
-      "name": "opencv4",
-      "version": "4.7.0#6"
-    },
-    {
-      "name": "lua",
-      "version": "5.4.8"
+      "name": "vcpkg-cmake-config",
+      "host": true
     }
   ]
 }

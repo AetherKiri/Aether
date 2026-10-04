@@ -52,6 +52,18 @@ func _init() -> void:
         "CatSystem2 signal"
     )
 
+    var exhibit_root := fixture_root.path_join("exhibit")
+    DirAccess.make_dir_recursive_absolute(exhibit_root.path_join("rld"))
+    _write(exhibit_root.path_join("ExHIBIT.ini"), "[exec]\nentry = start\n")
+    _write(exhibit_root.path_join("rld/start.rld"), "rld fixture")
+    var exhibit := GameMetadata.inspect(exhibit_root)
+    _expect_equal(String(exhibit.engine), "exhibit", "ExHIBIT marker detection")
+    _expect_equal(String(exhibit.launchFile), "", "ExHIBIT keeps directory launch")
+    _expect_true(
+        Array(exhibit.signals).has("exhibit-marker"),
+        "ExHIBIT signal"
+    )
+
     var kirikiri_root := fixture_root.path_join("kirikiri")
     DirAccess.make_dir_recursive_absolute(kirikiri_root)
     _write(kirikiri_root.path_join("game.exe"), "launcher")

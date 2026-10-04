@@ -18,6 +18,9 @@
 #if defined(AETHERKIRI_WITH_MINORI)
 extern "C" engine_result_t aetherkiri_minori_register_runtime_provider();
 #endif
+#if defined(AETHERKIRI_WITH_EXHIBIT)
+#include "exhibit_runtime_provider.h"
+#endif
 #if defined(__APPLE__)
 #include "apple_external_texture.h"
 #if !defined(IOS_ENABLED)
@@ -132,6 +135,23 @@ void aether_native_launch_file_picker_free_string(char *value);
 extern JNIEnv* krkr_GetJNIEnv();
 extern jobject krkr_GetApplicationContext();
 #endif
+
+#if !defined(AETHERKIRI_WITH_KRKR2)
+// engine_register_godot_gpu_*_bridge are declared in engine_api.h and called
+// unconditionally by Initialize/DeinitializeAetherRuntime below. Their real
+// definitions live in the KiriKiri glue (bridge/krkr2_runtime), which forwards
+// the Godot RenderingDevice callback tables into the KiriKiri core GPU bridge.
+// A minimal host-only build links no engine, so nothing consumes those tables;
+// provide no-op definitions to satisfy the link. CMake defines
+// AETHERKIRI_WITH_KRKR2 only when aether_krkr2_runtime is linked, so a full
+// build still resolves these to the real glue implementations.
+extern "C" {
+void engine_register_godot_gpu_bridge(const void* /*callbacks*/) {}
+void engine_register_godot_gpu_batch_bridge(const void* /*callbacks*/) {}
+void engine_register_godot_gpu_external_texture_bridge(
+    const void* /*callbacks*/) {}
+}  // extern "C"
+#endif  // !AETHERKIRI_WITH_KRKR2
 
 namespace godot {
 
@@ -3509,7 +3529,8 @@ uvec4 vec4_to_u8(vec4 value) {
 
 uint pack_u8(uvec4 c) {
     return (c.r & 0xffu) |
-           ((c.g & 0xffu) << 8) |
+)GLSL"
+R"GLSL(           ((c.g & 0xffu) << 8) |
            ((c.b & 0xffu) << 16) |
            ((c.a & 0xffu) << 24);
 }
@@ -6905,15 +6926,20 @@ void main() {
 )GLSL";
 
     std::string source = request.fragment_source;
+    // std::regex has no standard `multiline` flag (MSVC's <regex> rejects
+    // std::regex::multiline, and it is not part of any conforming stdlib).
+    // Anchor line starts explicitly with a (^|\n) group and restore the newline
+    // via $1, so a stripped directive leaves a blank line and the shader's line
+    // structure is preserved. Portable ECMAScript-grammar-only replacement.
     source = std::regex_replace(
-        source, std::regex(R"(^[ \t]*#[ \t]*version[^\r\n]*(?:\r?\n|$))",
-                           std::regex::icase | std::regex::multiline),
-        "");
+        source, std::regex(R"((^|\n)[ \t]*#[ \t]*version[^\r\n]*)",
+                           std::regex::icase),
+        "$1");
     source = std::regex_replace(
         source,
-        std::regex(R"(^[ \t]*#[ \t]*extension[^\r\n]*(?:\r?\n|$))",
-                   std::regex::icase | std::regex::multiline),
-        "");
+        std::regex(R"((^|\n)[ \t]*#[ \t]*extension[^\r\n]*)",
+                   std::regex::icase),
+        "$1");
     source = std::regex_replace(
         source,
         std::regex(
@@ -12620,6 +12646,13 @@ void InitializeAetherRuntime(ModuleInitializationLevel level) {
 #endif
 #if defined(AETHERKIRI_WITH_RFVP)
     aetherkiri::rfvp::RegisterRuntimeProvider();
+#endif
+#if defined(AETHERKIRI_WITH_EXHIBIT)
+    // Module init runs before any AetherRuntimePlayer instance exists, so
+    // this registration lands before both ClassDB::register_class below and
+    // the GPU callback broadcast in initialize_engine(), which only reaches
+    // providers that are already registered.
+    aetherkiri::exhibit::RegisterRuntimeProvider();
 #endif
     const engine_result_t shader_result =
         engine_set_runtime_fragment_shader_executor(

@@ -151,7 +151,7 @@ typedef struct engine_legacy_services_v1_t {
  * engine_create call. Installing the same table again is idempotent; a
  * different table is rejected with ENGINE_RESULT_INVALID_STATE so two runtimes
  * cannot silently fight over the built-in "kirikiri" entry. */
-engine_result_t engine_install_legacy_services(
+ENGINE_API_EXPORT engine_result_t engine_install_legacy_services(
     const engine_legacy_services_v1_t* services);
 
 #ifdef __cplusplus

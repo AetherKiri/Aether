@@ -7,6 +7,7 @@ const RUNTIME_RFVP := "rfvp"
 const RUNTIME_ARTEMIS := "artemis"
 const RUNTIME_SIGLUS := "siglus"
 const RUNTIME_CATSYSTEM2 := "catsystem2"
+const RUNTIME_EXHIBIT := "exhibit"
 
 static func inspect(path: String) -> Dictionary:
     var root := path
@@ -29,6 +30,14 @@ static func inspect(path: String) -> Dictionary:
         result.engine = RUNTIME_RFVP
         result.signals.append("fvp-hcb")
         result.launchFile = hcb
+    elif _is_exhibit_package(root, files):
+        # ExHIBIT titles ship the engine's ExHIBIT.ini marker beside .rld
+        # scenario packs.  Keep the directory as the launch path so the
+        # provider receives the game root instead of sending the title's
+        # Windows executable to the legacy KiriKiri storage layer; that is
+        # why no launchFile is set here (same contract as CatSystem2 below).
+        result.engine = RUNTIME_EXHIBIT
+        result.signals.append("exhibit-marker")
     elif (
         files.has("0.txt")
         or files.has("00.txt")
@@ -218,6 +227,28 @@ static func _is_catsystem2_package(files: PackedStringArray) -> bool:
     if has_cs2_config and has_boot_descriptor and has_kcs_script:
         return true
     return has_boot_descriptor and has_kcs_script and has_int
+
+static func _is_exhibit_package(root: String, files: PackedStringArray) -> bool:
+    # Mirrors the native probe (Runtime::looks_like_game): ExHIBIT.ini plus at
+    # least one .rld scenario, loose in the root or inside rld/.  Keeping both
+    # layers in sync matters because this classifier picks the runtime kind
+    # while the provider probe wins the actual backend selection.
+    if not files.has("exhibit.ini"):
+        return false
+    if _has_extension(files, "rld"):
+        return true
+    var rld_dir := DirAccess.open(root.path_join("rld"))
+    if rld_dir == null:
+        return false
+    rld_dir.list_dir_begin()
+    var entry := rld_dir.get_next()
+    while not entry.is_empty():
+        if not rld_dir.current_is_dir() and entry.get_extension().to_lower() == "rld":
+            rld_dir.list_dir_end()
+            return true
+        entry = rld_dir.get_next()
+    rld_dir.list_dir_end()
+    return false
 
 static func _read_text(path: String) -> String:
     var file := FileAccess.open(path, FileAccess.READ)

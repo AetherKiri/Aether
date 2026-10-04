@@ -55,6 +55,7 @@ const engine_legacy_services_v1_t kKrkr2LegacyServices = {
     &engine_legacy_media_pause,
     &engine_legacy_media_seek,
     &engine_legacy_media_set_rate,
+    &engine_legacy_media_set_volume,
     &engine_legacy_media_get_state,
     &engine_legacy_media_get_subtitle_tracks_json,
     &engine_legacy_media_extract_subtitle,

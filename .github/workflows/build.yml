@@ -117,8 +117,7 @@ jobs:
         if: env.AETHERKIRI_WITH_INTERNAL != 'true'
         run: |
           git submodule update --init --depth 1 packages/OnscripterYuri
-          git -c submodule.packages/psdfile.url=https://github.com/AetherKiri/psdfile.git \
-            submodule update --init --recursive --depth 1 packages/psdfile
+          git submodule update --init --recursive --depth 1 packages/psdfile
           git submodule update --init --depth 1 packages/AetherSiglus
           git submodule update --init --depth 1 packages/AetherMinori
           git submodule update --init --depth 1 packages/AetherKrkr
@@ -397,8 +396,7 @@ jobs:
         if: env.AETHERKIRI_WITH_INTERNAL != 'true'
         run: |
           git submodule update --init --depth 1 packages/OnscripterYuri
-          git -c submodule.packages/psdfile.url=https://github.com/AetherKiri/psdfile.git \
-            submodule update --init --recursive --depth 1 packages/psdfile
+          git submodule update --init --recursive --depth 1 packages/psdfile
           git submodule update --init --depth 1 packages/AetherSiglus
           git submodule update --init --depth 1 packages/AetherMinori
           git submodule update --init --depth 1 packages/AetherKrkr
@@ -698,8 +696,7 @@ jobs:
         if: env.AETHERKIRI_WITH_INTERNAL != 'true'
         run: |
           git submodule update --init --depth 1 packages/OnscripterYuri
-          git -c submodule.packages/psdfile.url=https://github.com/AetherKiri/psdfile.git \
-            submodule update --init --recursive --depth 1 packages/psdfile
+          git submodule update --init --recursive --depth 1 packages/psdfile
           git submodule update --init --depth 1 packages/AetherSiglus
           git submodule update --init --depth 1 packages/AetherMinori
           git submodule update --init --depth 1 packages/AetherKrkr

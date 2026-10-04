@@ -113,18 +113,18 @@ static func markdown_to_bbcode(md: String) -> String:
 
         var trimmed := raw_line.strip_edges()
 
-        # Headings: ### Header -> [b][color=...]Header[/color][/b]
+        # Headings: ### Header -> [b]Header[/b]
         if trimmed.begins_with("### "):
             var h := _format_inline_markdown(trimmed.substr(4).strip_edges())
-            out_lines.append("[font_size=15][b]%s[/b][/font_size]" % h)
+            out_lines.append("[font_size=13][b]%s[/b][/font_size]" % h)
             continue
         elif trimmed.begins_with("## "):
             var h := _format_inline_markdown(trimmed.substr(3).strip_edges())
-            out_lines.append("[font_size=17][b]%s[/b][/font_size]" % h)
+            out_lines.append("[font_size=14][b]%s[/b][/font_size]" % h)
             continue
         elif trimmed.begins_with("# "):
             var h := _format_inline_markdown(trimmed.substr(2).strip_edges())
-            out_lines.append("[font_size=19][b]%s[/b][/font_size]" % h)
+            out_lines.append("[font_size=15][b]%s[/b][/font_size]" % h)
             continue
 
         # List items: * item or - item

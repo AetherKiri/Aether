@@ -8378,14 +8378,14 @@ func _danger_button(text: String) -> Button:
     ui_widgets.destructive_button(button)
     return button
 
-func _modal_dialog(preferred_size: Vector2, dim_alpha: float = 0.44) -> PanelContainer:
+func _modal_dialog(preferred_size: Vector2, dim_alpha: float = 0.44, dismiss_on_scrim: bool = true) -> PanelContainer:
     _prepare_modal_layer()
     var dialog := PanelContainer.new()
     dialog.clip_contents = true
     _mark_centered_safe_dialog(dialog, preferred_size)
     _layout_safe_dialog(dialog, _ui_safe_rect(get_viewport_rect().size))
     dialog.add_theme_stylebox_override("panel", _dialog_style())
-    _present_modal(dialog, dim_alpha, true)
+    _present_modal(dialog, dim_alpha, dismiss_on_scrim)
     return dialog
 
 func _modal_stack(dialog: PanelContainer, title_text: String, icon_path: String) -> VBoxContainer:
@@ -8534,7 +8534,7 @@ func _show_app_update_dialog(info: Dictionary) -> void:
     if is_pre:
         title_text += _t("update.prerelease_badge")
 
-    var dialog := _modal_dialog(Vector2(680, 500), 0.50)
+    var dialog := _modal_dialog(Vector2(560, 480), 0.50, false)
     var box := _modal_stack(dialog, title_text, ICON_HELP)
 
     var version_info := Label.new()
@@ -8573,13 +8573,64 @@ func _show_app_update_dialog(info: Dictionary) -> void:
         )
         box.add_child(notes_label)
 
-    var buttons := _dialog_button_row(48.0)
-    buttons.add_theme_constant_override("separation", 10)
-    box.add_child(buttons)
+    # Action buttons container: primary downloads on top row, dismiss / skip on bottom row
+    var action_box := VBoxContainer.new()
+    action_box.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+    action_box.add_theme_constant_override("separation", 8)
+    box.add_child(action_box)
+
+    var primary_row := HBoxContainer.new()
+    primary_row.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+    primary_row.add_theme_constant_override("separation", 8)
+    action_box.add_child(primary_row)
+
+    if is_store:
+        var store_btn := _pill_button(_t("update.open_app_store"))
+        store_btn.clip_text = false
+        store_btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+        store_btn.custom_minimum_size = Vector2(0, 42)
+        store_btn.pressed.connect(func():
+            _dismiss_modal(func():
+                var target_url := app_store_url if not app_store_url.is_empty() else AppUpdater.APPLE_STORE_URL
+                OS.shell_open(target_url)
+            )
+        )
+        primary_row.add_child(store_btn)
+    else:
+        var gitee_btn := _pill_button(_t("update.download_gitee"))
+        gitee_btn.clip_text = false
+        gitee_btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+        gitee_btn.custom_minimum_size = Vector2(0, 42)
+        gitee_btn.pressed.connect(func():
+            _dismiss_modal(func():
+                var target_url := gitee_url if not gitee_url.is_empty() else AppUpdater.GITEE_REPO_RELEASES_PAGE
+                OS.shell_open(target_url)
+            )
+        )
+        primary_row.add_child(gitee_btn)
+
+        var gh_btn := _pill_button(_t("update.download_github"))
+        gh_btn.clip_text = false
+        gh_btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+        gh_btn.custom_minimum_size = Vector2(0, 42)
+        ui_widgets.secondary_button(gh_btn)
+        gh_btn.pressed.connect(func():
+            _dismiss_modal(func():
+                var target_url := github_url if not github_url.is_empty() else AppUpdater.GITHUB_REPO_RELEASES_PAGE
+                OS.shell_open(target_url)
+            )
+        )
+        primary_row.add_child(gh_btn)
+
+    var secondary_row := HBoxContainer.new()
+    secondary_row.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+    secondary_row.add_theme_constant_override("separation", 8)
+    action_box.add_child(secondary_row)
 
     var skip_btn := _pill_button(_t("update.skip_version"))
     skip_btn.clip_text = false
-    skip_btn.custom_minimum_size = Vector2(100, 42)
+    skip_btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+    skip_btn.custom_minimum_size = Vector2(0, 38)
     ui_widgets.secondary_button(skip_btn)
     skip_btn.pressed.connect(func():
         skipped_update_version = latest_ver
@@ -8589,50 +8640,15 @@ func _show_app_update_dialog(info: Dictionary) -> void:
         cfg.save(SETTINGS_FILE)
         _dismiss_modal()
     )
-    buttons.add_child(skip_btn)
+    secondary_row.add_child(skip_btn)
 
     var later_btn := _pill_button(_t("update.later"))
     later_btn.clip_text = false
-    later_btn.custom_minimum_size = Vector2(92, 42)
-    later_btn.size_flags_horizontal = Control.SIZE_SHRINK_END
+    later_btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+    later_btn.custom_minimum_size = Vector2(0, 38)
     ui_widgets.secondary_button(later_btn)
     later_btn.pressed.connect(func(): _dismiss_modal())
-    buttons.add_child(later_btn)
-
-    if is_store:
-        var store_btn := _pill_button(_t("update.open_app_store"))
-        store_btn.clip_text = false
-        store_btn.custom_minimum_size = Vector2(160, 42)
-        store_btn.pressed.connect(func():
-            _dismiss_modal(func():
-                var target_url := app_store_url if not app_store_url.is_empty() else AppUpdater.APPLE_STORE_URL
-                OS.shell_open(target_url)
-            )
-        )
-        buttons.add_child(store_btn)
-    else:
-        var gh_btn := _pill_button(_t("update.download_github"))
-        gh_btn.clip_text = false
-        gh_btn.custom_minimum_size = Vector2(130, 42)
-        ui_widgets.secondary_button(gh_btn)
-        gh_btn.pressed.connect(func():
-            _dismiss_modal(func():
-                var target_url := github_url if not github_url.is_empty() else AppUpdater.GITHUB_REPO_RELEASES_PAGE
-                OS.shell_open(target_url)
-            )
-        )
-        buttons.add_child(gh_btn)
-
-        var gitee_btn := _pill_button(_t("update.download_gitee"))
-        gitee_btn.clip_text = false
-        gitee_btn.custom_minimum_size = Vector2(180, 42)
-        gitee_btn.pressed.connect(func():
-            _dismiss_modal(func():
-                var target_url := gitee_url if not gitee_url.is_empty() else AppUpdater.GITEE_REPO_RELEASES_PAGE
-                OS.shell_open(target_url)
-            )
-        )
-        buttons.add_child(gitee_btn)
+    secondary_row.add_child(later_btn)
 
 func _iap_supported_platform() -> bool:
     return OS.get_name() in ["iOS", "macOS"]

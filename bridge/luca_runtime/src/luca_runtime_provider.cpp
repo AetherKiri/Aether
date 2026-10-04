@@ -5,7 +5,9 @@
 #include "luca_audio_output.h"
 
 #include <algorithm>
+#include <array>
 #include <cctype>
+#include <cstdio>
 #include <cstring>
 #include <filesystem>
 #include <fstream>
@@ -118,6 +120,25 @@ namespace aetherkiri::luca {
 
         std::string SafeLast(void *ak) {
             return ak != nullptr ? std::string(luca_ak_last_error(ak)) : std::string();
+        }
+
+        // Renderer-info is a space-separated kv string, so the movie path
+        // travels percent-encoded (WA2 precedent: the Godot host decodes
+        // with uri_decode-style unescaping before engine_media_open).
+        std::string PercentEncodePath(const std::string &path) {
+            static const char *kHex = "0123456789ABCDEF";
+            std::string out;
+            out.reserve(path.size());
+            for(unsigned char c : path) {
+                if(c == '%' || c == ' ' || c < 0x21 || c > 0x7E) {
+                    out.push_back('%');
+                    out.push_back(kHex[c >> 4]);
+                    out.push_back(kHex[c & 0xF]);
+                } else {
+                    out.push_back(static_cast<char>(c));
+                }
+            }
+            return out;
         }
 
         engine_result_t Fail(std::string &error_sink, int32_t ffi_result,
@@ -404,6 +425,23 @@ namespace aetherkiri::luca {
             auto *instance = Cast(runtime);
             if(instance == nullptr || option == nullptr || option->key_utf8 == nullptr ||
                option->value_utf8 == nullptr) return ENGINE_RESULT_INVALID_ARGUMENT;
+            // Movie finish channel (notes/017, WA2 precedent): the host
+            // drives engine_media_* for the latched MOVIE and reports
+            // EOF/skip back through this write-only option key, which
+            // releases the runtime's movie latch. Idempotent: firing it
+            // with no movie pending is a no-op success.
+            if(std::strcmp(option->key_utf8, "luca.movie.finish") == 0) {
+                if(instance->ak != nullptr && instance->opened) {
+                    const int32_t mark_seen =
+                        std::strcmp(option->value_utf8, "seen") == 0 ? 1 : 0;
+                    const int32_t result = luca_ak_movie_finish(instance->ak, mark_seen);
+                    if(result < 0) {
+                        return Fail(instance->error, result, instance->ak,
+                                    "luca_ak_movie_finish");
+                    }
+                }
+                return ENGINE_RESULT_OK;
+            }
             // Runtime options (translation hooks, IME, skipping) arrive with
             // the script VM phases.
             return ENGINE_RESULT_NOT_SUPPORTED;
@@ -484,6 +522,20 @@ namespace aetherkiri::luca {
                 event->type == ENGINE_INPUT_EVENT_KEY_DOWN &&
                 (event->key_code == 0x20 || event->key_code == 0x0D);
 
+            // Movie latch active: a click / confirm releases the latch
+            // (skip; engine playback-termination path, notes/017 §4) —
+            // the host sees movie_state flip back to idle on the next
+            // renderer-info poll and stops pulling media frames.
+            if((pointer_down || key_confirm) &&
+               luca_ak_movie_active(instance->ak) != 0) {
+                const int32_t result = luca_ak_movie_finish(instance->ak, 0);
+                if(result < 0) {
+                    return Fail(instance->error, result, instance->ak,
+                                "luca_ak_movie_finish");
+                }
+                return ENGINE_RESULT_OK;
+            }
+
             // SELECT window (content-space coordinates): pointer hover /
             // click rows, arrows move the cursor, confirm decides.
             if(luca_ak_waiting_select(instance->ak) != 0) {
@@ -544,13 +596,40 @@ namespace aetherkiri::luca {
 
         engine_result_t GetRendererInfo(void *runtime, char *output,
                                         uint32_t output_size) {
-            if(Cast(runtime) == nullptr || output == nullptr || output_size == 0) {
+            auto *instance = Cast(runtime);
+            if(instance == nullptr || output == nullptr || output_size == 0) {
                 return ENGINE_RESULT_INVALID_ARGUMENT;
             }
-            return CopyString(
+            std::string renderer =
                 "runtime=luca provider=engine_runtime_provider_v1 "
-                "render=cpu-rgba phase=vertical-slice",
-                output, output_size);
+                "render=cpu-rgba phase=script-vm";
+            // Movie latch state (notes/017, WA2 precedent): pending
+            // exposes the absolute webm path for the host's
+            // engine_media_open/play/read_frame_rgba channel; idle means
+            // no MOVIE opcode is latched. The host reports EOF/skip back
+            // through set_option("luca.movie.finish", "").
+            if(instance->ak != nullptr && instance->opened) {
+                std::array<char, 1024> path{};
+                float volume = 1.0f;
+                int32_t fade_out = -1;
+                const int32_t pending = luca_ak_movie_pending(
+                    instance->ak, path.data(),
+                    static_cast<uint32_t>(path.size()), &volume, &fade_out);
+                if(pending == 1) {
+                    renderer += " movie_state=pending";
+                    renderer += " movie_path=" + PercentEncodePath(path.data());
+                    char number[32];
+                    std::snprintf(number, sizeof(number), "%g", static_cast<double>(volume));
+                    renderer += std::string(" movie_volume=") + number;
+                    std::snprintf(number, sizeof(number), "%d", fade_out);
+                    renderer += std::string(" movie_fade_out=") + number;
+                } else {
+                    renderer += " movie_state=idle movie_path=-";
+                }
+            } else {
+                renderer += " movie_state=idle movie_path=-";
+            }
+            return CopyString(renderer, output, output_size);
         }
 
         engine_result_t GetMemoryStats(void *runtime,
@@ -588,15 +667,27 @@ namespace aetherkiri::luca {
         }
 
         engine_result_t GetDebugInfo(void *runtime, char *output,
-                                     uint32_t output_size,
-                                     uint32_t *bytes_written) {
-            if(Cast(runtime) == nullptr) {
+                                      uint32_t output_size,
+                                      uint32_t *bytes_written) {
+            auto *instance = Cast(runtime);
+            if(instance == nullptr) {
                 return ENGINE_RESULT_INVALID_ARGUMENT;
             }
-            return CopyString(
+            std::string info =
                 "runtime=luca provider=engine_runtime_provider_v1 "
-                "phase=vertical-slice frame=cpu-rgba",
-                output, output_size, bytes_written);
+                "phase=script-vm frame=cpu-rgba";
+            if(instance->ak != nullptr && instance->opened) {
+                std::array<char, 1024> path{};
+                const int32_t pending = luca_ak_movie_pending(
+                    instance->ak, path.data(),
+                    static_cast<uint32_t>(path.size()), nullptr, nullptr);
+                info += pending == 1
+                            ? std::string(" movieWaiting=1 pendingMovie=") + path.data()
+                            : std::string(" movieWaiting=0");
+            } else {
+                info += " movieWaiting=0";
+            }
+            return CopyString(info, output, output_size, bytes_written);
         }
 
         const char *GetLastError(void *runtime) {

@@ -250,3 +250,38 @@ TEST_CASE("Luca open rejects invalid roots") {
     REQUIRE(error != nullptr);
     CHECK(std::string(error).find("luca_ak_open") != std::string::npos);
 }
+
+TEST_CASE("Luca movie latch reports idle and finishes idempotently") {
+    aetherkiri::luca::RegisterRuntimeProvider();
+    Instance game;
+    REQUIRE(game.open(FixtureRoot()) == ENGINE_RESULT_OK);
+    REQUIRE(provider->tick(game.value, 16) == ENGINE_RESULT_OK);
+
+    // No MOVIE executed: renderer-info reports the idle movie state
+    // and the finish option is a no-op success (WA2 contract).
+    char renderer[2048] = {};
+    REQUIRE(provider->get_renderer_info(game.value, renderer,
+                                        sizeof(renderer)) == ENGINE_RESULT_OK);
+    const std::string info(renderer);
+    CHECK(info.find("runtime=luca") != std::string::npos);
+    CHECK(info.find("movie_state=idle") != std::string::npos);
+    CHECK(info.find("movie_path=-") != std::string::npos);
+
+    engine_option_t option{};
+    option.key_utf8 = "luca.movie.finish";
+    option.value_utf8 = "";
+    REQUIRE(provider->set_option(game.value, &option) == ENGINE_RESULT_OK);
+    // "seen" value variant also accepted.
+    option.value_utf8 = "seen";
+    REQUIRE(provider->set_option(game.value, &option) == ENGINE_RESULT_OK);
+    // Unknown keys stay unsupported.
+    option.key_utf8 = "luca.nope";
+    REQUIRE(provider->set_option(game.value, &option) ==
+            ENGINE_RESULT_NOT_SUPPORTED);
+
+    char debug[2048] = {};
+    REQUIRE(provider->get_plugin_debug_info(game.value, debug,
+                                            sizeof(debug), nullptr) ==
+            ENGINE_RESULT_OK);
+    CHECK(std::string(debug).find("movieWaiting=0") != std::string::npos);
+}

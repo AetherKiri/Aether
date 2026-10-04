@@ -27,15 +27,26 @@ find_package(OpenAL CONFIG REQUIRED)
 if(APPLE)
     # vcpkg's static OpenAL target exports clang-driver flags. They are either
     # redundant (-pthread) or rejected when CMake uses swiftc as the final link
-    # driver for the mixed Swift/C++ Godot extension. BuildLucaRs.cmake lists
-    # the required Apple frameworks as normal CMake link items instead.
+    # driver for the mixed Swift/C++ Godot extension. Rewrite the framework
+    # flags into plain `-framework X` items (accepted by clang++ and swiftc
+    # alike) and drop the rest.
     get_target_property(AETHERKIRI_OPENAL_LINK_LIBRARIES
         OpenAL::OpenAL INTERFACE_LINK_LIBRARIES)
     if(AETHERKIRI_OPENAL_LINK_LIBRARIES)
-        list(FILTER AETHERKIRI_OPENAL_LINK_LIBRARIES
-            EXCLUDE REGEX "pthread|^-Wl,-framework")
+        set(AETHERKIRI_OPENAL_CLEAN "")
+        foreach(item IN LISTS AETHERKIRI_OPENAL_LINK_LIBRARIES)
+            if(item MATCHES "^-Wl,-framework,([^,]+)$")
+                list(APPEND AETHERKIRI_OPENAL_CLEAN "-framework ${CMAKE_MATCH_1}")
+            elseif(item MATCHES "^-Wl,-weak_framework,([^,]+)$")
+                list(APPEND AETHERKIRI_OPENAL_CLEAN "-weak_framework ${CMAKE_MATCH_1}")
+            elseif(item STREQUAL "-pthread")
+                # dropped: every Apple toolchain provides pthreads
+            else()
+                list(APPEND AETHERKIRI_OPENAL_CLEAN "${item}")
+            endif()
+        endforeach()
         set_property(TARGET OpenAL::OpenAL PROPERTY
-            INTERFACE_LINK_LIBRARIES "${AETHERKIRI_OPENAL_LINK_LIBRARIES}")
+            INTERFACE_LINK_LIBRARIES "${AETHERKIRI_OPENAL_CLEAN}")
     endif()
 endif()
 

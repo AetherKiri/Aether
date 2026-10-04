@@ -389,6 +389,7 @@ const UI_TEXT := {
         "update.download_github": "前往 GitHub 下载",
         "update.open_app_store": "前往 App Store 更新",
         "update.later": "稍后提醒",
+        "update.skip_version": "跳过此版本",
         "update.already_latest": "当前已是最新版本 (%s)",
         "update.check_failed": "检查更新失败，请稍后重试",
         "settings.ios_statement": "Apple App Store 额外声明",
@@ -706,6 +707,7 @@ const UI_TEXT := {
         "update.download_github": "前往 GitHub 下載",
         "update.open_app_store": "前往 App Store 更新",
         "update.later": "稍後提醒",
+        "update.skip_version": "跳過此版本",
         "update.already_latest": "目前已是最新版本 (%s)",
         "update.check_failed": "檢查更新失敗，請稍後重試",
         "settings.ios_statement": "Apple App Store 額外聲明",
@@ -1063,6 +1065,7 @@ You can find it any time under Settings → QQ Group.",
         "update.download_github": "Download from GitHub",
         "update.open_app_store": "Update in App Store",
         "update.later": "Remind Me Later",
+        "update.skip_version": "Skip This Version",
         "update.already_latest": "You are on the latest version (%s)",
         "update.check_failed": "Failed to check for updates. Please try again later.",
         "settings.ios_statement": "Apple App Store Notice",
@@ -1380,6 +1383,7 @@ You can find it any time under Settings → QQ Group.",
         "update.download_github": "GitHub からダウンロード",
         "update.open_app_store": "App Store でアップデート",
         "update.later": "あとで",
+        "update.skip_version": "このバージョンをスキップ",
         "update.already_latest": "最新バージョンを使用しています (%s)",
         "update.check_failed": "アップデートの確認に失敗しました。後でもう一度お試しください",
         "settings.ios_statement": "Apple App Store 追加声明",
@@ -1695,6 +1699,7 @@ You can find it any time under Settings → QQ Group.",
         "update.download_github": "GitHub에서 다운로드",
         "update.open_app_store": "App Store에서 업데이트",
         "update.later": "나중에 알림",
+        "update.skip_version": "이 버전 건너뛰기",
         "update.already_latest": "최신 버전을 사용 중입니다 (%s)",
         "update.check_failed": "업데이트 확인 실패. 잠시 후 다시 시도해 주세요",
         "settings.ios_statement": "Apple App Store 추가 고지",
@@ -2023,6 +2028,7 @@ var ios_statement_accepted_at := 0
 var legal_gate_completed := false
 var include_prerelease := false
 var update_checking := false
+var skipped_update_version := ""
 var secret_iap_unlocked := false
 var secret_coffee_until_unix := 0
 var secret_version_tap_count := 0
@@ -3844,6 +3850,7 @@ func _load_shell_settings() -> void:
     secret_iap_unlocked = bool(cfg.get_value("unlock", "secret_iap_unlocked", false))
     secret_coffee_until_unix = int(cfg.get_value("unlock", "secret_coffee_until_unix", 0))
     include_prerelease = bool(cfg.get_value("update", "include_prerelease", false))
+    skipped_update_version = String(cfg.get_value("update", "skipped_version", ""))
 
 func _configure_runtime_diagnostics() -> void:
     diagnostics_enabled = _runtime_flag("AETHERKIRI_DIAGNOSTICS")
@@ -3928,6 +3935,7 @@ func _save_shell_settings() -> void:
     cfg.set_value("unlock", "secret_iap_unlocked", secret_iap_unlocked)
     cfg.set_value("unlock", "secret_coffee_until_unix", secret_coffee_until_unix)
     cfg.set_value("update", "include_prerelease", include_prerelease)
+    cfg.set_value("update", "skipped_version", skipped_update_version)
     cfg.save(SETTINGS_FILE)
     ProjectSettings.set_setting(SETTINGS_KEY, selected_backend)
     _apply_engine_options()
@@ -8482,6 +8490,9 @@ func _check_app_update_silently() -> void:
         func(status: int, info: Dictionary):
             update_checking = false
             if status == AppUpdater.CheckStatus.SUCCESS_HAS_UPDATE:
+                var latest_ver: String = str(info.get("latest_version", ""))
+                if not skipped_update_version.is_empty() and AppUpdater.compare_versions(latest_ver, skipped_update_version) <= 0:
+                    return
                 _show_app_update_dialog(info)
     )
 
@@ -8565,6 +8576,20 @@ func _show_app_update_dialog(info: Dictionary) -> void:
     var buttons := _dialog_button_row(48.0)
     buttons.add_theme_constant_override("separation", 10)
     box.add_child(buttons)
+
+    var skip_btn := _pill_button(_t("update.skip_version"))
+    skip_btn.clip_text = false
+    skip_btn.custom_minimum_size = Vector2(100, 42)
+    ui_widgets.secondary_button(skip_btn)
+    skip_btn.pressed.connect(func():
+        skipped_update_version = latest_ver
+        var cfg := ConfigFile.new()
+        cfg.load(SETTINGS_FILE)
+        cfg.set_value("update", "skipped_version", skipped_update_version)
+        cfg.save(SETTINGS_FILE)
+        _dismiss_modal()
+    )
+    buttons.add_child(skip_btn)
 
     var later_btn := _pill_button(_t("update.later"))
     later_btn.clip_text = false

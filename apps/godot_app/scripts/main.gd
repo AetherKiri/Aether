@@ -385,7 +385,7 @@ const UI_TEXT := {
         "update.latest_version": "最新版本：%s",
         "update.prerelease_badge": "（测试版）",
         "update.notes_title": "更新日志：",
-        "update.download_gitee": "前往 Gitee 下载（推荐）",
+        "update.download_gitcode": "前往 GitCode 下载（推荐）",
         "update.download_github": "前往 GitHub 下载",
         "update.open_app_store": "前往 App Store 更新",
         "update.later": "稍后提醒",
@@ -703,7 +703,7 @@ const UI_TEXT := {
         "update.latest_version": "最新版本：%s",
         "update.prerelease_badge": "（測試版）",
         "update.notes_title": "更新日誌：",
-        "update.download_gitee": "前往 Gitee 下載（推薦）",
+        "update.download_gitcode": "前往 GitCode 下載（推薦）",
         "update.download_github": "前往 GitHub 下載",
         "update.open_app_store": "前往 App Store 更新",
         "update.later": "稍後提醒",
@@ -1061,7 +1061,7 @@ You can find it any time under Settings → QQ Group.",
         "update.latest_version": "Latest version: %s",
         "update.prerelease_badge": " (Beta)",
         "update.notes_title": "Release Notes:",
-        "update.download_gitee": "Download from Gitee (Recommended)",
+        "update.download_gitcode": "Download from GitCode (Recommended)",
         "update.download_github": "Download from GitHub",
         "update.open_app_store": "Update in App Store",
         "update.later": "Remind Me Later",
@@ -1379,7 +1379,7 @@ You can find it any time under Settings → QQ Group.",
         "update.latest_version": "最新のバージョン：%s",
         "update.prerelease_badge": "（ベータ版）",
         "update.notes_title": "更新履歴：",
-        "update.download_gitee": "Gitee からダウンロード（推奨）",
+        "update.download_gitcode": "GitCode からダウンロード（推奨）",
         "update.download_github": "GitHub からダウンロード",
         "update.open_app_store": "App Store でアップデート",
         "update.later": "あとで",
@@ -1695,7 +1695,7 @@ You can find it any time under Settings → QQ Group.",
         "update.latest_version": "최신 버전: %s",
         "update.prerelease_badge": " (베타)",
         "update.notes_title": "릴리스 노트:",
-        "update.download_gitee": "Gitee에서 다운로드(추천)",
+        "update.download_gitcode": "GitCode에서 다운로드(추천)",
         "update.download_github": "GitHub에서 다운로드",
         "update.open_app_store": "App Store에서 업데이트",
         "update.later": "나중에 알림",
@@ -8526,8 +8526,10 @@ func _show_app_update_dialog(info: Dictionary) -> void:
     var is_pre: bool = bool(info.get("is_prerelease", false))
     var release_notes: String = str(info.get("release_notes", "")).strip_edges()
     var is_store: bool = bool(info.get("is_app_store", false))
-    var gitee_url: String = str(info.get("gitee_url", ""))
+    var gitcode_url: String = str(info.get("gitcode_url", ""))
     var github_url: String = str(info.get("github_url", ""))
+    var gitcode_apk_url: String = str(info.get("gitcode_apk_url", ""))
+    var github_apk_url: String = str(info.get("github_apk_url", ""))
     var app_store_url: String = str(info.get("app_store_url", ""))
 
     var title_text := _t("update.dialog_title")
@@ -8592,17 +8594,24 @@ func _show_app_update_dialog(info: Dictionary) -> void:
         )
         action_box.add_child(store_btn)
     else:
-        var gitee_btn := _pill_button(_t("update.download_gitee"))
-        gitee_btn.clip_text = false
-        gitee_btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-        gitee_btn.custom_minimum_size = Vector2(0, 42)
-        gitee_btn.pressed.connect(func():
+        var is_android := OS.get_name() == "Android"
+        var gitcode_btn := _pill_button(_t("update.download_gitcode"))
+        gitcode_btn.clip_text = false
+        gitcode_btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+        gitcode_btn.custom_minimum_size = Vector2(0, 42)
+        gitcode_btn.pressed.connect(func():
             _dismiss_modal(func():
-                var target_url := gitee_url if not gitee_url.is_empty() else AppUpdater.GITEE_REPO_RELEASES_PAGE
+                var target_url := ""
+                if is_android and not gitcode_apk_url.is_empty():
+                    target_url = gitcode_apk_url
+                elif not gitcode_url.is_empty():
+                    target_url = gitcode_url
+                else:
+                    target_url = AppUpdater.GITCODE_REPO_RELEASES_PAGE
                 OS.shell_open(target_url)
             )
         )
-        action_box.add_child(gitee_btn)
+        action_box.add_child(gitcode_btn)
 
         var gh_btn := _pill_button(_t("update.download_github"))
         gh_btn.clip_text = false
@@ -8611,7 +8620,13 @@ func _show_app_update_dialog(info: Dictionary) -> void:
         ui_widgets.secondary_button(gh_btn)
         gh_btn.pressed.connect(func():
             _dismiss_modal(func():
-                var target_url := github_url if not github_url.is_empty() else AppUpdater.GITHUB_REPO_RELEASES_PAGE
+                var target_url := ""
+                if is_android and not github_apk_url.is_empty():
+                    target_url = github_apk_url
+                elif not github_url.is_empty():
+                    target_url = github_url
+                else:
+                    target_url = AppUpdater.GITHUB_REPO_RELEASES_PAGE
                 OS.shell_open(target_url)
             )
         )
@@ -12225,8 +12240,7 @@ func _continue_ready_after_legal_gate() -> void:
         _append_log("Native auto-start ignored. Set AETHERKIRI_ENABLE_AUTO_START=1 for automation runs.")
     if not OS.get_environment("AETHERKIRI_CAPTURE_UI").is_empty():
         call_deferred("_capture_ui_after_ready")
-    var update_timer := get_tree().create_timer(2.0)
-    update_timer.timeout.connect(func(): _check_app_update_silently())
+    call_deferred("_check_app_update_silently")
 
 func _request_android_storage_permissions() -> void:
     if OS.get_name() != "Android":
@@ -17988,7 +18002,11 @@ func _maybe_show_notice() -> void:
         return
     if int(Time.get_unix_time_from_system()) < _notice_snoozed_until():
         return
-    await get_tree().create_timer(0.6).timeout
+    # Wait until update check completes and no modal is active
+    for _i in range(15):
+        if not update_checking and not (modal_layer != null and modal_layer.visible):
+            break
+        await get_tree().create_timer(0.3).timeout
     if game_running or (modal_layer != null and modal_layer.visible):
         return
     _show_notice()

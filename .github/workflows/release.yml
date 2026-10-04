@@ -164,15 +164,17 @@ jobs:
 
           gh release create "$tag" "${assets[@]}" "${release_args[@]}"
 
-      - name: Sync release to Gitee
+      - name: Sync release to GitCode
         shell: bash
         env:
+          GITCODE_TOKEN: ${{ secrets.GITCODE_TOKEN }}
           GITEE_TOKEN: ${{ secrets.GITEE_TOKEN }}
         run: |
           set -euo pipefail
 
-          if [[ -z "${GITEE_TOKEN:-}" ]]; then
-            echo "GITEE_TOKEN secret is not set; skipping Gitee release sync."
+          token="${GITCODE_TOKEN:-${GITEE_TOKEN:-}}"
+          if [[ -z "$token" ]]; then
+            echo "GITCODE_TOKEN (or GITEE_TOKEN) secret is not set; skipping GitCode release sync."
             exit 0
           fi
 
@@ -188,8 +190,8 @@ jobs:
             sync_args+=(--prerelease)
           fi
 
-          python3 .github/scripts/sync-gitee-release.py "${sync_args[@]}" "${assets[@]}" || {
-            echo "Warning: Gitee release sync encountered an issue, but GitHub release succeeded."
+          GITCODE_TOKEN="$token" python3 .github/scripts/sync-gitcode-release.py "${sync_args[@]}" "${assets[@]}" || {
+            echo "Warning: GitCode release sync encountered an issue, but GitHub release succeeded."
           }
 
   update-version:

@@ -3,14 +3,14 @@ extends RefCounted
 
 ## AppUpdater
 ## Handles version checking and update flows for AetherKiri.
-## Supports Gitee (primary for China / general), GitHub (fallback), and App Store (iOS).
+## Supports GitCode (primary for China / general), GitHub (fallback), and App Store (iOS).
 
-const GITEE_RELEASES_URL := "https://gitee.com/api/v5/repos/AetherKiri/AetherKiri/releases?direction=desc&page=1&per_page=10"
+const GITCODE_RELEASES_URL := "https://api.gitcode.com/api/v5/repos/AetherKiri/AetherKiri/releases?direction=desc&page=1&per_page=10"
 const GITHUB_RELEASES_URL := "https://api.github.com/repos/AetherKiri/AetherKiri/releases?per_page=10"
 const APPLE_APP_ID := "6796580469"
 const APPLE_LOOKUP_URL := "https://itunes.apple.com/lookup?id=6796580469"
 const APPLE_STORE_URL := "https://apps.apple.com/app/id6796580469"
-const GITEE_REPO_RELEASES_PAGE := "https://gitee.com/AetherKiri/AetherKiri/releases"
+const GITCODE_REPO_RELEASES_PAGE := "https://gitcode.com/AetherKiri/AetherKiri/releases"
 const GITHUB_REPO_RELEASES_PAGE := "https://github.com/AetherKiri/AetherKiri/releases"
 
 enum CheckStatus {
@@ -169,12 +169,14 @@ static func _format_inline_markdown(text: String) -> String:
 ##   "current_version": String
 ##   "latest_version": String
 ##   "tag_name": String
-##   "release_notes": String
-##   "gitee_url": String
+##   "gitcode_url": String
 ##   "github_url": String
+##   "gitcode_apk_url": String
+##   "github_apk_url": String
 ##   "app_store_url": String
 ##   "is_app_store": bool
 ##   "is_prerelease": bool
+##   "source": String
 static func check_for_updates(
     node: Node,
     current_version: String,
@@ -193,7 +195,7 @@ static func check_for_updates(
     if is_app_store:
         _check_app_store(req, current_version, callback)
     else:
-        _check_gitee_first(req, node, current_version, include_prerelease, callback)
+        _check_gitcode_first(req, node, current_version, include_prerelease, callback)
 
 static func _check_app_store(req: HTTPRequest, current_version: String, callback: Callable) -> void:
     req.request_completed.connect(func(result: int, response_code: int, _headers: PackedStringArray, body: PackedByteArray):
@@ -238,7 +240,7 @@ static func _check_app_store(req: HTTPRequest, current_version: String, callback
         req.queue_free()
         callback.call(CheckStatus.NETWORK_ERROR, {"error": err})
 
-static func _check_gitee_first(
+static func _check_gitcode_first(
     req: HTTPRequest,
     tree_node: Node,
     current_version: String,
@@ -248,7 +250,7 @@ static func _check_gitee_first(
     req.request_completed.connect(func(result: int, response_code: int, _headers: PackedStringArray, body: PackedByteArray):
         req.queue_free()
 
-        var gitee_success := false
+        var gitcode_success := false
         var target_release: Dictionary = {}
 
         if result == HTTPRequest.RESULT_SUCCESS and response_code == 200:
@@ -258,22 +260,22 @@ static func _check_gitee_first(
                 if data is Array and not data.is_empty():
                     target_release = _pick_release(data, include_prerelease)
                     if not target_release.is_empty():
-                        gitee_success = true
+                        gitcode_success = true
                 elif data is Dictionary and data.has("tag_name"):
                     var is_pre := bool(data.get("prerelease", false))
                     if include_prerelease or not is_pre:
                         target_release = data
-                        gitee_success = true
+                        gitcode_success = true
 
-        if gitee_success:
-            _finish_with_release_data(target_release, current_version, "gitee", callback)
+        if gitcode_success:
+            _finish_with_release_data(target_release, current_version, "gitcode", callback)
         else:
-            # Gitee failed, empty or unreachable; fall back to GitHub API
+            # GitCode failed, empty or unreachable; fall back to GitHub API
             _check_github_fallback(tree_node, current_version, include_prerelease, callback)
     )
 
     var headers := PackedStringArray(["User-Agent: AetherKiri-Updater"])
-    var err := req.request(GITEE_RELEASES_URL, headers)
+    var err := req.request(GITCODE_RELEASES_URL, headers)
     if err != OK:
         req.queue_free()
         _check_github_fallback(tree_node, current_version, include_prerelease, callback)
@@ -344,25 +346,50 @@ static func _finish_with_release_data(
     var body_notes: String = str(release_data.get("body", ""))
     var is_pre := bool(release_data.get("prerelease", false))
 
-    var gitee_url := ""
+    var gitcode_url := ""
     var github_url := ""
+    var gitcode_apk_url := ""
+    var github_apk_url := ""
 
-    if source == "gitee":
+    var expected_apk_name := "AetherKiri-%s-android.apk" % latest_ver
+
+    # Parse assets to find direct APK link if available
+    var assets: Array = release_data.get("assets", []) if (release_data.get("assets") is Array) else []
+    for asset in assets:
+        if asset is Dictionary:
+            var aname: String = str(asset.get("name", ""))
+            var dl_url: String = str(asset.get("browser_download_url", ""))
+            if aname == expected_apk_name or aname.ends_with("-android.apk") or aname.ends_with(".apk"):
+                if source == "gitcode":
+                    gitcode_apk_url = dl_url
+                else:
+                    github_apk_url = dl_url
+                break
+
+    # Construct direct download URLs if not explicitly found in assets list
+    if github_apk_url.is_empty():
+        github_apk_url = "%s/download/%s/%s" % [GITHUB_REPO_RELEASES_PAGE, tag_name, expected_apk_name]
+    if gitcode_apk_url.is_empty() or gitcode_apk_url.begins_with("https://gitcode.com/"):
+        gitcode_apk_url = "https://api.gitcode.com/api/v5/repos/AetherKiri/AetherKiri/releases/%s/attach_files/%s/download" % [tag_name, expected_apk_name]
+
+    if source == "gitcode":
         var html_url: String = str(release_data.get("html_url", ""))
-        gitee_url = html_url if not html_url.is_empty() else (GITEE_REPO_RELEASES_PAGE + "/tag/" + tag_name)
+        gitcode_url = html_url if not html_url.is_empty() else (GITCODE_REPO_RELEASES_PAGE + "/tag/" + tag_name)
         github_url = GITHUB_REPO_RELEASES_PAGE + "/tag/" + tag_name
     else:
         var html_url: String = str(release_data.get("html_url", ""))
         github_url = html_url if not html_url.is_empty() else (GITHUB_REPO_RELEASES_PAGE + "/tag/" + tag_name)
-        gitee_url = GITEE_REPO_RELEASES_PAGE + "/tag/" + tag_name
+        gitcode_url = GITCODE_REPO_RELEASES_PAGE + "/tag/" + tag_name
 
     var info := {
         "current_version": current_version,
         "latest_version": latest_ver,
         "tag_name": tag_name,
         "release_notes": body_notes,
-        "gitee_url": gitee_url,
+        "gitcode_url": gitcode_url,
         "github_url": github_url,
+        "gitcode_apk_url": gitcode_apk_url,
+        "github_apk_url": github_apk_url,
         "is_app_store": false,
         "is_prerelease": is_pre,
         "source": source,

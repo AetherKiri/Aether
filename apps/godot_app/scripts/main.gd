@@ -8523,7 +8523,7 @@ func _show_app_update_dialog(info: Dictionary) -> void:
     if is_pre:
         title_text += _t("update.prerelease_badge")
 
-    var dialog := _modal_dialog(Vector2(640, 480), 0.50)
+    var dialog := _modal_dialog(Vector2(680, 500), 0.50)
     var box := _modal_stack(dialog, title_text, ICON_HELP)
 
     var version_info := Label.new()
@@ -8564,7 +8564,8 @@ func _show_app_update_dialog(info: Dictionary) -> void:
     box.add_child(buttons)
 
     var later_btn := _pill_button(_t("update.later"))
-    later_btn.custom_minimum_size = Vector2(96, 42)
+    later_btn.clip_text = false
+    later_btn.custom_minimum_size = Vector2(92, 42)
     later_btn.size_flags_horizontal = Control.SIZE_SHRINK_END
     ui_widgets.secondary_button(later_btn)
     later_btn.pressed.connect(func(): _dismiss_modal())
@@ -8572,6 +8573,7 @@ func _show_app_update_dialog(info: Dictionary) -> void:
 
     if is_store:
         var store_btn := _pill_button(_t("update.open_app_store"))
+        store_btn.clip_text = false
         store_btn.custom_minimum_size = Vector2(160, 42)
         store_btn.pressed.connect(func():
             _dismiss_modal(func():
@@ -8582,6 +8584,7 @@ func _show_app_update_dialog(info: Dictionary) -> void:
         buttons.add_child(store_btn)
     else:
         var gh_btn := _pill_button(_t("update.download_github"))
+        gh_btn.clip_text = false
         gh_btn.custom_minimum_size = Vector2(130, 42)
         ui_widgets.secondary_button(gh_btn)
         gh_btn.pressed.connect(func():
@@ -8593,7 +8596,8 @@ func _show_app_update_dialog(info: Dictionary) -> void:
         buttons.add_child(gh_btn)
 
         var gitee_btn := _pill_button(_t("update.download_gitee"))
-        gitee_btn.custom_minimum_size = Vector2(170, 42)
+        gitee_btn.clip_text = false
+        gitee_btn.custom_minimum_size = Vector2(180, 42)
         gitee_btn.pressed.connect(func():
             _dismiss_modal(func():
                 var target_url := gitee_url if not gitee_url.is_empty() else AppUpdater.GITEE_REPO_RELEASES_PAGE

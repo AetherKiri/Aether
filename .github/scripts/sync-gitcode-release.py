@@ -173,6 +173,19 @@ def main():
     title = args.title or tag
     body = args.body
 
+    # If body is not passed explicitly, attempt to mirror release notes from GitHub
+    if not body:
+        try:
+            gh_url = f"https://api.github.com/repos/{args.owner}/{args.repo}/releases/tags/{tag}"
+            gh_req = urllib.request.Request(gh_url, headers={"User-Agent": "AetherKiri-Release-Sync"})
+            with urllib.request.urlopen(gh_req, timeout=10) as gh_resp:
+                gh_data = json.loads(gh_resp.read().decode("utf-8"))
+                body = gh_data.get("body", "")
+                if not args.title:
+                    title = gh_data.get("name") or tag
+        except Exception as e:
+            print(f"Notice: Could not fetch GitHub release notes automatically: {e}", file=sys.stderr)
+
     release = get_existing_release(args.owner, args.repo, tag, token)
     if release:
         print(f"Found existing release on GitCode for tag {tag}")

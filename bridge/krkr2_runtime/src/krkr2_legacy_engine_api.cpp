@@ -3513,16 +3513,33 @@ engine_result_t engine_media_seek(engine_media_handle_t media,
 }
 
 engine_result_t engine_media_set_rate(engine_media_handle_t media,
-                                      double playback_rate) {
+                                       double playback_rate) {
   if (media == nullptr || !std::isfinite(playback_rate) ||
       playback_rate < 0.5 || playback_rate > 2.0) {
     return SetThreadErrorAndReturn(ENGINE_RESULT_INVALID_ARGUMENT,
-                                   "playback rate must be between 0.5 and 2.0");
+                                    "playback rate must be between 0.5 and 2.0");
   }
   auto* impl = reinterpret_cast<engine_media_handle_s*>(media);
   std::lock_guard<std::recursive_mutex> guard(impl->mutex);
   if (impl->player == nullptr) return ENGINE_RESULT_INVALID_STATE;
   impl->player->SetPlayRate(playback_rate);
+  SetThreadError(nullptr);
+  return ENGINE_RESULT_OK;
+}
+
+engine_result_t engine_media_set_volume(engine_media_handle_t media,
+                                        double volume) {
+  if (media == nullptr || !std::isfinite(volume) || volume < 0.0 ||
+      volume > 1.0) {
+    return SetThreadErrorAndReturn(ENGINE_RESULT_INVALID_ARGUMENT,
+                                    "media volume must be between 0.0 and 1.0");
+  }
+  auto* impl = reinterpret_cast<engine_media_handle_s*>(media);
+  std::lock_guard<std::recursive_mutex> guard(impl->mutex);
+  if (impl->player == nullptr) return ENGINE_RESULT_INVALID_STATE;
+  // TVPMoviePlayer::SetAudioVolume takes the tTVP volume scale where
+  // 100000 == unity gain.
+  impl->player->SetAudioVolume(static_cast<long>(volume * 100000.0));
   SetThreadError(nullptr);
   return ENGINE_RESULT_OK;
 }

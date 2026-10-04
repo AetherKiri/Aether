@@ -8573,16 +8573,11 @@ func _show_app_update_dialog(info: Dictionary) -> void:
         )
         box.add_child(notes_label)
 
-    # Action buttons container: primary downloads on top row, dismiss / skip on bottom row
+    # Action buttons container: vertical column so button labels never clip on mobile
     var action_box := VBoxContainer.new()
     action_box.size_flags_horizontal = Control.SIZE_EXPAND_FILL
     action_box.add_theme_constant_override("separation", 8)
     box.add_child(action_box)
-
-    var primary_row := HBoxContainer.new()
-    primary_row.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-    primary_row.add_theme_constant_override("separation", 8)
-    action_box.add_child(primary_row)
 
     if is_store:
         var store_btn := _pill_button(_t("update.open_app_store"))
@@ -8595,7 +8590,7 @@ func _show_app_update_dialog(info: Dictionary) -> void:
                 OS.shell_open(target_url)
             )
         )
-        primary_row.add_child(store_btn)
+        action_box.add_child(store_btn)
     else:
         var gitee_btn := _pill_button(_t("update.download_gitee"))
         gitee_btn.clip_text = false
@@ -8607,12 +8602,12 @@ func _show_app_update_dialog(info: Dictionary) -> void:
                 OS.shell_open(target_url)
             )
         )
-        primary_row.add_child(gitee_btn)
+        action_box.add_child(gitee_btn)
 
         var gh_btn := _pill_button(_t("update.download_github"))
         gh_btn.clip_text = false
         gh_btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-        gh_btn.custom_minimum_size = Vector2(0, 42)
+        gh_btn.custom_minimum_size = Vector2(0, 40)
         ui_widgets.secondary_button(gh_btn)
         gh_btn.pressed.connect(func():
             _dismiss_modal(func():
@@ -8620,7 +8615,7 @@ func _show_app_update_dialog(info: Dictionary) -> void:
                 OS.shell_open(target_url)
             )
         )
-        primary_row.add_child(gh_btn)
+        action_box.add_child(gh_btn)
 
     var secondary_row := HBoxContainer.new()
     secondary_row.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -8630,7 +8625,7 @@ func _show_app_update_dialog(info: Dictionary) -> void:
     var skip_btn := _pill_button(_t("update.skip_version"))
     skip_btn.clip_text = false
     skip_btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-    skip_btn.custom_minimum_size = Vector2(0, 38)
+    skip_btn.custom_minimum_size = Vector2(0, 36)
     ui_widgets.secondary_button(skip_btn)
     skip_btn.pressed.connect(func():
         skipped_update_version = latest_ver
@@ -8645,7 +8640,7 @@ func _show_app_update_dialog(info: Dictionary) -> void:
     var later_btn := _pill_button(_t("update.later"))
     later_btn.clip_text = false
     later_btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-    later_btn.custom_minimum_size = Vector2(0, 38)
+    later_btn.custom_minimum_size = Vector2(0, 36)
     ui_widgets.secondary_button(later_btn)
     later_btn.pressed.connect(func(): _dismiss_modal())
     secondary_row.add_child(later_btn)

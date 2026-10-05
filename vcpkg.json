@@ -5,6 +5,10 @@
   "dependencies": [
     "godot-cpp",
     "libarchive",
+    {
+      "name": "llama-cpp",
+      "platform": "!emscripten"
+    },
     "spdlog",
     {
       "name": "vcpkg-cmake",

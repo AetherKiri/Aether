@@ -148,18 +148,42 @@ def ensure_gitcode_tag(owner: str, repo: str, tag: str, token: str, username: st
                 text=True,
             )
             subprocess.run(["git", "tag", tag], cwd=tmpdir, check=True)
-            print(f"Pushing bump commit and tag {tag} to GitCode...", flush=True)
-            subprocess.run(
-                ["git", "push", "origin", "main", tag],
-                cwd=tmpdir,
-                env=git_env,
-                check=True,
-                capture_output=True,
-                text=True,
-                timeout=60,
-            )
-            print(f"Successfully pushed bump commit and tag {tag} to GitCode.", flush=True)
-            return True
+
+            max_retries = 3
+            for attempt in range(1, max_retries + 1):
+                try:
+                    print(f"Pushing bump commit and tag {tag} to GitCode (attempt {attempt}/{max_retries})...", flush=True)
+                    subprocess.run(
+                        ["git", "push", "origin", "main", tag],
+                        cwd=tmpdir,
+                        env=git_env,
+                        check=True,
+                        capture_output=True,
+                        text=True,
+                        timeout=60,
+                    )
+                    print(f"Successfully pushed bump commit and tag {tag} to GitCode.", flush=True)
+                    return True
+                except subprocess.CalledProcessError as pe:
+                    if attempt < max_retries:
+                        err_detail = pe.stderr.strip() if pe.stderr else str(pe)
+                        print(
+                            f"Push attempt {attempt} failed ({err_detail}); pulling and rebasing...",
+                            file=sys.stderr,
+                            flush=True,
+                        )
+                        subprocess.run(
+                            ["git", "pull", "--rebase", "origin", "main"],
+                            cwd=tmpdir,
+                            env=git_env,
+                            check=True,
+                            capture_output=True,
+                            text=True,
+                            timeout=30,
+                        )
+                    else:
+                        raise
+            return False
         except subprocess.TimeoutExpired as e:
             print(f"Error: Git operation timed out while pushing tag to GitCode: {e}", file=sys.stderr, flush=True)
             return False
@@ -257,7 +281,9 @@ def main():
         print(f"Found existing release on GitCode for tag {tag}", flush=True)
     else:
         # Ensure tag exists on GitCode release mirror
-        ensure_gitcode_tag(args.owner, args.repo, tag, token)
+        if not ensure_gitcode_tag(args.owner, args.repo, tag, token):
+            print(f"Error: Failed to ensure tag {tag} on GitCode. Aborting release creation.", file=sys.stderr, flush=True)
+            return 1
 
         print(f"Creating release on GitCode for tag {tag}...", flush=True)
         try:

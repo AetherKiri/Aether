@@ -11,6 +11,10 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: gitcode-release-sync
+  cancel-in-progress: false
+
 jobs:
   sync:
     name: Sync Release to GitCode

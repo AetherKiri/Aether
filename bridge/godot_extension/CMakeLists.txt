@@ -96,6 +96,9 @@ endif()
 
 set(AETHERKIRI_GODOT_SOURCES
     src/aether_runtime_player.cpp
+    src/archive_import.cpp
+    src/sevenzip_import.cpp
+    src/libarchive_import.cpp
     src/frame_effect_host.cpp
     src/presentation/RuntimePresentationSprite.cpp
 )
@@ -174,6 +177,21 @@ if(ANDROID)
     endif()
 endif()
 
+if(NOT WEB AND NOT EMSCRIPTEN AND NOT TARGET aether_7zip_sdk)
+    find_package(LibArchive CONFIG REQUIRED)
+    target_link_libraries(aether_kiri_godot PRIVATE LibArchive::LibArchive)
+    target_compile_definitions(aether_kiri_godot PRIVATE AETHERKIRI_WITH_LIBARCHIVE=1)
+endif()
+
+if(TARGET aether_7zip_sdk)
+    # Format handlers register through static initializers.  Keep every
+    # registered handler in the final extension instead of allowing the
+    # linker to discard archive objects that have no direct symbol reference.
+    target_link_libraries(aether_kiri_godot PRIVATE
+        "$<LINK_LIBRARY:WHOLE_ARCHIVE,aether_7zip_sdk>")
+    target_compile_definitions(aether_kiri_godot PRIVATE AETHERKIRI_WITH_7ZIP_SDK=1)
+endif()
+
 target_compile_features(aether_kiri_godot PRIVATE cxx_std_17)
 if(MSVC)
     set_property(TARGET aether_kiri_godot PROPERTY
@@ -187,6 +205,7 @@ target_compile_definitions(aether_kiri_godot PRIVATE
 )
 target_include_directories(aether_kiri_godot PRIVATE
     $<$<COMPILE_LANGUAGE:CXX>:${CMAKE_SOURCE_DIR}/abi/include>
+    $<$<COMPILE_LANGUAGE:CXX>:${CMAKE_SOURCE_DIR}/packages/GalgameExtractor/include>
 )
 
 if(AETHERKIRI_INTERNAL_ENABLED AND
@@ -225,24 +244,31 @@ if(TARGET aether_minori_runtime)
         aether_minori_runtime)
     target_compile_definitions(aether_kiri_godot PRIVATE
         AETHERKIRI_WITH_MINORI=1)
-    if(IOS)
-        # Godot's iOS exporter links this static extension archive directly
-        # into the app and does not propagate CMake archive dependencies.
-        # Merge Minori's Rust archive so its provider registration symbol is
-        # present in the final Xcode link.
-        find_program(AETHERKIRI_LIBTOOL_EXECUTABLE libtool REQUIRED)
-        set(AETHERKIRI_MERGED_GODOT_ARCHIVE
-            "${CMAKE_CURRENT_BINARY_DIR}/libaether_kiri_godot_merged.a")
-        add_custom_command(TARGET aether_kiri_godot POST_BUILD
-            COMMAND "${AETHERKIRI_LIBTOOL_EXECUTABLE}" -static
-                -o "${AETHERKIRI_MERGED_GODOT_ARCHIVE}"
-                "$<TARGET_FILE:aether_kiri_godot>"
-                "$<TARGET_FILE:aether_minori_runtime>"
-            COMMAND "${CMAKE_COMMAND}" -E copy_if_different
-                "${AETHERKIRI_MERGED_GODOT_ARCHIVE}"
-                "$<TARGET_FILE:aether_kiri_godot>"
-            VERBATIM)
+endif()
+
+if(IOS AND (TARGET aether_minori_runtime OR TARGET aether_7zip_sdk))
+    # Godot's iOS exporter links this static extension archive directly into
+    # the app and does not propagate CMake archive dependencies. Merge static
+    # runtime archives into the extension so providers and 7-Zip handlers are
+    # carried into the exported app.
+    find_program(AETHERKIRI_LIBTOOL_EXECUTABLE libtool REQUIRED)
+    set(AETHERKIRI_MERGED_GODOT_ARCHIVE
+        "${CMAKE_CURRENT_BINARY_DIR}/libaether_kiri_godot_merged.a")
+    set(_aetherkiri_merge_archives "$<TARGET_FILE:aether_kiri_godot>")
+    if(TARGET aether_7zip_sdk)
+        list(APPEND _aetherkiri_merge_archives "$<TARGET_FILE:aether_7zip_sdk>")
     endif()
+    if(TARGET aether_minori_runtime)
+        list(APPEND _aetherkiri_merge_archives "$<TARGET_FILE:aether_minori_runtime>")
+    endif()
+    add_custom_command(TARGET aether_kiri_godot POST_BUILD
+        COMMAND "${AETHERKIRI_LIBTOOL_EXECUTABLE}" -static
+            -o "${AETHERKIRI_MERGED_GODOT_ARCHIVE}"
+            ${_aetherkiri_merge_archives}
+        COMMAND "${CMAKE_COMMAND}" -E copy_if_different
+            "${AETHERKIRI_MERGED_GODOT_ARCHIVE}"
+            "$<TARGET_FILE:aether_kiri_godot>"
+        VERBATIM)
 endif()
 if(TARGET aether_rfvp_runtime)
     target_link_libraries(aether_kiri_godot PRIVATE aether_rfvp_runtime)

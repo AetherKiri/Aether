@@ -132,7 +132,14 @@ option(AETHERKIRI_ENABLE_INTERNAL
 # submodule. A new engine integrates behind the engine_runtime_provider_v1_t ABI
 # (see abi/include/engine_runtime_provider.h) and does not require KiriKiri.
 option(AETHERKIRI_ENABLE_KRKR
-       "build the KiriKiri2 engine runtime (packages/AetherKrkr) and its bridge glue" OFF)
+        "build the KiriKiri2 engine runtime (packages/AetherKrkr) and its bridge glue" OFF)
+option(AETHERKIRI_ENABLE_HRD
+       "build and stage the GalgameExtractor HRD backend when Zig is available" ON)
+option(AETHERKIRI_ENABLE_7ZIP_SDK
+       "statically link the cross-platform 7-Zip SDK backend" ON)
+set(AETHERKIRI_GALGAME_EXTRACTOR_DIR
+    "${CMAKE_CURRENT_SOURCE_DIR}/packages/GalgameExtractor"
+    CACHE PATH "path to the GalgameExtractor checkout")
 set(AETHERKIRI_MOTIONPLAYER_BACKEND_API_VERSION 4)
 set(AETHERKIRI_LIVE2D_HOST_API_VERSION 1)
 set(AETHERKIRI_FRAME_EFFECT_HOST_API_VERSION 2)
@@ -314,8 +321,53 @@ endif()
 if(AETHERKIRI_ENABLE_RFVP)
     add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/bridge/rfvp_runtime)
 endif()
+if(AETHERKIRI_ENABLE_7ZIP_SDK AND BUILD_GODOT_EXTENSION AND
+   NOT (WEB OR EMSCRIPTEN))
+    find_package(Threads REQUIRED)
+    include(${CMAKE_CURRENT_SOURCE_DIR}/packages/GalgameExtractor/cmake/AetherSevenZipSdk.cmake)
+endif()
+
 if(BUILD_GODOT_EXTENSION)
     add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/bridge/godot_extension)
+endif()
+
+# GalgameExtractor's public C ABI is loaded by the Godot extension at runtime.
+# The native archive path statically links the cross-platform 7-Zip SDK. HRD is
+# still staged on Windows for its carrier and volume compatibility extensions.
+if(WIN32 AND BUILD_GODOT_EXTENSION AND AETHERKIRI_ENABLE_HRD)
+    find_program(AETHERKIRI_ZIG_EXECUTABLE zig
+        HINTS "${CMAKE_CURRENT_SOURCE_DIR}/.devtools/zig-x86_64-windows-0.16.0")
+    if(AETHERKIRI_ZIG_EXECUTABLE)
+        string(TOLOWER "${CMAKE_BUILD_TYPE}" AETHERKIRI_HRD_CONFIG_DIR)
+        if(NOT AETHERKIRI_HRD_CONFIG_DIR)
+            set(AETHERKIRI_HRD_CONFIG_DIR "$<LOWER_CASE:$<CONFIG>>")
+        endif()
+        set(AETHERKIRI_HRD_PREFIX "${CMAKE_CURRENT_BINARY_DIR}/hrd")
+        add_custom_target(aetherkiri_hrd ALL
+            COMMAND "${AETHERKIRI_ZIG_EXECUTABLE}" build
+                --cache-dir "${CMAKE_CURRENT_BINARY_DIR}/hrd-zig-cache"
+                --global-cache-dir "${CMAKE_CURRENT_BINARY_DIR}/hrd-zig-global-cache"
+                -p "${AETHERKIRI_HRD_PREFIX}"
+            WORKING_DIRECTORY "${AETHERKIRI_GALGAME_EXTRACTOR_DIR}"
+            BYPRODUCTS
+                "${AETHERKIRI_HRD_PREFIX}/bin/hrd.dll"
+                "${AETHERKIRI_HRD_PREFIX}/bin/7z.dll"
+            VERBATIM)
+        add_dependencies(aether_kiri_godot aetherkiri_hrd)
+        set(AETHERKIRI_HRD_STAGE_DIR
+            "${CMAKE_CURRENT_SOURCE_DIR}/apps/godot_app/bin/windows/${AETHERKIRI_HRD_CONFIG_DIR}")
+        add_custom_command(TARGET aether_kiri_godot POST_BUILD
+            COMMAND ${CMAKE_COMMAND} -E make_directory "${AETHERKIRI_HRD_STAGE_DIR}"
+            COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                "${AETHERKIRI_HRD_PREFIX}/bin/hrd.dll"
+                "${AETHERKIRI_HRD_STAGE_DIR}/hrd.dll"
+            COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                "${AETHERKIRI_HRD_PREFIX}/bin/7z.dll"
+                "${AETHERKIRI_HRD_STAGE_DIR}/7z.dll"
+            VERBATIM)
+    else()
+        message(STATUS "GalgameExtractor HRD: Zig not found; archive import will report backend unavailable")
+    endif()
 endif()
 
 if(ENABLE_TESTS AND NOT (IOS OR ANDROID OR WEB OR EMSCRIPTEN))

@@ -183,6 +183,7 @@ const UI_TEXT := {
         "search.no_results_help": "请尝试其他关键词或清空搜索框",
         "home.refresh": "刷新",
         "home.import": "导入",
+        "home.import_archive": "添加压缩包（文件）",
         "home.import_guide": "导入指南",
         "home.empty_help_ios": "使用「文件」App 将游戏文件夹复制到：\n我的 iPhone / iPad > Aether > Games\n然后点击「刷新」",
         "home.empty_help_web": "点击「导入」选择本地视觉小说目录",
@@ -427,6 +428,16 @@ const UI_TEXT := {
         "dialog.remove": "移除",
         "dialog.delete": "删除",
         "dialog.select_game_dir": "选择游戏目录",
+        "dialog.select_archive": "选择游戏压缩包",
+        "dialog.archive_password_title": "压缩包密码",
+        "dialog.archive_password_body": "如果压缩包需要密码，可以输入密码；也可以先选择密码本文件。",
+        "dialog.archive_password_placeholder": "密码（可留空）",
+        "dialog.archive_password_book": "选择密码本",
+        "dialog.archive_start": "开始解压",
+        "dialog.archive_confirm_title": "解压并添加游戏？",
+        "dialog.archive_confirm_body": "将文件解压到 Aether 的 Games 目录，并自动识别其中的视觉小说。",
+        "dialog.archive_progress": "正在解压…",
+        "dialog.archive_done": "解压完成，已添加到游戏库。",
         "dialog.select_local_game_dir": "选择本地游戏目录",
         "dialog.cancel": "取消",
         "dialog.exit_game_title": "退出游戏",
@@ -451,8 +462,12 @@ const UI_TEXT := {
         "message.cover_file_missing": "无法读取所选封面图片：%s",
         "message.game_exists": "游戏已存在：%s",
         "message.builtin_delete_failed": "删除内置 Demo 时发生错误：%s",
+        "message.archive_backend_unavailable": "当前平台缺少 GalgameExtractor 解压后端，请安装包含 HRD 后端的构建。",
+        "message.archive_failed": "解压失败：%s",
+        "message.archive_no_game": "压缩包已解压，但没有检测到可添加的游戏目录。",
         "alert.error_title": "Aether 错误",
         "alert.warning_title": "Aether 警告",
+        "alert.success_title": "Aether 完成",
         "alert.runtime_class_missing": "运行时扩展加载失败：AetherRuntimePlayer 不可用",
         "alert.runtime_create_failed": "运行时扩展加载失败：无法创建 AetherRuntimePlayer",
         "loading.title": "正在启动视觉小说...",
@@ -494,6 +509,7 @@ const UI_TEXT := {
         "search.no_results_help": "請嘗試其他關鍵字或清除搜尋欄",
         "home.refresh": "重新整理",
         "home.import": "匯入",
+        "home.import_archive": "加入壓縮檔（檔案）",
         "home.import_guide": "匯入指南",
         "home.empty_help_ios": "使用「檔案」App 將遊戲資料夾複製到：\n我的 iPhone / iPad > Aether > Games\n然後點選「重新整理」",
         "home.empty_help_web": "點選「匯入」選擇本機視覺小說目錄",
@@ -725,6 +741,16 @@ const UI_TEXT := {
         "dialog.remove": "移除",
         "dialog.delete": "刪除",
         "dialog.select_game_dir": "選擇遊戲目錄",
+        "dialog.select_archive": "選擇遊戲壓縮檔",
+        "dialog.archive_password_title": "壓縮檔密碼",
+        "dialog.archive_password_body": "如果壓縮檔需要密碼，可以輸入密碼；也可以先選擇密碼本檔案。",
+        "dialog.archive_password_placeholder": "密碼（可留空）",
+        "dialog.archive_password_book": "選擇密碼本",
+        "dialog.archive_start": "開始解壓",
+        "dialog.archive_confirm_title": "解壓並加入遊戲？",
+        "dialog.archive_confirm_body": "檔案會解壓到 Aether 的 Games 目錄，並自動識別其中的視覺小說。",
+        "dialog.archive_progress": "正在解壓…",
+        "dialog.archive_done": "解壓完成，已加入遊戲庫。",
         "dialog.select_local_game_dir": "選擇本機遊戲目錄",
         "dialog.cancel": "取消",
         "dialog.exit_game_title": "退出遊戲",
@@ -751,6 +777,7 @@ const UI_TEXT := {
         "message.builtin_delete_failed": "刪除內建 Demo 時發生錯誤：%s",
         "alert.error_title": "Aether 錯誤",
         "alert.warning_title": "Aether 警告",
+        "alert.success_title": "Aether 完成",
         "alert.runtime_class_missing": "執行時擴充載入失敗：AetherRuntimePlayer 不可用",
         "alert.runtime_create_failed": "執行時擴充載入失敗：無法建立 AetherRuntimePlayer",
         "loading.title": "正在啟動視覺小說...",
@@ -1093,6 +1120,7 @@ You can find it any time under Settings → QQ Group.",
         "message.builtin_delete_failed": "Could not completely delete the built-in demo: %s",
         "alert.error_title": "Aether Error",
         "alert.warning_title": "Aether Warning",
+        "alert.success_title": "Aether Complete",
         "alert.runtime_class_missing": "Runtime extension failed to load: AetherRuntimePlayer is unavailable",
         "alert.runtime_create_failed": "Runtime extension failed to load: could not create AetherRuntimePlayer",
         "loading.title": "Launching visual novel...",
@@ -1391,6 +1419,7 @@ You can find it any time under Settings → QQ Group.",
         "message.builtin_delete_failed": "内蔵デモを完全に削除できませんでした：%s",
         "alert.error_title": "Aether エラー",
         "alert.warning_title": "Aether 警告",
+        "alert.success_title": "Aether 完了",
         "alert.runtime_class_missing": "ランタイム拡張の読み込みに失敗しました：AetherRuntimePlayer は利用できません",
         "alert.runtime_create_failed": "ランタイム拡張の読み込みに失敗しました：AetherRuntimePlayer を作成できません",
         "loading.title": "ビジュアルノベルを起動中...",
@@ -1689,6 +1718,7 @@ You can find it any time under Settings → QQ Group.",
         "message.builtin_delete_failed": "내장 데모를 완전히 삭제하지 못했습니다: %s",
         "alert.error_title": "Aether 오류",
         "alert.warning_title": "Aether 경고",
+        "alert.success_title": "Aether 완료",
         "alert.runtime_class_missing": "런타임 확장 로드 실패: AetherRuntimePlayer를 사용할 수 없습니다",
         "alert.runtime_create_failed": "런타임 확장 로드 실패: AetherRuntimePlayer를 만들 수 없습니다",
         "loading.title": "비주얼 노벨 실행 중...",
@@ -1971,6 +2001,13 @@ var native_launch_file_picker_library_path := ""
 var native_cover_file_picker_pending := false
 var native_cover_file_picker_library_path := ""
 var native_translation_model_file_picker_pending := false
+var native_archive_file_picker_pending := false
+var native_archive_file_picker_output_path := ""
+var archive_import_job_id := ""
+var archive_import_output_path := ""
+var archive_import_input_path := ""
+var archive_import_password_db_path := ""
+var archive_import_poll_accum := 0.0
 var active_game_path := ""
 var active_game_started_msec := 0
 var active_runtime_kind := RUNTIME_KIRIKIRI
@@ -4853,7 +4890,7 @@ func _sync_home_action_labels() -> void:
     if is_instance_valid(home_primary_button):
         var primary_text := _t("video.refresh") if OS.get_name() == "iOS" else _t("video.import")
         if home_library_mode == "game":
-            primary_text = _t("home.refresh") if OS.get_name() == "iOS" else _t("home.import")
+            primary_text = _t("home.import")
         _set_pill_button_text(home_primary_button, primary_text)
         home_primary_button.tooltip_text = primary_text
         home_primary_button.accessibility_name = primary_text
@@ -4964,8 +5001,8 @@ func _build_home_view() -> void:
     home_actions.add_child(home_guide_button)
 
     home_primary_button = _pill_button(
-        _t("home.refresh") if OS.get_name() == "iOS" else _t("home.import"),
-        ICON_REFRESH if OS.get_name() == "iOS" else ICON_ADD
+        _t("home.import"),
+        ICON_ADD
     )
     home_primary_button.custom_minimum_size = Vector2(124, 46)
     home_primary_button.pressed.connect(_on_refresh_or_import)
@@ -7662,7 +7699,7 @@ func _refresh_language_texts() -> void:
         video_empty_help_label.text = _video_empty_help_text()
     _sync_home_empty_state_text()
     if is_instance_valid(empty_primary_button):
-        _set_pill_button_text(empty_primary_button, _t("home.refresh") if OS.get_name() == "iOS" else _t("home.import"))
+        _set_pill_button_text(empty_primary_button, _t("home.import"))
     _sync_home_action_labels()
     if is_instance_valid(loading_title_label):
         _set_translation_loading_notice(translation_loading_notice_active)
@@ -9063,6 +9100,33 @@ func _poll_native_translation_model_file_picker() -> void:
                 _t("alert.warning_title")
             )
 
+func _poll_native_archive_file_picker() -> void:
+    if not native_archive_file_picker_pending \
+            or player == null \
+            or not player.has_method("native_launch_file_picker_take_result_json"):
+        return
+    var result_json := String(player.native_launch_file_picker_take_result_json())
+    if result_json.is_empty():
+        return
+    native_archive_file_picker_pending = false
+    var output_root := native_archive_file_picker_output_path
+    native_archive_file_picker_output_path = ""
+    var parsed = JSON.parse_string(result_json)
+    if typeof(parsed) != TYPE_DICTIONARY:
+        _show_system_alert(result_json, _t("alert.warning_title"))
+        return
+    var result: Dictionary = parsed
+    match String(result.get("status", "error")):
+        "selected":
+            _begin_archive_import_confirmation(String(result.get("path", "")), output_root)
+        "cancelled":
+            pass
+        _:
+            _show_system_alert(
+                String(result.get("error", "System file picker failed")),
+                _t("alert.warning_title")
+            )
+
 func _reset_launch_file_for_selected() -> void:
     var library_path := String(selected_game.get("path", ""))
     if library_path.is_empty() or not _can_configure_launch_file(selected_game):
@@ -9154,7 +9218,7 @@ func _on_refresh_or_import() -> void:
             _open_video_import_dialog()
         return
     if OS.get_name() == "iOS":
-        _refresh_games()
+        _show_import_picker()
         return
     if OS.get_name() == "Web":
         _show_web_import_picker()
@@ -9166,17 +9230,166 @@ func _on_refresh_or_import() -> void:
     _show_import_picker()
 
 func _show_import_picker() -> void:
-    var dialog := _modal_dialog(Vector2(480, 240))
+    var dialog := _modal_dialog(Vector2(520, 300))
     var box := _modal_stack(dialog, _t("dialog.import_title"), ICON_ADD)
     var dir_button := _detail_action(ICON_LIBRARY, _t("dialog.select_game_dir"))
     dir_button.pressed.connect(func():
         _dismiss_modal(func(): _open_import_dialog())
     )
     box.add_child(dir_button)
+    if OS.get_name() == "Android" or OS.get_name() == "iOS" or OS.get_name() == "macOS" or OS.get_name() == "Windows" or OS.get_name() == "Linux":
+        var archive_button := _detail_action(ICON_ADD, _t("home.import_archive"))
+        archive_button.pressed.connect(func():
+            _dismiss_modal(func(): _open_archive_import_picker())
+        )
+        box.add_child(archive_button)
     var cancel := _secondary_dialog_button(_t("dialog.cancel"), Vector2(108, 44))
     cancel.size_flags_horizontal = Control.SIZE_SHRINK_END
     cancel.pressed.connect(_dismiss_modal)
     box.add_child(cancel)
+
+func _archive_import_root() -> String:
+    var root := ProjectSettings.globalize_path("user://Games")
+    DirAccess.make_dir_recursive_absolute(root)
+    return root
+
+func _open_archive_import_picker() -> void:
+    var output_root := _archive_import_root()
+    if OS.get_name() == "iOS" and player != null and player.has_method("native_archive_file_picker_open"):
+        if bool(player.native_archive_file_picker_open(_t("dialog.select_archive"), output_root)):
+            native_archive_file_picker_pending = true
+            native_archive_file_picker_output_path = output_root
+            return
+    var dialog := _create_file_dialog(
+        _t("dialog.select_archive"),
+        FileDialog.FILE_MODE_OPEN_FILE,
+        PackedStringArray(["*.zip,*.rar,*.7z,*.001,*.part1.rar,*.z01,*.gz,*.bz2,*.xz,*.tar,*.cab;Archive or volume"])
+    )
+    dialog.file_selected.connect(func(path: String):
+        _begin_archive_import_confirmation(path, output_root)
+    )
+    add_child(dialog)
+    dialog.popup_centered(Vector2i(900, 640))
+
+func _begin_archive_import_confirmation(path: String, output_root: String) -> void:
+    if path.is_empty() or not FileAccess.file_exists(path):
+        _show_system_alert(_t("message.path_missing"), _t("alert.warning_title"))
+        return
+    var dialog := _modal_dialog(Vector2(560, 420))
+    var box := _modal_stack(dialog, _t("dialog.archive_confirm_title"), ICON_ADD)
+    box.add_child(_dialog_body_label(_t("dialog.archive_confirm_body")))
+    var password := LineEdit.new()
+    password.placeholder_text = _t("dialog.archive_password_placeholder")
+    password.secret = true
+    password.custom_minimum_size = Vector2(0, 48)
+    ui_widgets.line_edit(password)
+    box.add_child(password)
+    var book_button := _secondary_dialog_button(_t("dialog.archive_password_book"), Vector2(210, 44))
+    book_button.pressed.connect(func():
+        _show_archive_password_book_picker(func(book_path: String):
+            archive_import_password_db_path = book_path
+            book_button.text = book_path.get_file()
+        )
+    )
+    box.add_child(book_button)
+    var buttons := _dialog_button_row()
+    box.add_child(buttons)
+    var cancel := _secondary_dialog_button(_t("dialog.cancel"), Vector2(108, 44))
+    cancel.pressed.connect(_dismiss_modal)
+    buttons.add_child(cancel)
+    var start := _pill_button(_t("dialog.archive_start"))
+    start.custom_minimum_size = Vector2(140, 46)
+    start.pressed.connect(func():
+        var entered_password := password.text
+        _dismiss_modal(func():
+            _start_archive_import(path, output_root, archive_import_password_db_path, entered_password)
+        )
+    )
+    buttons.add_child(start)
+
+func _show_archive_password_book_picker(on_selected: Callable) -> void:
+    var dialog := _create_file_dialog(
+        _t("dialog.archive_password_book"),
+        FileDialog.FILE_MODE_OPEN_FILE,
+        PackedStringArray(["*.txt,*.nfo,*.md,*.ini;Password book or hint file"])
+    )
+    dialog.file_selected.connect(func(path: String):
+        if on_selected.is_valid(): on_selected.call(path)
+    )
+    add_child(dialog)
+    dialog.popup_centered(Vector2i(800, 560))
+
+func _start_archive_import(input_path: String, output_root: String, password_db: String, password: String) -> void:
+    archive_import_input_path = input_path
+    archive_import_output_path = output_root.path_join(".aether-import-%s" % Time.get_ticks_msec())
+    archive_import_password_db_path = password_db
+    if player == null or not player.has_method("archive_import_start"):
+        _show_system_alert(_t("message.archive_backend_unavailable"), _t("alert.warning_title"))
+        return
+    archive_import_job_id = String(player.archive_import_start(
+        input_path, archive_import_output_path, password_db, password
+    ))
+    _show_archive_progress()
+
+func _show_archive_progress() -> void:
+    var dialog := _modal_dialog(Vector2(480, 220))
+    var box := _modal_stack(dialog, _t("dialog.archive_progress"), ICON_ADD)
+    box.add_child(_dialog_body_label(_t("dialog.archive_progress")))
+    var spinner := ProgressBar.new()
+    spinner.show_percentage = false
+    spinner.custom_minimum_size = Vector2(0, 8)
+    spinner.indeterminate = true
+    box.add_child(spinner)
+
+func _poll_archive_import() -> void:
+    if archive_import_job_id.is_empty() or player == null or not player.has_method("archive_import_take_result"):
+        return
+    archive_import_poll_accum += get_process_delta_time()
+    if archive_import_poll_accum < 0.25:
+        return
+    archive_import_poll_accum = 0.0
+    var parsed = JSON.parse_string(String(player.archive_import_take_result(archive_import_job_id)))
+    if not parsed is Dictionary or String(parsed.get("status", "pending")) == "pending":
+        return
+    archive_import_job_id = ""
+    _dismiss_modal(func():
+        var status := String(parsed.get("status", "error"))
+        if status != "ok":
+            _show_system_alert(_t("message.archive_failed", [String(parsed.get("error", _t("message.unknown_error")))]), _t("alert.warning_title"))
+            return
+        var imported := _find_archive_game_root(archive_import_output_path)
+        if imported.is_empty():
+            _show_system_alert(_t("message.archive_no_game"), _t("alert.warning_title"))
+            return
+        _add_game_path(imported)
+        _show_system_alert(_t("dialog.archive_done"), _t("alert.success_title"))
+    )
+
+func _find_archive_game_root(root: String) -> String:
+    if not DirAccess.dir_exists_absolute(root):
+        return ""
+    var direct := GameMetadata.inspect(root)
+    var direct_signals: PackedStringArray = direct.get("signals", PackedStringArray())
+    var has_specific_signal := false
+    for signal_name in direct_signals:
+        if String(signal_name) != "kirikiri-xp3-or-default":
+            has_specific_signal = true
+            break
+    if has_specific_signal or not String(direct.get("launchFile", "")).is_empty():
+        return root
+    var dir := DirAccess.open(root)
+    if dir == null:
+        return ""
+    dir.list_dir_begin()
+    var entry := dir.get_next()
+    while not entry.is_empty():
+        if dir.current_is_dir() and not entry.begins_with("."):
+            var child := _find_archive_game_root(root.path_join(entry))
+            if not child.is_empty():
+                return child
+        entry = dir.get_next()
+    dir.list_dir_end()
+    return ""
 
 func _web_eval_string(source: String) -> String:
     if OS.get_name() != "Web":
@@ -13510,6 +13723,8 @@ func _process(delta: float) -> void:
     _poll_native_launch_file_picker()
     _poll_native_cover_file_picker()
     _poll_native_translation_model_file_picker()
+    _poll_native_archive_file_picker()
+    _poll_archive_import()
     _fit_full_rects()
     _follow_nav_pills()
     _process_backdrop(delta)

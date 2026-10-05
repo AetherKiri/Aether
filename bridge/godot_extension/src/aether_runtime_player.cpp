@@ -9,6 +9,7 @@
 #include "RuntimeTickPacer.h"
 #include "presentation/RuntimePresentationSprite.h"
 #include "frame_effect_host.h"
+#include "archive_import.h"
 #if defined(AETHERKIRI_WITH_ONSCRIPTER)
 #include "onscripter_runtime.h"
 #endif
@@ -117,7 +118,9 @@ int32_t aether_native_cover_file_picker_present(
     const char *title, const char *initial_directory,
     const char *destination_directory);
 int32_t aether_native_translation_model_file_picker_present(
-    const char *title, const char *initial_directory);
+     const char *title, const char *initial_directory);
+int32_t aether_native_archive_file_picker_present(
+    const char *title, const char *destination_directory);
 char *aether_native_translation_model_restore_path(
     const char *fallback_path);
 char *aether_native_launch_file_picker_copy_result_json();
@@ -11458,6 +11461,31 @@ void main() {
 #endif
     }
 
+    bool native_archive_file_picker_open(
+            const String &title, const String &destination_directory) const {
+#if defined(__APPLE__)
+        const CharString title_utf8 = title.utf8();
+        const CharString destination_utf8 = destination_directory.utf8();
+        return aether_native_archive_file_picker_present(
+                   title_utf8.get_data(), destination_utf8.get_data()) != 0;
+#else
+        (void)title;
+        (void)destination_directory;
+        return false;
+#endif
+    }
+
+    String archive_import_start(const String &input_path,
+                                const String &output_path,
+                                const String &password_db,
+                                const String &password) const {
+        return ArchiveImportStart(input_path, output_path, password_db, password);
+    }
+
+    String archive_import_take_result(const String &job_id) const {
+        return ArchiveImportTakeResult(job_id);
+    }
+
     int64_t probe_runtime(const String &runtime_id,
                           const String &game_root_path) const {
         const CharString runtime_utf8 = runtime_id.utf8();
@@ -11623,11 +11651,22 @@ protected:
                      "initial_directory"),
             &AetherRuntimePlayer::native_translation_model_file_picker_open);
         ClassDB::bind_method(
+            D_METHOD("native_archive_file_picker_open", "title",
+                     "destination_directory"),
+            &AetherRuntimePlayer::native_archive_file_picker_open);
+        ClassDB::bind_method(
             D_METHOD("native_translation_model_restore_path", "fallback_path"),
             &AetherRuntimePlayer::native_translation_model_restore_path);
         ClassDB::bind_method(
             D_METHOD("native_launch_file_picker_take_result_json"),
             &AetherRuntimePlayer::native_launch_file_picker_take_result_json);
+        ClassDB::bind_method(
+            D_METHOD("archive_import_start", "input_path", "output_path",
+                     "password_db", "password"),
+            &AetherRuntimePlayer::archive_import_start);
+        ClassDB::bind_method(
+            D_METHOD("archive_import_take_result", "job_id"),
+            &AetherRuntimePlayer::archive_import_take_result);
         ClassDB::bind_method(D_METHOD("probe_runtime", "runtime_id", "game_root_path"),
                              &AetherRuntimePlayer::probe_runtime);
         ADD_SIGNAL(MethodInfo(

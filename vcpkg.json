@@ -4,6 +4,7 @@
   "version-string": "1.5.0",
   "dependencies": [
     "godot-cpp",
+    "libarchive",
     "spdlog",
     {
       "name": "vcpkg-cmake",

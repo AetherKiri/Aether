@@ -8,7 +8,9 @@ import argparse
 import json
 import mimetypes
 import os
+import subprocess
 import sys
+import tempfile
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -103,8 +105,6 @@ def ensure_gitcode_tag(owner: str, repo: str, tag: str, token: str, username: st
         return True
 
     print(f"Tag {tag} not found on GitCode. Pushing bump version commit and tag {tag} to GitCode...")
-    import subprocess
-    import tempfile
 
     gitcode_url = f"https://gitcode.com/{owner}/{repo}.git"
 

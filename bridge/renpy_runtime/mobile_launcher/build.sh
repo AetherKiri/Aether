@@ -473,7 +473,7 @@ check_symbols() {
     fi
     local symbol
     for symbol in "${required_symbols[@]}"; do
-        if ! awk '{print $NF}' "$symbols" | grep -Fxq "$symbol"; then
+        if ! awk '{print $NF}' "$symbols" | sed 's/^_//' | grep -Fxq "$symbol"; then
             echo "artifact lacks required lifecycle export $symbol: $artifact" >&2
             rm -f "$symbols"
             exit 1

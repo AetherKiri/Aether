@@ -469,6 +469,13 @@ ENGINE_API_EXPORT engine_result_t engine_media_seek(
 ENGINE_API_EXPORT engine_result_t engine_media_set_rate(
     engine_media_handle_t media, double playback_rate);
 
+/*
+ * Sets the media audio volume as a linear 0.0..1.0 multiplier.
+ * Out-of-range values are rejected with INVALID_ARGUMENT.
+ */
+ENGINE_API_EXPORT engine_result_t engine_media_set_volume(
+    engine_media_handle_t media, double volume);
+
 ENGINE_API_EXPORT engine_result_t engine_media_get_state(
     engine_media_handle_t media, engine_media_state_t* out_state);
 

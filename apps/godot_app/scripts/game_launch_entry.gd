@@ -5,6 +5,7 @@ const SUPPORTED_EXTENSIONS := ["exe", "xp3", "hcb"]
 const DIRECTORY_RUNTIME_KINDS := [
     "artemis",
     "catsystem2",
+    "luca",
     "minori",
     "onscripter",
     "siglus",

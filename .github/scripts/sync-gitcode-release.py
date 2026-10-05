@@ -180,18 +180,16 @@ def upload_asset(owner: str, repo: str, tag: str, token: str, file_path: str):
 
     # Step 2: PUT binary stream to OBS storage
     print(f"Uploading {filename} to GitCode OBS storage...")
-    with open(file_path, "rb") as f:
-        file_bytes = f.read()
-
     put_headers = dict(custom_headers)
-    put_headers["Content-Length"] = str(len(file_bytes))
+    put_headers["Content-Length"] = str(file_size)
 
-    req_put = urllib.request.Request(obs_url, data=file_bytes, headers=put_headers, method="PUT")
-    with urllib.request.urlopen(req_put) as resp_put:
-        status = resp_put.status
-        resp_text = resp_put.read().decode("utf-8", errors="replace")
-        if status not in (200, 204):
-            raise RuntimeError(f"OBS upload failed with HTTP {status}: {resp_text}")
+    with open(file_path, "rb") as f:
+        req_put = urllib.request.Request(obs_url, data=f, headers=put_headers, method="PUT")
+        with urllib.request.urlopen(req_put) as resp_put:
+            status = resp_put.status
+            resp_text = resp_put.read().decode("utf-8", errors="replace")
+            if status not in (200, 204):
+                raise RuntimeError(f"OBS upload failed with HTTP {status}: {resp_text}")
 
     print(f"Successfully uploaded {filename} to GitCode.")
     return True

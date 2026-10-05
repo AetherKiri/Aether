@@ -400,57 +400,112 @@ print_plan
 }
 
 required_symbols=(
-    renpy_mobile_init renpy_mobile_tick renpy_mobile_frame renpy_mobile_input
-    renpy_mobile_pause renpy_mobile_resume renpy_mobile_shutdown
+    renpy_mobile_init
+    renpy_mobile_tick
+    renpy_mobile_frame
+    renpy_mobile_input
+    renpy_mobile_pause
+    renpy_mobile_resume
+    renpy_mobile_shutdown
 )
+
+nm_symbols() {
+    local artifact="$1" kind="$2"
+    case "$kind" in
+        android)
+            nm -D --defined-only "$artifact"
+            ;;
+        ios)
+            if command -v xcrun >/dev/null 2>&1; then
+                xcrun nm -gU "$artifact"
+            else
+                nm -g "$artifact"
+            fi
+            ;;
+        *) echo "unknown lifecycle artifact kind: $kind" >&2; return 2 ;;
+    esac
+}
+
 check_symbols() {
-    local artifact="$1"
+    local artifact="$1" kind="$2" expected_machine="${3:-}"
     [[ -f "$artifact" ]] || { echo "artifact not found: $artifact" >&2; exit 1; }
     if strings "$artifact" | grep -Fq 'AETHERKIRI_RENPY_LIFECYCLE_STUB'; then
         echo "refusing contract-only lifecycle stub as runtime artifact: $artifact" >&2
         exit 1
     fi
+
     local format
     format="$(file -b "$artifact" 2>/dev/null || true)"
-    for symbol in "${required_symbols[@]}"; do
-        if [[ "$format" == *ELF* ]] && command -v nm >/dev/null 2>&1; then
-            if ! nm -D --defined-only "$artifact" 2>/dev/null | awk '{print $3}' | grep -Fxq "$symbol"; then
-                echo "artifact lacks required lifecycle export $symbol: $artifact" >&2
+    case "$kind" in
+        android)
+            [[ "$format" == *ELF* && "$format" == *shared\ object* ]] || {
+                echo "Android lifecycle artifact is not an ELF shared object: $artifact ($format)" >&2
                 exit 1
+            }
+            if [[ -n "$expected_machine" ]]; then
+                command -v readelf >/dev/null 2>&1 || {
+                    echo "readelf is required to validate Android ABI: $artifact" >&2
+                    exit 1
+                }
+                local machine
+                machine="$(readelf -h "$artifact" | sed -n 's/^ *Machine: *//p')"
+                [[ "$machine" == "$expected_machine" ]] || {
+                    echo "Android lifecycle artifact ABI mismatch: expected $expected_machine, got $machine" >&2
+                    exit 1
+                }
             fi
-        elif ! strings "$artifact" | grep -Fqx "$symbol"; then
-            # Linux nm cannot inspect the Mach-O universal archives emitted by
-            # the iOS hook; strings is the portable fallback for those files.
+            ;;
+        ios)
+            [[ "$format" == *archive* || "$format" == *Mach-O* ]] || {
+                echo "iOS lifecycle artifact is not a static archive: $artifact ($format)" >&2
+                exit 1
+            }
+            ;;
+        *) echo "unknown lifecycle artifact kind: $kind" >&2; exit 2 ;;
+    esac
+
+    local symbols
+    symbols="$(mktemp)"
+    if ! nm_symbols "$artifact" "$kind" >"$symbols" 2>/dev/null; then
+        echo "could not inspect lifecycle symbols in $artifact; install the native nm/xcrun toolchain" >&2
+        rm -f "$symbols"
+        exit 1
+    fi
+    local symbol
+    for symbol in "${required_symbols[@]}"; do
+        if ! awk '{print $NF}' "$symbols" | grep -Fxq "$symbol"; then
             echo "artifact lacks required lifecycle export $symbol: $artifact" >&2
+            rm -f "$symbols"
             exit 1
         fi
     done
+    rm -f "$symbols"
 }
 
 install_one() {
-    local source="$1" destination="$2"
-    check_symbols "$source"
+    local source="$1" destination="$2" kind="$3" expected_machine="${4:-}"
+    check_symbols "$source" "$kind" "$expected_machine"
     mkdir -p "$(dirname "$destination")"
     install -m 0755 "$source" "$destination"
     echo "installed host lifecycle artifact: $destination"
 }
 
 # Each Android ABI is explicit so an arm64 binary cannot silently be copied
-# into an armeabi-v7a or x86_64 slot.
+# into an armv7/x86_64 slot. The expected machine is checked from ELF headers.
 if [[ -n "$android_so_arm64" ]]; then
-    install_one "$android_so_arm64" "$stage/rapt/prototype/renpyandroid/src/main/jniLibs/arm64-v8a/librenpython.so"
+    install_one "$android_so_arm64" "$stage/rapt/prototype/renpyandroid/src/main/jniLibs/arm64-v8a/librenpython.so" android "AArch64"
 fi
 if [[ -n "$android_so_armv7" ]]; then
-    install_one "$android_so_armv7" "$stage/rapt/prototype/renpyandroid/src/main/jniLibs/armeabi-v7a/librenpython.so"
+    install_one "$android_so_armv7" "$stage/rapt/prototype/renpyandroid/src/main/jniLibs/armeabi-v7a/librenpython.so" android "ARM"
 fi
 if [[ -n "$android_so_x86_64" ]]; then
-    install_one "$android_so_x86_64" "$stage/rapt/prototype/renpyandroid/src/main/jniLibs/x86_64/librenpython.so"
+    install_one "$android_so_x86_64" "$stage/rapt/prototype/renpyandroid/src/main/jniLibs/x86_64/librenpython.so" android "Advanced Micro Devices X86-64"
 fi
 if [[ -n "$ios_release_a" ]]; then
-    install_one "$ios_release_a" "$stage/renios/prototype/prebuilt/release/librenpython.a"
+    install_one "$ios_release_a" "$stage/renios/prototype/prebuilt/release/librenpython.a" ios
 fi
 if [[ -n "$ios_debug_a" ]]; then
-    install_one "$ios_debug_a" "$stage/renios/prototype/prebuilt/debug/librenpython.a"
+    install_one "$ios_debug_a" "$stage/renios/prototype/prebuilt/debug/librenpython.a" ios
 fi
 
 echo "Artifacts installed, but playable mobile support is not asserted by this scaffold"

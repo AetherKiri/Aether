@@ -61,6 +61,8 @@ static func compare_versions(v1: String, v2: String) -> int:
 ## Returns true if currently running within an Apple Mac App Store build.
 ## Mac App Store applications have an embedded receipt file at Contents/_MASReceipt/receipt.
 static func is_mac_app_store() -> bool:
+    if OS.get_environment("AETHERKIRI_SIMULATE_APP_STORE") == "1":
+        return true
     if OS.get_name() != "macOS":
         return false
     var exe_path := OS.get_executable_path()

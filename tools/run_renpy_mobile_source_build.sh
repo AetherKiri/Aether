@@ -122,8 +122,8 @@ if [[ ${AETHERKIRI_RENPY_LIFECYCLE_FORK:-0} != "1" ]]; then
     echo "  provide an audited fork exporting renpy_mobile_init/tick/frame/input/pause/resume/shutdown" >&2
     exit 1
 fi
-for lifecycle_source in \\
-    "$renpy_build/runtime/librenpython_android.c" \\
+for lifecycle_source in \
+    "$renpy_build/runtime/librenpython_android.c" \
     "$renpy_build/runtime/librenpython.c"; do
     grep -Fq 'renpy_mobile_init' "$lifecycle_source" || {
         echo "lifecycle fork source is missing renpy_mobile_init: $lifecycle_source" >&2

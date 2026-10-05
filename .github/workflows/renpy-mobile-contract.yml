@@ -53,6 +53,23 @@ jobs:
           bash tools/test_renpy_mobile_source_build_plan.sh
           bash tools/run_renpy_mobile_source_build.sh --mode auto
 
+      - name: Check cooperative patch against current Ren'Py source
+        uses: actions/checkout@v6
+        with:
+          repository: renpy/renpy
+          ref: master
+          path: _renpy-source
+          fetch-depth: 1
+          sparse-checkout: |
+            renpy/main.py
+            renpy/execution.py
+            renpy/display/core.py
+      - name: Validate cooperative patch applicability
+        run: |
+          set -euo pipefail
+          bash bridge/renpy_runtime/mobile_launcher/build.sh \\
+            --check-python-patch --renpy-src _renpy-source
+
       - name: Assert staged archives remain non-playable
         run: |
           set -euo pipefail

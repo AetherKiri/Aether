@@ -354,3 +354,32 @@ TEST_CASE("Luca title screen boots the engine boot order") {
     }
     CHECK(closed);
 }
+
+TEST_CASE("Luca save-slot load option validates and applies") {
+    aetherkiri::luca::RegisterRuntimeProvider();
+    Instance game;
+    REQUIRE(game.open(FixtureRoot()) == ENGINE_RESULT_OK);
+
+    engine_option_t option{};
+    option.key_utf8 = "luca.load.slot";
+
+    // Range / format validation (engine slot space: 1..=300).
+    option.value_utf8 = "0";
+    CHECK(provider->set_option(game.value, &option) ==
+          ENGINE_RESULT_INVALID_ARGUMENT);
+    option.value_utf8 = "301";
+    CHECK(provider->set_option(game.value, &option) ==
+          ENGINE_RESULT_INVALID_ARGUMENT);
+    option.value_utf8 = "not-a-number";
+    CHECK(provider->set_option(game.value, &option) ==
+          ENGINE_RESULT_INVALID_ARGUMENT);
+
+    // The smoke fixture has no savedata: a valid slot number reports an
+    // IO error with the empty-slot detail, not a crash.
+    option.value_utf8 = "1";
+    const engine_result_t empty = provider->set_option(game.value, &option);
+    CHECK(empty == ENGINE_RESULT_IO_ERROR);
+    const char *error = provider->get_last_error(game.value);
+    REQUIRE(error != nullptr);
+    CHECK(std::string(error).find("luca_ak_load_slot") != std::string::npos);
+}

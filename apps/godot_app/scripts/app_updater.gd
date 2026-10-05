@@ -51,10 +51,49 @@ static func compare_versions(v1: String, v2: String) -> int:
     elif not pre1.is_empty() and pre2.is_empty():
         return -1
     elif not pre1.is_empty() and not pre2.is_empty():
-        if pre1 > pre2:
-            return 1
-        elif pre1 < pre2:
+        return _compare_prereleases(pre1, pre2)
+
+    return 0
+
+static func _compare_prereleases(pre1: String, pre2: String) -> int:
+    if pre1 == pre2:
+        return 0
+    var parts1 := pre1.split(".")
+    var parts2 := pre2.split(".")
+    var max_len := maxi(parts1.size(), parts2.size())
+
+    for i in range(max_len):
+        if i >= parts1.size():
+            # Shorter prerelease has lower precedence
             return -1
+        if i >= parts2.size():
+            return 1
+
+        var p1 := parts1[i]
+        var p2 := parts2[i]
+        if p1 == p2:
+            continue
+
+        var is_p1_num := p1.is_valid_int()
+        var is_p2_num := p2.is_valid_int()
+
+        if is_p1_num and is_p2_num:
+            var n1 := p1.to_int()
+            var n2 := p2.to_int()
+            if n1 > n2:
+                return 1
+            elif n1 < n2:
+                return -1
+        elif is_p1_num and not is_p2_num:
+            # Numeric identifiers have lower precedence than non-numeric
+            return -1
+        elif not is_p1_num and is_p2_num:
+            return 1
+        else:
+            if p1 > p2:
+                return 1
+            elif p1 < p2:
+                return -1
 
     return 0
 
@@ -173,8 +212,8 @@ static func _format_inline_markdown(text: String) -> String:
 
     # Mentions: @username -> [b]@username[/b]
     var user_regex := RegEx.new()
-    user_regex.compile("(?<=^|\\s)@([a-zA-Z0-9_-]+)")
-    res = user_regex.sub(res, "[b]@$1[/b]", true)
+    user_regex.compile("(^|\\s)@([a-zA-Z0-9_-]+)")
+    res = user_regex.sub(res, "$1[b]@$2[/b]", true)
 
     return res
 
@@ -282,27 +321,38 @@ static func _check_gitcode_first(
                         target_release = data
                         gitcode_success = true
 
+        var gitcode_has_update := false
         if gitcode_success:
+            var tag_name: String = str(target_release.get("tag_name", "")).strip_edges()
+            var latest_ver := tag_name.trim_prefix("v").trim_prefix("V")
+            if compare_versions(latest_ver, current_version) > 0:
+                gitcode_has_update = true
+
+        if gitcode_has_update:
             _finish_with_release_data(target_release, current_version, "gitcode", callback)
         else:
-            # GitCode failed, empty or unreachable; fall back to GitHub API
-            _check_github_fallback(tree_node, current_version, include_prerelease, callback)
+            # GitCode has no update, or is empty/stale/unreachable; try GitHub to see if a newer version is available
+            _check_github_fallback(tree_node, current_version, include_prerelease, callback, target_release if gitcode_success else {})
     )
 
     var headers := PackedStringArray(["User-Agent: AetherKiri-Updater"])
     var err := req.request(GITCODE_RELEASES_URL, headers)
     if err != OK:
         req.queue_free()
-        _check_github_fallback(tree_node, current_version, include_prerelease, callback)
+        _check_github_fallback(tree_node, current_version, include_prerelease, callback, {})
 
 static func _check_github_fallback(
     node: Node,
     current_version: String,
     include_prerelease: bool,
-    callback: Callable
+    callback: Callable,
+    fallback_release: Dictionary = {}
 ) -> void:
     if not is_instance_valid(node):
-        callback.call(CheckStatus.NETWORK_ERROR, {})
+        if not fallback_release.is_empty():
+            _finish_with_release_data(fallback_release, current_version, "gitcode", callback)
+        else:
+            callback.call(CheckStatus.NETWORK_ERROR, {})
         return
 
     var req := HTTPRequest.new()
@@ -312,12 +362,18 @@ static func _check_github_fallback(
     req.request_completed.connect(func(result: int, response_code: int, _headers: PackedStringArray, body: PackedByteArray):
         req.queue_free()
         if result != HTTPRequest.RESULT_SUCCESS or response_code != 200:
-            callback.call(CheckStatus.NETWORK_ERROR, {"error_code": response_code})
+            if not fallback_release.is_empty():
+                _finish_with_release_data(fallback_release, current_version, "gitcode", callback)
+            else:
+                callback.call(CheckStatus.NETWORK_ERROR, {"error_code": response_code})
             return
 
         var json = JSON.new()
         if json.parse(body.get_string_from_utf8()) != OK:
-            callback.call(CheckStatus.PARSE_ERROR, {})
+            if not fallback_release.is_empty():
+                _finish_with_release_data(fallback_release, current_version, "gitcode", callback)
+            else:
+                callback.call(CheckStatus.PARSE_ERROR, {})
             return
 
         var data = json.get_data()
@@ -325,10 +381,15 @@ static func _check_github_fallback(
         if data is Array and not data.is_empty():
             target_release = _pick_release(data, include_prerelease)
         elif data is Dictionary and data.has("tag_name"):
-            target_release = data
+            var is_pre := bool(data.get("prerelease", false))
+            if include_prerelease or not is_pre:
+                target_release = data
 
         if target_release.is_empty():
-            callback.call(CheckStatus.SUCCESS_NO_UPDATE, {})
+            if not fallback_release.is_empty():
+                _finish_with_release_data(fallback_release, current_version, "gitcode", callback)
+            else:
+                callback.call(CheckStatus.SUCCESS_NO_UPDATE, {})
             return
 
         _finish_with_release_data(target_release, current_version, "github", callback)

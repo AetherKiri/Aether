@@ -80,7 +80,7 @@ def is_tag_present(owner: str, repo: str, tag: str, token: str):
 
 
 def ensure_gitcode_tag(owner: str, repo: str, tag: str, token: str, username: str = "yorkyang2333"):
-    """Ensure tag exists on GitCode; if missing, push an empty release tag directly to GitCode."""
+    """Ensure tag exists on GitCode; if missing, push the release tag directly to GitCode."""
     if is_tag_present(owner, repo, tag, token):
         print(f"Tag {tag} is already present on GitCode.")
         return True
@@ -91,16 +91,27 @@ def ensure_gitcode_tag(owner: str, repo: str, tag: str, token: str, username: st
 
     gitcode_url = f"https://{username}:{token}@gitcode.com/{owner}/{repo}.git"
 
+    # Attempt 1: Try pushing tag directly from current repository if tag exists locally
+    try:
+        tag_check = subprocess.run(["git", "rev-parse", "-q", "--verify", f"refs/tags/{tag}"], capture_output=True, text=True)
+        if tag_check.returncode == 0:
+            print(f"Found local tag {tag}. Pushing tag directly to GitCode...")
+            push_res = subprocess.run(["git", "push", gitcode_url, f"refs/tags/{tag}:refs/tags/{tag}"], capture_output=True, text=True)
+            if push_res.returncode == 0:
+                print(f"Successfully pushed tag {tag} to GitCode.")
+                return True
+            else:
+                print(f"Notice: Direct git push tag failed: {push_res.stderr.strip()}", file=sys.stderr)
+    except Exception as e:
+        print(f"Notice: Local tag check failed: {e}", file=sys.stderr)
+
+    # Attempt 2: Clone or fetch from GitHub to mirror the real commit/tag to GitCode
     with tempfile.TemporaryDirectory() as tmpdir:
         try:
-            # Clone shallow or init to create tag
-            subprocess.run(["git", "clone", "--depth", "1", gitcode_url, "."], cwd=tmpdir, check=True, capture_output=True)
-            subprocess.run(["git", "config", "user.name", username], cwd=tmpdir, check=True)
-            subprocess.run(["git", "config", "user.email", f"{username}@users.noreply.gitcode.com"], cwd=tmpdir, check=True)
-            subprocess.run(["git", "commit", "--allow-empty", "-m", f"Release {tag}"], cwd=tmpdir, check=True)
-            subprocess.run(["git", "tag", tag], cwd=tmpdir, check=True)
-            subprocess.run(["git", "push", gitcode_url, "main", tag], cwd=tmpdir, check=True, capture_output=True)
-            print(f"Successfully pushed tag {tag} to GitCode.")
+            github_url = f"https://github.com/{owner}/{repo}.git"
+            subprocess.run(["git", "clone", "--depth", "1", "--branch", tag, github_url, "."], cwd=tmpdir, check=True, capture_output=True)
+            subprocess.run(["git", "push", gitcode_url, f"refs/tags/{tag}:refs/tags/{tag}"], cwd=tmpdir, check=True, capture_output=True)
+            print(f"Successfully mirrored tag {tag} from GitHub to GitCode.")
             return True
         except Exception as e:
             print(f"Failed to push tag to GitCode: {e}", file=sys.stderr)

@@ -16,6 +16,10 @@ func _run() -> void:
     _assert(APP_UPDATER_SCRIPT.compare_versions("1.0.6-alpha.1", "1.0.6") == -1, "1.0.6-alpha.1 should be less than 1.0.6")
     _assert(APP_UPDATER_SCRIPT.compare_versions("1.0.6", "1.0.6-alpha.1") == 1, "1.0.6 should be greater than 1.0.6-alpha.1")
     _assert(APP_UPDATER_SCRIPT.compare_versions("1.0.6-alpha.2", "1.0.6-alpha.1") == 1, "alpha.2 should be greater than alpha.1")
+    _assert(APP_UPDATER_SCRIPT.compare_versions("1.0.6-alpha.10", "1.0.6-alpha.2") == 1, "alpha.10 should be greater than alpha.2")
+    _assert(APP_UPDATER_SCRIPT.compare_versions("1.0.6-alpha.2", "1.0.6-alpha.10") == -1, "alpha.2 should be less than alpha.10")
+    _assert(APP_UPDATER_SCRIPT.compare_versions("1.0.6-alpha.beta", "1.0.6-alpha.1") == 1, "non-numeric should have higher precedence than numeric")
+    _assert(APP_UPDATER_SCRIPT.compare_versions("1.0.6-beta", "1.0.6-alpha") == 1, "beta should be greater than alpha")
 
     # 2. Test release picking logic with prerelease filtering
     var mock_releases: Array = [

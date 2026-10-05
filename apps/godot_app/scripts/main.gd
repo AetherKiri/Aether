@@ -5349,7 +5349,7 @@ func _rebuild_settings_view() -> void:
         _add_settings_row(about_rows, _settings_action_row(_t("settings.ios_statement"), _t("settings.ios_statement_desc"), _t("settings.ios_statement_open"), _show_ios_additional_statement))
     var check_update_action_text := _t("settings.check_update_checking") if update_checking else _t("settings.check_update_action")
     _add_settings_row(about_rows, _settings_action_row(_t("settings.check_update"), _t("settings.check_update_desc"), check_update_action_text, func(): _check_app_update_manually()))
-    if not _apple_app_store_platform():
+    if not _is_apple_app_store_build():
         _add_settings_row(about_rows, _settings_toggle_row(_t("settings.include_prerelease"), _t("settings.include_prerelease_desc"), include_prerelease, "include_prerelease"))
     var version_row := _settings_value_row(_t("settings.version"), _application_version_text())
     _attach_secret_version_tap(version_row)

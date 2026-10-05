@@ -19,8 +19,13 @@ mac_x86_config="$($installer --platform darwin --arch x86_64 --print-config)"
 grep -Fx 'RENPY_ARCHIVE=renpy-8.5.3-sdk.tar.bz2' <<<"$mac_x86_config"
 grep -Fx 'RENPY_SHA256=eb0a9be7f0fb13632fe25ceade9a8bed5a1b4d6b6e83bd19eeeb29e1a1bb4a45' <<<"$mac_x86_config"
 
-if "$installer" --platform windows --arch x86_64 --print-config >/dev/null 2>&1; then
-    echo "installer accepted unsupported Windows platform" >&2
+windows_config="$($installer --platform windows --arch x86_64 --print-config)"
+grep -Fx 'RENPY_ARCHIVE=renpy-8.5.3-sdk.zip' <<<"$windows_config"
+grep -Fx 'RENPY_SHA256=ff57648f9c04f27e381c48af6d8e3ee3cdec296bed4d3831f47f09b0a71b505e' <<<"$windows_config"
+grep -Fx 'RENPY_URL=https://www.renpy.org/dl/8.5.3/renpy-8.5.3-sdk.zip' <<<"$windows_config"
+
+if "$installer" --platform windows --arch arm64 --print-config >/dev/null 2>&1; then
+    echo "installer accepted unsupported Windows architecture" >&2
     exit 1
 fi
 if "$installer" --platform linux --arch arm64 --print-config >/dev/null 2>&1; then

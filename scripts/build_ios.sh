@@ -489,10 +489,17 @@ patch_ios_export_project() {
     local export_build_type="$3"
     local flags
     flags='$(LD_CLASSIC_$(XCODE_VERSION_ACTUAL)) -Wl,-U,_aether_kiri_library_init'
-    flags+=" -Wl,-force_load,Aether/bin/ios/$export_build_type/$IOS_SDK_COMPAT_ARCHIVE"
+    if [[ -f "$export_root/Aether/bin/ios/$export_build_type/$IOS_SDK_COMPAT_ARCHIVE" ]]; then
+        flags+=" -Wl,-force_load,Aether/bin/ios/$export_build_type/$IOS_SDK_COMPAT_ARCHIVE"
+    fi
     local archive
     for archive in "${FORCE_LOAD_PLUGIN_ARCHIVES[@]}"; do
-        flags+=" -Wl,-force_load,Aether/bin/ios/$export_build_type/$archive"
+        # The public host can be built without the legacy KiriKiri runtime.
+        # Only force-load archives that were actually staged; otherwise an
+        # iOS export fails while linking stale library names from this list.
+        if [[ -f "$export_root/Aether/bin/ios/$export_build_type/$archive" ]]; then
+            flags+=" -Wl,-force_load,Aether/bin/ios/$export_build_type/$archive"
+        fi
     done
     flags+=' -liconv -framework Accelerate -framework AudioToolbox -framework AVFoundation -framework CoreAudio -framework CoreBluetooth -framework CoreHaptics -framework CoreMedia -framework CoreMotion -framework CoreVideo -framework GameController -framework VideoToolbox -framework CoreGraphics -framework QuartzCore -framework Metal -framework MetalKit -framework OpenGLES -framework Security -framework StoreKit -framework SystemConfiguration -framework MobileCoreServices'
 

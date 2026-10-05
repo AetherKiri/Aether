@@ -165,7 +165,7 @@ if(ANDROID)
     target_sources(aether_kiri_godot PRIVATE
         src/android_external_texture.cpp)
     target_link_libraries(aether_kiri_godot PRIVATE
-        android vulkan ${CMAKE_DL_LIBS})
+        android log vulkan ${CMAKE_DL_LIBS})
     if(TARGET aether_minori_runtime AND TARGET aether_siglus_runtime)
         # Minori and Siglus are independently-built Rust static libraries.
         # Each archive carries the Rust runtime objects it needs, so lld sees

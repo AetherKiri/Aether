@@ -1,0 +1,59 @@
+name: Sync Release to GitCode
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Release tag to sync (e.g. 1.0.7-alpha.1)'
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  sync:
+    name: Sync ${{ inputs.tag }} to GitCode
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Download release assets from GitHub
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p release-assets
+          gh release download "${{ inputs.tag }}" \
+            --dir release-assets \
+            --repo "$GITHUB_REPOSITORY" \
+            --clobber
+
+      - name: Sync release to GitCode
+        env:
+          GITCODE_TOKEN: ${{ secrets.GITCODE_TOKEN }}
+        run: |
+          set -euo pipefail
+
+          token="${GITCODE_TOKEN:-}"
+          if [[ -z "$token" ]]; then
+            echo "GITCODE_TOKEN secret is not set; skipping GitCode release sync."
+            exit 1
+          fi
+
+          tag="${{ inputs.tag }}"
+          assets=(release-assets/*)
+          sync_args=(
+            --owner "AetherKiri"
+            --repo "AetherKiri"
+            --tag "$tag"
+            --title "$tag"
+          )
+          if [[ "$tag" == *-* ]]; then
+            sync_args+=(--prerelease)
+          fi
+
+          python3 .github/scripts/sync-gitcode-release.py "${sync_args[@]}" "${assets[@]}"

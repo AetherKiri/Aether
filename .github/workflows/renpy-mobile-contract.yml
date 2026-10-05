@@ -13,6 +13,8 @@ on:
       - 'bridge/renpy_runtime/tests/mobile_*.cpp'
       - 'tools/test_renpy_mobile_launcher_*.sh'
       - 'tools/test_renpy_mobile_symbol_gate.sh'
+      - 'tools/run_renpy_mobile_source_build.sh'
+      - 'tools/test_renpy_mobile_source_build_plan.sh'
       - 'tools/test_stage_renpy_android_support.sh'
   workflow_dispatch:
 
@@ -48,6 +50,8 @@ jobs:
           bash tools/test_renpy_mobile_launcher_scaffold.sh
           bash tools/test_renpy_mobile_launcher_loader.sh
           bash tools/test_renpy_mobile_symbol_gate.sh
+          bash tools/test_renpy_mobile_source_build_plan.sh
+          bash tools/run_renpy_mobile_source_build.sh --mode auto
 
       - name: Assert staged archives remain non-playable
         run: |

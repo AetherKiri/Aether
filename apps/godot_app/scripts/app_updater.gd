@@ -264,7 +264,10 @@ static func _check_app_store(req: HTTPRequest, current_version: String, callback
             return
 
         var data = json.get_data()
-        if not (data is Dictionary) or not data.has("results") or data["results"].is_empty():
+        if not (data is Dictionary) or not data.has("results") or not (data["results"] is Array):
+            callback.call(CheckStatus.PARSE_ERROR, {})
+            return
+        if data["results"].is_empty():
             callback.call(CheckStatus.SUCCESS_NO_UPDATE, {})
             return
 

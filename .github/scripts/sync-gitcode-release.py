@@ -16,25 +16,35 @@ import urllib.request
 GITCODE_API_BASE = "https://api.gitcode.com/api/v5"
 
 
+def _sanitize_url(url: str) -> str:
+    """Strip token-bearing query parameters for safe logging."""
+    parsed = urllib.parse.urlsplit(url)
+    if not parsed.query:
+        return url
+    qs = urllib.parse.parse_qsl(parsed.query, keep_blank_values=True)
+    filtered = [(k, v) for k, v in qs if k.lower() not in ("access_token", "token", "private-token")]
+    clean_query = urllib.parse.urlencode(filtered)
+    return urllib.parse.urlunsplit((parsed.scheme, parsed.netloc, parsed.path, clean_query, parsed.fragment))
+
+
 def api_request(method: str, path: str, token: str, data: dict = None, headers: dict = None):
     url = f"{GITCODE_API_BASE}{path}"
     req_headers = {
         "User-Agent": "AetherKiri-Release-Sync",
         "private-token": token,
+        "Authorization": f"token {token}",
     }
     if headers:
         req_headers.update(headers)
 
-    query_params = {"access_token": token}
+    body = None
     if method == "GET" or (method == "DELETE" and data is None):
-        url += ("&" if "?" in url else "?") + urllib.parse.urlencode(query_params)
         body = None
     elif data is not None and "multipart/form-data" not in req_headers.get("Content-Type", ""):
         req_headers["Content-Type"] = "application/json;charset=UTF-8"
         payload = dict(data)
         body = json.dumps(payload).encode("utf-8")
     else:
-        url += ("&" if "?" in url else "?") + urllib.parse.urlencode(query_params)
         body = data
 
     req = urllib.request.Request(url, data=body, headers=req_headers, method=method)
@@ -49,7 +59,8 @@ def api_request(method: str, path: str, token: str, data: dict = None, headers: 
             return None
     except urllib.error.HTTPError as err:
         err_content = err.read().decode("utf-8", errors="replace")
-        print(f"HTTPError {err.code} for {method} {url}: {err_content}", file=sys.stderr)
+        safe_url = _sanitize_url(url)
+        print(f"HTTPError {err.code} for {method} {safe_url}: {err_content}", file=sys.stderr)
         raise
 
 

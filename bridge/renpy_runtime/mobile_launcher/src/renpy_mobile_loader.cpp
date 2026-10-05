@@ -16,6 +16,16 @@ int renpy_mobile_pause(void) __attribute__((weak_import));
 int renpy_mobile_resume(void) __attribute__((weak_import));
 void renpy_mobile_shutdown(void) __attribute__((weak_import));
 }
+/* Clang's weak_import is sufficient for SDK symbols, but these payload symbols
+ * are optional members of a static archive. Keep the undefined references weak
+ * even when no Renios archive is linked into the app. */
+#pragma weak renpy_mobile_init
+#pragma weak renpy_mobile_tick
+#pragma weak renpy_mobile_frame
+#pragma weak renpy_mobile_input
+#pragma weak renpy_mobile_pause
+#pragma weak renpy_mobile_resume
+#pragma weak renpy_mobile_shutdown
 #endif
 
 namespace aetherkiri::renpy::mobile {

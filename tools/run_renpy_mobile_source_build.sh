@@ -112,6 +112,26 @@ if [[ "$mode" == "check" || "$mode" == "auto" ]]; then
     exit 0
 fi
 
+# The upstream launcher still enters SDL_main/launcher_main -> Py_RunMain.
+# Refuse to spend hours rebuilding it unless the caller explicitly supplied a
+# lifecycle fork and its source exports the host ABI. A staged official archive
+# cannot become host-tick capable through packaging alone.
+if [[ ${AETHERKIRI_RENPY_LIFECYCLE_FORK:-0} != "1" ]]; then
+    echo "Ren'Py mobile source build requires AETHERKIRI_RENPY_LIFECYCLE_FORK=1" >&2
+    echo "  official renpy-build sources are blocking process launchers; no playable payload will be built" >&2
+    echo "  provide an audited fork exporting renpy_mobile_init/tick/frame/input/pause/resume/shutdown" >&2
+    exit 1
+fi
+for lifecycle_source in \\
+    "$renpy_build/runtime/librenpython_android.c" \\
+    "$renpy_build/runtime/librenpython.c"; do
+    grep -Fq 'renpy_mobile_init' "$lifecycle_source" || {
+        echo "lifecycle fork source is missing renpy_mobile_init: $lifecycle_source" >&2
+        echo "  refusing to build the official blocking launcher" >&2
+        exit 1
+    }
+done
+
 build_script="$renpy_build/build.sh"
 [[ -x "$build_script" ]] || { echo "renpy-build/build.sh is not executable: $build_script" >&2; exit 1; }
 

@@ -254,6 +254,10 @@ if(IOS)
         list(APPEND AETHERKIRI_IOS_ARCHIVES
             "$<TARGET_FILE:softpal_runtime>")
     endif()
+    if(TARGET sp_vm_core)
+        list(APPEND AETHERKIRI_IOS_ARCHIVES
+            "$<TARGET_FILE:sp_vm_core>")
+    endif()
     add_custom_command(TARGET aether_kiri_godot POST_BUILD
         COMMAND "${AETHERKIRI_LIBTOOL_EXECUTABLE}" -static
             -o "${AETHERKIRI_MERGED_GODOT_ARCHIVE}"

@@ -168,13 +168,12 @@ jobs:
         shell: bash
         env:
           GITCODE_TOKEN: ${{ secrets.GITCODE_TOKEN }}
-          GITEE_TOKEN: ${{ secrets.GITEE_TOKEN }}
         run: |
           set -euo pipefail
 
-          token="${GITCODE_TOKEN:-${GITEE_TOKEN:-}}"
+          token="${GITCODE_TOKEN:-}"
           if [[ -z "$token" ]]; then
-            echo "GITCODE_TOKEN (or GITEE_TOKEN) secret is not set; skipping GitCode release sync."
+            echo "GITCODE_TOKEN secret is not set; skipping GitCode release sync."
             exit 0
           fi
 

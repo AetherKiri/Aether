@@ -80,7 +80,7 @@ def is_tag_present(owner: str, repo: str, tag: str, token: str):
 
 
 def ensure_gitcode_tag(owner: str, repo: str, tag: str, token: str, username: str = "yorkyang2333"):
-    """Ensure tag exists on GitCode; if missing, push the release tag directly to GitCode."""
+    """Ensure tag exists on GitCode; if missing, push the release tag directly to GitCode without exposing token in URL."""
     if is_tag_present(owner, repo, tag, token):
         print(f"Tag {tag} is already present on GitCode.")
         return True
@@ -89,33 +89,56 @@ def ensure_gitcode_tag(owner: str, repo: str, tag: str, token: str, username: st
     import subprocess
     import tempfile
 
-    gitcode_url = f"https://{username}:{token}@gitcode.com/{owner}/{repo}.git"
+    gitcode_url = f"https://gitcode.com/{owner}/{repo}.git"
 
-    # Attempt 1: Try pushing tag directly from current repository if tag exists locally
+    # Use a short-lived GIT_ASKPASS helper script so the token is never exposed in process args or URLs
+    with tempfile.NamedTemporaryFile("w", delete=False) as askpass_file:
+        askpass_file.write(
+            "#!/bin/sh\n"
+            'case "$1" in\n'
+            f'  *Username*) echo "{username}" ;;\n'
+            f'  *Password*) echo "{token}" ;;\n'
+            f'  *) echo "{token}" ;;\n'
+            "esac\n"
+        )
+        askpass_path = askpass_file.name
+
+    os.chmod(askpass_path, 0o700)
+    git_env = os.environ.copy()
+    git_env["GIT_ASKPASS"] = askpass_path
+    git_env["GIT_TERMINAL_PROMPT"] = "0"
+
     try:
-        tag_check = subprocess.run(["git", "rev-parse", "-q", "--verify", f"refs/tags/{tag}"], capture_output=True, text=True)
-        if tag_check.returncode == 0:
-            print(f"Found local tag {tag}. Pushing tag directly to GitCode...")
-            push_res = subprocess.run(["git", "push", gitcode_url, f"refs/tags/{tag}:refs/tags/{tag}"], capture_output=True, text=True)
-            if push_res.returncode == 0:
-                print(f"Successfully pushed tag {tag} to GitCode.")
-                return True
-            else:
-                print(f"Notice: Direct git push tag failed: {push_res.stderr.strip()}", file=sys.stderr)
-    except Exception as e:
-        print(f"Notice: Local tag check failed: {e}", file=sys.stderr)
-
-    # Attempt 2: Clone or fetch from GitHub to mirror the real commit/tag to GitCode
-    with tempfile.TemporaryDirectory() as tmpdir:
+        # Attempt 1: Try pushing tag directly from current repository if tag exists locally
         try:
-            github_url = f"https://github.com/{owner}/{repo}.git"
-            subprocess.run(["git", "clone", "--depth", "1", "--branch", tag, github_url, "."], cwd=tmpdir, check=True, capture_output=True)
-            subprocess.run(["git", "push", gitcode_url, f"refs/tags/{tag}:refs/tags/{tag}"], cwd=tmpdir, check=True, capture_output=True)
-            print(f"Successfully mirrored tag {tag} from GitHub to GitCode.")
-            return True
+            tag_check = subprocess.run(["git", "rev-parse", "-q", "--verify", f"refs/tags/{tag}"], capture_output=True, text=True)
+            if tag_check.returncode == 0:
+                print(f"Found local tag {tag}. Pushing tag directly to GitCode...")
+                push_res = subprocess.run(["git", "push", gitcode_url, f"refs/tags/{tag}:refs/tags/{tag}"], env=git_env, capture_output=True, text=True)
+                if push_res.returncode == 0:
+                    print(f"Successfully pushed tag {tag} to GitCode.")
+                    return True
+                else:
+                    print(f"Notice: Direct git push tag failed: {push_res.stderr.strip()}", file=sys.stderr)
         except Exception as e:
-            print(f"Failed to push tag to GitCode: {e}", file=sys.stderr)
-            return False
+            print(f"Notice: Local tag check failed: {e}", file=sys.stderr)
+
+        # Attempt 2: Clone or fetch from GitHub to mirror the real commit/tag to GitCode
+        with tempfile.TemporaryDirectory() as tmpdir:
+            try:
+                github_url = f"https://github.com/{owner}/{repo}.git"
+                subprocess.run(["git", "clone", "--depth", "1", "--branch", tag, github_url, "."], cwd=tmpdir, check=True, capture_output=True)
+                subprocess.run(["git", "push", gitcode_url, f"refs/tags/{tag}:refs/tags/{tag}"], env=git_env, cwd=tmpdir, check=True, capture_output=True)
+                print(f"Successfully mirrored tag {tag} from GitHub to GitCode.")
+                return True
+            except Exception as e:
+                print(f"Failed to push tag to GitCode: {e}", file=sys.stderr)
+                return False
+    finally:
+        try:
+            os.remove(askpass_path)
+        except OSError:
+            pass
 
 
 def create_release(owner: str, repo: str, tag: str, token: str, name: str, body: str, prerelease: bool):
@@ -175,7 +198,7 @@ def main():
 
     args = parser.parse_args()
 
-    token = os.environ.get("GITCODE_TOKEN", "").strip() or os.environ.get("GITEE_TOKEN", "").strip()
+    token = os.environ.get("GITCODE_TOKEN", "").strip()
     if not token:
         print("Warning: GITCODE_TOKEN not set or empty. Skipping GitCode release sync.", file=sys.stderr)
         return 0

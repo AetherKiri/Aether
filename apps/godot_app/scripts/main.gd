@@ -8500,6 +8500,12 @@ func _check_app_update_silently() -> void:
                 var latest_ver: String = str(info.get("latest_version", ""))
                 if not skipped_update_version.is_empty() and AppUpdater.compare_versions(latest_ver, skipped_update_version) <= 0:
                     return
+                # If a modal dialog is currently showing (e.g. startup notice), wait until it is dismissed
+                if modal_layer != null and modal_layer.visible:
+                    while modal_layer != null and modal_layer.visible:
+                        await get_tree().create_timer(0.5).timeout
+                    if game_running:
+                        return
                 _show_app_update_dialog(info)
     )
 

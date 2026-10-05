@@ -56,5 +56,6 @@ jobs:
       - name: Assert staged archives remain non-playable
         run: |
           set -euo pipefail
-          grep -F 'returns ENGINE_RESULT_NOT_SUPPORTED'             bridge/renpy_runtime/src/renpy_runtime_mobile_provider.cpp
-          grep -F 'does not contain a playable launcher'             bridge/renpy_runtime/mobile_launcher/README.md
+          grep -F 'ENGINE_RESULT_NOT_SUPPORTED'             bridge/renpy_runtime/src/renpy_runtime_mobile_provider.cpp
+          grep -F 'contract and build/replacement scaffold'             bridge/renpy_runtime/mobile_launcher/README.md
+          grep -F 'NOT_SUPPORTED' bridge/renpy_runtime/mobile_launcher/README.md

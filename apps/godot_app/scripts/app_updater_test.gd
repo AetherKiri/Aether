@@ -37,6 +37,30 @@ func _run() -> void:
     _assert(bb.contains("• Added [b]cool feature[/b] in [code]app.gd[/code] by [b]@developer[/b]"), "Bullet and bold/code/mention should convert")
     _assert(bb.contains("[url=https://github.com]Link[/url]"), "Markdown link should convert to bbcode url")
 
+    # 4. Test macOS direct zip URL parsing
+    var mock_release_data := {
+        "tag_name": "1.0.6",
+        "body": "Test release",
+        "assets": [
+            {"name": "AetherKiri-1.0.6-android.apk", "browser_download_url": "https://custom.com/apk"},
+            {"name": "AetherKiri-1.0.6-macos.zip", "browser_download_url": "https://custom.com/macos.zip"},
+            {"name": "AetherKiri-1.0.6-macos-app-store.pkg", "browser_download_url": "https://custom.com/pkg"}
+        ]
+    }
+    var res_tracker: Array = [false]
+    var test_cb := func(status: int, info: Dictionary):
+        res_tracker[0] = true
+        _assert(status == APP_UPDATER_SCRIPT.CheckStatus.SUCCESS_HAS_UPDATE, "Should report update")
+        _assert(info.get("gitcode_macos_url") == "https://custom.com/macos.zip", "Should extract gitcode_macos_url")
+        _assert(info.get("gitcode_apk_url") == "https://custom.com/apk", "Should extract gitcode_apk_url")
+
+    APP_UPDATER_SCRIPT._finish_with_release_data(mock_release_data, "1.0.5", "gitcode", test_cb)
+    _assert(res_tracker[0], "Callback should be invoked")
+
+    # 5. Test is_mac_app_store callable without crash
+    var mas_check: bool = APP_UPDATER_SCRIPT.is_mac_app_store()
+    _assert(mas_check is bool, "is_mac_app_store should return a boolean")
+
     print("app_updater_test: PASS")
     quit(0)
 

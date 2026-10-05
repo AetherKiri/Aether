@@ -5572,6 +5572,13 @@ func _apple_app_store_platform(platform_name: String = "") -> bool:
     var effective_platform := platform_name if not platform_name.is_empty() else _effective_legal_platform_name()
     return effective_platform in ["iOS", "macOS"]
 
+func _is_apple_app_store_build() -> bool:
+    if OS.get_name() == "iOS":
+        return true
+    if OS.get_name() == "macOS":
+        return AppUpdater.is_mac_app_store()
+    return false
+
 func _ios_statement_required(platform_name: String = "") -> bool:
     if not _apple_app_store_platform(platform_name):
         return false
@@ -8481,7 +8488,7 @@ func _check_app_update_silently() -> void:
         return
     update_checking = true
     var current_ver := _application_version_text()
-    var is_store := _apple_app_store_platform()
+    var is_store := _is_apple_app_store_build()
     AppUpdater.check_for_updates(
         self,
         current_ver,
@@ -8503,7 +8510,7 @@ func _check_app_update_manually() -> void:
     call_deferred("_rebuild_settings_view")
 
     var current_ver := _application_version_text()
-    var is_store := _apple_app_store_platform()
+    var is_store := _is_apple_app_store_build()
     AppUpdater.check_for_updates(
         self,
         current_ver,
@@ -8595,6 +8602,10 @@ func _show_app_update_dialog(info: Dictionary) -> void:
         action_box.add_child(store_btn)
     else:
         var is_android := OS.get_name() == "Android"
+        var is_macos := OS.get_name() == "macOS"
+        var gitcode_macos_url: String = str(info.get("gitcode_macos_url", ""))
+        var github_macos_url: String = str(info.get("github_macos_url", ""))
+
         var gitcode_btn := _pill_button(_t("update.download_gitcode"))
         gitcode_btn.clip_text = false
         gitcode_btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -8604,6 +8615,8 @@ func _show_app_update_dialog(info: Dictionary) -> void:
                 var target_url := ""
                 if is_android and not gitcode_apk_url.is_empty():
                     target_url = gitcode_apk_url
+                elif is_macos and not gitcode_macos_url.is_empty():
+                    target_url = gitcode_macos_url
                 elif not gitcode_url.is_empty():
                     target_url = gitcode_url
                 else:
@@ -8623,6 +8636,8 @@ func _show_app_update_dialog(info: Dictionary) -> void:
                 var target_url := ""
                 if is_android and not github_apk_url.is_empty():
                     target_url = github_apk_url
+                elif is_macos and not github_macos_url.is_empty():
+                    target_url = github_macos_url
                 elif not github_url.is_empty():
                     target_url = github_url
                 else:

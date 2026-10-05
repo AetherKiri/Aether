@@ -58,6 +58,19 @@ static func compare_versions(v1: String, v2: String) -> int:
 
     return 0
 
+## Returns true if currently running within an Apple Mac App Store build.
+## Mac App Store applications have an embedded receipt file at Contents/_MASReceipt/receipt.
+static func is_mac_app_store() -> bool:
+    if OS.get_name() != "macOS":
+        return false
+    var exe_path := OS.get_executable_path()
+    if exe_path.is_empty():
+        return false
+    # Executable is typically at <AppBundle>/Contents/MacOS/<Executable>
+    var contents_dir := exe_path.get_base_dir().get_base_dir()
+    var receipt_path := contents_dir.path_join("_MASReceipt").path_join("receipt")
+    return FileAccess.file_exists(receipt_path)
+
 static func _parse_version(v: String) -> Dictionary:
     var clean := v.strip_edges().trim_prefix("v").trim_prefix("V")
     var prerelease := ""
@@ -350,10 +363,13 @@ static func _finish_with_release_data(
     var github_url := ""
     var gitcode_apk_url := ""
     var github_apk_url := ""
+    var gitcode_macos_url := ""
+    var github_macos_url := ""
 
     var expected_apk_name := "AetherKiri-%s-android.apk" % latest_ver
+    var expected_macos_name := "AetherKiri-%s-macos.zip" % latest_ver
 
-    # Parse assets to find direct APK link if available
+    # Parse assets to find direct APK and macOS zip links if available
     var assets: Array = release_data.get("assets", []) if (release_data.get("assets") is Array) else []
     for asset in assets:
         if asset is Dictionary:
@@ -364,13 +380,22 @@ static func _finish_with_release_data(
                     gitcode_apk_url = dl_url
                 else:
                     github_apk_url = dl_url
-                break
+            elif aname == expected_macos_name or (aname.ends_with("-macos.zip") and not aname.contains("app-store")):
+                if source == "gitcode":
+                    gitcode_macos_url = dl_url
+                else:
+                    github_macos_url = dl_url
 
     # Construct direct download URLs if not explicitly found in assets list
     if github_apk_url.is_empty():
         github_apk_url = "%s/download/%s/%s" % [GITHUB_REPO_RELEASES_PAGE, tag_name, expected_apk_name]
     if gitcode_apk_url.is_empty() or gitcode_apk_url.begins_with("https://gitcode.com/"):
         gitcode_apk_url = "https://api.gitcode.com/api/v5/repos/AetherKiri/AetherKiri/releases/%s/attach_files/%s/download" % [tag_name, expected_apk_name]
+
+    if github_macos_url.is_empty():
+        github_macos_url = "%s/download/%s/%s" % [GITHUB_REPO_RELEASES_PAGE, tag_name, expected_macos_name]
+    if gitcode_macos_url.is_empty() or gitcode_macos_url.begins_with("https://gitcode.com/"):
+        gitcode_macos_url = "https://api.gitcode.com/api/v5/repos/AetherKiri/AetherKiri/releases/%s/attach_files/%s/download" % [tag_name, expected_macos_name]
 
     if source == "gitcode":
         var html_url: String = str(release_data.get("html_url", ""))
@@ -390,6 +415,8 @@ static func _finish_with_release_data(
         "github_url": github_url,
         "gitcode_apk_url": gitcode_apk_url,
         "github_apk_url": github_apk_url,
+        "gitcode_macos_url": gitcode_macos_url,
+        "github_macos_url": github_macos_url,
         "is_app_store": false,
         "is_prerelease": is_pre,
         "source": source,

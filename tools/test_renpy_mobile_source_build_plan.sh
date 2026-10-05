@@ -10,13 +10,13 @@ plan="$(mktemp)"
 runner_tmp="$(mktemp -d "${TMPDIR:-/tmp}/renpy-mobile-source-runner.XXXXXX")"
 trap 'rm -f "$plan"; rm -rf "$runner_tmp"' EXIT
 
-[[ -x "$runner" ]] || { echo "missing mobile source build runner" >&2; exit 1; }
+[[ -f "$runner" ]] || { echo "missing mobile source build runner" >&2; exit 1; }
 bash -n "$runner"
 skip_output="$(
-    AETHERKIRI_RENPY_BUILD_ROOT="$runner_tmp/missing"         "$runner" --mode auto
+    AETHERKIRI_RENPY_BUILD_ROOT="$runner_tmp/missing"         bash "$runner" --mode auto
 )"
 grep -Fq 'source build skipped' <<<"$skip_output"
-if AETHERKIRI_RENPY_SOURCE_BUILD_REQUIRED=1     AETHERKIRI_RENPY_BUILD_ROOT="$runner_tmp/missing"     "$runner" --mode auto >"$runner_tmp/required.stdout" 2>"$runner_tmp/required.stderr"; then
+if AETHERKIRI_RENPY_SOURCE_BUILD_REQUIRED=1     AETHERKIRI_RENPY_BUILD_ROOT="$runner_tmp/missing"     bash "$runner" --mode auto >"$runner_tmp/required.stdout" 2>"$runner_tmp/required.stderr"; then
     echo "required source build unexpectedly skipped" >&2
     exit 1
 fi

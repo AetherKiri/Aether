@@ -1,0 +1,54 @@
+name: Ren'Py Mobile Contract
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    paths:
+      - '.github/workflows/renpy-mobile-contract.yml'
+      - 'bridge/renpy_runtime/mobile_launcher/**'
+      - 'bridge/renpy_runtime/src/renpy_mobile_adapter.cpp'
+      - 'bridge/renpy_runtime/src/renpy_runtime_mobile_provider.cpp'
+      - 'bridge/renpy_runtime/tests/mobile_*.cpp'
+      - 'tools/test_renpy_mobile_launcher_*.sh'
+      - 'tools/test_stage_renpy_android_support.sh'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: renpy-mobile-contract-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lifecycle-contract:
+    name: Validate host lifecycle contract (no playability claim)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      - name: Install contract test tools
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y build-essential binutils
+
+      - name: Run mobile launcher scaffold and loader tests
+        run: |
+          set -euo pipefail
+          bash tools/test_renpy_mobile_launcher_scaffold.sh
+          bash tools/test_renpy_mobile_launcher_loader.sh
+
+      - name: Assert staged archives remain non-playable
+        run: |
+          set -euo pipefail
+          grep -F 'returns ENGINE_RESULT_NOT_SUPPORTED'             bridge/renpy_runtime/src/renpy_runtime_mobile_provider.cpp
+          grep -F 'does not contain a playable launcher'             bridge/renpy_runtime/mobile_launcher/README.md

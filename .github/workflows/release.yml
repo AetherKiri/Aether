@@ -173,6 +173,7 @@ jobs:
         shell: bash
         env:
           GITCODE_TOKEN: ${{ secrets.GITCODE_TOKEN }}
+          PYTHONUNBUFFERED: "1"
         run: |
           set -euo pipefail
 
@@ -195,7 +196,7 @@ jobs:
             sync_args+=(--prerelease)
           fi
 
-          GITCODE_TOKEN="$token" python3 .github/scripts/sync-gitcode-release.py "${sync_args[@]}" "${assets[@]}" || {
+          GITCODE_TOKEN="$token" python3 -u .github/scripts/sync-gitcode-release.py "${sync_args[@]}" "${assets[@]}" || {
             echo "Warning: GitCode release sync encountered an issue, but GitHub release succeeded."
           }
 

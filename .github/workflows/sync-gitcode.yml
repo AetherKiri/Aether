@@ -11,6 +11,10 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: gitcode-release-sync
+  cancel-in-progress: false
+
 jobs:
   sync:
     name: Sync Release to GitCode
@@ -41,6 +45,7 @@ jobs:
         env:
           GITCODE_TOKEN: ${{ secrets.GITCODE_TOKEN }}
           TAG: ${{ inputs.tag }}
+          PYTHONUNBUFFERED: "1"
         run: |
           set -euo pipefail
 
@@ -72,4 +77,4 @@ jobs:
             sync_args+=(--prerelease)
           fi
 
-          python3 .github/scripts/sync-gitcode-release.py "${sync_args[@]}" "${assets[@]}"
+          python3 -u .github/scripts/sync-gitcode-release.py "${sync_args[@]}" "${assets[@]}"

@@ -67,7 +67,7 @@ case "$mode" in
     auto|skip|check|build) ;;
     *) echo "--mode must be auto, skip, check, or build (got '$mode')" >&2; exit 2 ;;
 esac
-[[ -x "$launcher" ]] || { echo "missing launcher scaffold: $launcher" >&2; exit 1; }
+[[ -f "$launcher" ]] || { echo "missing launcher scaffold: $launcher" >&2; exit 1; }
 
 if [[ "$mode" == "skip" ]]; then
     echo "Ren'Py mobile source build skipped by request (no payload built)"
@@ -100,7 +100,7 @@ if [[ ! -d "$renpy_build" ]]; then
 fi
 
 echo "Running strict Ren'Py mobile source preflight: $renpy_build"
-if ! preflight_output="$("$launcher" --check-renpy-build --renpy-build "$renpy_build" 2>&1)"; then
+if ! preflight_output="$(bash "$launcher" --check-renpy-build --renpy-build "$renpy_build" 2>&1)"; then
     printf '%s\n' "$preflight_output" >&2
     echo "Ren'Py mobile source preflight failed; no payload was built" >&2
     exit 1

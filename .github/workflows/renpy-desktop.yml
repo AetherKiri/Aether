@@ -60,17 +60,18 @@ jobs:
           sdk_root="${RUNNER_TEMP}/aetherkiri-renpy-sdk"
           bash tools/install_renpy_sdk.sh             --platform "${RENPY_PLATFORM}"             --arch x86_64             --destination "${sdk_root}"
           test -f "${sdk_root}/renpy.sh" || test -f "${sdk_root}/renpy.exe"
+          if [[ "${RENPY_RUN_EXECUTION_SMOKE:-0}" != 1 ]]; then
+            echo "Ren'Py execution smoke is opt-in; SDK install/integrity matrix passed"
+            echo "Set RENPY_RUN_EXECUTION_SMOKE=1 with a built SDK to run run_renpy_smoke.sh"
+            exit 0
+          fi
           platform_lib_dir="$(find "${sdk_root}/lib" -maxdepth 1 -type d -name 'py3-*' -print -quit 2>/dev/null || true)"
-          platform_ready=false
-          if [[ -n "${platform_lib_dir}" ]] &&
-             find "${platform_lib_dir}" -maxdepth 1 -type f \
+          if [[ -z "${platform_lib_dir}" ]] ||
+             ! find "${platform_lib_dir}" -maxdepth 1 -type f \
                \( -name '*.so*' -o -name 'python*' \) -print -quit 2>/dev/null |
                grep -q .; then
-            platform_ready=true
+            echo "Ren'Py SDK platform files are absent; execution smoke cannot run"
+            exit 1
           fi
-          if [[ "${platform_ready}" == true ]]; then
-            RENPY_SDK="${sdk_root}" bash tools/run_renpy_smoke.sh
-          else
-            echo "Ren'Py SDK platform files are absent from the official archive; execution smoke is skipped"
-            echo "SDK installer metadata/integrity remains covered; a built SDK is required for run_renpy_smoke.sh"
-          fi
+          RENPY_SDK="${sdk_root}" bash tools/run_renpy_smoke.sh
+

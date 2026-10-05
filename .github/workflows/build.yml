@@ -76,8 +76,8 @@ jobs:
     env:
       FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: 'true'
       CCACHE_DIR: ${{ github.workspace }}/.ccache
-      GODOT_RELEASE: 4.7-stable
-      GODOT_TEMPLATE_VERSION: 4.7.stable
+      GODOT_RELEASE: 4.7.2-stable
+      GODOT_TEMPLATE_VERSION: 4.7.2.stable
       ANDROID_NDK_VERSION: 28.1.13356709
 
     steps:
@@ -357,8 +357,8 @@ jobs:
     env:
       FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: 'true'
       CCACHE_DIR: ${{ github.workspace }}/.ccache
-      GODOT_RELEASE: 4.7-stable
-      GODOT_TEMPLATE_VERSION: 4.7.stable
+      GODOT_RELEASE: 4.7.2-stable
+      GODOT_TEMPLATE_VERSION: 4.7.2.stable
 
     steps:
       - name: Checkout Repository
@@ -647,8 +647,8 @@ jobs:
     env:
       FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: 'true'
       CCACHE_DIR: ${{ github.workspace }}/.ccache
-      GODOT_RELEASE: 4.7-stable
-      GODOT_TEMPLATE_VERSION: 4.7.stable
+      GODOT_RELEASE: 4.7.2-stable
+      GODOT_TEMPLATE_VERSION: 4.7.2.stable
       AETHERKIRI_MACOS_ARCH: arm64
 
     steps:

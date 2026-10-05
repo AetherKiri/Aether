@@ -227,6 +227,8 @@ static func _format_inline_markdown(text: String) -> String:
 ##   "github_url": String
 ##   "gitcode_apk_url": String
 ##   "github_apk_url": String
+##   "gitcode_macos_url": String
+##   "github_macos_url": String
 ##   "app_store_url": String
 ##   "is_app_store": bool
 ##   "is_prerelease": bool

@@ -27,7 +27,7 @@ jobs:
           TAG: ${{ inputs.tag }}
         run: |
           set -euo pipefail
-          if [[ ! "$TAG" =~ ^[vV]?[0-9]+(\.[0-9]+)*(-[a-zA-Z0-9.]+)?(\+[a-zA-Z0-9.]+)?$ ]]; then
+          if [[ ! "$TAG" =~ ^[vV]?[0-9]+(\.[0-9]+)*(-[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*)?(\+[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*)?$ ]]; then
             echo "Error: Invalid release tag format '$TAG'." >&2
             exit 1
           fi
@@ -50,7 +50,7 @@ jobs:
             exit 1
           fi
 
-          if [[ ! "$TAG" =~ ^[vV]?[0-9]+(\.[0-9]+)*(-[a-zA-Z0-9.]+)?(\+[a-zA-Z0-9.]+)?$ ]]; then
+          if [[ ! "$TAG" =~ ^[vV]?[0-9]+(\.[0-9]+)*(-[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*)?(\+[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*)?$ ]]; then
             echo "Error: Invalid release tag format '$TAG'." >&2
             exit 1
           fi

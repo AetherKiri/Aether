@@ -10,7 +10,7 @@ loader="$scaffold/src/renpy_mobile_loader.cpp"
 renpy_build="${RENPY_BUILD_TEST_ROOT:-/tmp/renpy-build-src}"
 renpy_source="${RENPY_SOURCE_TEST_ROOT:-/tmp/renpy-src}"
 
-[[ -x "$script" ]] || { echo "missing launcher scaffold script" >&2; exit 1; }
+[[ -f "$script" ]] || { echo "missing launcher scaffold script" >&2; exit 1; }
 [[ -f "$header" ]] || { echo "missing launcher lifecycle header" >&2; exit 1; }
 [[ -f "$loader" ]] || { echo "missing host lifecycle loader" >&2; exit 1; }
 bash -n "$script"
@@ -35,7 +35,7 @@ grep -Fq 'SDL_main' "$scaffold/README.md"
 grep -Fq 'renpy-build' "$scaffold/patches/README.md"
 grep -Fq 'cooperative-loop-skeleton.patch' "$scaffold/patches/python/README.md"
 if [[ -d "$renpy_source" ]]; then
-    patch_output="$($script --check-python-patch --renpy-src "$renpy_source")"
+    patch_output="$(bash "$script" --check-python-patch --renpy-src "$renpy_source")"
     grep -Fq 'applies cleanly' <<<"$patch_output"
 fi
 for template in \
@@ -57,13 +57,13 @@ if [[ ! -d "$renpy_build" ]]; then
     exit 0
 fi
 
-output="$($script --check --renpy-build "$renpy_build")"
+output="$(bash "$script" --check --renpy-build "$renpy_build")"
 grep -Fq 'source check ok' <<<"$output"
 grep -Fq 'no artifact was built or installed' <<<"$output"
 
 contract_dir="$(mktemp -d "${TMPDIR:-/tmp}/renpy-mobile-contract.XXXXXX")"
 trap 'rm -rf "$contract_dir"' EXIT
-$script --compile-contract --renpy-build "$renpy_build" --output-dir "$contract_dir" >/dev/null
+bash "$script" --compile-contract --renpy-build "$renpy_build" --output-dir "$contract_dir" >/dev/null
 for object in "$contract_dir"/*.o; do
     for symbol in \
         renpy_mobile_init renpy_mobile_tick renpy_mobile_frame renpy_mobile_input \
@@ -71,7 +71,7 @@ for object in "$contract_dir"/*.o; do
         nm -g --defined-only "$object" | awk '{print $3}' | grep -Fxq "$symbol"
     done
 done
-if "$script" --install --renpy-build "$renpy_build" --stage "$contract_dir/stage" \
+if bash "$script" --install --renpy-build "$renpy_build" --stage "$contract_dir/stage" \
         --android-so-arm64 "$contract_dir/librenpython_android_host.o" \
         >"$contract_dir/install.stdout" 2>"$contract_dir/install.stderr"; then
     echo "contract-only lifecycle object was accepted as a runtime artifact" >&2
@@ -79,7 +79,7 @@ if "$script" --install --renpy-build "$renpy_build" --stage "$contract_dir/stage
 fi
 grep -Fq 'contract-only lifecycle stub' "$contract_dir/install.stderr"
 
-if "$script" --check --renpy-build "$renpy_build" | grep -Fq 'SDL_main'; then
+if bash "$script" --check --renpy-build "$renpy_build" | grep -Fq 'SDL_main'; then
     :
 else
     echo "source check did not report the blocking Android launcher" >&2

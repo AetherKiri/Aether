@@ -15,6 +15,12 @@ import urllib.request
 
 GITCODE_API_BASE = "https://api.gitcode.com/api/v5"
 
+# Ensure Python unbuffered output so GitHub Actions runner prints logs immediately
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(line_buffering=True)
+if hasattr(sys.stderr, "reconfigure"):
+    sys.stderr.reconfigure(line_buffering=True)
+
 
 def _sanitize_url(url: str) -> str:
     """Strip token-bearing query parameters for safe logging."""
@@ -121,7 +127,7 @@ def ensure_gitcode_tag(owner: str, repo: str, tag: str, token: str, username: st
 
     with tempfile.TemporaryDirectory() as tmpdir:
         try:
-            # Clone shallow from GitCode main branch
+            print("Cloning shallow GitCode main branch...", flush=True)
             subprocess.run(
                 ["git", "clone", "--depth", "1", "--branch", "main", gitcode_url, "."],
                 cwd=tmpdir,
@@ -133,6 +139,7 @@ def ensure_gitcode_tag(owner: str, repo: str, tag: str, token: str, username: st
             )
             subprocess.run(["git", "config", "user.name", username], cwd=tmpdir, check=True)
             subprocess.run(["git", "config", "user.email", f"{username}@users.noreply.gitcode.com"], cwd=tmpdir, check=True)
+            print(f"Creating empty version bump commit 'chore: bump version to {tag}'...", flush=True)
             subprocess.run(
                 ["git", "commit", "--allow-empty", "-m", f"chore: bump version to {tag}"],
                 cwd=tmpdir,
@@ -141,6 +148,7 @@ def ensure_gitcode_tag(owner: str, repo: str, tag: str, token: str, username: st
                 text=True,
             )
             subprocess.run(["git", "tag", tag], cwd=tmpdir, check=True)
+            print(f"Pushing bump commit and tag {tag} to GitCode...", flush=True)
             subprocess.run(
                 ["git", "push", "origin", "main", tag],
                 cwd=tmpdir,
@@ -150,14 +158,14 @@ def ensure_gitcode_tag(owner: str, repo: str, tag: str, token: str, username: st
                 text=True,
                 timeout=60,
             )
-            print(f"Successfully pushed bump commit and tag {tag} to GitCode.")
+            print(f"Successfully pushed bump commit and tag {tag} to GitCode.", flush=True)
             return True
         except subprocess.TimeoutExpired as e:
-            print(f"Error: Git operation timed out while pushing tag to GitCode: {e}", file=sys.stderr)
+            print(f"Error: Git operation timed out while pushing tag to GitCode: {e}", file=sys.stderr, flush=True)
             return False
         except subprocess.CalledProcessError as e:
             err_msg = e.stderr.strip() if e.stderr else str(e)
-            print(f"Error: Failed to push tag to GitCode: {err_msg}", file=sys.stderr)
+            print(f"Error: Failed to push tag to GitCode: {err_msg}", file=sys.stderr, flush=True)
             return False
         finally:
             try:
@@ -181,7 +189,8 @@ def upload_asset(owner: str, repo: str, tag: str, token: str, file_path: str):
     """Upload asset file to GitCode release using GitCode OBS upload URL."""
     filename = os.path.basename(file_path)
     file_size = os.path.getsize(file_path)
-    print(f"Requesting upload URL for {filename} ({file_size} bytes) on release {tag}...")
+    mb_size = file_size / (1024 * 1024)
+    print(f"Requesting OBS upload URL for {filename} ({mb_size:.2f} MB)...", flush=True)
 
     # Step 1: Request OBS upload URL
     query_url = f"/repos/{owner}/{repo}/releases/{tag}/upload_url?file_name={urllib.parse.quote(filename)}"
@@ -193,7 +202,7 @@ def upload_asset(owner: str, repo: str, tag: str, token: str, file_path: str):
     custom_headers = res.get("headers", {})
 
     # Step 2: PUT binary stream to OBS storage
-    print(f"Uploading {filename} to GitCode OBS storage...")
+    print(f"Streaming {filename} ({mb_size:.2f} MB) to GitCode OBS storage...", flush=True)
     put_headers = dict(custom_headers)
     put_headers["Content-Length"] = str(file_size)
 
@@ -205,7 +214,7 @@ def upload_asset(owner: str, repo: str, tag: str, token: str, file_path: str):
             if status not in (200, 204):
                 raise RuntimeError(f"OBS upload failed with HTTP {status}: {resp_text}")
 
-    print(f"Successfully uploaded {filename} to GitCode.")
+    print(f"Successfully uploaded {filename} to GitCode.", flush=True)
     return True
 
 
@@ -223,7 +232,7 @@ def main():
 
     token = os.environ.get("GITCODE_TOKEN", "").strip()
     if not token:
-        print("Warning: GITCODE_TOKEN not set or empty. Skipping GitCode release sync.", file=sys.stderr)
+        print("Warning: GITCODE_TOKEN not set or empty. Skipping GitCode release sync.", file=sys.stderr, flush=True)
         return 0
 
     tag = args.tag
@@ -241,41 +250,42 @@ def main():
                 if not args.title:
                     title = gh_data.get("name") or tag
         except Exception as e:
-            print(f"Notice: Could not fetch GitHub release notes automatically: {e}", file=sys.stderr)
+            print(f"Notice: Could not fetch GitHub release notes automatically: {e}", file=sys.stderr, flush=True)
 
     release = get_existing_release(args.owner, args.repo, tag, token)
     if release:
-        print(f"Found existing release on GitCode for tag {tag}")
+        print(f"Found existing release on GitCode for tag {tag}", flush=True)
     else:
         # Ensure tag exists on GitCode release mirror
         ensure_gitcode_tag(args.owner, args.repo, tag, token)
 
-        print(f"Creating release on GitCode for tag {tag}...")
+        print(f"Creating release on GitCode for tag {tag}...", flush=True)
         try:
             created = create_release(args.owner, args.repo, tag, token, title, body, args.prerelease)
-            print(f"Created GitCode release for tag {tag}")
+            print(f"Created GitCode release for tag {tag}", flush=True)
         except Exception as e:
-            print(f"Error creating GitCode release: {e}", file=sys.stderr)
+            print(f"Error creating GitCode release: {e}", file=sys.stderr, flush=True)
             return 1
 
     # Upload assets
     failed_assets = []
-    for asset_path in args.assets:
+    total = len(args.assets)
+    for idx, asset_path in enumerate(args.assets, 1):
         if not os.path.isfile(asset_path):
-            print(f"Skipping non-existent file: {asset_path}", file=sys.stderr)
+            print(f"[{idx}/{total}] Skipping non-existent file: {asset_path}", file=sys.stderr, flush=True)
             failed_assets.append(asset_path)
             continue
         try:
+            print(f"[{idx}/{total}] Uploading asset: {os.path.basename(asset_path)}...", flush=True)
             upload_asset(args.owner, args.repo, tag, token, asset_path)
         except Exception as e:
-            print(f"Failed to upload asset {asset_path} to GitCode: {e}", file=sys.stderr)
+            print(f"[{idx}/{total}] Failed to upload asset {asset_path} to GitCode: {e}", file=sys.stderr, flush=True)
             failed_assets.append(asset_path)
 
-    total = len(args.assets)
     success_count = total - len(failed_assets)
-    print(f"GitCode sync finished: {success_count}/{total} assets processed.")
+    print(f"GitCode sync finished: {success_count}/{total} assets processed.", flush=True)
     if failed_assets:
-        print(f"Error: {len(failed_assets)} asset(s) failed to upload.", file=sys.stderr)
+        print(f"Error: {len(failed_assets)} asset(s) failed to upload.", file=sys.stderr, flush=True)
         return 1
     return 0
 

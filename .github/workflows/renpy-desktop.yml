@@ -61,7 +61,14 @@ jobs:
           bash tools/install_renpy_sdk.sh             --platform "${RENPY_PLATFORM}"             --arch x86_64             --destination "${sdk_root}"
           test -f "${sdk_root}/renpy.sh" || test -f "${sdk_root}/renpy.exe"
           platform_lib_dir="$(find "${sdk_root}/lib" -maxdepth 1 -type d -name 'py3-*' -print -quit 2>/dev/null || true)"
-          if [[ -n "${platform_lib_dir}" ]]; then
+          platform_ready=false
+          if [[ -n "${platform_lib_dir}" ]] &&
+             find "${platform_lib_dir}" -maxdepth 1 -type f \
+               \( -name '*.so*' -o -name 'python*' \) -print -quit 2>/dev/null |
+               grep -q .; then
+            platform_ready=true
+          fi
+          if [[ "${platform_ready}" == true ]]; then
             RENPY_SDK="${sdk_root}" bash tools/run_renpy_smoke.sh
           else
             echo "Ren'Py SDK platform files are absent from the official archive; execution smoke is skipped"

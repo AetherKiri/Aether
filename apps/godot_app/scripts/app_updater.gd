@@ -270,6 +270,9 @@ static func _check_app_store(req: HTTPRequest, current_version: String, callback
         if data["results"].is_empty():
             callback.call(CheckStatus.SUCCESS_NO_UPDATE, {})
             return
+        if not (data["results"][0] is Dictionary):
+            callback.call(CheckStatus.PARSE_ERROR, {})
+            return
 
         var app_info: Dictionary = data["results"][0]
         var store_version: String = str(app_info.get("version", ""))

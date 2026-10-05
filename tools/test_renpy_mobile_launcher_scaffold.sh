@@ -16,7 +16,8 @@ renpy_source="${RENPY_SOURCE_TEST_ROOT:-/tmp/renpy-src}"
 bash -n "$script"
 
 grep -Fq 'librenpython.so' "$loader"
-grep -Fq 'weak_import' "$loader"
+grep -Fq 'dlsym' "$loader"
+grep -Fq 'RTLD_DEFAULT' "$loader"
 for symbol in \
     renpy_mobile_init renpy_mobile_tick renpy_mobile_frame renpy_mobile_input \
     renpy_mobile_pause renpy_mobile_resume renpy_mobile_shutdown; do

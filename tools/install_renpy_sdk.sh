@@ -10,9 +10,14 @@ readonly RENPY_LINUX_ARCHIVE="renpy-${RENPY_VERSION}-sdk.tar.bz2"
 readonly RENPY_LINUX_SHA256="eb0a9be7f0fb13632fe25ceade9a8bed5a1b4d6b6e83bd19eeeb29e1a1bb4a45"
 readonly RENPY_MACOS_ARM_ARCHIVE="renpy-${RENPY_VERSION}-sdkarm.tar.bz2"
 readonly RENPY_MACOS_ARM_SHA256="0579782517f203ba3535dcc2dab54e34bfc318f2f2a7510a5130b6f809f901f6"
+readonly RENPY_WINDOWS_ARCHIVE="renpy-${RENPY_VERSION}-sdk.zip"
+readonly RENPY_WINDOWS_SHA256="ff57648f9c04f27e381c48af6d8e3ee3cdec296bed4d3831f47f09b0a71b505e"
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 platform="$(uname -s | tr '[:upper:]' '[:lower:]')"
+case "$platform" in
+    mingw*|msys*|cygwin*) platform="windows" ;;
+esac
 arch="$(uname -m)"
 destination="${AETHERKIRI_RENPY_SDK_ROOT:-${repo_root}/.aetherkiri-cache/renpy-sdk/${RENPY_VERSION}}"
 cache_dir="${AETHERKIRI_RENPY_SDK_CACHE_DIR:-${repo_root}/.aetherkiri-cache/renpy-sdk/downloads}"
@@ -27,7 +32,7 @@ archive is SHA-256 verified before it is used. Existing verified SDK roots are
 reused without downloading or extracting again.
 
 Options:
-  --platform PLATFORM   linux or darwin (default: host platform)
+  --platform PLATFORM   linux, darwin, or windows (default: host platform)
   --arch ARCH           x86_64 or arm64 (default: host architecture)
   --destination PATH    SDK extraction directory
   --cache-dir PATH      Download cache directory
@@ -89,6 +94,14 @@ case "$platform" in
             sha256="$RENPY_LINUX_SHA256"
         fi
         ;;
+    windows)
+        [[ "$arch" == "x86_64" || "$arch" == "amd64" ]] || {
+            echo "Ren'Py SDK is only enabled for Windows x86_64 (requested $arch)" >&2
+            exit 1
+        }
+        archive="$RENPY_WINDOWS_ARCHIVE"
+        sha256="$RENPY_WINDOWS_SHA256"
+        ;;
     *)
         echo "Ren'Py SDK is not available for platform '$platform' (desktop Linux/macOS only)" >&2
         exit 1
@@ -111,7 +124,15 @@ require_command() {
     }
 }
 require_command curl
-require_command tar
+if [[ "$platform" == "windows" ]]; then
+    if ! command -v unzip >/dev/null 2>&1 &&
+       ! command -v 7z >/dev/null 2>&1; then
+        echo "required command not found: unzip or 7z" >&2
+        exit 1
+    fi
+else
+    require_command tar
+fi
 if ! command -v sha256sum >/dev/null 2>&1 &&
    ! command -v shasum >/dev/null 2>&1; then
     echo "required command not found: sha256sum or shasum" >&2
@@ -144,8 +165,8 @@ fi
 
 # A previous interrupted extraction must never be mistaken for a valid SDK.
 launcher="$destination/renpy.sh"
-if [[ "$platform" == "darwin" ]]; then
-    launcher="$destination/renpy.sh"
+if [[ "$platform" == "windows" ]]; then
+    launcher="$destination/renpy.exe"
 fi
 if [[ -x "$launcher" ]]; then
     printf 'Ren\x27Py SDK already installed: %s\n' "$destination"
@@ -156,9 +177,21 @@ fi
 extract_root="$(mktemp -d "${TMPDIR:-/tmp}/aetherkiri-renpy-sdk.XXXXXX")"
 cleanup() { rm -rf "$extract_root"; }
 trap cleanup EXIT
-# Ensure tar cannot write outside the temporary extraction root. The official
-# archive has one relative top-level directory; reject malformed archives.
-if ! tar -tjf "$archive_path" | while IFS= read -r member; do
+# Ensure the archive cannot write outside the temporary extraction root. The
+# official archive has one relative top-level directory; reject malformed
+# archives before extraction on every desktop host.
+list_archive_members() {
+    if [[ "$platform" == "windows" ]]; then
+        if command -v unzip >/dev/null 2>&1; then
+            unzip -Z1 "$archive_path"
+        else
+            7z l -slt "$archive_path" | sed -n 's/^Path = //p'
+        fi
+    else
+        tar -tjf "$archive_path"
+    fi
+}
+if ! list_archive_members | while IFS= read -r member; do
     case "$member" in
         /*|../*|*/../*|*/..|..|*\\*)
             echo "Refusing archive with an unsafe path: $member" >&2
@@ -168,14 +201,28 @@ if ! tar -tjf "$archive_path" | while IFS= read -r member; do
 done; then
     exit 1
 fi
-tar -xjf "$archive_path" -C "$extract_root"
+if [[ "$platform" == "windows" ]]; then
+    if command -v unzip >/dev/null 2>&1; then
+        unzip -q "$archive_path" -d "$extract_root"
+    else
+        7z x -y "-o$extract_root" "$archive_path" >/dev/null
+    fi
+else
+    tar -xjf "$archive_path" -C "$extract_root"
+fi
 extracted="$(find "$extract_root" -mindepth 1 -maxdepth 1 -type d -print -quit)"
-if [[ -z "$extracted" || ! -x "$extracted/renpy.sh" ]]; then
-    echo "Official Ren'Py archive did not contain renpy.sh" >&2
+launcher_name="renpy.sh"
+if [[ "$platform" == "windows" ]]; then
+    launcher_name="renpy.exe"
+fi
+if [[ -z "$extracted" || ! -f "$extracted/$launcher_name" ]]; then
+    echo "Official Ren'Py archive did not contain $launcher_name" >&2
     exit 1
 fi
 rm -rf "$destination"
 mv "$extracted" "$destination"
-chmod +x "$destination/renpy.sh"
+if [[ "$platform" != "windows" ]]; then
+    chmod +x "$destination/renpy.sh"
+fi
 printf 'Ren\x27Py SDK installed: %s\n' "$destination"
 printf 'RENPY_SDK_ROOT=%s\n' "$destination"

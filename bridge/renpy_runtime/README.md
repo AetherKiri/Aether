@@ -63,6 +63,36 @@ The provider's desktop integration remains guarded by
 `AETHERKIRI_ENABLE_RENPY` and requires a writable `game/libs` directory to
 stage the hook.
 
+## Cross-platform acceptance matrix
+
+The runtime is only considered playable on a platform after the corresponding
+row passes its real runtime checks. Building or staging an official SDK alone
+does not change the mobile provider guard.
+
+| Platform | Current CI evidence | Required runtime gate |
+| --- | --- | --- |
+| Linux x86_64 | tools/test_install_renpy_sdk.sh plus tools/run_renpy_smoke.sh in the desktop matrix | CMake provider tests, Godot frame/input E2E, and clean process shutdown |
+| Windows x64 | Pinned renpy-8.5.3-sdk.zip metadata/install plus fixture smoke in the desktop matrix | Native renpy.exe provider E2E (CreateProcessW, frame/input, shutdown); the POSIX fake-launcher mapping test is intentionally skipped |
+| Android arm64 | APK builds, RAPT staging, ABI guard, and lifecycle contract/export fixtures | A rebuilt RAPT payload exporting all seven host lifecycle symbols, then arm64 emulator and device E2E for Activity ownership, RGBA frames, touch/text input, pause/resume, and reopen |
+| iOS arm64 simulator/device | IPA/Xcode builds, Renios staging, ABI guard, and lifecycle contract/export fixtures | A rebuilt Renios payload with host lifecycle exports, simulator and device E2E for single UIApplication/SDL ownership, RGBA frames, input, pause/resume, and reopen |
+
+Desktop smoke commands:
+
+    bash tools/test_install_renpy_sdk.sh
+    bash tools/install_renpy_sdk.sh --platform linux --arch x86_64 --destination /tmp/renpy-sdk
+    RENPY_SDK=/tmp/renpy-sdk bash tools/run_renpy_smoke.sh
+
+Optional native mobile source preflight/build:
+
+    bash tools/run_renpy_mobile_source_build.sh --mode auto
+    bash tools/run_renpy_mobile_source_build.sh --mode check --renpy-build /path/to/renpy-build
+    AETHERKIRI_RENPY_SOURCE_BUILD_MODE=build bash tools/run_renpy_mobile_source_build.sh --mode build --renpy-build /path/to/renpy-build
+
+With no official renpy-build checkout, auto mode reports a clear skip. The
+source runner never treats the official blocking SDL_main/Py_RunMain launcher
+as host lifecycle support, and it does not claim device or simulator
+playability before those E2E gates pass.
+
 ## Mobile dependency staging
 
 The official mobile support packages are staged separately with

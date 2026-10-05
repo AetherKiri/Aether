@@ -55,7 +55,10 @@ check_symbols() {
 }
 
 check_optional_artifact() {
-    local variable_name="$1" kind="$2" artifact="${!variable_name:-}"
+    local variable_name="$1" kind="$2" artifact=""
+    if [[ -n "${!variable_name+x}" ]]; then
+        artifact="${!variable_name}"
+    fi
     if [[ -n "$artifact" ]]; then
         echo "Checking lifecycle exports from ${variable_name}: ${artifact}"
         check_symbols "$artifact" "$kind"

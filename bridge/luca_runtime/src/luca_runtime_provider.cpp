@@ -491,6 +491,31 @@ namespace aetherkiri::luca {
                 }
                 return ENGINE_RESULT_OK;
             }
+            // Save-slot channel: `value` is `slot` or `slot:title`. The
+            // string-only option keeps this ABI usable by title UIs.
+            if(std::strcmp(option->key_utf8, "luca.save.slot") == 0) {
+                if(instance->ak == nullptr || !instance->opened) {
+                    return ENGINE_RESULT_INVALID_STATE;
+                }
+                const std::string value(option->value_utf8);
+                const auto split = value.find(':');
+                const std::string slot_text = value.substr(0, split);
+                char *end = nullptr;
+                const long slot = std::strtol(slot_text.c_str(), &end, 10);
+                if(end == slot_text.c_str() || *end != '\0' || slot < 1 ||
+                   static_cast<uint32_t>(slot) > kLucaSlotCount) {
+                    return ENGINE_RESULT_INVALID_ARGUMENT;
+                }
+                const std::string title =
+                    split == std::string::npos ? std::string() : value.substr(split + 1);
+                const int32_t result = luca_ak_write_save_slot(
+                    instance->ak, static_cast<uint32_t>(slot), title.c_str());
+                if(result < 0) {
+                    return Fail(instance->error, result, instance->ak,
+                                "luca_ak_write_save_slot");
+                }
+                return ENGINE_RESULT_OK;
+            }
             // Runtime options (translation hooks, IME, skipping) arrive with
             // the script VM phases.
             return ENGINE_RESULT_NOT_SUPPORTED;

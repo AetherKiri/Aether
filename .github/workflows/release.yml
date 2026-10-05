@@ -183,6 +183,7 @@ jobs:
           fi
 
           tag="${GITHUB_REF_NAME}"
+          shopt -s nullglob
           assets=(release-assets/*)
           sync_args=(
             --owner "AetherKiri"

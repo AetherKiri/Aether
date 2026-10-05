@@ -13,7 +13,7 @@ permissions:
 
 jobs:
   sync:
-    name: Sync ${{ inputs.tag }} to GitCode
+    name: Sync Release to GitCode
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
@@ -24,10 +24,15 @@ jobs:
       - name: Download release assets from GitHub
         env:
           GH_TOKEN: ${{ github.token }}
+          TAG: ${{ inputs.tag }}
         run: |
           set -euo pipefail
+          if [[ ! "$TAG" =~ ^[vV]?[0-9]+(\.[0-9]+)*(-[a-zA-Z0-9.]+)?(\+[a-zA-Z0-9.]+)?$ ]]; then
+            echo "Error: Invalid release tag format '$TAG'." >&2
+            exit 1
+          fi
           mkdir -p release-assets
-          gh release download "${{ inputs.tag }}" \
+          gh release download "$TAG" \
             --dir release-assets \
             --repo "$GITHUB_REPOSITORY" \
             --clobber
@@ -35,24 +40,35 @@ jobs:
       - name: Sync release to GitCode
         env:
           GITCODE_TOKEN: ${{ secrets.GITCODE_TOKEN }}
+          TAG: ${{ inputs.tag }}
         run: |
           set -euo pipefail
 
           token="${GITCODE_TOKEN:-}"
           if [[ -z "$token" ]]; then
-            echo "GITCODE_TOKEN secret is not set; skipping GitCode release sync."
+            echo "GITCODE_TOKEN secret is not set; skipping GitCode release sync." >&2
             exit 1
           fi
 
-          tag="${{ inputs.tag }}"
+          if [[ ! "$TAG" =~ ^[vV]?[0-9]+(\.[0-9]+)*(-[a-zA-Z0-9.]+)?(\+[a-zA-Z0-9.]+)?$ ]]; then
+            echo "Error: Invalid release tag format '$TAG'." >&2
+            exit 1
+          fi
+
+          shopt -s nullglob
           assets=(release-assets/*)
+          if (( ${#assets[@]} == 0 )); then
+            echo "Error: No downloadable assets found for release $TAG." >&2
+            exit 1
+          fi
+
           sync_args=(
             --owner "AetherKiri"
             --repo "AetherKiri"
-            --tag "$tag"
-            --title "$tag"
+            --tag "$TAG"
+            --title "$TAG"
           )
-          if [[ "$tag" == *-* ]]; then
+          if [[ "$TAG" == *-* ]]; then
             sync_args+=(--prerelease)
           fi
 

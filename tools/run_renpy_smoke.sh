@@ -47,7 +47,9 @@ if [[ -z "$renpy_bin" && -n "$renpy_sdk" ]]; then
         renpy_bin="$renpy_sdk/renpy.sh"
     elif [[ -x "$renpy_sdk/renpy" ]]; then
         renpy_bin="$renpy_sdk/renpy"
-    elif [[ -x "$renpy_sdk/renpy.exe" ]]; then
+    elif [[ -f "$renpy_sdk/renpy.exe" ]]; then
+        # Windows zip archives do not always preserve the executable mode bit
+        # when extracted by Git Bash, but the .exe is still directly runnable.
         renpy_bin="$renpy_sdk/renpy.exe"
     else
         printf "Ren'Py launcher not found under RENPY_SDK: %s\n" "$renpy_sdk" >&2
@@ -64,7 +66,8 @@ if [[ -z "$renpy_bin" ]]; then
         exit 1
     fi
 fi
-if [[ ! -x "$renpy_bin" ]]; then
+if [[ ! -x "$renpy_bin" &&
+      ! ( "$renpy_bin" == *.exe && -f "$renpy_bin" ) ]]; then
     printf "Ren'Py launcher is not executable: %s\n" "$renpy_bin" >&2
     exit 1
 fi

@@ -225,18 +225,55 @@ def upload_asset(owner: str, repo: str, tag: str, token: str, file_path: str):
     obs_url = res["url"]
     custom_headers = res.get("headers", {})
 
-    # Step 2: PUT binary stream to OBS storage
-    print(f"Streaming {filename} ({mb_size:.2f} MB) to GitCode OBS storage...", flush=True)
-    put_headers = dict(custom_headers)
-    put_headers["Content-Length"] = str(file_size)
+    # Step 2: PUT binary stream to OBS storage using curl for high throughput and progress
+    print(f"Uploading {filename} ({mb_size:.2f} MB) to GitCode OBS storage via curl...", flush=True)
 
-    with open(file_path, "rb") as f:
-        req_put = urllib.request.Request(obs_url, data=f, headers=put_headers, method="PUT")
-        with urllib.request.urlopen(req_put) as resp_put:
-            status = resp_put.status
-            resp_text = resp_put.read().decode("utf-8", errors="replace")
-            if status not in (200, 204):
-                raise RuntimeError(f"OBS upload failed with HTTP {status}: {resp_text}")
+    curl_cmd = [
+        "curl",
+        "-#",
+        "--show-error",
+        "--connect-timeout",
+        "30",
+        "--max-time",
+        "900",
+        "--retry",
+        "3",
+        "--retry-delay",
+        "5",
+        "-X",
+        "PUT",
+        "-T",
+        file_path,
+        "-H",
+        f"Content-Length: {file_size}",
+    ]
+
+    for h_name, h_val in custom_headers.items():
+        if h_name.lower() != "content-length":
+            curl_cmd.extend(["-H", f"{h_name}: {h_val}"])
+
+    curl_cmd.extend([
+        "-o",
+        "/dev/null",
+        "-w",
+        "%{http_code}",
+        obs_url,
+    ])
+
+    # Let stderr flow to terminal live so the runner shows progress
+    result = subprocess.run(curl_cmd, stdout=subprocess.PIPE, text=True)
+    if result.returncode != 0:
+        raise RuntimeError(f"curl upload failed for {filename} with exit code {result.returncode}")
+
+    http_status_str = result.stdout.strip().split("\n")[-1]
+    try:
+        http_status = int(http_status_str)
+    except ValueError:
+        raise RuntimeError(f"Invalid HTTP status returned by curl: {result.stdout.strip()}")
+
+    if http_status not in (200, 204):
+        err_msg = result.stderr.strip() if result.stderr else f"HTTP {http_status}"
+        raise RuntimeError(f"OBS upload failed with HTTP {http_status}: {err_msg}")
 
     print(f"Successfully uploaded {filename} to GitCode.", flush=True)
     return True

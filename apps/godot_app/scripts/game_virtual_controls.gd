@@ -315,6 +315,17 @@ func show_virtual_controls() -> void:
     _sync_visibility()
     virtual_controls_requested.emit()
 
+func hide_virtual_controls() -> void:
+    release_all()
+    _menu_open = false
+    _panel_open = false
+    _sync_visibility()
+
+func set_gamepad_navigation_enabled(enabled: bool) -> void:
+    for control in _interactive_controls:
+        if control is BaseButton:
+            control.focus_mode = Control.FOCUS_ALL if enabled else Control.FOCUS_NONE
+
 func release_all() -> void:
     _cancel_scroll_hold()
     _reset_dpad()

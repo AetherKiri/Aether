@@ -5,8 +5,22 @@ set -euo pipefail
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 launcher="$repo_root/bridge/renpy_runtime/mobile_launcher/build.sh"
+runner="$repo_root/tools/run_renpy_mobile_source_build.sh"
 plan="$(mktemp)"
-trap 'rm -f "$plan"' EXIT
+runner_tmp="$(mktemp -d "${TMPDIR:-/tmp}/renpy-mobile-source-runner.XXXXXX")"
+trap 'rm -f "$plan"; rm -rf "$runner_tmp"' EXIT
+
+[[ -x "$runner" ]] || { echo "missing mobile source build runner" >&2; exit 1; }
+bash -n "$runner"
+skip_output="$(
+    AETHERKIRI_RENPY_BUILD_ROOT="$runner_tmp/missing"         "$runner" --mode auto
+)"
+grep -Fq 'source build skipped' <<<"$skip_output"
+if AETHERKIRI_RENPY_SOURCE_BUILD_REQUIRED=1     AETHERKIRI_RENPY_BUILD_ROOT="$runner_tmp/missing"     "$runner" --mode auto >"$runner_tmp/required.stdout" 2>"$runner_tmp/required.stderr"; then
+    echo "required source build unexpectedly skipped" >&2
+    exit 1
+fi
+grep -Fq 'requires an official renpy-build checkout'     "$runner_tmp/required.stderr"
 
 bash "$launcher" --source-build-plan --renpy-build "$repo_root" >"$plan"
 grep -F "./build.sh --platform android rebuild rapt rapt-sdl2" "$plan"

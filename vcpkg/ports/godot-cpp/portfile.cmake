@@ -17,6 +17,7 @@ vcpkg_cmake_configure(
     OPTIONS
         "-DPython3_EXECUTABLE=${PYTHON3}"
         "-DGODOTCPP_DISABLE_EXCEPTIONS=OFF"
+        "-DGODOTCPP_API_VERSION=4.7"
 )
 
 vcpkg_cmake_install()

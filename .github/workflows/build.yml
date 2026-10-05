@@ -252,6 +252,13 @@ jobs:
             mkdir -p .devtools
             git clone https://github.com/microsoft/vcpkg.git .devtools/vcpkg
           fi
+          vcpkg_baseline="$(sed -n 's/.*"baseline": "\([0-9a-f]\{40\}\)".*/\1/p' vcpkg-configuration.json)"
+          if [[ -z "${vcpkg_baseline}" ]]; then
+            echo "Could not read vcpkg baseline from vcpkg-configuration.json" >&2
+            exit 1
+          fi
+          git -C .devtools/vcpkg fetch --depth=1 origin "${vcpkg_baseline}"
+          git -C .devtools/vcpkg checkout --detach "${vcpkg_baseline}"
           if [[ ! -x ".devtools/vcpkg/vcpkg" ]]; then
             (cd .devtools/vcpkg && ./bootstrap-vcpkg.sh -disableMetrics)
           fi
@@ -503,6 +510,13 @@ jobs:
             mkdir -p .devtools
             git clone https://github.com/microsoft/vcpkg.git .devtools/vcpkg
           fi
+          vcpkg_baseline="$(sed -n 's/.*"baseline": "\([0-9a-f]\{40\}\)".*/\1/p' vcpkg-configuration.json)"
+          if [[ -z "${vcpkg_baseline}" ]]; then
+            echo "Could not read vcpkg baseline from vcpkg-configuration.json" >&2
+            exit 1
+          fi
+          git -C .devtools/vcpkg fetch --depth=1 origin "${vcpkg_baseline}"
+          git -C .devtools/vcpkg checkout --detach "${vcpkg_baseline}"
           if [[ ! -x ".devtools/vcpkg/vcpkg" ]]; then
             (cd .devtools/vcpkg && ./bootstrap-vcpkg.sh -disableMetrics)
           fi
@@ -794,6 +808,13 @@ jobs:
             mkdir -p .devtools
             git clone https://github.com/microsoft/vcpkg.git .devtools/vcpkg
           fi
+          vcpkg_baseline="$(sed -n 's/.*"baseline": "\([0-9a-f]\{40\}\)".*/\1/p' vcpkg-configuration.json)"
+          if [[ -z "${vcpkg_baseline}" ]]; then
+            echo "Could not read vcpkg baseline from vcpkg-configuration.json" >&2
+            exit 1
+          fi
+          git -C .devtools/vcpkg fetch --depth=1 origin "${vcpkg_baseline}"
+          git -C .devtools/vcpkg checkout --detach "${vcpkg_baseline}"
           if [[ ! -x ".devtools/vcpkg/vcpkg" ]]; then
             (cd .devtools/vcpkg && ./bootstrap-vcpkg.sh -disableMetrics)
           fi

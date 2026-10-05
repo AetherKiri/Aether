@@ -8,6 +8,7 @@
 #include <array>
 #include <cctype>
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
 #include <filesystem>
 #include <fstream>
@@ -29,6 +30,8 @@ namespace aetherkiri::luca {
         constexpr int32_t kProviderPriority = 90;
         constexpr uint32_t kDefaultSurfaceWidth = 1280;
         constexpr uint32_t kDefaultSurfaceHeight = 720;
+        /// Engine save-slot count (notes/020: 300 regular slots).
+        constexpr uint32_t kLucaSlotCount = 300;
 
         uint32_t ReadU32(const uint8_t *bytes) {
             return static_cast<uint32_t>(bytes[0]) |
@@ -463,6 +466,28 @@ namespace aetherkiri::luca {
                         return Fail(instance->error, result, instance->ak,
                                     "luca_ak_movie_finish");
                     }
+                }
+                return ENGINE_RESULT_OK;
+            }
+            // Save-slot LOAD channel (notes/020): the host/host UI picks
+            // a slot number; the runtime applies the engine's
+            // SaveData_ApplySlotToEngine chain (VM snapshot restore +
+            // script resume from the saved instruction offset).
+            if(std::strcmp(option->key_utf8, "luca.load.slot") == 0) {
+                if(instance->ak == nullptr || !instance->opened) {
+                    return ENGINE_RESULT_INVALID_STATE;
+                }
+                char *end = nullptr;
+                const long slot = std::strtol(option->value_utf8, &end, 10);
+                if(end == option->value_utf8 || *end != '\0' || slot < 1 ||
+                   static_cast<uint32_t>(slot) > kLucaSlotCount) {
+                    return ENGINE_RESULT_INVALID_ARGUMENT;
+                }
+                const int32_t result =
+                    luca_ak_load_slot(instance->ak, static_cast<uint32_t>(slot));
+                if(result < 0) {
+                    return Fail(instance->error, result, instance->ak,
+                                "luca_ak_load_slot");
                 }
                 return ENGINE_RESULT_OK;
             }

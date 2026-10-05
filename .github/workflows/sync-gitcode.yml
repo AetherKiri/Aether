@@ -1,0 +1,75 @@
+name: Sync Release to GitCode
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Release tag to sync (e.g. 1.0.7-alpha.1)'
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  sync:
+    name: Sync Release to GitCode
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Download release assets from GitHub
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ inputs.tag }}
+        run: |
+          set -euo pipefail
+          if [[ ! "$TAG" =~ ^[vV]?[0-9]+(\.[0-9]+)*(-[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*)?(\+[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*)?$ ]]; then
+            echo "Error: Invalid release tag format '$TAG'." >&2
+            exit 1
+          fi
+          mkdir -p release-assets
+          gh release download "$TAG" \
+            --dir release-assets \
+            --repo "$GITHUB_REPOSITORY" \
+            --clobber
+
+      - name: Sync release to GitCode
+        env:
+          GITCODE_TOKEN: ${{ secrets.GITCODE_TOKEN }}
+          TAG: ${{ inputs.tag }}
+        run: |
+          set -euo pipefail
+
+          token="${GITCODE_TOKEN:-}"
+          if [[ -z "$token" ]]; then
+            echo "GITCODE_TOKEN secret is not set; skipping GitCode release sync." >&2
+            exit 1
+          fi
+
+          if [[ ! "$TAG" =~ ^[vV]?[0-9]+(\.[0-9]+)*(-[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*)?(\+[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*)?$ ]]; then
+            echo "Error: Invalid release tag format '$TAG'." >&2
+            exit 1
+          fi
+
+          shopt -s nullglob
+          assets=(release-assets/*)
+          if (( ${#assets[@]} == 0 )); then
+            echo "Error: No downloadable assets found for release $TAG." >&2
+            exit 1
+          fi
+
+          sync_args=(
+            --owner "AetherKiri"
+            --repo "AetherKiri"
+            --tag "$TAG"
+            --title "$TAG"
+          )
+          if [[ "$TAG" == *-* ]]; then
+            sync_args+=(--prerelease)
+          fi
+
+          python3 .github/scripts/sync-gitcode-release.py "${sync_args[@]}" "${assets[@]}"

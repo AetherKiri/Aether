@@ -245,18 +245,24 @@ def main():
             return 1
 
     # Upload assets
-    success_count = 0
+    failed_assets = []
     for asset_path in args.assets:
         if not os.path.isfile(asset_path):
             print(f"Skipping non-existent file: {asset_path}", file=sys.stderr)
+            failed_assets.append(asset_path)
             continue
         try:
             upload_asset(args.owner, args.repo, tag, token, asset_path)
-            success_count += 1
         except Exception as e:
             print(f"Failed to upload asset {asset_path} to GitCode: {e}", file=sys.stderr)
+            failed_assets.append(asset_path)
 
-    print(f"GitCode sync finished: {success_count}/{len(args.assets)} assets processed.")
+    total = len(args.assets)
+    success_count = total - len(failed_assets)
+    print(f"GitCode sync finished: {success_count}/{total} assets processed.")
+    if failed_assets:
+        print(f"Error: {len(failed_assets)} asset(s) failed to upload.", file=sys.stderr)
+        return 1
     return 0
 
 

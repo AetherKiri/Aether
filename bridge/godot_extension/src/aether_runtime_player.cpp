@@ -3506,6 +3506,9 @@ vec4 blend_cubism(vec4 dst, vec4 src, int flags) {
                                 parameter.x + parameter.y + parameter.z);
 }
 
+)GLSL"
+R"GLSL(
+
 uvec4 vec4_to_u8(vec4 value) {
     return uvec4(round(clamp(value, vec4(0.0), vec4(1.0)) * 255.0));
 }
@@ -6909,14 +6912,14 @@ void main() {
 
     std::string source = request.fragment_source;
     source = std::regex_replace(
-        source, std::regex(R"(^[ \t]*#[ \t]*version[^\r\n]*(?:\r?\n|$))",
-                           std::regex::icase | std::regex::multiline),
-        "");
+        source, std::regex(R"((^|\r?\n)[ \t]*#[ \t]*version[^\r\n]*(?:\r?\n|$))",
+                           std::regex::icase),
+        "$1");
     source = std::regex_replace(
         source,
-        std::regex(R"(^[ \t]*#[ \t]*extension[^\r\n]*(?:\r?\n|$))",
-                   std::regex::icase | std::regex::multiline),
-        "");
+         std::regex(R"((^|\r?\n)[ \t]*#[ \t]*extension[^\r\n]*(?:\r?\n|$))",
+                    std::regex::icase),
+         "$1");
     source = std::regex_replace(
         source,
         std::regex(

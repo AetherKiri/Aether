@@ -49,6 +49,35 @@
       }
     },
     {
+      "name": "Windows SoftPal Engine Config",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/out/windows/softpal-engine",
+      "cacheVariables": {
+        "WINDOWS": true,
+        "CMAKE_BUILD_TYPE": "Release",
+        "CMAKE_EXPORT_COMPILE_COMMANDS": true,
+        "SOFTPAL_ENGINE_ONLY": true,
+        "VCPKG_TARGET_TRIPLET": "x64-windows-static-md",
+        "VCPKG_MANIFEST_MODE": "OFF"
+      },
+      "condition": {
+        "type": "equals",
+        "lhs": "${hostSystemName}",
+        "rhs": "Windows"
+      },
+      "architecture": {
+        "value": "x64",
+        "strategy": "external"
+      }
+    },
+    {
+      "name": "Windows SoftPal UI Config",
+      "inherits": "Windows SoftPal Engine Config",
+      "cacheVariables": {
+        "BUILD_GODOT_EXTENSION": true
+      }
+    },
+    {
       "name": "Windows MinGW Config",
       "generator": "Ninja",
       "hidden": true,
@@ -326,6 +355,11 @@
     {
       "name": "Windows Release Build",
       "configurePreset": "Windows Release Config"
+    },
+    {
+      "name": "Windows SoftPal Engine Build",
+      "configurePreset": "Windows SoftPal Engine Config",
+      "targets": [ "engine_api" ]
     },
     {
       "name": "Linux Debug Build",

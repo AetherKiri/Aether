@@ -8,7 +8,20 @@
 #include <string>
 #include <vector>
 
+#if defined(AETHERKIRI_ENGINE_WITH_SOFTPAL)
+extern "C" void AetherSoftPalRegisterRuntime(void);
+#endif
+
 namespace {
+
+void EnsureEngineProvidersRegistered() {
+#if defined(AETHERKIRI_ENGINE_WITH_SOFTPAL)
+  // Registration calls engine_register_runtime_provider(), so run before
+  // acquiring the registry mutex. The DLL owns this provider in the small mode.
+  static std::once_flag once;
+  std::call_once(once, AetherSoftPalRegisterRuntime);
+#endif
+}
 
 std::mutex g_provider_mutex;
 std::vector<aetherkiri::runtime::RegisteredProvider> g_providers;
@@ -93,6 +106,7 @@ void EnsureLegacyRegisteredLocked() {
 namespace aetherkiri::runtime {
 
 std::vector<RegisteredProvider> SnapshotProviders() {
+  EnsureEngineProvidersRegistered();
   std::lock_guard<std::mutex> guard(g_provider_mutex);
   EnsureLegacyRegisteredLocked();
   return g_providers;
@@ -163,6 +177,7 @@ engine_result_t engine_set_runtime_fragment_shader_executor(
 }
 
 uint32_t engine_get_runtime_provider_count(void) {
+  EnsureEngineProvidersRegistered();
   std::lock_guard<std::mutex> guard(g_provider_mutex);
   EnsureLegacyRegisteredLocked();
   return static_cast<uint32_t>(g_providers.size());
@@ -172,6 +187,7 @@ engine_result_t engine_get_runtime_provider_id(uint32_t index,
                                                char* out_buffer,
                                                uint32_t buffer_size,
                                                uint32_t* out_bytes_written) {
+  EnsureEngineProvidersRegistered();
   if (out_bytes_written == nullptr) return ENGINE_RESULT_INVALID_ARGUMENT;
   *out_bytes_written = 0;
   if (out_buffer == nullptr || buffer_size == 0) {

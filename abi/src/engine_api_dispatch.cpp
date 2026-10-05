@@ -833,6 +833,14 @@ engine_result_t engine_get_runtime_api_version(uint32_t* out_api_version) {
   return ENGINE_RESULT_OK;
 }
 
+#if defined(AETHERKIRI_ENGINE_WITH_SOFTPAL)
+// SoftPal presents CPU RGBA frames; it does not consume KiriKiri GPU callbacks.
+ENGINE_API_EXPORT void engine_register_godot_gpu_bridge(const void*) {}
+ENGINE_API_EXPORT void engine_register_godot_gpu_batch_bridge(const void*) {}
+ENGINE_API_EXPORT void engine_register_godot_gpu_external_texture_bridge(
+    const void*) {}
+#endif
+
 engine_result_t engine_create(const engine_create_desc_t* desc,
                               engine_handle_t* out_handle) {
   if (desc == nullptr || out_handle == nullptr) {
@@ -1318,6 +1326,8 @@ engine_result_t engine_get_startup_state(engine_handle_t public_handle,
       SetThreadError(nullptr);
       result = ENGINE_RESULT_OK;
     } else {
+      result = EnsureLegacyLocked(handle);
+      if (result != ENGINE_RESULT_OK) return result;
       result = LegacyServices()->get_startup_state(handle->legacy, out_state);
     }
   }
@@ -1382,7 +1392,8 @@ engine_result_t engine_tick(engine_handle_t public_handle, uint32_t delta_ms) {
 }
 
 engine_result_t engine_pause(engine_handle_t public_handle) {
-  return Route(public_handle, "pause", LegacyServices()->pause,
+  return Route(public_handle, "pause",
+               [](engine_handle_t legacy) { return LegacyServices()->pause(legacy); },
                [](DispatchHandle* handle) {
                  handle->provider_resume_pending = false;
                  return PROVIDER_HAS(handle->provider, pause)
@@ -1392,7 +1403,8 @@ engine_result_t engine_pause(engine_handle_t public_handle) {
 }
 
 engine_result_t engine_resume(engine_handle_t public_handle) {
-  return Route(public_handle, "resume", LegacyServices()->resume,
+  return Route(public_handle, "resume",
+               [](engine_handle_t legacy) { return LegacyServices()->resume(legacy); },
                [](DispatchHandle* handle) {
                  if (!PROVIDER_HAS(handle->provider, resume)) {
                    return ENGINE_RESULT_NOT_SUPPORTED;

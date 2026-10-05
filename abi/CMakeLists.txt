@@ -30,6 +30,13 @@ endif()
 
 target_compile_features(engine_api PRIVATE cxx_std_17)
 
+if(NOT SOFTPAL_ENGINE_ONLY)
+    # The dispatcher logs provider diagnostics in the normal product build as
+    # well. The engine-only mode links this dependency in its isolated graph.
+    find_package(spdlog CONFIG REQUIRED)
+    target_link_libraries(engine_api PRIVATE spdlog::spdlog)
+endif()
+
 if(WEB OR EMSCRIPTEN)
     # Web links this static API into the side module and exports its C ABI.
     target_compile_definitions(engine_api PRIVATE ENGINE_API_EXPORT_SYMBOLS)
@@ -56,8 +63,6 @@ if(AETHERKIRI_INTERNAL_ENABLED AND COMMAND aetherinternal_extend_text_translatio
     # LocalTextTranslation logs through spdlog/fmt; the KiriKiri glue link
     # that used to satisfy those symbols is gone (Phase 2d), so link them
     # into engine_api explicitly.
-    find_package(spdlog CONFIG REQUIRED)
-    target_link_libraries(engine_api PRIVATE spdlog::spdlog)
 endif()
 
 # The KiriKiri runtime glue (aether_krkr2_runtime) is linked by the Godot

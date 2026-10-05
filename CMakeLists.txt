@@ -1,5 +1,16 @@
 cmake_minimum_required(VERSION 3.28)
 
+option(SOFTPAL_ENGINE_ONLY
+       "build the standard engine API with only the SoftPal provider"
+       OFF)
+
+if(SOFTPAL_ENGINE_ONLY)
+    # Must be set before project() loads any caller-supplied vcpkg toolchain.
+    # Dependencies are installed explicitly; never consume the product manifest.
+    set(VCPKG_MANIFEST_MODE OFF)
+    set(VCPKG_MANIFEST_INSTALL OFF)
+endif()
+
 find_program(CCACHE_PROGRAM ccache)
 
 if (CCACHE_PROGRAM)
@@ -12,13 +23,15 @@ add_compile_definitions(
         $<$<CONFIG:Debug>:DEBUG>
         $<$<CONFIG:Debug>:_DEBUG>   # 对于 MSVC 兼容性
         # Artemis is a supported runtime in every product configuration.
-        AETHERKIRI_ENABLE_ARTEMIS_RUNTIME
+        $<$<NOT:$<BOOL:${SOFTPAL_ENGINE_ONLY}>>:AETHERKIRI_ENABLE_ARTEMIS_RUNTIME>
         $<$<NOT:$<CONFIG:Debug>>:NDEBUG>
 )
 
 # Detect Android build: Gradle may set CMAKE_SYSTEM_NAME=Android or VCPKG_TARGET_ANDROID=ON
 # before project() is called; the ANDROID variable is only set after project().
-if(VCPKG_TARGET_ANDROID OR CMAKE_SYSTEM_NAME STREQUAL "Android")
+# The SoftPal engine-only mode deliberately has no implicit vcpkg toolchain.
+if(NOT SOFTPAL_ENGINE_ONLY AND
+   (VCPKG_TARGET_ANDROID OR CMAKE_SYSTEM_NAME STREQUAL "Android"))
     set(VCPKG_TARGET_ANDROID ON)
     # Gradle passes ANDROID_NDK as a CMake -D variable, propagate it to env
     if(DEFINED ANDROID_NDK AND NOT DEFINED ENV{ANDROID_NDK_HOME})
@@ -49,11 +62,16 @@ if(VCPKG_TARGET_ANDROID OR CMAKE_SYSTEM_NAME STREQUAL "Android")
     else()
         include(cmake/vcpkg_android.cmake)
     endif()
-else()
+elseif(NOT SOFTPAL_ENGINE_ONLY)
     set(CMAKE_TOOLCHAIN_FILE $ENV{VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake)
 endif()
 
 project(AetherKiri)
+
+if(SOFTPAL_ENGINE_ONLY)
+    include("${CMAKE_CURRENT_SOURCE_DIR}/cmake/softpal_engine_only.cmake")
+    return()
+endif()
 
 # vcpkg's OpenAL target carries raw "-Wl,-framework,..." items in its
 # interface. Imported targets are directory-scoped: every scope that calls

@@ -139,6 +139,11 @@ The scripts build the native engine and Godot host library, stage them under
 available. Linux exports bundle the required vcpkg shared libraries beside the
 executable.
 
+For a Windows build with only the SoftPal provider, use the
+[`Windows SoftPal Engine Config` preset](doc/softpal_engine_only_build.md).
+It skips all other runtime submodules, the Godot extension, and the full vcpkg
+manifest.
+
 ### Optional Components
 
 - **Private package** — maintainers with access to the complete E-mote and

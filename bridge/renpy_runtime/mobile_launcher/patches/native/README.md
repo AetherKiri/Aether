@@ -31,3 +31,41 @@ initialization and then enters the cooperative ABI. The existing
 This layer is not packaged automatically as a fake runtime. Apply all three
 native patches to a fork checkout, then the symbol gate and device/simulator
 demo smoke must pass before installing artifacts.
+
+## Full source-build command
+
+On Ubuntu 24.04 with the Android NDK r29 and the licensed iOS SDK archives
+available to `renpy-build`, the complete opt-in flow is:
+
+```bash
+git clone --depth=1 https://github.com/renpy/renpy-build.git /work/renpy-build
+(cd /work/renpy-build && ./prepare.sh)
+AETHERKIRI_RENPY_LIFECYCLE_FORK=1 \
+  AETHERKIRI_RENPY_BUILD_IOS=1 \
+  tools/run_renpy_mobile_source_build.sh \
+    --mode build --renpy-build /work/renpy-build
+```
+
+The runner copies the lifecycle C file and ABI header, applies the task patch
+and both platform bootstrap patches, runs the official Android/iOS build
+tasks, and gates the canonical `.so`/`.a` outputs with the seven exported
+symbols. Install the checked outputs into the staging tree only after that
+gate:
+
+```bash
+bridge/renpy_runtime/mobile_launcher/build.sh --install \
+  --renpy-build /work/renpy-build \
+  --stage /work/renpy-mobile-staged \
+  --android-so-arm64 /work/renpy-build/renpy/rapt/prototype/renpyandroid/src/main/jniLibs/arm64-v8a/librenpython.so \
+  --android-so-armv7 /work/renpy-build/renpy/rapt/prototype/renpyandroid/src/main/jniLibs/armeabi-v7a/librenpython.so \
+  --android-so-x86_64 /work/renpy-build/renpy/rapt/prototype/renpyandroid/src/main/jniLibs/x86_64/librenpython.so \
+  --ios-debug-a /work/renpy-build/renpy/renios/prototype/prebuilt/debug/librenpython.a \
+  --ios-release-a /work/renpy-build/renpy/renios/prototype/prebuilt/release/librenpython.a
+RENPY_MOBILE_STAGE_TEST_ROOT=/work/renpy-mobile-staged \
+  bash tools/test_stage_renpy_android_support.sh
+bash tools/test_renpy_mobile_native_fork.sh
+```
+
+Without the fork flag, SDK archives, NDK, and iOS SDK inputs, the runner skips
+or refuses the heavy build and the official blocking archives remain guarded
+as `NOT_SUPPORTED`.

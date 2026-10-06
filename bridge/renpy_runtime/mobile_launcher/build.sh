@@ -34,7 +34,7 @@ those objects deliberately return NOT_IMPLEMENTED and are never packaged.
 --check-python-patch validates the Ren'Py Python cooperative-loop patch against
 an official Ren'Py source checkout. --apply-python-patch applies it in place
 only after `git apply --check`; it refuses a dirty checkout. The patch is an
-opt-in skeleton and does not make the runtime playable by itself.
+opt-in cooperative loop and does not make the native runtime playable by itself.
 --print-plan prints the upstream renpy-build commands and replacement paths.
 --install copies caller-supplied, already-built lifecycle artifacts into the
 staged RAPT/Renios tree after checking the required exported symbol names.
@@ -237,8 +237,11 @@ Ren'Py native mobile source-build plan
   Ren'Py source:   $source_root
   Source setup:    (cd $renpy_build && ./prepare.sh)
   Python patch:    $repo_root/bridge/renpy_runtime/mobile_launcher/patches/python/0001-cooperative-loop-skeleton.patch
+  Native ABI fork: $repo_root/bridge/renpy_runtime/mobile_launcher/patches/native/renpy_mobile_lifecycle.c
   Patch check:     (cd $source_root && git apply --check $repo_root/bridge/renpy_runtime/mobile_launcher/patches/python/0001-cooperative-loop-skeleton.patch)
   Patch apply:     (cd $source_root && git apply $repo_root/bridge/renpy_runtime/mobile_launcher/patches/python/0001-cooperative-loop-skeleton.patch)
+  Native fork:     add the native ABI fork to the renpy-build `renpython` task and
+                   factor Python initialization/window binding out of SDL_main/launcher_main
 
 Official build commands (Ubuntu 24.04; heavy, opt-in)
   Android: (cd $renpy_build && ./build.sh --platform android rebuild rapt rapt-sdl2)
@@ -282,7 +285,7 @@ if [[ "$mode" == "check-python-patch" || "$mode" == "apply-python-patch" ]]; the
     git -C "$renpy_src" apply --check "$python_patch"
     if [[ "$mode" == "check-python-patch" ]]; then
         echo "Ren'Py Python cooperative-loop patch applies cleanly"
-        echo "  skeleton only: Python/SDL lifecycle integration remains required"
+        echo "  cooperative Python loop validated; native ABI/frame/input integration remains required"
         exit 0
     fi
     if [[ -n "$(git -C "$renpy_src" status --porcelain --untracked-files=no)" ]]; then
@@ -292,8 +295,8 @@ if [[ "$mode" == "check-python-patch" || "$mode" == "apply-python-patch" ]]; the
     git -C "$renpy_src" apply "$python_patch"
     python3 -m py_compile "$renpy_src/renpy/main.py" \
         "$renpy_src/renpy/execution.py" "$renpy_src/renpy/display/core.py"
-    echo "applied and syntax-checked Ren'Py Python cooperative-loop skeleton"
-    echo "  this does not make the mobile runtime playable"
+    echo "applied and syntax-checked Ren'Py Python cooperative loop"
+    echo "  native ABI/frame/input integration and device E2E remain required"
     exit 0
 fi
 

@@ -41,13 +41,25 @@ Activity, or UIKit entrypoint. It is deliberately inert for the official
 blocking libraries, so staging those archives alone cannot accidentally enable
 mobile gameplay.
 
+## Native lifecycle fork
+
+`native/renpy_mobile_lifecycle.c` is the shared host-owned implementation for
+the seven ABI exports. It calls the cooperative Python entrypoints, publishes
+the existing SDL window surface, queues input, and shuts down without process
+exit. The release-specific Android and iOS launcher patch must factor Python
+initialization out of `SDL_main`/`launcher_main`, then bind the existing SDL
+window and call this implementation. The source-build runner must compile this
+file with the official `link_android`/`link_ios` closures and run the export
+gate before installing any artifact.
+
 ## Python cooperative-loop seam
 
 `python/0001-cooperative-loop-skeleton.patch` is an opt-in, syntax-checked
 patch for `renpy/main.py`, `renpy/execution.py`, and
 `renpy/display/core.py`. The scaffold validates or applies it with
-`--check-python-patch` / `--apply-python-patch`. It adds deadline state,
-`CooperativeYield`, non-blocking event polling, and host-safe shutdown seams
-while preserving default launcher behavior. It is intentionally incomplete:
-`run_context`, `main.run`, and `Interface.interact_core` still require a real
-resumable implementation before mobile gameplay can be enabled.
+`--check-python-patch` / `--apply-python-patch`. It adds
+`cooperative_start/tick/stop`, preserves the active execution context across
+bounded ticks, raises `CooperativeYield` at the context and interaction-loop
+boundaries, and provides host-safe cleanup while preserving default launcher
+behavior. The native fork must still call these APIs and provide the SDL/GLES
+or Metal frame/input bridge before mobile gameplay can be enabled.

@@ -8,9 +8,11 @@ on:
     paths:
       - '.github/workflows/renpy-desktop.yml'
       - 'bridge/renpy_runtime/**'
+      - 'demos/aetherkiri-renpy/**'
       - 'tests/fixtures/renpy_smoke/**'
       - 'tools/install_renpy_sdk.sh'
       - 'tools/run_renpy_smoke.sh'
+      - 'tools/test_renpy_demo_fixture.sh'
       - 'tools/test_install_renpy_sdk.sh'
   workflow_dispatch:
 
@@ -52,6 +54,9 @@ jobs:
       - name: Validate installer metadata and shell syntax
         run: bash tools/test_install_renpy_sdk.sh
 
+      - name: Validate Ren'Py demo fixture
+        run: bash tools/test_renpy_demo_fixture.sh
+
       - name: Install pinned Ren'Py SDK and run fixture smoke
         env:
           RENPY_PLATFORM: ${{ matrix.platform }}
@@ -74,4 +79,6 @@ jobs:
             exit 1
           fi
           RENPY_SDK="${sdk_root}" bash tools/run_renpy_smoke.sh
-
+          AETHERKIRI_RENPY_DEMO_FIXTURE="${GITHUB_WORKSPACE}/demos/aetherkiri-renpy" \
+            RENPY_SDK="${sdk_root}" RENPY_DEMO_RUN_SMOKE=1 \
+            bash tools/test_renpy_demo_fixture.sh

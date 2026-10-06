@@ -1615,6 +1615,7 @@ const RUNTIME_KIRIKIRI := "kirikiri"
 const RUNTIME_ONSCRIPTER := "onscripter"
 const RUNTIME_MINORI := "minori"
 const RUNTIME_CATSYSTEM2 := "catsystem2"
+const RUNTIME_NEXAS := "nexas"
 const RUNTIME_PLAYER_CLASS := "AetherRuntimePlayer"
 const ONSCRIPTER_SCRIPT_MARKERS := [
     "0.txt",
@@ -10702,6 +10703,8 @@ func _game_runtime_kind(path: String) -> String:
             return RUNTIME_CATSYSTEM2
         if int(player.probe_runtime(RUNTIME_MINORI, root)) > 0:
             return RUNTIME_MINORI
+        if int(player.probe_runtime(RUNTIME_NEXAS, root)) > 0:
+            return RUNTIME_NEXAS
     return runtime_kind
 
 func _backfill_game_metadata(games: Array[Dictionary]) -> bool:
@@ -11988,7 +11991,7 @@ func _create_runtime_player(runtime_kind: String = RUNTIME_KIRIKIRI) -> bool:
 
 func _switch_runtime_player(runtime_kind: String) -> bool:
     var normalized := runtime_kind
-    if normalized != RUNTIME_ONSCRIPTER and normalized != RUNTIME_MINORI:
+    if normalized not in [RUNTIME_ONSCRIPTER, RUNTIME_MINORI, RUNTIME_NEXAS]:
         normalized = RUNTIME_KIRIKIRI
     if player != null and current_player_runtime_kind == normalized:
         return true
@@ -12019,6 +12022,8 @@ func _switch_runtime_player(runtime_kind: String) -> bool:
         if normalized == RUNTIME_ONSCRIPTER
         else "MinoriRust"
         if normalized == RUNTIME_MINORI
+        else "NeXAS"
+        if normalized == RUNTIME_NEXAS
         else "KiriKiri"
     ))
     return true
@@ -12254,7 +12259,7 @@ func _ensure_player_initialized() -> bool:
         return false
 
     var runtime_id := "auto"
-    if current_player_runtime_kind in [RUNTIME_ONSCRIPTER, RUNTIME_MINORI]:
+    if current_player_runtime_kind in [RUNTIME_ONSCRIPTER, RUNTIME_MINORI, RUNTIME_NEXAS]:
         runtime_id = current_player_runtime_kind
     var runtime_result := int(player.set_engine_option("runtime", runtime_id))
     if runtime_result != ENGINE_RESULT_OK:

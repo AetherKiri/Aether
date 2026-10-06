@@ -44,6 +44,8 @@ class Launcher final {
 
   using InitFn = int (*)(const renpy_mobile_config_t*,
                          const renpy_mobile_host_t*);
+  using BootstrapFn = int (*)(const renpy_mobile_config_t*,
+                              const renpy_mobile_host_t*);
   using TickFn = int (*)(uint32_t);
   using FrameFn = int (*)(renpy_mobile_frame_t*);
   using InputFn = int (*)(const renpy_mobile_input_t*);
@@ -53,6 +55,7 @@ class Launcher final {
 
   void* library_handle_ = nullptr;
   InitFn init_ = nullptr;
+  BootstrapFn bootstrap_ = nullptr;
   TickFn tick_ = nullptr;
   FrameFn frame_ = nullptr;
   InputFn input_ = nullptr;

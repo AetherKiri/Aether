@@ -1,0 +1,39 @@
+diff --git a/tasks/renpython.py b/tasks/renpython.py
+index acece27..5dd3e13 100644
+--- a/tasks/renpython.py
++++ b/tasks/renpython.py
+@@ -39,6 +39,17 @@ def build_android(c: Context):
+     {{ runtime }}/librenpython_android.c
+     """)
+ 
++    # AetherKiri host-owned lifecycle fork.
++    c.run("""
++    {{ CC }} {{ CFLAGS }}
++    -DPLATFORM=\"{{ c.platform }}\"
++    -DARCH=\"{{ c.arch }}\"
++    -DPYTHONVER=\"{{ pythonver }}\"
++    -DPYCVER=\"{{ pycver }}\"
++    -c -o renpy_mobile_lifecycle.o
++    {{ runtime }}/renpy_mobile_lifecycle.c
++    """)
++
+ 
+ @task(kind="arch", always=True, platforms="linux")
+ def link_linux(c: Context):
+@@ -131,6 +142,7 @@ def link_android(c: Context):
+ 
+     -o librenpython.so
+     librenpython_android.o
++    renpy_mobile_lifecycle.o
+ 
+     -lrenpy
+     -l{{ pythonver }}
+@@ -474,7 +486,7 @@ def link_windows(c: Context):
+ def link_ios(c: Context):
+ 
+     c.unlink("librenpython.a")
+-    c.run("""{{ AR }} --format=darwin -r librenpython.a librenpython.o""")
++    c.run("""{{ AR }} --format=darwin -r librenpython.a librenpython.o renpy_mobile_lifecycle.o""")
+     c.run("""install -d {{install}}/lib""")
+     c.run("""install librenpython.a {{ install }}/lib""")
+ 

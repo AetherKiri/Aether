@@ -9,6 +9,7 @@ const GITHUB_RELEASES_URL := "https://api.github.com/repos/AetherKiri/Aether/rel
 const APPLE_APP_ID := "6796580469"
 const APPLE_LOOKUP_URL := "https://itunes.apple.com/lookup?id=6796580469"
 const APPLE_STORE_URL := "https://apps.apple.com/app/id6796580469"
+const APPLE_TESTFLIGHT_URL := "itms-beta://"
 const GITHUB_REPO_RELEASES_PAGE := "https://github.com/AetherKiri/Aether/releases"
 
 enum CheckStatus {

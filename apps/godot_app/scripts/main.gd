@@ -387,6 +387,7 @@ const UI_TEXT := {
         "update.notes_title": "更新日志：",
         "update.download_github": "前往 GitHub 下载",
         "update.open_app_store": "前往 App Store 更新",
+        "update.open_testflight": "前往 TestFlight 更新",
         "update.later": "稍后提醒",
         "update.skip_version": "跳过此版本",
         "update.already_latest": "当前已是最新版本 (%s)",
@@ -705,6 +706,7 @@ const UI_TEXT := {
         "update.notes_title": "更新日誌：",
         "update.download_github": "前往 GitHub 下載",
         "update.open_app_store": "前往 App Store 更新",
+        "update.open_testflight": "前往 TestFlight 更新",
         "update.later": "稍後提醒",
         "update.skip_version": "跳過此版本",
         "update.already_latest": "目前已是最新版本 (%s)",
@@ -1063,6 +1065,7 @@ You can find it any time under Settings → QQ Group.",
         "update.notes_title": "Release Notes:",
         "update.download_github": "Download from GitHub",
         "update.open_app_store": "Update in App Store",
+        "update.open_testflight": "Open TestFlight",
         "update.later": "Remind Me Later",
         "update.skip_version": "Skip This Version",
         "update.already_latest": "You are on the latest version (%s)",
@@ -1381,6 +1384,7 @@ You can find it any time under Settings → QQ Group.",
         "update.notes_title": "更新履歴：",
         "update.download_github": "GitHub からダウンロード",
         "update.open_app_store": "App Store でアップデート",
+        "update.open_testflight": "TestFlight を開く",
         "update.later": "あとで",
         "update.skip_version": "このバージョンをスキップ",
         "update.already_latest": "最新バージョンを使用しています (%s)",
@@ -1697,6 +1701,7 @@ You can find it any time under Settings → QQ Group.",
         "update.notes_title": "릴리스 노트:",
         "update.download_github": "GitHub에서 다운로드",
         "update.open_app_store": "App Store에서 업데이트",
+        "update.open_testflight": "TestFlight 열기",
         "update.later": "나중에 알림",
         "update.skip_version": "이 버전 건너뛰기",
         "update.already_latest": "최신 버전을 사용 중입니다 (%s)",
@@ -5407,6 +5412,9 @@ func _cascade_settings_rows(groups: Array) -> void:
 # scrolls, and slides the highlight onto the section under the reading line.
 
 func _application_version_text() -> String:
+    var env_ver := OS.get_environment("AETHERKIRI_SIMULATE_VERSION").strip_edges()
+    if not env_ver.is_empty():
+        return env_ver
     return str(ProjectSettings.get_setting("application/config/version", "development"))
 
 func _build_detail_view() -> void:
@@ -8554,12 +8562,39 @@ func _check_app_update_manually() -> void:
                 _show_app_update_dialog(info)
             elif status == AppUpdater.CheckStatus.SUCCESS_NO_UPDATE:
                 if bool(info.get("is_testflight", false)):
-                    _show_system_alert(_t("update.testflight_notice"), "Aether")
+                    _show_testflight_update_dialog()
                 else:
                     _show_system_alert(_t("update.already_latest", [current_ver]), "Aether")
             else:
                 _show_system_alert(_t("update.check_failed"), "Aether")
     )
+
+func _show_testflight_update_dialog() -> void:
+    var dialog := _modal_dialog(Vector2(520, 240), 0.40)
+    var box := _modal_stack(dialog, "TestFlight", ICON_HELP)
+    box.add_child(_dialog_body_label(_t("update.testflight_notice")))
+
+    var btn_row := HBoxContainer.new()
+    btn_row.alignment = BoxContainer.ALIGNMENT_END
+    btn_row.add_theme_constant_override("separation", 12)
+    box.add_child(btn_row)
+
+    var cancel_btn := _pill_button(_t("dialog.cancel"))
+    cancel_btn.clip_text = false
+    cancel_btn.custom_minimum_size = Vector2(96, 42)
+    ui_widgets.secondary_button(cancel_btn)
+    cancel_btn.pressed.connect(_dismiss_modal)
+    btn_row.add_child(cancel_btn)
+
+    var open_btn := _pill_button(_t("update.open_testflight"))
+    open_btn.clip_text = false
+    open_btn.custom_minimum_size = Vector2(190, 42)
+    open_btn.pressed.connect(func():
+        _dismiss_modal(func():
+            OS.shell_open(AppUpdater.APPLE_TESTFLIGHT_URL)
+        )
+    )
+    btn_row.add_child(open_btn)
 
 func _show_app_update_dialog(info: Dictionary) -> void:
     var latest_ver: String = str(info.get("latest_version", ""))

@@ -181,7 +181,10 @@ for artifact in "$android_arm64" "$android_armv7" "$android_x86_64"; do
     [[ -f "$artifact" ]] || { echo "Android lifecycle artifact missing: $artifact" >&2; exit 1; }
 done
 
-RENPY_MOBILE_ANDROID_SO="$android_arm64"     bash "$repo_root/tools/test_renpy_mobile_symbol_gate.sh"
+for android_artifact in "$android_arm64" "$android_armv7" "$android_x86_64"; do
+    RENPY_MOBILE_ANDROID_SO="$android_artifact" \
+        bash "$repo_root/tools/test_renpy_mobile_symbol_gate.sh"
+done
 
 if [[ "${AETHERKIRI_RENPY_BUILD_IOS:-0}" == "1" ]]; then
     echo "Building iOS lifecycle payload (licensed SDK archives required)"

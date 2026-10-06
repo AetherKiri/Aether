@@ -240,7 +240,7 @@ Ren'Py native mobile source-build plan
   Native ABI fork: $repo_root/bridge/renpy_runtime/mobile_launcher/patches/native/renpy_mobile_lifecycle.c
   Patch check:     (cd $source_root && git apply --check $repo_root/bridge/renpy_runtime/mobile_launcher/patches/python/0001-cooperative-loop-skeleton.patch)
   Patch apply:     (cd $source_root && git apply $repo_root/bridge/renpy_runtime/mobile_launcher/patches/python/0001-cooperative-loop-skeleton.patch)
-  Native fork:     add the native ABI fork to the renpy-build `renpython` task and
+  Native fork:     add the native ABI fork to the renpy-build renpython task and
                    factor Python initialization/window binding out of SDL_main/launcher_main
 
 Official build commands (Ubuntu 24.04; heavy, opt-in)

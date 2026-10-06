@@ -3853,7 +3853,8 @@ func _load_shell_settings() -> void:
     ios_statement_accepted_at = int(cfg.get_value("legal", "ios_statement_accepted_at", 0))
     secret_iap_unlocked = bool(cfg.get_value("unlock", "secret_iap_unlocked", false))
     secret_coffee_until_unix = int(cfg.get_value("unlock", "secret_coffee_until_unix", 0))
-    include_prerelease = bool(cfg.get_value("update", "include_prerelease", false))
+    var default_prerelease := AppUpdater.is_prerelease(_application_version_text())
+    include_prerelease = bool(cfg.get_value("update", "include_prerelease", default_prerelease))
     skipped_update_version = String(cfg.get_value("update", "skipped_version", ""))
 
 func _configure_runtime_diagnostics() -> void:
@@ -5592,6 +5593,9 @@ func _apple_app_store_platform(platform_name: String = "") -> bool:
     return effective_platform in ["iOS", "macOS"]
 
 func _is_apple_app_store_build() -> bool:
+    if OS.get_environment("AETHERKIRI_SIMULATE_APP_STORE") == "1" \
+            or OS.get_environment("AETHERKIRI_SIMULATE_TESTFLIGHT") == "1":
+        return true
     if OS.get_name() == "iOS":
         return true
     if OS.get_name() == "macOS":
@@ -8506,7 +8510,7 @@ func _check_app_update_silently() -> void:
     if update_checking:
         return
     var current_ver := _application_version_text()
-    if AppUpdater.is_ios_testflight(current_ver):
+    if AppUpdater.is_apple_testflight(current_ver):
         return
     update_checking = true
     var is_store := _is_apple_app_store_build()

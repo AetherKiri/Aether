@@ -5,11 +5,11 @@ extends RefCounted
 ## Handles version checking and update flows for AetherKiri.
 ## Supports GitHub Releases and Apple App Store (iOS / macOS).
 
-const GITHUB_RELEASES_URL := "https://api.github.com/repos/AetherKiri/AetherKiri/releases?per_page=10"
+const GITHUB_RELEASES_URL := "https://api.github.com/repos/AetherKiri/Aether/releases?per_page=10"
 const APPLE_APP_ID := "6796580469"
 const APPLE_LOOKUP_URL := "https://itunes.apple.com/lookup?id=6796580469"
 const APPLE_STORE_URL := "https://apps.apple.com/app/id6796580469"
-const GITHUB_REPO_RELEASES_PAGE := "https://github.com/AetherKiri/AetherKiri/releases"
+const GITHUB_REPO_RELEASES_PAGE := "https://github.com/AetherKiri/Aether/releases"
 
 enum CheckStatus {
     SUCCESS_HAS_UPDATE,
@@ -115,11 +115,20 @@ static func is_prerelease(v: String) -> bool:
     var parsed := _parse_version(v)
     return not str(parsed.get("prerelease", "")).is_empty()
 
-## Returns true if running an iOS TestFlight (prerelease / alpha) build.
-static func is_ios_testflight(current_version: String) -> bool:
-    if OS.get_environment("AETHERKIRI_SIMULATE_IOS_TESTFLIGHT") == "1":
+## Returns true if running an Apple TestFlight (iOS or macOS TestFlight) build.
+static func is_apple_testflight(current_version: String) -> bool:
+    if OS.get_environment("AETHERKIRI_SIMULATE_TESTFLIGHT") == "1":
         return true
-    return OS.get_name() == "iOS" and is_prerelease(current_version)
+    if not is_prerelease(current_version):
+        return false
+    if OS.get_name() == "iOS":
+        return true
+    if OS.get_name() == "macOS" and is_mac_app_store():
+        return true
+    return false
+
+static func is_ios_testflight(current_version: String) -> bool:
+    return is_apple_testflight(current_version)
 
 static func _parse_version(v: String) -> Dictionary:
     var clean := v.strip_edges().trim_prefix("v").trim_prefix("V")
@@ -250,8 +259,8 @@ static func check_for_updates(
         callback.call(CheckStatus.NETWORK_ERROR, {})
         return
 
-    # On iOS, TestFlight / alpha builds do not check App Store because TestFlight manages updates natively
-    if is_ios_testflight(current_version):
+    # On Apple platforms, TestFlight / alpha builds do not check App Store because TestFlight manages updates natively
+    if is_apple_testflight(current_version):
         callback.call(CheckStatus.SUCCESS_NO_UPDATE, {
             "current_version": current_version,
             "is_testflight": true,
@@ -384,8 +393,10 @@ static func _finish_with_release_data(
     var github_apk_url := ""
     var github_macos_url := ""
 
-    var expected_apk_name := "AetherKiri-%s-android.apk" % latest_ver
-    var expected_macos_name := "AetherKiri-%s-macos.zip" % latest_ver
+    var expected_apk_name_1 := "Aether-%s-android.apk" % latest_ver
+    var expected_apk_name_2 := "AetherKiri-%s-android.apk" % latest_ver
+    var expected_macos_name_1 := "Aether-%s-macos.zip" % latest_ver
+    var expected_macos_name_2 := "AetherKiri-%s-macos.zip" % latest_ver
 
     # Parse assets to find direct APK and macOS zip links if available
     var assets: Array = release_data.get("assets", []) if (release_data.get("assets") is Array) else []
@@ -393,17 +404,17 @@ static func _finish_with_release_data(
         if asset is Dictionary:
             var aname: String = str(asset.get("name", ""))
             var dl_url: String = str(asset.get("browser_download_url", ""))
-            if aname == expected_apk_name or aname.ends_with("-android.apk") or aname.ends_with(".apk"):
+            if aname == expected_apk_name_1 or aname == expected_apk_name_2 or aname.ends_with("-android.apk") or aname.ends_with(".apk"):
                 github_apk_url = dl_url
-            elif aname == expected_macos_name or (aname.ends_with("-macos.zip") and not aname.contains("app-store")):
+            elif aname == expected_macos_name_1 or aname == expected_macos_name_2 or ((aname.ends_with("-macos.zip") or aname.ends_with(".dmg")) and not aname.contains("app-store")):
                 github_macos_url = dl_url
 
     # Construct direct download URLs if not explicitly found in assets list
     if github_apk_url.is_empty():
-        github_apk_url = "%s/download/%s/%s" % [GITHUB_REPO_RELEASES_PAGE, tag_name, expected_apk_name]
+        github_apk_url = "%s/download/%s/%s" % [GITHUB_REPO_RELEASES_PAGE, tag_name, expected_apk_name_1]
 
     if github_macos_url.is_empty():
-        github_macos_url = "%s/download/%s/%s" % [GITHUB_REPO_RELEASES_PAGE, tag_name, expected_macos_name]
+        github_macos_url = "%s/download/%s/%s" % [GITHUB_REPO_RELEASES_PAGE, tag_name, expected_macos_name_1]
 
     var html_url: String = str(release_data.get("html_url", ""))
     github_url = html_url if not html_url.is_empty() else (GITHUB_REPO_RELEASES_PAGE + "/tag/" + tag_name)

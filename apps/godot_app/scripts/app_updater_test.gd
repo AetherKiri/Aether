@@ -71,9 +71,10 @@ func _run() -> void:
     _assert(APP_UPDATER_SCRIPT.is_prerelease("1.0.6") == false, "1.0.6 should not be recognized as prerelease")
     _assert(APP_UPDATER_SCRIPT.is_prerelease("v1.0.5") == false, "v1.0.5 should not be recognized as prerelease")
 
-    # 7. Test iOS TestFlight update bypass
-    OS.set_environment("AETHERKIRI_SIMULATE_IOS_TESTFLIGHT", "1")
-    _assert(APP_UPDATER_SCRIPT.is_ios_testflight("1.0.7-alpha.1") == true, "Should detect iOS TestFlight when simulated")
+    # 7. Test Apple TestFlight update bypass (iOS and macOS TestFlight)
+    OS.set_environment("AETHERKIRI_SIMULATE_TESTFLIGHT", "1")
+    _assert(APP_UPDATER_SCRIPT.is_apple_testflight("1.0.6") == true, "AETHERKIRI_SIMULATE_TESTFLIGHT should force TestFlight mode")
+    _assert(APP_UPDATER_SCRIPT.is_ios_testflight("1.0.6") == true, "is_ios_testflight alias should work")
     var tf_callback_invoked := [false]
     var dummy_node := Node.new()
     root.add_child(dummy_node)
@@ -89,7 +90,32 @@ func _run() -> void:
     )
     _assert(tf_callback_invoked[0], "TestFlight update callback should execute immediately without network")
     dummy_node.queue_free()
-    OS.set_environment("AETHERKIRI_SIMULATE_IOS_TESTFLIGHT", "")
+    OS.set_environment("AETHERKIRI_SIMULATE_TESTFLIGHT", "")
+
+    # 8. Test macOS channels: Mac App Store vs Mac TestFlight vs GitHub
+    OS.set_environment("AETHERKIRI_SIMULATE_APP_STORE", "1")
+    _assert(APP_UPDATER_SCRIPT.is_mac_app_store() == true, "Simulated MAS receipt should return true")
+    _assert(APP_UPDATER_SCRIPT.is_apple_testflight("1.0.7-alpha.1") == true, "Mac MAS build with alpha should be treated as Mac TestFlight")
+    _assert(APP_UPDATER_SCRIPT.is_apple_testflight("1.0.6") == false, "Mac MAS build with clean version should be treated as production MAS")
+    OS.set_environment("AETHERKIRI_SIMULATE_APP_STORE", "")
+
+    # 9. Test Aether-prefixed assets parsing
+    var mock_aether_assets := {
+        "tag_name": "v1.0.7",
+        "body": "Aether release",
+        "assets": [
+            {"name": "Aether-1.0.7-android.apk", "browser_download_url": "https://github.com/Aether/apk"},
+            {"name": "Aether-1.0.7-macos.zip", "browser_download_url": "https://github.com/Aether/macos.zip"},
+        ]
+    }
+    var aether_tracker := [false]
+    APP_UPDATER_SCRIPT._finish_with_release_data(mock_aether_assets, "1.0.6", "github", func(status: int, info: Dictionary):
+        aether_tracker[0] = true
+        _assert(status == APP_UPDATER_SCRIPT.CheckStatus.SUCCESS_HAS_UPDATE, "Should report update")
+        _assert(info.get("github_macos_url") == "https://github.com/Aether/macos.zip", "Should extract Aether-1.0.7-macos.zip")
+        _assert(info.get("github_apk_url") == "https://github.com/Aether/apk", "Should extract Aether-1.0.7-android.apk")
+    )
+    _assert(aether_tracker[0], "Aether asset parsing callback should be invoked")
 
     print("app_updater_test: PASS")
     quit(0)

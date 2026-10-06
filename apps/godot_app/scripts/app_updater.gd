@@ -110,6 +110,17 @@ static func is_mac_app_store() -> bool:
     var receipt_path := contents_dir.path_join("_MASReceipt").path_join("receipt")
     return FileAccess.file_exists(receipt_path)
 
+## Returns true if the given version string has a pre-release identifier (e.g. "1.0.7-alpha.1").
+static func is_prerelease(v: String) -> bool:
+    var parsed := _parse_version(v)
+    return not str(parsed.get("prerelease", "")).is_empty()
+
+## Returns true if running an iOS TestFlight (prerelease / alpha) build.
+static func is_ios_testflight(current_version: String) -> bool:
+    if OS.get_environment("AETHERKIRI_SIMULATE_IOS_TESTFLIGHT") == "1":
+        return true
+    return OS.get_name() == "iOS" and is_prerelease(current_version)
+
 static func _parse_version(v: String) -> Dictionary:
     var clean := v.strip_edges().trim_prefix("v").trim_prefix("V")
     var prerelease := ""
@@ -237,6 +248,17 @@ static func check_for_updates(
 ) -> void:
     if not is_instance_valid(node):
         callback.call(CheckStatus.NETWORK_ERROR, {})
+        return
+
+    # On iOS, TestFlight / alpha builds do not check App Store because TestFlight manages updates natively
+    if is_ios_testflight(current_version):
+        callback.call(CheckStatus.SUCCESS_NO_UPDATE, {
+            "current_version": current_version,
+            "is_testflight": true,
+            "is_app_store": true,
+            "is_prerelease": true,
+            "source": "testflight",
+        })
         return
 
     var req := HTTPRequest.new()

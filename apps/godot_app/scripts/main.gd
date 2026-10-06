@@ -390,6 +390,7 @@ const UI_TEXT := {
         "update.later": "稍后提醒",
         "update.skip_version": "跳过此版本",
         "update.already_latest": "当前已是最新版本 (%s)",
+        "update.testflight_notice": "当前为 TestFlight 测试版本，更新请在 TestFlight 应用中查看",
         "update.check_failed": "检查更新失败，请稍后重试",
         "settings.ios_statement": "Apple App Store 额外声明",
         "settings.ios_statement_desc": "查看 GPLv3、App Store 分发附加许可、源码义务及适用范围",
@@ -707,6 +708,7 @@ const UI_TEXT := {
         "update.later": "稍後提醒",
         "update.skip_version": "跳過此版本",
         "update.already_latest": "目前已是最新版本 (%s)",
+        "update.testflight_notice": "目前為 TestFlight 測試版本，更新請在 TestFlight 應用程式中查看",
         "update.check_failed": "檢查更新失敗，請稍後重試",
         "settings.ios_statement": "Apple App Store 額外聲明",
         "settings.ios_statement_desc": "查看 GPLv3、App Store 發布附加許可、原始碼義務及適用範圍",
@@ -1064,6 +1066,7 @@ You can find it any time under Settings → QQ Group.",
         "update.later": "Remind Me Later",
         "update.skip_version": "Skip This Version",
         "update.already_latest": "You are on the latest version (%s)",
+        "update.testflight_notice": "This is a TestFlight beta build. Please check for updates in the TestFlight app.",
         "update.check_failed": "Failed to check for updates. Please try again later.",
         "settings.ios_statement": "Apple App Store Notice",
         "settings.ios_statement_desc": "Review the GPLv3 App Store distribution permission, source obligations, and scope",
@@ -1381,6 +1384,7 @@ You can find it any time under Settings → QQ Group.",
         "update.later": "あとで",
         "update.skip_version": "このバージョンをスキップ",
         "update.already_latest": "最新バージョンを使用しています (%s)",
+        "update.testflight_notice": "現在 TestFlight ベータ版を使用しています。アップデートは TestFlight アプリでご確認ください",
         "update.check_failed": "アップデートの確認に失敗しました。後でもう一度お試しください",
         "settings.ios_statement": "Apple App Store 追加声明",
         "settings.ios_statement_desc": "GPLv3、App Store 配布の追加許諾、ソース提供義務および適用範囲を確認します",
@@ -1696,6 +1700,7 @@ You can find it any time under Settings → QQ Group.",
         "update.later": "나중에 알림",
         "update.skip_version": "이 버전 건너뛰기",
         "update.already_latest": "최신 버전을 사용 중입니다 (%s)",
+        "update.testflight_notice": "현재 TestFlight 베타 버전을 사용 중입니다. 업데이트는 TestFlight 앱에서 확인해 주세요",
         "update.check_failed": "업데이트 확인 실패. 잠시 후 다시 시도해 주세요",
         "settings.ios_statement": "Apple App Store 추가 고지",
         "settings.ios_statement_desc": "GPLv3, App Store 배포 추가 허가, 소스 제공 의무 및 적용 범위를 확인합니다",
@@ -8500,8 +8505,10 @@ func _open_android_coffee() -> void:
 func _check_app_update_silently() -> void:
     if update_checking:
         return
-    update_checking = true
     var current_ver := _application_version_text()
+    if AppUpdater.is_ios_testflight(current_ver):
+        return
+    update_checking = true
     var is_store := _is_apple_app_store_build()
     AppUpdater.check_for_updates(
         self,
@@ -8542,7 +8549,10 @@ func _check_app_update_manually() -> void:
             if status == AppUpdater.CheckStatus.SUCCESS_HAS_UPDATE:
                 _show_app_update_dialog(info)
             elif status == AppUpdater.CheckStatus.SUCCESS_NO_UPDATE:
-                _show_system_alert(_t("update.already_latest", [current_ver]), "Aether")
+                if bool(info.get("is_testflight", false)):
+                    _show_system_alert(_t("update.testflight_notice"), "Aether")
+                else:
+                    _show_system_alert(_t("update.already_latest", [current_ver]), "Aether")
             else:
                 _show_system_alert(_t("update.check_failed"), "Aether")
     )

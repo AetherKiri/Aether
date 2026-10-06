@@ -65,6 +65,32 @@ func _run() -> void:
     var mas_check: bool = APP_UPDATER_SCRIPT.is_mac_app_store()
     _assert(mas_check is bool, "is_mac_app_store should return a boolean")
 
+    # 6. Test is_prerelease detection
+    _assert(APP_UPDATER_SCRIPT.is_prerelease("1.0.7-alpha.1") == true, "1.0.7-alpha.1 should be recognized as prerelease")
+    _assert(APP_UPDATER_SCRIPT.is_prerelease("v1.0.6-beta.2") == true, "v1.0.6-beta.2 should be recognized as prerelease")
+    _assert(APP_UPDATER_SCRIPT.is_prerelease("1.0.6") == false, "1.0.6 should not be recognized as prerelease")
+    _assert(APP_UPDATER_SCRIPT.is_prerelease("v1.0.5") == false, "v1.0.5 should not be recognized as prerelease")
+
+    # 7. Test iOS TestFlight update bypass
+    OS.set_environment("AETHERKIRI_SIMULATE_IOS_TESTFLIGHT", "1")
+    _assert(APP_UPDATER_SCRIPT.is_ios_testflight("1.0.7-alpha.1") == true, "Should detect iOS TestFlight when simulated")
+    var tf_callback_invoked := [false]
+    var dummy_node := Node.new()
+    root.add_child(dummy_node)
+    APP_UPDATER_SCRIPT.check_for_updates(
+        dummy_node,
+        "1.0.7-alpha.1",
+        true,
+        false,
+        func(status: int, info: Dictionary):
+            tf_callback_invoked[0] = true
+            _assert(status == APP_UPDATER_SCRIPT.CheckStatus.SUCCESS_NO_UPDATE, "TestFlight build should report no update")
+            _assert(bool(info.get("is_testflight", false)) == true, "info should contain is_testflight = true")
+    )
+    _assert(tf_callback_invoked[0], "TestFlight update callback should execute immediately without network")
+    dummy_node.queue_free()
+    OS.set_environment("AETHERKIRI_SIMULATE_IOS_TESTFLIGHT", "")
+
     print("app_updater_test: PASS")
     quit(0)
 

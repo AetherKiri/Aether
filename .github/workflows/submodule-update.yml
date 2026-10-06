@@ -36,6 +36,7 @@ jobs:
       FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: 'true'
       GH_TOKEN: ${{ secrets.GH_PAT || github.token }}
       HAS_AETHERSECRET: ${{ secrets.AETHERSECRET != '' }}
+      HAS_SOFTPAL_DEPLOY_KEY: ${{ secrets.AETHER_SOFTPAL_DEPLOY_KEY != '' }}
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v7
@@ -52,7 +53,7 @@ jobs:
           git fetch --depth=2 origin "$TARGET_COMMIT" || git fetch origin "$TARGET_COMMIT"
 
       - name: Configure SSH for private submodules
-        if: env.HAS_AETHERSECRET == 'true' || secrets.AETHER_SOFTPAL_DEPLOY_KEY != ''
+        if: env.HAS_AETHERSECRET == 'true' || env.HAS_SOFTPAL_DEPLOY_KEY == 'true'
         env:
           AETHERSECRET: ${{ secrets.AETHERSECRET }}
           AETHER_SOFTPAL_DEPLOY_KEY: ${{ secrets.AETHER_SOFTPAL_DEPLOY_KEY }}

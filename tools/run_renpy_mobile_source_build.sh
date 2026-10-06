@@ -15,6 +15,7 @@ renpy_build="${AETHERKIRI_RENPY_BUILD_ROOT:-}"
 fetch=false
 source_url="${AETHERKIRI_RENPY_BUILD_URL:-https://github.com/renpy/renpy-build.git}"
 source_ref="${AETHERKIRI_RENPY_BUILD_REF:-}"
+native_patch_root="$repo_root/bridge/renpy_runtime/mobile_launcher/patches/native"
 
 usage() {
     cat <<'USAGE'
@@ -122,11 +123,42 @@ if [[ ${AETHERKIRI_RENPY_LIFECYCLE_FORK:-0} != "1" ]]; then
     echo "  provide an audited fork exporting renpy_mobile_init/tick/frame/input/pause/resume/shutdown" >&2
     exit 1
 fi
+
+[[ -f "$native_patch_root/renpy_mobile_lifecycle.c" ]] || {
+    echo "missing native lifecycle source: $native_patch_root/renpy_mobile_lifecycle.c" >&2
+    exit 1
+}
+[[ -f "$native_patch_root/0001-renpy-build-link.patch" ]] || {
+    echo "missing renpy-build task patch: $native_patch_root/0001-renpy-build-link.patch" >&2
+    exit 1
+}
+[[ -f "$native_patch_root/0002-android-host-bootstrap.patch" &&
+   -f "$native_patch_root/0003-ios-host-bootstrap.patch" ]] || {
+    echo "missing platform launcher bootstrap patches under $native_patch_root" >&2
+    exit 1
+}
+[[ -d "$renpy_build/.git" ]] || {
+    echo "lifecycle fork build requires a git renpy-build checkout" >&2
+    exit 1
+}
+cp "$native_patch_root/renpy_mobile_lifecycle.c" "$renpy_build/runtime/renpy_mobile_lifecycle.c"
+cp "$repo_root/bridge/renpy_runtime/mobile_launcher/include/renpy_mobile_launcher.h" \
+   "$renpy_build/runtime/renpy_mobile_launcher.h"
+for native_patch in \
+    "$native_patch_root/0001-renpy-build-link.patch" \
+    "$native_patch_root/0002-android-host-bootstrap.patch" \
+    "$native_patch_root/0003-ios-host-bootstrap.patch"; do
+    git -C "$renpy_build" apply --check "$native_patch" || {
+        echo "native lifecycle patch does not apply: $native_patch" >&2
+        exit 1
+    }
+    git -C "$renpy_build" apply "$native_patch"
+done
 for lifecycle_source in \
     "$renpy_build/runtime/librenpython_android.c" \
     "$renpy_build/runtime/librenpython.c"; do
-    grep -Fq 'renpy_mobile_init' "$lifecycle_source" || {
-        echo "lifecycle fork source is missing renpy_mobile_init: $lifecycle_source" >&2
+    grep -Fq 'renpy_mobile_bootstrap' "$lifecycle_source" || {
+        echo "lifecycle fork source is missing renpy_mobile_bootstrap: $lifecycle_source" >&2
         echo "  refusing to build the official blocking launcher" >&2
         exit 1
     }

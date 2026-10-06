@@ -8,6 +8,7 @@ on:
     paths:
       - '.github/workflows/renpy-mobile-contract.yml'
       - 'bridge/renpy_runtime/mobile_launcher/**'
+      - 'demos/aetherkiri-renpy/**'
       - 'bridge/renpy_runtime/src/renpy_mobile_adapter.cpp'
       - 'bridge/renpy_runtime/src/renpy_runtime_mobile_provider.cpp'
       - 'bridge/renpy_runtime/tests/mobile_*.cpp'
@@ -15,6 +16,7 @@ on:
       - 'tools/test_renpy_mobile_symbol_gate.sh'
       - 'tools/run_renpy_mobile_source_build.sh'
       - 'tools/test_renpy_mobile_source_build_plan.sh'
+      - 'tools/test_renpy_mobile_native_fork.sh'
       - 'tools/test_stage_renpy_android_support.sh'
   workflow_dispatch:
 
@@ -52,6 +54,7 @@ jobs:
           bash tools/test_renpy_mobile_symbol_gate.sh
           bash tools/test_renpy_mobile_source_build_plan.sh
           bash tools/run_renpy_mobile_source_build.sh --mode auto
+          bash tools/test_renpy_mobile_native_fork.sh
 
       - name: Check cooperative patch against current Ren'Py source
         uses: actions/checkout@v6

@@ -46,11 +46,13 @@ mobile gameplay.
 `native/renpy_mobile_lifecycle.c` is the shared host-owned implementation for
 the seven ABI exports. It calls the cooperative Python entrypoints, publishes
 the existing SDL window surface, queues input, and shuts down without process
-exit. The release-specific Android and iOS launcher patch must factor Python
-initialization out of `SDL_main`/`launcher_main`, then bind the existing SDL
-window and call this implementation. The source-build runner must compile this
-file with the official `link_android`/`link_ios` closures and run the export
-gate before installing any artifact.
+exit. Apply `native/0002-android-host-bootstrap.patch` and
+`native/0003-ios-host-bootstrap.patch` to factor Python initialization out of
+`SDL_main`/`launcher_main`; the resulting `renpy_mobile_bootstrap` symbol is
+resolved by the host loader before the normal `renpy_mobile_init` fallback.
+The source-build runner must compile this file with the official
+`link_android`/`link_ios` closures and run the export gate before installing
+any artifact.
 
 ## Python cooperative-loop seam
 

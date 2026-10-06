@@ -52,15 +52,21 @@ jobs:
           git fetch --depth=2 origin "$TARGET_COMMIT" || git fetch origin "$TARGET_COMMIT"
 
       - name: Configure SSH for private submodules
-        if: env.HAS_AETHERSECRET == 'true'
+        if: env.HAS_AETHERSECRET == 'true' || secrets.AETHER_SOFTPAL_DEPLOY_KEY != ''
         env:
           AETHERSECRET: ${{ secrets.AETHERSECRET }}
+          AETHER_SOFTPAL_DEPLOY_KEY: ${{ secrets.AETHER_SOFTPAL_DEPLOY_KEY }}
         run: |
           mkdir -p ~/.ssh
           chmod 700 ~/.ssh
           ssh-keyscan -t rsa,ed25519 github.com >> ~/.ssh/known_hosts 2>/dev/null
           eval "$(ssh-agent -s)"
-          echo "$AETHERSECRET" | tr -d '\r' | ssh-add -
+          if [ -n "$AETHERSECRET" ]; then
+            echo "$AETHERSECRET" | tr -d '\r' | ssh-add -
+          fi
+          if [ -n "$AETHER_SOFTPAL_DEPLOY_KEY" ]; then
+            echo "$AETHER_SOFTPAL_DEPLOY_KEY" | tr -d '\r' | ssh-add -
+          fi
           echo "SSH_AUTH_SOCK=$SSH_AUTH_SOCK" >> "$GITHUB_ENV"
           echo "SSH_AGENT_PID=$SSH_AGENT_PID" >> "$GITHUB_ENV"
 

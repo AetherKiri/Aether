@@ -137,7 +137,8 @@ int renpy_mobile_input(const renpy_mobile_input_t *event) {
         sdl_event.tfinger.y = event->y;
         sdl_event.tfinger.pressure = event->pressure;
     } else if (event->type == RENPY_MOBILE_INPUT_KEY) {
-        sdl_event.type = event->value ? SDL_EVENT_KEY_DOWN : SDL_EVENT_KEY_UP;
+        sdl_event.type = (event->value == 5) ? SDL_EVENT_KEY_DOWN
+                                             : SDL_EVENT_KEY_UP;
         sdl_event.key.key = (SDL_Keycode)event->code;
     } else {
         return RENPY_MOBILE_INVALID_ARGUMENT;

@@ -28,6 +28,9 @@ grep -F "./build.sh --platform ios rebuild renios" "$plan"
 grep -F "librenpython.so" "$plan"
 grep -F "librenpython.a" "$plan"
 grep -F "does not assert mobile playability" "$plan"
+grep -F 'AETHERKIRI_RENPY_LIFECYCLE_FORK' "$runner"
+grep -F '0002-android-host-bootstrap.patch' "$runner"
+grep -F '0003-ios-host-bootstrap.patch' "$runner"
 
 # The repository checkout is intentionally not a renpy-build checkout. The
 # strict preflight must refuse it instead of silently running a partial build.

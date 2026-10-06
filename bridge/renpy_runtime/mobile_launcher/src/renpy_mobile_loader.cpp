@@ -46,6 +46,7 @@ bool Launcher::Resolve() {
     return false;
   }
   init_ = ResolveSymbol<InitFn>(library_handle_, "renpy_mobile_init");
+  bootstrap_ = ResolveSymbol<BootstrapFn>(library_handle_, "renpy_mobile_bootstrap");
   tick_ = ResolveSymbol<TickFn>(library_handle_, "renpy_mobile_tick");
   frame_ = ResolveSymbol<FrameFn>(library_handle_, "renpy_mobile_frame");
   input_ = ResolveSymbol<InputFn>(library_handle_, "renpy_mobile_input");
@@ -58,6 +59,7 @@ bool Launcher::Resolve() {
   // unresolved symbols to the iOS executable. A real fork can export these
   // symbols from the merged extension archive for RTLD_DEFAULT lookup.
   init_ = ResolveSymbol<InitFn>(RTLD_DEFAULT, "renpy_mobile_init");
+  bootstrap_ = ResolveSymbol<BootstrapFn>(RTLD_DEFAULT, "renpy_mobile_bootstrap");
   tick_ = ResolveSymbol<TickFn>(RTLD_DEFAULT, "renpy_mobile_tick");
   frame_ = ResolveSymbol<FrameFn>(RTLD_DEFAULT, "renpy_mobile_frame");
   input_ = ResolveSymbol<InputFn>(RTLD_DEFAULT, "renpy_mobile_input");
@@ -87,7 +89,7 @@ int Launcher::Init(const renpy_mobile_config_t& config,
                   const renpy_mobile_host_t& host) {
   if (!Resolve()) return RENPY_MOBILE_NOT_IMPLEMENTED;
   if (initialized_) return RENPY_MOBILE_INVALID_STATE;
-  const int result = init_(&config, &host);
+  const int result = bootstrap_ ? bootstrap_(&config, &host) : init_(&config, &host);
   if (result == kOk) {
     initialized_ = true;
   } else {
@@ -133,6 +135,7 @@ void Launcher::Unload() {
 #endif
   library_handle_ = nullptr;
   init_ = nullptr;
+  bootstrap_ = nullptr;
   tick_ = nullptr;
   frame_ = nullptr;
   input_ = nullptr;

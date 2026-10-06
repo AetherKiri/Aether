@@ -19,6 +19,15 @@ after the host-owned SDL window exists. Build it with the official
 `tasks/renpython.py` Android `link_android` or iOS `link_ios` closure, then run
 the symbol gate and device/simulator demo smoke before installing artifacts.
 
-This layer is not packaged automatically as a fake runtime. The source-build
-runner must receive a fork checkout that includes this file and the launcher
-entrypoint patch.
+Apply `0001-renpy-build-link.patch`, `0002-android-host-bootstrap.patch`, and
+`0003-ios-host-bootstrap.patch` in the official `renpy-build` checkout
+after copying this C file and `renpy_mobile_launcher.h` into its `runtime/`
+directory. The task patch compiles the lifecycle object for Android and
+archives it into the iOS `librenpython.a`; the two launcher patches add a
+`renpy_mobile_bootstrap` entrypoint that performs the official Python
+initialization and then enters the cooperative ABI. The existing
+`link_android`/`link_ios` closure carries the exports into the native artifacts.
+
+This layer is not packaged automatically as a fake runtime. Apply all three
+native patches to a fork checkout, then the symbol gate and device/simulator
+demo smoke must pass before installing artifacts.

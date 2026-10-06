@@ -1,40 +1,32 @@
-# Ren'Py Python cooperative-loop patch skeleton
+# Ren'Py Python cooperative-loop patch
 
-`0001-cooperative-loop-skeleton.patch` is an opt-in source patch against an
-official Ren'Py source checkout. It applies cleanly to the current source
-layout and is syntax-checked by the mobile launcher scaffold.
+`0001-cooperative-loop-skeleton.patch` is an opt-in source patch against the
+official Ren'Py source checkout. It is validated against the current
+`renpy/renpy` master tree in Mobile Contract CI.
 
 Apply or validate it with:
 
 ```text
-bridge/renpy_runtime/mobile_launcher/build.sh \\
+bridge/renpy_runtime/mobile_launcher/build.sh \
   --check-python-patch --renpy-src /path/to/renpy
 
-bridge/renpy_runtime/mobile_launcher/build.sh \\
+bridge/renpy_runtime/mobile_launcher/build.sh \
   --apply-python-patch --renpy-src /path/to/renpy
 ```
 
-The apply command refuses a dirty checkout, runs `git apply --check`, applies
-the patch, and runs `py_compile` on all three changed modules. It does not
-commit the source or build an archive.
+The patch keeps the normal `main.run()` and `execution.run_context()` behavior
+unchanged for desktop. The opt-in path adds:
 
-## What the skeleton adds
+- `renpy.main.cooperative_start()` to initialize a game context once
+- `renpy.main.cooperative_tick(budget_ms)` to resume that same context for a
+  bounded host tick and return `yield`, `finished`, or `not_started`
+- `renpy.main.cooperative_stop()` for host-owned cleanup without process exit
+- `renpy.execution.CooperativeYield` and deadline checks at the context boundary
+- an event-loop deadline check in `Interface.interact_core`, so a long-running
+  interaction yields back to the native host instead of sleeping indefinitely
 
-- `renpy/main.py`: an opt-in monotonic tick deadline, begin/end helpers, and a
-  host-safe cleanup hook that deliberately avoids Android task finish and
-  `System.exit`
-- `renpy/execution.py`: `CooperativeYield` and an opt-in deadline check at the
-  context boundary; default `run_context(top)` behavior is preserved
-- `renpy/display/core.py`: one non-blocking event poll primitive and a small
-  interface hook
-
-These are explicit seams for the native fork. They do not yet turn
-`run_context`, `main.run`, or `Interface.interact_core` into resumable
-coroutines. The current Ren'Py execution path can still block in script
-execution and event handling. A playable Android/iOS fork must extend this
-patch to preserve context state across ticks, dispatch input, render/publish
-frames, and call `cooperative_shutdown` on the interpreter-owning thread.
-
-The patch intentionally contains no replacement for `SDL_main`,
-`launcher_main`, `Py_RunMain`, `SDL_RunApp`, or `UIApplicationMain`, and it
-must never be treated as a playable binary by itself.
+The native Android/iOS launcher fork must initialize Python and call these
+helpers from the interpreter-owning thread. It must still provide the SDL/GLES
+or Metal frame bridge, input queue, pause/resume, and seven exported
+`renpy_mobile_*` symbols. The official `SDL_main`/`launcher_main` entrypoints
+remain process launchers and are never used by this patch.

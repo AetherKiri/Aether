@@ -35,6 +35,7 @@ if [[ -n "${RENPY_BUILD_TEST_ROOT:-}" && -d "${RENPY_BUILD_TEST_ROOT}/.git" ]]; 
             git -C "$RENPY_BUILD_TEST_ROOT" apply --reverse --check "$patch"
     done
     python3 "$repo_root/tools/test_renpy_mobile_optional_sdk.py" "$RENPY_BUILD_TEST_ROOT"
+    python3 "$repo_root/tools/test_renpy_mobile_build_parallelism.py" "$RENPY_BUILD_TEST_ROOT"
 fi
 bash "$repo_root/tools/test_renpy_demo_fixture.sh"
 printf '%s\n' 'RenPy native source/demo fixture checks passed; no gameplay performed'

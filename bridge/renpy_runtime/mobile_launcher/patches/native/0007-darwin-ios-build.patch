@@ -93,6 +93,18 @@ diff --git a/renpybuild/run.py b/renpybuild/run.py
  
          c.var("cmake_system_name", "Darwin")
          c.var("cmake_system_processor", "x86_64")
+@@ -431,6 +458,11 @@
+     c.env("CXXFLAGS", "{{ CFLAGS }}")
+ 
+     c.var("cmake_args", "-G Ninja {{ cmake_args }} -DCMAKE_PROJECT_INCLUDE_BEFORE={{root}}/tools/cmake_build_variables.cmake -DCMAKE_BUILD_TYPE=Release -DCMAKE_BUILD_PARALLEL_LEVEL=" + str(cpuccount))
++    if c.native_darwin:
++        # The pinned libyuv project predates CMake 4's policy baseline.
++        # Set the external compatibility policy while preserving its sources.
++        c.var("cmake_args", "{{ cmake_args }} -DCMAKE_POLICY_VERSION_MINIMUM=3.5")
++
+ 
+     # Used by zlib.
+     if c.kind != "host":
 diff --git a/tasks/toolchain.py b/tasks/toolchain.py
 --- a/tasks/toolchain.py
 +++ b/tasks/toolchain.py
@@ -120,7 +132,7 @@ diff --git a/tasks/toolchain.py b/tasks/toolchain.py
  
  
  @task(kind="cross", platforms="ios", archs="sim-arm64,sim-x86_64")
-@@ -78,8 +84,12 @@
+@@ -78,12 +84,21 @@
      c.clean("{{ cross }}")
      c.chdir("{{ cross }}")
  
@@ -135,6 +147,15 @@ diff --git a/tasks/toolchain.py b/tasks/toolchain.py
  
  
  @task(platforms="ios")
+ def mockrt(c: Context):
++    if sys.platform == "darwin":
++        # Native Xcode supplies the real runtime availability implementation.
++        # Never package the Linux cross-build's always-available shim.
++        c.unlink("{{ install }}/lib/libmockrt.a")
++        return
+     c.clean()
+     c.run("{{ CC }} {{ CFLAGS }} -c {{ source }}/mockrt.c")
+     c.run("mkdir -p {{ install }}/lib")
 diff --git a/tasks/hostpython3.py b/tasks/hostpython3.py
 --- a/tasks/hostpython3.py
 +++ b/tasks/hostpython3.py

@@ -100,7 +100,7 @@ xcrun nm -a "$output/sdl-install/lib/libSDL2.a" > "$output/evidence/sdl-symbols.
 python3 - "$output/evidence/sdl-symbols.txt" <<'PY'
 import pathlib, re, sys
 symbols = pathlib.Path(sys.argv[1]).read_text()
-collisions = re.findall(r'OBJC_CLASS_\$_(?:SDL_\w+|SDLInterruptionListener)\b', symbols)
+collisions = re.findall(r'OBJC_CLASS_\$_SDL\w+\b', symbols)
 if collisions:
     raise SystemExit('RenPy SDL still defines host-conflicting Objective-C classes: ' + ', '.join(sorted(set(collisions))))
 if 'OBJC_CLASS_$_AetherRenpySDLInterruptionListener' not in symbols:

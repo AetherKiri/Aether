@@ -28,6 +28,12 @@ tools, all three local SDKs and 64 GiB of free disk; it does not substitute
 prerequisite fixtures. The port still needs a successful native macOS build
 and simulator gameplay before it establishes iOS runtime support.
 
+`0009-bounded-build-parallelism.patch` limits the upstream native object build
+group to the host CPU count. Set `RENPY_BUILD_JOBS` to a positive integer to
+select another limit. Child compiler failures still fail the build, and an
+exception cancels queued work and joins running child processes. This limits
+concurrent compiler memory use; it does not change source-build prerequisites.
+
 `renpy_mobile_lifecycle.c` owns the copied host callback table and the borrowed
 frame byte storage. It invokes the full cooperative Python entrypoints,
 preserves pointer/key/text actions, publishes renderer screenshots and

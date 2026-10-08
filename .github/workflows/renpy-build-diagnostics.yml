@@ -1,0 +1,44 @@
+name: Read Ren'Py build diagnostics
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/renpy-build-diagnostics.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  actual-build-log:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Read the actual failed Android source-build log
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh api 'repos/AetherKiri/Aether/actions/jobs/113309300220/logs' \
+            > "$RUNNER_TEMP/renpy-android-actual-build.log"
+          python3 - "$RUNNER_TEMP/renpy-android-actual-build.log" <<'PY'
+          import pathlib, re, sys
+          lines = pathlib.Path(sys.argv[1]).read_text(errors='replace').splitlines()
+          print('Reading the actual job 113309300220 log; this does not rerun or simulate the build.')
+          interesting = [i for i, line in enumerate(lines)
+                         if re.search(r'error:|fatal error|FAILED|Error [1-9]|undefined reference|not found|Traceback|No such file|exception', line, re.I)]
+          indices = set(range(max(0, len(lines)-110), len(lines)))
+          for i in interesting[-16:]:
+              indices.update(range(max(0, i-4), min(len(lines), i+9)))
+          for i in sorted(indices):
+              print(lines[i])
+          PY
+      - name: Preserve the original build log
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: renpy-android-actual-build-log
+          path: ${{ runner.temp }}/renpy-android-actual-build.log
+          if-no-files-found: warn
+          retention-days: 7

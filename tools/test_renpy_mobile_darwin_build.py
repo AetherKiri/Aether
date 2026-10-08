@@ -70,6 +70,7 @@ def main():
                 assert "-lmockrt" not in context.environ["LDFLAGS"]
                 assert "/fixture/openssl" not in context.environ["LDFLAGS"], "host libraries leaked into target linking"
                 assert context.variables["lipo"] == "xcrun lipo"
+                assert "-DCMAKE_POLICY_VERSION_MINIMUM=3.5" in context.variables["cmake_args"]
                 host_generation = Context("ios", architecture, "3", root, SimpleNamespace())
                 host_generation.set_names("host-python", "gen_static3", "librenpy")
                 assert host_generation.install == root / "tmp" / ("install.ios-" + architecture)
@@ -89,12 +90,25 @@ def main():
             toolchain(cross)
             assert cross.path("{{ cross }}/sdk").is_symlink()
             assert cross.path("{{ cross }}/sdk").samefile(root / "local-sdk/iphonesimulator")
-        with patch.object(run.sys, "platform", "linux"):
+            shim_task = task_function(root / "tasks/toolchain.py", "mockrt", namespace)
+            shim_context = Context("ios", "arm64", "3", root, SimpleNamespace())
+            shim_context.set_names("arch", "mockrt", "toolchain")
+            obsolete_shim = shim_context.path("{{ install }}/lib/libmockrt.a")
+            obsolete_shim.parent.mkdir(parents=True, exist_ok=True)
+            obsolete_shim.touch()
+            def reject_shim_compile(command):
+                raise AssertionError("native Xcode build attempted the Linux runtime shim: " + command)
+            shim_context.run = reject_shim_compile
+            shim_task(shim_context)
+            assert not obsolete_shim.exists()
+        with patch.object(run.sys, "platform", "linux"), \
+                patch.object(run.sysconfig, "get_config_var", lambda _name: "x86_64-pc-linux-gnu"):
             context = Context("android", "arm64_v8a", "3", root, SimpleNamespace())
             context.set_names("python", "build", "renpython")
             assert "aarch64-linux-android21-clang" in context.environ["CC"]
             assert "linux-x86_64" in context.environ["CC"]
             assert not context.native_darwin
+            assert "CMAKE_POLICY_VERSION_MINIMUM" not in context.variables["cmake_args"]
     print("Darwin iOS and Linux Android task configuration passed; no native build or gameplay performed")
 
 

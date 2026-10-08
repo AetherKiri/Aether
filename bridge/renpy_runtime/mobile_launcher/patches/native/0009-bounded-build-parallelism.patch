@@ -1,0 +1,86 @@
+diff --git a/renpybuild/run.py b/renpybuild/run.py
+--- a/renpybuild/run.py
++++ b/renpybuild/run.py
+@@ -4,7 +4,7 @@
+ import subprocess
+ import sys
+ import sysconfig
+-import threading
++from concurrent.futures import ThreadPoolExecutor
+ 
+ import jinja2
+ 
+@@ -441,10 +441,9 @@
+         traceback.print_stack()
+         sys.exit(1)
+ 
+-class RunCommand(threading.Thread):
+-
+-    def __init__(self, command, context):
+-        super().__init__()
++class RunCommand:
++
++    def __init__(self, command, context, executor):
+ 
+         command = context.expand(command)
+         self.command = shlex.split(command)
+@@ -452,7 +451,7 @@
+         self.cwd = context.cwd
+         self.environ = context.environ.copy()
+ 
+-        self.start()
++        self.future = executor.submit(self.run)
+ 
+ 
+     def run(self):
+@@ -461,7 +460,7 @@
+         self.code = result.returncode
+ 
+     def wait(self):
+-        self.join()
++        self.future.result()
+ 
+     def report(self):
+         print ("-" * 78)
+@@ -485,16 +484,32 @@
+     def __init__(self, context):
+         self.context = context
+         self.tasks = [ ]
++        requested = context.environ.get("RENPY_BUILD_JOBS")
++        if requested is None:
++            jobs = os.cpu_count() or 1
++        else:
++            try:
++                jobs = int(requested)
++            except ValueError:
++                raise ValueError("RENPY_BUILD_JOBS must be a positive integer") from None
++            if jobs < 1:
++                raise ValueError("RENPY_BUILD_JOBS must be a positive integer")
++        self.executor = ThreadPoolExecutor(max_workers=jobs)
+ 
+     def __enter__(self):
+         return self
+ 
+     def __exit__(self, exc_type, exc_value, traceback):
++        try:
++            if exc_type is None:
++                for i in self.tasks:
++                    i.wait()
++        finally:
++            # Join every running compiler, including body/spawn failures.
++            # Work not yet started is cancelled rather than left in the queue.
++            self.executor.shutdown(wait=True, cancel_futures=True)
+         if exc_type is not None:
+             return
+-
+-        for i in self.tasks:
+-            i.wait()
+ 
+         good = [ i for i in self.tasks if i.code == 0 ]
+         bad = [ i for i in self.tasks if i.code != 0 ]
+@@ -511,4 +526,4 @@
+             sys.exit(1)
+ 
+     def run(self, command):
+-        self.tasks.append(RunCommand(command, self.context))
++        self.tasks.append(RunCommand(command, self.context, self.executor))

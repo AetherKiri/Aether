@@ -1,9 +1,9 @@
 diff --git a/patches/SDL2-2.0.20/aether-pbuffer-metalangle.patch b/patches/SDL2-2.0.20/aether-pbuffer-metalangle.patch
 new file mode 100644
-index 0000000..6de8626
+index 0000000..452e728
 --- /dev/null
 +++ b/patches/SDL2-2.0.20/aether-pbuffer-metalangle.patch
-@@ -0,0 +1,144 @@
+@@ -0,0 +1,185 @@
 +diff --git a/configure.ac b/configure.ac
 +index 3c1c6c8..3fa0bde 100644
 +--- a/configure.ac
@@ -80,6 +80,47 @@ index 0000000..6de8626
 + #endif
 + }
 + 
++diff --git a/src/misc/ios/SDL_aetherdevice.m b/src/misc/ios/SDL_aetherdevice.m
++new file mode 100644
++index 0000000..84dae52
++--- /dev/null
+++++ b/src/misc/ios/SDL_aetherdevice.m
++@@ -0,0 +1,35 @@
+++/*
+++  Simple DirectMedia Layer
+++  Copyright (C) 1997-2022 Sam Lantinga <slouken@libsdl.org>
+++
+++  This software is provided 'as-is', without any express or implied
+++  warranty.  In no event will the authors be held liable for any damages
+++  arising from the use of this software.
+++
+++  Permission is granted to anyone to use this software for any purpose,
+++  including commercial applications, and to alter it and redistribute it
+++  freely, subject to the following restrictions:
+++
+++  1. The origin of this software must not be misrepresented; you must not
+++     claim that you wrote the original software. If you use this software
+++     in a product, an acknowledgment in the product documentation would be
+++     appreciated but is not required.
+++  2. Altered source versions must be plainly marked as such, and must not be
+++     misrepresented as being the original software.
+++  3. This notice may not be removed or altered from any source distribution.
+++*/
+++/* Altered for embedded Ren'Py: preserve the actual platform idiom query
+++ * without including UIKit video classes or creating a second UIWindow. */
+++#include "../../SDL_internal.h"
+++#include "SDL_stdinc.h"
+++
+++#if defined(__IPHONEOS__) && SDL_VIDEO_DRIVER_OFFSCREEN && !SDL_VIDEO_DRIVER_UIKIT
+++#import <UIKit/UIKit.h>
+++
+++SDL_bool SDL_IsIPad(void)
+++{
+++    @autoreleasepool {
+++        return [[UIDevice currentDevice] userInterfaceIdiom] == UIUserInterfaceIdiomPad ? SDL_TRUE : SDL_FALSE;
+++    }
+++}
+++#endif
 +diff --git a/src/video/SDL_egl.c b/src/video/SDL_egl.c
 +index 62004e3..9c3f2b3 100644
 +--- a/src/video/SDL_egl.c

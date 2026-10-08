@@ -83,6 +83,20 @@ jobs:
           "${RUNNER_TEMP}/cooperative-test/bin/python" \
             tools/test_renpy_mobile_cooperative.py --renpy-src _renpy-source
 
+      - name: Checkout pinned native build tasks for platform configuration tests
+        uses: actions/checkout@v6
+        with:
+          repository: renpy/renpy-build
+          ref: 7bfab40c1174f622f644b24669afd5fb167fbb79
+          path: _renpy-build-source
+          persist-credentials: false
+      - name: Validate Darwin and Linux task configuration boundaries
+        run: |
+          set -euo pipefail
+          "${RUNNER_TEMP}/cooperative-test/bin/pip" install Jinja2==3.1.6
+          "${RUNNER_TEMP}/cooperative-test/bin/python" \
+            tools/test_renpy_mobile_darwin_build.py _renpy-build-source
+
       - name: Compile the lifecycle implementation against Python and SDL2
         run: |
           set -euo pipefail

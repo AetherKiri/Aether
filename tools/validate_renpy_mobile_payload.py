@@ -135,6 +135,12 @@ def validate_library(library, platform, arch, sdk, executable=False, packaged=Fa
     else:
         symbols = {line.split()[-1].lstrip("_") for line in listing.splitlines()
                    if line.split() and " U " not in line}
+    if platform == "android":
+        if "JNI_OnLoad" not in symbols:
+            fail(f"Android Ren'Py payload lacks the SDL/JVM registration entrypoint JNI_OnLoad: {library}")
+        leaked = {name for name in symbols if name.startswith(("SDL_", "avcodec_", "avformat_", "Py_", "_Py_"))}
+        if leaked:
+            fail(f"Ren'Py private implementations must not be exported into the host: {', '.join(sorted(leaked)[:12])}: {library}")
     missing = set(LIFECYCLE_SYMBOLS) - symbols
     if missing:
         fail(f"official blocking or incomplete Ren'Py payload: missing {', '.join(sorted(missing))}: {library}")

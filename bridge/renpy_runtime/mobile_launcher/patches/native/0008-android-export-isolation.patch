@@ -1,0 +1,34 @@
+diff --git a/tasks/renpython.py b/tasks/renpython.py
+index 3bf1a3a..afe13e5 100644
+--- a/tasks/renpython.py
++++ b/tasks/renpython.py
+@@ -135,12 +135,29 @@ def link_linux(c: Context):
+ @task(kind="python", always=True, platforms="android")
+ def link_android(c: Context):
+ 
++    # Ren'Py statically links its own SDL2/FFmpeg/CPython. Bsymbolic protects
++    # internal calls; restrict exports so later host libraries cannot bind to
++    # these private implementations. JNI registration/Java entrypoints remain
++    # visible, including SDL's JNI_OnLoad and pyjnius invocation handlers.
++    c.generate_text("""
++{
++    global:
++        renpy_mobile_*;
++        JNI_OnLoad;
++        Java_*;
++    local:
++        *;
++};
++""", "aether_mobile.exports")
++
+     c.run("""
+     {{ CXX }} {{ LDFLAGS }}
+     -shared
+     -static-libstdc++
+     -Wl,-Bsymbolic
+     -Wl,--no-undefined
++    -Wl,--version-script=aether_mobile.exports
++    -Wl,-soname,librenpython.so
+ 
+     -o librenpython.so
+     librenpython_android.o

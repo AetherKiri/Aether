@@ -12,6 +12,7 @@ on:
       - 'tests/fixtures/renpy_smoke/**'
       - 'tools/install_renpy_sdk.sh'
       - 'tools/run_renpy_smoke.sh'
+      - 'tools/run_renpy_overlay_probe.sh'
       - 'tools/test_renpy_demo_fixture.sh'
       - 'tools/test_install_renpy_sdk.sh'
   workflow_dispatch:
@@ -25,7 +26,7 @@ concurrency:
 
 jobs:
   desktop-sdk:
-    name: Ren'Py desktop smoke (${{ matrix.platform }})
+    name: Execute Ren'Py desktop fixture (${{ matrix.platform }})
     strategy:
       fail-fast: false
       matrix:
@@ -65,11 +66,6 @@ jobs:
           sdk_root="${RUNNER_TEMP}/aetherkiri-renpy-sdk"
           bash tools/install_renpy_sdk.sh             --platform "${RENPY_PLATFORM}"             --arch x86_64             --destination "${sdk_root}"
           test -f "${sdk_root}/renpy.sh" || test -f "${sdk_root}/renpy.exe"
-          if [[ "${RENPY_RUN_EXECUTION_SMOKE:-0}" != 1 ]]; then
-            echo "Ren'Py execution smoke is opt-in; SDK install/integrity matrix passed"
-            echo "Set RENPY_RUN_EXECUTION_SMOKE=1 with a built SDK to run run_renpy_smoke.sh"
-            exit 0
-          fi
           platform_lib_dir="$(find "${sdk_root}/lib" -maxdepth 1 -type d -name 'py3-*' -print -quit 2>/dev/null || true)"
           if [[ -z "${platform_lib_dir}" ]] ||
              ! find "${platform_lib_dir}" -maxdepth 1 -type f \
@@ -82,3 +78,12 @@ jobs:
           AETHERKIRI_RENPY_DEMO_FIXTURE="${GITHUB_WORKSPACE}/demos/aetherkiri-renpy" \
             RENPY_SDK="${sdk_root}" RENPY_DEMO_RUN_SMOKE=1 \
             bash tools/test_renpy_demo_fixture.sh
+
+      - name: Exercise real Ren'Py frame, input, and quit on Linux
+        if: matrix.platform == 'linux'
+        env:
+          RENPY_RENDERER: sw
+        run: |
+          set -euo pipefail
+          RENPY_SDK="${RUNNER_TEMP}/aetherkiri-renpy-sdk" \
+            bash tools/run_renpy_overlay_probe.sh

@@ -2,18 +2,21 @@ package org.github.krkr2.aetherkiri;
 
 import android.app.Activity;
 import android.content.Context;
+import android.content.res.AssetManager;
 
 import org.libsdl.app.SDLActivity;
 
 import java.io.File;
+import java.io.FileOutputStream;
+import java.io.IOException;
+import java.io.InputStream;
 
 /**
  * Host-owned handoff point for the staged Ren'Py Android support package.
  *
- * The Godot Activity remains the only Activity. A future lifecycle adapter may
- * call bindHostActivity(this) from that Activity and then drive Ren'Py through
- * the existing surface. This class intentionally does not reference or launch
- * org.renpy.android.PythonSDLActivity.
+ * The Godot Activity remains the only Activity. The provider binds that host,
+ * extracts the private Python runtime and initializes SDL's JNI callbacks.
+ * The native fork renders into an offscreen EGL pbuffer.
  */
 public final class RenPyMobileBridge {
     private static boolean nativeBridgeLoaded;
@@ -49,9 +52,8 @@ public final class RenPyMobileBridge {
     }
 
     /**
-     * Package smoke helper. It only checks that the staged arm64 payload is in
-     * the APK's native library directory; loading it is deliberately deferred
-     * until SDL/lifecycle/surface isolation is implemented.
+     * Package inspection helper. It checks the staged arm64 payload exists;
+     * it does not verify lifecycle exports or gameplay.
      */
     public static boolean hasBundledRenPy(Context context) {
         if (context == null || context.getApplicationInfo() == null) {
@@ -59,6 +61,60 @@ public final class RenPyMobileBridge {
         }
         String nativeDir = context.getApplicationInfo().nativeLibraryDir;
         return nativeDir != null && new File(nativeDir, "librenpython.so").isFile();
+    }
+
+    /** Extract the bundled Python tree, separate from imported game files. */
+    public static synchronized String preparePrivateRoot() throws IOException {
+        Context context = SDLActivity.getContext();
+        if (context == null) throw new IOException("Ren'Py host Context is unavailable");
+        long version;
+        try { version = context.getPackageManager().getPackageInfo(context.getPackageName(), 0).lastUpdateTime; }
+        catch (android.content.pm.PackageManager.NameNotFoundException e) { throw new IOException(e); }
+        File root = new File(context.getFilesDir(), "renpy_mobile/" + version);
+        File ready = new File(root, ".ready");
+        if (!ready.isFile()) {
+            copyAssets(context.getAssets(), "renpy_mobile/private", root, root.getCanonicalPath());
+            if (!new File(root, "main.py").isFile() || !new File(root, "renpy/aether_mobile.py").isFile()) {
+                throw new IOException("Ren'Py APK lacks the patched Python private payload (main.py and renpy/aether_mobile.py)");
+            }
+            if (!ready.createNewFile() && !ready.isFile()) throw new IOException("could not mark Ren'Py payload extraction complete");
+        }
+        return root.getCanonicalPath();
+    }
+
+    private static void copyAssets(AssetManager assets, String source, File target, String root) throws IOException {
+        if (!target.getCanonicalPath().startsWith(root + File.separator) && !target.getCanonicalPath().equals(root)) {
+            throw new IOException("Ren'Py asset escapes its extraction directory");
+        }
+        String[] children = assets.list(source);
+        if (children != null && children.length > 0) {
+            if (!target.isDirectory() && !target.mkdirs()) throw new IOException("could not create " + target);
+            for (String child : children) copyAssets(assets, source + "/" + child, new File(target, child), root);
+        } else {
+            File parent = target.getParentFile();
+            if (!parent.isDirectory() && !parent.mkdirs()) throw new IOException("could not create " + parent);
+            try (InputStream input = assets.open(source); FileOutputStream output = new FileOutputStream(target)) {
+                byte[] buffer = new byte[65536];
+                int count;
+                while ((count = input.read(buffer)) != -1) output.write(buffer, 0, count);
+                output.getFD().sync();
+            }
+        }
+    }
+
+    public static String getApkPath() {
+        Context context = SDLActivity.getContext();
+        return context == null ? "" : context.getApplicationInfo().sourceDir;
+    }
+
+    public static void prepareRuntime(int width, int height) {
+        SDLActivity.prepareRuntime(width, height);
+    }
+
+    public static void stopRuntime() {
+        // cooperative_stop destroys the offscreen window first. Clear the
+        // IME request while preserving the host Activity and JNI callback tables.
+        SDLActivity.releaseRenderTarget();
     }
 
     private static void ensureNativeBridge() {

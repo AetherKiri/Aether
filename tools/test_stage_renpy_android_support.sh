@@ -19,6 +19,7 @@ mkdir -p "$tmp_root/android-build/src/main" "$tmp_root/private"
 printf 'private fixture\n' > "$tmp_root/private/private.mp3"
 
 bash "$stage" \
+    --allow-unsupported \
     --mobile-root "$mobile_root" \
     --godot-build "$tmp_root/android-build" \
     --private-assets "$tmp_root/private" >/dev/null
@@ -70,7 +71,9 @@ for callback in \
     grep -Fq "$callback" "$main/java/org/libsdl/app/SDLActivity.java"
 done
 grep -Fq 'nativeSetEnv' "$main/java/org/renpy/android/PythonSDLActivity.java"
-grep -Fx 'playable=false' "$main/assets/renpy_mobile/manifest.properties"
+grep -Fx 'playable=unverified' "$main/assets/renpy_mobile/manifest.properties"
+grep -Fx 'inspection_only=true' "$main/assets/renpy_mobile/manifest.properties"
+grep -Fx 'native_lifecycle_validated=false' "$main/assets/renpy_mobile/manifest.properties"
 grep -Fx 'manifest_merged=false' "$main/assets/renpy_mobile/manifest.properties"
 grep -Fx 'java_host_shims=org/libsdl/app/SDLActivity.java,org/renpy/android/PythonSDLActivity.java' \
     "$main/assets/renpy_mobile/manifest.properties"
@@ -87,7 +90,7 @@ grep -Fq 'PythonSDLActivity' "$main/assets/renpy_mobile/rapt/java/org/renpy/andr
 mkdir -p "$conflict_root/android-build/src/main/java/org/libsdl/app"
 printf 'package org.libsdl.app; public final class SDLActivity {}\n' \
     > "$conflict_root/android-build/src/main/java/org/libsdl/app/SDLActivity.java"
-if bash "$stage" --mobile-root "$mobile_root" \
+if bash "$stage" --allow-unsupported --mobile-root "$mobile_root" \
         --godot-build "$conflict_root/android-build" \
         >"$conflict_root/stdout" 2>"$conflict_root/stderr"; then
     echo "stager overwrote an unrelated SDLActivity shim" >&2
@@ -95,4 +98,14 @@ if bash "$stage" --mobile-root "$mobile_root" \
 fi
 grep -Fq 'Refusing to overwrite unrelated Android Java class' "$conflict_root/stderr"
 
-echo "Ren'Py Android staging/package smoke ok"
+# The same official RAPT archive and dummy private.mp3 must be rejected by the
+# real app staging path, rather than producing a silently unsupported build.
+if bash "$stage" --mobile-root "$mobile_root" \
+        --godot-build "$tmp_root/android-build" --private-assets "$tmp_root/private" \
+        >"$tmp_root/strict-stdout" 2>"$tmp_root/strict-stderr"; then
+    echo "enabled app stager accepted an official blocking archive and incomplete Python payload" >&2
+    exit 1
+fi
+grep -Fq "Ren'Py mobile packaging input rejected" "$tmp_root/strict-stderr"
+
+echo "Ren'Py Android archive staging and unsupported-runtime rejection ok (gameplay untested)"

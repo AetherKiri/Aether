@@ -2524,6 +2524,7 @@ func _normalize_cli_probe_script(path: String) -> String:
         "res://scripts/step_render_probe.gd",
         "res://scripts/gui_render_probe.gd",
         "res://scripts/perf_input_probe.gd",
+        "res://scripts/renpy_mobile_acceptance.gd",
         "res://scripts/wa2_gui.gd",
     ]
     for item in known:
@@ -13234,6 +13235,12 @@ func _add_scene_test_exit_chip() -> void:
 func _run_cli_script_probe() -> void:
     _write_probe_marker("cli_probe start script=%s" % cli_probe_script)
     var config := ProbeConfig.load()
+    if cli_probe_script == "res://scripts/renpy_mobile_acceptance.gd":
+        _prepare_cli_probe_view(config)
+        var acceptance := load(cli_probe_script).new() as Node
+        add_child(acceptance)
+        acceptance.start(config, player)
+        return
     var target_game_path: String = ProbeConfig.require_game_path(config)
     var requested_game_path := target_game_path
     if OS.get_name() == "iOS" and not target_game_path.is_empty():

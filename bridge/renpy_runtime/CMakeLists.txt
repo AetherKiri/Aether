@@ -5,9 +5,35 @@ if(IOS OR ANDROID)
     # Mobile builds link the engine in-process.  The desktop subprocess
     # provider cannot be compiled here: it assumes a writable game/libs
     # directory, fork/exec (or CreateProcess), and a desktop Ren'Py launcher.
-    # Keep a provider registration stub so selecting runtime=renpy fails with
-    # an explicit NOT_SUPPORTED result until the native RAPT/Renios bootstrap
-    # and lifecycle/rendering adapters are implemented.
+    # An enabled mobile build must carry the rebuilt lifecycle runtime and
+    # the matching cooperative Python resources. Archive staging alone does
+    # not satisfy this requirement.
+    if(NOT AETHERKIRI_RENPY_MOBILE_LIBRARY OR NOT AETHERKIRI_RENPY_PRIVATE_ROOT)
+        message(FATAL_ERROR "Mobile Ren'Py requires AETHERKIRI_RENPY_MOBILE_LIBRARY and AETHERKIRI_RENPY_PRIVATE_ROOT; official blocking RAPT/Renios archives are unsupported")
+    endif()
+    find_package(Python3 REQUIRED COMPONENTS Interpreter)
+    if(ANDROID)
+        set(_renpy_mobile_platform android)
+    else()
+        set(_renpy_mobile_platform ios)
+    endif()
+    set(_renpy_validation_arch arm64)
+    if(CMAKE_OSX_ARCHITECTURES)
+        list(GET CMAKE_OSX_ARCHITECTURES 0 _renpy_validation_arch)
+    endif()
+    execute_process(COMMAND "${Python3_EXECUTABLE}"
+        "${CMAKE_CURRENT_SOURCE_DIR}/../../tools/validate_renpy_mobile_payload.py"
+        --platform "${_renpy_mobile_platform}"
+        --arch "${_renpy_validation_arch}"
+        --library "${AETHERKIRI_RENPY_MOBILE_LIBRARY}"
+        --private-root "${AETHERKIRI_RENPY_PRIVATE_ROOT}"
+        RESULT_VARIABLE _renpy_validation_result
+        OUTPUT_VARIABLE _renpy_validation_output
+        ERROR_VARIABLE _renpy_validation_error)
+    if(NOT _renpy_validation_result EQUAL 0)
+        message(FATAL_ERROR "${_renpy_validation_error}")
+    endif()
+    message(STATUS "${_renpy_validation_output}")
     set(AETHERKIRI_RENPY_SOURCES
         src/renpy_runtime_mobile_provider.cpp
         src/renpy_runtime_ios_adapter.cpp
@@ -38,12 +64,8 @@ target_compile_features(aether_renpy_runtime PUBLIC cxx_std_17)
 set_target_properties(aether_renpy_runtime PROPERTIES POSITION_INDEPENDENT_CODE ON)
 if(IOS)
     target_compile_definitions(aether_renpy_runtime PRIVATE
-        AETHERKIRI_RENPY_MOBILE_STUB=1
         AETHERKIRI_RENPY_IOS=1)
-elseif(ANDROID)
-    target_compile_definitions(aether_renpy_runtime PRIVATE
-        AETHERKIRI_RENPY_MOBILE_STUB=1)
-else()
+elseif(NOT ANDROID)
     target_compile_definitions(aether_renpy_runtime PRIVATE
         AETHERKIRI_RENPY_SDK_ROOT="${AETHERKIRI_RENPY_SDK_ROOT}"
         AETHERKIRI_RENPY_OVERLAY_SOURCE="${CMAKE_CURRENT_SOURCE_DIR}/python/aether_renpy_overlay.py")
@@ -58,6 +80,11 @@ endif()
 target_link_libraries(aether_renpy_runtime PRIVATE engine_api)
 if(UNIX AND NOT (IOS OR ANDROID))
     target_link_libraries(aether_renpy_runtime PRIVATE pthread)
+endif()
+if(ANDROID)
+    target_link_libraries(aether_renpy_runtime PRIVATE ${CMAKE_DL_LIBS})
+elseif(IOS)
+    target_link_libraries(aether_renpy_runtime PRIVATE "-framework CoreFoundation")
 endif()
 
 if(ENABLE_TESTS AND NOT (IOS OR ANDROID))

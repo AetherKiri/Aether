@@ -1,129 +1,71 @@
-# Host-owned Ren'Py mobile launcher scaffold
+# Host-owned Ren'Py mobile lifecycle fork
 
-This directory is the reviewable boundary for the native fork required to make
-Ren'Py run inside an existing AetherKiri/Godot loop. It is intentionally a
-contract and build/replacement scaffold. It does not contain a playable
-launcher and it does not alter the current `NOT_SUPPORTED` mobile provider.
+This fork separates Python initialization from the official blocking launchers
+and runs the full Ren'Py bootstrap inside a stack-preserving greenlet. It is a
+reviewable runtime implementation and build path; mobile gameplay remains
+unverified. The contract templates are separate, deliberately non-playable
+fixtures and are never packaged.
 
-## Verified official inputs
+## Pinned source build
 
-The pinned 8.5.3 mobile archives in `renpy-mobile-staged/` contain stripped
-outputs only. The corresponding official source/build layout is available in
-the `renpy-build` repository:
+`tools/run_renpy_mobile_source_build.sh` pins the Ren'Py build/source and greenlet
+revisions documented in the [provider README](../README.md). It applies the
+Python patch to the actual source compiled by renpy-build, compiles the native
+lifecycle and greenlet objects for each selected Android/iOS target, and checks
+the exports before assembling a payload. The legacy Python patch filename
+contains `skeleton`, but its implementation now preserves the actual Python
+and Cython stacks with greenlet rather than exception-based yields.
 
-- `runtime/librenpython_android.c`: `SDL_main` initializes the Android
-  environment, calls `call_prepare_python`, and enters `start_python`; the
-  latter ends at blocking `Py_RunMain`
-- `runtime/librenpython.c`: `launcher_main` builds `PyConfig` and ends at
-  blocking `Py_RunMain`
-- `runtime/jniwrapperstuff.h`: Android JNI export-name helper
-- `tasks/renpython.py`: `build_android` compiles
-  `librenpython_android.c`; `link_android` links `librenpython.so`;
-  `link_ios` archives `librenpython.o` as `librenpython.a`
-- `renios/prototype/main.c`: the UIKit prototype calls
-  `SDL_RunApp(..., launcher_main, NULL)` (older SDL2/Renios archives use the
-  equivalent `SDL_UIKitRunApp` spelling)
-
-The official command-line hooks are documented by `build.sh --print-plan`:
-
-- Android: `./build.sh --platform android rebuild rapt rapt-sdl2`
-- iOS: `./build.sh --platform ios rebuild renios`
-
-`build.sh --source-build-plan --renpy-build /path/to/renpy-build` prints the
-Ubuntu 24.04 prerequisites, source patch commands, build commands, and exact
-RAPT/Renios artifact destinations. `--check-renpy-build` performs a strict
-read-only preflight for the source checkout, patch applicability, host tools,
-64 GiB disk requirement, and supplied Android/iOS SDK archives. These commands
-are opt-in and are not part of the normal mobile CI build because the official
-renpy-build process is a large, multi-hour source rebuild and requires licensed
-iOS SDK tarballs. CI only validates the plan; it does not pretend to build a
-playable fork.
-
-The current official outputs are process launchers. Do not call them from a
-Godot frame callback and do not copy `renios/prototype/main.c` into the host
-application.
-
-## Lifecycle ABI to implement
-
-`include/renpy_mobile_launcher.h` defines ABI version 1 and the required
-exports:
-
-- `renpy_mobile_init(config, host)`
-- `renpy_mobile_tick(budget_ms)`
-- `renpy_mobile_frame(out_frame)`
-- `renpy_mobile_input(event)`
-- `renpy_mobile_pause()` / `renpy_mobile_resume()`
-- `renpy_mobile_shutdown()`
-
-The eventual fork must move Python/SDL setup out of `SDL_main`/`launcher_main`
-and make every lifecycle call return promptly. The calls must not invoke
-`Py_RunMain`, `SDL_main`, `SDL_RunApp`, `SDL_UIKitRunApp`, `UIApplicationMain`,
-or create an Android Activity. `frame` returns a borrowed RGBA view for the
-host to copy; the host callback and ownership rules are in the header.
-
-The header is only an ABI contract. The `.c.template` files under
-`patches/android` and `patches/ios` are deliberately non-playable starting
-points: init returns `RENPY_MOBILE_NOT_IMPLEMENTED`, all runtime calls remain
-invalid until a real implementation initializes them, and no output object is
-copied into a mobile package.
-
-`build.sh --compile-contract` compiles those templates with `-Wall -Wextra
--Werror` on the host so CI can validate the C ABI and required exported names.
-This is a source-level check, not a Ren'Py SDK rebuild:
-
-```text
-bridge/renpy_runtime/mobile_launcher/build.sh --compile-contract \
-  --renpy-build /path/to/renpy-build --output-dir /tmp/renpy-mobile-contract
+```bash
+bash tools/run_renpy_mobile_source_build.sh --mode prepare --fetch \
+  --platform android --renpy-build /workspace/renpy-build
+bash tools/run_renpy_mobile_source_build.sh --mode build \
+  --platform android --renpy-build /workspace/renpy-build
 ```
 
-The native templates identify the real remaining patch points. In addition to
-factoring the C launcher, Ren'Py's Python `renpy/bootstrap.py`, `renpy/main.py`,
-and `renpy/display/core.py` must be made cooperatively resumable. Their current
-call chain enters `renpy.execution.run_context(True)` and
-`Interface.interact_core`, both of which keep control until a script or user
-interaction completes. Splitting only `Py_InitializeFromConfig` from
-`Py_RunMain` does not make a frame-driven engine. Android also exits through
-`android.activity.finishAndRemoveTask()` and Java `System.exit(0)` in
-`bootstrap.py` cleanup, which an embedded fork must replace with host-owned
-shutdown.
+Preparation does not run upstream `prepare.sh`, which resets or pulls source
+revisions and installs system packages. Build requires a provisioned Ubuntu
+24.04 cloud builder, LLVM 18, NDK r29 and 64 GiB of free disk. iOS source builds
+also require the legally supplied SDK archives requested by the pinned
+renpy-build toolchain. `--platform ios` or `all` selects those targets explicitly.
 
-The host-side `src/renpy_mobile_loader.cpp` resolves this ABI when a real
-fork is supplied: Android loads all seven symbols from `librenpython.so`, and
-iOS uses weak imports from the optional `librenpython.a`. The mobile provider
-forwards lifecycle and input calls and copies the borrowed RGBA frame into the
-normal Aether frame API. With the official blocking archive, symbol resolution
-fails and the provider remains `ENGINE_RESULT_NOT_SUPPORTED`.
+`--mode check` only checks prerequisites. `--mode auto` with an existing checkout
+performs compilation; an absent optional checkout reports a skip. CI uses
+`--mode build` explicitly. Successful export checks or compilation do not assert
+mobile playability.
 
-## Rebuild and replacement hook
+## Runtime ownership
 
-`build.sh` performs a source-only check by default when invoked as:
+ABI version 2 is defined in `include/renpy_mobile_launcher.h`. The loader requires
+bootstrap, window binding, init/tick/frame/input, pause/resume, shutdown, text
+input state and surface sizing. Native initialization copies the host callback
+table. The provider owns the paths and initializes Python and greenlet on the
+first host tick, rather than the asynchronous open thread.
 
-```text
-bridge/renpy_runtime/mobile_launcher/build.sh \
-  --check --renpy-build /path/to/renpy-build
-```
+Frame capture occurs on Ren'Py's rendering thread through its GL screenshot.
+The fork copies visible Surface rows and retains the bytes while the host reads
+them. It does not use `SDL_GetWindowSurface` for a GL window. Input preserves
+pointer actions, key transitions, scroll deltas and committed UTF-8 text.
+Android uses the patched SDL2 offscreen EGL/pbuffer backend and restores the
+host's EGL context when returning to Godot. The Java bridge supplies the actual
+SDL JNI callback closure without launching another Activity.
 
-Use `--print-plan` to print the official source inputs, task hooks, and exact
-staged destinations. A future lifecycle fork is built outside this scaffold,
-then installed with explicit ABI-matched artifacts:
+The stock iOS SDL UIKit/MetalANGLE path still requires a host rendering
+integration. The provider refuses that unimplemented path explicitly instead
+of activating it merely because an archive exports the lifecycle symbols.
 
-```text
-bridge/renpy_runtime/mobile_launcher/build.sh --install \
-  --renpy-build /path/to/renpy-build \
-  --stage /workspace/shared/renpy-mobile-staged \
-  --android-so-arm64 /path/to/arm64-v8a/librenpython.so \
-  --android-so-armv7 /path/to/armeabi-v7a/librenpython.so \
-  --android-so-x86_64 /path/to/x86_64/librenpython.so \
-  --ios-debug-a /path/to/debug/librenpython.a \
-  --ios-release-a /path/to/release/librenpython.a
-```
+## Acceptance and artifacts
 
-`--install` refuses artifacts that do not expose all seven lifecycle symbols.
-It copies only the explicitly supplied files to:
+The application build must carry the native library, cooperative Ren'Py modules
+and matching Python standard library. `tools/validate_renpy_mobile_payload.py`
+checks staged inputs and actual Android APK contents. Missing or official
+blocking launchers fail the enabled build rather than producing a guard-only
+Ren'Py package.
 
-- RAPT: `rapt/prototype/renpyandroid/src/main/jniLibs/{arm64-v8a,armeabi-v7a,x86_64}/librenpython.so`
-- Renios: `renios/prototype/prebuilt/{debug,release}/librenpython.a`
-
-The script does not build, sign, package, or claim device/simulator support.
-After a real fork is installed, the Android/iOS archive probes and host-owned
-lifecycle/input/frame tests must be extended before enabling the provider.
+Run the real cloud-device gate documented in
+[the demo README](../../../demos/aetherkiri-renpy/README.md) after building an
+installable debug APK. It requires executed game checkpoints, native pixels
+matching an OS screenshot, actual touch and text/keyboard events,
+background/resume and normal exit. Host boundary tests and simulated library
+fixtures are reported separately and cannot satisfy this gate. No mobile
+APK/IPA gameplay result has been accepted for this change.

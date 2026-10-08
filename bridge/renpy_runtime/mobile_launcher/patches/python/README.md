@@ -1,32 +1,33 @@
-# Ren'Py Python cooperative-loop patch
+# Ren'Py cooperative execution patch
 
-`0001-cooperative-loop-skeleton.patch` is an opt-in source patch against the
-official Ren'Py source checkout. It is validated against the current
-`renpy/renpy` master tree in Mobile Contract CI.
+`0001-cooperative-loop-skeleton.patch` retains its historical filename but now
+contains the embedded runtime implementation. It applies to pinned Ren'Py
+commit `39895c1e017f0b36ffea2447d97eccd69d76ee1c`, not moving master.
 
-Apply or validate it with:
+Validate or apply with:
 
-```text
+```sh
 bridge/renpy_runtime/mobile_launcher/build.sh \
   --check-python-patch --renpy-src /path/to/renpy
-
 bridge/renpy_runtime/mobile_launcher/build.sh \
   --apply-python-patch --renpy-src /path/to/renpy
 ```
 
-The patch keeps the normal `main.run()` and `execution.run_context()` behavior
-unchanged for desktop. The opt-in path adds:
+`renpy.aether_mobile` creates a greenlet without running the game during init.
+The first tick sets a deadline and enters the complete `renpy.py` bootstrap.
+Subsequent ticks resume the same Python and Cython stack. Safe script and
+interaction boundaries switch back to the host instead of unwinding an
+exception through `interact` cleanup. Arbitrary Python code cannot be forcibly
+preempted; a game that blocks between these boundaries can still stall a tick.
 
-- `renpy.main.cooperative_start()` to initialize a game context once
-- `renpy.main.cooperative_tick(budget_ms)` to resume that same context for a
-  bounded host tick and return `yield`, `finished`, or `not_started`
-- `renpy.main.cooperative_stop()` for host-owned cleanup without process exit
-- `renpy.execution.CooperativeYield` and deadline checks at the context boundary
-- an event-loop deadline check in `Interface.interact_core`, so a long-running
-  interaction yields back to the native host instead of sleeping indefinitely
+Patched pygame modules publish GL-renderer screenshots, bind each actual GL
+window immediately, query host pointer/button/key state, and report text-input
+visibility. Events retain their down/up/motion semantics, Unicode ownership
+and modifier state. Pause suspends ticks; stop requests normal Ren'Py shutdown.
+A second session in the same process is rejected because Ren'Py global and
+Cython state reuse has not been implemented; restart the host application.
 
-The native Android/iOS launcher fork must initialize Python and call these
-helpers from the interpreter-owning thread. It must still provide the SDL/GLES
-or Metal frame bridge, input queue, pause/resume, and seven exported
-`renpy_mobile_*` symbols. The official `SDL_main`/`launcher_main` entrypoints
-remain process launchers and are never used by this patch.
+The native fork supplies the target-built `_aether_greenlet` and `_aether_host`
+modules. A host wheel or desktop SDK is not a mobile substitute. Cooperative
+and native protocol tests exercise controlled boundaries; actual APK/IPA
+installation and gameplay acceptance remain separate requirements.

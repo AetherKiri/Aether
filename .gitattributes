@@ -3,6 +3,8 @@
 
 # Enforce LF for vcpkg patch files, as patch.exe on Windows fails with CRLF line endings
 *.patch text eol=lf
+# Empty context lines in unified diffs must retain their leading space.
+bridge/renpy_runtime/mobile_launcher/patches/**/*.patch whitespace=-blank-at-eol,-space-before-tab
 
 # Product game archives are binary assets.
 *.xp3 -text

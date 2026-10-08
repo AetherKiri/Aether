@@ -1,63 +1,80 @@
-diff --git a/runtime/librenpython_android.c b/runtime/librenpython_android.c
---- a/runtime/librenpython_android.c
-+++ b/runtime/librenpython_android.c
-@@ -8,6 +8,7 @@
+diff --git a/runtime/librenpython3_android.c b/runtime/librenpython3_android.c
+index f6d8b03..996dfe6 100644
+--- a/runtime/librenpython3_android.c
++++ b/runtime/librenpython3_android.c
+@@ -8,6 +8,12 @@
  #include <jni.h>
  #include "android/log.h"
  #include "jniwrapperstuff.h"
 +#include "renpy_mobile_launcher.h"
++
++/* Built into the same target CPython, never imported from a host wheel. */
++PyMODINIT_FUNC PyInit__greenlet(void);
++PyMODINIT_FUNC PyInit__aether_host(void);
++
  
  void init_librenpy(void);
  
-@@ -143,6 +144,51 @@
+@@ -143,6 +149,62 @@ int start_python(void) {
      return rv;
  }
  
-+/* Host-owned entrypoint used by the AetherKiri lifecycle fork. This keeps
-+ * SDL_main -> Py_RunMain unchanged for the official launcher while exposing a
-+ * separate path that initializes Python and returns to the host loop. */
++/* Initialize the embedded interpreter without running a process main loop. */
 +int renpy_mobile_bootstrap(const renpy_mobile_config_t *mobile_config,
 +                          const renpy_mobile_host_t *host) {
-+    if (!mobile_config || !host || mobile_config->struct_size < sizeof(*mobile_config) ||
-+        host->struct_size < sizeof(*host) ||
-+        mobile_config->abi_version != RENPY_MOBILE_LAUNCHER_ABI_VERSION ||
-+        host->abi_version != RENPY_MOBILE_LAUNCHER_ABI_VERSION ||
-+        !mobile_config->private_root_utf8 || !mobile_config->private_root_utf8[0]) {
-+        return RENPY_MOBILE_INVALID_ARGUMENT;
++    if (!mobile_config || !host || !mobile_config->private_root_utf8 ||
++        !mobile_config->game_root_utf8) return RENPY_MOBILE_INVALID_ARGUMENT;
++    if (Py_IsInitialized()) {
++        if (host->log_utf8) host->log_utf8(host->user_data, 2,
++            "Ren'Py interpreter reuse is not implemented; restart the host application for another game session");
++        return RENPY_MOBILE_INVALID_STATE;
 +    }
-+
 +    init_environ();
 +    setenv_workaround("RENPY_PLATFORM", PLATFORM "-" ARCH);
 +    setenv_workaround("ANDROID_PRIVATE", mobile_config->private_root_utf8);
++    setenv_workaround("ANDROID_PUBLIC", mobile_config->public_root_utf8
++                     ? mobile_config->public_root_utf8 : mobile_config->game_root_utf8);
++    setenv_workaround("ANDROID_OLD_PUBLIC", mobile_config->public_root_utf8
++                     ? mobile_config->public_root_utf8 : mobile_config->game_root_utf8);
++    if (mobile_config->apk_path_utf8)
++        setenv_workaround("ANDROID_APK", mobile_config->apk_path_utf8);
 +    SDL_SetHint(SDL_HINT_ANDROID_BLOCK_ON_PAUSE, "0");
-+
-+    PyPreConfig preconfig;
-+    PyConfig pyconfig;
-+    PyImport_ExtendInittab(inittab);
++    SDL_SetHint("AETHER_RENPY_EMBEDDED", "1");
++    setenv_workaround("SDL_VIDEODRIVER", "offscreen");
++    if (PyImport_ExtendInittab(inittab) == -1 ||
++        PyImport_AppendInittab("_aether_greenlet", PyInit__greenlet) == -1 ||
++        PyImport_AppendInittab("_aether_host", PyInit__aether_host) == -1)
++        return RENPY_MOBILE_ERROR;
 +    init_librenpy();
 +
-+    char python[2048];
-+    snprintf(python, sizeof(python), "%s/python", mobile_config->private_root_utf8);
-+    char main_py[2048];
-+    snprintf(main_py, sizeof(main_py), "%s/main.py", mobile_config->private_root_utf8);
-+    char *argv[] = { python, main_py, NULL };
-+
++    PyPreConfig preconfig;
 +    PyPreConfig_InitPythonConfig(&preconfig);
 +    preconfig.utf8_mode = 1;
 +    preconfig.use_environment = 0;
-+    Py_PreInitializeFromBytesArgs(&preconfig, 2, argv);
-+
++    PyStatus status = Py_PreInitialize(&preconfig);
++    if (PyStatus_Exception(status)) return RENPY_MOBILE_ERROR;
++    PyConfig pyconfig;
 +    PyConfig_InitPythonConfig(&pyconfig);
-+    pyconfig.home = Py_DecodeLocale(mobile_config->private_root_utf8, NULL);
 +    pyconfig.user_site_directory = 0;
-+    pyconfig.parse_argv = 1;
++    pyconfig.parse_argv = 0;
 +    pyconfig.install_signal_handlers = 0;
-+    PyConfig_SetBytesArgv(&pyconfig, 2, argv);
-+    Py_InitializeFromConfig(&pyconfig);
-+
-+    return renpy_mobile_init(mobile_config, host);
++    status = PyConfig_SetBytesString(&pyconfig, &pyconfig.home, mobile_config->private_root_utf8);
++    if (!PyStatus_Exception(status)) status = Py_InitializeFromConfig(&pyconfig);
++    PyConfig_Clear(&pyconfig);
++    if (PyStatus_Exception(status)) return RENPY_MOBILE_ERROR;
++    /* Py_RunMain normally adds the script directory, so do that explicitly. */
++    PyObject *root = PyUnicode_DecodeFSDefault(mobile_config->private_root_utf8);
++    if (!root || PyList_Insert(PySys_GetObject("path"), 0, root) == -1) {
++        Py_XDECREF(root);
++        return RENPY_MOBILE_ERROR;
++    }
++    Py_DECREF(root);
++    /* Every host ABI call reacquires the GIL. Let audio/save workers run
++       while the game stack is suspended or the application is paused. */
++    PyEval_SaveThread();
++    return RENPY_MOBILE_OK;
 +}
 +
  void call_prepare_python(void) {
- 	JNIEnv* env = (JNIEnv*) SDL_GetAndroidJNIEnv();
- 	jobject activity = (jobject) SDL_GetAndroidActivity();
+ 	JNIEnv* env = (JNIEnv*) SDL_AndroidGetJNIEnv();
+ 	jobject activity = (jobject) SDL_AndroidGetActivity();

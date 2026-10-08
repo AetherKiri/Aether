@@ -17,6 +17,10 @@ on:
       - 'tools/run_renpy_mobile_source_build.sh'
       - 'tools/test_renpy_mobile_source_build_plan.sh'
       - 'tools/test_renpy_mobile_native_fork.sh'
+      - 'tools/test_renpy_mobile_cooperative.py'
+      - 'tools/validate_renpy_mobile_payload.py'
+      - 'tools/test_renpy_mobile_packaging.sh'
+      - 'tools/test_renpy_mobile_runtime_protocol.sh'
       - 'tools/test_stage_renpy_android_support.sh'
   workflow_dispatch:
 
@@ -44,7 +48,7 @@ jobs:
         run: |
           set -euo pipefail
           sudo apt-get update
-          sudo apt-get install -y build-essential binutils
+          sudo apt-get install -y build-essential binutils python3-dev libsdl2-dev pkg-config
 
       - name: Run mobile launcher scaffold and loader tests
         run: |
@@ -53,29 +57,39 @@ jobs:
           bash tools/test_renpy_mobile_launcher_loader.sh
           bash tools/test_renpy_mobile_symbol_gate.sh
           bash tools/test_renpy_mobile_source_build_plan.sh
-          bash tools/run_renpy_mobile_source_build.sh --mode auto
           bash tools/test_renpy_mobile_native_fork.sh
+          bash tools/test_renpy_mobile_packaging.sh
 
-      - name: Check cooperative patch against current Ren'Py source
+      - name: Checkout pinned Ren'Py source for the 8.5.3 rebuild
         uses: actions/checkout@v6
         with:
           repository: renpy/renpy
-          ref: master
+          ref: 39895c1e017f0b36ffea2447d97eccd69d76ee1c
           path: _renpy-source
           fetch-depth: 1
-          sparse-checkout: |
-            renpy/main.py
-            renpy/execution.py
-            renpy/display/core.py
       - name: Validate cooperative patch applicability
         run: |
           set -euo pipefail
           bash bridge/renpy_runtime/mobile_launcher/build.sh \
             --check-python-patch --renpy-src _renpy-source
 
-      - name: Assert staged archives remain non-playable
+      - name: Exercise stack-preserving scheduling and input boundaries
         run: |
           set -euo pipefail
-          grep -F 'ENGINE_RESULT_NOT_SUPPORTED'             bridge/renpy_runtime/src/renpy_runtime_mobile_provider.cpp
-          grep -F 'contract and build/replacement scaffold'             bridge/renpy_runtime/mobile_launcher/README.md
-          grep -F 'NOT_SUPPORTED' bridge/renpy_runtime/mobile_launcher/README.md
+          python3 -m venv "${RUNNER_TEMP}/cooperative-test"
+          "${RUNNER_TEMP}/cooperative-test/bin/pip" install greenlet==3.2.4
+          bash bridge/renpy_runtime/mobile_launcher/build.sh \
+            --apply-python-patch --renpy-src _renpy-source
+          "${RUNNER_TEMP}/cooperative-test/bin/python" \
+            tools/test_renpy_mobile_cooperative.py --renpy-src _renpy-source
+
+      - name: Compile the lifecycle implementation against Python and SDL2
+        run: |
+          set -euo pipefail
+          cc -std=c11 -Wall -Wextra -Werror -fPIC \
+            $(python3-config --includes) $(pkg-config --cflags sdl2) \
+            -I bridge/renpy_runtime/mobile_launcher/include \
+            -c bridge/renpy_runtime/mobile_launcher/patches/native/renpy_mobile_lifecycle.c \
+            -o "${RUNNER_TEMP}/renpy_mobile_lifecycle.o"
+          bash tools/test_renpy_mobile_runtime_protocol.sh
+          echo "Compiled and exercised the native CPython boundary; this does not execute a mobile game."

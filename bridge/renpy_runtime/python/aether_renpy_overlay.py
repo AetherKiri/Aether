@@ -116,6 +116,7 @@ class Overlay:
     def _inject(self) -> None:
         if self.input_path is None or not self.input_path.exists():
             return
+        host_shutdown = False
         try:
             import renpy.pygame as pygame
             with self.input_path.open("rb") as stream:
@@ -128,6 +129,9 @@ class Overlay:
                     event = json.loads(raw.decode("utf-8"))
                     attrs = dict(event.get("attributes", {}))
                     event_type = int(event["type"])
+                    if event_type == pygame.QUIT and event.get("aetherkiri_host_shutdown") is True:
+                        host_shutdown = True
+                        break
                     # The engine ABI has no SDL scancode/repeat fields. Fill
                     # the Ren'Py pygame defaults so a native provider can send
                     # just key/modifier/unicode data.
@@ -140,6 +144,12 @@ class Overlay:
         except Exception as error:
             self._report("input", error)
             return
+        if host_shutdown:
+            # Host destruction is already the user's decision to close this
+            # session. Raise Ren'Py's orderly quit outside the input error
+            # handler so its QuitException reaches bootstrap cleanup.
+            import renpy
+            renpy.quit(confirm=False)
 
     def _draw_screen(self, interface, original, *args, **kwargs):
         result = original(interface, *args, **kwargs)

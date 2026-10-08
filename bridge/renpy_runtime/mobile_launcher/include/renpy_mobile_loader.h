@@ -12,8 +12,8 @@ namespace aetherkiri::renpy::mobile {
  *
  * The official RAPT/Renios archives do not export these functions, so an
  * unavailable loader is an expected and safe state. Android resolves the
- * symbols from librenpython.so; iOS uses weak imports so an app without the
- * rebuilt Renios archive still links. This class never falls back to
+ * symbols from librenpython.so; iOS links the rebuilt archive with strong
+ * references so missing native inputs fail the build. This class never falls back to
  * SDL_main, launcher_main, Py_RunMain, or an application entrypoint.
  */
 class Launcher final {
@@ -34,9 +34,12 @@ class Launcher final {
   int Input(const renpy_mobile_input_t& event);
   int Pause();
   int Resume();
+  int TextInputState(uint32_t* active);
+  int SetSurfaceSize(uint32_t width, uint32_t height);
   void Shutdown();
 
   bool initialized() const { return initialized_; }
+  bool finished() const { return finished_; }
 
  private:
   bool Resolve();
@@ -51,6 +54,9 @@ class Launcher final {
   using InputFn = int (*)(const renpy_mobile_input_t*);
   using PauseFn = int (*)();
   using ResumeFn = int (*)();
+  using TextInputStateFn = int (*)(uint32_t*);
+  using SurfaceSizeFn = int (*)(uint32_t, uint32_t);
+  using BindWindowFn = int (*)(void*);
   using ShutdownFn = void (*)();
 
   void* library_handle_ = nullptr;
@@ -61,9 +67,13 @@ class Launcher final {
   InputFn input_ = nullptr;
   PauseFn pause_ = nullptr;
   ResumeFn resume_ = nullptr;
+  TextInputStateFn text_input_state_ = nullptr;
+  SurfaceSizeFn surface_size_ = nullptr;
+  BindWindowFn bind_window_ = nullptr;
   ShutdownFn shutdown_ = nullptr;
   bool resolved_ = false;
   bool initialized_ = false;
+  bool finished_ = false;
   std::string last_error_;
 };
 

@@ -20,20 +20,19 @@ grep -Fq 'dlsym' "$loader"
 grep -Fq 'RTLD_DEFAULT' "$loader"
 for symbol in \
     renpy_mobile_init renpy_mobile_tick renpy_mobile_frame renpy_mobile_input \
-    renpy_mobile_pause renpy_mobile_resume renpy_mobile_shutdown; do
+    renpy_mobile_pause renpy_mobile_resume renpy_mobile_shutdown \
+    renpy_mobile_bootstrap renpy_mobile_bind_window renpy_mobile_text_input_state renpy_mobile_set_surface_size; do
     grep -Fq "$symbol" "$loader"
 done
 
 for symbol in \
     renpy_mobile_init renpy_mobile_tick renpy_mobile_frame renpy_mobile_input \
-    renpy_mobile_pause renpy_mobile_resume renpy_mobile_shutdown; do
+    renpy_mobile_pause renpy_mobile_resume renpy_mobile_shutdown \
+    renpy_mobile_bootstrap renpy_mobile_bind_window renpy_mobile_text_input_state renpy_mobile_set_surface_size; do
     grep -Fq "$symbol" "$header"
 done
 
-grep -Fq 'Py_RunMain' "$scaffold/README.md"
-grep -Fq 'SDL_main' "$scaffold/README.md"
-grep -Fq 'renpy-build' "$scaffold/patches/README.md"
-grep -Fq 'cooperative-loop-skeleton.patch' "$scaffold/patches/python/README.md"
+[[ -s "$scaffold/patches/python/0001-cooperative-loop-skeleton.patch" ]]
 if [[ -d "$renpy_source" ]]; then
     patch_output="$(bash "$script" --check-python-patch --renpy-src "$renpy_source")"
     grep -Fq 'applies cleanly' <<<"$patch_output"

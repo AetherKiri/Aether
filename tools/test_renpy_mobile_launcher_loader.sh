@@ -10,6 +10,7 @@ cat > "$work/fake_launcher.cpp" <<'CPP'
 #include <cstring>
 static unsigned char pixel[4] = {0x12, 0x34, 0x56, 0xff};
 extern "C" int renpy_mobile_init(const renpy_mobile_config_t*, const renpy_mobile_host_t*) { return 0; }
+extern "C" int renpy_mobile_bootstrap(const renpy_mobile_config_t*, const renpy_mobile_host_t*) { return 0; }
 extern "C" int renpy_mobile_tick(unsigned int) { return 0; }
 extern "C" int renpy_mobile_frame(renpy_mobile_frame_t* frame) {
   if (!frame) return -1;
@@ -19,6 +20,9 @@ extern "C" int renpy_mobile_frame(renpy_mobile_frame_t* frame) {
 extern "C" int renpy_mobile_input(const renpy_mobile_input_t*) { return 0; }
 extern "C" int renpy_mobile_pause(void) { return 0; }
 extern "C" int renpy_mobile_resume(void) { return 0; }
+extern "C" int renpy_mobile_bind_window(void* window) { return window ? 0 : -1; }
+extern "C" int renpy_mobile_text_input_state(uint32_t* active) { if (!active) return -1; *active = 1; return 0; }
+extern "C" int renpy_mobile_set_surface_size(uint32_t width, uint32_t height) { return width && height ? 0 : -1; }
 extern "C" void renpy_mobile_shutdown(void) {}
 CPP
 cat > "$work/test_loader.cpp" <<'CPP'
@@ -40,6 +44,9 @@ int main() {
   assert(launcher.Input(input) == RENPY_MOBILE_OK);
   assert(launcher.Pause() == RENPY_MOBILE_OK);
   assert(launcher.Resume() == RENPY_MOBILE_OK);
+  uint32_t active = 0;
+  assert(launcher.TextInputState(&active) == RENPY_MOBILE_OK && active == 1);
+  assert(launcher.SetSurfaceSize(1280, 720) == RENPY_MOBILE_OK);
   launcher.Shutdown();
   assert(!launcher.initialized());
   return 0;

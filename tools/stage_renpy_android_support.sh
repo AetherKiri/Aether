@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
-# Stage the official Ren'Py RAPT Android inputs into a Godot Android export.
+# Stage a rebuilt Ren'Py RAPT runtime into a Godot Android export.
 #
 # RAPT is an SDLActivity application template. It must not be merged as the
 # exported app's manifest or launched as a second Activity: Godot owns the
 # process, window, and SDL lifecycle. This script therefore packages the
 # official Java/resources as inspectable assets, stages only the arm64 native
-# payload in jniLibs, and installs a tiny host-owned JNI bridge. The provider
-# remains NOT_SUPPORTED until the lifecycle, surface, input, and renderer
-# handoff is implemented.
+# payload in jniLibs, and installs the host-owned JNI bridge. Enabled app
+# builds require a lifecycle library and complete cooperative Python payload.
+# --allow-unsupported is an explicit archive inspection mode, never gameplay.
 set -euo pipefail
 
 usage() {
@@ -23,8 +23,9 @@ with --private-assets.
 Options:
   --mobile-root PATH       Root containing rapt/prototype/renpyandroid
   --godot-build PATH       Extracted Godot Android build template directory
-  --private-assets PATH    Optional directory or private.mp3 file to copy into
-                           the RAPT private asset staging area (default: none)
+  --private-assets PATH    Unpacked runtime directory (main.py, renpy/, lib/)
+  --allow-unsupported     Inspect an official archive without a lifecycle fork;
+                           this mode is never used by enabled app builds
   -h, --help               Show this help
 USAGE
 }
@@ -32,6 +33,8 @@ USAGE
 mobile_root=""
 godot_build=""
 private_assets=""
+allow_unsupported=false
+repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
 while (($#)); do
     case "$1" in
@@ -49,6 +52,10 @@ while (($#)); do
             (($# >= 2)) || { echo "--private-assets requires a value" >&2; exit 2; }
             private_assets="$2"
             shift 2
+            ;;
+        --allow-unsupported)
+            allow_unsupported=true
+            shift
             ;;
         -h|--help)
             usage
@@ -100,6 +107,14 @@ is_elf_file "$rapt_native" || {
     exit 1
 }
 
+if [[ "$allow_unsupported" == false ]]; then
+    if [[ -z "$private_assets" ]]; then
+        private_assets="$rapt_root/runtime/private"
+    fi
+    python3 "$repo_root/tools/validate_renpy_mobile_payload.py" \
+        --platform android --library "$rapt_native" --private-root "$private_assets"
+fi
+
 main_src="$godot_build/src/main"
 asset_root="$main_src/assets/renpy_mobile"
 asset_rapt="$asset_root/rapt"
@@ -121,7 +136,6 @@ cp -f "$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/bridge/renpy_runtime/and
 # sources remain assets and its PythonSDLActivity manifest is never merged;
 # compiling the full Activity would create a second SDL singleton. Refuse to
 # overwrite an unrelated class if a Godot template starts shipping one.
-repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 install_host_shim() {
     local source="$1" destination="$2" marker="$3"
     mkdir -p "$(dirname "$destination")"
@@ -130,15 +144,19 @@ install_host_shim() {
         exit 1
     fi
     cp -f "$source" "$destination"
+    # Vendored SDL helper classes may not contain our marker in the upstream
+    # source. Mark the staged copy so another build can safely update it.
+    printf '\n// %s: staged host-owned callback source.\n' "$marker" >> "$destination"
 }
-install_host_shim \
-    "$repo_root/bridge/renpy_runtime/android/org/libsdl/app/SDLActivity.java" \
-    "$java_sdl_root/SDLActivity.java" \
-    'renpy-sdl-host-shim-v1'
-install_host_shim \
-    "$repo_root/bridge/renpy_runtime/android/org/renpy/android/PythonSDLActivity.java" \
-    "$java_renpy_root/PythonSDLActivity.java" \
-    'renpy-python-host-shim-v1'
+while IFS= read -r -d '' shim; do
+    relative="${shim#"$repo_root/bridge/renpy_runtime/android/"}"
+    case "$relative" in
+        org/libsdl/*) marker='renpy-sdl-host-shim-v1' ;;
+        org/renpy/*) marker='renpy-python-host-shim-v1' ;;
+        *) continue ;;
+    esac
+    install_host_shim "$shim" "$main_src/java/$relative" "$marker"
+done < <(find "$repo_root/bridge/renpy_runtime/android/org" -type f -name '*.java' -print0)
 
 # The source tree is deliberately copied below assets rather than src/main/java
 # or src/main/res. RAPT's manifest names PythonSDLActivity as its launcher;
@@ -205,8 +223,11 @@ rendering are wired to the existing Godot Activity.
 PRIVATE_EOF
 fi
 
-cp -f "$rapt_native" "$jni_root/librenpython.so"
-chmod 755 "$jni_root/librenpython.so"
+for native_library in "$rapt_main/jniLibs/arm64-v8a/"*.so; do
+    [[ -f "$native_library" ]] || continue
+    cp -f "$native_library" "$jni_root/$(basename "$native_library")"
+    chmod 755 "$jni_root/$(basename "$native_library")"
+done
 
 # Record the exact staged paths and the archive metadata when available. This
 # is consumed by package smoke tests and makes an APK inspection auditable.
@@ -218,8 +239,11 @@ elif [[ -f "$rapt_root/hash.txt" ]]; then
 fi
 {
     printf 'renpy_version=8.5.3\n'
+    printf 'runtime_sdl=SDL2\n'
     printf 'rapt_checksum=%s\n' "$rapt_checksum"
-    printf 'playable=false\n'
+    printf 'playable=unverified\n'
+    printf 'inspection_only=%s\n' "$allow_unsupported"
+    printf 'native_lifecycle_validated=%s\n' "$( [[ "$allow_unsupported" == false ]] && printf true || printf false )"
     printf 'activity_template=assets/renpy_mobile/rapt/java/org/renpy/android/PythonSDLActivity.java\n'
     printf 'gradle_template=assets/renpy_mobile/rapt/build.gradle\n'
     printf 'native_library=lib/arm64-v8a/librenpython.so\n'
@@ -233,4 +257,4 @@ echo "Ren'Py Android support staged into $godot_build"
 echo "  official Java/resources: $asset_rapt"
 echo "  private assets:          $asset_private"
 echo "  arm64 native library:    $jni_root/librenpython.so"
-echo "  playable:                false"
+echo "  gameplay:                unverified (requires device execution)"

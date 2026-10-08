@@ -55,125 +55,78 @@ and checks that the Ren'Py menu selection reaches script code. It uses the
 SDK's `gl2` renderer by default; set `RENPY_RENDERER=sw` to exercise the
 software renderer instead.
 
-The overlay is desktop-only. On Android and iOS, `AETHERKIRI_ENABLE_RENPY`
-builds a provider registration stub that reports an explicit
-`ENGINE_RESULT_NOT_SUPPORTED` from game open and all runtime operations; this
-prevents a staged archive from being mistaken for playable mobile support.
-The provider's desktop integration remains guarded by
-`AETHERKIRI_ENABLE_RENPY` and requires a writable `game/libs` directory to
-stage the hook.
+The overlay is desktop-only. Mobile builds use the in-process lifecycle fork,
+with its own packaged Python home and stack-preserving cooperative loop.
 
-## Cross-platform acceptance matrix
+## Mobile build and runtime status
 
-The runtime is only considered playable on a platform after the corresponding
-row passes its real runtime checks. Building or staging an official SDK alone
-does not change the mobile provider guard.
+Mobile gameplay is **unverified**. There is no accepted APK/device or
+IPA/simulator gameplay result for this change. Exported symbols, host fixture
+tests, and a successful application build do not establish mobile support.
 
-| Platform | Current CI evidence | Required runtime gate |
-| --- | --- | --- |
-| Linux x86_64 | tools/test_install_renpy_sdk.sh plus tools/run_renpy_smoke.sh in the desktop matrix | CMake provider tests, Godot frame/input E2E, and clean process shutdown |
-| Windows x64 | Pinned renpy-8.5.3-sdk.zip metadata/install plus fixture smoke in the desktop matrix | Native renpy.exe provider E2E (CreateProcessW, frame/input, shutdown); the POSIX fake-launcher mapping test is intentionally skipped |
-| Android arm64 | APK builds, RAPT staging, ABI guard, and lifecycle contract/export fixtures | A rebuilt RAPT payload exporting all seven host lifecycle symbols, then arm64 emulator and device E2E for Activity ownership, RGBA frames, touch/text input, pause/resume, and reopen |
-| iOS arm64 simulator/device | IPA/Xcode builds, Renios staging, ABI guard, and lifecycle contract/export fixtures | A rebuilt Renios payload with host lifecycle exports, simulator and device E2E for single UIApplication/SDL ownership, RGBA frames, input, pause/resume, and reopen |
+The source runner pins a coherent, independently rebuilt 8.5.3 fork:
 
-Desktop smoke commands:
+- renpy-build: `7bfab40c1174f622f644b24669afd5fb167fbb79`
+- Ren'Py: `39895c1e017f0b36ffea2447d97eccd69d76ee1c`
+- greenlet: `65f8da82b13a1273e55a6bfcbd1f9da09fc4eb7a`
 
-    bash tools/test_install_renpy_sdk.sh
-    bash tools/install_renpy_sdk.sh --platform linux --arch x86_64 --destination /tmp/renpy-sdk
-    RENPY_SDK=/tmp/renpy-sdk bash tools/run_renpy_smoke.sh
+It applies both the Python and native patches before compiling the actual
+runtime. Greenlet preserves the script and interaction stacks on the host
+thread. Game initialization starts in the first tick, after asynchronous game
+open has returned. Frames come from the real renderer screenshot, copied from
+its Surface with row pitch respected. Input retains press, release, motion,
+scroll and committed UTF-8 text semantics. Pause, resume and natural exit are
+observable through the provider.
 
-Optional native mobile source preflight/build:
+Android compilation requires a supported Ubuntu 24.04 cloud builder, LLVM 18,
+NDK r29 and at least 64 GiB of free disk. The fork uses SDL2's offscreen
+EGL/pbuffer path to avoid taking Godot's display Surface. This path still
+requires real Android graphics, input and lifecycle acceptance.
 
-    bash tools/run_renpy_mobile_source_build.sh --mode auto
-    bash tools/run_renpy_mobile_source_build.sh --mode check --renpy-build /path/to/renpy-build
-    AETHERKIRI_RENPY_SOURCE_BUILD_MODE=build bash tools/run_renpy_mobile_source_build.sh --mode build --renpy-build /path/to/renpy-build
+The iOS native archive must be rebuilt with legally supplied Apple SDKs. Its
+stock SDL UIKit/MetalANGLE window path is not a verified Godot rendering
+integration; this remains an implementation and simulator/device validation
+blocker. Device builds also require the appropriate signing credentials;
+simulator verification does not require distribution signing.
 
-With no official renpy-build checkout, auto mode reports a clear skip. The
-source runner never treats the official blocking SDL_main/Py_RunMain launcher
-as host lifecycle support, and it does not claim device or simulator
-playability before those E2E gates pass.
+Enabling Ren'Py in a mobile application build now requires the rebuilt native
+library and matching cooperative Python/standard-library resources. CMake and
+packaging reject an official blocking RAPT/Renios archive, missing resources,
+incompatible native targets and missing lifecycle exports. iOS native linking
+is enabled by default. No second launcher entrypoint is copied into Godot.
 
-## Mobile dependency staging
+## Reproducible cloud commands
 
-The official mobile support packages are staged separately with
-`tools/install_renpy_mobile_support.sh --platform android|ios|both`. The
-script verifies the Ren'Py 8.5.3 RAPT and Renios archives before extracting
-them and records the verified checksums beside each staged package. These
-inputs are not a mobile runtime: Android still needs the
-`PythonSDLActivity`/JNI bootstrap, iOS still needs an in-process Xcode
-adapter, and both platforms still need lifecycle, input, and Godot rendering
-integration.
+Prepare pinned sources without installing system packages or licensed SDKs:
 
-When `AETHERKIRI_ENABLE_RENPY=ON` and
-`AETHERKIRI_RENPY_MOBILE_ROOT` points at that staged root, `scripts/build_ios.sh`
-folds the selected Renios `prebuilt/{debug,release}` static-library closure
-into the Godot iOS extension archive and bundles the official Renios resources
-plus `MetalANGLE.xcframework` under `Aether/renios` and `Aether/Frameworks`.
-If a generated Renios game `base/` directory is available, set
-`AETHERKIRI_RENPY_RENIOS_BASE` to bundle it alongside those resources.
-The prototype's entrypoint source and `libSDL2main.a` are intentionally omitted;
-Godot remains the sole UIKit/SDL application host. The generated
-`renios/renios-manifest.txt` records the exact closure. This is a link/bundle
-smoke only: the provider continues to return `ENGINE_RESULT_NOT_SUPPORTED`
-until the host-owned lifecycle, surface rendering, and input adapter are
-implemented and validated on a device or simulator.
+```bash
+bash tools/run_renpy_mobile_source_build.sh --mode prepare --fetch \
+  --platform android --renpy-build /workspace/renpy-build
+```
 
-### iOS in-process adapter boundary
+Run the actual source build on a provisioned cloud builder:
 
-The staged Renios prototype is an application template whose `main.c` calls
-`SDL_UIKitRunApp(..., launcher_main)`. AetherKiri already owns the Godot
-application and run loop, so the mobile provider does not copy that entrypoint
-or call `UIApplicationMain`. `renpy_runtime_ios_adapter.h` defines the small
-host-owned adapter registration boundary that a future iOS integration can
-install after linking the complete Renios static-library closure. The same
-header exposes `renpy_get_ios_launcher_contract()`: the build probe confirms
-that the shipped `launcher_main` reaches blocking `Py_RunMain`, so it cannot be
-called from a Godot frame callback. Run
-`tools/test_renios_ios_launcher.sh <mobile-root> <debug|release>` to repeat
-that archive check. Until a split init/tick/shutdown launcher and its
-lifecycle, surface, and input bridge are linked, `runtime=renpy` continues to
-return `ENGINE_RESULT_NOT_SUPPORTED` with an explicit diagnostic.
+```bash
+bash tools/run_renpy_mobile_source_build.sh --mode build \
+  --platform android --renpy-build /workspace/renpy-build
+```
 
-### Android in-process adapter boundary
+The output is `out/renpy-mobile-source/payload` plus a provenance manifest.
+Android private assets are in `payload/rapt/runtime/private`. Build the debug
+app with that payload, then run the real device gate described in
+[`demos/aetherkiri-renpy/README.md`](../../demos/aetherkiri-renpy/README.md).
 
-The staged RAPT prototype is a `PythonSDLActivity` that loads
-`librenpython.so`, prepares Android storage/assets, and owns an SDL surface.
-`scripts/build_android.sh` now stages the arm64 library, private/assets
-directory, and the official Java/resource templates under
-`assets/renpy_mobile/rapt` in the existing Godot export. The RAPT manifest and
-`PythonSDLActivity` remain assets and are never merged into the host manifest,
-so the export still has one Activity. A small host-owned
-`org.github.krkr2.aetherkiri.RenPyMobileBridge` Java shim binds an already
-running Godot Activity to the engine JNI bridge; it does not launch RAPT or
-load its SDL loop. Set `AETHERKIRI_RENPY_ANDROID_PRIVATE_ASSETS` when a built
-Ren'Py game's private payload is available.
+The Build workflow requires the source-build job's output before packaging
+Android. It preserves a debug APK for installation. For iOS, the workflow
+requires `AETHER_RENPY_IOS_RUNTIME_RUN_ID` and
+`AETHER_RENPY_IOS_RUNTIME_ARTIFACT` repository variables identifying a rebuilt
+payload artifact named `renpy-ios-runtime.tar.gz` with `payload/renios` inside.
+A missing input is a build failure with a diagnostic, rather than a successful
+package containing only a mobile guard.
 
-The export also compiles two host-owned, non-Activity signature shims at
-`org.libsdl.app.SDLActivity` and `org.renpy.android.PythonSDLActivity`. They
-only bind the existing Activity and declare the callbacks that preflight
-checks; the complete RAPT Activity remains under `assets/renpy_mobile/rapt`.
-If a Godot template already owns either class, staging fails closed instead of
-overwriting a possible SDL singleton.
-
-The SDL shim's `getNativeSurface()` and `getContext()` callbacks return the
-same Java `Surface` and Application Context already held by `EngineBridge`; no
-new View or Surface is allocated. This is safe for inspection and preflight,
-but the official `librenpython.so` still has no host-tick or
-`SDL_AndroidSetActivity`/`SDL_AndroidSetSurface` API. Enabling gameplay next
-requires rebuilding the RAPT native payload around an explicit
-`init(context, surface)`, `tick`, `pause/resume`, input, and `shutdown`
-interface rather than calling its blocking `SDL_main` entrypoint.
-
-The Android provider also has a compile-tested `BootstrapAdapter` boundary that
-accepts an opaque pointer to the existing host Activity through the host
-extension slot `reserved_ptr[1]` or the JNI shim. It never creates a second
-Activity. Because RAPT embeds its own SDL/Python runtime and lifecycle,
-asset/JNI staging alone is not a playable integration: until SDL surface,
-lifecycle, input, and Godot rendering handoff are complete, `Start` and
-provider open return `ENGINE_RESULT_NOT_SUPPORTED` with an explicit diagnostic.
-Before attempting that handoff, the Android `BootstrapAdapter::Preflight`
-loader checks the bound host Activity, required `SDLActivity` and
-`PythonSDLActivity` JNI methods, a live host `ANativeWindow`, and the exported
-`librenpython.so` entrypoints (`SDL_main`, SDL Android accessors, and RAPT JNI
-callbacks). Missing pieces produce a stable diagnostic and never call
-`SDL_main` or create another Activity.
+The Mobile Contract workflow validates contracts and compilation, with no
+playability claim. Desktop Acceptance runs the SDK fixtures; its Linux job
+also exercises a real rendered frame, input and quit. The device gate requires
+actual APK installation, executed Ren'Py script checkpoints, native RGBA
+pixels matching an OS screenshot, touch, text/keyboard, background/resume,
+and normal game exit while the application process stays alive.

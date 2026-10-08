@@ -7,6 +7,8 @@
 set -euo pipefail
 
 required_symbols=(
+    renpy_mobile_bootstrap
+    renpy_mobile_bind_window
     renpy_mobile_init
     renpy_mobile_tick
     renpy_mobile_frame
@@ -14,6 +16,8 @@ required_symbols=(
     renpy_mobile_pause
     renpy_mobile_resume
     renpy_mobile_shutdown
+    renpy_mobile_text_input_state
+    renpy_mobile_set_surface_size
 )
 
 nm_listing() {
@@ -73,6 +77,8 @@ trap 'rm -rf "$work"' EXIT
 
 cat >"$work/fixture.c" <<'C'
 #define EXPORT __attribute__((visibility("default")))
+EXPORT int renpy_mobile_bootstrap(void) { return 0; }
+EXPORT int renpy_mobile_bind_window(void) { return 0; }
 EXPORT int renpy_mobile_init(void) { return 0; }
 EXPORT int renpy_mobile_tick(void) { return 0; }
 EXPORT int renpy_mobile_frame(void) { return 0; }
@@ -80,6 +86,8 @@ EXPORT int renpy_mobile_input(void) { return 0; }
 EXPORT int renpy_mobile_pause(void) { return 0; }
 EXPORT int renpy_mobile_resume(void) { return 0; }
 EXPORT void renpy_mobile_shutdown(void) {}
+EXPORT int renpy_mobile_text_input_state(void) { return 0; }
+EXPORT int renpy_mobile_set_surface_size(void) { return 0; }
 C
 "${CC:-cc}" -shared -fPIC "$work/fixture.c" -o "$work/librenpython.so"
 check_symbols "$work/librenpython.so" shared

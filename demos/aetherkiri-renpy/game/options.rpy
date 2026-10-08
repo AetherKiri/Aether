@@ -1,8 +1,8 @@
 # AetherKiri's minimal Ren'Py runtime fixture.
 
-config.name = "AetherKiri Ren'Py Fixture"
-config.version = "1.0"
-config.window_title = "AetherKiri Ren'Py Fixture"
-config.screen_width = 960
-config.screen_height = 540
-config.developer = True
+define config.name = "AetherKiri Ren'Py Fixture"
+define config.version = "1.0"
+define config.window_title = "AetherKiri Ren'Py Fixture"
+define config.screen_width = 960
+define config.screen_height = 540
+define config.developer = True

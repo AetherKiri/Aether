@@ -1,208 +1,199 @@
 #!/usr/bin/env bash
-# Optional Ren'Py native mobile source build orchestration.
-#
-# The official renpy-build checkout and iOS SDK archives are external/licensed
-# inputs. Default "auto" mode is therefore a clear skip when no checkout is
-# supplied; it never turns staged RAPT/Renios archives into playable payloads.
-# Use --mode check for strict CI preflight or --mode build after provisioning
-# Ubuntu 24.04, Android NDK, and the licensed iOS SDK archives.
+# Build a coherent Ren'Py 8.5.3 mobile fork, never an unpatched RAPT launcher.
 set -euo pipefail
-
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 launcher="$repo_root/bridge/renpy_runtime/mobile_launcher/build.sh"
+patch_root="$repo_root/bridge/renpy_runtime/mobile_launcher/patches"
 mode="${AETHERKIRI_RENPY_SOURCE_BUILD_MODE:-auto}"
-renpy_build="${AETHERKIRI_RENPY_BUILD_ROOT:-}"
-fetch=false
+renpy_build="${AETHERKIRI_RENPY_BUILD_ROOT:-$repo_root/.aetherkiri-cache/renpy-build}"
+platform="${AETHERKIRI_RENPY_SOURCE_BUILD_PLATFORM:-android}"
+output_dir="${AETHERKIRI_RENPY_SOURCE_OUTPUT:-$repo_root/out/renpy-mobile-source}"
 source_url="${AETHERKIRI_RENPY_BUILD_URL:-https://github.com/renpy/renpy-build.git}"
-source_ref="${AETHERKIRI_RENPY_BUILD_REF:-}"
-native_patch_root="$repo_root/bridge/renpy_runtime/mobile_launcher/patches/native"
-
+build_sha=7bfab40c1174f622f644b24669afd5fb167fbb79
+renpy_sha=39895c1e017f0b36ffea2447d97eccd69d76ee1c
+greenlet_sha=65f8da82b13a1273e55a6bfcbd1f9da09fc4eb7a
+fetch=false
 usage() {
     cat <<'USAGE'
 Usage: tools/run_renpy_mobile_source_build.sh [options]
-
-Options:
-  --mode MODE          auto (default), skip, check, or build
-  --renpy-build PATH   existing official renpy-build checkout
-  --fetch              clone the official checkout when PATH is absent
-  --url URL            source URL used with --fetch
-  --ref REF            branch/tag/commit used with --fetch
-  -h, --help           show this help
-
-Environment:
-  AETHERKIRI_RENPY_SOURCE_BUILD_MODE
-  AETHERKIRI_RENPY_BUILD_ROOT
-  AETHERKIRI_RENPY_BUILD_URL
-  AETHERKIRI_RENPY_BUILD_REF
-  AETHERKIRI_RENPY_SOURCE_BUILD_REQUIRED=1
-  AETHERKIRI_RENPY_BUILD_IOS=1  # build iOS after Android in --mode build
-
-The build mode runs renpy-build's Android lifecycle-fork hooks and, when
-explicitly enabled, its iOS hooks. It validates canonical outputs and the
-seven host lifecycle exports before any staged install. It does not claim
-device/simulator playability.
+  --mode MODE          auto, skip, prepare, check, or build
+  --renpy-build PATH   coherent official Ren'Py 8.5.3 build checkout
+  --fetch              fetch pinned official GitHub sources when absent
+  --platform PLATFORM  android (default), ios, or all
+  --output-dir PATH    real native payload and provenance destination
+  --url URL            renpy-build source mirror (revision remains pinned)
+  --ref REF            compatibility option; must be the pinned build SHA
+Prepare clones the pinned source and greenlet dependency and applies all Python
+and native patches. It does not install host packages or licensed SDKs.
+Build runs the actual cross compilation and gates every lifecycle export.
+Auto builds when a checkout exists; it never substitutes check for compilation.
+Neither a successful build nor export checks assert device gameplay.
 USAGE
 }
-
 while (($#)); do
     case "$1" in
-        --mode)
-            (($# >= 2)) || { echo "--mode requires a value" >&2; exit 2; }
-            mode="$2"; shift 2 ;;
-        --renpy-build)
-            (($# >= 2)) || { echo "--renpy-build requires a path" >&2; exit 2; }
-            renpy_build="$2"; shift 2 ;;
+        --mode|--renpy-build|--platform|--output-dir|--url|--ref)
+            (($# >= 2)) || { echo "$1 requires a value" >&2; exit 2; }
+            case "$1" in
+                --mode) mode="$2" ;;
+                --renpy-build) renpy_build="$2" ;;
+                --platform) platform="$2" ;;
+                --output-dir) output_dir="$2" ;;
+                --url) source_url="$2" ;;
+                --ref) [[ "$2" == "$build_sha" ]] || { echo "unsupported build revision: $2; expected $build_sha" >&2; exit 2; } ;;
+            esac
+            shift 2 ;;
         --fetch) fetch=true; shift ;;
-        --url)
-            (($# >= 2)) || { echo "--url requires a value" >&2; exit 2; }
-            source_url="$2"; shift 2 ;;
-        --ref)
-            (($# >= 2)) || { echo "--ref requires a value" >&2; exit 2; }
-            source_ref="$2"; shift 2 ;;
         -h|--help) usage; exit 0 ;;
         *) echo "unknown argument: $1" >&2; usage >&2; exit 2 ;;
     esac
 done
-
-case "$mode" in
-    auto|skip|check|build) ;;
-    *) echo "--mode must be auto, skip, check, or build (got '$mode')" >&2; exit 2 ;;
-esac
-[[ -f "$launcher" ]] || { echo "missing launcher scaffold: $launcher" >&2; exit 1; }
-
-if [[ "$mode" == "skip" ]]; then
+case "$mode" in auto|skip|prepare|check|build) ;; *) echo "invalid mode: $mode" >&2; exit 2 ;; esac
+case "$platform" in android|ios|all) ;; *) echo "invalid platform: $platform" >&2; exit 2 ;; esac
+if [[ "$mode" == skip ]]; then
     echo "Ren'Py mobile source build skipped by request (no payload built)"
     exit 0
 fi
-
-if [[ -z "$renpy_build" ]]; then
-    renpy_build="$repo_root/.aetherkiri-cache/renpy-build"
-fi
-
-if [[ ! -d "$renpy_build" && "$fetch" == true ]]; then
-    command -v git >/dev/null 2>&1 || { echo "git is required for --fetch" >&2; exit 1; }
-    mkdir -p "$(dirname "$renpy_build")"
-    clone_args=(clone --filter=blob:none)
-    [[ -n "$source_ref" ]] && clone_args+=(--branch "$source_ref")
-    clone_args+=("$source_url" "$renpy_build")
-    echo "Fetching official renpy-build source: $source_url"
-    git "${clone_args[@]}"
-fi
-
-if [[ ! -d "$renpy_build" ]]; then
-    if [[ "$mode" == "auto" && "${AETHERKIRI_RENPY_SOURCE_BUILD_REQUIRED:-0}" != "1" ]]; then
-        echo "Ren'Py mobile source build skipped: official renpy-build checkout is absent"
-        echo "  provide --renpy-build PATH or set AETHERKIRI_RENPY_SOURCE_BUILD_REQUIRED=1"
-        exit 0
+clone_pin() {
+    local url="$1" destination="$2" revision="$3"
+    if [[ ! -d "$destination" ]]; then
+        [[ "$fetch" == true ]] || { echo "missing official source: $destination (use --fetch)" >&2; return 1; }
+        mkdir -p "$(dirname "$destination")"
+        git clone --filter=blob:none --no-checkout "$url" "$destination"
+        git -C "$destination" fetch --depth 1 origin "$revision"
+        git -C "$destination" checkout --detach "$revision"
     fi
-    echo "Ren'Py mobile source build requires an official renpy-build checkout: $renpy_build" >&2
-    echo "  clone: git clone $source_url $renpy_build" >&2
-    exit 1
-fi
-
-echo "Running strict Ren'Py mobile source preflight: $renpy_build"
-if ! preflight_output="$(bash "$launcher" --check-renpy-build --renpy-build "$renpy_build" 2>&1)"; then
-    printf '%s\n' "$preflight_output" >&2
-    echo "Ren'Py mobile source preflight failed; no payload was built" >&2
-    exit 1
-fi
-printf '%s\n' "$preflight_output"
-
-if [[ "$mode" == "check" || "$mode" == "auto" ]]; then
-    echo "Ren'Py mobile source preflight passed; build not requested"
+    local actual
+    actual="$(git -C "$destination" rev-parse HEAD)"
+    [[ "$actual" == "$revision" ]] || {
+        echo "unsupported source revision in $destination: $actual; expected $revision" >&2
+        return 1
+    }
+}
+if [[ ! -d "$renpy_build" && "$fetch" != true && "$mode" == auto &&
+      "${AETHERKIRI_RENPY_SOURCE_BUILD_REQUIRED:-0}" != 1 ]]; then
+    echo "Ren'Py mobile source build skipped: official renpy-build checkout is absent"
     exit 0
 fi
-
-# The upstream launcher still enters SDL_main/launcher_main -> Py_RunMain.
-# Refuse to spend hours rebuilding it unless the caller explicitly supplied a
-# lifecycle fork and its source exports the host ABI. A staged official archive
-# cannot become host-tick capable through packaging alone.
-if [[ ${AETHERKIRI_RENPY_LIFECYCLE_FORK:-0} != "1" ]]; then
-    echo "Ren'Py mobile source build requires AETHERKIRI_RENPY_LIFECYCLE_FORK=1" >&2
-    echo "  official renpy-build sources are blocking process launchers; no playable payload will be built" >&2
-    echo "  provide an audited fork exporting renpy_mobile_init/tick/frame/input/pause/resume/shutdown" >&2
+if [[ ! -d "$renpy_build" && "$fetch" != true ]]; then
+    echo "Ren'Py mobile source build requires an official renpy-build checkout: $renpy_build" >&2
     exit 1
 fi
-
-[[ -f "$native_patch_root/renpy_mobile_lifecycle.c" ]] || {
-    echo "missing native lifecycle source: $native_patch_root/renpy_mobile_lifecycle.c" >&2
-    exit 1
-}
-[[ -f "$native_patch_root/0001-renpy-build-link.patch" ]] || {
-    echo "missing renpy-build task patch: $native_patch_root/0001-renpy-build-link.patch" >&2
-    exit 1
-}
-[[ -f "$native_patch_root/0002-android-host-bootstrap.patch" &&
-   -f "$native_patch_root/0003-ios-host-bootstrap.patch" ]] || {
-    echo "missing platform launcher bootstrap patches under $native_patch_root" >&2
-    exit 1
-}
-[[ -d "$renpy_build/.git" ]] || {
-    echo "lifecycle fork build requires a git renpy-build checkout" >&2
-    exit 1
-}
-cp "$native_patch_root/renpy_mobile_lifecycle.c" "$renpy_build/runtime/renpy_mobile_lifecycle.c"
-cp "$repo_root/bridge/renpy_runtime/mobile_launcher/include/renpy_mobile_launcher.h" \
-   "$renpy_build/runtime/renpy_mobile_launcher.h"
-for native_patch in \
-    "$native_patch_root/0001-renpy-build-link.patch" \
-    "$native_patch_root/0002-android-host-bootstrap.patch" \
-    "$native_patch_root/0003-ios-host-bootstrap.patch"; do
-    git -C "$renpy_build" apply --check "$native_patch" || {
-        echo "native lifecycle patch does not apply: $native_patch" >&2
-        exit 1
-    }
-    git -C "$renpy_build" apply "$native_patch"
-done
-for lifecycle_source in \
-    "$renpy_build/runtime/librenpython_android.c" \
-    "$renpy_build/runtime/librenpython.c"; do
-    grep -Fq 'renpy_mobile_bootstrap' "$lifecycle_source" || {
-        echo "lifecycle fork source is missing renpy_mobile_bootstrap: $lifecycle_source" >&2
-        echo "  refusing to build the official blocking launcher" >&2
-        exit 1
-    }
-done
-
-build_script="$renpy_build/build.sh"
-[[ -x "$build_script" ]] || { echo "renpy-build/build.sh is not executable: $build_script" >&2; exit 1; }
-
-echo "Building Android lifecycle payload (opt-in, potentially multi-hour)"
-(
-    cd "$renpy_build"
-    ./build.sh --platform android rebuild renpython rapt rapt-sdl2
-)
-
-artifact_root="$renpy_build/renpy"
-android_arm64="$artifact_root/rapt/prototype/renpyandroid/src/main/jniLibs/arm64-v8a/librenpython.so"
-android_armv7="$artifact_root/rapt/prototype/renpyandroid/src/main/jniLibs/armeabi-v7a/librenpython.so"
-android_x86_64="$artifact_root/rapt/prototype/renpyandroid/src/main/jniLibs/x86_64/librenpython.so"
-for artifact in "$android_arm64" "$android_armv7" "$android_x86_64"; do
-    [[ -f "$artifact" ]] || { echo "Android lifecycle artifact missing: $artifact" >&2; exit 1; }
-done
-
-for android_artifact in "$android_arm64" "$android_armv7" "$android_x86_64"; do
-    RENPY_MOBILE_ANDROID_SO="$android_artifact" \
-        bash "$repo_root/tools/test_renpy_mobile_symbol_gate.sh"
-done
-
-if [[ "${AETHERKIRI_RENPY_BUILD_IOS:-0}" == "1" ]]; then
-    echo "Building iOS lifecycle payload (licensed SDK archives required)"
-    (
-        cd "$renpy_build"
-        ./build.sh --platform ios rebuild renpython renios
-    )
-    ios_release="$artifact_root/renios/prototype/prebuilt/release/librenpython.a"
-    ios_debug="$artifact_root/renios/prototype/prebuilt/debug/librenpython.a"
-    for artifact in "$ios_release" "$ios_debug"; do
-        [[ -f "$artifact" ]] || { echo "iOS lifecycle artifact missing: $artifact" >&2; exit 1; }
-    done
-    if command -v xcrun >/dev/null 2>&1; then
-        RENPY_MOBILE_IOS_A="$ios_release"             bash "$repo_root/tools/test_renpy_mobile_symbol_gate.sh"
+clone_pin "$source_url" "$renpy_build" "$build_sha"
+if [[ "$mode" == check ]]; then
+    bash "$launcher" --check-renpy-build --renpy-build "$renpy_build" --platform "$platform"
+    echo "Ren'Py source preflight passed; no compilation requested"
+    exit 0
+fi
+clone_pin https://github.com/renpy/renpy.git "$renpy_build/renpy" "$renpy_sha"
+clone_pin https://github.com/python-greenlet/greenlet.git "$renpy_build/aether-greenlet" "$greenlet_sha"
+apply_once() {
+    local checkout="$1" patch="$2"
+    if git -C "$checkout" apply --reverse --check "$patch" >/dev/null 2>&1; then
+        echo "already applied: $(basename "$patch")"
     else
-        echo "iOS payload built but xcrun is unavailable; export check deferred to macOS" >&2
-        exit 1
+        git -C "$checkout" apply --check "$patch"
+        git -C "$checkout" apply "$patch"
+        echo "applied: $(basename "$patch")"
     fi
+}
+apply_once "$renpy_build/renpy" "$patch_root/python/0001-cooperative-loop-skeleton.patch"
+for patch in 0001-renpy-build-link.patch 0002-android-host-bootstrap.patch 0003-ios-host-bootstrap.patch 0004-android-offscreen-renderer.patch; do
+    apply_once "$renpy_build" "$patch_root/native/$patch"
+done
+cp "$patch_root/native/renpy_mobile_lifecycle.c" "$renpy_build/runtime/renpy_mobile_lifecycle.c"
+cp "$repo_root/bridge/renpy_runtime/mobile_launcher/include/renpy_mobile_launcher.h" "$renpy_build/runtime/renpy_mobile_launcher.h"
+mkdir -p "$renpy_build/runtime/greenlet"
+cp -a "$renpy_build/aether-greenlet/src/greenlet/." "$renpy_build/runtime/greenlet/"
+cp "$renpy_build/aether-greenlet/LICENSE" "$renpy_build/runtime/greenlet/LICENSE"
+cp "$renpy_build/aether-greenlet/LICENSE.PSF" "$renpy_build/runtime/greenlet/LICENSE.PSF"
+# Detached release sources otherwise fall back to development 8.6 metadata.
+cat > "$renpy_build/renpy/renpy/vc_version.py" <<'VERSION'
+version = "8.5.3.26051504"
+version_name = "AetherKiri mobile fork"
+branch = "fix"
+official = False
+nightly = False
+VERSION
+python3 -m py_compile "$renpy_build/renpy/renpy/aether_mobile.py" \
+    "$renpy_build/renpy/renpy/bootstrap.py" "$renpy_build/renpy/renpy/execution.py" \
+    "$renpy_build/renpy/renpy/display/core.py" "$renpy_build/tasks/renpython.py"
+if [[ "$mode" == prepare ]]; then
+    echo "Pinned Ren'Py mobile sources prepared; no native payload was compiled"
+    exit 0
 fi
-
-echo "Native lifecycle payload built and export-gated; device/simulator gameplay is still unverified"
+bash "$launcher" --check-renpy-build --renpy-build "$renpy_build" --platform "$platform"
+# All prerequisite tasks must run: selecting only renpython would link stale
+# librenpy and would omit the new Surface method and target standard library.
+if [[ "$platform" == android || "$platform" == all ]]; then
+    (cd "$renpy_build"; ./build.sh --platform android --python 3 rebuild librenpy pythonlib renpython rapt sdl2)
+fi
+if [[ "$platform" == ios || "$platform" == all ]]; then
+    (cd "$renpy_build"; ./build.sh --platform ios --python 3 rebuild librenpy pythonlib renpython renios)
+fi
+symbols=(renpy_mobile_bootstrap renpy_mobile_bind_window renpy_mobile_init renpy_mobile_tick
+         renpy_mobile_frame renpy_mobile_input renpy_mobile_pause renpy_mobile_resume renpy_mobile_shutdown
+         renpy_mobile_text_input_state renpy_mobile_set_surface_size)
+check_exports() {
+    local artifact="$1" kind="$2" output symbol
+    [[ -f "$artifact" ]] || { echo "missing compiled artifact: $artifact" >&2; exit 1; }
+    if [[ "$kind" == android ]]; then
+        output="$(nm -D --defined-only "$artifact")"
+    else
+        output="$(llvm-nm-18 --defined-only --extern-only "$artifact")"
+    fi
+    for symbol in "${symbols[@]}"; do
+        awk '{print $NF}' <<<"$output" | sed 's/^_//' | grep -Fxq "$symbol" || {
+            echo "compiled artifact lacks $symbol: $artifact" >&2; exit 1;
+        }
+    done
+}
+artifact_root="$renpy_build/renpy"
+if [[ "$platform" == android || "$platform" == all ]]; then
+    for abi in arm64-v8a armeabi-v7a x86_64; do
+        check_exports "$artifact_root/rapt3/prototype/renpyandroid/src/main/jniLibs/$abi/librenpython.so" android
+    done
+fi
+if [[ "$platform" == ios || "$platform" == all ]]; then
+    for kind in release debug; do
+        check_exports "$artifact_root/renios3/prototype/prebuilt/$kind/librenpython.a" ios
+    done
+fi
+# Only create the distributable payload after actual builds/export checks pass.
+mkdir -p "$output_dir/payload"
+if [[ "$platform" == android || "$platform" == all ]]; then
+    mkdir -p "$output_dir/payload/rapt"
+    cp -a "$artifact_root/rapt3/." "$output_dir/payload/rapt/"
+fi
+if [[ "$platform" == ios || "$platform" == all ]]; then
+    mkdir -p "$output_dir/payload/renios"
+    cp -a "$artifact_root/renios3/." "$output_dir/payload/renios/"
+fi
+python3 - "$artifact_root" "$output_dir" "$platform" "$build_sha" "$renpy_sha" "$greenlet_sha" "$patch_root" <<'PY'
+import hashlib, json, pathlib, shutil, sys
+source, output = map(pathlib.Path, sys.argv[1:3]); platform = sys.argv[3]
+for target in (["rapt"] if platform == "android" else ["renios"] if platform == "ios" else ["rapt", "renios"]):
+    private = output / "payload" / target / ("runtime/private" if target == "rapt" else "prototype/base")
+    private.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(source / "renpy.py", private / ("main.py" if target == "rapt" else "renpy.py"))
+    shutil.copytree(source / "renpy", private / "renpy", dirs_exist_ok=True,
+                    ignore=shutil.ignore_patterns("__pycache__", "*.pyx", "*.pxd", "*.pxi"))
+    shutil.copytree(source / "lib/python3.12", private / "lib/python3.12", dirs_exist_ok=True)
+    (private / "game").mkdir(exist_ok=True)
+    licenses = private / "licenses" / "greenlet"
+    licenses.mkdir(parents=True, exist_ok=True)
+    for name in ("LICENSE", "LICENSE.PSF"):
+        shutil.copy2(source.parent / "aether-greenlet" / name, licenses / name)
+manifest = {"schema_version": 1, "renpy_version": "8.5.3.26051504+unofficial", "distribution": "8.5.3-rebuilt", "abi_version": 2,
+            "build_source_sha": sys.argv[4], "renpy_source_sha": sys.argv[5],
+            "greenlet_source_sha": sys.argv[6], "platform": platform,
+            "native_compilation": "passed", "device_gameplay": "unverified",
+            "patches": {str(p.relative_to(sys.argv[7])): hashlib.sha256(p.read_bytes()).hexdigest()
+                        for p in pathlib.Path(sys.argv[7]).rglob("*.patch")}}
+(output / "manifest.json").write_text(json.dumps(manifest, indent=2) + "\n")
+for target in (output / "payload").iterdir():
+    if target.name in ("rapt", "renios"):
+        (target / "aether-runtime.json").write_text(json.dumps(manifest, indent=2) + "\n")
+PY
+echo "Native mobile fork compiled and export-gated: $output_dir/payload"
+echo "Device/simulator rendering, input and lifecycle gameplay remain unverified"

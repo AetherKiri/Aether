@@ -27,7 +27,7 @@ launcher is still the blocking SDL_main/launcher_main implementation.
 --source-build-plan prints the official renpy-build source-build commands,
 required Ubuntu/toolchain inputs, and the exact RAPT/Renios artifact paths.
 --check-renpy-build performs a strict, read-only preflight for those inputs; it
-checks the Ubuntu/disk/toolchain prerequisites, source checkout, SDK archives,
+checks platform-specific Ubuntu/disk/toolchain prerequisites, pinned source checkout, SDK archives,
 and cooperative-loop patch applicability. It never runs the heavy build.
 --compile-contract compiles the Android/iOS templates as contract-only objects;
 those objects deliberately return NOT_IMPLEMENTED and are never packaged.
@@ -45,6 +45,7 @@ USAGE
 }
 
 mode=""
+platform="android"
 renpy_build=""
 renpy_src=""
 stage=""
@@ -60,6 +61,10 @@ while [[ $# -gt 0 ]]; do
         --check|--source-build-plan|--check-renpy-build|--compile-contract|--check-python-patch|--apply-python-patch|--print-plan|--install)
             [[ -z "$mode" ]] || { echo "choose one mode" >&2; exit 2; }
             mode="${1#--}"
+            ;;
+        --platform)
+            [[ $# -ge 2 ]] || { echo "--platform requires a value" >&2; exit 2; }
+            platform="$2"; shift
             ;;
         --renpy-build)
             [[ $# -ge 2 ]] || { echo "--renpy-build requires a path" >&2; exit 2; }
@@ -114,152 +119,84 @@ done
 # the official renpy-build workflow reproducible and auditable without hiding a
 # many-hour native rebuild inside the regular AetherKiri CI jobs.
 renpy_build_source_preflight() {
-    local strict="$1"
-    local failures=0
-    local required
-    for required in \
-        "$renpy_build/build.sh" \
-        "$renpy_build/prepare.sh" \
-        "$renpy_build/tasks/renpython.py" \
-        "$renpy_build/tasks/rapt.py" \
-        "$renpy_build/tasks/renios.py" \
-        "$renpy_build/runtime/librenpython_android.c" \
-        "$renpy_build/runtime/librenpython.c"; do
-        if [[ ! -f "$required" ]]; then
-            echo "missing renpy-build input: $required" >&2
+    local strict="$1" failures=0 required source_root="${renpy_src:-$renpy_build/renpy}"
+    case "$platform" in android|ios|all) ;; *) echo "invalid platform: $platform" >&2; return 2 ;; esac
+    for required in build.sh prepare.sh tasks/renpython.py tasks/librenpy.py tasks/rapt.py tasks/renios.py runtime/librenpython3_android.c runtime/librenpython3.c; do
+        if [[ ! -f "$renpy_build/$required" ]]; then
+            echo "missing renpy-build input: $renpy_build/$required" >&2
             failures=$((failures + 1))
         fi
     done
-
-    local source_root="${renpy_src:-$renpy_build/renpy}"
-    if [[ ! -d "$source_root/.git" ]]; then
+    if ! git -C "$renpy_build" rev-parse HEAD >/dev/null 2>&1 ||
+       [[ "$(git -C "$renpy_build" rev-parse HEAD 2>/dev/null)" != 7bfab40c1174f622f644b24669afd5fb167fbb79 ]]; then
+        echo "renpy-build must be pinned to Ren'Py 8.5.3 build SHA 7bfab40c1174f622f644b24669afd5fb167fbb79" >&2
+        failures=$((failures + 1))
+    fi
+    if ! git -C "$source_root" rev-parse HEAD >/dev/null 2>&1; then
         echo "Ren'Py source checkout missing: $source_root" >&2
-        echo "  run: (cd $renpy_build && ./prepare.sh)" >&2
         failures=$((failures + 1))
+    elif [[ "$(git -C "$source_root" rev-parse HEAD)" != 39895c1e017f0b36ffea2447d97eccd69d76ee1c ]]; then
+        echo "Ren'Py source must be pinned to 8.5.3 SHA 39895c1e017f0b36ffea2447d97eccd69d76ee1c" >&2
+        failures=$((failures + 1))
+    elif git -C "$source_root" apply --check "$python_patch" >/dev/null 2>&1; then
+        echo "cooperative-loop patch: applies cleanly (prepare required before build)"
+    elif git -C "$source_root" apply --reverse --check "$python_patch" >/dev/null 2>&1; then
+        echo "cooperative-loop patch: already applied to the actual build source"
     else
-        if [[ ! -f "$source_root/renpy/main.py" || ! -f "$source_root/renpy/execution.py" || ! -f "$source_root/renpy/display/core.py" ]]; then
-            echo "Ren'Py source checkout is incomplete: $source_root" >&2
-            failures=$((failures + 1))
-        elif [[ -f "$python_patch" ]]; then
-            if ! git -C "$source_root" apply --check "$python_patch" >/dev/null 2>&1; then
-                echo "cooperative-loop patch does not apply to $source_root" >&2
-                failures=$((failures + 1))
-            else
-                echo "cooperative-loop patch: applies cleanly"
-            fi
-        fi
+        echo "cooperative-loop patch does not match $source_root" >&2
+        failures=$((failures + 1))
     fi
-
-    # renpy-build's current toolchain.py/run.py expect these exact archives.
-    # They are intentionally checked rather than downloaded implicitly: iOS
-    # SDK tarballs are licensed inputs and must be supplied by the builder.
-    local archive
-    local ndk_version="android-ndk-r29"
-    if [[ -f "$renpy_build/renpybuild/run.py" ]]; then
-        ndk_version="$(sed -n 's/.*c.var("ndk_version", "\([^"]*\)").*/\1/p' "$renpy_build/renpybuild/run.py" | head -1)"
-        [[ -n "$ndk_version" ]] || ndk_version="android-ndk-r29"
-    fi
-    for archive in \
-        "$renpy_build/tars/${ndk_version}-linux.zip" \
-        "$renpy_build/tars/iPhoneOS.sdk.tar.gz" \
-        "$renpy_build/tars/iPhoneSimulator.sdk.tar.gz"; do
-        if [[ ! -f "$archive" ]]; then
-            echo "missing licensed/toolchain archive: $archive" >&2
-            failures=$((failures + 1))
-        else
-            echo "toolchain archive: $archive"
-        fi
-    done
-
-    local command
-    for command in bash git python3 curl tar unzip make cmake ninja pkg-config clang clang++; do
-        if command -v "$command" >/dev/null 2>&1; then
-            printf 'tool: %-12s %s\n' "$command" "$(command -v "$command")"
-        else
-            echo "missing host tool: $command" >&2
+    local archives=()
+    [[ "$platform" == ios ]] || archives+=(android-ndk-r29-linux.zip)
+    [[ "$platform" == android ]] || archives+=(iPhoneOS14.0.sdk.tar.gz iPhoneSimulator14.0.sdk.tar.gz)
+    for required in "${archives[@]}"; do
+        if [[ ! -f "$renpy_build/tars/$required" ]]; then
+            echo "missing toolchain archive: $renpy_build/tars/$required" >&2
             failures=$((failures + 1))
         fi
     done
-    if command -v uv >/dev/null 2>&1; then
-        echo "tool: uv            $(command -v uv)"
-    else
-        echo "missing host tool: uv (install from https://astral.sh/uv)" >&2
-        failures=$((failures + 1))
-    fi
-
-    local system_name
-    system_name="$(uname -s)"
-    if [[ "$system_name" != "Linux" ]]; then
-        echo "renpy-build requires Ubuntu Linux; detected $system_name" >&2
-        failures=$((failures + 1))
-    else
-        local ubuntu_id="" ubuntu_version=""
-        if [[ -r /etc/os-release ]]; then
-            # shellcheck disable=SC1091
-            . /etc/os-release
-            ubuntu_id="${ID:-}"
-            ubuntu_version="${VERSION_ID:-}"
-        fi
-        if [[ "$ubuntu_id" == "ubuntu" && "$ubuntu_version" == "24.04" ]]; then
-            echo "host: Ubuntu 24.04"
-        else
-            echo "renpy-build officially targets Ubuntu 24.04 (detected ${ubuntu_id:-unknown} ${ubuntu_version:-unknown})" >&2
+    for required in bash git python3 curl tar unzip make cmake ninja pkg-config clang-18 clang++-18 llvm-ar-18 llvm-nm-18 uv; do
+        if ! command -v "$required" >/dev/null 2>&1; then
+            echo "missing host tool: $required" >&2
             failures=$((failures + 1))
         fi
+    done
+    local ubuntu_id="" ubuntu_version=""
+    if [[ -r /etc/os-release ]]; then
+        # shellcheck disable=SC1091
+        . /etc/os-release
+        ubuntu_id="${ID:-}"; ubuntu_version="${VERSION_ID:-}"
     fi
-
-    local available_kib=0
-    available_kib="$(df -Pk "$renpy_build" 2>/dev/null | awk 'NR==2 {print $4}')"
-    if [[ "$available_kib" =~ ^[0-9]+$ ]]; then
-        printf 'disk: %.1f GiB available (official minimum: 64 GiB)\n' "$(awk -v kib="$available_kib" 'BEGIN {print kib / 1024 / 1024}')"
-        if (( available_kib < 64 * 1024 * 1024 )); then
-            echo "insufficient free disk for renpy-build (need at least 64 GiB)" >&2
-            failures=$((failures + 1))
-        fi
-    else
-        echo "unable to determine free disk for $renpy_build" >&2
+    if [[ "$(uname -s)" != Linux || "$ubuntu_id" != ubuntu || "$ubuntu_version" != 24.04 ]]; then
+        echo "renpy-build officially requires Ubuntu 24.04 (detected ${ubuntu_id:-unknown} ${ubuntu_version:-unknown})" >&2
         failures=$((failures + 1))
     fi
-
-    if [[ "$strict" == "1" && "$failures" -ne 0 ]]; then
+    local available_kib
+    available_kib="$(df -Pk "$renpy_build" | awk 'NR==2 {print $4}')"
+    if [[ ! "$available_kib" =~ ^[0-9]+$ ]] || (( available_kib < 64 * 1024 * 1024 )); then
+        echo "insufficient free disk for renpy-build (official minimum: 64 GiB; available ${available_kib:-unknown} KiB)" >&2
+        failures=$((failures + 1))
+    fi
+    if [[ "$strict" == 1 && "$failures" != 0 ]]; then
         echo "Ren'Py source-build preflight failed with $failures issue(s)" >&2
         return 1
     fi
-    return 0
 }
 
 renpy_build_source_plan() {
-    local source_root="${renpy_src:-$renpy_build/renpy}"
-    local artifact_root="$renpy_build/renpy"
     cat <<PLAN
-Ren'Py native mobile source-build plan
-  Build repository: $renpy_build
-  Ren'Py source:   $source_root
-  Source setup:    (cd $renpy_build && ./prepare.sh)
-  Python patch:    $repo_root/bridge/renpy_runtime/mobile_launcher/patches/python/0001-cooperative-loop-skeleton.patch
-  Native ABI fork: $repo_root/bridge/renpy_runtime/mobile_launcher/patches/native/renpy_mobile_lifecycle.c
-  Patch check:     (cd $source_root && git apply --check $repo_root/bridge/renpy_runtime/mobile_launcher/patches/python/0001-cooperative-loop-skeleton.patch)
-  Patch apply:     (cd $source_root && git apply $repo_root/bridge/renpy_runtime/mobile_launcher/patches/python/0001-cooperative-loop-skeleton.patch)
-  Native fork:     add the native ABI fork to the renpy-build renpython task and
-                   factor Python initialization/window binding out of SDL_main/launcher_main
-
-Official build commands (Ubuntu 24.04; heavy, opt-in)
-  Android: (cd $renpy_build && ./build.sh --platform android rebuild rapt rapt-sdl2)
-  iOS:     (cd $renpy_build && ./build.sh --platform ios rebuild renios)
-
-Canonical artifacts produced by renpy-build
-  Android arm64-v8a: $artifact_root/rapt/prototype/renpyandroid/src/main/jniLibs/arm64-v8a/librenpython.so
-  Android armeabi-v7a: $artifact_root/rapt/prototype/renpyandroid/src/main/jniLibs/armeabi-v7a/librenpython.so
-  Android x86_64:     $artifact_root/rapt/prototype/renpyandroid/src/main/jniLibs/x86_64/librenpython.so
-  iOS release:        $artifact_root/renios/prototype/prebuilt/release/librenpython.a
-  iOS debug:          $artifact_root/renios/prototype/prebuilt/debug/librenpython.a
-
-AetherKiri staging command (only after a real lifecycle fork exports all seven
-renpy_mobile_* symbols; the current upstream launcher remains blocking)
-  $repo_root/bridge/renpy_runtime/mobile_launcher/build.sh --install --renpy-build $renpy_build --stage <staged-mobile-root> --android-so-arm64 <arm64-v8a/librenpython.so> --android-so-armv7 <armeabi-v7a/librenpython.so> --android-so-x86_64 <x86_64/librenpython.so> --ios-debug-a <debug/librenpython.a> --ios-release-a <release/librenpython.a>
-
-Important: this plan does not assert mobile playability. A native fork must
-export the host lifecycle ABI, then pass device/simulator gameplay E2E.
+Ren'Py 8.5.3 source build (Ubuntu 24.04, LLVM18, at least 64 GiB)
+  Build SHA: 7bfab40c1174f622f644b24669afd5fb167fbb79
+  Ren'Py SHA: 39895c1e017f0b36ffea2447d97eccd69d76ee1c
+  Greenlet SHA: 65f8da82b13a1273e55a6bfcbd1f9da09fc4eb7a
+  Android: (cd $renpy_build && ./build.sh --platform android --python 3 rebuild librenpy pythonlib renpython rapt sdl2)
+  iOS: (cd $renpy_build && ./build.sh --platform ios --python 3 rebuild librenpy pythonlib renpython renios)
+  Android archive: tars/android-ndk-r29-linux.zip
+  iOS licensed archives: tars/iPhoneOS14.0.sdk.tar.gz, tars/iPhoneSimulator14.0.sdk.tar.gz
+  Android libraries: renpy/rapt3/prototype/renpyandroid/src/main/jniLibs/{arm64-v8a,armeabi-v7a,x86_64}/librenpython.so
+  iOS libraries: renpy/renios3/prototype/prebuilt/{release,debug}/librenpython.a
+  Prepare: $repo_root/tools/run_renpy_mobile_source_build.sh --mode prepare --fetch --renpy-build $renpy_build --platform $platform
+This plan does not assert mobile playability. Compilation and real device gameplay are separate gates.
 PLAN
 }
 
@@ -282,6 +219,10 @@ if [[ "$mode" == "check-python-patch" || "$mode" == "apply-python-patch" ]]; the
     git -C "$renpy_src" rev-parse --is-inside-work-tree >/dev/null 2>&1 || {
         echo "--renpy-src must be a git checkout" >&2; exit 1;
     }
+    if git -C "$renpy_src" apply --reverse --check "$python_patch" >/dev/null 2>&1; then
+        echo "Ren'Py Python cooperative-loop patch applies cleanly (already applied)"
+        exit 0
+    fi
     git -C "$renpy_src" apply --check "$python_patch"
     if [[ "$mode" == "check-python-patch" ]]; then
         echo "Ren'Py Python cooperative-loop patch applies cleanly"
@@ -293,8 +234,8 @@ if [[ "$mode" == "check-python-patch" || "$mode" == "apply-python-patch" ]]; the
         exit 1
     fi
     git -C "$renpy_src" apply "$python_patch"
-    python3 -m py_compile "$renpy_src/renpy/main.py" \
-        "$renpy_src/renpy/execution.py" "$renpy_src/renpy/display/core.py"
+    python3 -m py_compile "$renpy_src/renpy/aether_mobile.py" \
+        "$renpy_src/renpy/bootstrap.py" "$renpy_src/renpy/execution.py" "$renpy_src/renpy/display/core.py"
     echo "applied and syntax-checked Ren'Py Python cooperative loop"
     echo "  native ABI/frame/input integration and device E2E remain required"
     exit 0
@@ -307,8 +248,8 @@ runtime="$renpy_build/runtime"
 tasks="$renpy_build/tasks/renpython.py"
 renios_main="$renpy_build/renios/prototype/main.c"
 for required in \
-    "$runtime/librenpython_android.c" \
-    "$runtime/librenpython.c" \
+    "$runtime/librenpython3_android.c" \
+    "$runtime/librenpython3.c" \
     "$runtime/jniwrapperstuff.h" \
     "$tasks" \
     "$renios_main"; do
@@ -317,19 +258,19 @@ done
 
 # Keep this check source-based: it works on a checkout without requiring a
 # host compiler or an Apple/Android SDK.
-grep -Eq 'int[[:space:]]+SDL_main[[:space:]]*\(' "$runtime/librenpython_android.c" || {
+grep -Eq 'int[[:space:]]+SDL_main[[:space:]]*\(' "$runtime/librenpython3_android.c" || {
     echo "official Android launcher no longer contains SDL_main; inspect before using this scaffold" >&2
     exit 1
 }
-grep -Eq 'Py_RunMain[[:space:]]*\(' "$runtime/librenpython_android.c" || {
+grep -Eq 'Py_RunMain[[:space:]]*\(' "$runtime/librenpython3_android.c" || {
     echo "official Android launcher no longer contains Py_RunMain; inspect before using this scaffold" >&2
     exit 1
 }
-grep -Eq 'launcher_main[[:space:]]*\(' "$runtime/librenpython.c" || {
+grep -Eq 'launcher_main[[:space:]]*\(' "$runtime/librenpython3.c" || {
     echo "official desktop/iOS launcher no longer contains launcher_main; inspect before using this scaffold" >&2
     exit 1
 }
-grep -Eq 'Py_RunMain[[:space:]]*\(' "$runtime/librenpython.c" || {
+grep -Eq 'Py_RunMain[[:space:]]*\(' "$runtime/librenpython3.c" || {
     echo "official desktop/iOS launcher no longer contains Py_RunMain; inspect before using this scaffold" >&2
     exit 1
 }
@@ -341,8 +282,8 @@ grep -Eq 'SDL_RunApp|SDL_UIKitRunApp' "$renios_main" || {
 print_plan() {
     cat <<PLAN
 Official inputs
-  Android source: $runtime/librenpython_android.c
-  iOS/desktop source: $runtime/librenpython.c
+  Android source: $runtime/librenpython3_android.c
+  iOS/desktop source: $runtime/librenpython3.c
   JNI helper: $runtime/jniwrapperstuff.h
   Ren'Py build task: $tasks
   Renios prototype entrypoint: $renios_main
@@ -354,8 +295,8 @@ Required fork work (outside this scaffold)
   Py_RunMain, SDL_main, SDL_RunApp, SDL_UIKitRunApp, or UIApplicationMain.
 
 Official renpy-build hooks
-  Android: (cd $renpy_build && ./build.sh --platform android rebuild renpython rapt rapt-sdl2)
-  iOS:     (cd $renpy_build && ./build.sh --platform ios rebuild renpython renios)
+  Android: (cd $renpy_build && ./build.sh --platform android --python 3 rebuild librenpy pythonlib renpython rapt sdl2)
+  iOS:     (cd $renpy_build && ./build.sh --platform ios --python 3 rebuild librenpy pythonlib renpython renios)
   Android output (per ABI): tmp/install.android-*/lib/librenpython.so
   iOS output (per ABI):     tmp/install.ios-*/lib/librenpython.a
 
@@ -403,6 +344,8 @@ print_plan
 }
 
 required_symbols=(
+    renpy_mobile_bootstrap
+    renpy_mobile_bind_window
     renpy_mobile_init
     renpy_mobile_tick
     renpy_mobile_frame
@@ -410,6 +353,8 @@ required_symbols=(
     renpy_mobile_pause
     renpy_mobile_resume
     renpy_mobile_shutdown
+    renpy_mobile_text_input_state
+    renpy_mobile_set_surface_size
 )
 
 nm_symbols() {

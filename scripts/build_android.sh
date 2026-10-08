@@ -27,6 +27,8 @@ GODOT_BIN="${GODOT_BIN:-/Applications/Godot.app/Contents/MacOS/Godot}"
 GODOT_TEMPLATE_DIR="${GODOT_TEMPLATE_DIR:-$HOME/Library/Application Support/Godot/export_templates/4.7.2.stable}"
 GODOT_APP_DIR="$PROJECT_ROOT/apps/godot_app"
 PARALLEL_JOBS="${JOBS:-8}"
+RENPY_MOBILE_ROOT="${AETHERKIRI_RENPY_MOBILE_ROOT:-${RENPY_MOBILE_ROOT:-$PROJECT_ROOT/out/renpy-mobile-source/payload}}"
+RENPY_PRIVATE_ROOT="${AETHERKIRI_RENPY_ANDROID_PRIVATE_ASSETS:-$RENPY_MOBILE_ROOT/rapt/runtime/private}"
 
 ensure_vcpkg() {
     if [[ -f "$PROJECT_ROOT/.devtools/vcpkg/.vcpkg-root" ]]; then
@@ -85,9 +87,6 @@ ensure_host_rust() {
         *) export PATH="$toolchain_bin:$PATH" ;;
     esac
 }
-
-ensure_vcpkg
-ensure_host_rust
 
 # Resolve a Rust toolchain that can build for the requested Android target.
 # Homebrew's Rust formula ships without Android targets, so a cargo found in
@@ -207,6 +206,12 @@ export ANDROID_HOME
 export ANDROID_SDK_ROOT="$ANDROID_HOME"
 export ANDROID_NDK_HOME="$ANDROID_NDK_HOME_RESOLVED"
 export ANDROID_NDK="$ANDROID_NDK_HOME_RESOLVED"
+if [[ ! -d "$ANDROID_HOME" ]]; then
+    echo "Error: Android SDK not found at $ANDROID_HOME." >&2
+    exit 1
+fi
+ensure_vcpkg
+ensure_host_rust
 
 # The Android export uses a custom Gradle build template (minSdk 26 lives in
 # export_presets.cfg). The template is generated content and gitignored;
@@ -245,21 +250,19 @@ stage_renpy_android_support() {
             ;;
     esac
 
-    local mobile_root="${AETHERKIRI_RENPY_MOBILE_ROOT:-${RENPY_MOBILE_ROOT:-}}"
+    local mobile_root="$RENPY_MOBILE_ROOT"
     if [[ -z "$mobile_root" ]]; then
         echo "Error: AETHERKIRI_ENABLE_RENPY=ON requires AETHERKIRI_RENPY_MOBILE_ROOT or RENPY_MOBILE_ROOT" >&2
-        echo "       Stage official RAPT inputs with tools/install_renpy_mobile_support.sh first." >&2
+        echo "       Build the native lifecycle payload with tools/run_renpy_mobile_source_build.sh --mode build first." >&2
         exit 1
     fi
 
     local stage_args=(
         --mobile-root "$mobile_root"
         --godot-build "$GODOT_APP_DIR/android/build"
+        --private-assets "$RENPY_PRIVATE_ROOT"
     )
-    if [[ -n "${AETHERKIRI_RENPY_ANDROID_PRIVATE_ASSETS:-}" ]]; then
-        stage_args+=(--private-assets "$AETHERKIRI_RENPY_ANDROID_PRIVATE_ASSETS")
-    fi
-    echo "==> Staging official Ren'Py RAPT Android support into the Godot export"
+    echo "==> Staging rebuilt Ren'Py lifecycle runtime into the Godot export"
     bash "$PROJECT_ROOT/tools/stage_renpy_android_support.sh" "${stage_args[@]}"
 }
 
@@ -360,11 +363,9 @@ build_abi() {
     local cmake_config_args=(
         -D "CMAKE_MAKE_PROGRAM=$CMAKE_MAKE_PROGRAM"
         -D "AETHERKIRI_ENABLE_INTERNAL=${AETHERKIRI_ENABLE_INTERNAL:-ON}"
-        # Android links the Ren'Py mobile registration stub.  It deliberately
-        # returns NOT_SUPPORTED until the RAPT/JNI bootstrap is wired; keeping
-        # this opt-in here makes mobile CI compile the guard instead of only
-        # staging archives.
         -D "AETHERKIRI_ENABLE_RENPY=${AETHERKIRI_ENABLE_RENPY:-OFF}"
+        -D "AETHERKIRI_RENPY_MOBILE_LIBRARY=$RENPY_MOBILE_ROOT/rapt/prototype/renpyandroid/src/main/jniLibs/$abi/librenpython.so"
+        -D "AETHERKIRI_RENPY_PRIVATE_ROOT=$RENPY_PRIVATE_ROOT"
         -D "AETHERKIRI_ENABLE_SOFTPAL_RUNTIME=${AETHERKIRI_ENABLE_SOFTPAL_RUNTIME:-OFF}"
         -D "AETHERKIRI_SOFTPAL_DIR=${AETHERKIRI_SOFTPAL_DIR:-$PROJECT_ROOT/packages/AetherSoftPal}"
     )
@@ -441,10 +442,12 @@ for abi in "${ABI_LIST[@]}"; do
 done
 
 if [[ ! -x "$GODOT_BIN" ]]; then
-    echo "Warning: Godot not found at $GODOT_BIN; native libraries were staged only." >&2
+    echo "Error: Godot not found at $GODOT_BIN; cannot produce the requested Android APK." >&2
+    exit 1
 elif [[ ! -f "$GODOT_TEMPLATE_DIR/android_debug.apk" || ! -f "$GODOT_TEMPLATE_DIR/android_release.apk" ]]; then
-    echo "Warning: Godot Android export templates are missing in $GODOT_TEMPLATE_DIR; native libraries were staged only." >&2
+    echo "Error: Godot Android export templates are missing in $GODOT_TEMPLATE_DIR; cannot produce an APK." >&2
     echo "         Expected android_debug.apk and android_release.apk." >&2
+    exit 1
 else
     echo "==> Exporting Godot Android APK"
     mkdir -p "$PROJECT_ROOT/out/godot/android/$BUILD_TYPE_LOWER"
@@ -465,6 +468,13 @@ else
     fi
     "${godot_export_command[@]}" --headless --path "$GODOT_APP_DIR" \
         "$export_mode" "$export_preset" "$export_path"
+    [[ -s "$export_path" ]] || { echo "Android export did not create an APK: $export_path" >&2; exit 1; }
+    case "${AETHERKIRI_ENABLE_RENPY:-OFF}" in
+        ON|TRUE|YES|1|on|true|yes)
+            python3 "$PROJECT_ROOT/tools/validate_renpy_mobile_payload.py" \
+                --platform android --apk "$export_path"
+            ;;
+    esac
 fi
 
 echo "Android build output: $PROJECT_ROOT/out/godot/android/$BUILD_TYPE_LOWER"

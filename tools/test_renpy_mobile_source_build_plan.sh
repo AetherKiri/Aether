@@ -1,43 +1,48 @@
 #!/usr/bin/env bash
-# Validate the explicit Ren'Py native source-build plan without downloading
-# toolchains or pretending that the current upstream launcher is playable.
+# Check source-build gating, pins and platform-aware prerequisites. No gameplay.
 set -euo pipefail
-
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 launcher="$repo_root/bridge/renpy_runtime/mobile_launcher/build.sh"
 runner="$repo_root/tools/run_renpy_mobile_source_build.sh"
-plan="$(mktemp)"
 runner_tmp="$(mktemp -d "${TMPDIR:-/tmp}/renpy-mobile-source-runner.XXXXXX")"
-trap 'rm -f "$plan"; rm -rf "$runner_tmp"' EXIT
-
-[[ -f "$runner" ]] || { echo "missing mobile source build runner" >&2; exit 1; }
+trap 'rm -rf "$runner_tmp"' EXIT
 bash -n "$runner"
-skip_output="$(
-    AETHERKIRI_RENPY_BUILD_ROOT="$runner_tmp/missing"         bash "$runner" --mode auto
-)"
+bash -n "$launcher"
+skip_output="$(AETHERKIRI_RENPY_BUILD_ROOT="$runner_tmp/missing" bash "$runner" --mode auto)"
 grep -Fq 'source build skipped' <<<"$skip_output"
-if AETHERKIRI_RENPY_SOURCE_BUILD_REQUIRED=1     AETHERKIRI_RENPY_BUILD_ROOT="$runner_tmp/missing"     bash "$runner" --mode auto >"$runner_tmp/required.stdout" 2>"$runner_tmp/required.stderr"; then
-    echo "required source build unexpectedly skipped" >&2
-    exit 1
+if AETHERKIRI_RENPY_SOURCE_BUILD_REQUIRED=1 AETHERKIRI_RENPY_BUILD_ROOT="$runner_tmp/missing" \
+    bash "$runner" --mode auto >"$runner_tmp/required.stdout" 2>"$runner_tmp/required.stderr"; then
+    echo "required source build unexpectedly skipped" >&2; exit 1
 fi
-grep -Fq 'requires an official renpy-build checkout'     "$runner_tmp/required.stderr"
-
-bash "$launcher" --source-build-plan --renpy-build "$repo_root" >"$plan"
-grep -F "./build.sh --platform android rebuild rapt rapt-sdl2" "$plan"
-grep -F "./build.sh --platform ios rebuild renios" "$plan"
-grep -F "librenpython.so" "$plan"
-grep -F "librenpython.a" "$plan"
-grep -F "does not assert mobile playability" "$plan"
-grep -F 'AETHERKIRI_RENPY_LIFECYCLE_FORK' "$runner"
-grep -F '0002-android-host-bootstrap.patch' "$runner"
-grep -F '0003-ios-host-bootstrap.patch' "$runner"
-
-# The repository checkout is intentionally not a renpy-build checkout. The
-# strict preflight must refuse it instead of silently running a partial build.
-if bash "$launcher" --check-renpy-build --renpy-build "$repo_root" >"$plan" 2>&1; then
-    echo "strict preflight unexpectedly accepted the AetherKiri checkout" >&2
-    exit 1
+grep -Fq 'requires an official renpy-build checkout' "$runner_tmp/required.stderr"
+if bash "$runner" --ref master --mode prepare >"$runner_tmp/ref.stdout" 2>"$runner_tmp/ref.stderr"; then
+    echo "unpinned build revision unexpectedly accepted" >&2; exit 1
 fi
-grep -F "Ren'Py source-build preflight failed" "$plan"
-
-echo "Ren'Py mobile source-build plan checks passed"
+grep -Fq 'unsupported build revision' "$runner_tmp/ref.stderr"
+bash "$launcher" --source-build-plan --renpy-build "$repo_root" --platform android >"$runner_tmp/plan"
+for expected in '7bfab40c1174f622f644b24669afd5fb167fbb79' '39895c1e017f0b36ffea2447d97eccd69d76ee1c' \
+    '65f8da82b13a1273e55a6bfcbd1f9da09fc4eb7a' '--python 3 rebuild librenpy pythonlib renpython rapt sdl2' \
+    'librenpython.so' 'librenpython.a' 'does not assert mobile playability'; do
+    grep -Fq -- "$expected" "$runner_tmp/plan"
+done
+if bash "$launcher" --check-renpy-build --renpy-build "$repo_root" --platform android >"$runner_tmp/check" 2>&1; then
+    echo "strict preflight unexpectedly accepted the Aether checkout" >&2; exit 1
+fi
+grep -Fq 'Ren\x27Py source-build preflight failed' "$runner_tmp/check" || grep -Fq "Ren'Py source-build preflight failed" "$runner_tmp/check"
+if grep -Fq 'missing toolchain archive:' "$runner_tmp/check"; then
+    grep -Fq 'android-ndk-r29-linux.zip' "$runner_tmp/check"
+    if grep -Eq '^missing toolchain archive:.*iPhone' "$runner_tmp/check"; then
+        echo "Android-only preflight incorrectly requires a licensed iOS SDK" >&2; exit 1
+    fi
+fi
+python3 - "$runner" <<'PY'
+from pathlib import Path
+import sys
+source = Path(sys.argv[1]).read_text()
+assert source.index('apply_once "$renpy_build/renpy"') < source.index('./build.sh --platform android')
+assert '"$mode" == "check" || "$mode" == "auto"' not in source, 'auto must not mean check-only'
+for symbol in ('renpy_mobile_text_input_state', 'renpy_mobile_set_surface_size'):
+    assert symbol in source
+assert 'rapt-sdl2' not in source, 'pinned release has a sdl2 task, no rapt-sdl2 task'
+PY
+echo "Ren'Py mobile source-build gating checks passed; no native build/gameplay performed"

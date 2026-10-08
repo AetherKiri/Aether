@@ -284,16 +284,94 @@ engine_result_t BootstrapAdapter::Start(const BootstrapRequest& request) {
   return Preflight(request);
 }
 
+engine_result_t BootstrapAdapter::PrepareRuntime(
+    const BootstrapRequest& request, uint32_t width, uint32_t height,
+    std::string* private_root, std::string* apk_path) {
+  if (!private_root || !apk_path || !width || !height ||
+      !request.game_root_path_utf8 || !request.game_root_path_utf8[0]) {
+    return ENGINE_RESULT_INVALID_ARGUMENT;
+  }
+#if !defined(__ANDROID__)
+  last_error_ = "Ren'Py runtime extraction requires an Android host";
+  return ENGINE_RESULT_NOT_SUPPORTED;
+#else
+  JNIEnv* env = krkr_GetJNIEnv();
+  if (!env) { last_error_ = "Ren'Py could not attach to the Android VM"; return ENGINE_RESULT_INVALID_STATE; }
+  jobject activity = request.existing_host_activity
+      ? static_cast<jobject>(request.existing_host_activity) : krkr_GetHostActivity();
+  if (!activity) { last_error_ = "Ren'Py requires the existing Godot Activity"; return ENGINE_RESULT_INVALID_STATE; }
+  jclass bridge = FindRequiredClass(env, "org/github/krkr2/aetherkiri/RenPyMobileBridge", &last_error_);
+  if (!bridge) return ENGINE_RESULT_NOT_SUPPORTED;
+  jmethodID bind = env->GetStaticMethodID(bridge, "bindHostActivity", "(Landroid/app/Activity;)V");
+  jmethodID extract = env->GetStaticMethodID(bridge, "preparePrivateRoot", "()Ljava/lang/String;");
+  jmethodID prepare = env->GetStaticMethodID(bridge, "prepareRuntime", "(II)V");
+  jmethodID apk = env->GetStaticMethodID(bridge, "getApkPath", "()Ljava/lang/String;");
+  if (!bind || !extract || !prepare || !apk || ClearJavaException(env)) {
+    env->DeleteLocalRef(bridge);
+    last_error_ = "Ren'Py Android host bridge is missing extraction/SDL initialization callbacks";
+    return ENGINE_RESULT_NOT_SUPPORTED;
+  }
+  env->CallStaticVoidMethod(bridge, bind, activity);
+  jstring root = nullptr, archive = nullptr;
+  if (!env->ExceptionCheck()) root = static_cast<jstring>(env->CallStaticObjectMethod(bridge, extract));
+  if (!env->ExceptionCheck()) archive = static_cast<jstring>(env->CallStaticObjectMethod(bridge, apk));
+  if (!env->ExceptionCheck()) env->CallStaticVoidMethod(bridge, prepare, static_cast<jint>(width), static_cast<jint>(height));
+  if (env->ExceptionCheck() || !root || !archive) {
+    jthrowable exception = env->ExceptionOccurred();
+    env->ExceptionClear();
+    last_error_ = "Ren'Py Android payload extraction/SDL initialization failed";
+    if (exception) {
+      jclass exception_class = env->GetObjectClass(exception);
+      jmethodID describe = env->GetMethodID(exception_class, "toString", "()Ljava/lang/String;");
+      jstring detail = describe ? static_cast<jstring>(env->CallObjectMethod(exception, describe)) : nullptr;
+      if (detail && !ClearJavaException(env)) {
+        const char* utf8 = env->GetStringUTFChars(detail, nullptr);
+        if (utf8) { last_error_ += ": "; last_error_ += utf8; env->ReleaseStringUTFChars(detail, utf8); }
+      }
+      if (detail) env->DeleteLocalRef(detail);
+      env->DeleteLocalRef(exception_class);
+      env->DeleteLocalRef(exception);
+    }
+    if (root) env->DeleteLocalRef(root);
+    if (archive) env->DeleteLocalRef(archive);
+    env->DeleteLocalRef(bridge);
+    return ENGINE_RESULT_INTERNAL_ERROR;
+  }
+  const char* root_utf8 = env->GetStringUTFChars(root, nullptr);
+  const char* apk_utf8 = env->GetStringUTFChars(archive, nullptr);
+  if (root_utf8) *private_root = root_utf8;
+  if (apk_utf8) *apk_path = apk_utf8;
+  if (root_utf8) env->ReleaseStringUTFChars(root, root_utf8);
+  if (apk_utf8) env->ReleaseStringUTFChars(archive, apk_utf8);
+  env->DeleteLocalRef(root);
+  env->DeleteLocalRef(archive);
+  env->DeleteLocalRef(bridge);
+  if (private_root->empty() || apk_path->empty() || ClearJavaException(env)) return ENGINE_RESULT_INTERNAL_ERROR;
+  running_ = true;
+  last_error_.clear();
+  return ENGINE_RESULT_OK;
+#endif
+}
+
 engine_result_t BootstrapAdapter::Stop() {
-  // Start() cannot currently transition to running, but make destruction
-  // idempotent so the provider can call Stop() unconditionally.
-  running_ = false;
+  // Release host helpers after the provider has stopped Ren'Py; this is also
+  // idempotent after extraction/bootstrap fails.
 #if defined(__ANDROID__)
+  if (JNIEnv* env = krkr_GetJNIEnv(); env && running_) {
+    jclass bridge = FindRequiredClass(env, "org/github/krkr2/aetherkiri/RenPyMobileBridge", &last_error_);
+    if (bridge) {
+      jmethodID stop = env->GetStaticMethodID(bridge, "stopRuntime", "()V");
+      if (stop) env->CallStaticVoidMethod(bridge, stop);
+      ClearJavaException(env);
+      env->DeleteLocalRef(bridge);
+    }
+  }
   if (native_library_handle_ != nullptr) {
     dlclose(native_library_handle_);
     native_library_handle_ = nullptr;
   }
 #endif
+  running_ = false;
   last_error_.clear();
   return ENGINE_RESULT_OK;
 }

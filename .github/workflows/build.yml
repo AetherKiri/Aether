@@ -70,8 +70,12 @@ env:
   AETHER_APP_BUNDLE_ID: ${{ secrets.AETHERID || 'com.liuyu.aether.aether' }}
 
 jobs:
+  renpy-android-runtime:
+    uses: ./.github/workflows/renpy-mobile-runtime-build.yml
+
   android:
     name: Build Android App
+    needs: renpy-android-runtime
     runs-on: ubuntu-latest
     env:
       FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: 'true'
@@ -79,8 +83,7 @@ jobs:
       GODOT_RELEASE: 4.7.2-stable
       GODOT_TEMPLATE_VERSION: 4.7.2.stable
       ANDROID_NDK_VERSION: 28.1.13356709
-      # Compile the guarded Ren'Py mobile provider stub.  The provider still
-      # returns NOT_SUPPORTED until the official RAPT/JNI bootstrap is wired.
+      # Package the fork built from this exact checkout, with its Python data.
       AETHERKIRI_ENABLE_RENPY: ON
 
     steps:
@@ -156,16 +159,25 @@ jobs:
           sudo apt-get install -y cmake ninja-build pkg-config autoconf autoconf-archive automake libtool gettext bison flex curl unzip zip zstd ccache jq mono-complete
           rustup target add aarch64-linux-android armv7-linux-androideabi x86_64-linux-android i686-linux-android
 
-      - name: Stage official Ren'Py Android support inputs
+      - name: Download the rebuilt Ren'Py Android runtime
+        uses: actions/download-artifact@v6
+        with:
+          name: renpy-android-runtime
+          path: ${{ runner.temp }}/renpy-runtime-download
+
+      - name: Stage and validate the rebuilt Ren'Py Android payload
         run: |
           set -euo pipefail
           mobile_root="${RUNNER_TEMP}/aetherkiri-renpy-mobile/android"
-          bash tools/install_renpy_mobile_support.sh \
-            --platform android \
-            --destination "$mobile_root"
+          mkdir -p "$mobile_root"
+          tar -xzf "${RUNNER_TEMP}/renpy-runtime-download/renpy-android-runtime.tar.gz" -C "$mobile_root"
+          mobile_root="$mobile_root/payload"
           test -f "$mobile_root/rapt/prototype/renpyandroid/src/main/jniLibs/arm64-v8a/librenpython.so"
-          RENPY_MOBILE_STAGE_TEST_ROOT="$mobile_root" bash tools/test_stage_renpy_android_support.sh
+          python3 tools/validate_renpy_mobile_payload.py --platform android \
+            --library "$mobile_root/rapt/prototype/renpyandroid/src/main/jniLibs/arm64-v8a/librenpython.so" \
+            --private-root "$mobile_root/rapt/runtime/private"
           echo "RENPY_MOBILE_ROOT=$mobile_root" >> "$GITHUB_ENV"
+          echo "AETHERKIRI_RENPY_ANDROID_PRIVATE_ASSETS=$mobile_root/rapt/runtime/private" >> "$GITHUB_ENV"
 
       - name: Restore ccache
         id: restore-ccache
@@ -359,13 +371,15 @@ jobs:
           export NDK_CCACHE=ccache
           ./build.sh android debug --jobs=4
 
-      - name: Verify Android Ren'Py mobile guard was compiled
+      - name: Verify the compiled provider and final APK runtime payload
         run: |
           set -euo pipefail
           grep -F 'renpy_runtime_mobile_provider.cpp' \
             out/android/arm64-v8a/debug/compile_commands.json
           grep -F 'renpy_mobile_adapter.cpp' \
             out/android/arm64-v8a/debug/compile_commands.json
+          python3 tools/validate_renpy_mobile_payload.py --platform android \
+            --apk out/godot/android/debug/Aether-debug.apk
 
       - name: Verify exported APKs
         run: |
@@ -379,6 +393,13 @@ jobs:
         with:
           name: android-release-apk
           path: out/godot/android/release/Aether-release.apk
+          retention-days: 7
+      - name: Upload installable Debug APK for device acceptance
+        uses: actions/upload-artifact@v6
+        with:
+          name: android-renpy-debug-apk
+          path: out/godot/android/debug/Aether-debug.apk
+          if-no-files-found: error
           retention-days: 7
 
       - name: Save ccache
@@ -396,9 +417,9 @@ jobs:
       CCACHE_DIR: ${{ github.workspace }}/.ccache
       GODOT_RELEASE: 4.7.2-stable
       GODOT_TEMPLATE_VERSION: 4.7.2.stable
-      # Compile the guarded Ren'Py mobile provider stub.  The provider still
-      # returns NOT_SUPPORTED until the official Renios/Xcode adapter is wired.
+      # iOS requires the same fork compiled with legally supplied Apple SDKs.
       AETHERKIRI_ENABLE_RENPY: ON
+      AETHERKIRI_RENPY_RENIOS_LINK: ON
 
     steps:
       - name: Checkout Repository
@@ -504,14 +525,71 @@ jobs:
           echo "$(brew --prefix bison)/bin" >> $GITHUB_PATH
           rustup target add aarch64-apple-ios aarch64-apple-ios-sim x86_64-apple-ios
 
-      - name: Stage official Ren'Py iOS support inputs
+      - name: Compile the lifecycle and provider for the real Xcode iOS target
+        run: |
+          set -euo pipefail
+          # Use the SDK already licensed/provisioned on this cloud macOS runner;
+          # no SDK archive, credential, or user-computer access is transferred.
+          brew install python@3.12
+          python_config="$(brew --prefix python@3.12)/bin/python3.12-config"
+          ios_sdk="$(xcrun --sdk iphoneos --show-sdk-path)"
+          evidence_dir="${RUNNER_TEMP}/renpy-ios-compile"
+          mkdir -p "$evidence_dir"
+          xcrun --sdk iphoneos clang -target arm64-apple-ios14.0 \
+            -isysroot "$ios_sdk" -std=c11 -Wall -Wextra -Werror \
+            $("$python_config" --includes) \
+            -I bridge/renpy_runtime/mobile_launcher/include \
+            -c bridge/renpy_runtime/mobile_launcher/patches/native/renpy_mobile_lifecycle.c \
+            -o "$evidence_dir/renpy_mobile_lifecycle.o"
+          for source in renpy_runtime_mobile_provider renpy_runtime_ios_adapter; do
+            xcrun --sdk iphoneos clang++ -target arm64-apple-ios14.0 \
+              -isysroot "$ios_sdk" -std=c++17 -Wall -Wextra -Werror \
+              -DAETHERKIRI_RENPY_IOS=1 -I abi/include \
+              -I bridge/renpy_runtime/include -I bridge/renpy_runtime/mobile_launcher/include \
+              -c "bridge/renpy_runtime/src/$source.cpp" -o "$evidence_dir/$source.o"
+          done
+          xcrun lipo -verify_arch arm64 "$evidence_dir/renpy_mobile_lifecycle.o"
+          echo "iOS target objects compiled using the Python 3.12 C API; no target CPython link or gameplay has run."
+
+      - name: Preserve iOS target compile evidence
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: renpy-ios-target-objects
+          path: ${{ runner.temp }}/renpy-ios-compile/*.o
+          if-no-files-found: warn
+          retention-days: 7
+
+      - name: Check the rebuilt iOS runtime source
+        env:
+          IOS_RUNTIME_RUN_ID: ${{ vars.AETHER_RENPY_IOS_RUNTIME_RUN_ID }}
+          IOS_RUNTIME_ARTIFACT: ${{ vars.AETHER_RENPY_IOS_RUNTIME_ARTIFACT }}
+        run: |
+          set -euo pipefail
+          if [[ -z "$IOS_RUNTIME_RUN_ID" || -z "$IOS_RUNTIME_ARTIFACT" ]]; then
+            echo "iOS Ren'Py build blocked: provide AETHER_RENPY_IOS_RUNTIME_RUN_ID and AETHER_RENPY_IOS_RUNTIME_ARTIFACT for a rebuilt Renios/Python payload from the pinned fork, built with licensed Apple SDKs." >&2
+            exit 1
+          fi
+
+      - name: Download the rebuilt Ren'Py iOS runtime
+        uses: actions/download-artifact@v6
+        with:
+          name: ${{ vars.AETHER_RENPY_IOS_RUNTIME_ARTIFACT }}
+          run-id: ${{ vars.AETHER_RENPY_IOS_RUNTIME_RUN_ID }}
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/renpy-ios-runtime
+
+      - name: Stage rebuilt Ren'Py iOS runtime
         run: |
           set -euo pipefail
           mobile_root="${RUNNER_TEMP}/aetherkiri-renpy-mobile/ios"
-          bash tools/install_renpy_mobile_support.sh \
-            --platform ios \
-            --destination "$mobile_root"
+          mkdir -p "$mobile_root"
+          tar -xzf "${RUNNER_TEMP}/renpy-ios-runtime/renpy-ios-runtime.tar.gz" -C "$mobile_root"
+          mobile_root="$mobile_root/payload"
           test -f "$mobile_root/renios/prototype/prebuilt/release/librenpython.a"
+          python3 tools/validate_renpy_mobile_payload.py --platform ios --arch arm64 --sdk iphoneos \
+            --library "$mobile_root/renios/prototype/prebuilt/release/librenpython.a" \
+            --private-root "$mobile_root/renios/prototype/base"
           echo "RENPY_MOBILE_ROOT=$mobile_root" >> "$GITHUB_ENV"
 
       - name: Install Godot export tools
@@ -664,7 +742,7 @@ jobs:
             exit 1
           fi
 
-      - name: Verify iOS Ren'Py mobile guard was compiled
+      - name: Verify iOS Ren'Py lifecycle provider was compiled
         run: |
           set -euo pipefail
           grep -F 'renpy_runtime_mobile_provider.cpp' \

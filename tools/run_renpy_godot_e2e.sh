@@ -48,6 +48,10 @@ rc=$?
 set -e
 cat "$log"
 [[ "$rc" -eq 0 ]] || { echo "Godot Ren'Py E2E exited with status $rc" >&2; exit "$rc"; }
+if grep -E 'Traceback \(most recent call last\)|SCRIPT ERROR|uncaught exception|An exception has occurred' "$log"; then
+    echo "Godot Ren'Py E2E logged a runtime exception." >&2
+    exit 1
+fi
 grep -F 'step probe fps=' "$log" >/dev/null
 grep -F 'AKRF1 RGBA bridge' "$log" >/dev/null
 grep -F 'step 02 label=choose-continue' "$log" >/dev/null

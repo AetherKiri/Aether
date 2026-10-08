@@ -7,7 +7,8 @@ native="$repo_root/bridge/renpy_runtime/mobile_launcher/patches/native/renpy_mob
 [[ -s "$native" ]] || { echo "missing native lifecycle fork: $native" >&2; exit 1; }
 for symbol in \
     renpy_mobile_init renpy_mobile_tick renpy_mobile_frame renpy_mobile_input \
-    renpy_mobile_pause renpy_mobile_resume renpy_mobile_shutdown; do
+    renpy_mobile_pause renpy_mobile_resume renpy_mobile_shutdown \
+    renpy_mobile_bind_window renpy_mobile_text_input_state renpy_mobile_set_surface_size; do
     grep -Fq "$symbol" "$native" || { echo "native fork missing $symbol" >&2; exit 1; }
 done
 for forbidden in \
@@ -21,9 +22,10 @@ done
 for patch in \
     "$repo_root/bridge/renpy_runtime/mobile_launcher/patches/native/0001-renpy-build-link.patch" \
     "$repo_root/bridge/renpy_runtime/mobile_launcher/patches/native/0002-android-host-bootstrap.patch" \
-    "$repo_root/bridge/renpy_runtime/mobile_launcher/patches/native/0003-ios-host-bootstrap.patch"; do
+    "$repo_root/bridge/renpy_runtime/mobile_launcher/patches/native/0003-ios-host-bootstrap.patch" \
+    "$repo_root/bridge/renpy_runtime/mobile_launcher/patches/native/0004-android-offscreen-renderer.patch"; do
     [[ -s "$patch" ]] || { echo "missing native build patch: $patch" >&2; exit 1; }
-    if [[ "$patch" != *0001-renpy-build-link.patch ]]; then
+    if [[ "$patch" == *host-bootstrap.patch ]]; then
         grep -Fq 'renpy_mobile_bootstrap' "$patch" || {
             echo "native build patch does not expose renpy_mobile_bootstrap: $patch" >&2
             exit 1
@@ -35,9 +37,11 @@ if [[ -n "${RENPY_BUILD_TEST_ROOT:-}" && -d "${RENPY_BUILD_TEST_ROOT}/.git" ]]; 
     for patch in \
         "$repo_root/bridge/renpy_runtime/mobile_launcher/patches/native/0001-renpy-build-link.patch" \
         "$repo_root/bridge/renpy_runtime/mobile_launcher/patches/native/0002-android-host-bootstrap.patch" \
-        "$repo_root/bridge/renpy_runtime/mobile_launcher/patches/native/0003-ios-host-bootstrap.patch"; do
-        git -C "$RENPY_BUILD_TEST_ROOT" apply --check "$patch"
+        "$repo_root/bridge/renpy_runtime/mobile_launcher/patches/native/0003-ios-host-bootstrap.patch" \
+        "$repo_root/bridge/renpy_runtime/mobile_launcher/patches/native/0004-android-offscreen-renderer.patch"; do
+        git -C "$RENPY_BUILD_TEST_ROOT" apply --check "$patch" 2>/dev/null || \
+            git -C "$RENPY_BUILD_TEST_ROOT" apply --reverse --check "$patch"
     done
 fi
 bash "$repo_root/tools/test_renpy_demo_fixture.sh"
-printf '%s\n' 'RenPy native lifecycle fork and demo gate passed'
+printf '%s\n' 'RenPy native source/demo fixture checks passed; no gameplay performed'

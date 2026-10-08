@@ -53,18 +53,24 @@ GODOT_APP_DIR="$PROJECT_ROOT/apps/godot_app"
 GODOT_BIN_DIR="$GODOT_APP_DIR/bin/$GODOT_TRIPLET_DIR"
 RUNTIME_CJK_FONT_SOURCE="$GODOT_APP_DIR/assets/fonts/aetherkiri-runtime-cjk.otf"
 RUNTIME_SYMBOL_FONT_SOURCE="$GODOT_APP_DIR/assets/fonts/aetherkiri-runtime-symbols.ttf"
-# The Renios archive is intentionally opt-in.  When present, the build folds
-# the official static-library closure into the Godot extension archive and
-# copies only its resources/framework into the exported app.  It must never
+# When Ren'Py is enabled, fold the rebuilt Renios static-library closure into
+# the Godot extension archive and copy its resources/framework into the app.
+# It must never
 # copy or compile Renios' prototype main.c: Godot already owns the process and
 # the UIKit/SDL application entrypoint.
-RENPY_MOBILE_ROOT="${AETHERKIRI_RENPY_MOBILE_ROOT:-${RENPY_MOBILE_ROOT:-}}"
-# Renios archives contain the native prototype/resources but intentionally do
-# not contain a game-specific `base/` directory.  A caller may provide the
-# generated Renios base explicitly for a bundle smoke; gameplay remains gated
-# by the adapter contract regardless.
-RENPY_RENIOS_BASE="${AETHERKIRI_RENPY_RENIOS_BASE:-}"
+RENPY_MOBILE_ROOT="${AETHERKIRI_RENPY_MOBILE_ROOT:-${RENPY_MOBILE_ROOT:-$PROJECT_ROOT/out/renpy-mobile-source/payload}}"
+RENPY_RENIOS_BASE="${AETHERKIRI_RENPY_RENIOS_BASE:-$RENPY_MOBILE_ROOT/renios/prototype/base}"
 PARALLEL_JOBS="${JOBS:-8}"
+if [[ "$(uname -s)" != Darwin ]] || ! command -v xcrun >/dev/null 2>&1 || ! command -v xcodebuild >/dev/null 2>&1; then
+    echo "Error: iOS app packaging requires a cloud macOS host with Xcode and its licensed iPhoneOS/iPhoneSimulator SDK; this host has no Apple build tools." >&2
+    exit 1
+fi
+IOS_SDK=iphoneos
+[[ "$SIMULATOR" == true ]] && IOS_SDK=iphonesimulator
+xcrun --sdk "$IOS_SDK" --show-sdk-path >/dev/null || {
+    echo "Error: Xcode lacks the $IOS_SDK SDK required for this iOS target." >&2
+    exit 1
+}
 FORCE_LOAD_PLUGIN_ARCHIVES=(
     "libSDL2.a"
     "libkrkr2plugin.a"
@@ -307,13 +313,13 @@ EOF
 
 renios_enabled() {
     case "${AETHERKIRI_ENABLE_RENPY:-OFF}" in
-        ON|TRUE|YES|1|on|true|yes) [[ -n "$RENPY_MOBILE_ROOT" ]] ;;
+        ON|TRUE|YES|1|on|true|yes) return 0 ;;
         *) return 1 ;;
     esac
 }
 
 renios_link_enabled() {
-    case "${AETHERKIRI_RENPY_RENIOS_LINK:-OFF}" in
+    case "${AETHERKIRI_RENPY_RENIOS_LINK:-ON}" in
         ON|TRUE|YES|1|on|true|yes) return 0 ;;
         *) return 1 ;;
     esac
@@ -331,7 +337,9 @@ renios_configuration() {
     if [[ "${SIMULATOR:-false}" == true ]]; then
         printf 'debug\n'
     else
-        printf '%s\n' "$BUILD_TYPE_LOWER"
+        # Upstream Renios debug archives contain simulator slices only;
+        # release archives contain the device arm64 slice for either app mode.
+        printf 'release\n'
     fi
 }
 
@@ -356,7 +364,7 @@ renios_archive_is_excluded() {
     case "$(basename "$1")" in
         # SDL2main owns the UIKit/SDL application entrypoint in the official
         # prototype.  Godot's application must supply the only entrypoint.
-        libSDL2main.a|libSDL2_test.a) return 0 ;;
+        libSDL2main.a|libSDL2_test.a|libSDL3main.a|libSDL3_test.a) return 0 ;;
         *) return 1 ;;
     esac
 }
@@ -394,8 +402,21 @@ renios_archive_names() {
 
 renios_launcher_probe() {
     renios_enabled || return 0
-    bash "$PROJECT_ROOT/tools/test_renios_ios_launcher.sh" \
-        "$RENPY_MOBILE_ROOT" "$(renios_configuration)"
+    renios_link_enabled || {
+        echo "Error: Ren'Py enabled app builds require AETHERKIRI_RENPY_RENIOS_LINK=ON; disabling native linking cannot produce a runnable game." >&2
+        return 1
+    }
+    local prebuilt arch=arm64
+    [[ "$SIMULATOR" == true ]] && arch="$SIMULATOR_ARCH"
+    prebuilt="$(renios_prebuilt_root)"
+    collect_renios_archives "$prebuilt" >/dev/null
+    [[ -d "$RENPY_MOBILE_ROOT/renios/prototype/Frameworks/MetalANGLE.xcframework" ]] || {
+        echo "Error: Renios MetalANGLE.xcframework is missing." >&2
+        return 1
+    }
+    python3 "$PROJECT_ROOT/tools/validate_renpy_mobile_payload.py" \
+        --platform ios --arch "$arch" --sdk "$IOS_SDK" \
+        --library "$prebuilt/librenpython.a" --private-root "$RENPY_RENIOS_BASE"
 }
 
 stage_renios_ios_resources() {
@@ -406,8 +427,8 @@ stage_renios_ios_resources() {
     local prototype
     prototype="$(renios_prototype_root 2>/dev/null || true)"
     if [[ -z "$prototype" ]]; then
-        echo "Warning: AETHERKIRI_ENABLE_RENPY=ON but Renios support root is not staged; keeping iOS Ren'Py NOT_SUPPORTED" >&2
-        return 0
+        echo "Error: Ren'Py enabled iOS build is missing the rebuilt Renios support root." >&2
+        return 1
     fi
 
     local app_root="$export_root/Aether"
@@ -445,8 +466,8 @@ stage_renios_ios_resources() {
     local prebuilt
     prebuilt="$(renios_prebuilt_root 2>/dev/null || true)"
     if [[ -z "$prebuilt" ]]; then
-        echo "Warning: Renios prebuilt closure is unavailable; resources staged but iOS Ren'Py remains NOT_SUPPORTED" >&2
-        return 0
+        echo "Error: Renios prebuilt closure is unavailable." >&2
+        return 1
     fi
     {
         printf 'Renios archive: %s\n' "$RENPY_MOBILE_ROOT"
@@ -455,23 +476,23 @@ stage_renios_ios_resources() {
         fi
         printf 'Configuration: %s\n' "$(renios_configuration)"
         printf 'Static closure: %s\n' "$(renios_archive_names "$prebuilt")"
-        printf 'Excluded archives: libSDL2main.a,libSDL2_test.a (host entrypoint/test)\n'
+        printf 'Excluded archives: libSDL2main.a,libSDL2_test.a,libSDL3main.a,libSDL3_test.a (host entrypoint/test)\n'
         if [[ -d "$resource_root/base" ]]; then
             printf 'Base resources: bundled\n'
         else
             printf 'Base resources: none (Renios archive is game-agnostic)\n'
         fi
         printf 'Host entrypoint: Godot (Renios main.c intentionally omitted)\n'
-        printf 'Runtime status: NOT_SUPPORTED until lifecycle/render/input adapter is linked\n'
+        printf 'Native lifecycle: linked and export validated\n'
+        printf 'Gameplay verification: requires device/simulator execution\n'
     } > "$resource_root/renios-manifest.txt"
 }
 
 combine_ios_static_extension() {
     local output="$1"
     local triplet="$2"
-    # Verify that the staged closure still has the known blocking launcher
-    # contract before merging it into the host archive. This probe never
-    # invokes launcher_main and cannot turn the provider on by itself.
+    # Validate the lifecycle fork and its Python runtime before merging the
+    # closure. Never invoke the process-owning launcher_main entrypoint.
     renios_launcher_probe
     local vcpkg_triplet_root="$CMAKE_BUILD_DIR/vcpkg_installed/$triplet"
     local vcpkg_lib_dir="$vcpkg_triplet_root/lib"
@@ -568,7 +589,8 @@ combine_ios_static_extension() {
                 libs+=("$renios_archive")
             done < <(collect_renios_archives "$renios_prebuilt")
         else
-            echo "Warning: Renios support requested but no native closure was found; iOS Ren'Py remains NOT_SUPPORTED" >&2
+            echo "Error: Renios support requested but no native closure was found." >&2
+            return 1
         fi
     fi
 
@@ -622,9 +644,8 @@ stage_force_load_plugin_archives() {
     local resolved
     mkdir -p "$destination"
     for source in "${FORCE_LOAD_PLUGIN_SOURCES[@]}"; do
-        # Renios supplies the iOS SDL archive in its merged native closure.
-        # Do not copy/force-load the vcpkg SDL archive as well, otherwise the
-        # final Xcode link sees duplicate SDL symbols.
+        # Prefer the SDL2 archive already merged from Renios. Force-loading
+        # vcpkg's second SDL2 would duplicate its global symbol definitions.
         if renios_enabled && renios_link_enabled && [[ "$(basename "$source")" == "libSDL2.a" ]]; then
             continue
         fi
@@ -765,11 +786,18 @@ patch_ios_export_project() {
         fi
         flags+=" -Wl,-force_load,Aether/bin/ios/$export_build_type/$archive"
     done
-    flags+=' -liconv -framework Accelerate -framework AudioToolbox -framework AVFoundation -framework CoreAudio -framework CoreBluetooth -framework CoreHaptics -framework CoreMedia -framework CoreMotion -framework CoreVideo -framework CoreServices -framework GameController -framework ImageIO -framework VideoToolbox -framework CoreGraphics -framework QuartzCore -framework Metal -framework MetalKit -framework OpenGLES -framework Security -framework StoreKit -framework SystemConfiguration -framework MobileCoreServices'
+    flags+=' -liconv -framework Accelerate -framework AudioToolbox -framework AVFoundation -framework CoreAudio -framework CoreBluetooth -framework CoreFoundation -framework CoreHaptics -framework CoreMedia -framework CoreMotion -framework CoreVideo -framework CoreServices -framework GameController -framework ImageIO -framework VideoToolbox -framework CoreGraphics -framework QuartzCore -framework Metal -framework MetalKit -framework OpenGLES -framework Security -framework StoreKit -framework SystemConfiguration -framework MobileCoreServices'
     if renios_enabled; then
         # The resource staging step places this official dynamic framework in
         # Aether/Frameworks and the PBX patch embeds it in the app bundle.
         flags+=' -F Aether/Frameworks -framework MetalANGLE'
+        # These functions are resolved by the provider at runtime. Root each
+        # archive member and retain its global symbol under dead stripping.
+        local lifecycle_symbol
+        for lifecycle_symbol in bootstrap bind_window init tick frame input pause resume shutdown text_input_state set_surface_size; do
+            flags+=" -Wl,-u,_renpy_mobile_$lifecycle_symbol"
+        done
+        flags+=' -Wl,-export_dynamic'
     fi
 
     if [[ -f "$project_file" ]]; then
@@ -879,6 +907,11 @@ package_ios_unsigned_ipa() {
         echo "==> Removing non-runtime symbols from iOS Release executable..."
         "$PROJECT_ROOT/tools/strip_runtime_symbols.sh" macho-executable "$app_binary"
     fi
+    if renios_enabled; then
+        python3 "$PROJECT_ROOT/tools/validate_renpy_mobile_payload.py" \
+            --platform ios --arch arm64 --sdk iphoneos --executable --library "$app_binary" \
+            --private-root "$export_dir/build/Aether.app/renios/base"
+    fi
 
     echo "==> Packaging into unsigned .ipa..."
     mkdir -p "$export_dir/Payload"
@@ -887,6 +920,31 @@ package_ios_unsigned_ipa() {
     (cd "$export_dir" && zip -qry "Aether-${config_cap}-Unsigned.ipa" Payload)
     rm -rf "$export_dir/Payload" "$export_dir/build"
     echo "Unsigned IPA created: $export_dir/Aether-${config_cap}-Unsigned.ipa"
+}
+
+package_ios_simulator_app() {
+    local export_dir="$1" config_cap=Release
+    [[ "$BUILD_TYPE_LOWER" == debug ]] && config_cap=Debug
+    local output_dir="$export_dir/build-simulator-$SIMULATOR_ARCH"
+    xcodebuild build \
+        -project "$export_dir/Aether.xcodeproj" -scheme Aether \
+        -configuration "$config_cap" -sdk iphonesimulator \
+        -destination 'generic/platform=iOS Simulator' \
+        "ARCHS=$SIMULATOR_ARCH" ONLY_ACTIVE_ARCH=YES \
+        CODE_SIGN_IDENTITY="" CODE_SIGNING_REQUIRED=NO CODE_SIGNING_ALLOWED=NO \
+        "CONFIGURATION_BUILD_DIR=$output_dir"
+    [[ -s "$output_dir/Aether.app/Aether" ]] || {
+        echo "Error: Xcode did not produce a runnable iOS simulator app." >&2
+        return 1
+    }
+    if renios_enabled; then
+        python3 "$PROJECT_ROOT/tools/validate_renpy_mobile_payload.py" \
+            --platform ios --arch "$SIMULATOR_ARCH" --sdk iphonesimulator --executable \
+            --library "$output_dir/Aether.app/Aether" \
+            --private-root "$output_dir/Aether.app/renios/base"
+    fi
+    (cd "$output_dir" && zip -qry "Aether-$SIMULATOR_ARCH-Simulator.zip" Aether.app)
+    echo "Runnable simulator app: $output_dir/Aether.app (device gameplay unverified)"
 }
 
 with_ios_only_gdextension() {
@@ -915,6 +973,7 @@ with_ios_only_gdextension() {
 }
 
 echo "==> Building native engine and Godot extension"
+renios_launcher_probe
 cmake_config_args=(
     -D "CMAKE_MAKE_PROGRAM=$CMAKE_MAKE_PROGRAM"
     -D "AETHERKIRI_ENABLE_INTERNAL=${AETHERKIRI_ENABLE_INTERNAL:-ON}"
@@ -924,9 +983,9 @@ cmake_config_args=(
     -D "AETHERKIRI_OBFUSCATOR_PLUGIN=${AETHERKIRI_OBFUSCATOR_PLUGIN:-}"
     -D "AETHERKIRI_OBFUSCATION_BUILD_ID=${AETHERKIRI_OBFUSCATION_BUILD_ID:-local}"
     -D "AETHERKIRI_ENABLE_RFVP=${AETHERKIRI_ENABLE_RFVP:-OFF}"
-    # iOS links the Ren'Py mobile registration stub.  It deliberately returns
-    # NOT_SUPPORTED until the Renios/Xcode bootstrap is wired.
     -D "AETHERKIRI_ENABLE_RENPY=${AETHERKIRI_ENABLE_RENPY:-OFF}"
+    -D "AETHERKIRI_RENPY_MOBILE_LIBRARY=$RENPY_MOBILE_ROOT/renios/prototype/prebuilt/$(renios_configuration)/librenpython.a"
+    -D "AETHERKIRI_RENPY_PRIVATE_ROOT=$RENPY_RENIOS_BASE"
 )
 if [[ -n "${RFVP_CARGO:-}" ]]; then
     cmake_config_args+=(-D "RFVP_CARGO=$RFVP_CARGO")
@@ -969,8 +1028,16 @@ if [[ "$SIMULATOR" == true ]]; then
 fi
 
 if [[ ! -x "$GODOT_BIN" ]]; then
+    if [[ "$PACKAGE_IPA" == true || "$SIMULATOR" == true ]]; then
+        echo "Error: Godot not found at $GODOT_BIN; cannot package an iOS app." >&2
+        exit 1
+    fi
     echo "Warning: Godot not found at $GODOT_BIN; native libraries were staged only." >&2
 elif [[ ! -f "$GODOT_EXPORT_TEMPLATE" ]]; then
+    if [[ "$PACKAGE_IPA" == true || "$SIMULATOR" == true ]]; then
+        echo "Error: Godot iOS export template missing at $GODOT_EXPORT_TEMPLATE; cannot package an iOS app." >&2
+        exit 1
+    fi
     echo "Warning: Godot iOS export template missing at $GODOT_EXPORT_TEMPLATE; native libraries were staged only." >&2
 else
     echo "==> Exporting Godot iOS project"
@@ -995,8 +1062,8 @@ else
     patch_ios_export_project "$PROJECT_ROOT/out/godot/ios/$BUILD_TYPE_LOWER/Aether.xcodeproj" "$PATCH_ARCH" "$BUILD_TYPE_LOWER"
     if [[ "$PACKAGE_IPA" == true && "$SIMULATOR" == false ]]; then
         package_ios_unsigned_ipa "$PROJECT_ROOT/out/godot/ios/$BUILD_TYPE_LOWER" "$BUILD_TYPE_LOWER"
-    elif [[ "$PACKAGE_IPA" == true && "$SIMULATOR" == true ]]; then
-        echo "[WARN] --package-ipa is ignored when building for simulator."
+    elif [[ "$SIMULATOR" == true ]]; then
+        package_ios_simulator_app "$PROJECT_ROOT/out/godot/ios/$BUILD_TYPE_LOWER"
     fi
 fi
 

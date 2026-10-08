@@ -19,19 +19,22 @@ jobs:
         uses: actions/download-artifact@v6
         with:
           repository: AetherKiri/Aether
-          run-id: 37776651799
-          name: renpy-source-build-evidence
+          run-id: 37806315295
+          name: renpy-ios-source-build-evidence
           github-token: ${{ github.token }}
-          path: ${{ runner.temp }}/renpy-android-source-evidence
+          path: ${{ runner.temp }}/renpy-ios-source-evidence
       - name: Read a sanitized summary of the original build logs
         run: |
           set -euo pipefail
-          python3 - "$RUNNER_TEMP/renpy-android-source-evidence" <<'PY'
+          python3 - "$RUNNER_TEMP/renpy-ios-source-evidence" <<'PY'
           import pathlib, re, sys
-          logs = sorted(pathlib.Path(sys.argv[1]).rglob('*.log'))
+          # Read the genuine compiler log, not configure environment dumps.
+          logs = sorted(pathlib.Path(sys.argv[1]).rglob('renpy-ios-source-build.log'))
           if not logs:
               raise SystemExit('The genuine source-build evidence contains no log files.')
-          print('Reading preserved evidence from actual job 113309300220; no build is rerun or simulated.')
+          print('Original iOS source run 37806315295; job 113414542371; head e6f5937a1bed3219efd2bc85731df8afd4f60bdf.')
+          print('Evidence artifact 11563707867; GitHub archive digest sha256:d1062c6895c08977adbc883e6e467b57ec77411d1ee4a8afe53b7243c6a8e712.')
+          print('Reading preserved compiler evidence; no build is rerun or simulated.')
           remaining = 24000
           for log in logs:
               text = log.read_text(errors='replace')
@@ -44,7 +47,17 @@ jobs:
               indices = set(range(max(0, len(lines)-110), len(lines)))
               for i in interesting[-16:]:
                   indices.update(range(max(0, i-4), min(len(lines), i+9)))
-              summary = '\n'.join(lines[i] for i in sorted(indices))
+              excerpt = []
+              for i in sorted(indices):
+                  line = lines[i]
+                  if re.match(r'^\s*(?:export\s|declare\s|env:|Environment:|(?!(?:FAILED|ERROR|FATAL|WARNING):)[A-Z_][A-Z0-9_]*\s*[=:])', line):
+                      continue
+                  if re.search(r'authorization|password|credential|secret|(?:^|[\s_])token(?:[\s_=:]|$)', line, re.I):
+                      continue
+                  line = line.replace('/Users/runner/work/Aether/Aether', '<workspace>')
+                  line = line.replace('/Users/runner/work/_temp', '<runner-temp>')
+                  excerpt.append(line[:1200])
+              summary = '\n'.join(excerpt)
               print(f'Original log: {log.name}; {len(lines)} lines')
               if len(summary) > remaining:
                   summary = summary[-remaining:]
@@ -54,11 +67,3 @@ jobs:
                   print('Summary reached its display limit; complete original logs remain in the artifact.')
                   break
           PY
-      - name: Preserve the original build log
-        if: always()
-        uses: actions/upload-artifact@v6
-        with:
-          name: renpy-android-actual-build-log
-          path: ${{ runner.temp }}/renpy-android-source-evidence
-          if-no-files-found: warn
-          retention-days: 7

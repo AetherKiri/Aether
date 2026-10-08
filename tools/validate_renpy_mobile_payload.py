@@ -105,7 +105,7 @@ def validate_library(library, platform, arch, sdk, executable=False, packaged=Fa
     else:
         if not shutil.which("xcrun"):
             fail("iOS runtime validation requires macOS Xcode tools (xcrun nm/lipo/otool)")
-        command_output(["xcrun", "lipo", "-verify_arch", arch, str(library)])
+        command_output(["xcrun", "lipo", str(library), "-verify_arch", arch])
         if executable:
             # Release stripping can remove the nlist symbol table while dyld
             # retains the export trie used by dlsym(RTLD_DEFAULT, ...).

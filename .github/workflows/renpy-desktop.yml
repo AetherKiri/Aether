@@ -60,11 +60,12 @@ jobs:
 
       - name: Install pinned Ren'Py SDK and run fixture smoke
         env:
-          RENPY_PLATFORM: ${{ matrix.platform }}
+          SDK_PLATFORM: ${{ matrix.platform }}
         run: |
           set -euo pipefail
           sdk_root="${RUNNER_TEMP}/aetherkiri-renpy-sdk"
-          bash tools/install_renpy_sdk.sh             --platform "${RENPY_PLATFORM}"             --arch x86_64             --destination "${sdk_root}"
+          bash tools/install_renpy_sdk.sh --platform "${SDK_PLATFORM}" \
+            --arch x86_64 --destination "${sdk_root}"
           test -f "${sdk_root}/renpy.sh" || test -f "${sdk_root}/renpy.exe"
           platform_lib_dir="$(find "${sdk_root}/lib" -maxdepth 1 -type d -name 'py3-*' -print -quit 2>/dev/null || true)"
           if [[ -z "${platform_lib_dir}" ]] ||

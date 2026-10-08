@@ -6,6 +6,14 @@ ABI header into that checkout. It compiles the shared native lifecycle and
 linked greenlet for Android and every selected iOS target. The platform
 bootstrap initializes CPython without calling the process launchers.
 
+`0005-optional-cubism.patch` keeps the base runtime build independent of the
+optional licensed SDKs. It enables Live2D generation and its native module only
+when the target Cubism header exists, and packages `steamapi` only when the
+Steam task actually generated that module. Games that require Live2D still
+need the Cubism SDK and its runtime library; supplying the header preserves the
+upstream compilation path. No native build tasks are marked complete by this
+patch.
+
 `renpy_mobile_lifecycle.c` owns the copied host callback table and the borrowed
 frame byte storage. It invokes the full cooperative Python entrypoints,
 preserves pointer/key/text actions, publishes renderer screenshots and

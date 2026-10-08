@@ -45,6 +45,7 @@ jobs:
           bash tools/run_renpy_mobile_source_build.sh --mode prepare --fetch \
             --platform android --renpy-build "$RENPY_BUILD_ROOT" \
             --output-dir "$RENPY_OUTPUT_ROOT"
+          python3 tools/test_renpy_mobile_optional_sdk.py "$RENPY_BUILD_ROOT"
       - name: Supply the official pinned Android NDK
         run: |
           set -euo pipefail

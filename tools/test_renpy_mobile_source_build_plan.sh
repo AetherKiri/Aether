@@ -40,6 +40,7 @@ from pathlib import Path
 import sys
 source = Path(sys.argv[1]).read_text()
 assert source.index('apply_once "$renpy_build/renpy"') < source.index('./build.sh --platform android')
+assert source.index('0005-optional-cubism.patch') < source.index('./build.sh --platform android')
 assert '"$mode" == "check" || "$mode" == "auto"' not in source, 'auto must not mean check-only'
 for symbol in ('renpy_mobile_text_input_state', 'renpy_mobile_set_surface_size'):
     assert symbol in source

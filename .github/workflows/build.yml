@@ -548,7 +548,9 @@ jobs:
               -I bridge/renpy_runtime/include -I bridge/renpy_runtime/mobile_launcher/include \
               -c "bridge/renpy_runtime/src/$source.cpp" -o "$evidence_dir/$source.o"
           done
-          xcrun lipo -verify_arch arm64 "$evidence_dir/renpy_mobile_lifecycle.o"
+          for object in "$evidence_dir"/*.o; do
+            xcrun lipo "$object" -verify_arch arm64
+          done
           echo "iOS target objects compiled using the Python 3.12 C API; no target CPython link or gameplay has run."
 
       - name: Preserve iOS target compile evidence

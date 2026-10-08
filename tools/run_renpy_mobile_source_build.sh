@@ -98,7 +98,7 @@ apply_once() {
     fi
 }
 apply_once "$renpy_build/renpy" "$patch_root/python/0001-cooperative-loop-skeleton.patch"
-for patch in 0001-renpy-build-link.patch 0002-android-host-bootstrap.patch 0003-ios-host-bootstrap.patch 0004-android-offscreen-renderer.patch; do
+for patch in 0001-renpy-build-link.patch 0002-android-host-bootstrap.patch 0003-ios-host-bootstrap.patch 0004-android-offscreen-renderer.patch 0005-optional-cubism.patch; do
     apply_once "$renpy_build" "$patch_root/native/$patch"
 done
 cp "$patch_root/native/renpy_mobile_lifecycle.c" "$renpy_build/runtime/renpy_mobile_lifecycle.c"

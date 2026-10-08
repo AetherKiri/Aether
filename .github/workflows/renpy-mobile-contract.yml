@@ -24,6 +24,7 @@ on:
       - 'tools/test_renpy_mobile_build_parallelism.py'
       - 'tools/test_renpy_mobile_static_api.py'
       - 'tools/test_renpy_mobile_libffi_cfi.py'
+      - 'tools/test_renpy_mobile_metalangle_flags.py'
       - 'tools/validate_renpy_mobile_payload.py'
       - 'tools/test_renpy_mobile_packaging.sh'
       - 'tools/test_renpy_mobile_runtime_protocol.sh'
@@ -108,6 +109,8 @@ jobs:
             tools/test_renpy_mobile_patch_series.py _renpy-build-source
           "${RUNNER_TEMP}/cooperative-test/bin/python" \
             tools/test_renpy_mobile_libffi_cfi.py _renpy-build-source --clang /usr/bin/clang-18
+          "${RUNNER_TEMP}/cooperative-test/bin/python" \
+            tools/test_renpy_mobile_metalangle_flags.py _renpy-build-source --clang /usr/bin/clang-18
 
       - name: Generate the static API and compile its genuine C consumers
         run: |

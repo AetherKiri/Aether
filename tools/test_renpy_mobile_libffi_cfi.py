@@ -46,6 +46,7 @@ def main():
         with tarfile.open(fileobj=archive.stdout, mode="r|*") as source:
             source.extractall(root, filter="data")
         assert archive.wait() == 0
+        subprocess.run(["git", "apply", "--include=tasks/metalangle.py", str(REPO / "bridge/renpy_runtime/mobile_launcher/patches/native/0006-ios-offscreen-renderer.patch")], cwd=root, check=True)
         subprocess.run(["git", "apply", str(REPO / "bridge/renpy_runtime/mobile_launcher/patches/native/0007-darwin-ios-build.patch")], cwd=root, check=True)
         with tarfile.open(root / "source/libffi-3.4.5.tar.gz") as source:
             source.extractall(root, filter="data")

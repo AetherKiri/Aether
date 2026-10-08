@@ -379,3 +379,19 @@ new file mode 100644
 + 	BTI_C
 + 	stp     x29, x30, [sp, #-ffi_closure_SYSV_FS]!
 + 	cfi_adjust_cfa_offset (ffi_closure_SYSV_FS)
+diff --git a/tasks/metalangle.py b/tasks/metalangle.py
+--- a/tasks/metalangle.py
++++ b/tasks/metalangle.py
+@@ -7,9 +7,10 @@
+     if c.platform == "ios":
+         # EGL/GLES use normal <EGL/...> includes, not framework-prefixed ones.
+         # SDL's configure must find these same headers before it enables EGL.
+-        c.env("CFLAGS", "{{ CFLAGS }} -I {{install}}/MetalANGLE.framework/Headers -F {{install}} -framework MetalANGLE -DMETALANGLE")
+-        c.env("CXXFLAGS", "{{ CXXFLAGS }} -I {{install}}/MetalANGLE.framework/Headers -F {{install}} -framework MetalANGLE -DMETALANGLE")
++        c.env("CFLAGS", "{{ CFLAGS }} -I {{install}}/MetalANGLE.framework/Headers -F {{install}} -DMETALANGLE")
++        c.env("CXXFLAGS", "{{ CXXFLAGS }} -I {{install}}/MetalANGLE.framework/Headers -F {{install}} -DMETALANGLE")
+         c.env("CPPFLAGS", "{{ CPPFLAGS }} -I {{install}}/MetalANGLE.framework/Headers -DMETALANGLE")
++        c.env("LDFLAGS", "{{ LDFLAGS }} -F {{install}} -framework MetalANGLE")
+ 
+ @task(kind="python", platforms="ios")
+ def install(c: Context):

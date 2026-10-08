@@ -44,6 +44,9 @@ to the pinned 3.4.5 source archive. Three arm64 entry labels precede
 `cfi_startproc`, as required by LLVM 17 and later when assembling Mach-O.
 Unwind metadata remains enabled. The unpack task applies this patch before
 any target compilation; it does not replace the pinned libffi dependency.
+The MetalANGLE annotator keeps its header paths and definitions in compiler
+flags and supplies `-framework MetalANGLE` through linker flags. Compile-only
+dependency builds retain their strict warning checks.
 
 `0009-bounded-build-parallelism.patch` limits the upstream native object build
 group to the host CPU count. Set `RENPY_BUILD_JOBS` to a positive integer to

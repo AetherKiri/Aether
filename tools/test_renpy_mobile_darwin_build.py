@@ -83,6 +83,7 @@ def main():
             source.extractall(root, filter="data")
         assert archive.wait() == 0
         build_patch = REPO / "bridge/renpy_runtime/mobile_launcher/patches/native/0007-darwin-ios-build.patch"
+        subprocess.run(["git", "apply", "--include=tasks/metalangle.py", str(REPO / "bridge/renpy_runtime/mobile_launcher/patches/native/0006-ios-offscreen-renderer.patch")], cwd=root, check=True)
         subprocess.run(["git", "apply", "--check", str(build_patch)], cwd=root, check=True)
         subprocess.run(["git", "apply", str(build_patch)], cwd=root, check=True)
         sys.path.insert(0, str(root))

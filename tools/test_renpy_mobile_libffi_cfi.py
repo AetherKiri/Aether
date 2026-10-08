@@ -32,6 +32,7 @@ def main():
     else:
         compiler = str(args.clang) if args.clang else shutil.which("clang-18") or shutil.which("clang")
     assert compiler, "A genuine LLVM clang is required for the Mach-O assembly regression"
+    print(subprocess.check_output([compiler, "--version"], text=True).splitlines()[0])
     host_cc = shutil.which("cc")
     assert host_cc
     with tempfile.TemporaryDirectory(prefix="renpy-libffi-cfi-") as temporary:
@@ -56,6 +57,7 @@ def main():
                                     cwd=source_root, env=environment, capture_output=True, text=True)
         assert configured.returncode == 0, configured.stdout + configured.stderr
         configuration = next(source_root.glob("*/fficonfig.h"))
+        assert "#define HAVE_AS_CFI_PSEUDO_OP 1" in configuration.read_text(), "Configured assembler CFI support is required"
         if sys.platform != "darwin":
             # This test isolates CFI, not the Apple-specific closure page table.
             # Production configuration and source compilation retain that table.
@@ -66,13 +68,18 @@ def main():
                     "-I" + str(configuration.parent / "include"), "-Iinclude", "-Isrc"]
         targets = (("arm64-apple-ios13.0", "iphoneos"),
                    ("arm64-apple-ios13.0-simulator", "iphonesimulator"))
+        rejected = 0
         for target, sdk in targets:
             sdk_args = []
             if sys.platform == "darwin":
                 sdk_args = ["-isysroot", subprocess.check_output(["xcrun", "--sdk", sdk, "--show-sdk-path"], text=True).strip()]
             command = [compiler, "-target", target, *sdk_args, *includes, "-c", "src/aarch64/sysv.S", "-o", target + ".o"]
             result = subprocess.run(command, cwd=source_root, capture_output=True, text=True)
-            assert result.returncode != 0 and "invalid CFI advance_loc expression" in result.stderr, result.stderr
+            if result.returncode != 0:
+                assert "invalid CFI advance_loc expression" in result.stderr, result.stderr
+                rejected += 1
+            else:
+                assert sys.platform != "darwin", "Selected Xcode did not reproduce the observed original CFI error"
         # Execute the genuine unpack function through its real Context, so a
         # regression in the task's patch wiring also fails this check.
         sys.path.insert(0, str(root))
@@ -93,8 +100,14 @@ def main():
             command = [compiler, "-target", target, *sdk_args, *includes, "-c", "src/aarch64/sysv.S", "-o", target + ".o"]
             result = subprocess.run(command, cwd=source_root, capture_output=True, text=True)
             assert result.returncode == 0, result.stderr
-            assert (source_root / (target + ".o")).read_bytes()[:4] == bytes.fromhex("cffaedfe")
-        print("Real LLVM assembly reproduced the pinned CFI failure and compiled patched arm64 device/Simulator Mach-O objects")
+            output = (source_root / (target + ".o")).read_bytes()
+            assert output[:4] == bytes.fromhex("cffaedfe")
+            assert b"__eh_frame" in output and b"__compact_unwind" in output, "Patched assembly lost its unwind metadata"
+        if rejected == len(targets):
+            print("Original assembly reproduced the observed CFI rejection for both targets")
+        else:
+            print(f"Original assembly was accepted for {len(targets) - rejected}/{len(targets)} targets; negative-control rejection was not reproduced there")
+        print("Patched arm64 device/Simulator Mach-O assembly objects compiled with real unwind metadata")
         if sys.platform != "darwin":
             print("Linux check excluded the Apple closure page table; full Xcode runtime compilation and gameplay are not covered")
 

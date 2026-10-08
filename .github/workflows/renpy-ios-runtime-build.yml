@@ -27,6 +27,7 @@ concurrency:
 jobs:
   ios-test-driver:
     name: Compile the actual XCUITest input driver
+    needs: [ios-runtime]
     runs-on: macos-latest
     timeout-minutes: 15
     steps:

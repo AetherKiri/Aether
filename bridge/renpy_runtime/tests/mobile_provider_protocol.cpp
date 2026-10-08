@@ -6,6 +6,7 @@
 #include <cmath>
 #include <cstring>
 #include <string>
+#include <vector>
 
 namespace {
 const engine_runtime_provider_v1_t* provider;
@@ -15,6 +16,18 @@ bool finish;
 bool push_frame = true;
 renpy_mobile_input_t last_input{};
 std::string last_text;
+struct LogEntry {
+    uint32_t level;
+    std::string subsystem;
+    std::string message;
+    bool during_shutdown;
+};
+std::vector<LogEntry> host_logs;
+bool shutting_down;
+void HostLog(void* user_data, uint32_t level, const char* subsystem, const char* message) {
+    assert(user_data == &host_logs);
+    host_logs.push_back({level, subsystem, message, shutting_down});
+}
 }  // namespace
 
 // A controlled launcher verifies the provider protocol. This is explicitly
@@ -49,13 +62,22 @@ extern "C" int renpy_mobile_resume() { return 0; }
 extern "C" int renpy_mobile_bind_window(void*) { return 0; }
 extern "C" int renpy_mobile_text_input_state(uint32_t* active) { *active = 1; return 0; }
 extern "C" int renpy_mobile_set_surface_size(uint32_t, uint32_t) { return 0; }
-extern "C" void renpy_mobile_shutdown() { callbacks = nullptr; }
+extern "C" void renpy_mobile_shutdown() {
+    assert(callbacks);
+    shutting_down = true;
+    callbacks->log_utf8(callbacks->user_data, 3,
+        "Ren'Py terminal cleanup failed; retained runtime resources require a host application restart");
+    shutting_down = false;
+    callbacks = nullptr;
+}
 
 int main() {
     aetherkiri::renpy::RegisterRuntimeProvider();
     assert(provider && provider->probe(nullptr, "/project") > 0);
     engine_runtime_host_v1_t host{};
     host.struct_size = sizeof(host);
+    host.log = HostLog;
+    host.user_data = &host_logs;
     engine_create_desc_t desc{};
     desc.struct_size = sizeof(desc);
     void* runtime = nullptr;
@@ -65,6 +87,19 @@ int main() {
     std::memset(project, 'x', sizeof(project) - 1);
     assert(starts == 0); // async Open cannot bind Python/greenlet to its thread.
     assert(provider->tick(runtime, 16) == ENGINE_RESULT_OK && starts == 1);
+    callbacks->log_utf8(callbacks->user_data, 0, "native trace");
+    callbacks->log_utf8(callbacks->user_data, 1, "native info");
+    callbacks->log_utf8(callbacks->user_data, 2, "native warning");
+    callbacks->log_utf8(callbacks->user_data, 3, "native error");
+    assert(host_logs.size() == 4);
+    assert(host_logs[0].level == ENGINE_RUNTIME_LOG_TRACE);
+    assert(host_logs[1].level == ENGINE_RUNTIME_LOG_INFO);
+    assert(host_logs[2].level == ENGINE_RUNTIME_LOG_WARNING);
+    assert(host_logs[3].level == ENGINE_RUNTIME_LOG_ERROR);
+    assert(std::strcmp(provider->get_last_error(runtime), "native error") == 0);
+    for (const auto& entry : host_logs) assert(entry.subsystem == "renpy-mobile");
+    callbacks->log_utf8(callbacks->user_data, 3, nullptr);
+    assert(host_logs.size() == 4);
     uint32_t rendered = 0;
     assert(provider->get_frame_rendered_flag(runtime, &rendered) == ENGINE_RESULT_OK && rendered == 1);
     uint8_t pixels[4]{};
@@ -109,4 +144,10 @@ int main() {
     assert(std::strstr(debug, "\"exited\":true"));
     provider->destroy(runtime);
     assert(!callbacks);
+    // Destroy remains void. The launcher error reaches the owned host sink
+    // synchronously during shutdown and survives deletion of MobileRuntime.
+    assert(host_logs.size() == 5 && host_logs.back().during_shutdown);
+    assert(host_logs.back().level == ENGINE_RUNTIME_LOG_ERROR);
+    assert(host_logs.back().subsystem == "renpy-mobile");
+    assert(host_logs.back().message.find("terminal cleanup failed") != std::string::npos);
 }

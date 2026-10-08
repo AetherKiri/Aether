@@ -40,6 +40,7 @@ sys.modules["renpy.game"] = renpy.game
 log = []
 events = []
 binds = []
+teardown = []
 window = types.SimpleNamespace(get_size=lambda: (800, 600),
                                get_sdl_window_pointer=lambda: types.SimpleNamespace(value=17))
 pygame = types.ModuleType("renpy.pygame")
@@ -50,13 +51,25 @@ for name, number in {"KEYDOWN": 1, "KEYUP": 2, "TEXTINPUT": 3, "MOUSEBUTTONDOWN"
 pygame.event = types.SimpleNamespace(post=events.append, Event=lambda event_type, **values: dict(type=event_type, **values),
                                     get_mousewheel_buttons=lambda: True)
 pygame.display = types.SimpleNamespace(get_window=lambda: window)
+pygame.display.prepare_mobile_shutdown = lambda: teardown.append("protect_host_display")
+pygame.display.get_init = lambda: True
+pygame.display.quit = lambda: teardown.append("delete_owned_window")
+pygame.time = types.SimpleNamespace(set_timer=lambda event_type, interval: teardown.append((event_type, interval)))
+pygame.event.clear = lambda event_types: teardown.append(("clear_timers", event_types))
+core = types.ModuleType("renpy.display.core")
+core.PERIODIC, core.REDRAW, core.TIMEEVENT = 50, 51, 52
+sys.modules[core.__name__] = core
+shader = types.ModuleType("renpy.gl2.gl2shader")
+shader.retire_mobile_programs = lambda: teardown.append("retire_programs")
+sys.modules[shader.__name__] = shader
 pygame.key = types.SimpleNamespace(text_input=True)
 renpy.pygame = pygame
 sys.modules["renpy.pygame"] = pygame
 sys.modules["_aether_host"] = types.SimpleNamespace(bind_window=lambda pointer: binds.append(pointer) or 0)
 surface = types.SimpleNamespace(get_bytesize=lambda: 4, get_size=lambda: (2, 1),
                                 aether_copy_pixels=lambda: b"\x01\x02\x03\xff\x04\x05\x06\xff")
-interface = types.SimpleNamespace(started=True, mobile_save=lambda: log.append("save"), force_redraw=False)
+interface = types.SimpleNamespace(started=True, mobile_save=lambda: log.append("save"), force_redraw=False,
+                                 kill_textures=lambda: teardown.append("clear_render_caches"))
 renpy.config = types.SimpleNamespace(screen_width=800, screen_height=600)
 renpy.display = types.SimpleNamespace(interface=interface, draw=types.SimpleNamespace(
     screenshot=lambda tree: surface, untranslate_point=lambda x, y: (round(x), round(y))))
@@ -128,6 +141,11 @@ with tempfile.TemporaryDirectory() as directory:
     mobile.cooperative_stop()
     assert log.count("cleanup") == 1 and not mobile.cooperative_active()
     assert mobile.cooperative_tick(1) == "not_started"
+    assert teardown == ["retire_programs", "protect_host_display", "clear_render_caches",
+                        (50, 0), (51, 0), (52, 0), ("clear_timers", (50, 51, 52)), "delete_owned_window"]
+    before = list(teardown)
+    mobile.cooperative_stop()
+    assert teardown == before, "repeated stop ran GPU/window teardown twice"
 
     # Validate official-entry dispatch and SystemExit handling independently.
     entry.write_text("def main():\n    import sys\n    import renpy\n    renpy.entry_argv = list(sys.argv)\n    raise SystemExit(0)\n")
@@ -138,6 +156,80 @@ with tempfile.TemporaryDirectory() as directory:
     assert mobile.cooperative_tick(10) == "finished"
     assert renpy.entry_argv == [str(entry), str(root)]
     mobile.cooperative_stop()
+
+    def fresh_mobile():
+        spec.loader.exec_module(mobile)
+        renpy.display.draw = types.SimpleNamespace(
+            shader_cache=types.SimpleNamespace(clear=lambda: teardown.append("clear_shader_cache")),
+            texture_loader=types.SimpleNamespace(retire_mobile=lambda: teardown.append("retire_loader")),
+            window=window)
+        teardown.clear()
+        return mobile
+
+    # A real newborn greenlet is false and must not receive QuitException.
+    fresh_mobile()
+    mobile.cooperative_start(str(root), str(entry))
+    assert not mobile._game and not mobile._game.dead
+    mobile.cooperative_stop()
+    assert not mobile.cooperative_active()
+    assert teardown.index("retire_programs") < teardown.index("retire_loader") < teardown.index("clear_shader_cache")
+    assert teardown[-1] == "delete_owned_window"
+
+    # Paused destruction must still unwind the active game exactly once.
+    fresh_mobile()
+    def paused_game(*_):
+        try:
+            mobile.cooperative_checkpoint(force=True)
+        except QuitException:
+            pass
+        finally:
+            log.append("paused_finally")
+    mobile._run = paused_game
+    mobile.cooperative_start(str(root), str(entry))
+    mobile.cooperative_tick(1)
+    mobile.cooperative_pause()
+    mobile.cooperative_stop()
+    assert log.count("paused_finally") == 1 and teardown[-1] == "delete_owned_window"
+
+    # Startup errors return through _run; stop must release any partial display.
+    fresh_mobile()
+    entry.write_text("def main():\n    raise RuntimeError('bootstrap failed')\n")
+    mobile.cooperative_start(str(root), str(entry))
+    try:
+        mobile.cooperative_tick(1)
+        raise AssertionError("startup failure disappeared")
+    except RuntimeError as error:
+        assert "bootstrap failed" in str(error)
+    mobile.cooperative_stop()
+    assert teardown[-1] == "delete_owned_window" and not mobile.cooperative_active()
+
+    # A failing teardown must remain observable and retryable, not clear owner.
+    fresh_mobile()
+    mobile.cooperative_start(str(root), str(entry))
+    saved_quit = pygame.display.quit
+    def failed_quit():
+        raise RuntimeError("owned display teardown failed")
+    pygame.display.quit = failed_quit
+    try:
+        mobile.cooperative_stop()
+        raise AssertionError("cleanup failure disappeared")
+    except RuntimeError as error:
+        assert "owned display teardown failed" in str(error)
+    assert mobile.cooperative_active() and not mobile._terminal_cleanup_done
+    pygame.display.quit = saved_quit
+    mobile.cooperative_stop()
+    assert not mobile.cooperative_active()
+
+    # No renderer/display imports are added when startup never loaded them.
+    fresh_mobile()
+    mobile.cooperative_start(str(root), str(entry))
+    del sys.modules["renpy.pygame"]
+    del sys.modules["renpy.gl2.gl2shader"]
+    mobile.cooperative_stop()
+    assert "renpy.pygame" not in sys.modules and "renpy.gl2.gl2shader" not in sys.modules
+    assert teardown == []
+    sys.modules["renpy.pygame"] = pygame
+    sys.modules[shader.__name__] = shader
 
 renderer_source = (args.renpy_src / "renpy/gl2/gl2draw.pyx").read_text()
 start = renderer_source.index("        gles = self.gles")
@@ -158,5 +250,5 @@ for platform in ("android", "ios"):
         if platform == "ios":
             assert context["window_flags"] & 12 == 12
 
-print("Cooperative checks passed: real greenlet stack preservation, deadline-before-start, Unicode/input, frame ownership, pause/resume, cleanup and mobile pbuffer dimensions")
+print("Cooperative checks passed: real greenlet ownership, input/frame contracts, natural/paused/newborn/failed startup shutdown, terminal cleanup order, retry errors and idempotence")
 print("Synthetic engine boundaries only; Ren'Py/SDL/GL/device gameplay was not run")

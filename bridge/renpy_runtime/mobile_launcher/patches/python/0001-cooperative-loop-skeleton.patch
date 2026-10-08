@@ -164,10 +164,25 @@ index cb66af0..3762a48 100644
  
          else:
 diff --git a/renpy/pygame/display.pyx b/renpy/pygame/display.pyx
-index 85d16d0..a732f2c 100644
+index 85d16d0..c8bda49 100644
 --- a/renpy/pygame/display.pyx
 +++ b/renpy/pygame/display.pyx
-@@ -207,7 +207,9 @@ cdef class Window:
+@@ -64,6 +64,14 @@ def _get_hint(hint, default):
+     return default
+ 
+ 
++def prepare_mobile_shutdown():
++    # SDL_DestroyWindow unloads EGL too. The patched embedded SDL must keep
++    # the shared host display alive even if the process environment says 0.
++    hint("AETHER_RENPY_EMBEDDED", "1", priority=SDL_HINT_OVERRIDE)
++    if not SDL_GetHintBoolean(b"AETHER_RENPY_EMBEDDED", SDL_FALSE):
++        raise error("Could not protect the host EGL display during Ren'Py shutdown")
++
++
+ main_done = False
+ 
+ def sdl_main_init():
+@@ -207,7 +215,9 @@ cdef class Window:
                  if self.gl_context == NULL:
                      raise error()
  
@@ -178,18 +193,42 @@ index 85d16d0..a732f2c 100644
  
                  if not ios:
                      # Try setting the swap interval - first positive, then negated
-@@ -262,6 +264,10 @@ cdef class Window:
+@@ -262,8 +272,22 @@ cdef class Window:
          This should be called before the window is deleted.
          """
  
-+        if renpy.aether_mobile.cooperative_active():
-+            import _aether_host
-+            _aether_host.bind_window(0)
+-        if self.gl_context != NULL:
+-            SDL_GL_DeleteContext(self.gl_context)
++        if self.window == NULL and self.gl_context == NULL:
++            return
 +
-         if self.gl_context != NULL:
-             SDL_GL_DeleteContext(self.gl_context)
++        if renpy.aether_mobile.cooperative_active():
++            prepare_mobile_shutdown()
++            import _aether_host
++            if _aether_host.bind_window(0) != 0:
++                raise error("Could not unbind the Ren'Py renderer window")
++
++        cdef SDL_GLContext context = self.gl_context
++        cdef SDL_Window *window = self.window
++        self.gl_context = NULL
++        self.window = NULL
++
++        if context != NULL:
++            SDL_GL_DeleteContext(context)
  
-@@ -334,8 +340,20 @@ cdef class Window:
+         if self.surface:
+ 
+@@ -274,7 +298,8 @@ cdef class Window:
+             # Necessary to collect the GL surface, doesn't hurt the window surface.
+             self.surface = None
+ 
+-        SDL_DestroyWindow(self.window)
++        if window != NULL:
++            SDL_DestroyWindow(window)
+ 
+     def resize(self, size, opengl=False, fullscreen=None, maximized=None):
+         """
+@@ -334,8 +359,20 @@ cdef class Window:
              if self.gl_context == NULL:
                  raise error()
  
@@ -210,7 +249,7 @@ index 85d16d0..a732f2c 100644
      def recreate_gl_context(self, always=False):
          """
          Check to see if the GL context was lost, and re-create it if it was.
-@@ -350,7 +368,9 @@ cdef class Window:
+@@ -350,7 +387,9 @@ cdef class Window:
          if self.gl_context == NULL:
              raise error()
  
@@ -336,10 +375,10 @@ index 889c908..bfd94f3 100644
          return pixels[self.surface.h * self.surface.pitch]
 diff --git a/renpy/aether_mobile.py b/renpy/aether_mobile.py
 new file mode 100644
-index 00000000..017f1fb5
+index 0000000..58fb17c
 --- /dev/null
 +++ b/renpy/aether_mobile.py
-@@ -0,0 +1,300 @@
+@@ -0,0 +1,358 @@
 +"""Host-owned Ren'Py loop; all SDL/GL work stays on the calling thread.
 +
 +The native launcher links greenlet with its target CPython. No exception is
@@ -364,6 +403,7 @@ index 00000000..017f1fb5
 +_serial = 0
 +_paused = False
 +_stopping = False
++_terminal_cleanup_done = False
 +_error = None
 +_input = []
 +_buttons = [False, False, False]
@@ -387,6 +427,8 @@ index 00000000..017f1fb5
 +    global _owner, _host, _game, _paused, _stopping, _error, _frame, _serial
 +    if greenlet is None:
 +        raise RuntimeError("Target CPython is missing the linked greenlet runtime")
++    if _terminal_cleanup_done:
++        raise RuntimeError("Ren'Py interpreter reuse is unavailable; restart the host application")
 +    if _game is not None:
 +        raise RuntimeError("Ren'Py mobile game is already started")
 +    if not os.path.isdir(game_root) or not os.path.isfile(argv0):
@@ -627,16 +669,122 @@ index 00000000..017f1fb5
 +def cooperative_stop():
 +    global _game, _host, _owner, _paused, _stopping, _frame
 +    _check_owner()
-+    if _game is None:
++    if _game is None or _terminal_cleanup_done:
 +        return
 +    _stopping = True
 +    _paused = False
-+    try:
++    # A greenlet is false before its first switch and after termination.
++    # Throwing into a newborn greenlet would bypass _run's exception handler.
++    if _game:
++        import renpy.game
++        _game.throw(renpy.game.QuitException())
 +        if not _game.dead:
-+            import renpy.game
-+            _game.throw(renpy.game.QuitException())
++            raise RuntimeError("Ren'Py game did not finish its terminal shutdown")
++    _terminal_display_cleanup()
++    _game = _host = _owner = _frame = None
++    _input.clear()
++    _keys.clear()
++    _buttons[:] = [False, False, False]
++
++
++def _terminal_display_cleanup():
++    """Release a healthy session while native still owns its GL context.
++
++    No renderer imports are performed here: initialization might have failed
++    before display or GL2 became available. This is terminal, not a reusable
++    interpreter or a context-loss recovery path.
++    """
++    global _terminal_cleanup_done
++    pygame = sys.modules.get("renpy.pygame")
++    display = getattr(pygame, "display", None)
++    shader = sys.modules.get("renpy.gl2.gl2shader")
++    if shader is not None:
++        # Set before releasing any refs or deleting the SDL context: script
++        # stores and texture loaders may retain Programs after cache.clear().
++        shader.retire_mobile_programs()
++    if display is None:
++        _terminal_cleanup_done = True
++        return
++
++    display.prepare_mobile_shutdown()
++    renpy = sys.modules.get("renpy")
++    package = getattr(renpy, "display", None)
++    draw = getattr(package, "draw", None)
++    core = sys.modules.get("renpy.display.core")
++    try:
++        # bootstrap.finally already calls draw.quit(). Never repeat quit_fbo.
++        if draw is not None:
++            loader = getattr(draw, "texture_loader", None)
++            if loader is not None:
++                loader.retire_mobile()
++            cache = getattr(draw, "shader_cache", None)
++            if cache is not None:
++                cache.clear()
++            video = sys.modules.get("renpy.display.video")
++            if video is not None:
++                video.group_texture.clear()
++            interface = getattr(package, "interface", None)
++            if interface is not None and interface.started:
++                interface.kill_textures()
++            draw.texture_loader = draw.shader_cache = draw.window = None
++            package.draw = None
 +    finally:
-+        _game = _host = _owner = _frame = None
-+        _input.clear()
-+        _keys.clear()
-+        _buttons[:] = [False, False, False]
++        if core is not None:
++            timers = (core.PERIODIC, core.REDRAW, core.TIMEEVENT)
++            for event_type in timers:
++                pygame.time.set_timer(event_type, 0)
++            if display.get_init():
++                pygame.event.clear(timers)
++        display.quit()
++    _terminal_cleanup_done = True
+diff --git a/renpy/gl2/gl2shader.pyx b/renpy/gl2/gl2shader.pyx
+index 0aa2436..44a565c 100644
+--- a/renpy/gl2/gl2shader.pyx
++++ b/renpy/gl2/gl2shader.pyx
+@@ -179,6 +179,16 @@ class Variable:
+         return (self.storage, self.type, self.name, self.array) == (other.storage, other.type, other.name, other.array)
+ 
+ 
++# Embedded sessions retain CPython after their SDL context is destroyed. A
++# Program can still be held by a texture loader, script store, or debugger.
++# Its late destructor must not delete an unrelated host-context program.
++cdef bint aether_terminal_programs_retired = False
++
++def retire_mobile_programs():
++    global aether_terminal_programs_retired
++    aether_terminal_programs_retired = True
++
++
+ cdef class Program:
+     """
+     Represents an OpenGL program.
+@@ -197,7 +207,8 @@ cdef class Program:
+         self.uniform_setters = [ ]
+ 
+     def __dealloc__(self):
+-        glDeleteProgram(self.program)
++        if self.program and not aether_terminal_programs_retired:
++            glDeleteProgram(self.program)
+ 
+     def find_variables(self, source, seen_uniforms: set, samplers: int):
+ 
+diff --git a/renpy/gl2/gl2texture.pyx b/renpy/gl2/gl2texture.pyx
+index ec8c958..73a2bd5 100644
+--- a/renpy/gl2/gl2texture.pyx
++++ b/renpy/gl2/gl2texture.pyx
+@@ -95,6 +95,15 @@ cdef class TextureLoader:
+ 
+         self.allocated = set()
+ 
++    def retire_mobile(self):
++        # CPU-only terminal teardown. SDL context destruction frees the GPU
++        # objects, including textures retained outside the render caches.
++        self.allocated.clear()
++        self.free_list.clear()
++        self.texture_load_queue.clear()
++        self.ftl_program = None
++        self.total_texture_size = 0
++
+     def get_texture_size(self):
+         """
+         Returns the amount of memory locked up in textures.

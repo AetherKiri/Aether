@@ -4,6 +4,7 @@
  * renderer's screenshot before yielding to Godot. */
 #include <Python.h>
 #include <limits.h>
+#include <stdio.h>
 #include <string.h>
 #include "renpy_mobile_launcher.h"
 #if defined(__APPLE__)
@@ -46,6 +47,14 @@ static int begin_graphics(graphics_scope *scope) {
     if (aether_context != EGL_NO_CONTEXT) {
         eglBindAPI(EGL_OPENGL_ES_API);
         if (!eglMakeCurrent(aether_display, aether_draw_surface, aether_read_surface, aether_context)) {
+            const EGLint error = eglGetError();
+            if (aether_host.log_utf8) {
+                char detail[160];
+                snprintf(detail, sizeof(detail),
+                    "Ren'Py private EGL context could not be made current (EGL error 0x%04x); context-loss recovery is unavailable",
+                    (unsigned int)error);
+                aether_host.log_utf8(aether_host.user_data, 3, detail);
+            }
             eglBindAPI(scope->api);
             return RENPY_MOBILE_ERROR;
         }
@@ -334,7 +343,15 @@ void renpy_mobile_shutdown(void) {
         memset(&aether_host, 0, sizeof(aether_host));
         return;
     }
-    (void)call_noargs("cooperative_stop");
+    if (call_noargs("cooperative_stop") != RENPY_MOBILE_OK) {
+        /* A failed graphics scope must never dispose Python-owned GL objects
+         * with the host context current. Retain the stopped-or-suspended
+         * session and refuse reuse; only the process can reclaim it safely. */
+        if (aether_host.log_utf8) aether_host.log_utf8(aether_host.user_data, 3,
+            "Ren'Py terminal cleanup failed; retained runtime resources require a host application restart");
+        memset(&aether_host, 0, sizeof(aether_host));
+        return;
+    }
     PyGILState_STATE gil = PyGILState_Ensure();
     Py_CLEAR(aether_frame_bytes);
     Py_CLEAR(aether_main_module);
@@ -343,7 +360,7 @@ void renpy_mobile_shutdown(void) {
     aether_paused = 0;
     aether_owner_thread = 0;
     aether_window = NULL;
-#if defined(__ANDROID__)
+#if defined(AETHER_MOBILE_EGL)
     aether_display = EGL_NO_DISPLAY;
     aether_context = EGL_NO_CONTEXT;
     aether_draw_surface = EGL_NO_SURFACE;

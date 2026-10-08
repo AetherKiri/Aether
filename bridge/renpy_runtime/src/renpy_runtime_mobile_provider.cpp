@@ -102,7 +102,15 @@ int PresentRgba(void* user_data, const uint8_t* rgba, uint32_t width,
 
 void LogUtf8(void* user_data, int level, const char* message) {
     auto* runtime = static_cast<MobileRuntime*>(user_data);
-    if (runtime && message && level >= 3) runtime->error = message;
+    if (!runtime || !message) return;
+    if (level >= 3) runtime->error = message;
+    if (runtime->host.log) {
+        const uint32_t host_level = level >= 3 ? ENGINE_RUNTIME_LOG_ERROR
+            : level == 2 ? ENGINE_RUNTIME_LOG_WARNING
+            : level == 1 ? ENGINE_RUNTIME_LOG_INFO : ENGINE_RUNTIME_LOG_TRACE;
+        // The host persists this diagnostic before Destroy releases runtime.
+        runtime->host.log(runtime->host.user_data, host_level, "renpy-mobile", message);
+    }
 }
 
 engine_result_t CaptureFrame(MobileRuntime* runtime) {

@@ -60,7 +60,26 @@ preserves pointer/key/text actions, publishes renderer screenshots and
 returns observable normal-exit and text-input state. Window binding connects
 the real SDL renderer window to the Android EGL context handoff.
 
+Terminal shutdown runs on the interpreter's owning thread while its healthy
+private context is current. The cooperative patch stops the engine timers,
+retires GL2 Program destructors before dropping cached references, and destroys
+the Python-owned SDL window, context and pbuffer. Programs retained by script
+stores or texture loaders cannot later delete a host GL program during garbage
+collection. SDL hint override keeps `AETHER_RENPY_EMBEDDED` true throughout the
+window and video teardown; the existing SDL patch skips `eglTerminate` on the
+shared display. Normal bootstrap renderer teardown is not repeated.
+
+Shutdown is terminal: another Ren'Py session requires restarting the host.
+If its private EGL context cannot be made current or Python cleanup fails,
+native reports the failure, retains the session and clears host callbacks.
+It never substitutes the current host context for deleting Ren'Py resources.
+Recovery from genuine EGL context/display loss remains unimplemented; this
+does not imply an ordinary host Surface replacement destroys the private
+pbuffer. Real long-background, rotation and context-loss stress acceptance
+is still required.
+
 These sources need actual target compilation and cloud-device gameplay
 acceptance. A successful host compilation or exported-symbol check is not
-mobile playability evidence. The iOS MetalANGLE host rendering integration
-remains blocked and the provider refuses it explicitly.
+mobile playability evidence. iOS startup requires the patched offscreen
+MetalANGLE driver; successful renderer probes do not establish full Ren'Py
+gameplay, input, pause/resume or shutdown acceptance.

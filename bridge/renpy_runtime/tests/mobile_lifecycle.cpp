@@ -115,9 +115,23 @@ mobile.cooperative_set_surface_size = lambda w, h: None
     });
     wrong_thread.join();
     assert(diagnostics > 0); // callback remains valid after caller table dies.
+    assert(PyRun_SimpleString("mobile._stop_failure = True\n"
+        "def stop():\n"
+        "    mobile._stops += 1\n"
+        "    if mobile._stop_failure: raise RuntimeError('terminal cleanup failed')\n"
+        "mobile.cooperative_stop = stop\n") == 0);
+    const int before_failure = diagnostics;
+    renpy_mobile_shutdown();
+    assert(diagnostics > before_failure); // failures cannot pretend cleanup succeeded.
+    host.struct_size = sizeof(host);
+    host.abi_version = RENPY_MOBILE_LAUNCHER_ABI_VERSION;
+    assert(renpy_mobile_init(&config, &host) == RENPY_MOBILE_INVALID_STATE);
+    assert(PyRun_SimpleString("mobile._stop_failure = False") == 0);
     renpy_mobile_shutdown();
     assert(Py_IsInitialized()); // the host owns interpreter/process lifetime.
-    assert(PythonLong("mobile._stops") == 1);
+    assert(PythonLong("mobile._stops") == 2);
+    renpy_mobile_shutdown();
+    assert(PythonLong("mobile._stops") == 2);
     assert(renpy_mobile_tick(16) == RENPY_MOBILE_INVALID_STATE);
     Py_Finalize();
 }

@@ -1,5 +1,3 @@
-set(VCPKG_POLICY_SKIP_ABSOLUTE_PATHS_CHECK enabled)
-
 vcpkg_from_github(
     OUT_SOURCE_PATH SOURCE_PATH
     REPO mono/libgdiplus
@@ -29,6 +27,10 @@ endif()
 vcpkg_cmake_configure(SOURCE_PATH "${SOURCE_PATH}" OPTIONS ${OPTIONS})
 
 vcpkg_cmake_install()
+# Public dependency include/link directories originate in the build triplet.
+# Rewrite them relative to the installed package and merge Debug/Release
+# targets before caching; a package must survive a new consumer build path.
+vcpkg_cmake_config_fixup()
 vcpkg_fixup_pkgconfig()
 vcpkg_copy_pdbs()
 

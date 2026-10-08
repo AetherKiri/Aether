@@ -12,6 +12,8 @@ on:
       - 'tools/stage_renpy_android_support.sh'
       - 'tools/inspect_renpy_android_apk.py'
       - 'bridge/renpy_runtime/android/**'
+      - 'vcpkg/ports/libgdiplus/**'
+      - 'tools/test_libgdiplus_cmake_relocation.py'
   workflow_dispatch:
 
 permissions:
@@ -130,7 +132,7 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install --no-install-recommends -y cmake ninja-build pkg-config autoconf \
-            autoconf-archive automake libtool gettext bison flex curl unzip zip zstd ccache jq mono-complete
+            autoconf-archive automake libtool gettext bison flex nasm curl unzip zip zstd ccache jq mono-complete
           ccache --max-size=400M
       - uses: actions/cache/restore@v6
         with:
@@ -189,6 +191,11 @@ jobs:
           .devtools/vcpkg/bootstrap-vcpkg.sh -disableMetrics
           echo "VCPKG_ROOT=$GITHUB_WORKSPACE/.devtools/vcpkg" >> "$GITHUB_ENV"
           bash .github/scripts/configure-vcpkg-binary-cache.sh "$GITHUB_WORKSPACE/.devtools/vcpkg/vcpkg"
+      - name: Verify package configuration survives a different build directory
+        run: |
+          set -euo pipefail
+          python3 tools/test_libgdiplus_cmake_relocation.py --vcpkg-root .devtools/vcpkg \
+            | tee "$RUNNER_TEMP/renpy-android-app-evidence/libgdiplus-relocation.log"
       - name: Create a disposable standard Android Debug signing key
         run: |
           set -euo pipefail

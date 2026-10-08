@@ -100,14 +100,6 @@ set(AETHERKIRI_GODOT_SOURCES
     src/presentation/RuntimePresentationSprite.cpp
 )
 
-if(IOS OR ANDROID)
-    # iOS/Android link the guarded mobile provider directly into the Godot
-    # static archive. Static archive dependencies are not propagated to the
-    # final Xcode/Gradle application link.
-    list(APPEND AETHERKIRI_GODOT_SOURCES
-        ../renpy_runtime/src/renpy_runtime_mobile_provider.cpp)
-endif()
-
 if(WEB OR EMSCRIPTEN)
     add_executable(aether_kiri_godot ${AETHERKIRI_GODOT_SOURCES})
 elseif(IOS)
@@ -276,6 +268,8 @@ if(IOS)
         VERBATIM)
 endif()
 if(TARGET aether_renpy_runtime)
+    # The runtime target owns the provider and its platform definitions.
+    # iOS packaging merges that archive into the exported static extension.
     target_link_libraries(aether_kiri_godot PRIVATE aether_renpy_runtime)
     target_compile_definitions(aether_kiri_godot PRIVATE AETHERKIRI_WITH_RENPY=1)
 endif()

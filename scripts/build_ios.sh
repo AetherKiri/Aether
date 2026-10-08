@@ -453,7 +453,7 @@ PY
 
 build_renios_runtime_framework() {
     renios_enabled || return 0
-    local prebuilt arch=arm64 metalangle
+    local prebuilt arch=arm64 metalangle prototype sdk_path
     [[ "$SIMULATOR" == true ]] && arch="$SIMULATOR_ARCH"
     prebuilt="$(renios_prebuilt_root)"
     metalangle="$(renios_metalangle_framework)"
@@ -468,10 +468,29 @@ build_renios_runtime_framework() {
     while IFS= read -r archive; do archives+=("$archive"); done < <(collect_renios_archives "$prebuilt")
     local minimum_flag="-miphoneos-version-min=${IOS_MIN_VERSION:-16.0}"
     [[ "$SIMULATOR" == true ]] && minimum_flag="-mios-simulator-version-min=${IOS_MIN_VERSION:-16.0}"
+    prototype="$(renios_prototype_root)"
+    sdk_path="$(xcrun --sdk "$IOS_SDK" --show-sdk-path)"
+    local support_objects=() support_name support_source support_object
+    # Ren'Py's iOS init code discovers these original Renios classes through
+    # pyobjus. They are app sources upstream, so the prebuilt archives omit
+    # them. Keep them in the runtime framework without its main.c entrypoint.
+    for support_name in Log IAPHelper; do
+        support_source="$prototype/$support_name.m"
+        support_object="$CMAKE_BUILD_DIR/renpy-native/$support_name.o"
+        [[ -f "$support_source" ]] || {
+            echo "Error: Required Renios support source is missing: $support_source" >&2
+            return 1
+        }
+        xcrun --sdk "$IOS_SDK" clang -arch "$arch" -isysroot "$sdk_path" \
+            "$minimum_flag" -fobjc-arc -fmodules -include UIKit/UIKit.h \
+            -c "$support_source" -o "$support_object"
+        support_objects+=("$support_object")
+    done
     # Keep Ren'Py's Python/SDL/FFmpeg symbols inside a separate two-level
     # namespace. They must not replace the host's vcpkg library definitions.
     # The builtin Python extension table requires its archive objects to stay.
-    xcrun --sdk "$IOS_SDK" clang++ -arch "$arch" "$minimum_flag" -dynamiclib \
+    xcrun --sdk "$IOS_SDK" clang++ -arch "$arch" -isysroot "$sdk_path" "$minimum_flag" -dynamiclib \
+        "${support_objects[@]}" \
         -Wl,-all_load "${archives[@]}" -Wl,-noall_load \
         -Wl,-exported_symbols_list,"$export_list" \
         -Wl,-install_name,"@rpath/$RENPY_FRAMEWORK_NAME.framework/$RENPY_FRAMEWORK_NAME" \
@@ -482,8 +501,17 @@ build_renios_runtime_framework() {
         -framework CoreVideo -framework CoreMedia -framework VideoToolbox \
         -framework CoreGraphics -framework CoreFoundation -framework GameController \
         -framework CoreMotion -framework Security -framework SystemConfiguration \
-        -framework Metal -liconv -lz -lbz2 \
+        -framework Metal -framework StoreKit -liconv -lz -lbz2 \
         -o "$RENPY_FRAMEWORK_OUTPUT/$RENPY_FRAMEWORK_NAME"
+    local class_symbols="$CMAKE_BUILD_DIR/renpy-native/support-class-symbols.txt" class_symbol
+    xcrun nm -U -arch "$arch" "$RENPY_FRAMEWORK_OUTPUT/$RENPY_FRAMEWORK_NAME" > "$class_symbols"
+    for support_name in Log IAPHelper; do
+        class_symbol='_OBJC_CLASS_$_'"$support_name"
+        awk -v symbol="$class_symbol" '$NF == symbol { found=1 } END { exit !found }' "$class_symbols" || {
+            echo "Error: Ren'Py runtime framework lacks required Objective-C class $support_name." >&2
+            return 1
+        }
+    done
     python3 - "$RENPY_FRAMEWORK_OUTPUT/Info.plist" "$RENPY_FRAMEWORK_NAME" "$IOS_SDK" <<'PY'
 import pathlib, plistlib, sys
 plist={'CFBundleIdentifier':'org.aetherkiri.renpy-runtime', 'CFBundleExecutable':sys.argv[2],

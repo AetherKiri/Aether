@@ -19,7 +19,7 @@ jobs:
         uses: actions/download-artifact@v6
         with:
           repository: AetherKiri/Aether
-          run-id: 37806315295
+          run-id: 37812944178
           name: renpy-ios-source-build-evidence
           github-token: ${{ github.token }}
           path: ${{ runner.temp }}/renpy-ios-source-evidence
@@ -32,8 +32,8 @@ jobs:
           logs = sorted(pathlib.Path(sys.argv[1]).rglob('renpy-ios-source-build.log'))
           if not logs:
               raise SystemExit('The genuine source-build evidence contains no log files.')
-          print('Original iOS source run 37806315295; job 113414542371; head e6f5937a1bed3219efd2bc85731df8afd4f60bdf.')
-          print('Evidence artifact 11563707867; GitHub archive digest sha256:d1062c6895c08977adbc883e6e467b57ec77411d1ee4a8afe53b7243c6a8e712.')
+          print('Original iOS source run 37812944178; job 113441713032; head dbb863ac101301c8a9d78dea358e2157a0185165.')
+          print('Evidence artifact 11567923064; GitHub archive digest sha256:74036852733a6c8b5efb4dff45cb2ba7e89d1faf6c6ff20f2176d066ffe551c1.')
           print('Reading preserved compiler evidence; no build is rerun or simulated.')
           remaining = 24000
           for log in logs:

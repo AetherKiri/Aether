@@ -3,8 +3,8 @@ vcpkg_check_linkage(ONLY_STATIC_LIBRARY)
 vcpkg_from_github(
     OUT_SOURCE_PATH SOURCE_PATH
     REPO "godotengine/godot-cpp"
-    REF "${VERSION}"
-    SHA512 "2e3111fbf5e01b76c1be0d34e36a2eae9c5b3649945e48c4dcdf3bca5fbafdb65d5f58fd5fc88da867c77be74842bf2e2882c6303b2c5499681760c43a3b93f6"
+    REF "10.0.0-stable"
+    SHA512 "166421c32a4600b870d2bfe0393923afaa0ac8bbe7dab0042e6eef2fbb9c4a98b1516bc3e9a301ca661f489b1a3b7886874dc51bf0ee44765c6208743e41a84a"
     HEAD_REF "master"
     PATCHES
         "packagable.patch"
@@ -17,6 +17,7 @@ vcpkg_cmake_configure(
     OPTIONS
         "-DPython3_EXECUTABLE=${PYTHON3}"
         "-DGODOTCPP_DISABLE_EXCEPTIONS=OFF"
+        "-DGODOTCPP_API_VERSION=4.7"
 )
 
 vcpkg_cmake_install()

@@ -1,8 +1,6 @@
-diff --git a/CMakeLists.txt b/CMakeLists.txt
-index 0d64057..7f74bd6 100644
---- a/CMakeLists.txt
-+++ b/CMakeLists.txt
-@@ -73,3 +73,32 @@ endif()
+--- a/CMakeLists.txt	2026-09-15 20:22:56
++++ b/CMakeLists.txt	2026-10-05 11:15:17
+@@ -80,3 +80,32 @@
  USE_FOLDERS flag will organize godot-cpp targets under a subfolder named
  'godot-cpp'. This is enable by default from CMake version 3.26 ]]
  set_property(GLOBAL PROPERTY USE_FOLDERS ON)
@@ -35,33 +33,30 @@ index 0d64057..7f74bd6 100644
 +install(FILES "${CMAKE_CURRENT_BINARY_DIR}/unofficial-godot-cpp-config-version.cmake"
 +    DESTINATION "${CMAKE_INSTALL_DATADIR}/unofficial-godot-cpp"
 +)
-diff --git a/cmake/godotcpp.cmake b/cmake/godotcpp.cmake
-index 5b6b0f4..52dfc91 100644
---- a/cmake/godotcpp.cmake
-+++ b/cmake/godotcpp.cmake
-@@ -121,7 +121,7 @@ function(godotcpp_options)
+--- a/cmake/godotcpp.cmake	2026-09-15 20:22:56
++++ b/cmake/godotcpp.cmake	2026-10-05 11:15:34
+@@ -135,7 +135,7 @@
      )
-     set_property(CACHE GODOTCPP_API_VERSION PROPERTY STRINGS ";4.3;4.4;4.5;4.6")
+     set_property(CACHE GODOTCPP_API_VERSION PROPERTY STRINGS ";4.3;4.4;4.5;4.6;4.7")
      set(GODOTCPP_GDEXTENSION_DIR
 -        "gdextension"
 +        "${CMAKE_CURRENT_SOURCE_DIR}/gdextension"
          CACHE PATH
          "Path to a custom directory containing GDExtension interface header and API JSON file ( /path/to/gdextension_dir )"
      )
-@@ -371,7 +371,11 @@ function(godotcpp_generate)
-     target_include_directories(
+@@ -395,8 +395,10 @@
          godot-cpp
          ${GODOTCPP_SYSTEM_HEADERS_ATTRIBUTE}
--        PUBLIC include ${CMAKE_CURRENT_BINARY_DIR}/gen/include
-+        PUBLIC
-+            "$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>"
-+            "$<BUILD_INTERFACE:${CMAKE_CURRENT_BINARY_DIR}/gen/include>"
-+            "$<BUILD_INTERFACE:${GODOTCPP_GDEXTENSION_DIR}>"
-+            "$<INSTALL_INTERFACE:include>"
+         PUBLIC
+-            $<BUILD_INTERFACE:${CMAKE_CURRENT_BINARY_DIR}/gen/include>
+             $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
++            $<BUILD_INTERFACE:${CMAKE_CURRENT_BINARY_DIR}/gen/include>
++            $<BUILD_INTERFACE:${GODOTCPP_GDEXTENSION_DIR}>
++            $<INSTALL_INTERFACE:include>
      )
  
      # gersemi: off
-@@ -401,6 +405,7 @@ function(godotcpp_generate)
+@@ -426,6 +428,7 @@
  
              # Some IDE's respect this property to logically group targets
              FOLDER "godot-cpp"

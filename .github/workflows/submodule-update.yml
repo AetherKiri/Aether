@@ -36,9 +36,10 @@ jobs:
       FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: 'true'
       GH_TOKEN: ${{ secrets.GH_PAT || github.token }}
       HAS_AETHERSECRET: ${{ secrets.AETHERSECRET != '' }}
+      HAS_SOFTPAL_DEPLOY_KEY: ${{ secrets.AETHER_SOFTPAL_DEPLOY_KEY != '' }}
     steps:
       - name: Checkout Repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           fetch-depth: ${{ (inputs.target_commit != '' && inputs.target_commit != 'HEAD') && 0 || 2 }}
           persist-credentials: true
@@ -52,15 +53,46 @@ jobs:
           git fetch --depth=2 origin "$TARGET_COMMIT" || git fetch origin "$TARGET_COMMIT"
 
       - name: Configure SSH for private submodules
-        if: env.HAS_AETHERSECRET == 'true'
+        if: env.HAS_AETHERSECRET == 'true' || env.HAS_SOFTPAL_DEPLOY_KEY == 'true'
         env:
           AETHERSECRET: ${{ secrets.AETHERSECRET }}
+          AETHER_SOFTPAL_DEPLOY_KEY: ${{ secrets.AETHER_SOFTPAL_DEPLOY_KEY }}
         run: |
           mkdir -p ~/.ssh
           chmod 700 ~/.ssh
+          touch ~/.ssh/config
+          chmod 600 ~/.ssh/config
           ssh-keyscan -t rsa,ed25519 github.com >> ~/.ssh/known_hosts 2>/dev/null
+          chmod 600 ~/.ssh/known_hosts
+
           eval "$(ssh-agent -s)"
-          echo "$AETHERSECRET" | tr -d '\r' | ssh-add -
+
+          if [ -n "$AETHERSECRET" ]; then
+            echo "$AETHERSECRET" | tr -d '\r' > ~/.ssh/id_aether_internal
+            chmod 600 ~/.ssh/id_aether_internal
+            ssh-add ~/.ssh/id_aether_internal
+            printf '%s\n' \
+              'Host github.com' \
+              '  HostName github.com' \
+              '  User git' \
+              '  IdentityFile ~/.ssh/id_aether_internal' \
+              '  IdentitiesOnly yes' \
+              '  StrictHostKeyChecking accept-new' >> ~/.ssh/config
+          fi
+
+          if [ -n "$AETHER_SOFTPAL_DEPLOY_KEY" ]; then
+            echo "$AETHER_SOFTPAL_DEPLOY_KEY" | tr -d '\r' > ~/.ssh/id_aether_softpal
+            chmod 600 ~/.ssh/id_aether_softpal
+            printf '%s\n' \
+              'Host github-softpal' \
+              '  HostName github.com' \
+              '  User git' \
+              '  IdentityFile ~/.ssh/id_aether_softpal' \
+              '  IdentitiesOnly yes' \
+              '  StrictHostKeyChecking accept-new' >> ~/.ssh/config
+            git config --global url."git@github-softpal:AetherKiri/AetherSoftPal".insteadOf "git@github.com:AetherKiri/AetherSoftPal"
+          fi
+
           echo "SSH_AUTH_SOCK=$SSH_AUTH_SOCK" >> "$GITHUB_ENV"
           echo "SSH_AGENT_PID=$SSH_AGENT_PID" >> "$GITHUB_ENV"
 

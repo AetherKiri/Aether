@@ -9,11 +9,11 @@
 	ignore = dirty
 [submodule "packages/psdfile"]
 	path = packages/psdfile
-	url = git@github.com:AetherKiri/psdfile.git
+	url = https://github.com/AetherKiri/psdfile.git
 	ignore = dirty
 [submodule "packages/tjs2Decompiler"]
 	path = packages/tjs2Decompiler
-	url = git@github.com:AetherKiri/tjs2Decompiler.git
+	url = https://github.com/AetherKiri/tjs2Decompiler.git
 	ignore = dirty
 [submodule "packages/rfvp"]
 	path = packages/rfvp
@@ -25,9 +25,13 @@
 	ignore = dirty
 [submodule "packages/AetherMinori"]
 	path = packages/AetherMinori
-	url = git@github.com:AetherKiri/AetherMinori.git
+	url = https://github.com/AetherKiri/AetherMinori.git
 	ignore = dirty
 [submodule "packages/AetherKrkr"]
 	path = packages/AetherKrkr
-	url = git@github.com:AetherKiri/AetherKrkr.git
+	url = https://github.com/AetherKiri/AetherKrkr.git
+	ignore = dirty
+[submodule "packages/AetherSoftPal"]
+	path = packages/AetherSoftPal
+	url = git@github.com:AetherKiri/AetherSoftPal.git
 	ignore = dirty

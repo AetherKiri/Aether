@@ -5,8 +5,8 @@ TOOLS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=tools/linux_env.sh
 source "$TOOLS_DIR/linux_env.sh"
 
-GODOT_RELEASE="${GODOT_RELEASE:-4.7-stable}"
-GODOT_TEMPLATE_VERSION="${GODOT_TEMPLATE_VERSION:-4.7.stable}"
+GODOT_RELEASE="${GODOT_RELEASE:-4.7.2-stable}"
+GODOT_TEMPLATE_VERSION="${GODOT_TEMPLATE_VERSION:-4.7.2.stable}"
 GODOT_ARCHIVE="$AETHERKIRI_CACHE_DIR/downloads/Godot_v${GODOT_RELEASE}_linux.x86_64.zip"
 GODOT_TEMPLATE_ARCHIVE="$AETHERKIRI_CACHE_DIR/downloads/Godot_v${GODOT_RELEASE}_export_templates.tpz"
 GODOT_DIR="$AETHERKIRI_CACHE_DIR/godot"

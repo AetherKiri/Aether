@@ -79,6 +79,7 @@ const AetherDisclosure = preload("res://scripts/ui/aether_disclosure.gd")
 const AetherSelect = preload("res://scripts/ui/aether_select.gd")
 const AetherDisplayScale = preload("res://scripts/ui/aether_display_scale.gd")
 const AetherShaders = preload("res://scripts/ui/aether_shaders.gd")
+const AppUpdater = preload("res://scripts/app_updater.gd")
 const UI_ICON_DIR := "res://assets/ui/icons/"
 const ICON_SETTINGS := UI_ICON_DIR + "gear-fill.svg"
 const ICON_SAVE := UI_ICON_DIR + "save-fill.svg"
@@ -373,6 +374,25 @@ const UI_TEXT := {
         "settings.legal": "隐私与免责协议",
         "settings.legal_desc": "查看当前版本的隐私政策、使用规则、风险提示与免责声明",
         "settings.legal_open": "阅读协议",
+        "settings.check_update": "检查更新",
+        "settings.check_update_desc": "检测最新版本与功能改进",
+        "settings.check_update_action": "检查",
+        "settings.check_update_checking": "正在检查…",
+        "settings.include_prerelease": "接收测试版更新",
+        "settings.include_prerelease_desc": "开启后将检测包括 Alpha / Beta 在内的预发布测试版本",
+        "update.dialog_title": "发现新版本",
+        "update.current_version": "当前版本：%s",
+        "update.latest_version": "最新版本：%s",
+        "update.prerelease_badge": "（测试版）",
+        "update.notes_title": "更新日志：",
+        "update.download_github": "前往 GitHub 下载",
+        "update.open_app_store": "前往 App Store 更新",
+        "update.open_testflight": "前往 TestFlight 更新",
+        "update.later": "稍后提醒",
+        "update.skip_version": "跳过此版本",
+        "update.already_latest": "当前已是最新版本 (%s)",
+        "update.testflight_notice": "当前为 TestFlight 测试版本，更新请在 TestFlight 应用中查看",
+        "update.check_failed": "检查更新失败，请稍后重试",
         "settings.ios_statement": "Apple App Store 额外声明",
         "settings.ios_statement_desc": "查看 GPLv3、App Store 分发附加许可、源码义务及适用范围",
         "settings.ios_statement_open": "阅读声明",
@@ -673,6 +693,25 @@ const UI_TEXT := {
         "settings.legal": "隱私與免責協議",
         "settings.legal_desc": "查看目前版本的隱私政策、使用規則、風險提示與免責聲明",
         "settings.legal_open": "閱讀協議",
+        "settings.check_update": "檢查更新",
+        "settings.check_update_desc": "檢測最新版本與功能改進",
+        "settings.check_update_action": "檢查",
+        "settings.check_update_checking": "正在檢查…",
+        "settings.include_prerelease": "接收測試版更新",
+        "settings.include_prerelease_desc": "開啟後將檢測包括 Alpha / Beta 在內的預發布測試版本",
+        "update.dialog_title": "發現新版本",
+        "update.current_version": "目前版本：%s",
+        "update.latest_version": "最新版本：%s",
+        "update.prerelease_badge": "（測試版）",
+        "update.notes_title": "更新日誌：",
+        "update.download_github": "前往 GitHub 下載",
+        "update.open_app_store": "前往 App Store 更新",
+        "update.open_testflight": "前往 TestFlight 更新",
+        "update.later": "稍後提醒",
+        "update.skip_version": "跳過此版本",
+        "update.already_latest": "目前已是最新版本 (%s)",
+        "update.testflight_notice": "目前為 TestFlight 測試版本，更新請在 TestFlight 應用程式中查看",
+        "update.check_failed": "檢查更新失敗，請稍後重試",
         "settings.ios_statement": "Apple App Store 額外聲明",
         "settings.ios_statement_desc": "查看 GPLv3、App Store 發布附加許可、原始碼義務及適用範圍",
         "settings.ios_statement_open": "閱讀聲明",
@@ -1013,6 +1052,25 @@ You can find it any time under Settings → QQ Group.",
         "settings.legal": "Privacy & Disclaimer",
         "settings.legal_desc": "Read the current privacy policy, terms of use, risk notice, and disclaimer",
         "settings.legal_open": "Read",
+        "settings.check_update": "Check for Updates",
+        "settings.check_update_desc": "Check for the latest version and improvements",
+        "settings.check_update_action": "Check",
+        "settings.check_update_checking": "Checking…",
+        "settings.include_prerelease": "Receive Beta Updates",
+        "settings.include_prerelease_desc": "Include pre-release builds (Alpha / Beta) when checking for updates",
+        "update.dialog_title": "New Version Available",
+        "update.current_version": "Current version: %s",
+        "update.latest_version": "Latest version: %s",
+        "update.prerelease_badge": " (Beta)",
+        "update.notes_title": "Release Notes:",
+        "update.download_github": "Download from GitHub",
+        "update.open_app_store": "Update in App Store",
+        "update.open_testflight": "Open TestFlight",
+        "update.later": "Remind Me Later",
+        "update.skip_version": "Skip This Version",
+        "update.already_latest": "You are on the latest version (%s)",
+        "update.testflight_notice": "This is a TestFlight beta build. Please check for updates in the TestFlight app.",
+        "update.check_failed": "Failed to check for updates. Please try again later.",
         "settings.ios_statement": "Apple App Store Notice",
         "settings.ios_statement_desc": "Review the GPLv3 App Store distribution permission, source obligations, and scope",
         "settings.ios_statement_open": "Read Notice",
@@ -1313,6 +1371,25 @@ You can find it any time under Settings → QQ Group.",
         "settings.legal": "プライバシーと免責事項",
         "settings.legal_desc": "現在のプライバシーポリシー、利用条件、リスクおよび免責事項を確認します",
         "settings.legal_open": "読む",
+        "settings.check_update": "アップデートを確認",
+        "settings.check_update_desc": "最新バージョンと機能改善を確認します",
+        "settings.check_update_action": "確認",
+        "settings.check_update_checking": "確認中…",
+        "settings.include_prerelease": "ベータ版の更新を受け取る",
+        "settings.include_prerelease_desc": "有効にすると、Alpha / Beta などのプレリリース版も検出します",
+        "update.dialog_title": "新しいバージョンが見つかりました",
+        "update.current_version": "現在のバージョン：%s",
+        "update.latest_version": "最新のバージョン：%s",
+        "update.prerelease_badge": "（ベータ版）",
+        "update.notes_title": "更新履歴：",
+        "update.download_github": "GitHub からダウンロード",
+        "update.open_app_store": "App Store でアップデート",
+        "update.open_testflight": "TestFlight を開く",
+        "update.later": "あとで",
+        "update.skip_version": "このバージョンをスキップ",
+        "update.already_latest": "最新バージョンを使用しています (%s)",
+        "update.testflight_notice": "現在 TestFlight ベータ版を使用しています。アップデートは TestFlight アプリでご確認ください",
+        "update.check_failed": "アップデートの確認に失敗しました。後でもう一度お試しください",
         "settings.ios_statement": "Apple App Store 追加声明",
         "settings.ios_statement_desc": "GPLv3、App Store 配布の追加許諾、ソース提供義務および適用範囲を確認します",
         "settings.ios_statement_open": "声明を読む",
@@ -1611,6 +1688,25 @@ You can find it any time under Settings → QQ Group.",
         "settings.legal": "개인정보 및 면책 조항",
         "settings.legal_desc": "현재 개인정보 처리방침, 이용 조건, 위험 고지 및 면책 조항을 확인합니다",
         "settings.legal_open": "읽기",
+        "settings.check_update": "업데이트 확인",
+        "settings.check_update_desc": "최신 버전 및 개선 사항을 확인합니다",
+        "settings.check_update_action": "확인",
+        "settings.check_update_checking": "확인 중…",
+        "settings.include_prerelease": "베타 업데이트 받기",
+        "settings.include_prerelease_desc": "활성화하면 Alpha / Beta 등 시험판 버전도 포함하여 감지합니다",
+        "update.dialog_title": "새 버전 사용 가능",
+        "update.current_version": "현재 버전: %s",
+        "update.latest_version": "최신 버전: %s",
+        "update.prerelease_badge": " (베타)",
+        "update.notes_title": "릴리스 노트:",
+        "update.download_github": "GitHub에서 다운로드",
+        "update.open_app_store": "App Store에서 업데이트",
+        "update.open_testflight": "TestFlight 열기",
+        "update.later": "나중에 알림",
+        "update.skip_version": "이 버전 건너뛰기",
+        "update.already_latest": "최신 버전을 사용 중입니다 (%s)",
+        "update.testflight_notice": "현재 TestFlight 베타 버전을 사용 중입니다. 업데이트는 TestFlight 앱에서 확인해 주세요",
+        "update.check_failed": "업데이트 확인 실패. 잠시 후 다시 시도해 주세요",
         "settings.ios_statement": "Apple App Store 추가 고지",
         "settings.ios_statement_desc": "GPLv3, App Store 배포 추가 허가, 소스 제공 의무 및 적용 범위를 확인합니다",
         "settings.ios_statement_open": "고지 읽기",
@@ -1802,6 +1898,7 @@ var backend: OptionButton
 var game_path: LineEdit
 var restart_notice: Label
 var viewport: TextureRect
+var softpal_aspect_mode := 1
 var perf: Label
 var perf_layer: CanvasLayer
 var perf_panel: PanelContainer
@@ -1936,6 +2033,9 @@ var legal_accepted_at := 0
 var ios_statement_accepted_version := ""
 var ios_statement_accepted_at := 0
 var legal_gate_completed := false
+var include_prerelease := false
+var update_checking := false
+var skipped_update_version := ""
 var secret_iap_unlocked := false
 var secret_coffee_until_unix := 0
 var secret_version_tap_count := 0
@@ -2034,6 +2134,9 @@ var frame_enhancement_custom_chain := PackedStringArray([
 ])
 var game_running := false
 var runtime_dialog_input: LineEdit = null
+var softpal_name_input_layer: Control = null
+var softpal_name_input: LineEdit = null
+var softpal_original_window_title := ""
 var video_playing := false
 var video_view: Control
 var video_texture: TextureRect
@@ -3756,6 +3859,9 @@ func _load_shell_settings() -> void:
     ios_statement_accepted_at = int(cfg.get_value("legal", "ios_statement_accepted_at", 0))
     secret_iap_unlocked = bool(cfg.get_value("unlock", "secret_iap_unlocked", false))
     secret_coffee_until_unix = int(cfg.get_value("unlock", "secret_coffee_until_unix", 0))
+    var default_prerelease := AppUpdater.is_prerelease(_application_version_text())
+    include_prerelease = bool(cfg.get_value("update", "include_prerelease", default_prerelease))
+    skipped_update_version = String(cfg.get_value("update", "skipped_version", ""))
 
 func _configure_runtime_diagnostics() -> void:
     diagnostics_enabled = _runtime_flag("AETHERKIRI_DIAGNOSTICS")
@@ -3839,6 +3945,8 @@ func _save_shell_settings() -> void:
     cfg.set_value("legal", "ios_statement_accepted_at", ios_statement_accepted_at)
     cfg.set_value("unlock", "secret_iap_unlocked", secret_iap_unlocked)
     cfg.set_value("unlock", "secret_coffee_until_unix", secret_coffee_until_unix)
+    cfg.set_value("update", "include_prerelease", include_prerelease)
+    cfg.set_value("update", "skipped_version", skipped_update_version)
     cfg.save(SETTINGS_FILE)
     ProjectSettings.set_setting(SETTINGS_KEY, selected_backend)
     _apply_engine_options()
@@ -4147,6 +4255,9 @@ func _apply_engine_options() -> void:
     player.set_engine_option("console_log_file", "1" if console_log_file else "0")
     player.set_engine_option("trace_log", "1" if effective_trace_log else "0")
     player.set_engine_option("input_trace", "1" if effective_input_trace else "0")
+    player.set_engine_option(
+        "runtime_arguments", "\n".join(OS.get_cmdline_user_args())
+    )
     if player.has_method("is_text_translation_available") and player.is_text_translation_available():
         _restore_native_translation_model_access()
         player.set_engine_option(
@@ -4566,14 +4677,26 @@ func _layout_game_viewport(window_size: Vector2) -> void:
             max(1.0, float(viewport.texture.get_height()))
         )
 
-    var scale := minf(window_size.x / tex_size.x, window_size.y / tex_size.y)
-    scale = minf(scale, _max_game_view_scale())
-    if scale <= 0.0:
-        scale = 1.0
-    var draw_size := Vector2(
-        floor(tex_size.x * scale),
-        floor(tex_size.y * scale)
-    )
+    var draw_size := window_size
+    if softpal_aspect_mode == 2:
+        draw_size = tex_size
+    elif softpal_aspect_mode in [1, 3]:
+        var fit_scale := minf(
+            window_size.x / tex_size.x,
+            window_size.y / tex_size.y
+        )
+        var scale := fit_scale if softpal_aspect_mode == 1 else maxf(
+            window_size.x / tex_size.x,
+            window_size.y / tex_size.y
+        )
+        if softpal_aspect_mode == 1:
+            scale = minf(scale, _max_game_view_scale())
+        if scale <= 0.0:
+            scale = 1.0
+        draw_size = Vector2(
+            floor(tex_size.x * scale),
+            floor(tex_size.y * scale)
+        )
     viewport.position = ((window_size - draw_size) * 0.5).floor()
     viewport.size = draw_size
     viewport.custom_minimum_size = draw_size
@@ -5250,6 +5373,10 @@ func _rebuild_settings_view() -> void:
     _add_settings_row(about_rows, _settings_action_row(_t("settings.legal"), _t("settings.legal_desc"), _t("settings.legal_open"), func(): _show_legal_agreement(false)))
     if _apple_app_store_platform():
         _add_settings_row(about_rows, _settings_action_row(_t("settings.ios_statement"), _t("settings.ios_statement_desc"), _t("settings.ios_statement_open"), _show_ios_additional_statement))
+    var check_update_action_text := _t("settings.check_update_checking") if update_checking else _t("settings.check_update_action")
+    _add_settings_row(about_rows, _settings_action_row(_t("settings.check_update"), _t("settings.check_update_desc"), check_update_action_text, func(): _check_app_update_manually()))
+    if not _is_apple_app_store_build():
+        _add_settings_row(about_rows, _settings_toggle_row(_t("settings.include_prerelease"), _t("settings.include_prerelease_desc"), include_prerelease, "include_prerelease"))
     var version_row := _settings_value_row(_t("settings.version"), _application_version_text())
     _attach_secret_version_tap(version_row)
     _add_settings_row(about_rows, version_row)
@@ -5286,6 +5413,9 @@ func _cascade_settings_rows(groups: Array) -> void:
 # scrolls, and slides the highlight onto the section under the reading line.
 
 func _application_version_text() -> String:
+    var env_ver := OS.get_environment("AETHERKIRI_SIMULATE_VERSION").strip_edges()
+    if not env_ver.is_empty():
+        return env_ver
     return str(ProjectSettings.get_setting("application/config/version", "development"))
 
 func _build_detail_view() -> void:
@@ -5470,6 +5600,16 @@ func _effective_legal_platform_name() -> String:
 func _apple_app_store_platform(platform_name: String = "") -> bool:
     var effective_platform := platform_name if not platform_name.is_empty() else _effective_legal_platform_name()
     return effective_platform in ["iOS", "macOS"]
+
+func _is_apple_app_store_build() -> bool:
+    if OS.get_environment("AETHERKIRI_SIMULATE_APP_STORE") == "1" \
+            or OS.get_environment("AETHERKIRI_SIMULATE_TESTFLIGHT") == "1":
+        return true
+    if OS.get_name() == "iOS":
+        return true
+    if OS.get_name() == "macOS":
+        return AppUpdater.is_mac_app_store()
+    return false
 
 func _ios_statement_required(platform_name: String = "") -> bool:
     if not _apple_app_store_platform(platform_name):
@@ -7436,6 +7576,12 @@ func _on_setting_toggle(key: String, value: bool) -> void:
         _set_settings_draft_value("mock_enabled", value)
     elif key == "error_dialog_logs":
         _set_settings_draft_value("error_dialog_logs", value)
+    elif key == "include_prerelease":
+        include_prerelease = value
+        var cfg := ConfigFile.new()
+        cfg.load(SETTINGS_FILE)
+        cfg.set_value("update", "include_prerelease", include_prerelease)
+        cfg.save(SETTINGS_FILE)
     elif key.begins_with("advanced_"):
         var option: String = String({
             "advanced_plugin_trace": "plugin_trace",
@@ -8271,14 +8417,14 @@ func _danger_button(text: String) -> Button:
     ui_widgets.destructive_button(button)
     return button
 
-func _modal_dialog(preferred_size: Vector2, dim_alpha: float = 0.44) -> PanelContainer:
+func _modal_dialog(preferred_size: Vector2, dim_alpha: float = 0.44, dismiss_on_scrim: bool = true) -> PanelContainer:
     _prepare_modal_layer()
     var dialog := PanelContainer.new()
     dialog.clip_contents = true
     _mark_centered_safe_dialog(dialog, preferred_size)
     _layout_safe_dialog(dialog, _ui_safe_rect(get_viewport_rect().size))
     dialog.add_theme_stylebox_override("panel", _dialog_style())
-    _present_modal(dialog, dim_alpha, true)
+    _present_modal(dialog, dim_alpha, dismiss_on_scrim)
     return dialog
 
 func _modal_stack(dialog: PanelContainer, title_text: String, icon_path: String) -> VBoxContainer:
@@ -8368,6 +8514,212 @@ func _open_android_coffee() -> void:
             _t("support.coffee.open_failed"),
             _t("support.coffee.title")
         )
+
+func _check_app_update_silently() -> void:
+    if update_checking:
+        return
+    var current_ver := _application_version_text()
+    if AppUpdater.is_apple_testflight(current_ver):
+        return
+    update_checking = true
+    var is_store := _is_apple_app_store_build()
+    AppUpdater.check_for_updates(
+        self,
+        current_ver,
+        is_store,
+        include_prerelease,
+        func(status: int, info: Dictionary):
+            update_checking = false
+            if status == AppUpdater.CheckStatus.SUCCESS_HAS_UPDATE:
+                var latest_ver: String = str(info.get("latest_version", ""))
+                if not skipped_update_version.is_empty() and AppUpdater.compare_versions(latest_ver, skipped_update_version) <= 0:
+                    return
+                # If a modal dialog is currently showing (e.g. startup notice), wait until it is dismissed
+                if modal_layer != null and modal_layer.visible:
+                    while modal_layer != null and modal_layer.visible:
+                        await get_tree().create_timer(0.5).timeout
+                    if game_running:
+                        return
+                _show_app_update_dialog(info)
+    )
+
+func _check_app_update_manually() -> void:
+    if update_checking:
+        return
+    update_checking = true
+    call_deferred("_rebuild_settings_view")
+
+    var current_ver := _application_version_text()
+    var is_store := _is_apple_app_store_build()
+    AppUpdater.check_for_updates(
+        self,
+        current_ver,
+        is_store,
+        include_prerelease,
+        func(status: int, info: Dictionary):
+            update_checking = false
+            call_deferred("_rebuild_settings_view")
+            if status == AppUpdater.CheckStatus.SUCCESS_HAS_UPDATE:
+                _show_app_update_dialog(info)
+            elif status == AppUpdater.CheckStatus.SUCCESS_NO_UPDATE:
+                if bool(info.get("is_testflight", false)):
+                    _show_testflight_update_dialog()
+                else:
+                    _show_system_alert(_t("update.already_latest", [current_ver]), "Aether")
+            else:
+                _show_system_alert(_t("update.check_failed"), "Aether")
+    )
+
+func _show_testflight_update_dialog() -> void:
+    var dialog := _modal_dialog(Vector2(520, 240), 0.40)
+    var box := _modal_stack(dialog, "TestFlight", ICON_HELP)
+    box.add_child(_dialog_body_label(_t("update.testflight_notice")))
+
+    var btn_row := HBoxContainer.new()
+    btn_row.alignment = BoxContainer.ALIGNMENT_END
+    btn_row.add_theme_constant_override("separation", 12)
+    box.add_child(btn_row)
+
+    var cancel_btn := _pill_button(_t("dialog.cancel"))
+    cancel_btn.clip_text = false
+    cancel_btn.custom_minimum_size = Vector2(96, 42)
+    ui_widgets.secondary_button(cancel_btn)
+    cancel_btn.pressed.connect(_dismiss_modal)
+    btn_row.add_child(cancel_btn)
+
+    var open_btn := _pill_button(_t("update.open_testflight"))
+    open_btn.clip_text = false
+    open_btn.custom_minimum_size = Vector2(190, 42)
+    open_btn.pressed.connect(func():
+        _dismiss_modal(func():
+            OS.shell_open(AppUpdater.APPLE_TESTFLIGHT_URL)
+        )
+    )
+    btn_row.add_child(open_btn)
+
+func _show_app_update_dialog(info: Dictionary) -> void:
+    var latest_ver: String = str(info.get("latest_version", ""))
+    var current_ver: String = str(info.get("current_version", _application_version_text()))
+    var is_pre: bool = bool(info.get("is_prerelease", false))
+    var release_notes: String = str(info.get("release_notes", "")).strip_edges()
+    var is_store: bool = bool(info.get("is_app_store", false))
+    var github_url: String = str(info.get("github_url", ""))
+    var github_apk_url: String = str(info.get("github_apk_url", ""))
+    var github_macos_url: String = str(info.get("github_macos_url", ""))
+    var app_store_url: String = str(info.get("app_store_url", ""))
+
+    var title_text := _t("update.dialog_title")
+    if is_pre:
+        title_text += _t("update.prerelease_badge")
+
+    var dialog := _modal_dialog(Vector2(560, 480), 0.50, false)
+    var box := _modal_stack(dialog, title_text, ICON_HELP)
+
+    var version_info := Label.new()
+    version_info.text = "%s  →  %s" % [
+        _t("update.current_version", [current_ver]),
+        _t("update.latest_version", [latest_ver])
+    ]
+    version_info.add_theme_font_size_override("font_size", 14)
+    version_info.add_theme_color_override("font_color", ui_tokens.text_secondary)
+    box.add_child(version_info)
+
+    if not release_notes.is_empty():
+        var notes_header := Label.new()
+        notes_header.text = _t("update.notes_title")
+        notes_header.add_theme_font_override("font", TITLE_FONT)
+        notes_header.add_theme_font_size_override("font_size", 14)
+        notes_header.add_theme_color_override("font_color", ui_tokens.text_primary)
+        box.add_child(notes_header)
+
+        var notes_label := RichTextLabel.new()
+        notes_label.bbcode_enabled = true
+        notes_label.text = AppUpdater.markdown_to_bbcode(release_notes)
+        notes_label.fit_content = false
+        notes_label.scroll_active = true
+        notes_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+        notes_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+        notes_label.size_flags_vertical = Control.SIZE_EXPAND_FILL
+        notes_label.add_theme_font_size_override("normal_font_size", 13)
+        notes_label.add_theme_font_size_override("bold_font_size", 13)
+        notes_label.add_theme_color_override("default_color", ui_tokens.text_secondary)
+        notes_label.add_theme_constant_override("line_separation", 4)
+        notes_label.meta_clicked.connect(func(meta):
+            var url := str(meta)
+            if url.begins_with("http://") or url.begins_with("https://"):
+                OS.shell_open(url)
+        )
+        box.add_child(notes_label)
+
+    # Action buttons container: vertical column so button labels never clip on mobile
+    var action_box := VBoxContainer.new()
+    action_box.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+    action_box.add_theme_constant_override("separation", 8)
+    box.add_child(action_box)
+
+    if is_store:
+        var store_btn := _pill_button(_t("update.open_app_store"))
+        store_btn.clip_text = false
+        store_btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+        store_btn.custom_minimum_size = Vector2(0, 42)
+        store_btn.pressed.connect(func():
+            _dismiss_modal(func():
+                var target_url := app_store_url if not app_store_url.is_empty() else AppUpdater.APPLE_STORE_URL
+                OS.shell_open(target_url)
+            )
+        )
+        action_box.add_child(store_btn)
+    else:
+        var is_android := OS.get_name() == "Android"
+        var is_macos := OS.get_name() == "macOS"
+
+        var gh_btn := _pill_button(_t("update.download_github"))
+        gh_btn.clip_text = false
+        gh_btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+        gh_btn.custom_minimum_size = Vector2(0, 42)
+        gh_btn.pressed.connect(func():
+            _dismiss_modal(func():
+                var target_url := ""
+                if is_android and not github_apk_url.is_empty():
+                    target_url = github_apk_url
+                elif is_macos and not github_macos_url.is_empty():
+                    target_url = github_macos_url
+                elif not github_url.is_empty():
+                    target_url = github_url
+                else:
+                    target_url = AppUpdater.GITHUB_REPO_RELEASES_PAGE
+                OS.shell_open(target_url)
+            )
+        )
+        action_box.add_child(gh_btn)
+
+    var secondary_row := HBoxContainer.new()
+    secondary_row.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+    secondary_row.add_theme_constant_override("separation", 8)
+    action_box.add_child(secondary_row)
+
+    var skip_btn := _pill_button(_t("update.skip_version"))
+    skip_btn.clip_text = false
+    skip_btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+    skip_btn.custom_minimum_size = Vector2(0, 36)
+    ui_widgets.secondary_button(skip_btn)
+    skip_btn.pressed.connect(func():
+        skipped_update_version = latest_ver
+        var cfg := ConfigFile.new()
+        cfg.load(SETTINGS_FILE)
+        cfg.set_value("update", "skipped_version", skipped_update_version)
+        cfg.save(SETTINGS_FILE)
+        _dismiss_modal()
+    )
+    secondary_row.add_child(skip_btn)
+
+    var later_btn := _pill_button(_t("update.later"))
+    later_btn.clip_text = false
+    later_btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+    later_btn.custom_minimum_size = Vector2(0, 36)
+    ui_widgets.secondary_button(later_btn)
+    later_btn.pressed.connect(func(): _dismiss_modal())
+    secondary_row.add_child(later_btn)
 
 func _iap_supported_platform() -> bool:
     return OS.get_name() in ["iOS", "macOS"]
@@ -10366,6 +10718,8 @@ func _game_runtime_kind(path: String) -> String:
         # before falling back to the legacy KiriKiri host.
         if int(player.probe_runtime(RUNTIME_CATSYSTEM2, root)) > 0:
             return RUNTIME_CATSYSTEM2
+        if int(player.probe_runtime("softpal", root)) > 0:
+            return "softpal"
         if int(player.probe_runtime(RUNTIME_MINORI, root)) > 0:
             return RUNTIME_MINORI
         # Leaf TtT installs (WHITE ALBUM2) ship .pak archives that carry no
@@ -10383,6 +10737,12 @@ func _backfill_game_metadata(games: Array[Dictionary]) -> bool:
     for game in games:
         var path := String(game.get("path", ""))
         if path.is_empty() or builtin_demo.is_game(game):
+            continue
+        # Imported entries already have these fields. Reopening every game
+        # directory on launch can block on a protected or unavailable folder.
+        if not String(game.get("engine", "")).is_empty() \
+                and not String(game.get("title", "")).is_empty() \
+                and game.has("titleCandidates") and game.has("launchFile"):
             continue
         var metadata := GameMetadata.inspect(path)
         var engine := String(metadata.get("engine", RUNTIME_KIRIKIRI))
@@ -10413,6 +10773,10 @@ func _backfill_default_game_covers(games: Array[Dictionary]) -> bool:
         var game_path := String(game.get("path", ""))
         var stored_cover_path := String(game.get("coverPath", ""))
         var resolved_cover_path := _resolve_cover_path(game)
+        if bool(game.get(GAME_AUTO_COVER_SCANNED_FIELD, false)):
+            if stored_cover_path.is_empty() \
+                    or (not resolved_cover_path.is_empty() and FileAccess.file_exists(resolved_cover_path)):
+                continue
         var next_cover_path := stored_cover_path
         if not resolved_cover_path.is_empty() \
                 and FileAccess.file_exists(resolved_cover_path):
@@ -11155,6 +11519,7 @@ func _return_to_library_after_runtime_exit() -> void:
     _clear_game_input_capture()
     _finalize_active_game_session()
     game_running = false
+    softpal_aspect_mode = 1
     _sync_debug_console_state()
     app_lifecycle_paused = false
     cached_startup_state = STARTUP_IDLE
@@ -11176,6 +11541,7 @@ func _return_to_library_after_runtime_exit() -> void:
         game_view.visible = false
     if player != null:
         player.release_frame_texture()
+        _cleanup_softpal_platform_ui()
         player.destroy_engine()
     last_texture_size = Vector2i.ZERO
     _set_game_runtime_orientation(false)
@@ -11613,6 +11979,7 @@ func _switch_runtime_player(runtime_kind: String) -> bool:
         # Runtime implementations live behind one stable Godot-facing player.
         # Recreate only its engine handle so UI signals, frame effects, and
         # platform services do not need one Node implementation per backend.
+        _cleanup_softpal_platform_ui()
         player.destroy_engine()
         current_player_runtime_kind = normalized
     if not _ensure_player_initialized():
@@ -11652,6 +12019,117 @@ func _parse_platform_form(argument: String) -> Dictionary:
 func _on_runtime_platform_request(operation: String, argument: String) -> void:
     if player == null:
         return
+    if operation == "softpal_window_size":
+        if not _is_touch_platform() and get_window().mode == Window.MODE_WINDOWED:
+            var fields := _parse_platform_form(argument)
+            get_window().size = Vector2i(
+                clampi(int(fields.get("width", "1280")), 1, 16384),
+                clampi(int(fields.get("height", "720")), 1, 16384)
+            )
+        return
+    if operation == "softpal_aspect_mode":
+        softpal_aspect_mode = clampi(int(argument), 0, 3)
+        _layout_game_viewport(get_viewport_rect().size)
+        return
+    if operation == "softpal_cursor_visible":
+        if not _is_touch_platform() and game_running:
+            var fields := _parse_platform_form(argument)
+            Input.mouse_mode = Input.MOUSE_MODE_VISIBLE if String(
+                fields.get("visible", "1")
+            ) == "1" else Input.MOUSE_MODE_HIDDEN
+        return
+    if operation == "softpal_open_target":
+        var target := String(_parse_platform_form(argument).get("target", ""))
+        if not target.is_empty():
+            OS.shell_open(target)
+        return
+    if operation == "softpal_window_geometry":
+        var screen := get_window().current_screen
+        if screen < 0 or screen >= DisplayServer.get_screen_count():
+            screen = DisplayServer.get_primary_screen()
+        if screen < 0:
+            screen = 0
+        var monitor_size := DisplayServer.screen_get_size(screen)
+        var monitor_position := DisplayServer.screen_get_position(screen)
+        var window_position := get_window().position
+        player.submit_platform_response(
+            "softpal_window_geometry",
+            "monitor_width=%d&monitor_height=%d&window_x=%d&window_y=%d&monitor_x=%d&monitor_y=%d" % [
+                monitor_size.x,
+                monitor_size.y,
+                window_position.x,
+                window_position.y,
+                monitor_position.x,
+                monitor_position.y,
+            ]
+        )
+        return
+    if operation == "softpal_cursor_warp":
+        var fields := _parse_platform_form(argument)
+        var game_size := Vector2(
+            maxi(1, int(fields.get("width", "1"))),
+            maxi(1, int(fields.get("height", "1")))
+        )
+        var game_position := Vector2(
+            float(fields.get("x", "0")),
+            float(fields.get("y", "0"))
+        )
+        if get_window().has_focus():
+            viewport.get_viewport().warp_mouse(
+                _map_surface_point_to_viewport(
+                    game_position * _game_input_surface_size() / game_size
+                )
+            )
+        return
+    if operation == "softpal_window_title":
+        if softpal_original_window_title.is_empty():
+            softpal_original_window_title = get_window().title
+        get_window().title = String(
+            _parse_platform_form(argument).get("title", "")
+        )
+        return
+    if operation == "softpal_name_editor":
+        _handle_softpal_name_editor(_parse_platform_form(argument))
+        return
+    if operation == "softpal_file_dialog":
+        _show_softpal_file_dialog(_parse_platform_form(argument))
+        return
+    if operation == "softpal_stand_dialog":
+        _show_softpal_stand_dialog(_parse_platform_form(argument))
+        return
+    if operation == "softpal_http_get":
+        var url := String(_parse_platform_form(argument).get("url", ""))
+        var request := HTTPRequest.new()
+        request.timeout = 15.0
+        request.max_redirects = 8
+        request.use_threads = true
+        request.request_completed.connect(func(
+            result: int,
+            response_code: int,
+            _headers: PackedStringArray,
+            body: PackedByteArray
+        ) -> void:
+            var ok := result == HTTPRequest.RESULT_SUCCESS and \
+                response_code >= 200 and response_code < 400 and \
+                body.size() <= 2046
+            if player != null:
+                player.submit_platform_response(
+                    "softpal_http_get",
+                    "ok=1&body=%s" % Marshalls.raw_to_base64(body).uri_encode()
+                        if ok else "ok=0"
+                )
+            request.queue_free()
+        )
+        add_child(request)
+        var started := request.request(
+            url,
+            PackedStringArray(["Accept-Encoding: identity"]),
+            HTTPClient.METHOD_GET
+        )
+        if started != OK:
+            request.queue_free()
+            player.submit_platform_response("softpal_http_get", "ok=0")
+        return
     if operation == "minori_select":
         _show_minori_select(argument)
         return
@@ -11670,6 +12148,260 @@ func _on_runtime_platform_request(operation: String, argument: String) -> void:
         )
         return
     _append_log("Unhandled platform request: %s %s" % [operation, argument])
+
+func _softpal_name_character_width(character: String) -> int:
+    var codepoint := character.unicode_at(0)
+    return 1 if codepoint < 0x80 or (
+        codepoint >= 0xff61 and codepoint <= 0xff9f
+    ) else 2
+
+func _softpal_truncate_name(value: String, limit: int) -> String:
+    var result := ""
+    var used := 0
+    for character in value:
+        var width := _softpal_name_character_width(character)
+        if used + width > limit:
+            break
+        used += width
+        result += character
+    return result
+
+func _release_softpal_name_editor() -> void:
+    if softpal_name_input_layer != null and is_instance_valid(
+        softpal_name_input_layer
+    ):
+        softpal_name_input_layer.queue_free()
+    softpal_name_input_layer = null
+    softpal_name_input = null
+
+func _cleanup_softpal_platform_ui() -> void:
+    _release_softpal_name_editor()
+    if not softpal_original_window_title.is_empty():
+        get_window().title = softpal_original_window_title
+        softpal_original_window_title = ""
+
+func _layout_softpal_name_editor(fields: Dictionary) -> void:
+    if softpal_name_input_layer == null or softpal_name_input == null:
+        return
+    var position := Vector2(
+        float(fields.get("x", "0")),
+        float(fields.get("y", "0"))
+    )
+    var dimensions := Vector2(
+        maxf(1.0, float(fields.get("width", "1"))),
+        maxf(1.0, float(fields.get("height", "1")))
+    )
+    var top_left := _map_surface_point_to_viewport(position)
+    var bottom_right := _map_surface_point_to_viewport(position + dimensions)
+    softpal_name_input_layer.position = top_left
+    softpal_name_input_layer.size = Vector2(
+        maxf(1.0, bottom_right.x - top_left.x),
+        maxf(1.0, bottom_right.y - top_left.y)
+    )
+    softpal_name_input.position = Vector2.ZERO
+    softpal_name_input.size = softpal_name_input_layer.size
+    softpal_name_input.add_theme_font_size_override(
+        "font_size",
+        maxi(1, int(fields.get("font_size", "24")))
+    )
+
+func _handle_softpal_name_editor(fields: Dictionary) -> void:
+    var operation := int(fields.get("operation", "0"))
+    if operation == 3:
+        _release_softpal_name_editor()
+        return
+    if operation == 1:
+        _release_softpal_name_editor()
+        softpal_name_input_layer = Control.new()
+        softpal_name_input_layer.name = "SoftPalNameInputLayer"
+        softpal_name_input_layer.z_index = 4094
+        softpal_name_input_layer.mouse_filter = Control.MOUSE_FILTER_PASS
+        add_child(softpal_name_input_layer)
+        softpal_name_input = LineEdit.new()
+        softpal_name_input.name = "SoftPalNameInput"
+        softpal_name_input.add_theme_color_override("font_color", Color.BLACK)
+        softpal_name_input.add_theme_color_override("caret_color", Color.BLACK)
+        softpal_name_input.add_theme_color_override(
+            "font_selected_color", Color.WHITE
+        )
+        softpal_name_input.add_theme_color_override(
+            "selection_color", Color8(0, 120, 215)
+        )
+        var background := StyleBoxFlat.new()
+        background.bg_color = Color.WHITE
+        background.content_margin_left = 2
+        background.content_margin_right = 2
+        softpal_name_input.add_theme_stylebox_override("normal", background)
+        softpal_name_input.add_theme_stylebox_override(
+            "focus", StyleBoxEmpty.new()
+        )
+        softpal_name_input_layer.add_child(softpal_name_input)
+        softpal_name_input.text_changed.connect(func(value: String) -> void:
+            if softpal_name_input_layer == null or bool(
+                softpal_name_input_layer.get_meta("updating", false)
+            ):
+                return
+            var limit := int(
+                softpal_name_input_layer.get_meta("limit", 32)
+            )
+            var bounded := _softpal_truncate_name(value, limit)
+            if bounded != value:
+                softpal_name_input_layer.set_meta("updating", true)
+                softpal_name_input.text = bounded
+                softpal_name_input.caret_column = bounded.length()
+                softpal_name_input_layer.set_meta("updating", false)
+            if player != null:
+                player.submit_platform_response(
+                    "softpal_name_editor",
+                    "text=%s&caret=%d&composing=%d" % [
+                        bounded.uri_encode(),
+                        softpal_name_input.caret_column,
+                        int(softpal_name_input.has_ime_text()),
+                    ]
+                )
+        )
+    if softpal_name_input_layer == null or softpal_name_input == null:
+        return
+    softpal_name_input_layer.set_meta(
+        "limit", maxi(1, int(fields.get("limit", "32")))
+    )
+    if operation in [1, 5]:
+        softpal_name_input_layer.set_meta("updating", true)
+        softpal_name_input.text = _softpal_truncate_name(
+            String(fields.get("text", "")),
+            int(softpal_name_input_layer.get_meta("limit", 32))
+        )
+        softpal_name_input.caret_column = 0
+        softpal_name_input_layer.set_meta("updating", false)
+    _layout_softpal_name_editor(fields)
+    if operation == 1:
+        softpal_name_input.grab_focus()
+
+func _softpal_special_folder(value: int) -> String:
+    match value & 0xff:
+        0x00, 0x10:
+            return OS.get_system_dir(OS.SYSTEM_DIR_DESKTOP)
+        0x05:
+            return OS.get_system_dir(OS.SYSTEM_DIR_DOCUMENTS)
+        0x0d:
+            return OS.get_system_dir(OS.SYSTEM_DIR_MUSIC)
+        0x0e:
+            return OS.get_system_dir(OS.SYSTEM_DIR_MOVIES)
+        0x27:
+            return OS.get_system_dir(OS.SYSTEM_DIR_PICTURES)
+        0x1a, 0x1c, 0x23:
+            return OS.get_data_dir()
+    var home := OS.get_environment("HOME")
+    return home if not home.is_empty() else OS.get_executable_path().get_base_dir()
+
+func _show_softpal_file_dialog(fields: Dictionary) -> void:
+    var extension := String(fields.get("extension", ""))
+    var filters := PackedStringArray(["*.* ; All files"])
+    if not extension.is_empty():
+        filters.insert(0, "*.%s ; %s files" % [extension, extension])
+    var dialog := _create_file_dialog(
+        String(fields.get("title", "")),
+        FileDialog.FILE_MODE_SAVE_FILE if int(fields.get("save", "0")) != 0 \
+            else FileDialog.FILE_MODE_OPEN_FILE,
+        filters
+    )
+    var folder := _softpal_special_folder(int(fields.get("folder", "0")))
+    if DirAccess.dir_exists_absolute(folder):
+        dialog.current_dir = folder
+    var initial := String(fields.get("initial", "")).replace("\\", "/")
+    if not initial.is_empty():
+        if initial.is_absolute_path():
+            dialog.current_path = initial
+        else:
+            dialog.current_file = initial.get_file()
+    dialog.file_selected.connect(func(path: String) -> void:
+        if player != null:
+            player.submit_platform_response(
+                "softpal_file_dialog",
+                "accepted=1&path=%s" % path.uri_encode()
+            )
+    )
+    dialog.canceled.connect(func() -> void:
+        if player != null:
+            player.submit_platform_response(
+                "softpal_file_dialog", "accepted=0&path="
+            )
+    )
+    add_child(dialog)
+    dialog.popup_centered(Vector2i(900, 640))
+
+func _show_softpal_stand_dialog(fields: Dictionary) -> void:
+    var dialog := ConfirmationDialog.new()
+    dialog.title = "立绘文本编辑" if active_language.begins_with("zh") else \
+        "立ち絵テキスト編集" if active_language.begins_with("ja") else \
+        "Stand Text Editor"
+    dialog.exclusive = true
+    dialog.unresizable = false
+    dialog.dialog_hide_on_ok = false
+    var column := VBoxContainer.new()
+    column.custom_minimum_size = Vector2(680, 400)
+    column.add_theme_constant_override("separation", 10)
+    var limits := Label.new()
+    limits.text = "Name: %s; dialogue: %s×%s" % [
+        fields.get("name_width", "0"),
+        fields.get("text_width", "0"),
+        fields.get("line_limit", "0"),
+    ]
+    column.add_child(limits)
+    var name_row := HBoxContainer.new()
+    var options := String(fields.get("options", "")).split("\n", false)
+    var choices: OptionButton = null
+    if not options.is_empty():
+        choices = OptionButton.new()
+        choices.custom_minimum_size.x = 180
+        for option in options:
+            choices.add_item(option)
+        name_row.add_child(choices)
+    var name_edit := LineEdit.new()
+    name_edit.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+    name_edit.text = String(fields.get("name", ""))
+    name_row.add_child(name_edit)
+    column.add_child(name_row)
+    if choices != null:
+        choices.item_selected.connect(func(index: int) -> void:
+            if index >= 0 and index < options.size():
+                name_edit.text = options[index]
+        )
+    var text_edit := TextEdit.new()
+    text_edit.size_flags_vertical = Control.SIZE_EXPAND_FILL
+    text_edit.wrap_mode = TextEdit.LINE_WRAPPING_BOUNDARY
+    text_edit.text = String(fields.get("text", ""))
+    column.add_child(text_edit)
+    dialog.add_child(column)
+    var finished := {"value": false}
+    dialog.confirmed.connect(func() -> void:
+        if finished.value:
+            return
+        finished.value = true
+        if player != null:
+            player.submit_platform_response(
+                "softpal_stand_dialog",
+                "accepted=1&name=%s&text=%s" % [
+                    name_edit.text.uri_encode(),
+                    text_edit.text.uri_encode(),
+                ]
+            )
+        dialog.hide()
+        dialog.queue_free()
+    )
+    dialog.canceled.connect(func() -> void:
+        if finished.value:
+            return
+        finished.value = true
+        if player != null:
+            player.submit_platform_response(
+                "softpal_stand_dialog", "accepted=0"
+            )
+        dialog.queue_free()
+    )
+    add_child(dialog)
+    dialog.popup_centered(Vector2i(760, 520))
+    text_edit.grab_focus()
 
 func _show_minori_select(argument: String) -> void:
     if modal_layer == null or player == null:
@@ -11781,6 +12513,7 @@ func _build_runtime_dialog_content(
 
     var text_field := String(values.get("text_field", "0")) == "1"
     var yes_no := String(values.get("yes_no", "0")) == "1"
+    var explicit_buttons := String(values.get("buttons", ""))
     runtime_dialog_input = null
     if text_field:
         runtime_dialog_input = LineEdit.new()
@@ -11801,7 +12534,20 @@ func _build_runtime_dialog_content(
     buttons.add_theme_constant_override("separation", 14)
     box.add_child(buttons)
 
-    if yes_no:
+    if not explicit_buttons.is_empty():
+        for specification in explicit_buttons.split("|", false):
+            var separator := specification.find(":")
+            if separator <= 0:
+                continue
+            var result_id := int(specification.left(separator))
+            var label := specification.substr(separator + 1)
+            var explicit := _pill_button(label)
+            explicit.custom_minimum_size = Vector2(150, 60)
+            explicit.pressed.connect(
+                _complete_runtime_dialog.bind(result_id, runtime_dialog_input)
+            )
+            buttons.add_child(explicit)
+    elif yes_no:
         var no := _pill_button("No")
         no.custom_minimum_size = Vector2(150, 60)
         no.pressed.connect(
@@ -11809,12 +12555,14 @@ func _build_runtime_dialog_content(
         )
         buttons.add_child(no)
 
-    var ok := _pill_button("Yes" if yes_no else "OK")
-    ok.custom_minimum_size = Vector2(150, 60)
-    ok.pressed.connect(
-        _complete_runtime_dialog.bind(1, runtime_dialog_input)
-    )
-    buttons.add_child(ok)
+    var ok: Button = null
+    if explicit_buttons.is_empty():
+        ok = _pill_button("Yes" if yes_no else "OK")
+        ok.custom_minimum_size = Vector2(150, 60)
+        ok.pressed.connect(
+            _complete_runtime_dialog.bind(1, runtime_dialog_input)
+        )
+        buttons.add_child(ok)
 
     if runtime_dialog_input != null:
         runtime_dialog_input.text_submitted.connect(
@@ -11822,8 +12570,12 @@ func _build_runtime_dialog_content(
                 _complete_runtime_dialog(1, runtime_dialog_input)
         )
         runtime_dialog_input.call_deferred("grab_focus")
-    else:
+    elif ok != null:
         ok.call_deferred("grab_focus")
+    elif buttons.get_child_count() > 0:
+        var first := buttons.get_child(0) as Button
+        if first != null:
+            first.call_deferred("grab_focus")
 
 func _complete_runtime_dialog(result: int, input: LineEdit) -> void:
     if modal_layer == null or not bool(
@@ -11882,6 +12634,7 @@ func _ensure_player_initialized() -> bool:
             player.get_last_result(),
             player.get_last_error(),
         ])
+        _cleanup_softpal_platform_ui()
         player.destroy_engine()
         return false
 
@@ -11958,6 +12711,7 @@ func _continue_ready_after_legal_gate() -> void:
         _append_log("Native auto-start ignored. Set AETHERKIRI_ENABLE_AUTO_START=1 for automation runs.")
     if not OS.get_environment("AETHERKIRI_CAPTURE_UI").is_empty():
         call_deferred("_capture_ui_after_ready")
+    call_deferred("_check_app_update_silently")
 
 func _request_android_storage_permissions() -> void:
     if OS.get_name() != "Android":
@@ -13433,6 +14187,7 @@ func _probe_cleanup_and_quit(code: int) -> void:
         viewport.texture = null
         await get_tree().process_frame
         player.release_frame_texture()
+        _cleanup_softpal_platform_ui()
         player.destroy_engine()
     get_tree().quit(code)
 
@@ -14197,6 +14952,7 @@ func _notification(what: int) -> void:
             diagnostic_session.finish()
         viewport.texture = null
         player.release_frame_texture()
+        _cleanup_softpal_platform_ui()
         player.destroy_engine()
 
 func _handle_go_back_request() -> void:
@@ -14992,6 +15748,16 @@ func _auto_probe_wait_frames(frames: int) -> void:
 func _save_auto_probe_step(index: int, label: String) -> void:
     await get_tree().process_frame
     await get_tree().process_frame
+    if _runtime_flag("AETHERKIRI_AUTO_PROBE_NO_CAPTURE"):
+        var runtime_debug_without_capture: String = player.get_plugin_debug_info()
+        var no_capture_line := "auto_step index=%d label=%s capture=disabled runtime_debug=%s" % [
+            index,
+            label,
+            runtime_debug_without_capture,
+        ]
+        _write_probe_marker(no_capture_line)
+        print(no_capture_line)
+        return
     var frame: Dictionary = player.read_frame_rgba()
     var frame_stats := _frame_stats(frame)
     var image := get_viewport().get_texture().get_image()
@@ -16733,6 +17499,17 @@ func _sync_game_text_input_state() -> void:
 func _map_surface_point_to_screen(point: Vector2) -> Vector2:
     if viewport == null:
         return point
+    return viewport.get_screen_transform() * _map_surface_point_to_local(point)
+
+func _map_surface_point_to_viewport(point: Vector2) -> Vector2:
+    if viewport == null:
+        return point
+    return viewport.get_global_transform_with_canvas() * \
+        _map_surface_point_to_local(point)
+
+func _map_surface_point_to_local(point: Vector2) -> Vector2:
+    if viewport == null:
+        return point
     var local_point := point
     if viewport.texture != null:
         var texture_size := Vector2(
@@ -16752,7 +17529,7 @@ func _map_surface_point_to_screen(point: Vector2) -> Vector2:
         var drawn_size := texture_size * scale
         var offset := (panel_size - drawn_size) * 0.5
         local_point = offset + texture_point * scale
-    return viewport.get_screen_transform() * local_point
+    return local_point
 
 func _map_viewport_point(pos: Vector2, clamp_to_bounds: bool = false) -> Vector2:
     if viewport.texture == null:
@@ -17736,7 +18513,11 @@ func _maybe_show_notice() -> void:
         return
     if int(Time.get_unix_time_from_system()) < _notice_snoozed_until():
         return
-    await get_tree().create_timer(0.6).timeout
+    # Wait until update check completes and no modal is active
+    for _i in range(15):
+        if not update_checking and not (modal_layer != null and modal_layer.visible):
+            break
+        await get_tree().create_timer(0.3).timeout
     if game_running or (modal_layer != null and modal_layer.visible):
         return
     _show_notice()

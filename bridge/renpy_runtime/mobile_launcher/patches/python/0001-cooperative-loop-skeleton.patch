@@ -12,7 +12,7 @@ index 4d3b125..33f2cf7 100644
  
              import android
 diff --git a/renpy/display/core.py b/renpy/display/core.py
-index 89c74d1..ab5c04b 100644
+index 89c74d1..458fc7b 100644
 --- a/renpy/display/core.py
 +++ b/renpy/display/core.py
 @@ -32,6 +32,7 @@ import platform
@@ -70,11 +70,25 @@ index 89c74d1..ab5c04b 100644
          if ev.type != pygame.APP_WILLENTERBACKGROUND:
              return False
  
-@@ -2774,6 +2792,7 @@ class Interface:
+@@ -2756,6 +2774,7 @@ class Interface:
+ 
+             old_timeout_time = None
+             old_redraw_time = None
++            aether_timer_generation = aether_mobile.cooperative_timer_generation()
+ 
+             rv = None
+ 
+@@ -2774,6 +2793,13 @@ class Interface:
              can_block = False
  
              while rv is None:
 +                aether_mobile.cooperative_checkpoint()
++                if aether_timer_generation != aether_mobile.cooperative_timer_generation():
++                    # Host pause canceled SDL timers while this stack stayed
++                    # suspended. Rearm the existing deadlines below even when
++                    # the redraw/timeout times themselves have not changed.
++                    old_timeout_time = old_redraw_time = None
++                    aether_timer_generation = aether_mobile.cooperative_timer_generation()
                  renpy.plog(1, "start of interact while loop")
  
                  renpy.execution.not_infinite_loop(10)
@@ -375,10 +389,10 @@ index 889c908..bfd94f3 100644
          return pixels[self.surface.h * self.surface.pitch]
 diff --git a/renpy/aether_mobile.py b/renpy/aether_mobile.py
 new file mode 100644
-index 0000000..58fb17c
+index 0000000..b1910bb
 --- /dev/null
 +++ b/renpy/aether_mobile.py
-@@ -0,0 +1,358 @@
+@@ -0,0 +1,386 @@
 +"""Host-owned Ren'Py loop; all SDL/GL work stays on the calling thread.
 +
 +The native launcher links greenlet with its target CPython. No exception is
@@ -402,6 +416,7 @@ index 0000000..58fb17c
 +_frame = None
 +_serial = 0
 +_paused = False
++_timer_generation = 0
 +_stopping = False
 +_terminal_cleanup_done = False
 +_error = None
@@ -638,25 +653,52 @@ index 0000000..58fb17c
 +def cooperative_pause():
 +    global _paused
 +    _check_owner()
-+    if _game is None or _game.dead:
++    if _game is None or _game.dead or _paused:
 +        return
 +    import renpy
-+    if renpy.display.interface and renpy.display.interface.started:
-+        renpy.display.interface.mobile_save()
++    interface = renpy.display.interface
++    if interface and interface.started:
++        import renpy.pygame as pygame
++        import renpy.display.core as core
++        interface.mobile_save()
 +        renpy.audio.audio.pause_all()
++        # check_suspend is bypassed in host mode. Stop its three timers here
++        # rather than let SDL's timer thread fill the queue while Tick stops.
++        timers = (core.PERIODIC, core.REDRAW, core.TIMEEVENT)
++        for event_type in timers:
++            pygame.time.set_timer(event_type, 0)
++        pygame.event.clear(timers)
++        if interface.pushed_event is not None and interface.pushed_event.type in timers:
++            interface.pushed_event = None
 +    _paused = True
 +
 +
 +def cooperative_resume():
-+    global _paused
++    global _paused, _timer_generation
 +    _check_owner()
-+    if _game is None or _game.dead:
++    if _game is None or _game.dead or not _paused:
 +        return
 +    import renpy
-+    if renpy.display.interface and renpy.display.interface.started:
++    interface = renpy.display.interface
++    if interface and interface.started:
++        import renpy.pygame as pygame
++        import renpy.display.core as core
++        # Remove any callback that was already in flight when pause removed
++        # the timers. Do not clear touch, key or text events.
++        pygame.event.clear((core.PERIODIC, core.REDRAW, core.TIMEEVENT))
++        pygame.time.set_timer(core.PERIODIC, core.PERIODIC_INTERVAL)
 +        renpy.audio.audio.unpause_all()
-+        renpy.display.interface.force_redraw = True
++        interface.force_redraw = True
++        _timer_generation += 1
++        # Wake an event_wait suspended inside interact_core. Its saved timer
++        # caches are invalidated at the next loop boundary, without restarting
++        # the interaction or firing an artificial timeout at a displayable.
++        pygame.event.post(pygame.event.Event(core.PERIODIC))
 +    _paused = False
++
++
++def cooperative_timer_generation():
++    return _timer_generation
 +
 +
 +def cooperative_text_input_state():

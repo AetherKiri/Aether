@@ -213,6 +213,17 @@ diff --git a/tasks/python3.py b/tasks/python3.py
  
  
  @task(kind="python", pythons="3", platforms="linux,mac")
+@@ -140,6 +139,9 @@
+         f.write("ac_cv_func_getentropy=no\n")
+         f.write("ac_cv_have_long_long_format=yes\n")
+-        f.write("ac_cv_func_clock_settime=no")
++        f.write("ac_cv_func_clock_settime=no\n")
++        # iOS does not provide the NIS RPC headers. This is CPython's
++        # supported unsupported-module selector, not a fabricated header probe.
++        f.write("py_cv_module_nis=n/a\n")
+ 
+     c.run("""
+         {{configure}} {{ cross_config }}
 diff --git a/tasks/librenpy.py b/tasks/librenpy.py
 --- a/tasks/librenpy.py
 +++ b/tasks/librenpy.py

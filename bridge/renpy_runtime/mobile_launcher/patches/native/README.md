@@ -48,6 +48,12 @@ The MetalANGLE annotator keeps its header paths and definitions in compiler
 flags and supplies `-framework MetalANGLE` through linker flags. Compile-only
 dependency builds retain their strict warning checks.
 
+The iOS CPython task disables optional NIS using the supported
+`py_cv_module_nis=n/a` configure selector because the iOS SDK does not provide
+its RPC headers. Host Python and the other target policies retain their normal
+module detection. The regression runs genuine CPython configure and checks its
+generated module rules; on macOS it also probes both actual iOS SDKs.
+
 `0009-bounded-build-parallelism.patch` limits the upstream native object build
 group to the host CPU count. Set `RENPY_BUILD_JOBS` to a positive integer to
 select another limit. Child compiler failures still fail the build, and an
@@ -59,6 +65,13 @@ frame byte storage. It invokes the full cooperative Python entrypoints,
 preserves pointer/key/text actions, publishes renderer screenshots and
 returns observable normal-exit and text-input state. Window binding connects
 the real SDL renderer window to the Android EGL context handoff.
+
+Host pause stops PERIODIC, REDRAW and TIMEEVENT, and clears only their queued
+events. Resume restarts PERIODIC and wakes the suspended event wait. The saved
+interaction invalidates its timer scheduling caches and rearms its original
+redraw and timeout deadlines without restarting the interaction or resetting
+the renderer. Repeated pause and resume calls are idempotent. Real background
+and resume gameplay acceptance remains required.
 
 Terminal shutdown runs on the interpreter's owning thread while its healthy
 private context is current. The cooperative patch stops the engine timers,

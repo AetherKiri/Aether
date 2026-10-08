@@ -151,7 +151,8 @@ renpy_build_source_preflight() {
     if [[ "$platform" != android && "$host_system" != Darwin ]]; then
         archives+=(iPhoneOS14.0.sdk.tar.gz iPhoneSimulator14.0.sdk.tar.gz)
     fi
-    for required in "${archives[@]}"; do
+    # Bash 3.2 treats an empty array as unset under nounset (the macOS default).
+    for required in ${archives[@]+"${archives[@]}"}; do
         if [[ ! -f "$renpy_build/tars/$required" ]]; then
             echo "missing toolchain archive: $renpy_build/tars/$required" >&2
             failures=$((failures + 1))

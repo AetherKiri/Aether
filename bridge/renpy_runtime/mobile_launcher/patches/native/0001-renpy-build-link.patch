@@ -1,3 +1,16 @@
+diff --git a/tasks/librenpy.py b/tasks/librenpy.py
+--- a/tasks/librenpy.py
++++ b/tasks/librenpy.py
+@@ -24,7 +24,7 @@ def build(c: Context):
+     if c.platform == "web" and c.python == "2":
+         return
+ 
+-    c.env("CFLAGS", """{{ CFLAGS }} "-I{{ renpy }}/src" "-I{{renpy}}/tmp/gen3" """)
+-    c.env("CXXFLAGS", """{{ CXXFLAGS }} "-I{{ renpy }}/src" "-I{{renpy}}/tmp/gen3" """)
++    c.env("CFLAGS", """{{ CFLAGS }} "-I{{ renpy }}/src" "-I{{renpy}}/tmp/gen3-static" "-I{{renpy}}/tmp/gen3" """)
++    c.env("CXXFLAGS", """{{ CXXFLAGS }} "-I{{ renpy }}/src" "-I{{renpy}}/tmp/gen3-static" "-I{{renpy}}/tmp/gen3" """)
+ 
+     gen = "gen3-static/"
 diff --git a/tasks/renpython.py b/tasks/renpython.py
 index 114bc33..3bf1a3a 100644
 --- a/tasks/renpython.py

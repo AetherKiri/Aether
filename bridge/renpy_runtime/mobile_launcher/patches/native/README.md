@@ -6,6 +6,11 @@ ABI header into that checkout. It compiles the shared native lifecycle and
 linked greenlet for Android and every selected iOS target. The platform
 bootstrap initializes CPython without calling the process launchers.
 
+`0001-renpy-build-link.patch` also includes the static Cython output directory
+when compiling Ren'Py's C and C++ sources. Its generated surface API header
+lives in `tmp/gen3-static`, so a clean rebuild does not depend on a previous
+desktop generation having populated `tmp/gen3`.
+
 `0005-optional-cubism.patch` keeps the base runtime build independent of the
 optional licensed SDKs. It enables Live2D generation and its native module only
 when the target Cubism header exists, and packages `steamapi` only when the

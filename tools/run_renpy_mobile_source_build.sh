@@ -140,7 +140,7 @@ if [[ "$platform" == ios || "$platform" == all ]]; then
     if [[ "$(uname -s)" == Darwin ]]; then
         ios_arch_args=(--arch arm64,sim-arm64)
     fi
-    (cd "$renpy_build"; ./build.sh --platform ios --python 3 "${ios_arch_args[@]}" rebuild librenpy pythonlib renpython renios)
+    (cd "$renpy_build"; ./build.sh --platform ios --python 3 ${ios_arch_args[@]+"${ios_arch_args[@]}"} rebuild librenpy pythonlib renpython renios)
 fi
 symbols=(renpy_mobile_bootstrap renpy_mobile_bind_window renpy_mobile_init renpy_mobile_tick
          renpy_mobile_frame renpy_mobile_input renpy_mobile_pause renpy_mobile_resume renpy_mobile_shutdown

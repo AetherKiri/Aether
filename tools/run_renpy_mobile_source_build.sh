@@ -107,7 +107,7 @@ python3 "$repo_root/tools/apply_renpy_mobile_patch_series.py" \
     "$patch_root/python/0001-cooperative-loop-skeleton.patch"
 python3 "$repo_root/tools/apply_renpy_mobile_patch_series.py" \
     --checkout "$renpy_build" --pin "$build_sha" \
-    "$patch_root/native"/000[0-9]-*.patch
+    "$patch_root/native"/[0-9][0-9][0-9][0-9]-*.patch
 cp "$patch_root/native/renpy_mobile_lifecycle.c" "$renpy_build/runtime/renpy_mobile_lifecycle.c"
 cp "$repo_root/bridge/renpy_runtime/mobile_launcher/include/renpy_mobile_launcher.h" "$renpy_build/runtime/renpy_mobile_launcher.h"
 mkdir -p "$renpy_build/runtime/greenlet"

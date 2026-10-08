@@ -26,7 +26,7 @@ def main():
     parser.add_argument("--renpy-src", type=Path)
     parser.add_argument("--greenlet-src", type=Path)
     args = parser.parse_args()
-    patches = sorted((REPO / "bridge/renpy_runtime/mobile_launcher/patches/native").glob("000[0-9]-*.patch"))
+    patches = sorted((REPO / "bridge/renpy_runtime/mobile_launcher/patches/native").glob("[0-9][0-9][0-9][0-9]-*.patch"))
     with tempfile.TemporaryDirectory(prefix="renpy-patch-series-") as temporary:
         root = Path(temporary) / "renpy-build"
         clone(args.build_source, root, PIN)

@@ -8,6 +8,7 @@ on:
       - 'tools/apply_renpy_mobile_patch_series.py'
       - 'tools/validate_renpy_mobile_payload.py'
       - 'tools/test_renpy_mobile_ios_libffi.py'
+      - 'tools/test_renpy_mobile_ios_host_python.py'
       - 'tools/renpy_ios_acceptance/**'
       - 'tools/run_renpy_ios_device_acceptance.py'
       - 'tools/patch_renpy_ios_runtime_project.py'
@@ -124,6 +125,10 @@ jobs:
             2>&1 | tee -a "$RUNNER_TEMP/renpy-ios-source-prepare.log"
           uv --project "$RENPY_BUILD_ROOT/renpy" run python \
             "$GITHUB_WORKSPACE/tools/test_renpy_mobile_ios_libffi.py" "$RENPY_BUILD_ROOT" \
+            2>&1 | tee -a "$RUNNER_TEMP/renpy-ios-source-prepare.log"
+          uv --project "$RENPY_BUILD_ROOT/renpy" run python \
+            "$GITHUB_WORKSPACE/tools/test_renpy_mobile_ios_host_python.py" "$RENPY_BUILD_ROOT" \
+            --renpy-src "$RENPY_BUILD_ROOT/renpy" \
             2>&1 | tee -a "$RUNNER_TEMP/renpy-ios-source-prepare.log"
       - name: Compile target CPython, SDL, Ren'Py and device/Simulator archives
         if: steps.runtime-cache.outputs.cache-hit != 'true'

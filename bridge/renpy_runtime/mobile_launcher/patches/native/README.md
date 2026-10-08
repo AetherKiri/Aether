@@ -68,6 +68,26 @@ select another limit. Child compiler failures still fail the build, and an
 exception cancels queued work and joins running child processes. This limits
 concurrent compiler memory use; it does not change source-build prerequisites.
 
+`0010-ios-host-python.patch` keeps iOS build tools on the canonical host
+CPython. Copying its executable into a target prefix selects the target
+standard library and dynamic modules, which the host cannot load. Each target
+instead gets a build-only virtual environment linked to the original host
+interpreter, plus an isolated `hostpython3` wrapper used by package installation,
+Ren'Py source generation and bytecode compilation. Host tools clear inherited
+`PYTHONHOME` and `PYTHONPATH`; package indexes and proxy settings remain intact.
+
+The original Python dependency versions are installed into the target's
+`site-packages` from verified pure wheels. The pinned `pefile` release has only
+a source distribution, so the host builds its pure wheel first. The wheel gate
+checks platform tags and archive contents, rejecting native extensions and
+executables except the eight known Windows launcher resources in the upstream
+`setuptools==74.1.2` pure wheel. Those resources are build-tool data, and the
+existing Python payload whitelist excludes setuptools. The host virtual
+environment lies outside the packaged Python and native archive roots.
+The preparation regression executes real pip installation, the pinned
+`setuplib` import and actual bytecode compilation under conflicting Python
+path variables. It does not compile or execute an iOS runtime.
+
 `renpy_mobile_lifecycle.c` owns the copied host callback table and the borrowed
 frame byte storage. It invokes the full cooperative Python entrypoints,
 preserves pointer/key/text actions, publishes renderer screenshots and

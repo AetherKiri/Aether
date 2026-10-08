@@ -1,11 +1,21 @@
 name: Build Ren'Py iOS runtime
 
 on:
+  pull_request:
+    paths:
+      - '.github/workflows/renpy-ios-runtime-build.yml'
+      - 'tools/run_renpy_mobile_source_build.sh'
+      - 'tools/validate_renpy_mobile_payload.py'
+      - 'bridge/renpy_runtime/mobile_launcher/**'
   workflow_call:
   workflow_dispatch:
 
 permissions:
   contents: read
+
+concurrency:
+  group: renpy-ios-source-${{ github.event.pull_request.number || github.ref }}-${{ github.workflow }}
+  cancel-in-progress: false
 
 jobs:
   ios-runtime:

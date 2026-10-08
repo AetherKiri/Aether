@@ -63,7 +63,7 @@ xcrun --sdk iphonesimulator clang -target "$arch-apple-ios15.0-simulator" -isysr
     -Wall -Wextra -Werror -Wno-deprecated-declarations -fobjc-arc \
     -I"$framework/Headers" -F"$(dirname "$framework")" \
     "$repo_root/tools/renpy_ios_egl_probe/main.m" "$output/egl_probe.o" \
-    -framework MetalANGLE -framework UIKit -framework Foundation -framework QuartzCore \
+    -framework MetalANGLE -framework UIKit -framework Foundation -framework QuartzCore -framework CoreGraphics \
     -Wl,-rpath,@executable_path/Frameworks -o "$app/AetherRenPyEGLProbe"
 codesign --force --sign - "$app"
 xcrun otool -L "$app/AetherRenPyEGLProbe" > "$output/evidence/app-linked-libraries.txt"

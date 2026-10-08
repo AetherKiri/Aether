@@ -49,3 +49,23 @@ jobs:
             ${{ runner.temp }}/renpy-ios-egl-probe.log
           if-no-files-found: error
           retention-days: 7
+      - name: Install the actual SDL configure tools
+        run: brew install autoconf automake libtool
+      - name: Build and execute the patched SDL offscreen renderer
+        run: |
+          set -euo pipefail
+          export LIBTOOLIZE=glibtoolize
+          bash tools/renpy_ios_egl_probe/run_sdl_probe.sh \
+            --renpy-build "$GITHUB_WORKSPACE/_renpy-probe-source" \
+            --output "$GITHUB_WORKSPACE/out/renpy-ios-sdl-probe" \
+            2>&1 | tee "$RUNNER_TEMP/renpy-ios-sdl-probe.log"
+      - name: Preserve patched SDL execution evidence
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: renpy-ios-sdl-probe
+          path: |
+            out/renpy-ios-sdl-probe/evidence
+            ${{ runner.temp }}/renpy-ios-sdl-probe.log
+          if-no-files-found: warn
+          retention-days: 7

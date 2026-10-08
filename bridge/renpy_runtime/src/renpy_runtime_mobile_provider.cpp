@@ -406,6 +406,7 @@ const engine_runtime_provider_v1_t& Provider() {
         p.get_frame_rendered_flag = Rendered;
         p.get_renderer_info = Renderer;
         p.get_text_input_state = UnsupportedTextState;
+        p.get_last_error = Error;
         return p;
     }();
     return provider;

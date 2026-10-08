@@ -8,6 +8,7 @@ typedef struct aether_egl_probe_result {
     int readback_verified;
     int host_context_restored;
     int resume_verified;
+    int sdl_terminal_cleanup_verified;
     int client_version;
     unsigned int egl_error;
     unsigned int gl_error;

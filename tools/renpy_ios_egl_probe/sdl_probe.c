@@ -25,6 +25,8 @@ int aether_run_egl_probe(aether_egl_probe_result *out) {
     EGLContext host_context = EGL_NO_CONTEXT;
     SDL_Window *window = NULL;
     SDL_GLContext context = NULL;
+    GLuint host_texture = 0, host_fbo = 0, host_program = 0;
+    GLuint host_vertex = 0, host_fragment = 0;
 #define SDL_CHECK(condition, message) do { if (!(condition)) { \
     snprintf(out->error, sizeof(out->error), "%s: %s", message, SDL_GetError()); \
     out->egl_error = eglGetError(); out->gl_error = glGetError(); goto cleanup; \
@@ -122,6 +124,36 @@ int aether_run_egl_probe(aether_egl_probe_result *out) {
     SDL_CHECK(host_surface != EGL_NO_SURFACE && host_context != EGL_NO_CONTEXT, "host pbuffer/context");
     SDL_CHECK(eglMakeCurrent(display, host_surface, host_surface, host_context), "bind host context");
     glClearColor(0, 1, 1, 1); glClear(GL_COLOR_BUFFER_BIT);
+    /* Keep independent host GPU resources alive through the SDL teardown.
+       They belong to the same EGLDisplay but do not share a GL context. */
+    glGenTextures(1, &host_texture);
+    glBindTexture(GL_TEXTURE_2D, host_texture);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, 16, 16, 0, GL_RGBA, GL_UNSIGNED_BYTE, NULL);
+    glGenFramebuffers(1, &host_fbo);
+    glBindFramebuffer(GL_FRAMEBUFFER, host_fbo);
+    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, host_texture, 0);
+    SDL_CHECK(glCheckFramebufferStatus(GL_FRAMEBUFFER) == GL_FRAMEBUFFER_COMPLETE,
+              "independent host sentinel framebuffer");
+    glClearColor(0, 1, 1, 1); glClear(GL_COLOR_BUFFER_BIT);
+    glBindFramebuffer(GL_FRAMEBUFFER, 0);
+    const char *vertex_source = "attribute vec4 position; void main() { gl_Position = position; }";
+    const char *fragment_source = "precision mediump float; void main() { gl_FragColor = vec4(1.0); }";
+    host_vertex = glCreateShader(GL_VERTEX_SHADER);
+    host_fragment = glCreateShader(GL_FRAGMENT_SHADER);
+    glShaderSource(host_vertex, 1, &vertex_source, NULL);
+    glShaderSource(host_fragment, 1, &fragment_source, NULL);
+    glCompileShader(host_vertex); glCompileShader(host_fragment);
+    GLint compiled_vertex = 0, compiled_fragment = 0, linked = 0;
+    glGetShaderiv(host_vertex, GL_COMPILE_STATUS, &compiled_vertex);
+    glGetShaderiv(host_fragment, GL_COMPILE_STATUS, &compiled_fragment);
+    SDL_CHECK(compiled_vertex && compiled_fragment, "independent host sentinel shaders");
+    host_program = glCreateProgram();
+    glAttachShader(host_program, host_vertex); glAttachShader(host_program, host_fragment);
+    glLinkProgram(host_program);
+    glGetProgramiv(host_program, GL_LINK_STATUS, &linked);
+    SDL_CHECK(linked && glGetError() == GL_NO_ERROR, "independent host sentinel program");
     /* The host restores Ren'Py's raw EGL context, including after first bind.
        SDL's own current-context cache must not hide this actual switch. */
     SDL_CHECK(eglMakeCurrent(display, game_surface, game_surface, (EGLContext)context), "bind SDL game context");
@@ -172,8 +204,43 @@ int aether_run_egl_probe(aether_egl_probe_result *out) {
         if (event.type == SDL_TEXTINPUT && !strcmp(event.text.text, "\xe8\xa7\xa6\xe6\x8e\xa7")) text = 1;
     }
     SDL_CHECK(down && up && text, "SDL actual pointer/text event delivery mismatch");
+    /* Production terminal cleanup must override a conflicting environment
+       hint in the private SDL instance without terminating the host display. */
+    SDL_CHECK(!SDL_setenv("AETHER_RENPY_EMBEDDED", "0", 1), "set conflicting embedded hint");
+    SDL_CHECK(SDL_SetHintWithPriority("AETHER_RENPY_EMBEDDED", "1", SDL_HINT_OVERRIDE) &&
+              SDL_GetHintBoolean("AETHER_RENPY_EMBEDDED", SDL_FALSE), "override private SDL display ownership hint");
+    SDL_GL_DeleteContext(context); context = NULL;
+    SDL_DestroyWindow(window); window = NULL;
+    SDL_QuitSubSystem(SDL_INIT_VIDEO);
+    SDL_CHECK(!(SDL_WasInit(SDL_INIT_VIDEO) & SDL_INIT_VIDEO), "private SDL video remains initialized");
+    SDL_CHECK(eglBindAPI(EGL_OPENGL_ES_API) &&
+              eglMakeCurrent(display, host_surface, host_surface, host_context),
+              "restore independent host after private SDL destruction");
+    SDL_CHECK(glIsTexture(host_texture) && glIsFramebuffer(host_fbo) && glIsProgram(host_program),
+              "private SDL teardown destroyed host GPU resources");
+    glBindFramebuffer(GL_FRAMEBUFFER, 0);
+    glReadPixels(0, 0, 1, 1, GL_RGBA, GL_UNSIGNED_BYTE, pixel);
+    SDL_CHECK(glGetError() == GL_NO_ERROR && pixel[0] == 0 && pixel[1] == 255 &&
+              pixel[2] == 255 && pixel[3] == 255, "host pbuffer changed during SDL destruction");
+    glBindFramebuffer(GL_FRAMEBUFFER, host_fbo);
+    glReadPixels(0, 0, 1, 1, GL_RGBA, GL_UNSIGNED_BYTE, pixel);
+    SDL_CHECK(glGetError() == GL_NO_ERROR && pixel[0] == 0 && pixel[1] == 255 &&
+              pixel[2] == 255 && pixel[3] == 255, "host framebuffer changed during SDL destruction");
+    glClearColor(1, 0, 1, 1); glClear(GL_COLOR_BUFFER_BIT); glFinish();
+    glReadPixels(0, 0, 1, 1, GL_RGBA, GL_UNSIGNED_BYTE, pixel);
+    SDL_CHECK(glGetError() == GL_NO_ERROR && pixel[0] == 255 && pixel[1] == 0 &&
+              pixel[2] == 255 && pixel[3] == 255, "host did not render fresh pixels after SDL destruction");
+    out->sdl_terminal_cleanup_verified = 1;
     out->passed = 1;
 cleanup:
+    if (display != EGL_NO_DISPLAY && host_context != EGL_NO_CONTEXT &&
+        eglMakeCurrent(display, host_surface, host_surface, host_context)) {
+        if (host_program) glDeleteProgram(host_program);
+        if (host_vertex) glDeleteShader(host_vertex);
+        if (host_fragment) glDeleteShader(host_fragment);
+        if (host_fbo) glDeleteFramebuffers(1, &host_fbo);
+        if (host_texture) glDeleteTextures(1, &host_texture);
+    }
     if (display != EGL_NO_DISPLAY) eglMakeCurrent(display, EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT);
     if (context) SDL_GL_DeleteContext(context);
     if (window) SDL_DestroyWindow(window);

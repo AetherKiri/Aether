@@ -37,6 +37,7 @@
             @"readback_verified": @(result.readback_verified),
             @"host_context_restored": @(result.host_context_restored),
             @"resume_verified": @(result.resume_verified), @"no_extra_uiwindow": @(noExtraWindow),
+            @"sdl_terminal_cleanup_verified": @(result.sdl_terminal_cleanup_verified),
             @"gles_client_version": @(result.client_version),
             @"egl_error": @(result.egl_error), @"gl_error": @(result.gl_error),
             @"error": [NSString stringWithUTF8String:result.error] ?: @"invalid UTF-8 diagnostic",

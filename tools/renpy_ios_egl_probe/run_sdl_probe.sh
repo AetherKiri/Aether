@@ -204,10 +204,12 @@ report['source_version'] = 'SDL2.0.20'
 report['assertions'] = ['SDL_Init video driver=offscreen', 'SDL_CreateWindow EGL pbuffer',
                         'SDL_GL_CreateContext', 'actual GLES pixels', 'host context preserved',
                         'resume produces new pixels', 'SDL pointer down/up and UTF-8 text delivery',
+                        'private SDL window/context/video destruction preserves host GPU resources and fresh pixels',
                         'no additional UIWindow']
 report_path.write_text(json.dumps(report, indent=2) + '\n')
 print(json.dumps(report, indent=2))
-required = ('passed', 'pbuffer_created', 'readback_verified', 'host_context_restored', 'resume_verified', 'no_extra_uiwindow')
+required = ('passed', 'pbuffer_created', 'readback_verified', 'host_context_restored', 'resume_verified',
+            'sdl_terminal_cleanup_verified', 'no_extra_uiwindow')
 if not all(report.get(k) for k in required):
     raise SystemExit('Actual iOS EGL/GLES probe failed; this is not gameplay acceptance.')
 print('Actual patched SDL iOS offscreen/GLES, pointer and UTF-8 event probe passed; Ren\'Py gameplay remains unverified.')

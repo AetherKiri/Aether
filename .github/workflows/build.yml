@@ -412,7 +412,14 @@ jobs:
           if-no-files-found: error
           retention-days: 7
 
-      - name: Build the x86_64 debug app for cloud emulator gameplay
+      - name: Build the public Ren'Py x86_64 Debug app for cloud emulator gameplay
+        env:
+          # The official E-mote package has no x86_64 Android slice. This
+          # Ren'Py-only emulator uses the existing isolated public test profile.
+          AETHERKIRI_ENABLE_INTERNAL: 'OFF'
+          AETHERKIRI_ENABLE_SOFTPAL_RUNTIME: 'OFF'
+          AETHERKIRI_WITH_INTERNAL: 'false'
+          AETHERKIRI_ANDROID_TEST_PACKAGE_ID: org.aetherkiri.renpy.debug
         run: |
           set -euo pipefail
           export CMAKE_C_COMPILER_LAUNCHER=ccache
@@ -551,6 +558,7 @@ jobs:
           adb -s emulator-5554 shell getprop ro.product.cpu.abilist | tee "$evidence/abi.txt"
           python3 tools/run_renpy_android_device_acceptance.py \
             --apk "${RUNNER_TEMP}/renpy-apk/Aether-emulator-debug.apk" \
+            --package org.aetherkiri.renpy.debug \
             --serial emulator-5554 --cloud-device --stage-timeout 90 \
             --output-dir "$evidence"
       - name: Preserve real device evidence even on failure

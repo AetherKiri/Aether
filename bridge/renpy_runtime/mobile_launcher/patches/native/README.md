@@ -88,6 +88,19 @@ The preparation regression executes real pip installation, the pinned
 `setuplib` import and actual bytecode compilation under conflicting Python
 path variables. It does not compile or execute an iOS runtime.
 
+`0011-assimp-owned-array-copy.patch` preserves Assimp 5.4.3 and its strict
+compiler checks. SceneCombiner uses `aiFace`'s deep assignment and explicitly
+copies morph-key values and weights into independent arrays. Its generic
+byte-copy helper accepts only trivially copyable elements. Four bundled
+Open3DGC constructors initialize their members instead of clearing whole
+nontrivial objects; their prior defaults and platform clock operations remain.
+The normal Assimp download task applies this source patch after the existing
+upstream patch. The preparation regression runs the actual host download and
+GLTF/STL build recipe with Clang 21, then links and executes the real library's
+copy operations and Open3DGC constructor checks. This catches both ownership
+and current compiler problems before the complete device/Simulator build.
+Host execution does not establish iOS target compilation or gameplay.
+
 `renpy_mobile_lifecycle.c` owns the copied host callback table and the borrowed
 frame byte storage. It invokes the full cooperative Python entrypoints,
 preserves pointer/key/text actions, publishes renderer screenshots and

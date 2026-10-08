@@ -9,6 +9,8 @@ on:
       - 'tools/validate_renpy_mobile_payload.py'
       - 'tools/test_renpy_mobile_ios_libffi.py'
       - 'tools/test_renpy_mobile_ios_host_python.py'
+      - 'tools/test_renpy_mobile_assimp_copy.py'
+      - 'tools/renpy_assimp_acceptance/**'
       - 'tools/renpy_ios_acceptance/**'
       - 'tools/run_renpy_ios_device_acceptance.py'
       - 'tools/patch_renpy_ios_runtime_project.py'
@@ -129,6 +131,10 @@ jobs:
           uv --project "$RENPY_BUILD_ROOT/renpy" run python \
             "$GITHUB_WORKSPACE/tools/test_renpy_mobile_ios_host_python.py" "$RENPY_BUILD_ROOT" \
             --renpy-src "$RENPY_BUILD_ROOT/renpy" \
+            2>&1 | tee -a "$RUNNER_TEMP/renpy-ios-source-prepare.log"
+          uv --project "$RENPY_BUILD_ROOT/renpy" run python \
+            "$GITHUB_WORKSPACE/tools/test_renpy_mobile_assimp_copy.py" "$RENPY_BUILD_ROOT" \
+            --compiler "$(xcrun --sdk macosx -f clang++)" \
             2>&1 | tee -a "$RUNNER_TEMP/renpy-ios-source-prepare.log"
       - name: Compile target CPython, SDL, Ren'Py and device/Simulator archives
         if: steps.runtime-cache.outputs.cache-hit != 'true'

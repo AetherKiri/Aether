@@ -53,7 +53,9 @@ def main():
     assert any(path.name.startswith("0010-") for path in patches)
     with tempfile.TemporaryDirectory(prefix="renpy-real-host-python-") as directory:
         root = Path(directory) / "renpy-build"
-        capture(["git", "clone", "--shared", "--quiet", "--no-checkout",
+        # Limit the copy to the materialized pinned HEAD. Local shared clones
+        # can traverse unrelated missing objects in a promisor repository.
+        capture(["git", "clone", "--no-local", "--depth=1", "--single-branch", "--quiet", "--no-checkout",
                  args.build_source.resolve(), root], cwd=REPO)
         capture(["git", "checkout", "--quiet", "--detach", PIN], cwd=root)
         capture([sys.executable, REPO / "tools/apply_renpy_mobile_patch_series.py",

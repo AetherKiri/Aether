@@ -41,12 +41,15 @@ replace it.
    run, unzip it on the phone, and open `Aether-debug.apk`. Follow Android's
    installation prompt for the chosen download source.
 2. Download `renpy-demo-project` from the same run and unzip its `game` folder
-   inside a directory named `aetherkiri-renpy`, for example under Downloads.
+   inside `Download/aetherkiri-renpy` in the phone's internal storage.
    Keep `game/script.rpy`, `game/options.rpy`, and `game/scene.svg` together.
    No desktop Ren'Py SDK or device-request JSON is needed for this manual flow.
 3. Open **Aether RenPy Test**, complete the existing first-run agreement and
-   file-access prompts, and choose **Import**. Select the `aetherkiri-renpy`
-   directory containing `game`, then open its detail page and start it.
+   file-access prompts, and choose **Import**. In the system folder picker,
+   navigate through **Internal storage → Download → aetherkiri-renpy** and
+   select that directory containing `game`, then open its detail page and
+   start it. This route gives the native loader the primary storage path;
+   other document-provider locations still need separate import coverage.
 4. The real demo should show its scene and dialogue. Advance the dialogue,
    tap **Start**, enter a name with the system keyboard, and confirm. Check
    that the dialogue contains the name. At the menu, press the phone's Home

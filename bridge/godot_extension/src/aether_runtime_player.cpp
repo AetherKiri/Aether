@@ -1228,27 +1228,33 @@ bool AndroidRequestRuntimeStoragePermissions() {
 }
 
 bool AndroidHasExternalStoragePermission() {
-    const AndroidGodotStoragePermissionState godot_state =
-        AndroidGetGodotStoragePermissionState();
-    if (godot_state.read || godot_state.write || godot_state.manage) {
-        AK_ANDROID_LOGI("storage permission effective granted via Godot OS");
-        return true;
-    }
-
     const int sdk = AndroidGetSdkInt();
-    if (sdk > 0 && sdk < 23) {
-        return true;
-    }
-    if (sdk > 0 && sdk < 30) {
-        AK_ANDROID_LOGI(
-            "storage permission state sdk=%d read=%d write=%d effective_read=0",
-            sdk, godot_state.read ? 1 : 0, godot_state.write ? 1 : 0);
-        return false;
-    }
     if (sdk <= 0) {
         AK_ANDROID_LOGW(
             "storage permission state unavailable: Android SDK/JNI not ready");
         return false;
+    }
+    if (sdk < 23) {
+        return true;
+    }
+
+    const AndroidGodotStoragePermissionState godot_state =
+        AndroidGetGodotStoragePermissionState();
+    if (sdk < 30) {
+        const bool granted = godot_state.read || godot_state.write;
+        AK_ANDROID_LOGI(
+            "storage permission state sdk=%d read=%d write=%d effective_read=%d",
+            sdk, godot_state.read ? 1 : 0, godot_state.write ? 1 : 0,
+            granted ? 1 : 0);
+        return granted;
+    }
+
+    // On Android 11+, legacy READ/WRITE grants do not establish the broad
+    // file access needed by native game loaders. Godot reports MANAGE only
+    // when Environment.isExternalStorageManager() confirms the user's grant.
+    if (godot_state.manage) {
+        AK_ANDROID_LOGI("storage permission effective granted via Godot OS all files access");
+        return true;
     }
 
     const int java_result = AndroidHasExternalStoragePermissionViaGodotJava();
@@ -1410,11 +1416,16 @@ bool AndroidStartSettingsIntent(JNIEnv *env, jobject context, const char *action
 }
 
 bool AndroidRequestExternalStoragePermission() {
-    const AndroidGodotStoragePermissionState before =
-        AndroidGetGodotStoragePermissionState();
-    if (before.read || before.write || before.manage) {
+    if (AndroidHasExternalStoragePermission()) {
         AK_ANDROID_LOGI("storage permission already granted");
         return true;
+    }
+
+    const int sdk = AndroidGetSdkInt();
+    if (sdk <= 0) {
+        AK_ANDROID_LOGW(
+            "storage permission request unavailable: Android SDK/JNI not ready");
+        return false;
     }
 
     // Calling through Godot's OS keeps this path on the Activity that owns
@@ -1427,17 +1438,13 @@ bool AndroidRequestExternalStoragePermission() {
         AK_ANDROID_LOGI(
             "storage permission request via Godot OS dispatched=%d",
             dispatched ? 1 : 0);
-        if (dispatched) {
-            const int sdk = AndroidGetSdkInt();
-            if (sdk <= 0 || sdk < 30) {
-                return true;
-            }
+        if (dispatched && sdk < 30) {
+            return true;
         }
     }
 
-    const int sdk = AndroidGetSdkInt();
     AK_ANDROID_LOGI("storage permission request sdk=%d", sdk);
-    if (sdk > 0 && sdk < 30) {
+    if (sdk < 30) {
         return false;
     }
     if (AndroidHasExternalStoragePermission()) {

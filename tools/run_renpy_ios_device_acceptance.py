@@ -20,7 +20,10 @@ import time
 import uuid
 from pathlib import Path
 
-from run_renpy_android_device_acceptance import Blocked, Failed, image_stats, pixel, png_pixels
+from run_renpy_android_device_acceptance import (
+    Blocked, Failed, checkpoint_landmarks, image_stats, is_script_checkpoint, pixel, png_pixels,
+    read_engine_log_file, require_engine_log, require_landmark_pixels, verify_landmark_pixels, verify_resumed_marker,
+)
 
 
 class Acceptance:
@@ -39,6 +42,7 @@ class Acceptance:
         self.process: subprocess.Popen | None = None
         self.process_log = None
         self.deadline = 0.0
+        self.waiting_marker = None
         self.keyboard_preference: str | None = None
         self.preference_changed = False
         self.summary = {"status": "not_run", "run_id": self.run_id,
@@ -101,7 +105,8 @@ class Acceptance:
         raise Failed(f"Timed out waiting for {description}; no gameplay evidence was synthesized")
 
     def wait_game(self, stage: str) -> dict:
-        return self.wait(f"Ren'Py {stage}", lambda: next((r for r in self.game_rows() if r.get("stage") == stage), None))
+        return self.wait(f"executed Ren'Py {stage}", lambda: next(
+            (r for r in self.game_rows() if is_script_checkpoint(r, stage, self.run_id)), None))
 
     def wait_observer(self, kind: str, **fields) -> dict:
         return self.wait(f"native observer {kind} {fields}", lambda: next((r for r in self.observer_rows()
@@ -166,15 +171,35 @@ class Acceptance:
                 count += 1
         stats["native_to_os_match"] = {"matching_samples": matches, "samples": count,
                                         "fraction": matches / count, "channel_tolerance": 24}
+        game_stage = "post_text_ready" if stage == "resumed_ready" else stage
+        checkpoint = self.wait_game(game_stage)
+        captured_checkpoint = row.get("game_checkpoint", {})
+        if (not is_script_checkpoint(captured_checkpoint, game_stage, self.run_id)
+                or captured_checkpoint.get("details") != checkpoint.get("details")):
+            raise Failed("Native frame is not tied to the independently read executed Ren'Py scene checkpoint")
+        stats["landmarks"] = verify_landmark_pixels(provider, screen, row, checkpoint)
+        if stage == "quit_ready":
+            if self.waiting_marker is None:
+                raise Failed("No actual pre-pause native WAIT marker was captured")
+            stats["resumed_marker_change"] = verify_resumed_marker(*self.waiting_marker, provider, checkpoint)
         (self.output / f"pixels-{stage}.json").write_text(json.dumps(stats, indent=2) + "\n")
         if matches / count < 0.70:
             raise Failed(f"Actual OS screenshot does not present Ren'Py native pixels at {stage}: {matches}/{count}")
+        require_landmark_pixels(stats["landmarks"])
+        if stage == "quit_ready" and stats["resumed_marker_change"]["fraction"] < 0.70:
+            raise Failed("Native marker did not visibly change after the actual resumed OS touch")
+        if stage == "post_text_ready":
+            self.waiting_marker = (provider, checkpoint)
         self.summary["checks"].append({"stage": stage, "native_provider_pixels_and_os_screen": stats})
         return row
 
     def tap_button(self, frame: dict) -> None:
         box, viewport = frame["drawn_box"], frame["viewport_size"]
-        self.ui("tap", x=(box[0] + box[2] * 0.5) / viewport[0], y=(box[1] + box[3] * 0.5) / viewport[1])
+        details = checkpoint_landmarks(frame["game_checkpoint"])
+        bx, by, bw, bh = details["button_bounds"]
+        u = (bx + bw / 2) / details["logical_canvas"][0]
+        v = (by + bh / 2) / details["logical_canvas"][1]
+        self.ui("tap", x=(box[0] + box[2] * u) / viewport[0], y=(box[1] + box[3] * v) / viewport[1])
 
     def create_simulator(self) -> None:
         runtimes = json.loads(self.simctl("list", "runtimes", "--json"))
@@ -378,6 +403,10 @@ class Acceptance:
         self.summary["checks"].extend([{"real_ios_touch_and_keyboard_text": typed},
             {"real_ios_pause_resume": {"pause": pause, "resume": resume}},
             {"explicit_renpy_exit_and_actual_library_return": {"native": normal_exit, "library": library}}])
+        game_root = self.documents / "renpy-device-demo"
+        raw = read_engine_log_file(game_root / "aetherkiri-engine.log")
+        (self.output / "aetherkiri-engine.log").write_bytes(raw)
+        self.summary["checks"].append({"native_cleanup_error_log": require_engine_log(raw, str(game_root))})
         self.summary["status"] = "passed"
 
     def verify_library_return(self, report: dict) -> None:
@@ -419,13 +448,18 @@ class Acceptance:
     def collect(self) -> None:
         if self.documents is not None:
             for relative, filename in [
+                ("renpy-device-demo/aetherkiri-engine.log", "aetherkiri-engine.log"),
                 ("renpy-device-evidence/observer.jsonl", "observer.jsonl"),
                 ("renpy-device-demo/game/aether-device-checkpoints.jsonl", "renpy-script-checkpoints.jsonl"),
                 ("renpy-device-demo/log.txt", "renpy-log.txt"),
                 ("renpy-device-demo/traceback.txt", "renpy-traceback.txt")]:
-                source = self.documents / relative
-                if source.is_file():
-                    shutil.copyfile(source, self.output / filename)
+                try:
+                    source = self.documents / relative
+                    if source.is_file():
+                        shutil.copyfile(source, self.output / filename)
+                except OSError as exc:
+                    with (self.output / "collection-errors.jsonl").open("a") as stream:
+                        stream.write(json.dumps({"path": relative, "error": str(exc)}) + "\n")
         if self.process is not None and self.process.poll() is None:
             self.process.terminate()
             try:

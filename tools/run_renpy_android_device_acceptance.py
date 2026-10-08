@@ -11,6 +11,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import math
 import re
 import shlex
 import shutil
@@ -112,6 +113,170 @@ def image_stats(image: tuple[int, int, bytes, int]) -> dict:
     return stats
 
 
+def is_script_checkpoint(row: object, stage: str, run_id: str) -> bool:
+    return (isinstance(row, dict) and row.get("run_id") == run_id
+            and row.get("source") == "renpy-script" and row.get("stage") == stage)
+
+
+def valid_rgb(rgb: object) -> bool:
+    # Godot JSON round-trips integral channels as 40.0 rather than 40. Accept
+    # that representation, while rejecting bools, fractions and invalid RGB.
+    return (isinstance(rgb, list) and len(rgb) == 3
+            and all(not isinstance(v, bool) and isinstance(v, (int, float))
+                    and 0 <= v <= 255 and int(v) == v for v in rgb))
+
+
+def checkpoint_landmarks(checkpoint: dict) -> dict:
+    """Read geometry and marker identity from the executed game's checkpoint."""
+    if checkpoint.get("source") != "renpy-script":
+        raise Failed("Landmarks do not originate from an executed Ren'Py checkpoint")
+    expected_name = {"start_ready": "START", "post_text_ready": "WAIT", "quit_ready": "RESUMED"}.get(checkpoint.get("stage"))
+    details = checkpoint.get("details", {})
+    if not isinstance(details, dict) or not expected_name or details.get("marker_name") != expected_name:
+        raise Failed("Checkpoint lacks its executed scene's stage marker")
+    canvas = details.get("logical_canvas", [])
+    if (not isinstance(canvas, list) or len(canvas) != 2
+            or any(isinstance(v, bool) or not isinstance(v, (int, float)) or not math.isfinite(v) or v <= 0 for v in canvas)):
+        raise Failed("Checkpoint lacks a valid logical game canvas")
+    for name in ("button_bounds", "marker_bounds"):
+        bounds = details.get(name, [])
+        if (not isinstance(bounds, list) or len(bounds) != 4
+                or any(isinstance(v, bool) or not isinstance(v, (int, float)) or not math.isfinite(v) for v in bounds)
+                or min(bounds[:2]) < 0 or min(bounds[2:]) <= 8
+                or bounds[0] + bounds[2] > canvas[0] or bounds[1] + bounds[3] > canvas[1]):
+            raise Failed(f"Checkpoint has invalid {name} within its logical canvas")
+    rgb = details.get("marker_rgb", [])
+    if not valid_rgb(rgb):
+        raise Failed("Checkpoint lacks its actual marker's RGB color")
+    button_rgbs = details.get("button_rgbs", [])
+    if (not isinstance(button_rgbs, list) or not button_rgbs
+            or any(not valid_rgb(rgb) for rgb in button_rgbs)):
+        raise Failed("Checkpoint lacks its actual idle/hover button RGB colors")
+    return details
+
+
+def landmark_samples(canvas: list, bounds: list):
+    # Exclude the outer four logical pixels where filtering/shadows can mix
+    # game and background. Sample densely throughout each remaining landmark.
+    x, y, width, height = bounds
+    columns = min(48, max(9, int((width - 8) / 5)))
+    rows = min(32, max(7, int((height - 8) / 5)))
+    for iy in range(rows):
+        for ix in range(columns):
+            yield ((x + 4 + (ix + 0.5) * (width - 8) / columns) / canvas[0],
+                   (y + 4 + (iy + 0.5) * (height - 8) / rows) / canvas[1])
+
+
+def verify_landmark_pixels(provider: tuple, screen: tuple, frame: dict, checkpoint: dict) -> dict:
+    details = checkpoint_landmarks(checkpoint)
+    box, viewport = frame["drawn_box"], frame["viewport_size"]
+    if (len(box) != 4 or len(viewport) != 2
+            or any(not isinstance(v, (int, float)) or not math.isfinite(v) for v in box + viewport)
+            or min(box[2:]) <= 0 or min(viewport) <= 0):
+        raise Failed("Landmark comparison lacks finite on-device presentation geometry")
+    metrics = {}
+    for name in ("button", "marker"):
+        matches = count = expected_color = 0
+        expected_rgbs = details["button_rgbs"] if name == "button" else [details["marker_rgb"]]
+        for u, v in landmark_samples(details["logical_canvas"], details[name + "_bounds"]):
+            native = pixel(provider, int(u * provider[0]), int(v * provider[1]))
+            sx = int((box[0] + u * box[2]) * screen[0] / viewport[0])
+            sy = int((box[1] + v * box[3]) * screen[1] / viewport[1])
+            # The original sample must be within the OS image. Nearby actual
+            # pixels accommodate a subpixel linear-filter/antialiasing shift.
+            pixel(screen, sx, sy)
+            matches += any(max(abs(a - b) for a, b in zip(native, pixel(screen, nx, ny))) <= 24
+                           for ny in range(max(0, sy - 1), min(screen[1], sy + 2))
+                           for nx in range(max(0, sx - 1), min(screen[0], sx + 2)))
+            expected_color += any(max(abs(a - b) for a, b in zip(native, rgb)) <= 24 for rgb in expected_rgbs)
+            count += 1
+        metrics[name] = {"logical_bounds": details[name + "_bounds"], "logical_inset": 4,
+                         "matching_samples": matches, "samples": count, "fraction": matches / count,
+                         "required_fraction": 0.90, "channel_tolerance": 24, "os_neighbor_radius": 1,
+                         "native_required_color_fraction": 0.70}
+        if name == "marker":
+            metrics[name].update(name=details["marker_name"], expected_rgb=details["marker_rgb"],
+                                 native_expected_color_fraction=expected_color / count)
+        else:
+            metrics[name].update(expected_rgbs=details["button_rgbs"],
+                                 native_expected_color_fraction=expected_color / count)
+    # Return metrics even when an ROI fails so the caller can preserve evidence
+    # before rejecting. Solid button/marker fills leave room for actual labels.
+    return metrics
+
+
+def require_landmark_pixels(metrics: dict) -> None:
+    for name in ("button", "marker"):
+        if metrics[name]["fraction"] < 0.90:
+            raise Failed(f"Actual OS screenshot does not present the native {name} ROI: {metrics[name]}")
+    if metrics["marker"]["native_expected_color_fraction"] < 0.70:
+        raise Failed("Native RGBA does not render the executed script's stage marker; a stale frame cannot pass")
+    if metrics["button"]["native_expected_color_fraction"] < 0.70:
+        raise Failed("Native RGBA lacks the executed script's visible idle/hover button; matching background cannot pass")
+
+
+def verify_resumed_marker(before: tuple, before_checkpoint: dict, after: tuple, after_checkpoint: dict) -> dict:
+    earlier = checkpoint_landmarks(before_checkpoint)
+    later = checkpoint_landmarks(after_checkpoint)
+    if earlier["marker_name"] != "WAIT" or later["marker_name"] != "RESUMED":
+        raise Failed("Resume evidence must compare actual WAIT and RESUMED script-rendered markers")
+    changed = count = 0
+    previous_samples = landmark_samples(earlier["logical_canvas"], earlier["marker_bounds"])
+    current_samples = landmark_samples(later["logical_canvas"], later["marker_bounds"])
+    if earlier["logical_canvas"] != later["logical_canvas"] or earlier["marker_bounds"] != later["marker_bounds"]:
+        raise Failed("The executed fixture's marker geometry changed unexpectedly during resume")
+    for (u0, v0), (u1, v1) in zip(previous_samples, current_samples):
+        previous = pixel(before, int(u0 * before[0]), int(v0 * before[1]))
+        current = pixel(after, int(u1 * after[0]), int(v1 * after[1]))
+        changed += max(abs(a - b) for a, b in zip(previous, current)) > 24
+        count += 1
+    return {"source": "actual-native-rgba-before-and-after-resumed-os-touch", "before": "WAIT", "after": "RESUMED",
+            "changed_samples": changed, "samples": count, "fraction": changed / count,
+            "required_fraction": 0.70, "channel_tolerance": 24}
+
+
+def read_engine_log_file(path: Path) -> bytes:
+    try:
+        return path.read_bytes()
+    except OSError as exc:
+        raise Failed(f"Actual per-game engine log is missing or unreadable: {path}: {exc}") from exc
+
+
+def require_engine_log(raw: bytes, game_root: str) -> dict:
+    """Reject sidecar errors after void native shutdown; do not infer its status."""
+    if not isinstance(raw, bytes) or not raw.strip():
+        raise Failed("Actual per-game engine log is missing, unreadable or empty")
+    try:
+        text = raw.decode("utf-8")
+    except UnicodeDecodeError as exc:
+        raise Failed("Actual per-game engine log is not readable UTF-8") from exc
+    path = game_root.rstrip("/") + "/aetherkiri-engine.log"
+    # Both harnesses remove and recreate this private test root before launch.
+    # The existing, flushed dispatcher attachment line independently ties the
+    # retained file to that root, rather than accepting another game's log.
+    attachment = "aetherkiri provider engine log attached: " + path
+    if not any(line.rstrip().endswith(attachment) for line in text.splitlines()):
+        raise Failed("Engine log lacks the existing dispatcher's attachment to this freshly staged game root")
+    records, errors = 0, []
+    diagnostics = ("terminal cleanup failed", "private egl context could not be made current",
+                   "failed to restore the host egl context", "lifecycle called from a different thread than init")
+    for number, line in enumerate(text.splitlines(), 1):
+        record = re.search(r"\b(trace|debug|info|warning|error)\s+\[renpy-mobile\]\s*(.*)", line, re.IGNORECASE)
+        if record is None:
+            continue
+        records += 1
+        level, message = record.groups()
+        if (level.lower() == "error" or any(detail in message.lower() for detail in diagnostics)
+                or message.strip() == "cooperative_stop"):
+            errors.append({"line": number, "record": line})
+    if errors:
+        raise Failed("Native Ren'Py cleanup/runtime errors were retained in aetherkiri-engine.log: "
+                     + json.dumps(errors, ensure_ascii=False))
+    return {"source": "actual-flushed-provider-game-log", "path": path, "bytes": len(raw),
+            "renpy_mobile_records": records, "renpy_mobile_error_records": 0,
+            "verification": "no-recorded-native-errors; void-shutdown-status-unavailable"}
+
+
 class Acceptance:
     def __init__(self, args: argparse.Namespace):
         self.args = args
@@ -124,6 +289,7 @@ class Acceptance:
         self.pid = ""
         self.installed = False
         self.execution_deadline = 0.0
+        self.waiting_marker = None
         self.summary = {"status": "not_run", "run_id": self.run_id,
                         "source": "actual-apk-adb-cloud-device", "serial": args.serial,
                         "package": args.package, "checks": [], "blocker": ""}
@@ -183,7 +349,7 @@ class Acceptance:
 
     def wait_game(self, stage: str) -> dict:
         return self.wait(f"executed Ren'Py checkpoint {stage}", lambda: next(
-            (row for row in self.game_rows() if row.get("stage") == stage and row.get("source") == "renpy-script"), None))
+            (row for row in self.game_rows() if is_script_checkpoint(row, stage, self.run_id)), None))
 
     def wait_observer(self, kind: str, **fields) -> dict:
         return self.wait(f"native observer {kind} {fields}", lambda: next(
@@ -236,19 +402,36 @@ class Acceptance:
                 count += 1
         stats["native_to_os_match"] = {"matching_samples": matches, "samples": count,
                                         "fraction": matches / count, "channel_tolerance": 24}
+        game_stage = "post_text_ready" if stage == "resumed_ready" else stage
+        checkpoint = self.wait_game(game_stage)
+        observed = row.get("game_checkpoint", {})
+        if (not is_script_checkpoint(observed, game_stage, self.run_id)
+                or observed.get("details") != checkpoint.get("details")):
+            raise Failed("Provider capture's landmarks do not match the independently read Ren'Py checkpoint")
+        stats["landmarks"] = verify_landmark_pixels(provider, screen, row, checkpoint)
+        if stage == "quit_ready":
+            if self.waiting_marker is None:
+                raise Failed("Missing independently captured native WAIT marker before OS pause")
+            stats["resumed_marker_change"] = verify_resumed_marker(*self.waiting_marker, provider, checkpoint)
         (self.output / f"pixels-{screenshot_name or stage}.json").write_text(json.dumps(stats, indent=2) + "\n")
         if matches / count < 0.70:
             raise Failed(f"OS screenshot does not show the native Ren'Py frame at {stage}: {matches}/{count} samples")
+        require_landmark_pixels(stats["landmarks"])
+        if stage == "quit_ready" and stats["resumed_marker_change"]["fraction"] < 0.70:
+            raise Failed("Native marker did not change after actual resumed OS touch; cached WAIT pixels cannot pass")
+        if stage == "post_text_ready":
+            self.waiting_marker = provider, checkpoint
         self.summary["checks"].append({"stage": screenshot_name or stage, "native_provider_pixels_and_os_screen": stats})
         return row, screen
 
     def tap_button(self, frame: dict, screen: tuple) -> None:
         box, viewport = frame["drawn_box"], frame["viewport_size"]
-        # The real fixture's button center is (480, 270) in its logical
-        # 960x540 canvas. Native framebuffer pixels may use another physical
-        # resolution, so address the displayed center through normalized UV.
-        x = round((box[0] + 0.5 * box[2]) * screen[0] / viewport[0])
-        y = round((box[1] + 0.5 * box[3]) * screen[1] / viewport[1])
+        details = checkpoint_landmarks(frame["game_checkpoint"])
+        bx, by, bw, bh = details["button_bounds"]
+        u = (bx + bw / 2) / details["logical_canvas"][0]
+        v = (by + bh / 2) / details["logical_canvas"][1]
+        x = round((box[0] + u * box[2]) * screen[0] / viewport[0])
+        y = round((box[1] + v * box[3]) * screen[1] / viewport[1])
         self.shell("input", "tap", str(x), str(y))
 
     def run(self) -> None:
@@ -352,6 +535,9 @@ class Acceptance:
             {"real_os_touch_and_keyboard_text": typed},
             {"real_os_pause_resume": {"pause": pause, "resume": resume}},
             {"explicit_renpy_quit_and_engine_destroy": exit_row}])
+        raw = self.private("files/renpy-device-demo/aetherkiri-engine.log", required=True)
+        (self.output / "aetherkiri-engine.log").write_bytes(raw)
+        self.summary["checks"].append({"native_cleanup_error_log": require_engine_log(raw, self.game_root)})
         self.summary["status"] = "passed"
 
     def visible_ime(self) -> str:
@@ -399,6 +585,7 @@ class Acceptance:
         if not self.installed:
             return
         for relative, local in [
+            ("files/renpy-device-demo/aetherkiri-engine.log", "aetherkiri-engine.log"),
             ("files/renpy-device-evidence/observer.jsonl", "observer.jsonl"),
             ("files/renpy-device-demo/game/aether-device-checkpoints.jsonl", "renpy-script-checkpoints.jsonl"),
             ("files/renpy-device-demo/log.txt", "renpy-log.txt"),

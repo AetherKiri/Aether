@@ -96,7 +96,7 @@ func _process(delta: float) -> void:
         rect.texture = texture
     if resumed_capture_pending:
         resumed_capture_pending = false
-        _capture_provider("resumed_ready")
+        _capture_provider("resumed_ready", _game_checkpoint("post_text_ready"))
     _sync_keyboard()
     _observe_game_checkpoints()
 
@@ -207,15 +207,19 @@ func _game_checkpoints() -> Array:
         return rows
     while not file.eof_reached():
         var parsed = JSON.parse_string(file.get_line())
-        if parsed is Dictionary and String(parsed.get("run_id", "")) == run_id:
+        if parsed is Dictionary and String(parsed.get("run_id", "")) == run_id \
+                and String(parsed.get("source", "")) == "renpy-script":
             rows.append(parsed)
     return rows
 
 func _has_game_checkpoint(stage: String) -> bool:
+    return not _game_checkpoint(stage).is_empty()
+
+func _game_checkpoint(stage: String) -> Dictionary:
     for row in _game_checkpoints():
         if String(row.get("stage", "")) == stage:
-            return true
-    return false
+            return row
+    return {}
 
 func _observe_game_checkpoints() -> void:
     var rows := _game_checkpoints()
@@ -224,30 +228,68 @@ func _observe_game_checkpoints() -> void:
         checkpoint_count += 1
         _record({"kind": "checkpoint_seen", "checkpoint": row})
         if String(row.get("stage", "")) in ["start_ready", "post_text_ready", "quit_ready"]:
-            _capture_provider(String(row.get("stage", "")))
+            _capture_provider(String(row.get("stage", "")), row)
 
-func _capture_provider(stage: String) -> void:
+func _marker_rendered(frame: Dictionary, checkpoint: Dictionary) -> bool:
+    var details: Dictionary = checkpoint.get("details", {})
+    var canvas: Array = details.get("logical_canvas", [])
+    var bounds: Array = details.get("marker_bounds", [])
+    var rgb: Array = details.get("marker_rgb", [])
+    if canvas.size() != 2 or bounds.size() != 4 or rgb.size() != 3 \
+            or float(canvas[0]) <= 0 or float(canvas[1]) <= 0:
+        return false
+    var width := int(frame.get("width", 0))
+    var height := int(frame.get("height", 0))
+    var stride := int(frame.get("stride_bytes", 0))
+    var rgba: PackedByteArray = frame.get("rgba", PackedByteArray())
+    if width <= 0 or height <= 0 or stride < width * 4 or rgba.size() < stride * height:
+        return false
+    # Check actual pixels away from the marker's centered white label. The
+    # script writes its checkpoint before call-screen: that alone is not proof
+    # that this scene has reached the real renderer yet.
+    for u in [0.15, 0.85]:
+        for v in [0.25, 0.5, 0.75]:
+            var x := int((float(bounds[0]) + u * float(bounds[2])) * width / float(canvas[0]))
+            var y := int((float(bounds[1]) + v * float(bounds[3])) * height / float(canvas[1]))
+            if x < 0 or x >= width or y < 0 or y >= height:
+                return false
+            var offset := y * stride + x * 4
+            for channel in range(3):
+                if absi(int(rgba[offset + channel]) - int(rgb[channel])) > 24:
+                    return false
+    return true
+
+func _capture_provider(stage: String, checkpoint: Dictionary) -> void:
+    var game_stage := "post_text_ready" if stage == "resumed_ready" else stage
+    if String(checkpoint.get("source", "")) != "renpy-script" \
+            or String(checkpoint.get("run_id", "")) != run_id \
+            or String(checkpoint.get("stage", "")) != game_stage:
+        _fail("Provider capture lacks the actual executed Ren'Py checkpoint for %s." % stage)
+        return
     # Let the interaction settle, then wait for keyboard animation and a fresh
     # native redraw after resume. Old pre-pause pixels cannot prove recovery.
     var expires := mini(deadline, Time.get_ticks_msec() + 15000)
+    for _frame in range(3):
+        await get_tree().process_frame
+    var frame: Dictionary = {}
     while Time.get_ticks_msec() < expires:
         if finished or player == null:
             return
         var keyboard_height := DisplayServer.virtual_keyboard_get_height()
         var fresh := stage != "resumed_ready" or int(_provider_debug().get("frame_serial", 0)) > paused_frame_serial
         if not paused and not keyboard_active and keyboard_height <= 0 and fresh:
-            break
+            # Read after a completed real draw, then require the script's
+            # current visible marker rather than accepting an earlier frame.
+            await RenderingServer.frame_post_draw
+            if finished or player == null:
+                return
+            frame = player.read_frame_rgba()
+            if _marker_rendered(frame, checkpoint):
+                break
         await get_tree().process_frame
-    if Time.get_ticks_msec() >= expires:
-        _fail("Native presentation did not settle for %s after keyboard/lifecycle change." % stage)
+    if Time.get_ticks_msec() >= expires or not _marker_rendered(frame, checkpoint):
+        _fail("Native presentation did not render %s's actual script marker after keyboard/lifecycle change." % stage)
         return
-    for _frame in range(3):
-        await get_tree().process_frame
-    # This is the real renderer's completed draw, not a fabricated screenshot.
-    await RenderingServer.frame_post_draw
-    if finished or player == null:
-        return
-    var frame: Dictionary = player.read_frame_rgba()
     var width := int(frame.get("width", 0))
     var height := int(frame.get("height", 0))
     var stride := int(frame.get("stride_bytes", 0))
@@ -274,7 +316,8 @@ func _capture_provider(stage: String) -> void:
         "path": path, "width": width, "height": height, "rgba_bytes": rgba.size(),
         "native_stride_bytes": stride, "frame_serial": int(frame.get("frame_serial", 0)),
         "drawn_box": [origin.x, origin.y, drawn_size.x, drawn_size.y],
-        "viewport_size": [viewport_size.x, viewport_size.y], "provider_debug": _provider_debug()})
+        "viewport_size": [viewport_size.x, viewport_size.y], "provider_debug": _provider_debug(),
+        "game_checkpoint": checkpoint})
 
 func _provider_debug() -> Dictionary:
     var raw := String(player.get_plugin_debug_info())

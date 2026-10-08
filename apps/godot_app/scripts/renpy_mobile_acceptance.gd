@@ -18,7 +18,9 @@ var started := false
 var finished := false
 var paused := false
 var keyboard_active := false
+var keyboard_visible := false
 var resumed_capture_pending := false
+var paused_frame_serial := 0
 var checkpoint_count := 0
 var suppress_mouse_until := 0
 var deadline := 0
@@ -102,6 +104,7 @@ func _notification(what: int) -> void:
     if what == NOTIFICATION_APPLICATION_PAUSED and not paused:
         var result: int = player.pause()
         paused = result == 0
+        paused_frame_serial = int(_provider_debug().get("frame_serial", 0))
         _record({"kind": "lifecycle", "phase": "paused", "result": result,
             "provider_debug": _provider_debug()})
         if result != 0:
@@ -177,16 +180,23 @@ func _map_point(point: Vector2) -> Vector2:
 func _sync_keyboard() -> void:
     var state: Dictionary = player.get_text_input_state()
     var active := bool(state.get("available", false)) and bool(state.get("ime_active", false))
-    if active == keyboard_active:
-        return
-    keyboard_active = active
     var available := DisplayServer.has_feature(DisplayServer.FEATURE_VIRTUAL_KEYBOARD)
-    if active and available:
-        DisplayServer.virtual_keyboard_show(String(state.get("text", "")), Rect2(0, 0, 1, 1))
-    elif available:
-        DisplayServer.virtual_keyboard_hide()
-    _record({"kind": "soft_keyboard", "active": active, "feature_available": available,
-        "source": "native-text-input-state", "state": state})
+    if active != keyboard_active:
+        keyboard_active = active
+        if active and available:
+            DisplayServer.virtual_keyboard_show(String(state.get("text", "")), Rect2(0, 0, 1, 1))
+        elif available:
+            DisplayServer.virtual_keyboard_hide()
+        _record({"kind": "soft_keyboard", "active": active, "feature_available": available,
+            "source": "native-text-input-state", "state": state})
+    # Showing/hiding the Android keyboard is asynchronous. Its actual height,
+    # rather than the native request alone, proves OS visibility and dismissal.
+    var height := DisplayServer.virtual_keyboard_get_height() if available else 0
+    var visible := height > 0
+    if visible != keyboard_visible:
+        keyboard_visible = visible
+        _record({"kind": "soft_keyboard_visibility", "visible": visible, "height": height,
+            "source": "os-virtual-keyboard-height"})
 
 func _game_checkpoints() -> Array:
     var rows: Array = []
@@ -215,9 +225,24 @@ func _observe_game_checkpoints() -> void:
             _capture_provider(String(row.get("stage", "")))
 
 func _capture_provider(stage: String) -> void:
-    # Allow actual presentation after the Python statement reaches interaction.
+    # Let the interaction settle, then wait for keyboard animation and a fresh
+    # native redraw after resume. Old pre-pause pixels cannot prove recovery.
+    var expires := mini(deadline, Time.get_ticks_msec() + 15000)
+    while Time.get_ticks_msec() < expires:
+        if finished or player == null:
+            return
+        var keyboard_height := DisplayServer.virtual_keyboard_get_height()
+        var fresh := stage != "resumed_ready" or int(_provider_debug().get("frame_serial", 0)) > paused_frame_serial
+        if not paused and not keyboard_active and keyboard_height <= 0 and fresh:
+            break
+        await get_tree().process_frame
+    if Time.get_ticks_msec() >= expires:
+        _fail("Native presentation did not settle for %s after keyboard/lifecycle change." % stage)
+        return
     for _frame in range(3):
         await get_tree().process_frame
+    # This is the real renderer's completed draw, not a fabricated screenshot.
+    await RenderingServer.frame_post_draw
     if finished or player == null:
         return
     var frame: Dictionary = player.read_frame_rgba()

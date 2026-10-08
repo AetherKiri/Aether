@@ -9,6 +9,7 @@ import importlib.util
 from pathlib import Path
 import sys
 import tempfile
+import textwrap
 import threading
 import types
 
@@ -138,5 +139,24 @@ with tempfile.TemporaryDirectory() as directory:
     assert renpy.entry_argv == [str(entry), str(root)]
     mobile.cooperative_stop()
 
-print("Cooperative checks passed: real greenlet stack preservation, deadline-before-start, Unicode/input, frame ownership, pause/resume and cleanup")
+renderer_source = (args.renpy_src / "renpy/gl2/gl2draw.pyx").read_text()
+start = renderer_source.index("        gles = self.gles")
+end = renderer_source.index("        # Select the GL attributes and hints.", start)
+size_selection = textwrap.dedent(renderer_source[start:end])
+for platform in ("android", "ios"):
+    for enabled in (False, True):
+        context = {
+            "self": types.SimpleNamespace(gles=False), "pwidth": 1600, "pheight": 900,
+            "renpy": types.SimpleNamespace(android=platform == "android", ios=platform == "ios",
+                aether_mobile=types.SimpleNamespace(cooperative_active=lambda: enabled),
+                config=types.SimpleNamespace(gl2_modify_window_flags=None)),
+            "pygame": types.SimpleNamespace(OPENGL=1, DOUBLEBUF=2, WINDOW_ALLOW_HIGHDPI=4, RESIZABLE=8),
+        }
+        exec(size_selection, context)
+        assert (context["pwidth"], context["pheight"]) == ((1600, 900) if enabled else (0, 0))
+        assert context["gles"]
+        if platform == "ios":
+            assert context["window_flags"] & 12 == 12
+
+print("Cooperative checks passed: real greenlet stack preservation, deadline-before-start, Unicode/input, frame ownership, pause/resume, cleanup and mobile pbuffer dimensions")
 print("Synthetic engine boundaries only; Ren'Py/SDL/GL/device gameplay was not run")

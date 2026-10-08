@@ -123,6 +123,7 @@ class Acceptance:
         self.data_root = ""
         self.pid = ""
         self.installed = False
+        self.execution_deadline = 0.0
         self.summary = {"status": "not_run", "run_id": self.run_id,
                         "source": "actual-apk-adb-cloud-device", "serial": args.serial,
                         "package": args.package, "checks": [], "blocker": ""}
@@ -168,6 +169,8 @@ class Acceptance:
 
     def wait(self, description: str, condition, timeout: int | None = None):
         expires = time.monotonic() + (timeout or self.args.stage_timeout)
+        if self.execution_deadline:
+            expires = min(expires, self.execution_deadline)
         while time.monotonic() < expires:
             for row in self.observer_rows():
                 if row.get("kind") == "failure":
@@ -281,6 +284,7 @@ class Acceptance:
         if not component or not component.startswith(self.args.package + "/"):
             raise Failed("Cannot resolve the installed APK's real launcher activity")
         self.summary["activity"] = component
+        self.execution_deadline = time.monotonic() + self.args.overall_timeout
         self.shell("am", "start", "-W", "-n", component, timeout=60)
         self.pid = self.wait("installed app process", lambda: self.shell("pidof", self.args.package, check=False).decode().strip())
         self.wait_game("start_ready")
@@ -291,6 +295,9 @@ class Acceptance:
         keyboard = self.wait_observer("soft_keyboard", active=True)
         if keyboard.get("source") != "native-text-input-state" or not keyboard.get("feature_available"):
             raise Failed("A real native text request and OS virtual keyboard are required")
+        keyboard_visible = self.wait_observer("soft_keyboard_visibility", visible=True)
+        if keyboard_visible.get("source") != "os-virtual-keyboard-height" or keyboard_visible.get("height", 0) <= 0:
+            raise Failed("Android did not report a real visible virtual keyboard")
         ime = self.wait("visible Android system input method", lambda: self.visible_ime())
         (self.output / "input-method.txt").write_text(ime)
         self.screenshot("text-ready-with-os-keyboard")
@@ -301,6 +308,9 @@ class Acceptance:
         if text.get("details", {}).get("text") != typed:
             raise Failed(f"Real Ren'Py text differs from OS input: {text.get('details')}")
         self.wait_game("post_text_ready")
+        self.wait_observer("soft_keyboard", active=False)
+        self.wait_observer("soft_keyboard_visibility", visible=False)
+        self.wait("hidden Android system input method", lambda: not self.visible_ime())
         frame, screen = self.capture("post_text_ready")
         self.shell("input", "keyevent", "3")  # Android Home: real lifecycle pause.
         pause = self.wait_observer("lifecycle", phase="paused")
@@ -360,7 +370,7 @@ class Acceptance:
         fixture = Path(__file__).resolve().parents[1] / "demos/aetherkiri-renpy/game"
         request = {"run_id": self.run_id}
         config = {"probe_script": "res://scripts/renpy_mobile_acceptance.gd", "run_id": self.run_id,
-                  "game_path": self.game_root, "timeout_seconds": 240}
+                  "game_path": self.game_root, "timeout_seconds": self.args.overall_timeout}
         # Staging is confined to two test directories plus the existing
         # one-shot debug request. No app data, saves, or external paths are reset.
         self.shell("run-as", self.args.package, "mkdir", "-p", "files")
@@ -405,6 +415,13 @@ class Acceptance:
                     self.command("logcat", "-d", "--pid", self.pid.split()[0], "-v", "threadtime", check=False))
             except Failed:
                 pass
+        try:
+            # Startup/linker crashes may occur before pidof can observe a PID.
+            # Preserve actual logs from this disposable cloud image as well.
+            (self.output / "android-system-logcat.txt").write_bytes(
+                self.command("logcat", "-d", "-v", "threadtime", "-t", "2000", check=False))
+        except Failed:
+            pass
 
 
 def main() -> int:
@@ -416,9 +433,13 @@ def main() -> int:
     parser.add_argument("--adb", default="adb")
     parser.add_argument("--output-dir", type=Path, required=True)
     parser.add_argument("--stage-timeout", type=int, default=60)
+    parser.add_argument("--overall-timeout", type=int, default=600,
+                        help="Bound actual app execution to this many seconds (60..1200)")
     args = parser.parse_args()
     if not re.fullmatch(r"[A-Za-z][A-Za-z0-9_.]+", args.package) or not 5 <= args.stage_timeout <= 180:
         parser.error("Invalid package or stage timeout (5..180 seconds)")
+    if not 60 <= args.overall_timeout <= 1200:
+        parser.error("Invalid overall timeout (60..1200 seconds)")
     acceptance = Acceptance(args)
     code = 0
     try:

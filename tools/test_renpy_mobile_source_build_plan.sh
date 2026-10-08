@@ -46,4 +46,29 @@ for symbol in ('renpy_mobile_text_input_state', 'renpy_mobile_set_surface_size')
     assert symbol in source
 assert 'rapt-sdl2' not in source, 'pinned release has a sdl2 task, no rapt-sdl2 task'
 PY
+python3 - "$runner" "$runner_tmp" <<'PY'
+from pathlib import Path
+import subprocess
+import sys
+source = Path(sys.argv[1]).read_text()
+root = Path(sys.argv[2])
+symbols = source[source.index('symbols=('):source.index('\ncheck_exports()')]
+function = source[source.index('check_exports()'):source.index('\nartifact_root=')]
+catalog = root / 'large-symbol-catalog'
+required = [name for name in symbols.replace('(', ' ').replace(')', ' ').split() if name.startswith('renpy_mobile_')]
+catalog.write_text(''.join('000000 T ' + name + '\n' for name in required) +
+                   ''.join(f'000000 T runtime_function_{i}\n' for i in range(20000)))
+artifact = root / 'export-gate-library'
+artifact.touch()
+script = root / 'export-gate-check.sh'
+script.write_text('set -euo pipefail\n' + symbols + '\n' + function + '\n' +
+                  'nm() { cat "$RENPY_GATE_CATALOG"; }\n' +
+                  'check_exports "$RENPY_GATE_ARTIFACT" android\n')
+import os
+environment = dict(os.environ, RENPY_GATE_CATALOG=str(catalog), RENPY_GATE_ARTIFACT=str(artifact))
+subprocess.run(['bash', str(script)], env=environment, check=True)
+catalog.write_text(catalog.read_text().replace('000000 T renpy_mobile_tick\n', ''))
+failure = subprocess.run(['bash', str(script)], env=environment, capture_output=True, text=True)
+assert failure.returncode != 0 and 'lacks renpy_mobile_tick' in failure.stderr
+PY
 echo "Ren'Py mobile source-build gating checks passed; no native build/gameplay performed"

@@ -453,11 +453,23 @@ jobs:
           test "$(uname -m)" = x86_64
           sdkmanager="${ANDROID_HOME}/cmdline-tools/latest/bin/sdkmanager"
           "$sdkmanager" --install emulator platform-tools 'system-images;android-35;google_apis;x86_64'
-          "${ANDROID_HOME}/emulator/emulator" -accel-check | tee "${RUNNER_TEMP}/renpy-android-device-evidence/acceleration.txt"
+          acceleration_result=0
+          "${ANDROID_HOME}/emulator/emulator" -accel-check 2>&1 \
+            | tee "${RUNNER_TEMP}/renpy-android-device-evidence/acceleration.txt" || acceleration_result=$?
           # Use the supported runner's existing KVM access. Do not change device
           # permissions/security settings to manufacture access when unavailable.
-          test -r /dev/kvm
-          test -w /dev/kvm
+          if [[ "$acceleration_result" != 0 || ! -r /dev/kvm || ! -w /dev/kvm ]]; then
+            python3 - "${RUNNER_TEMP}/renpy-android-device-evidence/result.json" <<'PY'
+          import json, pathlib, sys
+          pathlib.Path(sys.argv[1]).write_text(json.dumps({
+              'status': 'not_run', 'gameplay_verified': False,
+              'blocker': 'The cloud runner has no usable existing KVM access for the supported Android emulator.',
+              'required': 'A cloud x86_64 runner with provisioned readable/writable KVM access, or a connected cloud Android device.',
+          }, indent=2) + '\n')
+          PY
+            echo 'Android gameplay not_run: existing KVM access is unavailable; no permissions were changed.' >&2
+            exit 1
+          fi
           printf 'no\n' | "${ANDROID_HOME}/cmdline-tools/latest/bin/avdmanager" create avd \
             --name aether-renpy-device --force --device pixel_2 \
             --package 'system-images;android-35;google_apis;x86_64'

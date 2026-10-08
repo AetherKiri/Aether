@@ -164,7 +164,7 @@ check_exports() {
         output="$(llvm-nm-18 --defined-only --extern-only "$artifact")"
     fi
     for symbol in "${symbols[@]}"; do
-        awk '{print $NF}' <<<"$output" | sed 's/^_//' | grep -Fxq "$symbol" || {
+        awk -v symbol="$symbol" '{ name=$NF; sub(/^_/, "", name); if (name==symbol) found=1 } END { exit !found }' <<<"$output" || {
             echo "compiled artifact lacks $symbol: $artifact" >&2; exit 1;
         }
     done

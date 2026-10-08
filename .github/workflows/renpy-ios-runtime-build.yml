@@ -73,9 +73,10 @@ jobs:
           set -euo pipefail
           bash tools/run_renpy_mobile_source_build.sh --mode prepare --fetch \
             --platform ios --renpy-build "$RENPY_BUILD_ROOT" \
-            --output-dir "$RENPY_OUTPUT_ROOT"
+            --output-dir "$RENPY_OUTPUT_ROOT" 2>&1 | tee "$RUNNER_TEMP/renpy-ios-source-prepare.log"
           uv --project "$RENPY_BUILD_ROOT/renpy" run python \
-            tools/test_renpy_mobile_darwin_build.py "$RENPY_BUILD_ROOT"
+            tools/test_renpy_mobile_darwin_build.py "$RENPY_BUILD_ROOT" \
+            2>&1 | tee -a "$RUNNER_TEMP/renpy-ios-source-prepare.log"
       - name: Compile target CPython, SDL, Ren'Py and device/Simulator archives
         if: steps.runtime-cache.outputs.cache-hit != 'true'
         run: |
@@ -118,6 +119,7 @@ jobs:
           name: renpy-ios-source-build-evidence
           path: |
             ${{ runner.temp }}/renpy-ios-source-build.log
+            ${{ runner.temp }}/renpy-ios-source-prepare.log
             out/renpy-ios-source/manifest.json
           if-no-files-found: warn
           retention-days: 7

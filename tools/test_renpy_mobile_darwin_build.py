@@ -88,7 +88,7 @@ def main():
             cross.run = lambda _command: None
             toolchain(cross)
             assert cross.path("{{ cross }}/sdk").is_symlink()
-            assert cross.path("{{ cross }}/sdk").resolve() == root / "local-sdk/iphonesimulator"
+            assert cross.path("{{ cross }}/sdk").samefile(root / "local-sdk/iphonesimulator")
         with patch.object(run.sys, "platform", "linux"):
             context = Context("android", "arm64_v8a", "3", root, SimpleNamespace())
             context.set_names("python", "build", "renpython")

@@ -420,7 +420,7 @@ nm_symbols() {
 check_symbols() {
     local artifact="$1" kind="$2" expected_machine="${3:-}"
     [[ -f "$artifact" ]] || { echo "artifact not found: $artifact" >&2; exit 1; }
-    if strings "$artifact" | grep -Fq 'AETHERKIRI_RENPY_LIFECYCLE_STUB'; then
+    if LC_ALL=C grep -aFq 'AETHERKIRI_RENPY_LIFECYCLE_STUB' "$artifact"; then
         echo "refusing contract-only lifecycle stub as runtime artifact: $artifact" >&2
         exit 1
     fi
@@ -464,7 +464,7 @@ check_symbols() {
     fi
     local symbol
     for symbol in "${required_symbols[@]}"; do
-        if ! awk '{print $NF}' "$symbols" | sed 's/^_//' | grep -Fxq "$symbol"; then
+        if ! awk -v symbol="$symbol" '{ name=$NF; sub(/^_/, "", name); if (name==symbol) found=1 } END { exit !found }' "$symbols"; then
             echo "artifact lacks required lifecycle export $symbol: $artifact" >&2
             rm -f "$symbols"
             exit 1

@@ -49,7 +49,7 @@ check_symbols() {
     listing="$(nm_listing "$artifact" "$kind")"
     local missing=0 symbol
     for symbol in "${required_symbols[@]}"; do
-        if ! awk '{print $NF}' "$listing" | sed 's/^_//' | grep -Fxq "${symbol}"; then
+        if ! awk -v symbol="$symbol" '{ name=$NF; sub(/^_/, "", name); if (name==symbol) found=1 } END { exit !found }' "$listing"; then
             echo "missing lifecycle export: ${symbol} (${artifact})" >&2
             missing=1
         fi

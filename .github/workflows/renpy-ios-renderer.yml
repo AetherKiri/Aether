@@ -14,7 +14,7 @@ permissions:
 
 concurrency:
   group: renpy-ios-renderer-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 jobs:
   simulator-pbuffer:

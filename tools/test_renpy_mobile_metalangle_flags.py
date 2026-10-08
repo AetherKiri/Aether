@@ -35,8 +35,14 @@ def main():
     parser.add_argument("--clang", type=Path)
     args = parser.parse_args()
     assert subprocess.check_output(["git", "-C", str(args.build_source), "rev-parse", "HEAD"], text=True).strip() == PIN
-    compiler = str(args.clang) if args.clang else shutil.which("clang-18") or shutil.which("clang")
+    if args.clang:
+        compiler = str(args.clang)
+    elif sys.platform == "darwin":
+        compiler = subprocess.check_output(["xcrun", "--find", "clang"], text=True).strip()
+    else:
+        compiler = shutil.which("clang-18") or shutil.which("clang")
     assert compiler, "A genuine LLVM clang is required"
+    print(subprocess.check_output([compiler, "--version"], text=True).splitlines()[0], flush=True)
     with tempfile.TemporaryDirectory(prefix="renpy-metalangle-flags-") as temporary:
         root = Path(temporary)
         archive = subprocess.Popen([
@@ -56,6 +62,13 @@ def main():
         source = root / "probe.c"
         source.write_text("#ifndef METALANGLE\n#error MetalANGLE compile definition was lost\n#endif\nint renpy_compile_probe(void) { return 1; }\n")
         for architecture, target in (("arm64", "arm64-apple-ios13.0"), ("sim-arm64", "arm64-apple-ios13.0-simulator")):
+            sdk_flags = []
+            if sys.platform == "darwin":
+                sdk = "iphoneos" if architecture == "arm64" else "iphonesimulator"
+                sdk_root = subprocess.check_output(["xcrun", "--sdk", sdk, "--show-sdk-path"], text=True).strip()
+                assert Path(sdk_root).is_dir(), sdk_root
+                sdk_flags = ["-isysroot", sdk_root]
+                print(f"Actual {target} SDK: {sdk_root}", flush=True)
             for version, expect_success in ((original, False), (root / "tasks/metalangle.py", True)):
                 context = Context("ios", architecture, "3", root, SimpleNamespace())
                 context.set_names("arch", "build", "libavif")
@@ -69,7 +82,7 @@ def main():
                         assert "MetalANGLE.framework/Headers" in context.environ[variable]
                         assert "-framework MetalANGLE" in context.environ["LDFLAGS"]
                     output = root / (architecture + language + ".o")
-                    result = subprocess.run([compiler, "-target", target, "-x", language, "-Werror", *flags,
+                    result = subprocess.run([compiler, "-target", target, *sdk_flags, "-x", language, "-Werror", *flags,
                                              "-c", str(source), "-o", str(output)], capture_output=True, text=True)
                     if expect_success:
                         assert result.returncode == 0, result.stderr

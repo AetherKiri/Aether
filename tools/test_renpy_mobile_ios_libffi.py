@@ -115,11 +115,9 @@ def capture_ios_task(namespace, Context, root, shared, architecture, source):
         if expanded.strip().startswith("./configure"):
             assert not captured, "Unexpected second configure"
             captured.update(command=shlex.split(expanded), environment=dict(context.environ))
-            return
-        # common_post has genuinely generated both static module templates at
-        # this point. No make/install or target Python build is claimed here.
-        assert expanded.strip().startswith("nice make"), expanded
-        raise BeforeMake()
+            # Execute configure below before running any post-configure task.
+            raise BeforeMake()
+        raise AssertionError("Unexpected pre-configure command: " + expanded)
     context.run = capture
     try:
         namespace["build_ios"](context)
@@ -130,11 +128,6 @@ def capture_ios_task(namespace, Context, root, shared, architecture, source):
     assert environment["SDKROOT"] == str(context.path("{{ cross }}/sdk"))
     assert environment["LIBFFI_CFLAGS"] == "-I" + str(context.install / "include")
     assert environment["LIBFFI_LIBS"] == "-L" + str(context.install / "lib") + " -lffi"
-    for name in ("Setup", "Setup.stdlib"):
-        line = next(line for line in (source / "Modules" / name).read_text().splitlines()
-                    if line.startswith("_ctypes "))
-        assert "_ctypes/malloc_closure.c" in line and "-lffi" in line
-        assert "USING_APPLE_OS_LIBFFI" not in line
     assert "ac_cv_func_ffi_" not in (source / "config.site").read_text()
     return context, captured
 
@@ -174,19 +167,28 @@ def ffi_and_python_case(label, *, root, shared, namespace, Context, compiler,
     patch_context.cwd = ffi_source
     patch_context.patchdir("libffi")
     initial_ffi_configs = {path: path.read_bytes() for path in ffi_source.rglob("fficonfig.h")}
-    words = [str(compiler)]
     if target:
-        words += ["-target", target, "-isysroot", str(sdk)]
-    elif sdk:
-        words += ["-isysroot", str(sdk)]
-    environment = dict(os.environ, CC=shlex.join(words), CFLAGS="", CPPFLAGS="", LDFLAGS="", LIBS="")
+        # Preserve the production Context's compiler, preprocessor, target,
+        # SDK alias, tools and complete compile/link flags, including ccache.
+        environment = dict(captured["environment"])
+        words = shlex.split(environment["CC"])
+        assert target in words and str(cross) in words, words
+        assert Path(environment["SDKROOT"]).resolve() == sdk.resolve()
+    else:
+        words = [str(compiler)]
+        if sdk:
+            words += ["-isysroot", str(sdk)]
+        environment = dict(os.environ, CC=shlex.join(words), CFLAGS="", CPPFLAGS="", LDFLAGS="", LIBS="")
+    ffi_environment = dict(environment)
+    # This is the separate libffi configure, before CPython's config.site.
+    ffi_environment.pop("CONFIG_SITE", None)
     ffi_command = ["./configure", "--disable-shared", "--enable-portable-binary", "--prefix=" + str(prefix)]
     if target:
         # Use the actual production libffi tuple; do not silently fix it in a test.
         ffi_command += shlex.split(context.expand("{{ ffi_cross_config }}"))
-    run(ffi_command, cwd=ffi_source, env=environment, log=evidence / f"{label}-ffi-configure.log")
-    run(["make", "-j", str(jobs)], cwd=ffi_source, env=environment, log=evidence / f"{label}-ffi-build.log")
-    run(["make", "install"], cwd=ffi_source, env=environment, log=evidence / f"{label}-ffi-install.log")
+    run(ffi_command, cwd=ffi_source, env=ffi_environment, log=evidence / f"{label}-ffi-configure.log")
+    run(["make", "-j", str(jobs)], cwd=ffi_source, env=ffi_environment, log=evidence / f"{label}-ffi-build.log")
+    run(["make", "install"], cwd=ffi_source, env=ffi_environment, log=evidence / f"{label}-ffi-install.log")
     # The official archive also ships a pre-generated MSVC ARM64 header. Only
     # a header created/changed by this genuine configure belongs to this case.
     ffi_configs = [path for path in ffi_source.rglob("fficonfig.h")
@@ -200,10 +202,11 @@ def ffi_and_python_case(label, *, root, shared, namespace, Context, compiler,
 
     environment.update(LIBFFI_CFLAGS=captured["environment"]["LIBFFI_CFLAGS"],
                        LIBFFI_LIBS=captured["environment"]["LIBFFI_LIBS"],
-                       CPPFLAGS="-I" + str(prefix / "include"),
-                       LDFLAGS="-L" + str(prefix / "lib"),
-                       CONFIG_SITE=str(python_source / "config.site"),
-                       SDKROOT=str(sdk) if sdk else "")
+                       CONFIG_SITE=str(python_source / "config.site"))
+    if not target:
+        environment.update(CPPFLAGS="-I" + str(prefix / "include"),
+                           LDFLAGS="-L" + str(prefix / "lib"),
+                           SDKROOT=str(sdk) if sdk else "")
     # No function cache is supplied. CPython's three genuine ffi probes are
     # compile checks; the API executable and link map below establish linking.
     assert not any(key.startswith("ac_cv_func_ffi_") for key in environment)
@@ -213,11 +216,30 @@ def ffi_and_python_case(label, *, root, shared, namespace, Context, compiler,
     # the genuine common_post generation in that order, stopping before make.
     # Its static extensions use global compiler flags plus this Setup line,
     # rather than assuming MODULE__CTYPES_CFLAGS controls the static object.
+    static_commands = []
+    def execute_post_configure(command, **kwargs):
+        expanded = context.expand(command)
+        if expanded.strip().startswith("nice make"):
+            raise BeforeMake()
+        static_commands.append(shlex.split(expanded))
+        # Use the genuine Context implementation for the production task's
+        # makesetup and config.c move, rather than adding a test-only rule.
+        return Context.run(context, command, **kwargs)
+    context.run = execute_post_configure
     try:
         namespace["common_post"](context)
     except BeforeMake:
         pass
+    assert len(static_commands) == 2 and "Modules/makesetup" in static_commands[0]
     assert (python_source / "Modules/Setup").read_bytes() == (python_source / "Modules/Setup.stdlib").read_bytes()
+    registry = (python_source / "Modules/config.c").read_text()
+    assert re.search(r'\{\s*"_ctypes"\s*,\s*PyInit__ctypes\s*\}', registry), \
+        "The real generated static builtin registry is missing _ctypes"
+    for name in ("Setup", "Setup.stdlib"):
+        line = next(line for line in (python_source / "Modules" / name).read_text().splitlines()
+                    if line.startswith("_ctypes "))
+        assert "_ctypes/malloc_closure.c" in line and "-lffi" in line
+        assert "USING_APPLE_OS_LIBFFI" not in line
     # Execute the genuine makesetup rule after the production templates have
     # replaced configure's Setup.stdlib, without building the interpreter.
     run(["make", "Makefile"], cwd=python_source, env=environment,
@@ -237,7 +259,9 @@ def ffi_and_python_case(label, *, root, shared, namespace, Context, compiler,
     executable = case / "ffi-api"
     link_map = evidence / f"{label}-ffi-link.map"
     map_flag = "-Wl,-map," if sys.platform == "darwin" else "-Wl,-Map,"
-    run([*words, "-Wall", "-Wextra", "-Werror", *cflags, str(api), *ldflags,
+    compile_flags = shlex.split(environment.get("CFLAGS", "")) + shlex.split(environment.get("CPPFLAGS", ""))
+    link_flags = shlex.split(environment.get("LDFLAGS", "")) + shlex.split(environment.get("LIBS", ""))
+    run([*words, *compile_flags, "-Wall", "-Wextra", "-Werror", *cflags, str(api), *link_flags, *ldflags,
          map_flag + str(link_map), "-o", str(executable)], cwd=case,
         env=environment, log=evidence / f"{label}-ffi-api-link.log")
     assert str(static_ffi) in link_map.read_text(), "API link did not consume the freshly built external libffi.a"
@@ -273,7 +297,7 @@ def ffi_and_python_case(label, *, root, shared, namespace, Context, compiler,
             "ffi_closure_free(closure)", "Py_ffi_closure_free(closure)"))
     wrapped_executable = case / "ctypes-ffi-api"
     wrapped_map = evidence / f"{label}-ctypes-ffi-link.map"
-    run([*words, "-Wall", "-Wextra", "-Werror", *cflags, str(wrapped_api), str(closure_object), *ldflags,
+    run([*words, *compile_flags, "-Wall", "-Wextra", "-Werror", *cflags, str(wrapped_api), str(closure_object), *link_flags, *ldflags,
          map_flag + str(wrapped_map), "-o", str(wrapped_executable)], cwd=case,
         env=environment, log=evidence / f"{label}-ctypes-ffi-api-link.log")
     assert str(static_ffi) in wrapped_map.read_text(), "CPython closure wrapper did not link to the external libffi.a"
@@ -291,6 +315,9 @@ def ffi_and_python_case(label, *, root, shared, namespace, Context, compiler,
     record = {"case": label, "compiler": words, "compiler_version": compiler_version,
               "build_source_pin": PIN, "python_version": PYTHON_VERSION, "libffi_version": FFI_VERSION,
               "sdk": str(sdk) if sdk else None,
+              "target_context_toolchain": "production" if target else "host isolation",
+              "static_setup_commands": static_commands,
+              "ctypes_static_registry": "passed",
               "configure_ffi_headers": "passed", "ffi_api_link": "passed",
               "closure_object": "passed", "ctypes_closure_link": "passed",
               "ffi_api_execution": "not_run" if target else "passed",

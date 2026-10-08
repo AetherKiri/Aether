@@ -209,18 +209,33 @@ diff --git a/tasks/hostpython3.py b/tasks/hostpython3.py
 diff --git a/tasks/python3.py b/tasks/python3.py
 --- a/tasks/python3.py
 +++ b/tasks/python3.py
-@@ -57,6 +57,10 @@
+@@ -56,6 +56,10 @@
+ 
      c.chdir("Python-{{ version }}")
      c.patch("Python-{{ version }}/ios-posixmodule.diff")
- 
++
 +    # Prefer the explicitly supplied target libffi over Darwin's desktop SDK.
 +    c.patch("Python-{{ version }}/aether-external-libffi.diff")
 +    c.run("autoreconf -vfi")
-+
+ 
      c.run("cp {{patches}}/_scproxy.pyx Modules")
      c.chdir("Modules")
-     c.run("rm -f _scproxy.c")
-@@ -106,12 +106,11 @@
+@@ -100,18 +104,26 @@
+     c.generate("{{ source }}/Python-{{ version }}-Setup.stdlib", "Modules/Setup.stdlib")
+     c.generate("{{ source }}/Python-{{ version }}-Setup.stdlib", "Modules/Setup")
+ 
++    if c.platform == "ios":
++        # configure already generated a Makefile using its own Setup.stdlib.
++        # Always regenerate the real static object rules and builtin registry
++        # after replacing both templates, even with same-second timestamps.
++        c.run("""sh Modules/makesetup -c Modules/config.c.in -s Modules
++            Modules/Setup.local Modules/Setup.stdlib Modules/Setup.bootstrap
++            Modules/Setup""")
++        c.run("mv config.c Modules/config.c")
++
+     c.run("""{{ make }}""")
+ 
+     c.run("""{{ make }} install""")
  
      c.copy("{{ host }}/bin/python3", "{{ install }}/bin/hostpython3")
  
@@ -238,18 +253,18 @@ diff --git a/tasks/python3.py b/tasks/python3.py
  
  
  @task(kind="python", pythons="3", platforms="linux,mac")
-@@ -132,6 +135,10 @@
+@@ -133,13 +145,20 @@
+ @task(kind="python", pythons="3", platforms="ios")
  def build_ios(c: Context):
      common(c)
- 
++
 +    c.env("SDKROOT", "{{ cross }}/sdk")
 +    c.env("LIBFFI_CFLAGS", "-I{{ install }}/include")
 +    c.env("LIBFFI_LIBS", "-L{{ install }}/lib -lffi")
-+
+ 
      with open(c.path("config.site"), "a") as f:
          f.write("ac_cv_little_endian_double=yes\n")
          # f.write("ac_cv_header_langinfo_h=no\n")
-@@ -140,6 +147,9 @@
          f.write("ac_cv_func_getentropy=no\n")
          f.write("ac_cv_have_long_long_format=yes\n")
 -        f.write("ac_cv_func_clock_settime=no")

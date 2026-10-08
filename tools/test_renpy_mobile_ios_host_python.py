@@ -60,6 +60,11 @@ def main():
         capture(["git", "checkout", "--quiet", "--detach", PIN], cwd=root)
         capture([sys.executable, REPO / "tools/apply_renpy_mobile_patch_series.py",
                  "--checkout", root, "--pin", PIN, *patches], cwd=REPO)
+        # Run the real task through a filesystem alias as on macOS /var ->
+        # /private/var, so lexical path containment cannot mask a wrong prefix.
+        alias = Path(directory) / "renpy-build-alias"
+        alias.symlink_to(root, target_is_directory=True)
+        root = alias
         sys.path.insert(0, str(root))
         from renpybuild.context import Context
         from renpybuild.ios_host_python import prepare_ios_host_python
@@ -105,8 +110,12 @@ print(json.dumps({'isolated': bool(sys.flags.isolated), 'stdlib': subprocess.__f
         tools = json.loads(capture([wrapper, probe, args.renpy_src.resolve() / "scripts"],
                                   cwd=root, env=context.environ).strip().splitlines()[-1])
         assert tools["setuptools"] == "74.1.2"
-        assert not Path(tools["stdlib"]).is_relative_to(context.install)
-        assert Path(tools["prefix"]).is_relative_to(context.install)
+        install = context.install.resolve(strict=True)
+        stdlib = Path(tools["stdlib"]).resolve(strict=True)
+        prefix = Path(tools["prefix"]).resolve(strict=True)
+        expected_prefix = (context.install / "aether-host-tools").resolve(strict=True)
+        assert not stdlib.is_relative_to(install), (stdlib, install)
+        assert prefix == expected_prefix, (prefix, expected_prefix)
         site = context.path("{{ install }}/lib/{{ pythonver }}/site-packages")
         versions = {dist.metadata["Name"].lower().replace("_", "-"): dist.version
                     for dist in importlib.metadata.distributions(path=[str(site)])}
@@ -128,6 +137,7 @@ print(json.dumps({'isolated': bool(sys.flags.isolated), 'stdlib': subprocess.__f
         assert runtime.with_suffix(".pyc").is_file()
         result = {"status": "passed", "host_python": sys.version.split()[0],
                   "installed_and_versioned_only_host_layouts": "passed",
+                  "canonical_host_venv_and_stdlib_paths": "passed",
                   "isolated_stdlib_and_subprocess": "passed", "pinned_setuplib_import": "passed",
                   "actual_context_compileall": "passed", "target_package_versions": versions,
                   "target_native_extensions": "absent", "certifi_certificate": "present",

@@ -34,7 +34,7 @@ jobs:
         uses: actions/cache@v6
         with:
           path: out/renpy-mobile-source
-          key: ${{ runner.os }}-renpy-android-runtime-v3-${{ hashFiles('tools/run_renpy_mobile_source_build.sh', 'tools/apply_renpy_mobile_patch_series.py', 'bridge/renpy_runtime/mobile_launcher/build.sh', 'bridge/renpy_runtime/mobile_launcher/include/*.h', 'bridge/renpy_runtime/mobile_launcher/patches/native/*.patch', 'bridge/renpy_runtime/mobile_launcher/patches/native/*.c', 'bridge/renpy_runtime/mobile_launcher/patches/python/*.patch') }}
+          key: ${{ runner.os }}-renpy-android-runtime-v3-${{ hashFiles('tools/run_renpy_mobile_source_build.sh', 'tools/apply_renpy_mobile_patch_series.py', 'bridge/renpy_runtime/mobile_launcher/build.sh', 'bridge/renpy_runtime/mobile_launcher/include/renpy_mobile_launcher.h', 'bridge/renpy_runtime/mobile_launcher/patches/native/*.patch', 'bridge/renpy_runtime/mobile_launcher/patches/native/*.c', 'bridge/renpy_runtime/mobile_launcher/patches/python/*.patch') }}
       - name: Provision the official Linux build prerequisites
         if: steps.runtime-cache.outputs.cache-hit != 'true'
         run: |

@@ -1,5 +1,6 @@
 #include "renpy_mobile_loader.h"
 
+#include <cstdlib>
 #include <cstring>
 
 #if defined(__ANDROID__) || defined(__APPLE__) || defined(AETHERKIRI_RENPY_PROTOCOL_TEST)
@@ -11,6 +12,52 @@ namespace aetherkiri::renpy::mobile {
 namespace {
 
 constexpr int kOk = RENPY_MOBILE_OK;
+
+constexpr const char* kVideoEnvironment[] = {
+    "SDL_VIDEODRIVER", "SDL_VIDEO_GL_DRIVER", "SDL_VIDEO_EGL_DRIVER"};
+
+void CaptureVideoEnvironment(std::array<std::string, 3>& values,
+                             std::array<bool, 3>& defined) {
+  for (size_t index = 0; index < values.size(); ++index) {
+    const char* value = std::getenv(kVideoEnvironment[index]);
+    defined[index] = value != nullptr;
+    values[index] = value ? value : "";
+  }
+}
+
+bool ReplaceVideoEnvironment(const std::array<std::string, 3>& values,
+                             const std::array<bool, 3>& defined) {
+  bool success = true;
+  for (size_t index = 0; index < values.size(); ++index) {
+#if defined(_WIN32)
+    const int status = _putenv_s(kVideoEnvironment[index],
+                                defined[index] ? values[index].c_str() : "");
+#else
+    const int status = defined[index]
+                           ? setenv(kVideoEnvironment[index], values[index].c_str(), 1)
+                           : unsetenv(kVideoEnvironment[index]);
+#endif
+    if (status != 0) success = false;
+  }
+  return success;
+}
+
+// Snapshot on every call: the host may update its selection between calls.
+// Bootstrap supplies the runtime values before the first cooperative tick.
+class VideoEnvironmentScope final {
+ public:
+  VideoEnvironmentScope() { CaptureVideoEnvironment(values_, defined_); }
+  ~VideoEnvironmentScope() { ReplaceVideoEnvironment(values_, defined_); }
+
+  bool Apply(const std::array<std::string, 3>& values,
+             const std::array<bool, 3>& defined) {
+    return ReplaceVideoEnvironment(values, defined);
+  }
+
+ private:
+  std::array<std::string, 3> values_;
+  std::array<bool, 3> defined_{};
+};
 
 #if defined(__ANDROID__) || defined(__APPLE__) || defined(AETHERKIRI_RENPY_PROTOCOL_TEST)
 template <typename Function>
@@ -57,9 +104,8 @@ bool Launcher::Resolve() {
   bind_window_ = ResolveSymbol<BindWindowFn>(library_handle_, "renpy_mobile_bind_window");
   shutdown_ = ResolveSymbol<ShutdownFn>(library_handle_, "renpy_mobile_shutdown");
 #elif defined(AETHERKIRI_RENPY_IOS)
-  // A static Renios archive must have real references so the linker retains
-  // its lifecycle and built-in extension objects. Missing payloads fail at
-  // link time instead of silently producing an installable stub application.
+  // Strong references bind the isolated AetherRenPyRuntime framework. Missing
+  // lifecycle exports fail at link time instead of producing a stub app.
   init_ = renpy_mobile_init;
   bootstrap_ = renpy_mobile_bootstrap;
   tick_ = renpy_mobile_tick;
@@ -72,10 +118,8 @@ bool Launcher::Resolve() {
   bind_window_ = renpy_mobile_bind_window;
   shutdown_ = renpy_mobile_shutdown;
 #elif defined(__APPLE__) || defined(AETHERKIRI_RENPY_PROTOCOL_TEST)
-  // The normal staged Renios archive is not linked into the Godot app. Keep
-  // the optional ABI entirely dynamic so an absent lifecycle fork never adds
-  // unresolved symbols to the iOS executable. A real fork can export these
-  // symbols from the merged extension archive for RTLD_DEFAULT lookup.
+  // Optional protocol-test lookup. Production iOS binds the isolated runtime
+  // framework above and never resolves its internal SDL or Python symbols.
   init_ = ResolveSymbol<InitFn>(RTLD_DEFAULT, "renpy_mobile_init");
   bootstrap_ = ResolveSymbol<BootstrapFn>(RTLD_DEFAULT, "renpy_mobile_bootstrap");
   tick_ = ResolveSymbol<TickFn>(RTLD_DEFAULT, "renpy_mobile_tick");
@@ -110,7 +154,9 @@ int Launcher::Init(const renpy_mobile_config_t& config,
                   const renpy_mobile_host_t& host) {
   if (!Resolve()) return RENPY_MOBILE_NOT_IMPLEMENTED;
   if (initialized_) return RENPY_MOBILE_INVALID_STATE;
+  VideoEnvironmentScope environment;
   int result = bootstrap_ ? bootstrap_(&config, &host) : RENPY_MOBILE_OK;
+  CaptureVideoEnvironment(video_environment_values_, video_environment_defined_);
   if (result == kOk) result = init_(&config, &host);
   if (result == kOk) {
     initialized_ = true;
@@ -124,6 +170,8 @@ int Launcher::Init(const renpy_mobile_config_t& config,
 
 int Launcher::Tick(uint32_t budget_ms) {
   if (!initialized_ || !tick_) return RENPY_MOBILE_INVALID_STATE;
+  VideoEnvironmentScope environment;
+  if (!environment.Apply(video_environment_values_, video_environment_defined_)) return RENPY_MOBILE_ERROR;
   const int result = tick_(budget_ms);
   if (result == RENPY_MOBILE_FINISHED) finished_ = true;
   return result;
@@ -131,36 +179,54 @@ int Launcher::Tick(uint32_t budget_ms) {
 
 int Launcher::Frame(renpy_mobile_frame_t* out_frame) {
   if (!initialized_ || !frame_ || !out_frame) return RENPY_MOBILE_INVALID_STATE;
+  VideoEnvironmentScope environment;
+  if (!environment.Apply(video_environment_values_, video_environment_defined_)) return RENPY_MOBILE_ERROR;
   return frame_(out_frame);
 }
 
 int Launcher::Input(const renpy_mobile_input_t& event) {
   if (!initialized_ || !input_) return RENPY_MOBILE_INVALID_STATE;
+  VideoEnvironmentScope environment;
+  if (!environment.Apply(video_environment_values_, video_environment_defined_)) return RENPY_MOBILE_ERROR;
   return input_(&event);
 }
 
 int Launcher::Pause() {
   if (!initialized_ || !pause_) return RENPY_MOBILE_INVALID_STATE;
+  VideoEnvironmentScope environment;
+  if (!environment.Apply(video_environment_values_, video_environment_defined_)) return RENPY_MOBILE_ERROR;
   return pause_();
 }
 
 int Launcher::Resume() {
   if (!initialized_ || !resume_) return RENPY_MOBILE_INVALID_STATE;
+  VideoEnvironmentScope environment;
+  if (!environment.Apply(video_environment_values_, video_environment_defined_)) return RENPY_MOBILE_ERROR;
   return resume_();
 }
 
 int Launcher::TextInputState(uint32_t* active) {
   if (!initialized_ || !active) return RENPY_MOBILE_INVALID_STATE;
+  VideoEnvironmentScope environment;
+  if (!environment.Apply(video_environment_values_, video_environment_defined_)) return RENPY_MOBILE_ERROR;
   return text_input_state_ ? text_input_state_(active) : RENPY_MOBILE_NOT_IMPLEMENTED;
 }
 
 int Launcher::SetSurfaceSize(uint32_t width, uint32_t height) {
   if (!initialized_) return RENPY_MOBILE_INVALID_STATE;
+  VideoEnvironmentScope environment;
+  if (!environment.Apply(video_environment_values_, video_environment_defined_)) return RENPY_MOBILE_ERROR;
   return surface_size_ ? surface_size_(width, height) : RENPY_MOBILE_NOT_IMPLEMENTED;
 }
 
 void Launcher::Shutdown() {
-  if (initialized_ && shutdown_) shutdown_();
+  if (initialized_ && shutdown_) {
+    VideoEnvironmentScope environment;
+    if (!environment.Apply(video_environment_values_, video_environment_defined_)) {
+      last_error_ = "Could not select the Ren'Py video environment for shutdown";
+    }
+    shutdown_();
+  }
   initialized_ = false;
   finished_ = false;
 }

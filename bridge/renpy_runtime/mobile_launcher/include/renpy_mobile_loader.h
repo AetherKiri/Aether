@@ -3,6 +3,7 @@
 
 #include "renpy_mobile_launcher.h"
 
+#include <array>
 #include <string>
 
 namespace aetherkiri::renpy::mobile {
@@ -12,7 +13,7 @@ namespace aetherkiri::renpy::mobile {
  *
  * The official RAPT/Renios archives do not export these functions, so an
  * unavailable loader is an expected and safe state. Android resolves the
- * symbols from librenpython.so; iOS links the rebuilt archive with strong
+ * symbols from librenpython.so; iOS links the isolated runtime framework with strong
  * references so missing native inputs fail the build. This class never falls back to
  * SDL_main, launcher_main, Py_RunMain, or an application entrypoint.
  */
@@ -74,6 +75,10 @@ class Launcher final {
   bool resolved_ = false;
   bool initialized_ = false;
   bool finished_ = false;
+  // The isolated SDL library still reads process environment variables.
+  // Apply its video selection only while executing its owner-thread ABI.
+  std::array<std::string, 3> video_environment_values_;
+  std::array<bool, 3> video_environment_defined_{};
   std::string last_error_;
 };
 

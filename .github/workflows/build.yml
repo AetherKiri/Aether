@@ -50,9 +50,9 @@ permissions:
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}-${{ github.event_name }}
-  # Build the newest checked implementation; completed runs retain their
-  # logs/artifacts and obsolete source failures must not hold up app packaging.
-  cancel-in-progress: true
+  # Finish actual source/app builds even when a probe-only follow-up arrives.
+  # The pending run advances to the latest checked implementation.
+  cancel-in-progress: false
 
 env:
   # GitHub does not expose repository secrets to fork or Dependabot pull

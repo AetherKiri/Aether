@@ -15,7 +15,7 @@ permissions:
 
 concurrency:
   group: renpy-android-source-${{ github.event.pull_request.number || github.ref }}-${{ github.workflow }}
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 jobs:
   android-runtime:

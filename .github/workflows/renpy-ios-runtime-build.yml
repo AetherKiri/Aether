@@ -22,7 +22,7 @@ permissions:
 
 concurrency:
   group: renpy-ios-source-${{ github.event.pull_request.number || github.ref }}-${{ github.workflow }}
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 jobs:
   ios-test-driver:

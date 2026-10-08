@@ -74,14 +74,39 @@ int aether_run_egl_probe(aether_egl_probe_result *out) {
     const EGLSurface game_surface = eglGetCurrentSurface(EGL_DRAW);
     SDL_CHECK(display != EGL_NO_DISPLAY && game_surface != EGL_NO_SURFACE,
               "SDL did not bind an actual EGL pbuffer");
-    EGLint width = 0, height = 0;
-    SDL_CHECK(eglQuerySurface(display, game_surface, EGL_WIDTH, &width) &&
-              eglQuerySurface(display, game_surface, EGL_HEIGHT, &height) && width == 16 && height == 16,
-              "actual SDL EGL pbuffer dimensions mismatch");
-    out->pbuffer_created = 1;
     copy_string(out->gl_vendor, sizeof(out->gl_vendor), (const char *)glGetString(GL_VENDOR));
     copy_string(out->gl_renderer, sizeof(out->gl_renderer), (const char *)glGetString(GL_RENDERER));
     copy_string(out->gl_version, sizeof(out->gl_version), (const char *)glGetString(GL_VERSION));
+    /* This actual framework reports ANGLE 850c87ba5b74. Its SurfaceMtl
+       getWidth/getHeight return zero until OffscreenSurfaceMtl creates the
+       color texture on the first framebuffer attachment operation. Draw to
+       the real default framebuffer before querying its allocated dimensions;
+       still require the requested size and every RGBA pixel below. */
+    glBindFramebuffer(GL_FRAMEBUFFER, 0);
+    glViewport(0, 0, 16, 16);
+    glDisable(GL_SCISSOR_TEST);
+    glClearColor(0, 0, 0, 1);
+    glClear(GL_COLOR_BUFFER_BIT);
+    glFinish();
+    SDL_CHECK(glGetError() == GL_NO_ERROR, "initialize actual SDL pbuffer color attachment");
+    EGLint width = 0, height = 0;
+    const EGLBoolean queried_width = eglQuerySurface(display, game_surface, EGL_WIDTH, &width);
+    const EGLint width_error = eglGetError();
+    const EGLBoolean queried_height = eglQuerySurface(display, game_surface, EGL_HEIGHT, &height);
+    const EGLint height_error = eglGetError();
+    if (!queried_width || !queried_height || width != 16 || height != 16) {
+        int window_width = 0, window_height = 0, drawable_width = 0, drawable_height = 0;
+        SDL_GetWindowSize(window, &window_width, &window_height);
+        SDL_GL_GetDrawableSize(window, &drawable_width, &drawable_height);
+        snprintf(out->error, sizeof(out->error),
+            "SDL pbuffer dimensions: EGL=%dx%d query=%u/%u errors=0x%x/0x%x; window=%dx%d drawable=%dx%d; requested=16x16",
+            width, height, queried_width, queried_height, width_error, height_error,
+            window_width, window_height, drawable_width, drawable_height);
+        out->egl_error = width_error != EGL_SUCCESS ? width_error : height_error;
+        out->gl_error = glGetError();
+        goto cleanup;
+    }
+    out->pbuffer_created = 1;
     const EGLint config_attributes[] = {
         EGL_SURFACE_TYPE, EGL_PBUFFER_BIT, EGL_RENDERABLE_TYPE, EGL_OPENGL_ES2_BIT,
         EGL_RED_SIZE, 8, EGL_GREEN_SIZE, 8, EGL_BLUE_SIZE, 8, EGL_ALPHA_SIZE, 8, EGL_NONE

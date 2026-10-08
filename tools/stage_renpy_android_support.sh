@@ -104,6 +104,10 @@ done
     echo "Godot Android build template is missing: $godot_build" >&2
     exit 1
 }
+[[ -f "$godot_build/build.gradle" ]] || {
+    echo "Godot Android Gradle application template is missing: $godot_build/build.gradle" >&2
+    exit 1
+}
 if [[ -n "$private_assets" && ! -e "$private_assets" ]]; then
     echo "private assets path is missing: $private_assets" >&2
     exit 1
@@ -139,7 +143,10 @@ for abi in "${abi_list[@]}"; do
 done
 
 main_src="$godot_build/src/main"
-asset_root="$main_src/assets/renpy_mobile"
+# Godot recursively clears src/main/assets before every Gradle export. Keep
+# the native Python payload in a separate Android asset source directory;
+# Gradle merges it into the APK as real AssetManager files, outside game PCKs.
+asset_root="$godot_build/renpy_assets/renpy_mobile"
 asset_rapt="$asset_root/rapt"
 asset_private="$asset_root/private"
 private_archive="$asset_rapt/private.mp3"
@@ -149,6 +156,14 @@ java_sdl_root="$main_src/java/org/libsdl/app"
 java_renpy_root="$main_src/java/org/renpy/android"
 
 mkdir -p "$asset_rapt" "$asset_private" "$jni_root" "$java_root"
+cat > "$godot_build/aether-renpy.gradle" <<'GRADLE'
+// Aether's persistent Ren'Py assets survive Godot's exported-game cleanup.
+// Keep Godot's normal asset source set and merge these raw files into it.
+android.sourceSets.main.assets.srcDir(file('renpy_assets'))
+GRADLE
+if ! grep -Fxq "apply from: 'aether-renpy.gradle'" "$godot_build/build.gradle"; then
+    printf "\napply from: 'aether-renpy.gradle'\n" >> "$godot_build/build.gradle"
+fi
 
 # This source is part of AetherKiri, not an official RAPT Activity. It binds
 # the existing Godot Activity to engine_api without creating a second owner.
@@ -278,6 +293,17 @@ for abi in "${abi_list[@]}"; do
     done
 done
 
+# Retain the compiled Ren'Py dependency bytes in the APK. AGP otherwise strips
+# them again, obscuring which validated native input the app actually shipped.
+# This does not change the host libraries' normal release stripping policy.
+{
+    printf '\nandroid.packagingOptions.jniLibs.keepDebugSymbols += [\n'
+    for native_file in "${staged_native_files[@]}"; do
+        printf "    'lib/%s',\n" "$native_file"
+    done
+    printf ']\n'
+} >> "$godot_build/aether-renpy.gradle"
+
 # Record the exact staged paths and the archive metadata when available. This
 # is consumed by package smoke tests and makes an APK inspection auditable.
 rapt_checksum=""
@@ -299,6 +325,7 @@ fi
     printf 'native_library=%s\n' "$(IFS=','; printf '%s' "${native_paths[*]}")"
     printf 'staged_native_files=%s\n' "$(IFS=','; printf '%s' "${staged_native_files[*]}")"
     printf 'private_assets=assets/renpy_mobile/private\n'
+    printf 'gradle_asset_source=renpy_assets\n'
     printf 'private_archive=%s\n' "$( [[ -f "$private_archive" ]] && printf 'assets/renpy_mobile/rapt/private.mp3' || true )"
     printf 'manifest_merged=false\n'
     printf 'java_host_shims=org/libsdl/app/SDLActivity.java,org/renpy/android/PythonSDLActivity.java\n'

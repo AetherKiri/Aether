@@ -13,6 +13,7 @@ trap 'rm -rf "$abi_work"' EXIT
 abi_main="$abi_work/mobile/rapt/prototype/renpyandroid/src/main"
 mkdir -p "$abi_main/jniLibs/x86_64" "$abi_main/java/org/renpy/android" \
     "$abi_work/android-build/src/main/jniLibs/x86_64"
+printf '// Godot Gradle staging fixture\n' > "$abi_work/android-build/build.gradle"
 cat > "$abi_work/fixture.c" <<'C'
 const char aether_contract_fixture[] = "AETHERKIRI_RENPY_LIFECYCLE_STUB";
 int renpy_mobile_init(void) { return -3; }
@@ -27,9 +28,20 @@ printf 'unrelated host library\n' \
     > "$abi_work/android-build/src/main/jniLibs/x86_64/libhost.so"
 bash "$stage" --allow-unsupported --abis x86_64 \
     --mobile-root "$abi_work/mobile" --godot-build "$abi_work/android-build" >/dev/null
-abi_manifest="$abi_work/android-build/src/main/assets/renpy_mobile/manifest.properties"
+abi_manifest="$abi_work/android-build/renpy_assets/renpy_mobile/manifest.properties"
 grep -Fx 'native_abis=x86_64' "$abi_manifest"
 grep -Fx 'native_library=lib/x86_64/librenpython.so' "$abi_manifest"
+grep -Fx 'gradle_asset_source=renpy_assets' "$abi_manifest"
+grep -Fx "android.sourceSets.main.assets.srcDir(file('renpy_assets'))" \
+    "$abi_work/android-build/aether-renpy.gradle"
+grep -Fx "    'lib/x86_64/librenpython.so'," "$abi_work/android-build/aether-renpy.gradle"
+[[ "$(grep -Fc "    'lib/x86_64/" "$abi_work/android-build/aether-renpy.gradle")" == 2 ]]
+! grep -Fq 'libhost.so' "$abi_work/android-build/aether-renpy.gradle"
+mkdir -p "$abi_work/android-build/src/main/assets"
+printf 'Godot export cleanup sentinel\n' > "$abi_work/android-build/src/main/assets/sentinel"
+rm -rf "$abi_work/android-build/src/main/assets"
+[[ -s "$abi_manifest" ]]
+[[ -s "$abi_work/android-build/renpy_assets/renpy_mobile/rapt/java/org/renpy/android/PythonSDLActivity.java" ]]
 cmp "$abi_main/jniLibs/x86_64/librenpython.so" \
     "$abi_work/android-build/src/main/jniLibs/x86_64/librenpython.so"
 [[ ! -e "$abi_work/android-build/src/main/jniLibs/arm64-v8a/librenpython.so" ]]
@@ -40,6 +52,8 @@ rm "$abi_main/jniLibs/x86_64/liblegacy.so"
 bash "$stage" --allow-unsupported --abis x86_64 \
     --mobile-root "$abi_work/mobile" --godot-build "$abi_work/android-build" >/dev/null
 [[ ! -e "$abi_work/android-build/src/main/jniLibs/x86_64/liblegacy.so" ]]
+[[ "$(grep -Fxc "apply from: 'aether-renpy.gradle'" "$abi_work/android-build/build.gradle")" == 1 ]]
+! grep -Fq 'liblegacy.so' "$abi_work/android-build/aether-renpy.gradle"
 grep -Fx 'unrelated host library' \
     "$abi_work/android-build/src/main/jniLibs/x86_64/libhost.so"
 if bash "$stage" --allow-unsupported --abis mips \
@@ -70,6 +84,7 @@ tmp_root="$(mktemp -d "${TMPDIR:-/tmp}/aetherkiri-renpy-android-stage.XXXXXX")"
 conflict_root="$(mktemp -d "${TMPDIR:-/tmp}/aetherkiri-renpy-android-conflict.XXXXXX")"
 trap 'rm -rf "$tmp_root" "$conflict_root"' EXIT
 mkdir -p "$tmp_root/android-build/src/main" "$tmp_root/private"
+printf '// Godot Gradle staging fixture\n' > "$tmp_root/android-build/build.gradle"
 printf 'private fixture\n' > "$tmp_root/private/private.mp3"
 
 bash "$stage" \
@@ -81,11 +96,11 @@ bash "$stage" \
 main="$tmp_root/android-build/src/main"
 [[ -s "$main/jniLibs/arm64-v8a/librenpython.so" ]]
 [[ "$(dd if="$main/jniLibs/arm64-v8a/librenpython.so" bs=4 count=1 2>/dev/null | od -An -tx1 | tr -d ' \\n')" == "7f454c46" ]]
-[[ -s "$main/assets/renpy_mobile/rapt/java/org/renpy/android/PythonSDLActivity.java" ]]
-[[ -s "$main/assets/renpy_mobile/rapt/templates/app-AndroidManifest.xml" ]]
-[[ -s "$main/assets/renpy_mobile/rapt/build.gradle" ]]
-[[ -s "$main/assets/renpy_mobile/private/private.mp3" ]]
-[[ -s "$main/assets/renpy_mobile/rapt/private.mp3" ]]
+[[ -s "$tmp_root/android-build/renpy_assets/renpy_mobile/rapt/java/org/renpy/android/PythonSDLActivity.java" ]]
+[[ -s "$tmp_root/android-build/renpy_assets/renpy_mobile/rapt/templates/app-AndroidManifest.xml" ]]
+[[ -s "$tmp_root/android-build/renpy_assets/renpy_mobile/rapt/build.gradle" ]]
+[[ -s "$tmp_root/android-build/renpy_assets/renpy_mobile/private/private.mp3" ]]
+[[ -s "$tmp_root/android-build/renpy_assets/renpy_mobile/rapt/private.mp3" ]]
 # Keep the loader preflight tied to the official payload's real ABI. GNU nm
 # understands the staged arm64 ELF even when no Android runtime is available.
 if command -v nm >/dev/null 2>&1; then
@@ -125,23 +140,24 @@ for callback in \
     grep -Fq "$callback" "$main/java/org/libsdl/app/SDLActivity.java"
 done
 grep -Fq 'nativeSetEnv' "$main/java/org/renpy/android/PythonSDLActivity.java"
-grep -Fx 'playable=unverified' "$main/assets/renpy_mobile/manifest.properties"
-grep -Fx 'inspection_only=true' "$main/assets/renpy_mobile/manifest.properties"
-grep -Fx 'native_lifecycle_validated=false' "$main/assets/renpy_mobile/manifest.properties"
-grep -Fx 'manifest_merged=false' "$main/assets/renpy_mobile/manifest.properties"
+grep -Fx 'playable=unverified' "$tmp_root/android-build/renpy_assets/renpy_mobile/manifest.properties"
+grep -Fx 'inspection_only=true' "$tmp_root/android-build/renpy_assets/renpy_mobile/manifest.properties"
+grep -Fx 'native_lifecycle_validated=false' "$tmp_root/android-build/renpy_assets/renpy_mobile/manifest.properties"
+grep -Fx 'manifest_merged=false' "$tmp_root/android-build/renpy_assets/renpy_mobile/manifest.properties"
 grep -Fx 'java_host_shims=org/libsdl/app/SDLActivity.java,org/renpy/android/PythonSDLActivity.java' \
-    "$main/assets/renpy_mobile/manifest.properties"
+    "$tmp_root/android-build/renpy_assets/renpy_mobile/manifest.properties"
 # The RAPT manifest is an asset only; no second Activity is added to the host
 # source tree.
 [[ ! -f "$main/AndroidManifest.xml" ]]
 # The official PythonSDLActivity remains assets-only; the compiled source is
 # the explicit host shim above.
 grep -Fq 'AETHERKIRI_HOST_SHIM' "$main/java/org/renpy/android/PythonSDLActivity.java"
-grep -Fq 'PythonSDLActivity' "$main/assets/renpy_mobile/rapt/java/org/renpy/android/PythonSDLActivity.java"
+grep -Fq 'PythonSDLActivity' "$tmp_root/android-build/renpy_assets/renpy_mobile/rapt/java/org/renpy/android/PythonSDLActivity.java"
 
 # A Godot template that already owns either SDL class must fail closed rather
 # than silently replacing its singleton with the RAPT shim.
 mkdir -p "$conflict_root/android-build/src/main/java/org/libsdl/app"
+printf '// Godot Gradle staging fixture\n' > "$conflict_root/android-build/build.gradle"
 printf 'package org.libsdl.app; public final class SDLActivity {}\n' \
     > "$conflict_root/android-build/src/main/java/org/libsdl/app/SDLActivity.java"
 if bash "$stage" --allow-unsupported --mobile-root "$mobile_root" \

@@ -504,6 +504,10 @@ else
     [[ -s "$export_path" ]] || { echo "Android export did not create an APK: $export_path" >&2; exit 1; }
     case "${AETHERKIRI_ENABLE_RENPY:-OFF}" in
         ON|TRUE|YES|1|on|true|yes)
+            python3 "$PROJECT_ROOT/tools/inspect_renpy_android_apk.py" \
+                --apk "$export_path" --abi "$ABIS" \
+                --godot-build "$GODOT_APP_DIR/android/build" \
+                --output-dir "$export_dir/diagnostics"
             python3 "$PROJECT_ROOT/tools/validate_renpy_mobile_payload.py" \
                 --platform android --abi "$ABIS" --apk "$export_path"
             ;;

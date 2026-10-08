@@ -364,7 +364,7 @@ jobs:
           export CMAKE_C_COMPILER_LAUNCHER=ccache
           export CMAKE_CXX_COMPILER_LAUNCHER=ccache
           export NDK_CCACHE=ccache
-          ./build.sh android release --jobs=4
+          ./build.sh android release --jobs=4 2>&1 | tee "$RUNNER_TEMP/renpy-android-release-build.log"
           if [[ "$AETHERKIRI_WITH_INTERNAL" == "true" ]]; then
             grep -Fx 'AETHERKIRI_ENABLE_SOFTPAL_RUNTIME:BOOL=ON' \
               out/android/arm64-v8a/release/CMakeCache.txt
@@ -379,7 +379,7 @@ jobs:
           export CMAKE_C_COMPILER_LAUNCHER=ccache
           export CMAKE_CXX_COMPILER_LAUNCHER=ccache
           export NDK_CCACHE=ccache
-          ./build.sh android debug --jobs=4
+          ./build.sh android debug --jobs=4 2>&1 | tee "$RUNNER_TEMP/renpy-android-debug-build.log"
 
       - name: Verify the compiled provider and final APK runtime payload
         run: |
@@ -418,7 +418,7 @@ jobs:
           export CMAKE_C_COMPILER_LAUNCHER=ccache
           export CMAKE_CXX_COMPILER_LAUNCHER=ccache
           export NDK_CCACHE=ccache
-          bash scripts/build_android.sh debug --abi=x86_64
+          bash scripts/build_android.sh debug --abi=x86_64 2>&1 | tee "$RUNNER_TEMP/renpy-android-emulator-build.log"
           python3 tools/validate_renpy_mobile_payload.py --platform android --abi x86_64 \
             --apk out/godot/android/x86_64/debug/Aether-emulator-debug.apk
 
@@ -428,6 +428,53 @@ jobs:
           name: android-renpy-emulator-debug-apk
           path: out/godot/android/x86_64/debug/Aether-emulator-debug.apk
           if-no-files-found: error
+          retention-days: 7
+
+      - name: Record any produced APK even when its build or payload gate failed
+        if: always()
+        run: |
+          python3 - <<'PY'
+          import hashlib, json, pathlib, subprocess, zipfile
+          root = pathlib.Path('out/godot/android')
+          for apk in root.rglob('*.apk'):
+              output = apk.parent / 'diagnostics'
+              output.mkdir(parents=True, exist_ok=True)
+              result = {
+                  'artifact_kind': 'diagnostic_apk', 'gameplay': 'unverified',
+                  'ci_job_status': '${{ job.status }}', 'apk': str(apk),
+              }
+              digest = hashlib.sha256()
+              with apk.open('rb') as stream:
+                  for block in iter(lambda: stream.read(1024 * 1024), b''):
+                      digest.update(block)
+              result['apk_sha256'] = digest.hexdigest()
+              try:
+                  with zipfile.ZipFile(apk) as archive:
+                      (output / 'apk-contents.txt').write_text('\n'.join(sorted(archive.namelist())) + '\n')
+              except zipfile.BadZipFile as error:
+                  result['zip_error'] = str(error)
+              # Keep the checksums captured against this APK's own stage. A
+              # subsequent x86_64 export replaces the current arm64 stage.
+              if not (output / 'apk-payload-checksums.json').exists():
+                  abi = 'x86_64' if 'x86_64' in apk.parts else 'arm64-v8a'
+                  subprocess.run(['python3', 'tools/inspect_renpy_android_apk.py',
+                      '--apk', str(apk), '--abi', abi,
+                      '--godot-build', 'apps/godot_app/android/build',
+                      '--output-dir', str(output)], check=False)
+              (output / 'ci-build-result.json').write_text(json.dumps(result, indent=2) + '\n')
+          PY
+
+      - name: Preserve Android application diagnostics, including failed APKs
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: android-app-build-diagnostics
+          path: |
+            ${{ runner.temp }}/renpy-android-*-build.log
+            out/godot/android/**/*.apk
+            out/godot/android/**/diagnostics/**
+            apps/godot_app/android/build/aether-renpy.gradle
+          if-no-files-found: warn
           retention-days: 7
 
       - name: Save ccache

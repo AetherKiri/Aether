@@ -1,11 +1,11 @@
 diff --git a/patches/SDL2-2.0.20/aether-pbuffer-metalangle.patch b/patches/SDL2-2.0.20/aether-pbuffer-metalangle.patch
 new file mode 100644
-index 0000000..b13f73c
+index 0000000..6de8626
 --- /dev/null
 +++ b/patches/SDL2-2.0.20/aether-pbuffer-metalangle.patch
-@@ -0,0 +1,82 @@
+@@ -0,0 +1,144 @@
 +diff --git a/configure.ac b/configure.ac
-+index 3c1c6c8..de2d5e6 100644
++index 3c1c6c8..3fa0bde 100644
 +--- a/configure.ac
 ++++ b/configure.ac
 +@@ -4116,6 +4116,9 @@ case "$host" in
@@ -18,6 +18,68 @@ index 0000000..b13f73c
 +         CheckDiskAudio
 +         CheckDummyAudio
 +         CheckDLOPEN
++@@ -4146,7 +4149,9 @@ case "$host" in
++             have_joystick=yes
++         else
++             # Need this code for accelerometer as joystick support
++-            SOURCES="$SOURCES $srcdir/src/joystick/iphoneos/*.m"
+++            if test x$enable_video_offscreen != xyes; then
+++                SOURCES="$SOURCES $srcdir/src/joystick/iphoneos/*.m"
+++            fi
++         fi
++         # Set up files for the haptic library
++         #if test x$enable_haptic = xyes; then
++@@ -4185,12 +4190,16 @@ case "$host" in
++         # Set up other core UNIX files
++         SOURCES="$SOURCES $srcdir/src/core/unix/*.c"
++         # The iOS platform requires special setup.
++-        AC_DEFINE(SDL_VIDEO_DRIVER_UIKIT, 1, [ ])
+++        # An embedded offscreen build must not register SDL's UIKit classes:
+++        # Objective-C classes are process-global even across Mach-O namespaces.
+++        if test x$enable_video_offscreen != xyes; then
+++            AC_DEFINE(SDL_VIDEO_DRIVER_UIKIT, 1, [ ])
+++            SOURCES="$SOURCES $srcdir/src/video/uikit/*.m"
+++        fi
++         AC_DEFINE(SDL_VIDEO_OPENGL_ES2, 1, [ ])
++         AC_DEFINE(SDL_VIDEO_OPENGL_ES, 1, [ ])
++         AC_DEFINE(SDL_VIDEO_RENDER_OGL_ES, 1, [ ])
++         AC_DEFINE(SDL_VIDEO_RENDER_OGL_ES2, 1, [ ])
++-        SOURCES="$SOURCES $srcdir/src/video/uikit/*.m"
++         EXTRA_LDFLAGS="$EXTRA_LDFLAGS -lm -liconv -lobjc"
++         EXTRA_LDFLAGS="$EXTRA_LDFLAGS -Wl,-framework,AVFoundation"
++         EXTRA_LDFLAGS="$EXTRA_LDFLAGS -Wl,-framework,AudioToolbox"
++diff --git a/src/audio/coreaudio/SDL_coreaudio.m b/src/audio/coreaudio/SDL_coreaudio.m
++index 67d838f..0beafca 100644
++--- a/src/audio/coreaudio/SDL_coreaudio.m
+++++ b/src/audio/coreaudio/SDL_coreaudio.m
++@@ -346,6 +346,11 @@ static void interruption_end(_THIS)
++     }
++ }
++ 
+++/* Altered for the embedded Ren'Py fork: the host may have its own SDL2.
+++   CoreAudio remains enabled, but its Objective-C class cannot share a name. */
+++#if defined(METALANGLE) && defined(__IPHONEOS__)
+++#define SDLInterruptionListener AetherRenpySDLInterruptionListener
+++#endif
++ @interface SDLInterruptionListener : NSObject
++ 
++ @property (nonatomic, assign) SDL_AudioDevice *device;
++diff --git a/src/hidapi/SDL_hidapi.c b/src/hidapi/SDL_hidapi.c
++index aacff63..8d33aaf 100644
++--- a/src/hidapi/SDL_hidapi.c
+++++ b/src/hidapi/SDL_hidapi.c
++@@ -1522,8 +1522,10 @@ int SDL_hid_get_indexed_string(SDL_hid_device *device, int string_index, wchar_t
++ 
++ void SDL_hid_ble_scan(SDL_bool active)
++ {
++-#if __IPHONEOS__ || __TVOS__
+++#if !SDL_HIDAPI_DISABLED && (__IPHONEOS__ || __TVOS__)
++     hid_ble_scan(active);
+++#else
+++    (void)active;
++ #endif
++ }
++ 
 +diff --git a/src/video/SDL_egl.c b/src/video/SDL_egl.c
 +index 62004e3..9c3f2b3 100644
 +--- a/src/video/SDL_egl.c
@@ -164,10 +226,10 @@ index 5d4a5c9..0b30f45 100644
  @task(kind="python", platforms="ios")
  def install(c: Context):
 diff --git a/tasks/sdl2.py b/tasks/sdl2.py
-index 6756b47..3b701cd 100644
+index 6756b47..a7d5b01 100644
 --- a/tasks/sdl2.py
 +++ b/tasks/sdl2.py
-@@ -58,9 +58,11 @@ def build(c: Context):
+@@ -58,9 +58,19 @@ def build(c: Context):
          --disable-libdecor
      {% endif %}
  
@@ -175,8 +237,38 @@ index 6756b47..3b701cd 100644
 +    {% if c.platform in ("android", "ios") %}
          --enable-video-offscreen
 +    {% endif %}
++
++    {% if c.platform == "ios" %}
++        --disable-joystick
++        --disable-sensor
++        --disable-power
++        --disable-haptic
++        --disable-hidapi
++    {% endif %}
  
 +    {% if c.platform == "android" %}
          --disable-oss
          --disable-alsa
          --disable-esd
+@@ -76,19 +86,8 @@ def build(c: Context):
+     if c.platform == "ios":
+         with open(c.path("include/SDL_config.h"), "a") as f:
+             f.write("""
+-/* Enable system power support */
+-#define SDL_POWER_UIKIT 1
+-
+-/* enable iPhone keyboard support */
+-#define SDL_IPHONE_KEYBOARD 1
+-
+-/* enable iOS extended launch screen */
+-#define SDL_IPHONE_LAUNCHSCREEN 1
+-
+-/* Set max recognized G-force from accelerometer
+-   See src/joystick/uikit/SDL_sysjoystick.m for notes on why this is needed
+- */
+-#define SDL_IPHONE_MAX_GFORCE 5.0
++/* Embedded Ren'Py uses the host's keyboard, app lifecycle and sensors.
++   SDL's UIKit window/controller classes are excluded from this build. */
+ 
+ /* enable filesystem support */
+ #define SDL_FILESYSTEM_COCOA   1

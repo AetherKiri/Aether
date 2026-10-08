@@ -82,7 +82,7 @@ if ! (
     "$sdl_source/configure" --host="$sdl_host" --disable-shared --prefix="$output/sdl-install" \
         --enable-video-offscreen --disable-video-x11 --disable-video-wayland \
         --disable-render-metal --disable-video-vulkan --disable-video-kmsdrm \
-        --disable-hidapi --disable-sensor --disable-power --disable-audio --disable-haptic || exit $?
+        --disable-hidapi --disable-joystick --disable-sensor --disable-power --disable-haptic || exit $?
     make -j"$(sysctl -n hw.ncpu)" || exit $?
     make install || exit $?
 ) > "$output/evidence/sdl-build.log" 2>&1; then
@@ -92,6 +92,21 @@ fi
 cp "$output/sdl-build/include/SDL_config.h" "$output/evidence/SDL_config.h"
 grep '^#define SDL_VIDEO_OPENGL_EGL 1' "$output/evidence/SDL_config.h"
 grep '^#define SDL_VIDEO_DRIVER_OFFSCREEN 1' "$output/evidence/SDL_config.h"
+if grep '^#define SDL_VIDEO_DRIVER_UIKIT 1' "$output/evidence/SDL_config.h"; then
+    echo 'Embedded SDL must not compile its process-global UIKit classes.' >&2
+    exit 1
+fi
+xcrun nm -a "$output/sdl-install/lib/libSDL2.a" > "$output/evidence/sdl-symbols.txt"
+python3 - "$output/evidence/sdl-symbols.txt" <<'PY'
+import pathlib, re, sys
+symbols = pathlib.Path(sys.argv[1]).read_text()
+collisions = re.findall(r'OBJC_CLASS_\$_(?:SDL_\w+|SDLInterruptionListener)\b', symbols)
+if collisions:
+    raise SystemExit('RenPy SDL still defines host-conflicting Objective-C classes: ' + ', '.join(sorted(set(collisions))))
+if 'OBJC_CLASS_$_AetherRenpySDLInterruptionListener' not in symbols:
+    raise SystemExit('Expected the real retained CoreAudio implementation with its isolated Objective-C listener.')
+print('Actual SDL archive excludes UIKit classes and preserves renamed CoreAudio listener.')
+PY
 xcrun lipo "$output/sdl-install/lib/libSDL2.a" -archs > "$output/evidence/sdl-architectures.txt"
 app="$output/AetherRenPySDLProbe.app"
 mkdir -p "$app/Frameworks"

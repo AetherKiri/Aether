@@ -50,13 +50,13 @@ jobs:
       AETHERKIRI_VCPKG_CACHE_WRITE: 'false'
       AETHERKIRI_ENABLE_RENPY: 'ON'
       CCACHE_DIR: ${{ github.workspace }}/.ccache
-      NATIVE_RUNTIME_RUN: '37787184399'
-      NATIVE_RUNTIME_ARTIFACT: '11556042880'
-      NATIVE_RUNTIME_HEAD: '8895c27beef76954bd85cba8b209df9d49a2401f'
+      NATIVE_RUNTIME_RUN: '37812943810'
+      NATIVE_RUNTIME_ARTIFACT: '11567113193'
+      NATIVE_RUNTIME_HEAD: 'dbb863ac101301c8a9d78dea358e2157a0185165'
       # Keep the disposable Debug key and its data separate from an existing
       # production installation. The build uses a copied export project.
       AETHERKIRI_ANDROID_TEST_PACKAGE_ID: org.aetherkiri.renpy.debug
-      NATIVE_RUNTIME_DIGEST: 'sha256:f05b3951f8a8a717258c034894431df36f13b9db0356c82f3285cde344c17729'
+      NATIVE_RUNTIME_DIGEST: 'sha256:04a1f247585b8f4647e6dcd8c4102757f558ee542524df1504267b40f0a4239c'
     steps:
       - uses: actions/checkout@v6
         with:
@@ -91,13 +91,13 @@ jobs:
               'host_checkout_head': subprocess.check_output(['git', 'rev-parse', 'HEAD'], text=True).strip(),
               'host_pr_head': os.environ['HOST_PR_HEAD'], 'abi': '${{ matrix.abi }}',
               'native_compilation': 'passed', 'gameplay': 'unverified',
-              'note': 'Current host packaged with the pinned older native dependency; current-source compilation is checked separately by Build.'}
+              'note': 'Host and native revisions are recorded independently. The native dependency passed compilation and validation at its recorded exact commit. Gameplay remains unverified.'}
           (evidence / 'provenance.json').write_text(json.dumps(provenance, indent=2) + '\n')
           PY
       - uses: actions/download-artifact@v6
         with:
-          artifact-ids: 11556042880
-          run-id: 37787184399
+          artifact-ids: 11567113193
+          run-id: 37812943810
           github-token: ${{ github.token }}
           merge-multiple: true
           path: ${{ runner.temp }}/renpy-runtime-download

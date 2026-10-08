@@ -2,7 +2,7 @@ diff --git a/renpybuild/ios_host_python.py b/renpybuild/ios_host_python.py
 new file mode 100644
 --- /dev/null
 +++ b/renpybuild/ios_host_python.py
-@@ -0,0 +1,143 @@
+@@ -0,0 +1,147 @@
 +"""Keep iOS build tools on the host interpreter and package only pure wheels."""
 +
 +from email.parser import BytesParser
@@ -51,7 +51,11 @@ new file mode 100644
 +    if c.platform != "ios":
 +        raise ValueError("iOS host tools require an iOS target")
 +
-+    host_python = c.path("{{ host }}/bin/python3").resolve(strict=True)
++    host_python = c.path("{{ host }}/bin/python3")
++    # Framework/Homebrew installs can expose only the versioned executable.
++    if not host_python.is_file():
++        host_python = c.path("{{ host }}/bin/{{ pythonver }}")
++    host_python = host_python.resolve(strict=True)
 +    tools = _host_tools(c)
 +    _run(c, host_python, "-I", "-m", "venv", "--clear", "--symlinks", tools)
 +    tool_python = tools / "bin/python3"

@@ -87,6 +87,8 @@ environment lies outside the packaged Python and native archive roots.
 The preparation regression executes real pip installation, the pinned
 `setuplib` import and actual bytecode compilation under conflicting Python
 path variables. It does not compile or execute an iOS runtime.
+Both ordinary and versioned-only framework executable layouts resolve to
+the real host interpreter; no active target interpreter is used as a fallback.
 
 `0011-assimp-owned-array-copy.patch` preserves Assimp 5.4.3 and its strict
 compiler checks. SceneCombiner uses `aiFace`'s deep assignment and explicitly

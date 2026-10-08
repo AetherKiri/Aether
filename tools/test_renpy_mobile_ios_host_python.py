@@ -77,6 +77,18 @@ def main():
         context.env("PYTHONHOME", str(poison))
         context.env("PYTHONPATH", str(poison))
         prepare_ios_host_python(context)
+
+        # Exercise a versioned-only distribution layout with the actual host
+        # interpreter. The symlink resolves to real CPython and its real stdlib;
+        # this does not substitute an interpreter or simulate a target SDK.
+        versioned_host = root / "versioned-only-host"
+        (versioned_host / "bin").mkdir(parents=True)
+        canonical = Path(sys._base_executable).resolve(strict=True)
+        (versioned_host / "bin/python3.12").symlink_to(canonical)
+        assert not (versioned_host / "bin/python3").exists()
+        context.var("host", versioned_host)
+        prepare_ios_host_python(context)
+        assert (context.install / "aether-host-tools/bin/python3").resolve(strict=True) == canonical
         tasks["pip"](context)
 
         wrapper = context.path("{{ install }}/bin/hostpython3")
@@ -115,6 +127,7 @@ print(json.dumps({'isolated': bool(sys.flags.isolated), 'stdlib': subprocess.__f
         context.compile(runtime)
         assert runtime.with_suffix(".pyc").is_file()
         result = {"status": "passed", "host_python": sys.version.split()[0],
+                  "installed_and_versioned_only_host_layouts": "passed",
                   "isolated_stdlib_and_subprocess": "passed", "pinned_setuplib_import": "passed",
                   "actual_context_compileall": "passed", "target_package_versions": versions,
                   "target_native_extensions": "absent", "certifi_certificate": "present",

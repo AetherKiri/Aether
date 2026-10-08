@@ -30,14 +30,18 @@ def sha256(path: Path) -> str:
 
 def parse_badging(text: str) -> dict:
     package = re.search(r'^package:\s*(.*)$', text, re.MULTILINE)
-    minimum = re.search(r"^sdkVersion:'(\d+)'", text, re.MULTILINE)
+    # Current aapt2 uses minSdkVersion; older SDK tools used sdkVersion.
+    # Both describe the actual compiled <uses-sdk> minimum, never a default.
+    minimums = re.findall(r"^(?:minSdkVersion|sdkVersion):'(\d+)'", text, re.MULTILINE)
     native = re.search(r'^native-code:\s*(.*)$', text, re.MULTILINE)
-    if not package or not minimum or not native:
+    if not package or not minimums or not native:
         raise ValueError('aapt badging lacks package, minimum SDK, or native ABI metadata')
+    if len(set(minimums)) != 1:
+        raise ValueError('aapt badging reports conflicting minimum SDK versions')
     fields = dict(re.findall(r"(\w+)='([^']*)'", package.group(1)))
     target = re.search(r"^targetSdkVersion:'(\d+)'", text, re.MULTILINE)
     return {'package': fields['name'], 'version_code': int(fields['versionCode']),
-            'version_name': fields['versionName'], 'min_sdk': int(minimum.group(1)),
+            'version_name': fields['versionName'], 'min_sdk': int(minimums[0]),
             'target_sdk': int(target.group(1)) if target else None,
             'debuggable': bool(re.search(r'^application-debuggable\s*$', text, re.MULTILINE)),
             'native_abis': re.findall(r"'([^']+)'", native.group(1))}
@@ -65,8 +69,14 @@ def audit_android_manifest(apk: Path, sdk: Path, expected: dict, abi: str,
         tool = sdk_tool(sdk, 'build-tools/*/aapt2')
     except ValueError:
         tool = sdk_tool(sdk, 'build-tools/*/aapt')
-    actual = parse_badging(command_evidence([str(tool), 'dump', 'badging', str(apk)],
-                                           output / 'apk-android-badging.txt'))
+    badging = command_evidence([str(tool), 'dump', 'badging', str(apk)],
+                               output / 'apk-android-badging.txt')
+    # Public package metadata also belongs in the actual build log, so a tool
+    # format change can be diagnosed without republishing the raw evidence ZIP.
+    public_fields = [line for line in badging.splitlines() if re.match(
+        r'^(?:package:|minSdkVersion:|sdkVersion:|targetSdkVersion:|native-code:|application-debuggable\s*$)', line)]
+    print('Actual SDK badging metadata:', json.dumps(public_fields))
+    actual = parse_badging(badging)
     expected = dict(expected, debuggable=debuggable, native_abis=[abi])
     errors = [f'Compiled AndroidManifest {key}: expected {value!r}, got {actual.get(key)!r}'
               for key, value in expected.items() if actual.get(key) != value]

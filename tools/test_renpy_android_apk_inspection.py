@@ -80,6 +80,22 @@ native-code: 'arm64-v8a'
         with self.assertRaisesRegex(ValueError, 'lacks package'):
             parse_badging('renpy_version=8.5.3\nnative_abis=arm64-v8a\n')
 
+    def test_current_aapt2_min_sdk_format_and_conflicts(self):
+        # Official AOSP aapt2 DumpManifest.cpp prints minSdkVersion; this is a
+        # parser regression fixture, not evidence of an executed mobile APK.
+        text = """package: name='org.aetherkiri.renpy.debug' versionCode='4501' versionName='1.0.7-alpha.3'
+minSdkVersion:'26'
+targetSdkVersion:'35'
+application-debuggable
+native-code: 'arm64-v8a'
+"""
+        self.assertEqual(parse_badging(text)['min_sdk'], 26)
+        self.assertEqual(parse_badging(text + "sdkVersion:'26'\n")['min_sdk'], 26)
+        with self.assertRaisesRegex(ValueError, 'conflicting minimum SDK'):
+            parse_badging(text + "sdkVersion:'24'\n")
+        with self.assertRaisesRegex(ValueError, 'lacks package'):
+            parse_badging(text.replace("minSdkVersion:'26'\n", ''))
+
     def test_stale_native_bytes_and_missing_assets_reject(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)

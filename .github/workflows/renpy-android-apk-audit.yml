@@ -137,6 +137,7 @@ jobs:
           apk = one('*.apk')
           apk_hash = hashlib.sha256(apk.read_bytes()).hexdigest()
           assert apk_hash == previous['apk_sha256']
+          print('Original exported APK SHA256:', apk_hash)
           result = root / 'apk-audit-result'
           result.mkdir()
           deliverable = root / 'validated-apk'

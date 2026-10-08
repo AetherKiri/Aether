@@ -154,6 +154,7 @@ jobs:
           path: |
             ${{ runner.temp }}/renpy-ios-source-build.log
             ${{ runner.temp }}/renpy-ios-source-prepare.log
+            _renpy-build/tmp/**/config.log
             out/renpy-ios-source/manifest.json
           if-no-files-found: warn
           retention-days: 7

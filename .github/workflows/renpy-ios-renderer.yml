@@ -6,6 +6,7 @@ on:
       - '.github/workflows/renpy-ios-renderer.yml'
       - 'tools/run_renpy_ios_egl_probe.sh'
       - 'tools/renpy_ios_egl_probe/**'
+      - 'vcpkg/ports/sdl2/**'
       - 'bridge/renpy_runtime/mobile_launcher/patches/native/**'
   workflow_dispatch:
 
@@ -20,7 +21,7 @@ jobs:
   simulator-pbuffer:
     name: Execute MetalANGLE EGL rendering on iOS Simulator
     runs-on: macos-latest
-    timeout-minutes: 30
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v6
         with:
@@ -50,7 +51,8 @@ jobs:
           if-no-files-found: error
           retention-days: 7
       - name: Install the actual SDL configure tools
-        run: brew install autoconf automake libtool
+        if: ${{ !cancelled() }}
+        run: brew install autoconf automake libtool cmake ninja
       - name: Build and execute the patched SDL offscreen renderer
         run: |
           set -euo pipefail
@@ -67,5 +69,32 @@ jobs:
           path: |
             out/renpy-ios-sdl-probe/evidence
             ${{ runner.temp }}/renpy-ios-sdl-probe.log
+          if-no-files-found: warn
+          retention-days: 7
+      - name: Fetch the actual SDL version used by the host
+        if: ${{ !cancelled() }}
+        uses: actions/checkout@v6
+        with:
+          repository: libsdl-org/SDL
+          ref: 5d249570393f7a37e037abf22cd6012a4cc56a71
+          path: _host-sdl-probe-source
+          persist-credentials: false
+      - name: Build and execute actual UIKit SDL and MetalANGLE isolation
+        if: ${{ !cancelled() }}
+        run: |
+          set -euo pipefail
+          bash tools/renpy_ios_egl_probe/run_host_gl_probe.sh \
+            --renpy-build "$GITHUB_WORKSPACE/_renpy-probe-source" \
+            --host-sdl-source "$GITHUB_WORKSPACE/_host-sdl-probe-source" \
+            --output "$GITHUB_WORKSPACE/out/renpy-ios-host-gl-probe" \
+            2>&1 | tee "$RUNNER_TEMP/renpy-ios-host-gl-probe.log"
+      - name: Preserve actual host graphics isolation evidence
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: renpy-ios-host-gl-probe
+          path: |
+            out/renpy-ios-host-gl-probe/evidence
+            ${{ runner.temp }}/renpy-ios-host-gl-probe.log
           if-no-files-found: warn
           retention-days: 7

@@ -32,6 +32,11 @@ modes with `--platform ios`. The runner derives host dependency prefixes and
 tools, all three local SDKs and 64 GiB of free disk; it does not substitute
 prerequisite fixtures. The port still needs a successful native macOS build
 and simulator gameplay before it establishes iOS runtime support.
+The Autoconf compiler environment uses unquoted tool and SDK paths from Xcode;
+the cloud build requires these paths to contain no whitespace and rejects
+unsupported paths explicitly. Quoted path text inside `CC` is interpreted as
+part of the executable name by the pinned configure scripts. CI preserves their
+`config.log` files alongside the source-build log when compilation fails.
 
 `0009-bounded-build-parallelism.patch` limits the upstream native object build
 group to the host CPU count. Set `RENPY_BUILD_JOBS` to a positive integer to

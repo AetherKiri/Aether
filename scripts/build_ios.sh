@@ -432,14 +432,11 @@ renios_launcher_probe() {
         --library "$prebuilt/librenpython.a" --private-root "$RENPY_RENIOS_BASE"
 }
 
-build_renios_runtime_framework() {
-    renios_enabled || return 0
-    local prebuilt arch=arm64 framework_source
+renios_metalangle_framework() {
+    local arch=arm64 framework_source
     [[ "$SIMULATOR" == true ]] && arch="$SIMULATOR_ARCH"
-    prebuilt="$(renios_prebuilt_root)"
     framework_source="$RENPY_MOBILE_ROOT/renios/prototype/Frameworks/MetalANGLE.xcframework"
-    local metalangle
-    metalangle="$(python3 - "$framework_source" "$IOS_SDK" "$arch" <<'PY'
+    python3 - "$framework_source" "$IOS_SDK" "$arch" <<'PY'
 import pathlib, plistlib, sys
 root=pathlib.Path(sys.argv[1]); simulator=sys.argv[2]=='iphonesimulator'; arch=sys.argv[3]
 info=plistlib.loads((root/'Info.plist').read_bytes())
@@ -452,7 +449,14 @@ for library in info['AvailableLibraries']:
 else:
     raise SystemExit('MetalANGLE has no matching iOS SDK/architecture slice')
 PY
-)"
+}
+
+build_renios_runtime_framework() {
+    renios_enabled || return 0
+    local prebuilt arch=arm64 metalangle
+    [[ "$SIMULATOR" == true ]] && arch="$SIMULATOR_ARCH"
+    prebuilt="$(renios_prebuilt_root)"
+    metalangle="$(renios_metalangle_framework)"
     [[ -f "$metalangle/MetalANGLE" ]] || { echo "Error: Missing MetalANGLE framework slice." >&2; return 1; }
     mkdir -p "$RENPY_FRAMEWORK_OUTPUT"
     local export_list="$CMAKE_BUILD_DIR/renpy-native/exports.txt" symbol
@@ -530,13 +534,14 @@ stage_renios_ios_resources() {
         cp -R "$resource_source/base" "$resource_root/base"
     fi
 
-    # Link and embed the matching MetalANGLE slice alongside our isolated
-    # native runtime framework. Python keeps its original resource paths.
-    if [[ -d "$resource_source/Frameworks/MetalANGLE.xcframework" ]]; then
-        mkdir -p "$app_root/Frameworks"
-        rm -rf "$app_root/Frameworks/MetalANGLE.xcframework"
-        cp -R "$resource_source/Frameworks/MetalANGLE.xcframework" "$app_root/Frameworks/"
-    fi
+    # Embed the selected real framework slice. Only the isolated runtime links
+    # MetalANGLE; Godot's own GL imports must resolve to Apple's OpenGLES.
+    local metalangle
+    metalangle="$(renios_metalangle_framework)"
+    [[ -f "$metalangle/MetalANGLE" ]] || { echo "Error: Missing MetalANGLE framework slice." >&2; return 1; }
+    mkdir -p "$app_root/Frameworks"
+    rm -rf "$app_root/Frameworks/MetalANGLE.xcframework" "$app_root/Frameworks/MetalANGLE.framework"
+    cp -R "$metalangle" "$app_root/Frameworks/MetalANGLE.framework"
     [[ -d "$RENPY_FRAMEWORK_OUTPUT" ]] || { echo "Error: Ren'Py runtime framework was not built." >&2; return 1; }
     mkdir -p "$app_root/Frameworks"
     rm -rf "$app_root/Frameworks/$RENPY_FRAMEWORK_NAME.framework"
@@ -778,7 +783,7 @@ patch_ios_renios_resources() {
     local project_file="$1"
     local export_root="$2"
     local resource_dir="$export_root/Aether/renios"
-    local framework="$export_root/Aether/Frameworks/MetalANGLE.xcframework"
+    local framework="$export_root/Aether/Frameworks/MetalANGLE.framework"
     [[ -f "$project_file" ]] || return 0
     [[ -d "$resource_dir" ]] || return 0
 
@@ -800,34 +805,12 @@ patch_ios_renios_resources() {
         fi
     fi
 
-    # MetalANGLE is a dynamic framework in the official Renios package.  It
-    # must be linked and embedded, rather than copied as an opaque resource.
-    # Renios' native closure is linked separately from the host extension.
-    if [[ -d "$framework" ]] && ! grep -Fq 'A3F003000000000000000003 /* MetalANGLE.xcframework in Frameworks */' "$project_file"; then
-        perl -0pi -e 's@(/\* Begin PBXBuildFile section \*/\n)@$1\t\tA3F003000000000000000003 /* MetalANGLE.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = A3F003000000000000000004 /* MetalANGLE.xcframework */; };\n\t\tA3F003000000000000000005 /* MetalANGLE.xcframework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = A3F003000000000000000004 /* MetalANGLE.xcframework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };\n@' "$project_file"
-        perl -0pi -e 's@(/\* Begin PBXFileReference section \*/\n)@$1\t\tA3F003000000000000000004 /* MetalANGLE.xcframework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.xcframework; path = Frameworks/MetalANGLE.xcframework; sourceTree = "<group>"; };\n@' "$project_file"
-        # Godot's export project has an Aether group, a framework phase, and
-        # an Embed Frameworks phase.  If a future exporter changes those IDs,
-        # leave the resource bundle in place and retain NOT_SUPPORTED rather
-        # than guessing at an unsafe Xcode project mutation.
-        perl -0pi -e 's@(\t\tD0BCFE4118AEBDA2004A7AAE /\* Aether \*/ = \{\n\t\t\tisa = PBXGroup;\n\t\t\tchildren = \(\n)@$1\t\t\t\tA3F003000000000000000004 /* MetalANGLE.xcframework */,\n@' "$project_file"
-        # Add the framework to the first framework phase and existing embed
-        # phase by matching their semantic comments, not generated IDs.
-        perl -0pi -e 's@(\/\* Begin PBXFrameworksBuildPhase section \*\/\n.*?files = \(\n)@$1\t\t\t\tA3F003000000000000000003 /* MetalANGLE.xcframework in Frameworks */,\n@'s "$project_file"
-        perl -0pi -e 's@(\/\* Begin PBXCopyFilesBuildPhase section \*\/\n.*?files = \(\n)@$1\t\t\t\tA3F003000000000000000005 /* MetalANGLE.xcframework in Embed Frameworks */,\n@'s "$project_file"
-        if ! grep -Fq 'A3F003000000000000000004 /* MetalANGLE.xcframework */,' "$project_file"; then
-            perl -0pi -e 's@(\n\t\t[0-9A-F]+ /\* [^*]+ \*/ = \{\n\t\t\tisa = PBXGroup;\n\t\t\tchildren = \(\n)@$1\t\t\t\tA3F003000000000000000004 /* MetalANGLE.xcframework */,\n@'s "$project_file"
-        fi
-        if ! grep -Fq 'A3F003000000000000000003 /* MetalANGLE.xcframework in Frameworks */,' "$project_file"; then
-            perl -0pi -e 's@(\n\t\t[0-9A-F]+ /\* [^*]+ \*/ = \{\n\t\t\tisa = PBXFrameworksBuildPhase;\n\t\t\tbuildActionMask = 2147483647;\n\t\t\tfiles = \(\n)@$1\t\t\t\tA3F003000000000000000003 /* MetalANGLE.xcframework in Frameworks */,\n@'s "$project_file"
-        fi
-        if ! grep -Fq 'A3F003000000000000000005 /* MetalANGLE.xcframework in Embed Frameworks */,' "$project_file"; then
-            perl -0pi -e 's@(\n\t\t[0-9A-F]+ /\* [^*]+ \*/ = \{\n\t\t\tisa = PBXCopyFilesBuildPhase;\n\t\t\tbuildActionMask = 2147483647;\n\t\t\tdstPath = "";\n\t\t\tdstSubfolderSpec = 10;\n\t\t\tfiles = \(\n)@$1\t\t\t\tA3F003000000000000000005 /* MetalANGLE.xcframework in Embed Frameworks */,\n@'s "$project_file"
-        fi
-    fi
-
+    # The native framework records its own MetalANGLE load command. Embed the
+    # selected slice without adding MetalANGLE to the host's link inputs.
     python3 "$PROJECT_ROOT/tools/patch_renpy_ios_runtime_project.py" "$project_file" \
-        "$export_root/Aether/Frameworks/$RENPY_FRAMEWORK_NAME.framework"
+        "$export_root/Aether/Frameworks/$RENPY_FRAMEWORK_NAME.framework" \
+        --metalangle-framework "$framework"
+
 }
 
 patch_ios_export_project() {
@@ -909,10 +892,43 @@ validate_renios_app() {
     python3 "$PROJECT_ROOT/tools/validate_renpy_mobile_payload.py" \
         --platform ios --arch "$arch" --sdk "$sdk" --executable --library "$framework" \
         --private-root "$app/renios/base"
-    xcrun otool -L "$app/Aether" | grep -Fq "@rpath/$RENPY_FRAMEWORK_NAME.framework/$RENPY_FRAMEWORK_NAME" || {
+    local host_libraries runtime_libraries host_imports runtime_imports
+    host_libraries="$(xcrun otool -L "$app/Aether")"
+    runtime_libraries="$(xcrun otool -L "$framework")"
+    grep -Fq "@rpath/$RENPY_FRAMEWORK_NAME.framework/$RENPY_FRAMEWORK_NAME" <<< "$host_libraries" || {
         echo "Error: The final app does not load its isolated Ren'Py framework." >&2
         return 1
     }
+    if grep -Fq 'MetalANGLE.framework/MetalANGLE' <<< "$host_libraries"; then
+        echo "Error: The host app directly links MetalANGLE and can bind Godot GL calls to Ren'Py's graphics context." >&2
+        return 1
+    fi
+    grep -Fq '/OpenGLES.framework/OpenGLES' <<< "$host_libraries" || {
+        echo "Error: The host app does not link its Apple OpenGLES backend." >&2
+        return 1
+    }
+    grep -Fq 'MetalANGLE.framework/MetalANGLE' <<< "$runtime_libraries" || {
+        echo "Error: The Ren'Py framework does not load its MetalANGLE backend." >&2
+        return 1
+    }
+    if grep -Fq '/OpenGLES.framework/OpenGLES' <<< "$runtime_libraries"; then
+        echo "Error: The Ren'Py framework also links Apple's incompatible OpenGLES backend." >&2
+        return 1
+    fi
+    # Preserve the real linked image's undefined symbol bindings as build
+    # evidence. The load-command gates above remain valid after stripping.
+    host_imports="$(xcrun nm -m -u "$app/Aether")"
+    runtime_imports="$(xcrun nm -m -u "$framework")"
+    printf '%s\n' "$host_libraries" "$host_imports" > "$CMAKE_BUILD_DIR/renpy-native/host-linkage.txt"
+    printf '%s\n' "$runtime_libraries" "$runtime_imports" > "$CMAKE_BUILD_DIR/renpy-native/runtime-linkage.txt"
+    if grep -Eq '_gl[A-Za-z0-9_]+ .*\(from MetalANGLE\)' <<< "$host_imports" || \
+       grep -Eq '_(egl|gl)[A-Za-z0-9_]+ .*\(from OpenGLES\)' <<< "$runtime_imports"; then
+        echo "Error: The final GL/EGL imports bind to the other engine's graphics backend." >&2
+        return 1
+    fi
+    echo "==> Actual host GL imports (Apple OpenGLES) and Ren'Py EGL/GL imports (MetalANGLE):"
+    grep -E '_(egl|gl)[A-Za-z0-9_]+ .*\(from (MetalANGLE|OpenGLES)\)' <<< "$host_imports" || true
+    grep -E '_(egl|gl)[A-Za-z0-9_]+ .*\(from (MetalANGLE|OpenGLES)\)' <<< "$runtime_imports" || true
     # Objective-C class names are process-global, even with two-level native
     # namespaces. The offscreen SDL build must exclude UIKit classes and prefix
     # its audio listener; otherwise it collides with Godot's host SDL backend.

@@ -75,6 +75,47 @@ class RuntimeProjectTests(unittest.TestCase):
                 patch(project, framework)
             self.assertEqual(project.read_text(), original)
 
+    def test_metalangle_is_embedded_without_host_linkage(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            project = root / "project.pbxproj"
+            framework = root / "AetherRenPyRuntime.framework"
+            metalangle = root / "MetalANGLE.framework"
+            framework.mkdir()
+            metalangle.mkdir()
+            project.write_text(PROJECT)
+            patch(project, framework, metalangle)
+            actual = project.read_text()
+            link = actual.split("/* Begin PBXFrameworksBuildPhase section */")[1].split("/* End PBXFrameworksBuildPhase section */")[0]
+            embed = actual.split("/* Begin PBXCopyFilesBuildPhase section */")[1].split("/* End PBXCopyFilesBuildPhase section */")[0]
+            self.assertIn("AetherRenPyRuntime.framework in Frameworks */,", link)
+            self.assertNotIn("MetalANGLE", link)
+            self.assertIn("MetalANGLE.framework in Embed Frameworks */,", embed)
+            patch(project, framework, metalangle)
+            self.assertEqual(project.read_text(), actual)
+
+    def test_previous_xcframework_host_link_is_removed(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            project = root / "project.pbxproj"
+            framework = root / "AetherRenPyRuntime.framework"
+            metalangle = root / "MetalANGLE.framework"
+            framework.mkdir()
+            metalangle.mkdir()
+            project.write_text(PROJECT)
+            patch(project, framework, metalangle)
+            original = project.read_text().replace("MetalANGLE.framework", "MetalANGLE.xcframework")
+            original = original.replace("/* Begin PBXBuildFile section */\n", "/* Begin PBXBuildFile section */\n"
+                "A3F003000000000000000003 /* MetalANGLE.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = A3F003000000000000000004 /* MetalANGLE.xcframework */; };\n")
+            original = original.replace("        isa = PBXFrameworksBuildPhase;\n        files = (\n",
+                "        isa = PBXFrameworksBuildPhase;\n        files = (\nA3F003000000000000000003 /* MetalANGLE.xcframework in Frameworks */,\n")
+            project.write_text(original)
+            patch(project, framework, metalangle)
+            actual = project.read_text()
+            self.assertNotIn("xcframework", actual)
+            self.assertNotIn("MetalANGLE.framework in Frameworks", actual)
+            self.assertEqual(actual.count("A3F003000000000000000004 /* MetalANGLE.framework */ ="), 1)
+
 
 if __name__ == "__main__":
     unittest.main()

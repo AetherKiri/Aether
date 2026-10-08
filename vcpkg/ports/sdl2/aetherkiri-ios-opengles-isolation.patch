@@ -1,0 +1,116 @@
+diff --git a/src/video/uikit/SDL_uikitopengles.h b/src/video/uikit/SDL_uikitopengles.h
+index 0533f69..c00ee77 100644
+--- a/src/video/uikit/SDL_uikitopengles.h
++++ b/src/video/uikit/SDL_uikitopengles.h
+@@ -34,6 +34,9 @@ extern SDL_GLContext UIKit_GL_CreateContext(_THIS, SDL_Window * window);
+ extern void UIKit_GL_DeleteContext(_THIS, SDL_GLContext context);
+ extern void *UIKit_GL_GetProcAddress(_THIS, const char *proc);
+ extern int UIKit_GL_LoadLibrary(_THIS, const char *path);
++#if TARGET_OS_IOS && !TARGET_OS_MACCATALYST
++extern void UIKit_GL_UnloadLibrary(_THIS);
++#endif
+ 
+ extern void UIKit_GL_RestoreCurrentContext(void);
+ 
+diff --git a/src/video/uikit/SDL_uikitopengles.m b/src/video/uikit/SDL_uikitopengles.m
+index 988966d..01f3eb0 100644
+--- a/src/video/uikit/SDL_uikitopengles.m
++++ b/src/video/uikit/SDL_uikitopengles.m
+@@ -54,10 +54,17 @@
+ 
+ void *UIKit_GL_GetProcAddress(_THIS, const char *proc)
+ {
+-    /* Look through all SO's for the proc symbol.  Here's why:
+-     * -Looking for the path to the OpenGL Library seems not to work in the iOS Simulator.
+-     * -We don't know that the path won't change in the future. */
++#if TARGET_OS_IOS && !TARGET_OS_MACCATALYST
++    /* The host can also load an isolated MetalANGLE runtime. Resolve only
++     * Apple's framework, whose EAGLContext owns this backend's contexts. */
++    if (!_this->gl_config.dll_handle) {
++        SDL_SetError("Apple OpenGLES library is not loaded");
++        return NULL;
++    }
++    return SDL_LoadFunction(_this->gl_config.dll_handle, proc);
++#else
+     return dlsym(RTLD_DEFAULT, proc);
++#endif
+ }
+ 
+ /*
+@@ -106,9 +113,35 @@ int UIKit_GL_LoadLibrary(_THIS, const char *path)
+     if (path != NULL) {
+         return SDL_SetError("iOS GL Load Library just here for compatibility");
+     }
++#if TARGET_OS_IOS && !TARGET_OS_MACCATALYST
++    if (_this->gl_config.dll_handle) {
++        return 0;
++    }
++    @autoreleasepool {
++        /* NSBundle locates the loaded Apple framework in the actual device
++         * or Simulator runtime instead of assuming a system filesystem path. */
++        NSBundle *framework = [NSBundle bundleForClass:[EAGLContext class]];
++        NSString *executable = [framework executablePath];
++        if (!executable) {
++            return SDL_SetError("Could not locate Apple's loaded OpenGLES framework");
++        }
++        _this->gl_config.dll_handle = SDL_LoadObject([executable fileSystemRepresentation]);
++        if (!_this->gl_config.dll_handle) {
++            return -1;
++        }
++    }
++#endif
+     return 0;
+ }
+ 
++#if TARGET_OS_IOS && !TARGET_OS_MACCATALYST
++void UIKit_GL_UnloadLibrary(_THIS)
++{
++    SDL_UnloadObject(_this->gl_config.dll_handle);
++    _this->gl_config.dll_handle = NULL;
++}
++#endif
++
+ int UIKit_GL_SwapWindow(_THIS, SDL_Window * window)
+ {
+     @autoreleasepool {
+diff --git a/src/video/uikit/SDL_uikitvideo.m b/src/video/uikit/SDL_uikitvideo.m
+index f7aa3fd..9120779 100644
+--- a/src/video/uikit/SDL_uikitvideo.m
++++ b/src/video/uikit/SDL_uikitvideo.m
+@@ -121,6 +121,9 @@ static SDL_VideoDevice *UIKit_CreateDevice(void)
+         device->GL_DeleteContext    = UIKit_GL_DeleteContext;
+         device->GL_GetProcAddress   = UIKit_GL_GetProcAddress;
+         device->GL_LoadLibrary      = UIKit_GL_LoadLibrary;
++#if TARGET_OS_IOS && !TARGET_OS_MACCATALYST
++        device->GL_UnloadLibrary    = UIKit_GL_UnloadLibrary;
++#endif
+ #endif
+         device->free = UIKit_DeleteDevice;
+ 
+@@ -155,6 +158,13 @@ VideoBootStrap UIKIT_bootstrap = {
+ 
+ int UIKit_VideoInit(_THIS)
+ {
++#if TARGET_OS_IOS && !TARGET_OS_MACCATALYST && (defined(SDL_VIDEO_OPENGL_ES) || defined(SDL_VIDEO_OPENGL_ES2))
++    /* UIKit preloads its GL driver, so acquire the concrete framework handle
++     * before generic SDL_GL_LoadLibrary increments that initial reference. */
++    if (UIKit_GL_LoadLibrary(_this, NULL) < 0) {
++        return -1;
++    }
++#endif
+     _this->gl_config.driver_loaded = 1;
+ 
+     if (UIKit_InitModes(_this) < 0) {
+@@ -173,6 +183,12 @@ void UIKit_VideoQuit(_THIS)
+     SDL_QuitGCMouse();
+ 
+     UIKit_QuitModes(_this);
++#if TARGET_OS_IOS && !TARGET_OS_MACCATALYST && (defined(SDL_VIDEO_OPENGL_ES) || defined(SDL_VIDEO_OPENGL_ES2))
++    /* SDL_VideoQuit frees the device even when no SDL window was created.
++     * Release its preloaded reference and any remaining explicit load refs. */
++    UIKit_GL_UnloadLibrary(_this);
++    _this->gl_config.driver_loaded = 0;
++#endif
+ }
+ 
+ void UIKit_SuspendScreenSaver(_THIS)

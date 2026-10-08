@@ -6,6 +6,8 @@ SDK contents or gameplay is simulated as successful.
 """
 import ast
 from pathlib import Path
+import os
+import shutil
 import subprocess
 import sys
 import tarfile
@@ -28,6 +30,44 @@ def task_function(path, name, namespace, *, archs=None):
     return namespace[name]
 
 
+def autoconf_compiler_boundary(root, Context, run):
+    """Run the real NASM configure with real host CC through the patched formatter."""
+    compiler = shutil.which("cc")
+    assert compiler is not None
+    sdk = subprocess.check_output(["xcrun", "--sdk", "macosx", "--show-sdk-path"], text=True).strip() \
+        if sys.platform == "darwin" else "/"
+
+    def selected_tool(arguments, **_kwargs):
+        if arguments[1] == "--find":
+            return compiler if arguments[2] in ("clang", "clang++") else shutil.which(arguments[2])
+        assert arguments == ["xcrun", "--sdk", "macosx", "--show-sdk-path"]
+        return sdk
+
+    with patch.object(run.sys, "platform", "darwin"), \
+            patch.object(run.subprocess, "check_output", selected_tool):
+        context = Context("host", "host", "3", root, SimpleNamespace())
+        run.llvm(context)
+    # Use the real compiler directly: the boundary under test is Autoconf's
+    # expansion of CC, not ccache installation or any emulated Xcode SDK.
+    current = context.environ["CC"].removeprefix("ccache ")
+    old = f'"{compiler}" -isysroot "{sdk}" -std=gnu17'
+    for name, command, expect_success in (("quoted-cc", old, False), ("formatted-cc", current, True)):
+        destination = root / name
+        destination.mkdir()
+        with tarfile.open(root / "source/nasm-2.14.02.tar.gz") as source:
+            source.extractall(destination, filter="data")
+        source_root = destination / "nasm-2.14.02"
+        environment = {**os.environ, "CC": command, "CFLAGS": "", "CPPFLAGS": "", "LDFLAGS": ""}
+        result = subprocess.run(["./configure", "--prefix=" + str(destination / "install")],
+                                cwd=source_root, env=environment, capture_output=True, text=True)
+        if expect_success:
+            assert result.returncode == 0, result.stdout + result.stderr
+        else:
+            assert result.returncode == 77, result.stdout + result.stderr
+            assert '"' + compiler + '"' in (source_root / "config.log").read_text()
+    print("Actual host NASM configure reproduced quoted-CC failure and passed the patched command; no iOS compilation performed")
+
+
 def main():
     checkout = Path(sys.argv[1])
     assert subprocess.check_output(["git", "-C", str(checkout), "rev-parse", "HEAD"], text=True).strip() == PIN
@@ -36,6 +76,7 @@ def main():
         archive = subprocess.Popen([
             "git", "-C", str(checkout), "archive", "HEAD", "renpybuild", "tasks",
             "source/Python-3.12.8-Setup.stdlib", "tools/cmake_build_variables.cmake",
+            "source/nasm-2.14.02.tar.gz",
         ], stdout=subprocess.PIPE)
         assert archive.stdout is not None
         with tarfile.open(fileobj=archive.stdout, mode="r|*") as source:
@@ -65,6 +106,7 @@ def main():
                 context.set_names("python", "build", "renpython")
                 assert target in context.environ["CC"]
                 assert "-isysroot" in context.environ["CC"]
+                assert '"' not in context.environ["CC"]
                 assert "-fuse-ld=lld" not in context.environ["CC"]
                 assert "-stdlib=libc++" in context.environ["CXX"]
                 assert "-lmockrt" not in context.environ["LDFLAGS"]
@@ -109,6 +151,7 @@ def main():
             assert "linux-x86_64" in context.environ["CC"]
             assert not context.native_darwin
             assert "CMAKE_POLICY_VERSION_MINIMUM" not in context.variables["cmake_args"]
+        autoconf_compiler_boundary(root, Context, run)
     print("Darwin iOS and Linux Android task configuration passed; no native build or gameplay performed")
 
 

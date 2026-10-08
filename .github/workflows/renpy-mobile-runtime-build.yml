@@ -116,6 +116,7 @@ jobs:
           name: renpy-source-build-evidence
           path: |
             ${{ runner.temp }}/renpy-source-build.log
+            _renpy-build/tmp/**/config.log
             out/renpy-mobile-source/manifest.json
           if-no-files-found: warn
           retention-days: 7

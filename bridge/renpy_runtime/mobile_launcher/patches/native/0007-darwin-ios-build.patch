@@ -1,7 +1,7 @@
 diff --git a/renpybuild/run.py b/renpybuild/run.py
 --- a/renpybuild/run.py
 +++ b/renpybuild/run.py
-@@ -39,6 +39,22 @@
+@@ -39,6 +39,29 @@
  
  
  def llvm(c, bin="", prefix="", suffix="-18", clang_args="", use_ld=True):
@@ -9,15 +9,22 @@ diff --git a/renpybuild/run.py b/renpybuild/run.py
 +    if sys.platform == "darwin":
 +        # Use the selected Xcode installation and its SDKs in place.
 +        def tool(name):
-+            return subprocess.check_output(["xcrun", "--find", name], text=True).strip()
++            path = subprocess.check_output(["xcrun", "--find", name], text=True).strip()
++            if any(character.isspace() for character in path):
++                raise RuntimeError("Autoconf toolchain paths must not contain whitespace: " + path)
++            return path
 +
 +        if not clang_args:
 +            sdk = subprocess.check_output(["xcrun", "--sdk", "macosx", "--show-sdk-path"], text=True).strip()
 +            clang_args = f'-isysroot "{sdk}"'
 +        clang_args = clang_args.replace("--sysroot ", "-isysroot ")
-+        c.env("CC", f'ccache "{tool("clang")}" {clang_args} -std=gnu17')
-+        c.env("CXX", f'ccache "{tool("clang++")}" {clang_args} -std=gnu++17 -stdlib=libc++')
-+        c.env("CPP", f'ccache "{tool("clang")}" {clang_args} -E')
++        arguments = shlex.split(c.expand(clang_args))
++        if any(any(character.isspace() for character in argument) for argument in arguments):
++            raise RuntimeError("Autoconf SDK paths must not contain whitespace: " + clang_args)
++        clang_args = " ".join(arguments)
++        c.env("CC", f'ccache {tool("clang")} {clang_args} -std=gnu17')
++        c.env("CXX", f'ccache {tool("clang++")} {clang_args} -std=gnu++17 -stdlib=libc++')
++        c.env("CPP", f'ccache {tool("clang")} {clang_args} -E')
 +        for variable, name in (("AR", "ar"), ("RANLIB", "ranlib"), ("STRIP", "strip"), ("NM", "nm")):
 +            c.env(variable, tool(name))
 +        return

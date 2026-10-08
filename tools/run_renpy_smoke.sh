@@ -43,7 +43,13 @@ for source_file in options.rpy script.rpy; do
 done
 
 if [[ -z "$renpy_bin" && -n "$renpy_sdk" ]]; then
-    if [[ -x "$renpy_sdk/renpy.sh" ]]; then
+    host_platform="$(uname -s)"
+    if [[ "$host_platform" == MINGW* || "$host_platform" == MSYS* ||
+          "$host_platform" == CYGWIN* ]] && [[ -f "$renpy_sdk/renpy.exe" ]]; then
+        # The Windows SDK also contains renpy.sh and Linux executables.
+        # Git Bash must run the native Windows launcher rather than that shell.
+        renpy_bin="$renpy_sdk/renpy.exe"
+    elif [[ -x "$renpy_sdk/renpy.sh" ]]; then
         renpy_bin="$renpy_sdk/renpy.sh"
     elif [[ -x "$renpy_sdk/renpy" ]]; then
         renpy_bin="$renpy_sdk/renpy"

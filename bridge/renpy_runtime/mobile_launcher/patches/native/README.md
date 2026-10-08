@@ -38,6 +38,13 @@ unsupported paths explicitly. Quoted path text inside `CC` is interpreted as
 part of the executable name by the pinned configure scripts. CI preserves their
 `config.log` files alongside the source-build log when compilation fails.
 
+The Darwin port also backports libffi's upstream fix
+[`8308bed5`](https://github.com/libffi/libffi/commit/8308bed5b2423878aa20d7884a99cf2e30b8daf7)
+to the pinned 3.4.5 source archive. Three arm64 entry labels precede
+`cfi_startproc`, as required by LLVM 17 and later when assembling Mach-O.
+Unwind metadata remains enabled. The unpack task applies this patch before
+any target compilation; it does not replace the pinned libffi dependency.
+
 `0009-bounded-build-parallelism.patch` limits the upstream native object build
 group to the host CPU count. Set `RENPY_BUILD_JOBS` to a positive integer to
 select another limit. Child compiler failures still fail the build, and an

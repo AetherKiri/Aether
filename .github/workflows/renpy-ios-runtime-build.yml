@@ -111,6 +111,9 @@ jobs:
           uv --project "$RENPY_BUILD_ROOT/renpy" run python -m compileall -q \
             "$RENPY_BUILD_ROOT/renpybuild" "$RENPY_BUILD_ROOT/tasks" \
             2>&1 | tee -a "$RUNNER_TEMP/renpy-ios-source-prepare.log"
+          uv --project "$RENPY_BUILD_ROOT/renpy" run python \
+            "$GITHUB_WORKSPACE/tools/test_renpy_mobile_libffi_cfi.py" "$RENPY_BUILD_ROOT" \
+            2>&1 | tee -a "$RUNNER_TEMP/renpy-ios-source-prepare.log"
       - name: Compile target CPython, SDL, Ren'Py and device/Simulator archives
         if: steps.runtime-cache.outputs.cache-hit != 'true'
         run: |

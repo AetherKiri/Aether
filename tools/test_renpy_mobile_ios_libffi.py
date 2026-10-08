@@ -65,6 +65,33 @@ def run(command, *, cwd, env=None, log):
     log.parent.mkdir(parents=True, exist_ok=True)
     log.write_text("Command: " + shlex.join(map(str, command)) + "\n" + result.stdout)
     if result.returncode:
+        # Only expose this new public-source command's tool errors. Do not
+        # publish config.log's environment/cache dump or old build logs.
+        for config_log in sorted(Path(cwd).rglob("config.log"))[:6]:
+            errors = [line for line in config_log.read_text(errors="replace").splitlines()
+                      if re.match(r"^(?:xcrun: error:|make(?:\[\d+\])?: |[^='\"\s]+:\d+: \*\*\*)", line)]
+            if errors:
+                print(json.dumps({"new_config_tool_errors": errors[-15:]}), flush=True)
+        if sys.platform == "darwin":
+            def tool_probe(command, environment, record):
+                try:
+                    probe = subprocess.run(command, cwd=cwd, env=environment,
+                        text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, timeout=30)
+                    record.update(status=probe.returncode, result=probe.stdout.strip())
+                except (OSError, subprocess.TimeoutExpired) as error:
+                    record.update(diagnostic_error=type(error).__name__)
+                print(json.dumps(record), flush=True)
+            tool_probe(["xcrun", "--find", "make"], env, {"make_probe": "xcrun-selected"})
+            sdk_setting = (env or os.environ).get("SDKROOT")
+            for label, sdk_value in (("original", sdk_setting),
+                                     ("resolved", str(Path(sdk_setting).resolve()) if sdk_setting else None),
+                                     ("unset", None)):
+                diagnostic_environment = dict(env or os.environ)
+                diagnostic_environment.pop("SDKROOT", None)
+                if sdk_value:
+                    diagnostic_environment["SDKROOT"] = sdk_value
+                tool_probe(["make", "--version"], diagnostic_environment,
+                           {"make_probe": label, "sdkroot": sdk_value})
         raise RuntimeError(f"Command failed ({result.returncode}); {log}\n{result.stdout[-7000:]}")
     return result.stdout
 
@@ -110,11 +137,13 @@ def capture_ios_task(namespace, Context, root, shared, architecture, source):
     context.var("source", shared / "source")
     context.cwd = source.parent
     captured = {}
+    base_sdkroot = context.environ.get("SDKROOT")
     def capture(command, **kwargs):
         expanded = context.expand(command)
         if expanded.strip().startswith("./configure"):
             assert not captured, "Unexpected second configure"
-            captured.update(command=shlex.split(expanded), environment=dict(context.environ))
+            captured.update(command=shlex.split(expanded), environment=dict(context.environ),
+                            base_context_sdkroot=base_sdkroot)
             # Execute configure below before running any post-configure task.
             raise BeforeMake()
         raise AssertionError("Unexpected pre-configure command: " + expanded)
@@ -182,6 +211,9 @@ def ffi_and_python_case(label, *, root, shared, namespace, Context, compiler,
     ffi_environment = dict(environment)
     # This is the separate libffi configure, before CPython's config.site.
     ffi_environment.pop("CONFIG_SITE", None)
+    print(json.dumps({"case": label, "ffi_environment_source": "Python task Context" if target else "host isolation",
+                      "base_context_sdkroot": captured["base_context_sdkroot"],
+                      "ffi_sdkroot": ffi_environment.get("SDKROOT")}), flush=True)
     ffi_command = ["./configure", "--disable-shared", "--enable-portable-binary", "--prefix=" + str(prefix)]
     if target:
         # Use the actual production libffi tuple; do not silently fix it in a test.

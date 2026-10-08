@@ -42,7 +42,8 @@ def check(cmake: str, vcpkg: Path) -> None:
         headers.mkdir(parents=True)
         (headers / 'fixture-dependency.h').write_text('int dependency_fixture(void);\n')
         (source / 'dependency.c').write_text('int dependency_fixture(void) { return 41; }\n')
-        (source / 'gdiplus.c').write_text('#include "fixture-dependency.h"\nint gdiplus_fixture(void) { return dependency_fixture() + 1; }\n')
+        (source / 'named.c').write_text('int named_fixture(void) { return CONFIG_VALUE; }\n')
+        (source / 'gdiplus.c').write_text('#include "fixture-dependency.h"\nint named_fixture(void);\nint gdiplus_fixture(void) { return dependency_fixture() + named_fixture() + 1; }\n')
         (source / 'src').mkdir()
         (source / 'src/gdiplus-fixture.h').write_text('int gdiplus_fixture(void);\n')
         (source / 'config.h.in').write_text('/* CMake export fixture */\n')
@@ -52,9 +53,18 @@ project(libgdiplus VERSION 5.6.1 LANGUAGES C)
 add_library(dependency STATIC dependency.c)
 set_target_properties(dependency PROPERTIES OUTPUT_NAME dependency_fixture)
 install(TARGETS dependency ARCHIVE DESTINATION lib)
+add_library(named_dependency STATIC named.c)
+set_target_properties(named_dependency PROPERTIES OUTPUT_NAME named_dependency_fixture DEBUG_POSTFIX d)
+target_compile_definitions(named_dependency PRIVATE "CONFIG_VALUE=$<IF:$<CONFIG:Debug>,7,13>")
+install(TARGETS named_dependency ARCHIVE DESTINATION lib)
 add_library(libgdiplus STATIC gdiplus.c)
 set(GLIB_INCLUDE_DIRS "${DEPENDENCY_PREFIX}/include/dependency")
 set(GLIB_LIBRARY_DIRS "${DEPENDENCY_PREFIX}/${DEPENDENCY_LIBDIR}")
+if(CMAKE_BUILD_TYPE STREQUAL "Debug")
+    set(GLIB_LIBRARIES named_dependency_fixtured)
+else()
+    set(GLIB_LIBRARIES named_dependency_fixture)
+endif()
 set(GDIPLUS_LIBS "${DEPENDENCY_PREFIX}/${DEPENDENCY_LIBDIR}/libdependency_fixture.a")
 ''' + export)
         # Build both real native archives and export exactly the production
@@ -69,6 +79,8 @@ set(GDIPLUS_LIBS "${DEPENDENCY_PREFIX}/${DEPENDENCY_LIBDIR}/libdependency_fixtur
             destination = original / suffix / 'lib'
             destination.mkdir(parents=True)
             shutil.copyfile(packages / suffix / 'lib/libdependency_fixture.a', destination / 'libdependency_fixture.a')
+            named_archive = 'libnamed_dependency_fixture' + ('d' if suffix else '') + '.a'
+            shutil.copyfile(packages / suffix / 'lib' / named_archive, destination / named_archive)
         shutil.copytree(original / 'include/dependency', packages / 'include/dependency')
         # The config's TIFF dependency must remain resolvable after moving.
         # TIFF is an interface fixture here; the linked dependency above is a
@@ -85,7 +97,15 @@ find_package(libgdiplus CONFIG REQUIRED)
 add_executable(consumer main.c)
 target_link_libraries(consumer PRIVATE libgdiplus::libgdiplus)
 ''')
-        (consumer / 'main.c').write_text('#include <libgdiplus/gdiplus-fixture.h>\nint main(void) { return gdiplus_fixture() != 42; }\n')
+        (consumer / 'main.c').write_text('''#include <libgdiplus/gdiplus-fixture.h>
+int main(void) {
+#ifdef NDEBUG
+    return gdiplus_fixture() != 55;
+#else
+    return gdiplus_fixture() != 49;
+#endif
+}
+''')
         shutil.rmtree(original)
         broken = run(cmake, '-S', str(consumer), '-B', str(root / 'consumer-stale'),
                      '-DCMAKE_PREFIX_PATH=' + str(packages), succeeds=False)

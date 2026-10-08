@@ -213,10 +213,12 @@ target_link_libraries(${PROJECT_NAME} PUBLIC
 )
 
 target_link_directories(${PROJECT_NAME} PUBLIC
-    ${GLIB_LIBRARY_DIRS}
-    ${CAIRO_LIBRARY_DIRS}
-    ${FONTCONFIG_LIBRARY_DIRS}
-    ${FREETYPE_LIBRARY_DIRS}
+    "$<BUILD_INTERFACE:${GLIB_LIBRARY_DIRS};${CAIRO_LIBRARY_DIRS};${FONTCONFIG_LIBRARY_DIRS};${FREETYPE_LIBRARY_DIRS}>"
+    # pkg-config exports bare library names, including Debug postfixes. The
+    # installed target must search the consumer's Debug directory first;
+    # vcpkg's config fixup merges link libraries, but not link directories.
+    "$<INSTALL_INTERFACE:$<$<CONFIG:Debug>:$<INSTALL_PREFIX>/debug/lib>>"
+    "$<INSTALL_INTERFACE:$<INSTALL_PREFIX>/lib>"
 )
 
 target_include_directories(${PROJECT_NAME}

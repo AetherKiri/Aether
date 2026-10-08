@@ -6,6 +6,60 @@ stage="$repo_root/tools/stage_renpy_android_support.sh"
 [[ -f "$stage" ]] || { echo "stager is missing: $stage" >&2; exit 1; }
 bash -n "$stage"
 
+# This library is deliberately marked as a contract-only fixture. It checks
+# ABI selection and staging ownership; it is never used as a gameplay proof.
+abi_work="$(mktemp -d "${TMPDIR:-/tmp}/aetherkiri-renpy-abi-stage.XXXXXX")"
+trap 'rm -rf "$abi_work"' EXIT
+abi_main="$abi_work/mobile/rapt/prototype/renpyandroid/src/main"
+mkdir -p "$abi_main/jniLibs/x86_64" "$abi_main/java/org/renpy/android" \
+    "$abi_work/android-build/src/main/jniLibs/x86_64"
+cat > "$abi_work/fixture.c" <<'C'
+const char aether_contract_fixture[] = "AETHERKIRI_RENPY_LIFECYCLE_STUB";
+int renpy_mobile_init(void) { return -3; }
+C
+"${CC:-cc}" -shared -fPIC "$abi_work/fixture.c" \
+    -o "$abi_main/jniLibs/x86_64/librenpython.so"
+cp "$abi_main/jniLibs/x86_64/librenpython.so" \
+    "$abi_main/jniLibs/x86_64/liblegacy.so"
+printf 'class PythonSDLActivity {}\n' \
+    > "$abi_main/java/org/renpy/android/PythonSDLActivity.java"
+printf 'unrelated host library\n' \
+    > "$abi_work/android-build/src/main/jniLibs/x86_64/libhost.so"
+bash "$stage" --allow-unsupported --abis x86_64 \
+    --mobile-root "$abi_work/mobile" --godot-build "$abi_work/android-build" >/dev/null
+abi_manifest="$abi_work/android-build/src/main/assets/renpy_mobile/manifest.properties"
+grep -Fx 'native_abis=x86_64' "$abi_manifest"
+grep -Fx 'native_library=lib/x86_64/librenpython.so' "$abi_manifest"
+cmp "$abi_main/jniLibs/x86_64/librenpython.so" \
+    "$abi_work/android-build/src/main/jniLibs/x86_64/librenpython.so"
+[[ ! -e "$abi_work/android-build/src/main/jniLibs/arm64-v8a/librenpython.so" ]]
+
+# A repeated staging run updates its own Java helpers and removes obsolete
+# Ren'Py native dependencies while preserving files owned by the host.
+rm "$abi_main/jniLibs/x86_64/liblegacy.so"
+bash "$stage" --allow-unsupported --abis x86_64 \
+    --mobile-root "$abi_work/mobile" --godot-build "$abi_work/android-build" >/dev/null
+[[ ! -e "$abi_work/android-build/src/main/jniLibs/x86_64/liblegacy.so" ]]
+grep -Fx 'unrelated host library' \
+    "$abi_work/android-build/src/main/jniLibs/x86_64/libhost.so"
+if bash "$stage" --allow-unsupported --abis mips \
+        --mobile-root "$abi_work/mobile" --godot-build "$abi_work/android-build" \
+        > "$abi_work/stdout" 2> "$abi_work/stderr"; then
+    echo 'unsupported packaging ABI unexpectedly accepted' >&2
+    exit 1
+fi
+grep -Fq 'Unsupported Ren' "$abi_work/stderr"
+if bash "$stage" --allow-unsupported \
+        --mobile-root "$abi_work/mobile" --godot-build "$abi_work/android-build" \
+        > "$abi_work/stdout" 2> "$abi_work/stderr"; then
+    echo 'default arm64 build silently used an x86_64 payload' >&2
+    exit 1
+fi
+grep -Fq 'RAPT arm64-v8a native library is missing' "$abi_work/stderr"
+rm -rf "$abi_work"
+trap - EXIT
+echo "Ren'Py Android x86_64 staging/ownership checks passed (contract fixture, no mobile app executed)"
+
 mobile_root="${RENPY_MOBILE_STAGE_TEST_ROOT:-/workspace/shared/renpy-mobile-staged}"
 if [[ ! -f "$mobile_root/rapt/prototype/renpyandroid/src/main/jniLibs/arm64-v8a/librenpython.so" ]]; then
     echo "Ren'Py mobile stage not present; metadata-only staging test skipped"
@@ -82,7 +136,7 @@ grep -Fx 'java_host_shims=org/libsdl/app/SDLActivity.java,org/renpy/android/Pyth
 [[ ! -f "$main/AndroidManifest.xml" ]]
 # The official PythonSDLActivity remains assets-only; the compiled source is
 # the explicit host shim above.
-grep -Fq 'Host-side signature shim' "$main/java/org/renpy/android/PythonSDLActivity.java"
+grep -Fq 'AETHERKIRI_HOST_SHIM' "$main/java/org/renpy/android/PythonSDLActivity.java"
 grep -Fq 'PythonSDLActivity' "$main/assets/renpy_mobile/rapt/java/org/renpy/android/PythonSDLActivity.java"
 
 # A Godot template that already owns either SDL class must fail closed rather

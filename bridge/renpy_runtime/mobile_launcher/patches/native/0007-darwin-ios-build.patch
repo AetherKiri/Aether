@@ -1,0 +1,302 @@
+diff --git a/renpybuild/run.py b/renpybuild/run.py
+--- a/renpybuild/run.py
++++ b/renpybuild/run.py
+@@ -39,6 +39,22 @@
+ 
+ 
+ def llvm(c, bin="", prefix="", suffix="-18", clang_args="", use_ld=True):
++
++    if sys.platform == "darwin":
++        # Use the selected Xcode installation and its SDKs in place.
++        def tool(name):
++            return subprocess.check_output(["xcrun", "--find", name], text=True).strip()
++
++        if not clang_args:
++            sdk = subprocess.check_output(["xcrun", "--sdk", "macosx", "--show-sdk-path"], text=True).strip()
++            clang_args = f'-isysroot "{sdk}"'
++        clang_args = clang_args.replace("--sysroot ", "-isysroot ")
++        c.env("CC", f'ccache "{tool("clang")}" {clang_args} -std=gnu17')
++        c.env("CXX", f'ccache "{tool("clang++")}" {clang_args} -std=gnu++17 -stdlib=libc++')
++        c.env("CPP", f'ccache "{tool("clang")}" {clang_args} -E')
++        for variable, name in (("AR", "ar"), ("RANLIB", "ranlib"), ("STRIP", "strip"), ("NM", "nm")):
++            c.env(variable, tool(name))
++        return
+ 
+     if bin:
+         c.env("PATH", bin + ":{{ PATH }}")
+@@ -106,6 +122,8 @@
+     if c.platform == "android":
+         c.var("ndk_version", "android-ndk-r29")
+ 
++    c.native_darwin = sys.platform == "darwin"
++
+     cpuccount = os.cpu_count()
+ 
+     if cpuccount is None:
+@@ -116,6 +134,7 @@
+ 
+     c.var("make", "nice make -j " + str(cpuccount))
+     c.var("configure", "./configure")
++    c.var("config_sub", os.environ.get("AETHERKIRI_RENPY_CONFIG_SUB", "/usr/share/misc/config.sub"))
+     c.var("cmake_configure", "cmake")
+ 
+     c.var("sysroot", c.tmp / f"sysroot.{c.platform}-{c.arch}")
+@@ -192,14 +211,22 @@
+     elif (c.platform == "ios") and (c.arch == "sim-x86_64"):
+         c.env("IPHONEOS_DEPLOYMENT_TARGET", "13.0")
+ 
+-    c.var("lipo", "llvm-lipo-15")
++    c.var("lipo", "xcrun lipo" if c.native_darwin else "llvm-lipo-15")
+ 
+ 
+     if c.kind == "host" or c.kind == "host-python" or c.kind == "cross":
+ 
+         llvm(c)
++        if c.native_darwin:
++            for prefix in os.environ.get("AETHERKIRI_RENPY_HOST_DEPS", "").split(os.pathsep):
++                if not prefix:
++                    continue
++                c.env("CPPFLAGS", "{{ CPPFLAGS }} -I" + prefix + "/include")
++                c.env("CFLAGS", "{{ CFLAGS }} -I" + prefix + "/include")
++                c.env("LDFLAGS", "{{ LDFLAGS }} -L" + prefix + "/lib")
++                c.env("PKG_CONFIG_PATH", prefix + "/lib/pkgconfig:{{ PKG_CONFIG_PATH }}")
+         c.env("LDFLAGS", "{{ LDFLAGS }} -L{{install}}/lib64")
+-        c.env("PKG_CONFIG_PATH", "{{ install }}/lib/pkgconfig")
++        c.env("PKG_CONFIG_PATH", "{{ install }}/lib/pkgconfig:{{ PKG_CONFIG_PATH }}")
+ 
+         # c.var("cmake_system_name", "Linux")
+         # c.var("cmake_system_processor", "x86_64")
+@@ -328,7 +355,7 @@
+         )
+ 
+         c.env("CFLAGS", "{{ CFLAGS }} -DSDL_MAIN_HANDLED -miphoneos-version-min=13.0")
+-        c.env("LDFLAGS", "{{ LDFLAGS }} -miphoneos-version-min=13.0 -lmockrt")
++        c.env("LDFLAGS", "{{ LDFLAGS }} -miphoneos-version-min=13.0{{ '' if c.native_darwin else ' -lmockrt' }}")
+ 
+         c.var("cmake_system_name", "Darwin")
+         c.var("cmake_system_processor", "aarch64")
+@@ -342,7 +369,7 @@
+         )
+ 
+         c.env("CFLAGS", "{{ CFLAGS }} -DSDL_MAIN_HANDLED -mios-simulator-version-min=13.0")
+-        c.env("LDFLAGS", "{{ LDFLAGS }} -mios-version-min=13.0 -lmockrt")
++        c.env("LDFLAGS", "{{ LDFLAGS }} -mios-version-min=13.0{{ '' if c.native_darwin else ' -lmockrt' }}")
+ 
+         c.var("cmake_system_name", "Darwin")
+         c.var("cmake_system_processor", "aarch64")
+@@ -356,7 +383,7 @@
+         )
+ 
+         c.env("CFLAGS", "{{ CFLAGS }} -DSDL_MAIN_HANDLED -mios-simulator-version-min=13.0")
+-        c.env("LDFLAGS", "{{ LDFLAGS }} -mios-simulator-version-min=13.0 -lmockrt")
++        c.env("LDFLAGS", "{{ LDFLAGS }} -mios-simulator-version-min=13.0{{ '' if c.native_darwin else ' -lmockrt' }}")
+ 
+         c.var("cmake_system_name", "Darwin")
+         c.var("cmake_system_processor", "x86_64")
+diff --git a/tasks/toolchain.py b/tasks/toolchain.py
+--- a/tasks/toolchain.py
++++ b/tasks/toolchain.py
+@@ -2,6 +2,8 @@
+ from renpybuild.task import task
+ 
+ import os
++import sys
++import subprocess
+ import requests
+ 
+ mingw_version = "20241217-ucrt-ubuntu-20.04-x86_64"
+@@ -68,8 +70,12 @@
+     c.clean("{{ cross }}")
+     c.chdir("{{ cross }}")
+ 
+-    c.run("tar xaf {{ tars }}/iPhoneOS14.0.sdk.tar.gz")
+-    c.run("ln -s iPhoneOS14.0.sdk sdk")
++    if sys.platform == "darwin":
++        sdk = subprocess.check_output(["xcrun", "--sdk", "iphoneos", "--show-sdk-path"], text=True).strip()
++        c.path("sdk").symlink_to(sdk, target_is_directory=True)
++    else:
++        c.run("tar xaf {{ tars }}/iPhoneOS14.0.sdk.tar.gz")
++        c.run("ln -s iPhoneOS14.0.sdk sdk")
+ 
+ 
+ @task(kind="cross", platforms="ios", archs="sim-arm64,sim-x86_64")
+@@ -78,8 +84,12 @@
+     c.clean("{{ cross }}")
+     c.chdir("{{ cross }}")
+ 
+-    c.run("tar xaf {{ tars }}/iPhoneSimulator14.0.sdk.tar.gz")
+-    c.run("ln -s iPhoneSimulator14.0.sdk sdk")
++    if sys.platform == "darwin":
++        sdk = subprocess.check_output(["xcrun", "--sdk", "iphonesimulator", "--show-sdk-path"], text=True).strip()
++        c.path("sdk").symlink_to(sdk, target_is_directory=True)
++    else:
++        c.run("tar xaf {{ tars }}/iPhoneSimulator14.0.sdk.tar.gz")
++        c.run("ln -s iPhoneSimulator14.0.sdk sdk")
+ 
+ 
+ @task(platforms="ios")
+diff --git a/tasks/hostpython3.py b/tasks/hostpython3.py
+--- a/tasks/hostpython3.py
++++ b/tasks/hostpython3.py
+@@ -1,5 +1,6 @@
+ from renpybuild.context import Context
+ from renpybuild.task import task
++import shutil
+ 
+ version = "3.12.8"
+ 
+@@ -23,9 +24,15 @@
+ 
+     c.run("""{{ make }} install""")
+ 
+-    c.rmtree("{{ host }}/lib/python3.12/config-3.12-x86_64-linux-gnu/Tools/")
+-    c.run("install -d {{ host }}/lib/python3.12/config-3.12-x86_64-linux-gnu/Tools/")
+-    c.run("cp -a Tools/scripts {{ host }}/lib/python3.12/config-3.12-x86_64-linux-gnu/Tools/scripts")
++    configurations = list(c.path("{{ host }}/lib/python3.12").glob("config-3.12-*/"))
++    if not configurations:
++        raise RuntimeError("host Python did not install its configuration directory")
++    for configuration in configurations:
++        destination = configuration / "Tools" / "scripts"
++        if destination.exists():
++            shutil.rmtree(destination)
++        destination.parent.mkdir(parents=True, exist_ok=True)
++        shutil.copytree(c.path("Tools/scripts"), destination)
+ 
+ 
+ 
+diff --git a/tasks/python3.py b/tasks/python3.py
+--- a/tasks/python3.py
++++ b/tasks/python3.py
+@@ -106,12 +106,11 @@
+ 
+     c.copy("{{ host }}/bin/python3", "{{ install }}/bin/hostpython3")
+ 
+-    for i in [ "_sysconfigdata__linux_x86_64-linux-gnu.py" ]:
+-        c.var("i", i)
+-
+-        c.copy(
+-            "{{ host }}/lib/{{pythonver}}/{{ i }}",
+-            "{{ install }}/lib/{{pythonver}}/{{ i }}")
++    configurations = list(c.path("{{ host }}/lib/{{ pythonver }}").glob("_sysconfigdata_*.py"))
++    if not configurations:
++        raise RuntimeError("host Python sysconfig data is missing")
++    for configuration in configurations:
++        c.copy(str(configuration), "{{ install }}/lib/{{ pythonver }}/" + configuration.name)
+ 
+ 
+ @task(kind="python", pythons="3", platforms="linux,mac")
+diff --git a/tasks/librenpy.py b/tasks/librenpy.py
+--- a/tasks/librenpy.py
++++ b/tasks/librenpy.py
+@@ -12,7 +12,10 @@
+ def gen_static3(c: Context):
+ 
+     c.chdir("{{ renpy }}")
+-    c.env("RENPY_DEPS_INSTALL", "/usr::/usr/lib/x86_64-linux-gnu/")
++    if c.native_darwin:
++        c.env("RENPY_DEPS_INSTALL", "{{ install }}")
++    else:
++        c.env("RENPY_DEPS_INSTALL", "/usr::/usr/lib/x86_64-linux-gnu/")
+     c.env("RENPY_STATIC", "1")
+     c.env("RENPY_REGENERATE_CYTHON", "1")
+     c.run("{{ hostpython }} setup.py generate")
+diff --git a/tasks/renios.py b/tasks/renios.py
+--- a/tasks/renios.py
++++ b/tasks/renios.py
+@@ -24,7 +24,8 @@
+     for d in paths:
+         fn = d / name
+ 
+-        p = subprocess.run([ "llvm-otool-15", "-l", f"{fn}"], capture_output=True)
++        command = ["xcrun", "otool"] if sys.platform == "darwin" else ["llvm-otool-15"]
++        p = subprocess.run(command + ["-l", str(fn)], capture_output=True, check=True)
+ 
+         obj = None
+ 
+@@ -73,10 +74,10 @@
+ 
+     # debug.
+ 
+-    paths = [
+-        c.path("{{ tmp }}/install.ios-sim-x86_64/lib"),
+-        c.path("{{ tmp }}/install.ios-sim-arm64/lib"),
+-        ]
++    # The native arm64 cloud build creates device and arm64 simulator slices.
++    paths = [c.path("{{ tmp }}/install.ios-sim-arm64/lib")]
++    if sys.platform != "darwin":
++        paths.insert(0, c.path("{{ tmp }}/install.ios-sim-x86_64/lib"))
+ 
+     c.run("install -d {{ renios }}/prototype/prebuilt/debug")
+ 
+diff --git a/source/Python-3.12.8-Setup.stdlib b/source/Python-3.12.8-Setup.stdlib
+--- a/source/Python-3.12.8-Setup.stdlib
++++ b/source/Python-3.12.8-Setup.stdlib
+@@ -100,7 +100,7 @@
+ {% endif %}
+ 
+ # Mac, only.
+-{% if (c.kind != "host") and (c.platform == "mac") %}
++{% if ((c.kind != "host") and (c.platform == "mac")) or ((c.kind == "host") and c.native_darwin) %}
+ _scproxy -DPy_BUILD_CORE_BUILTIN _scproxy.c -framework SystemConfiguration -framework CoreFoundation
+ {% endif %}
+ 
+diff --git a/tools/cmake_build_variables.cmake b/tools/cmake_build_variables.cmake
+--- a/tools/cmake_build_variables.cmake
++++ b/tools/cmake_build_variables.cmake
+@@ -54,7 +54,7 @@
+ # https://cmake.org/cmake/help/latest/variable/CMAKE_LINKER_TYPE.html and
+ # https://cmake.org/cmake/help/latest/variable/CMAKE_LANG_USING_LINKER_TYPE.html,
+ # but Ubuntu's current version of camke is too low
+-if(CMAKE_VERSION VERSION_GREATER "3.29")
++if(CMAKE_VERSION VERSION_GREATER "3.29" AND NOT CMAKE_HOST_SYSTEM_NAME STREQUAL "Darwin")
+     set_env_without_string(CC "-fuse-ld=lld -Wno-unused-command-line-argument ")
+     set_env_without_string(CXX "-fuse-ld=lld -Wno-unused-command-line-argument ")
+     set_env_without_string(CPP "-fuse-ld=lld -Wno-unused-command-line-argument ")
+diff --git a/tasks/fribidi.py b/tasks/fribidi.py
+--- a/tasks/fribidi.py
++++ b/tasks/fribidi.py
+@@ -17,7 +17,7 @@
+     c.var("version", version)
+     c.chdir("fribidi-{{version}}")
+ 
+-    c.run("""cp /usr/share/misc/config.sub config.sub""")
++    c.run("""cp {{ config_sub }} config.sub""")
+     c.run("""{{configure}} {{ cross_config }} --disable-shared --prefix="{{ install }}" """)
+     c.run("""{{ make }}""")
+     c.run("""make install """)
+diff --git a/tasks/harfbuzz.py b/tasks/harfbuzz.py
+--- a/tasks/harfbuzz.py
++++ b/tasks/harfbuzz.py
+@@ -23,7 +23,7 @@
+     c.var("version", version)
+     c.chdir("harfbuzz-{{version}}")
+ 
+-    c.run("""cp /usr/share/misc/config.sub .""")
++    c.run("""cp {{ config_sub }} .""")
+ 
+     c.run("""{{configure}} {{ cross_config }}
+           --disable-shared
+diff --git a/tasks/sdl2_image.py b/tasks/sdl2_image.py
+--- a/tasks/sdl2_image.py
++++ b/tasks/sdl2_image.py
+@@ -23,7 +23,7 @@
+     if c.platform == "windows":
+         c.env("ac_cv_lib_jpeg_jpeg_CreateDecompress", "yes")
+ 
+-    c.run("""cp /usr/share/misc/config.sub config.sub""")
++    c.run("""cp {{ config_sub }} config.sub""")
+ 
+     # c.run("""./autogen.sh""")
+     c.run("autoreconf -f")
+diff --git a/tasks/zsync.py b/tasks/zsync.py
+--- a/tasks/zsync.py
++++ b/tasks/zsync.py
+@@ -11,7 +11,7 @@
+     c.var("version", version)
+     c.run("tar xjf {{source}}/zsync-{{version}}.tar.bz2")
+ 
+-    c.run("""cp /usr/share/misc/config.sub zsync-{{version}}/autotools""")
++    c.run("""cp {{ config_sub }} zsync-{{version}}/autotools""")
+ 
+ @task(kind="python", platforms="linux")
+ def build_linux(c: Context):

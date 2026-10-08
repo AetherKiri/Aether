@@ -1,0 +1,113 @@
+name: Build Ren'Py iOS runtime
+
+on:
+  workflow_call:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  ios-runtime:
+    name: Compile Ren'Py with this cloud runner's Xcode SDKs
+    runs-on: macos-latest
+    timeout-minutes: 360
+    env:
+      RENPY_BUILD_ROOT: ${{ github.workspace }}/_renpy-build
+      RENPY_OUTPUT_ROOT: ${{ github.workspace }}/out/renpy-ios-source
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - name: Restore a runtime compiled from these exact source inputs
+        id: runtime-cache
+        uses: actions/cache@v6
+        with:
+          path: out/renpy-ios-source
+          key: ${{ runner.os }}-${{ runner.arch }}-renpy-ios-runtime-v1-${{ hashFiles('tools/run_renpy_mobile_source_build.sh', 'bridge/renpy_runtime/mobile_launcher/build.sh', 'bridge/renpy_runtime/mobile_launcher/include/*.h', 'bridge/renpy_runtime/mobile_launcher/patches/native/*.patch', 'bridge/renpy_runtime/mobile_launcher/patches/native/*.c', 'bridge/renpy_runtime/mobile_launcher/patches/python/*.patch') }}
+      - name: Provision native macOS prerequisites and record the actual SDKs
+        if: steps.runtime-cache.outputs.cache-hit != 'true'
+        run: |
+          set -euo pipefail
+          xcodebuild -version
+          for sdk in macosx iphoneos iphonesimulator; do
+            xcrun --sdk "$sdk" --show-sdk-path
+            xcrun --sdk "$sdk" --show-sdk-version
+          done
+          brew install autoconf autoconf-archive automake libtool pkg-config \
+            ccache cmake ninja uv python@3.12 openssl@3 xz bzip2 libffi gnu-tar coreutils
+          echo "$(brew --prefix coreutils)/libexec/gnubin" >> "$GITHUB_PATH"
+          echo "$(brew --prefix gnu-tar)/libexec/gnubin" >> "$GITHUB_PATH"
+          echo "$(brew --prefix python@3.12)/libexec/bin" >> "$GITHUB_PATH"
+          brew cleanup
+          # This isolated source-build job uses only the selected Xcode. Keep
+          # that installation and all Simulator runtimes; recover space from
+          # other preinstalled Xcode versions without copying any Apple SDK.
+          python3 - <<'PY'
+          import pathlib, shutil, subprocess
+          developer = pathlib.Path(subprocess.check_output(['xcode-select', '-p'], text=True).strip()).resolve()
+          selected = next((p for p in developer.parents if p.suffix == '.app'), None)
+          if selected is None or not (selected / 'Contents/Developer').is_dir():
+              raise SystemExit('Cannot identify the selected Xcode; no installations will be removed.')
+          for app in pathlib.Path('/Applications').glob('Xcode*.app'):
+              if app.is_symlink() or app.resolve() == selected:
+                  continue
+              if (app / 'Contents/Developer/usr/bin/xcodebuild').is_file():
+                  print('Removing unused cloud-runner installation:', app)
+                  subprocess.run(['sudo', 'rm', '-rf', str(app)], check=True)
+          PY
+          df -h "$GITHUB_WORKSPACE"
+      - name: Prepare the pinned source and all native lifecycle patches
+        if: steps.runtime-cache.outputs.cache-hit != 'true'
+        run: |
+          set -euo pipefail
+          bash tools/run_renpy_mobile_source_build.sh --mode prepare --fetch \
+            --platform ios --renpy-build "$RENPY_BUILD_ROOT" \
+            --output-dir "$RENPY_OUTPUT_ROOT"
+          uv --project "$RENPY_BUILD_ROOT/renpy" run python \
+            tools/test_renpy_mobile_darwin_build.py "$RENPY_BUILD_ROOT"
+      - name: Compile target CPython, SDL, Ren'Py and device/Simulator archives
+        if: steps.runtime-cache.outputs.cache-hit != 'true'
+        run: |
+          set -euo pipefail
+          bash tools/run_renpy_mobile_source_build.sh --mode build \
+            --platform ios --renpy-build "$RENPY_BUILD_ROOT" \
+            --output-dir "$RENPY_OUTPUT_ROOT" 2>&1 | tee "$RUNNER_TEMP/renpy-ios-source-build.log"
+      - name: Validate both genuine target archives and the Python payload
+        run: |
+          set -euo pipefail
+          python3 - "$RENPY_OUTPUT_ROOT/manifest.json" <<'PY'
+          import json, sys
+          manifest = json.load(open(sys.argv[1]))
+          assert manifest['native_compilation'] == 'passed'
+          assert manifest['device_gameplay'] == 'unverified'
+          assert manifest['platform'] == 'ios'
+          assert manifest['build_source_sha'] == '7bfab40c1174f622f644b24669afd5fb167fbb79'
+          assert manifest['renpy_source_sha'] == '39895c1e017f0b36ffea2447d97eccd69d76ee1c'
+          assert manifest['greenlet_source_sha'] == '65f8da82b13a1273e55a6bfcbd1f9da09fc4eb7a'
+          PY
+          for kind in release debug; do
+            sdk=iphoneos
+            [[ "$kind" != debug ]] || sdk=iphonesimulator
+            python3 tools/validate_renpy_mobile_payload.py --platform ios --arch arm64 --sdk "$sdk" \
+              --library "$RENPY_OUTPUT_ROOT/payload/renios/prototype/prebuilt/$kind/librenpython.a" \
+              --private-root "$RENPY_OUTPUT_ROOT/payload/renios/prototype/base"
+          done
+          tar -C "$RENPY_OUTPUT_ROOT" -czf "$RUNNER_TEMP/renpy-ios-runtime.tar.gz" payload manifest.json
+      - name: Upload the real compiled runtime for the application build
+        uses: actions/upload-artifact@v6
+        with:
+          name: renpy-ios-runtime
+          path: ${{ runner.temp }}/renpy-ios-runtime.tar.gz
+          if-no-files-found: error
+          retention-days: 7
+      - name: Preserve actual source-build evidence
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: renpy-ios-source-build-evidence
+          path: |
+            ${{ runner.temp }}/renpy-ios-source-build.log
+            out/renpy-ios-source/manifest.json
+          if-no-files-found: warn
+          retention-days: 7

@@ -25,6 +25,12 @@ LIFECYCLE_SYMBOLS = (
     "renpy_mobile_text_input_state", "renpy_mobile_set_surface_size",
 )
 
+ANDROID_ARCHITECTURES = {
+    "arm64": ("arm64-v8a", 183),
+    "arm64-v8a": ("arm64-v8a", 183),
+    "x86_64": ("x86_64", 62),
+}
+
 
 def fail(message):
     raise ValueError(message)
@@ -81,11 +87,14 @@ def validate_library(library, platform, arch, sdk, executable=False, packaged=Fa
     if b"AETHERKIRI_RENPY_LIFECYCLE_STUB" in data:
         fail(f"contract-only stub cannot be packaged as a Ren'Py runtime: {library}")
     if platform == "android":
+        if arch not in ANDROID_ARCHITECTURES:
+            fail(f"unsupported Android runtime ABI: {arch}")
+        abi, expected_machine = ANDROID_ARCHITECTURES[arch]
         if len(data) < 20 or data[:4] != b"\x7fELF" or data[4:6] != b"\x02\x01":
             fail(f"Android Ren'Py payload must be a little-endian ELF64 shared library: {library}")
         elf_type, machine = struct.unpack_from("<HH", data, 16)
-        if elf_type != 3 or machine != 183:
-            fail(f"Android Ren'Py payload must target arm64-v8a: {library}")
+        if elf_type != 3 or machine != expected_machine:
+            fail(f"Android Ren'Py payload must target {abi}: {library}")
         nm = shlex.split(os.environ.get("RENPY_MOBILE_NM", "nm"))
         listing = command_output(nm + ["-D", "--defined-only", str(library)])
         dynamic = command_output(shlex.split(os.environ.get("RENPY_MOBILE_READELF", "readelf"))
@@ -136,7 +145,7 @@ def main():
     parser.add_argument("--platform", choices=("android", "ios"), required=True)
     parser.add_argument("--library", type=Path)
     parser.add_argument("--private-root", type=Path)
-    parser.add_argument("--arch", default="arm64")
+    parser.add_argument("--arch", "--abi", dest="arch", default="arm64")
     parser.add_argument("--sdk", choices=("iphoneos", "iphonesimulator"))
     parser.add_argument("--executable", action="store_true",
                         help="check an iOS app's dyld exports after release stripping")
@@ -153,21 +162,25 @@ def main():
         if args.apk is not None:
             if args.platform != "android":
                 fail("--apk requires --platform android")
+            if args.arch not in ANDROID_ARCHITECTURES:
+                fail(f"unsupported Android runtime ABI: {args.arch}")
+            abi = ANDROID_ARCHITECTURES[args.arch][0]
             with zipfile.ZipFile(args.apk) as apk, tempfile.TemporaryDirectory(prefix="aether-renpy-apk-") as work:
                 root = Path(work)
                 names = apk.namelist()
-                required = ("lib/arm64-v8a/librenpython.so", "assets/renpy_mobile/private/main.py",
+                required = (f"lib/{abi}/librenpython.so", f"lib/{abi}/libengine_api.so",
+                            f"lib/{abi}/libaether_kiri_godot.so", "assets/renpy_mobile/private/main.py",
                             "assets/renpy_mobile/manifest.properties", "classes.dex")
                 for name in required:
                     if name not in names:
                         fail(f"exported APK lacks {name}: {args.apk}")
                 for name in names:
-                    if name.startswith(("lib/arm64-v8a/", "assets/renpy_mobile/private/")):
+                    if name.startswith((f"lib/{abi}/", "assets/renpy_mobile/private/")):
                         relative = Path(name)
                         if relative.is_absolute() or ".." in relative.parts:
                             fail(f"unsafe APK member: {name}")
                         apk.extract(name, root)
-                validate_library(root / required[0], "android", "arm64", None, packaged=True)
+                validate_library(root / required[0], "android", args.arch, None, packaged=True)
                 validate_private(root / "assets/renpy_mobile/private", "android")
     except (ValueError, OSError, SyntaxError, EOFError, zipfile.BadZipFile) as error:
         print(f"Ren'Py mobile packaging input rejected: {error}", file=sys.stderr)

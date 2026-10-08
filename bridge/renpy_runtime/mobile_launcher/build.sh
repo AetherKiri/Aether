@@ -146,16 +146,24 @@ renpy_build_source_preflight() {
         echo "cooperative-loop patch does not match $source_root" >&2
         failures=$((failures + 1))
     fi
-    local archives=()
+    local host_system="$(uname -s)" archives=() host_tools=()
     [[ "$platform" == ios ]] || archives+=(android-ndk-r29-linux.zip)
-    [[ "$platform" == android ]] || archives+=(iPhoneOS14.0.sdk.tar.gz iPhoneSimulator14.0.sdk.tar.gz)
+    if [[ "$platform" != android && "$host_system" != Darwin ]]; then
+        archives+=(iPhoneOS14.0.sdk.tar.gz iPhoneSimulator14.0.sdk.tar.gz)
+    fi
     for required in "${archives[@]}"; do
         if [[ ! -f "$renpy_build/tars/$required" ]]; then
             echo "missing toolchain archive: $renpy_build/tars/$required" >&2
             failures=$((failures + 1))
         fi
     done
-    for required in bash git python3 curl tar unzip make cmake ninja pkg-config clang-18 clang++-18 llvm-ar-18 llvm-nm-18 uv; do
+    host_tools=(bash git python3 curl tar unzip make cmake ninja pkg-config ccache autoconf automake uv)
+    if [[ "$host_system" == Darwin ]]; then
+        host_tools+=(brew xcrun glibtoolize realpath)
+    else
+        host_tools+=(clang-18 clang++-18 llvm-ar-18 llvm-nm-18)
+    fi
+    for required in "${host_tools[@]}"; do
         if ! command -v "$required" >/dev/null 2>&1; then
             echo "missing host tool: $required" >&2
             failures=$((failures + 1))
@@ -167,7 +175,40 @@ renpy_build_source_preflight() {
         . /etc/os-release
         ubuntu_id="${ID:-}"; ubuntu_version="${VERSION_ID:-}"
     fi
-    if [[ "$(uname -s)" != Linux || "$ubuntu_id" != ubuntu || "$ubuntu_version" != 24.04 ]]; then
+    if [[ "$host_system" == Darwin ]]; then
+        if [[ "$platform" != ios ]]; then
+            echo "native macOS source builds support --platform ios only" >&2
+            failures=$((failures + 1))
+        fi
+        local sdk sdk_path sdk_tool
+        for sdk in macosx iphoneos iphonesimulator; do
+            sdk_path="$(xcrun --sdk "$sdk" --show-sdk-path 2>/dev/null || true)"
+            if [[ ! -d "$sdk_path" ]]; then
+                echo "selected Xcode is missing its $sdk SDK" >&2
+                failures=$((failures + 1))
+            else
+                echo "local Xcode $sdk SDK: $sdk_path"
+            fi
+        done
+        for sdk_tool in clang clang++ ar ranlib nm lipo otool; do
+            if ! xcrun --find "$sdk_tool" >/dev/null 2>&1; then
+                echo "selected Xcode is missing $sdk_tool" >&2
+                failures=$((failures + 1))
+            fi
+        done
+        for required in openssl@3 xz bzip2 libffi; do
+            local dependency_prefix
+            dependency_prefix="$(brew --prefix "$required" 2>/dev/null || true)"
+            if [[ ! -d "$dependency_prefix/include" || ! -d "$dependency_prefix/lib" ]]; then
+                echo "missing native host dependency: $required" >&2
+                failures=$((failures + 1))
+            fi
+        done
+        if [[ ! -f "${AETHERKIRI_RENPY_CONFIG_SUB:-}" ]]; then
+            echo "missing Homebrew automake config.sub (use the source runner build mode)" >&2
+            failures=$((failures + 1))
+        fi
+    elif [[ "$host_system" != Linux || "$ubuntu_id" != ubuntu || "$ubuntu_version" != 24.04 ]]; then
         echo "renpy-build officially requires Ubuntu 24.04 (detected ${ubuntu_id:-unknown} ${ubuntu_version:-unknown})" >&2
         failures=$((failures + 1))
     fi
@@ -186,11 +227,13 @@ renpy_build_source_preflight() {
 renpy_build_source_plan() {
     cat <<PLAN
 Ren'Py 8.5.3 source build (Ubuntu 24.04, LLVM18, at least 64 GiB)
+  Native iOS alternative: macOS/Xcode with local SDKs, at least 64 GiB free disk
   Build SHA: 7bfab40c1174f622f644b24669afd5fb167fbb79
   Ren'Py SHA: 39895c1e017f0b36ffea2447d97eccd69d76ee1c
   Greenlet SHA: 65f8da82b13a1273e55a6bfcbd1f9da09fc4eb7a
   Android: (cd $renpy_build && ./build.sh --platform android --python 3 rebuild librenpy pythonlib renpython rapt sdl2)
   iOS: (cd $renpy_build && ./build.sh --platform ios --python 3 rebuild librenpy pythonlib renpython renios)
+  macOS iOS: source runner --platform ios builds --arch arm64,sim-arm64 with xcrun
   Android archive: tars/android-ndk-r29-linux.zip
   iOS licensed archives: tars/iPhoneOS14.0.sdk.tar.gz, tars/iPhoneSimulator14.0.sdk.tar.gz
   Android libraries: renpy/rapt3/prototype/renpyandroid/src/main/jniLibs/{arm64-v8a,armeabi-v7a,x86_64}/librenpython.so

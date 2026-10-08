@@ -4,7 +4,7 @@
 # RAPT is an SDLActivity application template. It must not be merged as the
 # exported app's manifest or launched as a second Activity: Godot owns the
 # process, window, and SDL lifecycle. This script therefore packages the
-# official Java/resources as inspectable assets, stages only the arm64 native
+# official Java/resources as inspectable assets, stages the selected native
 # payload in jniLibs, and installs the host-owned JNI bridge. Enabled app
 # builds require a lifecycle library and complete cooperative Python payload.
 # --allow-unsupported is an explicit archive inspection mode, never gameplay.
@@ -23,6 +23,7 @@ with --private-assets.
 Options:
   --mobile-root PATH       Root containing rapt/prototype/renpyandroid
   --godot-build PATH       Extracted Godot Android build template directory
+  --abis LIST              Comma-separated arm64-v8a,x86_64 (default: arm64-v8a)
   --private-assets PATH    Unpacked runtime directory (main.py, renpy/, lib/)
   --allow-unsupported     Inspect an official archive without a lifecycle fork;
                            this mode is never used by enabled app builds
@@ -33,6 +34,7 @@ USAGE
 mobile_root=""
 godot_build=""
 private_assets=""
+abis="arm64-v8a"
 allow_unsupported=false
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
@@ -51,6 +53,11 @@ while (($#)); do
         --private-assets)
             (($# >= 2)) || { echo "--private-assets requires a value" >&2; exit 2; }
             private_assets="$2"
+            shift 2
+            ;;
+        --abis)
+            (($# >= 2)) || { echo "--abis requires a value" >&2; exit 2; }
+            abis="$2"
             shift 2
             ;;
         --allow-unsupported)
@@ -77,14 +84,20 @@ fi
 
 rapt_root="$mobile_root/rapt"
 rapt_main="$rapt_root/prototype/renpyandroid/src/main"
-rapt_native="$rapt_main/jniLibs/arm64-v8a/librenpython.so"
+IFS=',' read -r -a abi_list <<< "$abis"
+[[ -n "$abis" && "$abis" != *, && "$abis" != ,* ]] || {
+    echo "--abis must contain arm64-v8a and/or x86_64" >&2
+    exit 2
+}
+for abi in "${abi_list[@]}"; do
+    case "$abi" in
+        arm64-v8a|x86_64) ;;
+        *) echo "Unsupported Ren'Py Android packaging ABI: $abi" >&2; exit 2 ;;
+    esac
+done
 
 [[ -d "$rapt_main" ]] || {
     echo "RAPT Android module is missing: $rapt_main" >&2
-    exit 1
-}
-[[ -f "$rapt_native" ]] || {
-    echo "RAPT arm64 native library is missing: $rapt_native" >&2
     exit 1
 }
 [[ -d "$godot_build" ]] || {
@@ -102,25 +115,35 @@ is_elf_file() {
     [[ "$(dd if="$path" bs=4 count=1 2>/dev/null | LC_ALL=C od -An -tx1 | tr -d ' \\n')" == "7f454c46" ]]
 }
 
-is_elf_file "$rapt_native" || {
-    echo "RAPT arm64 native library is not an ELF file: $rapt_native" >&2
-    exit 1
-}
-
 if [[ "$allow_unsupported" == false ]]; then
     if [[ -z "$private_assets" ]]; then
         private_assets="$rapt_root/runtime/private"
     fi
     python3 "$repo_root/tools/validate_renpy_mobile_payload.py" \
-        --platform android --library "$rapt_native" --private-root "$private_assets"
+        --platform android --private-root "$private_assets"
 fi
+for abi in "${abi_list[@]}"; do
+    rapt_native="$rapt_main/jniLibs/$abi/librenpython.so"
+    [[ -f "$rapt_native" ]] || {
+        echo "RAPT $abi native library is missing: $rapt_native" >&2
+        exit 1
+    }
+    is_elf_file "$rapt_native" || {
+        echo "RAPT $abi native library is not an ELF file: $rapt_native" >&2
+        exit 1
+    }
+    if [[ "$allow_unsupported" == false ]]; then
+        python3 "$repo_root/tools/validate_renpy_mobile_payload.py" \
+            --platform android --abi "$abi" --library "$rapt_native"
+    fi
+done
 
 main_src="$godot_build/src/main"
 asset_root="$main_src/assets/renpy_mobile"
 asset_rapt="$asset_root/rapt"
 asset_private="$asset_root/private"
 private_archive="$asset_rapt/private.mp3"
-jni_root="$main_src/jniLibs/arm64-v8a"
+jni_root="$main_src/jniLibs"
 java_root="$main_src/java/org/github/krkr2/aetherkiri"
 java_sdl_root="$main_src/java/org/libsdl/app"
 java_renpy_root="$main_src/java/org/renpy/android"
@@ -223,10 +246,36 @@ rendering are wired to the existing Godot Activity.
 PRIVATE_EOF
 fi
 
-for native_library in "$rapt_main/jniLibs/arm64-v8a/"*.so; do
-    [[ -f "$native_library" ]] || continue
-    cp -f "$native_library" "$jni_root/$(basename "$native_library")"
-    chmod 755 "$jni_root/$(basename "$native_library")"
+# Clear only files registered by a previous Ren'Py staging run. This keeps
+# other Godot template libraries intact when switching emulator/device ABIs.
+previous_manifest="$asset_root/manifest.properties"
+if [[ -f "$previous_manifest" ]]; then
+    previous_files="$(sed -n 's/^staged_native_files=//p' "$previous_manifest")"
+    if [[ -z "$previous_files" ]]; then
+        previous_files="$(sed -n 's/^native_library=lib\///p' "$previous_manifest")"
+    fi
+    IFS=',' read -r -a previous_file_list <<< "$previous_files"
+    for previous_file in "${previous_file_list[@]}"; do
+        [[ "$previous_file" != *..* ]] || continue
+        case "$previous_file" in
+            arm64-v8a/lib*.so|x86_64/lib*.so)
+                rm -f "$jni_root/$previous_file"
+                ;;
+        esac
+    done
+fi
+native_paths=()
+staged_native_files=()
+for abi in "${abi_list[@]}"; do
+    mkdir -p "$jni_root/$abi"
+    native_paths+=("lib/$abi/librenpython.so")
+    for native_library in "$rapt_main/jniLibs/$abi/"*.so; do
+        [[ -f "$native_library" ]] || continue
+        native_file="$abi/$(basename "$native_library")"
+        cp -f "$native_library" "$jni_root/$native_file"
+        chmod 755 "$jni_root/$native_file"
+        staged_native_files+=("$native_file")
+    done
 done
 
 # Record the exact staged paths and the archive metadata when available. This
@@ -246,7 +295,9 @@ fi
     printf 'native_lifecycle_validated=%s\n' "$( [[ "$allow_unsupported" == false ]] && printf true || printf false )"
     printf 'activity_template=assets/renpy_mobile/rapt/java/org/renpy/android/PythonSDLActivity.java\n'
     printf 'gradle_template=assets/renpy_mobile/rapt/build.gradle\n'
-    printf 'native_library=lib/arm64-v8a/librenpython.so\n'
+    printf 'native_abis=%s\n' "$abis"
+    printf 'native_library=%s\n' "$(IFS=','; printf '%s' "${native_paths[*]}")"
+    printf 'staged_native_files=%s\n' "$(IFS=','; printf '%s' "${staged_native_files[*]}")"
     printf 'private_assets=assets/renpy_mobile/private\n'
     printf 'private_archive=%s\n' "$( [[ -f "$private_archive" ]] && printf 'assets/renpy_mobile/rapt/private.mp3' || true )"
     printf 'manifest_merged=false\n'
@@ -256,5 +307,5 @@ fi
 echo "Ren'Py Android support staged into $godot_build"
 echo "  official Java/resources: $asset_rapt"
 echo "  private assets:          $asset_private"
-echo "  arm64 native library:    $jni_root/librenpython.so"
+echo "  native library ABIs:     $abis"
 echo "  gameplay:                unverified (requires device execution)"

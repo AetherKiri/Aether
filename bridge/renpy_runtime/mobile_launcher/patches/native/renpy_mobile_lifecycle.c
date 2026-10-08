@@ -6,11 +6,12 @@
 #include <limits.h>
 #include <string.h>
 #include "renpy_mobile_launcher.h"
-#if defined(__ANDROID__)
-#include <EGL/egl.h>
-#endif
 #if defined(__APPLE__)
 #include <TargetConditionals.h>
+#endif
+#if defined(__ANDROID__) || (defined(__APPLE__) && TARGET_OS_IPHONE && defined(METALANGLE))
+#define AETHER_MOBILE_EGL 1
+#include <EGL/egl.h>
 #endif
 
 static renpy_mobile_host_t aether_host;
@@ -20,7 +21,7 @@ static unsigned long aether_owner_thread;
 static int aether_started;
 static int aether_paused;
 static void *aether_window;
-#if defined(__ANDROID__)
+#if defined(AETHER_MOBILE_EGL)
 static EGLDisplay aether_display = EGL_NO_DISPLAY;
 static EGLContext aether_context = EGL_NO_CONTEXT;
 static EGLSurface aether_draw_surface = EGL_NO_SURFACE;
@@ -70,7 +71,7 @@ static int end_graphics(const graphics_scope *scope) { (void)scope; return RENPY
 int renpy_mobile_bind_window(void *window) {
     if (PyThread_get_thread_ident() != aether_owner_thread) return RENPY_MOBILE_INVALID_ARGUMENT;
     aether_window = window;
-#if defined(__ANDROID__)
+#if defined(AETHER_MOBILE_EGL)
     if (!window) {
         aether_display = EGL_NO_DISPLAY;
         aether_context = EGL_NO_CONTEXT;

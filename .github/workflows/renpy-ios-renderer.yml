@@ -1,0 +1,51 @@
+name: Ren'Py iOS renderer
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/renpy-ios-renderer.yml'
+      - 'tools/run_renpy_ios_egl_probe.sh'
+      - 'tools/renpy_ios_egl_probe/**'
+      - 'bridge/renpy_runtime/mobile_launcher/patches/native/**'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: renpy-ios-renderer-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  simulator-pbuffer:
+    name: Execute MetalANGLE EGL rendering on iOS Simulator
+    runs-on: macos-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - name: Fetch the actual framework from the pinned upstream source
+        uses: actions/checkout@v6
+        with:
+          repository: renpy/renpy-build
+          ref: 7bfab40c1174f622f644b24669afd5fb167fbb79
+          path: _renpy-probe-source
+          persist-credentials: false
+      - name: Build, install and execute the actual Simulator probe
+        run: |
+          set -euo pipefail
+          bash tools/run_renpy_ios_egl_probe.sh \
+            --renpy-build "$GITHUB_WORKSPACE/_renpy-probe-source" \
+            --output "$GITHUB_WORKSPACE/out/renpy-ios-egl-probe" \
+            2>&1 | tee "$RUNNER_TEMP/renpy-ios-egl-probe.log"
+      - name: Preserve Simulator results and rendering evidence
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: renpy-ios-egl-probe
+          path: |
+            out/renpy-ios-egl-probe/evidence
+            ${{ runner.temp }}/renpy-ios-egl-probe.log
+          if-no-files-found: error
+          retention-days: 7

@@ -50,3 +50,4 @@ rendering/gl_compatibility/driver.android="opengl3"
 renderer/rendering_method="mobile"
 textures/vram_compression/import_etc2_astc=true
 renderer/rendering_method.android="mobile"
+renderer/rendering_method.renpy_emulator="gl_compatibility"

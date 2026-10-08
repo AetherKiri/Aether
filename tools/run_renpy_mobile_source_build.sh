@@ -80,6 +80,21 @@ if [[ ! -d "$renpy_build" && "$fetch" != true ]]; then
     exit 1
 fi
 clone_pin "$source_url" "$renpy_build" "$build_sha"
+if [[ "$(uname -s)" == Darwin && "$mode" != prepare ]]; then
+    [[ "$platform" == ios ]] || { echo "native macOS builds currently support --platform ios only" >&2; exit 1; }
+    command -v brew >/dev/null || { echo "Homebrew is required for the native macOS source build" >&2; exit 1; }
+    host_deps=()
+    for dependency in openssl@3 xz bzip2 libffi; do
+        host_deps+=("$(brew --prefix "$dependency")")
+    done
+    AETHERKIRI_RENPY_HOST_DEPS="$(IFS=:; echo "${host_deps[*]}")"
+    export AETHERKIRI_RENPY_HOST_DEPS
+    export LIBTOOLIZE=glibtoolize
+    config_sub_candidates=("$(brew --prefix automake)"/share/automake-*/config.sub)
+    [[ -f "${config_sub_candidates[0]}" ]] || { echo "Homebrew automake config.sub is missing" >&2; exit 1; }
+    export AETHERKIRI_RENPY_CONFIG_SUB="${config_sub_candidates[0]}"
+fi
+
 if [[ "$mode" == check ]]; then
     bash "$launcher" --check-renpy-build --renpy-build "$renpy_build" --platform "$platform"
     echo "Ren'Py source preflight passed; no compilation requested"
@@ -98,8 +113,8 @@ apply_once() {
     fi
 }
 apply_once "$renpy_build/renpy" "$patch_root/python/0001-cooperative-loop-skeleton.patch"
-for patch in 0001-renpy-build-link.patch 0002-android-host-bootstrap.patch 0003-ios-host-bootstrap.patch 0004-android-offscreen-renderer.patch 0005-optional-cubism.patch; do
-    apply_once "$renpy_build" "$patch_root/native/$patch"
+for patch in "$patch_root/native"/000[0-9]-*.patch; do
+    apply_once "$renpy_build" "$patch"
 done
 cp "$patch_root/native/renpy_mobile_lifecycle.c" "$renpy_build/runtime/renpy_mobile_lifecycle.c"
 cp "$repo_root/bridge/renpy_runtime/mobile_launcher/include/renpy_mobile_launcher.h" "$renpy_build/runtime/renpy_mobile_launcher.h"
@@ -129,7 +144,11 @@ if [[ "$platform" == android || "$platform" == all ]]; then
     (cd "$renpy_build"; ./build.sh --platform android --python 3 rebuild librenpy pythonlib renpython rapt sdl2)
 fi
 if [[ "$platform" == ios || "$platform" == all ]]; then
-    (cd "$renpy_build"; ./build.sh --platform ios --python 3 rebuild librenpy pythonlib renpython renios)
+    ios_arch_args=()
+    if [[ "$(uname -s)" == Darwin ]]; then
+        ios_arch_args=(--arch arm64,sim-arm64)
+    fi
+    (cd "$renpy_build"; ./build.sh --platform ios --python 3 "${ios_arch_args[@]}" rebuild librenpy pythonlib renpython renios)
 fi
 symbols=(renpy_mobile_bootstrap renpy_mobile_bind_window renpy_mobile_init renpy_mobile_tick
          renpy_mobile_frame renpy_mobile_input renpy_mobile_pause renpy_mobile_resume renpy_mobile_shutdown
@@ -139,6 +158,8 @@ check_exports() {
     [[ -f "$artifact" ]] || { echo "missing compiled artifact: $artifact" >&2; exit 1; }
     if [[ "$kind" == android ]]; then
         output="$(nm -D --defined-only "$artifact")"
+    elif [[ "$(uname -s)" == Darwin ]]; then
+        output="$(xcrun nm -gU "$artifact")"
     else
         output="$(llvm-nm-18 --defined-only --extern-only "$artifact")"
     fi

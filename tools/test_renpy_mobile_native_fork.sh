@@ -19,12 +19,7 @@ for forbidden in \
         exit 1
     fi
 done
-for patch in \
-    "$repo_root/bridge/renpy_runtime/mobile_launcher/patches/native/0001-renpy-build-link.patch" \
-    "$repo_root/bridge/renpy_runtime/mobile_launcher/patches/native/0002-android-host-bootstrap.patch" \
-    "$repo_root/bridge/renpy_runtime/mobile_launcher/patches/native/0003-ios-host-bootstrap.patch" \
-    "$repo_root/bridge/renpy_runtime/mobile_launcher/patches/native/0004-android-offscreen-renderer.patch" \
-    "$repo_root/bridge/renpy_runtime/mobile_launcher/patches/native/0005-optional-cubism.patch"; do
+for patch in "$repo_root/bridge/renpy_runtime/mobile_launcher/patches/native"/000[0-9]-*.patch; do
     [[ -s "$patch" ]] || { echo "missing native build patch: $patch" >&2; exit 1; }
     if [[ "$patch" == *host-bootstrap.patch ]]; then
         grep -Fq 'renpy_mobile_bootstrap' "$patch" || {
@@ -35,12 +30,7 @@ for patch in \
 done
 
 if [[ -n "${RENPY_BUILD_TEST_ROOT:-}" && -d "${RENPY_BUILD_TEST_ROOT}/.git" ]]; then
-    for patch in \
-        "$repo_root/bridge/renpy_runtime/mobile_launcher/patches/native/0001-renpy-build-link.patch" \
-        "$repo_root/bridge/renpy_runtime/mobile_launcher/patches/native/0002-android-host-bootstrap.patch" \
-        "$repo_root/bridge/renpy_runtime/mobile_launcher/patches/native/0003-ios-host-bootstrap.patch" \
-        "$repo_root/bridge/renpy_runtime/mobile_launcher/patches/native/0004-android-offscreen-renderer.patch" \
-        "$repo_root/bridge/renpy_runtime/mobile_launcher/patches/native/0005-optional-cubism.patch"; do
+    for patch in "$repo_root/bridge/renpy_runtime/mobile_launcher/patches/native"/000[0-9]-*.patch; do
         git -C "$RENPY_BUILD_TEST_ROOT" apply --check "$patch" 2>/dev/null || \
             git -C "$RENPY_BUILD_TEST_ROOT" apply --reverse --check "$patch"
     done

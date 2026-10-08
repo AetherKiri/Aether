@@ -1,0 +1,182 @@
+diff --git a/patches/SDL2-2.0.20/aether-pbuffer-metalangle.patch b/patches/SDL2-2.0.20/aether-pbuffer-metalangle.patch
+new file mode 100644
+index 0000000..b13f73c
+--- /dev/null
++++ b/patches/SDL2-2.0.20/aether-pbuffer-metalangle.patch
+@@ -0,0 +1,82 @@
++diff --git a/configure.ac b/configure.ac
++index 3c1c6c8..de2d5e6 100644
++--- a/configure.ac
+++++ b/configure.ac
++@@ -4116,6 +4116,9 @@ case "$host" in
++         CheckDeclarationAfterStatement
++         CheckDummyVideo
++         CheckOffscreenVideo
+++        # MetalANGLE supplies EGL for the host-isolated offscreen pbuffer.
+++        # Its include directory is provided by the Ren'Py metalangle task.
+++        CheckEGL
++         CheckDiskAudio
++         CheckDummyAudio
++         CheckDLOPEN
++diff --git a/src/video/SDL_egl.c b/src/video/SDL_egl.c
++index 62004e3..9c3f2b3 100644
++--- a/src/video/SDL_egl.c
+++++ b/src/video/SDL_egl.c
++@@ -38,6 +38,9 @@
++ #include "SDL_egl_c.h"
++ #include "SDL_loadso.h"
++ #include "SDL_hints.h"
+++#if defined(METALANGLE) && defined(__IPHONEOS__)
+++#include <EGL/eglext_angle.h>
+++#endif
++ 
++ #ifdef EGL_KHR_create_context
++ /* EGL_OPENGL_ES3_BIT_KHR was added in version 13 of the extension. */
++@@ -508,6 +511,21 @@ SDL_EGL_LoadLibrary(_THIS, const char *egl_path, NativeDisplayType native_displa
++ 
++ #if !defined(__WINRT__)
++ #if !defined(SDL_VIDEO_DRIVER_VITA)
+++#if defined(METALANGLE) && defined(__IPHONEOS__)
+++    if (platform == EGL_PLATFORM_ANGLE_ANGLE) {
+++        const EGLint metal_attributes[] = {
+++            EGL_PLATFORM_ANGLE_TYPE_ANGLE, EGL_PLATFORM_ANGLE_TYPE_METAL_ANGLE, EGL_NONE
+++        };
+++        if (!_this->egl_data->eglGetPlatformDisplayEXT) {
+++            return SDL_SetError("MetalANGLE has no eglGetPlatformDisplayEXT");
+++        }
+++        _this->egl_data->egl_display = _this->egl_data->eglGetPlatformDisplayEXT(
+++            platform, (void *)(uintptr_t)native_display, metal_attributes);
+++        if (_this->egl_data->egl_display == EGL_NO_DISPLAY) {
+++            return SDL_SetError("Could not create MetalANGLE Metal pbuffer display");
+++        }
+++    } else
+++#endif
++     if (platform) {
++         /* EGL 1.5 allows querying for client version with EGL_NO_DISPLAY
++          * --
++diff --git a/src/video/offscreen/SDL_offscreenopengl.c b/src/video/offscreen/SDL_offscreenopengl.c
++index 9c0552c..e8f87a7 100644
++--- a/src/video/offscreen/SDL_offscreenopengl.c
+++++ b/src/video/offscreen/SDL_offscreenopengl.c
++@@ -26,6 +26,9 @@
++ #include "SDL_offscreenopengl.h"
++ 
++ #include "SDL_opengl.h"
+++#if defined(METALANGLE) && defined(__IPHONEOS__)
+++#include <EGL/eglext_angle.h>
+++#endif
++ 
++ int
++ OFFSCREEN_GL_SwapWindow(_THIS, SDL_Window* window)
++@@ -61,7 +64,16 @@ OFFSCREEN_GL_CreateContext(_THIS, SDL_Window* window)
++ int
++ OFFSCREEN_GL_LoadLibrary(_THIS, const char* path)
++ {
++-#ifdef __ANDROID__
+++#if defined(METALANGLE) && defined(__IPHONEOS__)
+++    /* MetalANGLE's Metal display supports pbuffer surfaces without a
+++       UIWindow, MGLLayer, or a host-owned native drawable. */
+++    int ret = SDL_EGL_LoadLibrary(_this, path, (NativeDisplayType)EGL_DEFAULT_DISPLAY,
+++                                 EGL_PLATFORM_ANGLE_ANGLE);
+++    if (ret != 0) return ret;
+++    _this->egl_data->is_offscreen = SDL_TRUE;
+++    _this->egl_data->egl_surfacetype = EGL_PBUFFER_BIT;
+++    return SDL_EGL_ChooseConfig(_this);
+++#elif defined(__ANDROID__)
++     /* Android exposes EGL_DEFAULT_DISPLAY; device-enumeration extensions are
++        optional. Use a private pbuffer, never the host's ANativeWindow. */
++     int ret = SDL_EGL_LoadLibrary(_this, path, (NativeDisplayType)EGL_DEFAULT_DISPLAY, 0);
+diff --git a/runtime/librenpython3.c b/runtime/librenpython3.c
+index 1922883..d4c1256 100644
+--- a/runtime/librenpython3.c
++++ b/runtime/librenpython3.c
+@@ -5,6 +5,10 @@
+ #include <wchar.h>
+ #include "Python.h"
+ #include "renpy_mobile_launcher.h"
++#ifdef IOS
++#include <CoreFoundation/CoreFoundation.h>
++#include <limits.h>
++#endif
+ 
+ /* Built into the same target CPython, never imported from a host wheel. */
+ PyMODINIT_FUNC PyInit__greenlet(void);
+@@ -559,6 +563,33 @@ int EXPORT launcher_main(int argc, char **argv) {
+  * This is called from the launcher executable, to start Ren'Py running.
+  */
+ /* The host provides the packaged Python home and owns the application loop. */
++#ifdef IOS
++static int aether_configure_ios_pbuffer(const renpy_mobile_host_t *host) {
++    /* Resolve the actually embedded framework. RTLD_DEFAULT may resolve GLES
++       to Apple's unrelated OpenGLES implementation when both are linked. */
++    CFURLRef frameworks = CFBundleCopyPrivateFrameworksURL(CFBundleGetMainBundle());
++    CFURLRef framework = frameworks ? CFURLCreateCopyAppendingPathComponent(
++        kCFAllocatorDefault, frameworks, CFSTR("MetalANGLE.framework"), 1) : NULL;
++    CFURLRef library = framework ? CFURLCreateCopyAppendingPathComponent(
++        kCFAllocatorDefault, framework, CFSTR("MetalANGLE"), 0) : NULL;
++    char path[PATH_MAX];
++    int valid = library && CFURLGetFileSystemRepresentation(library, 1, (UInt8 *)path, sizeof(path));
++    if (library) CFRelease(library);
++    if (framework) CFRelease(framework);
++    if (frameworks) CFRelease(frameworks);
++    if (!valid) {
++        if (host->log_utf8) host->log_utf8(host->user_data, 3,
++            "Could not resolve the embedded MetalANGLE framework for Ren'Py EGL");
++        return RENPY_MOBILE_ERROR;
++    }
++    if (setenv("SDL_VIDEO_GL_DRIVER", path, 1) || setenv("SDL_VIDEO_EGL_DRIVER", path, 1) ||
++        setenv("SDL_VIDEODRIVER", "offscreen", 1) || setenv("AETHER_RENPY_EMBEDDED", "1", 1)) {
++        return RENPY_MOBILE_ERROR;
++    }
++    return RENPY_MOBILE_OK;
++}
++#endif
++
+ int EXPORT renpy_mobile_bootstrap(const renpy_mobile_config_t *mobile_config,
+                                   const renpy_mobile_host_t *host) {
+     if (!mobile_config || !host || !mobile_config->private_root_utf8 ||
+@@ -568,6 +599,9 @@ int EXPORT renpy_mobile_bootstrap(const renpy_mobile_config_t *mobile_config,
+             "Ren'Py interpreter reuse is not implemented; restart the host application for another game session");
+         return RENPY_MOBILE_INVALID_STATE;
+     }
++#ifdef IOS
++    if (aether_configure_ios_pbuffer(host) != RENPY_MOBILE_OK) return RENPY_MOBILE_ERROR;
++#endif
+     if (PyImport_AppendInittab("_aether_greenlet", PyInit__greenlet) == -1 ||
+         PyImport_AppendInittab("_aether_host", PyInit__aether_host) == -1)
+         return RENPY_MOBILE_ERROR;
+diff --git a/tasks/metalangle.py b/tasks/metalangle.py
+index 5d4a5c9..0b30f45 100644
+--- a/tasks/metalangle.py
++++ b/tasks/metalangle.py
+@@ -5,8 +5,11 @@ from renpybuild.task import task, annotator
+ @annotator
+ def annotate(c: Context):
+     if c.platform == "ios":
+-        c.env("CFLAGS", "{{ CFLAGS }} -F {{install}} -framework MetalANGLE -DMETALANGLE")
+-        c.env("CXXFLAGS", "{{ CXXFLAGS }} -F {{install}} -framework MetalANGLE -DMETALANGLE")
++        # EGL/GLES use normal <EGL/...> includes, not framework-prefixed ones.
++        # SDL's configure must find these same headers before it enables EGL.
++        c.env("CFLAGS", "{{ CFLAGS }} -I {{install}}/MetalANGLE.framework/Headers -F {{install}} -framework MetalANGLE -DMETALANGLE")
++        c.env("CXXFLAGS", "{{ CXXFLAGS }} -I {{install}}/MetalANGLE.framework/Headers -F {{install}} -framework MetalANGLE -DMETALANGLE")
++        c.env("CPPFLAGS", "{{ CPPFLAGS }} -I {{install}}/MetalANGLE.framework/Headers -DMETALANGLE")
+ 
+ @task(kind="python", platforms="ios")
+ def install(c: Context):
+diff --git a/tasks/sdl2.py b/tasks/sdl2.py
+index 6756b47..3b701cd 100644
+--- a/tasks/sdl2.py
++++ b/tasks/sdl2.py
+@@ -58,9 +58,11 @@ def build(c: Context):
+         --disable-libdecor
+     {% endif %}
+ 
+-    {% if c.platform == "android" %}
++    {% if c.platform in ("android", "ios") %}
+         --enable-video-offscreen
++    {% endif %}
+ 
++    {% if c.platform == "android" %}
+         --disable-oss
+         --disable-alsa
+         --disable-esd

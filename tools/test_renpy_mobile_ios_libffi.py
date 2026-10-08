@@ -286,7 +286,10 @@ def ffi_and_python_case(label, *, root, shared, namespace, Context, compiler,
     assert "-I" + str(prefix / "include") in closure_command, closure_command
     assert "USING_APPLE_OS_LIBFFI" not in " ".join(closure_command)
     closure_command[closure_command.index("-o") + 1] = str(closure_object)
-    headers = run([*closure_command, "-Wall", "-Wextra", "-Werror", "-H"],
+    # Compile the upstream object with its real production warning policy.
+    # A blanket extra -Werror rejects CPython's intentionally unreachable
+    # legacy fallback when external ffi_closure_alloc is available.
+    headers = run([*closure_command, "-H"],
         cwd=python_source, env=environment, log=evidence / f"{label}-ctypes-closure-compile.log")
     assert str(prefix / "include/ffi.h") in headers, "Actual static closure object did not include the external libffi header"
     wrapped_api = case / "ctypes-ffi-api.c"

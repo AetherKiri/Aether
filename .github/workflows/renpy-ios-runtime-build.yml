@@ -5,8 +5,15 @@ on:
     paths:
       - '.github/workflows/renpy-ios-runtime-build.yml'
       - 'tools/run_renpy_mobile_source_build.sh'
+      - 'tools/apply_renpy_mobile_patch_series.py'
       - 'tools/validate_renpy_mobile_payload.py'
+      - 'tools/renpy_ios_acceptance/**'
+      - 'tools/run_renpy_ios_device_acceptance.py'
+      - 'tools/patch_renpy_ios_runtime_project.py'
+      - 'scripts/build_ios.sh'
       - 'bridge/renpy_runtime/mobile_launcher/**'
+      - 'bridge/renpy_runtime/src/**'
+      - 'apps/godot_app/**'
   workflow_call:
   workflow_dispatch:
 
@@ -18,6 +25,33 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  ios-test-driver:
+    name: Compile the actual XCUITest input driver
+    runs-on: macos-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - name: Build the Swift UI test runner with the real Simulator SDK
+        run: |
+          set -euo pipefail
+          xcodebuild build-for-testing \
+            -project tools/renpy_ios_acceptance/RenPyAcceptance.xcodeproj \
+            -scheme RenPyAcceptance -configuration Debug \
+            -destination 'generic/platform=iOS Simulator' \
+            -derivedDataPath "$RUNNER_TEMP/renpy-ui-driver" CODE_SIGN_IDENTITY=- \
+            2>&1 | tee "$RUNNER_TEMP/renpy-ui-driver-build.log"
+          echo 'Swift runner compiled; this step does not execute RenPy gameplay.'
+      - name: Preserve the actual Swift build evidence
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: renpy-ios-ui-driver-build-evidence
+          path: ${{ runner.temp }}/renpy-ui-driver-build.log
+          if-no-files-found: error
+          retention-days: 7
+
   ios-runtime:
     name: Compile Ren'Py with this cloud runner's Xcode SDKs
     runs-on: macos-latest
@@ -34,7 +68,7 @@ jobs:
         uses: actions/cache@v6
         with:
           path: out/renpy-ios-source
-          key: ${{ runner.os }}-${{ runner.arch }}-renpy-ios-runtime-v1-${{ hashFiles('tools/run_renpy_mobile_source_build.sh', 'bridge/renpy_runtime/mobile_launcher/build.sh', 'bridge/renpy_runtime/mobile_launcher/include/*.h', 'bridge/renpy_runtime/mobile_launcher/patches/native/*.patch', 'bridge/renpy_runtime/mobile_launcher/patches/native/*.c', 'bridge/renpy_runtime/mobile_launcher/patches/python/*.patch') }}
+          key: ${{ runner.os }}-${{ runner.arch }}-renpy-ios-runtime-v1-${{ hashFiles('tools/run_renpy_mobile_source_build.sh', 'tools/apply_renpy_mobile_patch_series.py', 'bridge/renpy_runtime/mobile_launcher/build.sh', 'bridge/renpy_runtime/mobile_launcher/include/*.h', 'bridge/renpy_runtime/mobile_launcher/patches/native/*.patch', 'bridge/renpy_runtime/mobile_launcher/patches/native/*.c', 'bridge/renpy_runtime/mobile_launcher/patches/python/*.patch') }}
       - name: Provision native macOS prerequisites and record the actual SDKs
         if: steps.runtime-cache.outputs.cache-hit != 'true'
         run: |
@@ -74,8 +108,8 @@ jobs:
           bash tools/run_renpy_mobile_source_build.sh --mode prepare --fetch \
             --platform ios --renpy-build "$RENPY_BUILD_ROOT" \
             --output-dir "$RENPY_OUTPUT_ROOT" 2>&1 | tee "$RUNNER_TEMP/renpy-ios-source-prepare.log"
-          uv --project "$RENPY_BUILD_ROOT/renpy" run python \
-            tools/test_renpy_mobile_darwin_build.py "$RENPY_BUILD_ROOT" \
+          uv --project "$RENPY_BUILD_ROOT/renpy" run python -m compileall -q \
+            "$RENPY_BUILD_ROOT/renpybuild" "$RENPY_BUILD_ROOT/tasks" \
             2>&1 | tee -a "$RUNNER_TEMP/renpy-ios-source-prepare.log"
       - name: Compile target CPython, SDL, Ren'Py and device/Simulator archives
         if: steps.runtime-cache.outputs.cache-hit != 'true'
@@ -121,5 +155,116 @@ jobs:
             ${{ runner.temp }}/renpy-ios-source-build.log
             ${{ runner.temp }}/renpy-ios-source-prepare.log
             out/renpy-ios-source/manifest.json
+          if-no-files-found: warn
+          retention-days: 7
+
+  ios-simulator-gameplay:
+    name: Build and exercise the actual Ren'Py Simulator app
+    needs: [ios-runtime, ios-test-driver]
+    runs-on: macos-latest
+    timeout-minutes: 180
+    permissions:
+      contents: read
+      packages: read
+    env:
+      AETHERKIRI_ENABLE_RENPY: ON
+      AETHERKIRI_ENABLE_INTERNAL: OFF
+      AETHERKIRI_VCPKG_CACHE_WRITE: 'false'
+      GODOT_RELEASE: 4.7.2-stable
+      GODOT_TEMPLATE_VERSION: 4.7.2.stable
+      JOBS: '3'
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - name: Initialize the public application dependencies
+        run: |
+          set -euo pipefail
+          git submodule update --init --recursive --depth 1 \
+            packages/OnscripterYuri packages/psdfile packages/AetherSiglus \
+            packages/AetherMinori packages/AetherKrkr
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-ios-sim
+      - name: Install application build tools
+        run: |
+          set -euo pipefail
+          brew install cmake ninja pkg-config autoconf autoconf-archive automake \
+            libtool gettext coreutils bison nasm ccache mono python@3.12
+          echo "$(brew --prefix gettext)/bin" >> "$GITHUB_PATH"
+          echo "$(brew --prefix bison)/bin" >> "$GITHUB_PATH"
+          echo "$(brew --prefix python@3.12)/libexec/bin" >> "$GITHUB_PATH"
+          xcodebuild -version
+          xcrun --sdk iphonesimulator --show-sdk-version
+      - uses: actions/download-artifact@v6
+        with:
+          name: renpy-ios-runtime
+          path: ${{ runner.temp }}/renpy-ios-runtime
+      - name: Stage the genuine same-run Ren'Py payload
+        run: |
+          set -euo pipefail
+          mobile_root="$RUNNER_TEMP/renpy-ios-gameplay-runtime"
+          mkdir -p "$mobile_root"
+          tar -xzf "$RUNNER_TEMP/renpy-ios-runtime/renpy-ios-runtime.tar.gz" -C "$mobile_root"
+          echo "AETHERKIRI_RENPY_MOBILE_ROOT=$mobile_root/payload" >> "$GITHUB_ENV"
+      - name: Install the pinned Godot editor and real export templates
+        run: |
+          set -euo pipefail
+          mkdir -p .godot "$RUNNER_TEMP/godot-templates"
+          curl --fail --location --retry 3 -o "$RUNNER_TEMP/godot-macos.zip" \
+            "https://github.com/godotengine/godot-builds/releases/download/$GODOT_RELEASE/Godot_v${GODOT_RELEASE}_macos.universal.zip"
+          unzip -q "$RUNNER_TEMP/godot-macos.zip" -d .godot
+          curl --fail --location --retry 3 -o "$RUNNER_TEMP/godot-templates.tpz" \
+            "https://github.com/godotengine/godot-builds/releases/download/$GODOT_RELEASE/Godot_v${GODOT_RELEASE}_export_templates.tpz"
+          unzip -q "$RUNNER_TEMP/godot-templates.tpz" -d "$RUNNER_TEMP/godot-templates"
+          template_dir="$HOME/Library/Application Support/Godot/export_templates/$GODOT_TEMPLATE_VERSION"
+          mkdir -p "$template_dir"
+          cp -a "$RUNNER_TEMP/godot-templates/templates/." "$template_dir/"
+          echo "GODOT_BIN=$GITHUB_WORKSPACE/.godot/Godot.app/Contents/MacOS/Godot" >> "$GITHUB_ENV"
+          echo "GODOT_EXPORT_TEMPLATE=$template_dir/ios.zip" >> "$GITHUB_ENV"
+      - name: Prepare the normal vcpkg binary cache
+        env:
+          VCPKG_PACKAGES_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          git clone https://github.com/microsoft/vcpkg.git .devtools/vcpkg
+          bash .devtools/vcpkg/bootstrap-vcpkg.sh -disableMetrics
+          echo "VCPKG_ROOT=$GITHUB_WORKSPACE/.devtools/vcpkg" >> "$GITHUB_ENV"
+          bash .github/scripts/configure-vcpkg-binary-cache.sh "$GITHUB_WORKSPACE/.devtools/vcpkg/vcpkg"
+      - name: Build the installable arm64 Simulator application
+        run: |
+          set -euo pipefail
+          bash scripts/build_ios.sh debug --simulator --simulator-arch=arm64 \
+            2>&1 | tee "$RUNNER_TEMP/renpy-ios-simulator-build.log"
+      - name: Install and execute real gameplay with XCUITest
+        run: |
+          set -euo pipefail
+          python3 tools/run_renpy_ios_device_acceptance.py --cloud-simulator \
+            --app out/godot/ios-simulator-arm64/debug/build-simulator-arm64/Aether.app \
+            --output-dir out/renpy-ios-gameplay --overall-timeout 600
+      - name: Preserve actual Simulator gameplay and build evidence
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: renpy-ios-gameplay-evidence
+          path: |
+            out/renpy-ios-gameplay
+            ${{ runner.temp }}/renpy-ios-simulator-build.log
+          if-no-files-found: warn
+          retention-days: 7
+      - name: Archive the actual Simulator application preserving executable permissions
+        if: always()
+        run: |
+          set -euo pipefail
+          app=out/godot/ios-simulator-arm64/debug/build-simulator-arm64/Aether.app
+          if [[ -d "$app" ]]; then
+            ditto -c -k --sequesterRsrc --keepParent "$app" "$RUNNER_TEMP/Aether-renpy-simulator.app.zip"
+          fi
+      - name: Preserve the installable Simulator application
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: renpy-ios-simulator-app
+          path: ${{ runner.temp }}/Aether-renpy-simulator.app.zip
           if-no-files-found: warn
           retention-days: 7

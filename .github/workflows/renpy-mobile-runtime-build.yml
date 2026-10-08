@@ -1,11 +1,21 @@
 name: Build Ren'Py Android runtime
 
 on:
+  pull_request:
+    paths:
+      - '.github/workflows/renpy-mobile-runtime-build.yml'
+      - 'tools/run_renpy_mobile_source_build.sh'
+      - 'tools/apply_renpy_mobile_patch_series.py'
+      - 'bridge/renpy_runtime/mobile_launcher/**'
   workflow_call:
   workflow_dispatch:
 
 permissions:
   contents: read
+
+concurrency:
+  group: renpy-android-source-${{ github.event.pull_request.number || github.ref }}-${{ github.workflow }}
+  cancel-in-progress: false
 
 jobs:
   android-runtime:
@@ -24,7 +34,7 @@ jobs:
         uses: actions/cache@v6
         with:
           path: out/renpy-mobile-source
-          key: ${{ runner.os }}-renpy-android-runtime-v2-${{ hashFiles('tools/run_renpy_mobile_source_build.sh', 'bridge/renpy_runtime/mobile_launcher/build.sh', 'bridge/renpy_runtime/mobile_launcher/include/*.h', 'bridge/renpy_runtime/mobile_launcher/patches/native/*.patch', 'bridge/renpy_runtime/mobile_launcher/patches/native/*.c', 'bridge/renpy_runtime/mobile_launcher/patches/python/*.patch') }}
+          key: ${{ runner.os }}-renpy-android-runtime-v3-${{ hashFiles('tools/run_renpy_mobile_source_build.sh', 'tools/apply_renpy_mobile_patch_series.py', 'bridge/renpy_runtime/mobile_launcher/build.sh', 'bridge/renpy_runtime/mobile_launcher/include/*.h', 'bridge/renpy_runtime/mobile_launcher/patches/native/*.patch', 'bridge/renpy_runtime/mobile_launcher/patches/native/*.c', 'bridge/renpy_runtime/mobile_launcher/patches/python/*.patch') }}
       - name: Provision the official Linux build prerequisites
         if: steps.runtime-cache.outputs.cache-hit != 'true'
         run: |

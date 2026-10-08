@@ -1,5 +1,7 @@
 extends Node
 
+signal game_finished(native_state: Dictionary)
+
 # A debug-device observer, driven exclusively by OS input. It never manufactures
 # game progress, sends a scripted click, or falls back to a viewport screenshot.
 const GameInputMapping = preload("res://scripts/game_input_mapping.gd")
@@ -299,7 +301,19 @@ func _finish(native_state: Dictionary) -> void:
     player.destroy_engine()
     _record({"kind": "normal_exit", "provider_debug": native_state,
         "engine_destroyed": not player.is_initialized()})
-    get_tree().quit(0)
+    if OS.has_feature("ios"):
+        # iOS returns to the application's real library. Ending UIKit itself
+        # is a separate host policy and cannot stand in for native game exit.
+        if not game_finished.has_connections():
+            _record({"kind": "failure", "message": "The iOS gameplay observer has no production library return handler."})
+            return
+        game_finished.emit(native_state)
+    else:
+        get_tree().quit(0)
+
+func observe_library_return(library: Dictionary) -> void:
+    _record({"kind": "library_return", "source": "actual-production-main-scene", "ui": library,
+        "engine_destroyed": not player.is_initialized()})
 
 func _fail(message: String) -> void:
     if finished:

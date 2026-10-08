@@ -81,7 +81,7 @@ jobs:
   android:
     name: Build Android App
     needs: renpy-android-runtime
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     env:
       FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: 'true'
       CCACHE_DIR: ${{ github.workspace }}/.ccache
@@ -163,6 +163,11 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y cmake ninja-build pkg-config autoconf autoconf-archive automake libtool gettext bison flex curl unzip zip zstd ccache jq mono-complete
           rustup target add aarch64-linux-android armv7-linux-androideabi x86_64-linux-android i686-linux-android
+
+      - name: Use Python matching the rebuilt runtime's bytecode
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
 
       - name: Download the rebuilt Ren'Py Android runtime
         uses: actions/download-artifact@v6

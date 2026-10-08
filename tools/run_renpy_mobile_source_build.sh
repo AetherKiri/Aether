@@ -102,20 +102,12 @@ if [[ "$mode" == check ]]; then
 fi
 clone_pin https://github.com/renpy/renpy.git "$renpy_build/renpy" "$renpy_sha"
 clone_pin https://github.com/python-greenlet/greenlet.git "$renpy_build/aether-greenlet" "$greenlet_sha"
-apply_once() {
-    local checkout="$1" patch="$2"
-    if git -C "$checkout" apply --reverse --check "$patch" >/dev/null 2>&1; then
-        echo "already applied: $(basename "$patch")"
-    else
-        git -C "$checkout" apply --check "$patch"
-        git -C "$checkout" apply "$patch"
-        echo "applied: $(basename "$patch")"
-    fi
-}
-apply_once "$renpy_build/renpy" "$patch_root/python/0001-cooperative-loop-skeleton.patch"
-for patch in "$patch_root/native"/000[0-9]-*.patch; do
-    apply_once "$renpy_build" "$patch"
-done
+python3 "$repo_root/tools/apply_renpy_mobile_patch_series.py" \
+    --checkout "$renpy_build/renpy" --pin "$renpy_sha" \
+    "$patch_root/python/0001-cooperative-loop-skeleton.patch"
+python3 "$repo_root/tools/apply_renpy_mobile_patch_series.py" \
+    --checkout "$renpy_build" --pin "$build_sha" \
+    "$patch_root/native"/000[0-9]-*.patch
 cp "$patch_root/native/renpy_mobile_lifecycle.c" "$renpy_build/runtime/renpy_mobile_lifecycle.c"
 cp "$repo_root/bridge/renpy_runtime/mobile_launcher/include/renpy_mobile_launcher.h" "$renpy_build/runtime/renpy_mobile_launcher.h"
 mkdir -p "$renpy_build/runtime/greenlet"

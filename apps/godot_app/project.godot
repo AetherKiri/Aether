@@ -51,3 +51,4 @@ renderer/rendering_method="mobile"
 textures/vram_compression/import_etc2_astc=true
 renderer/rendering_method.android="mobile"
 renderer/rendering_method.renpy_emulator="gl_compatibility"
+renderer/rendering_method.ios_simulator="gl_compatibility"

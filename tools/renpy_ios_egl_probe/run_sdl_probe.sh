@@ -52,7 +52,12 @@ for name in ('0004-android-offscreen-renderer.patch', '0006-ios-offscreen-render
         if 'new file mode 100644\n' not in section:
             raise SystemExit('Expected a real added SDL patch file: ' + name)
         filename = line.split()[3].removeprefix('b/patches/SDL2-2.0.20/')
-        body = ''.join(l[1:] for l in section if l.startswith('+') and not l.startswith('+++'))
+        # Outer +++ metadata precedes its first hunk. Inside that hunk every
+        # added line belongs to the new patch, including nested +++ headers.
+        # Dropping those headers happens to work with GNU patch's git-name
+        # inference but BSD patch cannot create the new Objective-C file.
+        first_hunk = next(i for i, l in enumerate(section) if l.startswith('@@ '))
+        body = ''.join(l[1:] for l in section[first_hunk + 1:] if l.startswith('+'))
         patches[filename] = body.encode()
 evidence = out/'evidence/applied-sdl-patches'; evidence.mkdir(exist_ok=True)
 for name, body in sorted(patches.items()):

@@ -9,6 +9,10 @@
 #if defined(__APPLE__)
 #include <TargetConditionals.h>
 #endif
+#if defined(__APPLE__) && TARGET_OS_IPHONE && defined(METALANGLE)
+#include <stdlib.h>
+#include <SDL.h>
+#endif
 #if defined(__ANDROID__) || (defined(__APPLE__) && TARGET_OS_IPHONE && defined(METALANGLE))
 #define AETHER_MOBILE_EGL 1
 #include <EGL/egl.h>
@@ -157,9 +161,30 @@ int renpy_mobile_init(const renpy_mobile_config_t *config,
     if (aether_started) return RENPY_MOBILE_INVALID_STATE;
     if (!Py_IsInitialized()) return RENPY_MOBILE_INVALID_STATE;
 #if defined(__APPLE__) && TARGET_OS_IPHONE
+#if !defined(METALANGLE)
     if (host->log_utf8) host->log_utf8(host->user_data, 3,
-        "Ren'Py iOS rendering requires a verified host-isolated MetalANGLE backend; stock SDL UIKit windows are disabled");
+        "Ren'Py iOS runtime was built without MetalANGLE EGL support; the UIKit video backend cannot share the host window");
     return RENPY_MOBILE_NOT_IMPLEMENTED;
+#else
+    /* Query compiled drivers without initializing SDL video: the actual
+       renderer is created inside the first cooperative tick on this thread. */
+    int has_offscreen = 0;
+    for (int index = 0; index < SDL_GetNumVideoDrivers(); ++index) {
+        const char *driver = SDL_GetVideoDriver(index);
+        if (driver && !strcmp(driver, "offscreen")) has_offscreen = 1;
+    }
+    if (!has_offscreen) {
+        if (host->log_utf8) host->log_utf8(host->user_data, 3,
+            "Ren'Py iOS runtime does not contain SDL's offscreen EGL pbuffer driver; rebuild the patched SDL library");
+        return RENPY_MOBILE_NOT_IMPLEMENTED;
+    }
+    const char *selected_driver = getenv("SDL_VIDEODRIVER");
+    if (!selected_driver || strcmp(selected_driver, "offscreen")) {
+        if (host->log_utf8) host->log_utf8(host->user_data, 3,
+            "Ren'Py iOS bootstrap did not select SDL_VIDEODRIVER=offscreen; UIKit video startup is refused");
+        return RENPY_MOBILE_NOT_IMPLEMENTED;
+    }
+#endif
 #endif
 
     /* The caller is allowed to pass a temporary callback table. */

@@ -13239,6 +13239,8 @@ func _run_cli_script_probe() -> void:
         _prepare_cli_probe_view(config)
         var acceptance := load(cli_probe_script).new() as Node
         add_child(acceptance)
+        if OS.has_feature("ios"):
+            acceptance.connect("game_finished", _finish_ios_mobile_acceptance.bind(acceptance))
         acceptance.start(config, player)
         return
     var target_game_path: String = ProbeConfig.require_game_path(config)
@@ -13270,6 +13272,37 @@ func _run_cli_script_probe() -> void:
         _write_probe_marker("cli_probe unsupported script=%s" % cli_probe_script)
         printerr("unsupported probe script: %s" % cli_probe_script)
         await _probe_cleanup_and_quit(2)
+
+func _finish_ios_mobile_acceptance(native_state: Dictionary, acceptance: Node) -> void:
+    # Exercise the application's normal runtime-exit path, including its real
+    # LibraryView and existing navigation, rather than painting a test screen.
+    _return_to_library_after_runtime_exit()
+    cli_probe_script = ""
+    for _frame in range(6):
+        await get_tree().process_frame
+    await RenderingServer.frame_post_draw
+    var library := {
+        "scene_path": get_tree().current_scene.scene_file_path,
+        "script_path": get_script().resource_path,
+        "library_path": str(home_view.get_path()),
+        "shell_visible": shell_root.is_visible_in_tree(),
+        "library_visible": home_view.is_visible_in_tree(),
+        "game_view_visible": game_view.is_visible_in_tree(),
+        "route": shell_route,
+        "mode": home_library_mode,
+        "title": home_title_label.text,
+        "title_visible": home_title_label.is_visible_in_tree(),
+        "search_path": str(home_search_input.get_path()),
+        "search_visible": home_search_input.is_visible_in_tree(),
+        "viewport_size": [get_viewport_rect().size.x, get_viewport_rect().size.y],
+        "native_exited": bool(native_state.get("exited", false)),
+    }
+    var library_image := get_viewport().get_texture().get_image()
+    var evidence_dir := ProjectSettings.globalize_path("user://renpy-device-evidence")
+    var image_result := library_image.save_png(evidence_dir.path_join("production-library.png"))
+    library["image_result"] = image_result
+    acceptance.call("observe_library_return", library)
+    acceptance.queue_free()
 
 func _prepare_cli_probe_view(config: Dictionary) -> void:
     var window_size := ProbeConfig.window_size(config, Vector2i(1280, 720))

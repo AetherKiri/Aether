@@ -11,6 +11,7 @@ launcher_probe="$repo_root/tools/test_renios_ios_launcher.sh"
 [[ -f "$launcher_probe" ]] || { echo "Renios launcher probe is missing" >&2; exit 1; }
 bash -n "$build_script"
 bash -n "$launcher_probe"
+python3 "$repo_root/tools/test_renpy_ios_runtime_project.py"
 
 grep -Fq 'AETHERKIRI_RENPY_MOBILE_ROOT' "$build_script"
 grep -Fq 'collect_renios_archives' "$build_script"

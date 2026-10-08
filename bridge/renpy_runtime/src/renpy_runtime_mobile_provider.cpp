@@ -177,11 +177,6 @@ engine_result_t Open(void* value, const char* game_root_path,
     }
     auto* runtime = Cast(value);
     if (runtime->opened) return ENGINE_RESULT_INVALID_STATE;
-#if defined(AETHERKIRI_RENPY_IOS)
-    runtime->error = "Ren'Py iOS rendering is unavailable: the SDL MetalANGLE backend still creates a separate UIKit window; host graphics isolation requires a verified native backend";
-    return ENGINE_RESULT_NOT_SUPPORTED;
-#endif
-
     if (!runtime->launcher.available()) {
 #if defined(__ANDROID__)
         mobile::BootstrapRequest request{};

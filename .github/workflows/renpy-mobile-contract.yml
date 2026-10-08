@@ -15,9 +15,13 @@ on:
       - 'tools/test_renpy_mobile_launcher_*.sh'
       - 'tools/test_renpy_mobile_symbol_gate.sh'
       - 'tools/run_renpy_mobile_source_build.sh'
+      - 'tools/apply_renpy_mobile_patch_series.py'
+      - 'tools/test_renpy_mobile_patch_series.py'
       - 'tools/test_renpy_mobile_source_build_plan.sh'
       - 'tools/test_renpy_mobile_native_fork.sh'
       - 'tools/test_renpy_mobile_cooperative.py'
+      - 'tools/test_renpy_mobile_darwin_build.py'
+      - 'tools/test_renpy_mobile_build_parallelism.py'
       - 'tools/validate_renpy_mobile_payload.py'
       - 'tools/test_renpy_mobile_packaging.sh'
       - 'tools/test_renpy_mobile_runtime_protocol.sh'
@@ -96,6 +100,10 @@ jobs:
           "${RUNNER_TEMP}/cooperative-test/bin/pip" install Jinja2==3.1.6
           "${RUNNER_TEMP}/cooperative-test/bin/python" \
             tools/test_renpy_mobile_darwin_build.py _renpy-build-source
+          "${RUNNER_TEMP}/cooperative-test/bin/python" \
+            tools/test_renpy_mobile_build_parallelism.py _renpy-build-source
+          "${RUNNER_TEMP}/cooperative-test/bin/python" \
+            tools/test_renpy_mobile_patch_series.py _renpy-build-source
 
       - name: Compile the lifecycle implementation against Python and SDL2
         run: |

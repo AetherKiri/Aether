@@ -258,7 +258,7 @@ diff --git a/tasks/python3.py b/tasks/python3.py
  def build_ios(c: Context):
      common(c)
 +
-+    c.env("SDKROOT", "{{ cross }}/sdk")
++    c.env("SDKROOT", str(c.path("{{ cross }}/sdk").resolve()))
 +    c.env("LIBFFI_CFLAGS", "-I{{ install }}/include")
 +    c.env("LIBFFI_LIBS", "-L{{ install }}/lib -lffi")
  

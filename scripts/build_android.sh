@@ -490,6 +490,22 @@ else
     if [[ "$BUILD_TYPE_LOWER" == "release" ]]; then
         export_mode="--export-release"
     fi
+    android_export_app_dir="$GODOT_APP_DIR"
+    android_test_package="${AETHERKIRI_ANDROID_TEST_PACKAGE_ID:-}"
+    if [[ -n "$android_test_package" ]]; then
+        if [[ "$BUILD_TYPE_LOWER" != "debug" ]]; then
+            echo "Error: AETHERKIRI_ANDROID_TEST_PACKAGE_ID is allowed only for a Debug test export." >&2
+            exit 1
+        fi
+        android_test_export_root="$(mktemp -d "${TMPDIR:-/tmp}/aether-renpy-android-export.XXXXXX")"
+        # This is an individually created disposable export directory, never
+        # the checkout, dependency cache, or an existing application directory.
+        trap 'rm -rf "$android_test_export_root"' EXIT
+        python3 "$PROJECT_ROOT/tools/prepare_renpy_android_test_export.py" \
+            --source-project "$GODOT_APP_DIR" --destination "$android_test_export_root" \
+            --preset-name "$export_preset" --package-id "$android_test_package"
+        android_export_app_dir="$android_test_export_root"
+    fi
     godot_export_command=("$GODOT_BIN")
     macos_host_extension="$GODOT_APP_DIR/bin/macos/$BUILD_TYPE_LOWER/libaether_kiri_godot.dylib"
     if [[ "$(uname -m)" == "arm64" && -f "$macos_host_extension" &&
@@ -499,15 +515,18 @@ else
         # it imports the project; the exported Android ABI is selected above.
         godot_export_command=(arch -x86_64 "$GODOT_BIN")
     fi
-    "${godot_export_command[@]}" --headless --path "$GODOT_APP_DIR" \
+    "${godot_export_command[@]}" --headless --path "$android_export_app_dir" \
         "$export_mode" "$export_preset" "$export_path"
     [[ -s "$export_path" ]] || { echo "Android export did not create an APK: $export_path" >&2; exit 1; }
     case "${AETHERKIRI_ENABLE_RENPY:-OFF}" in
         ON|TRUE|YES|1|on|true|yes)
             python3 "$PROJECT_ROOT/tools/inspect_renpy_android_apk.py" \
                 --apk "$export_path" --abi "$ABIS" \
-                --godot-build "$GODOT_APP_DIR/android/build" \
-                --output-dir "$export_dir/diagnostics"
+                --godot-build "$android_export_app_dir/android/build" \
+                --output-dir "$export_dir/diagnostics" \
+                --export-presets "$android_export_app_dir/export_presets.cfg" \
+                --export-preset "$export_preset" --build-type "$BUILD_TYPE_LOWER" \
+                --android-sdk "$ANDROID_HOME" --android-ndk "$ANDROID_NDK_HOME"
             python3 "$PROJECT_ROOT/tools/validate_renpy_mobile_payload.py" \
                 --platform android --abi "$ABIS" --apk "$export_path"
             ;;

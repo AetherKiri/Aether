@@ -11,9 +11,14 @@ on:
       - 'scripts/build_android.sh'
       - 'tools/stage_renpy_android_support.sh'
       - 'tools/inspect_renpy_android_apk.py'
+      - 'tools/prepare_renpy_android_test_export.py'
+      - 'tools/test_prepare_renpy_android_test_export.py'
       - 'bridge/renpy_runtime/android/**'
       - 'vcpkg/ports/libgdiplus/**'
+      - 'vcpkg/ports/ggml/**'
       - 'tools/test_libgdiplus_cmake_relocation.py'
+      - 'tools/test_ggml_overlay_source.py'
+      - 'demos/aetherkiri-renpy/**'
   workflow_dispatch:
 
 permissions:
@@ -48,6 +53,9 @@ jobs:
       NATIVE_RUNTIME_RUN: '37787184399'
       NATIVE_RUNTIME_ARTIFACT: '11556042880'
       NATIVE_RUNTIME_HEAD: '8895c27beef76954bd85cba8b209df9d49a2401f'
+      # Keep the disposable Debug key and its data separate from an existing
+      # production installation. The build uses a copied export project.
+      AETHERKIRI_ANDROID_TEST_PACKAGE_ID: org.aetherkiri.renpy.debug
       NATIVE_RUNTIME_DIGEST: 'sha256:f05b3951f8a8a717258c034894431df36f13b9db0356c82f3285cde344c17729'
     steps:
       - uses: actions/checkout@v6
@@ -231,6 +239,16 @@ jobs:
         with:
           name: renpy-installable-debug-${{ matrix.abi }}
           path: out/godot/android/**/*.apk
+          if-no-files-found: error
+          retention-days: 7
+      - name: Upload the public demo project for phone import
+        if: matrix.abi == 'arm64-v8a'
+        uses: actions/upload-artifact@v6
+        with:
+          name: renpy-demo-project
+          path: |
+            demos/aetherkiri-renpy/game
+            demos/aetherkiri-renpy/README.md
           if-no-files-found: error
           retention-days: 7
       - name: Preserve real build evidence and any diagnostic APK on failure

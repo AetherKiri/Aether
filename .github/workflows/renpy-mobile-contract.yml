@@ -22,6 +22,7 @@ on:
       - 'tools/test_renpy_mobile_cooperative.py'
       - 'tools/test_renpy_mobile_darwin_build.py'
       - 'tools/test_renpy_mobile_build_parallelism.py'
+      - 'tools/test_renpy_mobile_static_api.py'
       - 'tools/validate_renpy_mobile_payload.py'
       - 'tools/test_renpy_mobile_packaging.sh'
       - 'tools/test_renpy_mobile_runtime_protocol.sh'
@@ -97,13 +98,19 @@ jobs:
       - name: Validate Darwin and Linux task configuration boundaries
         run: |
           set -euo pipefail
-          "${RUNNER_TEMP}/cooperative-test/bin/pip" install Jinja2==3.1.6
+          "${RUNNER_TEMP}/cooperative-test/bin/pip" install Jinja2==3.1.6 Cython==3.2.4
           "${RUNNER_TEMP}/cooperative-test/bin/python" \
             tools/test_renpy_mobile_darwin_build.py _renpy-build-source
           "${RUNNER_TEMP}/cooperative-test/bin/python" \
             tools/test_renpy_mobile_build_parallelism.py _renpy-build-source
           "${RUNNER_TEMP}/cooperative-test/bin/python" \
             tools/test_renpy_mobile_patch_series.py _renpy-build-source
+
+      - name: Generate the static API and compile its genuine C consumers
+        run: |
+          set -euo pipefail
+          "${RUNNER_TEMP}/cooperative-test/bin/python" \
+            tools/test_renpy_mobile_static_api.py _renpy-build-source _renpy-source
 
       - name: Compile the lifecycle implementation against Python and SDL2
         run: |

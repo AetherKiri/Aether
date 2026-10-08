@@ -209,13 +209,14 @@ diff --git a/tasks/hostpython3.py b/tasks/hostpython3.py
 diff --git a/tasks/python3.py b/tasks/python3.py
 --- a/tasks/python3.py
 +++ b/tasks/python3.py
-@@ -56,6 +56,10 @@
+@@ -56,6 +56,11 @@
  
      c.chdir("Python-{{ version }}")
      c.patch("Python-{{ version }}/ios-posixmodule.diff")
 +
 +    # Prefer the explicitly supplied target libffi over Darwin's desktop SDK.
 +    c.patch("Python-{{ version }}/aether-external-libffi.diff")
++    c.patch("Python-{{ version }}/aether-posix-functions.diff")
 +    c.run("autoreconf -vfi")
  
      c.run("cp {{patches}}/_scproxy.pyx Modules")
@@ -293,6 +294,49 @@ new file mode 100644
 +   WITH_SAVE_ENV([
 +     CFLAGS="-I${SDKROOT}/usr/include/ffi $CFLAGS"
 +     AC_CHECK_HEADER([ffi.h], [
+diff --git a/patches/Python-3.12.8/aether-posix-functions.diff b/patches/Python-3.12.8/aether-posix-functions.diff
+new file mode 100644
+--- /dev/null
++++ b/patches/Python-3.12.8/aether-posix-functions.diff
+@@ -0,0 +1,38 @@
++--- a/configure.ac
+++++ b/configure.ac
++@@ -4899,7 +4899,7 @@
++ # checks for library functions
++ AC_CHECK_FUNCS([ \
++   accept4 alarm bind_textdomain_codeset chmod chown clock close_range confstr \
++-  copy_file_range ctermid dup dup3 execv explicit_bzero explicit_memset \
+++  copy_file_range ctermid dup execv explicit_bzero explicit_memset \
++   faccessat fchmod fchmodat fchown fchownat fdopendir fdwalk fexecve \
++   fork fork1 fpathconf fstatat ftime ftruncate futimens futimes futimesat \
++   gai_strerror getegid getentropy geteuid getgid getgrgid getgrgid_r \
++@@ -4909,7 +4909,7 @@
++   getspnam getuid getwd if_nameindex initgroups kill killpg lchown linkat \
++   lockf lstat lutimes madvise mbrtowc memrchr mkdirat mkfifo mkfifoat \
++   mknod mknodat mktime mmap mremap nice openat opendir pathconf pause pipe \
++-  pipe2 plock poll posix_fadvise posix_fallocate posix_spawn posix_spawnp \
+++  plock poll posix_fadvise posix_fallocate posix_spawn posix_spawnp \
++   pread preadv preadv2 pthread_condattr_setclock pthread_init pthread_kill \
++   pwrite pwritev pwritev2 readlink readlinkat readv realpath renameat \
++   rtpSpawn sched_get_priority_max sched_rr_get_interval sched_setaffinity \
++@@ -4937,6 +4937,17 @@
++               [],
++               [@%:@include <sys/types.h>
++                @%:@include <dirent.h>])
+++
+++# Simulator libSystem can export symbols absent from the selected SDK's
+++# public headers. Check declarations and deployment availability rather
+++# than inventing a prototype in AC_CHECK_FUNCS.
+++WITH_SAVE_ENV([
+++  AS_VAR_IF([ac_sys_system], [Darwin], [
+++    CFLAGS="$CFLAGS -Werror=unguarded-availability"
+++  ])
+++  PY_CHECK_FUNC([dup3], [@%:@include <unistd.h>])
+++  PY_CHECK_FUNC([pipe2], [@%:@include <unistd.h>])
+++])
++ 
++ # For some functions, having a definition is not sufficient, since
++ # we want to take their address.
 diff --git a/tasks/librenpy.py b/tasks/librenpy.py
 --- a/tasks/librenpy.py
 +++ b/tasks/librenpy.py

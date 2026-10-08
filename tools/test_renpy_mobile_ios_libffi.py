@@ -2,8 +2,9 @@
 """Exercise pinned CPython patch tasks and genuine external libffi builds.
 
 Linux results are host compilation/execution only. On Darwin, additional
-device and Simulator cases configure CPython and link using the selected
-real Xcode SDKs. Target executables are not installed or run as gameplay.
+device and Simulator cases configure CPython, compile its genuine POSIX
+object and link using the selected real Xcode SDKs. Target executables are
+not installed or run as gameplay.
 """
 import argparse
 import ast
@@ -295,6 +296,21 @@ def ffi_and_python_case(label, *, root, shared, namespace, Context, compiler,
     config = (python_source / "pyconfig.h").read_text()
     for feature in ("FFI_PREP_CIF_VAR", "FFI_PREP_CLOSURE_LOC", "FFI_CLOSURE_ALLOC"):
         assert re.search(r"^#define HAVE_" + feature + r" 1$", config, re.M), feature
+    # Compile the exact object that previously failed on the genuine
+    # Simulator SDK. Successful ffi checks do not establish this boundary.
+    posix_dry_run = run(["make", "-n", "Modules/posixmodule.o"], cwd=python_source,
+                       env=environment, log=evidence / f"{label}-posix-make-command.log")
+    posix_commands = [shlex.split(line) for line in posix_dry_run.splitlines()
+                      if "posixmodule.c" in line and " -c " in line]
+    assert len(posix_commands) == 1, posix_dry_run
+    run(["make", "Modules/posixmodule.o"], cwd=python_source, env=environment,
+        log=evidence / f"{label}-posix-object-compile.log")
+    posix_object = python_source / "Modules/posixmodule.o"
+    assert posix_object.is_file()
+    posix_functions = {
+        name: bool(re.search(r"^#define HAVE_" + name.upper() + r" 1$", config, re.M))
+        for name in ("dup3", "pipe2")
+    }
     api = case / "ffi-api.c"
     api.write_text(API_SOURCE)
     executable = case / "ffi-api"
@@ -348,6 +364,7 @@ def ffi_and_python_case(label, *, root, shared, namespace, Context, compiler,
     if target:
         assert executable.read_bytes()[:4] == bytes.fromhex("cffaedfe")
         assert closure_object.read_bytes()[:4] == bytes.fromhex("cffaedfe")
+        assert posix_object.read_bytes()[:4] == bytes.fromhex("cffaedfe")
         assert wrapped_executable.read_bytes()[:4] == bytes.fromhex("cffaedfe")
         output = run(["xcrun", "nm", "-u", str(executable)], cwd=case,
                      log=evidence / f"{label}-ffi-unresolved.txt")
@@ -366,6 +383,8 @@ def ffi_and_python_case(label, *, root, shared, namespace, Context, compiler,
               "ctypes_static_registry": "passed",
               "configure_ffi_headers": "passed", "ffi_api_link": "passed",
               "closure_object": "passed", "ctypes_closure_link": "passed",
+              "posix_object": "passed", "posix_functions": posix_functions,
+              "actual_posix_compile_command": posix_commands[0],
               "ffi_api_execution": "not_run" if target else "passed",
               "ctypes_closure_execution": "not_run" if target else "passed",
               "ffi_trampoline_table": trampoline_table,
@@ -377,7 +396,7 @@ def ffi_and_python_case(label, *, root, shared, namespace, Context, compiler,
               "gameplay": "unverified"}
     (evidence / f"{label}-result.json").write_text(json.dumps(record, indent=2) + "\n")
     print(json.dumps(record, sort_keys=True), flush=True)
-    print(f"{label}: genuine patch/autoreconf/Cython, libffi build, CPython configure, closure object and API link PASS; "
+    print(f"{label}: genuine patch/autoreconf/Cython, libffi build, CPython configure, POSIX/closure objects and API link PASS; "
           + ("target API execution not run" if target else "host ffi_call/closure execution PASS"), flush=True)
 
 

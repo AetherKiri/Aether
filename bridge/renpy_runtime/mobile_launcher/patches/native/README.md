@@ -54,6 +54,14 @@ its RPC headers. Host Python and the other target policies retain their normal
 module detection. The regression runs genuine CPython configure and checks its
 generated module rules; on macOS it also probes both actual iOS SDKs.
 
+The same task checks `dup3` and `pipe2` through CPython's header-based
+`PY_CHECK_FUNC` probes, with Darwin deployment availability warnings treated
+as errors. Simulator libraries can export these symbols without public SDK
+declarations; a successful symbol-only link probe cannot enable their use.
+Absent APIs retain CPython's existing `dup2` and `pipe` fallbacks. The genuine
+host and target SDK regression also compiles `Modules/posixmodule.o` through
+its actual generated Makefile, without launching the target interpreter.
+
 `0009-bounded-build-parallelism.patch` limits the upstream native object build
 group to the host CPU count. Set `RENPY_BUILD_JOBS` to a positive integer to
 select another limit. Child compiler failures still fail the build, and an

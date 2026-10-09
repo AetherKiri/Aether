@@ -53,6 +53,26 @@ def production_arguments(prebuilt):
     return [part.decode() for part in output.rstrip(b"\0").split(b"\0")]
 
 
+def linked_identity(data):
+    assert struct.unpack_from("<II", data) == (0xFEEDFACF, 0x0100000C), "Output must be real ARM64 Mach-O"
+    assert struct.unpack_from("<I", data, 12)[0] == 6, "Output must be a linked Mach-O dylib"
+    commands, position, platforms, dependencies = struct.unpack_from("<I", data, 16)[0], 32, [], []
+    end = position + struct.unpack_from("<I", data, 20)[0]
+    assert end <= len(data), "Truncated actual Mach-O load commands"
+    for _ in range(commands):
+        command, size = struct.unpack_from("<II", data, position)
+        assert size >= 8 and position + size <= end, "Invalid actual Mach-O load command"
+        if command == 0x32:  # LC_BUILD_VERSION
+            platforms.append(struct.unpack_from("<I", data, position + 8)[0])
+        elif command == 0xC:  # LC_LOAD_DYLIB
+            name_offset = struct.unpack_from("<I", data, position + 8)[0]
+            assert 24 <= name_offset < size, "Invalid actual dylib dependency name"
+            dependencies.append(data[position + name_offset:position + size].split(b"\0", 1)[0].decode())
+        position += size
+    assert position == end and platforms == [7], "Linked dylib must target the Simulator platform"
+    return dependencies
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--clang", default=shutil.which("clang"))
@@ -72,6 +92,7 @@ def main():
         archiver, nm = ["xcrun", "ar"], ["xcrun", "nm"]
         version_command = ["xcrun", "--sdk", "iphonesimulator", "clang", "--version"]
         linker_flags = []
+        runtime_flags = []  # Apple dylibs require the selected SDK's libSystem.
         linker_kind = "selected_xcode_apple_linker"
     else:
         assert all((args.clang, args.ar, args.nm, args.linker)), "Actual clang/ar/nm/ld64.lld tools are required"
@@ -84,6 +105,7 @@ def main():
                         "-Xlinker", "-platform_version", "-Xlinker", "ios-simulator", "-Xlinker", "14.0",
                         "-Xlinker", "14.0"]
         linker_kind = "real_llvm_ld64_lld_not_apple_linker"
+        runtime_flags = ["-nostdlib"]  # No Apple SDK or fabricated libSystem on Linux.
     symbols = {}
     selected_names = (*ROOTS, "libdependency.a", "libregistration, optional.a")
     for index, name in enumerate((*selected_names, *EXCLUDED, "ordinary.a")):
@@ -116,21 +138,26 @@ def main():
     run([*compiler, "-c", entry, "-o", entry_object])
     exports = output / "exports.txt"
     exports.write_text("_framework_entry\n")
-    common = [*compiler, "-dynamiclib", "-nostdlib", *linker_flags, entry_object]
+    common = [*compiler, "-dynamiclib", *runtime_flags, *linker_flags, entry_object]
     for label, archives in (("control", expected_paths), ("force-loaded", actual)):
         library = output / (label + ".dylib")
         command = [*common, *archives, prebuilt / "ordinary.a", "-Xlinker", "-exported_symbols_list",
                    "-Xlinker", exports, "-o", library]
         run(command)
         data = library.read_bytes()
-        assert struct.unpack_from("<II", data) == (0xFEEDFACF, 0x0100000C), "Output must be real ARM64 Mach-O"
-        assert struct.unpack_from("<I", data, 12)[0] == 6, "Output must be a linked Mach-O dylib"
+        dependencies = linked_identity(data)
+        if sys.platform == "darwin":
+            assert "/usr/lib/libSystem.B.dylib" in dependencies, "Apple link must use the real SDK's libSystem"
+        else:
+            assert not dependencies, "Linux archive semantics test must not use a fake Apple runtime"
         names = {line.split()[-1] for line in run([*nm, library]).decode().splitlines() if line.split()}
         wanted = {symbol for name in selected_names for symbol in symbols[name]}
         assert (wanted <= names if label == "force-loaded" else not wanted.intersection(names)), names
         assert not {symbol for name in (*EXCLUDED, "ordinary.a") for symbol in symbols[name]}.intersection(names)
         assert "_framework_entry" in names
     report = {"status": "passed", "linker": linker_kind, "sdk": sdk,
+              "standard_runtime_driver_flags": runtime_flags, "linked_platform": 7,
+              "linked_system_dependencies": dependencies,
               "compiler_version": run(version_command).decode().splitlines()[0],
               "production_script_sha256": hashlib.sha256((REPO / "scripts/build_ios.sh").read_bytes()).hexdigest(),
               "selected_archives": len(expected_paths), "unreferenced_registration_objects_retained": len(wanted),

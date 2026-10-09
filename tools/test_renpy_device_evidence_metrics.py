@@ -289,6 +289,35 @@ class EngineLogEvidence(unittest.TestCase):
 class AndroidFailureDiagnosticBoundaries(unittest.TestCase):
     """Real ordinary subprocesses and controlled state fixtures, never Android."""
 
+    def test_activity_state_after_full_configuration_is_kept_until_next_record(self):
+        component = "org.example.controlled/com.godot.game.GodotAppLauncher"
+        # AOSP Android 15 ActivityRecord.dump: configuration/TaskDescription
+        # precede state/visible/drawn fields (source lines 1022..1223).
+        lines = (["display configuration field"] * 220 +
+                 ["* Hist #0: ActivityRecord{x u0 " + component + " t1}"] +
+                 ["  CurrentConfiguration=controlled config"] * 45 +
+                 ["  state=STARTED delayedResume=false finishing=false",
+                  "  mVisibleRequested=true mVisible=false reportedDrawn=false",
+                  "  allDrawn=false firstWindowDrawn=false",
+                  "* Hist #1: ActivityRecord{x u0 org.example.unrelated/.Other t2}",
+                  "  state=RESUMED mVisible=true allDrawn=true firstWindowDrawn=true",
+                  "* Hist #2: ActivityRecord{x u0 " + component + "Other t3}",
+                  "  state=RESUMED allDrawn=true"])
+        self.assertEqual(android.failure_activity_states("\n".join(lines).encode(), component),
+                         [{"state": "STARTED", "mVisibleRequested": True, "mVisible": False,
+                           "allDrawn": False, "firstWindowDrawn": False}])
+
+    def test_activity_scan_keeps_byte_line_and_oversize_record_boundaries(self):
+        component = "org.example.controlled/.Activity"
+        header = "ActivityRecord{x u0 " + component + " t1}\n"
+        self.assertEqual(android.failure_activity_states(
+            (header + "config\n" * 999 + "state=RESUMED\n").encode(), component), [])
+        self.assertEqual(android.failure_activity_states(
+            (header + "config-padding" * 6000 + "\nstate=RESUMED\n").encode(), component), [])
+        raw = (header + "state=STARTED\n" + "x" * 4097 + " ActivityRecord{x u0 unrelated/.Other t2}\n"
+               + "state=RESUMED allDrawn=true\n").encode()
+        self.assertEqual(android.failure_activity_states(raw, component), [{"state": "STARTED"}])
+
     def test_real_success_nonzero_and_oversize_stdout_have_distinct_bounded_results(self):
         for script, expected in (("print('4343')", "available"),
                                  ("print('4343'); raise SystemExit(7)", "not_available"),

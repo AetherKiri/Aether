@@ -112,19 +112,26 @@ def failure_activity_states(raw: bytes, component: str) -> list[dict]:
     """Select state/drawn booleans only within the exact current Activity record."""
     if len(component) > 256 or not re.fullmatch(r"[A-Za-z0-9_.$]+/[A-Za-z0-9_.$]+", component):
         return []
-    states, remaining, current = [], 0, None
+    states, current = [], None
     wanted = re.compile(r"(?<![A-Za-z0-9_.$/])" + re.escape(component) + r"(?![A-Za-z0-9_.$/])")
-    for line in raw.decode(errors="replace").splitlines()[:200]:
+    # Android 15 ActivityRecord.dump emits state/visibility/drawn fields after
+    # configuration and optional TaskDescription output, beyond 24 lines.
+    # Keep the whole bounded record, ending at any subsequent ActivityRecord.
+    prefix = raw[:65536]
+    if len(raw) > len(prefix):
+        prefix = prefix.rpartition(b"\n")[0]
+    for line in prefix.decode(errors="replace").splitlines()[:1000]:
         if len(line) > 4096:
+            if "ActivityRecord{" in line:
+                current = None
             continue
         if "ActivityRecord{" in line:
-            current, remaining = None, 0
+            current = None
             if wanted.search(line) and len(states) < 4:
-                current, remaining = {}, 24
+                current = {}
                 states.append(current)
-        if remaining <= 0:
+        if current is None:
             continue
-        remaining -= 1
         match = re.search(r"\bstate=(INITIALIZING|STARTED|RESUMED|PAUSING|PAUSED|STOPPING|STOPPED|DESTROYING|DESTROYED|RESTARTING_PROCESS)\b", line)
         if match:
             current["state"] = match[1]

@@ -486,6 +486,68 @@ class CurrentStartupDiagnosticTests(unittest.TestCase):
             self.assertFalse(session.result["gameplay_verified"])
             self.assertLessEqual(len(text.encode()), 6144)
 
+    def test_current_failure_pid_known_startup_phases_are_bounded_and_never_launch_proof(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            session = self.session(temporary)
+            self.failure_summary(session)
+            prefix = "10-09 08:12:00.000 1234 1234 "
+            process = self.write(session, "android-process-logcat.txt",
+                prefix + "V GodotActivity: Creating new Godot fragment instance.\n" +
+                prefix + "I Godot: Initializing Godot plugin registry\n" +
+                prefix + "D Godot: Godot native layer initialization completed: false\n" +
+                prefix + "I AetherKiriBridge: event=initialize_engine_begin writable=/data/private-path cache=/data/private-cache\n" +
+                prefix + "I AetherKiriBridge: event=open_game_begin path=/data/private-game async=1 runtime=renpy\n")
+            engine = self.write(session, "aetherkiri-engine.log",
+                "[2026-10-09] [info] aetherkiri provider engine log attached: /data/private-game/aetherkiri-engine.log\n")
+            for path in (process, engine):
+                os.utime(path, ns=(session.harness_started_ns + 1_000_000,) * 2)
+            text, payload = self.diagnose(session)
+            progress = payload["startup_progress"]
+            self.assertEqual(progress["status"], "diagnostic_available")
+            self.assertTrue(progress["diagnostic_only"])
+            self.assertEqual(progress["source"], "actual-current-pid-startup-diagnostic")
+            self.assertIn("godot-fragment-create", progress["output"])
+            self.assertIn("godot-native-initialization-result-false", progress["output"])
+            self.assertIn("provider-engine-log-attached", progress["output"])
+            self.assertNotIn("/data/private", text)
+            self.assertLessEqual(len(progress["output"]), 768)
+            self.assertLessEqual(len(progress["output"].splitlines()), 6)
+            self.assertLessEqual(len(text.encode()), 6144)
+            self.assertFalse(session.result["process_started"] or session.result["gameplay_verified"])
+
+    def test_startup_progress_rejects_foreign_secret_unmatched_and_expired_sources(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            session = self.session(temporary)
+            self.failure_summary(session)
+            prefix = "10-09 08:12:00.000 1234 1234 I "
+            path = self.write(session, "android-process-logcat.txt",
+                "10-09 08:12:00.000 9999 9999 I Godot: Godot native layer setup completed\n" +
+                prefix + "Other: Godot native layer setup completed\n" +
+                prefix + "Godot: arbitrary unrecognized public log\n" +
+                prefix + "AetherKiriBridge: event=open_game_begin token=controlled-private-token\n" +
+                prefix + "Godot: export CONTROLLED_PRIVATE_ENV=controlled-value\n")
+            os.utime(path, ns=(session.harness_started_ns + 1_000_000,) * 2)
+            text, payload = self.diagnose(session)
+            self.assertEqual(payload["startup_progress"]["status"], "diagnostic_notavailable")
+            self.assertNotIn("controlled-private-token", text)
+            self.assertNotIn("controlled-value", text)
+            path = self.write(session, "android-process-logcat.txt",
+                              (prefix + "Godot: Godot native layer setup completed\n") * 20)
+            os.utime(path, ns=(session.harness_started_ns + 1_000_000,) * 2)
+            _, payload = self.diagnose(session)
+            self.assertTrue(payload["startup_progress"]["truncated"])
+            self.assertEqual(len(payload["startup_progress"]["output"].splitlines()), 6)
+            self.assertFalse(session.result["process_started"] or session.result["gameplay_verified"])
+            session.result["gameplay_result"]["failure_diagnostics"]["run_id"] = "b" * 32
+            _, payload = self.diagnose(session)
+            self.assertEqual(payload["startup_progress"]["status"], "diagnostic_notavailable")
+            with patch("run_renpy_android_emulator_session.time.monotonic", return_value=10):
+                from run_renpy_android_emulator_session import startup_progress_text
+                expired = startup_progress_text({"android-process-logcat.txt":
+                    [prefix + "Godot: Godot native layer setup completed"]}, ["1234"], deadline=10)
+            self.assertTrue(expired["diagnostic_deadline_reached"])
+            self.assertEqual(expired["output"], "")
+
     def test_wrong_tuple_success_or_unproven_install_cannot_bind_diagnostic_pids(self):
         with tempfile.TemporaryDirectory() as temporary:
             session = self.session(temporary)

@@ -41,6 +41,23 @@ STARTUP_ERROR = re.compile(r"error|exception|traceback|fatal|failed|cannot|could
                            r"undefined symbol|no module|segmentation|renpy_mobile|cooperative_", re.IGNORECASE)
 LOGCAT_ROW = re.compile(r"^\d\d-\d\d\s+\S+\s+(\d+)\s+\d+\s+([VDIWEF])\s+([^:]+):\s*(.*)$")
 STARTUP_TOKENS = re.compile(r"[A-Za-z0-9_.]+")
+# Exact public log strings from the installed Godot 4.7.2 debug AAR. These
+# identify startup progress only; no message or dynamic path is echoed.
+STARTUP_PROGRESS_MESSAGES = {
+    "GodotActivity": {
+        "Creating new Godot fragment instance.": "godot-fragment-create",
+        "Reusing existing Godot fragment instance.": "godot-fragment-reuse",
+    },
+    "Godot": {
+        "Initializing Godot plugin registry": "godot-plugin-registry-initialize",
+        "Godot native layer initialization completed: true": "godot-native-initialization-result-true",
+        "Godot native layer initialization completed: false": "godot-native-initialization-result-false",
+        "Godot native layer setup completed": "godot-native-setup-completed",
+        "Engine already initialized": "godot-engine-already-initialized",
+    },
+}
+STARTUP_BRIDGE_EVENTS = ("initialize_engine_begin", "initialize_engine_result",
+                         "initialize_engine_already_initialized", "open_game_begin", "open_game_result")
 AVD_RESOURCE_KEYS = {
     "hw.cpu.ncore": 4096, "hw.ramSize": 2147483647,
     "hw.lcd.width": 65536, "hw.lcd.height": 65536, "hw.lcd.density": 65536,
@@ -203,6 +220,56 @@ def startup_error_text(lines: list[str], deadline: float | None = None) -> dict:
     result["truncated"] |= timed_out or skipped or len(chosen) < len(lines) or any(len(lines[index]) > 192 for index in chosen)
     if timed_out:
         result["diagnostic_deadline_reached"] = True
+    return result
+
+
+def startup_progress_text(records: dict[str, list[str]], pids: list[str], deadline: float) -> dict:
+    """Select fixed phases from this failure's real pidof-bound, fresh logs."""
+    result = {"source": "actual-current-pid-startup-diagnostic", "diagnostic_only": True,
+              "status": "diagnostic_notavailable", "output": "", "redacted_lines": 0, "truncated": False}
+    if not pids:
+        return result
+    selected, seen = [], 0
+    for name in ("android-process-logcat.txt", "aetherkiri-engine.log"):
+        for line in records.get(name, []):
+            if time.monotonic() >= deadline:
+                result["diagnostic_deadline_reached"] = True
+                break
+            if len(line) > 4096 or SENSITIVE_DIAGNOSTIC.search(line):
+                result["redacted_lines"] += 1
+                continue
+            stage = ""
+            if name == "android-process-logcat.txt":
+                row = LOGCAT_ROW.match(line)
+                if not row:
+                    continue
+                pid, priority, tag, message = row.groups()
+                tag = tag.strip()
+                if pid not in pids or priority not in ("V", "D", "I"):
+                    continue
+                stage = STARTUP_PROGRESS_MESSAGES.get(tag, {}).get(message.strip(), "")
+                if tag == "AetherKiriBridge":
+                    # These events are compiled in aether_runtime_player.cpp.
+                    # Writable/cache/game paths and result/error text stay private.
+                    event = re.match(r"event=([a-z_]+)(?:\s|$)", message)
+                    if event and event[1] in STARTUP_BRIDGE_EVENTS:
+                        stage = "bridge-" + event[1].replace("_", "-")
+                rendered = f"pid={pid} tag={tag} stage={stage}" if stage else ""
+            else:
+                # Existing dispatcher's per-game attachment message. Record a
+                # phase only, not the game path or a claim of rendered pixels.
+                if re.search(r"(?:^|\]\s*)aetherkiri provider engine log attached:\s", line):
+                    stage = "provider-engine-log-attached"
+                rendered = "file=aetherkiri-engine.log stage=" + stage if stage else ""
+            if rendered:
+                seen += 1
+                selected = (selected + [rendered])[-6:]
+        if result.get("diagnostic_deadline_reached"):
+            break
+    bounded = bounded_diagnostic("\n".join(selected), max_chars=768, max_lines=6)
+    result.update(output=bounded["output"], truncated=bounded["truncated"] or seen > 6)
+    if selected:
+        result["status"] = "diagnostic_available"
     return result
 
 
@@ -580,6 +647,7 @@ class Session(Preflight):
             snapshot = self.current_failure_snapshot()
             payload["failure_snapshot"] = snapshot
             own_pids.update(snapshot.get("diagnostic_pids", []))
+            payload["startup_progress"] = startup_progress_text(records, snapshot.get("diagnostic_pids", []), deadline)
             prefix = [str(self.adb), "-s", self.result["serial"]]
             for line in records.get("commands.jsonl", []):
                 if time.monotonic() >= deadline:
@@ -686,6 +754,8 @@ class Session(Preflight):
         while len(serialized.encode()) > 6143:
             candidates = [row for row in payload["files"].values() if row.get("output")]
             candidates += [row["stderr"] for row in payload["commands"] if row["stderr"].get("output")]
+            if payload.get("startup_progress", {}).get("output"):
+                candidates.append(payload["startup_progress"])
             if not candidates:
                 # A schema regression must not create an infinite trim loop.
                 payload = {"checkpoint": "actual-apk-startup-failure-diagnostics",

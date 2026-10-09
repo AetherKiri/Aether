@@ -1,0 +1,18 @@
+--- a/build-aux/install-reloc
++++ b/build-aux/install-reloc
+@@ -282,6 +282,7 @@
+                "$srcdir"/relocwrapper.c \
+                "$srcdir"/progname.c \
+                "$srcdir"/progreloc.c \
++               "$srcdir"/memeq.c \
+                "$srcdir"/areadlink.c \
+                "$srcdir"/careadlinkat.c \
+                "$srcdir"/allocator.c \
+@@ -308,6 +309,7 @@
+   rm -f relocwrapper.o \
+         progname.o \
+         progreloc.o \
++        memeq.o \
+         areadlink.o \
+         careadlinkat.o \
+         allocator.o \

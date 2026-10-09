@@ -8,12 +8,14 @@ BUILD_TYPE="debug"
 SIMULATOR=false
 SIMULATOR_ARCH="${IOS_SIMULATOR_ARCH:-$(uname -m)}"
 PACKAGE_IPA=false
+RENPY_FRAMEWORK_ONLY=false
 for arg in "$@"; do
     case "$arg" in
         debug|release|Debug|Release) BUILD_TYPE="$arg" ;;
         --simulator) SIMULATOR=true ;;
         --simulator-arch=*) SIMULATOR_ARCH="${arg#*=}" ;;
         --package-ipa|--unsigned-ipa|--ipa) PACKAGE_IPA=true ;;
+        --renpy-framework-only) RENPY_FRAMEWORK_ONLY=true ;;
         *) echo "[WARN] Unknown iOS build argument ignored: $arg" ;;
     esac
 done
@@ -26,6 +28,10 @@ if [[ "$BUILD_TYPE_LOWER" != debug && "$BUILD_TYPE_LOWER" != release ]]; then
 fi
 if [[ "$SIMULATOR" == true && "$BUILD_TYPE_LOWER" != debug ]]; then
     echo "Error: The iOS Simulator app currently uses the Debug CMake/export templates; select debug." >&2
+    exit 1
+fi
+if [[ "$RENPY_FRAMEWORK_ONLY" == true && "$PACKAGE_IPA" == true ]]; then
+    echo "Error: --renpy-framework-only does not build an application or package an IPA." >&2
     exit 1
 fi
 
@@ -204,7 +210,7 @@ preflight_simulator_template_arch() {
         --template "$template" --arch "$arch"
 }
 
-if [[ "$SIMULATOR" == true ]]; then
+if [[ "$SIMULATOR" == true && "$RENPY_FRAMEWORK_ONLY" == false ]]; then
     preflight_simulator_template_arch "$SIMULATOR_ARCH" "$GODOT_EXPORT_TEMPLATE"
 fi
 
@@ -328,8 +334,10 @@ if renpy_device_gles_enabled; then
         echo "Error: AETHERKIRI_RENPY_IOS_DEVICE_GLES requires a Debug device build with Ren'Py enabled." >&2
         exit 1
     fi
-    python3 "$PROJECT_ROOT/tools/build_godot_ios_device_template.py" verify \
-        --template "$GODOT_EXPORT_TEMPLATE"
+    if [[ "$RENPY_FRAMEWORK_ONLY" == false ]]; then
+        python3 "$PROJECT_ROOT/tools/build_godot_ios_device_template.py" verify \
+            --template "$GODOT_EXPORT_TEMPLATE"
+    fi
 fi
 
 renios_link_enabled() {
@@ -465,9 +473,12 @@ build_renios_runtime_framework() {
     for symbol in bootstrap bind_window init tick frame input pause resume shutdown text_input_state set_surface_size; do
         printf '_renpy_mobile_%s\n' "$symbol" >> "$export_list"
     done
-    local force_load_args=() archive
+    local archive_link_args=() archive
     while IFS= read -r archive; do
-        force_load_args+=(-Xlinker -force_load -Xlinker "$archive")
+        case "$(basename "$archive")" in
+            librenpython.a) archive_link_args+=(-Xlinker -force_load -Xlinker "$archive") ;;
+            *) archive_link_args+=("$archive") ;;
+        esac
     done < <(collect_renios_archives "$prebuilt")
     local minimum_flag="-miphoneos-version-min=${IOS_MIN_VERSION:-16.0}"
     [[ "$SIMULATOR" == true ]] && minimum_flag="-mios-simulator-version-min=${IOS_MIN_VERSION:-16.0}"
@@ -491,12 +502,14 @@ build_renios_runtime_framework() {
     done
     # Keep Ren'Py's Python/SDL/FFmpeg symbols inside a separate two-level
     # namespace. They must not replace the host's vcpkg library definitions.
-    # The builtin Python extension table requires its archive objects to stay.
-    # Load each archive explicitly: modern Apple ld rejects -noall_load, and
-    # a global -all_load switch also affects unrelated libraries on this link.
+    # Keep every adapter/API object, including unreferenced lifecycle exports.
+    # Its bootstrap calls init_librenpy; the genuine Ren'Py and CPython init
+    # tables then reference their module initializers. Link all dependencies
+    # normally: variant JPEG/HarfBuzz archives and librenpy's repeated inittab
+    # member contain duplicate definitions when force-loaded together.
     xcrun --sdk "$IOS_SDK" clang++ -arch "$arch" -isysroot "$sdk_path" "$minimum_flag" -dynamiclib \
         "${support_objects[@]}" \
-        "${force_load_args[@]}" \
+        "${archive_link_args[@]}" \
         -Wl,-exported_symbols_list,"$export_list" \
         -Wl,-install_name,"@rpath/$RENPY_FRAMEWORK_NAME.framework/$RENPY_FRAMEWORK_NAME" \
         -Wl,-rpath,@loader_path/.. \
@@ -1113,9 +1126,22 @@ with_ios_only_gdextension() (
         "$EXPORT_MODE" "$EXPORT_PRESET" "$IOS_EXPORT_DIR/Aether.xcodeproj"
 )
 
-echo "==> Building native engine and Godot extension"
+if [[ "$RENPY_FRAMEWORK_ONLY" == true ]]; then
+    if ! renios_enabled; then
+        echo "Error: --renpy-framework-only requires AETHERKIRI_ENABLE_RENPY=ON." >&2
+        exit 1
+    fi
+    echo "==> Building and validating the real Ren'Py runtime framework only"
+else
+    echo "==> Building native engine and Godot extension"
+fi
 renios_launcher_probe
 build_renios_runtime_framework
+if [[ "$RENPY_FRAMEWORK_ONLY" == true ]]; then
+    echo "Verified Ren'Py native framework: $RENPY_FRAMEWORK_OUTPUT"
+    echo "Framework-only mode: iOS application build NOT_RUN; gameplay NOT_RUN."
+    exit 0
+fi
 cmake_config_args=(
     -D "CMAKE_MAKE_PROGRAM=$CMAKE_MAKE_PROGRAM"
     -D "AETHERKIRI_ENABLE_INTERNAL=${AETHERKIRI_ENABLE_INTERNAL:-ON}"

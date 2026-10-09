@@ -267,6 +267,19 @@ jobs:
           cp -a "$RUNNER_TEMP/godot-templates/templates/." "$template_dir/"
           echo "GODOT_BIN=$GITHUB_WORKSPACE/.godot/Godot.app/Contents/MacOS/Godot" >> "$GITHUB_ENV"
           echo "GODOT_EXPORT_TEMPLATE=$template_dir/ios.zip" >> "$GITHUB_ENV"
+      - name: Prepare the normal vcpkg binary cache
+        env:
+          VCPKG_PACKAGES_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          git clone https://github.com/microsoft/vcpkg.git .devtools/vcpkg
+          bash .devtools/vcpkg/bootstrap-vcpkg.sh -disableMetrics
+          echo "VCPKG_ROOT=$GITHUB_WORKSPACE/.devtools/vcpkg" >> "$GITHUB_ENV"
+          bash .github/scripts/configure-vcpkg-binary-cache.sh "$GITHUB_WORKSPACE/.devtools/vcpkg/vcpkg"
+      - name: Link the genuine complete Ren'Py framework before compiling the Godot engine
+        run: |
+          set -euo pipefail
+          bash scripts/build_ios.sh debug --simulator --simulator-arch=arm64 --renpy-framework-only
       - name: Build the missing real arm64 Godot Simulator engine and camera
         run: |
           set -euo pipefail
@@ -299,15 +312,6 @@ jobs:
           python3 tools/build_godot_ios_simulator_template.py verify \
             --template "$RUNNER_TEMP/godot-arm64-simulator/ios.zip" --arch arm64
           echo "GODOT_EXPORT_TEMPLATE=$RUNNER_TEMP/godot-arm64-simulator/ios.zip" >> "$GITHUB_ENV"
-      - name: Prepare the normal vcpkg binary cache
-        env:
-          VCPKG_PACKAGES_TOKEN: ${{ github.token }}
-        run: |
-          set -euo pipefail
-          git clone https://github.com/microsoft/vcpkg.git .devtools/vcpkg
-          bash .devtools/vcpkg/bootstrap-vcpkg.sh -disableMetrics
-          echo "VCPKG_ROOT=$GITHUB_WORKSPACE/.devtools/vcpkg" >> "$GITHUB_ENV"
-          bash .github/scripts/configure-vcpkg-binary-cache.sh "$GITHUB_WORKSPACE/.devtools/vcpkg/vcpkg"
       - name: Build the installable arm64 Simulator application
         run: |
           set -euo pipefail

@@ -35,7 +35,7 @@ SENSITIVE_DIAGNOSTIC = re.compile(
     r"://|www\.|eyJ",
     re.IGNORECASE,
 )
-STARTUP_FILES = ("commands.jsonl", "install.txt", "aetherkiri-engine.log", "renpy-traceback.txt",
+STARTUP_FILES = ("commands.jsonl", "install.txt", "launch.txt", "aetherkiri-engine.log", "renpy-traceback.txt",
                  "renpy-log.txt", "android-process-logcat.txt", "android-system-logcat.txt")
 STARTUP_ERROR = re.compile(r"error|exception|traceback|fatal|failed|cannot|could not|not found|"
                            r"undefined symbol|no module|segmentation|renpy_mobile|cooperative_", re.IGNORECASE)
@@ -206,7 +206,7 @@ def startup_error_text(lines: list[str], deadline: float | None = None) -> dict:
     return result
 
 
-def read_startup_lines(path: Path, started_ns: int, deadline: float) -> tuple[dict, list[str]]:
+def read_startup_lines(path: Path, started_ns: int, deadline: float, *, read_limit: int = 262144) -> tuple[dict, list[str]]:
     """Read a bounded prefix of a fresh regular file produced by this harness."""
     if time.monotonic() >= deadline:
         return {"status": "diagnostic_notavailable", "reason": "diagnostic_deadline"}, []
@@ -216,7 +216,7 @@ def read_startup_lines(path: Path, started_ns: int, deadline: float) -> tuple[di
             details = os.fstat(descriptor)
             if not stat.S_ISREG(details.st_mode) or details.st_mtime_ns < started_ns:
                 return {"status": "diagnostic_notavailable", "reason": "not_fresh_regular_file"}, []
-            raw = os.read(descriptor, 262144)
+            raw = os.read(descriptor, read_limit)
         finally:
             os.close(descriptor)
     except OSError:
@@ -571,7 +571,8 @@ class Session(Preflight):
             deadline = time.monotonic() + 2
             records = {}
             for name in STARTUP_FILES:
-                metadata, lines = read_startup_lines(output / name, self.harness_started_ns, deadline)
+                metadata, lines = read_startup_lines(output / name, self.harness_started_ns, deadline,
+                                                    read_limit=4096 if name == "launch.txt" else 262144)
                 payload["files"][name] = metadata
                 records[name] = lines
             own_pids = set()
@@ -625,11 +626,21 @@ class Session(Preflight):
             payload["installation_success_marker"] = any(line.strip() == "Success" for line in install_lines)
             for name in STARTUP_FILES[2:]:
                 selected = []
+                reported_statuses = []
                 for line in records[name]:
                     if time.monotonic() >= deadline:
                         payload["diagnostic_deadline_reached"] = True
                         break
-                    if "logcat" in name:
+                    if name == "launch.txt":
+                        match = re.fullmatch(r"\s*Status:\s*(\S+)\s*", line, re.IGNORECASE)
+                        if match:
+                            value = match[1].lower()
+                            value = value if value in ("ok", "timeout", "error", "failed") else "unrecognized"
+                            if value not in reported_statuses:
+                                reported_statuses.append(value)
+                        if not STARTUP_ERROR.search(line):
+                            continue
+                    elif "logcat" in name:
                         parsed = LOGCAT_ROW.match(line)
                         if not parsed:
                             continue
@@ -643,6 +654,10 @@ class Session(Preflight):
                         continue
                     selected.append(line)
                 extracted = startup_error_text(selected, deadline)
+                if name == "launch.txt":
+                    # These are diagnostic stdout markers, never launch/PID
+                    # proof. The harness keeps its strict Status: ok gate.
+                    extracted["reported_statuses"] = reported_statuses
                 extracted["truncated"] |= payload["files"][name].get("truncated", False)
                 payload["files"][name].update(extracted)
             if any(row["status"] == "available" for row in payload["files"].values()):

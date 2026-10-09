@@ -283,8 +283,15 @@ class CurrentStartupDiagnosticTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
             started_ns = time.time_ns()
+            def write_current_fixture(path, data):
+                # Controlled semantic input: userspace clock sampling alone
+                # does not guarantee a subsequent inode mtime at that precision.
+                path.write_bytes(data)
+                current_ns = started_ns + 1_000_000
+                os.utime(path, ns=(current_ns, current_ns))
+                self.assertGreaterEqual(path.stat().st_mtime_ns, started_ns)
             fresh = root / "fresh-result.json"
-            fresh.write_text('{"status":"failed"}')
+            write_current_fixture(fresh, b'{"status":"failed"}')
             self.assertEqual(read_current_harness_result(fresh, started_ns), {"status": "failed"})
             symlink = root / "symlink-result.json"
             symlink.symlink_to(fresh)
@@ -299,14 +306,14 @@ class CurrentStartupDiagnosticTests(unittest.TestCase):
             with self.assertRaisesRegex(Unavailable, "ownership"):
                 read_current_harness_result(redirected / fresh.name, started_ns)
             oversized = root / "oversized-result.json"
-            oversized.write_bytes(b"x" * 262145)
+            write_current_fixture(oversized, b"x" * 262145)
             with patch("run_renpy_android_emulator_session.os.read", side_effect=AssertionError("Oversized result must not be read")):
                 with self.assertRaisesRegex(Unavailable, "256KiB"):
                     read_current_harness_result(oversized, started_ns)
-            fresh.write_bytes(b"malformed JSON")
+            write_current_fixture(fresh, b"malformed JSON")
             with self.assertRaisesRegex(Unavailable, "valid bounded JSON"):
                 read_current_harness_result(fresh, started_ns)
-            fresh.write_text("[]")
+            write_current_fixture(fresh, b"[]")
             with self.assertRaisesRegex(Unavailable, "JSON object"):
                 read_current_harness_result(fresh, started_ns)
 
@@ -413,6 +420,64 @@ class CurrentStartupDiagnosticTests(unittest.TestCase):
             self.assertEqual([row["phase"] for row in payload["commands"]],
                              ["apk_install", "app_start", "app_pid_observation"])
             self.assertFalse(session.result["apk_installed"], "Diagnostics cannot verify installation/gameplay")
+            self.assertFalse(session.result["gameplay_verified"])
+
+    def test_current_am_start_status_and_error_stdout_are_diagnostic_only(self):
+        # Real-format local stdout fixtures validate extraction, never app launch.
+        with tempfile.TemporaryDirectory() as temporary:
+            session = self.session(temporary)
+            self.write(session, "launch.txt", "Starting: Intent { cmp=org.aetherkiri.renpy.debug/Launcher }\n"
+                       "Status: timeout\nLaunchState: COLD\n"
+                       "Error: controlled-activity-start-failure\n"
+                       "Caused by: java.lang.RuntimeException: controlled-start-cause\n"
+                       "Error: token=controlled-private-launch-token\n")
+            text, payload = self.diagnose(session)
+            report = payload["files"]["launch.txt"]
+            self.assertEqual(report["reported_statuses"], ["timeout"])
+            self.assertIn("controlled-activity-start-failure", text)
+            self.assertIn("controlled-start-cause", text)
+            self.assertNotIn("controlled-private-launch-token", text)
+            self.assertFalse(session.result["process_started"])
+            self.assertFalse(session.result["gameplay_verified"])
+            self.write(session, "launch.txt", "Status: ok\nError: controlled-failure-despite-ok\n"
+                       "Status: secret-token://unrecognized\n")
+            text, payload = self.diagnose(session)
+            self.assertEqual(payload["files"]["launch.txt"]["reported_statuses"], ["ok", "unrecognized"])
+            self.assertIn("controlled-failure-despite-ok", text)
+            self.assertNotIn("secret-token", text)
+            self.assertFalse(session.result["process_started"], "Even Status: ok diagnostics cannot prove a process")
+            self.assertFalse(session.result["apk_installed"])
+            self.assertFalse(session.result["gameplay_verified"])
+
+    def test_launch_stdout_is_fresh_regular_and_prefix_bounded_without_reading_private_eof(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            session = self.session(temporary)
+            path = self.write(session, "launch.txt", "Status: ok\n")
+            os.utime(path, ns=(0, session.harness_started_ns - 1))
+            _, payload = self.diagnose(session)
+            self.assertEqual(payload["files"]["launch.txt"]["reason"], "not_fresh_regular_file")
+            self.assertEqual(payload["files"]["launch.txt"]["reported_statuses"], [])
+            path.unlink()
+            target = Path(temporary) / "other-unowned-launch-stdout"
+            target.write_text("Error: controlled-private-redirect\n")
+            path.symlink_to(target)
+            text, payload = self.diagnose(session)
+            self.assertEqual(payload["files"]["launch.txt"]["status"], "diagnostic_notavailable")
+            self.assertNotIn("controlled-private-redirect", text)
+            path.unlink()
+            os.mkfifo(path)
+            _, payload = self.diagnose(session)
+            self.assertEqual(payload["files"]["launch.txt"]["reason"], "not_fresh_regular_file")
+            path.unlink()
+            path.write_text("Status: timeout\nError: controlled-prefix-launch-cause\n" + "x" * 10000
+                            + "\nError: controlled-EOF-must-not-be-read\n")
+            text, payload = self.diagnose(session)
+            self.assertEqual(payload["files"]["launch.txt"]["bytes_read"], 4096)
+            self.assertTrue(payload["files"]["launch.txt"]["truncated"])
+            self.assertEqual(payload["files"]["launch.txt"]["reported_statuses"], ["timeout"])
+            self.assertIn("controlled-prefix-launch-cause", text)
+            self.assertNotIn("controlled-EOF", text)
+            self.assertLessEqual(len(text.encode()), 6144)
             self.assertFalse(session.result["gameplay_verified"])
 
     def test_environment_credentials_control_sequences_and_urls_do_not_escape(self):

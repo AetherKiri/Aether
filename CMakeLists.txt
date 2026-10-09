@@ -318,7 +318,8 @@ endif()
 # product platform that can register Minori.
 if(AETHERKIRI_ENABLE_MINORI AND BUILD_GODOT_EXTENSION AND
     (LINUX OR APPLE OR ANDROID OR EMSCRIPTEN))
-    add_subdirectory(${AETHERKIRI_MINORI_DIR})
+    include(cmake/AetherKiriMinori.cmake)
+    aetherkiri_add_minori_runtime("${AETHERKIRI_MINORI_DIR}")
 endif()
 if(AETHERKIRI_ENABLE_RFVP)
     add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/bridge/rfvp_runtime)

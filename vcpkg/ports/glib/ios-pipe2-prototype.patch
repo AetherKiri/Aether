@@ -1,0 +1,14 @@
+--- a/meson.build
++++ b/meson.build
+@@ -816,7 +816,10 @@
+ foreach f : functions
+-  if cc.has_function(f)
++  # iOS SDKs may export functions without declaring a supported public API.
++  # Require pipe2's real prototype before enabling its optional fast path.
++  function_prefix = f == 'pipe2' ? '#include <unistd.h>' : ''
++  if cc.has_function(f, prefix : function_prefix)
+     define = 'HAVE_' + f.underscorify().to_upper()
+     glib_conf.set(define, 1)
+     glib_conf_prefix = glib_conf_prefix + '#define @0@ 1\n'.format(define)
+     set_variable('have_func_' + f, true)
+   else

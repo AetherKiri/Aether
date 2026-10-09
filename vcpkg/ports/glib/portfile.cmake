@@ -6,11 +6,17 @@ vcpkg_download_distfile(GLIB_ARCHIVE
     SHA512 430928d7d7a442fc3927ca943f2569035fe8768768a0ebc6720ae1ef152b56fc5f8d4215d21b4828cc2f39a8632c907ed2c52a0c8566da1c533a2e049a1a121f
 )
 
+set(GLIB_PATCHES
+    use-libiconv-on-windows.patch
+    libintl.patch
+)
+if(VCPKG_TARGET_IS_IOS)
+    list(APPEND GLIB_PATCHES ios-pipe2-prototype.patch)
+endif()
+
 vcpkg_extract_source_archive(SOURCE_PATH
     ARCHIVE "${GLIB_ARCHIVE}"
-    PATCHES
-        use-libiconv-on-windows.patch
-        libintl.patch
+    PATCHES ${GLIB_PATCHES}
 )
 
 if(VCPKG_HOST_IS_WINDOWS)

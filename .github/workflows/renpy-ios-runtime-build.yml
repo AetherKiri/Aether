@@ -18,6 +18,9 @@ on:
       - 'tools/build_godot_ios_simulator_template.py'
       - 'tools/test_godot_ios_simulator_template.py'
       - 'tools/godot_ios_simulator_template/**'
+      - 'tools/build_godot_ios_device_template.py'
+      - 'tools/test_godot_ios_device_template.py'
+      - 'tools/godot_ios_device_template/**'
       - 'scripts/build_ios.sh'
       - 'bridge/renpy_runtime/mobile_launcher/**'
       - 'bridge/renpy_runtime/src/**'
@@ -351,6 +354,7 @@ jobs:
     env:
       AETHERKIRI_ENABLE_RENPY: ON
       AETHERKIRI_ENABLE_INTERNAL: OFF
+      AETHERKIRI_RENPY_IOS_DEVICE_GLES: ON
       AETHERKIRI_VCPKG_CACHE_WRITE: 'false'
       GODOT_RELEASE: 4.7.2-stable
       GODOT_TEMPLATE_VERSION: 4.7.2.stable
@@ -405,6 +409,38 @@ jobs:
           cp -a "$RUNNER_TEMP/godot-templates/templates/." "$template_dir/"
           echo "GODOT_BIN=$GITHUB_WORKSPACE/.godot/Godot.app/Contents/MacOS/Godot" >> "$GITHUB_ENV"
           echo "GODOT_EXPORT_TEMPLATE=$template_dir/ios.zip" >> "$GITHUB_ENV"
+      - name: Build the real SDL3-free Godot iPhoneOS engine and camera
+        run: |
+          set -euo pipefail
+          python3 -m venv "$RUNNER_TEMP/godot-device-scons"
+          "$RUNNER_TEMP/godot-device-scons/bin/python" -m pip install 'SCons==4.9.1'
+          python3 tools/test_godot_ios_device_template.py --template "$GODOT_EXPORT_TEMPLATE" \
+            --godot "$GODOT_BIN" --output-dir "$RUNNER_TEMP/godot-device-acceptance"
+          if ! "$RUNNER_TEMP/godot-device-scons/bin/python" tools/build_godot_ios_device_template.py build \
+            --input-template "$GODOT_EXPORT_TEMPLATE" \
+            --output-template "$RUNNER_TEMP/godot-renpy-device/ios.zip" \
+            --output-dir "$RUNNER_TEMP/godot-renpy-device" --jobs "$JOBS"; then
+            # Current compiler output only: bounded diagnostics, no raw-log
+            # republication, environment dumps or additional SDK downloads.
+            python3 - "$RUNNER_TEMP/godot-renpy-device/source-build.log" <<'PY'
+          import pathlib, re, sys
+          path = pathlib.Path(sys.argv[1])
+          if path.is_file():
+              content = re.sub(r'\x1b\[[0-?]*[ -/]*[@-~]', '', path.read_text(errors='replace'))
+              lines = content.splitlines()
+              indices = set(range(max(0, len(lines)-100), len(lines)))
+              for i, line in enumerate(lines):
+                  if re.search(r'error:|fatal error|FAILED|Error [1-9]|undefined|Traceback|No such file', line, re.I):
+                      indices.update(range(max(0, i-3), min(len(lines), i+7)))
+              excerpt = [lines[i] for i in sorted(indices)
+                         if not re.match(r'^\s*(?:export\s|declare\s|env:|Environment:|[A-Z_][A-Z0-9_]*\s*[=:])', lines[i])]
+              print('\n'.join(excerpt)[-24000:])
+          PY
+            exit 1
+          fi
+          python3 tools/build_godot_ios_device_template.py verify \
+            --template "$RUNNER_TEMP/godot-renpy-device/ios.zip"
+          echo "GODOT_EXPORT_TEMPLATE=$RUNNER_TEMP/godot-renpy-device/ios.zip" >> "$GITHUB_ENV"
       - name: Prepare the normal vcpkg binary cache
         env:
           VCPKG_PACKAGES_TOKEN: ${{ github.token }}
@@ -431,6 +467,7 @@ jobs:
           path: |
             ${{ runner.temp }}/renpy-ios-device-build.log
             ${{ runner.temp }}/renpy-ios-device-runtime-manifest.json
+            ${{ runner.temp }}/godot-renpy-device/evidence.json
             out/ios/debug/renpy-native/exports.txt
             out/ios/debug/renpy-native/support-class-symbols.txt
             out/ios/debug/renpy-native/linked-libraries.txt

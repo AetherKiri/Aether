@@ -47,7 +47,7 @@ def require(condition, message):
         raise ValueError(message)
 
 
-def macho_identity(data):
+def macho_identity(data, expected_platform=7):
     require(len(data) >= 32 and data[:4] == bytes.fromhex("cffaedfe"),
             "Expected a genuine little-endian Mach-O64 object (LTO bitcode is not accepted)")
     cpu, _, kind, count, commands_size = struct.unpack_from("<IIIII", data, 4)
@@ -65,12 +65,12 @@ def macho_identity(data):
         elif command in (0x24, 0x25):  # macOS / iPhoneOS legacy minimum version
             platforms.add(1 if command == 0x24 else 2)
         offset += size
-    require(offset == limit and platforms == {7},
-            f"Object must actually target iPhoneSimulator (platform 7), found {sorted(platforms)}")
+    require(offset == limit and platforms == {expected_platform},
+            f"Object must actually target Apple platform {expected_platform}, found {sorted(platforms)}")
     return ARCHITECTURES[cpu]
 
 
-def thin_archive(stream, offset, length):
+def thin_archive(stream, offset, length, expected_platform=7):
     stream.seek(offset)
     require(stream.read(8) == b"!<arch>\n", "Expected a genuine static ar archive")
     end, count, architectures = offset + length, 0, set()
@@ -87,23 +87,24 @@ def thin_archive(stream, offset, length):
             name, data = data[:name_size].rstrip(b"\0").decode("utf-8"), data[name_size:]
         if name not in ("/", "//", "/SYM64/") and not name.startswith("__.SYMDEF"):
             try:
-                architectures.add(macho_identity(data))
+                architectures.add(macho_identity(data, expected_platform))
             except ValueError as error:
                 raise ValueError(f"{name}: {error}") from error
             count += 1
         if size % 2:
             require(stream.read(1) == b"\n", "Invalid static archive alignment")
     require(stream.tell() == end and count > 0 and len(architectures) == 1,
-            "Each archive slice must contain nonempty objects of exactly one Simulator architecture")
-    return {"architecture": next(iter(architectures)), "objects": count, "platform": 7}
+            "Each archive slice must contain nonempty objects of exactly one Apple architecture")
+    return {"architecture": next(iter(architectures)), "objects": count, "platform": expected_platform}
 
 
-def archive_identity(path):
+def archive_identity(path, expected_platform=7):
+    require(expected_platform in (2, 7), "Only actual iPhoneOS/Simulator archives are supported")
     path = Path(path)
     with path.open("rb") as stream:
         magic = stream.read(4)
         if magic == b"!<ar":
-            identities = [thin_archive(stream, 0, path.stat().st_size)]
+            identities = [thin_archive(stream, 0, path.stat().st_size, expected_platform)]
         else:
             formats = {bytes.fromhex("cafebabe"): (">", False),
                        bytes.fromhex("bebafeca"): ("<", False),
@@ -127,11 +128,27 @@ def archive_identity(path):
             require(all(a[1] <= b[0] for a, b in zip(ranges, ranges[1:])), "Overlapping archive slices")
             identities = []
             for cpu, offset, length in slices:
-                identity = thin_archive(stream, offset, length)
+                identity = thin_archive(stream, offset, length, expected_platform)
                 require(identity["architecture"] == ARCHITECTURES[cpu], "CPU header disagrees with archive objects")
                 identities.append(identity)
     require(len({item["architecture"] for item in identities}) == len(identities), "Duplicate CPU slices")
     return identities
+
+
+def reject_sdl_symbols(path, arch=None, nm=None):
+    if nm:
+        require(arch is None, "Explicit LLVM nm checks use a genuine thin archive")
+        arguments = [str(nm), "--defined-only", "--extern-only", str(path)]
+    else:
+        require(sys.platform == "darwin", "Checking a rebuilt arm64 engine requires real Xcode nm")
+        arguments = ["xcrun", "nm", "-gU"]
+        if arch:
+            arguments.extend(("-arch", arch))
+        arguments.append(str(path))
+    listing = command(arguments)
+    forbidden = {"_SDL_Init", "_SDL_GetError", "_SDL_GetGamepads"}
+    actual = {line.split()[-1] for line in listing.splitlines() if line.split()}
+    require(not actual & forbidden, f"Godot's SDL3 conflicts with force-loaded host SDL2: {sorted(actual & forbidden)}")
 
 
 def member(library):
@@ -162,6 +179,7 @@ def verify_template(template, arch, exported=None):
             if arch == "arm64":
                 require(actual == set(info["SupportedArchitectures"]) == {"arm64", "x86_64"},
                         f"Simulator metadata differs from real CPU slices: {framework}")
+                reject_sdl_symbols(path, arch="arm64")
             library_digest = digest(path)
             if exported:
                 actual_path = Path(exported) / f"Aether{suffix}.xcframework/{SIMULATOR}/{library}.a"
@@ -206,10 +224,13 @@ def command(arguments, *, cwd=None):
     return result.stdout.strip()
 
 
-def replace_template_archives(template, destination, replacements):
+def replace_template_archives(template, destination, replacements, allowed_members=None):
     require(len(template.namelist()) == len(set(template.namelist())), "Duplicate template ZIP members")
-    require(set(replacements) <= {member(library) for library in LIBRARIES},
-            "Only the debug engine/camera Simulator archives may be replaced")
+    simulator_members = {member(library) for library in LIBRARIES}
+    device_members = {f"{library}.ios.debug.xcframework/ios-arm64/{library}.a" for library in LIBRARIES}
+    allowed = simulator_members if allowed_members is None else set(allowed_members)
+    require(allowed <= simulator_members | device_members and set(replacements) <= allowed,
+            "Only the explicitly selected debug engine/camera archives may be replaced")
     with zipfile.ZipFile(destination, "w") as patched:
         patched.comment = template.comment
         for info in template.infolist():

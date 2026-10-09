@@ -316,6 +316,22 @@ renios_enabled() {
     esac
 }
 
+renpy_device_gles_enabled() {
+    case "${AETHERKIRI_RENPY_IOS_DEVICE_GLES:-OFF}" in
+        ON|TRUE|YES|1|on|true|yes) return 0 ;;
+        *) return 1 ;;
+    esac
+}
+
+if renpy_device_gles_enabled; then
+    if [[ "$SIMULATOR" == true || "$BUILD_TYPE_LOWER" != debug ]] || ! renios_enabled; then
+        echo "Error: AETHERKIRI_RENPY_IOS_DEVICE_GLES requires a Debug device build with Ren'Py enabled." >&2
+        exit 1
+    fi
+    python3 "$PROJECT_ROOT/tools/build_godot_ios_device_template.py" verify \
+        --template "$GODOT_EXPORT_TEMPLATE"
+fi
+
 renios_link_enabled() {
     case "${AETHERKIRI_RENPY_RENIOS_LINK:-ON}" in
         ON|TRUE|YES|1|on|true|yes) return 0 ;;
@@ -745,6 +761,13 @@ verify_exported_simulator_template_arch() {
         > "$export_root/godot-simulator-template-evidence.json"
 }
 
+verify_exported_renpy_device_template() {
+    local export_root="$1"
+    python3 "$PROJECT_ROOT/tools/build_godot_ios_device_template.py" verify \
+        --template "$GODOT_EXPORT_TEMPLATE" --exported-dir "$export_root" \
+        > "$export_root/godot-device-template-evidence.json"
+}
+
 stage_ios_runtime_fonts() {
     local export_root="$1"
     local app_source_dir="$export_root/Aether"
@@ -1040,18 +1063,25 @@ package_ios_simulator_app() {
 with_ios_only_gdextension() (
     local gdextension_file="$GODOT_APP_DIR/aether_kiri.gdextension"
     local presets_file="$GODOT_APP_DIR/export_presets.cfg"
+    local project_file="$GODOT_APP_DIR/project.godot"
     local backup_dir
     backup_dir="$(mktemp -d /tmp/aetherkiri-ios-export.XXXXXX)"
     local backup_file="$backup_dir/aether_kiri.gdextension"
 
     cp -p "$gdextension_file" "$backup_file"
     cp -p "$presets_file" "$backup_dir/export_presets.cfg"
+    if renpy_device_gles_enabled; then
+        cp -p "$project_file" "$backup_dir/project.godot"
+    fi
     restore_ios_export_inputs() {
         cp -p "$backup_file" "$gdextension_file"
         cp -p "$backup_dir/export_presets.cfg" "$presets_file"
+        if [[ -f "$backup_dir/project.godot" ]]; then
+            cp -p "$backup_dir/project.godot" "$project_file"
+        fi
         rm -rf "$backup_dir"
     }
-    # This subshell restores both files on successful export and any failure,
+    # This subshell restores all modified inputs on successful export or failure,
     # without changing the caller's traps or committing temporary presets.
     trap restore_ios_export_inputs EXIT
 
@@ -1065,9 +1095,16 @@ with_ios_only_gdextension() (
 
     # Godot reads custom_template from this preset, not GODOT_EXPORT_TEMPLATE.
     # Bind the same verified ZIP to the actual export, then restore the preset.
-    python3 "$PROJECT_ROOT/tools/build_godot_ios_simulator_template.py" preset \
-        --source "$backup_dir/export_presets.cfg" --destination "$presets_file" \
-        --preset "$EXPORT_PRESET" --template "$GODOT_EXPORT_TEMPLATE" --mode "$BUILD_TYPE_LOWER"
+    if renpy_device_gles_enabled; then
+        python3 "$PROJECT_ROOT/tools/build_godot_ios_device_template.py" profile \
+            --presets-source "$backup_dir/export_presets.cfg" --presets-destination "$presets_file" \
+            --project-source "$backup_dir/project.godot" --project-destination "$project_file" \
+            --template "$GODOT_EXPORT_TEMPLATE"
+    else
+        python3 "$PROJECT_ROOT/tools/build_godot_ios_simulator_template.py" preset \
+            --source "$backup_dir/export_presets.cfg" --destination "$presets_file" \
+            --preset "$EXPORT_PRESET" --template "$GODOT_EXPORT_TEMPLATE" --mode "$BUILD_TYPE_LOWER"
+    fi
     "$GODOT_BIN" --headless --path "$GODOT_APP_DIR" \
         "$EXPORT_MODE" "$EXPORT_PRESET" "$IOS_EXPORT_DIR/Aether.xcodeproj"
 )
@@ -1148,6 +1185,8 @@ else
     with_ios_only_gdextension
     if [[ "$SIMULATOR" == true ]]; then
         verify_exported_simulator_template_arch "$IOS_EXPORT_DIR" "$SIMULATOR_ARCH"
+    elif renpy_device_gles_enabled; then
+        verify_exported_renpy_device_template "$IOS_EXPORT_DIR"
     fi
     stage_renios_ios_resources "$IOS_EXPORT_DIR"
     stage_force_load_plugin_archives "$IOS_EXPORT_DIR/Aether/bin/$GODOT_TRIPLET_DIR"

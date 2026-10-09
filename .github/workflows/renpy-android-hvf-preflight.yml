@@ -1,0 +1,111 @@
+name: Ren'Py Android Intel HVF Preflight
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/renpy-android-hvf-preflight.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  intel-hvf:
+    name: Check existing Intel macOS Android hypervisor
+    runs-on: macos-15-intel
+    timeout-minutes: 5
+    steps:
+      - name: Query existing official emulator and HVF
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import json
+          import os
+          import platform
+          import re
+          import subprocess
+          from pathlib import Path
+
+          def bounded_output(value, limit):
+              if isinstance(value, bytes):
+                  value = value.decode("utf-8", errors="replace")
+              value = value or ""
+              return {"output": value[:limit], "output_truncated": len(value) > limit}
+
+          def probe(command, limit=1600):
+              result = {"command": command, "timeout_seconds": 45}
+              try:
+                  completed = subprocess.run(
+                      command, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
+                      stderr=subprocess.STDOUT, timeout=45, check=False,
+                  )
+                  result.update(returncode=completed.returncode)
+                  result.update(bounded_output(completed.stdout, limit))
+              except subprocess.TimeoutExpired as exc:
+                  result.update(returncode=None, timed_out=True)
+                  result.update(bounded_output(exc.stdout, limit))
+              except OSError as exc:
+                  result.update(returncode=None, error=str(exc)[:500])
+              return result
+
+          def hvf_is_usable(check):
+              if check.get("returncode") != 0 or check.get("output_truncated"):
+                  return False
+              lines = [line.strip() for line in check.get("output", "").splitlines() if line.strip()]
+              try:
+                  start = lines.index("accel:")
+              except ValueError:
+                  return False
+              if len(lines) < start + 3 or lines[start + 1] != "0":
+                  return False
+              description = lines[start + 2]
+              lower = description.lower()
+              if re.search(r"unavailable|unsupported|unusable|not\s+(?:available|installed|usable)|"
+                           r"could\s+not|failed|disabled|error", lower):
+                  return False
+              # Google's documented successful macOS output names the framework
+              # and OS version; other emulator versions explicitly say usable.
+              documented = re.fullmatch(r"Hypervisor\.Framework OS X Version \d+(?:\.\d+)*", description)
+              explicit = re.search(r"\b(?:hvf|hypervisor\.framework)\b", lower) and re.search(
+                  r"\b(?:installed and usable|available and usable|is usable)\b", lower)
+              return bool(documented or explicit)
+
+          def classify(result):
+              host = result["host"]
+              if host["system"] != "Darwin" or host["machine"] != "x86_64":
+                  return "not_run", "This preflight requires the official Intel macOS runner."
+              if not result.get("emulator"):
+                  return "not_run", "Existing ANDROID_HOME/emulator/emulator is unavailable; no tools were downloaded."
+              for name in ("hypervisor", "version", "acceleration"):
+                  check = result["checks"][name]
+                  if check.get("returncode") != 0:
+                      return "failed", f"Actual {name} command failed or timed out; see its bounded output."
+              if result["checks"]["hypervisor"]["output"].strip() != "1":
+                  return "failed", "The actual Intel runner does not expose kern.hv_support=1."
+              if not hvf_is_usable(result["checks"]["acceleration"]):
+                  return "failed", "Google's actual acceleration report does not confirm usable HVF."
+              return "supported", "Google's actual acceleration check confirms usable HVF on Intel macOS."
+
+          def main():
+              result = {
+                  "scope": "existing-intel-macos-hvf-capability",
+                  "status": "not_run",
+                  "host": {"system": platform.system(), "machine": platform.machine()},
+                  "avd_launched": False, "apk_installed": False, "gameplay_executed": False,
+                  "checks": {},
+              }
+              result["checks"]["hypervisor"] = probe(["/usr/sbin/sysctl", "-n", "kern.hv_support"], 500)
+              sdk = os.environ.get("ANDROID_HOME", "")
+              emulator = Path(sdk) / "emulator" / "emulator" if sdk else None
+              if emulator is not None and emulator.is_file() and os.access(emulator, os.X_OK):
+                  result["emulator"] = str(emulator)
+                  # -version is the official Android Emulator command-line flag.
+                  result["checks"]["version"] = probe([str(emulator), "-version"], 1200)
+                  result["checks"]["acceleration"] = probe([str(emulator), "-accel-check"])
+              result["status"], result["reason"] = classify(result)
+              print(json.dumps(result, sort_keys=True))
+              return {"supported": 0, "not_run": 2, "failed": 1}[result["status"]]
+
+          if __name__ == "__main__":
+              raise SystemExit(main())
+          PY

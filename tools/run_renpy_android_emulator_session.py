@@ -1146,7 +1146,7 @@ def main() -> int:
     parser.add_argument("--stage-timeout", type=int, default=90)
     parser.add_argument("--port", type=int, default=5554)
     args = parser.parse_args()
-    if not 60 <= args.boot_timeout <= 600 or not 60 <= args.gameplay_timeout <= 1200 \
+    if not 60 <= args.boot_timeout <= 900 or not 60 <= args.gameplay_timeout <= 1200 \
             or not 5 <= args.stage_timeout <= 180 or not 5554 <= args.port <= 5682 or args.port % 2 \
             or not re.fullmatch(r"[A-Za-z][A-Za-z0-9_.]+", args.package):
         parser.error("Invalid timeout, package, or even emulator port")

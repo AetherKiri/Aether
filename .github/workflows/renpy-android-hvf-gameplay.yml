@@ -26,7 +26,7 @@ jobs:
   gameplay:
     name: Actual validated x64 APK on Android 35 (Intel HVF)
     runs-on: macos-15-intel
-    timeout-minutes: 40
+    timeout-minutes: 45
     env:
       APK_RUN: '37871746668'
       APK_JOB: '113631187733'
@@ -167,13 +167,13 @@ jobs:
                             'actual_manifest':manifest, 'gameplay':'not_run'}, sort_keys=True))
           PY
       - name: Boot actual Android 35 and run full Ren'Py APK gameplay
-        # Run 37878726721 (2971bfc4) showed live guest/ART activity but no boot
-        # completion within 480s. This 600s coldboot experiment still fails
-        # closed; the additional wait is not a verified fix or gameplay pass.
+        # Run 37899763345 (68e7c016) measured one guest vCPU and ongoing ART
+        # work at the 600s cutoff. This bounded 900s coldboot diagnostic keeps
+        # the original gameplay gates and remains an unverified experiment.
         run: |
           python3 tools/run_renpy_android_emulator_session.py --cloud-emulator \
             --apk "$RENPY_HVF_APK" --package org.aetherkiri.renpy.debug \
-            --boot-timeout 600 --gameplay-timeout 900 --stage-timeout 90 \
+            --boot-timeout 900 --gameplay-timeout 900 --stage-timeout 90 \
             --output-dir "$RUNNER_TEMP/renpy-android-device-evidence"
       - name: Preserve actual Android gameplay evidence
         if: always()

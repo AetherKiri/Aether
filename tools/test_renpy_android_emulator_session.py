@@ -23,6 +23,7 @@ from unittest.mock import patch
 
 from run_renpy_android_emulator_session import (
     Session, Unavailable, acceleration_usable, bounded_diagnostic, diagnostic_file_tail,
+    cpu_resource_ranges, memory_resource_values, read_avd_resources,
     gameplay_result_matches, os_screen_stats, owned_group_exists, owned_group_state,
     read_current_harness_result, read_startup_lines, startup_error_text, startup_text,
     terminate_owned_process, wait_owned_group_exit,
@@ -532,6 +533,171 @@ class CurrentStartupDiagnosticTests(unittest.TestCase):
                 with self.assertRaisesRegex(Unavailable, "controlled original startup failure"):
                     session.run()
             self.assertEqual(events, ["diagnostics", "stop"])
+
+
+class CurrentResourceDiagnosticTests(unittest.TestCase):
+    def session(self, temporary):
+        args = type("Args", (), {"output_dir": Path(temporary), "port": 5554, "apk": None,
+                                "cloud_emulator": True, "sdk_root": temporary})()
+        session = Session(args)
+        session.adb = Path("boundary-adb-not-a-device")
+        session.boot_started = 0
+        session.emulator_process = type("BoundaryProcess", (), {"poll": lambda _: None})()
+        session.avd_started_ns = time.time_ns()
+        session.avd_directory = Path(temporary) / "owned.avd"
+        session.avd_directory.mkdir()
+        return session
+
+    def test_fresh_owned_avd_only_reports_numeric_and_explicit_enum_fields(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            session = self.session(temporary)
+            config = session.avd_directory / "config.ini"
+            config.write_text("hw.cpu.ncore=2\nhw.ramSize=3072\nhw.lcd.width=1080\n"
+                              "hw.lcd.height=1920\nhw.lcd.density=420\nhw.gpu.enabled=yes\n"
+                              "hw.gpu.mode=swiftshader\nhw.keyboard=yes\nhw.keyboard=no\n"
+                              "image.sysdir.1=/private/secret-token-sdk\nuuid=private-uuid\n")
+            report = read_avd_resources(session.avd_directory, "config.ini", session.avd_started_ns, time.monotonic() + 1)
+            self.assertEqual(report["status"], "available")
+            self.assertEqual(report["values"]["hw.cpu.ncore"], 2)
+            self.assertEqual(report["values"]["hw.keyboard"], "no")
+            self.assertFalse(report["unknown"])
+            self.assertNotIn("private", json.dumps(report))
+            self.assertNotIn("token", json.dumps(report))
+            with config.open("a") as stream:
+                stream.write("hw.cpu.ncore=4097\nhw.gpu.mode=secret-token://arbitrary\n")
+            report = read_avd_resources(session.avd_directory, "config.ini", session.avd_started_ns, time.monotonic() + 1)
+            self.assertNotIn("hw.cpu.ncore", report["values"])
+            self.assertNotIn("hw.gpu.mode", report["values"])
+            self.assertEqual(report["unknown"]["hw.cpu.ncore"], "invalid_value")
+            self.assertNotIn("secret", json.dumps(report))
+
+    def test_stale_redirected_nonregular_and_oversize_avd_files_remain_unknown(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            session = self.session(temporary)
+            config = session.avd_directory / "config.ini"
+            config.write_text("hw.cpu.ncore=2\n")
+            os.utime(config, ns=(0, 0))
+            self.assertEqual(read_avd_resources(session.avd_directory, "config.ini", session.avd_started_ns,
+                                               time.monotonic() + 1)["reason"], "not_fresh_regular_file")
+            config.unlink()
+            target = Path(temporary) / "other-current-file"
+            target.write_text("hw.cpu.ncore=4\n")
+            config.symlink_to(target)
+            self.assertEqual(read_avd_resources(session.avd_directory, "config.ini", session.avd_started_ns,
+                                               time.monotonic() + 1)["status"], "diagnostic_notavailable")
+            config.unlink()
+            os.mkfifo(config)
+            started = time.monotonic()
+            self.assertEqual(read_avd_resources(session.avd_directory, "config.ini", session.avd_started_ns,
+                                               started + 1)["reason"], "not_fresh_regular_file")
+            self.assertLess(time.monotonic() - started, 1)
+            config.unlink()
+            config.write_bytes(b"hw.cpu.ncore=4\n" + b"A" * 65536)
+            self.assertEqual(read_avd_resources(session.avd_directory, "config.ini", session.avd_started_ns,
+                                               time.monotonic() + 1)["reason"], "file_exceeds_read_limit")
+            redirected = Path(temporary) / "redirected.avd"
+            redirected.symlink_to(session.avd_directory, target_is_directory=True)
+            self.assertEqual(read_avd_resources(redirected, "config.ini", session.avd_started_ns,
+                                               time.monotonic() + 1)["status"], "diagnostic_notavailable")
+            with patch("run_renpy_android_emulator_session.os.open", side_effect=AssertionError("No read after deadline")):
+                self.assertEqual(read_avd_resources(session.avd_directory, "config.ini", session.avd_started_ns,
+                                                   time.monotonic() - 1)["reason"], "diagnostic_deadline")
+
+    def test_cpu_and_memory_parsers_reject_unbounded_ranges_and_keep_missing_values_unknown(self):
+        self.assertEqual(cpu_resource_ranges(b"0-3,6\n")["ranges"], [[0, 3], [6, 6]])
+        self.assertEqual(cpu_resource_ranges(b"0-3,6\n")["count"], 5)
+        for value in (b"", b"0-9999", b"3-1", b"0-3,2", b"4,1", b"0-999999999999", b"secret-token", b"0," * 200):
+            self.assertEqual(cpu_resource_ranges(value)["status"], "diagnostic_notavailable")
+        report = memory_resource_values(b"MemTotal: 3145728 kB\nMemAvailable: 65536 kB\nPrivateEnv: secret-token\n")
+        self.assertEqual(report["values_kib"], {"MemTotal": 3145728, "MemAvailable": 65536})
+        self.assertNotIn("secret", json.dumps(report))
+        report = memory_resource_values(b"MemTotal: 3145728 kB\nMemTotal: 42 kB\nMemAvailable: token\n")
+        self.assertEqual(report["values_kib"], {})
+        self.assertEqual(report["unknown"], {"MemTotal": "duplicate_value", "MemAvailable": "invalid_value"})
+        self.assertEqual(memory_resource_values(b"")["unknown"], {"MemTotal": "unknown", "MemAvailable": "unknown"})
+
+    def test_actual_ordinary_resource_child_timeout_is_bounded_and_does_not_publish_partial_text(self):
+        # A real ordinary subprocess validates timeout handling, not Android/HVF.
+        with tempfile.TemporaryDirectory() as temporary:
+            session = self.session(temporary)
+            started = time.monotonic()
+            report, raw = session.resource_command([sys.executable, "-c",
+                                                   "import time; print('secret-token', flush=True); time.sleep(10)"], started + 0.2)
+            self.assertLess(time.monotonic() - started, 1)
+            self.assertEqual(report["reason"], "command_timeout")
+            self.assertEqual(raw, b"")
+            self.assertNotIn("secret", json.dumps(report))
+            with patch("run_renpy_android_emulator_session.subprocess.run", side_effect=AssertionError("No command after deadline")):
+                self.assertEqual(session.resource_command(["not-executed"], time.monotonic() - 1)[0]["reason"],
+                                 "diagnostic_deadline")
+
+    def test_old_and_new_boot_diagnostics_share_one_absolute_twenty_second_budget(self):
+        # Controlled clock and command responses test orchestration, not a guest.
+        with tempfile.TemporaryDirectory() as temporary:
+            session = self.session(temporary)
+            clock, calls = {"now": 600.0}, []
+            def bounded_response(command, **kwargs):
+                self.assertLess(clock["now"], 620)
+                self.assertLessEqual(kwargs["timeout"], 620 - clock["now"])
+                calls.append((command, kwargs["timeout"]))
+                clock["now"] += kwargs["timeout"]
+                output = b"4\n2\n8589934592\n" if command[0] == "/usr/sbin/sysctl" else b""
+                return subprocess.CompletedProcess(command, 0, output)
+            with patch("run_renpy_android_emulator_session.platform.system", return_value="Darwin"), \
+                    patch("run_renpy_android_emulator_session.time.monotonic", side_effect=lambda: clock["now"]), \
+                    patch("run_renpy_android_emulator_session.subprocess.run", side_effect=bounded_response), \
+                    patch("sys.stdout", new_callable=io.StringIO) as console:
+                session.boot_failure_diagnostics()
+            report = json.loads(console.getvalue())
+            self.assertEqual(clock["now"], 620)
+            self.assertEqual(report["diagnostic_elapsed_seconds"], 20)
+            self.assertTrue(report["diagnostic_deadline_reached"])
+            self.assertEqual(report["logcat_warning_tail"]["reason"], "diagnostic_deadline")
+            self.assertEqual(report["resources"]["host"]["values"]["hw.logicalcpu"], 4)
+            self.assertFalse(session.result["gameplay_verified"])
+            self.assertFalse(session.result["harness_started"])
+            self.assertEqual(session.boot_started, 0)
+            self.assertTrue(all(command[0] in ("/usr/sbin/sysctl", str(session.adb)) for command, _ in calls))
+
+    def test_resource_command_errors_and_missing_avd_never_become_measured_defaults(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            session = self.session(temporary)
+            with patch("run_renpy_android_emulator_session.platform.system", return_value="Darwin"), \
+                    patch("run_renpy_android_emulator_session.subprocess.run",
+                          return_value=subprocess.CompletedProcess(["boundary"], 1, b"secret-token://irrelevant")):
+                report = session.resource_diagnostics(time.monotonic() + 1)
+            self.assertEqual(report["host"]["reason"], "command_failed")
+            self.assertTrue(all(row["reason"] == "command_failed" for row in report["guest"].values()))
+            self.assertTrue(all(row["status"] == "diagnostic_notavailable" for row in report["avd"].values()))
+            self.assertNotIn("secret", json.dumps(report))
+            self.assertNotIn("values", report["host"])
+
+    def test_entire_current_boot_console_is_eight_kibibytes_and_resources_are_selected_only(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            session = self.session(temporary)
+            (session.output / "emulator.log").write_text(("Visible kernel state " + "\u2603" * 500 + "\n") * 40)
+            (session.avd_directory / "config.ini").write_text("hw.cpu.ncore=1\npath=secret-token://private\n")
+            def responses(command, **kwargs):
+                if command[0] == "/usr/sbin/sysctl":
+                    output = b"4\n2\n8589934592\n"
+                elif command[-1] in ("/sys/devices/system/cpu/online", "/sys/devices/system/cpu/present"):
+                    output = b"0\n"
+                elif command[-1] == "/proc/meminfo":
+                    output = b"MemTotal: 3145728 kB\nMemAvailable: 123456 kB\nSecret: token\n"
+                else:
+                    output = (("Visible record " + "\u2603" * 500 + "\n") * 40).encode()
+                return subprocess.CompletedProcess(command, 0, output)
+            with patch("run_renpy_android_emulator_session.platform.system", return_value="Darwin"), \
+                    patch("run_renpy_android_emulator_session.subprocess.run", side_effect=responses), \
+                    patch("sys.stdout", new_callable=io.StringIO) as console:
+                session.boot_failure_diagnostics()
+            self.assertLessEqual(len(console.getvalue().encode()), 8192)
+            report = json.loads(console.getvalue())
+            self.assertEqual(report["resources"]["guest"]["online"]["count"], 1)
+            self.assertEqual(report["resources"]["guest"]["memory"]["values_kib"]["MemAvailable"], 123456)
+            self.assertNotIn("token", console.getvalue())
+            self.assertNotIn("private", console.getvalue())
+            self.assertFalse(session.result["gameplay_verified"])
 
 
 class CurrentDiagnosticBoundaryTests(unittest.TestCase):

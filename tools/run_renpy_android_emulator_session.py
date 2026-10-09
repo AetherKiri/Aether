@@ -41,6 +41,105 @@ STARTUP_ERROR = re.compile(r"error|exception|traceback|fatal|failed|cannot|could
                            r"undefined symbol|no module|segmentation|renpy_mobile|cooperative_", re.IGNORECASE)
 LOGCAT_ROW = re.compile(r"^\d\d-\d\d\s+\S+\s+(\d+)\s+\d+\s+([VDIWEF])\s+([^:]+):\s*(.*)$")
 STARTUP_TOKENS = re.compile(r"[A-Za-z0-9_.]+")
+AVD_RESOURCE_KEYS = {
+    "hw.cpu.ncore": 4096, "hw.ramSize": 2147483647,
+    "hw.lcd.width": 65536, "hw.lcd.height": 65536, "hw.lcd.density": 65536,
+}
+AVD_RESOURCE_ENUMS = {"hw.gpu.enabled": ("yes", "no"), "hw.keyboard": ("yes", "no"),
+                      "hw.gpu.mode": ("auto", "host", "off", "swiftshader")}
+
+
+def read_avd_resources(directory: Path | None, filename: str, started_ns: int | None, deadline: float) -> dict:
+    """Only read selected fields from this session's fresh, owned AVD files."""
+    unknown = {key: "unknown" for key in (*AVD_RESOURCE_KEYS, *AVD_RESOURCE_ENUMS)}
+    result = {"status": "diagnostic_notavailable", "values": {}, "unknown": unknown}
+    if time.monotonic() >= deadline:
+        return {**result, "reason": "diagnostic_deadline"}
+    if directory is None or started_ns is None or filename not in ("config.ini", "hardware-qemu.ini"):
+        return {**result, "reason": "owned_avd_not_available"}
+    if directory.parent.is_symlink():
+        return {**result, "reason": "owned_avd_not_available"}
+    try:
+        directory_fd = os.open(directory, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+        try:
+            descriptor = os.open(filename, os.O_RDONLY | os.O_NONBLOCK | os.O_NOFOLLOW, dir_fd=directory_fd)
+            try:
+                before = os.fstat(descriptor)
+                if not stat.S_ISREG(before.st_mode) or before.st_mtime_ns < started_ns:
+                    return {**result, "reason": "not_fresh_regular_file"}
+                if before.st_size > 65536:
+                    return {**result, "reason": "file_exceeds_read_limit"}
+                raw = os.read(descriptor, 65536)
+                after = os.fstat(descriptor)
+                if (after.st_size != len(raw) or after.st_size != before.st_size
+                        or after.st_mtime_ns != before.st_mtime_ns):
+                    return {**result, "reason": "file_changed_during_read"}
+            finally:
+                os.close(descriptor)
+        finally:
+            os.close(directory_fd)
+    except OSError:
+        return {**result, "reason": "missing_or_unreadable_file"}
+    if time.monotonic() >= deadline:
+        return {**result, "reason": "diagnostic_deadline"}
+    for raw_line in raw.decode(errors="replace").splitlines():
+        if time.monotonic() >= deadline:
+            return {**result, "status": "diagnostic_notavailable", "values": {}, "reason": "diagnostic_deadline"}
+        key, separator, value = raw_line.partition("=")
+        key, value = key.strip(), value.strip()
+        if not separator or key not in (*AVD_RESOURCE_KEYS, *AVD_RESOURCE_ENUMS):
+            continue
+        # Config values are last-wins, including an invalid final value. Never
+        # publish free text or fall back to an earlier overwritten value.
+        result["values"].pop(key, None)
+        unknown[key] = "invalid_value"
+        if key in AVD_RESOURCE_KEYS and re.fullmatch(r"[0-9]{1,10}", value):
+            number = int(value)
+            if 1 <= number <= AVD_RESOURCE_KEYS[key]:
+                result["values"][key] = number
+                unknown.pop(key)
+        elif key in AVD_RESOURCE_ENUMS and value in AVD_RESOURCE_ENUMS[key]:
+            result["values"][key] = value
+            unknown.pop(key)
+    result["status"] = "available" if result["values"] else "diagnostic_notavailable"
+    return result
+
+
+def cpu_resource_ranges(raw: bytes) -> dict:
+    """Parse bounded actual sysfs ranges without expanding an arbitrary CPU set."""
+    value = raw.decode(errors="replace").strip()
+    if len(value) > 256 or not re.fullmatch(r"[0-9]{1,4}(?:-[0-9]{1,4})?(?:,[0-9]{1,4}(?:-[0-9]{1,4})?)*", value):
+        return {"status": "diagnostic_notavailable", "reason": "invalid_cpu_range"}
+    ranges, previous, count = [], -1, 0
+    for item in value.split(","):
+        parts = [int(number) for number in item.split("-")]
+        start, end = parts[0], parts[-1]
+        if not previous < start <= end < 4096:
+            return {"status": "diagnostic_notavailable", "reason": "invalid_cpu_range"}
+        ranges.append([start, end])
+        count += end - start + 1
+        previous = end
+    return {"status": "available", "ranges": ranges, "count": count}
+
+
+def memory_resource_values(raw: bytes) -> dict:
+    values, unknown = {}, {"MemTotal": "unknown", "MemAvailable": "unknown"}
+    for line in raw.decode(errors="replace").splitlines():
+        key = line.partition(":")[0]
+        if key not in unknown and key not in values:
+            continue
+        # Reject duplicates rather than reporting an ambiguous memory sample.
+        if key in values or unknown[key] != "unknown":
+            values.pop(key, None)
+            unknown[key] = "duplicate_value"
+            continue
+        match = re.fullmatch(r"(?:MemTotal|MemAvailable):\s*([0-9]{1,12})\s+kB", line)
+        if match:
+            values[key] = int(match[1])
+            unknown.pop(key)
+        else:
+            unknown[key] = "invalid_value"
+    return {"status": "available" if values else "diagnostic_notavailable", "values_kib": values, "unknown": unknown}
 
 
 def startup_line(raw: str) -> str:
@@ -316,6 +415,8 @@ class Session(Preflight):
         self.harness_process = None
         self.harness_log = None
         self.harness_started_ns = None
+        self.avd_directory = None
+        self.avd_started_ns = None
         self.boot_started = None
         self.next_boot_progress = 0
         self.result.update(scope="actual-cloud-android-emulator-session",
@@ -341,8 +442,13 @@ class Session(Preflight):
                               "gameplay_verification": "not_run"}), flush=True)
             self.next_boot_progress = now + 30
 
-    def diagnostic_command(self, *parts: str, timeout: int = 3, max_chars: int = 1024) -> dict:
+    def diagnostic_command(self, *parts: str, timeout: float = 3, max_chars: int = 1024,
+                           deadline: float | None = None) -> dict:
         started = time.monotonic()
+        if deadline is not None:
+            timeout = min(timeout, deadline - started)
+            if timeout <= 0:
+                return {"unavailable": True, "reason": "diagnostic_deadline", "elapsed_seconds": 0}
         try:
             completed = subprocess.run([str(self.adb), "-s", self.result["serial"], *parts],
                                        stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
@@ -356,9 +462,66 @@ class Session(Preflight):
         result["elapsed_seconds"] = round(time.monotonic() - started, 1)
         return result
 
+    def resource_command(self, command: list[str], deadline: float) -> tuple[dict, bytes]:
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            return {"status": "diagnostic_notavailable", "reason": "diagnostic_deadline"}, b""
+        try:
+            completed = subprocess.run(command, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
+                                       stderr=subprocess.DEVNULL, env=self.environment, timeout=min(2, remaining))
+        except subprocess.TimeoutExpired:
+            return {"status": "diagnostic_notavailable", "reason": "command_timeout"}, b""
+        except OSError:
+            return {"status": "diagnostic_notavailable", "reason": "command_unavailable"}, b""
+        report = {"returncode": completed.returncode, "status": "diagnostic_notavailable"}
+        if time.monotonic() >= deadline:
+            return {**report, "reason": "diagnostic_deadline"}, b""
+        if completed.returncode != 0:
+            return {**report, "reason": "command_failed"}, b""
+        if len(completed.stdout) > 4096:
+            return {**report, "reason": "command_output_exceeds_limit"}, b""
+        return {**report, "status": "captured"}, completed.stdout
+
+    def resource_diagnostics(self, deadline: float) -> dict:
+        """Only fixed current-session numeric/enum samples; never raw command text."""
+        sample = {"avd": {filename: read_avd_resources(self.avd_directory, filename, self.avd_started_ns, deadline)
+                          for filename in ("config.ini", "hardware-qemu.ini")}}
+        if platform.system() == "Darwin":
+            keys = ("hw.logicalcpu", "hw.physicalcpu", "hw.memsize")
+            report, raw = self.resource_command(["/usr/sbin/sysctl", "-n", *keys], deadline)
+            if report["status"] == "captured":
+                values, unknown = {}, {key: "unknown" for key in keys}
+                lines = raw.decode(errors="replace").splitlines()
+                if len(lines) == 3:
+                    for key, value in zip(keys, lines):
+                        limit = 9007199254740991 if key == "hw.memsize" else 4096
+                        if re.fullmatch(r"[0-9]{1,16}", value) and 1 <= int(value) <= limit:
+                            values[key] = int(value)
+                            unknown.pop(key)
+                        else:
+                            unknown[key] = "invalid_value"
+                report.update(status="available" if values else "diagnostic_notavailable",
+                              values=values, unknown=unknown)
+            sample["host"] = report
+        else:
+            sample["host"] = {"status": "diagnostic_notavailable", "reason": "host_not_darwin"}
+        sample["guest"] = {}
+        prefix = [str(self.adb), "-s", self.result["serial"], "shell", "cat"]
+        for name in ("online", "present"):
+            report, raw = self.resource_command([*prefix, "/sys/devices/system/cpu/" + name], deadline)
+            if report["status"] == "captured":
+                report.update(cpu_resource_ranges(raw))
+            sample["guest"][name] = report
+        report, raw = self.resource_command([*prefix, "/proc/meminfo"], deadline)
+        if report["status"] == "captured":
+            report.update(memory_resource_values(raw))
+        sample["guest"]["memory"] = report
+        return sample
+
     def boot_failure_diagnostics(self) -> None:
         """Read the currently owned AVD before stop; never dump its environment."""
         started = time.monotonic()
+        deadline = started + 20
         diagnostics = {"checkpoint": "actual-android-boot-failure-diagnostics",
                        "boot_elapsed_seconds": round(started - self.boot_started, 1),
                        "phase": self.result.get("boot_phase"), "serial": self.result["serial"],
@@ -366,17 +529,36 @@ class Session(Preflight):
                        "last_boot_response": self.result.get("last_boot_response"),
                        "gameplay_verification": "not_run",
                        "emulator_log_tail": diagnostic_file_tail(self.output / "emulator.log")}
-        diagnostics["adb_state"] = self.diagnostic_command("get-state")
+        diagnostics["adb_state"] = self.diagnostic_command("get-state", deadline=deadline)
+        diagnostics["resources"] = self.resource_diagnostics(deadline)
         diagnostics["boot_properties"] = {
-            name: self.diagnostic_command("shell", "getprop", name, max_chars=256)
+            name: self.diagnostic_command("shell", "getprop", name, max_chars=256, deadline=deadline)
             for name in ("sys.boot_completed", "dev.bootcomplete", "init.svc.bootanim", "ro.build.version.sdk")
         }
         # Read at most 80 current warning/error entries, without clearing logcat.
         diagnostics["logcat_warning_tail"] = self.diagnostic_command(
-            "logcat", "-d", "-t", "80", "-v", "brief", "*:W", timeout=5, max_chars=3072)
+            "logcat", "-d", "-t", "80", "-v", "brief", "*:W", timeout=5, max_chars=3072, deadline=deadline)
         diagnostics["diagnostic_elapsed_seconds"] = round(time.monotonic() - started, 1)
+        diagnostics["diagnostic_deadline_reached"] = time.monotonic() >= deadline
+        # Resource samples are fixed fields. Bound the entire existing boot
+        # console record, including escaped diagnostic text, to 8KiB.
+        serialized = json.dumps(diagnostics, separators=(",", ":"))
+        text_reports = [diagnostics["emulator_log_tail"], diagnostics["adb_state"],
+                        diagnostics["logcat_warning_tail"], *diagnostics["boot_properties"].values()]
+        if diagnostics["last_boot_response"]:
+            text_reports.append(diagnostics["last_boot_response"])
+        while len(serialized.encode()) > 8191:
+            candidates = [report for report in text_reports if report.get("output")]
+            if not candidates:
+                diagnostics["resources"] = {"status": "diagnostic_notavailable", "reason": "console_size_limit"}
+                serialized = json.dumps(diagnostics, separators=(",", ":"))
+                break
+            largest = max(candidates, key=lambda report: len(report["output"]))
+            largest["output"] = largest["output"][-(len(largest["output"]) // 2):] if len(largest["output"]) > 1 else ""
+            largest["truncated"] = True
+            serialized = json.dumps(diagnostics, separators=(",", ":"))
         self.result["boot_failure_diagnostics"] = diagnostics
-        print(json.dumps(diagnostics), flush=True)
+        print(serialized, flush=True)
 
     def startup_failure_diagnostics(self) -> None:
         """Print selected fresh local evidence only; this performs no device/network calls."""
@@ -580,6 +762,8 @@ class Session(Preflight):
         avd_root.mkdir()
         self.environment["ANDROID_AVD_HOME"] = str(avd_root)
         name = "aether-renpy-cloud-session"
+        self.avd_started_ns = time.time_ns()
+        self.avd_directory = avd_root / f"{name}.avd"
         self.command("create-official-avd", [str(avdmanager), "create", "avd", "--name", name, "--force",
                      "--device", "pixel_2", "--package", IMAGE], input_data=b"no\n", timeout=120)
         config = avd_root / f"{name}.avd/config.ini"

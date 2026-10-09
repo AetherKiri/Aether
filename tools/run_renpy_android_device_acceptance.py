@@ -33,6 +33,14 @@ class Failed(RuntimeError):
     pass
 
 
+def is_successful_os_return(row: object) -> bool:
+    """Require a delivered Return in the observer's explicit Godot namespace."""
+    return (isinstance(row, dict) and row.get("kind") == "os_key"
+            and row.get("keycode_space") == "godot" and row.get("pressed") is True
+            and row.get("code") in ((1 << 22) | 5, (1 << 22) | 6)
+            and not isinstance(row.get("result"), bool) and row.get("result") == 0)
+
+
 def png_pixels(path: Path) -> tuple[int, int, bytes, int]:
     """Decode real Android/Godot 8-bit RGB(A) evidence without extra packages."""
     raw = path.read_bytes()
@@ -529,7 +537,7 @@ class Acceptance:
             raise Failed("No real OS touch-down reached the provider")
         if not any(row.get("kind") == "os_touch" and row.get("action") == 3 and row.get("result") == 0 for row in events):
             raise Failed("No real OS touch-up reached the provider")
-        if not any(row.get("kind") == "os_key" and row.get("pressed") and row.get("code") == 13 for row in events):
+        if not any(is_successful_os_return(row) for row in events):
             raise Failed("No real OS Enter key reached the provider")
         self.summary["checks"].extend([
             {"real_os_touch_and_keyboard_text": typed},

@@ -194,29 +194,14 @@ export CMAKE_MAKE_PROGRAM="$NINJA_BIN"
 preflight_simulator_template_arch() {
     local arch="$1"
     local template="$2"
-    local tmpdir
-    local libgodot
-    local info
 
     if [[ ! -f "$template" ]]; then
         return
     fi
-
-    tmpdir="$(mktemp -d /tmp/aetherkiri-ios-template.XXXXXX)"
-    libgodot="$tmpdir/libgodot.ios.debug.xcframework/ios-arm64_x86_64-simulator/libgodot.a"
-    unzip -q "$template" \
-        'libgodot.ios.debug.xcframework/ios-arm64_x86_64-simulator/libgodot.a' \
-        -d "$tmpdir"
-    info="$(lipo -archs "$libgodot" 2>/dev/null || true)"
-    rm -rf "$tmpdir"
-
-    if [[ " $info " != *" $arch "* ]]; then
-        echo "Error: Godot iOS simulator export template does not contain '$arch'." >&2
-        echo "       $template" >&2
-        echo "       architectures: ${info:-unknown}" >&2
-        echo "       Install or build a Godot export template with an $arch simulator slice, or use --simulator-arch=x86_64." >&2
-        exit 1
-    fi
+    # Check real objects in both engine/camera archives, not only the plist's
+    # advertised CPU list. Device arm64 objects cannot satisfy this check.
+    python3 "$PROJECT_ROOT/tools/build_godot_ios_simulator_template.py" verify \
+        --template "$template" --arch "$arch"
 }
 
 if [[ "$SIMULATOR" == true ]]; then
@@ -755,22 +740,9 @@ stage_force_load_plugin_archives() {
 verify_exported_simulator_template_arch() {
     local export_root="$1"
     local arch="$2"
-    local libgodot="$export_root/Aether.xcframework/ios-arm64_x86_64-simulator/libgodot.a"
-    local info
-
-    if [[ ! -f "$libgodot" ]]; then
-        echo "Error: exported Godot simulator template is missing: $libgodot" >&2
-        exit 1
-    fi
-
-    info="$(lipo -archs "$libgodot" 2>/dev/null || true)"
-    if [[ " $info " != *" $arch "* ]]; then
-        echo "Error: Godot iOS simulator export template does not contain '$arch'." >&2
-        echo "       $libgodot" >&2
-        echo "       architectures: ${info:-unknown}" >&2
-        echo "       Install or build a Godot export template with an $arch simulator slice, or use --simulator-arch=x86_64." >&2
-        exit 1
-    fi
+    python3 "$PROJECT_ROOT/tools/build_godot_ios_simulator_template.py" verify \
+        --template "$GODOT_EXPORT_TEMPLATE" --arch "$arch" --exported-dir "$export_root" \
+        > "$export_root/godot-simulator-template-evidence.json"
 }
 
 stage_ios_runtime_fonts() {
@@ -1065,18 +1037,23 @@ package_ios_simulator_app() {
     echo "Runnable simulator app: $output_dir/Aether.app (device gameplay unverified)"
 }
 
-with_ios_only_gdextension() {
+with_ios_only_gdextension() (
     local gdextension_file="$GODOT_APP_DIR/aether_kiri.gdextension"
-    local backup_file
-    backup_file="$(mktemp /tmp/aetherkiri-gdextension.XXXXXX)"
+    local presets_file="$GODOT_APP_DIR/export_presets.cfg"
+    local backup_dir
+    backup_dir="$(mktemp -d /tmp/aetherkiri-ios-export.XXXXXX)"
+    local backup_file="$backup_dir/aether_kiri.gdextension"
 
-    cp "$gdextension_file" "$backup_file"
-    restore_gdextension() {
-        trap - RETURN
-        cp "$backup_file" "$gdextension_file"
-        rm -f "$backup_file"
+    cp -p "$gdextension_file" "$backup_file"
+    cp -p "$presets_file" "$backup_dir/export_presets.cfg"
+    restore_ios_export_inputs() {
+        cp -p "$backup_file" "$gdextension_file"
+        cp -p "$backup_dir/export_presets.cfg" "$presets_file"
+        rm -rf "$backup_dir"
     }
-    trap restore_gdextension RETURN
+    # This subshell restores both files on successful export and any failure,
+    # without changing the caller's traps or committing temporary presets.
+    trap restore_ios_export_inputs EXIT
 
     awk '
         BEGIN { skip = 0 }
@@ -1086,9 +1063,14 @@ with_ios_only_gdextension() {
         !skip || !/^macos\./ { print }
     ' "$backup_file" | grep -v '^macos\.' > "$gdextension_file"
 
+    # Godot reads custom_template from this preset, not GODOT_EXPORT_TEMPLATE.
+    # Bind the same verified ZIP to the actual export, then restore the preset.
+    python3 "$PROJECT_ROOT/tools/build_godot_ios_simulator_template.py" preset \
+        --source "$backup_dir/export_presets.cfg" --destination "$presets_file" \
+        --preset "$EXPORT_PRESET" --template "$GODOT_EXPORT_TEMPLATE" --mode "$BUILD_TYPE_LOWER"
     "$GODOT_BIN" --headless --path "$GODOT_APP_DIR" \
         "$EXPORT_MODE" "$EXPORT_PRESET" "$IOS_EXPORT_DIR/Aether.xcodeproj"
-}
+)
 
 echo "==> Building native engine and Godot extension"
 renios_launcher_probe

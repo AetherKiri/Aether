@@ -21,7 +21,7 @@ import uuid
 from pathlib import Path
 
 from run_renpy_android_device_acceptance import (
-    Blocked, Failed, checkpoint_landmarks, image_stats, is_script_checkpoint, pixel, png_pixels,
+    Blocked, Failed, checkpoint_landmarks, image_stats, is_script_checkpoint, is_successful_os_return, pixel, png_pixels,
     read_engine_log_file, require_engine_log, require_landmark_pixels, verify_landmark_pixels, verify_resumed_marker,
 )
 
@@ -391,7 +391,7 @@ class Acceptance:
         for action in (1, 3):
             if not any(r.get("kind") == "os_touch" and r.get("action") == action and r.get("result") == 0 for r in events):
                 raise Failed(f"Actual iOS touch action {action} never reached the provider")
-        if not any(r.get("kind") == "os_key" and r.get("pressed") and r.get("code") == 13 for r in events):
+        if not any(is_successful_os_return(r) for r in events):
             raise Failed("Actual iOS Enter key never reached the provider")
         self.ui("finish")
         try:

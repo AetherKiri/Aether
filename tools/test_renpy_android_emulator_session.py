@@ -11,18 +11,189 @@ import json
 import os
 import selectors
 import signal
+import struct
 import subprocess
 import sys
 import tempfile
 import time
 import unittest
+import zlib
 from pathlib import Path
 from unittest.mock import patch
 
 from run_renpy_android_emulator_session import (
     Session, Unavailable, acceleration_usable, bounded_diagnostic, diagnostic_file_tail,
-    gameplay_result_matches, owned_group_exists, owned_group_state, terminate_owned_process, wait_owned_group_exit,
+    gameplay_result_matches, os_screen_stats, owned_group_exists, owned_group_state,
+    terminate_owned_process, wait_owned_group_exit,
 )
+from run_renpy_android_device_acceptance import Failed, image_stats, png_pixels
+
+
+def encoded_os_fixture(*, first: int = 0, second: int = 255, rgba: bool = False) -> bytes:
+    """Encode real PNG bytes for a two-color OS boundary fixture, not gameplay."""
+    channels = 4 if rgba else 3
+    def chunk(kind, data):
+        return struct.pack(">I", len(data)) + kind + data + struct.pack(">I", zlib.crc32(kind + data))
+    rows = b"".join(b"\0" + (bytes([first if y < 8 else second] * 3)
+                                + (b"\xff" if rgba else b"")) * 64 for y in range(64))
+    header = struct.pack(">IIBBBBB", 64, 64, 8, 6 if channels == 4 else 2, 0, 0, 0)
+    return b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", header) + chunk(b"IDAT", zlib.compress(rows)) + chunk(b"IEND", b"")
+
+
+class OsScreenReadinessTests(unittest.TestCase):
+    def session(self, temporary: str, *, apk: Path | None = None) -> Session:
+        args = type("Args", (), {"output_dir": Path(temporary), "port": 5554, "apk": apk,
+                                "cloud_emulator": True, "sdk_root": temporary})()
+        session = Session(args)
+        session.boot_started, session.next_boot_progress = 0, 0
+        session.emulator_process = type("BoundaryProcess", (), {"poll": lambda _: None})()
+        return session
+
+    def test_real_two_color_png_is_os_ready_but_still_rejected_as_a_renpy_scene(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            path = Path(temporary) / "two-color-os-fixture.png"
+            for rgba in (False, True):
+                path.write_bytes(encoded_os_fixture(rgba=rgba))
+                image = png_pixels(path)
+                stats = os_screen_stats(image)
+                self.assertEqual((stats["width"], stats["height"], stats["sampled_colors"]), (64, 64, 2))
+                self.assertEqual(stats["luma_range"], 255)
+                self.assertTrue(stats["ready"])
+                with self.assertRaisesRegex(Failed, "Ren'Py scene"):
+                    image_stats(image)
+
+    def test_real_uniform_and_low_contrast_pngs_are_not_os_ready(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            path = Path(temporary) / "unready-os-fixture.png"
+            for first, second in ((0, 0), (255, 255), (0, 39), (100, 139)):
+                path.write_bytes(encoded_os_fixture(first=first, second=second))
+                self.assertFalse(os_screen_stats(png_pixels(path))["ready"], (first, second))
+            path.write_bytes(b"invalid PNG fixture")
+            with self.assertRaisesRegex(Failed, "not a PNG"):
+                png_pixels(path)
+        with self.assertRaisesRegex(Failed, "dimensions or pixels"):
+            os_screen_stats((64, 64, b"incomplete", 3))
+
+    def test_normal_wakeup_precedes_menu_and_all_readiness_commands_share_the_original_deadline(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            session = self.session(temporary)
+            calls = []
+            properties = {"ro.build.fingerprint": "boundary-input-not-a-device",
+                          "ro.product.cpu.abilist": "x86_64", "ro.build.version.sdk": "35",
+                          "ro.opengles.version": str(0x30000)}
+            def boundary_device(label, *parts, **kwargs):
+                calls.append((label, parts, kwargs["timeout"]))
+                if label.startswith("property-"):
+                    output = properties[parts[-1]].encode()
+                elif label == "surfaceflinger":
+                    output = b"GLES: controlled input boundary\n"
+                elif label == "screen-capture":
+                    output = encoded_os_fixture()
+                else:
+                    output = b""
+                return subprocess.CompletedProcess([label], 0, output)
+            with patch.object(session, "device", side_effect=boundary_device), \
+                    patch("run_renpy_android_emulator_session.time.monotonic", return_value=595), \
+                    patch("sys.stdout", new_callable=io.StringIO):
+                session.validate_booted_device(deadline=600)
+            self.assertEqual(calls[0][:2], ("wakeup", ("shell", "input", "keyevent", "224")))
+            self.assertEqual(calls[1][:2], ("unlock", ("shell", "input", "keyevent", "82")))
+            self.assertTrue(all(timeout == 5 for _, _, timeout in calls))
+            self.assertEqual(session.result["os_screen_attempts"], 1)
+            self.assertTrue(session.result["actual_os_screen"]["ready"])
+            self.assertFalse(session.result["gameplay_attempted"])
+            self.assertFalse(session.result["harness_started"])
+
+    def test_unready_frames_reach_original_deadline_without_more_commands_or_harness(self):
+        # Controlled clock/ADB responses test orchestration only; no emulator runs.
+        with tempfile.TemporaryDirectory() as temporary:
+            apk = Path(temporary) / "boundary-only-not-an-apk"
+            apk.write_bytes(b"boundary input")
+            session = self.session(temporary, apk=apk)
+            clock, calls = {"now": 595.0}, []
+            def capture(label, *parts, **kwargs):
+                self.assertLess(clock["now"], 600)
+                calls.append(kwargs["timeout"])
+                clock["now"] += 0.5
+                return subprocess.CompletedProcess([label], 0, encoded_os_fixture(first=0, second=0))
+            def boundary_boot(*_):
+                session.execution_started = True
+                session.result["boot_completed"] = True
+                session.wait_os_screen(deadline=600)
+            with patch.object(session, "gate_host", return_value=Path("boundary-emulator")), \
+                    patch.object(session, "prepare_sdk", return_value=Path("boundary-manager")), \
+                    patch.object(session, "boot", side_effect=boundary_boot), \
+                    patch.object(session, "boot_failure_diagnostics"), patch.object(session, "stop"), \
+                    patch.object(session, "gameplay") as harness, patch.object(session, "device", side_effect=capture), \
+                    patch("run_renpy_android_emulator_session.time.monotonic", side_effect=lambda: clock["now"]), \
+                    patch("run_renpy_android_emulator_session.time.sleep", side_effect=lambda seconds: clock.update(now=clock["now"] + seconds)), \
+                    patch("sys.stdout", new_callable=io.StringIO):
+                with self.assertRaisesRegex(Unavailable, "original boot deadline"):
+                    session.run()
+                harness.assert_not_called()
+            self.assertEqual(clock["now"], 600)
+            self.assertEqual(calls, [5, 2.5])
+            self.assertEqual(session.result["os_screen_attempts"], 2)
+            self.assertEqual(session.result["actual_os_screen"]["sampled_colors"], 1)
+            self.assertFalse(session.result["actual_os_screen"]["ready"])
+            self.assertEqual(session.result["gameplay_verification"], "not_run")
+            self.assertFalse(session.result["gameplay_verified"])
+
+    def test_os_frame_and_numeric_observations_are_retained_until_visible(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            session = self.session(temporary)
+            clock = {"now": 590.0}
+            frames = iter((encoded_os_fixture(first=0, second=0), encoded_os_fixture()))
+            def capture(label, *parts, **kwargs):
+                return subprocess.CompletedProcess([label], 0, next(frames))
+            with patch.object(session, "device", side_effect=capture), \
+                    patch("run_renpy_android_emulator_session.time.monotonic", side_effect=lambda: clock["now"]), \
+                    patch("run_renpy_android_emulator_session.time.sleep", side_effect=lambda seconds: clock.update(now=clock["now"] + seconds)), \
+                    patch("sys.stdout", new_callable=io.StringIO) as console:
+                session.wait_os_screen(deadline=600)
+            self.assertEqual([row["ready"] for row in session.result["os_screen_observations"]], [False, True])
+            self.assertEqual([row["elapsed_seconds"] for row in session.result["os_screen_observations"]], [590, 592])
+            self.assertEqual(session.result["os_screen_attempts"], 2)
+            self.assertEqual((session.output / "actual-android-screen.png").read_bytes(), encoded_os_fixture())
+            first = [json.loads(line) for line in console.getvalue().splitlines()
+                     if "actual-android-first-os-screen" in line][0]
+            self.assertFalse(first["ready"])
+            self.assertEqual(first["sampled_colors"], 1)
+
+    def test_ready_frame_cannot_pass_after_capture_exhausts_the_original_deadline(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            session = self.session(temporary)
+            clock = {"now": 599.0}
+            def capture(label, *parts, **kwargs):
+                self.assertEqual(kwargs["timeout"], 1)
+                clock["now"] = 600
+                return subprocess.CompletedProcess([label], 0, encoded_os_fixture())
+            with patch.object(session, "device", side_effect=capture) as command, \
+                    patch("run_renpy_android_emulator_session.time.monotonic", side_effect=lambda: clock["now"]), \
+                    patch("sys.stdout", new_callable=io.StringIO):
+                with self.assertRaisesRegex(Unavailable, "original boot deadline"):
+                    session.wait_os_screen(deadline=600)
+            self.assertEqual(command.call_count, 1)
+            self.assertTrue(session.result["actual_os_screen"]["ready"])
+            self.assertNotEqual(session.result["boot_phase"], "validated-booted-device")
+
+    def test_readiness_permission_or_invalid_png_failure_is_not_retried(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            session = self.session(temporary)
+            broken_compression = bytearray(encoded_os_fixture())
+            broken_compression[41] = 0  # Real PNG IHDR, invalid zlib stream in IDAT.
+            for failure, captured in ((Unavailable("screen-capture permission denied"), b""),
+                                      (None, b"not a PNG"), (None, bytes(broken_compression))):
+                with patch.object(session, "device", side_effect=failure,
+                                  return_value=subprocess.CompletedProcess(["fixture"], 0, captured)) as command, \
+                        patch("run_renpy_android_emulator_session.time.monotonic", return_value=590):
+                    with self.assertRaises((Unavailable, Failed)):
+                        session.wait_os_screen(deadline=600)
+                    self.assertEqual(command.call_count, 1)
+            with patch.object(session, "device", side_effect=AssertionError("Expired readiness must not call adb")), \
+                    patch("run_renpy_android_emulator_session.time.monotonic", return_value=600):
+                with self.assertRaisesRegex(Unavailable, "original boot deadline"):
+                    session.boot_device("expired", "get-state", deadline=600)
 
 
 class AccelerationBoundaryTests(unittest.TestCase):

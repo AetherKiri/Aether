@@ -15,14 +15,16 @@ import os
 import platform
 import re
 import signal
+import struct
 import subprocess
 import sys
 import tempfile
 import time
+import zlib
 from pathlib import Path
 
 from preflight_renpy_android_device import Preflight, Unavailable
-from run_renpy_android_device_acceptance import Failed, image_stats, png_pixels
+from run_renpy_android_device_acceptance import Failed, png_pixels
 
 
 IMAGE = "system-images;android-35;google_apis;x86_64"
@@ -31,6 +33,27 @@ SENSITIVE_DIAGNOSTIC = re.compile(
     r"[a-z][a-z0-9+.-]*://|www\.|eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+",
     re.IGNORECASE,
 )
+
+
+def os_screen_stats(image: tuple[int, int, bytes, int]) -> dict:
+    """Require visible OS content, without applying the Ren'Py scene palette gate."""
+    width, height, data, channels = image
+    if width <= 0 or height <= 0 or width * height > 30_000_000 or channels not in (3, 4) \
+            or len(data) != width * height * channels:
+        raise Failed("Invalid decoded Android OS screenshot dimensions or pixels")
+    colors, luma = set(), []
+    for y in range(0, height, max(1, height // 64)):
+        for x in range(0, width, max(1, width // 64)):
+            offset = (y * width + x) * channels
+            rgb = tuple(data[offset:offset + 3])
+            colors.add(rgb)
+            luma.append(sum(rgb) / 3)
+    stats = {"width": width, "height": height, "sampled_colors": len(colors),
+             "luma_range": max(luma) - min(luma)}
+    # A monochrome status bar can be valid OS content. A uniform frame or
+    # low-contrast noise cannot demonstrate that the display is ready.
+    stats["ready"] = stats["sampled_colors"] >= 2 and stats["luma_range"] >= 40
+    return stats
 
 
 def bounded_diagnostic(raw: bytes | str, *, max_chars: int = 4096, max_lines: int = 32) -> dict:
@@ -185,6 +208,7 @@ class Session(Preflight):
                               "serial": self.result["serial"],
                               "emulator_returncode": self.emulator_process.poll(),
                               "last_boot_response": self.result.get("last_boot_response"),
+                              "actual_os_screen": self.result.get("actual_os_screen"),
                               "gameplay_verification": "not_run"}), flush=True)
             self.next_boot_progress = now + 30
 
@@ -338,28 +362,71 @@ class Session(Preflight):
             time.sleep(min(2, max(0, deadline - time.monotonic())))
         else:
             raise Unavailable(f"Actual emulator did not boot within {self.args.boot_timeout}s; see emulator.log")
+        self.validate_booted_device(deadline)
+
+    def boot_device(self, label: str, *parts: str, deadline: float, timeout: int = 30):
+        """Every readiness command uses the original emulator boot deadline."""
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            raise Unavailable("Actual Android OS display was not verified before the original boot deadline")
+        return self.device(label, *parts, timeout=min(timeout, remaining))
+
+    def wait_os_screen(self, deadline: float) -> None:
+        screenshot = self.output / "actual-android-screen.png"
+        self.result["os_screen_attempts"] = 0
+        self.result["os_screen_observations"] = []
+        while True:
+            captured = self.boot_device("screen-capture", "exec-out", "screencap", "-p", deadline=deadline)
+            screenshot.write_bytes(captured.stdout)
+            # Failed adb commands, permission errors and malformed PNGs are
+            # fatal. Only a real, decoded but not-yet-visible frame is retried.
+            try:
+                stats = os_screen_stats(png_pixels(screenshot))
+            except (struct.error, zlib.error) as exc:
+                raise Failed("Actual Android OS screenshot has malformed PNG data") from exc
+            self.result["os_screen_attempts"] += 1
+            observation = {"attempt": self.result["os_screen_attempts"],
+                           "elapsed_seconds": round(time.monotonic() - self.boot_started, 1), **stats}
+            self.result["actual_os_screen"] = observation
+            self.result["os_screen_observations"] = (self.result["os_screen_observations"] + [observation])[-32:]
+            self.boot_progress("waiting-for-os-screen")
+            if observation["attempt"] == 1:
+                print(json.dumps({"checkpoint": "actual-android-first-os-screen", **observation,
+                                  "gameplay_verification": "not_run"}), flush=True)
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                raise Unavailable("Actual Android OS display was not verified before the original boot deadline")
+            if stats["ready"]:
+                self.result["boot_phase"] = "validated-booted-device"
+                return
+            time.sleep(min(2, remaining))
+
+    def validate_booted_device(self, deadline: float) -> None:
         self.result["boot_phase"] = "validating-booted-device"
-        self.device("unlock", "shell", "input", "keyevent", "82")
+        # Ordinary input wakes the screen; it does not change lock/security settings.
+        self.boot_device("wakeup", "shell", "input", "keyevent", "224", deadline=deadline)
+        self.boot_device("unlock", "shell", "input", "keyevent", "82", deadline=deadline)
         values = {}
         for name in ("ro.build.fingerprint", "ro.product.cpu.abilist", "ro.build.version.sdk", "ro.opengles.version"):
-            values[name] = self.device("property-" + name, "shell", "getprop", name).stdout.decode().strip()
+            values[name] = self.boot_device("property-" + name, "shell", "getprop", name,
+                                            deadline=deadline).stdout.decode().strip()
         self.result["device_properties"] = values
         if not values["ro.build.fingerprint"] or "x86_64" not in values["ro.product.cpu.abilist"].split(",") \
                 or values["ro.build.version.sdk"] != "35":
             raise Unavailable("The booted Android device is not the actual requested Android 35 x86_64 image")
         if int(values["ro.opengles.version"] or "0") < 0x30000:
             raise Unavailable("The actual Android device does not advertise required GLES 3.0")
-        surface = self.device("surfaceflinger", "shell", "dumpsys", "SurfaceFlinger").stdout.decode(errors="replace")
+        surface = self.boot_device("surfaceflinger", "shell", "dumpsys", "SurfaceFlinger",
+                                   deadline=deadline).stdout.decode(errors="replace")
         self.result["surfaceflinger_gles"] = [line.strip() for line in surface.splitlines() if "GLES:" in line]
         if not self.result["surfaceflinger_gles"]:
             raise Unavailable("Actual SurfaceFlinger did not report a GLES renderer; see surfaceflinger.log")
-        screenshot = self.output / "actual-android-screen.png"
-        screenshot.write_bytes(self.device("screen-capture", "exec-out", "screencap", "-p").stdout)
-        self.result["actual_os_screen"] = image_stats(png_pixels(screenshot))
+        self.wait_os_screen(deadline)
         self.result["checks"].extend(("actual-android-boot-completed", "adb-real-device-properties",
                                       "actual-surfaceflinger-gles", "actual-os-screen"))
         print(json.dumps({"checkpoint": "actual-android-booted", "device_properties": values,
                           "surfaceflinger_gles": self.result["surfaceflinger_gles"],
+                          "actual_os_screen": self.result["actual_os_screen"],
                           "gameplay_verification": "not_run"}), flush=True)
 
     def gameplay(self) -> None:

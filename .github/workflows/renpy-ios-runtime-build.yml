@@ -399,6 +399,7 @@ jobs:
             2>&1 | tee "$RUNNER_TEMP/renpy-ios-simulator-build.log"
       - name: Validate successful package archives even when the App build fails
         id: public-vcpkg-after
+        continue-on-error: true
         if: >-
           always() && !cancelled() &&
           steps.public-vcpkg-app.outcome != 'skipped' &&
@@ -620,6 +621,7 @@ jobs:
           echo 'Unsigned iPhoneOS package built. Device signing, installation and gameplay remain unverified.'
       - name: Validate successful package archives even when the App build fails
         id: public-vcpkg-after
+        continue-on-error: true
         if: >-
           always() && !cancelled() &&
           steps.public-vcpkg-app.outcome != 'skipped' &&

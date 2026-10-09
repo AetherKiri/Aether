@@ -30,6 +30,12 @@ SCHEMA = 1
 HEX = re.compile(r"[0-9a-f]{64}\Z")
 PORT = re.compile(r"[a-z0-9][a-z0-9-]*\Z")
 TOP_LEVEL = {"include", "lib", "bin", "debug", "share", "tools", "etc"}
+# Diagnostic labels only; these directories remain rejected. Other root names
+# are hashed, so no arbitrary filename is echoed into the Actions console.
+ROOT_DIAGNOSTIC_LABELS = {
+    "manual-tools", "plugins", "libexec", "sbin", "man", "doc", "docs",
+    "cmake", "var", "Frameworks", "Applications", "sdk",
+}
 # Existing public Mono dependency, maintained as this repository's overlay;
 # it is absent from the current and baseline builtin registries.
 PUBLIC_ADDITIONAL_OVERLAYS = {"libgdiplus"}
@@ -46,6 +52,20 @@ MAX_CACHE_MEMBERS = 1_000_000
 
 class InvalidCache(ValueError):
     """Fixed diagnostic codes avoid echoing untrusted archive free text."""
+
+    def __init__(self, code: str, *, metadata: dict | None = None):
+        super().__init__(code)
+        self.metadata = metadata
+
+
+def rejection_message(error: Exception) -> str:
+    code = str(error) if isinstance(error, InvalidCache) else type(error).__name__
+    message = f"Public dependency cache rejected: {code}"
+    if isinstance(error, InvalidCache) and code == "unexpected-package-root" and error.metadata:
+        detail = json.dumps(error.metadata, sort_keys=True, separators=(",", ":"))
+        require(len(detail) <= 512, "diagnostic-too-large")
+        message += " " + detail
+    return message
 
 
 def require(condition: bool, code: str) -> None:
@@ -224,13 +244,16 @@ def validate_archive(path: Path, ports: set[str], triplets: set[str]) -> dict:
         require(sum(i.file_size for i in infos) <= MAX_EXPANDED_BYTES, "archive-expanded-size")
         members: dict[str, zipfile.ZipInfo] = {}
         links: dict[str, str] = {}
+        rejected_root = None
         for i in infos:
             n = safe_member(i.filename)
             require(n not in members, "duplicate-member")
             require(not i.flag_bits & 1, "encrypted-member")
             mode = stat.S_IFMT(i.external_attr >> 16)
             require(mode in (0, stat.S_IFREG, stat.S_IFDIR, stat.S_IFLNK), "special-member")
-            require(n in ("CONTROL", "BUILD_INFO") or n.split("/", 1)[0] in TOP_LEVEL, "unexpected-package-root")
+            root = n.split("/", 1)[0]
+            if rejected_root is None and n not in ("CONTROL", "BUILD_INFO") and root not in TOP_LEVEL:
+                rejected_root = root
             members[n] = i
             if mode == stat.S_IFLNK:
                 require(i.file_size <= MAX_METADATA, "symlink-too-large")
@@ -285,6 +308,13 @@ def validate_archive(path: Path, ports: set[str], triplets: set[str]) -> dict:
         abi_info = z.read(abi_path)
         require(hashlib.sha256(abi_info).hexdigest() == abi, "abi-info-digest-mismatch")
         require(f"triplet {triplet}\n".encode() in abi_info.splitlines(keepends=True), "abi-info-triplet-mismatch")
+        if rejected_root is not None:
+            metadata = {"abi": abi, "package": name, "triplet": triplet}
+            if rejected_root in ROOT_DIAGNOSTIC_LABELS:
+                metadata["root"] = rejected_root
+            else:
+                metadata["root_sha256"] = hashlib.sha256(rejected_root.encode()).hexdigest()
+            raise InvalidCache("unexpected-package-root", metadata=metadata)
         # Read all bytes and check their CRC before vcpkg's unzip consumer sees them.
         for i in infos:
             with z.open(i) as f:
@@ -381,8 +411,7 @@ def main() -> int:
         return 0
     except (InvalidCache, zipfile.BadZipFile, OSError, KeyError, ValueError,
             RuntimeError, NotImplementedError, subprocess.CalledProcessError) as e:
-        code = str(e) if isinstance(e, InvalidCache) else type(e).__name__
-        print(f"Public dependency cache rejected: {code}", file=sys.stderr)
+        print(rejection_message(e), file=sys.stderr)
         return 1
 
 

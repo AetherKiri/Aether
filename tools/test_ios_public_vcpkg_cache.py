@@ -9,6 +9,7 @@ Linux checks do not claim Apple SDK, App or gameplay execution.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -17,6 +18,7 @@ import shutil
 import stat
 import struct
 import subprocess
+import sys
 import warnings
 import zipfile
 
@@ -166,7 +168,7 @@ install(FILES cache_probe.h DESTINATION include)
     check(cache.validate_cache(zip64_dir.parent, ports, {triplet})["archive_count"] == 1,
           "Standard ZIP64 container rejected.")
     rejected = []
-    def reject(label: str, edit, expected: str, allowed_triplets=None) -> None:
+    def reject(label: str, edit, expected: str, allowed_triplets=None) -> cache.InvalidCache:
         d = controls / label / probe_record["abi"][:2]
         d.mkdir(parents=True)
         path = d / probe_zip.name
@@ -180,9 +182,14 @@ install(FILES cache_probe.h DESTINATION include)
             cache.validate_cache(d.parent, ports, allowed_triplets or {triplet})
         except cache.InvalidCache as e:
             check(str(e) == expected, f"Wrong rejection reason in {label}.")
+            failure = e
+            check(len(cache.rejection_message(e)) <= 640, "Rejection diagnostic is not bounded.")
+            if expected != "unexpected-package-root":
+                check(e.metadata is None, "Unverified package identity was printed in a diagnostic.")
         else:
             raise AssertionError(f"Unsafe control accepted: {label}.")
         rejected.append(label)
+        return failure
     def control_edit(old: bytes, new: bytes):
         return lambda es: [(i, b.replace(old, new) if i.filename == "CONTROL" else b) for i, b in es]
     reject("wrong-control-abi", control_edit(probe_record["abi"].encode(), b"0" * 64), "control-abi-mismatch")
@@ -204,6 +211,39 @@ install(FILES cache_probe.h DESTINATION include)
     reject("escaping-symlink", link_edit(b"../../outside"), "escaping-symlink")
     reject("symlink-cycle", link_edit(b"unsafe-link"), "symlink-cycle")
     reject("source-cache-root", lambda es: es + [(zipfile.ZipInfo("buildtrees/compiler.log"), b"x")], "unexpected-package-root")
+    known_root = reject("diagnostic-known-root", lambda es: es + [
+        (zipfile.ZipInfo("manual-tools/aether-cache-probe/tool"), b"x")], "unexpected-package-root")
+    check(known_root.metadata == {"abi": probe_record["abi"], "package": "aether-cache-probe",
+                                  "triplet": triplet, "root": "manual-tools"},
+          "Known root diagnostic did not contain only verified public identity and the fixed label.")
+    private_root = "private-root-name-must-not-be-echoed"
+    unknown_root = reject("diagnostic-hashed-root", lambda es: es + [
+        (zipfile.ZipInfo(private_root + "/private-member-must-not-be-echoed"), b"x")], "unexpected-package-root")
+    message = cache.rejection_message(unknown_root)
+    check(private_root not in message and "private-member-must-not-be-echoed" not in message,
+          "Arbitrary root/member text escaped into a diagnostic.")
+    check(unknown_root.metadata == {"abi": probe_record["abi"], "package": "aether-cache-probe",
+          "triplet": triplet, "root_sha256": hashlib.sha256(private_root.encode()).hexdigest()},
+          "Unknown root diagnostic was not limited to verified identity and a digest.")
+    # Run the real CLI rejection path, without substituting an Apple identity.
+    # Linux rejects the host boundary; Mac rejects this private CONTROL after
+    # using its actual SDK identity. Neither may publish success outputs/report.
+    output = root / "rejected-github-output"
+    output.write_text("existing-test-marker=value\n")
+    rejection_report = root / "must-not-exist.json"
+    rejected_cli = subprocess.run([
+        sys.executable, str(Path(cache.__file__).resolve()), "validate",
+        "--repository", str(Path(__file__).resolve().parents[1]),
+        "--vcpkg-root", str(vcpkg_root), "--sdk", "iphonesimulator",
+        "--triplet", "arm64-ios-simulator", "--internal", "OFF",
+        "--cache-dir", str(controls / "private-package"),
+        "--report", str(rejection_report), "--github-output", str(output),
+    ], env=env, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    expected_code = "non-public-package" if platform.system() == "Darwin" else "real-apple-host-required"
+    check(rejected_cli.returncode == 1 and expected_code in rejected_cli.stderr,
+          "Actual CLI did not reject the unsafe cache at the genuine platform/package boundary.")
+    check(not rejected_cli.stdout and output.read_text() == "existing-test-marker=value\n"
+          and not rejection_report.exists(), "Rejected CLI cache published success output or a report.")
     # Actual provider bytes with an oversized declared central directory must
     # be rejected before zipfile allocates/parses that directory.
     cd_dir = controls / "central-directory-budget" / probe_record["abi"][:2]
@@ -327,6 +367,7 @@ install(FILES cache_probe.h DESTINATION include)
               "zip64_container_compatibility": "passed",
               "nonsentinel_zip64_container_compatibility": "passed",
               "production_public_port_allowlist": "passed",
+              "bounded_root_diagnostics": "passed", "rejection_does_not_publish_success": "passed",
               "apple_sdk_cache": "not_run", "app": "not_run", "gameplay": "not_run"}
     (root / "evidence.json").write_text(json.dumps(result, indent=2, sort_keys=True) + "\n")
     print(json.dumps({k: result[k] for k in ("status", "files_provider_restore", "changed_port_abi", "partial_failure_flush", "apple_sdk_cache", "app", "gameplay")}, sort_keys=True))

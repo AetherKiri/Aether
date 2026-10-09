@@ -5,6 +5,7 @@ signal game_finished(native_state: Dictionary)
 # A debug-device observer, driven exclusively by OS input. It never manufactures
 # game progress, sends a scripted click, or falls back to a viewport screenshot.
 const GameInputMapping = preload("res://scripts/game_input_mapping.gd")
+const RenpyKeyInput = preload("res://scripts/renpy_key_input.gd")
 const POINTER_DOWN := 1
 const POINTER_MOVE := 2
 const POINTER_UP := 3
@@ -155,21 +156,9 @@ func _input(event: InputEvent) -> void:
     elif event is InputEventKey:
         var key := event as InputEventKey
         var code := int(key.keycode)
-        if key.keycode == KEY_ENTER or key.keycode == KEY_KP_ENTER:
-            code = 13
-        elif key.keycode == KEY_BACKSPACE:
-            code = 8
-        elif key.keycode == KEY_ESCAPE:
-            code = 27
-        elif key.keycode == KEY_DELETE:
-            code = 46
-        elif key.keycode == KEY_LEFT:
-            code = 37
-        elif key.keycode == KEY_RIGHT:
-            code = 39
-        result = player.send_key_event(key.pressed, code, 0, key.unicode)
+        result = RenpyKeyInput.send_key_event(player, key)
         _record({"kind": "os_key", "pressed": key.pressed, "code": code,
-            "unicode": key.unicode, "result": result})
+            "keycode_space": "godot", "unicode": key.unicode, "result": result})
     else:
         return
     get_viewport().set_input_as_handled()

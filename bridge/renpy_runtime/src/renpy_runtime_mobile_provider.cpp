@@ -369,7 +369,8 @@ engine_result_t Input(void* value, const engine_input_event_t* event) {
     input.struct_size = sizeof(input);
     input.timestamp_ns = event->timestamp_micros * 1000ull;
     input.device_id = event->pointer_id;
-    input.code = input_mapping::MapKeyCodeToPygame(event->key_code);
+    input.code = input_mapping::MapKeyCodeToPygame(event->key_code,
+        static_cast<input_mapping::KeyCodeSpace>(event->reserved_u32));
     input.value = static_cast<int32_t>(event->type);
     {
         std::lock_guard<std::mutex> lock(runtime->frame_mutex);

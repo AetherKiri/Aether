@@ -2,6 +2,7 @@
 #include "engine_options.h"
 #include "engine_runtime_provider.h"
 #if defined(AETHERKIRI_WITH_RENPY)
+#include "renpy_godot_input.h"
 #include "renpy_runtime.h"
 #endif
 #if defined(AETHERKIRI_WITH_RFVP)
@@ -9944,6 +9945,24 @@ public:
         return result;
     }
 
+    int send_renpy_key_event(bool pressed, int godot_keycode, int modifiers,
+                            int unicode_codepoint) {
+#if defined(AETHERKIRI_WITH_RENPY)
+        if (handle_ == nullptr) return ENGINE_RESULT_INVALID_STATE;
+        if (runtime_id_ != "renpy") return ENGINE_RESULT_NOT_SUPPORTED;
+        const engine_result_t result = aetherkiri::renpy::input_mapping::SendGodotKeyEvents(
+            [this](const engine_input_event_t& event) {
+                return engine_send_input(handle_, &event);
+            }, pressed, godot_keycode, modifiers,
+            static_cast<uint32_t>(std::max(0, unicode_codepoint)));
+        update_last_error(result);
+        return result;
+#else
+        (void)pressed; (void)godot_keycode; (void)modifiers; (void)unicode_codepoint;
+        return ENGINE_RESULT_NOT_SUPPORTED;
+#endif
+    }
+
     int send_text_input(const String& text) {
         if (handle_ == nullptr) {
             return ENGINE_RESULT_INVALID_STATE;
@@ -11520,6 +11539,9 @@ protected:
                              &AetherRuntimePlayer::send_key_event);
         ClassDB::bind_method(D_METHOD("send_text_input", "text"),
                              &AetherRuntimePlayer::send_text_input);
+        ClassDB::bind_method(D_METHOD("send_renpy_key_event", "pressed", "godot_keycode",
+                                      "modifiers", "unicode_codepoint"),
+                             &AetherRuntimePlayer::send_renpy_key_event);
         ClassDB::bind_method(D_METHOD("get_text_input_state"),
                              &AetherRuntimePlayer::get_text_input_state);
         ClassDB::bind_method(D_METHOD("send_ime_preedit", "text", "start", "length"),

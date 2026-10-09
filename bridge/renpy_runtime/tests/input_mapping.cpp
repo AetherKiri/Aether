@@ -1,5 +1,6 @@
 #include "renpy_runtime.h"
 #include "engine_api.h"
+#include "renpy_godot_input.h"
 
 #include <cassert>
 #include <chrono>
@@ -134,6 +135,19 @@ void CheckInputMapping() {
     Send(handle, ENGINE_INPUT_EVENT_KEY_DOWN, 0, 0x00a5); // VK_RALT
     // Existing SDL/Pygame values remain valid for compatibility.
     Send(handle, ENGINE_INPUT_EVENT_KEY_UP, 0, 1073741905);
+    namespace mapping = aetherkiri::renpy::input_mapping;
+    auto send_godot = [&](bool pressed, int code, int modifiers, uint32_t unicode) {
+        return mapping::SendGodotKeyEvents([&](const engine_input_event_t& event) {
+            return engine_send_input(handle, &event);
+        }, pressed, code, modifiers, unicode);
+    };
+    assert(send_godot(true, '.', mapping::kGodotModifierShift, '>') == ENGINE_RESULT_OK);
+    assert(send_godot(false, '.', mapping::kGodotModifierShift, '>') == ENGINE_RESULT_OK);
+    assert(send_godot(true, '/', 0, '/') == ENGINE_RESULT_OK);
+    assert(send_godot(true, mapping::kGodotSpecial + 8, 0, 0) == ENGINE_RESULT_OK); // Delete
+    assert(send_godot(true, mapping::kGodotSpecial + 5, 0, '\r') == ENGINE_RESULT_OK); // Enter
+    assert(send_godot(true, 'C', mapping::kGodotModifierControl, 'c') == ENGINE_RESULT_OK);
+    assert(send_godot(true, 0, 0, 0x1f642) == ENGINE_RESULT_OK); // committed software text
     std::this_thread::sleep_for(std::chrono::milliseconds(20));
     const std::string lines = ReadInput(input_path);
     assert(lines.find("\"type\":1025,\"attributes\":{\"pos\":[0,0],\"button\":1}") !=
@@ -153,6 +167,28 @@ void CheckInputMapping() {
     assert(lines.find("\"key\":1073742054,\"mod\":0") != std::string::npos);
     assert(lines.find("\"type\":769,\"attributes\":{\"key\":1073741905") !=
            std::string::npos);
+    assert(lines.find("\"type\":768,\"attributes\":{\"key\":46,\"mod\":3,\"unicode\":\"\",\"repeat\":false}") !=
+           std::string::npos);
+    assert(lines.find("\"type\":769,\"attributes\":{\"key\":46,\"mod\":3,\"unicode\":\"\",\"repeat\":false}") !=
+           std::string::npos);
+    assert(lines.find("\"type\":768,\"attributes\":{\"key\":47,\"mod\":0,\"unicode\":\"\",\"repeat\":false}") !=
+           std::string::npos);
+    assert(lines.find("\"type\":768,\"attributes\":{\"key\":127,\"mod\":0,\"unicode\":\"\",\"repeat\":false}") !=
+           std::string::npos);
+    assert(lines.find("\"type\":768,\"attributes\":{\"key\":13,\"mod\":0,\"unicode\":\"\",\"repeat\":false}") !=
+           std::string::npos);
+    assert(lines.find("\"type\":768,\"attributes\":{\"key\":99,\"mod\":192,\"unicode\":\"\",\"repeat\":false}") !=
+           std::string::npos);
+    assert(lines.find("\"type\":771,\"attributes\":{\"text\":\">\"}") != std::string::npos);
+    assert(lines.find("\"type\":771,\"attributes\":{\"text\":\"/\"}") != std::string::npos);
+    assert(lines.find("\"type\":771,\"attributes\":{\"text\":\"\xf0\x9f\x99\x82\"}") != std::string::npos);
+    assert(lines.find("\"text\":\"c\"") == std::string::npos);
+    assert(lines.find("\"text\":\"\\r\"") == std::string::npos && lines.find("\"text\":\"\\n\"") == std::string::npos);
+    // Exactly three commits: shifted period, slash and the software emoji.
+    size_t text_events = 0;
+    for (size_t pos = 0; (pos = lines.find("\"type\":771", pos)) != std::string::npos; ++pos)
+        ++text_events;
+    assert(text_events == 3);
 
     assert(engine_destroy(handle) == ENGINE_RESULT_OK);
     fs::remove_all(root, ec);

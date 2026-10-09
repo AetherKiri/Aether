@@ -1083,7 +1083,8 @@ engine_result_t Input(void* value, const engine_input_event_t* event) {
         break;
     case ENGINE_INPUT_EVENT_KEY_DOWN:
         event_type = 768;  // pygame.KEYDOWN
-        attrs << "\"key\":" << MapKeyCodeToPygame(event->key_code)
+        attrs << "\"key\":" << MapKeyCodeToPygame(event->key_code,
+                  static_cast<KeyCodeSpace>(event->reserved_u32))
               << ",\"mod\":" << MapModifiersToPygame(event->modifiers)
               << ",\"unicode\":"
               << JsonEscape(Utf8Codepoint(event->unicode_codepoint))
@@ -1092,7 +1093,8 @@ engine_result_t Input(void* value, const engine_input_event_t* event) {
         break;
     case ENGINE_INPUT_EVENT_KEY_UP:
         event_type = 769;  // pygame.KEYUP
-        attrs << "\"key\":" << MapKeyCodeToPygame(event->key_code)
+        attrs << "\"key\":" << MapKeyCodeToPygame(event->key_code,
+                  static_cast<KeyCodeSpace>(event->reserved_u32))
               << ",\"mod\":" << MapModifiersToPygame(event->modifiers)
               << ",\"unicode\":"
               << JsonEscape(Utf8Codepoint(event->unicode_codepoint))

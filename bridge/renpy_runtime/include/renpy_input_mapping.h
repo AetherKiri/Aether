@@ -44,15 +44,13 @@ inline int MapPointerButtonToPygame(int button) {
     }
 }
 
-inline int MapKeyCodeToPygame(int code) {
-    // Preserve SDL2 non-printable keycodes used by existing direct callers.
-    // Low-byte SDL ASCII and Windows VK values overlap; the ABI's VK
-    // interpretation takes precedence (e.g. 0x70 means F1, not 'p').
-    if (code >= kPygameScancodeMask) return code;
-    if (code >= 0x01000000) code &= kGodotCodeMask;
+// Ren'Py-only use of engine_input_event_t.reserved_u32. An explicit source
+// removes the low-byte ambiguity between Godot characters and Windows VKs.
+// The provider consumes this field before sending SDL keycodes to the launcher.
+enum class KeyCodeSpace : unsigned int { Legacy = 0, Godot = 1 };
 
-    // The manual Godot probe passes raw Godot 4 non-printable keycodes.
-    // Their distinct KEY_SPECIAL range can be recognized unambiguously.
+inline int MapGodotKeyCodeToPygame(int code) {
+    code &= kGodotCodeMask;
     if (code >= kGodotSpecial && code < kGodotSpecial + 0x1000) {
         const int special = code - kGodotSpecial;
         switch (special) {
@@ -98,6 +96,24 @@ inline int MapKeyCodeToPygame(int code) {
         }
         return 0;
     }
+
+    if (code >= 'A' && code <= 'Z') return code + ('a' - 'A');
+    if (code >= 0x20 && code <= 0x10ffff &&
+        !(code >= 0xd800 && code <= 0xdfff)) return code;
+    return 0;
+}
+
+inline int MapKeyCodeToPygame(int code, KeyCodeSpace space = KeyCodeSpace::Legacy) {
+    if (space == KeyCodeSpace::Godot) return MapGodotKeyCodeToPygame(code);
+    // Preserve SDL2 non-printable keycodes used by existing direct callers.
+    // Low-byte SDL ASCII and Windows VK values overlap; the ABI's VK
+    // interpretation takes precedence (e.g. 0x70 means F1, not 'p').
+    if (code >= kPygameScancodeMask) return code;
+    if (code >= 0x01000000) code &= kGodotCodeMask;
+
+    // Raw Godot special keys remain accepted by legacy direct callers.
+    if (code >= kGodotSpecial && code < kGodotSpecial + 0x1000)
+        return MapGodotKeyCodeToPygame(code);
 
     switch (code) {
     case 0x08: return 8;                          // Backspace

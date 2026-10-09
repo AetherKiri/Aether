@@ -62,6 +62,7 @@ const GameMetadata = preload("res://scripts/game_metadata.gd")
 const CoverIndex = preload("res://scripts/cover_index.gd")
 const VNDBCoverResolver = preload("res://scripts/vndb_cover_resolver.gd")
 const GameInputMapping = preload("res://scripts/game_input_mapping.gd")
+const RenpyKeyInput = preload("res://scripts/renpy_key_input.gd")
 const GameVirtualControls = preload("res://scripts/game_virtual_controls.gd")
 const DiagnosticSession = preload("res://scripts/diagnostic_session.gd")
 const DiagnosticLocalization = preload("res://scripts/diagnostic_localization.gd")
@@ -16418,12 +16419,15 @@ func _input(event: InputEvent) -> void:
             player.send_text_input(DisplayServer.clipboard_get())
             get_viewport().set_input_as_handled()
             return
-        player.send_key_event(
-            key.pressed,
-            _kirikiri_virtual_key(key),
-            _kirikiri_key_modifiers(key),
-            key.unicode
-        )
+        if active_runtime_kind == RUNTIME_RENPY:
+            RenpyKeyInput.send_key_event(player, key)
+        else:
+            player.send_key_event(
+                key.pressed,
+                _kirikiri_virtual_key(key),
+                _kirikiri_key_modifiers(key),
+                key.unicode
+            )
         get_viewport().set_input_as_handled()
         return
     if _is_game_pointer_event(event):

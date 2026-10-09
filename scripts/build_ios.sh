@@ -465,8 +465,10 @@ build_renios_runtime_framework() {
     for symbol in bootstrap bind_window init tick frame input pause resume shutdown text_input_state set_surface_size; do
         printf '_renpy_mobile_%s\n' "$symbol" >> "$export_list"
     done
-    local archives=() archive
-    while IFS= read -r archive; do archives+=("$archive"); done < <(collect_renios_archives "$prebuilt")
+    local force_load_args=() archive
+    while IFS= read -r archive; do
+        force_load_args+=(-Xlinker -force_load -Xlinker "$archive")
+    done < <(collect_renios_archives "$prebuilt")
     local minimum_flag="-miphoneos-version-min=${IOS_MIN_VERSION:-16.0}"
     [[ "$SIMULATOR" == true ]] && minimum_flag="-mios-simulator-version-min=${IOS_MIN_VERSION:-16.0}"
     prototype="$(renios_prototype_root)"
@@ -490,9 +492,11 @@ build_renios_runtime_framework() {
     # Keep Ren'Py's Python/SDL/FFmpeg symbols inside a separate two-level
     # namespace. They must not replace the host's vcpkg library definitions.
     # The builtin Python extension table requires its archive objects to stay.
+    # Load each archive explicitly: modern Apple ld rejects -noall_load, and
+    # a global -all_load switch also affects unrelated libraries on this link.
     xcrun --sdk "$IOS_SDK" clang++ -arch "$arch" -isysroot "$sdk_path" "$minimum_flag" -dynamiclib \
         "${support_objects[@]}" \
-        -Wl,-all_load "${archives[@]}" -Wl,-noall_load \
+        "${force_load_args[@]}" \
         -Wl,-exported_symbols_list,"$export_list" \
         -Wl,-install_name,"@rpath/$RENPY_FRAMEWORK_NAME.framework/$RENPY_FRAMEWORK_NAME" \
         -Wl,-rpath,@loader_path/.. \

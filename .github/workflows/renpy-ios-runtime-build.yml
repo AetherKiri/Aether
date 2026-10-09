@@ -20,6 +20,7 @@ on:
       - 'tools/godot_ios_simulator_template/**'
       - 'tools/build_godot_ios_device_template.py'
       - 'tools/test_godot_ios_device_template.py'
+      - 'tools/test_renpy_ios_force_load.py'
       - 'tools/godot_ios_device_template/**'
       - 'scripts/build_ios.sh'
       - 'bridge/renpy_runtime/mobile_launcher/**'
@@ -237,6 +238,9 @@ jobs:
           echo "$(brew --prefix python@3.12)/libexec/bin" >> "$GITHUB_PATH"
           xcodebuild -version
           xcrun --sdk iphonesimulator --show-sdk-version
+      - name: Check actual Apple archive force-loading before the full app link
+        run: |
+          python3 tools/test_renpy_ios_force_load.py --output-dir "$RUNNER_TEMP/renpy-ios-force-load"
       - uses: actions/download-artifact@v6
         with:
           name: renpy-ios-runtime
@@ -324,6 +328,7 @@ jobs:
             out/renpy-ios-gameplay
             ${{ runner.temp }}/renpy-ios-simulator-build.log
             ${{ runner.temp }}/godot-arm64-simulator/evidence.json
+            ${{ runner.temp }}/renpy-ios-force-load/evidence.json
           if-no-files-found: warn
           retention-days: 7
       - name: Archive the actual Simulator application preserving executable permissions

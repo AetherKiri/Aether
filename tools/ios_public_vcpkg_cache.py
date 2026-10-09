@@ -30,8 +30,8 @@ SCHEMA = 1
 HEX = re.compile(r"[0-9a-f]{64}\Z")
 PORT = re.compile(r"[a-z0-9][a-z0-9-]*\Z")
 TOP_LEVEL = {"include", "lib", "bin", "debug", "share", "tools", "etc"}
-# Diagnostic labels only; these directories remain rejected. Other root names
-# are hashed, so no arbitrary filename is echoed into the Actions console.
+# Diagnostic labels only, not a root allowlist. Other root names are hashed,
+# so no arbitrary filename is echoed into the Actions console.
 ROOT_DIAGNOSTIC_LABELS = {
     "manual-tools", "plugins", "libexec", "sbin", "man", "doc", "docs",
     "cmake", "var", "Frameworks", "Applications", "sdk",
@@ -244,7 +244,7 @@ def validate_archive(path: Path, ports: set[str], triplets: set[str]) -> dict:
         require(sum(i.file_size for i in infos) <= MAX_EXPANDED_BYTES, "archive-expanded-size")
         members: dict[str, zipfile.ZipInfo] = {}
         links: dict[str, str] = {}
-        rejected_root = None
+        unexpected_members = []
         for i in infos:
             n = safe_member(i.filename)
             require(n not in members, "duplicate-member")
@@ -252,8 +252,8 @@ def validate_archive(path: Path, ports: set[str], triplets: set[str]) -> dict:
             mode = stat.S_IFMT(i.external_attr >> 16)
             require(mode in (0, stat.S_IFREG, stat.S_IFDIR, stat.S_IFLNK), "special-member")
             root = n.split("/", 1)[0]
-            if rejected_root is None and n not in ("CONTROL", "BUILD_INFO") and root not in TOP_LEVEL:
-                rejected_root = root
+            if n not in ("CONTROL", "BUILD_INFO") and root not in TOP_LEVEL:
+                unexpected_members.append(n)
             members[n] = i
             if mode == stat.S_IFLNK:
                 require(i.file_size <= MAX_METADATA, "symlink-too-large")
@@ -308,6 +308,21 @@ def validate_archive(path: Path, ports: set[str], triplets: set[str]) -> dict:
         abi_info = z.read(abi_path)
         require(hashlib.sha256(abi_info).hexdigest() == abi, "abi-info-digest-mismatch")
         require(f"triplet {triplet}\n".encode() in abi_info.splitlines(keepends=True), "abi-info-triplet-mismatch")
+        # GLib 2.84.2's non-Cocoa GIO branch installs this helper in libexec.
+        # The pinned public 2.84.2#2 port retains it and disables installed
+        # tests. Permit its exact regular-file payload after package/ABI gates;
+        # this does not allow a general libexec subtree or another package.
+        helper = "libexec/gio-launch-desktop"
+        glib_helper = (name == "glib" and core.get("Version") == "2.84.2"
+                       and core.get("Port-Version") == "2" and helper in members
+                       and helper not in links and not members[helper].is_dir()
+                       and stat.S_IFMT(members[helper].external_attr >> 16) in (0, stat.S_IFREG))
+        rejected_root = None
+        for n in unexpected_members:
+            if glib_helper and (n == helper or (n == "libexec" and members[n].is_dir())):
+                continue
+            rejected_root = n.split("/", 1)[0]
+            break
         if rejected_root is not None:
             metadata = {"abi": abi, "package": name, "triplet": triplet}
             if rejected_root in ROOT_DIAGNOSTIC_LABELS:

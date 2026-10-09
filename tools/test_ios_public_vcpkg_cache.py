@@ -36,6 +36,8 @@ def main() -> int:
     parser.add_argument("--cmake", type=Path, required=True)
     parser.add_argument("--ninja", type=Path, required=True)
     parser.add_argument("--output-dir", type=Path, required=True)
+    parser.add_argument("--glib-source", type=Path,
+                        help="Genuine GLib 2.84.2 Git checkout for its libexec helper/provider control")
     args = parser.parse_args()
     root = args.output_dir.resolve()
     check(not root.exists(), "Use a fresh output directory.")
@@ -149,6 +151,100 @@ install(FILES cache_probe.h DESTINATION include)
           "Successful package archive was not flushed before normal vcpkg failure.")
     execute(9)
 
+    glib_evidence = {"status": "not_run"}
+    glib_record = None
+    glib_original = None
+    if args.glib_source:
+        # Compile the unmodified upstream helper, not a dummy with the same
+        # filename. This narrow package fixture tests its real install layout
+        # and standard files-provider roundtrip, not the full GLib library.
+        glib_source = args.glib_source.resolve()
+        glib_head = "2371bee17d85318480b3ddeeab4f5107b4889ad7"
+        check(cache.run(["git", "rev-parse", "HEAD"], glib_source) == glib_head,
+              "Use the genuine pinned GLib 2.84.2 source checkout.")
+        files = ("gio/gio-launch-desktop.c", "glib/gjournal-private.c",
+                 "glib/gjournal-private.h", "glib/gmacros.h")
+        glib_root = root / "glib-helper-provider"
+        glib_port = glib_root / "ports/glib"
+        glib_package_source = glib_port / "source"
+        source_hashes = {}
+        for filename in files:
+            data = (glib_source / filename).read_bytes()
+            check(data == subprocess.check_output(["git", "show", f"HEAD:{filename}"], cwd=glib_source),
+                  "The pinned GLib helper source was modified.")
+            destination = glib_package_source / filename
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            destination.write_bytes(data)
+            source_hashes[filename] = hashlib.sha256(data).hexdigest()
+        production_manifest = json.loads((Path(__file__).resolve().parents[1] /
+                                          "vcpkg/ports/glib/vcpkg.json").read_text())
+        check((production_manifest["version"], production_manifest["port-version"]) == ("2.84.2", 2),
+              "The production GLib pin changed; review the helper exception.")
+        (glib_port / "vcpkg.json").write_text(json.dumps({
+            "name": "glib", "version": "2.84.2", "port-version": 2,
+            "description": "Pinned public GLib helper package fixture, not the full library",
+            "dependencies": [{"name": "vcpkg-cmake", "host": True}],
+        }) + "\n")
+        (glib_port / "portfile.cmake").write_text('''vcpkg_cmake_configure(SOURCE_PATH "${CMAKE_CURRENT_LIST_DIR}/source")
+vcpkg_cmake_install()
+file(INSTALL "${CMAKE_CURRENT_LIST_DIR}/copyright" DESTINATION "${CURRENT_PACKAGES_DIR}/share/${PORT}")
+''')
+        shutil.copyfile(glib_source / "LICENSES/LGPL-2.1-or-later.txt", glib_port / "copyright")
+        (glib_package_source / "CMakeLists.txt").write_text('''cmake_minimum_required(VERSION 3.20)
+project(glib_helper C)
+add_executable(gio-launch-desktop gio/gio-launch-desktop.c)
+target_include_directories(gio-launch-desktop PRIVATE glib)
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+    target_sources(gio-launch-desktop PRIVATE glib/gjournal-private.c)
+endif()
+install(TARGETS gio-launch-desktop RUNTIME DESTINATION libexec)
+''')
+        (glib_root / "vcpkg.json").write_text(json.dumps({
+            "name": "glib-helper-cache-regression", "version": "1.0.0", "dependencies": ["glib"],
+        }) + "\n")
+        glib_archives = glib_root / "archives"
+        glib_env = dict(env, VCPKG_BINARY_SOURCES=f"clear;files,{glib_archives},readwrite")
+        glib_command = [str(vcpkg_root / "vcpkg"), "install", f"--triplet={triplet}",
+                        f"--host-triplet={triplet}", f"--overlay-ports={glib_root / 'ports'}",
+                        f"--x-install-root={glib_root / 'installed'}",
+                        f"--x-buildtrees-root={glib_root / 'buildtrees'}",
+                        f"--x-packages-root={glib_root / 'packages'}",
+                        f"--downloads-root={root / 'downloads'}", "--disable-metrics"]
+        helper_hash = None
+        for stage in ("cold-build", "normal-manifest-restore"):
+            for name in ("installed", "packages", "buildtrees"):
+                shutil.rmtree(glib_root / name, ignore_errors=True)
+            with (glib_root / f"{stage}.log").open("w") as f:
+                subprocess.run(glib_command, cwd=glib_root, env=glib_env,
+                               stdout=f, stderr=subprocess.STDOUT, check=True)
+            text = (glib_root / f"{stage}.log").read_text()
+            if stage == "cold-build":
+                check("Building glib" in text and "Restored 0 package(s)" in text,
+                      "The genuine GLib helper was not source compiled.")
+            else:
+                check("Restored 2 package(s)" in text and "Building glib" not in text,
+                      "The genuine GLib helper package was not restored normally.")
+            report = cache.validate_cache(glib_archives, production_ports, {triplet})
+            check(report["archive_count"] == 2, "Expected real GLib helper and vcpkg-cmake archives.")
+            (glib_root / f"{stage}-archives.json").write_text(json.dumps(report, indent=2) + "\n")
+            helper = glib_root / f"installed/{triplet}/libexec/gio-launch-desktop"
+            output = subprocess.check_output([str(helper), sys.executable, "-I", "-c",
+                                              "import os; print(os.getenv('GIO_LAUNCHED_DESKTOP_FILE_PID', ''))"],
+                                             text=True).strip()
+            check(output.isdigit() and int(output) > 0, "Actual GLib helper execution did not set the child PID.")
+            current_hash = cache.digest(helper)
+            check(helper_hash is None or helper_hash == current_hash, "Restored helper bytes changed.")
+            helper_hash = current_hash
+        glib_record = next(a for a in report["archives"] if a["package"] == "glib")
+        glib_zip = glib_archives / glib_record["abi"][:2] / (glib_record["abi"] + ".zip")
+        with zipfile.ZipFile(glib_zip) as z:
+            glib_original = [(i, z.read(i)) for i in z.infolist()]
+            check("libexec/gio-launch-desktop" in z.namelist(), "Real provider omitted the public helper.")
+        glib_evidence = {"status": "passed", "scope": "pinned_glib_helper_package_not_full_glib",
+                         "source_head": glib_head, "source_sha256": source_hashes,
+                         "archive": glib_record, "helper_sha256": helper_hash,
+                         "actual_helper_execution": "passed", "files_provider_restore": "passed"}
+
     # Derive rejection controls from a real successfully produced archive.
     controls = root / "rejection-controls"
     controls.mkdir()
@@ -168,18 +264,20 @@ install(FILES cache_probe.h DESTINATION include)
     check(cache.validate_cache(zip64_dir.parent, ports, {triplet})["archive_count"] == 1,
           "Standard ZIP64 container rejected.")
     rejected = []
-    def reject(label: str, edit, expected: str, allowed_triplets=None) -> cache.InvalidCache:
-        d = controls / label / probe_record["abi"][:2]
+    def reject(label: str, edit, expected: str, allowed_triplets=None, *, glib=False) -> cache.InvalidCache:
+        record = glib_record if glib else probe_record
+        entries_source = glib_original if glib else original
+        d = controls / label / record["abi"][:2]
         d.mkdir(parents=True)
-        path = d / probe_zip.name
-        entries = edit([(i, b) for i, b in original])
+        path = d / (record["abi"] + ".zip")
+        entries = edit([(i, b) for i, b in entries_source])
         with warnings.catch_warnings():
             warnings.simplefilter("ignore", UserWarning)
             with zipfile.ZipFile(path, "w") as z:
                 for info, data in entries:
                     z.writestr(info, data)
         try:
-            cache.validate_cache(d.parent, ports, allowed_triplets or {triplet})
+            cache.validate_cache(d.parent, production_ports if glib else ports, allowed_triplets or {triplet})
         except cache.InvalidCache as e:
             check(str(e) == expected, f"Wrong rejection reason in {label}.")
             failure = e
@@ -211,6 +309,41 @@ install(FILES cache_probe.h DESTINATION include)
     reject("escaping-symlink", link_edit(b"../../outside"), "escaping-symlink")
     reject("symlink-cycle", link_edit(b"unsafe-link"), "symlink-cycle")
     reject("source-cache-root", lambda es: es + [(zipfile.ZipInfo("buildtrees/compiler.log"), b"x")], "unexpected-package-root")
+    reject("other-package-libexec", lambda es: es + [
+        (zipfile.ZipInfo("libexec/gio-launch-desktop"), b"x")], "unexpected-package-root")
+    if glib_original:
+        reject("glib-libexec-extra-member", lambda es: es + [
+            (zipfile.ZipInfo("libexec/unknown-helper"), b"x")], "unexpected-package-root", glib=True)
+        reject("glib-libexec-other-version", control_edit(b"Version: 2.84.2", b"Version: 2.84.3"),
+               "unexpected-package-root", glib=True)
+        reject("glib-libexec-other-port-version", control_edit(b"Port-Version: 2", b"Port-Version: 3"),
+               "unexpected-package-root", glib=True)
+        reject("glib-libexec-unverified-abi", control_edit(glib_record["abi"].encode(), b"0" * 64),
+               "control-abi-mismatch", glib=True)
+        reject("glib-libexec-missing-helper", lambda es: [
+            (i, b) for i, b in es if i.filename != "libexec/gio-launch-desktop"],
+            "unexpected-package-root", glib=True)
+        def helper_directory(es):
+            result = []
+            for info, data in es:
+                if info.filename == "libexec/gio-launch-desktop":
+                    info = zipfile.ZipInfo(info.filename)
+                    info.create_system = 3
+                    info.external_attr = (stat.S_IFDIR | 0o755) << 16
+                result.append((info, data))
+            return result
+        reject("glib-libexec-directory-mode", helper_directory, "unexpected-package-root", glib=True)
+        def helper_symlink(es):
+            result = []
+            for info, data in es:
+                if info.filename == "libexec/gio-launch-desktop":
+                    info = zipfile.ZipInfo(info.filename)
+                    info.create_system = 3
+                    info.external_attr = (stat.S_IFLNK | 0o777) << 16
+                    data = b"../share/glib/copyright"
+                result.append((info, data))
+            return result
+        reject("glib-libexec-symlink", helper_symlink, "unexpected-package-root", glib=True)
     known_root = reject("diagnostic-known-root", lambda es: es + [
         (zipfile.ZipInfo("manual-tools/aether-cache-probe/tool"), b"x")], "unexpected-package-root")
     check(known_root.metadata == {"abi": probe_record["abi"], "package": "aether-cache-probe",
@@ -368,6 +501,7 @@ install(FILES cache_probe.h DESTINATION include)
               "nonsentinel_zip64_container_compatibility": "passed",
               "production_public_port_allowlist": "passed",
               "bounded_root_diagnostics": "passed", "rejection_does_not_publish_success": "passed",
+              "glib_libexec_helper_package": glib_evidence,
               "apple_sdk_cache": "not_run", "app": "not_run", "gameplay": "not_run"}
     (root / "evidence.json").write_text(json.dumps(result, indent=2, sort_keys=True) + "\n")
     print(json.dumps({k: result[k] for k in ("status", "files_provider_restore", "changed_port_abi", "partial_failure_flush", "apple_sdk_cache", "app", "gameplay")}, sort_keys=True))

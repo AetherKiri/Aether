@@ -296,18 +296,48 @@ class Acceptance:
         self.data_root = ""
         self.pid = ""
         self.installed = False
+        self.last_command_returncode = None
+        self.last_command_stderr = ""
         self.execution_deadline = 0.0
         self.waiting_marker = None
         self.summary = {"status": "not_run", "run_id": self.run_id,
                         "source": "actual-apk-adb-cloud-device", "serial": args.serial,
-                        "package": args.package, "checks": [], "blocker": ""}
+                        "package": args.package, "checks": [], "blocker": "",
+                        "apk_installed": False, "process_started": False,
+                        "actual_status": {stage: {"status": "not_run", "source": "actual-adb-command",
+                                                 "package": args.package, "serial": args.serial}
+                                          for stage in ("apk_install", "app_launch")}}
+
+    def write_result(self) -> None:
+        pending = self.output / "result.pending.json"
+        pending.write_text(json.dumps(self.summary, indent=2) + "\n")
+        pending.replace(self.output / "result.json")
+
+    def milestone(self, stage: str, **evidence) -> None:
+        report = self.summary["actual_status"][stage]
+        report.update(status="passed", **evidence)
+        self.summary["status"] = "running"
+        self.write_result()
+        # Publish only bounded command milestones, never raw device logs or
+        # any claim that the Ren'Py runtime has rendered or accepted input.
+        bounded = {**report, "package": report["package"][:256], "serial": report["serial"][:128]}
+        if "activity" in bounded:
+            bounded["activity"] = bounded["activity"][:512]
+        print(json.dumps({"event": "renpy_device_milestone", "run_id": self.run_id,
+                          "apk_installed": self.summary["apk_installed"],
+                          "process_started": self.summary["process_started"],
+                          "stage": stage, "evidence": bounded}), flush=True)
 
     def command(self, *parts: str, check: bool = True, timeout: int = 20) -> bytes:
         command = self.device_prefix + list(parts)
+        self.last_command_returncode = None
+        self.last_command_stderr = ""
         try:
             result = subprocess.run(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=timeout)
         except (OSError, subprocess.TimeoutExpired) as exc:
             raise Failed(f"Device command did not complete: {parts[0]}: {exc}") from exc
+        self.last_command_returncode = result.returncode
+        self.last_command_stderr = result.stderr.decode(errors="replace")
         with (self.output / "commands.jsonl").open("a") as log:
             log.write(json.dumps({"command": command, "returncode": result.returncode,
                                   "stderr": result.stderr.decode(errors="replace"),
@@ -458,11 +488,20 @@ class Acceptance:
         self.summary["apk_sha256"] = hashlib.sha256(self.args.apk.read_bytes()).hexdigest()
         self.summary["device_fingerprint"] = self.shell("getprop", "ro.build.fingerprint").decode().strip()
         self.summary["device_abis"] = self.shell("getprop", "ro.product.cpu.abilist").decode().strip()
-        install = self.command("install", "-r", str(self.args.apk.resolve()), timeout=180).decode(errors="replace")
+        install_status = self.summary["actual_status"]["apk_install"]
+        install_status["status"] = "failed"
+        try:
+            install = self.command("install", "-r", str(self.args.apk.resolve()), timeout=180).decode(errors="replace")
+        finally:
+            install_status["returncode"] = self.last_command_returncode
         (self.output / "install.txt").write_text(install)
-        if "Success" not in install:
+        lines = [line.strip() for line in install.splitlines() if line.strip()]
+        if (not lines or lines[-1] != "Success" or lines.count("Success") != 1
+                or any(line.startswith("Failure") for line in lines)):
             raise Failed(f"Actual APK installation failed: {install.strip()}")
         self.installed = True
+        self.summary["apk_installed"] = True
+        self.milestone("apk_install", returncode=0, stdout_marker="Success")
         root = self.command("exec-out", "run-as", self.args.package, "pwd", check=False).decode().strip()
         if not root.startswith("/data/") or "\n" in root or " " in root:
             raise Blocked("Installed APK does not permit run-as debug staging; use a debuggable APK for this cloud harness")
@@ -476,8 +515,21 @@ class Acceptance:
             raise Failed("Cannot resolve the installed APK's real launcher activity")
         self.summary["activity"] = component
         self.execution_deadline = time.monotonic() + self.args.overall_timeout
-        self.shell("am", "start", "-W", "-n", component, timeout=60)
-        self.pid = self.wait("installed app process", lambda: self.shell("pidof", self.args.package, check=False).decode().strip())
+        launch_status = self.summary["actual_status"]["app_launch"]
+        launch_status.update(status="failed", activity=component)
+        try:
+            launch = self.shell("am", "start", "-W", "-n", component, timeout=60).decode(errors="replace")
+        finally:
+            launch_status["returncode"] = self.last_command_returncode
+        (self.output / "launch.txt").write_text(launch)
+        if (not re.search(r"(?im)^\s*Status:\s*ok\s*$", launch)
+                or re.search(r"(?im)^\s*(?:Error\b|Exception\b|Failure\b)", launch + "\n" + self.last_command_stderr)):
+            raise Failed("Actual am start did not report Status: ok without Android errors; inspect launch.txt and commands.jsonl")
+        self.pid = self.wait("installed app process", self.observed_pid)
+        pids = self.pid.split()
+        self.summary["process_started"] = True
+        self.milestone("app_launch", returncode=0, activity=component,
+                       stdout_marker="Status: ok", pids=pids[:8], pid_count=len(pids))
         self.wait_game("start_ready")
         frame, screen = self.capture("start_ready")
         self.tap_button(frame, screen)
@@ -547,6 +599,13 @@ class Acceptance:
         (self.output / "aetherkiri-engine.log").write_bytes(raw)
         self.summary["checks"].append({"native_cleanup_error_log": require_engine_log(raw, self.game_root)})
         self.summary["status"] = "passed"
+
+    def observed_pid(self) -> str:
+        raw = self.shell("pidof", self.args.package, check=False).decode().strip()
+        pids = raw.split()
+        return raw if (self.last_command_returncode == 0 and pids
+                       and all(re.fullmatch(r"[1-9][0-9]{0,9}", pid)
+                                   and int(pid) <= 2147483647 for pid in pids)) else ""
 
     def visible_ime(self) -> str:
         text = self.shell("dumpsys", "input_method").decode(errors="replace")
@@ -647,7 +706,7 @@ def main() -> int:
         code = 1
     finally:
         acceptance.collect()
-        (acceptance.output / "result.json").write_text(json.dumps(acceptance.summary, indent=2) + "\n")
+        acceptance.write_result()
     print(json.dumps(acceptance.summary, indent=2))
     return code
 

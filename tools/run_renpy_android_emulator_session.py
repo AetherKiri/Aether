@@ -14,7 +14,9 @@ import json
 import os
 import platform
 import re
+import shlex
 import signal
+import stat
 import struct
 import subprocess
 import sys
@@ -30,9 +32,134 @@ from run_renpy_android_device_acceptance import Failed, png_pixels
 IMAGE = "system-images;android-35;google_apis;x86_64"
 SENSITIVE_DIAGNOSTIC = re.compile(
     r"auth|token|credentials?|password|passwd|secret|jwt|grpc|api[_-]?key|"
-    r"[a-z][a-z0-9+.-]*://|www\.|eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+",
+    r"://|www\.|eyJ",
     re.IGNORECASE,
 )
+STARTUP_FILES = ("commands.jsonl", "install.txt", "aetherkiri-engine.log", "renpy-traceback.txt",
+                 "renpy-log.txt", "android-process-logcat.txt", "android-system-logcat.txt")
+STARTUP_ERROR = re.compile(r"error|exception|traceback|fatal|failed|cannot|could not|not found|"
+                           r"undefined symbol|no module|segmentation|renpy_mobile|cooperative_", re.IGNORECASE)
+LOGCAT_ROW = re.compile(r"^\d\d-\d\d\s+\S+\s+(\d+)\s+\d+\s+([VDIWEF])\s+([^:]+):\s*(.*)$")
+STARTUP_TOKENS = re.compile(r"[A-Za-z0-9_.]+")
+
+
+def startup_line(raw: str) -> str:
+    line = re.sub(r"\x1b\[[0-?]*[ -/]*[@-~]", "", raw)
+    return re.sub(r"[\x00-\x08\x0b-\x1f\x7f]", "", line)
+
+
+def startup_text(lines: list[str]) -> dict:
+    # Only selected startup/error records reach this function, never raw EOF tails.
+    filtered = ["[redacted environment line]" if re.search(
+        r"(?:^|:\s*)(?:env(?:ironment)?\b|export\s|[A-Z_][A-Z0-9_]*\s*=)", line, re.IGNORECASE)
+        else line for raw in lines for line in startup_line(raw).splitlines()]
+    return bounded_diagnostic("\n".join(filtered), max_chars=512, max_lines=6)
+
+
+def startup_error_text(lines: list[str], deadline: float | None = None) -> dict:
+    # Preserve the first fatal/header and the final specific causes. Long E-tag
+    # stacks must not replace a Java loader or Python import error with frames.
+    deadline = time.monotonic() + 2 if deadline is None else deadline
+    first = fallback = last = None
+    causes = []
+    timed_out, skipped = time.monotonic() >= deadline, False
+    for index, line in enumerate(lines[:5000]):
+        if time.monotonic() >= deadline:
+            timed_out = True
+            break
+        if len(line) > 4096:
+            skipped = True
+            continue
+        lower = line.lower()
+        is_primary = any(word in lower for word in ("fatal", "traceback", "dlopen failed", "undefined symbol", "no module named"))
+        is_cause = any(word in lower for word in ("caused by:", "dlopen failed", "undefined symbol", "no module named"))
+        # One token traversal avoids an unanchored greedy suffix regex which
+        # rescans a long identifier at every character when no Error is present.
+        for token in STARTUP_TOKENS.finditer(line):
+            if time.monotonic() >= deadline:
+                timed_out = True
+                break
+            if token.group().lower().endswith(("error", "exception")):
+                is_primary = True
+                is_cause |= line[token.end():token.end() + 1] == ":"
+            if is_primary and is_cause:
+                break
+        if timed_out:
+            break
+        if fallback is None:
+            fallback = index
+        last = index
+        if first is None and is_primary:
+            first = index
+        if is_cause:
+            causes = (causes + [index])[-2:]
+    chosen = list(dict.fromkeys(([first if first is not None else fallback] if fallback is not None else []) + causes))
+    if len(chosen) == 1 and chosen[0] != last:
+        chosen.append(last)
+    selected = []
+    for index in chosen:
+        safe = startup_text([lines[index]])["output"]
+        selected.append(safe if len(safe) <= 192 else safe[:64] + " ... " + safe[-123:])
+    result = bounded_diagnostic("\n".join(selected), max_chars=768, max_lines=6)
+    result["truncated"] |= timed_out or skipped or len(chosen) < len(lines) or any(len(lines[index]) > 192 for index in chosen)
+    if timed_out:
+        result["diagnostic_deadline_reached"] = True
+    return result
+
+
+def read_startup_lines(path: Path, started_ns: int, deadline: float) -> tuple[dict, list[str]]:
+    """Read a bounded prefix of a fresh regular file produced by this harness."""
+    if time.monotonic() >= deadline:
+        return {"status": "diagnostic_notavailable", "reason": "diagnostic_deadline"}, []
+    try:
+        descriptor = os.open(path, os.O_RDONLY | os.O_NONBLOCK | os.O_NOFOLLOW)
+        try:
+            details = os.fstat(descriptor)
+            if not stat.S_ISREG(details.st_mode) or details.st_mtime_ns < started_ns:
+                return {"status": "diagnostic_notavailable", "reason": "not_fresh_regular_file"}, []
+            raw = os.read(descriptor, 262144)
+        finally:
+            os.close(descriptor)
+    except OSError:
+        return {"status": "diagnostic_notavailable", "reason": "missing_or_unreadable_file"}, []
+    bytes_read = len(raw)
+    truncated = details.st_size > bytes_read
+    if truncated:
+        raw = raw.rpartition(b"\n")[0]  # Never expose a cut line with hidden sensitive text.
+    lines = raw.decode(errors="replace").splitlines()
+    bounded = [startup_line(line) for line in lines[:5000] if len(line) <= 4096]
+    return {"status": "available", "bytes_read": bytes_read, "prefix_bytes_processed": len(raw),
+            "truncated": truncated or len(lines) > 5000 or len(bounded) != len(lines)}, bounded
+
+
+def read_current_harness_result(path: Path, started_ns: int | None) -> dict:
+    """Never accept an old or redirected result, even with an identical APK tuple."""
+    if started_ns is None or path.parent.is_symlink():
+        raise Unavailable("Current APK harness result ownership could not be verified")
+    try:
+        descriptor = os.open(path, os.O_RDONLY | os.O_NONBLOCK | os.O_NOFOLLOW)
+        try:
+            before = os.fstat(descriptor)
+            if not stat.S_ISREG(before.st_mode) or before.st_mtime_ns < started_ns:
+                raise Unavailable("Actual APK harness result is not a fresh current regular file")
+            if before.st_size > 262144:
+                raise Unavailable("Actual APK harness result exceeds its 256KiB read limit")
+            raw = os.read(descriptor, 262144)
+            after = os.fstat(descriptor)
+            if after.st_mtime_ns < started_ns or after.st_size != len(raw) \
+                    or after.st_mtime_ns != before.st_mtime_ns or after.st_size != before.st_size:
+                raise Unavailable("Actual APK harness result changed during its bounded read")
+        finally:
+            os.close(descriptor)
+    except OSError as exc:
+        raise Unavailable("Actual APK harness did not provide a readable current result without symlinks") from exc
+    try:
+        summary = json.loads(raw.decode("utf-8"))
+    except (ValueError, RecursionError) as exc:
+        raise Unavailable("Actual APK harness current result is not valid bounded JSON") from exc
+    if not isinstance(summary, dict):
+        raise Unavailable("Actual APK harness current result is not a JSON object")
+    return summary
 
 
 def os_screen_stats(image: tuple[int, int, bytes, int]) -> dict:
@@ -188,11 +315,13 @@ class Session(Preflight):
         super().__init__(args)
         self.harness_process = None
         self.harness_log = None
+        self.harness_started_ns = None
         self.boot_started = None
         self.next_boot_progress = 0
         self.result.update(scope="actual-cloud-android-emulator-session",
                            gameplay_verification="not_run", gameplay_attempted=False,
                            gameplay_verified=False, harness_started=False,
+                           process_started=False,
                            requested_gameplay=args.apk is not None)
 
     def boot_progress(self, phase: str, *, response: subprocess.CompletedProcess | None = None) -> None:
@@ -248,6 +377,145 @@ class Session(Preflight):
         diagnostics["diagnostic_elapsed_seconds"] = round(time.monotonic() - started, 1)
         self.result["boot_failure_diagnostics"] = diagnostics
         print(json.dumps(diagnostics), flush=True)
+
+    def startup_failure_diagnostics(self) -> None:
+        """Print selected fresh local evidence only; this performs no device/network calls."""
+        payload = {"checkpoint": "actual-apk-startup-failure-diagnostics", "status": "diagnostic_notavailable",
+                   "gameplay_verified": False, "files": {}, "commands": []}
+        output = self.output / "gameplay"
+        if self.harness_started_ns is None or output.is_symlink():
+            payload["reason"] = "no_owned_harness_output"
+        else:
+            deadline = time.monotonic() + 2
+            records = {}
+            for name in STARTUP_FILES:
+                metadata, lines = read_startup_lines(output / name, self.harness_started_ns, deadline)
+                payload["files"][name] = metadata
+                records[name] = lines
+            own_pids = set()
+            prefix = [str(self.adb), "-s", self.result["serial"]]
+            for line in records.get("commands.jsonl", []):
+                if time.monotonic() >= deadline:
+                    payload["diagnostic_deadline_reached"] = True
+                    break
+                try:
+                    row = json.loads(line)
+                except ValueError:
+                    continue
+                if not isinstance(row, dict) or not isinstance(row.get("command"), list) \
+                        or row["command"][:3] != prefix or not isinstance(row.get("time"), (int, float)) \
+                        or row["time"] < self.harness_started_ns / 1_000_000_000:
+                    continue
+                parts = row["command"][3:]
+                if not all(isinstance(part, str) for part in parts):
+                    continue
+                if parts[:1] == ["logcat"] and "--pid" in parts:
+                    index = parts.index("--pid") + 1
+                    if index < len(parts) and re.fullmatch(r"[1-9]\d{0,9}", parts[index]) \
+                            and int(parts[index]) <= 2147483647:
+                        own_pids.add(parts[index])
+                phase = ""
+                if parts[:2] == ["install", "-r"] and len(parts) == 3 \
+                        and self.args.apk is not None and parts[2] == str(self.args.apk.resolve()):
+                    phase = "apk_install"
+                elif parts[:1] == ["shell"] and len(parts) == 2:
+                    try:
+                        remote = shlex.split(parts[1])
+                    except ValueError:
+                        continue
+                    if remote == ["pidof", self.args.package]:
+                        phase = "app_pid_observation"
+                    elif remote[:4] == ["am", "start", "-W", "-n"] and len(remote) == 5 \
+                            and remote[4].startswith(self.args.package + "/") \
+                            and re.fullmatch(r"[A-Za-z0-9_.$/]+", remote[4]):
+                        phase = "app_start"
+                code = row.get("returncode")
+                if phase and isinstance(code, int) and not isinstance(code, bool) and -255 <= code <= 255 \
+                        and len(payload["commands"]) < 8:
+                    payload["commands"].append({"phase": phase, "returncode": code,
+                                                "stdout": "not_recorded_by_command_log",
+                                                "stderr": startup_text([str(row.get("stderr", ""))])})
+            owned_launch = self.result.get("actual_status", {}).get("app_launch", {})
+            if owned_launch.get("status") == "passed":
+                own_pids.update(owned_launch["pids"])
+            payload["observed_process_pids"] = sorted(own_pids)[:8]
+            install_lines = records.get("install.txt", [])
+            payload["installation_success_marker"] = any(line.strip() == "Success" for line in install_lines)
+            for name in STARTUP_FILES[2:]:
+                selected = []
+                for line in records[name]:
+                    if time.monotonic() >= deadline:
+                        payload["diagnostic_deadline_reached"] = True
+                        break
+                    if "logcat" in name:
+                        parsed = LOGCAT_ROW.match(line)
+                        if not parsed:
+                            continue
+                        pid, priority, _, message = parsed.groups()
+                        if pid not in own_pids and not re.search(
+                                r"(?<![A-Za-z0-9_.])" + re.escape(self.args.package) + r"(?![A-Za-z0-9_.])", message):
+                            continue
+                        if priority not in ("E", "F") and not STARTUP_ERROR.search(message):
+                            continue
+                    elif not STARTUP_ERROR.search(line) and not ('File "' in line and '", line ' in line):
+                        continue
+                    selected.append(line)
+                extracted = startup_error_text(selected, deadline)
+                extracted["truncated"] |= payload["files"][name].get("truncated", False)
+                payload["files"][name].update(extracted)
+            if any(row["status"] == "available" for row in payload["files"].values()):
+                payload["status"] = "diagnostic_available"
+        # This console record plus the small retained result metadata stay <8KiB.
+        serialized = json.dumps(payload, separators=(",", ":"))
+        while len(serialized.encode()) > 6143:
+            candidates = [row for row in payload["files"].values() if row.get("output")]
+            candidates += [row["stderr"] for row in payload["commands"] if row["stderr"].get("output")]
+            if not candidates:
+                payload["commands"] = payload["commands"][:2]
+            else:
+                largest = max(candidates, key=lambda row: len(row["output"]))
+                largest["output"] = largest["output"][:len(largest["output"]) // 2]
+                largest["truncated"] = True
+            serialized = json.dumps(payload, separators=(",", ":"))
+        self.result["startup_diagnostics"] = {"status": payload["status"], "console_bytes": len(serialized.encode()) + 1,
+                                               "files_available": sum(row["status"] == "available"
+                                                                      for row in payload["files"].values()),
+                                               "gameplay_verified": False}
+        print(serialized, flush=True)
+
+    def retain_partial_milestones(self, summary: dict, apk_hash: str) -> None:
+        if summary.get("source") != "actual-apk-adb-cloud-device" or summary.get("package") != self.args.package \
+                or summary.get("serial") != self.result["serial"] or summary.get("apk_sha256") != apk_hash:
+            return
+        stages = summary.get("actual_status")
+        if not isinstance(stages, dict):
+            return
+        mirrored = {}
+        for stage, flag, marker in (("apk_install", "apk_installed", "Success"),
+                                    ("app_launch", "process_started", "Status: ok")):
+            proof = stages.get(stage)
+            if not isinstance(proof, dict) or summary.get(flag) is not True or proof.get("status") != "passed" \
+                    or proof.get("source") != "actual-adb-command" or proof.get("package") != self.args.package \
+                    or proof.get("serial") != self.result["serial"] or not isinstance(proof.get("returncode"), int) \
+                    or isinstance(proof.get("returncode"), bool) \
+                    or proof.get("returncode") != 0 or proof.get("stdout_marker") != marker:
+                continue
+            row = {key: proof[key] for key in ("status", "source", "package", "serial", "returncode", "stdout_marker")}
+            if stage == "app_launch":
+                activity, pids, count = proof.get("activity"), proof.get("pids"), proof.get("pid_count")
+                if not self.result["apk_installed"] or not isinstance(activity, str) or len(activity) > 256 \
+                        or not activity.startswith(self.args.package + "/") \
+                        or not re.fullmatch(r"[A-Za-z0-9_.$/]+", activity) or not isinstance(pids, list) \
+                        or not 1 <= len(pids) <= 8 or not all(isinstance(pid, str) and re.fullmatch(r"[1-9]\d{0,9}", pid)
+                                                            and int(pid) <= 2147483647
+                                                            for pid in pids) \
+                        or isinstance(count, bool) or not isinstance(count, int) or not len(pids) <= count <= 1024:
+                    continue
+                row.update(activity=activity, pids=pids, pid_count=count)
+            self.result[flag] = True
+            mirrored[stage] = row
+        if mirrored:
+            self.result["actual_status"] = mirrored
 
     def gate_host(self, sdk: Path) -> Path:
         system, machine = platform.system(), platform.machine()
@@ -439,6 +707,7 @@ class Session(Preflight):
                    "--output-dir", str(output)]
         self.result["harness_command"] = command
         self.harness_log = (self.output / "gameplay-harness.log").open("wb")
+        self.harness_started_ns = time.time_ns()
         self.harness_process = subprocess.Popen(command, stdout=self.harness_log, stderr=subprocess.STDOUT,
                                                 stdin=subprocess.DEVNULL, env=self.environment, start_new_session=True)
         self.result.update(harness_started=True, gameplay_attempted=True, gameplay_executed=None)
@@ -473,16 +742,13 @@ class Session(Preflight):
             self.result["gameplay_verification"] = "failed"
             raise Unavailable("The actual harness process group is not confirmed absent; cleanup could not be verified")
         summary_path = output / "result.json"
-        if not summary_path.is_file():
-            raise Unavailable("Actual APK harness did not produce its gameplay result; see gameplay-harness.log")
-        summary = json.loads(summary_path.read_text())
-        if not isinstance(summary, dict):
-            raise Unavailable("Actual APK harness result is not a JSON object")
+        summary = read_current_harness_result(summary_path, self.harness_started_ns)
         self.result["gameplay_result"] = summary
         self.result["gameplay_verification"] = summary.get("status", "failed")
         if summary.get("status") == "not_run":
             self.result["gameplay_executed"] = False
         apk_hash = hashlib.sha256(self.args.apk.read_bytes()).hexdigest()
+        self.retain_partial_milestones(summary, apk_hash)
         if not gameplay_result_matches(summary, code, self.args.package, self.result["serial"], apk_hash):
             self.result["gameplay_verification"] = "not_run" if summary.get("status") == "not_run" else "failed"
             raise Unavailable(f"Actual APK gameplay did not pass (harness exit {code}, result {summary.get('status')}); "
@@ -552,7 +818,15 @@ class Session(Preflight):
                             self.result["boot_failure_diagnostic_error"] = bounded_diagnostic(str(diagnostic_error))
                     raise
                 if self.args.apk is not None:
-                    self.gameplay()
+                    try:
+                        self.gameplay()
+                    except (Unavailable, Failed, OSError, ValueError, subprocess.TimeoutExpired):
+                        try:
+                            self.startup_failure_diagnostics()
+                        except (OSError, ValueError) as diagnostic_error:
+                            self.result["startup_diagnostic_error"] = bounded_diagnostic(
+                                str(diagnostic_error), max_chars=256, max_lines=1)
+                        raise
                 self.stop(require_clean=True)
                 self.result["checks"].append("actual-emulator-stopped")
                 self.result["status"] = "passed"

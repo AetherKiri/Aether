@@ -1,17 +1,29 @@
 #!/usr/bin/env python3
-"""Synthetic scientific fixtures for the mobile evidence gates, not gameplay.
+"""Synthetic fixtures and controlled subprocess regressions, not gameplay.
 
 These byte arrays are explicitly generated test data. No device, renderer,
-provider, adb or XCUITest execution is substituted or claimed by these tests.
+provider, adb or XCUITest execution is claimed by these tests. The explicit
+subprocess mocks below exercise only truthful partial-failure reporting; they
+always fail or block the harness and cannot stand in for device acceptance.
 """
 
 from __future__ import annotations
 
 import copy
+import contextlib
 import functools
+import io
+import itertools
+import json
+import shlex
+import subprocess
+import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
+
+import run_renpy_android_device_acceptance as android
 
 from run_renpy_android_device_acceptance import (
     Failed, checkpoint_landmarks, image_stats, is_script_checkpoint, pixel,
@@ -271,6 +283,140 @@ class EngineLogEvidence(unittest.TestCase):
             path = directory / "synthetic-aetherkiri-engine.log"
             path.write_text(self.attachment)
             require_engine_log(read_engine_log_file(path), self.root)
+
+
+class AndroidPartialFailureReporting(unittest.TestCase):
+    """Controlled command results, never an actual installation or game pass."""
+
+    package = "org.example.controlled"
+    serial = "controlled-subprocess-fixture"
+
+    def run_controlled_failure(self, *, install=(0, b"Performing streamed install\nSuccess\n", b""),
+                               launch=(0, b"Status: ok\n", b""), pid=(0, b"4343\n", b""),
+                               stage_failure=False, cloud=True):
+        with tempfile.TemporaryDirectory(prefix="renpy-controlled-partial-report-") as temporary:
+            root = Path(temporary)
+            apk = root / "controlled-not-installable.apk"
+            apk.write_bytes(b"Explicit unit fixture, not an installable APK")
+            output = root / "evidence"
+            snapshots = []
+
+            def command_result(argv, **kwargs):
+                parts = argv[3:]  # Controlled adb executable, -s, serial.
+                result = (0, b"", b"")
+                if parts == ["get-state"]:
+                    result = (0, b"device\n", b"")
+                elif parts[0] == "install":
+                    result = install
+                elif parts[:3] == ["exec-out", "run-as", self.package] and parts[3:] == ["pwd"]:
+                    result = (0, b"/data/user/0/org.example.controlled\n", b"")
+                elif parts[0] == "shell":
+                    shell = shlex.split(parts[1])
+                    if shell[:3] == ["cmd", "package", "resolve-activity"]:
+                        result = (0, (self.package + "/.ControlledActivity\n").encode(), b"")
+                    elif shell[:2] == ["am", "start"]:
+                        # The independently persisted install checkpoint must
+                        # already exist before the next command can fail.
+                        snapshots.append(json.loads((output / "result.json").read_text()))
+                        result = launch
+                    elif shell[:1] == ["pidof"]:
+                        result = pid
+                return subprocess.CompletedProcess(argv, result[0], result[1], result[2])
+
+            def runtime_failure(stage):
+                snapshots.append(json.loads((output / "result.json").read_text()))
+                raise Failed("Controlled regression: Ren'Py startup rejected")
+
+            argv = ["controlled-harness", "--apk", str(apk), "--serial", self.serial,
+                    "--package", self.package, "--adb", "controlled-only-adb", "--output-dir", str(output),
+                    "--stage-timeout", "5", "--overall-timeout", "60"]
+            if cloud:
+                argv.append("--cloud-device")
+            stream = io.StringIO()
+            clock = itertools.count()
+            with (mock.patch.object(sys, "argv", argv),
+                  mock.patch.object(android.shutil, "which", return_value="/controlled-only/adb"),
+                  mock.patch.object(android.subprocess, "run", side_effect=command_result) as commands,
+                  mock.patch.object(android.time, "monotonic", side_effect=lambda: float(next(clock))),
+                  mock.patch.object(android.time, "sleep"),
+                  mock.patch.object(android.Acceptance, "stage",
+                                    side_effect=Failed("Controlled regression: staging rejected") if stage_failure else None) as staging,
+                  mock.patch.object(android.Acceptance, "wait_game", side_effect=runtime_failure),
+                  contextlib.redirect_stdout(stream)):
+                code = android.main()
+            result = json.loads((output / "result.json").read_text())
+            checkpoints = [json.loads(line) for line in stream.getvalue().splitlines()
+                           if line.startswith('{"event": "renpy_device_milestone"')]
+            self.assertNotEqual(result["status"], "passed")
+            self.assertFalse((output / "result.pending.json").exists())
+            return code, result, checkpoints, snapshots, commands.call_args_list, staging.call_count
+
+    def test_no_device_authorization_records_no_attempts(self):
+        code, report, progress, _, commands, stages = self.run_controlled_failure(cloud=False)
+        self.assertEqual((code, report["status"]), (2, "not_run"))
+        self.assertFalse(report["apk_installed"] or report["process_started"])
+        self.assertTrue(all(p["status"] == "not_run" for p in report["actual_status"].values()))
+        self.assertEqual((progress, commands, stages), ([], [], 0))
+
+    def test_install_counterexamples_cannot_claim_partial_success(self):
+        for response in [(1, b"Success\n", b"controlled failure"),
+                         (0, b"NotSuccess\n", b""),
+                         (0, b"Success\nFailure [CONTROLLED]\n", b""),
+                         (0, b"Success\nSuccess\n", b"")]:
+            with self.subTest(response=response):
+                code, report, progress, _, _, stages = self.run_controlled_failure(install=response)
+                self.assertEqual((code, report["status"]), (1, "failed"))
+                self.assertFalse(report["apk_installed"] or report["process_started"])
+                self.assertEqual(report["actual_status"]["apk_install"]["status"], "failed")
+                self.assertEqual(report["actual_status"]["app_launch"]["status"], "not_run")
+                self.assertEqual((progress, stages), ([], 0))
+
+    def test_staging_failure_preserves_install_without_claiming_launch(self):
+        code, report, progress, _, _, _ = self.run_controlled_failure(stage_failure=True)
+        self.assertEqual((code, report["status"]), (1, "failed"))
+        self.assertTrue(report["apk_installed"])
+        self.assertFalse(report["process_started"])
+        self.assertEqual(report["actual_status"]["app_launch"]["status"], "not_run")
+        self.assertEqual([p["stage"] for p in progress], ["apk_install"])
+
+    def test_am_start_error_or_missing_status_cannot_claim_process(self):
+        for response in [(1, b"Status: ok\n", b"controlled error"),
+                         (0, b"Status: ok\nError type 3\n", b""),
+                         (0, b"Status: ok\n", b"Error: controlled denial\n"),
+                         (0, b"Starting: Intent { controlled }\n", b"")]:
+            with self.subTest(response=response):
+                code, report, progress, _, _, _ = self.run_controlled_failure(launch=response)
+                self.assertEqual((code, report["status"]), (1, "failed"))
+                self.assertTrue(report["apk_installed"])
+                self.assertFalse(report["process_started"])
+                self.assertEqual(report["actual_status"]["app_launch"]["status"], "failed")
+                self.assertEqual([p["stage"] for p in progress], ["apk_install"])
+
+    def test_absent_invalid_or_failed_pid_observation_cannot_claim_process(self):
+        for response in [(0, b"", b""), (0, b"not running\n", b""), (0, b"0\n", b""),
+                         (0, b"4343 error\n", b""), (1, b"4343\n", b"controlled pidof failure")]:
+            with self.subTest(response=response):
+                code, report, progress, _, _, _ = self.run_controlled_failure(pid=response)
+                self.assertEqual((code, report["status"]), (1, "failed"))
+                self.assertTrue(report["apk_installed"])
+                self.assertFalse(report["process_started"])
+                self.assertEqual([p["stage"] for p in progress], ["apk_install"])
+
+    def test_runtime_failure_retains_both_command_milestones(self):
+        code, report, progress, snapshots, _, _ = self.run_controlled_failure()
+        self.assertEqual((code, report["status"]), (1, "failed"))
+        self.assertTrue(report["apk_installed"] and report["process_started"])
+        self.assertEqual(report["checks"], [])
+        self.assertEqual([p["stage"] for p in progress], ["apk_install", "app_launch"])
+        self.assertEqual([s["process_started"] for s in snapshots], [False, True])
+        self.assertTrue(all(s["status"] == "running" for s in snapshots))
+        for stage in report["actual_status"].values():
+            self.assertEqual((stage["status"], stage["source"], stage["returncode"]),
+                             ("passed", "actual-adb-command", 0))
+            self.assertEqual((stage["package"], stage["serial"]), (self.package, self.serial))
+        launch = report["actual_status"]["app_launch"]
+        self.assertEqual(launch["activity"], self.package + "/.ControlledActivity")
+        self.assertEqual((launch["pids"], launch["pid_count"]), (["4343"], 1))
 
 
 if __name__ == "__main__":

@@ -24,6 +24,7 @@ from unittest.mock import patch
 from run_renpy_android_emulator_session import (
     Session, Unavailable, acceleration_usable, bounded_diagnostic, diagnostic_file_tail,
     gameplay_result_matches, os_screen_stats, owned_group_exists, owned_group_state,
+    read_current_harness_result, read_startup_lines, startup_error_text, startup_text,
     terminate_owned_process, wait_owned_group_exit,
 )
 from run_renpy_android_device_acceptance import Failed, image_stats, png_pixels
@@ -245,6 +246,292 @@ class HarnessResultBoundaryTests(unittest.TestCase):
             wrong = copy.deepcopy(summary)
             wrong[name] = "different-test-input"
             self.assertFalse(gameplay_result_matches(wrong, 0, *arguments), name)
+
+
+class CurrentStartupDiagnosticTests(unittest.TestCase):
+    def test_actual_caller_rejects_stale_matching_passed_and_failed_results(self):
+        # Genuine ordinary exit0/exit1 subprocesses validate this caller boundary.
+        # They never invoke Android, install an APK or execute a Ren'Py game.
+        original_popen = subprocess.Popen
+        for status, code in (("failed", 1), ("passed", 0)):
+            with tempfile.TemporaryDirectory() as temporary:
+                session = self.session(temporary)
+                summary = self.milestone_summary(session)
+                summary.update(status=status, apk_sha256=hashlib.sha256(session.args.apk.read_bytes()).hexdigest())
+                path = self.write(session, "result.json", json.dumps(summary))
+                os.utime(path, ns=(0, 0))
+                processes = []
+                def ordinary_child(*_, **kwargs):
+                    process = original_popen([sys.executable, "-c", f"raise SystemExit({code})"],
+                                             stdin=subprocess.DEVNULL, stdout=kwargs["stdout"],
+                                             stderr=subprocess.STDOUT, start_new_session=True)
+                    processes.append(process)
+                    return process
+                with patch("run_renpy_android_emulator_session.subprocess.Popen", side_effect=ordinary_child), \
+                        patch("sys.stdout", new_callable=io.StringIO):
+                    with self.assertRaisesRegex(Unavailable, "not a fresh current regular file"):
+                        session.gameplay()
+                self.assertEqual(processes[0].poll(), code)
+                self.assertEqual(owned_group_state(processes[0]), "absent")
+                self.assertFalse(session.result["apk_installed"], status)
+                self.assertFalse(session.result["process_started"], status)
+                self.assertFalse(session.result["gameplay_verified"], status)
+                self.assertNotIn("gameplay_result", session.result)
+
+    def test_current_result_requires_fresh_regular_bounded_json_without_symlinks(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            started_ns = time.time_ns()
+            fresh = root / "fresh-result.json"
+            fresh.write_text('{"status":"failed"}')
+            self.assertEqual(read_current_harness_result(fresh, started_ns), {"status": "failed"})
+            symlink = root / "symlink-result.json"
+            symlink.symlink_to(fresh)
+            with self.assertRaisesRegex(Unavailable, "without symlinks"):
+                read_current_harness_result(symlink, started_ns)
+            fifo = root / "fifo-result.json"
+            os.mkfifo(fifo)
+            with self.assertRaisesRegex(Unavailable, "regular file"):
+                read_current_harness_result(fifo, started_ns)
+            redirected = root / "redirected"
+            redirected.symlink_to(root, target_is_directory=True)
+            with self.assertRaisesRegex(Unavailable, "ownership"):
+                read_current_harness_result(redirected / fresh.name, started_ns)
+            oversized = root / "oversized-result.json"
+            oversized.write_bytes(b"x" * 262145)
+            with patch("run_renpy_android_emulator_session.os.read", side_effect=AssertionError("Oversized result must not be read")):
+                with self.assertRaisesRegex(Unavailable, "256KiB"):
+                    read_current_harness_result(oversized, started_ns)
+            fresh.write_bytes(b"malformed JSON")
+            with self.assertRaisesRegex(Unavailable, "valid bounded JSON"):
+                read_current_harness_result(fresh, started_ns)
+            fresh.write_text("[]")
+            with self.assertRaisesRegex(Unavailable, "JSON object"):
+                read_current_harness_result(fresh, started_ns)
+
+    def test_current_ordinary_child_result_can_retain_partial_proof_without_gameplay_pass(self):
+        # This is a local consumer fixture, never evidence of SDK/APK execution.
+        with tempfile.TemporaryDirectory() as temporary:
+            session = self.session(temporary)
+            summary = self.milestone_summary(session)
+            summary["apk_sha256"] = hashlib.sha256(session.args.apk.read_bytes()).hexdigest()
+            path = session.output / "gameplay/result.json"
+            original_popen = subprocess.Popen
+            def ordinary_child(*_, **kwargs):
+                return original_popen([sys.executable, "-c",
+                                       "import sys; from pathlib import Path; Path(sys.argv[1]).write_text(sys.argv[2]); raise SystemExit(1)",
+                                       str(path), json.dumps(summary)], stdin=subprocess.DEVNULL, stdout=kwargs["stdout"],
+                                      stderr=subprocess.STDOUT, start_new_session=True)
+            with patch("run_renpy_android_emulator_session.subprocess.Popen", side_effect=ordinary_child), \
+                    patch("sys.stdout", new_callable=io.StringIO):
+                with self.assertRaisesRegex(Unavailable, "gameplay did not pass"):
+                    session.gameplay()
+            self.assertTrue(session.result["apk_installed"])
+            self.assertTrue(session.result["process_started"])
+            self.assertFalse(session.result["gameplay_verified"])
+            self.assertEqual(session.result["gameplay_verification"], "failed")
+
+    def test_real_long_token_counterexample_finishes_inside_the_processing_budget(self):
+        # Real ordinary Python subprocess, no SDK/device execution. A previous
+        # unanchored suffix regex exceeded 3s on this <256KiB current-log prefix.
+        code = ("import json,sys,time; sys.path.insert(0,sys.argv[1]); "
+                "from run_renpy_android_emulator_session import startup_error_text; "
+                "rows=['10-09 04:05:00.000 1234 1234 E Tag: '+'A'*3900]*60; "
+                "start=time.monotonic(); result=startup_error_text(rows,start+2); "
+                "print(json.dumps({'elapsed':time.monotonic()-start, 'deadline_reached':"
+                "result.get('diagnostic_deadline_reached',False)}))")
+        completed = subprocess.run([sys.executable, "-c", code, str(Path(__file__).parent.resolve())],
+                                   stdin=subprocess.DEVNULL, capture_output=True, text=True, timeout=5, check=True)
+        result = json.loads(completed.stdout)
+        self.assertLess(result["elapsed"], 2)
+        self.assertFalse(result["deadline_reached"])
+        with patch("run_renpy_android_emulator_session.time.monotonic", return_value=10):
+            expired = startup_error_text(["FATAL EXCEPTION: controlled-not-to-be-processed"], deadline=10)
+        self.assertEqual(expired["output"], "")
+        self.assertTrue(expired["diagnostic_deadline_reached"])
+        # Conservative JWT/URL filtering also avoids a greedy variable-length
+        # scheme/token regex on the same long identifiers.
+        self.assertNotIn("eyJ", startup_text(["Caused by: Error: " + "eyJ" * 1300])["output"])
+        self.assertNotIn("://", startup_text(["Caused by: Error: " + "a" * 3900 + "://private"])["output"])
+
+    def session(self, temporary):
+        apk = Path(temporary) / "controlled-boundary-not-an-apk"
+        apk.write_bytes(b"controlled data; no APK/device is executed")
+        args = type("Args", (), {"output_dir": Path(temporary), "port": 5554, "apk": apk,
+                                "cloud_emulator": True, "sdk_root": temporary,
+                                "package": "org.aetherkiri.renpy.debug", "stage_timeout": 90,
+                                "gameplay_timeout": 900})()
+        session = Session(args)
+        session.adb = Path("/controlled-not-an-adb")
+        session.harness_started_ns = time.time_ns()
+        (session.output / "gameplay").mkdir()
+        return session
+
+    def write(self, session, name, text):
+        path = session.output / "gameplay" / name
+        path.write_text(text)
+        return path
+
+    def commands(self, session):
+        prefix = [str(session.adb), "-s", session.result["serial"]]
+        parts = [["install", "-r", str(session.args.apk.resolve())],
+                 ["shell", "am start -W -n org.aetherkiri.renpy.debug/com.godot.game.GodotAppLauncher"],
+                 ["shell", "pidof org.aetherkiri.renpy.debug"], ["logcat", "-d", "--pid", "1234"]]
+        rows = [{"command": prefix + part, "returncode": 0, "stderr": "", "time": time.time()} for part in parts]
+        self.write(session, "commands.jsonl", "\n".join(json.dumps(row) for row in rows) + "\n")
+
+    def diagnose(self, session):
+        with patch("sys.stdout", new_callable=io.StringIO) as console, \
+                patch("run_renpy_android_emulator_session.subprocess.run", side_effect=AssertionError("No device/network call")):
+            session.startup_failure_diagnostics()
+        return console.getvalue(), json.loads(console.getvalue())
+
+    def test_owned_java_first_fatal_and_last_loader_cause_survive_long_stacks(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            session = self.session(temporary)
+            self.commands(session)
+            self.write(session, "install.txt", "Performing Streamed Install\nSuccess\n")
+            prefix = "10-09 04:05:00.000 1234 1234 E AndroidRuntime: "
+            frames = [prefix + f"at fixture.Class.method(Class.java:{index})" for index in range(40)]
+            cause = prefix + "Caused by: java.lang.UnsatisfiedLinkError: dlopen failed: cannot locate symbol 'controlled-missing-symbol'"
+            self.write(session, "android-process-logcat.txt", "\n".join(
+                [prefix + "FATAL EXCEPTION: main", *frames, cause, *frames,
+                 prefix + "Caused by: CredentialError: token=controlled-private-token"]) + "\n")
+            self.write(session, "android-system-logcat.txt",
+                       "10-09 04:05:00.000 9999 9999 E Other: FATAL EXCEPTION: unrelated-private-app\n")
+            self.write(session, "renpy-traceback.txt", "Traceback (most recent call last):\n"
+                       '  File "controlled-fixture.py", line 1\nModuleNotFoundError: No module named controlled_module\n')
+            text, payload = self.diagnose(session)
+            self.assertIn("FATAL EXCEPTION: main", text)
+            self.assertIn("controlled-missing-symbol", text)
+            self.assertIn("ModuleNotFoundError", text)
+            self.assertNotIn("controlled-private-token", text)
+            self.assertNotIn("unrelated-private-app", text)
+            self.assertEqual(payload["observed_process_pids"], ["1234"])
+            self.assertTrue(payload["installation_success_marker"])
+            self.assertEqual([row["phase"] for row in payload["commands"]],
+                             ["apk_install", "app_start", "app_pid_observation"])
+            self.assertFalse(session.result["apk_installed"], "Diagnostics cannot verify installation/gameplay")
+            self.assertFalse(session.result["gameplay_verified"])
+
+    def test_environment_credentials_control_sequences_and_urls_do_not_escape(self):
+        raw = ["\x1b[31mError: PATH=/controlled-private-environment\x1b[0m\n"
+               "Environment: controlled-private-env\nAuthorization: Bearer controlled-auth\n"
+               "Error: https://example.invalid/controlled-private-url\n"
+               "Error: secret=controlled-private-secret\nError: safe-controlled-cause\x00"]
+        output = startup_text(raw)["output"]
+        for value in ("private-", "controlled-auth", "PATH=", "example.invalid", "\x1b", "\x00"):
+            self.assertNotIn(value, output)
+        self.assertIn("safe-controlled-cause", output)
+
+    def test_stale_symlink_fifo_missing_and_unowned_files_are_not_read(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            session = self.session(temporary)
+            stale = self.write(session, "install.txt", "Success\n")
+            os.utime(stale, ns=(0, session.harness_started_ns - 1))
+            private = Path(temporary) / "unowned-controlled-private-file"
+            private.write_text("Fatal: controlled-private-content\n")
+            (session.output / "gameplay/aetherkiri-engine.log").symlink_to(private)
+            os.mkfifo(session.output / "gameplay/renpy-log.txt")
+            self.write(session, "unknown-private-file", "Fatal: controlled-private-content\n")
+            text, payload = self.diagnose(session)
+            self.assertEqual(payload["status"], "diagnostic_notavailable")
+            self.assertNotIn("controlled-private-content", text)
+            self.assertFalse(payload["installation_success_marker"])
+            self.assertEqual(payload["files"]["install.txt"]["reason"], "not_fresh_regular_file")
+            self.assertEqual(payload["files"]["renpy-log.txt"]["reason"], "not_fresh_regular_file")
+            self.assertNotIn("unknown-private-file", payload["files"])
+
+    def test_prefix_read_and_combined_console_metadata_are_bounded(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            session = self.session(temporary)
+            for name in ("aetherkiri-engine.log", "renpy-traceback.txt", "renpy-log.txt",
+                         "android-process-logcat.txt", "android-system-logcat.txt"):
+                self.write(session, name, "Exception: " + "模" * 200 + "\n" + ("controlled padding\n" * 40000))
+            text, payload = self.diagnose(session)
+            self.assertLessEqual(len(text.encode()), 6144)
+            self.assertLess(len(json.dumps(session.result["startup_diagnostics"]).encode()), 1024)
+            self.assertLess(len(text.encode()) + len(json.dumps(session.result["startup_diagnostics"]).encode()), 8192)
+            self.assertLess(sum(row.get("bytes_read", 0) for row in payload["files"].values()), 2 * 1024 * 1024)
+            self.assertTrue(payload["files"]["aetherkiri-engine.log"]["truncated"])
+            path = self.write(session, "renpy-log.txt", "Exception: first-prefix-cause\n" + "x" * 300000
+                              + "\nException: controlled-EOF-must-not-be-read\n")
+            metadata, lines = read_startup_lines(path, session.harness_started_ns, time.monotonic() + 2)
+            self.assertLessEqual(metadata["bytes_read"], 262144)
+            self.assertNotIn("controlled-EOF", "\n".join(lines))
+
+    def test_diagnostic_deadline_and_no_harness_never_call_any_device(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            session = self.session(temporary)
+            self.write(session, "install.txt", "Success\n")
+            with patch("run_renpy_android_emulator_session.time.monotonic", return_value=10), \
+                    patch("run_renpy_android_emulator_session.os.open", side_effect=AssertionError("No read after deadline")):
+                metadata, lines = read_startup_lines(session.output / "gameplay/install.txt", session.harness_started_ns, 10)
+            self.assertEqual(metadata["reason"], "diagnostic_deadline")
+            self.assertEqual(lines, [])
+            session.harness_started_ns = None
+            _, payload = self.diagnose(session)
+            self.assertEqual(payload["status"], "diagnostic_notavailable")
+
+    def milestone_summary(self, session):
+        common = {"status": "passed", "source": "actual-adb-command", "package": session.args.package,
+                  "serial": session.result["serial"], "returncode": 0}
+        return {"status": "failed", "source": "actual-apk-adb-cloud-device", "package": session.args.package,
+                "serial": session.result["serial"], "apk_sha256": "controlled-hash",
+                "apk_installed": True, "process_started": True,
+                "actual_status": {"apk_install": {**common, "stdout_marker": "Success"},
+                                  "app_launch": {**common, "stdout_marker": "Status: ok", "pids": ["1234"],
+                                                 "pid_count": 1, "activity": session.args.package + "/Launcher"}}}
+
+    def test_matched_partial_milestones_remain_separate_from_gameplay_acceptance(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            session = self.session(temporary)
+            summary = self.milestone_summary(session)
+            session.retain_partial_milestones(summary, "controlled-hash")
+            self.assertTrue(session.result["apk_installed"])
+            self.assertTrue(session.result["process_started"])
+            self.assertFalse(session.result["gameplay_verified"])
+            self.assertEqual(session.result["gameplay_verification"], "not_run")
+            self.assertFalse(gameplay_result_matches(summary, 1, session.args.package,
+                                                    session.result["serial"], "controlled-hash"))
+
+    def test_wrong_identity_or_unproven_stages_cannot_mirror_milestones(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            session = self.session(temporary)
+            original = self.milestone_summary(session)
+            for field in ("source", "package", "serial", "apk_sha256"):
+                wrong = copy.deepcopy(original)
+                wrong[field] = "different-controlled-input"
+                session.retain_partial_milestones(wrong, "controlled-hash")
+                self.assertFalse(session.result["apk_installed"], field)
+                self.assertFalse(session.result["process_started"], field)
+            for key, value in (("source", "simulated"), ("returncode", True), ("returncode", 0.0),
+                               ("stdout_marker", "Success-looking"), ("package", "other.package")):
+                wrong = copy.deepcopy(original)
+                wrong["actual_status"]["apk_install"][key] = value
+                session.retain_partial_milestones(wrong, "controlled-hash")
+                self.assertFalse(session.result["apk_installed"], key)
+                self.assertFalse(session.result["process_started"], key)
+            for pids in (["0"], ["-1"], ["9999999999"], ["2147483648"], [1234]):
+                wrong = copy.deepcopy(original)
+                wrong["actual_status"]["app_launch"]["pids"] = pids
+                session.retain_partial_milestones(wrong, "controlled-hash")
+                self.assertFalse(session.result["process_started"], pids)
+
+    def test_diagnostics_precede_stop_and_cannot_mask_the_real_primary_gameplay_failure(self):
+        # Actual local evidence/control flow only; no SDK, APK or emulator is run.
+        with tempfile.TemporaryDirectory() as temporary:
+            session = self.session(temporary)
+            events = []
+            with patch.object(session, "gate_host", return_value=Path("controlled-emulator")), \
+                    patch.object(session, "prepare_sdk", return_value=Path("controlled-manager")), \
+                    patch.object(session, "boot"), \
+                    patch.object(session, "gameplay", side_effect=Unavailable("controlled original startup failure")), \
+                    patch.object(session, "startup_failure_diagnostics", side_effect=lambda: events.append("diagnostics")), \
+                    patch.object(session, "stop", side_effect=lambda **_: events.append("stop")):
+                with self.assertRaisesRegex(Unavailable, "controlled original startup failure"):
+                    session.run()
+            self.assertEqual(events, ["diagnostics", "stop"])
 
 
 class CurrentDiagnosticBoundaryTests(unittest.TestCase):

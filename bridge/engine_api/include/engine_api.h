@@ -185,7 +185,12 @@ typedef enum engine_input_event_type_t {
   ENGINE_INPUT_EVENT_KEY_DOWN = 5,
   ENGINE_INPUT_EVENT_KEY_UP = 6,
   ENGINE_INPUT_EVENT_TEXT_INPUT = 7,
-  ENGINE_INPUT_EVENT_BACK = 8
+  ENGINE_INPUT_EVENT_BACK = 8,
+  /* First controller's normalized physical button. `button` is 0..31;
+   * `pointer_id` identifies the controller for providers that use more than
+   * one. Directions are buttons 11..14 in Godot order. */
+  ENGINE_INPUT_EVENT_JOYPAD_BUTTON_DOWN = 9,
+  ENGINE_INPUT_EVENT_JOYPAD_BUTTON_UP = 10
 } engine_input_event_type_t;
 
 /* A gesture recognizer sets this on POINTER_UP when a forwarded press was

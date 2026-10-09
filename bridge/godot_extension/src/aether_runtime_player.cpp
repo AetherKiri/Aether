@@ -9341,6 +9341,10 @@ public:
         clear_runtime_save_slots();
         runtime_presentation_sprite_.Clear();
         reset_runtime_tick_timing();
+        nexas_joypad_active_ = false;
+        nexas_joypad_buttons_ = 0;
+        nexas_joypad_axis_ = 0;
+        nexas_joypad_device_ = -1;
         if (handle_ == nullptr) {
             return;
         }
@@ -9636,6 +9640,12 @@ public:
         artemis_logical_frame_pacing_ = normalized_runtime == "artemis" ||
             (normalized_runtime == "auto" &&
              engine_probe_runtime_provider("artemis", path_utf8.get_data()) > 0);
+        nexas_joypad_active_ = normalized_runtime == "nexas" ||
+            (normalized_runtime == "auto" &&
+             engine_probe_runtime_provider("nexas", path_utf8.get_data()) > 0);
+        nexas_joypad_buttons_ = 0;
+        nexas_joypad_axis_ = 0;
+        nexas_joypad_device_ = -1;
         reset_runtime_tick_timing(false);
         const engine_result_t result = async
             ? engine_open_game_async(handle_, path_utf8.get_data(), nullptr)
@@ -9643,6 +9653,7 @@ public:
         game_open_ = result == ENGINE_RESULT_OK;
         if (!game_open_) {
             artemis_logical_frame_pacing_ = false;
+            nexas_joypad_active_ = false;
         }
         update_last_error(result);
         AndroidBridgeLog("event=open_game_result result=%s error=%s game_open=%d",
@@ -9655,6 +9666,7 @@ public:
         if (handle_ == nullptr) {
             return ENGINE_RESULT_INVALID_STATE;
         }
+        if (nexas_joypad_active_ && game_open_) poll_nexas_joypad();
         double runtime_delta_seconds = std::max(0.0, delta_seconds);
         if (artemis_logical_frame_pacing_) {
             const auto step = artemis_logical_frame_pacer_.Advance(
@@ -9679,6 +9691,69 @@ public:
         update_runtime_movie();
         update_last_error(result);
         return result;
+    }
+
+    void poll_nexas_joypad() {
+        Input *input = Input::get_singleton();
+        if (input == nullptr) return;
+        const auto devices = input->get_connected_joypads();
+        const int32_t device = devices.is_empty() ? -1 : int32_t(devices[0]);
+        if (device != nexas_joypad_device_) {
+            // Send releases for the former controller before adopting a new
+            // one. The provider keeps held battle actions until key-up.
+            for(int button=0;button<32;++button) {
+                const uint32_t bit=uint32_t(1)<<button;
+                if((nexas_joypad_buttons_&bit)==0) continue;
+                engine_input_event_t event{};
+                event.struct_size=sizeof(event);
+                event.type=ENGINE_INPUT_EVENT_JOYPAD_BUTTON_UP;
+                event.pointer_id=nexas_joypad_device_;
+                event.button=button;
+                if(engine_send_input(handle_,&event)!=ENGINE_RESULT_OK) return;
+                nexas_joypad_buttons_&=~bit;
+            }
+            nexas_joypad_device_=device;
+            nexas_joypad_axis_=0;
+        }
+        uint32_t target=0;
+        if(device>=0) {
+            for(int physical=0;physical<=20;++physical) {
+                if(!input->is_joy_button_pressed(
+                        device,static_cast<JoyButton>(physical))) continue;
+                // SDL places Start at 6 and Back at 4. Native Config.dat
+                // defaults the fifth action (Start) to button code 4.
+                const int canonical=physical==6 ? 4 :
+                                    physical==4 ? 5 :
+                                    physical==5 ? 6 : physical;
+                target|=uint32_t(1)<<canonical;
+            }
+            const float horizontal=input->get_joy_axis(
+                device,JOY_AXIS_LEFT_X);
+            const float vertical=input->get_joy_axis(
+                device,JOY_AXIS_LEFT_Y);
+            const auto axis_bit=[&](int button,bool engaged,bool neutral) {
+                const uint32_t bit=uint32_t(1)<<button;
+                if(engaged) nexas_joypad_axis_|=bit;
+                else if(neutral) nexas_joypad_axis_&=~bit;
+            };
+            axis_bit(11,vertical<-.55f,vertical>-.40f);
+            axis_bit(12,vertical>.55f,vertical<.40f);
+            axis_bit(13,horizontal<-.55f,horizontal>-.40f);
+            axis_bit(14,horizontal>.55f,horizontal<.40f);
+            target|=nexas_joypad_axis_;
+        }
+        for(int button=0;button<32;++button) {
+            const uint32_t bit=uint32_t(1)<<button;
+            if((nexas_joypad_buttons_&bit)==(target&bit)) continue;
+            engine_input_event_t event{};
+            event.struct_size=sizeof(event);
+            event.type=(target&bit) ? ENGINE_INPUT_EVENT_JOYPAD_BUTTON_DOWN :
+                                      ENGINE_INPUT_EVENT_JOYPAD_BUTTON_UP;
+            event.pointer_id=device;
+            event.button=button;
+            if(engine_send_input(handle_,&event)!=ENGINE_RESULT_OK) return;
+            nexas_joypad_buttons_^=bit;
+        }
     }
 
     int pause() {
@@ -12537,6 +12612,10 @@ private:
     aetherkiri::godot_host::RuntimeTickMillisecondQuantizer
         runtime_tick_quantizer_;
     bool artemis_logical_frame_pacing_ = false;
+    bool nexas_joypad_active_ = false;
+    int32_t nexas_joypad_device_ = -1;
+    uint32_t nexas_joypad_buttons_ = 0;
+    uint32_t nexas_joypad_axis_ = 0;
     Ref<ImageTexture> frame_texture_;
     PackedByteArray frame_rgba_buffer_;
     Ref<Texture2DRD> frame_rd_texture_;

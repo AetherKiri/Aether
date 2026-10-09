@@ -3821,6 +3821,8 @@ engine_result_t engine_send_input(engine_handle_t handle,
     case ENGINE_INPUT_EVENT_KEY_UP:
     case ENGINE_INPUT_EVENT_TEXT_INPUT:
     case ENGINE_INPUT_EVENT_BACK:
+    case ENGINE_INPUT_EVENT_JOYPAD_BUTTON_DOWN:
+    case ENGINE_INPUT_EVENT_JOYPAD_BUTTON_UP:
       break;
     default:
       return SetHandleErrorAndReturnLocked(impl, ENGINE_RESULT_NOT_SUPPORTED,
@@ -5300,6 +5302,8 @@ engine_result_t engine_send_input(engine_handle_t handle,
     case ENGINE_INPUT_EVENT_KEY_UP:
     case ENGINE_INPUT_EVENT_TEXT_INPUT:
     case ENGINE_INPUT_EVENT_BACK:
+    case ENGINE_INPUT_EVENT_JOYPAD_BUTTON_DOWN:
+    case ENGINE_INPUT_EVENT_JOYPAD_BUTTON_UP:
       break;
     default:
       SetHandleErrorLocked(impl, "unsupported input event type");

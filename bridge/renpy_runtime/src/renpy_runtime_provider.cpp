@@ -1,5 +1,6 @@
 #include "renpy_input_mapping.h"
 #include "renpy_runtime.h"
+#include "renpy_project.h"
 #include "engine_runtime_provider.h"
 
 #include <algorithm>
@@ -238,18 +239,6 @@ std::string JsonEscape(const std::string& value) {
     }
     stream << '"';
     return stream.str();
-}
-
-bool HasRenpyProject(const fs::path& root) {
-    std::error_code ec;
-    if (!fs::is_directory(root, ec)) return false;
-    // A game directory must contain the script directory.  A bare script.rpy
-    // is accepted for tiny SDK projects, while a random directory is not.
-    return (fs::is_directory(root / "game", ec) &&
-            (fs::exists(root / "game" / "script.rpy", ec) ||
-             fs::exists(root / "game" / "script.rpyc", ec) ||
-             fs::exists(root / "game" / "options.rpy", ec))) ||
-           fs::exists(root / "script.rpy", ec);
 }
 
 fs::path FindLauncher(const fs::path& sdk) {

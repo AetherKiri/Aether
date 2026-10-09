@@ -1,6 +1,7 @@
 #include "renpy_mobile_adapter.h"
 
 #if defined(__ANDROID__)
+#include "renpy_android_host.h"
 #include <jni.h>
 #include <android/native_window.h>
 #include <dlfcn.h>
@@ -297,9 +298,13 @@ engine_result_t BootstrapAdapter::PrepareRuntime(
 #else
   JNIEnv* env = krkr_GetJNIEnv();
   if (!env) { last_error_ = "Ren'Py could not attach to the Android VM"; return ENGINE_RESULT_INVALID_STATE; }
-  jobject activity = request.existing_host_activity
-      ? static_cast<jobject>(request.existing_host_activity) : krkr_GetHostActivity();
-  if (!activity) { last_error_ = "Ren'Py requires the existing Godot Activity"; return ENGINE_RESULT_INVALID_STATE; }
+  AndroidLocalReference activity_ref(env, env->NewLocalRef(request.existing_host_activity
+      ? static_cast<jobject>(request.existing_host_activity) : krkr_GetHostActivity()));
+  last_error_ = "Ren'Py could not retain the existing Godot Activity";
+  if (AndroidHostException(env, &last_error_) ||
+      !RequireAndroidHostActivity(env, activity_ref.get(), &last_error_))
+    return ENGINE_RESULT_INVALID_STATE;
+  jobject activity = activity_ref.get();
   jclass bridge = FindRequiredClass(env, "org/github/krkr2/aetherkiri/RenPyMobileBridge", &last_error_);
   if (!bridge) return ENGINE_RESULT_NOT_SUPPORTED;
   jmethodID bind = env->GetStaticMethodID(bridge, "bindHostActivity", "(Landroid/app/Activity;)V");

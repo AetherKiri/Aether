@@ -82,7 +82,8 @@ extern "C" void renpy_mobile_shutdown() {
 
 int main() {
     aetherkiri::renpy::RegisterRuntimeProvider();
-    assert(provider && provider->probe(nullptr, "/project") > 0);
+    assert(provider && provider->probe(nullptr, nullptr) == 0);
+    assert(provider->probe(nullptr, "/not-a-renpy-project") == 0);
     engine_runtime_host_v1_t host{};
     host.struct_size = sizeof(host);
     host.log = HostLog;

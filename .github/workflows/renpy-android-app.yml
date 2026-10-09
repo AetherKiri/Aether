@@ -50,13 +50,13 @@ jobs:
       AETHERKIRI_VCPKG_CACHE_WRITE: 'false'
       AETHERKIRI_ENABLE_RENPY: 'ON'
       CCACHE_DIR: ${{ github.workspace }}/.ccache
-      NATIVE_RUNTIME_RUN: '37812943810'
-      NATIVE_RUNTIME_ARTIFACT: '11567113193'
-      NATIVE_RUNTIME_HEAD: 'dbb863ac101301c8a9d78dea358e2157a0185165'
+      NATIVE_RUNTIME_RUN: '37866667365'
+      NATIVE_RUNTIME_ARTIFACT: '11589199045'
+      NATIVE_RUNTIME_HEAD: '1967809558f4022aa781062bfe5a4f8e903c84d0'
       # Keep the disposable Debug key and its data separate from an existing
       # production installation. The build uses a copied export project.
       AETHERKIRI_ANDROID_TEST_PACKAGE_ID: org.aetherkiri.renpy.debug
-      NATIVE_RUNTIME_DIGEST: 'sha256:04a1f247585b8f4647e6dcd8c4102757f558ee542524df1504267b40f0a4239c'
+      NATIVE_RUNTIME_DIGEST: 'sha256:08537fa4c09a84d8226c50644127ab6918290a0a09f0720c878b465bce25014c'
     steps:
       - uses: actions/checkout@v6
         with:
@@ -96,8 +96,8 @@ jobs:
           PY
       - uses: actions/download-artifact@v6
         with:
-          artifact-ids: 11567113193
-          run-id: 37812943810
+          artifact-ids: 11589199045
+          run-id: 37866667365
           github-token: ${{ github.token }}
           merge-multiple: true
           path: ${{ runner.temp }}/renpy-runtime-download

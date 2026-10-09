@@ -28,9 +28,12 @@ import java.lang.ref.WeakReference;
  * SDL 2.0.20 JNI callbacks delegated to Godot's existing Activity.
  * The patched native payload uses SDL's offscreen EGL pbuffer driver.
  * These callbacks never acquire Godot's SurfaceView or start an Activity.
- * CPU frames come from Ren'Py's GL screenshot.
+ * CPU frames come from Ren'Py's GL screenshot. Activity inheritance exists
+ * only for SDL's JNI lookup of inherited ContextWrapper methods (battery
+ * queries). This class is never instantiated or registered in a manifest;
+ * every Context receiver is the actual Godot Activity.
  */
-public final class SDLActivity {
+public final class SDLActivity extends Activity {
     public static final String AETHERKIRI_HOST_SHIM = "renpy-sdl-host-shim-v1";
     private static WeakReference<Activity> hostActivity = new WeakReference<>(null);
     private static final Handler uiHandler = new Handler(Looper.getMainLooper());

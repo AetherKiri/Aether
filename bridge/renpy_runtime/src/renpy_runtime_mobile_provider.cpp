@@ -1,4 +1,5 @@
 #include "renpy_runtime.h"
+#include "renpy_project.h"
 #include "engine_runtime_provider.h"
 #include "renpy_mobile_loader.h"
 #include "renpy_input_mapping.h"
@@ -144,11 +145,15 @@ engine_result_t CaptureFrame(MobileRuntime* runtime) {
     return ENGINE_RESULT_OK;
 }
 
-int32_t Probe(void*, const char*) {
+int32_t Probe(void*, const char* path) {
     // The provider is discoverable only when a rebuilt lifecycle payload is
     // linked. Official blocking RAPT/Renios archives remain invisible here.
-    static Launcher launcher;
-    return launcher.available() ? 100 : 0;
+    if (!path || !path[0]) return 0;
+    try {
+        if (!HasRenpyProject(std::filesystem::u8path(path))) return 0;
+        static Launcher launcher;
+        return launcher.available() ? 100 : 0;
+    } catch (...) { return 0; }
 }
 
 engine_result_t Create(void*, const engine_runtime_host_v1_t* host,
@@ -190,7 +195,6 @@ engine_result_t Open(void* value, const char* game_root_path,
         mobile::BootstrapRequest request{};
         request.game_root_path_utf8 = game_root_path;
         request.startup_script_utf8 = startup_script;
-        request.existing_host_activity = runtime->host.reserved_ptr[1];
         const auto result = runtime->bootstrap.Start(request);
         runtime->error = runtime->bootstrap.last_error();
         return result;
@@ -240,7 +244,6 @@ engine_result_t Tick(void* value, uint32_t delta_ms) {
 #if defined(__ANDROID__)
         mobile::BootstrapRequest request{};
         request.game_root_path_utf8 = runtime->game_root.c_str();
-        request.existing_host_activity = runtime->host.reserved_ptr[1];
         const auto prepared = runtime->bootstrap.PrepareRuntime(request,
             runtime->surface_width ? runtime->surface_width : 1280u,
             runtime->surface_height ? runtime->surface_height : 720u,

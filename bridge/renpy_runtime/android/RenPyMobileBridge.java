@@ -46,9 +46,9 @@ public final class RenPyMobileBridge {
         SDLActivity.clearHostActivity();
     }
 
-    /** Returns true when the native bridge has loaded in the host process. */
+    /** Load/retry through Java so JNI_OnLoad records the real host JavaVM. */
     public static boolean isNativeBridgeLoaded() {
-        return nativeBridgeLoaded;
+        return nativeBridgeLoaded || tryLoadNativeBridge();
     }
 
     /**

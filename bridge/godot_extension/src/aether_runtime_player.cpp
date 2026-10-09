@@ -135,6 +135,10 @@ void aether_native_launch_file_picker_free_string(char *value);
 #if defined(__ANDROID__)
 #include <jni.h>
 #include <android/log.h>
+#if defined(AETHERKIRI_WITH_RENPY)
+#include "renpy_android_host.h"
+#include "renpy_java_boolean.h"
+#endif
 
 extern JNIEnv* krkr_GetJNIEnv();
 extern jobject krkr_GetApplicationContext();
@@ -739,6 +743,32 @@ bool AndroidJavaHasException(JavaClassWrapper *wrapper, const char *stage) {
     }
     return false;
 }
+
+#if defined(AETHERKIRI_WITH_RENPY)
+bool AndroidLoadRenPyNativeBridge(std::string *error) {
+    // Godot's public Java wrapper already owns a valid VM/env after app
+    // setup. Java loading must precede our engine_api JNI accessors: loading
+    // a GDExtension with dlopen alone never calls engine_api's JNI_OnLoad.
+    JavaClassWrapper *wrapper = JavaClassWrapper::get_singleton();
+    if (wrapper == nullptr) {
+        *error = "Ren'Py requires Godot's Android JavaClassWrapper after app setup";
+        return false;
+    }
+    Ref<JavaClass> bridge = wrapper->wrap("org.github.krkr2.aetherkiri.RenPyMobileBridge");
+    const bool wrap_failed = AndroidJavaHasException(wrapper, "wrap RenPyMobileBridge");
+    if (bridge.is_null() || wrap_failed) {
+        *error = "Ren'Py Android host bridge is missing from the APK or could not load";
+        return false;
+    }
+    const Variant loaded = bridge->call("isNativeBridgeLoaded");
+    if (AndroidJavaHasException(wrapper, "RenPyMobileBridge.isNativeBridgeLoaded") ||
+        !renpy_mobile_runtime::AndroidJavaBooleanResultIsTrue(loaded)) {
+        *error = "Ren'Py could not load engine_api through the Android Java host bridge";
+        return false;
+    }
+    return true;
+}
+#endif
 
 Object *AndroidVariantObject(const Variant &value) {
     if (value.get_type() != Variant::OBJECT) {
@@ -9651,6 +9681,24 @@ public:
 
         CharString path_utf8 = game_root_path.utf8();
         const String normalized_runtime = runtime_id_.strip_edges().to_lower();
+#if defined(__ANDROID__) && defined(AETHERKIRI_WITH_RENPY)
+        if (normalized_runtime == "renpy" ||
+            (normalized_runtime == "auto" &&
+             engine_probe_runtime_provider("renpy", path_utf8.get_data()) > 0)) {
+            // Bind the real Activity before async Open/first Tick. This only
+            // retains the existing host; SDL/Python still initialize on Tick.
+            std::string binding_error;
+            if (!aetherkiri::renpy::mobile::PrepareRenPyAndroidHost(
+                    AndroidLoadRenPyNativeBridge, krkr_GetJNIEnv,
+                    AndroidGetGodotActivityLocal, AndroidFindClassWithAppClassLoader,
+                    &binding_error)) {
+                AndroidBridgeLog("event=renpy_host_bind_failed error=%s", binding_error.c_str());
+                last_result_ = ResultToString(ENGINE_RESULT_INVALID_STATE);
+                last_error_ = String::utf8(binding_error.c_str());
+                return ENGINE_RESULT_INVALID_STATE;
+            }
+        }
+#endif
         artemis_logical_frame_pacing_ = normalized_runtime == "artemis" ||
             (normalized_runtime == "auto" &&
              engine_probe_runtime_provider("artemis", path_utf8.get_data()) > 0);

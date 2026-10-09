@@ -21,6 +21,8 @@ on:
       - 'tools/build_godot_ios_device_template.py'
       - 'tools/test_godot_ios_device_template.py'
       - 'tools/test_renpy_ios_force_load.py'
+      - 'tools/ios_public_vcpkg_cache.py'
+      - 'tools/test_ios_public_vcpkg_cache.py'
       - 'tools/godot_ios_device_template/**'
       - 'scripts/build_ios.sh'
       - 'bridge/renpy_runtime/mobile_launcher/**'
@@ -212,6 +214,8 @@ jobs:
       AETHERKIRI_ENABLE_RENPY: ON
       AETHERKIRI_ENABLE_INTERNAL: OFF
       AETHERKIRI_VCPKG_CACHE_WRITE: 'false'
+      VCPKG_PUBLIC_CACHE_SDK: iphonesimulator
+      VCPKG_PUBLIC_CACHE_TRIPLET: arm64-ios-simulator
       GODOT_RELEASE: 4.7.2-stable
       GODOT_TEMPLATE_VERSION: 4.7.2.stable
       JOBS: '3'
@@ -276,6 +280,12 @@ jobs:
           bash .devtools/vcpkg/bootstrap-vcpkg.sh -disableMetrics
           echo "VCPKG_ROOT=$GITHUB_WORKSPACE/.devtools/vcpkg" >> "$GITHUB_ENV"
           bash .github/scripts/configure-vcpkg-binary-cache.sh "$GITHUB_WORKSPACE/.devtools/vcpkg/vcpkg"
+      - name: Exercise the real files provider and hostile archive validation
+        run: |
+          set -euo pipefail
+          python3 tools/test_ios_public_vcpkg_cache.py \
+            --vcpkg-root "$VCPKG_ROOT" --cmake "$(command -v cmake)" --ninja "$(command -v ninja)" \
+            --output-dir "$RUNNER_TEMP/vcpkg-public-provider-regression"
       - name: Link the genuine complete Ren'Py framework before compiling the Godot engine
         run: |
           set -euo pipefail
@@ -349,11 +359,72 @@ jobs:
             ${{ runner.temp }}/godot-arm64-simulator/ios.zip
             ${{ runner.temp }}/godot-arm64-simulator/evidence.json
           key: ${{ steps.godot-simulator-cache-key.outputs.key }}
+      - name: Identify public dependency archives with the actual Apple tools
+        id: public-vcpkg-family
+        run: |
+          set -euo pipefail
+          # This runs after the normal NuGet read configuration has reached
+          # GITHUB_ENV. Add only successful public package ZIP writes locally.
+          case "$VCPKG_BINARY_SOURCES" in
+            clear\;nuget,*\,read) ;;
+            *) echo 'The existing NuGet read provider is required.' >&2; exit 1 ;;
+          esac
+          family="$(python3 tools/ios_public_vcpkg_cache.py family \
+            --repository . --vcpkg-root "$VCPKG_ROOT" \
+            --sdk "$VCPKG_PUBLIC_CACHE_SDK" --triplet "$VCPKG_PUBLIC_CACHE_TRIPLET" \
+            --internal "$AETHERKIRI_ENABLE_INTERNAL")"
+          [[ "$family" =~ ^ios-public-vcpkg-v1-[0-9a-f]{64}$ ]]
+          echo "family=$family" >> "$GITHUB_OUTPUT"
+          echo "VCPKG_BINARY_SOURCES=$VCPKG_BINARY_SOURCES;files,$RUNNER_TEMP/vcpkg-public-archives,readwrite" >> "$GITHUB_ENV"
+      - name: Restore a partial public dependency cache for this exact toolchain
+        uses: actions/cache/restore@v6
+        with:
+          path: ${{ runner.temp }}/vcpkg-public-archives
+          key: ${{ steps.public-vcpkg-family.outputs.family }}-${{ github.run_id }}-${{ github.run_attempt }}
+          restore-keys: ${{ steps.public-vcpkg-family.outputs.family }}-
+      - name: Validate every restored package before vcpkg can read it
+        run: |
+          set -euo pipefail
+          python3 tools/ios_public_vcpkg_cache.py validate \
+            --repository . --vcpkg-root "$VCPKG_ROOT" \
+            --sdk "$VCPKG_PUBLIC_CACHE_SDK" --triplet "$VCPKG_PUBLIC_CACHE_TRIPLET" \
+            --internal "$AETHERKIRI_ENABLE_INTERNAL" \
+            --cache-dir "$RUNNER_TEMP/vcpkg-public-archives" \
+            --report "$RUNNER_TEMP/vcpkg-public-before.json"
       - name: Build the installable arm64 Simulator application
+        id: public-vcpkg-app
         run: |
           set -euo pipefail
           bash scripts/build_ios.sh debug --simulator --simulator-arch=arm64 \
             2>&1 | tee "$RUNNER_TEMP/renpy-ios-simulator-build.log"
+      - name: Validate successful package archives even when the App build fails
+        id: public-vcpkg-after
+        if: >-
+          always() && !cancelled() &&
+          steps.public-vcpkg-app.outcome != 'skipped' &&
+          steps.public-vcpkg-family.outcome == 'success'
+        run: |
+          set -euo pipefail
+          python3 tools/ios_public_vcpkg_cache.py validate \
+            --repository . --vcpkg-root "$VCPKG_ROOT" \
+            --sdk "$VCPKG_PUBLIC_CACHE_SDK" --triplet "$VCPKG_PUBLIC_CACHE_TRIPLET" \
+            --internal "$AETHERKIRI_ENABLE_INTERNAL" \
+            --cache-dir "$RUNNER_TEMP/vcpkg-public-archives" \
+            --previous-report "$RUNNER_TEMP/vcpkg-public-before.json" \
+            --report "$RUNNER_TEMP/vcpkg-public-after.json" --github-output "$GITHUB_OUTPUT"
+      - name: Save newly built public packages before later gameplay checks
+        if: >-
+          always() && !cancelled() &&
+          env.AETHERKIRI_ENABLE_INTERNAL == 'OFF' &&
+          steps.public-vcpkg-after.outcome == 'success' &&
+          steps.public-vcpkg-after.outputs.new-archive-count != '0' &&
+          github.event_name == 'pull_request' &&
+          github.event.pull_request.head.repo.full_name == github.repository &&
+          github.actor != 'dependabot[bot]'
+        uses: actions/cache/save@v6
+        with:
+          path: ${{ runner.temp }}/vcpkg-public-archives
+          key: ${{ steps.public-vcpkg-family.outputs.family }}-${{ github.run_id }}-${{ github.run_attempt }}
       - name: Install and execute real gameplay with XCUITest
         run: |
           set -euo pipefail
@@ -403,6 +474,8 @@ jobs:
       AETHERKIRI_ENABLE_INTERNAL: OFF
       AETHERKIRI_RENPY_IOS_DEVICE_GLES: ON
       AETHERKIRI_VCPKG_CACHE_WRITE: 'false'
+      VCPKG_PUBLIC_CACHE_SDK: iphoneos
+      VCPKG_PUBLIC_CACHE_TRIPLET: arm64-ios
       GODOT_RELEASE: 4.7.2-stable
       GODOT_TEMPLATE_VERSION: 4.7.2.stable
       JOBS: '3'
@@ -497,7 +570,46 @@ jobs:
           bash .devtools/vcpkg/bootstrap-vcpkg.sh -disableMetrics
           echo "VCPKG_ROOT=$GITHUB_WORKSPACE/.devtools/vcpkg" >> "$GITHUB_ENV"
           bash .github/scripts/configure-vcpkg-binary-cache.sh "$GITHUB_WORKSPACE/.devtools/vcpkg/vcpkg"
+      - name: Exercise the real files provider and hostile archive validation
+        run: |
+          set -euo pipefail
+          python3 tools/test_ios_public_vcpkg_cache.py \
+            --vcpkg-root "$VCPKG_ROOT" --cmake "$(command -v cmake)" --ninja "$(command -v ninja)" \
+            --output-dir "$RUNNER_TEMP/vcpkg-public-provider-regression"
+      - name: Identify public dependency archives with the actual Apple tools
+        id: public-vcpkg-family
+        run: |
+          set -euo pipefail
+          # This runs after the normal NuGet read configuration has reached
+          # GITHUB_ENV. Add only successful public package ZIP writes locally.
+          case "$VCPKG_BINARY_SOURCES" in
+            clear\;nuget,*\,read) ;;
+            *) echo 'The existing NuGet read provider is required.' >&2; exit 1 ;;
+          esac
+          family="$(python3 tools/ios_public_vcpkg_cache.py family \
+            --repository . --vcpkg-root "$VCPKG_ROOT" \
+            --sdk "$VCPKG_PUBLIC_CACHE_SDK" --triplet "$VCPKG_PUBLIC_CACHE_TRIPLET" \
+            --internal "$AETHERKIRI_ENABLE_INTERNAL")"
+          [[ "$family" =~ ^ios-public-vcpkg-v1-[0-9a-f]{64}$ ]]
+          echo "family=$family" >> "$GITHUB_OUTPUT"
+          echo "VCPKG_BINARY_SOURCES=$VCPKG_BINARY_SOURCES;files,$RUNNER_TEMP/vcpkg-public-archives,readwrite" >> "$GITHUB_ENV"
+      - name: Restore a partial public dependency cache for this exact toolchain
+        uses: actions/cache/restore@v6
+        with:
+          path: ${{ runner.temp }}/vcpkg-public-archives
+          key: ${{ steps.public-vcpkg-family.outputs.family }}-${{ github.run_id }}-${{ github.run_attempt }}
+          restore-keys: ${{ steps.public-vcpkg-family.outputs.family }}-
+      - name: Validate every restored package before vcpkg can read it
+        run: |
+          set -euo pipefail
+          python3 tools/ios_public_vcpkg_cache.py validate \
+            --repository . --vcpkg-root "$VCPKG_ROOT" \
+            --sdk "$VCPKG_PUBLIC_CACHE_SDK" --triplet "$VCPKG_PUBLIC_CACHE_TRIPLET" \
+            --internal "$AETHERKIRI_ENABLE_INTERNAL" \
+            --cache-dir "$RUNNER_TEMP/vcpkg-public-archives" \
+            --report "$RUNNER_TEMP/vcpkg-public-before.json"
       - name: Build the genuine iPhoneOS app and unsigned IPA
+        id: public-vcpkg-app
         run: |
           set -euo pipefail
           # The existing package path invokes xcodebuild with signing disabled
@@ -506,6 +618,34 @@ jobs:
             2>&1 | tee "$RUNNER_TEMP/renpy-ios-device-build.log"
           test -s out/godot/ios/debug/Aether-Debug-Unsigned.ipa
           echo 'Unsigned iPhoneOS package built. Device signing, installation and gameplay remain unverified.'
+      - name: Validate successful package archives even when the App build fails
+        id: public-vcpkg-after
+        if: >-
+          always() && !cancelled() &&
+          steps.public-vcpkg-app.outcome != 'skipped' &&
+          steps.public-vcpkg-family.outcome == 'success'
+        run: |
+          set -euo pipefail
+          python3 tools/ios_public_vcpkg_cache.py validate \
+            --repository . --vcpkg-root "$VCPKG_ROOT" \
+            --sdk "$VCPKG_PUBLIC_CACHE_SDK" --triplet "$VCPKG_PUBLIC_CACHE_TRIPLET" \
+            --internal "$AETHERKIRI_ENABLE_INTERNAL" \
+            --cache-dir "$RUNNER_TEMP/vcpkg-public-archives" \
+            --previous-report "$RUNNER_TEMP/vcpkg-public-before.json" \
+            --report "$RUNNER_TEMP/vcpkg-public-after.json" --github-output "$GITHUB_OUTPUT"
+      - name: Save newly built public packages before later gameplay checks
+        if: >-
+          always() && !cancelled() &&
+          env.AETHERKIRI_ENABLE_INTERNAL == 'OFF' &&
+          steps.public-vcpkg-after.outcome == 'success' &&
+          steps.public-vcpkg-after.outputs.new-archive-count != '0' &&
+          github.event_name == 'pull_request' &&
+          github.event.pull_request.head.repo.full_name == github.repository &&
+          github.actor != 'dependabot[bot]'
+        uses: actions/cache/save@v6
+        with:
+          path: ${{ runner.temp }}/vcpkg-public-archives
+          key: ${{ steps.public-vcpkg-family.outputs.family }}-${{ github.run_id }}-${{ github.run_attempt }}
       - name: Preserve genuine device build and linkage evidence
         if: always()
         uses: actions/upload-artifact@v6

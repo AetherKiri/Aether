@@ -103,6 +103,15 @@ copy operations and Open3DGC constructor checks. This catches both ownership
 and current compiler problems before the complete device/Simulator build.
 Host execution does not establish iOS target compilation or gameplay.
 
+`0012-freetype-host-tools.patch` builds FreeType's `apinames` export generator
+with a separate native compiler. On Darwin its wrapper explicitly selects the
+macOS target and selected Xcode macOS SDK, clearing cross deployment settings
+only for that child. Both FreeType recipes override the host tool's make and
+install variables while retaining the target compiler and flags. The genuine
+FreeType task regression checks executed export generation and every archive
+object's CPU and platform; it does not execute target libraries or gameplay.
+See [the regression instructions](../../../../../tools/renpy_freetype_acceptance/README.md).
+
 `renpy_mobile_lifecycle.c` owns the copied host callback table and the borrowed
 frame byte storage. It invokes the full cooperative Python entrypoints,
 preserves pointer/key/text actions, publishes renderer screenshots and

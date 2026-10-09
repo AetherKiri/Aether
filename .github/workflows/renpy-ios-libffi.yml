@@ -1,0 +1,73 @@
+name: Ren'Py actual iOS libffi regression
+
+# The same genuine regression also gates the full iOS source build. Run it
+# independently so a prior long source build cannot hide a target SDK error.
+# This job never builds, installs or exercises the Ren'Py application.
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/renpy-ios-libffi.yml'
+      - 'tools/test_renpy_mobile_ios_libffi.py'
+      - 'bridge/renpy_runtime/mobile_launcher/patches/native/0006-ios-offscreen-renderer.patch'
+      - 'bridge/renpy_runtime/mobile_launcher/patches/native/0007-darwin-ios-build.patch'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: renpy-ios-libffi-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  libffi:
+    name: Compile and link external ffi with the actual iOS SDKs
+    runs-on: macos-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - name: Record the selected SDKs and provision ordinary build tools
+        run: |
+          set -euo pipefail
+          xcodebuild -version
+          for sdk in macosx iphoneos iphonesimulator; do
+            xcrun --sdk "$sdk" --show-sdk-path
+            xcrun --sdk "$sdk" --show-sdk-version
+          done
+          brew install autoconf autoconf-archive automake libtool ccache python@3.12
+          echo "$(brew --prefix python@3.12)/libexec/bin" >> "$GITHUB_PATH"
+          echo "LIBTOOLIZE=glibtoolize" >> "$GITHUB_ENV"
+      - name: Fetch only the pinned public Python and libffi build sources
+        run: |
+          set -euo pipefail
+          source_root="$RUNNER_TEMP/renpy-libffi-source"
+          git clone --depth=1 --filter=blob:none --no-checkout https://github.com/renpy/renpy-build.git "$source_root"
+          git -C "$source_root" sparse-checkout init --no-cone
+          git -C "$source_root" sparse-checkout set --no-cone \
+            /renpybuild/ /tasks/ /patches/ /source/Python-3.12.8.tar.xz \
+            /source/libffi-3.4.5.tar.gz /source/Python-3.12.8-Setup.stdlib /tools/cmake_build_variables.cmake
+          git -C "$source_root" fetch --depth=1 origin 7bfab40c1174f622f644b24669afd5fb167fbb79
+          git -C "$source_root" checkout --detach 7bfab40c1174f622f644b24669afd5fb167fbb79
+          test "$(git -C "$source_root" rev-parse HEAD)" = 7bfab40c1174f622f644b24669afd5fb167fbb79
+          python3 -m venv "$RUNNER_TEMP/renpy-libffi-venv"
+          "$RUNNER_TEMP/renpy-libffi-venv/bin/python" -m pip install Cython==3.2.4 Jinja2==3.1.6 requests==2.32.3
+      - name: Execute real host and two target SDK configure and link checks
+        run: |
+          set -euo pipefail
+          "$RUNNER_TEMP/renpy-libffi-venv/bin/python" tools/test_renpy_mobile_ios_libffi.py \
+            "$RUNNER_TEMP/renpy-libffi-source" --cython "$RUNNER_TEMP/renpy-libffi-venv/bin/cython" \
+            --output-dir "$RUNNER_TEMP/renpy-libffi-results" \
+            2>&1 | tee "$RUNNER_TEMP/renpy-libffi-regression.log"
+      - name: Preserve new regression results
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: renpy-ios-libffi-regression
+          path: |
+            ${{ runner.temp }}/renpy-libffi-results/*.json
+            ${{ runner.temp }}/renpy-libffi-results/*.map
+            ${{ runner.temp }}/renpy-libffi-regression.log
+          if-no-files-found: warn
+          retention-days: 7

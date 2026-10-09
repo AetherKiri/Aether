@@ -1,0 +1,63 @@
+diff --git a/tasks/librenpy.py b/tasks/librenpy.py
+--- a/tasks/librenpy.py
++++ b/tasks/librenpy.py
+@@ -24,7 +24,7 @@ def build(c: Context):
+     if c.platform == "web" and c.python == "2":
+         return
+ 
+-    c.env("CFLAGS", """{{ CFLAGS }} "-I{{ renpy }}/src" "-I{{renpy}}/tmp/gen3" """)
+-    c.env("CXXFLAGS", """{{ CXXFLAGS }} "-I{{ renpy }}/src" "-I{{renpy}}/tmp/gen3" """)
++    c.env("CFLAGS", """{{ CFLAGS }} "-I{{ renpy }}/src" "-I{{renpy}}/tmp/gen3-static" "-I{{renpy}}/tmp/gen3" """)
++    c.env("CXXFLAGS", """{{ CXXFLAGS }} "-I{{ renpy }}/src" "-I{{renpy}}/tmp/gen3-static" "-I{{renpy}}/tmp/gen3" """)
+ 
+     gen = "gen3-static/"
+diff --git a/tasks/renpython.py b/tasks/renpython.py
+index 114bc33..3bf1a3a 100644
+--- a/tasks/renpython.py
++++ b/tasks/renpython.py
+@@ -41,6 +41,20 @@ def build_android(c: Context):
+     """)
+ 
+ 
++@task(kind="python", always=True, platforms="android,ios", pythons="3")
++def build_mobile_lifecycle(c: Context):
++    # Compile for every target, including each iOS simulator architecture.
++    c.run("""
++    {{ CC }} {{ CFLAGS }}
++    -c -o renpy_mobile_lifecycle.o {{ runtime }}/renpy_mobile_lifecycle.c
++    """)
++    c.run("""
++    {{ CXX }} {{ CXXFLAGS }} -std=c++11
++    -I{{ runtime }}/greenlet
++    -c -o aether_greenlet.o {{ runtime }}/greenlet/greenlet.cpp
++    """)
++
++
+ @task(kind="python", always=True, platforms="linux")
+ def link_linux(c: Context):
+ 
+@@ -130,6 +144,7 @@ def link_android(c: Context):
+ 
+     -o librenpython.so
+     librenpython_android.o
++    renpy_mobile_lifecycle.o aether_greenlet.o
+ 
+     -lrenpy
+     -l{{ pythonver }}
+@@ -147,6 +162,7 @@ def link_android(c: Context):
+ 
+     -lGLESv1_CM
+     -lGLESv2
++    -lEGL
+ 
+     -lOpenSLES
+ 
+@@ -464,7 +480,7 @@ def link_windows(c: Context):
+ def link_ios(c: Context):
+ 
+     c.unlink("librenpython.a")
+-    c.run("""{{ AR }} -r librenpython.a librenpython.o""")
++    c.run("""{{ AR }} -r librenpython.a librenpython.o renpy_mobile_lifecycle.o aether_greenlet.o""")
+     c.run("""install -d {{install}}/lib""")
+     c.run("""install librenpython.a {{ install }}/lib""")
+ 

@@ -1,0 +1,55 @@
+diff --git a/tasks/live2d.py b/tasks/live2d.py
+--- a/tasks/live2d.py
++++ b/tasks/live2d.py
+@@ -4,8 +4,12 @@
+ 
+ @annotator
+ def annotate(c: Context):
+-    c.include("{{ install }}/cubism/Core/include")
+-    c.env("CUBISM", "{{ install }}/cubism")
++    # Basic Ren'Py games do not require the separately licensed Cubism SDK.
++    # Clear inherited CUBISM values so generation and target compilation agree.
++    c.environ.pop("CUBISM", None)
++    if c.path("{{ install }}/cubism/Core/include/Live2DCubismCore.h").is_file():
++        c.include("{{ install }}/cubism/Core/include")
++        c.env("CUBISM", "{{ install }}/cubism")
+ 
+ 
+ @task(platforms="all")
+diff --git a/tasks/librenpy.py b/tasks/librenpy.py
+--- a/tasks/librenpy.py
++++ b/tasks/librenpy.py
+@@ -45,6 +45,11 @@
+                 parts = l.split()
+ 
+                 if parts[0] == "renpy.compat.dictviews" and c.python != "2":
++                    continue
++
++                if parts[0] == "renpy.gl2.live2dmodel" and not c.path(
++                    "{{ install }}/cubism/Core/include/Live2DCubismCore.h"
++                ).is_file():
+                     continue
+ 
+                 modules.append(parts[0])
+diff --git a/tasks/pythonlib.py b/tasks/pythonlib.py
+--- a/tasks/pythonlib.py
++++ b/tasks/pythonlib.py
+@@ -200,8 +200,6 @@
+ pefile
+ ordlookup/
+ 
+-steamapi
+-
+ brotli
+ """
+ 
+@@ -214,6 +212,9 @@
+ 
+     # The list of rules.
+     rules = set(PY3_MODULES.split())
++    # Steam generation is optional and skipped when its SDK is unavailable.
++    if c.path("{{ pytmp }}/steam/steamapi.py").is_file():
++        rules.add("steamapi")
+     used_rules = set()
+ 
+     search = [

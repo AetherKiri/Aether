@@ -1,0 +1,102 @@
+diff --git a/renpybuild/freetype_host_tools.py b/renpybuild/freetype_host_tools.py
+new file mode 100644
+--- /dev/null
++++ b/renpybuild/freetype_host_tools.py
+@@ -0,0 +1,55 @@
++"""Isolate FreeType's native export generator from the target toolchain."""
++from pathlib import Path
++import re
++import shlex
++import shutil
++import subprocess
++import sys
++
++
++_CROSS_DEPLOYMENT = (
++    "IPHONEOS_DEPLOYMENT_TARGET", "TVOS_DEPLOYMENT_TARGET",
++    "WATCHOS_DEPLOYMENT_TARGET", "XROS_DEPLOYMENT_TARGET",
++    "DRIVERKIT_DEPLOYMENT_TARGET", "SDKROOT",
++)
++
++
++def host_make_arguments(c):
++    """Use FreeType's CC_BUILD and CCexe hooks without changing target flags."""
++    environment = dict(c.environ)
++    for variable in _CROSS_DEPLOYMENT:
++        environment.pop(variable, None)
++
++    def output(arguments):
++        return subprocess.check_output(arguments, env=environment, text=True).strip()
++
++    flags = []
++    if sys.platform == "darwin":
++        compiler = Path(output(["xcrun", "--sdk", "macosx", "--find", "clang"]))
++        sdk = Path(output(["xcrun", "--sdk", "macosx", "--show-sdk-path"])).resolve(strict=True)
++        flags = ["-isysroot", str(sdk)]
++        triple = output([str(compiler), *flags, "-dumpmachine"])
++        if not re.search(r"-apple-(?:darwin|macos)", triple):
++            raise RuntimeError("FreeType's host compiler must target native macOS: " + triple)
++        flags = ["-target", triple, *flags]
++    else:
++        selected = shutil.which("cc", path=environment.get("PATH"))
++        if not selected:
++            raise RuntimeError("FreeType requires a genuine native C compiler")
++        compiler = Path(selected)
++
++    wrapper = c.path("{{ build }}/aether-freetype-host-cc")
++    if any(character.isspace() for character in str(wrapper)):
++        raise RuntimeError("FreeType's Autoconf host compiler path must not contain whitespace")
++    wrapper.write_text(
++        "#!/bin/sh\nunset " + " ".join(_CROSS_DEPLOYMENT) + "\nexec "
++        + shlex.join([str(compiler), *flags]) + ' "$@"\n', encoding="utf-8",
++    )
++    wrapper.chmod(0o755)
++    c.env("CC_BUILD", str(wrapper))
++
++    # configure can reset CC_BUILD to CC when a target conftest runs locally.
++    # Command-line make assignments override unix-cc.mk's CCexe := assignment.
++    # apinames uses only the native C library; target include/link flags do not
++    # belong in its CCexe_CFLAGS or CCexe_LDFLAGS.
++    return shlex.join(["CCexe=" + str(wrapper), "CCexe_CFLAGS=", "CCexe_LDFLAGS="])
+diff --git a/tasks/freetype.py b/tasks/freetype.py
+--- a/tasks/freetype.py
++++ b/tasks/freetype.py
+@@ -1,5 +1,6 @@
+ from renpybuild.context import Context
+ from renpybuild.task import task, annotator
++from renpybuild.freetype_host_tools import host_make_arguments
+ 
+ version = "2.13.3"
+ 
+@@ -26,6 +27,8 @@
+     c.var("version", version)
+     c.chdir("freetype-{{version}}")
+ 
++    host_tools = host_make_arguments(c)
++
+     c.run("""{{configure}} {{ cross_config }} --disable-shared --prefix="{{ install }}" --with-harfbuzz=no""")
+-    c.run("""{{ make }}""")
+-    c.run("""make install""")
++    c.run("""{{ make }} {{ host_tools }}""", host_tools=host_tools)
++    c.run("""make install {{ host_tools }}""", host_tools=host_tools)
+diff --git a/tasks/freetypehb.py b/tasks/freetypehb.py
+--- a/tasks/freetypehb.py
++++ b/tasks/freetypehb.py
+@@ -1,5 +1,6 @@
+ from renpybuild.context import Context
+ from renpybuild.task import task, annotator
++from renpybuild.freetype_host_tools import host_make_arguments
+ 
+ version = "2.13.3"
+ 
+@@ -26,6 +27,8 @@
+     c.var("version", version)
+     c.chdir("freetype-{{version}}")
+ 
++    host_tools = host_make_arguments(c)
++
+     c.run("""{{configure}} {{ cross_config }} --disable-shared --prefix="{{ install }}" --with-harfbuzz=yes""")
+-    c.run("""{{ make }}""")
+-    c.run("""make install""")
++    c.run("""{{ make }} {{ host_tools }}""", host_tools=host_tools)
++    c.run("""make install {{ host_tools }}""", host_tools=host_tools)

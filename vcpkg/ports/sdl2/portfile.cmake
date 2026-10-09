@@ -9,6 +9,7 @@ vcpkg_from_github(
         alsa-dep-fix.patch
         cxx-linkage-pkgconfig.diff
         aetherkiri-embedded-android-jni.patch
+        aetherkiri-ios-opengles-isolation.patch
 )
 
 string(COMPARE EQUAL "${VCPKG_LIBRARY_LINKAGE}" "static" SDL_STATIC)

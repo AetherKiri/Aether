@@ -34,9 +34,12 @@ function(aetherkiri_deduce_rust_target out_triple)
         return()
     endif()
     if(IOS)
-        # CMAKE_OSX_ARCHITECTURES drives the device/simulator distinction;
-        # simulator builds may be arm64 or x86_64 depending on the host.
-        if(CMAKE_OSX_SYSROOT MATCHES "iphonesimulator")
+        # CMake resolves SDK aliases to paths for non-Xcode generators.
+        # Inspect the SDK basename, rather than a possibly misleading parent
+        # directory, and accept Apple's mixed-case/versioned SDK names.
+        get_filename_component(siglus_ios_sdk_name "${CMAKE_OSX_SYSROOT}" NAME)
+        string(TOLOWER "${siglus_ios_sdk_name}" siglus_ios_sdk_name)
+        if(siglus_ios_sdk_name MATCHES "^iphonesimulator([0-9]+([.][0-9]+)*)?([.]sdk)?$")
             if(CMAKE_OSX_ARCHITECTURES MATCHES "x86_64")
                 set(${out_triple} "x86_64-apple-ios" PARENT_SCOPE)
             else()

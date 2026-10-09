@@ -1,0 +1,100 @@
+name: Ren'Py iOS renderer
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/renpy-ios-renderer.yml'
+      - 'tools/run_renpy_ios_egl_probe.sh'
+      - 'tools/renpy_ios_egl_probe/**'
+      - 'vcpkg/ports/sdl2/**'
+      - 'bridge/renpy_runtime/mobile_launcher/patches/native/**'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: renpy-ios-renderer-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  simulator-pbuffer:
+    name: Execute MetalANGLE EGL rendering on iOS Simulator
+    runs-on: macos-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - name: Fetch the actual framework from the pinned upstream source
+        uses: actions/checkout@v6
+        with:
+          repository: renpy/renpy-build
+          ref: 7bfab40c1174f622f644b24669afd5fb167fbb79
+          path: _renpy-probe-source
+          persist-credentials: false
+      - name: Build, install and execute the actual Simulator probe
+        run: |
+          set -euo pipefail
+          bash tools/run_renpy_ios_egl_probe.sh \
+            --renpy-build "$GITHUB_WORKSPACE/_renpy-probe-source" \
+            --output "$GITHUB_WORKSPACE/out/renpy-ios-egl-probe" \
+            2>&1 | tee "$RUNNER_TEMP/renpy-ios-egl-probe.log"
+      - name: Preserve Simulator results and rendering evidence
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: renpy-ios-egl-probe
+          path: |
+            out/renpy-ios-egl-probe/evidence
+            ${{ runner.temp }}/renpy-ios-egl-probe.log
+          if-no-files-found: error
+          retention-days: 7
+      - name: Install the actual SDL configure tools
+        if: ${{ !cancelled() }}
+        run: brew install autoconf automake libtool cmake ninja
+      - name: Build and execute the patched SDL offscreen renderer
+        run: |
+          set -euo pipefail
+          export LIBTOOLIZE=glibtoolize
+          bash tools/renpy_ios_egl_probe/run_sdl_probe.sh \
+            --renpy-build "$GITHUB_WORKSPACE/_renpy-probe-source" \
+            --output "$GITHUB_WORKSPACE/out/renpy-ios-sdl-probe" \
+            2>&1 | tee "$RUNNER_TEMP/renpy-ios-sdl-probe.log"
+      - name: Preserve patched SDL execution evidence
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: renpy-ios-sdl-probe
+          path: |
+            out/renpy-ios-sdl-probe/evidence
+            ${{ runner.temp }}/renpy-ios-sdl-probe.log
+          if-no-files-found: warn
+          retention-days: 7
+      - name: Fetch the actual SDL version used by the host
+        if: ${{ !cancelled() }}
+        uses: actions/checkout@v6
+        with:
+          repository: libsdl-org/SDL
+          ref: 5d249570393f7a37e037abf22cd6012a4cc56a71
+          path: _host-sdl-probe-source
+          persist-credentials: false
+      - name: Build and execute actual UIKit SDL and MetalANGLE isolation
+        if: ${{ !cancelled() }}
+        run: |
+          set -euo pipefail
+          bash tools/renpy_ios_egl_probe/run_host_gl_probe.sh \
+            --renpy-build "$GITHUB_WORKSPACE/_renpy-probe-source" \
+            --host-sdl-source "$GITHUB_WORKSPACE/_host-sdl-probe-source" \
+            --output "$GITHUB_WORKSPACE/out/renpy-ios-host-gl-probe" \
+            2>&1 | tee "$RUNNER_TEMP/renpy-ios-host-gl-probe.log"
+      - name: Preserve actual host graphics isolation evidence
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: renpy-ios-host-gl-probe
+          path: |
+            out/renpy-ios-host-gl-probe/evidence
+            ${{ runner.temp }}/renpy-ios-host-gl-probe.log
+          if-no-files-found: warn
+          retention-days: 7

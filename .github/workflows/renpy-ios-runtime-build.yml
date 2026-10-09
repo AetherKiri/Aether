@@ -1,0 +1,739 @@
+name: Build Ren'Py iOS runtime
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/renpy-ios-runtime-build.yml'
+      - 'tools/run_renpy_mobile_source_build.sh'
+      - 'tools/apply_renpy_mobile_patch_series.py'
+      - 'tools/validate_renpy_mobile_payload.py'
+      - 'tools/test_renpy_mobile_ios_libffi.py'
+      - 'tools/test_renpy_mobile_ios_host_python.py'
+      - 'tools/test_renpy_mobile_assimp_copy.py'
+      - 'tools/test_renpy_mobile_freetype_host_tools.py'
+      - 'tools/renpy_assimp_acceptance/**'
+      - 'tools/renpy_ios_acceptance/**'
+      - 'tools/run_renpy_ios_device_acceptance.py'
+      - 'tools/patch_renpy_ios_runtime_project.py'
+      - 'tools/build_godot_ios_simulator_template.py'
+      - 'tools/test_godot_ios_simulator_template.py'
+      - 'tools/godot_ios_simulator_template/**'
+      - 'tools/build_godot_ios_device_template.py'
+      - 'tools/test_godot_ios_device_template.py'
+      - 'tools/test_renpy_ios_force_load.py'
+      - 'tools/ios_public_vcpkg_cache.py'
+      - 'tools/test_ios_public_vcpkg_cache.py'
+      - 'tools/godot_ios_device_template/**'
+      - 'scripts/build_ios.sh'
+      - 'bridge/renpy_runtime/mobile_launcher/**'
+      - 'bridge/renpy_runtime/src/**'
+      - 'apps/godot_app/**'
+  workflow_call:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: renpy-ios-source-${{ github.event.pull_request.number || github.ref }}-${{ github.workflow }}
+  cancel-in-progress: false
+
+jobs:
+  ios-test-driver:
+    name: Compile the actual XCUITest input driver
+    needs: [ios-runtime]
+    runs-on: macos-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - name: Build the Swift UI test runner with the real Simulator SDK
+        run: |
+          set -euo pipefail
+          xcodebuild build-for-testing \
+            -project tools/renpy_ios_acceptance/RenPyAcceptance.xcodeproj \
+            -scheme RenPyAcceptance -configuration Debug \
+            -destination 'generic/platform=iOS Simulator' \
+            -derivedDataPath "$RUNNER_TEMP/renpy-ui-driver" CODE_SIGN_IDENTITY=- \
+            2>&1 | tee "$RUNNER_TEMP/renpy-ui-driver-build.log"
+          echo 'Swift runner compiled; this step does not execute RenPy gameplay.'
+      - name: Preserve the actual Swift build evidence
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: renpy-ios-ui-driver-build-evidence
+          path: ${{ runner.temp }}/renpy-ui-driver-build.log
+          if-no-files-found: error
+          retention-days: 7
+
+  ios-runtime:
+    name: Compile Ren'Py with this cloud runner's Xcode SDKs
+    runs-on: macos-latest
+    timeout-minutes: 360
+    env:
+      RENPY_BUILD_ROOT: ${{ github.workspace }}/_renpy-build
+      RENPY_OUTPUT_ROOT: ${{ github.workspace }}/out/renpy-ios-source
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - name: Use Python 3.12 for payload bytecode validation on cache hits too
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+      - name: Restore a runtime compiled from these exact source inputs
+        id: runtime-cache
+        uses: actions/cache@v6
+        with:
+          path: out/renpy-ios-source
+          key: ${{ runner.os }}-${{ runner.arch }}-renpy-ios-runtime-v1-${{ hashFiles('tools/run_renpy_mobile_source_build.sh', 'tools/apply_renpy_mobile_patch_series.py', 'bridge/renpy_runtime/mobile_launcher/build.sh', 'bridge/renpy_runtime/mobile_launcher/include/renpy_mobile_launcher.h', 'bridge/renpy_runtime/mobile_launcher/patches/native/*.patch', 'bridge/renpy_runtime/mobile_launcher/patches/native/*.c', 'bridge/renpy_runtime/mobile_launcher/patches/python/*.patch') }}
+      - name: Provision native macOS prerequisites and record the actual SDKs
+        if: steps.runtime-cache.outputs.cache-hit != 'true'
+        run: |
+          set -euo pipefail
+          xcodebuild -version
+          for sdk in macosx iphoneos iphonesimulator; do
+            xcrun --sdk "$sdk" --show-sdk-path
+            xcrun --sdk "$sdk" --show-sdk-version
+          done
+          brew install autoconf autoconf-archive automake libtool pkg-config \
+            ccache cmake ninja uv python@3.12 openssl@3 xz bzip2 libffi gnu-tar coreutils
+          echo "$(brew --prefix coreutils)/libexec/gnubin" >> "$GITHUB_PATH"
+          echo "$(brew --prefix gnu-tar)/libexec/gnubin" >> "$GITHUB_PATH"
+          echo "$(brew --prefix python@3.12)/libexec/bin" >> "$GITHUB_PATH"
+          brew cleanup
+          # This isolated source-build job uses only the selected Xcode. Keep
+          # that installation and all Simulator runtimes; recover space from
+          # other preinstalled Xcode versions without copying any Apple SDK.
+          python3 - <<'PY'
+          import pathlib, shutil, subprocess
+          developer = pathlib.Path(subprocess.check_output(['xcode-select', '-p'], text=True).strip()).resolve()
+          selected = next((p for p in developer.parents if p.suffix == '.app'), None)
+          if selected is None or not (selected / 'Contents/Developer').is_dir():
+              raise SystemExit('Cannot identify the selected Xcode; no installations will be removed.')
+          for app in pathlib.Path('/Applications').glob('Xcode*.app'):
+              if app.is_symlink() or app.resolve() == selected:
+                  continue
+              if (app / 'Contents/Developer/usr/bin/xcodebuild').is_file():
+                  print('Removing unused cloud-runner installation:', app)
+                  subprocess.run(['sudo', 'rm', '-rf', str(app)], check=True)
+          PY
+          df -h "$GITHUB_WORKSPACE"
+      - name: Prepare the pinned source and all native lifecycle patches
+        if: steps.runtime-cache.outputs.cache-hit != 'true'
+        run: |
+          set -euo pipefail
+          bash tools/run_renpy_mobile_source_build.sh --mode prepare --fetch \
+            --platform ios --renpy-build "$RENPY_BUILD_ROOT" \
+            --output-dir "$RENPY_OUTPUT_ROOT" 2>&1 | tee "$RUNNER_TEMP/renpy-ios-source-prepare.log"
+          uv --project "$RENPY_BUILD_ROOT/renpy" run python -m compileall -q \
+            "$RENPY_BUILD_ROOT/renpybuild" "$RENPY_BUILD_ROOT/tasks" \
+            2>&1 | tee -a "$RUNNER_TEMP/renpy-ios-source-prepare.log"
+          uv --project "$RENPY_BUILD_ROOT/renpy" run python \
+            "$GITHUB_WORKSPACE/tools/test_renpy_mobile_libffi_cfi.py" "$RENPY_BUILD_ROOT" \
+            2>&1 | tee -a "$RUNNER_TEMP/renpy-ios-source-prepare.log"
+          uv --project "$RENPY_BUILD_ROOT/renpy" run python \
+            "$GITHUB_WORKSPACE/tools/test_renpy_mobile_metalangle_flags.py" "$RENPY_BUILD_ROOT" \
+            2>&1 | tee -a "$RUNNER_TEMP/renpy-ios-source-prepare.log"
+          uv --project "$RENPY_BUILD_ROOT/renpy" run python \
+            "$GITHUB_WORKSPACE/tools/test_renpy_mobile_ios_nis.py" "$RENPY_BUILD_ROOT" \
+            2>&1 | tee -a "$RUNNER_TEMP/renpy-ios-source-prepare.log"
+          uv --project "$RENPY_BUILD_ROOT/renpy" run python \
+            "$GITHUB_WORKSPACE/tools/test_renpy_mobile_ios_libffi.py" "$RENPY_BUILD_ROOT" \
+            2>&1 | tee -a "$RUNNER_TEMP/renpy-ios-source-prepare.log"
+          uv --project "$RENPY_BUILD_ROOT/renpy" run python \
+            "$GITHUB_WORKSPACE/tools/test_renpy_mobile_ios_host_python.py" "$RENPY_BUILD_ROOT" \
+            --renpy-src "$RENPY_BUILD_ROOT/renpy" \
+            2>&1 | tee -a "$RUNNER_TEMP/renpy-ios-source-prepare.log"
+          uv --project "$RENPY_BUILD_ROOT/renpy" run python \
+            "$GITHUB_WORKSPACE/tools/test_renpy_mobile_assimp_copy.py" "$RENPY_BUILD_ROOT" \
+            --compiler "$(xcrun --sdk macosx -f clang++)" \
+            2>&1 | tee -a "$RUNNER_TEMP/renpy-ios-source-prepare.log"
+          uv --project "$RENPY_BUILD_ROOT/renpy" run python \
+            "$GITHUB_WORKSPACE/tools/test_renpy_mobile_freetype_host_tools.py" "$RENPY_BUILD_ROOT" \
+            --output-dir "$RUNNER_TEMP/renpy-freetype-host-tools" --jobs 3 \
+            2>&1 | tee -a "$RUNNER_TEMP/renpy-ios-source-prepare.log"
+      - name: Compile target CPython, SDL, Ren'Py and device/Simulator archives
+        if: steps.runtime-cache.outputs.cache-hit != 'true'
+        run: |
+          set -euo pipefail
+          bash tools/run_renpy_mobile_source_build.sh --mode build \
+            --platform ios --renpy-build "$RENPY_BUILD_ROOT" \
+            --output-dir "$RENPY_OUTPUT_ROOT" 2>&1 | tee "$RUNNER_TEMP/renpy-ios-source-build.log"
+      - name: Validate both genuine target archives and the Python payload
+        run: |
+          set -euo pipefail
+          python3 - "$RENPY_OUTPUT_ROOT/manifest.json" <<'PY'
+          import json, sys
+          manifest = json.load(open(sys.argv[1]))
+          assert manifest['native_compilation'] == 'passed'
+          assert manifest['device_gameplay'] == 'unverified'
+          assert manifest['platform'] == 'ios'
+          assert manifest['build_source_sha'] == '7bfab40c1174f622f644b24669afd5fb167fbb79'
+          assert manifest['renpy_source_sha'] == '39895c1e017f0b36ffea2447d97eccd69d76ee1c'
+          assert manifest['greenlet_source_sha'] == '65f8da82b13a1273e55a6bfcbd1f9da09fc4eb7a'
+          PY
+          for kind in release debug; do
+            sdk=iphoneos
+            [[ "$kind" != debug ]] || sdk=iphonesimulator
+            python3 tools/validate_renpy_mobile_payload.py --platform ios --arch arm64 --sdk "$sdk" \
+              --library "$RENPY_OUTPUT_ROOT/payload/renios/prototype/prebuilt/$kind/librenpython.a" \
+              --private-root "$RENPY_OUTPUT_ROOT/payload/renios/prototype/base"
+          done
+          tar -C "$RENPY_OUTPUT_ROOT" -czf "$RUNNER_TEMP/renpy-ios-runtime.tar.gz" payload manifest.json
+      - name: Upload the real compiled runtime for the application build
+        uses: actions/upload-artifact@v6
+        with:
+          name: renpy-ios-runtime
+          path: ${{ runner.temp }}/renpy-ios-runtime.tar.gz
+          if-no-files-found: error
+          retention-days: 7
+      - name: Preserve actual source-build evidence
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: renpy-ios-source-build-evidence
+          path: |
+            ${{ runner.temp }}/renpy-ios-source-build.log
+            ${{ runner.temp }}/renpy-ios-source-prepare.log
+            _renpy-build/tmp/**/config.log
+            out/renpy-ios-source/manifest.json
+          if-no-files-found: warn
+          retention-days: 7
+
+  ios-simulator-gameplay:
+    name: Build and exercise the actual Ren'Py Simulator app
+    needs: [ios-runtime, ios-test-driver]
+    runs-on: macos-latest
+    timeout-minutes: 180
+    permissions:
+      contents: read
+      packages: read
+    env:
+      AETHERKIRI_ENABLE_RENPY: ON
+      AETHERKIRI_ENABLE_INTERNAL: OFF
+      AETHERKIRI_VCPKG_CACHE_WRITE: 'false'
+      VCPKG_PUBLIC_CACHE_SDK: iphonesimulator
+      VCPKG_PUBLIC_CACHE_TRIPLET: arm64-ios-simulator
+      GODOT_RELEASE: 4.7.2-stable
+      GODOT_TEMPLATE_VERSION: 4.7.2.stable
+      JOBS: '3'
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - name: Initialize the public application dependencies
+        run: |
+          set -euo pipefail
+          git submodule update --init --recursive --depth 1 \
+            packages/OnscripterYuri packages/psdfile packages/AetherSiglus \
+            packages/AetherMinori packages/AetherKrkr
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-ios-sim
+      - name: Install application build tools
+        run: |
+          set -euo pipefail
+          brew install cmake ninja pkg-config autoconf autoconf-archive automake \
+            libtool gettext coreutils bison nasm ccache mono python@3.12
+          echo "$(brew --prefix gettext)/bin" >> "$GITHUB_PATH"
+          echo "$(brew --prefix bison)/bin" >> "$GITHUB_PATH"
+          echo "$(brew --prefix python@3.12)/libexec/bin" >> "$GITHUB_PATH"
+          xcodebuild -version
+          xcrun --sdk iphonesimulator --show-sdk-version
+      - name: Check actual Apple archive force-loading before the full app link
+        run: |
+          python3 tools/test_renpy_ios_force_load.py --output-dir "$RUNNER_TEMP/renpy-ios-force-load"
+      - uses: actions/download-artifact@v6
+        with:
+          name: renpy-ios-runtime
+          path: ${{ runner.temp }}/renpy-ios-runtime
+      - name: Stage the genuine same-run Ren'Py payload
+        run: |
+          set -euo pipefail
+          mobile_root="$RUNNER_TEMP/renpy-ios-gameplay-runtime"
+          mkdir -p "$mobile_root"
+          tar -xzf "$RUNNER_TEMP/renpy-ios-runtime/renpy-ios-runtime.tar.gz" -C "$mobile_root"
+          echo "AETHERKIRI_RENPY_MOBILE_ROOT=$mobile_root/payload" >> "$GITHUB_ENV"
+      - name: Install the pinned Godot editor and real export templates
+        run: |
+          set -euo pipefail
+          mkdir -p .godot "$RUNNER_TEMP/godot-templates"
+          curl --fail --location --retry 3 -o "$RUNNER_TEMP/godot-macos.zip" \
+            "https://github.com/godotengine/godot-builds/releases/download/$GODOT_RELEASE/Godot_v${GODOT_RELEASE}_macos.universal.zip"
+          unzip -q "$RUNNER_TEMP/godot-macos.zip" -d .godot
+          curl --fail --location --retry 3 -o "$RUNNER_TEMP/godot-templates.tpz" \
+            "https://github.com/godotengine/godot-builds/releases/download/$GODOT_RELEASE/Godot_v${GODOT_RELEASE}_export_templates.tpz"
+          unzip -q "$RUNNER_TEMP/godot-templates.tpz" -d "$RUNNER_TEMP/godot-templates"
+          template_dir="$HOME/Library/Application Support/Godot/export_templates/$GODOT_TEMPLATE_VERSION"
+          mkdir -p "$template_dir"
+          cp -a "$RUNNER_TEMP/godot-templates/templates/." "$template_dir/"
+          echo "GODOT_BIN=$GITHUB_WORKSPACE/.godot/Godot.app/Contents/MacOS/Godot" >> "$GITHUB_ENV"
+          echo "GODOT_EXPORT_TEMPLATE=$template_dir/ios.zip" >> "$GITHUB_ENV"
+      - name: Prepare the normal vcpkg binary cache
+        env:
+          VCPKG_PACKAGES_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          git clone https://github.com/microsoft/vcpkg.git .devtools/vcpkg
+          bash .devtools/vcpkg/bootstrap-vcpkg.sh -disableMetrics
+          echo "VCPKG_ROOT=$GITHUB_WORKSPACE/.devtools/vcpkg" >> "$GITHUB_ENV"
+          bash .github/scripts/configure-vcpkg-binary-cache.sh "$GITHUB_WORKSPACE/.devtools/vcpkg/vcpkg"
+      - name: Exercise the real files provider and hostile archive validation
+        run: |
+          set -euo pipefail
+          python3 tools/test_ios_public_vcpkg_cache.py \
+            --vcpkg-root "$VCPKG_ROOT" --cmake "$(command -v cmake)" --ninja "$(command -v ninja)" \
+            --output-dir "$RUNNER_TEMP/vcpkg-public-provider-regression"
+      - name: Link the genuine complete Ren'Py framework before compiling the Godot engine
+        run: |
+          set -euo pipefail
+          bash scripts/build_ios.sh debug --simulator --simulator-arch=arm64 --renpy-framework-only
+      - name: Install the pinned Godot source build driver
+        run: |
+          set -euo pipefail
+          python3 -m venv "$RUNNER_TEMP/godot-scons"
+          "$RUNNER_TEMP/godot-scons/bin/python" -m pip install 'SCons==4.9.1'
+          python3 tools/test_godot_ios_simulator_template.py --template "$GODOT_EXPORT_TEMPLATE"
+      - name: Identify the exact public Godot source and selected Apple toolchain
+        id: godot-simulator-cache-key
+        run: |
+          set -euo pipefail
+          cache_key="$("$RUNNER_TEMP/godot-scons/bin/python" tools/build_godot_ios_simulator_template.py cache-key \
+            --input-template "$GODOT_EXPORT_TEMPLATE")"
+          [[ "$cache_key" =~ ^godot-ios-simulator-v1-[0-9a-f]{64}$ ]]
+          echo "key=$cache_key" >> "$GITHUB_OUTPUT"
+      - name: Restore only the compiled public Simulator template and its build proof
+        id: godot-simulator-cache
+        uses: actions/cache/restore@v6
+        with:
+          path: |
+            ${{ runner.temp }}/godot-arm64-simulator/ios.zip
+            ${{ runner.temp }}/godot-arm64-simulator/evidence.json
+          key: ${{ steps.godot-simulator-cache-key.outputs.key }}
+      - name: Build the missing real arm64 Godot Simulator engine and camera
+        if: steps.godot-simulator-cache.outputs.cache-hit != 'true'
+        run: |
+          set -euo pipefail
+          if ! "$RUNNER_TEMP/godot-scons/bin/python" tools/build_godot_ios_simulator_template.py build \
+            --input-template "$GODOT_EXPORT_TEMPLATE" \
+            --output-template "$RUNNER_TEMP/godot-arm64-simulator/ios.zip" \
+            --output-dir "$RUNNER_TEMP/godot-arm64-simulator" --jobs "$JOBS"; then
+            # Current compiler output only: bounded console diagnostics, no
+            # raw-log republication or environment/configuration dumps.
+            python3 - "$RUNNER_TEMP/godot-arm64-simulator/source-build.log" <<'PY'
+          import pathlib, re, sys
+          path = pathlib.Path(sys.argv[1])
+          if path.is_file():
+              content = path.read_text(errors='replace')
+              content = re.sub(r'\x1b\[[0-?]*[ -/]*[@-~]', '', content)
+              lines = content.splitlines()
+              indices = set(range(max(0, len(lines)-100), len(lines)))
+              for i, line in enumerate(lines):
+                  if re.search(r'error:|fatal error|FAILED|Error [1-9]|undefined|Traceback|No such file', line, re.I):
+                      indices.update(range(max(0, i-3), min(len(lines), i+7)))
+              excerpt = [lines[i] for i in sorted(indices)
+                         if not re.match(r'^\s*(?:export\s|declare\s|env:|Environment:|[A-Z_][A-Z0-9_]*\s*[=:])', lines[i])]
+              print('\n'.join(excerpt)[-24000:])
+          PY
+            exit 1
+          fi
+      - name: Verify actual cached or freshly built archive bytes and source identity
+        run: |
+          set -euo pipefail
+          "$RUNNER_TEMP/godot-scons/bin/python" tools/build_godot_ios_simulator_template.py verify-cache \
+            --input-template "$GODOT_EXPORT_TEMPLATE" \
+            --template "$RUNNER_TEMP/godot-arm64-simulator/ios.zip" \
+            --evidence "$RUNNER_TEMP/godot-arm64-simulator/evidence.json" \
+            --report "$RUNNER_TEMP/godot-simulator-cache-verification.json"
+          echo "GODOT_EXPORT_TEMPLATE=$RUNNER_TEMP/godot-arm64-simulator/ios.zip" >> "$GITHUB_ENV"
+      - name: Save the verified public engine before the application build
+        if: >-
+          steps.godot-simulator-cache.outputs.cache-hit != 'true' &&
+          (github.event_name != 'pull_request' ||
+          (github.event.pull_request.head.repo.full_name == github.repository && github.actor != 'dependabot[bot]'))
+        uses: actions/cache/save@v6
+        with:
+          path: |
+            ${{ runner.temp }}/godot-arm64-simulator/ios.zip
+            ${{ runner.temp }}/godot-arm64-simulator/evidence.json
+          key: ${{ steps.godot-simulator-cache-key.outputs.key }}
+      - name: Identify public dependency archives with the actual Apple tools
+        id: public-vcpkg-family
+        run: |
+          set -euo pipefail
+          # This runs after the normal NuGet read configuration has reached
+          # GITHUB_ENV. Add only successful public package ZIP writes locally.
+          case "$VCPKG_BINARY_SOURCES" in
+            clear\;nuget,*\,read) ;;
+            *) echo 'The existing NuGet read provider is required.' >&2; exit 1 ;;
+          esac
+          family="$(python3 tools/ios_public_vcpkg_cache.py family \
+            --repository . --vcpkg-root "$VCPKG_ROOT" \
+            --sdk "$VCPKG_PUBLIC_CACHE_SDK" --triplet "$VCPKG_PUBLIC_CACHE_TRIPLET" \
+            --internal "$AETHERKIRI_ENABLE_INTERNAL")"
+          [[ "$family" =~ ^ios-public-vcpkg-v1-[0-9a-f]{64}$ ]]
+          echo "family=$family" >> "$GITHUB_OUTPUT"
+          echo "VCPKG_BINARY_SOURCES=$VCPKG_BINARY_SOURCES;files,$RUNNER_TEMP/vcpkg-public-archives,readwrite" >> "$GITHUB_ENV"
+      - name: Restore a partial public dependency cache for this exact toolchain
+        uses: actions/cache/restore@v6
+        with:
+          path: ${{ runner.temp }}/vcpkg-public-archives
+          key: ${{ steps.public-vcpkg-family.outputs.family }}-${{ github.run_id }}-${{ github.run_attempt }}
+          restore-keys: ${{ steps.public-vcpkg-family.outputs.family }}-
+      - name: Validate every restored package before vcpkg can read it
+        run: |
+          set -euo pipefail
+          python3 tools/ios_public_vcpkg_cache.py validate \
+            --repository . --vcpkg-root "$VCPKG_ROOT" \
+            --sdk "$VCPKG_PUBLIC_CACHE_SDK" --triplet "$VCPKG_PUBLIC_CACHE_TRIPLET" \
+            --internal "$AETHERKIRI_ENABLE_INTERNAL" \
+            --cache-dir "$RUNNER_TEMP/vcpkg-public-archives" \
+            --report "$RUNNER_TEMP/vcpkg-public-before.json"
+      - name: Build the installable arm64 Simulator application
+        id: public-vcpkg-app
+        run: |
+          set -euo pipefail
+          bash scripts/build_ios.sh debug --simulator --simulator-arch=arm64 \
+            2>&1 | tee "$RUNNER_TEMP/renpy-ios-simulator-build.log"
+      - name: Validate successful package archives even when the App build fails
+        id: public-vcpkg-after
+        continue-on-error: true
+        if: >-
+          always() && !cancelled() &&
+          steps.public-vcpkg-app.outcome != 'skipped' &&
+          steps.public-vcpkg-family.outcome == 'success'
+        run: |
+          set -euo pipefail
+          python3 tools/ios_public_vcpkg_cache.py validate \
+            --repository . --vcpkg-root "$VCPKG_ROOT" \
+            --sdk "$VCPKG_PUBLIC_CACHE_SDK" --triplet "$VCPKG_PUBLIC_CACHE_TRIPLET" \
+            --internal "$AETHERKIRI_ENABLE_INTERNAL" \
+            --cache-dir "$RUNNER_TEMP/vcpkg-public-archives" \
+            --previous-report "$RUNNER_TEMP/vcpkg-public-before.json" \
+            --report "$RUNNER_TEMP/vcpkg-public-after.json" --github-output "$GITHUB_OUTPUT"
+      - name: Save newly built public packages before later gameplay checks
+        if: >-
+          always() && !cancelled() &&
+          env.AETHERKIRI_ENABLE_INTERNAL == 'OFF' &&
+          steps.public-vcpkg-after.outcome == 'success' &&
+          steps.public-vcpkg-after.outputs.new-archive-count != '0' &&
+          github.event_name == 'pull_request' &&
+          github.event.pull_request.head.repo.full_name == github.repository &&
+          github.actor != 'dependabot[bot]'
+        uses: actions/cache/save@v6
+        with:
+          path: ${{ runner.temp }}/vcpkg-public-archives
+          key: ${{ steps.public-vcpkg-family.outputs.family }}-${{ github.run_id }}-${{ github.run_attempt }}
+      - name: Install and execute real gameplay with XCUITest
+        run: |
+          set -euo pipefail
+          python3 tools/run_renpy_ios_device_acceptance.py --cloud-simulator \
+            --app out/godot/ios-simulator-arm64/debug/build-simulator-arm64/Aether.app \
+            --output-dir out/renpy-ios-gameplay --overall-timeout 600
+      - name: Preserve actual Simulator gameplay and build evidence
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: renpy-ios-gameplay-evidence
+          path: |
+            out/renpy-ios-gameplay
+            ${{ runner.temp }}/renpy-ios-simulator-build.log
+            ${{ runner.temp }}/godot-arm64-simulator/evidence.json
+            ${{ runner.temp }}/godot-simulator-cache-verification.json
+            ${{ runner.temp }}/renpy-ios-force-load/evidence.json
+          if-no-files-found: warn
+          retention-days: 7
+      - name: Archive the actual Simulator application preserving executable permissions
+        if: always()
+        run: |
+          set -euo pipefail
+          app=out/godot/ios-simulator-arm64/debug/build-simulator-arm64/Aether.app
+          if [[ -d "$app" ]]; then
+            ditto -c -k --sequesterRsrc --keepParent "$app" "$RUNNER_TEMP/Aether-renpy-simulator.app.zip"
+          fi
+      - name: Preserve the installable Simulator application
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: renpy-ios-simulator-app
+          path: ${{ runner.temp }}/Aether-renpy-simulator.app.zip
+          if-no-files-found: warn
+          retention-days: 7
+
+  ios-device-package:
+    name: Build the unsigned Ren'Py iPhoneOS package after Simulator gameplay
+    needs: [ios-runtime, ios-simulator-gameplay]
+    runs-on: macos-latest
+    timeout-minutes: 180
+    permissions:
+      contents: read
+      packages: read
+    env:
+      AETHERKIRI_ENABLE_RENPY: ON
+      AETHERKIRI_ENABLE_INTERNAL: OFF
+      AETHERKIRI_RENPY_IOS_DEVICE_GLES: ON
+      AETHERKIRI_VCPKG_CACHE_WRITE: 'false'
+      VCPKG_PUBLIC_CACHE_SDK: iphoneos
+      VCPKG_PUBLIC_CACHE_TRIPLET: arm64-ios
+      GODOT_RELEASE: 4.7.2-stable
+      GODOT_TEMPLATE_VERSION: 4.7.2.stable
+      JOBS: '3'
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - name: Initialize the public application dependencies
+        run: |
+          set -euo pipefail
+          git submodule update --init --recursive --depth 1 \
+            packages/OnscripterYuri packages/psdfile packages/AetherSiglus \
+            packages/AetherMinori packages/AetherKrkr
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-ios
+      - name: Install application build tools
+        run: |
+          set -euo pipefail
+          brew install cmake ninja pkg-config autoconf autoconf-archive automake \
+            libtool gettext coreutils bison nasm ccache mono python@3.12
+          echo "$(brew --prefix gettext)/bin" >> "$GITHUB_PATH"
+          echo "$(brew --prefix bison)/bin" >> "$GITHUB_PATH"
+          echo "$(brew --prefix python@3.12)/libexec/bin" >> "$GITHUB_PATH"
+          xcodebuild -version
+          xcrun --sdk iphoneos --show-sdk-version
+      - uses: actions/download-artifact@v6
+        with:
+          name: renpy-ios-runtime
+          path: ${{ runner.temp }}/renpy-ios-runtime
+      - name: Stage the genuine same-run Ren'Py payload
+        run: |
+          set -euo pipefail
+          mobile_root="$RUNNER_TEMP/renpy-ios-device-runtime"
+          mkdir -p "$mobile_root"
+          tar -xzf "$RUNNER_TEMP/renpy-ios-runtime/renpy-ios-runtime.tar.gz" -C "$mobile_root"
+          cp "$mobile_root/manifest.json" "$RUNNER_TEMP/renpy-ios-device-runtime-manifest.json"
+          echo "AETHERKIRI_RENPY_MOBILE_ROOT=$mobile_root/payload" >> "$GITHUB_ENV"
+      - name: Install the pinned Godot editor and real export templates
+        run: |
+          set -euo pipefail
+          mkdir -p .godot "$RUNNER_TEMP/godot-templates"
+          curl --fail --location --retry 3 -o "$RUNNER_TEMP/godot-macos.zip" \
+            "https://github.com/godotengine/godot-builds/releases/download/$GODOT_RELEASE/Godot_v${GODOT_RELEASE}_macos.universal.zip"
+          unzip -q "$RUNNER_TEMP/godot-macos.zip" -d .godot
+          curl --fail --location --retry 3 -o "$RUNNER_TEMP/godot-templates.tpz" \
+            "https://github.com/godotengine/godot-builds/releases/download/$GODOT_RELEASE/Godot_v${GODOT_RELEASE}_export_templates.tpz"
+          unzip -q "$RUNNER_TEMP/godot-templates.tpz" -d "$RUNNER_TEMP/godot-templates"
+          template_dir="$HOME/Library/Application Support/Godot/export_templates/$GODOT_TEMPLATE_VERSION"
+          mkdir -p "$template_dir"
+          cp -a "$RUNNER_TEMP/godot-templates/templates/." "$template_dir/"
+          echo "GODOT_BIN=$GITHUB_WORKSPACE/.godot/Godot.app/Contents/MacOS/Godot" >> "$GITHUB_ENV"
+          echo "GODOT_EXPORT_TEMPLATE=$template_dir/ios.zip" >> "$GITHUB_ENV"
+      - name: Build the real SDL3-free Godot iPhoneOS engine and camera
+        run: |
+          set -euo pipefail
+          python3 -m venv "$RUNNER_TEMP/godot-device-scons"
+          "$RUNNER_TEMP/godot-device-scons/bin/python" -m pip install 'SCons==4.9.1'
+          python3 tools/test_godot_ios_device_template.py --template "$GODOT_EXPORT_TEMPLATE" \
+            --godot "$GODOT_BIN" --output-dir "$RUNNER_TEMP/godot-device-acceptance"
+          if ! "$RUNNER_TEMP/godot-device-scons/bin/python" tools/build_godot_ios_device_template.py build \
+            --input-template "$GODOT_EXPORT_TEMPLATE" \
+            --output-template "$RUNNER_TEMP/godot-renpy-device/ios.zip" \
+            --output-dir "$RUNNER_TEMP/godot-renpy-device" --jobs "$JOBS"; then
+            # Current compiler output only: bounded diagnostics, no raw-log
+            # republication, environment dumps or additional SDK downloads.
+            python3 - "$RUNNER_TEMP/godot-renpy-device/source-build.log" <<'PY'
+          import pathlib, re, sys
+          path = pathlib.Path(sys.argv[1])
+          if path.is_file():
+              content = re.sub(r'\x1b\[[0-?]*[ -/]*[@-~]', '', path.read_text(errors='replace'))
+              lines = content.splitlines()
+              indices = set(range(max(0, len(lines)-100), len(lines)))
+              for i, line in enumerate(lines):
+                  if re.search(r'error:|fatal error|FAILED|Error [1-9]|undefined|Traceback|No such file', line, re.I):
+                      indices.update(range(max(0, i-3), min(len(lines), i+7)))
+              excerpt = [lines[i] for i in sorted(indices)
+                         if not re.match(r'^\s*(?:export\s|declare\s|env:|Environment:|[A-Z_][A-Z0-9_]*\s*[=:])', lines[i])]
+              print('\n'.join(excerpt)[-24000:])
+          PY
+            exit 1
+          fi
+          python3 tools/build_godot_ios_device_template.py verify \
+            --template "$RUNNER_TEMP/godot-renpy-device/ios.zip"
+          echo "GODOT_EXPORT_TEMPLATE=$RUNNER_TEMP/godot-renpy-device/ios.zip" >> "$GITHUB_ENV"
+      - name: Prepare the normal vcpkg binary cache
+        env:
+          VCPKG_PACKAGES_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          git clone https://github.com/microsoft/vcpkg.git .devtools/vcpkg
+          bash .devtools/vcpkg/bootstrap-vcpkg.sh -disableMetrics
+          echo "VCPKG_ROOT=$GITHUB_WORKSPACE/.devtools/vcpkg" >> "$GITHUB_ENV"
+          bash .github/scripts/configure-vcpkg-binary-cache.sh "$GITHUB_WORKSPACE/.devtools/vcpkg/vcpkg"
+      - name: Exercise the real files provider and hostile archive validation
+        run: |
+          set -euo pipefail
+          python3 tools/test_ios_public_vcpkg_cache.py \
+            --vcpkg-root "$VCPKG_ROOT" --cmake "$(command -v cmake)" --ninja "$(command -v ninja)" \
+            --output-dir "$RUNNER_TEMP/vcpkg-public-provider-regression"
+      - name: Identify public dependency archives with the actual Apple tools
+        id: public-vcpkg-family
+        run: |
+          set -euo pipefail
+          # This runs after the normal NuGet read configuration has reached
+          # GITHUB_ENV. Add only successful public package ZIP writes locally.
+          case "$VCPKG_BINARY_SOURCES" in
+            clear\;nuget,*\,read) ;;
+            *) echo 'The existing NuGet read provider is required.' >&2; exit 1 ;;
+          esac
+          family="$(python3 tools/ios_public_vcpkg_cache.py family \
+            --repository . --vcpkg-root "$VCPKG_ROOT" \
+            --sdk "$VCPKG_PUBLIC_CACHE_SDK" --triplet "$VCPKG_PUBLIC_CACHE_TRIPLET" \
+            --internal "$AETHERKIRI_ENABLE_INTERNAL")"
+          [[ "$family" =~ ^ios-public-vcpkg-v1-[0-9a-f]{64}$ ]]
+          echo "family=$family" >> "$GITHUB_OUTPUT"
+          echo "VCPKG_BINARY_SOURCES=$VCPKG_BINARY_SOURCES;files,$RUNNER_TEMP/vcpkg-public-archives,readwrite" >> "$GITHUB_ENV"
+      - name: Restore a partial public dependency cache for this exact toolchain
+        uses: actions/cache/restore@v6
+        with:
+          path: ${{ runner.temp }}/vcpkg-public-archives
+          key: ${{ steps.public-vcpkg-family.outputs.family }}-${{ github.run_id }}-${{ github.run_attempt }}
+          restore-keys: ${{ steps.public-vcpkg-family.outputs.family }}-
+      - name: Validate every restored package before vcpkg can read it
+        run: |
+          set -euo pipefail
+          python3 tools/ios_public_vcpkg_cache.py validate \
+            --repository . --vcpkg-root "$VCPKG_ROOT" \
+            --sdk "$VCPKG_PUBLIC_CACHE_SDK" --triplet "$VCPKG_PUBLIC_CACHE_TRIPLET" \
+            --internal "$AETHERKIRI_ENABLE_INTERNAL" \
+            --cache-dir "$RUNNER_TEMP/vcpkg-public-archives" \
+            --report "$RUNNER_TEMP/vcpkg-public-before.json"
+      - name: Build the genuine iPhoneOS app and unsigned IPA
+        id: public-vcpkg-app
+        run: |
+          set -euo pipefail
+          # The existing package path invokes xcodebuild with signing disabled
+          # and validates the actual app's native closure before creating IPA.
+          bash scripts/build_ios.sh debug --package-ipa \
+            2>&1 | tee "$RUNNER_TEMP/renpy-ios-device-build.log"
+          test -s out/godot/ios/debug/Aether-Debug-Unsigned.ipa
+          echo 'Unsigned iPhoneOS package built. Device signing, installation and gameplay remain unverified.'
+      - name: Validate successful package archives even when the App build fails
+        id: public-vcpkg-after
+        continue-on-error: true
+        if: >-
+          always() && !cancelled() &&
+          steps.public-vcpkg-app.outcome != 'skipped' &&
+          steps.public-vcpkg-family.outcome == 'success'
+        run: |
+          set -euo pipefail
+          python3 tools/ios_public_vcpkg_cache.py validate \
+            --repository . --vcpkg-root "$VCPKG_ROOT" \
+            --sdk "$VCPKG_PUBLIC_CACHE_SDK" --triplet "$VCPKG_PUBLIC_CACHE_TRIPLET" \
+            --internal "$AETHERKIRI_ENABLE_INTERNAL" \
+            --cache-dir "$RUNNER_TEMP/vcpkg-public-archives" \
+            --previous-report "$RUNNER_TEMP/vcpkg-public-before.json" \
+            --report "$RUNNER_TEMP/vcpkg-public-after.json" --github-output "$GITHUB_OUTPUT"
+      - name: Save newly built public packages before later gameplay checks
+        if: >-
+          always() && !cancelled() &&
+          env.AETHERKIRI_ENABLE_INTERNAL == 'OFF' &&
+          steps.public-vcpkg-after.outcome == 'success' &&
+          steps.public-vcpkg-after.outputs.new-archive-count != '0' &&
+          github.event_name == 'pull_request' &&
+          github.event.pull_request.head.repo.full_name == github.repository &&
+          github.actor != 'dependabot[bot]'
+        uses: actions/cache/save@v6
+        with:
+          path: ${{ runner.temp }}/vcpkg-public-archives
+          key: ${{ steps.public-vcpkg-family.outputs.family }}-${{ github.run_id }}-${{ github.run_attempt }}
+      - name: Preserve genuine device build and linkage evidence
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: renpy-ios-unsigned-device-build-evidence
+          path: |
+            ${{ runner.temp }}/renpy-ios-device-build.log
+            ${{ runner.temp }}/renpy-ios-device-runtime-manifest.json
+            ${{ runner.temp }}/godot-renpy-device/evidence.json
+            out/ios/debug/renpy-native/exports.txt
+            out/ios/debug/renpy-native/support-class-symbols.txt
+            out/ios/debug/renpy-native/linked-libraries.txt
+            out/ios/debug/renpy-native/host-linkage.txt
+            out/ios/debug/renpy-native/runtime-linkage.txt
+            out/godot/ios/debug/Aether/renios/renios-manifest.txt
+          if-no-files-found: warn
+          retention-days: 7
+      - name: Preserve the unsigned iPhoneOS package requiring device signing
+        uses: actions/upload-artifact@v6
+        with:
+          name: renpy-ios-device-unsigned-ipa
+          path: out/godot/ios/debug/Aether-Debug-Unsigned.ipa
+          if-no-files-found: error
+          retention-days: 7
+
+  ios-source-failure-summary:
+    name: Read a sanitized summary of this run's iOS source failure
+    needs: [ios-runtime]
+    if: always() && needs.ios-runtime.result == 'failure'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Require the existing source-build evidence from this run
+        uses: actions/download-artifact@v6
+        with:
+          name: renpy-ios-source-build-evidence
+          path: ${{ runner.temp }}/renpy-ios-source-evidence
+      - name: Read a sanitized compiler excerpt without uploading another log
+        run: |
+          set -euo pipefail
+          python3 - "$RUNNER_TEMP/renpy-ios-source-evidence" "$GITHUB_RUN_ID" "$GITHUB_SHA" <<'PY'
+          import pathlib, re, sys
+          # Read genuine compiler evidence, never configure environment dumps.
+          root = pathlib.Path(sys.argv[1])
+          logs = sorted(root.rglob('renpy-ios-source-build.log'))
+          if not logs:
+              logs = sorted(root.rglob('renpy-ios-source-prepare.log'))
+          if not logs:
+              raise SystemExit('This run has no genuine source-build or prepare log in its preserved evidence.')
+          print(f'Current iOS source failure run {sys.argv[2]}; checkout head {sys.argv[3]}.')
+          print('Scope: preserved source compiler/preparation evidence from this run; no build or gameplay is rerun or simulated.')
+          # Keep the approved renpy-build-diagnostics.yml filter and display cap.
+          # No upload step republishes the original log or creates an artifact.
+          remaining = 24000
+          for log in logs:
+              text = log.read_text(errors='replace')
+              text = re.sub(r'\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)', '', text)
+              text = re.sub(r'\x1b\[[0-?]*[ -/]*[@-~]', '', text)
+              text = re.sub(r'[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]', '', text)
+              lines = text.splitlines()
+              if not lines:
+                  raise SystemExit(f'The preserved genuine log {log.name} is empty; no compiler evidence is available.')
+              interesting = [i for i, line in enumerate(lines)
+                             if re.search(r'error:|fatal error|FAILED|Error [1-9]|undefined reference|not found|Traceback|No such file|exception|Killed|process failed|tasks failed', line, re.I)]
+              indices = set(range(max(0, len(lines)-110), len(lines)))
+              for i in interesting[-16:]:
+                  indices.update(range(max(0, i-4), min(len(lines), i+9)))
+              excerpt = []
+              for i in sorted(indices):
+                  line = lines[i]
+                  if re.match(r'^\s*(?:export\s|declare\s|env:|Environment:|(?!(?:FAILED|ERROR|FATAL|WARNING):)[A-Z_][A-Z0-9_]*\s*[=:])', line):
+                      continue
+                  if re.search(r'authorization|password|credential|secret|(?:^|[\s_])token(?:[\s_=:]|$)', line, re.I):
+                      continue
+                  line = line.replace('/Users/runner/work/Aether/Aether', '<workspace>')
+                  line = line.replace('/Users/runner/work/_temp', '<runner-temp>')
+                  excerpt.append(line[:1200])
+              summary = '\n'.join(excerpt)
+              if not summary:
+                  raise SystemExit(f'No displayable compiler evidence remains in {log.name} after filtering.')
+              print(f'Original log: {log.name}; {len(lines)} lines')
+              if len(summary) > remaining:
+                  summary = summary[-remaining:]
+              print(summary)
+              remaining -= len(summary)
+              if remaining <= 0:
+                  print('Summary reached its display limit; complete original logs remain in this run\'s existing artifact.')
+                  break
+          PY

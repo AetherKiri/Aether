@@ -111,6 +111,14 @@ option(BUILD_TOOLS "build tools execute build(exclude android ios)" ON)
 option(BUILD_ENGINE_API "build engine_api bridge shared library" ON)
 option(BUILD_GODOT_EXTENSION "build Godot GDExtension host library" ON)
 option(AETHERKIRI_ENABLE_RFVP "build the experimental native FVP runtime (requires Rust)" OFF)
+option(AETHERKIRI_ENABLE_RENPY
+       "build the opt-in Ren'Py desktop or mobile runtime provider" OFF)
+set(AETHERKIRI_RENPY_SDK_ROOT "" CACHE PATH
+    "official desktop Ren'Py SDK directory for the embedded provider")
+set(AETHERKIRI_RENPY_MOBILE_LIBRARY "" CACHE FILEPATH
+    "rebuilt host lifecycle librenpython.so/.a for the selected mobile target")
+set(AETHERKIRI_RENPY_PRIVATE_ROOT "" CACHE PATH
+    "unpacked cooperative Ren'Py Python runtime resources for mobile packaging")
 option(BUILD_GPU_BRIDGE "build legacy external GPU bridge renderer" OFF)
 option(AETHERKIRI_ENABLE_ONSCRIPTER
        "enable the bundled OnscripterYuri runtime" ON)
@@ -289,7 +297,8 @@ endif()
 # krkr2core/krkr2plugin linkage; the Godot extension host links the glue and
 # installs its engine_legacy_* surface into engine_api through the legacy
 # services table (Phase 2d link flip — engine_api itself never links it).
-if(BUILD_ENGINE_API OR AETHERKIRI_BUILD_NATIVE_ONSCRIPTER_TESTS OR AETHERKIRI_ENABLE_RFVP)
+# Build the ABI whenever a provider (including Ren'Py) needs the registry.
+if(BUILD_ENGINE_API OR AETHERKIRI_BUILD_NATIVE_ONSCRIPTER_TESTS OR AETHERKIRI_ENABLE_RFVP OR AETHERKIRI_ENABLE_RENPY)
     add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/bridge/krkr2_runtime)
     add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/abi)
 endif()
@@ -309,10 +318,14 @@ endif()
 # product platform that can register Minori.
 if(AETHERKIRI_ENABLE_MINORI AND BUILD_GODOT_EXTENSION AND
     (LINUX OR APPLE OR ANDROID OR EMSCRIPTEN))
-    add_subdirectory(${AETHERKIRI_MINORI_DIR})
+    include(cmake/AetherKiriMinori.cmake)
+    aetherkiri_add_minori_runtime("${AETHERKIRI_MINORI_DIR}")
 endif()
 if(AETHERKIRI_ENABLE_RFVP)
     add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/bridge/rfvp_runtime)
+endif()
+if(AETHERKIRI_ENABLE_RENPY)
+    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/bridge/renpy_runtime)
 endif()
 if(BUILD_GODOT_EXTENSION)
     add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/bridge/godot_extension)

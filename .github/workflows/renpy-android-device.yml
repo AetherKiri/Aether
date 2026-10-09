@@ -1,0 +1,44 @@
+name: Ren'Py Android Cloud Device
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    paths:
+      - '.github/workflows/renpy-android-device.yml'
+      - 'tools/preflight_renpy_android_device.py'
+      - 'tools/run_renpy_android_device_acceptance.py'
+      - 'apps/godot_app/scripts/renpy_mobile_acceptance.gd'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: renpy-android-device-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  cloud-device-preflight:
+    name: Boot actual official Android emulator (device availability only)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - name: Checkout device preflight
+        uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - name: Check existing KVM and boot official Android 35 x86_64
+        run: |
+          python3 tools/preflight_renpy_android_device.py \
+            --cloud-emulator --boot-timeout 480 \
+            --output-dir "${RUNNER_TEMP}/renpy-android-device-preflight"
+      - name: Preserve actual device result and logs
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: renpy-android-cloud-device-preflight
+          path: ${{ runner.temp }}/renpy-android-device-preflight
+          if-no-files-found: warn
+          retention-days: 7

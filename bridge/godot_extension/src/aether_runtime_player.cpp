@@ -1,6 +1,10 @@
 #include "engine_api.h"
 #include "engine_options.h"
 #include "engine_runtime_provider.h"
+#if defined(AETHERKIRI_WITH_RENPY)
+#include "renpy_godot_input.h"
+#include "renpy_runtime.h"
+#endif
 #if defined(AETHERKIRI_WITH_RFVP)
 #include "rfvp_runtime_provider.h"
 #endif
@@ -131,6 +135,10 @@ void aether_native_launch_file_picker_free_string(char *value);
 #if defined(__ANDROID__)
 #include <jni.h>
 #include <android/log.h>
+#if defined(AETHERKIRI_WITH_RENPY)
+#include "renpy_android_host.h"
+#include "renpy_java_boolean.h"
+#endif
 
 extern JNIEnv* krkr_GetJNIEnv();
 extern jobject krkr_GetApplicationContext();
@@ -736,6 +744,32 @@ bool AndroidJavaHasException(JavaClassWrapper *wrapper, const char *stage) {
     return false;
 }
 
+#if defined(AETHERKIRI_WITH_RENPY)
+bool AndroidLoadRenPyNativeBridge(std::string *error) {
+    // Godot's public Java wrapper already owns a valid VM/env after app
+    // setup. Java loading must precede our engine_api JNI accessors: loading
+    // a GDExtension with dlopen alone never calls engine_api's JNI_OnLoad.
+    JavaClassWrapper *wrapper = JavaClassWrapper::get_singleton();
+    if (wrapper == nullptr) {
+        *error = "Ren'Py requires Godot's Android JavaClassWrapper after app setup";
+        return false;
+    }
+    Ref<JavaClass> bridge = wrapper->wrap("org.github.krkr2.aetherkiri.RenPyMobileBridge");
+    const bool wrap_failed = AndroidJavaHasException(wrapper, "wrap RenPyMobileBridge");
+    if (bridge.is_null() || wrap_failed) {
+        *error = "Ren'Py Android host bridge is missing from the APK or could not load";
+        return false;
+    }
+    const Variant loaded = bridge->call("isNativeBridgeLoaded");
+    if (AndroidJavaHasException(wrapper, "RenPyMobileBridge.isNativeBridgeLoaded") ||
+        !renpy_mobile_runtime::AndroidJavaBooleanResultIsTrue(loaded)) {
+        *error = "Ren'Py could not load engine_api through the Android Java host bridge";
+        return false;
+    }
+    return true;
+}
+#endif
+
 Object *AndroidVariantObject(const Variant &value) {
     if (value.get_type() != Variant::OBJECT) {
         return nullptr;
@@ -1225,27 +1259,33 @@ bool AndroidRequestRuntimeStoragePermissions() {
 }
 
 bool AndroidHasExternalStoragePermission() {
-    const AndroidGodotStoragePermissionState godot_state =
-        AndroidGetGodotStoragePermissionState();
-    if (godot_state.read || godot_state.write || godot_state.manage) {
-        AK_ANDROID_LOGI("storage permission effective granted via Godot OS");
-        return true;
-    }
-
     const int sdk = AndroidGetSdkInt();
-    if (sdk > 0 && sdk < 23) {
-        return true;
-    }
-    if (sdk > 0 && sdk < 30) {
-        AK_ANDROID_LOGI(
-            "storage permission state sdk=%d read=%d write=%d effective_read=0",
-            sdk, godot_state.read ? 1 : 0, godot_state.write ? 1 : 0);
-        return false;
-    }
     if (sdk <= 0) {
         AK_ANDROID_LOGW(
             "storage permission state unavailable: Android SDK/JNI not ready");
         return false;
+    }
+    if (sdk < 23) {
+        return true;
+    }
+
+    const AndroidGodotStoragePermissionState godot_state =
+        AndroidGetGodotStoragePermissionState();
+    if (sdk < 30) {
+        const bool granted = godot_state.read || godot_state.write;
+        AK_ANDROID_LOGI(
+            "storage permission state sdk=%d read=%d write=%d effective_read=%d",
+            sdk, godot_state.read ? 1 : 0, godot_state.write ? 1 : 0,
+            granted ? 1 : 0);
+        return granted;
+    }
+
+    // On Android 11+, legacy READ/WRITE grants do not establish the broad
+    // file access needed by native game loaders. Godot reports MANAGE only
+    // when Environment.isExternalStorageManager() confirms the user's grant.
+    if (godot_state.manage) {
+        AK_ANDROID_LOGI("storage permission effective granted via Godot OS all files access");
+        return true;
     }
 
     const int java_result = AndroidHasExternalStoragePermissionViaGodotJava();
@@ -1407,11 +1447,16 @@ bool AndroidStartSettingsIntent(JNIEnv *env, jobject context, const char *action
 }
 
 bool AndroidRequestExternalStoragePermission() {
-    const AndroidGodotStoragePermissionState before =
-        AndroidGetGodotStoragePermissionState();
-    if (before.read || before.write || before.manage) {
+    if (AndroidHasExternalStoragePermission()) {
         AK_ANDROID_LOGI("storage permission already granted");
         return true;
+    }
+
+    const int sdk = AndroidGetSdkInt();
+    if (sdk <= 0) {
+        AK_ANDROID_LOGW(
+            "storage permission request unavailable: Android SDK/JNI not ready");
+        return false;
     }
 
     // Calling through Godot's OS keeps this path on the Activity that owns
@@ -1424,17 +1469,13 @@ bool AndroidRequestExternalStoragePermission() {
         AK_ANDROID_LOGI(
             "storage permission request via Godot OS dispatched=%d",
             dispatched ? 1 : 0);
-        if (dispatched) {
-            const int sdk = AndroidGetSdkInt();
-            if (sdk <= 0 || sdk < 30) {
-                return true;
-            }
+        if (dispatched && sdk < 30) {
+            return true;
         }
     }
 
-    const int sdk = AndroidGetSdkInt();
     AK_ANDROID_LOGI("storage permission request sdk=%d", sdk);
-    if (sdk > 0 && sdk < 30) {
+    if (sdk < 30) {
         return false;
     }
     if (AndroidHasExternalStoragePermission()) {
@@ -9640,6 +9681,24 @@ public:
 
         CharString path_utf8 = game_root_path.utf8();
         const String normalized_runtime = runtime_id_.strip_edges().to_lower();
+#if defined(__ANDROID__) && defined(AETHERKIRI_WITH_RENPY)
+        if (normalized_runtime == "renpy" ||
+            (normalized_runtime == "auto" &&
+             engine_probe_runtime_provider("renpy", path_utf8.get_data()) > 0)) {
+            // Bind the real Activity before async Open/first Tick. This only
+            // retains the existing host; SDL/Python still initialize on Tick.
+            std::string binding_error;
+            if (!aetherkiri::renpy::mobile::PrepareRenPyAndroidHost(
+                    AndroidLoadRenPyNativeBridge, krkr_GetJNIEnv,
+                    AndroidGetGodotActivityLocal, AndroidFindClassWithAppClassLoader,
+                    &binding_error)) {
+                AndroidBridgeLog("event=renpy_host_bind_failed error=%s", binding_error.c_str());
+                last_result_ = ResultToString(ENGINE_RESULT_INVALID_STATE);
+                last_error_ = String::utf8(binding_error.c_str());
+                return ENGINE_RESULT_INVALID_STATE;
+            }
+        }
+#endif
         artemis_logical_frame_pacing_ = normalized_runtime == "artemis" ||
             (normalized_runtime == "auto" &&
              engine_probe_runtime_provider("artemis", path_utf8.get_data()) > 0);
@@ -9932,6 +9991,24 @@ public:
         }
         update_last_error(result);
         return result;
+    }
+
+    int send_renpy_key_event(bool pressed, int godot_keycode, int modifiers,
+                            int unicode_codepoint) {
+#if defined(AETHERKIRI_WITH_RENPY)
+        if (handle_ == nullptr) return ENGINE_RESULT_INVALID_STATE;
+        if (runtime_id_ != "renpy") return ENGINE_RESULT_NOT_SUPPORTED;
+        const engine_result_t result = aetherkiri::renpy::input_mapping::SendGodotKeyEvents(
+            [this](const engine_input_event_t& event) {
+                return engine_send_input(handle_, &event);
+            }, pressed, godot_keycode, modifiers,
+            static_cast<uint32_t>(std::max(0, unicode_codepoint)));
+        update_last_error(result);
+        return result;
+#else
+        (void)pressed; (void)godot_keycode; (void)modifiers; (void)unicode_codepoint;
+        return ENGINE_RESULT_NOT_SUPPORTED;
+#endif
     }
 
     int send_text_input(const String& text) {
@@ -11510,6 +11587,9 @@ protected:
                              &AetherRuntimePlayer::send_key_event);
         ClassDB::bind_method(D_METHOD("send_text_input", "text"),
                              &AetherRuntimePlayer::send_text_input);
+        ClassDB::bind_method(D_METHOD("send_renpy_key_event", "pressed", "godot_keycode",
+                                      "modifiers", "unicode_codepoint"),
+                             &AetherRuntimePlayer::send_renpy_key_event);
         ClassDB::bind_method(D_METHOD("get_text_input_state"),
                              &AetherRuntimePlayer::get_text_input_state);
         ClassDB::bind_method(D_METHOD("send_ime_preedit", "text", "start", "length"),
@@ -12623,6 +12703,9 @@ void InitializeAetherRuntime(ModuleInitializationLevel level) {
 #endif
 #if defined(AETHERKIRI_WITH_RFVP)
     aetherkiri::rfvp::RegisterRuntimeProvider();
+#endif
+#if defined(AETHERKIRI_WITH_RENPY)
+    aetherkiri::renpy::RegisterRuntimeProvider();
 #endif
 #if defined(AETHERKIRI_WITH_SOFTPAL)
     AetherSoftPalRegisterRuntime();

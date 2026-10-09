@@ -1,0 +1,265 @@
+name: Ren'Py Android APK reproduction
+
+# Independently reproduce app packaging with an already compiled dependency.
+# The main Build workflow continues to compile the exact current source tree.
+# This pinned, expiring Actions artifact is deliberate: never silently replace
+# it with an unrelated runtime or describe it as compiled from the host HEAD.
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/renpy-android-app.yml'
+      - 'scripts/build_android.sh'
+      - 'tools/stage_renpy_android_support.sh'
+      - 'tools/inspect_renpy_android_apk.py'
+      - 'tools/prepare_renpy_android_test_export.py'
+      - 'tools/test_prepare_renpy_android_test_export.py'
+      - 'bridge/renpy_runtime/android/**'
+      - 'vcpkg/ports/libgdiplus/**'
+      - 'vcpkg/ports/ggml/**'
+      - 'tools/test_libgdiplus_cmake_relocation.py'
+      - 'tools/test_ggml_overlay_source.py'
+      - 'demos/aetherkiri-renpy/**'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+  packages: read
+
+concurrency:
+  group: renpy-android-apk-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  package:
+    name: Installable Debug APK (${{ matrix.abi }})
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    strategy:
+      fail-fast: false
+      matrix:
+        abi: [arm64-v8a, x86_64]
+    env:
+      GODOT_RELEASE: 4.7.2-stable
+      GODOT_TEMPLATE_VERSION: 4.7.2.stable
+      ANDROID_NDK_VERSION: 28.1.13356709
+      JOBS: '4'
+      AETHERKIRI_ENABLE_INTERNAL: 'OFF'
+      AETHERKIRI_ENABLE_SOFTPAL_RUNTIME: 'OFF'
+      AETHERKIRI_WITH_INTERNAL: 'false'
+      AETHERKIRI_VCPKG_CACHE_WRITE: 'false'
+      AETHERKIRI_ENABLE_RENPY: 'ON'
+      CCACHE_DIR: ${{ github.workspace }}/.ccache
+      NATIVE_RUNTIME_RUN: '37866667365'
+      NATIVE_RUNTIME_ARTIFACT: '11589199045'
+      NATIVE_RUNTIME_HEAD: '1967809558f4022aa781062bfe5a4f8e903c84d0'
+      # Keep the disposable Debug key and its data separate from an existing
+      # production installation. The build uses a copied export project.
+      AETHERKIRI_ANDROID_TEST_PACKAGE_ID: org.aetherkiri.renpy.debug
+      NATIVE_RUNTIME_DIGEST: 'sha256:08537fa4c09a84d8226c50644127ab6918290a0a09f0720c878b465bce25014c'
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          submodules: false
+          persist-credentials: false
+      - name: Verify the fixed dependency's actual compilation and provenance
+        env:
+          GH_TOKEN: ${{ github.token }}
+          HOST_PR_HEAD: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          python3 - <<'PY'
+          import json, os, pathlib, subprocess, urllib.request
+          def get(path):
+              request = urllib.request.Request('https://api.github.com/repos/AetherKiri/Aether/' + path,
+                  headers={'Authorization': 'Bearer ' + os.environ['GH_TOKEN'],
+                           'Accept': 'application/vnd.github+json', 'X-GitHub-Api-Version': '2022-11-28'})
+              with urllib.request.urlopen(request, timeout=60) as response:
+                  return json.load(response)
+          run_id = os.environ['NATIVE_RUNTIME_RUN']
+          run = get('actions/runs/' + run_id)
+          assert run['status'] == 'completed' and run['conclusion'] == 'success', 'Native source run did not pass'
+          assert run['head_sha'] == os.environ['NATIVE_RUNTIME_HEAD'], 'Native source revision differs'
+          artifact = get('actions/artifacts/' + os.environ['NATIVE_RUNTIME_ARTIFACT'])
+          assert artifact['name'] == 'renpy-android-runtime' and not artifact['expired'], 'Pinned runtime expired; update the reviewed dependency pin'
+          assert artifact['workflow_run']['id'] == int(run_id), 'Runtime came from another run'
+          assert artifact['digest'] == os.environ['NATIVE_RUNTIME_DIGEST'], 'Runtime artifact digest differs'
+          evidence = pathlib.Path(os.environ['RUNNER_TEMP']) / 'renpy-android-app-evidence'
+          evidence.mkdir()
+          provenance = {
+              'native_source_head': run['head_sha'], 'native_source_run': int(run_id),
+              'native_artifact_id': artifact['id'], 'native_artifact_digest': artifact['digest'],
+              'host_checkout_head': subprocess.check_output(['git', 'rev-parse', 'HEAD'], text=True).strip(),
+              'host_pr_head': os.environ['HOST_PR_HEAD'], 'abi': '${{ matrix.abi }}',
+              'native_compilation': 'passed', 'gameplay': 'unverified',
+              'note': 'Host and native revisions are recorded independently. The native dependency passed compilation and validation at its recorded exact commit. Gameplay remains unverified.'}
+          (evidence / 'provenance.json').write_text(json.dumps(provenance, indent=2) + '\n')
+          PY
+      - uses: actions/download-artifact@v6
+        with:
+          artifact-ids: 11589199045
+          run-id: 37866667365
+          github-token: ${{ github.token }}
+          merge-multiple: true
+          path: ${{ runner.temp }}/renpy-runtime-download
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+      - name: Validate the genuine native and private Python dependency
+        run: |
+          set -euo pipefail
+          root="$RUNNER_TEMP/renpy-runtime"
+          mkdir -p "$root"
+          tar -xzf "$RUNNER_TEMP/renpy-runtime-download/renpy-android-runtime.tar.gz" -C "$root"
+          python3 - "$root/manifest.json" <<'PY'
+          import json, sys
+          manifest = json.load(open(sys.argv[1]))
+          assert manifest['native_compilation'] == 'passed' and manifest['device_gameplay'] == 'unverified'
+          assert manifest['platform'] == 'android'
+          assert manifest['build_source_sha'] == '7bfab40c1174f622f644b24669afd5fb167fbb79'
+          assert manifest['renpy_source_sha'] == '39895c1e017f0b36ffea2447d97eccd69d76ee1c'
+          assert manifest['greenlet_source_sha'] == '65f8da82b13a1273e55a6bfcbd1f9da09fc4eb7a'
+          PY
+          python3 tools/validate_renpy_mobile_payload.py --platform android --abi '${{ matrix.abi }}' \
+            --library "$root/payload/rapt/prototype/renpyandroid/src/main/jniLibs/${{ matrix.abi }}/librenpython.so" \
+            --private-root "$root/payload/rapt/runtime/private"
+          cp "$root/manifest.json" "$RUNNER_TEMP/renpy-android-app-evidence/native-manifest.json"
+          echo "RENPY_MOBILE_ROOT=$root/payload" >> "$GITHUB_ENV"
+          echo "AETHERKIRI_RENPY_ANDROID_PRIVATE_ASSETS=$root/payload/rapt/runtime/private" >> "$GITHUB_ENV"
+      - name: Initialize public application packages
+        run: |
+          git submodule update --init --depth 1 packages/OnscripterYuri
+          git submodule update --init --recursive --depth 1 packages/psdfile
+          git submodule update --init --depth 1 packages/AetherSiglus
+          git submodule update --init --depth 1 packages/AetherMinori
+          git submodule update --init --depth 1 packages/AetherKrkr
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-linux-android,x86_64-linux-android
+          components: rust-src
+      - name: Install build tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install --no-install-recommends -y cmake ninja-build pkg-config autoconf \
+            autoconf-archive automake libtool gettext bison flex nasm curl unzip zip zstd ccache jq mono-complete
+          ccache --max-size=400M
+      - uses: actions/cache/restore@v6
+        with:
+          path: .ccache
+          key: ${{ runner.os }}-android-ccache-v2
+          restore-keys: ${{ runner.os }}-android-ccache-
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/wrapper-validation@v6
+        with:
+          allow-checksums: 2c23278a62dc9f96ab11bee897d9f53e6479d6419135e4560ce822a6431df5e5
+      - uses: gradle/actions/setup-gradle@v6
+        with:
+          validate-wrappers: false
+      - name: Download the official Godot editor and export templates
+        run: |
+          set -euo pipefail
+          mkdir -p .godot "$RUNNER_TEMP/godot-templates"
+          curl --fail --location --retry 3 -o "$RUNNER_TEMP/godot.zip" \
+            "https://github.com/godotengine/godot-builds/releases/download/${GODOT_RELEASE}/Godot_v${GODOT_RELEASE}_linux.x86_64.zip"
+          unzip -tq "$RUNNER_TEMP/godot.zip"
+          unzip -q "$RUNNER_TEMP/godot.zip" -d .godot
+          godot_bin="$(find .godot -maxdepth 1 -type f -name 'Godot*_linux.x86_64' -print -quit)"
+          test -n "$godot_bin"
+          chmod +x "$godot_bin"
+          curl --fail --location --retry 3 -o "$RUNNER_TEMP/godot-templates.tpz" \
+            "https://github.com/godotengine/godot-builds/releases/download/${GODOT_RELEASE}/Godot_v${GODOT_RELEASE}_export_templates.tpz"
+          unzip -tq "$RUNNER_TEMP/godot-templates.tpz"
+          unzip -q "$RUNNER_TEMP/godot-templates.tpz" -d "$RUNNER_TEMP/godot-templates"
+          template_dir="$HOME/.local/share/godot/export_templates/$GODOT_TEMPLATE_VERSION"
+          mkdir -p "$template_dir"
+          cp -a "$RUNNER_TEMP/godot-templates/templates/." "$template_dir/"
+          echo "GODOT_BIN=$GITHUB_WORKSPACE/$godot_bin" >> "$GITHUB_ENV"
+          echo "GODOT_TEMPLATE_DIR=$template_dir" >> "$GITHUB_ENV"
+      - name: Use the official Android SDK with existing license acceptance
+        run: |
+          set -euo pipefail
+          sdk_root="${ANDROID_HOME:-/usr/local/lib/android/sdk}"
+          test -d "$sdk_root"
+          ndk_root="$sdk_root/ndk/$ANDROID_NDK_VERSION"
+          if [[ ! -f "$ndk_root/build/cmake/android.toolchain.cmake" ]]; then
+            "$sdk_root/cmdline-tools/latest/bin/sdkmanager" --install "ndk;$ANDROID_NDK_VERSION" </dev/null
+          fi
+          test -f "$ndk_root/build/cmake/android.toolchain.cmake"
+          echo "ANDROID_HOME=$sdk_root" >> "$GITHUB_ENV"
+          echo "ANDROID_NDK_HOME=$ndk_root" >> "$GITHUB_ENV"
+      - name: Bootstrap the normal public vcpkg dependency cache
+        env:
+          VCPKG_PACKAGES_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p .devtools
+          git clone https://github.com/microsoft/vcpkg.git .devtools/vcpkg
+          .devtools/vcpkg/bootstrap-vcpkg.sh -disableMetrics
+          echo "VCPKG_ROOT=$GITHUB_WORKSPACE/.devtools/vcpkg" >> "$GITHUB_ENV"
+          bash .github/scripts/configure-vcpkg-binary-cache.sh "$GITHUB_WORKSPACE/.devtools/vcpkg/vcpkg"
+      - name: Verify package configuration survives a different build directory
+        run: |
+          set -euo pipefail
+          python3 tools/test_libgdiplus_cmake_relocation.py --vcpkg-root .devtools/vcpkg \
+            | tee "$RUNNER_TEMP/renpy-android-app-evidence/libgdiplus-relocation.log"
+      - name: Create a disposable standard Android Debug signing key
+        run: |
+          set -euo pipefail
+          key="$RUNNER_TEMP/renpy-android-debug.keystore"
+          keytool -genkeypair -keystore "$key" -storepass android -keypass android \
+            -alias androiddebugkey -keyalg RSA -keysize 2048 -validity 365 \
+            -dname 'CN=Android Debug,O=Android,C=US' -noprompt
+          echo "GODOT_ANDROID_KEYSTORE_DEBUG_PATH=$key" >> "$GITHUB_ENV"
+          echo "GODOT_ANDROID_KEYSTORE_DEBUG_USER=androiddebugkey" >> "$GITHUB_ENV"
+          echo "GODOT_ANDROID_KEYSTORE_DEBUG_PASSWORD=android" >> "$GITHUB_ENV"
+      - name: Compile the actual host and export the signed Debug APK
+        run: |
+          set -euo pipefail
+          export CMAKE_C_COMPILER_LAUNCHER=ccache CMAKE_CXX_COMPILER_LAUNCHER=ccache NDK_CCACHE=ccache
+          bash scripts/build_android.sh debug --abi='${{ matrix.abi }}' 2>&1 \
+            | tee "$RUNNER_TEMP/renpy-android-app-evidence/build.log"
+      - name: Verify the actual APK payload and Debug signature
+        run: |
+          set -euo pipefail
+          apk="out/godot/android/debug/Aether-debug.apk"
+          if [[ '${{ matrix.abi }}' == x86_64 ]]; then
+            apk="out/godot/android/x86_64/debug/Aether-emulator-debug.apk"
+          fi
+          python3 tools/validate_renpy_mobile_payload.py --platform android --abi '${{ matrix.abi }}' --apk "$apk"
+          grep -F 'renpy_runtime_mobile_provider.cpp' 'out/android/${{ matrix.abi }}/debug/compile_commands.json'
+          grep -F 'renpy_mobile_adapter.cpp' 'out/android/${{ matrix.abi }}/debug/compile_commands.json'
+          apksigner="$(find "$ANDROID_HOME/build-tools" -name apksigner -type f | sort -V | tail -1)"
+          test -x "$apksigner"
+          "$apksigner" verify --verbose --print-certs "$apk" \
+            | tee "$RUNNER_TEMP/renpy-android-app-evidence/apk-signature.txt"
+      - name: Upload the validated installable APK
+        uses: actions/upload-artifact@v6
+        with:
+          name: renpy-installable-debug-${{ matrix.abi }}
+          path: out/godot/android/**/*.apk
+          if-no-files-found: error
+          retention-days: 7
+      - name: Upload the public demo project for phone import
+        if: matrix.abi == 'arm64-v8a'
+        uses: actions/upload-artifact@v6
+        with:
+          name: renpy-demo-project
+          path: |
+            demos/aetherkiri-renpy/game
+            demos/aetherkiri-renpy/README.md
+          if-no-files-found: error
+          retention-days: 7
+      - name: Preserve real build evidence and any diagnostic APK on failure
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: renpy-android-app-evidence-${{ matrix.abi }}
+          path: |
+            ${{ runner.temp }}/renpy-android-app-evidence/**
+            out/godot/android/**/*.apk
+            out/godot/android/**/diagnostics/**
+            apps/godot_app/android/build/aether-renpy.gradle
+          if-no-files-found: warn
+          retention-days: 7

@@ -1,0 +1,51 @@
+diff --git a/tasks/sdl2.py b/tasks/sdl2.py
+index d266b21..6756b47 100644
+--- a/tasks/sdl2.py
++++ b/tasks/sdl2.py
+@@ -59,6 +59,7 @@ def build(c: Context):
+     {% endif %}
+ 
+     {% if c.platform == "android" %}
++        --enable-video-offscreen
+ 
+         --disable-oss
+         --disable-alsa
+diff --git a/patches/SDL2-2.0.20/aether-offscreen.patch b/patches/SDL2-2.0.20/aether-offscreen.patch
+new file mode 100644
+index 00000000..a94b3993
+--- /dev/null
++++ b/patches/SDL2-2.0.20/aether-offscreen.patch
+@@ -0,0 +1,33 @@
++diff --git a/src/video/offscreen/SDL_offscreenopengl.c b/src/video/offscreen/SDL_offscreenopengl.c
++index 87641520..9c0552cf 100644
++--- a/src/video/offscreen/SDL_offscreenopengl.c
+++++ b/src/video/offscreen/SDL_offscreenopengl.c
++@@ -63,2 +63,11 @@ OFFSCREEN_GL_LoadLibrary(_THIS, const char* path)
++ {
+++#ifdef __ANDROID__
+++    /* Android exposes EGL_DEFAULT_DISPLAY; device-enumeration extensions are
+++       optional. Use a private pbuffer, never the host's ANativeWindow. */
+++    int ret = SDL_EGL_LoadLibrary(_this, path, (NativeDisplayType)EGL_DEFAULT_DISPLAY, 0);
+++    if (ret != 0) return ret;
+++    _this->egl_data->is_offscreen = SDL_TRUE;
+++    _this->egl_data->egl_surfacetype = EGL_PBUFFER_BIT;
+++    return SDL_EGL_ChooseConfig(_this);
+++#else
++     int ret = SDL_EGL_LoadLibraryOnly(_this, path);
++@@ -85,2 +94,3 @@ OFFSCREEN_GL_LoadLibrary(_THIS, const char* path)
++     return 0;
+++#endif
++ }
++diff --git a/src/video/SDL_egl.c b/src/video/SDL_egl.c
++index e10cf7c7..62004e3b 100644
++--- a/src/video/SDL_egl.c
+++++ b/src/video/SDL_egl.c
++@@ -279,3 +279,7 @@ SDL_EGL_UnloadLibrary(_THIS)
++         if (_this->egl_data->egl_display) {
++-            _this->egl_data->eglTerminate(_this->egl_data->egl_display);
+++            /* The embedded host may use this same default EGLDisplay.
+++               eglTerminate would destroy its contexts and native surfaces. */
+++            if (!SDL_GetHintBoolean("AETHER_RENPY_EMBEDDED", SDL_FALSE)) {
+++                _this->egl_data->eglTerminate(_this->egl_data->egl_display);
+++            }
++             _this->egl_data->egl_display = NULL;

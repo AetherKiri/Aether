@@ -1,0 +1,315 @@
+diff --git a/patches/SDL2-2.0.20/aether-pbuffer-metalangle.patch b/patches/SDL2-2.0.20/aether-pbuffer-metalangle.patch
+new file mode 100644
+index 0000000..452e728
+--- /dev/null
++++ b/patches/SDL2-2.0.20/aether-pbuffer-metalangle.patch
+@@ -0,0 +1,185 @@
++diff --git a/configure.ac b/configure.ac
++index 3c1c6c8..3fa0bde 100644
++--- a/configure.ac
+++++ b/configure.ac
++@@ -4116,6 +4116,9 @@ case "$host" in
++         CheckDeclarationAfterStatement
++         CheckDummyVideo
++         CheckOffscreenVideo
+++        # MetalANGLE supplies EGL for the host-isolated offscreen pbuffer.
+++        # Its include directory is provided by the Ren'Py metalangle task.
+++        CheckEGL
++         CheckDiskAudio
++         CheckDummyAudio
++         CheckDLOPEN
++@@ -4146,7 +4149,9 @@ case "$host" in
++             have_joystick=yes
++         else
++             # Need this code for accelerometer as joystick support
++-            SOURCES="$SOURCES $srcdir/src/joystick/iphoneos/*.m"
+++            if test x$enable_video_offscreen != xyes; then
+++                SOURCES="$SOURCES $srcdir/src/joystick/iphoneos/*.m"
+++            fi
++         fi
++         # Set up files for the haptic library
++         #if test x$enable_haptic = xyes; then
++@@ -4185,12 +4190,16 @@ case "$host" in
++         # Set up other core UNIX files
++         SOURCES="$SOURCES $srcdir/src/core/unix/*.c"
++         # The iOS platform requires special setup.
++-        AC_DEFINE(SDL_VIDEO_DRIVER_UIKIT, 1, [ ])
+++        # An embedded offscreen build must not register SDL's UIKit classes:
+++        # Objective-C classes are process-global even across Mach-O namespaces.
+++        if test x$enable_video_offscreen != xyes; then
+++            AC_DEFINE(SDL_VIDEO_DRIVER_UIKIT, 1, [ ])
+++            SOURCES="$SOURCES $srcdir/src/video/uikit/*.m"
+++        fi
++         AC_DEFINE(SDL_VIDEO_OPENGL_ES2, 1, [ ])
++         AC_DEFINE(SDL_VIDEO_OPENGL_ES, 1, [ ])
++         AC_DEFINE(SDL_VIDEO_RENDER_OGL_ES, 1, [ ])
++         AC_DEFINE(SDL_VIDEO_RENDER_OGL_ES2, 1, [ ])
++-        SOURCES="$SOURCES $srcdir/src/video/uikit/*.m"
++         EXTRA_LDFLAGS="$EXTRA_LDFLAGS -lm -liconv -lobjc"
++         EXTRA_LDFLAGS="$EXTRA_LDFLAGS -Wl,-framework,AVFoundation"
++         EXTRA_LDFLAGS="$EXTRA_LDFLAGS -Wl,-framework,AudioToolbox"
++diff --git a/src/audio/coreaudio/SDL_coreaudio.m b/src/audio/coreaudio/SDL_coreaudio.m
++index 67d838f..0beafca 100644
++--- a/src/audio/coreaudio/SDL_coreaudio.m
+++++ b/src/audio/coreaudio/SDL_coreaudio.m
++@@ -346,6 +346,11 @@ static void interruption_end(_THIS)
++     }
++ }
++ 
+++/* Altered for the embedded Ren'Py fork: the host may have its own SDL2.
+++   CoreAudio remains enabled, but its Objective-C class cannot share a name. */
+++#if defined(METALANGLE) && defined(__IPHONEOS__)
+++#define SDLInterruptionListener AetherRenpySDLInterruptionListener
+++#endif
++ @interface SDLInterruptionListener : NSObject
++ 
++ @property (nonatomic, assign) SDL_AudioDevice *device;
++diff --git a/src/hidapi/SDL_hidapi.c b/src/hidapi/SDL_hidapi.c
++index aacff63..8d33aaf 100644
++--- a/src/hidapi/SDL_hidapi.c
+++++ b/src/hidapi/SDL_hidapi.c
++@@ -1522,8 +1522,10 @@ int SDL_hid_get_indexed_string(SDL_hid_device *device, int string_index, wchar_t
++ 
++ void SDL_hid_ble_scan(SDL_bool active)
++ {
++-#if __IPHONEOS__ || __TVOS__
+++#if !SDL_HIDAPI_DISABLED && (__IPHONEOS__ || __TVOS__)
++     hid_ble_scan(active);
+++#else
+++    (void)active;
++ #endif
++ }
++ 
++diff --git a/src/misc/ios/SDL_aetherdevice.m b/src/misc/ios/SDL_aetherdevice.m
++new file mode 100644
++index 0000000..84dae52
++--- /dev/null
+++++ b/src/misc/ios/SDL_aetherdevice.m
++@@ -0,0 +1,35 @@
+++/*
+++  Simple DirectMedia Layer
+++  Copyright (C) 1997-2022 Sam Lantinga <slouken@libsdl.org>
+++
+++  This software is provided 'as-is', without any express or implied
+++  warranty.  In no event will the authors be held liable for any damages
+++  arising from the use of this software.
+++
+++  Permission is granted to anyone to use this software for any purpose,
+++  including commercial applications, and to alter it and redistribute it
+++  freely, subject to the following restrictions:
+++
+++  1. The origin of this software must not be misrepresented; you must not
+++     claim that you wrote the original software. If you use this software
+++     in a product, an acknowledgment in the product documentation would be
+++     appreciated but is not required.
+++  2. Altered source versions must be plainly marked as such, and must not be
+++     misrepresented as being the original software.
+++  3. This notice may not be removed or altered from any source distribution.
+++*/
+++/* Altered for embedded Ren'Py: preserve the actual platform idiom query
+++ * without including UIKit video classes or creating a second UIWindow. */
+++#include "../../SDL_internal.h"
+++#include "SDL_stdinc.h"
+++
+++#if defined(__IPHONEOS__) && SDL_VIDEO_DRIVER_OFFSCREEN && !SDL_VIDEO_DRIVER_UIKIT
+++#import <UIKit/UIKit.h>
+++
+++SDL_bool SDL_IsIPad(void)
+++{
+++    @autoreleasepool {
+++        return [[UIDevice currentDevice] userInterfaceIdiom] == UIUserInterfaceIdiomPad ? SDL_TRUE : SDL_FALSE;
+++    }
+++}
+++#endif
++diff --git a/src/video/SDL_egl.c b/src/video/SDL_egl.c
++index 62004e3..9c3f2b3 100644
++--- a/src/video/SDL_egl.c
+++++ b/src/video/SDL_egl.c
++@@ -38,6 +38,9 @@
++ #include "SDL_egl_c.h"
++ #include "SDL_loadso.h"
++ #include "SDL_hints.h"
+++#if defined(METALANGLE) && defined(__IPHONEOS__)
+++#include <EGL/eglext_angle.h>
+++#endif
++ 
++ #ifdef EGL_KHR_create_context
++ /* EGL_OPENGL_ES3_BIT_KHR was added in version 13 of the extension. */
++@@ -508,6 +511,21 @@ SDL_EGL_LoadLibrary(_THIS, const char *egl_path, NativeDisplayType native_displa
++ 
++ #if !defined(__WINRT__)
++ #if !defined(SDL_VIDEO_DRIVER_VITA)
+++#if defined(METALANGLE) && defined(__IPHONEOS__)
+++    if (platform == EGL_PLATFORM_ANGLE_ANGLE) {
+++        const EGLint metal_attributes[] = {
+++            EGL_PLATFORM_ANGLE_TYPE_ANGLE, EGL_PLATFORM_ANGLE_TYPE_METAL_ANGLE, EGL_NONE
+++        };
+++        if (!_this->egl_data->eglGetPlatformDisplayEXT) {
+++            return SDL_SetError("MetalANGLE has no eglGetPlatformDisplayEXT");
+++        }
+++        _this->egl_data->egl_display = _this->egl_data->eglGetPlatformDisplayEXT(
+++            platform, (void *)(uintptr_t)native_display, metal_attributes);
+++        if (_this->egl_data->egl_display == EGL_NO_DISPLAY) {
+++            return SDL_SetError("Could not create MetalANGLE Metal pbuffer display");
+++        }
+++    } else
+++#endif
++     if (platform) {
++         /* EGL 1.5 allows querying for client version with EGL_NO_DISPLAY
++          * --
++diff --git a/src/video/offscreen/SDL_offscreenopengl.c b/src/video/offscreen/SDL_offscreenopengl.c
++index 9c0552c..e8f87a7 100644
++--- a/src/video/offscreen/SDL_offscreenopengl.c
+++++ b/src/video/offscreen/SDL_offscreenopengl.c
++@@ -26,6 +26,9 @@
++ #include "SDL_offscreenopengl.h"
++ 
++ #include "SDL_opengl.h"
+++#if defined(METALANGLE) && defined(__IPHONEOS__)
+++#include <EGL/eglext_angle.h>
+++#endif
++ 
++ int
++ OFFSCREEN_GL_SwapWindow(_THIS, SDL_Window* window)
++@@ -61,7 +64,16 @@ OFFSCREEN_GL_CreateContext(_THIS, SDL_Window* window)
++ int
++ OFFSCREEN_GL_LoadLibrary(_THIS, const char* path)
++ {
++-#ifdef __ANDROID__
+++#if defined(METALANGLE) && defined(__IPHONEOS__)
+++    /* MetalANGLE's Metal display supports pbuffer surfaces without a
+++       UIWindow, MGLLayer, or a host-owned native drawable. */
+++    int ret = SDL_EGL_LoadLibrary(_this, path, (NativeDisplayType)EGL_DEFAULT_DISPLAY,
+++                                 EGL_PLATFORM_ANGLE_ANGLE);
+++    if (ret != 0) return ret;
+++    _this->egl_data->is_offscreen = SDL_TRUE;
+++    _this->egl_data->egl_surfacetype = EGL_PBUFFER_BIT;
+++    return SDL_EGL_ChooseConfig(_this);
+++#elif defined(__ANDROID__)
++     /* Android exposes EGL_DEFAULT_DISPLAY; device-enumeration extensions are
++        optional. Use a private pbuffer, never the host's ANativeWindow. */
++     int ret = SDL_EGL_LoadLibrary(_this, path, (NativeDisplayType)EGL_DEFAULT_DISPLAY, 0);
+diff --git a/runtime/librenpython3.c b/runtime/librenpython3.c
+index 1922883..d4c1256 100644
+--- a/runtime/librenpython3.c
++++ b/runtime/librenpython3.c
+@@ -5,6 +5,10 @@
+ #include <wchar.h>
+ #include "Python.h"
+ #include "renpy_mobile_launcher.h"
++#ifdef IOS
++#include <CoreFoundation/CoreFoundation.h>
++#include <limits.h>
++#endif
+ 
+ /* Built into the same target CPython, never imported from a host wheel. */
+ PyMODINIT_FUNC PyInit__greenlet(void);
+@@ -559,6 +563,33 @@ int EXPORT launcher_main(int argc, char **argv) {
+  * This is called from the launcher executable, to start Ren'Py running.
+  */
+ /* The host provides the packaged Python home and owns the application loop. */
++#ifdef IOS
++static int aether_configure_ios_pbuffer(const renpy_mobile_host_t *host) {
++    /* Resolve the actually embedded framework. RTLD_DEFAULT may resolve GLES
++       to Apple's unrelated OpenGLES implementation when both are linked. */
++    CFURLRef frameworks = CFBundleCopyPrivateFrameworksURL(CFBundleGetMainBundle());
++    CFURLRef framework = frameworks ? CFURLCreateCopyAppendingPathComponent(
++        kCFAllocatorDefault, frameworks, CFSTR("MetalANGLE.framework"), 1) : NULL;
++    CFURLRef library = framework ? CFURLCreateCopyAppendingPathComponent(
++        kCFAllocatorDefault, framework, CFSTR("MetalANGLE"), 0) : NULL;
++    char path[PATH_MAX];
++    int valid = library && CFURLGetFileSystemRepresentation(library, 1, (UInt8 *)path, sizeof(path));
++    if (library) CFRelease(library);
++    if (framework) CFRelease(framework);
++    if (frameworks) CFRelease(frameworks);
++    if (!valid) {
++        if (host->log_utf8) host->log_utf8(host->user_data, 3,
++            "Could not resolve the embedded MetalANGLE framework for Ren'Py EGL");
++        return RENPY_MOBILE_ERROR;
++    }
++    if (setenv("SDL_VIDEO_GL_DRIVER", path, 1) || setenv("SDL_VIDEO_EGL_DRIVER", path, 1) ||
++        setenv("SDL_VIDEODRIVER", "offscreen", 1) || setenv("AETHER_RENPY_EMBEDDED", "1", 1)) {
++        return RENPY_MOBILE_ERROR;
++    }
++    return RENPY_MOBILE_OK;
++}
++#endif
++
+ int EXPORT renpy_mobile_bootstrap(const renpy_mobile_config_t *mobile_config,
+                                   const renpy_mobile_host_t *host) {
+     if (!mobile_config || !host || !mobile_config->private_root_utf8 ||
+@@ -568,6 +599,9 @@ int EXPORT renpy_mobile_bootstrap(const renpy_mobile_config_t *mobile_config,
+             "Ren'Py interpreter reuse is not implemented; restart the host application for another game session");
+         return RENPY_MOBILE_INVALID_STATE;
+     }
++#ifdef IOS
++    if (aether_configure_ios_pbuffer(host) != RENPY_MOBILE_OK) return RENPY_MOBILE_ERROR;
++#endif
+     if (PyImport_AppendInittab("_aether_greenlet", PyInit__greenlet) == -1 ||
+         PyImport_AppendInittab("_aether_host", PyInit__aether_host) == -1)
+         return RENPY_MOBILE_ERROR;
+diff --git a/tasks/metalangle.py b/tasks/metalangle.py
+index 5d4a5c9..0b30f45 100644
+--- a/tasks/metalangle.py
++++ b/tasks/metalangle.py
+@@ -5,8 +5,11 @@ from renpybuild.task import task, annotator
+ @annotator
+ def annotate(c: Context):
+     if c.platform == "ios":
+-        c.env("CFLAGS", "{{ CFLAGS }} -F {{install}} -framework MetalANGLE -DMETALANGLE")
+-        c.env("CXXFLAGS", "{{ CXXFLAGS }} -F {{install}} -framework MetalANGLE -DMETALANGLE")
++        # EGL/GLES use normal <EGL/...> includes, not framework-prefixed ones.
++        # SDL's configure must find these same headers before it enables EGL.
++        c.env("CFLAGS", "{{ CFLAGS }} -I {{install}}/MetalANGLE.framework/Headers -F {{install}} -framework MetalANGLE -DMETALANGLE")
++        c.env("CXXFLAGS", "{{ CXXFLAGS }} -I {{install}}/MetalANGLE.framework/Headers -F {{install}} -framework MetalANGLE -DMETALANGLE")
++        c.env("CPPFLAGS", "{{ CPPFLAGS }} -I {{install}}/MetalANGLE.framework/Headers -DMETALANGLE")
+ 
+ @task(kind="python", platforms="ios")
+ def install(c: Context):
+diff --git a/tasks/sdl2.py b/tasks/sdl2.py
+index 6756b47..a7d5b01 100644
+--- a/tasks/sdl2.py
++++ b/tasks/sdl2.py
+@@ -58,9 +58,19 @@ def build(c: Context):
+         --disable-libdecor
+     {% endif %}
+ 
+-    {% if c.platform == "android" %}
++    {% if c.platform in ("android", "ios") %}
+         --enable-video-offscreen
++    {% endif %}
++
++    {% if c.platform == "ios" %}
++        --disable-joystick
++        --disable-sensor
++        --disable-power
++        --disable-haptic
++        --disable-hidapi
++    {% endif %}
+ 
++    {% if c.platform == "android" %}
+         --disable-oss
+         --disable-alsa
+         --disable-esd
+@@ -76,19 +86,8 @@ def build(c: Context):
+     if c.platform == "ios":
+         with open(c.path("include/SDL_config.h"), "a") as f:
+             f.write("""
+-/* Enable system power support */
+-#define SDL_POWER_UIKIT 1
+-
+-/* enable iPhone keyboard support */
+-#define SDL_IPHONE_KEYBOARD 1
+-
+-/* enable iOS extended launch screen */
+-#define SDL_IPHONE_LAUNCHSCREEN 1
+-
+-/* Set max recognized G-force from accelerometer
+-   See src/joystick/uikit/SDL_sysjoystick.m for notes on why this is needed
+- */
+-#define SDL_IPHONE_MAX_GFORCE 5.0
++/* Embedded Ren'Py uses the host's keyboard, app lifecycle and sensors.
++   SDL's UIKit window/controller classes are excluded from this build. */
+ 
+ /* enable filesystem support */
+ #define SDL_FILESYSTEM_COCOA   1

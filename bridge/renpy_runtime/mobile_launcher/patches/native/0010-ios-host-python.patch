@@ -1,0 +1,192 @@
+diff --git a/renpybuild/ios_host_python.py b/renpybuild/ios_host_python.py
+new file mode 100644
+--- /dev/null
++++ b/renpybuild/ios_host_python.py
+@@ -0,0 +1,147 @@
++"""Keep iOS build tools on the host interpreter and package only pure wheels."""
++
++from email.parser import BytesParser
++from pathlib import PurePosixPath
++import re
++import shlex
++import shutil
++import zipfile
++
++
++_NATIVE_FILE = re.compile(r"\.(?:so(?:\..*)?|dylib|pyd|dll|exe|a|o|obj|lib|bc)$", re.I)
++_NATIVE_MAGIC = (
++    b"\x7fELF", b"\xfe\xed\xfa\xce", b"\xce\xfa\xed\xfe",
++    b"\xfe\xed\xfa\xcf", b"\xcf\xfa\xed\xfe", b"\xca\xfe\xba\xbe",
++    b"\xbe\xba\xfe\xca", b"\xca\xfe\xba\xbf", b"\xbf\xba\xfe\xca",
++    b"!<arch>\n", b"!<thin>\n", b"BC\xc0\xde", b"\xde\xc0\x17\x0b", b"MZ",
++)
++# These Windows launcher resources are data in the upstream pure setuptools
++# wheel. They are not native extensions, and pythonlib excludes setuptools.
++_SETUPTOOLS_LAUNCHERS = frozenset(
++    "setuptools/" + kind + suffix + ".exe"
++    for kind in ("cli", "gui")
++    for suffix in ("", "-32", "-64", "-arm64")
++)
++
++
++def _run(c, *arguments):
++    # pip's build-backend subprocesses do not inherit the parent's -I flag.
++    # Isolate their Python paths without changing package indexes or proxies.
++    previous_environ = c.environ
++    c.environ = dict(previous_environ)
++    c.environ.pop("PYTHONHOME", None)
++    c.environ.pop("PYTHONPATH", None)
++    try:
++        c.run(shlex.join(str(argument) for argument in arguments))
++    finally:
++        c.environ = previous_environ
++
++
++def _host_tools(c):
++    return c.path("{{ install }}/aether-host-tools")
++
++
++def prepare_ios_host_python(c):
++    """Create a target-local host venv and replace the copied host executable."""
++    if c.platform != "ios":
++        raise ValueError("iOS host tools require an iOS target")
++
++    host_python = c.path("{{ host }}/bin/python3")
++    # Framework/Homebrew installs can expose only the versioned executable.
++    if not host_python.is_file():
++        host_python = c.path("{{ host }}/bin/{{ pythonver }}")
++    host_python = host_python.resolve(strict=True)
++    tools = _host_tools(c)
++    _run(c, host_python, "-I", "-m", "venv", "--clear", "--symlinks", tools)
++    tool_python = tools / "bin/python3"
++    if not tool_python.is_symlink() or tool_python.resolve(strict=True) != host_python:
++        raise RuntimeError("iOS host tools must link to the canonical host Python")
++
++    wrapper = c.path("{{ install }}/bin/hostpython3")
++    wrapper.parent.mkdir(parents=True, exist_ok=True)
++    # Unlink first so an earlier symlink cannot overwrite the canonical host.
++    if wrapper.is_symlink() or wrapper.exists():
++        wrapper.unlink()
++    wrapper.write_text(
++        "#!/bin/sh\nunset PYTHONHOME PYTHONPATH\nexec " + shlex.quote(str(tool_python)) + ' -I "$@"\n',
++        encoding="utf-8",
++    )
++    wrapper.chmod(0o755)
++
++
++def _verify_pure_wheel(path):
++    with zipfile.ZipFile(path) as archive:
++        files = archive.namelist()
++        wheel_files = [name for name in files
++                       if name.endswith(".dist-info/WHEEL") and len(PurePosixPath(name).parts) == 2]
++        if len(wheel_files) != 1:
++            raise RuntimeError("wheel must contain one WHEEL metadata file: " + str(path))
++        metadata_root = wheel_files[0].removesuffix("WHEEL")
++        wheel = BytesParser().parsebytes(archive.read(wheel_files[0]))
++        if wheel.get_all("Root-Is-Purelib") != ["true"]:
++            raise RuntimeError("iOS dependency is not pure Python: " + str(path))
++        tags = wheel.get_all("Tag", [])
++        if not tags or any(tag.split("-")[1:] != ["none", "any"] for tag in tags):
++            raise RuntimeError("iOS dependency has a native wheel tag: " + str(path))
++        if not path.name.endswith("-none-any.whl"):
++            raise RuntimeError("iOS dependency has a native wheel filename: " + str(path))
++
++        distribution = BytesParser().parsebytes(archive.read(metadata_root + "METADATA"))
++        setuptools_launchers = (
++            distribution.get("Name", "").lower() == "setuptools"
++            and distribution.get("Version") == "74.1.2"
++        )
++        for member in archive.infolist():
++            name = member.filename
++            if member.is_dir():
++                continue
++            if name.startswith("/") or ".." in PurePosixPath(name).parts:
++                raise RuntimeError("unsafe wheel member: " + name)
++            with archive.open(member) as stream:
++                header = stream.read(8)
++            if setuptools_launchers and name in _SETUPTOOLS_LAUNCHERS and header.startswith(b"MZ"):
++                continue
++            if _NATIVE_FILE.search(name) or any(header.startswith(magic) for magic in _NATIVE_MAGIC):
++                raise RuntimeError("native file in iOS dependency wheel: " + name)
++
++
++def install_ios_python_packages(c, requirements):
++    """Install the same verified pure dependencies for host tools and iOS data."""
++    if c.platform != "ios":
++        raise ValueError("iOS pure packages require an iOS target")
++    requirements = shlex.split(requirements) if isinstance(requirements, str) else list(requirements)
++    if not requirements:
++        raise ValueError("iOS Python requirements must not be empty")
++
++    tools = _host_tools(c)
++    python = tools / "bin/python3"
++    if not python.is_file():
++        raise RuntimeError("iOS host Python has not been prepared")
++    # Python 3.12 venvs include pip, but not setuptools. Build pefile's only
++    # upstream distribution (an sdist) on the host without target compilation.
++    _run(c, python, "-I", "-m", "pip", "install", "--no-compile", "--upgrade",
++         "setuptools==74.1.2", "wheel==0.45.1")
++    wheelhouse = tools / "pure-wheels"
++    if wheelhouse.exists():
++        shutil.rmtree(wheelhouse)
++    wheelhouse.mkdir()
++    _run(c, python, "-I", "-m", "pip", "wheel", "--no-deps", "--no-build-isolation",
++         "--no-binary=pefile", "--wheel-dir", wheelhouse, "pefile==2022.5.30")
++    _run(c, python, "-I", "-m", "pip", "download", "--platform", "any",
++         "--only-binary=:all:", "--find-links", wheelhouse, "--dest", wheelhouse,
++         *requirements)
++
++    wheels = sorted(wheelhouse.glob("*.whl"))
++    if not wheels:
++        raise RuntimeError("no pure iOS dependency wheels were collected")
++    for wheel in wheels:
++        _verify_pure_wheel(wheel)
++
++    # Explicit verified wheel inputs plus --no-deps prevent either installation
++    # from resolving additional unverified or host-native distributions.
++    _run(c, python, "-I", "-m", "pip", "install", "--no-deps", "--no-compile",
++         "--upgrade", *wheels)
++    target_site = c.path("{{ install }}/lib/{{ pythonver }}/site-packages")
++    _run(c, python, "-I", "-m", "pip", "install", "--no-deps", "--no-compile",
++         "--upgrade", "--platform", "any", "--only-binary=:all:",
++         "--target", target_site, *wheels)
+diff --git a/tasks/python3.py b/tasks/python3.py
+--- a/tasks/python3.py
++++ b/tasks/python3.py
+@@ -118,7 +118,11 @@
+ 
+     c.run("""{{ make }} install""")
+ 
+-    c.copy("{{ host }}/bin/python3", "{{ install }}/bin/hostpython3")
++    if c.platform == "ios":
++        from renpybuild.ios_host_python import prepare_ios_host_python
++        prepare_ios_host_python(c)
++    else:
++        c.copy("{{ host }}/bin/python3", "{{ install }}/bin/hostpython3")
+ 
+     configurations = list(c.path("{{ host }}/lib/{{ pythonver }}").glob("_sysconfigdata_*.py"))
+     if not configurations:
+@@ -257,8 +261,7 @@
+ 
+ @task(kind="python", pythons="3", platforms="all")
+ def pip(c: Context):
+-    c.run("{{ install }}/bin/hostpython3 -s -m ensurepip")
+-    c.run("""{{ install }}/bin/hostpython3 -s -m pip install --no-compile --upgrade
++    requirements = """
+         future==1.0.0
+         six==1.16.0
+         rsa==4.9
+@@ -274,4 +277,12 @@
+         websockets==12.0
+         setuptools==74.1.2
+         pysocks==1.7.1
+-        """)
++        """
++    if c.platform == "ios":
++        from renpybuild.ios_host_python import install_ios_python_packages
++        install_ios_python_packages(c, requirements)
++        return
++
++    c.run("{{ install }}/bin/hostpython3 -s -m ensurepip")
++    c.run("""{{ install }}/bin/hostpython3 -s -m pip install --no-compile --upgrade
++        {{ requirements }}""", requirements=requirements)

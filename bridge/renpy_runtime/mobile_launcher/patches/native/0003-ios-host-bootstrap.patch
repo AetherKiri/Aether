@@ -1,0 +1,68 @@
+diff --git a/runtime/librenpython3.c b/runtime/librenpython3.c
+index 6c7e426..1922883 100644
+--- a/runtime/librenpython3.c
++++ b/runtime/librenpython3.c
+@@ -4,6 +4,12 @@
+ #include <stdlib.h>
+ #include <wchar.h>
+ #include "Python.h"
++#include "renpy_mobile_launcher.h"
++
++/* Built into the same target CPython, never imported from a host wheel. */
++PyMODINIT_FUNC PyInit__greenlet(void);
++PyMODINIT_FUNC PyInit__aether_host(void);
++
+ 
+ /**
+  * A small note on encoding: This does as much as it can in UTF-8 mode,
+@@ -552,6 +558,50 @@ int EXPORT launcher_main(int argc, char **argv) {
+ /**
+  * This is called from the launcher executable, to start Ren'Py running.
+  */
++/* The host provides the packaged Python home and owns the application loop. */
++int EXPORT renpy_mobile_bootstrap(const renpy_mobile_config_t *mobile_config,
++                                  const renpy_mobile_host_t *host) {
++    if (!mobile_config || !host || !mobile_config->private_root_utf8 ||
++        !mobile_config->game_root_utf8) return RENPY_MOBILE_INVALID_ARGUMENT;
++    if (Py_IsInitialized()) {
++        if (host->log_utf8) host->log_utf8(host->user_data, 2,
++            "Ren'Py interpreter reuse is not implemented; restart the host application for another game session");
++        return RENPY_MOBILE_INVALID_STATE;
++    }
++    if (PyImport_AppendInittab("_aether_greenlet", PyInit__greenlet) == -1 ||
++        PyImport_AppendInittab("_aether_host", PyInit__aether_host) == -1)
++        return RENPY_MOBILE_ERROR;
++    char *argv[] = { (char *)mobile_config->argv0_utf8, NULL };
++    if (!argv[0]) return RENPY_MOBILE_INVALID_ARGUMENT;
++    PyPreConfig preconfig;
++    PyPreConfig_InitIsolatedConfig(&preconfig);
++    preconfig.utf8_mode = 1;
++    preconfig.use_environment = 0;
++    PyStatus status = Py_PreInitialize(&preconfig);
++    if (PyStatus_Exception(status)) return RENPY_MOBILE_ERROR;
++    init_librenpy();
++    PyConfig_InitIsolatedConfig(&config);
++    set_renpy_platform();
++    config.user_site_directory = 0;
++    config.parse_argv = 0;
++    config.install_signal_handlers = 0;
++    status = PyConfig_SetBytesString(&config, &config.home,
++                                               mobile_config->private_root_utf8);
++    if (!PyStatus_Exception(status)) status = Py_InitializeFromConfig(&config);
++    PyConfig_Clear(&config);
++    if (PyStatus_Exception(status)) return RENPY_MOBILE_ERROR;
++    PyObject *root = PyUnicode_DecodeFSDefault(mobile_config->private_root_utf8);
++    if (!root || PyList_Insert(PySys_GetObject("path"), 0, root) == -1) {
++        Py_XDECREF(root);
++        return RENPY_MOBILE_ERROR;
++    }
++    Py_DECREF(root);
++    /* Every host ABI call reacquires the GIL. Let audio/save workers run
++       while the game stack is suspended or the application is paused. */
++    PyEval_SaveThread();
++    return RENPY_MOBILE_OK;
++}
++
+ int EXPORT launcher_main_wide(int argc, wchar_t **argv) {
+ 
+     preinitialize_wide(1, argc, argv);

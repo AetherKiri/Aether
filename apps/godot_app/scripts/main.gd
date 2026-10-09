@@ -58,10 +58,21 @@ const RUNTIME_FONT_DIR := "user://runtime_fonts"
 const RUNTIME_DEFAULT_FONT_FILE := "default.otf"
 const RUNTIME_SYMBOL_FONT_FILE := "symbols.ttf"
 const ProbeConfig = preload("res://scripts/probe_config.gd")
+const RENPY_STARTUP_TRACE_PATH := "user://renpy-device-evidence/startup.jsonl"
+const RENPY_STARTUP_TRACE_MAX_TICKS := 9007199254740991
+const RENPY_STARTUP_PHASES := [
+    "main_ready_entered", "ui_build_entered", "ui_build_ready",
+    "player_create_entered", "player_create_ready", "player_create_failed",
+    "ready_frame_pending", "ready_frame_entered",
+    "engine_initialize_entered", "engine_initialize_ready", "engine_initialize_failed",
+    "observer_create_entered", "observer_create_ready",
+    "observer_start_entered", "observer_start_returned",
+]
 const GameMetadata = preload("res://scripts/game_metadata.gd")
 const CoverIndex = preload("res://scripts/cover_index.gd")
 const VNDBCoverResolver = preload("res://scripts/vndb_cover_resolver.gd")
 const GameInputMapping = preload("res://scripts/game_input_mapping.gd")
+const RenpyKeyInput = preload("res://scripts/renpy_key_input.gd")
 const GameVirtualControls = preload("res://scripts/game_virtual_controls.gd")
 const DiagnosticSession = preload("res://scripts/diagnostic_session.gd")
 const DiagnosticLocalization = preload("res://scripts/diagnostic_localization.gd")
@@ -1823,6 +1834,7 @@ const POINTER_MOD_CANCEL := 1 << 30
 const KEY_MOD_CONTROL := 0x04
 const RUNTIME_KIRIKIRI := "kirikiri"
 const RUNTIME_ONSCRIPTER := "onscripter"
+const RUNTIME_RENPY := "renpy"
 const RUNTIME_MINORI := "minori"
 const RUNTIME_CATSYSTEM2 := "catsystem2"
 const RUNTIME_SIGLUS := "siglus"
@@ -2237,6 +2249,8 @@ var black_frame_consecutive := 0
 var black_frame_last_log_msec := 0
 var black_frame_guard_enabled := false
 var cli_probe_script := ""
+var renpy_startup_trace_run_id := ""
+var renpy_startup_trace_seq := 0
 var cli_probe_runtime_debug := false
 var verbose_render_log := false
 var diagnostics_enabled := false
@@ -2511,8 +2525,65 @@ func _detect_cli_probe_script() -> String:
             return _normalize_cli_probe_script(arg.substr("--aether-probe-script=".length()))
     if FileAccess.file_exists(ProbeConfig.debug_request_path()):
         var request := ProbeConfig.load()
+        _configure_renpy_startup_trace(request)
         return _normalize_cli_probe_script(String(request.get("probe_script", "")))
     return ""
+
+static func _renpy_startup_request_run_id(request: Dictionary) -> String:
+    if request.get("probe_script") != "res://scripts/renpy_mobile_acceptance.gd":
+        return ""
+    var candidate = request.get("run_id")
+    if not candidate is String or candidate.length() != 32:
+        return ""
+    for character in candidate:
+        if not character in "0123456789abcdef":
+            return ""
+    return candidate
+
+static func _renpy_startup_phase_row(run_id: String, seq: Variant, phase: String,
+        ticks_msec: Variant, result: Variant = null) -> Dictionary:
+    if _renpy_startup_request_run_id({"probe_script": "res://scripts/renpy_mobile_acceptance.gd",
+            "run_id": run_id}).is_empty() or phase not in RENPY_STARTUP_PHASES:
+        return {}
+    if typeof(seq) != TYPE_INT or seq < 1 or seq > 64:
+        return {}
+    if typeof(ticks_msec) != TYPE_INT or ticks_msec < 0 or ticks_msec > RENPY_STARTUP_TRACE_MAX_TICKS:
+        return {}
+    if result != null and (typeof(result) != TYPE_INT or result < -2147483648 or result > 2147483647):
+        return {}
+    var row := {"run_id": run_id, "seq": seq, "ticks_msec": ticks_msec, "phase": phase}
+    if result != null:
+        row["result"] = result
+    return row
+
+func _configure_renpy_startup_trace(request: Dictionary) -> void:
+    if not OS.is_debug_build() or OS.get_name() not in ["Android", "iOS"]:
+        return
+    renpy_startup_trace_run_id = _renpy_startup_request_run_id(request)
+    renpy_startup_trace_seq = 0
+
+func _record_renpy_startup_phase(phase: String, result: Variant = null) -> void:
+    if renpy_startup_trace_run_id.is_empty() or not OS.is_debug_build() \
+            or OS.get_name() not in ["Android", "iOS"]:
+        return
+    var row := _renpy_startup_phase_row(renpy_startup_trace_run_id,
+        renpy_startup_trace_seq + 1, phase, Time.get_ticks_msec(), result)
+    if row.is_empty():
+        return
+    var directory := ProjectSettings.globalize_path(RENPY_STARTUP_TRACE_PATH.get_base_dir())
+    if DirAccess.make_dir_recursive_absolute(directory) != OK:
+        return
+    var mode := FileAccess.WRITE if renpy_startup_trace_seq == 0 else FileAccess.READ_WRITE
+    var file := FileAccess.open(RENPY_STARTUP_TRACE_PATH, mode)
+    if file == null:
+        return
+    file.seek_end()
+    file.store_line(JSON.stringify(row))
+    file.flush()
+    var written := file.get_error() == OK
+    file.close()
+    if written:
+        renpy_startup_trace_seq += 1
 
 func _normalize_cli_probe_script(path: String) -> String:
     var normalized := path.strip_edges()
@@ -2523,6 +2594,7 @@ func _normalize_cli_probe_script(path: String) -> String:
         "res://scripts/step_render_probe.gd",
         "res://scripts/gui_render_probe.gd",
         "res://scripts/perf_input_probe.gd",
+        "res://scripts/renpy_mobile_acceptance.gd",
         "res://scripts/wa2_gui.gd",
     ]
     for item in known:
@@ -10697,6 +10769,9 @@ func _game_info_from_path(path: String) -> Dictionary:
 
 func _game_runtime_root(path: String) -> String:
     var resolved := _resolve_game_path(path)
+    var renpy_root := GameMetadata.renpy_project_root(resolved)
+    if not renpy_root.is_empty():
+        return renpy_root
     if FileAccess.file_exists(resolved):
         return resolved.get_base_dir()
     return resolved
@@ -11555,6 +11630,7 @@ func _ready() -> void:
     add_child(vndb_resolver)
     vndb_resolver.resolved.connect(_on_vndb_cover_resolved)
     cli_probe_script = _detect_cli_probe_script()
+    _record_renpy_startup_phase("main_ready_entered")
     _apply_ui_font()
     DisplayServer.window_set_flag(DisplayServer.WINDOW_FLAG_TRANSPARENT, false)
     _apply_initial_window_size()
@@ -11631,7 +11707,9 @@ func _ready() -> void:
 
     if ui_motion.get_parent() == null:
         add_child(ui_motion)
+    _record_renpy_startup_phase("ui_build_entered")
     _build_ui()
+    _record_renpy_startup_phase("ui_build_ready")
     _stage_runtime_fonts()
 
     # Scene-test preview: scheduled before the optional runtime player init
@@ -11639,8 +11717,11 @@ func _ready() -> void:
     _restore_scene_test_state()
     call_deferred("_apply_pending_scene_test")
 
+    _record_renpy_startup_phase("player_create_entered")
     if not _create_runtime_player():
+        _record_renpy_startup_phase("player_create_failed")
         return
+    _record_renpy_startup_phase("player_create_ready")
     _restore_native_translation_model_access()
     _initialize_iap()
 
@@ -11674,6 +11755,7 @@ func _ready() -> void:
     _apply_upscale_algorithm()
 
     _append_log("AetherKiri shell ready. Initializing engine...")
+    _record_renpy_startup_phase("ready_frame_pending")
     call_deferred("_finish_ready_after_first_frame")
 
 func _setup_debug_console() -> void:
@@ -11956,6 +12038,7 @@ func _switch_runtime_player(runtime_kind: String) -> bool:
     var normalized := runtime_kind
     if normalized not in [
         RUNTIME_ONSCRIPTER,
+        RUNTIME_RENPY,
         RUNTIME_MINORI,
         RUNTIME_CATSYSTEM2,
         RUNTIME_SIGLUS,
@@ -11991,6 +12074,8 @@ func _switch_runtime_player(runtime_kind: String) -> bool:
         if normalized == RUNTIME_ONSCRIPTER
         else "MinoriRust"
         if normalized == RUNTIME_MINORI
+        else "Ren'Py"
+        if normalized == RUNTIME_RENPY
         else "CatSystem2"
         if normalized == RUNTIME_CATSYSTEM2
         else "Siglus"
@@ -12614,6 +12699,7 @@ func _ensure_player_initialized() -> bool:
     var runtime_id := "auto"
     if current_player_runtime_kind in [
         RUNTIME_ONSCRIPTER,
+        RUNTIME_RENPY,
         RUNTIME_MINORI,
         RUNTIME_CATSYSTEM2,
         RUNTIME_SIGLUS,
@@ -12635,6 +12721,8 @@ func _ensure_player_initialized() -> bool:
         if current_player_runtime_kind == RUNTIME_ONSCRIPTER
         else "MinoriRust"
         if current_player_runtime_kind == RUNTIME_MINORI
+        else "Ren'Py"
+        if current_player_runtime_kind == RUNTIME_RENPY
         else "CatSystem2"
         if current_player_runtime_kind == RUNTIME_CATSYSTEM2
         else "Siglus"
@@ -12645,8 +12733,15 @@ func _ensure_player_initialized() -> bool:
 
 func _finish_ready_after_first_frame() -> void:
     await get_tree().process_frame
+    _record_renpy_startup_phase("ready_frame_entered")
 
+    _record_renpy_startup_phase("engine_initialize_entered")
     var engine_initialized := _ensure_player_initialized()
+    var engine_result: Variant = null
+    if not renpy_startup_trace_run_id.is_empty() and player != null and player.has_method("get_last_result"):
+        engine_result = player.get_last_result()
+    _record_renpy_startup_phase(
+        "engine_initialize_ready" if engine_initialized else "engine_initialize_failed", engine_result)
 
     if engine_initialized:
         _apply_backend(false)
@@ -13224,6 +13319,18 @@ func _add_scene_test_exit_chip() -> void:
 func _run_cli_script_probe() -> void:
     _write_probe_marker("cli_probe start script=%s" % cli_probe_script)
     var config := ProbeConfig.load()
+    if cli_probe_script == "res://scripts/renpy_mobile_acceptance.gd":
+        _prepare_cli_probe_view(config)
+        _record_renpy_startup_phase("observer_create_entered")
+        var acceptance := load(cli_probe_script).new() as Node
+        add_child(acceptance)
+        _record_renpy_startup_phase("observer_create_ready")
+        if OS.has_feature("ios"):
+            acceptance.connect("game_finished", _finish_ios_mobile_acceptance.bind(acceptance))
+        _record_renpy_startup_phase("observer_start_entered")
+        acceptance.start(config, player)
+        _record_renpy_startup_phase("observer_start_returned")
+        return
     var target_game_path: String = ProbeConfig.require_game_path(config)
     var requested_game_path := target_game_path
     if OS.get_name() == "iOS" and not target_game_path.is_empty():
@@ -13253,6 +13360,37 @@ func _run_cli_script_probe() -> void:
         _write_probe_marker("cli_probe unsupported script=%s" % cli_probe_script)
         printerr("unsupported probe script: %s" % cli_probe_script)
         await _probe_cleanup_and_quit(2)
+
+func _finish_ios_mobile_acceptance(native_state: Dictionary, acceptance: Node) -> void:
+    # Exercise the application's normal runtime-exit path, including its real
+    # LibraryView and existing navigation, rather than painting a test screen.
+    _return_to_library_after_runtime_exit()
+    cli_probe_script = ""
+    for _frame in range(6):
+        await get_tree().process_frame
+    await RenderingServer.frame_post_draw
+    var library := {
+        "scene_path": get_tree().current_scene.scene_file_path,
+        "script_path": get_script().resource_path,
+        "library_path": str(home_view.get_path()),
+        "shell_visible": shell_root.is_visible_in_tree(),
+        "library_visible": home_view.is_visible_in_tree(),
+        "game_view_visible": game_view.is_visible_in_tree(),
+        "route": shell_route,
+        "mode": home_library_mode,
+        "title": home_title_label.text,
+        "title_visible": home_title_label.is_visible_in_tree(),
+        "search_path": str(home_search_input.get_path()),
+        "search_visible": home_search_input.is_visible_in_tree(),
+        "viewport_size": [get_viewport_rect().size.x, get_viewport_rect().size.y],
+        "native_exited": bool(native_state.get("exited", false)),
+    }
+    var library_image := get_viewport().get_texture().get_image()
+    var evidence_dir := ProjectSettings.globalize_path("user://renpy-device-evidence")
+    var image_result := library_image.save_png(evidence_dir.path_join("production-library.png"))
+    library["image_result"] = image_result
+    acceptance.call("observe_library_return", library)
+    acceptance.queue_free()
 
 func _prepare_cli_probe_view(config: Dictionary) -> void:
     var window_size := ProbeConfig.window_size(config, Vector2i(1280, 720))
@@ -13301,12 +13439,16 @@ func _probe_open_game(config: Dictionary, target_game_path: String, backend_env:
             player.set_engine_option(String(key), String(engine_options[key]))
     var surface_size := ProbeConfig.surface_size(config)
     _write_probe_marker("probe_open_game surface=%dx%d fps_limit=%d" % [surface_size.x, surface_size.y, fps_limit])
-    var surface_result: int = int(player.set_surface_size(surface_size.x, surface_size.y))
+    var surface_result: int = ENGINE_RESULT_OK
+    # Ren'Py publishes its own frame dimensions; host resize is unsupported.
+    if runtime_kind != RUNTIME_RENPY:
+        surface_result = int(player.set_surface_size(surface_size.x, surface_size.y))
     if surface_result != ENGINE_RESULT_OK:
         _write_probe_marker("probe_open_game set_surface_failed error=%s" % player.get_last_error())
         printerr("set_surface_size failed: %s" % player.get_last_error())
         return false
-    current_surface_size = surface_size
+    if runtime_kind != RUNTIME_RENPY:
+        current_surface_size = surface_size
     game_path.text = target_game_path
     var result: int = int(player.open_game(target_game_path, true))
     if result != ENGINE_RESULT_OK:
@@ -13576,13 +13718,22 @@ func _probe_run_actions(config: Dictionary, step: int) -> int:
         elif kind == "click_stream":
             step = await _probe_run_click_stream(config, step, label, action)
             continue
+        elif kind == "wait_ms":
+            # Ren'Py starts in a separate SDK process. A frame-count-only
+            # warmup can finish before that process has initialized its
+            # renderer, so permit probes to wait on wall-clock time while
+            # continuing to pump the runtime and transport.
+            var duration_ms: int = max(0, int(action.get("duration_ms", action.get("milliseconds", 0))))
+            if not await _probe_advance_for_ms(duration_ms):
+                return -1
         elif kind == "wait" or kind == "capture":
             pass
         else:
             print("skip unknown action: %s" % kind)
             continue
 
-        var after_frames := int(action.get("after_frames", ProbeConfig.int_value(config, "after_click_frames", _runtime_int("AETHERKIRI_PROBE_AFTER_CLICK_FRAMES", 180))))
+        var default_after_frames := 0 if kind == "wait_ms" else ProbeConfig.int_value(config, "after_click_frames", _runtime_int("AETHERKIRI_PROBE_AFTER_CLICK_FRAMES", 180))
+        var after_frames := int(action.get("after_frames", default_after_frames))
         if not await _probe_advance(after_frames):
             return -1
         if bool(action.get("capture", true)):
@@ -15334,6 +15485,8 @@ func _env_vector2i(key: String, fallback: Vector2i) -> Vector2i:
 func _sync_player_surface_size(force: bool) -> void:
     if player == null:
         return
+    if active_runtime_kind == RUNTIME_RENPY:
+        return
     var target_size := _desired_render_surface_size()
     if not force and target_size == current_surface_size:
         return
@@ -15372,6 +15525,8 @@ func _sync_player_surface_size(force: bool) -> void:
     current_surface_size = target_size
 
 func _sync_game_surface_to_texture(texture_size: Vector2i) -> void:
+    if active_runtime_kind == RUNTIME_RENPY:
+        return
     if render_surface_mode != RENDER_SURFACE_MODE_GAME:
         return
     if not follow_texture_surface_size:
@@ -16351,12 +16506,15 @@ func _input(event: InputEvent) -> void:
             player.send_text_input(DisplayServer.clipboard_get())
             get_viewport().set_input_as_handled()
             return
-        player.send_key_event(
-            key.pressed,
-            _kirikiri_virtual_key(key),
-            _kirikiri_key_modifiers(key),
-            key.unicode
-        )
+        if active_runtime_kind == RUNTIME_RENPY:
+            RenpyKeyInput.send_key_event(player, key)
+        else:
+            player.send_key_event(
+                key.pressed,
+                _kirikiri_virtual_key(key),
+                _kirikiri_key_modifiers(key),
+                key.unicode
+            )
         get_viewport().set_input_as_handled()
         return
     if _is_game_pointer_event(event):

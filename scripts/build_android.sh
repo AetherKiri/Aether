@@ -22,11 +22,27 @@ if [[ "$BUILD_TYPE_LOWER" != "debug" && "$BUILD_TYPE_LOWER" != "release" ]]; the
     exit 1
 fi
 
+case "$ABIS" in
+    arm64-v8a) ;;
+    x86_64)
+        if [[ "$BUILD_TYPE_LOWER" != "debug" ]]; then
+            echo "Error: x86_64 is the dedicated cloud emulator debug profile. Use debug --abi=x86_64." >&2
+            exit 1
+        fi
+        ;;
+    *)
+        echo "Error: Select one Android ABI: arm64-v8a (default) or x86_64 (debug cloud emulator)." >&2
+        exit 1
+        ;;
+esac
+
 ANDROID_HOME="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-$HOME/Library/Android/sdk}}"
 GODOT_BIN="${GODOT_BIN:-/Applications/Godot.app/Contents/MacOS/Godot}"
 GODOT_TEMPLATE_DIR="${GODOT_TEMPLATE_DIR:-$HOME/Library/Application Support/Godot/export_templates/4.7.2.stable}"
 GODOT_APP_DIR="$PROJECT_ROOT/apps/godot_app"
 PARALLEL_JOBS="${JOBS:-8}"
+RENPY_MOBILE_ROOT="${AETHERKIRI_RENPY_MOBILE_ROOT:-${RENPY_MOBILE_ROOT:-$PROJECT_ROOT/out/renpy-mobile-source/payload}}"
+RENPY_PRIVATE_ROOT="${AETHERKIRI_RENPY_ANDROID_PRIVATE_ASSETS:-$RENPY_MOBILE_ROOT/rapt/runtime/private}"
 
 ensure_vcpkg() {
     if [[ -f "$PROJECT_ROOT/.devtools/vcpkg/.vcpkg-root" ]]; then
@@ -85,9 +101,6 @@ ensure_host_rust() {
         *) export PATH="$toolchain_bin:$PATH" ;;
     esac
 }
-
-ensure_vcpkg
-ensure_host_rust
 
 # Resolve a Rust toolchain that can build for the requested Android target.
 # Homebrew's Rust formula ships without Android targets, so a cargo found in
@@ -207,6 +220,12 @@ export ANDROID_HOME
 export ANDROID_SDK_ROOT="$ANDROID_HOME"
 export ANDROID_NDK_HOME="$ANDROID_NDK_HOME_RESOLVED"
 export ANDROID_NDK="$ANDROID_NDK_HOME_RESOLVED"
+if [[ ! -d "$ANDROID_HOME" ]]; then
+    echo "Error: Android SDK not found at $ANDROID_HOME." >&2
+    exit 1
+fi
+ensure_vcpkg
+ensure_host_rust
 
 # The Android export uses a custom Gradle build template (minSdk 26 lives in
 # export_presets.cfg). The template is generated content and gitignored;
@@ -228,6 +247,41 @@ if [[ ! -f "$GODOT_APP_DIR/android/.build_version" || ! -f "$GODOT_APP_DIR/andro
     printf '%s\n' "${GODOT_TEMPLATE_DIR##*/}" > "$GODOT_APP_DIR/android/.build_version"
     : > "$GODOT_APP_DIR/android/build/.gdignore"
 fi
+
+stage_renpy_android_support() {
+    local renpy_enabled="${AETHERKIRI_ENABLE_RENPY:-OFF}"
+    local renpy_enabled_lower
+    renpy_enabled_lower="$(printf '%s' "$renpy_enabled" | tr '[:upper:]' '[:lower:]')"
+    case "$renpy_enabled_lower" in
+        off|false|0|no|"")
+            return 0
+            ;;
+        on|true|1|yes)
+            ;;
+        *)
+            echo "Error: AETHERKIRI_ENABLE_RENPY must be ON/OFF or true/false" >&2
+            exit 1
+            ;;
+    esac
+
+    local mobile_root="$RENPY_MOBILE_ROOT"
+    if [[ -z "$mobile_root" ]]; then
+        echo "Error: AETHERKIRI_ENABLE_RENPY=ON requires AETHERKIRI_RENPY_MOBILE_ROOT or RENPY_MOBILE_ROOT" >&2
+        echo "       Build the native lifecycle payload with tools/run_renpy_mobile_source_build.sh --mode build first." >&2
+        exit 1
+    fi
+
+    local stage_args=(
+        --mobile-root "$mobile_root"
+        --godot-build "$GODOT_APP_DIR/android/build"
+        --private-assets "$RENPY_PRIVATE_ROOT"
+        --abis "$ABIS"
+    )
+    echo "==> Staging rebuilt Ren'Py lifecycle runtime into the Godot export"
+    bash "$PROJECT_ROOT/tools/stage_renpy_android_support.sh" "${stage_args[@]}"
+}
+
+stage_renpy_android_support
 
 command -v cmake >/dev/null
 NINJA_BIN="${CMAKE_MAKE_PROGRAM:-$(command -v ninja || command -v ninja-build || true)}"
@@ -321,9 +375,14 @@ build_abi() {
     local vcpkg_triplet_dir
     local libomp_path
     local android_strip_path
+    local vcpkg_target_triplet
+    local openmp_arch
     local cmake_config_args=(
         -D "CMAKE_MAKE_PROGRAM=$CMAKE_MAKE_PROGRAM"
         -D "AETHERKIRI_ENABLE_INTERNAL=${AETHERKIRI_ENABLE_INTERNAL:-ON}"
+        -D "AETHERKIRI_ENABLE_RENPY=${AETHERKIRI_ENABLE_RENPY:-OFF}"
+        -D "AETHERKIRI_RENPY_MOBILE_LIBRARY=$RENPY_MOBILE_ROOT/rapt/prototype/renpyandroid/src/main/jniLibs/$abi/librenpython.so"
+        -D "AETHERKIRI_RENPY_PRIVATE_ROOT=$RENPY_PRIVATE_ROOT"
         -D "AETHERKIRI_ENABLE_SOFTPAL_RUNTIME=${AETHERKIRI_ENABLE_SOFTPAL_RUNTIME:-OFF}"
         -D "AETHERKIRI_SOFTPAL_DIR=${AETHERKIRI_SOFTPAL_DIR:-$PROJECT_ROOT/packages/AetherSoftPal}"
     )
@@ -332,28 +391,37 @@ build_abi() {
         arm64-v8a)
             cmake_config_preset="Android arm64 ${BUILD_TYPE_CAP} Config"
             cmake_build_preset="Android arm64 ${BUILD_TYPE_CAP} Build"
+            vcpkg_target_triplet="arm64-android"
+            openmp_arch="aarch64"
             ensure_android_rust "aarch64-linux-android"
             ;;
+        x86_64)
+            cmake_config_preset="Android x64 Debug Config"
+            cmake_build_preset="Android x64 Debug Build"
+            vcpkg_target_triplet="x64-android"
+            openmp_arch="x86_64"
+            ensure_android_rust "x86_64-linux-android"
+            ;;
         *)
-            echo "Error: Android ABI '$abi' is not wired for the Godot migration yet. Use arm64-v8a." >&2
+            echo "Error: Unsupported Android ABI '$abi'." >&2
             exit 1
             ;;
     esac
 
     cmake_build_dir="$PROJECT_ROOT/out/android/$abi/$BUILD_TYPE_LOWER"
     godot_bin_dir="$GODOT_APP_DIR/bin/android/$abi/$BUILD_TYPE_LOWER"
-    vcpkg_triplet_dir="$cmake_build_dir/vcpkg_installed/arm64-android"
+    vcpkg_triplet_dir="$cmake_build_dir/vcpkg_installed/$vcpkg_target_triplet"
 
     echo "==> Building Android native libraries ($abi, $BUILD_TYPE_LOWER)"
     if [[ "${SKIP_ANDROID_VCPKG_INSTALL:-}" == "1" ]]; then
-        if [[ ! -d "$VCPKG_ROOT/installed/arm64-android" ]]; then
-            echo "Error: SKIP_ANDROID_VCPKG_INSTALL=1 but prebuilt vcpkg triplet is missing: $VCPKG_ROOT/installed/arm64-android" >&2
+        if [[ ! -d "$VCPKG_ROOT/installed/$vcpkg_target_triplet" ]]; then
+            echo "Error: SKIP_ANDROID_VCPKG_INSTALL=1 but prebuilt vcpkg triplet is missing: $VCPKG_ROOT/installed/$vcpkg_target_triplet" >&2
             exit 1
         fi
         mkdir -p "$cmake_build_dir"
         rm -rf "$cmake_build_dir/vcpkg_installed"
         ln -s "$VCPKG_ROOT/installed" "$cmake_build_dir/vcpkg_installed"
-        ensure_android_godot_cpp_package_config "$cmake_build_dir/vcpkg_installed/arm64-android"
+        ensure_android_godot_cpp_package_config "$vcpkg_triplet_dir"
         cmake_config_args+=(
             -D "VCPKG_MANIFEST_INSTALL=OFF"
             -D "VCPKG_INSTALLED_DIR=$cmake_build_dir/vcpkg_installed"
@@ -366,11 +434,12 @@ build_abi() {
     mkdir -p "$godot_bin_dir"
     copy_android_so "$cmake_build_dir/abi/libengine_api.so" "$godot_bin_dir/libengine_api.so"
     copy_android_so "$cmake_build_dir/bridge/godot_extension/libaether_kiri_godot.so" "$godot_bin_dir/libaether_kiri_godot.so"
-    copy_android_so "$vcpkg_triplet_dir/lib/libSDL2.so" "$godot_bin_dir/libSDL2.so"
-    libomp_path="$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/darwin-x86_64/lib/clang/19/lib/linux/aarch64/libomp.so"
-    if [[ ! -f "$libomp_path" ]]; then
-        libomp_path="$(find "$ANDROID_NDK_HOME/toolchains/llvm/prebuilt" -path '*/lib/linux/aarch64/libomp.so' -print -quit)"
+    local sdl_library="$vcpkg_triplet_dir/lib/libSDL2.so"
+    if [[ "$BUILD_TYPE_LOWER" == debug && -f "$vcpkg_triplet_dir/debug/lib/libSDL2.so" ]]; then
+        sdl_library="$vcpkg_triplet_dir/debug/lib/libSDL2.so"
     fi
+    copy_android_so "$sdl_library" "$godot_bin_dir/libSDL2.so"
+    libomp_path="$(find "$ANDROID_NDK_HOME/toolchains/llvm/prebuilt" -path "*/lib/linux/$openmp_arch/libomp.so" -print -quit)"
     if [[ -z "$libomp_path" || ! -f "$libomp_path" ]]; then
         echo "Error: Android OpenMP runtime libomp.so not found under $ANDROID_NDK_HOME." >&2
         exit 1
@@ -400,18 +469,42 @@ for abi in "${ABI_LIST[@]}"; do
 done
 
 if [[ ! -x "$GODOT_BIN" ]]; then
-    echo "Warning: Godot not found at $GODOT_BIN; native libraries were staged only." >&2
+    echo "Error: Godot not found at $GODOT_BIN; cannot produce the requested Android APK." >&2
+    exit 1
 elif [[ ! -f "$GODOT_TEMPLATE_DIR/android_debug.apk" || ! -f "$GODOT_TEMPLATE_DIR/android_release.apk" ]]; then
-    echo "Warning: Godot Android export templates are missing in $GODOT_TEMPLATE_DIR; native libraries were staged only." >&2
+    echo "Error: Godot Android export templates are missing in $GODOT_TEMPLATE_DIR; cannot produce an APK." >&2
     echo "         Expected android_debug.apk and android_release.apk." >&2
+    exit 1
 else
     echo "==> Exporting Godot Android APK"
-    mkdir -p "$PROJECT_ROOT/out/godot/android/$BUILD_TYPE_LOWER"
-    export_path="$PROJECT_ROOT/out/godot/android/$BUILD_TYPE_LOWER/Aether-$BUILD_TYPE_LOWER.apk"
+    export_dir="$PROJECT_ROOT/out/godot/android/$BUILD_TYPE_LOWER"
+    export_path="$export_dir/Aether-$BUILD_TYPE_LOWER.apk"
     export_preset="Android ${BUILD_TYPE_CAP}"
+    if [[ "$ABIS" == "x86_64" ]]; then
+        export_dir="$PROJECT_ROOT/out/godot/android/x86_64/debug"
+        export_path="$export_dir/Aether-emulator-debug.apk"
+        export_preset="Android Emulator Debug"
+    fi
+    mkdir -p "$export_dir"
     export_mode="--export-debug"
     if [[ "$BUILD_TYPE_LOWER" == "release" ]]; then
         export_mode="--export-release"
+    fi
+    android_export_app_dir="$GODOT_APP_DIR"
+    android_test_package="${AETHERKIRI_ANDROID_TEST_PACKAGE_ID:-}"
+    if [[ -n "$android_test_package" ]]; then
+        if [[ "$BUILD_TYPE_LOWER" != "debug" ]]; then
+            echo "Error: AETHERKIRI_ANDROID_TEST_PACKAGE_ID is allowed only for a Debug test export." >&2
+            exit 1
+        fi
+        android_test_export_root="$(mktemp -d "${TMPDIR:-/tmp}/aether-renpy-android-export.XXXXXX")"
+        # This is an individually created disposable export directory, never
+        # the checkout, dependency cache, or an existing application directory.
+        trap 'rm -rf "$android_test_export_root"' EXIT
+        python3 "$PROJECT_ROOT/tools/prepare_renpy_android_test_export.py" \
+            --source-project "$GODOT_APP_DIR" --destination "$android_test_export_root" \
+            --preset-name "$export_preset" --package-id "$android_test_package"
+        android_export_app_dir="$android_test_export_root"
     fi
     godot_export_command=("$GODOT_BIN")
     macos_host_extension="$GODOT_APP_DIR/bin/macos/$BUILD_TYPE_LOWER/libaether_kiri_godot.dylib"
@@ -419,11 +512,25 @@ else
           "$(lipo -archs "$macos_host_extension" 2>/dev/null || true)" == "x86_64" ]]; then
         # This private native host extension is currently x86_64-only. Match
         # the editor process to the staged host extension while
-        # it imports the project; the exported Android libraries remain arm64.
+        # it imports the project; the exported Android ABI is selected above.
         godot_export_command=(arch -x86_64 "$GODOT_BIN")
     fi
-    "${godot_export_command[@]}" --headless --path "$GODOT_APP_DIR" \
+    "${godot_export_command[@]}" --headless --path "$android_export_app_dir" \
         "$export_mode" "$export_preset" "$export_path"
+    [[ -s "$export_path" ]] || { echo "Android export did not create an APK: $export_path" >&2; exit 1; }
+    case "${AETHERKIRI_ENABLE_RENPY:-OFF}" in
+        ON|TRUE|YES|1|on|true|yes)
+            python3 "$PROJECT_ROOT/tools/inspect_renpy_android_apk.py" \
+                --apk "$export_path" --abi "$ABIS" \
+                --godot-build "$android_export_app_dir/android/build" \
+                --output-dir "$export_dir/diagnostics" \
+                --export-presets "$android_export_app_dir/export_presets.cfg" \
+                --export-preset "$export_preset" --build-type "$BUILD_TYPE_LOWER" \
+                --android-sdk "$ANDROID_HOME" --android-ndk "$ANDROID_NDK_HOME"
+            python3 "$PROJECT_ROOT/tools/validate_renpy_mobile_payload.py" \
+                --platform android --abi "$ABIS" --apk "$export_path"
+            ;;
+    esac
 fi
 
-echo "Android build output: $PROJECT_ROOT/out/godot/android/$BUILD_TYPE_LOWER"
+echo "Android build output: $export_path"

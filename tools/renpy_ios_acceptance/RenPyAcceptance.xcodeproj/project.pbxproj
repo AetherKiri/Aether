@@ -1,0 +1,52 @@
+// !$*UTF8*$!
+{
+    archiveVersion = 1;
+    classes = {};
+    objectVersion = 56;
+    objects = {
+        A01000000000000000000001 = {isa = PBXBuildFile; fileRef = A01000000000000000000002; };
+        A01000000000000000000002 = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RenPyGameplayTests.swift; sourceTree = "<group>"; };
+        A01000000000000000000003 = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; path = RenPyAcceptance.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+        A01000000000000000000004 = {isa = PBXGroup; children = (A01000000000000000000002, A01000000000000000000005); sourceTree = "<group>"; };
+        A01000000000000000000005 = {isa = PBXGroup; children = (A01000000000000000000003); name = Products; sourceTree = "<group>"; };
+        A01000000000000000000006 = {isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = (A01000000000000000000001); runOnlyForDeploymentPostprocessing = 0; };
+        A01000000000000000000007 = {isa = PBXFrameworksBuildPhase; buildActionMask = 2147483647; files = (); runOnlyForDeploymentPostprocessing = 0; };
+        A01000000000000000000008 = {isa = PBXResourcesBuildPhase; buildActionMask = 2147483647; files = (); runOnlyForDeploymentPostprocessing = 0; };
+        A01000000000000000000009 = {
+            isa = PBXNativeTarget;
+            buildConfigurationList = A0100000000000000000000C;
+            buildPhases = (A01000000000000000000006, A01000000000000000000007, A01000000000000000000008);
+            buildRules = (); dependencies = (); name = RenPyAcceptance;
+            productName = RenPyAcceptance; productReference = A01000000000000000000003;
+            productType = "com.apple.product-type.bundle.ui-testing";
+        };
+        A0100000000000000000000A = {
+            isa = PBXProject; attributes = {LastUpgradeCheck = 1600; TargetAttributes = {A01000000000000000000009 = {CreatedOnToolsVersion = 16.0; }; }; };
+            buildConfigurationList = A0100000000000000000000B;
+            compatibilityVersion = "Xcode 14.0"; developmentRegion = en; hasScannedForEncodings = 0;
+            knownRegions = (en, Base); mainGroup = A01000000000000000000004;
+            productRefGroup = A01000000000000000000005; projectDirPath = ""; projectRoot = "";
+            targets = (A01000000000000000000009);
+        };
+        A0100000000000000000000B = {isa = XCConfigurationList; buildConfigurations = (A0100000000000000000000D); defaultConfigurationIsVisible = 0; defaultConfigurationName = Debug; };
+        A0100000000000000000000C = {isa = XCConfigurationList; buildConfigurations = (A0100000000000000000000E); defaultConfigurationIsVisible = 0; defaultConfigurationName = Debug; };
+        A0100000000000000000000D = {isa = XCBuildConfiguration; name = Debug; buildSettings = {SDKROOT = iphonesimulator; IPHONEOS_DEPLOYMENT_TARGET = 16.0; SWIFT_VERSION = 5.0; CLANG_ENABLE_MODULES = YES; }; };
+        A0100000000000000000000E = {
+            isa = XCBuildConfiguration; name = Debug;
+            buildSettings = {
+                PRODUCT_NAME = "$(TARGET_NAME)";
+                PRODUCT_BUNDLE_IDENTIFIER = "org.aetherkiri.renpy-ios-acceptance";
+                GENERATE_INFOPLIST_FILE = YES;
+                TARGETED_DEVICE_FAMILY = "1,2";
+                SWIFT_VERSION = 5.0;
+                SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+                SDKROOT = iphonesimulator;
+                IPHONEOS_DEPLOYMENT_TARGET = 16.0;
+                CODE_SIGN_IDENTITY = "-";
+                CODE_SIGNING_ALLOWED = YES;
+                LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks @loader_path/Frameworks";
+            };
+        };
+    };
+    rootObject = A0100000000000000000000A;
+}

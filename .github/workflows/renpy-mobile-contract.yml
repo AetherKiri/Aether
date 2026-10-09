@@ -1,0 +1,153 @@
+name: Ren'Py Mobile Contract
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    paths:
+      - '.github/workflows/renpy-mobile-contract.yml'
+      - 'bridge/renpy_runtime/mobile_launcher/**'
+      - 'demos/aetherkiri-renpy/**'
+      - 'bridge/renpy_runtime/src/renpy_mobile_adapter.cpp'
+      - 'bridge/renpy_runtime/src/renpy_runtime_mobile_provider.cpp'
+      - 'bridge/renpy_runtime/tests/mobile_*.cpp'
+      - 'tools/test_renpy_mobile_launcher_*.sh'
+      - 'tools/test_renpy_mobile_symbol_gate.sh'
+      - 'tools/run_renpy_mobile_source_build.sh'
+      - 'tools/apply_renpy_mobile_patch_series.py'
+      - 'tools/test_renpy_mobile_patch_series.py'
+      - 'tools/test_renpy_mobile_source_build_plan.sh'
+      - 'tools/test_renpy_mobile_native_fork.sh'
+      - 'tools/test_renpy_mobile_cooperative.py'
+      - 'tools/test_renpy_mobile_darwin_build.py'
+      - 'tools/test_renpy_mobile_build_parallelism.py'
+      - 'tools/test_renpy_mobile_static_api.py'
+      - 'tools/test_renpy_mobile_libffi_cfi.py'
+      - 'tools/test_renpy_mobile_metalangle_flags.py'
+      - 'tools/test_renpy_mobile_ios_nis.py'
+      - 'tools/validate_renpy_mobile_payload.py'
+      - 'tools/test_renpy_mobile_packaging.sh'
+      - 'tools/test_renpy_mobile_runtime_protocol.sh'
+      - 'tools/test_stage_renpy_android_support.sh'
+      - 'tools/inspect_renpy_android_apk.py'
+      - 'tools/test_renpy_android_apk_inspection.py'
+      - 'tools/prepare_renpy_android_test_export.py'
+      - 'tools/test_prepare_renpy_android_test_export.py'
+      - 'tools/test_renpy_device_evidence_metrics.py'
+      - 'tools/run_renpy_android_device_acceptance.py'
+      - 'tools/run_renpy_ios_device_acceptance.py'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: renpy-mobile-contract-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lifecycle-contract:
+    name: Validate host lifecycle contract (no playability claim)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      - name: Install contract test tools
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y build-essential binutils clang-18 python3-dev libsdl2-dev pkg-config
+
+      - name: Run mobile launcher scaffold and loader tests
+        run: |
+          set -euo pipefail
+          bash tools/test_renpy_mobile_launcher_scaffold.sh
+          bash tools/test_renpy_mobile_launcher_loader.sh
+          bash tools/test_renpy_mobile_symbol_gate.sh
+          bash tools/test_renpy_mobile_source_build_plan.sh
+          bash tools/test_renpy_mobile_native_fork.sh
+          bash tools/test_renpy_mobile_packaging.sh
+
+      - name: Check APK export and device-evidence counterexamples
+        run: |
+          set -euo pipefail
+          # Use only an NDK already supplied by the cloud image. Without it,
+          # the ELF compiler fixture reports a skip rather than a target pass.
+          ndk_root="${ANDROID_NDK_HOME:-${ANDROID_NDK_LATEST_HOME:-}}"
+          if [[ -n "$ndk_root" && -d "$ndk_root" ]]; then
+            export ANDROID_NDK_HOME="$ndk_root"
+          fi
+          python3 tools/test_renpy_android_apk_inspection.py
+          python3 tools/test_prepare_renpy_android_test_export.py
+          python3 tools/test_renpy_device_evidence_metrics.py
+
+      - name: Checkout pinned Ren'Py source for the 8.5.3 rebuild
+        uses: actions/checkout@v6
+        with:
+          repository: renpy/renpy
+          ref: 39895c1e017f0b36ffea2447d97eccd69d76ee1c
+          path: _renpy-source
+          fetch-depth: 1
+      - name: Validate cooperative patch applicability
+        run: |
+          set -euo pipefail
+          bash bridge/renpy_runtime/mobile_launcher/build.sh \
+            --check-python-patch --renpy-src _renpy-source
+
+      - name: Exercise stack-preserving scheduling and input boundaries
+        run: |
+          set -euo pipefail
+          python3 -m venv "${RUNNER_TEMP}/cooperative-test"
+          "${RUNNER_TEMP}/cooperative-test/bin/pip" install greenlet==3.2.4
+          bash bridge/renpy_runtime/mobile_launcher/build.sh \
+            --apply-python-patch --renpy-src _renpy-source
+          "${RUNNER_TEMP}/cooperative-test/bin/python" \
+            tools/test_renpy_mobile_cooperative.py --renpy-src _renpy-source
+
+      - name: Checkout pinned native build tasks for platform configuration tests
+        uses: actions/checkout@v6
+        with:
+          repository: renpy/renpy-build
+          ref: 7bfab40c1174f622f644b24669afd5fb167fbb79
+          path: _renpy-build-source
+          persist-credentials: false
+      - name: Validate Darwin and Linux task configuration boundaries
+        run: |
+          set -euo pipefail
+          "${RUNNER_TEMP}/cooperative-test/bin/pip" install Jinja2==3.1.6 Cython==3.2.4
+          "${RUNNER_TEMP}/cooperative-test/bin/python" \
+            tools/test_renpy_mobile_darwin_build.py _renpy-build-source
+          "${RUNNER_TEMP}/cooperative-test/bin/python" \
+            tools/test_renpy_mobile_build_parallelism.py _renpy-build-source
+          "${RUNNER_TEMP}/cooperative-test/bin/python" \
+            tools/test_renpy_mobile_patch_series.py _renpy-build-source
+          "${RUNNER_TEMP}/cooperative-test/bin/python" \
+            tools/test_renpy_mobile_libffi_cfi.py _renpy-build-source --clang /usr/bin/clang-18
+          "${RUNNER_TEMP}/cooperative-test/bin/python" \
+            tools/test_renpy_mobile_metalangle_flags.py _renpy-build-source --clang /usr/bin/clang-18
+          "${RUNNER_TEMP}/cooperative-test/bin/python" \
+            tools/test_renpy_mobile_ios_nis.py _renpy-build-source
+
+      - name: Generate the static API and compile its genuine C consumers
+        run: |
+          set -euo pipefail
+          "${RUNNER_TEMP}/cooperative-test/bin/python" \
+            tools/test_renpy_mobile_static_api.py _renpy-build-source _renpy-source
+
+      - name: Compile the lifecycle implementation against Python and SDL2
+        run: |
+          set -euo pipefail
+          cc -std=c11 -Wall -Wextra -Werror -fPIC \
+            $(python3-config --includes) $(pkg-config --cflags sdl2) \
+            -I bridge/renpy_runtime/mobile_launcher/include \
+            -c bridge/renpy_runtime/mobile_launcher/patches/native/renpy_mobile_lifecycle.c \
+            -o "${RUNNER_TEMP}/renpy_mobile_lifecycle.o"
+          bash tools/test_renpy_mobile_runtime_protocol.sh
+          echo "Compiled and exercised the native CPython boundary; this does not execute a mobile game."

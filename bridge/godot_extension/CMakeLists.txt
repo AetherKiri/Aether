@@ -267,6 +267,12 @@ if(IOS)
             "$<TARGET_FILE:aether_kiri_godot>"
         VERBATIM)
 endif()
+if(TARGET aether_renpy_runtime)
+    # The runtime target owns the provider and its platform definitions.
+    # iOS packaging merges that archive into the exported static extension.
+    target_link_libraries(aether_kiri_godot PRIVATE aether_renpy_runtime)
+    target_compile_definitions(aether_kiri_godot PRIVATE AETHERKIRI_WITH_RENPY=1)
+endif()
 if(TARGET aether_rfvp_runtime)
     target_link_libraries(aether_kiri_godot PRIVATE aether_rfvp_runtime)
     target_compile_definitions(aether_kiri_godot PRIVATE AETHERKIRI_WITH_RFVP=1)

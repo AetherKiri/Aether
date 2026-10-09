@@ -1,0 +1,69 @@
+name: Read Ren'Py build diagnostics
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/renpy-build-diagnostics.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  actual-build-log:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: Download the actual failed source-build evidence
+        uses: actions/download-artifact@v6
+        with:
+          repository: AetherKiri/Aether
+          run-id: 37838829329
+          name: renpy-ios-source-build-evidence
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/renpy-ios-source-evidence
+      - name: Read a sanitized summary of the original build logs
+        run: |
+          set -euo pipefail
+          python3 - "$RUNNER_TEMP/renpy-ios-source-evidence" <<'PY'
+          import pathlib, re, sys
+          # Read the genuine compiler log, not configure environment dumps.
+          logs = sorted(pathlib.Path(sys.argv[1]).rglob('renpy-ios-source-build.log'))
+          if not logs:
+              raise SystemExit('The genuine source-build evidence contains no log files.')
+          print('Original iOS source run 37838829329; job 113522721484; head 8b2db6bfb6fdfe65126aba1db2484002427c109c.')
+          print('Evidence artifact 11578038161; GitHub archive digest sha256:59e42e8ba5bd069d02c5417ac610705752b4b2ca003e071dcfacc8f60a8273c9.')
+          print('Reading preserved compiler evidence; no build is rerun or simulated.')
+          remaining = 24000
+          for log in logs:
+              text = log.read_text(errors='replace')
+              text = re.sub(r'\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)', '', text)
+              text = re.sub(r'\x1b\[[0-?]*[ -/]*[@-~]', '', text)
+              text = re.sub(r'[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]', '', text)
+              lines = text.splitlines()
+              interesting = [i for i, line in enumerate(lines)
+                             if re.search(r'error:|fatal error|FAILED|Error [1-9]|undefined reference|not found|Traceback|No such file|exception|Killed|process failed|tasks failed', line, re.I)]
+              indices = set(range(max(0, len(lines)-110), len(lines)))
+              for i in interesting[-16:]:
+                  indices.update(range(max(0, i-4), min(len(lines), i+9)))
+              excerpt = []
+              for i in sorted(indices):
+                  line = lines[i]
+                  if re.match(r'^\s*(?:export\s|declare\s|env:|Environment:|(?!(?:FAILED|ERROR|FATAL|WARNING):)[A-Z_][A-Z0-9_]*\s*[=:])', line):
+                      continue
+                  if re.search(r'authorization|password|credential|secret|(?:^|[\s_])token(?:[\s_=:]|$)', line, re.I):
+                      continue
+                  line = line.replace('/Users/runner/work/Aether/Aether', '<workspace>')
+                  line = line.replace('/Users/runner/work/_temp', '<runner-temp>')
+                  excerpt.append(line[:1200])
+              summary = '\n'.join(excerpt)
+              print(f'Original log: {log.name}; {len(lines)} lines')
+              if len(summary) > remaining:
+                  summary = summary[-remaining:]
+              print(summary)
+              remaining -= len(summary)
+              if remaining <= 0:
+                  print('Summary reached its display limit; complete original logs remain in the artifact.')
+                  break
+          PY

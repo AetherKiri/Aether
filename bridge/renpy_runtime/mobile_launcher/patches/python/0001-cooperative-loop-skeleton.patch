@@ -1,0 +1,832 @@
+diff --git a/renpy/bootstrap.py b/renpy/bootstrap.py
+index 4d3b125..33f2cf7 100644
+--- a/renpy/bootstrap.py
++++ b/renpy/bootstrap.py
+@@ -445,7 +445,7 @@ def bootstrap(renpy_base):
+         if not renpy.emscripten:
+             subprocess.Popen.__del__ = popen_del  # type: ignore
+ 
+-        if renpy.android:
++        if renpy.android and not renpy.aether_mobile.cooperative_active():
+             from jnius import autoclass  # type: ignore
+ 
+             import android
+diff --git a/renpy/display/core.py b/renpy/display/core.py
+index 89c74d1..458fc7b 100644
+--- a/renpy/display/core.py
++++ b/renpy/display/core.py
+@@ -32,6 +32,7 @@ import platform
+ 
+ import renpy
+ import renpy.pygame as pygame
++import renpy.aether_mobile as aether_mobile
+ 
+ # Imports for backward compatibility.
+ from renpy.display.position import absolute as absolute, position as position
+@@ -1301,6 +1302,9 @@ class Interface:
+         self.surftree = surftree
+         self.fullscreen_video = fullscreen_video
+ 
++        if draw:
++            aether_mobile.cooperative_capture(surftree)
++
+         if self.first_frame:
+             self.after_first_frame()
+             self.first_frame = False
+@@ -1630,7 +1634,14 @@ class Interface:
+ 
+         self.check_background_screenshot()
+ 
+-        if renpy.emscripten:
++        if aether_mobile.cooperative_active():
++            while True:
++                ev = pygame.event.poll()
++                if ev.type != pygame.NOEVENT:
++                    break
++                aether_mobile.cooperative_checkpoint(force=True)
++
++        elif renpy.emscripten:
+             emscripten.sleep(0)
+ 
+             while True:
+@@ -1918,6 +1929,9 @@ class Interface:
+         GL context is created properly.
+         """
+ 
++        if aether_mobile.cooperative_active():
++            return
++
+         from jnius import autoclass
+ 
+         SDLActivity = autoclass("org.libsdl.app.SDLActivity")
+@@ -1936,6 +1950,10 @@ class Interface:
+         Handles the SDL2 suspend process.
+         """
+ 
++        if aether_mobile.cooperative_active():
++            # The host owns background/resume and saves/pauses through the ABI.
++            return False
++
+         if ev.type != pygame.APP_WILLENTERBACKGROUND:
+             return False
+ 
+@@ -2756,6 +2774,7 @@ class Interface:
+ 
+             old_timeout_time = None
+             old_redraw_time = None
++            aether_timer_generation = aether_mobile.cooperative_timer_generation()
+ 
+             rv = None
+ 
+@@ -2774,6 +2793,13 @@ class Interface:
+             can_block = False
+ 
+             while rv is None:
++                aether_mobile.cooperative_checkpoint()
++                if aether_timer_generation != aether_mobile.cooperative_timer_generation():
++                    # Host pause canceled SDL timers while this stack stayed
++                    # suspended. Rearm the existing deadlines below even when
++                    # the redraw/timeout times themselves have not changed.
++                    old_timeout_time = old_redraw_time = None
++                    aether_timer_generation = aether_mobile.cooperative_timer_generation()
+                 renpy.plog(1, "start of interact while loop")
+ 
+                 renpy.execution.not_infinite_loop(10)
+diff --git a/renpy/display/tts.py b/renpy/display/tts.py
+index 34f6576..1a49ea5 100644
+--- a/renpy/display/tts.py
++++ b/renpy/display/tts.py
+@@ -83,7 +83,10 @@ class AndroidTTS(object):
+ 
+         PythonSDLActivity = autoclass("org.renpy.android.PythonSDLActivity")
+         self.TextToSpeech = autoclass("android.speech.tts.TextToSpeech")
+-        self.tts = self.TextToSpeech(PythonSDLActivity.mActivity, None)
++        activity = PythonSDLActivity.mActivity
++        if renpy.aether_mobile.cooperative_active():
++            activity = activity.getActivity()
++        self.tts = self.TextToSpeech(activity, None)
+ 
+     def speak(self, s):
+         self.tts.speak(s, self.TextToSpeech.QUEUE_FLUSH, None)
+diff --git a/renpy/execution.py b/renpy/execution.py
+index 9da4b1e..375ae55 100644
+--- a/renpy/execution.py
++++ b/renpy/execution.py
+@@ -609,6 +609,8 @@ class Context(renpy.object.Object):
+         first = True
+ 
+         while node:
++            # Bound non-interactive Ren'Py AST loops as well as UI waits.
++            renpy.aether_mobile.cooperative_checkpoint()
+             if node.name == self.come_from_name:
+                 self.come_from_name = None
+                 node = self.call(self.come_from_label, return_site=node.name)
+@@ -1047,6 +1049,8 @@ def run_context(top):
+ 
+         try:
+             try:
++                import renpy.aether_mobile
++                renpy.aether_mobile.cooperative_checkpoint()
+                 context.run()
+ 
+                 rv = renpy.store._return
+diff --git a/renpy/gl2/gl2draw.pyx b/renpy/gl2/gl2draw.pyx
+index cb66af0..3762a48 100644
+--- a/renpy/gl2/gl2draw.pyx
++++ b/renpy/gl2/gl2draw.pyx
+@@ -364,7 +364,9 @@ cdef class GL2Draw:
+             renpy.display.log.write("GL Disabled.")
+             return False
+ 
+-        if renpy.mobile:
++        if renpy.aether_mobile.cooperative_active():
++            physical_size = renpy.aether_mobile.cooperative_surface_size() or virtual_size
++        elif renpy.mobile:
+             physical_size = (None, None)
+         elif renpy.game.preferences.physical_size is None:
+             physical_size = (renpy.config.physical_width, renpy.config.physical_height)
+@@ -373,7 +375,9 @@ cdef class GL2Draw:
+ 
+         pwidth, pheight = self.select_physical_size(physical_size)
+ 
+-        if renpy.android or renpy.ios:
++        if renpy.aether_mobile.cooperative_active():
++            fullscreen = False
++        elif renpy.android or renpy.ios:
+             fullscreen = True
+         elif renpy.emscripten:
+             fullscreen = False
+@@ -409,14 +413,16 @@ cdef class GL2Draw:
+         window_flags = pygame.OPENGL | pygame.DOUBLEBUF
+ 
+         if renpy.android:
+-            pwidth = 0
+-            pheight = 0
++            if not renpy.aether_mobile.cooperative_active():
++                pwidth = 0
++                pheight = 0
+             gles = True
+ 
+         elif renpy.ios:
+             window_flags |= pygame.WINDOW_ALLOW_HIGHDPI | pygame.RESIZABLE
+-            pwidth = 0
+-            pheight = 0
++            if not renpy.aether_mobile.cooperative_active():
++                pwidth = 0
++                pheight = 0
+             gles = True
+ 
+         else:
+diff --git a/renpy/pygame/display.pyx b/renpy/pygame/display.pyx
+index 85d16d0..c8bda49 100644
+--- a/renpy/pygame/display.pyx
++++ b/renpy/pygame/display.pyx
+@@ -64,6 +64,14 @@ def _get_hint(hint, default):
+     return default
+ 
+ 
++def prepare_mobile_shutdown():
++    # SDL_DestroyWindow unloads EGL too. The patched embedded SDL must keep
++    # the shared host display alive even if the process environment says 0.
++    hint("AETHER_RENPY_EMBEDDED", "1", priority=SDL_HINT_OVERRIDE)
++    if not SDL_GetHintBoolean(b"AETHER_RENPY_EMBEDDED", SDL_FALSE):
++        raise error("Could not protect the host EGL display during Ren'Py shutdown")
++
++
+ main_done = False
+ 
+ def sdl_main_init():
+@@ -207,7 +215,9 @@ cdef class Window:
+                 if self.gl_context == NULL:
+                     raise error()
+ 
+-                SDL_GL_MakeCurrent(self.window, self.gl_context)
++                if SDL_GL_MakeCurrent(self.window, self.gl_context) != 0:
++                    raise error()
++                self.aether_bind_gl_window()
+ 
+                 if not ios:
+                     # Try setting the swap interval - first positive, then negated
+@@ -262,8 +272,22 @@ cdef class Window:
+         This should be called before the window is deleted.
+         """
+ 
+-        if self.gl_context != NULL:
+-            SDL_GL_DeleteContext(self.gl_context)
++        if self.window == NULL and self.gl_context == NULL:
++            return
++
++        if renpy.aether_mobile.cooperative_active():
++            prepare_mobile_shutdown()
++            import _aether_host
++            if _aether_host.bind_window(0) != 0:
++                raise error("Could not unbind the Ren'Py renderer window")
++
++        cdef SDL_GLContext context = self.gl_context
++        cdef SDL_Window *window = self.window
++        self.gl_context = NULL
++        self.window = NULL
++
++        if context != NULL:
++            SDL_GL_DeleteContext(context)
+ 
+         if self.surface:
+ 
+@@ -274,7 +298,8 @@ cdef class Window:
+             # Necessary to collect the GL surface, doesn't hurt the window surface.
+             self.surface = None
+ 
+-        SDL_DestroyWindow(self.window)
++        if window != NULL:
++            SDL_DestroyWindow(window)
+ 
+     def resize(self, size, opengl=False, fullscreen=None, maximized=None):
+         """
+@@ -334,8 +359,20 @@ cdef class Window:
+             if self.gl_context == NULL:
+                 raise error()
+ 
++        if self.gl_context:
++            if SDL_GL_MakeCurrent(self.window, self.gl_context) != 0:
++                raise error()
++            self.aether_bind_gl_window()
+         self.create_surface()
+ 
++    def aether_bind_gl_window(self):
++        # Bind before any engine checkpoint can return to the host, including
++        # initialization before the first frame and context recreation.
++        if renpy.aether_mobile.cooperative_active():
++            import _aether_host
++            if _aether_host.bind_window(<Uint64>self.window) != 0:
++                raise error("Could not bind the Ren'Py renderer window")
++
+     def recreate_gl_context(self, always=False):
+         """
+         Check to see if the GL context was lost, and re-create it if it was.
+@@ -350,7 +387,9 @@ cdef class Window:
+         if self.gl_context == NULL:
+             raise error()
+ 
+-        SDL_GL_MakeCurrent(self.window, self.gl_context)
++        if SDL_GL_MakeCurrent(self.window, self.gl_context) != 0:
++            raise error()
++        self.aether_bind_gl_window()
+ 
+         return True
+ 
+diff --git a/renpy/pygame/key.pyx b/renpy/pygame/key.pyx
+index ca6b0ba..faa13bf 100644
+--- a/renpy/pygame/key.pyx
++++ b/renpy/pygame/key.pyx
+@@ -17,6 +17,7 @@
+ # 3. This notice may not be removed or altered from any source distribution.
+ 
+ from sdl2 cimport *
++import renpy
+ from libc.stdlib cimport malloc, free
+ from libc.string cimport memcpy
+ from renpy.pygame.display cimport Window, main_window
+@@ -49,6 +50,8 @@ cdef class KeyboardState:
+         memcpy(self.data, state, self.numkeys)
+ 
+     def __getitem__(self, int key):
++        if renpy.aether_mobile.cooperative_active():
++            return renpy.aether_mobile.cooperative_key_pressed(key)
+         if SDLK_DELETE < key < SDLK_CAPSLOCK:
+             raise IndexError("Out of range.")
+ 
+@@ -60,6 +63,8 @@ cdef class KeyboardState:
+ 
+ 
+ def get_focused():
++    if renpy.aether_mobile.cooperative_active():
++        return True
+     return SDL_GetKeyboardFocus() != NULL
+ 
+ def get_pressed():
+@@ -69,9 +74,14 @@ def get_pressed():
+     return KeyboardState()
+ 
+ def get_mods():
++    if renpy.aether_mobile.cooperative_active():
++        return renpy.aether_mobile.cooperative_modifiers()
+     return SDL_GetModState()
+ 
+ def set_mods(state):
++    if renpy.aether_mobile.cooperative_active():
++        renpy.aether_mobile.cooperative_set_modifiers(state)
++        return
+     SDL_SetModState(state)
+ 
+ def set_repeat(delay=0, interval=0):
+diff --git a/renpy/pygame/mouse.pyx b/renpy/pygame/mouse.pyx
+index aa95777..6936194 100644
+--- a/renpy/pygame/mouse.pyx
++++ b/renpy/pygame/mouse.pyx
+@@ -17,6 +17,7 @@
+ # 3. This notice may not be removed or altered from any source distribution.
+ 
+ from sdl2 cimport *
++import renpy
+ from renpy.pygame.display cimport main_window
+ from renpy.pygame.surface cimport Surface
+ 
+@@ -34,12 +35,16 @@ def reset():
+     active_cursor = None
+ 
+ def get_pressed():
++    if renpy.aether_mobile.cooperative_active():
++        return renpy.aether_mobile.cooperative_mouse_pressed()
+     cdef Uint32 state = SDL_GetMouseState(NULL, NULL)
+     return (1 if state & SDL_BUTTON_LMASK else 0,
+             1 if state & SDL_BUTTON_MMASK else 0,
+             1 if state & SDL_BUTTON_RMASK else 0)
+ 
+ def get_pos():
++    if renpy.aether_mobile.cooperative_active():
++        return renpy.aether_mobile.cooperative_mouse_pos()
+     cdef int x, y
+     SDL_GetMouseState(&x, &y)
+     return (x, y)
+@@ -60,6 +65,8 @@ def set_visible(visible):
+         SDL_SetRelativeMouseMode(SDL_FALSE if visible else SDL_TRUE)
+ 
+ def get_focused():
++    if renpy.aether_mobile.cooperative_active():
++        return True
+     return SDL_GetMouseFocus() != NULL
+ 
+ def set_cursor(size, hotspot, xormasks, andmasks):
+diff --git a/renpy/pygame/surface.pyx b/renpy/pygame/surface.pyx
+index 889c908..bfd94f3 100644
+--- a/renpy/pygame/surface.pyx
++++ b/renpy/pygame/surface.pyx
+@@ -18,6 +18,7 @@
+ # 3. This notice may not be removed or altered from any source distribution.
+ 
+ from libc.string cimport memmove
++from cpython.bytes cimport PyBytes_FromStringAndSize, PyBytes_AS_STRING
+ from sdl2 cimport *
+ 
+ from renpy.pygame.color cimport map_color, get_color
+@@ -835,6 +836,17 @@ cdef class Surface:
+     def get_view(self, kind='2'):
+         raise error("Surface.get_view is not supported.")
+ 
++    def aether_copy_pixels(self):
++        """Copy visible rows, excluding Surface pitch and subsurface padding."""
++        cdef int row_bytes = self.surface.w * self.surface.format.BytesPerPixel
++        cdef bytes result = PyBytes_FromStringAndSize(NULL, row_bytes * self.surface.h)
++        cdef char *target = PyBytes_AS_STRING(result)
++        cdef char *source = <char *>self.surface.pixels
++        cdef int row
++        for row in range(self.surface.h):
++            memmove(target + row * row_bytes, source + row * self.surface.pitch, row_bytes)
++        return result
++
+     def get_buffer(self):
+         cdef Uint8 *pixels = <Uint8 *> self.surface.pixels
+         return pixels[self.surface.h * self.surface.pitch]
+diff --git a/renpy/aether_mobile.py b/renpy/aether_mobile.py
+new file mode 100644
+index 0000000..b1910bb
+--- /dev/null
++++ b/renpy/aether_mobile.py
+@@ -0,0 +1,386 @@
++"""Host-owned Ren'Py loop; all SDL/GL work stays on the calling thread.
++
++The native launcher links greenlet with its target CPython. No exception is
++used to yield: the complete script, screen and Cython stacks remain suspended.
++"""
++import importlib.util
++import os
++import sys
++import threading
++import time
++
++try:
++    from _aether_greenlet import getcurrent, greenlet
++except ImportError:
++    getcurrent = greenlet = None
++
++_owner = None
++_host = None
++_game = None
++_deadline = None
++_frame = None
++_serial = 0
++_paused = False
++_timer_generation = 0
++_stopping = False
++_terminal_cleanup_done = False
++_error = None
++_input = []
++_buttons = [False, False, False]
++_pointer = (0, 0)
++_surface_size = None
++_keys = {}
++_modifiers = 0
++
++
++def cooperative_active():
++    return _game is not None
++
++
++def _check_owner():
++    if _owner is not None and threading.get_ident() != _owner:
++        raise RuntimeError("Ren'Py mobile SDL/GL must run on its original host thread")
++
++
++def cooperative_start(game_root, argv0):
++    """Create a suspended game. Initialization starts inside the first tick."""
++    global _owner, _host, _game, _paused, _stopping, _error, _frame, _serial
++    if greenlet is None:
++        raise RuntimeError("Target CPython is missing the linked greenlet runtime")
++    if _terminal_cleanup_done:
++        raise RuntimeError("Ren'Py interpreter reuse is unavailable; restart the host application")
++    if _game is not None:
++        raise RuntimeError("Ren'Py mobile game is already started")
++    if not os.path.isdir(game_root) or not os.path.isfile(argv0):
++        raise ValueError("game directory or packaged Ren'Py bootstrap is missing")
++    _owner = threading.get_ident()
++    _host = getcurrent()
++    _paused = _stopping = False
++    _error = _frame = None
++    _serial = 0
++    _game = greenlet(lambda: _run(game_root, argv0), parent=_host)
++
++
++def _run(game_root, argv0):
++    global _error
++    saved_argv = sys.argv
++    try:
++        # Use the official distributor path functions and full bootstrap,
++        # including import_all, importer, init script, preferences and saves.
++        sys.argv = [argv0, game_root]
++        spec = importlib.util.spec_from_file_location("_aether_renpy_entry", argv0)
++        entry = importlib.util.module_from_spec(spec)
++        sys.modules[spec.name] = entry
++        spec.loader.exec_module(entry)
++        entry.main()
++    except SystemExit as exc:
++        if exc.code not in (None, 0):
++            _error = "Ren'Py exited with status %r" % (exc.code,)
++    except BaseException:
++        import traceback
++        _error = traceback.format_exc()
++    finally:
++        sys.argv = saved_argv
++        sys.modules.pop("_aether_renpy_entry", None)
++    return "finished" if _error is None else "error"
++
++
++def cooperative_tick(budget_ms):
++    global _deadline
++    _check_owner()
++    if _game is None:
++        return "not_started"
++    if _game.dead:
++        if _error:
++            raise RuntimeError(_error)
++        return "finished"
++    if _paused:
++        return "yield"
++    _deadline = time.monotonic() + max(0, budget_ms) / 1000.0
++    try:
++        _game.switch()
++    finally:
++        _deadline = None
++    if _error:
++        raise RuntimeError(_error)
++    return "finished" if _game.dead else "yield"
++
++
++def cooperative_checkpoint(force=False):
++    """Suspend at an engine boundary without unwinding the game stack."""
++    if not cooperative_active() or getcurrent() is not _game:
++        return
++    if _stopping:
++        import renpy.game
++        raise renpy.game.QuitException()
++    if force or (_deadline is not None and time.monotonic() >= _deadline):
++        _host.switch("yield")
++        if _stopping:
++            import renpy.game
++            raise renpy.game.QuitException()
++    _dispatch_input()
++
++
++def cooperative_capture(surftree):
++    global _frame, _serial
++    if not cooperative_active():
++        return
++    import renpy
++    import renpy.pygame as pygame
++    surface = renpy.display.draw.screenshot(surftree)
++    if surface.get_bytesize() != 4:
++        raise RuntimeError("Ren'Py screenshot must contain RGBA pixels")
++    # The official GL2 screenshot writes RGBA bytes and flips to top-left.
++    # Ren'Py pygame deliberately has no image.tostring/get_view API.
++    pixels = surface.aether_copy_pixels()
++    width, height = surface.get_size()
++    if len(pixels) != width * height * 4:
++        raise RuntimeError("Invalid packed Ren'Py frame size")
++    _serial += 1
++    _frame = (pixels, width, height, _serial)
++    window = pygame.display.get_window()
++    if window is not None:
++        # Binding uses the actual renderer window, never a synthetic surface.
++        import _aether_host
++        if _aether_host.bind_window(window.get_sdl_window_pointer().value) != 0:
++            raise RuntimeError("Could not bind Ren'Py renderer window")
++    cooperative_checkpoint(force=True)
++
++
++def cooperative_set_surface_size(width, height):
++    """Select the initial pbuffer; the host scales frames after viewport resize."""
++    global _surface_size
++    _check_owner()
++    if width <= 0 or height <= 0:
++        raise ValueError("Invalid host surface size")
++    if _frame is None:
++        _surface_size = (int(width), int(height))
++
++
++def cooperative_surface_size():
++    return _surface_size
++
++
++def cooperative_frame():
++    _check_owner()
++    return _frame
++
++
++def cooperative_input(event):
++    _check_owner()
++    if _game is None or _game.dead:
++        raise RuntimeError("Ren'Py mobile game is not running")
++    # Copy borrowed native text/event storage before returning to the host.
++    _input.append(dict(event))
++
++
++def _dispatch_input():
++    global _pointer, _modifiers
++    if not _input:
++        return
++    import renpy
++    import renpy.pygame as pygame
++    queued = list(_input)
++    del _input[:]
++    for item in queued:
++        kind, action = item["type"], item["value"]
++        if kind == 3:
++            text = item.get("text", "")
++            if text:
++                pygame.event.post(pygame.event.Event(pygame.TEXTINPUT, text=text))
++        elif kind == 1:
++            key = item["code"]
++            if action == 8:
++                key = pygame.K_ESCAPE
++                action = 5
++            _keys[key] = action == 5
++            _modifiers = item.get("modifiers", 0)
++            pygame.event.post(pygame.event.Event(
++                pygame.KEYDOWN if action == 5 else pygame.KEYUP,
++                key=key, mod=item.get("modifiers", 0), unicode="",
++                repeat=bool(item.get("repeat", False))))
++        elif kind == 2:
++            # Frames contain the rendered game tree, excluding window letterbox.
++            # Convert normalized game content through GL2's actual viewport;
++            # the normal mouse_event path translates this back to virtual pixels.
++            pos = renpy.display.draw.untranslate_point(
++                item["x"] * renpy.config.screen_width,
++                item["y"] * renpy.config.screen_height)
++            button = item.get("code", 1) or 1
++            if action in (1, 3):
++                if 1 <= button <= 3:
++                    _buttons[button - 1] = action == 1
++                pygame.event.post(pygame.event.Event(
++                    pygame.MOUSEBUTTONDOWN if action == 1 else pygame.MOUSEBUTTONUP,
++                    pos=pos, button=button, which=4294967295, touch=True))
++            elif action == 2:
++                rel = (pos[0] - _pointer[0], pos[1] - _pointer[1])
++                pygame.event.post(pygame.event.Event(
++                    pygame.MOUSEMOTION, pos=pos, rel=rel,
++                    buttons=tuple(_buttons), which=4294967295, touch=True))
++            elif action == 4:
++                wheel_y = item.get("delta_y", 0)
++                if pygame.event.get_mousewheel_buttons():
++                    if wheel_y:
++                        wheel_button = 4 if wheel_y > 0 else 5
++                        for event_type in (pygame.MOUSEBUTTONDOWN, pygame.MOUSEBUTTONUP):
++                            pygame.event.post(pygame.event.Event(
++                                event_type, pos=pos, button=wheel_button,
++                                which=4294967295, touch=True))
++                else:
++                    pygame.event.post(pygame.event.Event(
++                        pygame.MOUSEWHEEL, x=item.get("delta_x", 0),
++                        y=wheel_y, flipped=False))
++            _pointer = pos
++
++
++def cooperative_mouse_pos():
++    return _pointer
++
++
++def cooperative_mouse_pressed():
++    return tuple(_buttons)
++
++
++def cooperative_key_pressed(key):
++    return bool(_keys.get(key, False))
++
++
++def cooperative_modifiers():
++    return _modifiers
++
++
++def cooperative_set_modifiers(value):
++    global _modifiers
++    _modifiers = value
++
++
++def cooperative_pause():
++    global _paused
++    _check_owner()
++    if _game is None or _game.dead or _paused:
++        return
++    import renpy
++    interface = renpy.display.interface
++    if interface and interface.started:
++        import renpy.pygame as pygame
++        import renpy.display.core as core
++        interface.mobile_save()
++        renpy.audio.audio.pause_all()
++        # check_suspend is bypassed in host mode. Stop its three timers here
++        # rather than let SDL's timer thread fill the queue while Tick stops.
++        timers = (core.PERIODIC, core.REDRAW, core.TIMEEVENT)
++        for event_type in timers:
++            pygame.time.set_timer(event_type, 0)
++        pygame.event.clear(timers)
++        if interface.pushed_event is not None and interface.pushed_event.type in timers:
++            interface.pushed_event = None
++    _paused = True
++
++
++def cooperative_resume():
++    global _paused, _timer_generation
++    _check_owner()
++    if _game is None or _game.dead or not _paused:
++        return
++    import renpy
++    interface = renpy.display.interface
++    if interface and interface.started:
++        import renpy.pygame as pygame
++        import renpy.display.core as core
++        # Remove any callback that was already in flight when pause removed
++        # the timers. Do not clear touch, key or text events.
++        pygame.event.clear((core.PERIODIC, core.REDRAW, core.TIMEEVENT))
++        pygame.time.set_timer(core.PERIODIC, core.PERIODIC_INTERVAL)
++        renpy.audio.audio.unpause_all()
++        interface.force_redraw = True
++        _timer_generation += 1
++        # Wake an event_wait suspended inside interact_core. Its saved timer
++        # caches are invalidated at the next loop boundary, without restarting
++        # the interaction or firing an artificial timeout at a displayable.
++        pygame.event.post(pygame.event.Event(core.PERIODIC))
++    _paused = False
++
++
++def cooperative_timer_generation():
++    return _timer_generation
++
++
++def cooperative_text_input_state():
++    if not cooperative_active():
++        return False
++    import renpy.pygame as pygame
++    return bool(pygame.key.text_input)
++
++
++def cooperative_stop():
++    global _game, _host, _owner, _paused, _stopping, _frame
++    _check_owner()
++    if _game is None or _terminal_cleanup_done:
++        return
++    _stopping = True
++    _paused = False
++    # A greenlet is false before its first switch and after termination.
++    # Throwing into a newborn greenlet would bypass _run's exception handler.
++    if _game:
++        import renpy.game
++        _game.throw(renpy.game.QuitException())
++        if not _game.dead:
++            raise RuntimeError("Ren'Py game did not finish its terminal shutdown")
++    _terminal_display_cleanup()
++    _game = _host = _owner = _frame = None
++    _input.clear()
++    _keys.clear()
++    _buttons[:] = [False, False, False]
++
++
++def _terminal_display_cleanup():
++    """Release a healthy session while native still owns its GL context.
++
++    No renderer imports are performed here: initialization might have failed
++    before display or GL2 became available. This is terminal, not a reusable
++    interpreter or a context-loss recovery path.
++    """
++    global _terminal_cleanup_done
++    pygame = sys.modules.get("renpy.pygame")
++    display = getattr(pygame, "display", None)
++    shader = sys.modules.get("renpy.gl2.gl2shader")
++    if shader is not None:
++        # Set before releasing any refs or deleting the SDL context: script
++        # stores and texture loaders may retain Programs after cache.clear().
++        shader.retire_mobile_programs()
++    if display is None:
++        _terminal_cleanup_done = True
++        return
++
++    display.prepare_mobile_shutdown()
++    renpy = sys.modules.get("renpy")
++    package = getattr(renpy, "display", None)
++    draw = getattr(package, "draw", None)
++    core = sys.modules.get("renpy.display.core")
++    try:
++        # bootstrap.finally already calls draw.quit(). Never repeat quit_fbo.
++        if draw is not None:
++            loader = getattr(draw, "texture_loader", None)
++            if loader is not None:
++                loader.retire_mobile()
++            cache = getattr(draw, "shader_cache", None)
++            if cache is not None:
++                cache.clear()
++            video = sys.modules.get("renpy.display.video")
++            if video is not None:
++                video.group_texture.clear()
++            interface = getattr(package, "interface", None)
++            if interface is not None and interface.started:
++                interface.kill_textures()
++            draw.texture_loader = draw.shader_cache = draw.window = None
++            package.draw = None
++    finally:
++        if core is not None:
++            timers = (core.PERIODIC, core.REDRAW, core.TIMEEVENT)
++            for event_type in timers:
++                pygame.time.set_timer(event_type, 0)
++            if display.get_init():
++                pygame.event.clear(timers)
++        display.quit()
++    _terminal_cleanup_done = True
+diff --git a/renpy/gl2/gl2shader.pyx b/renpy/gl2/gl2shader.pyx
+index 0aa2436..44a565c 100644
+--- a/renpy/gl2/gl2shader.pyx
++++ b/renpy/gl2/gl2shader.pyx
+@@ -179,6 +179,16 @@ class Variable:
+         return (self.storage, self.type, self.name, self.array) == (other.storage, other.type, other.name, other.array)
+ 
+ 
++# Embedded sessions retain CPython after their SDL context is destroyed. A
++# Program can still be held by a texture loader, script store, or debugger.
++# Its late destructor must not delete an unrelated host-context program.
++cdef bint aether_terminal_programs_retired = False
++
++def retire_mobile_programs():
++    global aether_terminal_programs_retired
++    aether_terminal_programs_retired = True
++
++
+ cdef class Program:
+     """
+     Represents an OpenGL program.
+@@ -197,7 +207,8 @@ cdef class Program:
+         self.uniform_setters = [ ]
+ 
+     def __dealloc__(self):
+-        glDeleteProgram(self.program)
++        if self.program and not aether_terminal_programs_retired:
++            glDeleteProgram(self.program)
+ 
+     def find_variables(self, source, seen_uniforms: set, samplers: int):
+ 
+diff --git a/renpy/gl2/gl2texture.pyx b/renpy/gl2/gl2texture.pyx
+index ec8c958..73a2bd5 100644
+--- a/renpy/gl2/gl2texture.pyx
++++ b/renpy/gl2/gl2texture.pyx
+@@ -95,6 +95,15 @@ cdef class TextureLoader:
+ 
+         self.allocated = set()
+ 
++    def retire_mobile(self):
++        # CPU-only terminal teardown. SDL context destruction frees the GPU
++        # objects, including textures retained outside the render caches.
++        self.allocated.clear()
++        self.free_list.clear()
++        self.texture_load_queue.clear()
++        self.ftl_program = None
++        self.total_texture_size = 0
++
+     def get_texture_size(self):
+         """
+         Returns the amount of memory locked up in textures.

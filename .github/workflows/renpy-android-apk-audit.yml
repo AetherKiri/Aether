@@ -1,0 +1,207 @@
+name: Audit the actual exported Ren'Py APKs
+
+# These exact APKs were genuinely linked/exported at b330d418. Their first
+# audit failed on the aapt2 minSdkVersion format. Recheck the original bytes
+# without pretending that this job compiles the host, or republishes raw logs.
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/renpy-android-apk-audit.yml'
+      - 'tools/inspect_renpy_android_apk.py'
+      - 'tools/validate_renpy_mobile_payload.py'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  audit:
+    name: Audit the actual Debug APK (${{ matrix.abi }})
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - abi: arm64-v8a
+            preset: Android Debug
+            artifact: '11569036023'
+            digest: 'sha256:7364686c88b8c02bd43826469f42014353570ae75f3246b7fc2211015fc56c74'
+          - abi: x86_64
+            preset: Android Emulator Debug
+            artifact: '11570702817'
+            digest: 'sha256:444ce5528b42fe29ed84a91ea29726ccf83a380dc3d71b6463bba8a12408b211'
+    env:
+      SOURCE_RUN: '37817371584'
+      SOURCE_HOST_HEAD: 'b330d41813cc712328d762e1f7a75f99f1d59882'
+      NATIVE_RUN: '37812943810'
+      NATIVE_ARTIFACT: '11567113193'
+      NATIVE_HEAD: 'dbb863ac101301c8a9d78dea358e2157a0185165'
+      NATIVE_DIGEST: 'sha256:04a1f247585b8f4647e6dcd8c4102757f558ee542524df1504267b40f0a4239c'
+      ANDROID_NDK_VERSION: '28.1.13356709'
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: actions/checkout@v6
+        with:
+          ref: b330d41813cc712328d762e1f7a75f99f1d59882
+          path: original-host
+          persist-credentials: false
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+      - name: Verify immutable artifact identities and exact prior failure
+        env:
+          GH_TOKEN: ${{ github.token }}
+          APK_ARTIFACT: ${{ matrix.artifact }}
+          APK_DIGEST: ${{ matrix.digest }}
+          ABI: ${{ matrix.abi }}
+        run: |
+          python3 - <<'PY'
+          import json, os, urllib.request
+          def get(path):
+              request = urllib.request.Request('https://api.github.com/repos/AetherKiri/Aether/' + path,
+                  headers={'Authorization': 'Bearer ' + os.environ['GH_TOKEN'],
+                           'Accept': 'application/vnd.github+json', 'X-GitHub-Api-Version': '2022-11-28'})
+              with urllib.request.urlopen(request, timeout=60) as response:
+                  return json.load(response)
+          for run_key, head_key, conclusion in [('SOURCE_RUN', 'SOURCE_HOST_HEAD', 'failure'),
+                                                ('NATIVE_RUN', 'NATIVE_HEAD', 'success')]:
+              run = get('actions/runs/' + os.environ[run_key])
+              assert run['head_sha'] == os.environ[head_key]
+              assert run['status'] == 'completed' and run['conclusion'] == conclusion
+          for artifact_key, digest_key, run_key, name in [
+                  ('APK_ARTIFACT', 'APK_DIGEST', 'SOURCE_RUN', 'renpy-android-app-evidence-' + os.environ['ABI']),
+                  ('NATIVE_ARTIFACT', 'NATIVE_DIGEST', 'NATIVE_RUN', 'renpy-android-runtime')]:
+              artifact = get('actions/artifacts/' + os.environ[artifact_key])
+              assert not artifact['expired'] and artifact['name'] == name
+              assert artifact['workflow_run']['id'] == int(os.environ[run_key])
+              assert artifact['digest'] == os.environ[digest_key]
+          PY
+      - uses: actions/download-artifact@v6
+        with:
+          artifact-ids: ${{ matrix.artifact }}
+          run-id: 37817371584
+          github-token: ${{ github.token }}
+          merge-multiple: true
+          path: ${{ runner.temp }}/original-build-evidence
+      - uses: actions/download-artifact@v6
+        with:
+          artifact-ids: 11567113193
+          run-id: 37812943810
+          github-token: ${{ github.token }}
+          merge-multiple: true
+          path: ${{ runner.temp }}/original-native-download
+      - name: Use the normal SDK with its existing license acceptance
+        run: |
+          set -euo pipefail
+          sdk_root="${ANDROID_HOME:-/usr/local/lib/android/sdk}"
+          test -d "$sdk_root"
+          ndk_root="$sdk_root/ndk/$ANDROID_NDK_VERSION"
+          if [[ ! -f "$ndk_root/build/cmake/android.toolchain.cmake" ]]; then
+            "$sdk_root/cmdline-tools/latest/bin/sdkmanager" --install "ndk;$ANDROID_NDK_VERSION" </dev/null
+          fi
+          test -f "$ndk_root/build/cmake/android.toolchain.cmake"
+          echo "ANDROID_HOME=$sdk_root" >> "$GITHUB_ENV"
+          echo "ANDROID_NDK_HOME=$ndk_root" >> "$GITHUB_ENV"
+      - name: Verify the original APK and restage exact compiled native inputs
+        env:
+          ABI: ${{ matrix.abi }}
+          APK_ARTIFACT: ${{ matrix.artifact }}
+          APK_DIGEST: ${{ matrix.digest }}
+          AUDIT_PR_HEAD: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import hashlib, json, os, pathlib, shutil, subprocess
+          root = pathlib.Path(os.environ['RUNNER_TEMP'])
+          source = root / 'original-build-evidence'
+          def one(pattern):
+              matches = list(source.rglob(pattern))
+              assert len(matches) == 1, (pattern, len(matches))
+              return matches[0]
+          previous = json.loads(one('apk-payload-checksums.json').read_text())
+          assert previous['gameplay'] == 'unverified' and previous['package_bytes'] == 'passed'
+          assert previous['android_manifest']['status'] == 'failed'
+          assert previous['errors'] == ['aapt badging lacks package, minimum SDK, or native ABI metadata']
+          assert previous['files'] and all(file['match'] for file in previous['files'].values())
+          original = json.loads(one('provenance.json').read_text())
+          assert original['host_pr_head'] == os.environ['SOURCE_HOST_HEAD']
+          assert original['native_source_head'] == os.environ['NATIVE_HEAD']
+          assert original['native_source_run'] == int(os.environ['NATIVE_RUN'])
+          assert original['native_artifact_id'] == int(os.environ['NATIVE_ARTIFACT'])
+          assert original['native_artifact_digest'] == os.environ['NATIVE_DIGEST']
+          assert original['abi'] == previous['abi'] == os.environ['ABI']
+          apk = one('*.apk')
+          apk_hash = hashlib.sha256(apk.read_bytes()).hexdigest()
+          assert apk_hash == previous['apk_sha256']
+          print('Original exported APK SHA256:', apk_hash)
+          result = root / 'apk-audit-result'
+          result.mkdir()
+          deliverable = root / 'validated-apk'
+          deliverable.mkdir()
+          shutil.copyfile(apk, deliverable / apk.name)
+          provenance = {'original_build': original, 'original_apk_sha256': apk_hash,
+              'source_app_artifact': int(os.environ['APK_ARTIFACT']), 'source_app_artifact_digest': os.environ['APK_DIGEST'],
+              'audit_pr_head': os.environ['AUDIT_PR_HEAD'],
+              'audit_checkout_head': subprocess.check_output(['git', 'rev-parse', 'HEAD'], text=True).strip(),
+              'new_host_compilation': 'not_run', 'gameplay': 'unverified'}
+          (result / 'provenance.json').write_text(json.dumps(provenance, indent=2) + '\n')
+          with open(os.environ['GITHUB_ENV'], 'a') as env:
+              env.write('AUDIT_APK=' + str(deliverable / apk.name) + '\n')
+          PY
+          mkdir -p "$RUNNER_TEMP/original-native" "$RUNNER_TEMP/audit-staging"
+          tar -xzf "$RUNNER_TEMP/original-native-download/renpy-android-runtime.tar.gz" -C "$RUNNER_TEMP/original-native"
+          # This is reference staging for byte comparison, never an app build.
+          # Use the exact original script/Java support and native dependency.
+          touch "$RUNNER_TEMP/audit-staging/build.gradle"
+          bash original-host/tools/stage_renpy_android_support.sh \
+            --mobile-root "$RUNNER_TEMP/original-native/payload" \
+            --godot-build "$RUNNER_TEMP/audit-staging" --abis '${{ matrix.abi }}'
+          python3 original-host/tools/prepare_renpy_android_test_export.py \
+            --source-project original-host/apps/godot_app --destination "$RUNNER_TEMP/audit-project" \
+            --preset-name '${{ matrix.preset }}' --package-id org.aetherkiri.renpy.debug
+      - name: Audit real SDK metadata, packaged ELF closure, raw bytes and signature
+        run: |
+          set -euo pipefail
+          python3 tools/inspect_renpy_android_apk.py --apk "$AUDIT_APK" \
+            --godot-build "$RUNNER_TEMP/audit-staging" --abi '${{ matrix.abi }}' \
+            --output-dir "$RUNNER_TEMP/apk-audit-result" \
+            --export-presets "$RUNNER_TEMP/audit-project/export_presets.cfg" --export-preset '${{ matrix.preset }}' \
+            --build-type debug --android-sdk "$ANDROID_HOME" --android-ndk "$ANDROID_NDK_HOME"
+          python3 tools/validate_renpy_mobile_payload.py --platform android --abi '${{ matrix.abi }}' --apk "$AUDIT_APK"
+          apksigner="$(find "$ANDROID_HOME/build-tools" -name apksigner -type f | sort -V | tail -1)"
+          test -x "$apksigner"
+          "$apksigner" verify --verbose --print-certs "$AUDIT_APK" | tee "$RUNNER_TEMP/apk-audit-result/apk-signature.txt"
+      - name: Upload only the revalidated installable APK
+        uses: actions/upload-artifact@v6
+        with:
+          name: renpy-installable-debug-${{ matrix.abi }}
+          path: ${{ runner.temp }}/validated-apk/*.apk
+          if-no-files-found: error
+          retention-days: 7
+      - name: Upload the original public demo and phone instructions
+        if: matrix.abi == 'arm64-v8a'
+        uses: actions/upload-artifact@v6
+        with:
+          name: renpy-demo-project
+          path: |
+            original-host/demos/aetherkiri-renpy/game
+            original-host/demos/aetherkiri-renpy/README.md
+          if-no-files-found: error
+          retention-days: 7
+      - name: Preserve only newly generated audit metadata
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: renpy-android-apk-audit-evidence-${{ matrix.abi }}
+          path: |
+            ${{ runner.temp }}/apk-audit-result/*.json
+            ${{ runner.temp }}/apk-audit-result/*.readelf.txt
+            ${{ runner.temp }}/apk-audit-result/*.exports.txt
+            ${{ runner.temp }}/apk-audit-result/apk-android-badging.txt
+            ${{ runner.temp }}/apk-audit-result/apk-signature.txt
+          if-no-files-found: warn
+          retention-days: 7

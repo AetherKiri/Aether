@@ -150,14 +150,20 @@ def is_successful_os_return(row: object) -> bool:
             and not isinstance(row.get("result"), bool) and row.get("result") == 0)
 
 
-def png_pixels(path: Path) -> tuple[int, int, bytes, int]:
+def png_pixels(path: Path, *, deadline: float | None = None) -> tuple[int, int, bytes, int]:
     """Decode real Android/Godot 8-bit RGB(A) evidence without extra packages."""
+    if deadline is not None and time.monotonic() >= deadline:
+        raise Failed("Passive capture deadline reached")
     raw = path.read_bytes()
+    if deadline is not None and (len(raw) > 8 * 1024 * 1024 or time.monotonic() >= deadline):
+        raise Failed("Passive PNG exceeds its byte or time budget")
     if raw[:8] != b"\x89PNG\r\n\x1a\n":
         raise Failed(f"Evidence is not a PNG: {path.name}")
     offset, compressed = 8, bytearray()
     width = height = channels = 0
     while offset + 12 <= len(raw):
+        if deadline is not None and time.monotonic() >= deadline:
+            raise Failed("Passive capture deadline reached")
         count = struct.unpack_from(">I", raw, offset)[0]
         kind = raw[offset + 4:offset + 8]
         data = raw[offset + 8:offset + 8 + count]
@@ -173,17 +179,31 @@ def png_pixels(path: Path) -> tuple[int, int, bytes, int]:
         offset += 12 + count
     if width <= 0 or height <= 0 or width * height > 30_000_000 or not channels:
         raise Failed(f"Invalid PNG dimensions: {path.name}")
-    stream = zlib.decompress(compressed)
     stride = width * channels
+    if deadline is None:
+        stream = zlib.decompress(compressed)
+    else:
+        # The passive diagnostic has a finite CPU/memory budget. Keep the
+        # normal decoder unchanged; reject output beyond the legal PNG size.
+        if height * (stride + 1) > 8 * 1024 * 1024:
+            raise Failed("Passive PNG exceeds its decoded pixel budget")
+        decoder = zlib.decompressobj()
+        stream = decoder.decompress(compressed, height * (stride + 1) + 1)
+        if not decoder.eof or decoder.unconsumed_tail or time.monotonic() >= deadline:
+            raise Failed("Passive PNG decompression exceeds its size or time budget")
     if len(stream) != height * (stride + 1):
         raise Failed(f"Incomplete PNG pixels: {path.name}")
     pixels = bytearray(height * stride)
     previous = bytearray(stride)
     for y in range(height):
+        if deadline is not None and time.monotonic() >= deadline:
+            raise Failed("Passive capture deadline reached")
         start = y * (stride + 1)
         filter_type = stream[start]
         row = bytearray(stream[start + 1:start + 1 + stride])
         for x in range(stride):
+            if deadline is not None and x % 4096 == 0 and time.monotonic() >= deadline:
+                raise Failed("Passive capture deadline reached")
             left = row[x - channels] if x >= channels else 0
             up = previous[x]
             corner = previous[x - channels] if x >= channels else 0
@@ -204,7 +224,10 @@ def png_pixels(path: Path) -> tuple[int, int, bytes, int]:
             row[x] = (row[x] + value) & 255
         pixels[y * stride:(y + 1) * stride] = row
         previous = row
-    return width, height, bytes(pixels), channels
+    result = width, height, bytes(pixels), channels
+    if deadline is not None and time.monotonic() >= deadline:
+        raise Failed("Passive capture deadline reached")
+    return result
 
 
 def pixel(image: tuple[int, int, bytes, int], x: int, y: int) -> tuple[int, int, int]:
@@ -408,6 +431,7 @@ class Acceptance:
         self.last_command_returncode = None
         self.last_command_stderr = ""
         self.execution_deadline = 0.0
+        self.passive_deadline = None
         self.waiting_marker = None
         self.summary = {"status": "not_run", "run_id": self.run_id,
                         "source": "actual-apk-adb-cloud-device", "serial": args.serial,
@@ -441,6 +465,24 @@ class Acceptance:
         command = self.device_prefix + list(parts)
         self.last_command_returncode = None
         self.last_command_stderr = ""
+        if self.passive_deadline is not None:
+            png = parts[:3] == ("exec-out", "screencap", "-p") or (
+                parts[:3] == ("exec-out", "run-as", self.args.package) and parts[-1].endswith(".png"))
+            report, raw = bounded_failure_command(command, min(self.passive_deadline, time.monotonic() + timeout),
+                                                  byte_limit=8 * 1024 * 1024 if png else 65536)
+            self.last_command_returncode = report.get("returncode")
+            with (self.output / "commands.jsonl").open("a") as log:
+                log.write(json.dumps({"command": command, "returncode": self.last_command_returncode,
+                                      "passive_diagnostic_only": True, "time": time.time()}) + "\n")
+            if (report.get("reason") in ("command_timeout", "stdout_limit", "diagnostic_deadline")
+                    or report.get("cleanup_permission_denied") or report.get("collector_not_reaped")
+                    or time.monotonic() >= self.passive_deadline):
+                raise Failed("Passive device read exceeded its bounded budget")
+            if report.get("status") != "available":
+                if not check and report.get("returncode") is not None:
+                    return b""  # Unavailable observer/checkpoint data is not readiness proof.
+                raise Failed("Passive device read is unavailable")
+            return raw
         try:
             result = subprocess.run(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=timeout)
         except (OSError, subprocess.TimeoutExpired) as exc:
@@ -489,9 +531,11 @@ class Acceptance:
                 if row.get("kind") == "failure":
                     raise Failed(f"Actual mobile observer failed: {row.get('message')}")
             result = condition()
+            if self.passive_deadline is not None and time.monotonic() >= expires:
+                raise Failed("Passive observation deadline reached")
             if result:
                 return result
-            time.sleep(0.4)
+            time.sleep(min(0.4, max(0, expires - time.monotonic())) if self.passive_deadline is not None else 0.4)
         raise Failed(f"Timed out waiting for {description}; execution is not accepted")
 
     def wait_game(self, stage: str) -> dict:
@@ -506,7 +550,7 @@ class Acceptance:
     def screenshot(self, name: str) -> Path:
         path = self.output / f"screen-{name}.png"
         path.write_bytes(self.command("exec-out", "screencap", "-p"))
-        png_pixels(path)
+        png_pixels(path, deadline=self.passive_deadline)
         return path
 
     def foreground(self) -> None:
@@ -527,10 +571,10 @@ class Acceptance:
         relative = "files/renpy-device-evidence/provider-" + stage + ".png"
         provider_path = self.output / ("provider-" + stage + ".png")
         provider_path.write_bytes(self.private(relative, required=True))
-        provider = png_pixels(provider_path)
+        provider = png_pixels(provider_path, deadline=self.passive_deadline)
         self.foreground()
         screen_path = self.screenshot(screenshot_name or stage)
-        screen = png_pixels(screen_path)
+        screen = png_pixels(screen_path, deadline=self.passive_deadline)
         stats = {"provider": image_stats(provider), "os_screenshot": image_stats(screen)}
         box, viewport = row["drawn_box"], row["viewport_size"]
         if min(viewport) <= 0 or min(box[2:]) <= 0:
@@ -568,6 +612,8 @@ class Acceptance:
             raise Failed("Native marker did not change after actual resumed OS touch; cached WAIT pixels cannot pass")
         if stage == "post_text_ready":
             self.waiting_marker = provider, checkpoint
+        if self.passive_deadline is not None and time.monotonic() >= self.passive_deadline:
+            raise Failed("Passive capture deadline reached")
         self.summary["checks"].append({"stage": screenshot_name or stage, "native_provider_pixels_and_os_screen": stats})
         return row, screen
 
@@ -633,6 +679,10 @@ class Acceptance:
         (self.output / "launch.txt").write_text(launch)
         if (not re.search(r"(?im)^\s*Status:\s*ok\s*$", launch)
                 or re.search(r"(?im)^\s*(?:Error\b|Exception\b|Failure\b)", launch + "\n" + self.last_command_stderr)):
+            statuses = re.findall(r"(?im)^\s*Status:\s*(\S+)\s*$", launch)
+            if (self.last_command_returncode == 0 and statuses == ["timeout"]
+                    and not re.search(r"(?im)^\s*(?:Error\b|Exception\b|Failure\b)", launch + "\n" + self.last_command_stderr)):
+                self.observe_timed_out_start(component)
             raise Failed("Actual am start did not report Status: ok without Android errors; inspect launch.txt and commands.jsonl")
         self.pid = self.wait("installed app process", self.observed_pid)
         pids = self.pid.split()
@@ -708,6 +758,58 @@ class Acceptance:
         (self.output / "aetherkiri-engine.log").write_bytes(raw)
         self.summary["checks"].append({"native_cleanup_error_log": require_engine_log(raw, self.game_root)})
         self.summary["status"] = "passed"
+
+    def observe_timed_out_start(self, component: str) -> None:
+        """One finite read-only observation, never a launch/gameplay retry."""
+        started = time.monotonic()
+        deadline = min(started + 30, self.execution_deadline)
+        report = {"source": "actual-adb-passive-startup-observation", "diagnostic_only": True,
+                  "run_id": self.run_id, "package": self.args.package, "serial": self.args.serial,
+                  "apk_sha256": self.summary.get("apk_sha256"), "activity": component,
+                  "status": "diagnostic_notavailable", "window_seconds": max(0, deadline - started),
+                  "start_ready": False, "native_rgba_and_os_pixels": False}
+        previous_deadline, previous_passive = self.execution_deadline, self.passive_deadline
+        previous_checks = self.summary["checks"]
+        install = self.summary["actual_status"]["apk_install"]
+        try:
+            if (not self.installed or self.summary.get("apk_installed") is not True
+                    or install.get("status") != "passed" or install.get("source") != "actual-adb-command"
+                    or install.get("package") != self.args.package or install.get("serial") != self.args.serial
+                    or type(install.get("returncode")) is not int or install["returncode"] != 0
+                    or install.get("stdout_marker") != "Success" or deadline <= started
+                    or len(component) > 256 or not re.fullmatch(r"[A-Za-z0-9_.$]+/[A-Za-z0-9_.$]+", component)
+                    or not component.startswith(self.args.package + "/")):
+                return
+            self.execution_deadline = self.passive_deadline = deadline
+            self.summary["checks"] = []
+            pids = self.observed_pid().split()
+            if not pids or len(pids) > 8 or len(set(pids)) != len(pids):
+                return
+            states = failure_activity_states(self.shell("dumpsys", "activity", "activities"), component)
+            if not any(row.get("state") == "RESUMED" for row in states):
+                return
+            report.update(diagnostic_pids=pids, activity_states=states)
+            self.wait_game("start_ready")
+            report["start_ready"] = True
+            if set(self.observed_pid().split()) != set(pids):
+                return
+            frame, _ = self.capture("start_ready", screenshot_name="passive-start-ready")
+            if set(self.observed_pid().split()) != set(pids) or time.monotonic() >= deadline:
+                return
+            report.update(status="diagnostic_available", native_rgba_and_os_pixels=True,
+                          frame_serial=frame["frame_serial"], pixels=self.summary["checks"])
+        except Exception:
+            # Optional diagnostics must never replace the original launch
+            # failure, including malformed observer data in shared capture.
+            report["observation_unavailable"] = True
+        finally:
+            self.summary["checks"] = previous_checks
+            self.execution_deadline, self.passive_deadline = previous_deadline, previous_passive
+            report.update(elapsed_seconds=round(time.monotonic() - started, 3),
+                          deadline_reached=time.monotonic() >= deadline)
+            if report["deadline_reached"]:
+                report.update(status="diagnostic_notavailable", native_rgba_and_os_pixels=False)
+            self.summary["passive_startup_observation"] = report
 
     def observed_pid(self) -> str:
         raw = self.shell("pidof", self.args.package, check=False).decode().strip()

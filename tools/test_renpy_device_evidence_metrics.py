@@ -17,10 +17,12 @@ import itertools
 import json
 import shlex
 import subprocess
+import struct
 import sys
 import tempfile
 import time
 import unittest
+import zlib
 from pathlib import Path
 from unittest import mock
 
@@ -433,13 +435,16 @@ class AndroidPartialFailureReporting(unittest.TestCase):
 
     def run_controlled_failure(self, *, install=(0, b"Performing streamed install\nSuccess\n", b""),
                                launch=(0, b"Status: ok\n", b""), pid=(0, b"4343\n", b""),
-                               stage_failure=False, cloud=True):
+                               stage_failure=False, cloud=True, passive_ready=False, activity_state="RESUMED",
+                               malformed_capture=False):
         with tempfile.TemporaryDirectory(prefix="renpy-controlled-partial-report-") as temporary:
             root = Path(temporary)
             apk = root / "controlled-not-installable.apk"
             apk.write_bytes(b"Explicit unit fixture, not an installable APK")
             output = root / "evidence"
             snapshots = []
+            pid_responses = iter(pid) if isinstance(pid, list) else itertools.repeat(pid)
+            actual_capture = android.Acceptance.capture
 
             def command_result(argv, **kwargs):
                 parts = argv[3:]  # Controlled adb executable, -s, serial.
@@ -460,12 +465,34 @@ class AndroidPartialFailureReporting(unittest.TestCase):
                         snapshots.append(json.loads((output / "result.json").read_text()))
                         result = launch
                     elif shell[:1] == ["pidof"]:
-                        result = pid
+                        result = next(pid_responses, (0, b"", b""))
+                    elif shell == ["dumpsys", "activity", "activities"]:
+                        result = (0, ("ActivityRecord{x u0 " + self.package + "/.ControlledActivity t1}\n"
+                                      " state=" + activity_state + " firstWindowDrawn=false\n").encode(), b"")
                 return subprocess.CompletedProcess(argv, result[0], result[1], result[2])
 
             def runtime_failure(stage):
                 snapshots.append(json.loads((output / "result.json").read_text()))
+                if passive_ready:
+                    return {"source": "renpy-script", "run_id": snapshots[-1]["run_id"], "stage": stage}
                 raise Failed("Controlled regression: Ren'Py startup rejected")
+
+            def diagnostic_read(argv, deadline, **kwargs):
+                result = command_result(argv)
+                return {"status": "available" if result.returncode == 0 else "not_available",
+                        "returncode": result.returncode}, result.stdout if result.returncode == 0 else b""
+
+            def controlled_capture(acceptance, stage, **kwargs):
+                self.assertTrue(passive_ready)
+                self.assertIsNotNone(acceptance.passive_deadline)
+                if malformed_capture:
+                    with mock.patch.object(acceptance, "wait_observer", return_value={
+                            "source": "native-provider-rgba", "provider_debug": None, "frame_serial": 1}):
+                        return actual_capture(acceptance, stage, **kwargs)
+                # This controlled boundary fixture does not execute native
+                # rendering; the enclosing run must retain its launch failure.
+                acceptance.summary["checks"].append({"controlled_unit_fixture": True})
+                return {"frame_serial": 1}, ()
 
             argv = ["controlled-harness", "--apk", str(apk), "--serial", self.serial,
                     "--package", self.package, "--adb", "controlled-only-adb", "--output-dir", str(output),
@@ -477,11 +504,13 @@ class AndroidPartialFailureReporting(unittest.TestCase):
             with (mock.patch.object(sys, "argv", argv),
                   mock.patch.object(android.shutil, "which", return_value="/controlled-only/adb"),
                   mock.patch.object(android.subprocess, "run", side_effect=command_result) as commands,
-                  mock.patch.object(android.time, "monotonic", side_effect=lambda: float(next(clock))),
+                  mock.patch.object(android.time, "monotonic", side_effect=lambda: float(next(clock)) / (10 if passive_ready else 1)),
                   mock.patch.object(android.time, "sleep"),
+                  mock.patch.object(android, "bounded_failure_command", side_effect=diagnostic_read),
                   mock.patch.object(android.Acceptance, "stage",
                                     side_effect=Failed("Controlled regression: staging rejected") if stage_failure else None) as staging,
                   mock.patch.object(android.Acceptance, "wait_game", side_effect=runtime_failure),
+                  mock.patch.object(android.Acceptance, "capture", autospec=True, side_effect=controlled_capture),
                   contextlib.redirect_stdout(stream)):
                 code = android.main()
             result = json.loads((output / "result.json").read_text())
@@ -523,6 +552,9 @@ class AndroidPartialFailureReporting(unittest.TestCase):
         for response in [(1, b"Status: ok\n", b"controlled error"),
                          (0, b"Status: ok\nError type 3\n", b""),
                          (0, b"Status: ok\n", b"Error: controlled denial\n"),
+                         (1, b"Status: timeout\n", b"controlled error"),
+                         (0, b"Status: timeout\n", b"Error: controlled denial\n"),
+                         (0, b"Status: timeout\nStatus: timeout\n", b""),
                          (0, b"Starting: Intent { controlled }\n", b"")]:
             with self.subTest(response=response):
                 code, report, progress, _, _, _ = self.run_controlled_failure(launch=response)
@@ -557,6 +589,90 @@ class AndroidPartialFailureReporting(unittest.TestCase):
         launch = report["actual_status"]["app_launch"]
         self.assertEqual(launch["activity"], self.package + "/.ControlledActivity")
         self.assertEqual((launch["pids"], launch["pid_count"]), (["4343"], 1))
+
+    def test_passive_timeout_capture_cannot_promote_launch_or_gameplay(self):
+        code, report, progress, _, commands, _ = self.run_controlled_failure(
+            launch=(0, b"Status: timeout\n", b""), passive_ready=True)
+        self.assertEqual((code, report["status"]), (1, "failed"))
+        self.assertIn("Actual am start did not report Status: ok", report["blocker"])
+        self.assertTrue(report["apk_installed"])
+        self.assertFalse(report["process_started"])
+        self.assertEqual(report["checks"], [])
+        self.assertEqual(report["actual_status"]["app_launch"]["status"], "failed")
+        observation = report["passive_startup_observation"]
+        self.assertTrue(observation["diagnostic_only"] and observation["native_rgba_and_os_pixels"])
+        self.assertEqual(observation["diagnostic_pids"], ["4343"])
+        self.assertEqual((observation["run_id"], observation["package"], observation["serial"], observation["apk_sha256"]),
+                         (report["run_id"], self.package, self.serial, report["apk_sha256"]))
+        self.assertLessEqual(observation["elapsed_seconds"], 30)
+        self.assertEqual([p["stage"] for p in progress], ["apk_install"])
+        shell_commands = [shlex.split(c.args[0][4]) for c in commands if len(c.args[0]) > 4 and c.args[0][3] == "shell"]
+        self.assertEqual(sum(c[:2] == ["am", "start"] for c in shell_commands), 1)
+        self.assertFalse(any(c[:1] == ["input"] for c in shell_commands))
+        # Exercise the actual shared capture's AttributeError on legal JSON
+        # with provider_debug:null; it must not mask the original am failure.
+        code, report, _, _, _, _ = self.run_controlled_failure(
+            launch=(0, b"Status: timeout\n", b""), passive_ready=True, malformed_capture=True)
+        self.assertEqual((code, report["status"]), (1, "failed"))
+        self.assertIn("Actual am start did not report Status: ok", report["blocker"])
+        self.assertFalse(report["process_started"])
+        self.assertEqual(report["checks"], [])
+        self.assertEqual(report["actual_status"]["app_launch"]["status"], "failed")
+        self.assertTrue(report["passive_startup_observation"]["observation_unavailable"])
+        self.assertFalse(report["passive_startup_observation"]["native_rgba_and_os_pixels"])
+
+    def test_passive_timeout_needs_current_valid_pid_and_exact_resumed_record(self):
+        for pid, state in [((0, b"", b""), "RESUMED"), ((1, b"4343\n", b""), "RESUMED"),
+                           ((0, b"4343 4343\n", b""), "RESUMED"), ((0, b"9999999999\n", b""), "RESUMED"),
+                           ((0, b"4343\n", b""), "STARTED"),
+                           ([(0, b"4343\n", b""), (0, b"4545\n", b"")], "RESUMED"),
+                           ([(0, b"4343\n", b""), (0, b"4343\n", b""), (0, b"4545\n", b"")], "RESUMED")]:
+            with self.subTest(pid=pid, state=state):
+                code, report, _, _, _, _ = self.run_controlled_failure(
+                    launch=(0, b"Status: timeout\n", b""), pid=pid, activity_state=state, passive_ready=True)
+                self.assertEqual((code, report["status"]), (1, "failed"))
+                self.assertFalse(report["process_started"])
+                self.assertFalse(report["passive_startup_observation"]["native_rgba_and_os_pixels"])
+
+    def test_passive_read_real_child_respects_short_remaining_deadline(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            args = type("Args", (), {"output_dir": Path(temporary), "package": self.package,
+                                    "serial": self.serial, "adb": "not-an-adb"})()
+            acceptance = android.Acceptance(args)
+            acceptance.device_prefix = [sys.executable, "-c", "import time; print('4343',flush=True); time.sleep(10)"]
+            started = time.monotonic()
+            acceptance.passive_deadline = started + 0.3
+            original, children = subprocess.Popen, []
+            def owned_child(*parts, **kwargs):
+                child = original(*parts, **kwargs)
+                children.append(child)
+                return child
+            with mock.patch.object(android.subprocess, "Popen", side_effect=owned_child), self.assertRaises(Failed):
+                acceptance.command("shell", "pidof controlled-only", check=False)
+            self.assertLess(time.monotonic() - started, 1)
+            self.assertIsNotNone(children[0].poll())
+            self.assertEqual(acceptance.pid, "")
+            self.assertFalse(acceptance.summary["process_started"])
+
+    def test_passive_png_deadline_is_optional_and_bounds_actual_decode(self):
+        def png(width, height):
+            def chunk(kind, data):
+                return struct.pack(">I", len(data)) + kind + data + struct.pack(">I", zlib.crc32(kind + data))
+            return (b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", struct.pack(">IIBBBBB", width, height, 8, 2, 0, 0, 0))
+                    + chunk(b"IDAT", zlib.compress((b"\0" + bytes([30, 90, 180]) * width) * height)) + chunk(b"IEND", b""))
+        with tempfile.TemporaryDirectory() as temporary:
+            path = Path(temporary) / "controlled-generated.png"
+            path.write_bytes(png(4, 4))
+            ordinary = android.png_pixels(path)
+            self.assertEqual(android.png_pixels(path, deadline=time.monotonic() + 1), ordinary)
+            path.write_bytes(png(1200, 800))
+            started = time.monotonic()
+            with self.assertRaisesRegex(Failed, "deadline"):
+                android.png_pixels(path, deadline=started + 0.01)
+            self.assertLess(time.monotonic() - started, 1)
+            path.write_bytes(png(2000, 1600))  # Legal normal dimensions, above the passive-only decoded byte cap.
+            with self.assertRaisesRegex(Failed, "decoded pixel budget"):
+                android.png_pixels(path, deadline=time.monotonic() + 1)
 
 
 if __name__ == "__main__":

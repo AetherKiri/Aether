@@ -6,6 +6,9 @@
 # Empty context lines in unified diffs must retain their leading space.
 bridge/renpy_runtime/mobile_launcher/patches/**/*.patch whitespace=-blank-at-eol,-space-before-tab
 vcpkg/ports/libiconv/*.patch whitespace=-blank-at-eol,-blank-at-eof,-space-before-tab
+vcpkg/ports/openssl/**/*.patch whitespace=-blank-at-eol,-blank-at-eof,-space-before-tab
+# Retain the fixed upstream Windows recipe byte-for-byte.
+vcpkg/ports/openssl/windows/portfile.cmake whitespace=-blank-at-eol
 
 # Product game archives are binary assets.
 *.xp3 -text

@@ -1,0 +1,182 @@
+name: Ren'Py Android Intel HVF Gameplay
+
+# Execute the previously compiled, validated 69cceb1 APK. The current checkout
+# supplies the actual device harness; this job does not rebuild the APK.
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/renpy-android-hvf-gameplay.yml'
+      - 'tools/run_renpy_android_emulator_session.py'
+      - 'tools/test_renpy_android_emulator_session.py'
+      - 'tools/preflight_renpy_android_device.py'
+      - 'tools/run_renpy_android_device_acceptance.py'
+      - 'tools/validate_renpy_mobile_payload.py'
+      - 'tools/inspect_renpy_android_apk.py'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: renpy-android-hvf-gameplay-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  gameplay:
+    name: Actual validated x64 APK on Android 35 (Intel HVF)
+    runs-on: macos-15-intel
+    timeout-minutes: 40
+    env:
+      APK_RUN: '37871746668'
+      APK_JOB: '113631187733'
+      APK_HEAD: '69cceb1c2509ad87461bc5461550cb430a00e415'
+      APK_ARTIFACT: '11590609797'
+      APK_ARTIFACT_DIGEST: 'sha256:7115ac90acb74631612f9eb11f23d43361f7dcd6c29861eff065f8e8c702f614'
+      APK_NATIVE_SHA256: '2ff2cd7e484a199a7d387704249b34b7a0ec6114a384931ed845ea25c1a2f3b5'
+      APK_SIGNER_SHA256: '0f56095ede9f28aa458e537160d88fea01ccb3ffe57cd56d57a661fe468b2586'
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: '21'
+      - name: Check session process boundaries (not gameplay)
+        run: python3 tools/test_renpy_android_emulator_session.py
+      - name: Verify successful APK compilation and immutable artifact metadata
+        env:
+          GH_TOKEN: ${{ github.token }}
+          HARNESS_PR_HEAD: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          python3 - <<'PY'
+          import json, os, pathlib, subprocess, urllib.request
+          def get(path):
+              request = urllib.request.Request('https://api.github.com/repos/AetherKiri/Aether/' + path,
+                  headers={'Authorization': 'Bearer ' + os.environ['GH_TOKEN'],
+                           'Accept': 'application/vnd.github+json', 'X-GitHub-Api-Version': '2022-11-28'})
+              with urllib.request.urlopen(request, timeout=60) as response:
+                  return json.load(response)
+          run = get('actions/runs/' + os.environ['APK_RUN'])
+          assert run['status'] == 'completed' and run['conclusion'] == 'success', 'Pinned APK source run did not pass'
+          assert run['id'] == int(os.environ['APK_RUN']) and run['head_sha'] == os.environ['APK_HEAD']
+          job = get('actions/jobs/' + os.environ['APK_JOB'])
+          assert job['run_id'] == run['id'] and job['head_sha'] == run['head_sha']
+          assert job['name'] == 'Installable Debug APK (x86_64)'
+          assert job['status'] == 'completed' and job['conclusion'] == 'success'
+          for name in ('Compile the actual host and export the signed Debug APK',
+                       'Verify the actual APK payload and Debug signature',
+                       'Upload the validated installable APK'):
+              steps = [step for step in job['steps'] if step['name'] == name]
+              assert len(steps) == 1 and steps[0]['conclusion'] == 'success', name
+          artifact = get('actions/artifacts/' + os.environ['APK_ARTIFACT'])
+          assert artifact['id'] == int(os.environ['APK_ARTIFACT']) and not artifact['expired']
+          assert artifact['name'] == 'renpy-installable-debug-x86_64'
+          assert artifact['workflow_run']['id'] == run['id'] and artifact['workflow_run']['head_sha'] == run['head_sha']
+          assert artifact['digest'] == os.environ['APK_ARTIFACT_DIGEST'], 'Pinned ZIP metadata digest differs'
+          native_run = get('actions/runs/37866667365')
+          assert native_run['status'] == 'completed' and native_run['conclusion'] == 'success'
+          assert native_run['head_sha'] == '1967809558f4022aa781062bfe5a4f8e903c84d0'
+          native_artifact = get('actions/artifacts/11589199045')
+          assert native_artifact['id'] == 11589199045 and not native_artifact['expired']
+          assert native_artifact['name'] == 'renpy-android-runtime' and native_artifact['workflow_run']['id'] == native_run['id']
+          assert native_artifact['workflow_run']['head_sha'] == native_run['head_sha']
+          assert native_artifact['digest'] == 'sha256:08537fa4c09a84d8226c50644127ab6918290a0a09f0720c878b465bce25014c'
+          evidence = pathlib.Path(os.environ['RUNNER_TEMP']) / 'renpy-android-device-evidence'
+          evidence.mkdir(exist_ok=True)
+          provenance = {'apk_source_run': run['id'], 'apk_source_job': job['id'], 'apk_source_head': run['head_sha'],
+              'apk_artifact_id': artifact['id'], 'apk_artifact_zip_digest': artifact['digest'],
+              'apk_compilation': 'passed_at_recorded_source_head', 'apk_compilation_in_this_job': 'not_run',
+              'native_dependency_head': '1967809558f4022aa781062bfe5a4f8e903c84d0',
+              'native_dependency_run': 37866667365, 'native_dependency_artifact': 11589199045,
+              'native_dependency_digest': 'sha256:08537fa4c09a84d8226c50644127ab6918290a0a09f0720c878b465bce25014c',
+              'harness_checkout_head': subprocess.check_output(['git', 'rev-parse', 'HEAD'], text=True).strip(),
+              'harness_pr_head': os.environ['HARNESS_PR_HEAD'], 'gameplay': 'not_run',
+              'note': 'The official download action checks the ZIP against GitHub metadata. This is the validated prior APK, not a new compilation of the harness checkout.'}
+          (evidence / 'apk-provenance.json').write_text(json.dumps(provenance, indent=2) + '\n')
+          print(json.dumps(provenance, sort_keys=True))
+          PY
+      - name: Download the exact validated APK through the official action
+        uses: actions/download-artifact@v6
+        with:
+          artifact-ids: 11590609797
+          run-id: 37871746668
+          repository: AetherKiri/Aether
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/renpy-hvf-apk
+      - name: Verify actual x64 APK native bytes, private Python and compiled manifest
+        run: |
+          python3 - <<'PY'
+          import hashlib, json, os, pathlib, re, shlex, subprocess, sys, zipfile
+          sys.path.insert(0, str(pathlib.Path('tools').resolve()))
+          from inspect_renpy_android_apk import parse_badging, sdk_tool
+          root = pathlib.Path(os.environ['RUNNER_TEMP'])
+          evidence = root / 'renpy-android-device-evidence'
+          apks = list((root / 'renpy-hvf-apk').rglob('*.apk'))
+          assert len(apks) == 1 and apks[0].name == 'Aether-emulator-debug.apk', 'Expected exactly the validated x64 APK'
+          apk = apks[0]
+          with zipfile.ZipFile(apk) as archive:
+              names = archive.namelist()
+              assert len(names) == len(set(names)), 'Duplicate APK members'
+              abis = {name.split('/')[1] for name in names if name.startswith('lib/') and name.endswith('.so')}
+              assert abis == {'x86_64'}, 'Unexpected packaged APK ABI'
+              native_hash = hashlib.sha256(archive.read('lib/x86_64/librenpython.so')).hexdigest()
+              assert native_hash == os.environ['APK_NATIVE_SHA256'], 'Actual compiled native bytes differ'
+          sdk = pathlib.Path(os.environ['ANDROID_HOME'])
+          bins = sorted(sdk.glob('ndk/*/toolchains/llvm/prebuilt/darwin-x86_64/bin'))
+          readers = [path for path in bins if (path/'llvm-nm').is_file() and (path/'llvm-readelf').is_file()]
+          assert readers, 'Existing official NDK LLVM readers are missing; no new license will be accepted'
+          environment = dict(os.environ, RENPY_MOBILE_NM=shlex.join([str(readers[-1]/'llvm-nm')]),
+                             RENPY_MOBILE_READELF=shlex.join([str(readers[-1]/'llvm-readelf')]))
+          with (evidence/'apk-payload-validation.log').open('w') as log:
+              subprocess.run([sys.executable, 'tools/validate_renpy_mobile_payload.py', '--platform', 'android',
+                              '--abi', 'x86_64', '--apk', str(apk)], env=environment, stdout=log,
+                             stderr=subprocess.STDOUT, timeout=180, check=True)
+          badging = subprocess.run([str(sdk_tool(sdk, 'build-tools/*/aapt2')), 'dump', 'badging', str(apk)],
+                                  capture_output=True, text=True, timeout=60, check=True)
+          (evidence/'apk-badging.log').write_text(badging.stdout)
+          manifest = parse_badging(badging.stdout)
+          assert manifest['package'] == 'org.aetherkiri.renpy.debug' and manifest['version_code'] == 4501
+          assert manifest['min_sdk'] == 26 and manifest['target_sdk'] == 36 and manifest['debuggable']
+          assert manifest['native_abis'] == ['x86_64']
+          signer = subprocess.run([str(sdk_tool(sdk, 'build-tools/*/apksigner')), 'verify', '--verbose',
+                                   '--print-certs', str(apk)], capture_output=True, text=True, timeout=60, check=True)
+          (evidence/'apk-signature.log').write_text(signer.stdout + signer.stderr)
+          assert re.search(r'^Verified using v2 scheme .*: true\s*$', signer.stdout, re.MULTILINE), 'APK V2 signature did not verify'
+          assert re.findall(r'^Number of signers: (\d+)\s*$', signer.stdout, re.MULTILINE) == ['1'], 'APK must have exactly one signer'
+          certificate_lines = [line for line in signer.stdout.splitlines() if 'certificate SHA-256 digest:' in line]
+          certificates = []
+          for line in certificate_lines:
+              match = re.fullmatch(r'(?:Signer #1 |V2 Signer: )certificate SHA-256 digest: ([0-9a-f]{64})\s*', line)
+              assert match, 'Unexpected signer or certificate scheme in actual APK verification'
+              certificates.append(match.group(1))
+          assert certificates and set(certificates) == {os.environ['APK_SIGNER_SHA256']}, 'Actual APK signer differs'
+          provenance_path = evidence/'apk-provenance.json'
+          provenance = json.loads(provenance_path.read_text())
+          provenance.update(apk_sha256=hashlib.sha256(apk.read_bytes()).hexdigest(),
+                            actual_native_sha256=native_hash, actual_manifest=manifest, payload_validation='passed',
+                            apk_signature_v2='verified', apk_signer_sha256=certificates[0])
+          provenance_path.write_text(json.dumps(provenance, indent=2)+'\n')
+          with open(os.environ['GITHUB_ENV'], 'a') as stream:
+              stream.write('RENPY_HVF_APK=' + str(apk.resolve()) + '\n')
+          print(json.dumps({'actual_apk_sha256':provenance['apk_sha256'], 'actual_native_sha256':native_hash,
+                            'actual_manifest':manifest, 'gameplay':'not_run'}, sort_keys=True))
+          PY
+      - name: Boot actual Android 35 and run full Ren'Py APK gameplay
+        run: |
+          python3 tools/run_renpy_android_emulator_session.py --cloud-emulator \
+            --apk "$RENPY_HVF_APK" --package org.aetherkiri.renpy.debug \
+            --boot-timeout 480 --gameplay-timeout 900 --stage-timeout 90 \
+            --output-dir "$RUNNER_TEMP/renpy-android-device-evidence"
+      - name: Preserve actual Android gameplay evidence
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: renpy-android-gameplay-evidence
+          path: ${{ runner.temp }}/renpy-android-device-evidence
+          if-no-files-found: warn
+          retention-days: 7

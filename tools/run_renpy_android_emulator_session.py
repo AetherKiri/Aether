@@ -1,0 +1,371 @@
+#!/usr/bin/env python3
+"""Boot a real cloud Android emulator and optionally run the actual APK harness.
+
+Only existing KVM/HVF access and existing SDK license acceptance are used.
+This never changes device permissions, accepts licenses or falls back to a
+simulated provider. Session and original gameplay results remain separate.
+"""
+
+from __future__ import annotations
+
+import argparse
+import hashlib
+import json
+import os
+import platform
+import re
+import signal
+import subprocess
+import sys
+import tempfile
+import time
+from pathlib import Path
+
+from preflight_renpy_android_device import Preflight, Unavailable
+from run_renpy_android_device_acceptance import Failed, image_stats, png_pixels
+
+
+IMAGE = "system-images;android-35;google_apis;x86_64"
+
+
+def acceleration_usable(output: str, system: str) -> bool:
+    lines = [line.strip() for line in output.splitlines() if line.strip()]
+    try:
+        start = lines.index("accel:")
+    except ValueError:
+        return False
+    if len(lines) < start + 3 or lines[start + 1] != "0":
+        return False
+    description = lines[start + 2]
+    lower = description.lower()
+    if re.search(r"unavailable|unsupported|unusable|not\s+(?:available|installed|usable)|"
+                 r"could\s+not|failed|disabled|error", lower):
+        return False
+    if system == "Darwin":
+        documented = re.fullmatch(r"Hypervisor\.Framework OS X Version \d+(?:\.\d+)*", description)
+        explicit = re.search(r"\b(?:hvf|hypervisor\.framework)\b", lower) and re.search(
+            r"\b(?:installed and usable|available and usable|is usable)\b", lower)
+        return bool(documented or explicit)
+    return system == "Linux" and bool(re.search(r"\bkvm\b", lower)
+                                       and re.search(r"\b(?:installed and usable|is usable)\b", lower))
+
+
+def owned_group_exists(process: subprocess.Popen) -> bool:
+    """The caller must have created this Popen with start_new_session=True."""
+    try:
+        os.killpg(process.pid, 0)
+    except ProcessLookupError:
+        return False
+    return True
+
+
+def wait_owned_group_exit(process: subprocess.Popen, grace: float) -> bool:
+    deadline = time.monotonic() + grace
+    while owned_group_exists(process):
+        if time.monotonic() >= deadline:
+            return False
+        time.sleep(min(0.05, max(0, deadline - time.monotonic())))
+    return True
+
+
+def terminate_owned_process(process: subprocess.Popen, grace: float = 10) -> int:
+    """Signal all members of our group and reap our direct child.
+
+    The group can outlive its leader. Orphaned descendants are reaped by their
+    OS parent, so leader.wait() alone is insufficient to terminate that group.
+    """
+    if owned_group_exists(process):
+        try:
+            os.killpg(process.pid, signal.SIGTERM)
+        except ProcessLookupError:
+            pass
+    try:
+        process.wait(timeout=grace)
+    except subprocess.TimeoutExpired:
+        pass
+    if not wait_owned_group_exit(process, grace):
+        try:
+            os.killpg(process.pid, signal.SIGKILL)
+        except ProcessLookupError:
+            pass
+    return process.wait(timeout=grace)
+
+
+def gameplay_result_matches(summary: dict, code: int, package: str, serial: str, apk_hash: str) -> bool:
+    return isinstance(summary, dict) and code == 0 and summary.get("status") == "passed" \
+        and summary.get("source") == "actual-apk-adb-cloud-device" and summary.get("serial") == serial \
+        and summary.get("package") == package and summary.get("apk_sha256") == apk_hash
+
+
+class Session(Preflight):
+    def __init__(self, args: argparse.Namespace):
+        super().__init__(args)
+        self.harness_process = None
+        self.harness_log = None
+        self.result.update(scope="actual-cloud-android-emulator-session",
+                           gameplay_verification="not_run", gameplay_attempted=False,
+                           gameplay_verified=False, harness_started=False,
+                           requested_gameplay=args.apk is not None)
+
+    def gate_host(self, sdk: Path) -> Path:
+        system, machine = platform.system(), platform.machine()
+        if machine != "x86_64" or system not in ("Linux", "Darwin"):
+            raise Unavailable("An actual Linux x86_64/KVM or Intel macOS/HVF cloud runner is required")
+        if system == "Linux":
+            kvm = Path("/dev/kvm")
+            self.result["kvm"] = {"exists": kvm.exists(), "readable": os.access(kvm, os.R_OK),
+                                  "writable": os.access(kvm, os.W_OK)}
+            if kvm.exists():
+                self.result["kvm"]["mode"] = oct(kvm.stat().st_mode & 0o777)
+            if not all(self.result["kvm"][key] for key in ("exists", "readable", "writable")):
+                raise Unavailable("Existing /dev/kvm read/write access is unavailable; no permissions were changed")
+            self.result["hypervisor"] = "KVM"
+        else:
+            support = self.command("host-hvf-support", ["/usr/sbin/sysctl", "-n", "kern.hv_support"])
+            self.result["kern_hv_support"] = support.stdout.decode(errors="replace").strip()
+            if self.result["kern_hv_support"] != "1":
+                raise Unavailable("The actual Intel macOS runner does not expose kern.hv_support=1")
+            self.result["hypervisor"] = "HVF"
+        emulator = sdk / "emulator/emulator"
+        if not emulator.is_file() or not os.access(emulator, os.X_OK):
+            raise Unavailable(f"The existing official emulator is unavailable: {emulator}; no emulator was downloaded")
+        self.command("emulator-version", [str(emulator), "-version"], timeout=45)
+        check = self.command("acceleration", [str(emulator), "-accel-check"], check=False, timeout=45)
+        output = check.stdout.decode(errors="replace")
+        self.result["acceleration"] = {"returncode": check.returncode, "output": output[:1600],
+                                       "output_truncated": len(output) > 1600}
+        if check.returncode or len(output) > 1600 or not acceleration_usable(output, system):
+            raise Unavailable(f"Google's actual acceleration report does not confirm usable {self.result['hypervisor']}")
+        self.result["checks"].append("official-emulator-" + self.result["hypervisor"].lower() + "-usable")
+        print(json.dumps({"checkpoint": "actual-acceleration-usable", "hypervisor": self.result["hypervisor"],
+                          "gameplay_verification": "not_run"}), flush=True)
+        return emulator
+
+    def prepare_sdk(self, sdk: Path) -> Path:
+        manager, avdmanager = (sdk / "cmdline-tools/latest/bin" / name for name in ("sdkmanager", "avdmanager"))
+        for tool in (manager, avdmanager):
+            if not tool.is_file() or not os.access(tool, os.X_OK):
+                raise Unavailable(f"An existing official SDK tool is missing: {tool}")
+        # Inherited command() uses DEVNULL, not 'yes' or sdkmanager --licenses.
+        installed = self.command("official-sdk-install", [str(manager), "--install", "platform-tools", IMAGE],
+                                 timeout=600, check=False)
+        properties = sdk / "system-images/android-35/google_apis/x86_64/source.properties"
+        self.adb = sdk / "platform-tools/adb"
+        if installed.returncode or not properties.is_file() or not self.adb.is_file():
+            detail = installed.stdout.decode(errors="replace")[-1800:]
+            if re.search(r"licen[cs]es?.*(?:not accepted|not been accepted)|"
+                         r"(?:accept|review).*licen[cs]e", detail, re.IGNORECASE):
+                raise Unavailable("Official SDK installation is blocked by missing existing license acceptance; "
+                                  "no new license was accepted. See official-sdk-install.log: " + detail)
+            raise Unavailable(f"Official SDK installation did not provide the requested image/tools "
+                              f"(exit {installed.returncode}); see official-sdk-install.log: {detail}")
+        (self.output / "system-image-source.properties").write_bytes(properties.read_bytes())
+        self.command("adb-version", [str(self.adb), "version"])
+        self.result.update(sdk_root=str(sdk), system_image=IMAGE)
+        self.environment["PATH"] = os.pathsep.join((str(sdk / "platform-tools"), str(sdk / "emulator"),
+                                                     self.environment.get("PATH", "")))
+        return avdmanager
+
+    def boot(self, emulator: Path, avdmanager: Path, avd_root: Path) -> None:
+        avd_root.mkdir()
+        self.environment["ANDROID_AVD_HOME"] = str(avd_root)
+        name = "aether-renpy-cloud-session"
+        self.command("create-official-avd", [str(avdmanager), "create", "avd", "--name", name, "--force",
+                     "--device", "pixel_2", "--package", IMAGE], input_data=b"no\n", timeout=120)
+        config = avd_root / f"{name}.avd/config.ini"
+        if not config.is_file():
+            raise Unavailable("Official avdmanager did not create the requested AVD")
+        with config.open("a") as stream:
+            stream.write("\nhw.keyboard=no\n")
+        (self.output / "avd-config.ini").write_bytes(config.read_bytes())
+        command = [str(emulator), "-avd", name, "-port", str(self.args.port), "-accel", "on",
+                   "-gpu", "swiftshader", "-no-window", "-no-audio", "-no-boot-anim", "-no-snapshot",
+                   "-memory", "3072", "-camera-front", "none", "-camera-back", "none"]
+        self.result["emulator_command"] = command
+        self.emulator_log = (self.output / "emulator.log").open("wb")
+        self.emulator_process = subprocess.Popen(command, stdout=self.emulator_log, stderr=subprocess.STDOUT,
+                                                 stdin=subprocess.DEVNULL, env=self.environment, start_new_session=True)
+        self.execution_started = True
+        self.result["execution_started"] = True
+        deadline = time.monotonic() + self.args.boot_timeout
+        self.device("adb-wait-for-device", "wait-for-device", timeout=min(180, self.args.boot_timeout))
+        while time.monotonic() < deadline:
+            if self.emulator_process.poll() is not None:
+                raise Unavailable(f"Actual emulator exited before boot: {self.emulator_process.returncode}; see emulator.log")
+            remaining = deadline - time.monotonic()
+            completed = self.device("boot-completed", "shell", "getprop", "sys.boot_completed",
+                                    timeout=min(20, max(0.1, remaining)))
+            if completed.stdout.decode().strip() == "1":
+                break
+            time.sleep(min(2, max(0, deadline - time.monotonic())))
+        else:
+            raise Unavailable(f"Actual emulator did not boot within {self.args.boot_timeout}s; see emulator.log")
+        self.device("unlock", "shell", "input", "keyevent", "82")
+        values = {}
+        for name in ("ro.build.fingerprint", "ro.product.cpu.abilist", "ro.build.version.sdk", "ro.opengles.version"):
+            values[name] = self.device("property-" + name, "shell", "getprop", name).stdout.decode().strip()
+        self.result["device_properties"] = values
+        if not values["ro.build.fingerprint"] or "x86_64" not in values["ro.product.cpu.abilist"].split(",") \
+                or values["ro.build.version.sdk"] != "35":
+            raise Unavailable("The booted Android device is not the actual requested Android 35 x86_64 image")
+        if int(values["ro.opengles.version"] or "0") < 0x30000:
+            raise Unavailable("The actual Android device does not advertise required GLES 3.0")
+        surface = self.device("surfaceflinger", "shell", "dumpsys", "SurfaceFlinger").stdout.decode(errors="replace")
+        self.result["surfaceflinger_gles"] = [line.strip() for line in surface.splitlines() if "GLES:" in line]
+        if not self.result["surfaceflinger_gles"]:
+            raise Unavailable("Actual SurfaceFlinger did not report a GLES renderer; see surfaceflinger.log")
+        screenshot = self.output / "actual-android-screen.png"
+        screenshot.write_bytes(self.device("screen-capture", "exec-out", "screencap", "-p").stdout)
+        self.result["actual_os_screen"] = image_stats(png_pixels(screenshot))
+        self.result["checks"].extend(("actual-android-boot-completed", "adb-real-device-properties",
+                                      "actual-surfaceflinger-gles", "actual-os-screen"))
+        print(json.dumps({"checkpoint": "actual-android-booted", "device_properties": values,
+                          "surfaceflinger_gles": self.result["surfaceflinger_gles"],
+                          "gameplay_verification": "not_run"}), flush=True)
+
+    def gameplay(self) -> None:
+        output = self.output / "gameplay"
+        self.result["harness_result_path"] = "gameplay/result.json"
+        command = [sys.executable, str(Path(__file__).with_name("run_renpy_android_device_acceptance.py")),
+                   "--apk", str(self.args.apk.resolve()), "--package", self.args.package,
+                   "--serial", self.result["serial"], "--adb", str(self.adb), "--cloud-device",
+                   "--stage-timeout", str(self.args.stage_timeout), "--overall-timeout", str(self.args.gameplay_timeout),
+                   "--output-dir", str(output)]
+        self.result["harness_command"] = command
+        self.harness_log = (self.output / "gameplay-harness.log").open("wb")
+        self.harness_process = subprocess.Popen(command, stdout=self.harness_log, stderr=subprocess.STDOUT,
+                                                stdin=subprocess.DEVNULL, env=self.environment, start_new_session=True)
+        self.result.update(harness_started=True, gameplay_attempted=True, gameplay_executed=None)
+        print(json.dumps({"checkpoint": "actual-apk-harness-started", "deadline_seconds": self.args.gameplay_timeout,
+                          "gameplay_verified": False}), flush=True)
+        try:
+            code = self.harness_process.wait(timeout=self.args.gameplay_timeout)
+            self.result["harness_returncode"] = code
+        except subprocess.TimeoutExpired as exc:
+            self.result.update(harness_timed_out=True, gameplay_verification="failed")
+            self.result["harness_returncode"] = terminate_owned_process(self.harness_process)
+            raise Unavailable(f"Actual APK harness exceeded its whole-process {self.args.gameplay_timeout}s deadline") from exc
+        finally:
+            if self.harness_process.poll() is None or not wait_owned_group_exit(self.harness_process, 1):
+                self.result["harness_forced_cleanup"] = True
+                terminate_owned_process(self.harness_process)
+            else:
+                self.harness_process.wait(timeout=10)
+            self.result["harness_group_still_present"] = owned_group_exists(self.harness_process)
+            self.harness_log.close()
+            self.harness_log = None
+            self.harness_process = None
+        if self.result.get("harness_forced_cleanup"):
+            self.result["gameplay_verification"] = "failed"
+            raise Unavailable("The actual harness left its owned process group running; forced cleanup was required")
+        summary_path = output / "result.json"
+        if not summary_path.is_file():
+            raise Unavailable("Actual APK harness did not produce its gameplay result; see gameplay-harness.log")
+        summary = json.loads(summary_path.read_text())
+        if not isinstance(summary, dict):
+            raise Unavailable("Actual APK harness result is not a JSON object")
+        self.result["gameplay_result"] = summary
+        self.result["gameplay_verification"] = summary.get("status", "failed")
+        if summary.get("status") == "not_run":
+            self.result["gameplay_executed"] = False
+        apk_hash = hashlib.sha256(self.args.apk.read_bytes()).hexdigest()
+        if not gameplay_result_matches(summary, code, self.args.package, self.result["serial"], apk_hash):
+            self.result["gameplay_verification"] = "not_run" if summary.get("status") == "not_run" else "failed"
+            raise Unavailable(f"Actual APK gameplay did not pass (harness exit {code}, result {summary.get('status')}); "
+                              "see gameplay/result.json and gameplay-harness.log")
+        self.result.update(gameplay_executed=True, gameplay_verified=True, apk_installed=True, apk_sha256=apk_hash)
+        self.result["checks"].append("actual-apk-renpy-gameplay-harness-passed")
+
+    def stop(self, *, require_clean: bool) -> None:
+        process = self.emulator_process
+        if process is None:
+            if self.emulator_log:
+                self.emulator_log.close()
+                self.emulator_log = None
+            return
+        clean = False
+        try:
+            if process.poll() is None:
+                try:
+                    killed = self.device("stop-emulator", "emu", "kill", check=False, timeout=20)
+                    clean = killed.returncode == 0 and process.wait(timeout=25) == 0
+                except (Unavailable, subprocess.TimeoutExpired):
+                    clean = False
+            if process.poll() is None or not wait_owned_group_exit(process, 1):
+                self.result["emulator_forced_cleanup"] = True
+                clean = False
+                terminate_owned_process(process)
+            else:
+                process.wait(timeout=10)
+            self.result.update(emulator_exit_code=process.returncode, emulator_stopped_cleanly=clean)
+            self.result["emulator_group_still_present"] = owned_group_exists(process)
+        finally:
+            if self.emulator_log:
+                self.emulator_log.close()
+                self.emulator_log = None
+            if process.poll() is not None:
+                self.emulator_process = None
+        if require_clean and not clean:
+            raise Unavailable("The actual emulator did not stop cleanly; see stop-emulator.log/emulator.log")
+
+    def run(self) -> None:
+        if not self.args.cloud_emulator:
+            raise Unavailable("--cloud-emulator is required; only a selected cloud runner is authorized")
+        if self.args.apk is not None and not self.args.apk.is_file():
+            raise Unavailable(f"The actual installable APK is missing: {self.args.apk}")
+        sdk = Path(self.args.sdk_root).resolve() if self.args.sdk_root else None
+        if sdk is None or not sdk.is_dir():
+            raise Unavailable("Existing official ANDROID_HOME/ANDROID_SDK_ROOT is unavailable")
+        emulator = self.gate_host(sdk)
+        manager = self.prepare_sdk(sdk)
+        with tempfile.TemporaryDirectory(prefix="renpy-cloud-emulator-session-") as temporary:
+            try:
+                self.boot(emulator, manager, Path(temporary) / "avd")
+                if self.args.apk is not None:
+                    self.gameplay()
+                self.stop(require_clean=True)
+                self.result["checks"].append("actual-emulator-stopped")
+                self.result["status"] = "passed"
+            finally:
+                self.stop(require_clean=False)
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--cloud-emulator", action="store_true")
+    parser.add_argument("--apk", type=Path, help="Omit only for actual Android boot preflight without gameplay")
+    parser.add_argument("--package", default="org.aetherkiri.renpy.debug")
+    parser.add_argument("--sdk-root", default=os.environ.get("ANDROID_HOME") or os.environ.get("ANDROID_SDK_ROOT", ""))
+    parser.add_argument("--output-dir", type=Path, required=True)
+    parser.add_argument("--boot-timeout", type=int, default=480)
+    parser.add_argument("--gameplay-timeout", type=int, default=900)
+    parser.add_argument("--stage-timeout", type=int, default=90)
+    parser.add_argument("--port", type=int, default=5554)
+    args = parser.parse_args()
+    if not 60 <= args.boot_timeout <= 600 or not 60 <= args.gameplay_timeout <= 1200 \
+            or not 5 <= args.stage_timeout <= 180 or not 5554 <= args.port <= 5682 or args.port % 2 \
+            or not re.fullmatch(r"[A-Za-z][A-Za-z0-9_.]+", args.package):
+        parser.error("Invalid timeout, package, or even emulator port")
+    def interrupted(signum, _frame):
+        raise KeyboardInterrupt(f"Cloud emulator session interrupted by signal {signum}")
+    signal.signal(signal.SIGTERM, interrupted)
+    session = Session(args)
+    code = 0
+    try:
+        session.run()
+    except (Unavailable, Failed, OSError, ValueError, KeyboardInterrupt, subprocess.TimeoutExpired) as exc:
+        session.result.update(status="failed" if session.execution_started else "not_run", blocker=str(exc))
+        code = 1 if session.execution_started else 2
+    finally:
+        try:
+            session.stop(require_clean=False)
+        except (Unavailable, OSError, subprocess.TimeoutExpired) as exc:
+            session.result.update(status="failed", cleanup_error=str(exc))
+            code = 1
+        (session.output / "result.json").write_text(json.dumps(session.result, indent=2) + "\n")
+    print(json.dumps(session.result, indent=2))
+    return code
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

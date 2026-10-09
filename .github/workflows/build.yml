@@ -493,7 +493,7 @@ jobs:
 
   android-renpy-gameplay:
     needs: android
-    runs-on: ubuntu-24.04
+    runs-on: macos-15-intel
     timeout-minutes: 40
     permissions:
       contents: read
@@ -505,62 +505,21 @@ jobs:
         with:
           name: android-renpy-emulator-debug-apk
           path: ${{ runner.temp }}/renpy-apk
-      - name: Install the official emulator and x86_64 image
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: '21'
+      - name: Run actual APK gameplay with the existing Intel HVF accelerator
         run: |
           set -euo pipefail
-          mkdir -p "${RUNNER_TEMP}/renpy-android-device-evidence"
-          test "$(uname -m)" = x86_64
-          sdkmanager="${ANDROID_HOME}/cmdline-tools/latest/bin/sdkmanager"
-          "$sdkmanager" --install emulator platform-tools 'system-images;android-35;google_apis;x86_64'
-          acceleration_result=0
-          "${ANDROID_HOME}/emulator/emulator" -accel-check 2>&1 \
-            | tee "${RUNNER_TEMP}/renpy-android-device-evidence/acceleration.txt" || acceleration_result=$?
-          # Use the supported runner's existing KVM access. Do not change device
-          # permissions/security settings to manufacture access when unavailable.
-          if [[ "$acceleration_result" != 0 || ! -r /dev/kvm || ! -w /dev/kvm ]]; then
-            python3 - "${RUNNER_TEMP}/renpy-android-device-evidence/result.json" <<'PY'
-          import json, pathlib, sys
-          pathlib.Path(sys.argv[1]).write_text(json.dumps({
-              'status': 'not_run', 'gameplay_verified': False,
-              'blocker': 'The cloud runner has no usable existing KVM access for the supported Android emulator.',
-              'required': 'A cloud x86_64 runner with provisioned readable/writable KVM access, or a connected cloud Android device.',
-          }, indent=2) + '\n')
-          PY
-            echo 'Android gameplay not_run: existing KVM access is unavailable; no permissions were changed.' >&2
-            exit 1
-          fi
-          printf 'no\n' | "${ANDROID_HOME}/cmdline-tools/latest/bin/avdmanager" create avd \
-            --name aether-renpy-device --force --device pixel_2 \
-            --package 'system-images;android-35;google_apis;x86_64'
-          echo 'hw.keyboard=no' >> "${HOME}/.android/avd/aether-renpy-device.avd/config.ini"
-      - name: Run actual APK gameplay through adb
-        run: |
-          set -euo pipefail
-          export PATH="${ANDROID_HOME}/platform-tools:${ANDROID_HOME}/emulator:${PATH}"
-          evidence="${RUNNER_TEMP}/renpy-android-device-evidence"
-          emulator -avd aether-renpy-device -port 5554 -accel on \
-            -no-window -no-audio -no-boot-anim -no-snapshot \
-            -gpu swiftshader -memory 3072 -camera-front none -camera-back none \
-            > "$evidence/emulator.log" 2>&1 &
-          emulator_pid=$!
-          trap 'adb -s emulator-5554 emu kill >/dev/null 2>&1 || true; kill "$emulator_pid" >/dev/null 2>&1 || true' EXIT
-          timeout 180 adb -s emulator-5554 wait-for-device
-          booted=false
-          for attempt in $(seq 1 120); do
-            if [[ "$(adb -s emulator-5554 shell getprop sys.boot_completed 2>/dev/null | tr -d '\r')" == 1 ]]; then
-              booted=true
-              break
-            fi
-            sleep 2
-          done
-          [[ "$booted" == true ]] || { echo 'Actual Android emulator failed to boot'; exit 1; }
-          adb -s emulator-5554 shell input keyevent 82
-          adb -s emulator-5554 shell getprop ro.product.cpu.abilist | tee "$evidence/abi.txt"
-          python3 tools/run_renpy_android_device_acceptance.py \
+          python3 tools/run_renpy_android_emulator_session.py --cloud-emulator \
             --apk "${RUNNER_TEMP}/renpy-apk/Aether-emulator-debug.apk" \
-            --package org.aetherkiri.renpy.debug \
-            --serial emulator-5554 --cloud-device --stage-timeout 90 \
-            --output-dir "$evidence"
+            --package org.aetherkiri.renpy.debug --boot-timeout 480 \
+            --gameplay-timeout 900 --stage-timeout 90 \
+            --output-dir "${RUNNER_TEMP}/renpy-android-device-evidence"
       - name: Preserve real device evidence even on failure
         if: always()
         uses: actions/upload-artifact@v6

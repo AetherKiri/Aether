@@ -10,11 +10,16 @@ tools/app/runtime reports not_run (2); incomplete execution reports failed (1).
 from __future__ import annotations
 
 import argparse
+import errno
 import hashlib
 import json
+import math
+import os
 import platform
 import plistlib
+import re
 import shutil
+import stat
 import subprocess
 import time
 import uuid
@@ -24,6 +29,225 @@ from run_renpy_android_device_acceptance import (
     Blocked, Failed, checkpoint_landmarks, image_stats, is_script_checkpoint, is_successful_os_return, pixel, png_pixels,
     read_engine_log_file, require_engine_log, require_landmark_pixels, verify_landmark_pixels, verify_resumed_marker,
 )
+
+
+DIAGNOSTIC_MAX_BYTES = 24 * 1024
+DIAGNOSTIC_MAX_RECORDS = 64
+DIAGNOSTIC_MAX_JSON_DEPTH = 16
+DIAGNOSTIC_MAX_TICKS = (1 << 53) - 1
+STARTUP_PHASES = (
+    "main_ready_entered", "ui_build_entered", "ui_build_ready",
+    "player_create_entered", "player_create_ready", "player_create_failed",
+    "ready_frame_pending", "ready_frame_entered", "engine_initialize_entered",
+    "engine_initialize_ready", "engine_initialize_failed", "observer_create_entered",
+    "observer_create_ready", "observer_start_entered", "observer_start_returned",
+)
+CHECKPOINT_STAGES = (
+    "start_ready", "touch_received", "text_ready", "text_received",
+    "post_text_ready", "resumed_touch_received", "quit_ready", "quit_requested",
+)
+OBSERVER_KINDS = (
+    "opening", "startup", "lifecycle", "os_touch", "os_mouse", "os_key",
+    "soft_keyboard", "soft_keyboard_visibility", "checkpoint_seen",
+    "provider_frame", "normal_exit", "library_return", "failure",
+)
+DIAGNOSTIC_DOCUMENT_FILES = {
+    "startup_trace": "renpy-device-evidence/startup.jsonl",
+    "observer": "renpy-device-evidence/observer.jsonl",
+    "script_checkpoints": "renpy-device-demo/game/aether-device-checkpoints.jsonl",
+    "probe_request": "aetherkiri-probe-request.json",
+    "device_request": "renpy-device-demo/game/aether-device-request.json",
+    "engine_log": "renpy-device-demo/aetherkiri-engine.log",
+    "renpy_log": "renpy-device-demo/log.txt",
+    "renpy_traceback": "renpy-device-demo/traceback.txt",
+}
+
+
+def is_actual_xcui_ready(value: object, run_id: str, bundle_id: str) -> bool:
+    return (isinstance(value, dict) and value.get("run_id") == run_id
+            and value.get("bundle_id") == bundle_id and value.get("ready") is True)
+
+
+def diagnostic_file(root: Path | None, relative: str, *, read: bool = False) -> tuple[dict, bytes | None]:
+    """Read fixed caller-selected files without following child symlinks.
+
+    Metadata contains no paths, exceptions or contents. Reads have a 24 KiB
+    ceiling; ordinary logs are statted only, never decoded or printed here.
+    """
+    metadata = {"status": "not_run", "exists": None, "bytes": None}
+    if root is None:
+        return metadata, None
+    parent_fd = directory_fd = file_fd = None
+    try:
+        root_stat = root.lstat()
+        if stat.S_ISLNK(root_stat.st_mode) or not stat.S_ISDIR(root_stat.st_mode):
+            metadata["status"] = "root_refused"
+            return metadata, None
+        parts = Path(relative).parts
+        if not parts or Path(relative).is_absolute() or any(part in (".", "..") for part in parts):
+            metadata["status"] = "path_refused"
+            return metadata, None
+        # Canonicalize normal host aliases above the selected Documents root.
+        # Hold directory descriptors for every component below that boundary.
+        directory_flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW
+        # Resolve aliases above Documents only. Opening the selected root's
+        # basename through a held parent descriptor atomically refuses a root
+        # swapped to a symlink after the preliminary lstat.
+        parent_fd = os.open(root.parent.resolve(strict=True), directory_flags)
+        directory_fd = os.open(root.name, directory_flags, dir_fd=parent_fd)
+        os.close(parent_fd)
+        parent_fd = None
+        for part in parts[:-1]:
+            child_fd = os.open(part, directory_flags, dir_fd=directory_fd)
+            os.close(directory_fd)
+            directory_fd = child_fd
+        file_fd = os.open(parts[-1], os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK,
+                          dir_fd=directory_fd)
+        file_stat = os.fstat(file_fd)
+        metadata["exists"] = True
+        if not stat.S_ISREG(file_stat.st_mode):
+            metadata["status"] = "non_regular_refused"
+            return metadata, None
+        if not 0 <= file_stat.st_size <= (1 << 63) - 1:
+            metadata["status"] = "invalid_metadata"
+            return metadata, None
+        metadata.update(status="regular", bytes=file_stat.st_size)
+        if not read:
+            return metadata, None
+        if file_stat.st_size > DIAGNOSTIC_MAX_BYTES:
+            metadata["status"] = "byte_limit"
+            return metadata, None
+        data = bytearray()
+        while len(data) < DIAGNOSTIC_MAX_BYTES:
+            chunk = os.read(file_fd, DIAGNOSTIC_MAX_BYTES - len(data))
+            if not chunk:
+                break
+            data.extend(chunk)
+        if os.fstat(file_fd).st_size > DIAGNOSTIC_MAX_BYTES:
+            metadata["status"] = "byte_limit"
+            return metadata, None
+        return metadata, bytes(data)
+    except FileNotFoundError:
+        metadata.update(status="missing", exists=False)
+    except OSError as exc:
+        metadata["status"] = ("link_or_directory_refused" if exc.errno in (errno.ELOOP, errno.ENOTDIR)
+                              else "read_error")
+    except (ValueError, RuntimeError):
+        metadata["status"] = "read_error"
+    finally:
+        if file_fd is not None:
+            os.close(file_fd)
+        if directory_fd is not None:
+            os.close(directory_fd)
+        if parent_fd is not None:
+            os.close(parent_fd)
+    return metadata, None
+
+
+def _diagnostic_object(pairs: list[tuple]) -> dict:
+    result = {}
+    for key, value in pairs:
+        if key in result:
+            raise ValueError("duplicate_key")
+        result[key] = value
+    return result
+
+
+def _diagnostic_integer(value: str) -> int:
+    if len(value.lstrip("-")) > 16:
+        raise ValueError("integer_limit")
+    result = int(value)
+    if abs(result) > DIAGNOSTIC_MAX_TICKS:
+        raise ValueError("integer_limit")
+    return result
+
+
+def _diagnostic_float(value: str) -> float:
+    result = float(value)
+    if not math.isfinite(result):
+        raise ValueError("non_finite_number")
+    return result
+
+
+def _diagnostic_constant(value: str):
+    raise ValueError("non_json_constant")
+
+
+def _diagnostic_depth(data: bytes) -> None:
+    # Bound decoder nesting independently of Python's implementation/version.
+    # Ignore structural characters in JSON strings, including escaped quotes.
+    depth, quoted, escaped = 0, False, False
+    for byte in data:
+        if quoted:
+            if escaped:
+                escaped = False
+            elif byte == 92:
+                escaped = True
+            elif byte == 34:
+                quoted = False
+        elif byte == 34:
+            quoted = True
+        elif byte in (91, 123):
+            depth += 1
+            if depth > DIAGNOSTIC_MAX_JSON_DEPTH:
+                raise ValueError("nesting_limit")
+        elif byte in (93, 125):
+            depth -= 1
+
+
+def diagnostic_rows(data: bytes | None, run_id: str, *, startup: bool = False) -> dict:
+    """Expose strict startup fields; other journal rows stay private for counts."""
+    report = {"status": "unavailable", "rows": [], "violations": {
+        "invalid_json": 0, "foreign_run": 0, "invalid_schema": 0,
+        "invalid_order": 0, "record_limit": 0, "byte_limit": 0}}
+    if data is None:
+        return report
+    if len(data) > DIAGNOSTIC_MAX_BYTES:
+        report["status"] = "byte_limit"
+        report["violations"]["byte_limit"] = 1
+        return report
+    lines = [line for line in data.splitlines() if line.strip()]
+    if len(lines) > DIAGNOSTIC_MAX_RECORDS:
+        report["status"] = "record_limit"
+        report["violations"]["record_limit"] = 1
+        return report
+    if type(run_id) is not str or not re.fullmatch(r"[0-9a-f]{32}", run_id):
+        report["status"] = "invalid_identity"
+        report["violations"]["invalid_schema"] = 1
+        return report
+    last_seq, last_ticks = 0, 0
+    for line in lines:
+        try:
+            _diagnostic_depth(line)
+            row = json.loads(line.decode("utf-8"), object_pairs_hook=_diagnostic_object,
+                             parse_int=_diagnostic_integer, parse_float=_diagnostic_float,
+                             parse_constant=_diagnostic_constant)
+        except (ValueError, UnicodeError, RecursionError, OverflowError):
+            report["violations"]["invalid_json"] += 1
+            continue
+        if not isinstance(row, dict):
+            report["violations"]["invalid_schema"] += 1
+            continue
+        if row.get("run_id") != run_id:
+            report["violations"]["foreign_run"] += 1
+            continue
+        if startup:
+            required = {"run_id", "seq", "ticks_msec", "phase"}
+            seq, ticks, result = row.get("seq"), row.get("ticks_msec"), row.get("result")
+            if (not required.issubset(row) or not set(row).issubset(required | {"result"})
+                    or row.get("phase") not in STARTUP_PHASES
+                    or type(seq) is not int or not 1 <= seq <= DIAGNOSTIC_MAX_RECORDS
+                    or type(ticks) is not int or not 0 <= ticks <= DIAGNOSTIC_MAX_TICKS
+                    or ("result" in row and (type(result) is not int or not -(1 << 31) <= result < (1 << 31)))):
+                report["violations"]["invalid_schema"] += 1
+                continue
+            if seq <= last_seq or ticks < last_ticks:
+                report["violations"]["invalid_order"] += 1
+                continue
+            last_seq, last_ticks = seq, ticks
+        report["rows"].append(row)
+    report["status"] = "partial" if any(report["violations"].values()) else "valid"
+    return report
 
 
 class Acceptance:
@@ -45,9 +269,105 @@ class Acceptance:
         self.waiting_marker = None
         self.keyboard_preference: str | None = None
         self.preference_changed = False
+        self.started_monotonic = time.monotonic()
+        self.request_staged = self.xcui_ready = False
+        self.install_elapsed_msec = self.xcui_ready_elapsed_msec = None
+        self.diagnostics_collected = False
         self.summary = {"status": "not_run", "run_id": self.run_id,
                         "source": "actual-godot-app-simctl-xcuitest-cloud-simulator",
                         "checks": [], "blocker": ""}
+        self.summary["startup_diagnostics"] = self.startup_gate_diagnostics()
+
+    def elapsed_msec(self) -> int:
+        return max(0, min(DIAGNOSTIC_MAX_TICKS,
+                          int((time.monotonic() - self.started_monotonic) * 1000)))
+
+    def startup_gate_diagnostics(self) -> dict:
+        return {"schema_version": 1, "diagnostic_status": "not_collected",
+                "install_passed": self.installed, "install_elapsed_msec": self.install_elapsed_msec,
+                "xcui_ready_passed": self.xcui_ready, "xcui_ready_elapsed_msec": self.xcui_ready_elapsed_msec,
+                "request_staged": self.request_staged}
+
+    def snapshot_startup_diagnostics(self) -> None:
+        """Collect fixed same-run facts before cleanup; never change acceptance.
+
+        Only strict startup rows are exposed. Other journals supply counts,
+        ordinary logs supply metadata, and missing request files prove absence
+        only (not which component removed them). Diagnostic failures stay local.
+        """
+        if self.diagnostics_collected:
+            return
+        self.diagnostics_collected = True
+        report = self.startup_gate_diagnostics()
+        report.update(diagnostic_status="collected", read_errors=0,
+                      test_process_before_cleanup={"state": "not_started", "returncode": None})
+        self.summary["startup_diagnostics"] = report
+        try:
+            if self.process is not None:
+                try:
+                    returncode = self.process.poll()
+                    if returncode is None:
+                        report["test_process_before_cleanup"]["state"] = "running"
+                    elif type(returncode) is int and -(1 << 31) <= returncode < (1 << 31):
+                        report["test_process_before_cleanup"].update(state="exited", returncode=returncode)
+                    else:
+                        report["test_process_before_cleanup"]["state"] = "unavailable"
+                        report["read_errors"] += 1
+                except Exception:
+                    report["test_process_before_cleanup"]["state"] = "unavailable"
+                    report["read_errors"] += 1
+            files, journals = {}, {}
+            for label, relative in DIAGNOSTIC_DOCUMENT_FILES.items():
+                read = label in ("startup_trace", "observer", "script_checkpoints")
+                try:
+                    metadata, data = diagnostic_file(self.documents, relative, read=read)
+                except Exception:
+                    metadata, data = {"status": "read_error", "exists": None, "bytes": None}, None
+                if metadata["status"] == "read_error":
+                    report["read_errors"] += 1
+                files[label] = metadata
+                if read:
+                    parsed = diagnostic_rows(data, self.run_id, startup=label == "startup_trace")
+                    if metadata["status"] == "byte_limit":
+                        parsed["status"] = "byte_limit"
+                        parsed["violations"]["byte_limit"] = 1
+                    journals[label] = parsed
+            report["files"] = files
+            trace = journals["startup_trace"]
+            report["startup_trace"] = {"status": trace["status"], "rows": trace["rows"],
+                                       "records": len(trace["rows"]), "violations": trace["violations"]}
+            observer = journals["observer"]
+            report["observer"] = {
+                "status": observer["status"], "records": len(observer["rows"]),
+                "violations": observer["violations"],
+                "kind_counts": {kind: sum(row.get("kind") == kind for row in observer["rows"])
+                                for kind in OBSERVER_KINDS},
+                "unknown_kind_records": sum(row.get("kind") not in OBSERVER_KINDS
+                                            for row in observer["rows"])}
+            checkpoints = journals["script_checkpoints"]
+            report["script_checkpoints"] = {
+                "status": checkpoints["status"], "records": len(checkpoints["rows"]),
+                "violations": checkpoints["violations"],
+                "stage_counts": {stage: sum(is_script_checkpoint(row, stage, self.run_id)
+                                             for row in checkpoints["rows"])
+                                 for stage in CHECKPOINT_STAGES},
+                "unrecognized_records": sum(not any(is_script_checkpoint(row, stage, self.run_id)
+                                                     for stage in CHECKPOINT_STAGES)
+                                            for row in checkpoints["rows"])}
+            report["probe_request_exists"] = files["probe_request"]["exists"]
+            report["device_request_exists"] = files["device_request"]["exists"]
+            report["probe_request_absent_after_staging"] = (
+                self.request_staged and files["probe_request"]["status"] == "missing")
+            if self.documents is None:
+                report["diagnostic_status"] = "unavailable"
+            elif (report["read_errors"] or any(journal["status"] != "valid" for journal in journals.values())
+                  or any(metadata["status"] not in ("regular", "missing") for metadata in files.values())):
+                report["diagnostic_status"] = "partial"
+        except Exception:
+            # In particular, never mask the original gameplay failure with a
+            # diagnostic read/parser exception or publish its arbitrary text.
+            report["diagnostic_status"] = "internal_error"
+            report["read_errors"] += 1
 
     def command(self, *parts: str, check: bool = True, timeout: int = 60) -> bytes:
         try:
@@ -236,6 +556,8 @@ class Acceptance:
         (self.documents / "aetherkiri-probe-request.json").write_text(json.dumps({
             "probe_script": "res://scripts/renpy_mobile_acceptance.gd", "run_id": self.run_id,
             "game_path": str(game.parent), "timeout_seconds": self.args.overall_timeout}))
+        self.request_staged = True
+        self.summary["startup_diagnostics"]["request_staged"] = True
 
     def start_xcuitest(self) -> None:
         project = self.repo / "tools/renpy_ios_acceptance/RenPyAcceptance.xcodeproj"
@@ -300,13 +622,17 @@ class Acceptance:
             root = Path(data) / "Documents" / ("aether-renpy-ui-" + self.run_id)
             try:
                 report = json.loads((root / "ready.json").read_text())
-                if report.get("run_id") == self.run_id and report.get("ready") is True:
+                if is_actual_xcui_ready(report, self.run_id, self.bundle_id):
                     self.ui_root = root
-                    return report
+                    return True
             except (OSError, ValueError):
                 return None
 
         self.wait("installed XCUITest runner and actual app launch", ready, timeout=180)
+        self.xcui_ready = True
+        self.xcui_ready_elapsed_msec = self.elapsed_msec()
+        self.summary["startup_diagnostics"].update(
+            xcui_ready_passed=True, xcui_ready_elapsed_msec=self.xcui_ready_elapsed_msec)
 
     def run(self) -> None:
         if not self.args.cloud_simulator:
@@ -337,6 +663,9 @@ class Acceptance:
         self.preference_changed = True
         self.simctl("install", self.udid, str(self.args.app.resolve()), timeout=180)
         self.installed = True
+        self.install_elapsed_msec = self.elapsed_msec()
+        self.summary["startup_diagnostics"].update(
+            install_passed=True, install_elapsed_msec=self.install_elapsed_msec)
         self.simctl("terminate", self.udid, self.bundle_id, check=False)
         root = self.simctl("get_app_container", self.udid, self.bundle_id, "data").decode().strip()
         self.documents = Path(root) / "Documents"
@@ -446,6 +775,7 @@ class Acceptance:
         self.summary["checks"].append({"actual_library_return_pixels_and_os_screen": stats})
 
     def collect(self) -> None:
+        self.snapshot_startup_diagnostics()
         if self.documents is not None:
             for relative, filename in [
                 ("renpy-device-demo/aetherkiri-engine.log", "aetherkiri-engine.log"),

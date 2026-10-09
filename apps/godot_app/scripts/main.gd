@@ -58,6 +58,16 @@ const RUNTIME_FONT_DIR := "user://runtime_fonts"
 const RUNTIME_DEFAULT_FONT_FILE := "default.otf"
 const RUNTIME_SYMBOL_FONT_FILE := "symbols.ttf"
 const ProbeConfig = preload("res://scripts/probe_config.gd")
+const RENPY_STARTUP_TRACE_PATH := "user://renpy-device-evidence/startup.jsonl"
+const RENPY_STARTUP_TRACE_MAX_TICKS := 9007199254740991
+const RENPY_STARTUP_PHASES := [
+    "main_ready_entered", "ui_build_entered", "ui_build_ready",
+    "player_create_entered", "player_create_ready", "player_create_failed",
+    "ready_frame_pending", "ready_frame_entered",
+    "engine_initialize_entered", "engine_initialize_ready", "engine_initialize_failed",
+    "observer_create_entered", "observer_create_ready",
+    "observer_start_entered", "observer_start_returned",
+]
 const GameMetadata = preload("res://scripts/game_metadata.gd")
 const CoverIndex = preload("res://scripts/cover_index.gd")
 const VNDBCoverResolver = preload("res://scripts/vndb_cover_resolver.gd")
@@ -2239,6 +2249,8 @@ var black_frame_consecutive := 0
 var black_frame_last_log_msec := 0
 var black_frame_guard_enabled := false
 var cli_probe_script := ""
+var renpy_startup_trace_run_id := ""
+var renpy_startup_trace_seq := 0
 var cli_probe_runtime_debug := false
 var verbose_render_log := false
 var diagnostics_enabled := false
@@ -2513,8 +2525,65 @@ func _detect_cli_probe_script() -> String:
             return _normalize_cli_probe_script(arg.substr("--aether-probe-script=".length()))
     if FileAccess.file_exists(ProbeConfig.debug_request_path()):
         var request := ProbeConfig.load()
+        _configure_renpy_startup_trace(request)
         return _normalize_cli_probe_script(String(request.get("probe_script", "")))
     return ""
+
+static func _renpy_startup_request_run_id(request: Dictionary) -> String:
+    if request.get("probe_script") != "res://scripts/renpy_mobile_acceptance.gd":
+        return ""
+    var candidate = request.get("run_id")
+    if not candidate is String or candidate.length() != 32:
+        return ""
+    for character in candidate:
+        if not character in "0123456789abcdef":
+            return ""
+    return candidate
+
+static func _renpy_startup_phase_row(run_id: String, seq: Variant, phase: String,
+        ticks_msec: Variant, result: Variant = null) -> Dictionary:
+    if _renpy_startup_request_run_id({"probe_script": "res://scripts/renpy_mobile_acceptance.gd",
+            "run_id": run_id}).is_empty() or phase not in RENPY_STARTUP_PHASES:
+        return {}
+    if typeof(seq) != TYPE_INT or seq < 1 or seq > 64:
+        return {}
+    if typeof(ticks_msec) != TYPE_INT or ticks_msec < 0 or ticks_msec > RENPY_STARTUP_TRACE_MAX_TICKS:
+        return {}
+    if result != null and (typeof(result) != TYPE_INT or result < -2147483648 or result > 2147483647):
+        return {}
+    var row := {"run_id": run_id, "seq": seq, "ticks_msec": ticks_msec, "phase": phase}
+    if result != null:
+        row["result"] = result
+    return row
+
+func _configure_renpy_startup_trace(request: Dictionary) -> void:
+    if not OS.is_debug_build() or OS.get_name() not in ["Android", "iOS"]:
+        return
+    renpy_startup_trace_run_id = _renpy_startup_request_run_id(request)
+    renpy_startup_trace_seq = 0
+
+func _record_renpy_startup_phase(phase: String, result: Variant = null) -> void:
+    if renpy_startup_trace_run_id.is_empty() or not OS.is_debug_build() \
+            or OS.get_name() not in ["Android", "iOS"]:
+        return
+    var row := _renpy_startup_phase_row(renpy_startup_trace_run_id,
+        renpy_startup_trace_seq + 1, phase, Time.get_ticks_msec(), result)
+    if row.is_empty():
+        return
+    var directory := ProjectSettings.globalize_path(RENPY_STARTUP_TRACE_PATH.get_base_dir())
+    if DirAccess.make_dir_recursive_absolute(directory) != OK:
+        return
+    var mode := FileAccess.WRITE if renpy_startup_trace_seq == 0 else FileAccess.READ_WRITE
+    var file := FileAccess.open(RENPY_STARTUP_TRACE_PATH, mode)
+    if file == null:
+        return
+    file.seek_end()
+    file.store_line(JSON.stringify(row))
+    file.flush()
+    var written := file.get_error() == OK
+    file.close()
+    if written:
+        renpy_startup_trace_seq += 1
 
 func _normalize_cli_probe_script(path: String) -> String:
     var normalized := path.strip_edges()
@@ -11561,6 +11630,7 @@ func _ready() -> void:
     add_child(vndb_resolver)
     vndb_resolver.resolved.connect(_on_vndb_cover_resolved)
     cli_probe_script = _detect_cli_probe_script()
+    _record_renpy_startup_phase("main_ready_entered")
     _apply_ui_font()
     DisplayServer.window_set_flag(DisplayServer.WINDOW_FLAG_TRANSPARENT, false)
     _apply_initial_window_size()
@@ -11637,7 +11707,9 @@ func _ready() -> void:
 
     if ui_motion.get_parent() == null:
         add_child(ui_motion)
+    _record_renpy_startup_phase("ui_build_entered")
     _build_ui()
+    _record_renpy_startup_phase("ui_build_ready")
     _stage_runtime_fonts()
 
     # Scene-test preview: scheduled before the optional runtime player init
@@ -11645,8 +11717,11 @@ func _ready() -> void:
     _restore_scene_test_state()
     call_deferred("_apply_pending_scene_test")
 
+    _record_renpy_startup_phase("player_create_entered")
     if not _create_runtime_player():
+        _record_renpy_startup_phase("player_create_failed")
         return
+    _record_renpy_startup_phase("player_create_ready")
     _restore_native_translation_model_access()
     _initialize_iap()
 
@@ -11680,6 +11755,7 @@ func _ready() -> void:
     _apply_upscale_algorithm()
 
     _append_log("AetherKiri shell ready. Initializing engine...")
+    _record_renpy_startup_phase("ready_frame_pending")
     call_deferred("_finish_ready_after_first_frame")
 
 func _setup_debug_console() -> void:
@@ -12657,8 +12733,15 @@ func _ensure_player_initialized() -> bool:
 
 func _finish_ready_after_first_frame() -> void:
     await get_tree().process_frame
+    _record_renpy_startup_phase("ready_frame_entered")
 
+    _record_renpy_startup_phase("engine_initialize_entered")
     var engine_initialized := _ensure_player_initialized()
+    var engine_result: Variant = null
+    if not renpy_startup_trace_run_id.is_empty() and player != null and player.has_method("get_last_result"):
+        engine_result = player.get_last_result()
+    _record_renpy_startup_phase(
+        "engine_initialize_ready" if engine_initialized else "engine_initialize_failed", engine_result)
 
     if engine_initialized:
         _apply_backend(false)
@@ -13238,11 +13321,15 @@ func _run_cli_script_probe() -> void:
     var config := ProbeConfig.load()
     if cli_probe_script == "res://scripts/renpy_mobile_acceptance.gd":
         _prepare_cli_probe_view(config)
+        _record_renpy_startup_phase("observer_create_entered")
         var acceptance := load(cli_probe_script).new() as Node
         add_child(acceptance)
+        _record_renpy_startup_phase("observer_create_ready")
         if OS.has_feature("ios"):
             acceptance.connect("game_finished", _finish_ios_mobile_acceptance.bind(acceptance))
+        _record_renpy_startup_phase("observer_start_entered")
         acceptance.start(config, player)
+        _record_renpy_startup_phase("observer_start_returned")
         return
     var target_game_path: String = ProbeConfig.require_game_path(config)
     var requested_game_path := target_game_path

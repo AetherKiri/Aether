@@ -1,6 +1,6 @@
 name: Ren'Py Android Intel HVF Gameplay
 
-# Execute the previously compiled, validated 69cceb1 APK. The current checkout
+# Execute the renderer-fixed APK compiled and validated at 0ff10e3. The current checkout
 # supplies the actual device harness; this job does not rebuild the APK.
 on:
   pull_request:
@@ -28,13 +28,13 @@ jobs:
     runs-on: macos-15-intel
     timeout-minutes: 45
     env:
-      APK_RUN: '37871746668'
-      APK_JOB: '113631187733'
-      APK_HEAD: '69cceb1c2509ad87461bc5461550cb430a00e415'
-      APK_ARTIFACT: '11590609797'
-      APK_ARTIFACT_DIGEST: 'sha256:7115ac90acb74631612f9eb11f23d43361f7dcd6c29861eff065f8e8c702f614'
+      APK_RUN: '37915707195'
+      APK_JOB: '113771235880'
+      APK_HEAD: '0ff10e3018177f12d21d66e08036c1b5e025b833'
+      APK_ARTIFACT: '11610231057'
+      APK_ARTIFACT_DIGEST: 'sha256:ca3c5f3ba4c352bf7b995ac6e11a15fce9476aea4155e4c9a339ce7e50a6efc9'
       APK_NATIVE_SHA256: '2ff2cd7e484a199a7d387704249b34b7a0ec6114a384931ed845ea25c1a2f3b5'
-      APK_SIGNER_SHA256: '0f56095ede9f28aa458e537160d88fea01ccb3ffe57cd56d57a661fe468b2586'
+      APK_SIGNER_SHA256: '2830f93a34ea5eceef0dc91389a3718668e286db1368bc0d1d55348bcf0b9b91'
     steps:
       - uses: actions/checkout@v6
         with:
@@ -103,8 +103,8 @@ jobs:
       - name: Download the exact validated APK through the official action
         uses: actions/download-artifact@v6
         with:
-          artifact-ids: 11590609797
-          run-id: 37871746668
+          artifact-ids: 11610231057
+          run-id: 37915707195
           repository: AetherKiri/Aether
           github-token: ${{ github.token }}
           path: ${{ runner.temp }}/renpy-hvf-apk

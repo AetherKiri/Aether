@@ -280,12 +280,32 @@ jobs:
         run: |
           set -euo pipefail
           bash scripts/build_ios.sh debug --simulator --simulator-arch=arm64 --renpy-framework-only
-      - name: Build the missing real arm64 Godot Simulator engine and camera
+      - name: Install the pinned Godot source build driver
         run: |
           set -euo pipefail
           python3 -m venv "$RUNNER_TEMP/godot-scons"
           "$RUNNER_TEMP/godot-scons/bin/python" -m pip install 'SCons==4.9.1'
           python3 tools/test_godot_ios_simulator_template.py --template "$GODOT_EXPORT_TEMPLATE"
+      - name: Identify the exact public Godot source and selected Apple toolchain
+        id: godot-simulator-cache-key
+        run: |
+          set -euo pipefail
+          cache_key="$("$RUNNER_TEMP/godot-scons/bin/python" tools/build_godot_ios_simulator_template.py cache-key \
+            --input-template "$GODOT_EXPORT_TEMPLATE")"
+          [[ "$cache_key" =~ ^godot-ios-simulator-v1-[0-9a-f]{64}$ ]]
+          echo "key=$cache_key" >> "$GITHUB_OUTPUT"
+      - name: Restore only the compiled public Simulator template and its build proof
+        id: godot-simulator-cache
+        uses: actions/cache/restore@v6
+        with:
+          path: |
+            ${{ runner.temp }}/godot-arm64-simulator/ios.zip
+            ${{ runner.temp }}/godot-arm64-simulator/evidence.json
+          key: ${{ steps.godot-simulator-cache-key.outputs.key }}
+      - name: Build the missing real arm64 Godot Simulator engine and camera
+        if: steps.godot-simulator-cache.outputs.cache-hit != 'true'
+        run: |
+          set -euo pipefail
           if ! "$RUNNER_TEMP/godot-scons/bin/python" tools/build_godot_ios_simulator_template.py build \
             --input-template "$GODOT_EXPORT_TEMPLATE" \
             --output-template "$RUNNER_TEMP/godot-arm64-simulator/ios.zip" \
@@ -309,9 +329,26 @@ jobs:
           PY
             exit 1
           fi
-          python3 tools/build_godot_ios_simulator_template.py verify \
-            --template "$RUNNER_TEMP/godot-arm64-simulator/ios.zip" --arch arm64
+      - name: Verify actual cached or freshly built archive bytes and source identity
+        run: |
+          set -euo pipefail
+          "$RUNNER_TEMP/godot-scons/bin/python" tools/build_godot_ios_simulator_template.py verify-cache \
+            --input-template "$GODOT_EXPORT_TEMPLATE" \
+            --template "$RUNNER_TEMP/godot-arm64-simulator/ios.zip" \
+            --evidence "$RUNNER_TEMP/godot-arm64-simulator/evidence.json" \
+            --report "$RUNNER_TEMP/godot-simulator-cache-verification.json"
           echo "GODOT_EXPORT_TEMPLATE=$RUNNER_TEMP/godot-arm64-simulator/ios.zip" >> "$GITHUB_ENV"
+      - name: Save the verified public engine before the application build
+        if: >-
+          steps.godot-simulator-cache.outputs.cache-hit != 'true' &&
+          (github.event_name != 'pull_request' ||
+          (github.event.pull_request.head.repo.full_name == github.repository && github.actor != 'dependabot[bot]'))
+        uses: actions/cache/save@v6
+        with:
+          path: |
+            ${{ runner.temp }}/godot-arm64-simulator/ios.zip
+            ${{ runner.temp }}/godot-arm64-simulator/evidence.json
+          key: ${{ steps.godot-simulator-cache-key.outputs.key }}
       - name: Build the installable arm64 Simulator application
         run: |
           set -euo pipefail
@@ -332,6 +369,7 @@ jobs:
             out/renpy-ios-gameplay
             ${{ runner.temp }}/renpy-ios-simulator-build.log
             ${{ runner.temp }}/godot-arm64-simulator/evidence.json
+            ${{ runner.temp }}/godot-simulator-cache-verification.json
             ${{ runner.temp }}/renpy-ios-force-load/evidence.json
           if-no-files-found: warn
           retention-days: 7

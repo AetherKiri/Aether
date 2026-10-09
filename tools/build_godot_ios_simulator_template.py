@@ -11,6 +11,7 @@ import hashlib
 import json
 import os
 from pathlib import Path
+import platform
 import plistlib
 import shlex
 import shutil
@@ -28,6 +29,8 @@ LIBRARIES = {"libgodot": "", "libgodot_camera": "_camera"}
 BUILD_FLAGS = ("platform=ios", "target=template_debug", "arch=arm64",
                "ios_simulator=yes", "vulkan=no", "metal=no", "opengl3=yes",
                "generate_bundle=no", "sdl=no")
+CACHE_SCHEMA = 1
+SCONS_VERSION = "4.9.1"
 
 
 def digest(path):
@@ -224,6 +227,129 @@ def command(arguments, *, cwd=None):
     return result.stdout.strip()
 
 
+def cache_identity(original):
+    """Identify genuine selected build tools; no environment dump is needed."""
+    require(sys.platform == "darwin", "A cache identity requires genuine selected macOS/Xcode tools")
+    require("OSXCROSS_IOS" not in os.environ, "Use genuine selected Xcode tools, not an osxcross SDK")
+    import SCons
+    require(SCons.__version__ == SCONS_VERSION, "The Simulator cache requires SCons==" + SCONS_VERSION)
+    package = Path(SCons.__file__).resolve(strict=True).parent
+    package_files = {str(path.relative_to(package)): digest(path) for path in sorted(package.rglob("*.py"))}
+    require(package_files, "The installed SCons package has no genuine Python sources")
+    compiler = Path(command(["xcrun", "--sdk", "iphonesimulator", "--find", "clang"]))
+    sdk = Path(command(["xcrun", "--sdk", "iphonesimulator", "--show-sdk-path"])).resolve(strict=True)
+    return {"schema": CACHE_SCHEMA, "source_url": SOURCE_URL, "source_sha": SOURCE_SHA,
+            "build_flags": list(BUILD_FLAGS), "input_template_sha256": digest(original),
+            "builder_sha256": digest(__file__), "host_architecture": platform.machine(),
+            "developer_path": str(Path(command(["xcode-select", "-p"])).resolve(strict=True)),
+            "sdk_path": str(sdk),
+            "sdk_version": command(["xcrun", "--sdk", "iphonesimulator", "--show-sdk-version"]),
+            "compiler": str(compiler), "compiler_sha256": digest(compiler),
+            "compiler_version": command([compiler, "--version"]),
+            "xcode_version": command(["xcodebuild", "-version"]),
+            "scons_version": SCons.__version__,
+            "scons_sources_sha256": hashlib.sha256(json.dumps(package_files, sort_keys=True).encode()).hexdigest()}
+
+
+def cache_key(identity):
+    value = hashlib.sha256(json.dumps(identity, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
+    return f"godot-ios-simulator-v{CACHE_SCHEMA}-{value}"
+
+
+def unchanged_member_hashes(original, rebuilt):
+    """Recheck every original member except the two rebuilt debug archives."""
+    replacements = {member(library) for library in LIBRARIES}
+    result = {}
+    with zipfile.ZipFile(original) as before, zipfile.ZipFile(rebuilt) as after:
+        require(len(before.namelist()) == len(set(before.namelist()))
+                and len(after.namelist()) == len(set(after.namelist())), "Duplicate template ZIP members")
+        require(before.namelist() == after.namelist(), "Cached template member set/order differs from the official ZIP")
+        require(before.comment == after.comment, "Cached template ZIP comment differs from the official ZIP")
+        require(replacements <= set(before.namelist()), "Official template lacks the selected Simulator archives")
+        for name in before.namelist():
+            if name in replacements:
+                continue
+            with before.open(name) as source, after.open(name) as cached:
+                result[name] = stream_digest(source)
+                require(result[name] == stream_digest(cached), f"Untouched template member changed: {name}")
+    return result
+
+
+def verify_cache_metadata(evidence, identity, output_digest):
+    """Reject incomplete/stale evidence before accepting any cached artifact."""
+    require(evidence.get("status") == "built_and_verified"
+            and evidence.get("source_build") == "built_and_verified", "Cache lacks successful genuine source-build evidence")
+    require(evidence.get("cache_identity") == identity and evidence.get("cache_key") == cache_key(identity),
+            "Cached source/template/toolchain identity differs from the current inputs")
+    for name in ("source_url", "source_sha", "input_template_sha256", "sdk_path", "sdk_version",
+                 "compiler", "compiler_version", "xcode_version"):
+        require(evidence.get(name) == identity[name], "Cached build evidence differs for " + name)
+    require(evidence.get("output_template_sha256") == output_digest, "Cached template ZIP digest differs from its build evidence")
+    invocation = evidence.get("build_command", [])
+    toolchain = Path(identity["compiler"]).resolve(strict=True).parents[2]
+    expected = ["-m", "SCons", *BUILD_FLAGS, "APPLE_SDK_PATH=" + identity["sdk_path"],
+                "APPLE_TOOLCHAIN_PATH=" + str(toolchain)]
+    require(isinstance(invocation, list) and len(invocation) == len(expected) + 2
+            and invocation[1:-1] == expected and isinstance(invocation[-1], str)
+            and invocation[-1].startswith("-j") and invocation[-1][2:].isdigit()
+            and int(invocation[-1][2:]) > 0, "Cached build command differs from the pinned production build")
+
+
+def verify_cached_libraries(original, template):
+    """Inspect actual objects and use real lipo to prove thin-slice retention."""
+    require(sys.platform == "darwin", "Cache archive verification requires genuine Xcode lipo/nm")
+    inputs = verify_template(original, "x86_64")
+    outputs = verify_template(template, "arm64")  # Every object/platform plus rebuilt arm64 SDL3 rejection.
+    proofs = {}
+    with zipfile.ZipFile(original) as source, zipfile.ZipFile(template) as cached, \
+            tempfile.TemporaryDirectory(prefix="godot-ios-cache-archives-") as temporary:
+        root = Path(temporary)
+        for library in LIBRARIES:
+            base, merged = root / (library + "-official.a"), root / (library + "-merged.a")
+            for archive, destination in ((source, base), (cached, merged)):
+                with archive.open(member(library)) as src, destination.open("wb") as dest:
+                    shutil.copyfileobj(src, dest)
+            original_x64, retained_x64, arm = [root / (library + suffix) for suffix in
+                                              ("-official-x86_64.a", "-retained-x86_64.a", "-arm64.a")]
+            if len(inputs[library]["slices"]) == 1:
+                shutil.copyfile(base, original_x64)
+            else:
+                command(["xcrun", "lipo", base, "-thin", "x86_64", "-output", original_x64])
+            command(["xcrun", "lipo", merged, "-thin", "x86_64", "-output", retained_x64])
+            command(["xcrun", "lipo", merged, "-thin", "arm64", "-output", arm])
+            require(digest(original_x64) == digest(retained_x64), "Official x64 archive bytes changed in the cache")
+            slices = {item["architecture"]: item for item in outputs[library]["slices"]}
+            proofs[library] = {"arm64_sha256": digest(arm), "official_x86_64_sha256": digest(original_x64),
+                               "merged_sha256": digest(merged), "arm64_objects": slices["arm64"]["objects"]}
+    return inputs, proofs
+
+
+def verify_cache(args):
+    original, template = args.input_template.resolve(strict=True), args.template.resolve(strict=True)
+    evidence_path = args.evidence.resolve(strict=True)
+    if args.report:
+        require(args.report.resolve() not in (original, template, evidence_path), "Cache verification must preserve its inputs/evidence")
+    identity = cache_identity(original)
+    evidence = json.loads(evidence_path.read_text())
+    require(isinstance(evidence, dict), "Cache evidence must be an object")
+    verify_cache_metadata(evidence, identity, digest(template))
+    inputs, libraries = verify_cached_libraries(original, template)
+    unchanged = unchanged_member_hashes(original, template)
+    require(evidence.get("input_libraries") == inputs and evidence.get("libraries") == libraries,
+            "Actual cached archive/slice digests differ from the genuine build evidence")
+    require(evidence.get("untouched_member_sha256") == unchanged
+            and evidence.get("untouched_template_members") == "all_sha256_identical", "Cache lacks exact untouched-member evidence")
+    result = {"status": "cache_payload_verified", "cache_key": cache_key(identity),
+              "input_template_sha256": identity["input_template_sha256"], "output_template_sha256": digest(template),
+              "libraries": libraries, "untouched_member_count": len(unchanged),
+              "source_build": "not_run", "source_build_performed_by_this_check": False,
+              "app": "not_run", "gameplay": "not_run"}
+    if args.report:
+        args.report.parent.mkdir(parents=True, exist_ok=True)
+        args.report.write_text(json.dumps(result, indent=2) + "\n")
+    return result
+
+
 def replace_template_archives(template, destination, replacements, allowed_members=None):
     require(len(template.namelist()) == len(set(template.namelist())), "Duplicate template ZIP members")
     simulator_members = {member(library) for library in LIBRARIES}
@@ -247,21 +373,20 @@ def replace_template_archives(template, destination, replacements, allowed_membe
 
 def build(args):
     require(sys.platform == "darwin", "A genuine macOS/Xcode host is required; no cross-SDK substitute is accepted")
-    import SCons
-    require(tuple(map(int, SCons.__version__.split(".")[:2])) >= (4, 4), "Godot requires SCons >= 4.4")
     original, output, root = args.input_template.resolve(strict=True), args.output_template.resolve(), args.output_dir.resolve()
     require(original != output, "The official input template must remain unchanged")
     require("OSXCROSS_IOS" not in os.environ, "Use genuine selected Xcode tools, not an osxcross SDK")
     root.mkdir(parents=True, exist_ok=True)
     source = root / "godot-source"
     require(not source.exists(), "Use a fresh output directory for a real source build")
-    sdk = command(["xcrun", "--sdk", "iphonesimulator", "--show-sdk-path"])
-    compiler = command(["xcrun", "--sdk", "iphonesimulator", "--find", "clang"])
+    identity = cache_identity(original)
+    sdk, compiler = identity["sdk_path"], identity["compiler"]
     evidence = {"status": "building", "source_url": SOURCE_URL, "source_sha": SOURCE_SHA,
                 "input_template_sha256": digest(original), "sdk_path": sdk,
-                "sdk_version": command(["xcrun", "--sdk", "iphonesimulator", "--show-sdk-version"]),
-                "compiler": compiler, "compiler_version": command([compiler, "--version"]),
-                "xcode_version": command(["xcodebuild", "-version"]), "gameplay": "not_run"}
+                "sdk_version": identity["sdk_version"],
+                "compiler": compiler, "compiler_version": identity["compiler_version"],
+                "xcode_version": identity["xcode_version"], "gameplay": "not_run",
+                "cache_identity": identity, "cache_key": cache_key(identity), "source_build": "building"}
     report = root / "evidence.json"
     report.write_text(json.dumps(evidence, indent=2) + "\n")
     try:
@@ -300,6 +425,9 @@ def build(args):
                 retained = root / (library + "-retained-x86_64.a")
                 command(["xcrun", "lipo", merged, "-thin", "x86_64", "-output", retained])
                 require(digest(x64) == digest(retained), "Official x64 archive bytes changed")
+                retained_arm = root / (library + "-retained-arm64.a")
+                command(["xcrun", "lipo", merged, "-thin", "arm64", "-output", retained_arm])
+                require(digest(arm) == digest(retained_arm), "Source-built arm64 archive bytes changed")
                 require({entry["architecture"] for entry in archive_identity(merged)} == {"arm64", "x86_64"}, "Bad merged archive")
                 replacements[member(library)] = merged
                 libraries[library] = {"arm64_sha256": digest(arm), "official_x86_64_sha256": digest(x64),
@@ -314,9 +442,10 @@ def build(args):
             finally:
                 staged.unlink(missing_ok=True)
         evidence.update(status="built_and_verified", output_template_sha256=digest(output), libraries=libraries,
-                        untouched_template_members="all_sha256_identical")
+                        untouched_template_members="all_sha256_identical", source_build="built_and_verified",
+                        untouched_member_sha256=unchanged_member_hashes(original, output))
     except BaseException as error:
-        evidence.update(status="failed", error=str(error))
+        evidence.update(status="failed", source_build="failed", error=str(error))
         raise
     finally:
         report.write_text(json.dumps(evidence, indent=2) + "\n")
@@ -335,6 +464,13 @@ def main():
     checker.add_argument("--template", type=Path, required=True)
     checker.add_argument("--arch", choices=("arm64", "x86_64"), required=True)
     checker.add_argument("--exported-dir", type=Path)
+    key = commands.add_parser("cache-key", help="Print one exact cache key for genuine current Xcode/SCons inputs")
+    key.add_argument("--input-template", type=Path, required=True)
+    cached = commands.add_parser("verify-cache", help="Validate cached ZIP/evidence without running a source build")
+    cached.add_argument("--input-template", type=Path, required=True)
+    cached.add_argument("--template", type=Path, required=True)
+    cached.add_argument("--evidence", type=Path, required=True)
+    cached.add_argument("--report", type=Path, help="Write a separate verification report; build evidence stays unchanged")
     preset = commands.add_parser("preset")
     preset.add_argument("--source", type=Path, required=True)
     preset.add_argument("--destination", type=Path, required=True)
@@ -348,6 +484,10 @@ def main():
             build(args)
         elif args.action == "verify":
             print(json.dumps(verify_template(args.template, args.arch, args.exported_dir), indent=2))
+        elif args.action == "cache-key":
+            print(cache_key(cache_identity(args.input_template.resolve(strict=True))))
+        elif args.action == "verify-cache":
+            print(json.dumps(verify_cache(args), indent=2))
         else:
             patch_preset(args.source, args.destination, args.preset, args.template, args.mode)
     except (OSError, ValueError, KeyError, zipfile.BadZipFile, struct.error, subprocess.CalledProcessError) as error:

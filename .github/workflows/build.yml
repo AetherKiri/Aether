@@ -693,6 +693,7 @@ jobs:
           # Use the SDK already licensed/provisioned on this cloud macOS runner;
           # no SDK archive, credential, or user-computer access is transferred.
           brew install python@3.12
+          echo "$(brew --prefix python@3.12)/libexec/bin" >> "$GITHUB_PATH"
           python_config="$(brew --prefix python@3.12)/bin/python3.12-config"
           ios_sdk="$(xcrun --sdk iphoneos --show-sdk-path)"
           evidence_dir="${RUNNER_TEMP}/renpy-ios-compile"

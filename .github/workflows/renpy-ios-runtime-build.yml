@@ -69,6 +69,10 @@ jobs:
       - uses: actions/checkout@v6
         with:
           persist-credentials: false
+      - name: Use Python 3.12 for payload bytecode validation on cache hits too
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
       - name: Restore a runtime compiled from these exact source inputs
         id: runtime-cache
         uses: actions/cache@v6

@@ -10,6 +10,7 @@ tools/app/runtime reports not_run (2); incomplete execution reports failed (1).
 from __future__ import annotations
 
 import argparse
+import copy
 import errno
 import hashlib
 import json
@@ -66,6 +67,25 @@ DIAGNOSTIC_DOCUMENT_FILES = {
 def is_actual_xcui_ready(value: object, run_id: str, bundle_id: str) -> bool:
     return (isinstance(value, dict) and value.get("run_id") == run_id
             and value.get("bundle_id") == bundle_id and value.get("ready") is True)
+
+
+def documents_identity(documents: Path) -> tuple[Path, int, int]:
+    """Identify the actual selected directory; publish no paths or inode data."""
+    if not documents.is_absolute():
+        raise ValueError("Actual app Documents identity requires an absolute container path")
+    parent_fd = directory_fd = None
+    try:
+        parent = documents.parent.resolve(strict=True)
+        flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW
+        parent_fd = os.open(parent, flags)
+        directory_fd = os.open(documents.name, flags, dir_fd=parent_fd)
+        info = os.fstat(directory_fd)
+        return parent / documents.name, info.st_dev, info.st_ino
+    finally:
+        if directory_fd is not None:
+            os.close(directory_fd)
+        if parent_fd is not None:
+            os.close(parent_fd)
 
 
 def diagnostic_file(root: Path | None, relative: str, *, read: bool = False) -> tuple[dict, bytes | None]:
@@ -250,6 +270,128 @@ def diagnostic_rows(data: bytes | None, run_id: str, *, startup: bool = False) -
     return report
 
 
+def configure_destination_artifacts(configuration: dict, test_root: Path, runner_app: Path,
+                                    bundle_id: str, run_id: str, overall_timeout: int) -> tuple[dict, str]:
+    """Bind a genuine built UI runner for the documented preinstalled mode.
+
+    xcodebuild.xctestrun(5), UseDestinationArtifacts: exclude host artifact
+    paths and supply destination bundle identities plus the installed test
+    bundle path. __TESTHOST__/__TESTBUNDLE__ must remain device placeholders.
+    This configuration validation does not prove Apple test execution.
+    """
+    if (not isinstance(configuration, dict)
+            or not isinstance(bundle_id, str) or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,254}", bundle_id)
+            or not isinstance(run_id, str) or not re.fullmatch(r"[0-9a-f]{32}", run_id)
+            or type(overall_timeout) is not int or not 60 <= overall_timeout <= 1200):
+        raise Failed("Invalid actual UI destination configuration identity")
+    metadata = configuration.get("__xctestrun_metadata__")
+    if metadata is not None and (not isinstance(metadata, dict)
+                                 or type(metadata.get("FormatVersion")) is not int
+                                 or metadata["FormatVersion"] not in (1, 2)):
+        raise Failed("Unsupported actual UI test configuration format")
+    if runner_app.is_symlink() or not runner_app.is_dir() or runner_app.suffix != ".app":
+        raise Failed("The built UI runner must be a real application directory")
+    runner = runner_app.resolve(strict=True)
+    info_path = runner / "Info.plist"
+    if info_path.is_symlink() or not info_path.is_file():
+        raise Failed("The built UI runner lacks its actual bundle metadata")
+    runner_info = plistlib.loads(info_path.read_bytes())
+    runner_id = runner_info.get("CFBundleIdentifier")
+    runner_platforms = runner_info.get("CFBundleSupportedPlatforms")
+    if (not isinstance(runner_id, str) or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,254}", runner_id)
+            or runner_id == bundle_id or not isinstance(runner_platforms, list)
+            or "iPhoneSimulator" not in runner_platforms):
+        raise Failed("The built UI runner lacks a real Simulator bundle identity")
+    result = copy.deepcopy(configuration)
+    targets = []
+
+    def find_targets(value):
+        if isinstance(value, dict):
+            if "TestBundlePath" in value or "TestBundleDestinationRelativePath" in value:
+                targets.append(value)
+            else:
+                for child in value.values():
+                    find_targets(child)
+        elif isinstance(value, list):
+            for child in value:
+                find_targets(child)
+
+    find_targets(result)
+    if len(targets) != 1 or targets[0].get("IsUITestBundle") is not True:
+        raise Failed("The actual configuration must contain exactly one UI test target")
+    target = targets[0]
+    environment = target.get("TestingEnvironmentVariables")
+    if (not isinstance(environment, dict)
+            or any(not isinstance(key, str) or not isinstance(value, str) for key, value in environment.items())):
+        raise Failed("The actual UI target lacks its required testing environment")
+
+    def artifact_path(value, *, allow_test_host=False):
+        if not isinstance(value, str) or not value or "\0" in value:
+            raise Failed("The actual UI target lacks a valid build artifact path")
+        expanded = value.replace("__TESTROOT__", str(test_root.resolve(strict=True)))
+        if allow_test_host:
+            expanded = expanded.replace("__TESTHOST__", str(runner))
+        path = Path(expanded)
+        if (re.search(r"__[A-Z0-9_]+__", expanded) or not path.is_absolute()
+                or ".." in path.parts):
+            raise Failed("The actual UI target has an unsupported build artifact path")
+        return path
+
+    host = artifact_path(target.get("TestHostPath")).resolve(strict=True)
+    if host != runner or ("TestHostBundleIdentifier" in target
+                          and target["TestHostBundleIdentifier"] != runner_id):
+        raise Failed("The actual UI test host does not match the selected built runner")
+    original_bundle = artifact_path(target.get("TestBundlePath"), allow_test_host=True)
+    test_bundle = original_bundle.resolve(strict=True)
+    try:
+        relative = test_bundle.relative_to(runner)
+    except ValueError as exc:
+        raise Failed("The actual test bundle is outside its installed UI runner") from exc
+    if (len(relative.parts) < 2 or relative.parts[0] != "PlugIns"
+            or test_bundle.suffix != ".xctest" or not test_bundle.is_dir()):
+        raise Failed("The actual UI test bundle must be embedded in its runner PlugIns")
+    # Reject links within the installed bundle. Host filesystem aliases above
+    # the application directory were canonicalized separately.
+    original_host = next((parent for parent in original_bundle.parents
+                          if parent.resolve(strict=True) == runner), None)
+    if original_host is None or original_host.is_symlink():
+        raise Failed("The actual test bundle is not a direct descendant of its built runner")
+    component = original_host
+    for part in original_bundle.relative_to(original_host).parts:
+        component = component / part
+        if component.is_symlink():
+            raise Failed("The actual installed test bundle cannot traverse a symlink")
+    bundle_info = test_bundle / "Info.plist"
+    if bundle_info.is_symlink() or not bundle_info.is_file():
+        raise Failed("The actual embedded UI test bundle lacks its bundle metadata")
+    test_bundle_id = plistlib.loads(bundle_info.read_bytes()).get("CFBundleIdentifier")
+    if not isinstance(test_bundle_id, str) or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,254}", test_bundle_id):
+        raise Failed("The actual embedded UI test bundle lacks its bundle identity")
+    target.update(UseDestinationArtifacts=True, TestHostBundleIdentifier=runner_id,
+                  TestBundleDestinationRelativePath="__TESTHOST__/" + relative.as_posix(),
+                  UITargetAppBundleIdentifier=bundle_id)
+    launch_environment = target.setdefault("EnvironmentVariables", {})
+    if (not isinstance(launch_environment, dict)
+            or any(not isinstance(key, str) or not isinstance(value, str) for key, value in launch_environment.items())):
+        raise Failed("The actual UI target has an invalid launch environment")
+    launch_environment.update({
+        "AETHER_RENPY_RUN_ID": run_id, "AETHER_RENPY_APP_BUNDLE_ID": bundle_id,
+        "AETHER_RENPY_TEST_TIMEOUT": str(overall_timeout)})
+    for key in ("TestBundlePath", "TestHostPath", "UITargetAppPath", "DependentProductPaths"):
+        target.pop(key, None)
+
+    def relocate_test_root(value):
+        if isinstance(value, dict):
+            return {key: relocate_test_root(child) for key, child in value.items()}
+        if isinstance(value, list):
+            return [relocate_test_root(child) for child in value]
+        if isinstance(value, str):
+            return value.replace("__TESTROOT__", str(test_root.resolve(strict=True)))
+        return value
+
+    return relocate_test_root(result), runner_id
+
+
 class Acceptance:
     def __init__(self, args: argparse.Namespace):
         self.args = args
@@ -261,10 +403,17 @@ class Acceptance:
         self.created = self.installed = False
         self.bundle_id = ""
         self.documents: Path | None = None
+        self.staged_documents_identity: tuple[Path, int, int] | None = None
+        self.container_identity_checked = False
+        self.container_identity_same: bool | None = None
         self.ui_root: Path | None = None
         self.sequence = 0
         self.process: subprocess.Popen | None = None
         self.process_log = None
+        self.prepared_xctestrun: Path | None = None
+        self.ui_runner_id = ""
+        self.test_artifact_mode = "not_prepared"
+        self.runner_installed = self.destination_bindings_verified = False
         self.deadline = 0.0
         self.waiting_marker = None
         self.keyboard_preference: str | None = None
@@ -286,7 +435,12 @@ class Acceptance:
         return {"schema_version": 1, "diagnostic_status": "not_collected",
                 "install_passed": self.installed, "install_elapsed_msec": self.install_elapsed_msec,
                 "xcui_ready_passed": self.xcui_ready, "xcui_ready_elapsed_msec": self.xcui_ready_elapsed_msec,
-                "request_staged": self.request_staged}
+                "request_staged": self.request_staged,
+                "test_artifact_mode": self.test_artifact_mode,
+                "runner_install_passed": self.runner_installed,
+                "destination_bindings_verified": self.destination_bindings_verified,
+                "container_identity_checked": self.container_identity_checked,
+                "container_identity_same": self.container_identity_same}
 
     def snapshot_startup_diagnostics(self) -> None:
         """Collect fixed same-run facts before cleanup; never change acceptance.
@@ -556,10 +710,11 @@ class Acceptance:
         (self.documents / "aetherkiri-probe-request.json").write_text(json.dumps({
             "probe_script": "res://scripts/renpy_mobile_acceptance.gd", "run_id": self.run_id,
             "game_path": str(game.parent), "timeout_seconds": self.args.overall_timeout}))
+        self.staged_documents_identity = documents_identity(self.documents)
         self.request_staged = True
         self.summary["startup_diagnostics"]["request_staged"] = True
 
-    def start_xcuitest(self) -> None:
+    def prepare_xcuitest(self) -> None:
         project = self.repo / "tools/renpy_ios_acceptance/RenPyAcceptance.xcodeproj"
         derived = self.output / "xcode-derived"
         destination = "platform=iOS Simulator,id=" + self.udid
@@ -569,49 +724,35 @@ class Acceptance:
         paths = list((derived / "Build/Products").glob("*.xctestrun"))
         if len(paths) != 1:
             raise Failed("Xcode did not produce one executable UI test configuration")
-        configuration = plistlib.loads(paths[0].read_bytes())
-        targets = []
-
-        def configure(value):
-            if isinstance(value, dict):
-                if "TestBundlePath" in value and value.get("IsUITestBundle"):
-                    value["UITargetAppPath"] = str(self.args.app.resolve())
-                    value["UITargetAppBundleIdentifier"] = self.bundle_id
-                    value.setdefault("EnvironmentVariables", {}).update({
-                        "AETHER_RENPY_RUN_ID": self.run_id, "AETHER_RENPY_APP_BUNDLE_ID": self.bundle_id,
-                        "AETHER_RENPY_TEST_TIMEOUT": str(self.args.overall_timeout)})
-                    value.setdefault("DependentProductPaths", []).append(str(self.args.app.resolve()))
-                    targets.append(value)
-                else:
-                    for child in value.values():
-                        configure(child)
-            elif isinstance(value, list):
-                for child in value:
-                    configure(child)
-
-        configure(configuration)
-        if len(targets) != 1:
-            raise Failed("Xcode UI configuration lacks the real UI test target; refusing to substitute a fake host")
-        xctestrun = self.output / "RenPyGameplay.xctestrun"
-        # __TESTROOT__ is relative to the .xctestrun location.
-        def resolve_paths(value):
-            if isinstance(value, dict):
-                for key, child in value.items():
-                    value[key] = resolve_paths(child)
-            elif isinstance(value, list):
-                return [resolve_paths(child) for child in value]
-            elif isinstance(value, str):
-                return value.replace("__TESTROOT__", str(paths[0].parent))
-            return value
-
-        xctestrun.write_bytes(plistlib.dumps(resolve_paths(configuration)))
         runners = list((derived / "Build/Products").glob("**/RenPyAcceptance-Runner.app/Info.plist"))
         if len(runners) != 1:
             raise Failed("Xcode did not build the real Simulator UI test runner app")
-        runner_id = plistlib.loads(runners[0].read_bytes())["CFBundleIdentifier"]
+        configuration, runner_id = configure_destination_artifacts(
+            plistlib.loads(paths[0].read_bytes()), paths[0].parent, runners[0].parent,
+            self.bundle_id, self.run_id, self.args.overall_timeout)
+        xctestrun = self.output / "RenPyGameplay.xctestrun"
+        xctestrun.write_bytes(plistlib.dumps(configuration))
+        self.destination_bindings_verified = True
+        self.test_artifact_mode = "destination"
+        self.summary["startup_diagnostics"].update(
+            test_artifact_mode="destination", destination_bindings_verified=True)
+        # Both genuine apps are installed before querying/staging the target
+        # data container. The ensuing test action cannot reinstall artifacts.
+        self.simctl("install", self.udid, str(runners[0].parent.resolve()), timeout=180)
+        self.runner_installed = True
+        self.summary["startup_diagnostics"]["runner_install_passed"] = True
         self.summary["ui_test_runner"] = runner_id
+        self.ui_runner_id = runner_id
+        self.prepared_xctestrun = xctestrun
+
+    def start_xcuitest(self) -> None:
+        if (self.prepared_xctestrun is None or not self.runner_installed
+                or not self.destination_bindings_verified):
+            raise Failed("Actual destination UI test artifacts were not prepared and installed")
+        destination = "platform=iOS Simulator,id=" + self.udid
+        runner_id = self.ui_runner_id
         self.process_log = (self.output / "xcuitest.log").open("wb")
-        self.process = subprocess.Popen(["xcodebuild", "test-without-building", "-xctestrun", str(xctestrun),
+        self.process = subprocess.Popen(["xcodebuild", "test-without-building", "-xctestrun", str(self.prepared_xctestrun),
                                         "-destination", destination, "-resultBundlePath", str(self.output / "gameplay.xcresult"),
                                         "-parallel-testing-enabled", "NO"], stdout=self.process_log, stderr=subprocess.STDOUT)
 
@@ -633,6 +774,27 @@ class Acceptance:
         self.xcui_ready_elapsed_msec = self.elapsed_msec()
         self.summary["startup_diagnostics"].update(
             xcui_ready_passed=True, xcui_ready_elapsed_msec=self.xcui_ready_elapsed_msec)
+        # The real test process has launched the bound app. Requery rather
+        # than assuming the prelaunch container survived the test action.
+        current = self.simctl("get_app_container", self.udid, self.bundle_id, "data").decode().strip()
+        self.verify_staged_documents(Path(current) / "Documents")
+
+    def verify_staged_documents(self, current_documents: Path) -> None:
+        self.container_identity_checked = False
+        self.container_identity_same = None
+        self.summary["startup_diagnostics"].update(container_identity_checked=False, container_identity_same=None)
+        if self.staged_documents_identity is None:
+            raise Failed("The actual app Documents container was not bound during staging")
+        try:
+            current_identity = documents_identity(current_documents)
+        except (OSError, ValueError, RuntimeError) as exc:
+            raise Failed("The actual app Documents container cannot be verified after UI launch") from exc
+        self.container_identity_checked = True
+        self.container_identity_same = current_identity == self.staged_documents_identity
+        self.summary["startup_diagnostics"].update(
+            container_identity_checked=True, container_identity_same=self.container_identity_same)
+        if not self.container_identity_same:
+            raise Failed("The actual app data container changed after staging; refusing stale gameplay evidence")
 
     def run(self) -> None:
         if not self.args.cloud_simulator:
@@ -667,10 +829,13 @@ class Acceptance:
         self.summary["startup_diagnostics"].update(
             install_passed=True, install_elapsed_msec=self.install_elapsed_msec)
         self.simctl("terminate", self.udid, self.bundle_id, check=False)
+        # Preserve the existing overall budget: it still includes the real
+        # build-for-testing work, now before data-container staging.
+        self.deadline = time.monotonic() + self.args.overall_timeout
+        self.prepare_xcuitest()
         root = self.simctl("get_app_container", self.udid, self.bundle_id, "data").decode().strip()
         self.documents = Path(root) / "Documents"
         self.stage()
-        self.deadline = time.monotonic() + self.args.overall_timeout
         self.start_xcuitest()
         self.wait_game("start_ready")
         self.tap_button(self.capture("start_ready"))

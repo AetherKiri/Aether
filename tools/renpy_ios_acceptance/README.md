@@ -48,8 +48,22 @@ Exit code `2` means
 execution did not meet the required evidence. Neither result proves phone
 gameplay. Simulator results also do not establish physical iPhone support.
 
-The standalone UI test project targets an already installed app by its real
-bundle ID. Host commands and acknowledgments use only the UI test runner's own
+The harness builds and installs the actual UI runner before it queries the
+Godot app's data container and stages the private demo request. It then uses
+the documented `UseDestinationArtifacts` xctestrun mode: the installed runner
+and target are selected by their bundle IDs, and the test bundle is verified
+inside the runner's `PlugIns` directory. Host artifact paths are excluded, so
+the test action does not install the app again after staging. The existing
+overall timeout still includes the runner build. This protects the staging
+handoff; it does not establish that a previous timeout changed the container.
+After real foreground readiness, the harness queries the target container
+again and requires the staged directory identity to match. A change fails
+acceptance; it never restages or substitutes evidence after the app starts.
+See Apple's [command-line testing documentation](https://developer.apple.com/library/archive/technotes/tn2339/_index.html)
+and the `UseDestinationArtifacts` section of `man xcodebuild.xctestrun` in the
+selected Xcode toolchain.
+
+Host commands and acknowledgments use only the UI test runner's own
 Documents directory; the game and observer independently write into the test
 app's Documents directory. Only the two acceptance directories and one-shot
 debug request are reset. The Simulator software-keyboard preference is restored

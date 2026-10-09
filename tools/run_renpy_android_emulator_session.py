@@ -26,6 +26,49 @@ from run_renpy_android_device_acceptance import Failed, image_stats, png_pixels
 
 
 IMAGE = "system-images;android-35;google_apis;x86_64"
+SENSITIVE_DIAGNOSTIC = re.compile(
+    r"auth|token|credentials?|password|passwd|secret|jwt|grpc|api[_-]?key|"
+    r"[a-z][a-z0-9+.-]*://|www\.|eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+",
+    re.IGNORECASE,
+)
+
+
+def bounded_diagnostic(raw: bytes | str, *, max_chars: int = 4096, max_lines: int = 32) -> dict:
+    """Keep a small sanitized tail of only this session's actual output."""
+    text = raw.decode(errors="replace") if isinstance(raw, bytes) else raw
+    text = re.sub(r"\x1b\[[0-?]*[ -/]*[@-~]", "", text)
+    lines = text.splitlines()
+    selected = lines[-max_lines:]
+    output = []
+    redacted = 0
+    for line in selected:
+        line = re.sub(r"[\x00-\x08\x0b-\x1f\x7f]", "", line)
+        if SENSITIVE_DIAGNOSTIC.search(line):
+            output.append("[redacted sensitive diagnostic line]")
+            redacted += 1
+        else:
+            output.append(line[:512])
+    joined = "\n".join(output)
+    return {"output": joined[-max_chars:], "redacted_lines": redacted,
+            "truncated": len(lines) > max_lines or any(len(line) > 512 for line in selected)
+            or len(joined) > max_chars}
+
+
+def diagnostic_file_tail(path: Path, *, read_limit: int = 65536) -> dict:
+    # Never read a previous artifact or an unbounded emulator/kernel log.
+    try:
+        with path.open("rb") as stream:
+            size = stream.seek(0, os.SEEK_END)
+            stream.seek(max(0, size - read_limit))
+            raw = stream.read(read_limit)
+            if size > read_limit:
+                # A cut line may have lost its sensitive header. Drop it whole.
+                raw = raw.partition(b"\n")[2]
+            result = bounded_diagnostic(raw)
+        result["truncated"] |= size > read_limit
+        return result
+    except OSError as exc:
+        return {"unavailable": True, **bounded_diagnostic(str(exc), max_chars=256, max_lines=1)}
 
 
 def acceleration_usable(output: str, system: str) -> bool:
@@ -50,22 +93,36 @@ def acceleration_usable(output: str, system: str) -> bool:
                                        and re.search(r"\b(?:installed and usable|is usable)\b", lower))
 
 
-def owned_group_exists(process: subprocess.Popen) -> bool:
+def owned_group_state(process: subprocess.Popen) -> str:
     """The caller must have created this Popen with start_new_session=True."""
+    if getattr(process, "_renpy_group_permission_denied", False):
+        return "permission_denied"
     try:
         os.killpg(process.pid, 0)
     except ProcessLookupError:
-        return False
-    return True
+        return "absent"
+    except PermissionError:
+        # Unknown is never absent. Do not retry a denied probe or signal.
+        process._renpy_group_permission_denied = True
+        return "permission_denied"
+    return "present"
+
+
+def owned_group_exists(process: subprocess.Popen) -> bool:
+    return owned_group_state(process) != "absent"
 
 
 def wait_owned_group_exit(process: subprocess.Popen, grace: float) -> bool:
     deadline = time.monotonic() + grace
-    while owned_group_exists(process):
+    while True:
+        state = owned_group_state(process)
+        if state == "absent":
+            return True
+        if state == "permission_denied":
+            return False
         if time.monotonic() >= deadline:
             return False
         time.sleep(min(0.05, max(0, deadline - time.monotonic())))
-    return True
 
 
 def terminate_owned_process(process: subprocess.Popen, grace: float = 10) -> int:
@@ -74,20 +131,26 @@ def terminate_owned_process(process: subprocess.Popen, grace: float = 10) -> int
     The group can outlive its leader. Orphaned descendants are reaped by their
     OS parent, so leader.wait() alone is insufficient to terminate that group.
     """
-    if owned_group_exists(process):
+    if owned_group_state(process) == "present":
         try:
             os.killpg(process.pid, signal.SIGTERM)
         except ProcessLookupError:
             pass
+        except PermissionError:
+            process._renpy_group_permission_denied = True
     try:
         process.wait(timeout=grace)
     except subprocess.TimeoutExpired:
         pass
-    if not wait_owned_group_exit(process, grace):
+    if owned_group_state(process) == "permission_denied" and process.poll() is None:
+        raise Unavailable("Owned process-group probe/signal permission was denied; no permission retry was made")
+    if not wait_owned_group_exit(process, grace) and owned_group_state(process) != "permission_denied":
         try:
             os.killpg(process.pid, signal.SIGKILL)
         except ProcessLookupError:
             pass
+        except PermissionError:
+            process._renpy_group_permission_denied = True
     return process.wait(timeout=grace)
 
 
@@ -102,10 +165,65 @@ class Session(Preflight):
         super().__init__(args)
         self.harness_process = None
         self.harness_log = None
+        self.boot_started = None
+        self.next_boot_progress = 0
         self.result.update(scope="actual-cloud-android-emulator-session",
                            gameplay_verification="not_run", gameplay_attempted=False,
                            gameplay_verified=False, harness_started=False,
                            requested_gameplay=args.apk is not None)
+
+    def boot_progress(self, phase: str, *, response: subprocess.CompletedProcess | None = None) -> None:
+        now = time.monotonic()
+        self.result["boot_elapsed_seconds"] = round(now - self.boot_started, 1)
+        self.result["boot_phase"] = phase
+        if response is not None:
+            self.result["last_boot_response"] = {"returncode": response.returncode,
+                                                 **bounded_diagnostic(response.stdout, max_chars=256, max_lines=2)}
+        if now >= self.next_boot_progress:
+            print(json.dumps({"checkpoint": "actual-android-boot-progress", "phase": phase,
+                              "elapsed_seconds": self.result["boot_elapsed_seconds"],
+                              "serial": self.result["serial"],
+                              "emulator_returncode": self.emulator_process.poll(),
+                              "last_boot_response": self.result.get("last_boot_response"),
+                              "gameplay_verification": "not_run"}), flush=True)
+            self.next_boot_progress = now + 30
+
+    def diagnostic_command(self, *parts: str, timeout: int = 3, max_chars: int = 1024) -> dict:
+        started = time.monotonic()
+        try:
+            completed = subprocess.run([str(self.adb), "-s", self.result["serial"], *parts],
+                                       stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                                       env=self.environment, timeout=timeout)
+            result = {"returncode": completed.returncode,
+                      **bounded_diagnostic(completed.stdout, max_chars=max_chars, max_lines=20)}
+        except subprocess.TimeoutExpired as exc:
+            result = {"timed_out": True, **bounded_diagnostic(exc.stdout or b"", max_chars=max_chars, max_lines=20)}
+        except OSError as exc:
+            result = {"unavailable": True, **bounded_diagnostic(str(exc), max_chars=256, max_lines=1)}
+        result["elapsed_seconds"] = round(time.monotonic() - started, 1)
+        return result
+
+    def boot_failure_diagnostics(self) -> None:
+        """Read the currently owned AVD before stop; never dump its environment."""
+        started = time.monotonic()
+        diagnostics = {"checkpoint": "actual-android-boot-failure-diagnostics",
+                       "boot_elapsed_seconds": round(started - self.boot_started, 1),
+                       "phase": self.result.get("boot_phase"), "serial": self.result["serial"],
+                       "emulator_returncode": self.emulator_process.poll(),
+                       "last_boot_response": self.result.get("last_boot_response"),
+                       "gameplay_verification": "not_run",
+                       "emulator_log_tail": diagnostic_file_tail(self.output / "emulator.log")}
+        diagnostics["adb_state"] = self.diagnostic_command("get-state")
+        diagnostics["boot_properties"] = {
+            name: self.diagnostic_command("shell", "getprop", name, max_chars=256)
+            for name in ("sys.boot_completed", "dev.bootcomplete", "init.svc.bootanim", "ro.build.version.sdk")
+        }
+        # Read at most 80 current warning/error entries, without clearing logcat.
+        diagnostics["logcat_warning_tail"] = self.diagnostic_command(
+            "logcat", "-d", "-t", "80", "-v", "brief", "*:W", timeout=5, max_chars=3072)
+        diagnostics["diagnostic_elapsed_seconds"] = round(time.monotonic() - started, 1)
+        self.result["boot_failure_diagnostics"] = diagnostics
+        print(json.dumps(diagnostics), flush=True)
 
     def gate_host(self, sdk: Path) -> Path:
         system, machine = platform.system(), platform.machine()
@@ -181,25 +299,46 @@ class Session(Preflight):
         command = [str(emulator), "-avd", name, "-port", str(self.args.port), "-accel", "on",
                    "-gpu", "swiftshader", "-no-window", "-no-audio", "-no-boot-anim", "-no-snapshot",
                    "-memory", "3072", "-camera-front", "none", "-camera-back", "none"]
+        # Official boot diagnostics only; acceleration, graphics and timeout stay unchanged.
+        # https://developer.android.com/studio/run/emulator-commandline
+        command.append("-show-kernel")
         self.result["emulator_command"] = command
         self.emulator_log = (self.output / "emulator.log").open("wb")
         self.emulator_process = subprocess.Popen(command, stdout=self.emulator_log, stderr=subprocess.STDOUT,
                                                  stdin=subprocess.DEVNULL, env=self.environment, start_new_session=True)
         self.execution_started = True
         self.result["execution_started"] = True
-        deadline = time.monotonic() + self.args.boot_timeout
-        self.device("adb-wait-for-device", "wait-for-device", timeout=min(180, self.args.boot_timeout))
+        self.boot_started = time.monotonic()
+        deadline = self.boot_started + self.args.boot_timeout
+        adb_deadline = self.boot_started + min(180, self.args.boot_timeout)
+        while time.monotonic() < adb_deadline:
+            self.boot_progress("waiting-for-adb")
+            try:
+                self.device("adb-wait-for-device", "wait-for-device",
+                            timeout=min(30, max(0.1, adb_deadline - time.monotonic())))
+                break
+            except Unavailable as exc:
+                if not isinstance(exc.__cause__, subprocess.TimeoutExpired):
+                    raise
+        else:
+            raise Unavailable("Actual ADB did not connect within its existing boot wait deadline; see emulator.log")
         while time.monotonic() < deadline:
+            self.boot_progress("waiting-for-sys.boot_completed")
             if self.emulator_process.poll() is not None:
                 raise Unavailable(f"Actual emulator exited before boot: {self.emulator_process.returncode}; see emulator.log")
             remaining = deadline - time.monotonic()
             completed = self.device("boot-completed", "shell", "getprop", "sys.boot_completed",
-                                    timeout=min(20, max(0.1, remaining)))
+                                    timeout=min(20, max(0.1, remaining)), check=False)
+            self.boot_progress("waiting-for-sys.boot_completed", response=completed)
+            if completed.returncode:
+                raise Unavailable(f"Actual ADB boot property read failed (exit {completed.returncode}); see boot-completed.log")
             if completed.stdout.decode().strip() == "1":
+                self.result["boot_completed"] = True
                 break
             time.sleep(min(2, max(0, deadline - time.monotonic())))
         else:
             raise Unavailable(f"Actual emulator did not boot within {self.args.boot_timeout}s; see emulator.log")
+        self.result["boot_phase"] = "validating-booted-device"
         self.device("unlock", "shell", "input", "keyevent", "82")
         values = {}
         for name in ("ro.build.fingerprint", "ro.product.cpu.abilist", "ro.build.version.sdk", "ro.opengles.version"):
@@ -246,18 +385,26 @@ class Session(Preflight):
             self.result["harness_returncode"] = terminate_owned_process(self.harness_process)
             raise Unavailable(f"Actual APK harness exceeded its whole-process {self.args.gameplay_timeout}s deadline") from exc
         finally:
-            if self.harness_process.poll() is None or not wait_owned_group_exit(self.harness_process, 1):
-                self.result["harness_forced_cleanup"] = True
-                terminate_owned_process(self.harness_process)
-            else:
-                self.harness_process.wait(timeout=10)
-            self.result["harness_group_still_present"] = owned_group_exists(self.harness_process)
-            self.harness_log.close()
-            self.harness_log = None
-            self.harness_process = None
-        if self.result.get("harness_forced_cleanup"):
+            try:
+                if self.harness_process.poll() is None or not wait_owned_group_exit(self.harness_process, 1):
+                    self.result["harness_forced_cleanup"] = True
+                    terminate_owned_process(self.harness_process)
+                else:
+                    self.harness_process.wait(timeout=10)
+            finally:
+                group_state = owned_group_state(self.harness_process)
+                self.result["harness_group_state"] = group_state
+                self.result["harness_group_still_present"] = group_state != "absent"
+                if group_state == "permission_denied":
+                    self.result.update(harness_cleanup_permission_denied=True, gameplay_verification="failed")
+                self.harness_log.close()
+                self.harness_log = None
+                if self.harness_process.poll() is not None:
+                    self.harness_process = None
+        if self.result.get("harness_forced_cleanup") or self.result.get("harness_group_state") != "absent" \
+                or self.result.get("harness_cleanup_permission_denied"):
             self.result["gameplay_verification"] = "failed"
-            raise Unavailable("The actual harness left its owned process group running; forced cleanup was required")
+            raise Unavailable("The actual harness process group is not confirmed absent; cleanup could not be verified")
         summary_path = output / "result.json"
         if not summary_path.is_file():
             raise Unavailable("Actual APK harness did not produce its gameplay result; see gameplay-harness.log")
@@ -297,15 +444,20 @@ class Session(Preflight):
                 terminate_owned_process(process)
             else:
                 process.wait(timeout=10)
-            self.result.update(emulator_exit_code=process.returncode, emulator_stopped_cleanly=clean)
-            self.result["emulator_group_still_present"] = owned_group_exists(process)
         finally:
+            group_state = owned_group_state(process)
+            self.result.update(emulator_exit_code=process.returncode,
+                               emulator_stopped_cleanly=clean and group_state == "absent")
+            self.result["emulator_group_state"] = group_state
+            self.result["emulator_group_still_present"] = group_state != "absent"
+            if group_state == "permission_denied":
+                self.result["emulator_cleanup_permission_denied"] = True
             if self.emulator_log:
                 self.emulator_log.close()
                 self.emulator_log = None
             if process.poll() is not None:
                 self.emulator_process = None
-        if require_clean and not clean:
+        if require_clean and not self.result["emulator_stopped_cleanly"]:
             raise Unavailable("The actual emulator did not stop cleanly; see stop-emulator.log/emulator.log")
 
     def run(self) -> None:
@@ -319,15 +471,35 @@ class Session(Preflight):
         emulator = self.gate_host(sdk)
         manager = self.prepare_sdk(sdk)
         with tempfile.TemporaryDirectory(prefix="renpy-cloud-emulator-session-") as temporary:
+            primary_failure = None
             try:
-                self.boot(emulator, manager, Path(temporary) / "avd")
+                try:
+                    self.boot(emulator, manager, Path(temporary) / "avd")
+                except (Unavailable, Failed, OSError, ValueError, subprocess.TimeoutExpired) as boot_error:
+                    self.result["boot_failure"] = bounded_diagnostic(str(boot_error), max_chars=1024, max_lines=4)
+                    if self.execution_started:
+                        self.result["boot_failed"] = True
+                        try:
+                            self.boot_failure_diagnostics()
+                        except (OSError, ValueError) as diagnostic_error:
+                            self.result["boot_failure_diagnostic_error"] = bounded_diagnostic(str(diagnostic_error))
+                    raise
                 if self.args.apk is not None:
                     self.gameplay()
                 self.stop(require_clean=True)
                 self.result["checks"].append("actual-emulator-stopped")
                 self.result["status"] = "passed"
+            except (Unavailable, Failed, OSError, ValueError, KeyboardInterrupt, subprocess.TimeoutExpired) as exc:
+                primary_failure = exc
+                raise
             finally:
-                self.stop(require_clean=False)
+                try:
+                    self.stop(require_clean=False)
+                except (Unavailable, OSError, subprocess.TimeoutExpired) as cleanup_error:
+                    self.result.update(status="failed", cleanup_error=bounded_diagnostic(
+                        str(cleanup_error), max_chars=1024, max_lines=4))
+                    if primary_failure is None:
+                        raise
 
 
 def main() -> int:
@@ -360,7 +532,8 @@ def main() -> int:
         try:
             session.stop(require_clean=False)
         except (Unavailable, OSError, subprocess.TimeoutExpired) as exc:
-            session.result.update(status="failed", cleanup_error=str(exc))
+            session.result["status"] = "failed"
+            session.result.setdefault("cleanup_error", bounded_diagnostic(str(exc), max_chars=1024, max_lines=4))
             code = 1
         (session.output / "result.json").write_text(json.dumps(session.result, indent=2) + "\n")
     print(json.dumps(session.result, indent=2))

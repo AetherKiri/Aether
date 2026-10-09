@@ -415,6 +415,7 @@ class Session(Preflight):
         self.harness_process = None
         self.harness_log = None
         self.harness_started_ns = None
+        self.harness_apk_sha256 = None
         self.avd_directory = None
         self.avd_started_ns = None
         self.boot_started = None
@@ -576,6 +577,9 @@ class Session(Preflight):
                 payload["files"][name] = metadata
                 records[name] = lines
             own_pids = set()
+            snapshot = self.current_failure_snapshot()
+            payload["failure_snapshot"] = snapshot
+            own_pids.update(snapshot.get("diagnostic_pids", []))
             prefix = [str(self.adb), "-s", self.result["serial"]]
             for line in records.get("commands.jsonl", []):
                 if time.monotonic() >= deadline:
@@ -621,7 +625,22 @@ class Session(Preflight):
             owned_launch = self.result.get("actual_status", {}).get("app_launch", {})
             if owned_launch.get("status") == "passed":
                 own_pids.update(owned_launch["pids"])
-            payload["observed_process_pids"] = sorted(own_pids)[:8]
+            # A crash can precede pidof. Only an AndroidRuntime Process header
+            # with both the exact package and matching header/body PID binds
+            # subsequent causes. This is diagnostic attribution, not launch proof.
+            for line in records.get("android-system-logcat.txt", []):
+                if time.monotonic() >= deadline:
+                    break
+                row = LOGCAT_ROW.match(line)
+                if not row:
+                    continue
+                pid, _, tag, message = row.groups()
+                match = re.fullmatch(r"Process:\s*" + re.escape(self.args.package) + r",\s*PID:\s*([1-9][0-9]{0,9})\s*", message)
+                if (tag.strip() == "AndroidRuntime" and match and pid == match[1]
+                        and int(pid) <= 2147483647 and len(own_pids) < 8):
+                    own_pids.add(pid)
+            payload["diagnostic_bound_process_pids"] = sorted(own_pids)[:8]
+            payload["process_pid_semantics"] = "diagnostic-attribution-only"
             install_lines = records.get("install.txt", [])
             payload["installation_success_marker"] = any(line.strip() == "Success" for line in install_lines)
             for name in STARTUP_FILES[2:]:
@@ -668,7 +687,12 @@ class Session(Preflight):
             candidates = [row for row in payload["files"].values() if row.get("output")]
             candidates += [row["stderr"] for row in payload["commands"] if row["stderr"].get("output")]
             if not candidates:
-                payload["commands"] = payload["commands"][:2]
+                # A schema regression must not create an infinite trim loop.
+                payload = {"checkpoint": "actual-apk-startup-failure-diagnostics",
+                           "status": "diagnostic_notavailable", "gameplay_verified": False,
+                           "files": {}, "commands": [], "reason": "console_size_limit"}
+                serialized = json.dumps(payload, separators=(",", ":"))
+                break
             else:
                 largest = max(candidates, key=lambda row: len(row["output"]))
                 largest["output"] = largest["output"][:len(largest["output"]) // 2]
@@ -679,6 +703,73 @@ class Session(Preflight):
                                                                       for row in payload["files"].values()),
                                                "gameplay_verified": False}
         print(serialized, flush=True)
+
+    def current_failure_snapshot(self) -> dict:
+        """Select matched fresh-result diagnostic fields without upgrading gameplay."""
+        unavailable = {"status": "diagnostic_notavailable", "diagnostic_only": True}
+        summary = self.result.get("gameplay_result", {})
+        report = summary.get("failure_diagnostics", {}) if isinstance(summary, dict) else {}
+        installed = self.result.get("actual_status", {}).get("apk_install", {})
+        if (not isinstance(report, dict) or report.get("source") != "actual-adb-failure-diagnostic"
+                or summary.get("status") != "failed" or summary.get("apk_installed") is not True
+                or self.result.get("apk_installed") is not True or installed.get("status") != "passed"
+                or installed.get("source") != "actual-adb-command" or type(installed.get("returncode")) is not int
+                or installed["returncode"] != 0 or installed.get("stdout_marker") != "Success"
+                or installed.get("package") != self.args.package or installed.get("serial") != self.result["serial"]
+                or report.get("diagnostic_only") is not True or summary.get("source") != "actual-apk-adb-cloud-device"
+                or not isinstance(summary.get("run_id"), str) or not re.fullmatch(r"[a-f0-9]{32}", summary["run_id"])
+                or report.get("run_id") != summary["run_id"]):
+            return unavailable
+        for key, expected in (("package", self.args.package), ("serial", self.result["serial"]),
+                              ("apk_sha256", self.harness_apk_sha256)):
+            if expected is None or summary.get(key) != expected or report.get(key) != expected:
+                return unavailable
+        if not re.fullmatch(r"[0-9a-f]{64}", self.harness_apk_sha256):
+            return unavailable
+        selected = {"status": "diagnostic_available", "source": report["source"], "diagnostic_only": True}
+        pid = report.get("pid_sample", {})
+        pids = pid.get("pids", []) if isinstance(pid, dict) else []
+        if isinstance(pid, dict):
+            if pid.get("status") in ("available", "not_available"):
+                selected["pid_status"] = pid["status"]
+            if type(pid.get("returncode")) is int and -255 <= pid["returncode"] <= 255:
+                selected["pid_returncode"] = pid["returncode"]
+            for flag in ("cleanup_permission_denied", "collector_not_reaped"):
+                if type(pid.get(flag)) is bool:
+                    selected[flag] = pid[flag]
+        if (isinstance(pid, dict) and pid.get("status") == "available" and type(pid.get("returncode")) is int
+                and pid["returncode"] == 0 and isinstance(pids, list) and 0 < len(pids) <= 8
+                and type(pid.get("pid_count")) is int and len(pids) <= pid["pid_count"] <= 4096
+                and all(isinstance(value, str) and re.fullmatch(r"[1-9][0-9]{0,9}", value)
+                        and int(value) <= 2147483647 for value in pids) and len(set(pids)) == len(pids)):
+            selected["diagnostic_pids"] = pids
+        activity = report.get("activity_sample", {})
+        if isinstance(activity, dict) and activity.get("status") in ("available", "not_available"):
+            selected["activity_status"] = activity["status"]
+        if (isinstance(activity, dict) and activity.get("status") == "available"
+                and type(activity.get("returncode")) is int and activity["returncode"] == 0
+                and activity.get("exact_component") == summary.get("activity")
+                and isinstance(summary.get("activity"), str) and summary["activity"].startswith(self.args.package + "/")
+                and len(summary["activity"]) <= 256
+                and re.fullmatch(r"[A-Za-z0-9_.$]+/[A-Za-z0-9_.$]+", summary["activity"])):
+            states = []
+            for row in activity.get("states", [])[:4] if isinstance(activity.get("states"), list) else []:
+                if not isinstance(row, dict):
+                    continue
+                state = {}
+                if row.get("state") in ("INITIALIZING", "STARTED", "RESUMED", "PAUSING", "PAUSED", "STOPPING", "STOPPED", "DESTROYING", "DESTROYED", "RESTARTING_PROCESS"):
+                    state["state"] = row["state"]
+                for name in ("mVisibleRequested", "mVisible", "allDrawn", "firstWindowDrawn"):
+                    if type(row.get(name)) is bool:
+                        state[name] = row[name]
+                if state:
+                    states.append(state)
+            selected["activity_states"] = states
+        while len(json.dumps(selected).encode()) > 768 and selected.get("activity_states"):
+            selected["activity_states"].pop()
+        if len(json.dumps(selected).encode()) > 768:
+            return unavailable
+        return selected
 
     def retain_partial_milestones(self, summary: dict, apk_hash: str) -> None:
         if summary.get("source") != "actual-apk-adb-cloud-device" or summary.get("package") != self.args.package \
@@ -947,6 +1038,7 @@ class Session(Preflight):
         if summary.get("status") == "not_run":
             self.result["gameplay_executed"] = False
         apk_hash = hashlib.sha256(self.args.apk.read_bytes()).hexdigest()
+        self.harness_apk_sha256 = apk_hash
         self.retain_partial_milestones(summary, apk_hash)
         if not gameplay_result_matches(summary, code, self.args.package, self.result["serial"], apk_hash):
             self.result["gameplay_verification"] = "not_run" if summary.get("status") == "not_run" else "failed"

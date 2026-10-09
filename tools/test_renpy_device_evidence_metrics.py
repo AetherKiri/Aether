@@ -19,6 +19,7 @@ import shlex
 import subprocess
 import sys
 import tempfile
+import time
 import unittest
 from pathlib import Path
 from unittest import mock
@@ -283,6 +284,116 @@ class EngineLogEvidence(unittest.TestCase):
             path = directory / "synthetic-aetherkiri-engine.log"
             path.write_text(self.attachment)
             require_engine_log(read_engine_log_file(path), self.root)
+
+
+class AndroidFailureDiagnosticBoundaries(unittest.TestCase):
+    """Real ordinary subprocesses and controlled state fixtures, never Android."""
+
+    def test_real_success_nonzero_and_oversize_stdout_have_distinct_bounded_results(self):
+        for script, expected in (("print('4343')", "available"),
+                                 ("print('4343'); raise SystemExit(7)", "not_available"),
+                                 ("print('x'*100000)", "not_available")):
+            report, raw = android.bounded_failure_command([sys.executable, "-c", script], time.monotonic() + 2,
+                                                          byte_limit=1024)
+            self.assertEqual(report["status"], expected)
+            self.assertLessEqual(report["bytes_captured"], 1024)
+            self.assertEqual(raw, b"4343\n" if expected == "available" else b"")
+        self.assertEqual(report["reason"], "stdout_limit")
+
+    def test_real_non_eof_stdout_times_out_and_direct_child_is_reaped(self):
+        original = subprocess.Popen
+        processes = []
+        def owned_child(*args, **kwargs):
+            child = original(*args, **kwargs)
+            processes.append(child)
+            return child
+        started = time.monotonic()
+        with mock.patch.object(android.subprocess, "Popen", side_effect=owned_child):
+            report, raw = android.bounded_failure_command([sys.executable, "-c",
+                "import time; print('4343',flush=True); time.sleep(10)"], started + 0.4)
+        self.assertEqual(report["reason"], "command_timeout")
+        self.assertEqual(raw, b"")
+        self.assertIsNotNone(processes[0].poll())
+        self.assertLess(time.monotonic() - started, 1)
+
+    def test_denied_kill_is_unknown_without_retry_or_partial_pid_use(self):
+        original = subprocess.Popen
+        processes, signals = [], []
+        def denied_child(*args, **kwargs):
+            child = original(*args, **kwargs)
+            processes.append(child)
+            def denied():
+                signals.append(True)
+                raise PermissionError("controlled denial, not an actual permission change")
+            child.kill = denied
+            return child
+        try:
+            with mock.patch.object(android.subprocess, "Popen", side_effect=denied_child):
+                report, raw = android.bounded_failure_command([sys.executable, "-c",
+                    "import time; print('4343',flush=True); time.sleep(10)"], time.monotonic() + 0.4)
+            self.assertTrue(report["cleanup_permission_denied"])
+            self.assertTrue(report["collector_not_reaped"])
+            self.assertEqual(raw, b"")
+            self.assertEqual(signals, [True])
+        finally:
+            for child in processes:
+                subprocess.Popen.kill(child)  # Normal cleanup of our real test child, with the injected denial removed.
+                child.wait(timeout=2)
+
+    def acceptance(self, temporary):
+        args = type("Args", (), {"output_dir": Path(temporary), "package": "org.example.controlled",
+                                "serial": "controlled-only", "adb": "not-an-adb"})()
+        acceptance = android.Acceptance(args)
+        acceptance.installed = True
+        acceptance.summary.update(status="failed", blocker="original-controlled-launch-timeout", apk_installed=True,
+                                  apk_sha256="a" * 64, activity="org.example.controlled/.Activity")
+        return acceptance
+
+    def test_collect_has_one_ten_second_deadline_and_never_upgrades_partial_milestones(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            acceptance = self.acceptance(temporary)
+            before = copy.deepcopy(acceptance.summary["actual_status"])
+            clock, calls = {"now": 0.0}, []
+            def capture(command, deadline, **kwargs):
+                self.assertEqual(deadline, 10)
+                if clock["now"] >= deadline:
+                    return {"status": "not_available", "reason": "diagnostic_deadline"}, b""
+                calls.append(command)
+                clock["now"] += min(2, deadline - clock["now"])
+                output = b"4343\n" if command[-1].startswith("pidof ") else b""
+                if command[-1] == "dumpsys activity activities":
+                    output = ("ActivityRecord{x u0 org.example.controlled/.Activity t1}\n"
+                              "  state=INITIALIZING firstWindowDrawn=false allDrawn=false\n"
+                              "ActivityRecord{x u0 unrelated/.Activity t2}\n  state=RESUMED allDrawn=true\n").encode()
+                return {"status": "available", "returncode": 0}, output
+            with mock.patch.object(android.time, "monotonic", side_effect=lambda: clock["now"]), \
+                    mock.patch.object(android, "bounded_failure_command", side_effect=capture):
+                acceptance.collect()
+            report = acceptance.summary["failure_diagnostics"]
+            self.assertEqual(clock["now"], 10)
+            self.assertEqual(len(calls), 5)
+            self.assertTrue(report["deadline_reached"])
+            self.assertEqual(report["pid_sample"]["pids"], ["4343"])
+            self.assertEqual(report["activity_sample"]["states"],
+                             [{"state": "INITIALIZING", "allDrawn": False, "firstWindowDrawn": False}])
+            self.assertEqual((report["run_id"], report["package"], report["serial"], report["apk_sha256"]),
+                             (acceptance.run_id, acceptance.args.package, acceptance.args.serial, "a" * 64))
+            self.assertEqual(acceptance.summary["actual_status"], before)
+            self.assertEqual(acceptance.summary["blocker"], "original-controlled-launch-timeout")
+            self.assertFalse(acceptance.summary["process_started"])
+
+    def test_successful_collection_keeps_original_full_evidence_and_no_failure_snapshot(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            acceptance = self.acceptance(temporary)
+            acceptance.summary["status"] = "passed"
+            full = ("controlled complete evidence line " + "x" * 80 + "\n").encode() * 1000
+            with mock.patch.object(acceptance, "private", return_value=full), \
+                    mock.patch.object(acceptance, "command", return_value=b"controlled logcat\n"), \
+                    mock.patch.object(android, "bounded_failure_command", side_effect=AssertionError("Success cannot enter new failure collector")):
+                acceptance.collect()
+            self.assertEqual((acceptance.output / "observer.jsonl").read_bytes(), full)
+            self.assertEqual((acceptance.output / "renpy-script-checkpoints.jsonl").read_bytes(), full)
+            self.assertNotIn("failure_diagnostics", acceptance.summary)
 
 
 class AndroidPartialFailureReporting(unittest.TestCase):

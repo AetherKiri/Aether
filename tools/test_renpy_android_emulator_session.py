@@ -415,7 +415,9 @@ class CurrentStartupDiagnosticTests(unittest.TestCase):
             self.assertIn("ModuleNotFoundError", text)
             self.assertNotIn("controlled-private-token", text)
             self.assertNotIn("unrelated-private-app", text)
-            self.assertEqual(payload["observed_process_pids"], ["1234"])
+            self.assertEqual(payload["diagnostic_bound_process_pids"], ["1234"])
+            self.assertEqual(payload["process_pid_semantics"], "diagnostic-attribution-only")
+            self.assertNotIn("observed_process_pids", payload)
             self.assertTrue(payload["installation_success_marker"])
             self.assertEqual([row["phase"] for row in payload["commands"]],
                              ["apk_install", "app_start", "app_pid_observation"])
@@ -448,6 +450,95 @@ class CurrentStartupDiagnosticTests(unittest.TestCase):
             self.assertFalse(session.result["process_started"], "Even Status: ok diagnostics cannot prove a process")
             self.assertFalse(session.result["apk_installed"])
             self.assertFalse(session.result["gameplay_verified"])
+
+    def failure_summary(self, session):
+        summary = self.milestone_summary(session)
+        digest = hashlib.sha256(session.args.apk.read_bytes()).hexdigest()
+        summary.update(run_id="a" * 32, apk_sha256=digest, activity=session.args.package + "/Launcher",
+                       process_started=False)
+        summary["actual_status"]["app_launch"]["status"] = "failed"
+        summary["failure_diagnostics"] = {
+            "source": "actual-adb-failure-diagnostic", "diagnostic_only": True,
+            "run_id": summary["run_id"], "package": session.args.package, "serial": session.result["serial"],
+            "apk_sha256": digest, "pid_sample": {"status": "available", "returncode": 0, "pids": ["1234"], "pid_count": 1},
+            "activity_sample": {"status": "available", "returncode": 0, "exact_component": summary["activity"],
+                                "states": [{"state": "INITIALIZING", "allDrawn": False, "private": "private-token"}]}}
+        session.harness_apk_sha256 = digest
+        session.result["gameplay_result"] = summary
+        session.retain_partial_milestones(summary, digest)
+        return summary
+
+    def test_current_matched_failure_pid_can_select_causes_without_launch_or_gameplay_success(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            session = self.session(temporary)
+            self.failure_summary(session)
+            prefix = "10-09 07:00:00.000 1234 1234 E AndroidRuntime: "
+            path = self.write(session, "android-process-logcat.txt", prefix + "FATAL EXCEPTION: main\n" + prefix
+                              + "Caused by: java.lang.UnsatisfiedLinkError: controlled-current-loader-cause\n")
+            os.utime(path, ns=(session.harness_started_ns + 1_000_000,) * 2)
+            text, payload = self.diagnose(session)
+            self.assertEqual(payload["failure_snapshot"]["diagnostic_pids"], ["1234"])
+            self.assertEqual(payload["failure_snapshot"]["activity_states"], [{"state": "INITIALIZING", "allDrawn": False}])
+            self.assertIn("controlled-current-loader-cause", text)
+            self.assertNotIn("private-token", text)
+            self.assertTrue(session.result["apk_installed"])
+            self.assertFalse(session.result["process_started"])
+            self.assertFalse(session.result["gameplay_verified"])
+            self.assertLessEqual(len(text.encode()), 6144)
+
+    def test_wrong_tuple_success_or_unproven_install_cannot_bind_diagnostic_pids(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            session = self.session(temporary)
+            baseline = self.failure_summary(session)
+            for key in ("run_id", "source", "package", "serial", "apk_sha256", "diagnostic_only"):
+                wrong = copy.deepcopy(baseline)
+                wrong["failure_diagnostics"][key] = False if key == "diagnostic_only" else "different-controlled-value"
+                session.result["gameplay_result"] = wrong
+                self.assertEqual(session.current_failure_snapshot()["status"], "diagnostic_notavailable", key)
+            for changes in ({"status": "passed"}, {"apk_installed": False}):
+                session.result["gameplay_result"] = {**baseline, **changes}
+                self.assertEqual(session.current_failure_snapshot()["status"], "diagnostic_notavailable")
+            session.result["gameplay_result"] = copy.deepcopy(baseline)
+            for changes in ({"returncode": False}, {"pids": ["9999999999"]}, {"pids": ["1234", "1234"]}, {"pid_count": True}):
+                session.result["gameplay_result"]["failure_diagnostics"]["pid_sample"] = {
+                    **baseline["failure_diagnostics"]["pid_sample"], **changes}
+                self.assertNotIn("diagnostic_pids", session.current_failure_snapshot())
+            session.result["actual_status"]["apk_install"]["stdout_marker"] = "NotSuccess"
+            self.assertEqual(session.current_failure_snapshot()["status"], "diagnostic_notavailable")
+            self.assertFalse(session.result["process_started"] or session.result["gameplay_verified"])
+
+    def test_crash_header_requires_exact_package_tag_and_equal_header_body_pid(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            session = self.session(temporary)
+            for package, body_pid, tag, bound in ((session.args.package, "1234", "AndroidRuntime", True),
+                                                (session.args.package, "4321", "AndroidRuntime", False),
+                                                (session.args.package + ".other", "1234", "AndroidRuntime", False),
+                                                (session.args.package, "1234", "OtherRuntime", False)):
+                prefix = "10-09 07:00:00.000 1234 1234 E " + tag + ": "
+                path = self.write(session, "android-system-logcat.txt", prefix + "FATAL EXCEPTION: main\n" + prefix
+                                  + f"Process: {package}, PID: {body_pid}\n" + prefix
+                                  + "Caused by: java.lang.UnsatisfiedLinkError: controlled-exact-crash-cause\n")
+                os.utime(path, ns=(session.harness_started_ns + 1_000_000,) * 2)
+                text, payload = self.diagnose(session)
+                self.assertEqual("controlled-exact-crash-cause" in text, bound)
+                self.assertEqual(payload["diagnostic_bound_process_pids"], ["1234"] if bound else [])
+                self.assertEqual(payload["process_pid_semantics"], "diagnostic-attribution-only")
+                self.assertFalse(session.result["process_started"] or session.result["gameplay_verified"])
+
+    def test_console_metadata_overflow_terminates_without_output_candidates(self):
+        # Controlled schema regression: no text candidates can be trimmed.
+        # The production fallback must terminate instead of looping forever.
+        with tempfile.TemporaryDirectory() as temporary:
+            session = self.session(temporary)
+            metadata = {"status": "diagnostic_notavailable", "reason": "controlled-large-metadata" * 400}
+            with patch("run_renpy_android_emulator_session.read_startup_lines", return_value=(metadata, [])):
+                text, payload = self.diagnose(session)
+            self.assertEqual(payload["reason"], "console_size_limit")
+            self.assertEqual(payload["status"], "diagnostic_notavailable")
+            self.assertEqual(payload["commands"], [])
+            self.assertEqual(payload["files"], {})
+            self.assertLessEqual(len(text.encode()), 6144)
+            self.assertFalse(session.result["process_started"] or session.result["gameplay_verified"])
 
     def test_launch_stdout_is_fresh_regular_and_prefix_bounded_without_reading_private_eof(self):
         with tempfile.TemporaryDirectory() as temporary:

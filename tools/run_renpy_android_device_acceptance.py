@@ -12,7 +12,9 @@ import argparse
 import hashlib
 import json
 import math
+import os
 import re
+import selectors
 import shlex
 import shutil
 import struct
@@ -31,6 +33,106 @@ class Blocked(RuntimeError):
 
 class Failed(RuntimeError):
     pass
+
+
+def bounded_failure_command(command: list[str], deadline: float, *, byte_limit: int = 65536) -> tuple[dict, bytes]:
+    """Capture only bounded stdout of an owned read-only diagnostic child."""
+    started = time.monotonic()
+    expires = min(deadline, started + 2)
+    if expires <= started:
+        return {"status": "not_available", "reason": "diagnostic_deadline"}, b""
+    report, raw = {"status": "not_available"}, bytearray()
+    try:
+        process = subprocess.Popen(command, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
+    except OSError:
+        return {**report, "reason": "command_unavailable"}, b""
+    try:
+        os.set_blocking(process.stdout.fileno(), False)
+        with selectors.DefaultSelector() as reader:
+            reader.register(process.stdout, selectors.EVENT_READ)
+            read_deadline = expires - min(0.2, (expires - started) / 2)
+            eof = False
+            while time.monotonic() < read_deadline:
+                if not eof:
+                    events = reader.select(timeout=min(0.05, max(0, read_deadline - time.monotonic())))
+                    if events:
+                        chunk = os.read(process.stdout.fileno(), min(4096, byte_limit + 1 - len(raw)))
+                        if not chunk:
+                            eof = True
+                            reader.unregister(process.stdout)
+                        else:
+                            raw.extend(chunk)
+                            if len(raw) > byte_limit:
+                                report["reason"] = "stdout_limit"
+                                break
+                elif process.poll() is None:
+                    time.sleep(min(0.01, max(0, read_deadline - time.monotonic())))
+                if eof and process.poll() is not None:
+                    break
+            if not eof and "reason" not in report:
+                report["reason"] = "command_timeout"
+        if process.poll() is None and not report.get("cleanup_permission_denied"):
+            try:
+                process.kill()
+            except PermissionError:
+                report["cleanup_permission_denied"] = True
+            except ProcessLookupError:
+                pass
+        try:
+            code = process.wait(timeout=max(0, expires - time.monotonic()))
+            report["returncode"] = code
+        except subprocess.TimeoutExpired:
+            report["collector_not_reaped"] = True
+        if not report.get("reason") and report.get("returncode") == 0 and time.monotonic() < deadline:
+            report["status"] = "available"
+        elif not report.get("reason"):
+            report["reason"] = "command_failed_or_deadline"
+    except OSError:
+        report["reason"] = "command_io_error"
+        if process.poll() is None and not report.get("cleanup_permission_denied"):
+            try:
+                process.kill()
+            except PermissionError:
+                report["cleanup_permission_denied"] = True
+            except ProcessLookupError:
+                pass
+            try:
+                process.wait(timeout=max(0, expires - time.monotonic()))
+            except subprocess.TimeoutExpired:
+                report["collector_not_reaped"] = True
+    finally:
+        process.stdout.close()
+    report["elapsed_seconds"] = round(time.monotonic() - started, 3)
+    report["bytes_captured"] = min(len(raw), byte_limit)
+    # Incomplete/failed output is never used as PID or Activity state proof.
+    return report, bytes(raw) if report["status"] == "available" else b""
+
+
+def failure_activity_states(raw: bytes, component: str) -> list[dict]:
+    """Select state/drawn booleans only within the exact current Activity record."""
+    if len(component) > 256 or not re.fullmatch(r"[A-Za-z0-9_.$]+/[A-Za-z0-9_.$]+", component):
+        return []
+    states, remaining, current = [], 0, None
+    wanted = re.compile(r"(?<![A-Za-z0-9_.$/])" + re.escape(component) + r"(?![A-Za-z0-9_.$/])")
+    for line in raw.decode(errors="replace").splitlines()[:200]:
+        if len(line) > 4096:
+            continue
+        if "ActivityRecord{" in line:
+            current, remaining = None, 0
+            if wanted.search(line) and len(states) < 4:
+                current, remaining = {}, 24
+                states.append(current)
+        if remaining <= 0:
+            continue
+        remaining -= 1
+        match = re.search(r"\bstate=(INITIALIZING|STARTED|RESUMED|PAUSING|PAUSED|STOPPING|STOPPED|DESTROYING|DESTROYED|RESTARTING_PROCESS)\b", line)
+        if match:
+            current["state"] = match[1]
+        for name in ("mVisibleRequested", "mVisible", "allDrawn", "firstWindowDrawn"):
+            match = re.search(r"\b" + name + r"=(true|false)\b", line)
+            if match:
+                current[name] = match[1] == "true"
+    return [row for row in states if row]
 
 
 def is_successful_os_return(row: object) -> bool:
@@ -651,6 +753,66 @@ class Acceptance:
     def collect(self) -> None:
         if not self.installed:
             return
+        if self.summary.get("status") != "failed":
+            self.collect_complete_evidence()
+            return
+        started = time.monotonic()
+        deadline = started + 10
+        snapshot = {"source": "actual-adb-failure-diagnostic", "diagnostic_only": True,
+                    "run_id": self.run_id, "package": self.args.package, "serial": self.args.serial,
+                    "apk_sha256": self.summary.get("apk_sha256"), "pid_sample": {"status": "not_available"}}
+        def capture(*parts, byte_limit=65536):
+            return bounded_failure_command(self.device_prefix + list(parts), deadline, byte_limit=byte_limit)
+        diagnostic_pid = ""
+        if self.summary.get("status") == "failed":
+            report, raw = capture("shell", shlex.join(("pidof", self.args.package)), byte_limit=2048)
+            pids = raw.decode(errors="replace").split()
+            if (report["status"] == "available" and pids
+                    and all(re.fullmatch(r"[1-9][0-9]{0,9}", pid) and int(pid) <= 2147483647 for pid in pids)
+                    and len(set(pids)) == len(pids)):
+                report.update(pids=pids[:8], pid_count=len(pids))
+                diagnostic_pid = pids[0]
+            elif report["status"] == "available":
+                report.update(status="not_available", reason="no_valid_current_pid")
+            snapshot["pid_sample"] = report
+            if diagnostic_pid:
+                report, raw = capture("logcat", "-d", "--pid", diagnostic_pid, "-v", "threadtime", "-t", "100")
+                snapshot["process_logcat"] = report
+                if raw:
+                    (self.output / "android-process-logcat.txt").write_bytes(b"\n".join(raw.splitlines()[:100]) + b"\n")
+            component = self.summary.get("activity", "")
+            if (len(component) <= 256 and re.fullmatch(r"[A-Za-z0-9_.$]+/[A-Za-z0-9_.$]+", component)
+                    and component.startswith(self.args.package + "/")):
+                report, raw = capture("shell", shlex.join(("dumpsys", "activity", "activities")))
+                report["exact_component"] = component
+                report["states"] = failure_activity_states(raw, component) if raw else []
+                snapshot["activity_sample"] = report
+        report, data = capture("logcat", "-d", "-v", "threadtime", "-t", "100")
+        snapshot["system_logcat"] = report
+        if data:
+            (self.output / "android-system-logcat.txt").write_bytes(b"\n".join(data.splitlines()[:100]) + b"\n")
+        # These existing evidence reads share the same absolute budget. They
+        # do not retry a denied/failed read and cannot replace the primary error.
+        for relative, local in [
+            ("files/renpy-device-demo/aetherkiri-engine.log", "aetherkiri-engine.log"),
+            ("files/renpy-device-evidence/observer.jsonl", "observer.jsonl"),
+            ("files/renpy-device-demo/game/aether-device-checkpoints.jsonl", "renpy-script-checkpoints.jsonl"),
+            ("files/renpy-device-demo/log.txt", "renpy-log.txt"),
+            ("files/renpy-device-demo/traceback.txt", "renpy-traceback.txt")]:
+            _, data = capture("exec-out", "run-as", self.args.package, "cat", relative)
+            if data:
+                (self.output / local).write_bytes(b"\n".join(data.splitlines()[:200]) + b"\n")
+        if self.pid and not diagnostic_pid:
+            _, data = capture("logcat", "-d", "--pid", self.pid.split()[0], "-v", "threadtime", "-t", "100")
+            if data:
+                (self.output / "android-process-logcat.txt").write_bytes(b"\n".join(data.splitlines()[:100]) + b"\n")
+        if self.summary.get("status") == "failed":
+            snapshot.update(elapsed_seconds=round(time.monotonic() - started, 3),
+                            deadline_reached=time.monotonic() >= deadline)
+            self.summary["failure_diagnostics"] = snapshot
+
+    def collect_complete_evidence(self) -> None:
+        """Preserve the original successful-run evidence without new truncation."""
         for relative, local in [
             ("files/renpy-device-demo/aetherkiri-engine.log", "aetherkiri-engine.log"),
             ("files/renpy-device-evidence/observer.jsonl", "observer.jsonl"),
@@ -670,8 +832,6 @@ class Acceptance:
             except Failed:
                 pass
         try:
-            # Startup/linker crashes may occur before pidof can observe a PID.
-            # Preserve actual logs from this disposable cloud image as well.
             (self.output / "android-system-logcat.txt").write_bytes(
                 self.command("logcat", "-d", "-v", "threadtime", "-t", "2000", check=False))
         except Failed:
@@ -705,7 +865,11 @@ def main() -> int:
         acceptance.summary.update(status="failed", blocker=str(exc))
         code = 1
     finally:
-        acceptance.collect()
+        try:
+            acceptance.collect()
+        except (Failed, OSError, ValueError):
+            # Diagnostics never mask the original execution classification.
+            acceptance.summary["failure_diagnostic_error"] = "not_available"
         acceptance.write_result()
     print(json.dumps(acceptance.summary, indent=2))
     return code

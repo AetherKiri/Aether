@@ -29,6 +29,7 @@ NSError *EngineError(engine_handle_t handle, NSString *fallback) {
     std::vector<uint8_t> _frameBuffer;
     CGSize _framePixelSize;
     BOOL _metalRendererEnabled;
+    uint64_t _renderGeneration;
     uint64_t _nativeReadbacks;
     uint64_t _nativeCopies;
     BOOL _asyncSnapshots;
@@ -219,6 +220,13 @@ NSError *EngineError(engine_handle_t handle, NSString *fallback) {
 
 - (BOOL)enableMetalRenderer:(NSError **)error {
     if (!AetherMetalBridgeInitialize(error)) return NO;
+    if (!_renderGeneration) {
+        _renderGeneration = AetherMetalBridgeBeginSession();
+        if (!_renderGeneration) {
+            if (error) *error = EngineError(nullptr, @"another native render session is active");
+            return NO;
+        }
+    }
     if (![self setOption:@"renderer" value:@"godot_native" error:error]) return NO;
     _metalRendererEnabled = YES;
     // Bootstrap Game Native dimensions from raw output. The controller sets
@@ -475,6 +483,9 @@ NSError *EngineError(engine_handle_t handle, NSString *fallback) {
         _handle = nullptr;
         _metalRendererEnabled = NO;
         _framePixelSize = CGSizeZero;
+    }
+    if (_renderGeneration) {
+        if (AetherMetalBridgeEndSession(_renderGeneration)) _renderGeneration = 0;
     }
 }
 

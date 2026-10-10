@@ -129,6 +129,8 @@ Apple M1 Max / macOS 15.7.1 一次 Debug 组件测量：关闭批处理 5.012/10
 
 ### 交接与遗留（2026-10-11）
 
+内部渲染会话第一步已实现：MetalBridge BeginSession/EndSession（宿主内部接口，不修改公共 engine ABI）分配递增 generation，普通/外部纹理记录创建会话；EngineSession 开启原生绘制时建立边界，销毁引擎后 drain 并退役会话。同步/异步呈现拒绝已退役或不同代际 token，延迟 release 仍能移除旧资源，未强行清表。诊断 render_generation / retired_textures 区分当前与残留资源。组件覆盖重复 begin、错误 end、新旧代际隔离、新纹理可呈现、退役不可呈现和延迟释放，全部通过，最终 textures/reads/inflight/retired=0、failures=0。当前 core 重新构建、Debug宿主构建及KAG3异步30秒输入/截图回归通过；1739快照全完成、RGB三次差值0、render_generation=0，但12个retired纹理合计9711616逻辑RGBA字节仍残留。证据 out/apple_host/evidence/render-generation-current-core/kag3/run.log。该改动建立归属与退役验证，不是完整RenderSession资源所有者/FrameLease，不移除渲染ABI或复制，不宣称泄漏修复；下一步追踪残留引用，并让呈现提交显式持有会话帧。
+
 用户澄清直通目标：减少部分 ABI 的意义首先是让渲染层统一管理生命周期，不是仅压低接口调用耗时。当前桥是进程全局 State，纹理 token 表、批次、快照与宿主呈现状态分别管理；公共接口只传 token/尺寸/serial，不能表达帧被谁持有、何时允许重写或销毁。下一阶段以内部 RenderSession 为资源所有者，公共 ABI 保留开关游戏/输入/平台请求/诊断；Apple 内部呈现接口持有带 session generation 与 frame serial 的 FrameLease，显式表达 produced→submitted→GPU completed→reusable。关闭按停止生产/呈现→完成提交与回调→归还 lease→释放会话资源处理，按代际拒绝旧会话帧；共享 device/管线可缓存，纹理与请求须按会话归属。不能直接清空全局 token 表掩盖残留引用，也不能把 borrowed 裸纹理当作不可变快照。先建立所有权与状态验证，再接纹理池/去复制/合并提交；deferred/遮挡保留与截图策略须随 lease 协议明确。即使 ABI 调用耗时很低，这个架构目标仍成立。尚未实现该重构，不宣称生命周期问题已修复。
 
 阶段计时基线：EngineSession 仅 PROFILE=1 测量取帧接口（包含 ABI 路由与运行时查询）及快照 CPU 阶段，profile 输出结构化平均/最大值；快照开关改为会话初始化时读取，避免逐帧查询环境。Debug构建与KAG3真实1080p drawable配对各30秒通过，无截图/readback、failures=0。sync 1786次调用 get平均0.000668ms、快照平均0.654726ms；async 1781次 get平均0.000640ms、快照CPU平均0.113408ms（不含GPU完成）。tick到GPU完成 p50/p95/max：sync 1.256/1.819/5.052ms，async 0.808/1.376/7.551ms，均零16.6ms超预算，但各有2个有效tick未进入呈现样本。证据 out/apple_host/evidence/native-stage-profile/result.json。阶段计数包含启动/预热，与排除前60 tick的呈现分位数口径不同；此素材的接口CPU成本不是主要量级，未证明直通重构收益或Godot对照。Python语法与diff检查通过。

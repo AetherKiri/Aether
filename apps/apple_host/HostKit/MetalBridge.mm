@@ -27,6 +27,7 @@ struct ExternalOwner {
 struct Record {
     id<MTLTexture> texture;
     std::shared_ptr<ExternalOwner> external;
+    uint64_t generation=0;
 };
 struct ReadRequest {
     id<MTLTexture> texture;
@@ -34,6 +35,7 @@ struct ReadRequest {
     bool accounted = false;
 };
 struct State {
+    uint64_t nextGeneration=1, activeGeneration=0;
     dispatch_group_t snapshotGroup=dispatch_group_create();
     uint64_t asyncSubmitted=0, asyncCompleted=0;
     std::recursive_mutex mutex;
@@ -193,7 +195,7 @@ uint64_t Create(uint32_t width, uint32_t height, const void *pixels, uint32_t st
         }
     }
     uint64_t token = S().next++;
-    S().textures.emplace(token, Record{texture, {}});
+    S().textures.emplace(token, Record{texture, {}, S().activeGeneration});
     return token;
 }
 void Release(uint64_t token) {
@@ -442,7 +444,7 @@ uint64_t ImportApple(void *image,uint32_t width,uint32_t height) {
     id<MTLTexture> texture=CVMetalTextureGetTexture(wrapper);
     if (!texture) { CFRelease(wrapper);return 0; }
     auto owner=std::make_shared<ExternalOwner>();owner->pixel=(CVPixelBufferRef)CFRetain(pixel);owner->wrapper=wrapper;
-    uint64_t token=S().next++;S().textures.emplace(token,Record{texture,owner});return token;
+    uint64_t token=S().next++;S().textures.emplace(token,Record{texture,owner,S().activeGeneration});return token;
 }
 bool Prepare(uint64_t token) { Lock lock(S().mutex);return Texture(token)!=nil && Flush(); }
 bool Publish(uint64_t token) { Lock lock(S().mutex);return Texture(token)!=nil && Flush(); }
@@ -491,7 +493,26 @@ id<MTLCommandQueue> AetherMetalBridgeCommandQueue() {
     return S().queue;
 }
 id<MTLTexture> AetherMetalBridgeCopyPresentationTexture(uint64_t token) {
-    Lock lock(S().mutex);return Snapshot(Texture(token),false);
+    Lock lock(S().mutex);
+    auto found=S().textures.find(token);
+    if(found==S().textures.end() || found->second.generation!=S().activeGeneration)return nil;
+    return Snapshot(found->second.texture,false);
+}
+uint64_t AetherMetalBridgeBeginSession() {
+    Lock lock(S().mutex);
+    if(S().activeGeneration)return 0;
+    return S().activeGeneration=S().nextGeneration++;
+}
+BOOL AetherMetalBridgeEndSession(uint64_t generation) {
+    {
+        Lock lock(S().mutex);
+        if(!generation || generation!=S().activeGeneration)return NO;
+    }
+    if(!AetherMetalBridgeDrain())return NO;
+    Lock lock(S().mutex);
+    if(generation!=S().activeGeneration)return NO;
+    S().activeGeneration=0;
+    return YES;
 }
 BOOL AetherMetalBridgeDrain() {
     id<MTLCommandBuffer> fence;
@@ -510,6 +531,8 @@ BOOL AetherMetalBridgeDrain() {
 }
 id<MTLTexture> AetherMetalBridgeCopyTexture(uint64_t token) {
     Lock lock(S().mutex);
+    auto found=S().textures.find(token);
+    if(found==S().textures.end() || found->second.generation!=S().activeGeneration)return nil;
     auto start=std::chrono::steady_clock::now();
     bool combined=S().pending!=nil;
     id<MTLTexture> result=Snapshot(Texture(token));
@@ -522,14 +545,15 @@ id<MTLTexture> AetherMetalBridgeCopyTexture(uint64_t token) {
 BOOL AetherMetalBridgeReadTexture(uint64_t token, void *pixels, size_t capacity, uint32_t stride) { return Read(token, pixels, capacity, stride); }
 NSString *AetherMetalBridgeDiagnostics() {
     Lock lock(S().mutex);
-    uint64_t textureBytes=0, externalTextures=0;
+    uint64_t textureBytes=0, externalTextures=0, retiredTextures=0;
     for (const auto &entry : S().textures) {
         textureBytes += entry.second.texture.width * entry.second.texture.height * 4;
         if (entry.second.external) ++externalTextures;
+        if (entry.second.generation && entry.second.generation!=S().activeGeneration) ++retiredTextures;
     }
-    return [NSString stringWithFormat:@"Metal bridge textures=%zu reads=%zu commands=%llu failures=%llu error=%@ read_begin=%llu read_pending_polls=%llu read_complete=%llu read_cancel=%llu snapshot_calls=%llu snapshot_total_ms=%.3f snapshot_max_ms=%.3f snapshot_combined=%llu async_submitted=%llu async_completed=%llu async_inflight=%llu texture_rgba_bytes=%llu external_textures=%llu",
+    return [NSString stringWithFormat:@"Metal bridge textures=%zu reads=%zu commands=%llu failures=%llu error=%@ read_begin=%llu read_pending_polls=%llu read_complete=%llu read_cancel=%llu snapshot_calls=%llu snapshot_total_ms=%.3f snapshot_max_ms=%.3f snapshot_combined=%llu async_submitted=%llu async_completed=%llu async_inflight=%llu texture_rgba_bytes=%llu external_textures=%llu render_generation=%llu retired_textures=%llu",
         S().textures.size(),S().reads.size(),S().operations,S().failures,S().lastError,
         S().readsBegun,S().readsPending,S().readsCompleted,S().readsCancelled,
         S().presentationSnapshots,S().presentationSnapshotMS,S().presentationSnapshotMaxMS,S().presentationCombinedSnapshots,
-        S().asyncSubmitted,S().asyncCompleted,S().asyncSubmitted-S().asyncCompleted,textureBytes,externalTextures];
+        S().asyncSubmitted,S().asyncCompleted,S().asyncSubmitted-S().asyncCompleted,textureBytes,externalTextures,S().activeGeneration,retiredTextures];
 }

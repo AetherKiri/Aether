@@ -13,6 +13,10 @@ BOOL AetherMetalBridgeInitialize(NSError **error);
 id<MTLCommandQueue> _Nullable AetherMetalBridgeCommandQueue(void);
 // Stop producers before draining the shared queue and snapshot callbacks.
 BOOL AetherMetalBridgeDrain(void);
+// Internal native ownership boundary; zero indicates an already active session.
+uint64_t AetherMetalBridgeBeginSession(void);
+// Producers must be stopped. Retired tokens remain releasable, never presentable.
+BOOL AetherMetalBridgeEndSession(uint64_t generation);
 // Returns an immutable GPU snapshot suitable for another presentation queue.
 id<MTLTexture> _Nullable AetherMetalBridgeCopyTexture(uint64_t token);
 // GPU consumers must submit on AetherMetalBridgeCommandQueue; CPU access must

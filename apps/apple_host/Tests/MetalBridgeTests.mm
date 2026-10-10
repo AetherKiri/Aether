@@ -314,5 +314,24 @@ int main(int argc,char **argv) { @autoreleasepool {
     if(argc>1&&std::strcmp(argv[1],"--readback-benchmark")==0)BenchmarkReadback();
     if(argc>1&&std::strcmp(argv[1],"--batched-readback-benchmark")==0)BenchmarkReadback(true);
     if(argc>1&&std::strcmp(argv[1],"--snapshot-benchmark")==0)BenchmarkSnapshotSubmission();
-    printf("PASS: Metal kernels, exact alpha arithmetic, clear, conversion, multi-source, bounds, overlap, read snapshots, batch, mosaic, triangles, IOSurface ownership\n%s\n",AetherMetalBridgeDiagnostics().UTF8String);
+    // Retirement blocks stale presentation without breaking deferred release.
+    auto generation=AetherMetalBridgeBeginSession();assert(generation);
+    assert(!AetherMetalBridgeBeginSession());
+    uint64_t oldToken=bridge.create_rgba(1,1,solid.data(),4);assert(oldToken);
+    assert(AetherMetalBridgeCopyPresentationTexture(oldToken));
+    assert(!AetherMetalBridgeEndSession(generation+1));
+    assert(AetherMetalBridgeEndSession(generation));
+    assert(!AetherMetalBridgeCopyPresentationTexture(oldToken));
+    assert(!AetherMetalBridgeCopyTexture(oldToken));
+    assert([AetherMetalBridgeDiagnostics() containsString:@"retired_textures=1"]);
+    auto nextGeneration=AetherMetalBridgeBeginSession();assert(nextGeneration>generation);
+    assert(!AetherMetalBridgeCopyPresentationTexture(oldToken));
+    uint64_t newToken=bridge.create_rgba(1,1,solid.data(),4);assert(newToken);
+    assert(AetherMetalBridgeCopyPresentationTexture(newToken));
+    bridge.release_texture(oldToken);
+    assert([AetherMetalBridgeDiagnostics() containsString:@"retired_textures=0"]);
+    assert(AetherMetalBridgeEndSession(nextGeneration));
+    assert(!AetherMetalBridgeCopyPresentationTexture(newToken));
+    bridge.release_texture(newToken);
+    printf("PASS: Metal kernels, exact alpha arithmetic, clear, conversion, multi-source, bounds, overlap, read snapshots, batch, mosaic, triangles, IOSurface ownership, session retirement\n%s\n",AetherMetalBridgeDiagnostics().UTF8String);
 } }

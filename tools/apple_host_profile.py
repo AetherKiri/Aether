@@ -18,6 +18,7 @@ def main():
     parser.add_argument('--output', type=Path)
     parser.add_argument('--compare-snapshots', action='store_true',
                         help='compare synchronous/async snapshots with direct scheduling')
+    parser.add_argument('--reverse-order', action='store_true', help='reverse sequential comparison order')
     args = parser.parse_args()
     if not args.game.is_dir() or not math.isfinite(args.duration) or args.duration < 30:
         parser.error('existing game directory and duration >=30 required')
@@ -28,6 +29,8 @@ def main():
     result = {'scope': 'tick to onscreen GPU command completion; excludes scanout; no screenshot/input; sequential runs', 'runs': {}}
     cases = [('sync', 'direct', '0'), ('async', 'direct', '1')] if args.compare_snapshots else [
         ('deferred', 'deferred', '0'), ('direct', 'direct', '0')]
+    if args.reverse_order:
+        cases.reverse()
     for mode, scheduling, async_snapshot in cases:
         folder = output / mode
         folder.mkdir()

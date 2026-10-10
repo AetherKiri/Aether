@@ -129,6 +129,8 @@ Apple M1 Max / macOS 15.7.1 一次 Debug 组件测量：关闭批处理 5.012/10
 
 ### 交接与遗留（2026-10-11）
 
+反序宿主复测：profile 新增 --reverse-order，先async后sync，KAG3各30秒无截图1080p。async 1737样本p50/p95/max=0.938/1.232/5.255ms；sync 1735样本=1.444/1.763/5.611ms，均零超预算、无合并遗漏、正常销毁、桥failures=0。反序仍有约35% p50、30% p95下降，证据 `out/apple_host/evidence/snapshot-async-sync-profile/`。与首轮合看，收益方向一致但比例随环境变化；尚未Godot对照。生命周期代码检查：presenter.suspend仅阻止新呈现，不显式drain已提交命令，因此正常退出不能证明没有in-flight任务，后续需加完成计数与会话边界drain验证，再考虑默认启用。Python语法/diff检查通过。
+
 共享队列冷启动修正：CommandQueue getter 仅延迟创建 device/queue，不编译绘制桥 shader；Initialize 复用现有队列，避免软件宿主提前编译管线及后续队列替换。组件新增初始化前后队列身份一致断言，桥套件与Debug构建通过。原创controls夹具全新进程各3轮：软件p50/p95/max=0.337/0.386/0.391秒，Metal=0.313/0.324/0.325秒，全部正常关闭且低于2秒目标。证据 `out/apple_host/evidence/lazy-queue-cold-software/` 与 `lazy-queue-cold-metal/`。这验证当前冷启动目标，不是相对上一版本的严格配对提升；非阻塞呈现仍opt-in，窗口压力和重复性能对照待补。
 
 非阻塞快照宿主对照第一轮：profile 工具新增 --compare-snapshots，固定 direct，显式 sync=0/async=1，串行各30秒、真实1080p drawable、无截图/输入。KAG3 sync 1736样本 p50/p95/max=1.642/1.912/6.146ms；async 1736样本=0.930/1.264/6.165ms，二者超16.6ms=0、未呈现有效tick=0、native_readbacks=0、桥failures=0、正常销毁。p50下降约43%、p95约34%，指标是tick到GPU完成而非扫描输出。证据 `out/apple_host/evidence/snapshot-sync-async-profile/`（CSV、日志、result.json）。这是单轮单素材的宿主对照，未比较Godot，尚需重复运行、窗口遮挡/尺寸/退出压力和冷启动验证，保持opt-in。工具语法与diff检查通过；原deferred/direct基准现在显式禁用实验开关，避免继承环境污染。

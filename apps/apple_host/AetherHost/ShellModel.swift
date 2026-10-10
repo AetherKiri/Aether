@@ -13,6 +13,10 @@ final class ShellModel: ObservableObject {
     @Published var activeGame: LibraryGame?
     @Published var isImporting = false
     @Published var error: String?
+    @Published var renameGame: LibraryGame?
+    @Published var renameTitle = ""
+    @Published var renameError: String?
+    @Published var removeGame: LibraryGame?
     @Published var confirmReturn = false { didSet { syncGameInput() } }
     @Published var showSettings = false { didSet { syncGameInput() } }
     @Published var showGameTextEntry = false { didSet { syncGameInput() } }
@@ -45,6 +49,7 @@ final class ShellModel: ObservableObject {
     private func friendlyError(_ error: Error) -> String {
         if let failure = error as? GameLibrary.Failure {
             switch failure {
+            case .invalidTitle: return text("invalidTitle")
             case .unsupported: return text("unsupported")
             case .unsafeSource: return text("unsafeSource")
             case .symbolicLink: return text("symbolicLink")
@@ -66,13 +71,13 @@ final class ShellModel: ObservableObject {
     var canImport: Bool { libraryAvailable && !isImporting && activeGame == nil && activeVideo == nil }
     var canPlay: Bool { !isImporting && activeGame == nil && activeVideo == nil && selectedGame != nil }
 
-    func chooseImport() {
+    func chooseImport(external: Bool = false) {
         guard canImport else { return }
         isImporting = true
         let panel = NSOpenPanel()
-        panel.title = text("import")
-        panel.message = text("importHelp")
-        panel.prompt = text("import")
+        panel.title = text(external ? "linkGame" : "import")
+        panel.message = text(external ? "linkHelp" : "importHelp")
+        panel.prompt = text(external ? "linkGame" : "import")
         panel.canChooseDirectories = true
         panel.canChooseFiles = false
         panel.allowsMultipleSelection = false
@@ -82,13 +87,35 @@ final class ShellModel: ObservableObject {
         Task {
             do {
                 let result = try await Task.detached(priority: .userInitiated) {
-                    try repository.importDirectory(source, existing: existing)
+                    try repository.importDirectory(source, existing: existing, external: external)
                 }.value
                 games = result.games
                 selection = result.imported.id
             } catch { self.error = friendlyError(error) }
             isImporting = false
         }
+    }
+
+    func beginRename(_ game: LibraryGame) {
+        guard canImport else { return }
+        renameError = nil
+        renameTitle = game.displayTitle
+        renameGame = game
+    }
+
+    func saveRename() {
+        guard canImport, let game = renameGame else { return }
+        do { games = try repository.rename(game.id, title: renameTitle, existing: games); renameGame = nil; renameError = nil }
+        catch { renameError = friendlyError(error) }
+    }
+
+    func removeSelectedGame() {
+        guard canImport, let game = removeGame else { return }
+        do {
+            games = try repository.remove(game.id, existing: games)
+            if selection == game.id { selection = games.first?.id }
+            removeGame = nil
+        } catch { self.error = friendlyError(error) }
     }
 
     func play() {

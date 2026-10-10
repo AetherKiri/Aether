@@ -68,6 +68,9 @@ struct ContentView: View {
                     Button { model.chooseImport() } label: {
                         Label(model.text("import"), systemImage: "plus")
                     }.disabled(!model.canImport)
+                    Button { model.chooseImport(external: true) } label: {
+                        Label(model.text("linkGame"), systemImage: "link")
+                    }.disabled(!model.canImport)
                     if model.isImporting { ProgressView().controlSize(.small) }
                 }
                 Button { model.showSettings = true } label: {
@@ -83,6 +86,24 @@ struct ContentView: View {
         }
         .modifier(PlatformDialogPresentation(dialogs: engine.platformDialogs, language: model.language))
         .sheet(isPresented: $model.showGameTextEntry) { GameTextEntryView(model: model) }
+        .sheet(item: $model.renameGame) { _ in
+            VStack(alignment: .leading, spacing: 16) {
+                Text(model.text("rename")).font(.headline)
+                TextField(model.text("gameTitle"), text: $model.renameTitle)
+                if let error = model.renameError { Text(error).foregroundStyle(.red).font(.caption) }
+                HStack {
+                    Spacer()
+                    Button(model.text("cancel")) { model.renameGame = nil }.keyboardShortcut(.cancelAction)
+                    Button(model.text("ok")) { model.saveRename() }.keyboardShortcut(.defaultAction)
+                }
+            }.padding(24).frame(width: 400)
+        }
+        .confirmationDialog(model.text("remove"), isPresented: Binding(
+            get: { model.removeGame != nil }, set: { if !$0 { model.removeGame = nil } }
+        ), titleVisibility: .visible) {
+            Button(model.text("remove"), role: .destructive) { model.removeSelectedGame() }
+            Button(model.text("cancel"), role: .cancel) { model.removeGame = nil }
+        } message: { Text(model.text("removeHelp")) }
         .sheet(isPresented: $model.showSettings) { ShellSettingsView(model: model) }
         .alert(model.text("error"), isPresented: Binding(
             get: { model.error != nil }, set: { if !$0 { model.error = nil } }
@@ -105,7 +126,11 @@ struct ContentView: View {
         NavigationSplitView {
             List(selection: $model.selection) {
                 ForEach(model.games) { game in
-                    Label(game.displayTitle, systemImage: "gamecontroller").tag(game.id)
+                    Label(game.displayTitle, systemImage: game.isExternal ? "link" : "gamecontroller").tag(game.id)
+                        .contextMenu {
+                            Button(model.text("rename")) { model.beginRename(game) }.disabled(!model.canImport)
+                            Button(model.text("remove")) { model.removeGame = game }.disabled(!model.canImport)
+                        }
                 }
             }
             .navigationTitle(model.text("library"))
@@ -126,12 +151,18 @@ struct ContentView: View {
                             else { Text(model.text("never")) }
                         }
                     }
+                    Text(model.text(game.isExternal ? "externalStorage" : "managedStorage")).foregroundStyle(.secondary)
+                    if game.isExternal { Text(model.text("linkHelp")).font(.caption).foregroundStyle(.secondary) }
                     HStack {
                         Button { model.play() } label: { Label(model.text("play"), systemImage: "play.fill") }
                             .buttonStyle(.borderedProminent).controlSize(.large).disabled(!model.canPlay)
                         Button(model.text("folder")) {
                             NSWorkspace.shared.activateFileViewerSelecting([model.repository.gameURL(game)])
                         }
+                    }
+                    HStack {
+                        Button(model.text("rename")) { model.beginRename(game) }.disabled(!model.canImport)
+                        Button(model.text("remove")) { model.removeGame = game }.disabled(!model.canImport)
                     }
                 }.frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center).padding(32)
             } else {
@@ -186,6 +217,7 @@ struct ShellCommands: Commands {
     var body: some Commands {
         CommandGroup(replacing: .newItem) {
             Button(model.text("import")) { model.chooseImport() }.keyboardShortcut("o").disabled(!model.canImport)
+            Button(model.text("linkGame")) { model.chooseImport(external: true) }.disabled(!model.canImport)
         }
         CommandGroup(replacing: .appSettings) {
             Button(model.text("settings") + "…") { model.showSettings = true }.keyboardShortcut(",")

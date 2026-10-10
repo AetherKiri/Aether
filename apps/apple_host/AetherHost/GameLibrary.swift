@@ -2,17 +2,18 @@ import Foundation
 
 struct LibraryGame: Codable, Identifiable, Equatable {
     let id: UUID
-    let title: String
+    var title: String
     let directory: String
     let sourcePath: String
     let importedAt: Date
     var lastPlayedAt: Date?
-    var displayTitle: String {
-        title.lowercased() == "data" ? URL(fileURLWithPath: sourcePath).deletingLastPathComponent().lastPathComponent : title
-    }
+    // Missing in legacy indexes: nil means a managed copy.
+    var externalPath: String? = nil
+    var displayTitle: String { title }
+    var isExternal: Bool { externalPath != nil }
 }
 
-// All imported content is copied; engine sidecars and saves stay in the copy.
+// Default imports are copied. Explicit external references use the source directly.
 // A staged copy becomes visible only after the manifest is atomically persisted.
 struct GameLibrary {
     let root: URL
@@ -20,9 +21,10 @@ struct GameLibrary {
     private var manifest: URL { root.appendingPathComponent("library.json") }
 
     enum Failure: LocalizedError {
-        case unsupported, unsafeSource, symbolicLink, invalidManifest
+        case unsupported, unsafeSource, symbolicLink, invalidManifest, invalidTitle
         var errorDescription: String? {
             switch self {
+            case .invalidTitle: return "Enter a title of 1–200 characters without control characters."
             case .unsupported: return "No supported game entry was found. Select the folder containing startup.tjs, XP3 archives an ONS script, or supported Minori PAZ files."
             case .unsafeSource: return "The selected folder contains the managed library. Select a game folder outside the library."
             case .symbolicLink: return "This folder contains symbolic links. Import a folder containing the actual game files."
@@ -32,7 +34,8 @@ struct GameLibrary {
     }
 
     func gameURL(_ game: LibraryGame) -> URL {
-        gamesRoot.appendingPathComponent(game.directory, isDirectory: true)
+        if let path = game.externalPath { return URL(fileURLWithPath: path, isDirectory: true) }
+        return gamesRoot.appendingPathComponent(game.directory, isDirectory: true)
     }
 
     func load() throws -> [LibraryGame] {
@@ -40,7 +43,7 @@ struct GameLibrary {
         let games = try JSONDecoder().decode([LibraryGame].self, from: Data(contentsOf: manifest))
         // Directory names are generated UUIDs; never trust paths from disk.
         guard Set(games.map(\.id)).count == games.count,
-              games.allSatisfy({ $0.directory == $0.id.uuidString }) else {
+              games.allSatisfy({ $0.directory == $0.id.uuidString && ($0.externalPath.map { $0.hasPrefix("/") && !$0.contains("\0") } ?? true) }) else {
             throw Failure.invalidManifest
         }
         return games
@@ -51,6 +54,25 @@ struct GameLibrary {
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
         try encoder.encode(games).write(to: manifest, options: .atomic)
+    }
+
+    func rename(_ id: UUID, title: String, existing: [LibraryGame]) throws -> [LibraryGame] {
+        let title = title.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !title.isEmpty, title.count <= 200,
+              !title.unicodeScalars.contains(where: { CharacterSet.controlCharacters.contains($0) }) else { throw Failure.invalidTitle }
+        var updated = existing
+        guard let index = updated.firstIndex(where: { $0.id == id }) else { throw Failure.invalidManifest }
+        updated[index].title = title
+        try save(updated)
+        return updated
+    }
+
+    // Remove only the index entry. Both managed saves and external originals remain.
+    func remove(_ id: UUID, existing: [LibraryGame]) throws -> [LibraryGame] {
+        guard existing.contains(where: { $0.id == id }) else { throw Failure.invalidManifest }
+        let updated = existing.filter { $0.id != id }
+        try save(updated)
+        return updated
     }
 
     private func isGame(_ folder: URL) throws -> Bool {
@@ -68,11 +90,11 @@ struct GameLibrary {
         }
     }
 
-    func importDirectory(_ selected: URL, existing: [LibraryGame]) throws -> (games: [LibraryGame], imported: LibraryGame) {
+    func importDirectory(_ selected: URL, existing: [LibraryGame], external: Bool = false) throws -> (games: [LibraryGame], imported: LibraryGame) {
         let fm = FileManager.default
         let source = selected.standardizedFileURL.resolvingSymlinksInPath()
         if let duplicate = existing.first(where: {
-            $0.sourcePath == source.path || gameURL($0).standardizedFileURL.path == source.path
+            $0.isExternal == external && ($0.sourcePath == source.path || gameURL($0).standardizedFileURL.resolvingSymlinksInPath().path == source.path)
         }), fm.fileExists(atPath: gameURL(duplicate).path) {
             return (existing, duplicate)
         }
@@ -100,9 +122,15 @@ struct GameLibrary {
         let id = UUID()
         let title = source.lastPathComponent.lowercased() == "data"
             ? source.deletingLastPathComponent().lastPathComponent : source.lastPathComponent
-        let game = LibraryGame(id: id, title: title,
+        var game = LibraryGame(id: id, title: title,
                                directory: id.uuidString, sourcePath: source.path,
                                importedAt: Date(), lastPlayedAt: nil)
+        if external {
+            game.externalPath = entry.path
+            let updated = existing + [game]
+            try save(updated)
+            return (updated, game)
+        }
         let stage = gamesRoot.appendingPathComponent(".import-" + id.uuidString)
         let destination = gameURL(game)
         var moved = false

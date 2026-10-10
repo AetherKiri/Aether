@@ -18,6 +18,15 @@ enum ShellLanguage: String, CaseIterable, Identifiable {
     func text(_ key: String) -> String { Self.strings[key]?[index] ?? key }
     // Same five languages as the existing product; game text is untouched.
     private static let strings: [String: [String]] = [
+        "rename": ["重命名", "重新命名", "Rename", "名前を変更", "이름 변경"],
+        "gameTitle": ["游戏名称", "遊戲名稱", "Game Title", "ゲーム名", "게임 이름"],
+        "remove": ["从游戏库移除", "從遊戲庫移除", "Remove from Library", "ライブラリから削除", "라이브러리에서 제거"],
+        "removeHelp": ["只移除列表记录，游戏文件和存档都会保留。可重新导入或添加目录恢复记录。", "只移除清單記錄，遊戲檔案和存檔均保留。可重新匯入或加入目錄恢復記錄。", "Only the list entry is removed. Game files and saves remain. Import or add the folder again to restore the entry.", "一覧の項目のみ削除します。ゲームとセーブは保持されます。フォルダを再追加できます。", "목록 항목만 제거합니다. 게임과 저장 파일은 유지되며 폴더를 다시 추가할 수 있습니다."],
+        "linkGame": ["添加外部游戏目录", "加入外部遊戲目錄", "Add External Game Folder", "外部ゲームフォルダを追加", "외부 게임 폴더 추가"],
+        "linkHelp": ["直接使用所选目录，不复制文件。游戏存档与运行文件会写入该目录；移动目录后需重新添加。", "直接使用所選目錄，不複製檔案。遊戲存檔與執行檔案會寫入該目錄；移動後需重新加入。", "Uses the selected folder directly without copying. Saves and runtime files are written there. Add it again if you move it.", "コピーせず選択したフォルダを使用します。セーブと実行時ファイルはそこに保存されます。移動後は再追加してください。", "복사 없이 선택한 폴더를 사용합니다. 저장 및 실행 파일이 해당 폴더에 기록됩니다. 이동하면 다시 추가하세요."],
+        "externalStorage": ["外部目录", "外部目錄", "External Folder", "外部フォルダ", "외부 폴더"],
+        "managedStorage": ["游戏库副本", "遊戲庫副本", "Library Copy", "ライブラリのコピー", "라이브러리 복사본"],
+        "invalidTitle": ["请输入 1–200 字的名称，不包含控制字符。", "請輸入 1–200 字的名稱，不含控制字元。", "Enter a title of 1–200 characters without control characters.", "制御文字を含まない1〜200文字の名前を入力してください。", "제어 문자 없이 1–200자의 이름을 입력하세요."],
         "skipMovie": ["跳过影片", "跳過影片", "Skip Movie", "動画をスキップ", "동영상 건너뛰기"],
         "video": ["视频", "影片", "Video", "動画", "동영상"],
         "openVideo": ["打开视频", "開啟影片", "Open Video", "動画を開く", "동영상 열기"],
@@ -82,6 +91,6 @@ enum ShellLanguage: String, CaseIterable, Identifiable {
         "symbolicLink": ["文件夹内有符号链接，请导入包含实际游戏文件的文件夹。", "資料夾含符號連結，請匯入包含實際遊戲檔案的資料夾。", "The folder contains symbolic links. Choose a folder containing the actual game files.", "シンボリックリンクが含まれます。実際のゲームファイルがあるフォルダを選択してください。", "폴더에 심볼릭 링크가 있습니다. 실제 게임 파일이 있는 폴더를 선택하세요."],
         "invalidIndex": ["游戏库索引无法读取，原索引已保留。", "遊戲庫索引無法讀取，原索引已保留。", "The library index cannot be read. The original index has been preserved.", "ライブラリの一覧を読み込めません。元の一覧は保持されています。", "라이브러리 목록을 읽을 수 없습니다. 원본 목록은 보존되었습니다."],
         "startFailed": ["游戏启动失败。", "遊戲啟動失敗。", "Game startup failed.", "ゲームの起動に失敗しました。", "게임 실행에 실패했습니다."],
-        "missing": ["游戏副本已移动或丢失，请重新导入原文件夹。", "遊戲副本已移動或遺失，請重新匯入原資料夾。", "The game copy is missing. Import the original folder again.", "ゲームのコピーが見つかりません。元のフォルダを再度追加してください。", "게임 복사본을 찾을 수 없습니다. 원본 폴더를 다시 가져오세요."],
+        "missing": ["游戏目录已移动或丢失，请重新导入或添加原文件夹。", "遊戲目錄已移動或遺失，請重新匯入或加入原資料夾。", "The game folder is missing. Import or add the original folder again.", "ゲームのフォルダが見つかりません。元のフォルダを再度追加してください。", "게임 폴더를 찾을 수 없습니다. 원본 폴더를 다시 가져오거나 추가하세요."],
     ]
 }

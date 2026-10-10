@@ -3,7 +3,7 @@ import Foundation
 @main
 struct GameLibraryTests {
     static func main() throws {
-        func check(_ condition: Bool) { precondition(condition) }
+        func check(_ condition: Bool, line: UInt = #line) { precondition(condition, "Check failed at line \(line)") }
         let fm = FileManager.default
         let temp = fm.temporaryDirectory.appendingPathComponent("aether-library-tests-" + UUID().uuidString)
         try fm.createDirectory(at: temp, withIntermediateDirectories: true)
@@ -63,6 +63,44 @@ struct GameLibraryTests {
         catch { check((try fm.contentsOfDirectory(atPath: blocked.root.appendingPathComponent("Games").path)).isEmpty) }
         check(fm.fileExists(atPath: data.appendingPathComponent("0.txt").path))
 
+        // Legacy records decode without the new optional externalPath field.
+        let legacy = try JSONSerialization.jsonObject(with: JSONEncoder().encode(played)) as! [[String: Any]]
+        check(legacy[0]["externalPath"] == nil)
+        check(try JSONDecoder().decode([LibraryGame].self, from: JSONSerialization.data(withJSONObject: legacy))[0].isExternal == false)
+        let renamed = try repository.rename(played[0].id, title: "  新名称 🎮  ", existing: played)
+        check(renamed[0].title == "新名称 🎮" && renamed[0].lastPlayedAt == played[0].lastPlayedAt)
+        check(try repository.load() == renamed)
+        check(repository.gameURL(renamed[0]) == copy)
+        let beforeRename = try Data(contentsOf: repository.root.appendingPathComponent("library.json"))
+        for bad in [" ", String(repeating: "x", count: 201), "a\0b", "a\nb"] {
+            do { _ = try repository.rename(played[0].id, title: bad, existing: renamed); fatalError("bad title accepted") }
+            catch GameLibrary.Failure.invalidTitle {}
+        }
+        check(try Data(contentsOf: repository.root.appendingPathComponent("library.json")) == beforeRename)
+        let external = try repository.importDirectory(wrapper, existing: renamed, external: true)
+        check(external.imported.isExternal && repository.gameURL(external.imported).path == data.path)
+        check(!fm.fileExists(atPath: repository.root.appendingPathComponent("Games").appendingPathComponent(external.imported.id.uuidString).path))
+        check(try repository.load() == external.games)
+        let copyFromExternal = try repository.importDirectory(data, existing: external.games)
+        check(!copyFromExternal.imported.isExternal && copyFromExternal.imported.id != external.imported.id)
+        check(repository.gameURL(copyFromExternal.imported).path != data.path)
+        let externalRepeat = try repository.importDirectory(wrapper, existing: external.games, external: true)
+        check(externalRepeat.imported.id == external.imported.id)
+        let removed = try repository.remove(external.imported.id, existing: external.games)
+        check(removed == renamed)
+        check(try repository.load() == removed)
+        check(fm.fileExists(atPath: data.appendingPathComponent("0.txt").path))
+        let noGames = try repository.remove(renamed[0].id, existing: removed)
+        check(noGames.isEmpty)
+        check(try repository.load().isEmpty)
+        check(fm.fileExists(atPath: copy.appendingPathComponent("save1.sav").path))
+        let restored = try repository.importDirectory(copy, existing: noGames, external: true)
+        check(fm.fileExists(atPath: repository.gameURL(restored.imported).appendingPathComponent("save1.sav").path))
+        // Failed mutations leave both source files and the caller's list unchanged.
+        do { _ = try blocked.remove(renamed[0].id, existing: renamed); fatalError("remove failure ignored") } catch {}
+        do { _ = try blocked.rename(renamed[0].id, title: "changed", existing: renamed); fatalError("rename failure ignored") } catch {}
+        check(renamed[0].title == "新名称 🎮" && fm.fileExists(atPath: copy.path))
+
         let id = UUID()
         let invalid = LibraryGame(id: id, title: "invalid", directory: "../outside", sourcePath: "", importedAt: Date(), lastPlayedAt: nil)
         try repository.save([invalid])
@@ -70,6 +108,6 @@ struct GameLibraryTests {
         do { _ = try repository.load(); fatalError("path escape accepted") }
         catch GameLibrary.Failure.invalidManifest {}
         check(try Data(contentsOf: repository.root.appendingPathComponent("library.json")) == before)
-        print("PASS: managed copy, source isolation, duplicate/save preservation, reload, wrapper/Minori marker detection, symlink/recursive rejection, rollback, manifest path protection")
+        print("PASS: managed copy, source isolation, duplicate/save preservation, reload, wrapper/Minori marker detection, symlink/recursive rejection, rollback, manifest path protection, legacy indexes, rename persistence, external references, non-destructive removal")
     }
 }

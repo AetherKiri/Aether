@@ -446,6 +446,12 @@ final class EngineController: ObservableObject {
                 if profileFrames { presenter.profileFrame(tick: tickCount, started: started) }
                 do {
                     try presenter.presentFrame(native: nativeFrameTexture, lease: nativeFrameLease, image: frameImage)
+                    if directRender {
+                        // MetalFramePresenter retains the lease through GPU
+                        // completion; the controller must not keep the prior
+                        // frame alive across the next engine tick.
+                        nativeFrameLease = nil
+                    }
                 } catch {
                     presentationFailed(String(describing: error))
                 }
@@ -735,11 +741,13 @@ final class EngineController: ObservableObject {
             type: EngineInputEvent.pointerMove,
             x: Double(center.x), y: Double(center.y), dx: 0, dy: 0,
             button: 0, modifiers: 0)
+        log("input pointer type=1 at (\(Int(center.x)),\(Int(center.y))) btn=0 mods=0")
         sendPointer(
             type: EngineInputEvent.pointerDown,
             x: Double(center.x), y: Double(center.y), dx: 0, dy: 0,
             button: 0, modifiers: 0)
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+            self.log("input pointer type=3 at (\(Int(center.x)),\(Int(center.y))) btn=0 mods=0")
             self.sendPointer(
                 type: EngineInputEvent.pointerUp,
                 x: Double(center.x), y: Double(center.y), dx: 0, dy: 0,

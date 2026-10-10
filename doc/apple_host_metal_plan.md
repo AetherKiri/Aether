@@ -146,7 +146,14 @@ IOSurface 仍使用快照，因为其生产者不受本地写时分离协议控�
 组件测试覆盖同纹理共享、写时分离、错误队列/退役会话拒绝和 lease 完成计数；
 KAG3 30 秒直通回归通过，RGB 三次差值为 0，输入事件通过，关闭后
 `leases_live=0`、`lease_submitted=1750`、`lease_completed=1750`、`lease_failures=0`。
-这已经是可运行的直通第一阶段，不代表所有纹理上传都已消除，也不宣称 G1 已完成。
+提交完成回调注册后，`MetalFramePresenter` 立即归还 presenter 侧 lease；回调仍持有
+GPU 所需引用直到 command completed。这样生产者不会因为 SwiftUI/控制器保留上一帧
+而被迫写时分离。更新后的 KAG3 30 秒直通证据 `out/apple_host/evidence/direct-render-kag3-final2/`
+中 `frame_detach_copies=0`（上一轮同场景为 444），`leases_acquired=1741`、
+`lease_submitted=1672`、`lease_completed=1672`、`leases_live=0`、
+`lease_failures=0`，三次 RGB max diff=0，输入事件和关闭均通过。这里把所有权归还
+提前是本轮的实质性能改进；动态帧仍保留异常/外部生产者的写时分离兜底，不代表所有
+上传或所有 ABI 查询都已删除，也不宣称 G1 已完成。
 
 双窗口对象图对照已补：保留原单窗口夹具，新增 apple_host_texture_lifecycle_multi（两个Window、各自primary、一个child、共享清理回调），工具 --multi-window 选择，结果标记fixture。当前Debug宿主串行12秒×2验证：普通关闭textures/retired=4，显式清除根引用后经局部变量失效图层/窗口则均0；两轮failures/inflight=0、startup成功、退出码0、无TVPShowScriptException，最终版路径复测相同。证据 out/apple_host/evidence/texture-lifecycle-multi-final/。Window原生Invalidate会先从注册表移除、取消事件/绘制更新、删除DrawBuffer，再失效ObjectVector注册对象；将该动作直接放进引擎关闭时仍有重入/递归finalize风险（运行时代码已有警告）。该浅层共享回调对照不能覆盖游戏自定义finalizer、跨窗口close回调或KAG完整图；下一步应分离关闭阶段并保留对象快照所有权，专门覆盖回调重入后再修改通用关闭流程。本轮未改引擎关闭算法或宣称泄漏修复。Python语法与diff检查通过。
 

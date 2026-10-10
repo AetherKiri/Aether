@@ -276,6 +276,11 @@ final class MetalFramePresenter: NSObject, MTKViewDelegate {
             }
             if let frameLease {
                 guard frameLease.submitCommand(command) else { throw Failure.encoding }
+                // The completion handler installed by submitCommand retains
+                // the lease until GPU completion. Release the presenter-side
+                // ownership immediately so the producer can reuse the source
+                // texture on the next tick without a defensive detach copy.
+                self.frameLease = nil
             } else { command.commit() }
         } catch {
             lastError = String(describing: error)

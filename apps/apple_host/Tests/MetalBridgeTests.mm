@@ -53,6 +53,42 @@ static void Benchmark1080p() {
     }
     bridge.release_texture(dst);bridge.release_texture(src);
 }
+static void BenchmarkReadback() {
+    using Clock=std::chrono::steady_clock;
+    std::vector<uint8_t> pixels(1920*1080*4);
+    tTVPRect rect(0,0,1920,1080);
+    uint64_t texture=bridge.create_rgba(1920,1080,nullptr,0);assert(texture);
+    assert(bridge.clear_rgba(texture,0xff332211,&rect));
+    std::vector<double> sync,submit,total;
+    unsigned pending=0;
+    auto elapsed=[](Clock::time_point start) {
+        return std::chrono::duration<double,std::milli>(Clock::now()-start).count();
+    };
+    for(int frame=0;frame<70;++frame) {
+        auto start=Clock::now();
+        assert(bridge.read_rgba(texture,pixels.data(),pixels.size(),1920*4));
+        double synchronous=elapsed(start);
+        start=Clock::now();uint64_t request=bridge.begin_read_rgba(texture);assert(request);
+        double submission=elapsed(start);bool ready=false;
+        while(!ready) {
+            assert(elapsed(start)<5000);
+            assert(bridge.poll_read_rgba(request,pixels.data(),pixels.size(),1920*4,&ready));
+            if(!ready) { ++pending;std::this_thread::yield(); }
+        }
+        double completion=elapsed(start);
+        for(size_t i=0;i<pixels.size();i+=4)
+            assert(pixels[i]==0x11&&pixels[i+1]==0x22&&pixels[i+2]==0x33&&pixels[i+3]==255);
+        bridge.discard_read_rgba(request);
+        if(frame>=10) {sync.push_back(synchronous);submit.push_back(submission);total.push_back(completion);}
+    }
+    for(auto item : {std::make_pair("sync",&sync),std::make_pair("async-submit",&submit),std::make_pair("async-total",&total)}) {
+        auto &values=*item.second;std::sort(values.begin(),values.end());
+        printf("BENCH readback 1920x1080 %s samples=60 warmup=10 p50_ms=%.3f p95_ms=%.3f max_ms=%.3f\n",
+            item.first,values[29],values[56],values.back());
+    }
+    printf("BENCH readback pending_polls=%u (includes warmup)\n",pending);
+    bridge.release_texture(texture);
+}
 int main(int argc,char **argv) { @autoreleasepool {
     NSError *error=nil;
     if (!AetherMetalBridgeInitialize(&error)) { NSLog(@"%@",error);return 1; }
@@ -198,5 +234,6 @@ int main(int argc,char **argv) { @autoreleasepool {
     for(uint64_t token:{dst,second,rule,line,m,source,target,mask,imported})bridge.release_texture(token);
     assert(!bridge.read_rgba(dst,result.data(),16,8));
     if(argc>1&&std::strcmp(argv[1],"--benchmark")==0)Benchmark1080p();
+    if(argc>1&&std::strcmp(argv[1],"--readback-benchmark")==0)BenchmarkReadback();
     printf("PASS: Metal kernels, exact alpha arithmetic, clear, conversion, multi-source, bounds, overlap, read snapshots, batch, mosaic, triangles, IOSurface ownership\n%s\n",AetherMetalBridgeDiagnostics().UTF8String);
 } }

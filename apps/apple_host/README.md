@@ -41,6 +41,7 @@ xcrun clang++ -fobjc-arc -std=c++17 -I abi/include \
 out/apple_host/metal-bridge-tests
 # 1080p 绘制桥基准（不包含 engine tick/MTKView，不构成 G1 性能验收）：
 out/apple_host/metal-bridge-tests --benchmark
+out/apple_host/metal-bridge-tests --readback-benchmark
 python3 tools/generate_apple_metal_shaders.py --check
 
 # KAG3 + ONS 并行，各运行 310 秒，截图验证输入推进、GPU RGB 对比及干净退出。

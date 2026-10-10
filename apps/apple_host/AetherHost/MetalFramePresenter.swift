@@ -37,6 +37,7 @@ final class MetalFramePresenter: NSObject, MTKViewDelegate {
     let device: MTLDevice
     private let queue: MTLCommandQueue
     private let pipeline: MTLRenderPipelineState
+    private let debugLabels: Bool
     private(set) var texture: MTLTexture?
     private var frameLease: AetherMetalFrameLease?
     private(set) var lastError: String?
@@ -122,9 +123,11 @@ final class MetalFramePresenter: NSObject, MTKViewDelegate {
 
     init(device: MTLDevice, commandQueue: MTLCommandQueue? = nil) throws {
         self.device = device
+        self.debugLabels = ProcessInfo.processInfo.environment["AETHER_HOST_METAL_DEBUG"] == "1"
         guard let queue = commandQueue ?? device.makeCommandQueue(),
               queue.device.registryID == device.registryID else { throw Failure.unavailable }
         self.queue = queue
+        if debugLabels { queue.label = "AetherHost.shared-metal" }
         let source = """
         #include <metal_stdlib>
         using namespace metal;
@@ -204,6 +207,7 @@ final class MetalFramePresenter: NSObject, MTKViewDelegate {
         guard let encoder = command.makeRenderCommandEncoder(descriptor: pass) else {
             throw Failure.encoding
         }
+        if debugLabels { encoder.label = "AetherHost.frame-encode" }
         if let texture {
             let scale = min(Double(target.width) / Double(texture.width),
                             Double(target.height) / Double(texture.height))
@@ -239,6 +243,7 @@ final class MetalFramePresenter: NSObject, MTKViewDelegate {
         let drawStarted = ProcessInfo.processInfo.systemUptime
         guard let drawable = view.currentDrawable,
               let command = queue.makeCommandBuffer() else { return }
+        if debugLabels { command.label = "AetherHost.present-frame" }
         let acquired = ProcessInfo.processInfo.systemUptime
         do {
             try encode(target: drawable.texture, command: command)

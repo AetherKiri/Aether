@@ -95,6 +95,10 @@ python3 tools/apple_host_smoke.py --duration 30 --presentation image
 RGB 最大差值。这是呈现一致性检查；独立软件/原生绘制对比用
 `xcrun swift tools/apple_host_compare.swift 软件截图 原生截图`。1080p 完整帧性能待验收。
 
+设置 `AETHER_HOST_METAL_DEBUG=1` 会给共享 Metal queue、present command buffer
+和 frame render encoder 加稳定 label，便于 Xcode GPU Frame Capture 与 Instruments
+按宿主阶段筛选；默认关闭，不改变提交路径。
+
 ### 呈现性能采样
 
 `--profile` 同时记录宿主工作与 tick-to-GPU-completion。后者关联实际提交的

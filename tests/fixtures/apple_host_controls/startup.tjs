@@ -1,0 +1,19 @@
+// Original fixture for Apple host input routing; contains no game assets.
+var win = new Window();
+win.setInnerSize(640, 480);
+var primary = new Layer(win, null);
+win.add(primary);
+primary.setSize(640, 480);
+primary.type = ltOpaque;
+primary.visible = true;
+var downs = 0, ups = 0, entered = "";
+function drawHud() {
+ primary.colorRect(0, 0, 640, 480, 0x203040, 255);
+ primary.drawText(20, 30, "Apple host input fixture", 0xffffff, 255, true);
+ primary.drawText(20, 70, "down=" + downs + " up=" + ups, 0xffffff, 255, true);
+ primary.drawText(20, 110, "text=" + entered, 0xffffff, 255, true);
+}
+win.onKeyDown = function(key, shift) { downs++; Debug.message("CONTROL_TEST down=" + key + " modifiers=" + shift); drawHud(); };
+win.onKeyUp = function(key, shift) { ups++; Debug.message("CONTROL_TEST up=" + key + " modifiers=" + shift); drawHud(); };
+win.onKeyPress = function(key) { entered += key; Debug.message("CONTROL_TEST text=" + entered); drawHud(); };
+drawHud();

@@ -1,0 +1,166 @@
+import AppKit
+import SwiftUI
+import UniformTypeIdentifiers
+
+@MainActor
+final class ShellModel: ObservableObject {
+    let engine = EngineController()
+    let repository: GameLibrary
+    lazy var media = MediaController(root: repository.root, diagnostics: engine.diagnostics, log: { [weak self] in self?.engine.log($0) })
+    @Published var activeVideo: URL?
+    @Published var games: [LibraryGame] = []
+    @Published var selection: UUID?
+    @Published var activeGame: LibraryGame?
+    @Published var isImporting = false
+    @Published var error: String?
+    @Published var confirmReturn = false { didSet { syncGameInput() } }
+    @Published var showSettings = false { didSet { syncGameInput() } }
+    @Published var showGameTextEntry = false { didSet { syncGameInput() } }
+    @Published var showVirtualControls: Bool { didSet {
+        UserDefaults.standard.set(showVirtualControls, forKey: preferencePrefix + "virtualControls")
+        if !showVirtualControls { engine.releaseVirtualKeys() }
+    } }
+    @Published var language: ShellLanguage { didSet { UserDefaults.standard.set(language.rawValue, forKey: preferencePrefix + "language") } }
+    @Published var renderer: String { didSet { UserDefaults.standard.set(renderer, forKey: preferencePrefix + "renderer") } }
+    @Published var showLogs: Bool { didSet { UserDefaults.standard.set(showLogs, forKey: preferencePrefix + "logs") } }
+    private let preferencePrefix: String
+    private var libraryAvailable = true
+
+    init() {
+        let defaults = UserDefaults.standard
+        preferencePrefix = ProcessInfo.processInfo.environment["AETHER_HOST_LIBRARY_ROOT"].map { $0 + "::shell." } ?? "shell."
+        language = ShellLanguage(rawValue: defaults.string(forKey: preferencePrefix + "language") ?? "") ?? .system
+        renderer = defaults.string(forKey: preferencePrefix + "renderer") == "metal" ? "metal" : "software"
+        showLogs = defaults.bool(forKey: preferencePrefix + "logs")
+        showVirtualControls = defaults.bool(forKey: preferencePrefix + "virtualControls")
+        let root = ProcessInfo.processInfo.environment["AETHER_HOST_LIBRARY_ROOT"].map {
+            URL(fileURLWithPath: $0, isDirectory: true)
+        } ?? FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+            .appendingPathComponent("Aether", isDirectory: true)
+        repository = GameLibrary(root: root)
+        do { games = try repository.load(); selection = games.first?.id }
+        catch { self.error = friendlyError(error); libraryAvailable = false }
+    }
+
+    private func friendlyError(_ error: Error) -> String {
+        if let failure = error as? GameLibrary.Failure {
+            switch failure {
+            case .unsupported: return text("unsupported")
+            case .unsafeSource: return text("unsafeSource")
+            case .symbolicLink: return text("symbolicLink")
+            case .invalidManifest: return text("invalidIndex")
+            }
+        }
+        if error is DecodingError { return text("invalidIndex") }
+        return error.localizedDescription
+    }
+
+    private func syncGameInput() {
+        let suspended = showSettings || confirmReturn || showGameTextEntry
+        engine.platformDialogs.setPresentationAllowed(!suspended)
+        engine.setInputSuspended(suspended)
+    }
+
+    func text(_ key: String) -> String { language.text(key) }
+    var selectedGame: LibraryGame? { games.first { $0.id == selection } }
+    var canImport: Bool { libraryAvailable && !isImporting && activeGame == nil && activeVideo == nil }
+    var canPlay: Bool { !isImporting && activeGame == nil && activeVideo == nil && selectedGame != nil }
+
+    func chooseImport() {
+        guard canImport else { return }
+        isImporting = true
+        let panel = NSOpenPanel()
+        panel.title = text("import")
+        panel.message = text("importHelp")
+        panel.prompt = text("import")
+        panel.canChooseDirectories = true
+        panel.canChooseFiles = false
+        panel.allowsMultipleSelection = false
+        guard panel.runModal() == .OK, let source = panel.url else { isImporting = false; return }
+        let repository = self.repository
+        let existing = games
+        Task {
+            do {
+                let result = try await Task.detached(priority: .userInitiated) {
+                    try repository.importDirectory(source, existing: existing)
+                }.value
+                games = result.games
+                selection = result.imported.id
+            } catch { self.error = friendlyError(error) }
+            isImporting = false
+        }
+    }
+
+    func play() {
+        guard canPlay, let game = selectedGame else { return }
+        let path = repository.gameURL(game).path
+        guard FileManager.default.fileExists(atPath: path) else { error = text("missing"); return }
+        engine.prepareDiagnostics(gamePath: path, title: game.displayTitle)
+        guard engine.initializeEngine(renderer: renderer), engine.openAndRun(gamePath: path) else {
+            error = engine.failureMessage
+            engine.shutdown()
+            return
+        }
+        activeGame = game
+        var updated = games
+        if let index = updated.firstIndex(where: { $0.id == game.id }) {
+            updated[index].lastPlayedAt = Date()
+            do { try repository.save(updated); games = updated }
+            catch { self.error = friendlyError(error) }
+        }
+    }
+
+    var canOpenVideo: Bool { !isImporting && activeGame == nil && activeVideo == nil }
+
+    func chooseVideo() {
+        guard canOpenVideo else { return }
+        let panel = NSOpenPanel()
+        panel.title = text("openVideo")
+        panel.canChooseDirectories = false
+        panel.canChooseFiles = true
+        panel.allowsMultipleSelection = false
+        panel.allowedContentTypes = [.movie, .video] + ["mkv", "webm", "avi", "mpeg", "m4v"].compactMap { UTType(filenameExtension: $0) }
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        if media.open(url) {
+            activeVideo = url
+            if let subtitleError = media.subtitleError { error = subtitleError; media.subtitleError = nil }
+        }
+        else { error = media.failureMessage }
+    }
+
+    func closeVideo() {
+        media.close()
+        activeVideo = nil
+    }
+
+    func closeActiveSession() {
+        if activeGame != nil { returnToLibrary() }
+        if activeVideo != nil { closeVideo() }
+    }
+
+    func exportDiagnostics() {
+        let panel = NSSavePanel()
+        panel.title = text("exportDiagnostics")
+        panel.nameFieldStringValue = "Aether-Diagnostics-" + ISO8601DateFormatter().string(from: Date()).replacingOccurrences(of: ":", with: "-") + ".txt"
+        guard panel.runModal() == .OK, let destination = panel.url else { return }
+        do {
+            engine.log("diagnostic export requested")
+            try engine.diagnostics.export(to: destination, context: [
+                "appVersion": Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "unknown",
+                "appBuild": Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "unknown",
+                "os": ProcessInfo.processInfo.operatingSystemVersionString,
+                "architecture": "arm64", "language": language.rawValue,
+                "nextLaunchRenderer": renderer, "library": repository.root.path,
+                "liveStatus": activeVideo == nil ? engine.status : media.playing ? "video playing" : "video paused", "liveTicks": String(engine.tickCount)
+            ])
+            NSWorkspace.shared.activateFileViewerSelecting([destination])
+        } catch { self.error = error.localizedDescription }
+    }
+
+    func returnToLibrary() {
+        showGameTextEntry = false
+        engine.shutdown()
+        activeGame = nil
+        confirmReturn = false
+    }
+}

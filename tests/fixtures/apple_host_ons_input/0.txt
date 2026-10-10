@@ -1,0 +1,15 @@
+*define
+caption "Aether Apple host ONS input smoke"
+deletemenu
+game
+
+*start
+bg "white",1
+click
+bg "#ff0000",1
+click
+bg "#00ff00",1
+click
+bg "#0000ff",1
+click
+goto *start

@@ -23,6 +23,10 @@ targets:
     sources:
       - path: AetherHost
       - path: HostKit
+      - path: ../godot_app/assets/fonts/aetherkiri-runtime-cjk.otf
+        buildPhase: resources
+      - path: ../godot_app/assets/fonts/NotoSerifCJK-OFL.txt
+        buildPhase: resources
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: org.github.aetherkiri.host.debug
@@ -42,6 +46,7 @@ targets:
         CFBundleDisplayName: AetherHost
         CFBundleShortVersionString: "0.1.0"
         LSMinimumSystemVersion: "13.0"
+        CFBundleLocalizations: [en, zh-Hans, zh-Hant, ja, ko]
         NSHighResolutionCapable: true
         NSPrincipalClass: NSApplication
         LSApplicationCategoryType: public.app-category.games

@@ -1,5 +1,6 @@
 #import <CoreGraphics/CoreGraphics.h>
 #import <Foundation/Foundation.h>
+#import <Metal/Metal.h>
 
 NS_ASSUME_NONNULL_BEGIN
 
@@ -21,14 +22,24 @@ NS_ASSUME_NONNULL_BEGIN
 
 - (uint32_t)engineAPIVersion;
 
+// M1 opt-in: installs Metal callbacks and selects the existing godot_native ABI backend.
+- (BOOL)enableMetalRenderer:(NSError **)error NS_SWIFT_NAME(enableMetalRenderer());
+- (nullable id<MTLTexture>)copyNativeFrameTexture;
+- (NSString *)metalBridgeDiagnostics;
+
 - (BOOL)openGameAtPath:(NSString *)gamePath
                  error:(NSError **)error
     NS_SWIFT_NAME(openGame(atPath:));
 
 // ENGINE_STARTUP_STATE_IDLE/RUNNING/SUCCEEDED/FAILED
 - (uint32_t)startupState;
+- (NSString *)lastError;
+- (NSString *)drainStartupLogs;
 
 - (void)tickWithDeltaMS:(uint32_t)deltaMS NS_SWIFT_NAME(tick(deltaMS:));
+- (BOOL)submitPlatformResponse:(NSString *)operation argument:(NSString *)argument error:(NSError **)error
+    NS_SWIFT_NAME(submitPlatformResponse(_:argument:));
+
 - (void)pollPlatformRequests:(void (^)(NSString *operation, NSString *argument))handler
     NS_SWIFT_NAME(pollPlatformRequests(_:));
 
@@ -48,6 +59,8 @@ NS_ASSUME_NONNULL_BEGIN
            modifiers:(int32_t)modifiers
              unicode:(uint32_t)unicode
     NS_SWIFT_NAME(sendKey(pressed:keyCode:modifiers:unicode:));
+
+- (BOOL)sendTextCodepoint:(uint32_t)codepoint error:(NSError **)error NS_SWIFT_NAME(sendTextCodepoint(_:));
 
 // Size (pixels) of the most recent frame readback; .zero before first frame.
 - (CGSize)framePixelSize;

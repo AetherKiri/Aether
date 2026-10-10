@@ -1,6 +1,6 @@
 import SwiftUI
 
-struct ContentView: View {
+struct DeveloperContentView: View {
     @StateObject private var engine = EngineController()
     @State private var gamePath: String = EngineController.defaultGamePath
 
@@ -14,6 +14,7 @@ struct ContentView: View {
                 logArea
             }
         }
+        .modifier(PlatformDialogPresentation(dialogs: engine.platformDialogs, language: .system))
         .onAppear { engine.autorunIfRequested() }
     }
 
@@ -30,6 +31,8 @@ struct ContentView: View {
             HStack {
                 Text("状态：\(engine.status)")
                     .font(.callout)
+                Toggle("Metal 呈现", isOn: $engine.useMetalPresentation)
+                    .disabled(engine.metalPresenter == nil)
                 Spacer()
                 Text("tick \(engine.tickCount)")
                     .font(.callout.monospacedDigit())
@@ -39,33 +42,7 @@ struct ContentView: View {
         .padding(10)
     }
 
-    private var frameArea: some View {
-        ZStack {
-            Color.black.opacity(0.9)
-            if let image = engine.frameImage {
-                Image(decorative: image, scale: 1)
-                    .interpolation(.low)
-                    .resizable()
-                    .aspectRatio(contentMode: .fit)
-            } else {
-                Text("无画面").foregroundStyle(.white.opacity(0.6))
-            }
-            GameInputView(
-                contentSize: engine.frameSize,
-                onPointer: { type, x, y, dx, dy, button, modifiers in
-                    engine.sendPointer(
-                        type: type, x: x, y: y, dx: dx, dy: dy,
-                        button: button, modifiers: modifiers)
-                },
-                onKey: { pressed, keyCode, modifiers, unicode in
-                    engine.sendKey(
-                        pressed: pressed, keyCode: keyCode,
-                        modifiers: modifiers, unicode: unicode)
-                }
-            )
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-    }
+    private var frameArea: some View { GameSurfaceView(engine: engine) }
 
     private var logArea: some View {
         ScrollViewReader { proxy in
@@ -87,5 +64,5 @@ struct ContentView: View {
 }
 
 #Preview {
-    ContentView()
+    DeveloperContentView()
 }

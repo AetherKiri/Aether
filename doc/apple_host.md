@@ -13,6 +13,8 @@
 2. 去掉 Godot 运行时依赖；不经 SDL（Apple 上直接使用 AppKit/UIKit + Metal + AVAudio）。
 3. 保持 `engine_api` 与 provider ABI **零改动**——其他平台继续使用现有 Godot 宿主（`apps/godot_app`）。
 
+当前进展：M0 输入收尾与 P0 Metal 呈现已接入；P2 Metal 绘制桥已接入（显式启用），G1 按用户要求暂缓；M2 目录导入 MVP 与 G2 界面流程已接入并验证。详见 [Metal 实施清单](apple_host_metal_plan.md)。
+
 ### 非目标（本阶段不做）
 - 不改引擎核心与 runtime provider 实现（`packages/AetherKrkr`、`bridge/*_runtime`）。
 - 不迁移其他平台（Android/Web/Windows/Linux 继续走 Godot）。
@@ -31,9 +33,9 @@
 | D4 | 不走 SDL3 | Apple 平台原生 API 更直接；SDL 价值在跨平台 |
 | D5 | 主呈现路径 = 实现 `engine_gpu_bridge.h` 绘制回调（Metal）；兜底 = 软件帧回读上传 | 与现产品 "Godot Native" 同构（引擎 draw manager + 宿主 GPU 原语），兼容性最容易对齐；软件路径用于早期验证与故障排查 |
 | D6 | Godot 宿主保留（不删除） | 对照渲染、回退、其他平台继续使用 |
-| D7 | 游戏目录：默认托管目录 + 用户导入（import 引用/拷贝） | macOS 无沙盒开发期用 `~/Library/Application Support/Aether/Games`；后续适配沙盒容器与安全作用域书签。**细节在 M2 定稿** |
+| D7 | 游戏目录：默认托管目录 + 用户导入（import 引用/拷贝） | macOS 无沙盒开发期用 `~/Library/Application Support/Aether/Games`；后续适配沙盒容器与安全作用域书签。**M2 首版采用目录复制，库索引位于同级 library.json；引用/书签后续扩展** |
 | D8 | MVP 范围：库/导入/启动/返回/基础设置/菜单栏/快捷键/5 语言；视频/IAP/诊断/更新器等推后 M3 | 先跑通"能玩"的最小闭环 |
-| D9 | 渲染闸门原则：G1（渲染兼容）不过就停，不继续壳迁移 | 兼容性是产品命根子，避免沉没成本 |
+| D9 | 2026-10-10 用户调整：暂缓 G1，继续 M2；后续完成后回归渲染兼容与性能验收 | 保留未通过状态与证据，优先推进产品流程 |
 | D10 | 文档约定：`doc/apple_host.md`（本 spec）+ `doc/apple_host_progress.md` + `doc/apple_host_seam_inventory.md`，随代码同步维护 | 长期维护要求 |
 
 ---
@@ -70,10 +72,10 @@ Apple 特化资产（已存在，直接复用/移植）：
 详细职责矩阵见 [apple_host_seam_inventory.md](apple_host_seam_inventory.md)。要点：
 
 - **会话**：`engine_create`（writable/cache 路径）→ `engine_open_game(_async)` → `engine_get_startup_state` 轮询 → 固定步长 `engine_tick`（参考 1/60）→ 呈现 → `engine_pause/resume/destroy`。
-- **GPU 绘制桥**：22 个回调（主 18 + 批处理 2 + 外部纹理 4），宿主以 Metal 实现；不注册回调时引擎走即时/软件兜底。
-- **输入**：`engine_send_input(engine_input_event_t)`；文本输入经 `text_input` 平台请求 + `engine_get_text_input_state/copy_text_input_text`。
-- **平台请求**（字符串通道）：`open_browser`、`call_native`、`purchase`、`text_input`、`presentation_sprite`、`minori_save_slots`、`minori_message(_reveal)`、`minori_audio`、`minori_movie`，其余转交壳层。
-- **媒体**：`engine_media_*`（FFmpeg 在引擎内）供视频库与 Minori 影片。
+- **GPU 绘制桥**：23 个回调（主 17 + 批处理 2 + 外部纹理 4），宿主以 Metal 实现；不注册回调时引擎走即时/软件兜底。
+- **输入**：`engine_send_input(engine_input_event_t)`；提交文字经 `TEXT_INPUT`；输入状态由 `engine_get_text_input_state/copy_text_input_text` 获取。原生宿主已提供手动文字弹窗与屏幕按键，IME preedit/状态自动同步待迁移。
+- **平台请求**（字符串通道）：`open_browser`、`call_native`、`purchase`、`dialog`、`presentation_sprite`、`minori_save_slots`、`minori_message(_reveal)`、`minori_audio`、`minori_movie`，其余转交壳层。原生 `dialog` 的 FIFO 弹窗、编码响应和失败重试已实现；私有 provider 实际请求验收仍待补。
+- **媒体**：`engine_media_*`（FFmpeg 在引擎内）供视频库与 Minori 影片。M3 已接入独立视频最小播放、文本字幕和进度恢复；视频库管理及 Minori 请求后续迁移。
 
 ---
 
@@ -93,7 +95,7 @@ Apple 特化资产（已存在，直接复用/移植）：
 
 - 帧呈现：1080p 60fps；VSync 对齐；慢帧不产生 tick 风暴（沿用单帧单 tick 策略）。
 - 启动：冷启动到库界面可交互 ≤ 2s（M2 目标，实测后修订）。
-- 崩溃防护：引擎错误不崩壳；`engine_get_last_error` 全量记录；日志落盘可导出。
+- 异常恢复：启动失败记录 `engine_get_last_error` 详情并回库；宿主/启动日志落盘，可从设置或 ⌘⇧D 导出。M3 首项已完成，进程级崩溃捕获仍待扩展。
 - 国际化：5 语言与现产品一致（文案资源可直搬）。
 - 可维护性：宿主逻辑全部在 `apps/apple_host` + `bridge/apple_host`，不得反向侵入引擎源码；新代码遵循文档化接口。
 
@@ -127,7 +129,7 @@ AETHER_HOST_GAME_PATH=/Users/colorcard/Aether/demos/aetherkiri-kag3/data \
   out/apple_host/derived/Build/Products/Debug/AetherHost.app/Contents/MacOS/AetherHost
 ```
 
-环境变量：`AETHER_HOST_GAME_PATH`（游戏路径）、`AETHER_HOST_AUTORUN=1`（自动初始化+打开）、`AETHER_HOST_TEST_INPUT=<秒>`（启动后 N 秒自动发送一组指针+回车输入，确定性冒烟）、`AETHER_HOST_CAPTURE_AFTER=<秒[,秒]>`（到点导出引擎帧 PNG，CI 证据用）、`AETHER_HOST_CAPTURE_DIR=<目录>`（默认系统临时目录）、`AETHER_HOST_EXIT_AFTER=<秒>`（自动退出）。
+环境变量：`AETHER_HOST_SCHEDULING=deferred`（切回 SwiftUI 延后呈现作对照，默认直接提交），`AETHER_HOST_DRAWABLE_1080P=1`（开发用固定 1080p Metal drawable，配合 PROFILE 输出呈现 CSV），`AETHER_HOST_TEST_KEYS=<秒:VK[,秒:VK]>`（确定性键序列），`AETHER_HOST_PROFILE=1`（宿主工作与 tick-to-GPU-completion；直接模式含 MTKView 提交），`AETHER_HOST_RENDERER=metal`（启用 P2，默认软件），`AETHER_HOST_GAME_PATH`（游戏路径）、`AETHER_HOST_AUTORUN=1`（自动初始化+打开）、`AETHER_HOST_TEST_INPUT=<秒>`（启动后 N 秒自动发送一组指针+回车输入，确定性冒烟）、`AETHER_HOST_CAPTURE_AFTER=<秒[,秒]>`（到点导出引擎帧 PNG，CI 证据用）、`AETHER_HOST_CAPTURE_DIR=<目录>`（默认系统临时目录）、`AETHER_HOST_PRESENTATION=image`（禁用 Metal 上传，使用 Image 对照）、`AETHER_HOST_DEFAULT_FONT`（ONS 字体路径）、`AETHER_HOST_EXIT_AFTER=<秒>`（自动退出）。
 
 ---
 

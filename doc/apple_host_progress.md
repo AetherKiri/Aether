@@ -9,10 +9,10 @@
 
 | 阶段 | 状态 | 备注 |
 |---|---|---|
-| M0 接缝盘点 + 骨架 | 🟢 完成 | 交付物 A ✅ v0.2；交付物 B ✅；交付物 C ✅ **G0 达成**：KAG3 demo 实跑、输入透传验证、CPU 基线 ~35%（software@640x480）、日志行为对齐确认 |
-| M1 Metal 绘制桥 | ⚪ 未开始 | 闸门 G1；已确认 P2 绘制回调路径（无 ANGLE 依赖） |
-| M2 SwiftUI MVP | ⚪ 未开始 | 闸门 G2 |
-| M3 功能迁移 | ⚪ 未开始 | |
+| M0 接缝盘点 + 骨架 | 🟢 完成 | 交付物 A ✅ v0.2；交付物 B ✅；交付物 C ✅ **G0 达成**：KAG3 demo 实跑、输入透传验证、CPU 基线 ~35%（software@640x480）、日志行为对齐确认；KAG3 + ONS 各 310 秒验收通过 |
+| M1 Metal 绘制桥 | 🟡 验收暂缓 | 实现已接入；按用户要求暂缓 G1，后续再回归兼容/性能 |
+| M2 SwiftUI MVP | 🟢 目录导入 MVP | 库/导入/启动/返回/设置/菜单快捷键/五语言已接入；G2 的 KAG3+ONS 目录流程经界面验证 |
+| M3 功能迁移 | 🟡 进行中 | 诊断与独立视频/文本字幕完成最小流程；其余迁移项待实现 |
 | M4 iOS/iPadOS | ⚪ 未开始 | 闸门 G4 |
 
 图例：⚪ 未开始 · 🟡 进行中 · 🟢 完成 · 🔴 阻塞
@@ -39,7 +39,7 @@
 - 完成 macOS 原生菜单栏功能（Godot 宿主 +80 行 main.gd，新增 native_menu.gd）——作为"Apple 体验"路线 A 的首项，已端到端验证
 - **启动 Apple 原生宿主（SwiftUI + Metal）迁移项目**：
   - 建立三份文档（spec / 接缝清单 / 本进度）
-  - 交付物 A v0.1：宿主职责矩阵（会话/GPU 桥/输入/平台请求/媒体/音频/回收/呈现），确认 22 个 GPU 回调为宿主侧实现、ABI 宿主无关
+  - 交付物 A v0.1：宿主职责矩阵（会话/GPU 桥/输入/平台请求/媒体/音频/回收/呈现），确认 23 个 GPU 回调为宿主侧实现、ABI 宿主无关
   - 确认复用资产：`apple_external_texture.mm`（CVPixelBuffer→MTLTexture）、`RuntimeTickPacer`、StoreKit/文件选择 Swift、UI_TEXT 文案
 - 建立目录骨架（`apps/apple_host/`、`bridge/apple_host/`）并安装 XcodeGen 2.46.0
 - **M0-A 完成（v0.2）**：K 节 7 项盘点全部清零——输入事件 8 类枚举 + POINTER_CANCEL；engine 选项全表；**音频=引擎自带 OpenAL Soft（宿主零工作）**；presentation_sprite 发射方不在公开树（不阻塞）；HostKit API 面 ≈70 方法归档；目录映射表
@@ -66,7 +66,142 @@
 
 ---
 
-## 下一步队列（M0）
+### 2026-10-10：输入收尾与 M1 呈现基础
+- 延续工作区的 NSEvent local monitor 修复，实际窗口点击 KAG3 菜单已进入剧情。
+- 修复鼠标事件调用 `isARepeat` 的 AppKit 异常；SwiftUI teardown 改为正确的 static 协议方法。
+- 游戏画布显式填满可用区域；黑边事件透传；捕获按压后画外松开仍发送 release；窗口失焦/销毁发送 POINTER_CANCEL；Command 快捷键和工具栏文本输入透传。
+- `InputTests.swift` 覆盖画布映射、画外 release、取消按压、窗口失焦、快捷键、文本焦点和 teardown。
+- `MetalFramePresenter.swift` + MTKView：RGBA 软件帧上传、Metal shader、等比呈现；可切换 Image 对照，失败回退。
+- GPU 离屏测试通过：通道、上下方向、预乘 alpha、横/竖黑边、clear。截图增加 Metal PNG 和 RGB max diff。
+- ONS 既有 smoke 启动通过；新增可交互、无限循环的 `apple_host_ons_input` fixture 与 `tools/apple_host_smoke.py`，用于五分钟 G0 验收。
+- ABI 回调数校正：主表 17 + batch 2 + external 4 = 23；详细迁移契约与 G1 检查见 [Metal 实施清单](apple_host_metal_plan.md)。
+- **G0 五分钟补验通过**：KAG3 + ONS 交互 fixture 各运行 310 秒，输入前后画面变化、305 秒末帧有效、exit code 0 且 engine destroyed；6/20/305 秒三组 engine/Metal RGB 最大差值均为 0。
+  - 本地证据：`out/apple_host/evidence/g0-kag3/`、`out/apple_host/evidence/g0-ons/`（忽略构建产物，不入 Git）。
+  - 最终源码构建 `BUILD SUCCEEDED`；输入和 GPU 离屏测试通过；最终构建 Metal/Image 各双 runtime 30 秒冒烟通过，证据 `final-metal/`、`final-image/`。
+  - 长时运行包含确定性引擎输入；真实 AppKit 鼠标链路另经窗口点击 KAG3 菜单验证。长时测试不等同于五分钟人工连续操作。
+- 后续 P2 实施结果见下节；真实标题 G1 和 1080p 性能验收仍待完成。
+
+### 2026-10-10：M1 P2 原生 Metal 绘制桥
+
+- 新增 `HostKit/MetalBridge.mm`，安装 23 个 ABI 回调；九组 compute kernels 从 Godot 参考源码生成，整数混合规则保留。未知/不适用模式显式返回 false。
+- 原生 KAG 帧通过 GPU 快照进入 MTKView，正常 tick 无 CPU 回读；诊断截图和 Image 对照按需回读。ONS 使用软件帧兜底。
+- 修复原生路径 CPU 截图读到黑色占位帧、初始 surface 拉伸及输入坐标不一致的问题。
+- 实现嵌套批处理、依赖同步、重叠快照、稳定回读请求及 IOSurface 生命周期保护；begin-read 当前同步完成，异步调度待优化。
+- 最终构建通过；输入、Metal 呈现和独立桥测试均通过。桥测试覆盖混合/三角形/批处理/外部纹理，结束后 textures=0、reads=0、failures=0。
+- 最终 30 秒双 runtime 冒烟：`out/apple_host/evidence/p2-final-metal/`、`p2-final-image/`、`p2-final-software/` 均通过；原生 KAG Metal 的 native_readbacks=3（仅截图），failures=0。
+- 独立软件与原生路径 KAG 标题截图 640×480：RGB max diff=0，changed pixels=0。对话动画提示的相位差尚未做确定性逐帧验证。
+- P2 五分钟连续运行通过：KAG3 + ONS 各 310 秒，输入推进、6/20/305 秒截图和干净退出通过，GPU/回读 RGB 差值均为 0；证据 `out/apple_host/evidence/p2-long/`。生命周期保护补丁后的最终构建另通过上述 30 秒测试。
+- **G1 尚未通过**：本机游戏库仅演示内容，至少两款 verified_games 真实标题及 1080p 完整帧 ≤16.6ms 待验收。
+
+### 2026-10-10：M1 性能证据补充
+
+- 增加独立桥 1080p 基准：清屏 + 8 层全屏 alpha 混合 + GPU 快照，预热 10 帧、采样 60 帧；覆盖 CPU 编码和 GPU 完成等待，不包含引擎 tick/MTKView。
+- Apple M1 Max、macOS 15.7.1、Debug：批处理关闭 p50/p95/max=5.012/10.118/12.700ms；开启=3.579/6.132/12.903ms。证据 `out/apple_host/evidence/p2-bridge-benchmark.log`。
+- 补测 padded stride 下的局部更新，验证偏移正确且未修改矩形外像素。桥测试通过，结束 textures=0/reads=0/failures=0。
+- 新增 `AETHER_HOST_PROFILE=1` 与冒烟工具 `--profile`，输出宿主 tick + 纹理获取的单调时钟耗时；明确排除 MTKView，跳过 60 tick，最多 10000 样本。
+- 构建与带 profile 的 KAG3/ONS 30 秒测试通过。640×480：KAG3 p50/p95/max=0.491/1.091/12.132ms（1701 样本），ONS=0.289/0.376/0.879ms（1708 样本）。证据 `out/apple_host/evidence/p2-profile/`。
+- 以上均是组件或宿主工作测量，不能替代 G1 1080p 完整帧性能验收。真实标题和 tick-to-drawable 关联测量仍待完成。
+
+### 2026-10-10：用户提供 aetherkiri-test 自检项目
+
+- 来源 `/Users/colorcard/AetherKiri/demos/aetherkiri-test/data`；首次按原脚本运行软件/Metal，各 30 秒，启动、音频定时逻辑、指针输入及退出通过。运行使用本地副本，原目录未写入日志/存档；没有验证扬声器实际音频输出。
+- **发现并修复真实端序错误**：`clear_rgba` 参数名 argb，但引擎传入的已是 AABBGGRR；宿主再次交换 R/B 导致动态青色十字与按钮边框变黄。移除重复交换，新增非对称 RGB 与青色 clear 回归。
+- 修复后原项目第 20 秒动态截图与独立软件截图 RGB max diff=0。证据 `out/apple_host/evidence/selftest-metal-fixed/`；桥测试与宿主构建通过。
+- 新增 `tools/apple_host_selftest.py`：复制源脚本、禁用重复 BGM timer（仅确定性绘制对照），分别以 640×480 和修改 SW/SH 的合成 1920×1080 运行软件/Metal。
+- 首帧、鼠标十字、Z 层级切换、S 图案显隐、C 整组显隐/恢复，共八状态 × 两分辨率的 16 组独立软件/Metal RGB 对比全部为 0；四运行的呈现对比也全部为 0，输入均改变画面，干净退出，原生回读仅八次截图，GPU failures=0。
+- 最终证据 `out/apple_host/evidence/selftest-parity-final/result.json` 保存来源哈希、派生修改、交互时序、比较结果与 profile。最初验证期间旧二进制的 `selftest-parity/` 结果作废，验收仅引用最终构建结果。
+- 1080p 原生宿主 tick+纹理获取 p50/p95/max=0.876/1.622/26.549ms（891 样本）；四用例并行，且不含 MTKView，不构成完整帧性能验收。尾部慢帧与完整呈现时序仍需进一步测量。
+- **G1 仍未达成**：这是一个合成自检项目，不能计为两款 verified_games 真实标题。
+
+### 2026-10-10：夏雪 ～summer snow～ 原生宿主实跑
+
+- macOS arm64 Debug AppleHost，renderer=godot_native + Metal，800×600；通过宿主正常初始化/打开界面启动授权游戏副本。
+- 已观察启动页、品牌动画、标题背景/人物/按钮；点击新游戏后进入开篇剧情，推进多段中文对白，海滩背景正常呈现。
+- 已向副本空槽保存，读档界面出现正确缩略图/摘要；推进后读取该槽，恢复海滩和保存时对白，再次输入仍能推进。未使用游戏包附带全 CG 存档。
+- 检查日志发现 krflash.dll 未注册、KAG 默认设置补丁的 kag 成员缺失提示；上述已验证流程未被阻断，不声明 Flash/完整游戏流程已兼容。未验证后续剧情人物组合、长时间重复存读、结局、全部视频和实际音频输出。
+- 开场电影返回 CPU 帧，普通场景返回原生 GPU token，宿主正常切换两种呈现来源。冒烟工具此前错误地把自定义游戏也要求为三次 native 回读；现在严格计数只对始终 native 的内置 KAG fixture 生效，自定义游戏检查原生能力及 GPU 执行状态。
+- 第一轮独立软件/Metal 各 60 秒均完成输入、截图、退出；原生桥 failures=0，三次 engine/Metal 呈现 RGB 对比均为 0。native_readbacks=1 是另两次截图位于 CPU 视频帧，非额外回读。第一轮 native 冒烟因旧计数断言误报，不能引用为整体工具 PASS。
+- 第一轮第 55 秒为电影渐变画面，两进程时间相位不同，RGB max diff=65；不能声称全游戏逐帧渲染一致。补测加入回车序列仍停留于电影，不作为静态标题逐像素证据。
+- 修正检测工具后，软件/Metal 各 60 秒均 PASS，证据 `natsuyuki-metal-title/`、`natsuyuki-software-title/`。三次呈现 RGB 对比均为 0，桥 failures=0；目录名称中的 title 不代表最终截图为静态标题。完整实跑摘要见 `natsuyuki-live/result.json`。
+- 800×600 原生宿主工作耗时（不含 MTKView）p50/p95/max=0.978/4.148/106.058ms，3503 样本，包含启动/视频切换，且与其他运行并行；尾部慢帧未定位，不构成完整帧 G1 性能通过。
+- 本次未改动引擎/私有插件，无兼容修复提交；沿用 feature/apple-native-host-m0 的未提交宿主工作。AetherInternal gitlink=bdf151cd，本地目录未初始化，不声明当前二进制具备完整私有插件闭包。
+- 证据在 `out/apple_host/evidence/natsuyuki-live/`、`natsuyuki-metal/`、`natsuyuki-software/`。人工窗口观察由 CUA 记录；自动证据与人工存读流程独立。
+- 尚未更新 verified_games 支持表：这里只记录代理观察，待用户确认游戏工作后按技能要求更新中英文列表。G1 两款真实标题与完整帧性能仍未完成。
+
+### 2026-10-10：收束游戏验证，推进 M1 呈现测量
+
+- 用户要求结束当前游戏试验并继续项目开发；《夏雪》补充推进到乡间道路、森林背景，关闭测试引擎，保留副本存档及本地证据。未扩展为全游戏兼容承诺。
+- 新增 tick 与实际 MTKView drawable 提交的关联采样，覆盖引擎、纹理获取/上传、SwiftUI 调度、drawable 获取、GPU 排队及命令完成。去重同 tick 重绘，跳过被合并而未提交的 tick；预热 60 tick、上限 10000，游戏重开时重置并隔离旧回调。
+- 新增 `AETHER_HOST_DRAWABLE_1080P=1`，固定真实屏幕呈现目标 1920×1080。CSV 逐样本记录实际尺寸、总耗时与 GPU 耗时；冒烟增加样本量、尺寸、唯一 tick 与有效耗时检查。
+- Xcode Debug 构建、Metal 呈现测试及 1080p 30 秒原生冒烟通过；三次截图呈现 RGB 差值 0、GPU failures=0。含截图轮的最大耗时约 1.4 秒，对应同步截图阻塞，不作为日常基准。
+- 单独无截图、无回读 1080p 自检：1739 个已完成呈现样本，p50/p95/max=4.310/6.696/30.181ms，1 个样本超过 16.6ms；宿主工作 p95=2.406ms。证据 `out/apple_host/evidence/presentation-profile-1080p-clean/`。
+- **G1 仍待验收**：测量终点为 GPU 命令完成，尚非屏幕扫描输出；仍有慢帧和两款真实标题要求。下一项优先改善 Timer/SwiftUI 呈现调度并记录漏呈现比例，随后完成 G1，再进入 M2 产品壳。
+
+### 2026-10-10：M1 主线程直接呈现
+
+- 移除主 RunLoop Timer 内的逐帧 Task 排队；在同一主线程回调中完成 tick、纹理获取/上传和 MTKView 绘制提交。SwiftUI 管理布局与输入层，原生纹理/CPU 软件帧共享直接提交路径。
+- `AETHER_HOST_SCHEDULING=deferred` 保留延后呈现作比较。CSV 增加 tick-to-draw、drawable 获取、编码耗时；宿主工作日志明确直接模式包含 MTKView 提交，排除异步 GPU 完成。
+- 新增 `tools/apple_host_profile.py`，顺序运行两个模式，避免并行 GPU 干扰、截图和输入扰动，记录呈现样本、未代表的 eligible tick 与慢帧阶段。
+- 1080p 自检串行 30 秒：deferred p50/p95=4.659/7.948ms，direct=1.674/3.423ms；样本分别 1731/1674。证据 `out/apple_host/evidence/presentation-scheduling-comparison/`。该短期结果说明调度延迟降低，不能推断长期帧率。
+- 两模式仍有约 1 秒尾部等待，阶段记录定位到 drawable 获取（GPU 约 0.1ms）。限制在途 drawable 的试验没有消除此问题，且 ONS 回归暴露呈现停滞，已撤下；相关试验结果不作为交付验收。
+- 最终 Debug 构建、Metal 呈现测试、KAG3 原生及 ONS 软件兜底各 30 秒冒烟通过；三次截图各 RGB 差值为 0、GPU failures=0、干净退出。最终证据 `out/apple_host/evidence/presentation-direct-final/`。
+- **G1 保持未通过**：保留可见慢帧数据，下一项调查 drawable 可用性与窗口可见状态/刷新节奏，避免将 p95 改善误判为最大帧预算达标。
+
+### 2026-10-10：按用户调整进入 M2 产品壳
+
+- 用户明确要求跳过当前 G1，完成后续后再优化；更新 D9，不再以 G1 阻止 M2。G1 保留未验收状态，未改写为通过。
+- 正常启动进入原生游戏库，单窗口持有一个引擎会话；开发路径工具页由 `AETHER_HOST_DEVELOPER=1` 或现有 AUTORUN 显式进入，原回归工具继续可用。
+- `GameLibrary` 托管复制选中的 KiriKiri/ONS 游戏目录，也识别上一级包含 data 的目录；索引保留来源、导入时间和最近游玩时间。源目录不会被作为运行目录；存档/侧车日志写入副本。复制在线程任务执行，临时目录完成后移动，索引原子写入失败则回滚副本。
+- 重复导入选择既有条目，保留副本存档；拒绝递归导入库父目录、符号链接和目录伪装脚本；加载时校验 UUID 目录路径，损坏索引保留且停止覆盖。
+- 基础设置：简体中文、繁体中文、英文、日文、韩文；软件/Metal（测试中）绘制，下次启动生效；运行日志开关。偏好持久化，测试库使用独立键前缀。平台标准菜单按系统语言显示。
+- 原生菜单/快捷键：⌘O 导入、⌘R 启动、⌘L 返回、⌘, 设置；返回明确提示先在游戏内保存，确认后销毁会话并回库。失败启动/导入显示错误，库仍可用。窗口关闭与应用退出清理会话。
+- 应用内打包共享 CJK 默认字体及 OFL 许可，不再要求普通用户传入默认字体路径。
+- **G2 目录流程已通过人工 CUA 验证**：空库→NSOpenPanel 导入 KAG3→启动/点击/回车→返回→退出/重启恢复记录；再导入 ONS→输入将白底推进到红底→返回→设置 Metal→再次启动 KAG3 原生纹理；英文及 Metal 设置跨重启恢复，无效文件夹错误后仍能启动既有游戏。所有游戏路径通过界面选择，无脚本修改或环境变量指定游戏路径。
+- 库事务测试覆盖副本隔离、重复导入/存档保留、索引重载、data 目录识别、伪入口/链接/递归拒绝、写入失败回滚、索引路径逃逸拒绝。Debug 构建通过；最终开发模式 KAG3/ONS 各 30 秒回归通过，输入、三次截图 RGB 对比及干净退出均通过，GPU failures=0。证据 `out/apple_host/evidence/m2-library-ui/`、`m2-final-regression/`。
+- 本阶段导入范围为文件夹复制；压缩包、外部目录引用/沙盒书签、库编辑/移除、其他 provider 的入口识别仍待扩展。冷启动 ≤2s 未单独测量，不宣称已达成；M3 视频/IAP/诊断/更新等尚未实施。
+
+### 2026-10-10：M3 诊断首项
+
+- 新增 `DiagnosticStore`：宿主与 ABI 启动日志带 UTC 时间落盘，单文件上限 1 MiB，保留当前及上一轮；最后一次游戏会话的 UUID、时间、目录、绘制方式、API、状态、错误与关闭信息原子写入 `session.json`。设置中的日志显示开关只影响页面，不关闭证据记录。
+- 设置和「游戏」菜单提供五语言「导出诊断日志」，快捷键 ⌘⇧D；通过 NSSavePanel 保存 UTF-8 文本，完成后在 Finder 选中。报告含应用/系统信息、当前及上一轮宿主日志、最后运行游戏目录的 `krkr2.log` / `aetherkiri-engine.log` 尾部，各最多 1 MiB。缺失日志明确标记，文件修改时间和尾部大小可见；日志可能跨会话，不将侧车文件误称为当前会话全量日志。不会打包游戏资源与存档，日志本身可能含路径及引擎打印的文本。
+- 普通路径在游戏库同级 `Diagnostics/`（默认 `~/Library/Application Support/Aether/Diagnostics`），而非早期规划的 `~/Library/Logs/Aether/`；测试工具为每个进程隔离库/诊断目录，避免并行回归写入同一日志。
+- 启动失败从 `engine_get_last_error` 取得实际错误；关闭前抽取剩余启动日志。错误落盘后回库，下一次启动创建新会话并清除上一错误；正常返回记录 stopped，失败保留 failed。此项不实现进程级崩溃捕获、自动重启或结构化诊断 ABI 全量迁移。
+- CUA 使用独立库导入抛出 `M3_DIAGNOSTIC_FAILURE_SENTINEL` 的测试游戏；关闭引擎弹窗后宿主显示实际启动错误并回库。通过菜单导出失败报告，退出/重启后经设置再次导出，均保留脚本异常和终止原因；同一进程再次失败后能直接启动正常 KAG3、接收回车并返回。证据 `out/apple_host/evidence/m3-diagnostics/`，源游戏库及原文件不受测试修改。
+- 存储测试覆盖轮转/大小上限、重启恢复、尾部截取、缺失日志、资源/存档排除、符号链接拒绝、保护日志文件免被导出覆盖、新会话清除旧错误、写入失败。Debug 构建与 KAG3/ONS 各 30 秒 Metal/软件兜底回归通过；输入、三次呈现 RGB 对比、GPU failures=0 与清理退出正常。最终回归证据见 `m3-final-isolated-regression/`。
+- **G1 仍暂缓**，本项完成不代表 M3 全部功能迁移已完成。下一项推进视频/字幕接缝与最小播放流程。
+
+### 2026-10-10：M3 独立视频与文本字幕
+
+- 新增 `MediaSession`，直接复用宿主无关 `engine_media_*` C ABI 和已有 FFmpeg/OpenAL 管线，不引入新的解码依赖。媒体句柄在引擎之前销毁，重复关闭安全，失败打开清理后可继续打开文件；即使底层打开返回成功，也检查是否实际存在视频流。
+- 原生工具栏与「视频」菜单提供「打开视频」（⌘⇧O）；文件只读播放，不复制/写回源视频。游戏/视频互斥，播放页支持暂停/继续（空格）、进度条跳转、±10 秒、0.5–2×、音量与返回游戏库；窗口关闭和退出停止媒体线程并清理临时字幕。
+- `VideoSubtitles` 解析 UTF-8 SRT/VTT/ASS/SSA 文本，支持 CRLF/BOM、标记清理、重叠去重、时间边界和向后跳转。匹配同名外置字幕自动选择，内嵌文本轨道通过 ABI 列出/提取到应用临时目录，可切换及关闭。每个字幕文件读取上限 1 MiB；此阶段仅文本呈现，不支持 ASS 样式/动画/定位/绘图或位图字幕。
+- 暂停时设置倍速保持暂停；继续和片尾重播应用所选倍速。片尾界面保留总时长，清空字幕/恢复位置；播放位置负值夹至零，避免开始阶段丢失首条字幕。解码器异步寻址，界面恢复位置可能与保存秒数存在短暂偏差，不声明逐帧精确寻址。
+- 每 5 秒及暂停/跳转/关闭保存进度到 `media-progress.json`，同一路径再次打开时恢复，保留最近 200 项；结束与临近结尾位置下次从头播放。索引损坏时保留原数据并记录错误。视频会话错误/状态接入 M3 诊断日志与导出。
+- `tools/apple_host_media_test.py` 生成 18 秒 MPEG-4/AAC/MKV（内嵌 SRT + 同名外置 SRT）的本地样本，顺序运行字幕/进度、MediaSession 和 MediaController 三组测试。覆盖真实帧更新、暂停时钟、跳转后新帧、调速、字幕提取/切换/关闭、EOF/重播、恢复位置、失败打开后的恢复及清理；三组均 PASS，证据 `out/apple_host/evidence/m3-media-final-tests/`。
+- CUA 验证菜单选视频、首帧/中文字幕、暂停后设置 2× 仍保持暂停、进度条跳转、内嵌字幕与外置字幕、音量变化；退出时保存 5 秒，重启打开恢复到约 5 秒；片尾/重播、返回与无效视频错误恢复已验证。证据 `out/apple_host/evidence/m3-media/`。
+- 最终 Debug 构建通过，原诊断存储测试通过；KAG3 原生/ONS 软件兜底各 30 秒回归 PASS，输入推进、三次呈现 RGB 差值 0、GPU failures=0、干净退出。证据 `out/apple_host/evidence/m3-media-game-regression/`。同一界面进程播放/关闭视频及无效文件后，仍完成 KAG3 导入、启动、回车和确认返回。
+- 视频当前为 RGBA 回读 + SwiftUI 图像的基线，非视频零拷贝；此项没有音频听音确认，也未覆盖所有封装/编码、长视频、旋转/SAR/HDR 色彩。独立视频库复制管理、字幕选择记忆、全屏/快捷手势及 Minori `minori_movie` 请求仍待迁移。**G1 保持暂缓。**
+
+### 2026-10-10：M3 屏幕按键与提交文字
+
+- 游戏页及设置提供五语言虚拟按键开关，记忆显示偏好；按键包括回车、空格、Esc、方向键、PgUp/PgDn 与保持 Ctrl。作用由游戏决定，不改写游戏脚本。
+- `KeyInputState` 合并实体/虚拟来源的按键所有权，重叠期间不产生多余 down/up，保留实体键重复；隐藏控件、进入设置/文字/返回确认弹窗、窗口失焦与关闭会释放按键。游戏画布失去 first responder 时也释放实体键与捕获鼠标；暂停输入期间仍允许鼠标松开事件。
+- 原生「输入文字」弹窗提交完成后的 Unicode 标量，经 `TEXT_INPUT` 进入游戏，过滤 NUL/CR/LF，一次最多 2048 个标量；取消不发送，宿主仅记录数量。此项是手动提交文字入口，尚未迁移游戏内 IME preedit、光标/选区同步及自动输入框检测，也不等同于平台 `dialog`/`text_input` 请求处理。
+- 新增原创 `tests/fixtures/apple_host_controls/startup.tjs`，画面显示 down/up 与已收到文字。CUA 独立库验证回车/空格/左箭头、保持 Ctrl 后打开文字弹窗、隐藏栏、设置及返回确认再取消：最终 down=7/up=7、text=你好A；取消后未再提交。重启恢复显示且 Ctrl 为 off；补验其余六个键，隐藏应用时日志确认 Ctrl down/up 与 released。画面与宿主日志在 `out/apple_host/evidence/m3-controls/`。
+- `KeyInputStateTests` 覆盖来源重叠、重复、释放、Unicode/长度过滤；`InputTests` 增补焦点/窗口切换松键与取消幂等断言，两组 PASS。Debug 构建成功，KAG3/ONS 各 30 秒回归通过，呈现对比差值 0、GPU failures=0、正常退出，证据 `m3-controls-game-regression/`。
+- 核对现有 Godot 后纠正接缝清单：文本输入依赖输入状态与 TEXT_INPUT；公开壳处理 `dialog` 的 URL 表单请求，未找到旧表所称三字段 `text_input` 协议，不能按猜测提交响应。平台请求、Minori 媒体仍为下一项；**G1 保持暂缓。**
+
+### 2026-10-10：M3 平台 dialog 请求
+
+- 原生壳接入 `dialog` 平台请求：按现有 Godot URL 表单解析 title/message/text_field/maximum_characters/yes_no/buttons，自定义按钮保留 Int32 编号和文字；响应经 `engine_submit_platform_response` 发送 `result=<id>&text=<URI encoded>`，严格转义空格、加号、&、= 与 Unicode。输入长度按 Unicode 标量计数，不截断代理对；非文本弹窗不回传文字。
+- `PlatformDialogController` 按 FIFO 保留请求，在当前 sheet 完成关闭后再呈现下一项；宿主设置/手动文字/返回确认打开时延后呈现。待响应期间停止额外轮询，当前一次 drain 最多 256 项、每项现有 ABI 缓冲 4096 字节；引擎继续 tick/渲染，游戏输入暂停并释放持有键。关闭引擎清空请求，旧 UUID/重复完成不能回传到下一会话。
+- 成功响应仅提交一次；失败保留弹窗、文字和实际错误，可重试。简单确认与是/否弹窗提供 Escape/取消（result=0）；自定义按钮仅返回请求提供的编号，只有编号 0 的按钮提供 Escape，不凭空添加取消编号。文本 Return 使用首个自定义按钮，默认确认使用 1。
+- `EngineSession` 增加响应 wrapper，明确返回未初始化/不支持运行时的 NSError；普通壳与开发页面均安装原生 sheet。日志只记录排队数量、result 和失败，不主动记录弹窗标题、消息或回复正文。
+- `tools/apple_host_dialog_test.py --host-abi` 编译/运行解析队列测试、HostKit 真实 ABI 错误路径，并构建独立 SwiftUI 测试 App。覆盖编码/字数/无效载荷、自定义编号、FIFO、宿主弹窗延后、重复/旧响应、失败重试、会话清理；测试通过。公开核心的未激活 provider 不支持响应，错误被 wrapper 正确传回。
+- CUA 使用生产 parser/controller/view 的独立测试 App，验证中文 `你好+&EXTRA` 截为 `你好+&`、响应失败后原文字保留、重试得到 result=7 和 URI 编码正文，后续是/否与取消按顺序提交；最终版本另验证自定义按钮 Escape 不提交未知编号、Return 重试、中文是/否及肯定/确认响应。证据 `out/apple_host/evidence/m3-dialog/`。这个测试 App 使用明确的测试 ACK 回调，不代表已验证私有 Artemis/Minori provider 实际发请求及接收响应；该真实运行时验收仍待取得 provider。
+- Debug 构建、KAG3/ONS 各 30 秒回归 PASS；输入推进、呈现对比与正常退出通过，证据 `m3-dialog-game-regression/`。本项未接入其它平台 operation、Minori 媒体、自动 IME 或 IAP；**G1 保持暂缓。**
+
+## 下一步队列
 
 1. [x] 接缝清单 v0.1（交付物 A）+ 三份文档建立
 2. [x] `xcodegen` 2.46.0 安装
@@ -74,8 +209,15 @@
 4. [x] `bridge/apple_host/` CMake 目标 `aether_apple_host_core`（**交付物 B**）
 5. [x] `apps/apple_host/` SwiftUI 工程骨架 + EngineSession + 软件帧上屏（**交付物 C 核心**）
 6. [x] 输入透传（`engine_send_input`）+ CPU 基线 + 日志行为确认（**G0 达成**）
-7. [ ] **M1**：Metal 绘制回调（22 个）实现 + 双路径对比 → 闸门 G1
-8. [ ] 更新三份文档（每次工作结束同步）
+7. [ ] **M1/G1 暂缓**：后续回归两款真实标题、drawable 慢帧及完整呈现性能
+8. [x] **M2 目录 MVP**：库→导入→游玩→返回→冷启动恢复；设置、菜单/快捷键、五语言
+9. [x] **M3 首项**：诊断日志落盘/导出，启动错误详情与回库恢复
+10. [x] **M3 独立媒体**：视频播放控制、文本字幕、进度恢复
+11. [x] **M3 屏幕输入**：虚拟按键、原生提交文字、焦点释放
+12. [x] **M3 dialog 实现**：原生平台请求弹窗与响应；私有运行时实机验收待补
+13. [ ] **M3 后续**：Minori 媒体及其它平台请求；IAP/更新/翻译逐项迁移
+14. [ ] M2 扩展：压缩包/库编辑与移除/外部引用；冷启动基准
+15. [x] 同步 spec、接缝清单与进度
 
 ## 变更记录
 

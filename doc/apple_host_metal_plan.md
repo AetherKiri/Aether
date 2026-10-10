@@ -1,0 +1,137 @@
+# Apple Metal 桥：M1 实施清单
+
+更新：2026-10-10。以 `abi/include/engine_gpu_bridge.h` 和
+`bridge/godot_extension/src/aether_runtime_player.cpp` 为实现契约。
+
+## 已交付：P0 上传与呈现
+
+`MetalFramePresenter.swift`：软件 RGBA 帧 → 不可变 `rgba8Unorm` 纹理 →
+Metal shader → `MTKView`。按 drawable 像素大小等比缩放，黑边与输入使用同一
+aspect-fit 规则；无 sRGB 转换；预乘 RGB 在黑底上呈现时不再乘 alpha。
+保留 Image 对照路径，Metal 不可用或编码失败时回退。
+
+离屏验证复用窗口的 shader、pipeline 和 encode：四角异色测试检测上下翻转、
+RGBA/BGRA 交换；半透明像素检测重复乘 alpha；横/竖 resize 检测黑边。
+截图同时保存 engine PNG 与 Metal PNG，报告原尺寸 RGB 最大差值。
+
+P0 是软件路径的 Metal 呈现基础，仍有软件回读、CGImage 和纹理上传。
+P2 已另行接入，**不代表 G1 达成**；1080p 整帧性能尚未验收。
+
+## 已接入：P2 原生 Metal 绘制
+
+`HostKit/MetalBridge.mm` 注册主表、batch 与 external 共 23 个回调。
+九组 Metal compute kernels 从现有 Godot GLSL 参考代码生成，保留整数混合
+与三角形采样规则；生成头文件签入仓库，构建不依赖 Godot 或 Python。
+`tools/generate_apple_metal_shaders.py --check` 检查参考源码与生成物同步。
+
+`AETHER_HOST_RENDERER=metal` 在打开游戏前安装回调并设置现有 ABI 的
+`renderer=godot_native`。首帧用 `raw_source` 获取游戏尺寸，再同步 surface
+并切回 `frame_output=surface`，避免默认 1280×720 拉伸与输入偏移。
+帧 token 解析为不可变 GPU blit 快照供 MTKView 呈现；正常 KAG tick 不做 CPU
+回读。仅诊断截图或 Image 对照回读；ONS 不发布原生纹理时沿用软件帧路径。
+
+批处理在外层结束时提交；回读、CPU 更新和快照先同步。源/目标重叠使用快照，
+IOSurface owner 保留到未提交命令完成。begin-read 目前同步生成快照，poll 可立即
+完成；尚未实现异步回读调度。桥是进程级资源表，不能在单引擎关闭时擅自清空
+引擎仍缓存的 token。特殊矩形模式 6 及未知模式显式返回 false，交由引擎兜底；
+31 个 ABI 模式的所有游戏调用组合尚未逐项验收。
+
+独立桥测试覆盖精确 alpha 算术、引擎打包 RGBA clear、预乘转换、多源 mask、越界、
+重叠拷贝、释放后回读、嵌套批处理内操作顺序、mosaic、普通/遮罩三角形及
+IOSurface 通道/释放时机。KAG3 标题静态画面与独立 P0 软件截图 RGB 差值为 0。
+对话画面存在动画点击提示的相位差，不能把跨时间截图当作逐像素全场景验收。
+
+## 回调数量校正
+
+ABI 实际为 **23 个函数指针**：主表 17 + batch 2 + external 4。
+此前文档“22 个 / 主表 18”是计数错误；不涉及 ABI 修改。
+
+| 组 | 回调 | 实现及验收要求 |
+|---|---|---|
+| 纹理（4） | create_rgba / release_texture / update_rgba / clear_rgba | stride、局部矩形、尺寸/边界验证；存活 token；未初始化区域清零；延迟释放到 GPU 完成 |
+| 拷贝（2） | copy_rect / copy_triangles | 同纹理重叠必须先取快照；copy_rect 不支持缩放；三角形覆盖与采样对照参考实现 |
+| 三角形（2） | draw_triangles / draw_masked_triangles | TVP 和 Cubism flags 分开；预乘/最近邻/straight-linear 标志；mask 插值、反转、alpha 合成 |
+| 特效（1） | mosaic_rects | 读取原纹理快照，矩形内按相对 block 网格取中心 texel，边缘 clamp；矩形顺序与参考 shader 一致 |
+| 混合（3） | blend_rect / blend_rect2 / blend_rect3 | 31 个模式；单源可缩放，多源尺寸需一致；整数规则见下节 |
+| 回读（4） | read_rgba / begin_read_rgba / poll_read_rgba / discard_read_rgba | 输出 stride/容量验证；请求 token 持有快照；poll 区分 pending/failed；完成前禁止 CPU 读纹理 |
+| 提交（1） | flush | 确保之前操作可见，报告编码/执行失败；不能把未执行的操作标记成功 |
+| batch（2） | begin_batch / end_batch | 保序、嵌套 token 和成对关闭；同一队列同步所有依赖 |
+| external（4） | import_apple_pixel_buffer / prepare_for_native_write / import_android_hardware_buffer / publish_native_write | CVMetalTextureCache + 原生写入同步；保留 CVPixelBuffer/CVMetalTexture 到释放；Apple 上 Android 导入明确返回 0 |
+
+## clear 参数端序（自检项目发现并修复）
+
+`clear_rgba` 的 ABI 参数名为 argb，但引擎 `TVPGodotClearRgbaBitmap` 已将脚本
+AARRGGBB 转为 AABBGGRR，`ClearGpu` 和 Godot 参考宿主均直接传递该值。
+Metal 桥必须直接写低字节 R/G/B/A；再交换 R/B 会把动态青色十字和边框变黄。
+回归测试同时检查非对称 RGB 和引擎打包青色，真实 TJS 动态更新截图也参与对照。
+
+## 混合与采样契约
+
+- `TVPGodotGpuBlendMode` 有 1–31 共 31 个模式，不可只实现普通 source-over。
+- alpha / alpha_d / alpha_a / additive alpha 的目标 alpha 行为不同；整数除 255、
+  位移除 256、截断/饱和必须逐个迁移，不可用统一浮点 alpha-blending 替代。
+- `blend_rect2/3` 是多源转换与 universal 等路径；mask multiply/threshold 与
+  glyph color-map 必须有单独对照样例。
+- `BOX_BLUR_ALPHA`：opacity 是 x 半径，color 低字节是 y 半径，reflect101 边界。
+- `draw_triangles`：低位 TVP/Cubism 的解释取决于标记位；mask-write 是独立语义。
+  premultiplied、nearest、straight-linear 及 minification 的路径需要分别覆盖。
+- `draw_masked_triangles`：mask 单独采样 alpha，反转后参与 source alpha；参考实现
+  会对缩小 footprint 多点采样，不能仅取最近邻或只检测是否覆盖。
+
+## 注册与帧输出
+
+1. 先实现/测试纹理、混合、三角形、回读与同步全部回调。
+2. 通过 `TVPGodotGpuBridgeRegister`、batch/external 注册表安装完整实现，
+   再在 open 前设置引擎 `renderer=godot_native`（此字符串为现有 ABI 契约）。
+3. `engine_get_godot_native_frame_texture` 返回宿主分配的 uint64 token，
+   由 Metal 桥解析为 `MTLTexture`，避免回读后再上传。
+4. 初始 `raw_source` 引导 Game Native 尺寸，随后同步 surface 并切回
+   `frame_output=surface`；输出与输入坐标同时更新。
+5. destroy 引擎并等待 GPU 队列完成；桥资源遵循 token 生命周期，不修改 ABI/provider。
+
+## 性能测量入口
+
+`metal-bridge-tests --benchmark` 测量 1920×1080 清屏、8 层完整 alpha 混合及
+不可变 GPU 快照，包含分配、编码、提交、GPU 完成等待；不含 engine tick 和
+MTKView。每种批处理配置先预热 10 帧，再采样 60 帧，报告 p50/p95/max。
+Apple M1 Max / macOS 15.7.1 一次 Debug 组件测量：关闭批处理 5.012/10.118/12.700ms，开启批处理
+3.579/6.132/12.903ms。运行间会受系统负载影响，不是完整帧 G1 结果。
+原始证据：`out/apple_host/evidence/p2-bridge-benchmark.log`。
+
+`AETHER_HOST_PROFILE=1`（冒烟工具 `--profile`）在 shutdown 汇总宿主 step 的
+单调时钟耗时，包含 tick、请求处理和纹理获取/GPU 等待。跳过前 60 tick，最多
+采样 10000 次；MTKView 异步提交和实际显示不在此范围，日志明确标记排除项。
+诊断截图在 step 之外，不计入这一测量。完整帧仍需关联 tick 与 drawable GPU
+完成，并在真实 1080p 游戏中验证。
+
+## TJS 自检场景对照
+
+用户提供的 aetherkiri-test 已通过软件/Metal、640×480/派生 1920×1080 四运行。
+原始脚本先做带音频定时器的启动冒烟；确定性绘制副本禁用该重复定时器。
+首帧、鼠标十字、层级/图案/图层组切换的八状态，在两分辨率共 16 组 RGB
+截图对比全部为 0。来源哈希和所有结果见
+`out/apple_host/evidence/selftest-parity-final/result.json`。
+自检发现的 clear 重复交换 R/B 已修复；不能把合成 1080p 或组件耗时当成真实
+游戏和完整帧 G1 验收。1080p 宿主测量最大 26.549ms，尾部慢帧仍需定位。
+
+## G1 验收仍待完成
+
+- P2 与 P0 原尺寸截图对比（覆盖混合、遮罩、三角形、特效和外部纹理）。
+- 至少两个 verified_games 真实标题正确呈现。
+- 1080p 完整帧 ≤16.6ms，包含 tick/桥编码/呈现，并记录采样方法。
+- 2026-10-10 用户调整：G1 暂缓，先推进 M2 游戏库、导入、设置；后续完成后回归此验收。
+
+### 完整呈现关联测量进展
+
+现已提供真实 1080p MTKView 目标及 tick-to-GPU-completion CSV，包含宿主调度与
+GPU 命令完成，排除屏幕扫描输出及未提交的合并 tick。独立无截图自检 30 秒：
+1739 样本，p50/p95/max=4.310/6.696/30.181ms，1 个超过 16.6ms，GPU failures=0。
+截图回读会导致主线程长停顿，正式基准需独立无截图运行。该结果提供慢帧证据，
+不自动通过 G1；Timer/SwiftUI 调度、合并帧比例和真实标题覆盖仍需收敛。
+
+### 直接提交调度
+
+主 RunLoop Timer 直接执行 tick 和 MTKView 提交，移除 Task 排队及 SwiftUI
+逐帧上传/绘制依赖；窗口尺寸更新仍可重绘。串行 1080p 自检中 p95 从
+7.948ms 降至 3.423ms，但 drawable 获取仍存在约 1 秒异常值，G1 继续待验收。
+`tools/apple_host_profile.py` 提供无截图的 sequential deferred/direct 对照。

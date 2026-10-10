@@ -71,7 +71,7 @@ enum InputMapping {
         if event.modifierFlags.contains(.shift) { modifiers |= 0x01 }
         if event.modifierFlags.contains(.option) { modifiers |= 0x02 }
         if event.modifierFlags.contains(.control) { modifiers |= 0x04 }
-        if event.isARepeat { modifiers |= 0x80 }
+        if event.type == .keyDown && event.isARepeat { modifiers |= 0x80 }
         return modifiers
     }
 

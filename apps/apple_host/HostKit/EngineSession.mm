@@ -1,8 +1,10 @@
 #import "EngineSession.h"
+#import "MetalBridge.h"
 
 #include "engine_api.h"
 
 #include <vector>
+#include <algorithm>
 
 namespace {
 
@@ -25,6 +27,9 @@ NSError *EngineError(engine_handle_t handle, NSString *fallback) {
     engine_handle_t _handle;
     std::vector<uint8_t> _frameBuffer;
     CGSize _framePixelSize;
+    BOOL _metalRendererEnabled;
+    uint64_t _nativeReadbacks;
+    uint64_t _nativeCopies;
 }
 
 - (instancetype)init {
@@ -87,6 +92,33 @@ NSError *EngineError(engine_handle_t handle, NSString *fallback) {
     return ENGINE_API_VERSION;
 }
 
+- (BOOL)enableMetalRenderer:(NSError **)error {
+    if (!AetherMetalBridgeInitialize(error)) return NO;
+    if (![self setOption:@"renderer" value:@"godot_native" error:error]) return NO;
+    _metalRendererEnabled = YES;
+    // Bootstrap Game Native dimensions from raw output. The controller sets
+    // surface size to this first frame, then returns to surface publication.
+    return [self setOption:@"frame_output" value:@"raw_source" error:error];
+}
+
+- (nullable id<MTLTexture>)copyNativeFrameTexture {
+    if (!_handle) return nil;
+    uint64_t token = 0, serial = 0;
+    uint32_t width = 0, height = 0;
+    if (engine_get_godot_native_frame_texture(_handle, &token, &width, &height, &serial) != ENGINE_RESULT_OK || !token) return nil;
+    id<MTLTexture> texture = AetherMetalBridgeCopyTexture(token);
+    if (texture) {
+        _framePixelSize = CGSizeMake(width, height);
+        ++_nativeCopies;
+    }
+    return texture;
+}
+
+- (NSString *)metalBridgeDiagnostics {
+    return [NSString stringWithFormat:@"%@ native_copies=%llu native_readbacks=%llu",
+        AetherMetalBridgeDiagnostics(), _nativeCopies, _nativeReadbacks];
+}
+
 - (BOOL)openGameAtPath:(NSString *)gamePath error:(NSError **)error {
     if (_handle == nullptr) {
         if (error != nullptr) {
@@ -105,6 +137,20 @@ NSError *EngineError(engine_handle_t handle, NSString *fallback) {
     return YES;
 }
 
+- (NSString *)lastError {
+    const char *message = _handle ? engine_get_last_error(_handle) : nullptr;
+    return message ? ([NSString stringWithUTF8String:message] ?: @"") : @"";
+}
+
+- (NSString *)drainStartupLogs {
+    if (!_handle) return @"";
+    char buffer[65536] = {};
+    uint32_t written = 0;
+    engine_drain_startup_logs(_handle, buffer, sizeof(buffer), &written);
+    return [[NSString alloc] initWithBytes:buffer length:std::min(written, (uint32_t)sizeof(buffer))
+                                encoding:NSUTF8StringEncoding] ?: @"";
+}
+
 - (uint32_t)startupState {
     if (_handle == nullptr) {
         return ENGINE_STARTUP_STATE_IDLE;
@@ -121,6 +167,18 @@ NSError *EngineError(engine_handle_t handle, NSString *fallback) {
         return;
     }
     engine_tick(_handle, deltaMS);
+}
+
+- (BOOL)submitPlatformResponse:(NSString *)operation argument:(NSString *)argument error:(NSError **)error {
+    if (!_handle) {
+        if (error) *error = EngineError(nullptr, @"engine is not initialized");
+        return NO;
+    }
+    if (engine_submit_platform_response(_handle, operation.UTF8String, argument.UTF8String) != ENGINE_RESULT_OK) {
+        if (error) *error = EngineError(_handle, @"platform response failed");
+        return NO;
+    }
+    return YES;
 }
 
 - (void)pollPlatformRequests:(void (^)(NSString *, NSString *))handler {
@@ -148,9 +206,16 @@ NSError *EngineError(engine_handle_t handle, NSString *fallback) {
     }
     engine_frame_desc_t desc{};
     desc.struct_size = sizeof(desc);
-    if (engine_get_frame_desc(_handle, &desc) != ENGINE_RESULT_OK ||
-        desc.width == 0 || desc.height == 0 ||
-        desc.pixel_format != ENGINE_PIXEL_FORMAT_RGBA8888) {
+    uint64_t nativeToken = 0, serial = 0;
+    if (_metalRendererEnabled) {
+        engine_get_godot_native_frame_texture(_handle, &nativeToken, &desc.width, &desc.height, &serial);
+    }
+    if (nativeToken) {
+        desc.stride_bytes = desc.width * 4;
+        desc.pixel_format = ENGINE_PIXEL_FORMAT_RGBA8888;
+    } else if (engine_get_frame_desc(_handle, &desc) != ENGINE_RESULT_OK ||
+               desc.width == 0 || desc.height == 0 ||
+               desc.pixel_format != ENGINE_PIXEL_FORMAT_RGBA8888) {
         return nil;
     }
     _framePixelSize = CGSizeMake(desc.width, desc.height);
@@ -159,8 +224,10 @@ NSError *EngineError(engine_handle_t handle, NSString *fallback) {
     if (_frameBuffer.size() != byteCount) {
         _frameBuffer.resize(byteCount);
     }
-    if (engine_read_frame_rgba(_handle, _frameBuffer.data(), _frameBuffer.size()) !=
-        ENGINE_RESULT_OK) {
+    if (nativeToken) {
+        if (!AetherMetalBridgeReadTexture(nativeToken, _frameBuffer.data(), _frameBuffer.size(), desc.stride_bytes)) return nil;
+        ++_nativeReadbacks;
+    } else if (engine_read_frame_rgba(_handle, _frameBuffer.data(), _frameBuffer.size()) != ENGINE_RESULT_OK) {
         return nil;
     }
     CGColorSpaceRef colorSpace = CGColorSpaceCreateDeviceRGB();
@@ -225,6 +292,22 @@ NSError *EngineError(engine_handle_t handle, NSString *fallback) {
     }
 }
 
+- (BOOL)sendTextCodepoint:(uint32_t)codepoint error:(NSError **)error {
+    if (!_handle) {
+        if (error) *error = EngineError(nullptr, @"engine is not initialized");
+        return NO;
+    }
+    engine_input_event_t event{};
+    event.struct_size = sizeof(event);
+    event.type = ENGINE_INPUT_EVENT_TEXT_INPUT;
+    event.unicode_codepoint = codepoint;
+    if (engine_send_input(_handle, &event) != ENGINE_RESULT_OK) {
+        if (error) *error = EngineError(_handle, @"text input failed");
+        return NO;
+    }
+    return YES;
+}
+
 - (CGSize)framePixelSize {
     return _framePixelSize;
 }
@@ -253,6 +336,8 @@ NSError *EngineError(engine_handle_t handle, NSString *fallback) {
     if (_handle != nullptr) {
         engine_destroy(_handle);
         _handle = nullptr;
+        _metalRendererEnabled = NO;
+        _framePixelSize = CGSizeZero;
     }
 }
 

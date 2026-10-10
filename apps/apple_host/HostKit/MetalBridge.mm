@@ -356,15 +356,20 @@ bool Read(uint64_t token,void *out,size_t capacity,uint32_t stride) {
 uint64_t BeginRead(uint64_t token) {
     Lock lock(S().mutex);
     id<MTLTexture> source=Texture(token);
-    if (!source || !FlushPending()) return 0;
+    if (!source) return 0;
+    // A pending batch belongs to its encoding thread. Append the snapshot to
+    // that buffer so prior writes stay ordered without a CPU completion wait.
+    if (S().pending && S().pendingThread!=std::this_thread::get_id()) return 0;
     id<MTLTexture> snapshot=Allocate((uint32_t)source.width,(uint32_t)source.height,source.pixelFormat);
-    id<MTLCommandBuffer> command=[S().queue commandBuffer];
+    if (!snapshot) return 0;
+    id<MTLCommandBuffer> command=S().pending ?: [S().queue commandBuffer];
     id<MTLBlitCommandEncoder> encoder=[command blitCommandEncoder];
-    if (!snapshot || !encoder) return 0;
+    if (!encoder) return 0;
     [encoder copyFromTexture:source sourceSlice:0 sourceLevel:0 sourceOrigin:MTLOriginMake(0,0,0)
         sourceSize:MTLSizeMake(source.width,source.height,1) toTexture:snapshot
         destinationSlice:0 destinationLevel:0 destinationOrigin:MTLOriginMake(0,0,0)];
     [encoder endEncoding];
+    if (command==S().pending) S().pending=nil;
     [command commit];
     uint64_t request=S().next++;
     S().reads.emplace(request,ReadRequest{snapshot,command,false});return request;

@@ -178,6 +178,20 @@ int main(int argc,char **argv) { @autoreleasepool {
     uint64_t outer=batch.begin_batch(),inner=batch.begin_batch();
     assert(!batch.end_batch(outer));assert(batch.end_batch(inner));assert(batch.end_batch(outer));
     assert(!batch.end_batch(outer));
+    // Readback submits prior batch writes in order without ending the scope.
+    outer=batch.begin_batch();
+    assert(bridge.clear_rgba(dst,0xff665544,&one));
+    uint64_t batchedRead=bridge.begin_read_rgba(dst);assert(batchedRead);
+    assert(bridge.clear_rgba(dst,0xff998877,&one));
+    assert(batch.end_batch(outer));
+    ready=false;
+    for(int attempt=0;attempt<10000&&!ready;++attempt) {
+        assert(bridge.poll_read_rgba(batchedRead,snapshot.data(),4,4,&ready));
+        if(!ready)std::this_thread::sleep_for(std::chrono::microseconds(100));
+    }
+    assert(ready&&(snapshot==Pixel{0x44,0x55,0x66,255}));
+    assert((ReadPixel(dst)==Pixel{0x77,0x88,0x99,255}));
+    bridge.discard_read_rgba(batchedRead);
     // Encoded work observes preceding operations inside a nested batch.
     outer=batch.begin_batch();inner=batch.begin_batch();
     assert(bridge.clear_rgba(dst,0xff332211,&one));

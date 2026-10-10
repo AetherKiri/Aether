@@ -129,6 +129,8 @@ Apple M1 Max / macOS 15.7.1 一次 Debug 组件测量：关闭批处理 5.012/10
 
 ### 交接与遗留（2026-10-11）
 
+批次回读等待移除：begin 将快照 blit 追加到当前线程的 pending 命令缓冲并直接提交，不再通过 FlushPending 等待 GPU；batch scope 保留，后续绘制进入新缓冲。同队列保证先前写入→快照→后续写入顺序。跨线程遇到 pending 批次时拒绝请求。新增批次内 clear→begin→再次 clear→end 测试，确认快照与最终纹理分别保持对应像素。桥套件与 Debug 宿主构建通过，failures=0、reads/textures=0。无 pending 负载的 1080p 基准提交 p50=0.108ms、总完成 p50=2.558ms，仅记录基线，不作为批次等待优化的量化收益。上一段“begin 仍同步 flush”已由此实现替代。
+
 1080p 回读组件基准（`metal-bridge-tests --readback-benchmark`，Debug，10 次预热 + 60 次采样）：同步 p50/p95/max=1.234/1.452/1.792ms，异步提交=0.116/0.149/0.237ms，异步总完成=2.495/2.826/3.476ms。异步路径额外生成不可变快照，因此总工作量更大；这里证明提交阶段等待缩短，不证明整体帧率或吞吐优于 Godot。测试每轮核对全部 RGBA 像素、5 秒轮询超时保护、discard 清理，pending 轮询累计 128210（含预热），最终 failures=0、reads/textures=0。基准通过 yield 忙轮询测完成延迟，产品调用方应跨帧 poll；仍需确定性控制 GPU 完成状态的测试。后续优化重点是先前批次 flush 与快照分配成本。
 
 回读后续验证：pending 阶段也立即拒绝空指针、短缓冲和短 stride；测试增加重复 poll、重复 discard、提前 discard 与已丢弃请求拒绝。Metal 桥套件通过（failures=0，reads/textures=0），宿主 Debug 构建通过，KAG3 Metal 30 秒输入/截图/正常关闭冒烟通过，证据 `out/apple_host/evidence/async-readback-kag3/`。该集成回归不是五分钟 G0 或回读性能基准；未完成状态的确定性覆盖与延迟测量仍需补充。

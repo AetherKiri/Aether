@@ -110,6 +110,14 @@ if(WEB OR EMSCRIPTEN)
     add_executable(aether_kiri_godot ${AETHERKIRI_GODOT_SOURCES})
 elseif(IOS)
     add_library(aether_kiri_godot STATIC ${AETHERKIRI_GODOT_SOURCES})
+elseif(MSVC AND CMAKE_BUILD_TYPE STREQUAL "Debug")
+    # The GDExtension must link the release CRT to load into Godot, while a
+    # debug tree builds every internal static library with the debug CRT; the
+    # two can never link together in one PE image. Windows debug builds get
+    # the extension from release configurations, so keep the target out of
+    # `all` instead of shipping a link that cannot succeed.
+    add_library(aether_kiri_godot SHARED EXCLUDE_FROM_ALL
+        ${AETHERKIRI_GODOT_SOURCES})
 else()
     add_library(aether_kiri_godot SHARED ${AETHERKIRI_GODOT_SOURCES})
 endif()
@@ -184,6 +192,9 @@ endif()
 
 target_compile_features(aether_kiri_godot PRIVATE cxx_std_17)
 if(MSVC)
+    # GDExtension ships against Godot's release CRT; keep the release CRT and
+    # the release iterator-debug level even inside debug trees that build the
+    # extension directly (release configurations, non-Debug presets).
     set_property(TARGET aether_kiri_godot PROPERTY
         MSVC_RUNTIME_LIBRARY "MultiThreadedDLL")
     target_compile_definitions(aether_kiri_godot PRIVATE
@@ -225,10 +236,22 @@ if(TARGET aether_krkr2_runtime)
         AETHERKIRI_WITH_KRKR2=1)
 endif()
 if(TARGET aether_onscripter_runtime)
-    target_link_libraries(aether_kiri_godot PRIVATE
-        aether_onscripter_runtime)
-    target_compile_definitions(aether_kiri_godot PRIVATE
-        AETHERKIRI_WITH_ONSCRIPTER=1)
+    if(MSVC)
+        # OnscripterYuri and the krkr2 layerExDraw plugin both define a global
+        # `FontInfo` class; co-linking them into one PE image is an ODR clash
+        # (2178+ duplicate symbols). Apple keeps each provider in its own
+        # dylib and Windows production builds ship with the Ons beta runtime
+        # disabled, so leave it out of the Windows extension instead of
+        # forcing multiple definitions.
+        message(STATUS
+            "OnscripterYuri runtime stays out of the Windows GDExtension "
+            "(global FontInfo ODR clash with layerExDraw)")
+    else()
+        target_link_libraries(aether_kiri_godot PRIVATE
+            aether_onscripter_runtime)
+        target_compile_definitions(aether_kiri_godot PRIVATE
+            AETHERKIRI_WITH_ONSCRIPTER=1)
+    endif()
 endif()
 if(TARGET aether_siglus_runtime)
     target_link_libraries(aether_kiri_godot PRIVATE

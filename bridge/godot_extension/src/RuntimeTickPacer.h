@@ -31,7 +31,7 @@ public:
         // additional catch-up callbacks avoids a burst after a load or resume,
         // while the full elapsed time remains available to time-based effects.
         phase_seconds_ -= completed_frames * kLogicalFrameSeconds;
-        phase_seconds_ = std::max(0.0, phase_seconds_);
+        phase_seconds_ = (std::max)(0.0, phase_seconds_);
         const double elapsed_seconds = pending_seconds_;
         pending_seconds_ = 0.0;
         return {true, elapsed_seconds};

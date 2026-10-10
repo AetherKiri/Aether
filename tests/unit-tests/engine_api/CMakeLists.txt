@@ -33,4 +33,9 @@ if(AETHERKIRI_INTERNAL_ENABLED AND
     aetherinternal_extend_catsystem2_tests(engine-api-diagnostics)
 endif()
 
-catch_discover_tests(engine-api-diagnostics)
+aetherkiri_copy_engine_api_dll(engine-api-diagnostics)
+
+# engine_api builds as a shared library on Windows; point the test runner at
+# its output directory so discovery and test runs can load the DLL.
+catch_discover_tests(engine-api-diagnostics
+    TEST_DL_PATHS "${CMAKE_BINARY_DIR}/abi")

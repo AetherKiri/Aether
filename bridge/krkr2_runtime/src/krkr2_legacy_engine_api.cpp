@@ -86,6 +86,7 @@ void krkr_GetSurfaceDimensions(uint32_t*, uint32_t*);
 #include "engine_options.h"
 #include "PluginCallTracer.hpp"
 #include "PluginImpl.h"
+#include "DebugIntf.h"
 #include "base/impl/StorageImpl.h"
 #include "movie/ffmpeg/KRMoviePlayer.h"
 #include "utils/win32/TimerImpl.h"
@@ -4455,6 +4456,9 @@ engine_result_t engine_get_plugin_debug_info(
   append_array(json, snapshot.fallbackPlugins);
   json << ",\"recent_missing_members\":";
   append_array(json, snapshot.recentMissingMembers);
+  // Compatibility receipts: why a platform-limited plugin or feature is
+  // missing, instead of a bare failure constant. See DebugIntf.h.
+  json << ",\"compat_receipts\":" << TVPGetCompatReceiptsJSON();
   json << '}';
 
   const std::string payload = json.str();

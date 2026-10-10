@@ -1,0 +1,70 @@
+// Original fixture for compatibility receipts and System.platformTag.
+// Contains no game assets; probes run on startup and on every input so the
+// smoke tool's frame-change check also re-runs them.
+var win = new Window();
+win.setInnerSize(640, 480);
+var primary = new Layer(win, null);
+win.add(primary);
+primary.setSize(640, 480);
+primary.type = ltOpaque;
+primary.visible = true;
+
+var summary = "";
+var probes = 0;
+
+function probe(label, action) {
+  try {
+    var value = action();
+    summary += label + "=" + value + " ";
+    Debug.message("COMPAT_TEST " + label + " -> " + value);
+  } catch (e) {
+    summary += label + "=error(" + e.message + ") ";
+    Debug.message("COMPAT_TEST " + label + " -> " + e.message);
+  }
+}
+
+function runProbes() {
+  probes++;
+  summary = "";
+  probe("platformTag", function() { return System.platformTag; });
+  probe("platformName", function() { return System.platformName; });
+  probe("osName", function() { return System.osName; });
+  probe("linkMissing", function() { return Plugins.link("aether_compat_probe_missing.dll"); });
+  probe("linkMosaic", function() { return Plugins.link("layerExMosaic.dll"); });
+  probe("mosaic0", function() { return primary.mosaic(); });
+  probe("mosaicArgs", function() { return primary.mosaic(0, 0, 640, 480, 8, 8); });
+  probe("linkSubImage", function() { return Plugins.link("layerExSubImage.dll"); });
+  probe("subImage", function() { return primary.copySubImage(0, 0, 640, 480, primary, 0, 0, 64, 48); });
+  probe("linkColor", function() { return Plugins.link("layerExColor.dll"); });
+  probe("colorize", function() { return primary.colorize(0xffffff); });
+  probe("linkDmm", function() { return Plugins.link("dmmcloud.dll"); });
+  probe("dmmInit", function() { var cloud = new DMMCloud(); return cloud.initialize(); });
+  // Plain NCB class with a real implementation, as a control for the attach
+  // classes above: if this works, module registration itself is healthy.
+  probe("linkZlib", function() { return Plugins.link("zlib.dll"); });
+  probe("zlibVersion", function() { return new Zlib().version(); });
+  // Distinguish "member registered on the class object" from "instance lookup":
+  // TJS reports a missing member as void.
+  probe("classMosaic", function() { return typeof Layer.mosaic; });
+  probe("instMosaic", function() { return typeof primary.mosaic; });
+  probe("classSubImage", function() { return typeof Layer.copySubImage; });
+}
+
+function redraw() {
+  primary.colorRect(0, 0, 640, 480, 0x101820, 255);
+  primary.drawText(20, 30, "compat fixture #" + probes, 0xffffff, 255, true);
+  primary.drawText(20, 70, "tag=" + System.platformTag, 0xffe080, 255, true);
+  // Wrap the probe summary so long messages stay readable in the capture.
+  var width = 62;
+  for (var line = 0; line < 8; line++) {
+    var chunk = summary.substr(line * width, width);
+    if (chunk == "") break;
+    primary.drawText(20, 110 + line * 26, chunk, 0xc0e0ff, 255, true);
+  }
+}
+
+win.onKeyDown = function(key, shift) { runProbes(); redraw(); };
+win.onKeyPress = function(key) { runProbes(); redraw(); };
+runProbes();
+redraw();
+Debug.message("COMPAT_TEST fixture ready");

@@ -410,3 +410,13 @@ out/apple_host/platform-browser-tests
 
 Debug 宿主可用 `AETHER_HOST_TEST_OPEN_BROWSER=https://example.com` 注入一次真实请求，
 用于确认平台分发和系统浏览器联动；该开关只编译进 Debug 路径。
+直通帧租约可用 `AETHER_HOST_DIRECT_RENDER=1` 开启，或运行：
+
+```sh
+python3 tools/apple_host_smoke.py --game kag3 --renderer metal --snapshots direct --duration 30
+```
+
+该模式让宿主会话持有引擎 Metal 纹理，提交时验证渲染代际和命令队列；持有中的
+纹理再次写入会执行写时分离，关闭会话会主动释放仍被 SwiftUI 保留的帧。诊断中的
+`leases_*` 和 `frame_detach_copies` 用于确认提交、GPU 完成和复用边界。截图与
+跨队列回读仍使用不可变快照。

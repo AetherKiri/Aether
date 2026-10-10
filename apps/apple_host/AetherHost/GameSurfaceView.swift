@@ -10,7 +10,8 @@ struct GameSurfaceView: View {
                let presenter = engine.metalPresenter,
                let texture = engine.nativeFrameTexture {
                 MetalFrameView(presenter: presenter, image: nil,
-                               nativeTexture: texture, onFailure: engine.presentationFailed)
+                               nativeTexture: texture, nativeLease: engine.nativeFrameLease,
+                               onFailure: engine.presentationFailed)
             } else if let image = engine.frameImage {
                 if engine.useMetalPresentation, let presenter = engine.metalPresenter {
                     MetalFrameView(presenter: presenter, image: image,

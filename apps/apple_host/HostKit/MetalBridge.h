@@ -2,6 +2,16 @@
 #import <Metal/Metal.h>
 
 NS_ASSUME_NONNULL_BEGIN
+// Internal frame ownership, independent of the public engine ABI. The lease
+// keeps a frame stable across redraws and retains it through GPU completion.
+@interface AetherMetalFrameLease : NSObject
+@property(nonatomic, readonly, nullable) id<MTLTexture> texture;
+@property(nonatomic, readonly) BOOL valid;
+@property(nonatomic, readonly) uint64_t generation;
+@property(nonatomic, readonly) uint64_t serial;
+// The render session validates queue/generation and owns submission.
+- (BOOL)submitCommand:(id<MTLCommandBuffer>)command;
+@end
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -15,6 +25,7 @@ id<MTLCommandQueue> _Nullable AetherMetalBridgeCommandQueue(void);
 BOOL AetherMetalBridgeDrain(void);
 // Internal native ownership boundary; zero indicates an already active session.
 uint64_t AetherMetalBridgeBeginSession(void);
+AetherMetalFrameLease * _Nullable AetherMetalBridgeAcquireFrame(uint64_t generation, uint64_t token, uint64_t serial);
 // Producers must be stopped. Retired tokens remain releasable, never presentable.
 BOOL AetherMetalBridgeEndSession(uint64_t generation);
 // Returns an immutable GPU snapshot suitable for another presentation queue.

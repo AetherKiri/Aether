@@ -12,6 +12,8 @@ final class EngineController: ObservableObject {
     @Published var logText = ""
     @Published var frameImage: CGImage?
     @Published var nativeFrameTexture: MTLTexture?
+    @Published var nativeFrameLease: AetherMetalFrameLease?
+    private let directRender = ProcessInfo.processInfo.environment["AETHER_HOST_DIRECT_RENDER"] == "1"
     private var nativeRendererEnabled = false
     private var loggedNativeFrame = false
     @Published var frameSize: CGSize = .zero
@@ -404,7 +406,8 @@ final class EngineController: ObservableObject {
         }
 
         if nativeRendererEnabled {
-            nativeFrameTexture = session.copyNativeFrameTexture()
+            nativeFrameLease = directRender ? session.acquireNativeFrame() : nil
+            nativeFrameTexture = directRender ? nativeFrameLease?.texture : session.copyNativeFrameTexture()
             if nativeFrameTexture != nil, !loggedNativeFrame {
                 loggedNativeFrame = true
                 log("native GPU frame: Metal texture acquired")
@@ -442,7 +445,7 @@ final class EngineController: ObservableObject {
             if useMetalPresentation, let presenter = metalPresenter {
                 if profileFrames { presenter.profileFrame(tick: tickCount, started: started) }
                 do {
-                    try presenter.presentFrame(native: nativeFrameTexture, image: frameImage)
+                    try presenter.presentFrame(native: nativeFrameTexture, lease: nativeFrameLease, image: frameImage)
                 } catch {
                     presentationFailed(String(describing: error))
                 }
@@ -472,7 +475,8 @@ final class EngineController: ObservableObject {
             log("capture saved: \(path)")
             if useMetalPresentation, let presenter = metalPresenter {
                 if let nativeFrameTexture {
-                    presenter.useNativeTexture(nativeFrameTexture)
+                    if let nativeFrameLease { presenter.useNativeFrame(nativeFrameLease) }
+                    else { presenter.useNativeTexture(nativeFrameTexture) }
                 } else {
                     try presenter.upload(image)
                 }
@@ -798,6 +802,9 @@ final class EngineController: ObservableObject {
                            "unhandledPlatformRequests": String(unhandledPlatformRequests),
                            "translationState": "\(translationStatus.state)"])
         unhandledPlatformRequests = 0
+        nativeFrameLease = nil
+        nativeFrameTexture = nil
+        metalPresenter?.clear()
         session.shutdown()
         log(session.metalBridgeDiagnostics())
         nativeFrameTexture = nil

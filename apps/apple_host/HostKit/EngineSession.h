@@ -2,6 +2,7 @@
 #import <Foundation/Foundation.h>
 #import <Metal/Metal.h>
 #include "engine_api.h"
+#import "MetalBridge.h"
 
 NS_ASSUME_NONNULL_BEGIN
 
@@ -53,6 +54,7 @@ NS_ASSUME_NONNULL_BEGIN
 // M1 opt-in: installs Metal callbacks and selects the existing godot_native ABI backend.
 - (BOOL)enableMetalRenderer:(NSError **)error NS_SWIFT_NAME(enableMetalRenderer());
 - (nullable id<MTLTexture>)copyNativeFrameTexture;
+- (nullable AetherMetalFrameLease *)acquireNativeFrame;
 - (NSString *)metalBridgeDiagnostics;
 
 - (BOOL)openGameAtPath:(NSString *)gamePath

@@ -330,8 +330,47 @@ int main(int argc,char **argv) { @autoreleasepool {
     assert(AetherMetalBridgeCopyPresentationTexture(newToken));
     bridge.release_texture(oldToken);
     assert([AetherMetalBridgeDiagnostics() containsString:@"retired_textures=0"]);
-    assert(AetherMetalBridgeEndSession(nextGeneration));
+    @autoreleasepool {
+        // Acquisition shares storage without a blit. CPU/GPU writes detach
+        // when a frame is held, including a frame not yet submitted.
+        auto frame=AetherMetalBridgeAcquireFrame(nextGeneration,newToken,123);assert(frame);
+        auto same=AetherMetalBridgeAcquireFrame(nextGeneration,newToken,123);
+        assert(frame.texture==same.texture && frame.serial==123);
+        Pixel original{};
+        [frame.texture getBytes:original.data() bytesPerRow:4 fromRegion:MTLRegionMake2D(0,0,1,1) mipmapLevel:0];
+        Pixel update{3,5,7,255};
+        assert(bridge.update_rgba(newToken,update.data(),4,&one));
+        auto updated=AetherMetalBridgeAcquireFrame(nextGeneration,newToken,124);assert(updated);
+        assert(updated.texture!=frame.texture && ReadPixel(newToken)==update);
+        Pixel preserved{};
+        [frame.texture getBytes:preserved.data() bytesPerRow:4 fromRegion:MTLRegionMake2D(0,0,1,1) mipmapLevel:0];
+        assert(preserved==original);
+        assert(bridge.clear_rgba(newToken,0xff332211,&one));
+        [updated.texture getBytes:preserved.data() bytesPerRow:4 fromRegion:MTLRegionMake2D(0,0,1,1) mipmapLevel:0];
+        assert(preserved==update);
+        auto wrongQueue=[frame.texture.device newCommandQueue];
+        assert(![frame submitCommand:[wrongQueue commandBuffer]]);
+        auto command=[AetherMetalBridgeCommandQueue() commandBuffer];
+        // Actual GPU consumer: retain the old frame through a delayed blit.
+        auto targetTexture=AetherMetalBridgeCopyTexture(newToken);
+        auto blit=[command blitCommandEncoder];
+        [blit copyFromTexture:frame.texture sourceSlice:0 sourceLevel:0 sourceOrigin:MTLOriginMake(0,0,0)
+            sourceSize:MTLSizeMake(1,1,1) toTexture:targetTexture destinationSlice:0
+            destinationLevel:0 destinationOrigin:MTLOriginMake(0,0,0)];
+        [blit endEncoding];
+        assert([frame submitCommand:command]);
+        assert(![frame submitCommand:command]);
+        assert(AetherMetalBridgeDrain());
+        [targetTexture getBytes:preserved.data() bytesPerRow:4 fromRegion:MTLRegionMake2D(0,0,1,1) mipmapLevel:0];
+        assert(preserved==original);
+        assert(AetherMetalBridgeEndSession(nextGeneration));
+        assert(![frame submitCommand:[AetherMetalBridgeCommandQueue() commandBuffer]]);
+        assert(!AetherMetalBridgeAcquireFrame(nextGeneration,newToken,125));
+    }
+    assert([AetherMetalBridgeDiagnostics() containsString:@"leases_live=0"]);
+    assert(!AetherMetalBridgeEndSession(nextGeneration));
     assert(!AetherMetalBridgeCopyPresentationTexture(newToken));
     bridge.release_texture(newToken);
+    assert([AetherMetalBridgeDiagnostics() containsString:@"retired_textures=0"]);
     printf("PASS: Metal kernels, exact alpha arithmetic, clear, conversion, multi-source, bounds, overlap, read snapshots, batch, mosaic, triangles, IOSurface ownership, session retirement\n%s\n",AetherMetalBridgeDiagnostics().UTF8String);
 } }

@@ -38,6 +38,7 @@ final class MetalFramePresenter: NSObject, MTKViewDelegate {
     private let queue: MTLCommandQueue
     private let pipeline: MTLRenderPipelineState
     private(set) var texture: MTLTexture?
+    private var frameLease: AetherMetalFrameLease?
     private(set) var lastError: String?
     let directPresentation = ProcessInfo.processInfo.environment["AETHER_HOST_SCHEDULING"] != "deferred"
     private weak var presentationView: MTKView?
@@ -66,9 +67,10 @@ final class MetalFramePresenter: NSObject, MTKViewDelegate {
 
     // Called once per engine tick on the main thread. SwiftUI handles layout,
     // but no longer schedules the frame upload/draw on a later run-loop turn.
-    func presentFrame(native: MTLTexture?, image: CGImage?) throws {
+    func presentFrame(native: MTLTexture?, lease: AetherMetalFrameLease? = nil, image: CGImage?) throws {
         guard directPresentation else { return }
-        if let native { useNativeTexture(native) }
+        if let lease { useNativeFrame(lease) }
+        else if let native { useNativeTexture(native) }
         else if let image { try upload(image) }
         else { clear() }
         presentationView?.draw()
@@ -172,16 +174,25 @@ final class MetalFramePresenter: NSObject, MTKViewDelegate {
         }
         next.replace(region: MTLRegionMake2D(0, 0, image.width, image.height),
                      mipmapLevel: 0, withBytes: bytes, bytesPerRow: image.bytesPerRow)
+        frameLease = nil
         texture = next
         lastError = nil
     }
 
     func useNativeTexture(_ next: MTLTexture) {
+        frameLease = nil
         texture = next
         lastError = nil
     }
 
-    func clear() { texture = nil }
+    func useNativeFrame(_ frame: AetherMetalFrameLease) {
+        guard frame.valid, let next = frame.texture else { clear(); return }
+        frameLease = frame
+        texture = next
+        lastError = nil
+    }
+
+    func clear() { texture = nil; frameLease = nil }
 
     // Shared by onscreen rendering and deterministic offscreen verification.
     func encode(target: MTLTexture, command: MTLCommandBuffer) throws {
@@ -263,7 +274,9 @@ final class MetalFramePresenter: NSObject, MTKViewDelegate {
                     DispatchQueue.main.async { self?.lastError = message }
                 }
             }
-            command.commit()
+            if let frameLease {
+                guard frameLease.submitCommand(command) else { throw Failure.encoding }
+            } else { command.commit() }
         } catch {
             lastError = String(describing: error)
         }
@@ -296,7 +309,9 @@ final class MetalFramePresenter: NSObject, MTKViewDelegate {
         guard let target = device.makeTexture(descriptor: descriptor),
               let command = queue.makeCommandBuffer() else { throw Failure.allocation }
         try encode(target: target, command: command)
-        command.commit()
+        if let frameLease {
+            guard frameLease.submitCommand(command) else { throw Failure.encoding }
+        } else { command.commit() }
         command.waitUntilCompleted()
         if let error = command.error { throw error }
         var bytes = [UInt8](repeating: 0, count: width * height * 4)
@@ -312,6 +327,7 @@ struct MetalFrameView: NSViewRepresentable {
     let presenter: MetalFramePresenter
     let image: CGImage?
     var nativeTexture: MTLTexture? = nil
+    var nativeLease: AetherMetalFrameLease? = nil
     let onFailure: (String) -> Void
 
     func makeNSView(context: Context) -> MTKView {
@@ -338,7 +354,9 @@ struct MetalFrameView: NSViewRepresentable {
         }
         guard !presenter.directPresentation else { return }
         do {
-            if let nativeTexture {
+            if let nativeLease {
+                presenter.useNativeFrame(nativeLease)
+            } else if let nativeTexture {
                 presenter.useNativeTexture(nativeTexture)
             } else if let image {
                 try presenter.upload(image)

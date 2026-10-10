@@ -21,8 +21,8 @@ def main():
     parser.add_argument("--require-native", action="store_true", help="require a native GPU frame for a custom game")
     parser.add_argument("--renderer", choices=("software", "metal"), default="software")
     parser.add_argument("--presentation", choices=("metal", "image"), default="metal")
-    parser.add_argument("--snapshots", choices=("sync", "async"), default="sync",
-                        help="explicit native presentation snapshot mode; async checks teardown counters")
+    parser.add_argument("--snapshots", choices=("sync", "async", "direct"), default="sync",
+                        help="native frame mode; direct uses session-owned frame leases")
     parser.add_argument("--profile", action="store_true", help="record host work and tick-to-GPU-completion, including MTKView")
     parser.add_argument("--drawable-1080p", action="store_true", help="use a real 1920x1080 Metal drawable (requires --profile)")
     parser.add_argument("--output", type=Path)
@@ -31,8 +31,8 @@ def main():
         parser.error("duration must be >=30 to capture input progression")
     if args.drawable_1080p and (not args.profile or args.presentation != "metal"):
         parser.error("drawable-1080p requires --profile and Metal presentation")
-    if args.snapshots == "async" and (args.renderer != "metal" or args.presentation != "metal"):
-        parser.error("async snapshots require Metal renderer and presentation")
+    if args.snapshots in ("async", "direct") and (args.renderer != "metal" or args.presentation != "metal"):
+        parser.error("async/direct frames require Metal renderer and presentation")
     root = Path(__file__).resolve().parent.parent
     binary = root / "out/apple_host/derived/Build/Products/Debug/AetherHost.app/Contents/MacOS/AetherHost"
     output = args.output or root / "out/apple_host/evidence" / time.strftime("smoke-%Y%m%d-%H%M%S")
@@ -60,6 +60,7 @@ def main():
                        AETHER_HOST_TEST_INPUT="8", AETHER_HOST_PRESENTATION=args.presentation,
                        AETHER_HOST_RENDERER=args.renderer,
                        AETHER_HOST_ASYNC_SNAPSHOT="1" if args.snapshots == "async" else "0",
+                       AETHER_HOST_DIRECT_RENDER="1" if args.snapshots == "direct" else "0",
                        AETHER_HOST_SCHEDULING="direct",
                        AETHER_HOST_DRAWABLE_1080P="1" if args.drawable_1080p else "0",
                        AETHER_HOST_PROFILE="1" if args.profile else "0",
@@ -114,6 +115,14 @@ def main():
                     errors.append("native frame path performed unexpected CPU readbacks")
                 if not re.search(r"Metal bridge .*failures=0", text):
                     errors.append("Metal bridge execution errors or missing diagnostics")
+                if args.snapshots == "direct":
+                    counters = re.findall(r"leases_acquired=(\d+) leases_live=(\d+) lease_submitted=(\d+) lease_completed=(\d+) lease_failures=(\d+) frame_detach_copies=(\d+)", text)
+                    if not counters:
+                        errors.append("missing direct frame lifecycle counters")
+                    else:
+                        acquired, live, submitted, completed, lease_failures, copies = map(int, counters[-1])
+                        if acquired == 0 or submitted == 0 or submitted != completed or live != 0 or lease_failures != 0:
+                            errors.append(f"direct frames not drained: {counters[-1]}")
                 if args.snapshots == "async":
                     counters = re.findall(r"async_submitted=(\d+) async_completed=(\d+) async_inflight=(\d+)", text)
                     if not counters:

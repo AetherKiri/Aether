@@ -258,6 +258,15 @@ NSError *EngineError(engine_handle_t handle, NSString *fallback) {
     return texture;
 }
 
+- (nullable AetherMetalFrameLease *)acquireNativeFrame {
+    if(!_handle || !_renderGeneration)return nil;
+    uint64_t token=0,serial=0;uint32_t width=0,height=0;
+    if(engine_get_godot_native_frame_texture(_handle,&token,&width,&height,&serial)!=ENGINE_RESULT_OK)return nil;
+    AetherMetalFrameLease *frame=AetherMetalBridgeAcquireFrame(_renderGeneration,token,serial);
+    if(frame)_framePixelSize=CGSizeMake(width,height);
+    return frame;
+}
+
 - (NSString *)metalBridgeDiagnostics {
     return [NSString stringWithFormat:@"%@ native_copies=%llu native_readbacks=%llu native_get_calls=%llu native_get_total_ms=%.6f native_get_max_ms=%.6f native_snapshot_calls=%llu native_snapshot_total_ms=%.6f native_snapshot_max_ms=%.6f",
         AetherMetalBridgeDiagnostics(), _nativeCopies, _nativeReadbacks,

@@ -4,6 +4,7 @@
 #include "MetalBridgeShaders.h"
 
 #include <algorithm>
+#include <atomic>
 #include <array>
 #include <cmath>
 #include <chrono>
@@ -32,6 +33,7 @@ struct Record {
     std::shared_ptr<ExternalOwner> external;
     uint64_t generation=0;
     NSString *allocationOrigin=nil;
+    std::shared_ptr<int> frameOwnership=std::make_shared<int>(0);
 };
 struct ReadRequest {
     id<MTLTexture> texture;
@@ -40,8 +42,15 @@ struct ReadRequest {
 };
 struct State {
     uint64_t nextGeneration=1, activeGeneration=0;
+    std::atomic<uint64_t> leasesLive{0}, leaseSubmitted{0}, leaseCompleted{0}, leaseFailures{0};
+    uint64_t leasesAcquired=0, frameDetachCopies=0;
+    NSHashTable<AetherMetalFrameLease *> *frameLeases=[NSHashTable weakObjectsHashTable];
     dispatch_group_t snapshotGroup=dispatch_group_create();
-    uint64_t asyncSubmitted=0, asyncCompleted=0;
+    dispatch_group_t leaseGroup=dispatch_group_create();
+    uint64_t asyncSubmitted=0;
+    std::atomic<uint64_t> asyncCompleted{0};
+    std::mutex completionMutex;
+    NSString *completionError=@"";
     std::recursive_mutex mutex;
     id<MTLDevice> device;
     id<MTLCommandQueue> queue;
@@ -52,7 +61,8 @@ struct State {
     std::map<std::string, id<MTLComputePipelineState>> pipelines;
     std::map<uint64_t, Record> textures;
     std::map<uint64_t, ReadRequest> reads;
-    uint64_t next = 1, operations = 0, failures = 0;
+    uint64_t next = 1;
+    std::atomic<uint64_t> operations{0}, failures{0};
     uint64_t readsBegun=0, readsPending=0, readsCompleted=0, readsCancelled=0;
     uint64_t presentationSnapshots=0;
     uint64_t presentationCombinedSnapshots=0;
@@ -144,9 +154,13 @@ id<MTLTexture> Snapshot(id<MTLTexture> source, bool wait=true) {
         dispatch_group_enter(S().snapshotGroup);++S().asyncSubmitted;
         [command addCompletedHandler:^(id<MTLCommandBuffer> completed) {
             {
-                Lock lock(S().mutex);++S().asyncCompleted;
+                ++S().asyncCompleted;
                 if(completed.status==MTLCommandBufferStatusCompleted)++S().operations;
-                else {++S().failures;S().lastError=completed.error.localizedDescription ?: @"Presentation snapshot failed";}
+                else {
+                    ++S().failures;
+                    std::lock_guard<std::mutex> errorLock(S().completionMutex);
+                    S().completionError=completed.error.localizedDescription ?: @"Presentation snapshot failed";
+                }
             }
             dispatch_group_leave(S().snapshotGroup);
         }];
@@ -154,6 +168,22 @@ id<MTLTexture> Snapshot(id<MTLTexture> source, bool wait=true) {
         return copy;
     }
     return Finish(command) ? copy : nil;
+}
+// Engine writes pass through the session's ownership boundary. A retained
+// frame (including deferred/occluded redraws) cannot be modified in place.
+// Detach on write, rather than allocating/copying every frame acquisition.
+id<MTLTexture> WritableTexture(uint64_t token) {
+    auto found=S().textures.find(token);
+    if(found==S().textures.end())return nil;
+    auto &record=found->second;
+    if(record.frameOwnership.use_count()>1) {
+        id<MTLTexture> next=Snapshot(record.texture);
+        if(!next)return nil;
+        record.texture=next;
+        record.frameOwnership=std::make_shared<int>(0);
+        ++S().frameDetachCopies;
+    }
+    return record.texture;
 }
 bool Valid(id<MTLTexture> texture, const tTVPRect *r) {
     return texture && r && r->left >= 0 && r->top >= 0 &&
@@ -231,7 +261,7 @@ void Release(uint64_t token) {
 }
 bool Update(uint64_t token, const void *pixels, uint32_t stride, const tTVPRect *rect) {
     Lock lock(S().mutex);
-    id<MTLTexture> texture = Texture(token);
+    id<MTLTexture> texture = WritableTexture(token);
     if (!texture || !pixels || stride < texture.width * 4 || !FlushPending()) return false;
     tTVPRect region = Clipped(texture, rect);
     if (region.is_empty()) return true;
@@ -242,7 +272,7 @@ bool Update(uint64_t token, const void *pixels, uint32_t stride, const tTVPRect 
 }
 bool Clear(uint64_t token, uint32_t argb, const tTVPRect *rect) {
     Lock lock(S().mutex);
-    id<MTLTexture> texture = Texture(token);
+    id<MTLTexture> texture = WritableTexture(token);
     if (!texture) return false;
     tTVPRect region = Clipped(texture, rect);
     if (region.is_empty()) return true;
@@ -253,7 +283,7 @@ bool Clear(uint64_t token, uint32_t argb, const tTVPRect *rect) {
 }
 bool Copy(uint64_t dst, uint64_t src, const tTVPRect *dr, const tTVPRect *sr) {
     Lock lock(S().mutex);
-    id<MTLTexture> d = Texture(dst), s = Texture(src);
+    id<MTLTexture> d = WritableTexture(dst), s = Texture(src);
     if (!Valid(d, dr) || !Valid(s, sr) || dr->get_width() != sr->get_width() || dr->get_height() != sr->get_height()) return false;
     if (d == s) s = Snapshot(s);
     if (!s) return false;
@@ -273,7 +303,7 @@ bool Copy(uint64_t dst, uint64_t src, const tTVPRect *dr, const tTVPRect *sr) {
 }
 bool Blend(uint64_t dst, uint64_t src, const tTVPRect *dr, const tTVPRect *sr, uint32_t mode, int opacity, uint32_t color) {
     Lock lock(S().mutex);
-    id<MTLTexture> d = Texture(dst), s = Texture(src);
+    id<MTLTexture> d = WritableTexture(dst), s = Texture(src);
     if (!Valid(d, dr) || !Valid(s, sr)) return false;
     // Modes implemented by separate multi-source kernels must never silently succeed here.
     if (mode == 4 || mode == 6 || mode == 9 || (mode >= 12 && mode <= 14) || mode == 21 || mode == 22 || mode < 1 || mode > 31) return false;
@@ -297,7 +327,7 @@ bool Blend(uint64_t dst, uint64_t src, const tTVPRect *dr, const tTVPRect *sr, u
 bool Blend2(uint64_t dst, uint64_t src1, uint64_t src2, const tTVPRect *dr,
             const tTVPRect *r1, const tTVPRect *r2, uint32_t mode, int opacity, uint32_t) {
     Lock lock(S().mutex);
-    id<MTLTexture> d = Texture(dst), a = Texture(src1), b = Texture(src2);
+    id<MTLTexture> d = WritableTexture(dst), a = Texture(src1), b = Texture(src2);
     if (!Valid(d,dr) || !Valid(a,r1) || !Valid(b,r2) ||
         dr->get_width()!=r1->get_width() || dr->get_height()!=r1->get_height() ||
         dr->get_width()!=r2->get_width() || dr->get_height()!=r2->get_height() ||
@@ -311,7 +341,7 @@ bool Blend3(uint64_t dst, uint64_t src1, uint64_t src2, uint64_t src3,
             const tTVPRect *dr, const tTVPRect *r1, const tTVPRect *r2, const tTVPRect *r3,
             uint32_t mode, int opacity, uint32_t color) {
     Lock lock(S().mutex);
-    id<MTLTexture> d=Texture(dst),a=Texture(src1),b=Texture(src2),c=Texture(src3);
+    id<MTLTexture> d=WritableTexture(dst),a=Texture(src1),b=Texture(src2),c=Texture(src3);
     if (!Valid(d,dr)||!Valid(a,r1)||!Valid(b,r2)||!Valid(c,r3)||mode<12||mode>14) return false;
     for (auto r : {r1,r2,r3}) if (dr->get_width()!=r->get_width()||dr->get_height()!=r->get_height()) return false;
     if (d==a) a=Snapshot(a); if (d==b) b=Snapshot(b); if (d==c) c=Snapshot(c);
@@ -324,7 +354,7 @@ bool Triangles(uint64_t dst, uint64_t src, uint64_t mask, uint32_t count,
     const tTVPRect *clip, const tTVPPointD *dp, const tTVPPointD *sp, const tTVPPointD *mp,
     float opacity, uint32_t flags, bool inverted, bool copy) {
     Lock lock(S().mutex);
-    id<MTLTexture> d=Texture(dst),s=Texture(src),m=mask ? Texture(mask) : nil;
+    id<MTLTexture> d=WritableTexture(dst),s=Texture(src),m=mask ? Texture(mask) : nil;
     if (!d||!s||!clip||!dp||!sp||!count||count>64||!std::isfinite(opacity)||(mask&&(!m||!mp))) return false;
     tTVPRect region=Clipped(d,clip);
     if (region.is_empty()) return true;
@@ -367,7 +397,7 @@ bool Masked(uint64_t d,uint64_t s,uint64_t m,uint32_t n,const tTVPRect *c,const 
     return Triangles(d,s,m,n,c,dp,sp,mp,o,flags,inverted,false);
 }
 bool Mosaic(uint64_t token,const tTVPRect *rects,uint32_t count,uint32_t bx,uint32_t by) {
-    Lock lock(S().mutex); id<MTLTexture> d=Texture(token);
+    Lock lock(S().mutex); id<MTLTexture> d=WritableTexture(token);
     if (!d||!rects||!count||count>65536||(bx<=1&&by<=1)||bx>INT32_MAX||by>INT32_MAX) return false;
     std::vector<float> data;
     for (uint32_t i=0;i<count;++i) {
@@ -470,6 +500,62 @@ bool Publish(uint64_t token) { Lock lock(S().mutex);return Texture(token)!=nil &
 uint64_t ImportAndroid(void *,uint32_t,uint32_t) { return 0; }
 } // namespace
 
+@implementation AetherMetalFrameLease {
+    std::shared_ptr<int> _ownership;
+    std::shared_ptr<ExternalOwner> _external;
+}
+- (instancetype)initWithTexture:(id<MTLTexture>)texture generation:(uint64_t)generation
+                         serial:(uint64_t)serial ownership:(std::shared_ptr<int>)ownership
+                       external:(std::shared_ptr<ExternalOwner>)external {
+    if((self=[super init])) {
+        _texture=texture;_generation=generation;_serial=serial;
+        _ownership=ownership;_external=external;_valid=YES;++S().leasesLive;
+    }
+    return self;
+}
+- (void)releaseFrameResources {
+    if(!_valid)return;
+    _valid=NO;_texture=nil;_ownership.reset();_external.reset();--S().leasesLive;
+}
+- (void)dealloc { [self releaseFrameResources]; }
+- (BOOL)submitCommand:(id<MTLCommandBuffer>)command {
+    Lock lock(S().mutex);
+    if(!_valid || !_generation || _generation!=S().activeGeneration || command.commandQueue!=S().queue ||
+       command.status!=MTLCommandBufferStatusNotEnqueued || !FlushPending())return NO;
+    ++S().leaseSubmitted;
+    dispatch_group_enter(S().leaseGroup);
+    // Completion uses atomics, never the encoding lock: synchronous engine
+    // operations may wait for this command while holding that lock.
+    __block AetherMetalFrameLease *retained=self;
+    [command addCompletedHandler:^(id<MTLCommandBuffer> completed) {
+        (void)retained.texture;
+        if(completed.status!=MTLCommandBufferStatusCompleted)++S().leaseFailures;
+        retained=nil;
+        ++S().leaseCompleted;
+        dispatch_group_leave(S().leaseGroup);
+    }];
+    [command commit];
+    return YES;
+}
+@end
+
+AetherMetalFrameLease *AetherMetalBridgeAcquireFrame(uint64_t generation,uint64_t token,uint64_t serial) {
+    Lock lock(S().mutex);
+    auto found=S().textures.find(token);
+    if(!generation || generation!=S().activeGeneration || found==S().textures.end() ||
+       found->second.generation!=generation || !FlushPending())return nil;
+    auto &record=found->second;
+    // External producers can write outside our callback protocol. Give those
+    // frames an immutable snapshot; ordinary engine textures are shared directly.
+    id<MTLTexture> texture=record.external ? Snapshot(record.texture) : record.texture;
+    if(!texture)return nil;
+    ++S().leasesAcquired;
+    AetherMetalFrameLease *lease=[[AetherMetalFrameLease alloc] initWithTexture:texture generation:generation serial:serial
+        ownership:record.external ? std::make_shared<int>(0) : record.frameOwnership external:record.external];
+    [S().frameLeases addObject:lease];
+    return lease;
+}
+
 BOOL AetherMetalBridgeInitialize(NSError **error) {
     Lock lock(S().mutex);
     if (S().library) return YES;
@@ -531,6 +617,10 @@ BOOL AetherMetalBridgeEndSession(uint64_t generation) {
     Lock lock(S().mutex);
     if(generation!=S().activeGeneration)return NO;
     S().activeGeneration=0;
+    // SwiftUI may retain an old view after the controller has closed the game.
+    // The session, rather than eventual view destruction, releases frame storage.
+    for(AetherMetalFrameLease *lease in S().frameLeases.allObjects)
+        if(lease.generation==generation)[lease releaseFrameResources];
     for(const auto &entry:S().textures) {
         if(entry.second.generation==generation && entry.second.allocationOrigin) {
             NSLog(@"[Metal resource] retired generation=%llu token=%llu size=%lux%lu origin=%@",
@@ -553,7 +643,8 @@ BOOL AetherMetalBridgeDrain() {
     // Completion callbacks take the bridge lock: never wait while holding it.
     [fence waitUntilCompleted];
     dispatch_group_wait(S().snapshotGroup,DISPATCH_TIME_FOREVER);
-    return fence.status==MTLCommandBufferStatusCompleted;
+    dispatch_group_wait(S().leaseGroup,DISPATCH_TIME_FOREVER);
+    return fence.status==MTLCommandBufferStatusCompleted && S().leaseFailures.load()==0;
 }
 id<MTLTexture> AetherMetalBridgeCopyTexture(uint64_t token) {
     Lock lock(S().mutex);
@@ -571,15 +662,20 @@ id<MTLTexture> AetherMetalBridgeCopyTexture(uint64_t token) {
 BOOL AetherMetalBridgeReadTexture(uint64_t token, void *pixels, size_t capacity, uint32_t stride) { return Read(token, pixels, capacity, stride); }
 NSString *AetherMetalBridgeDiagnostics() {
     Lock lock(S().mutex);
+    NSString *error=S().lastError;
+    { std::lock_guard<std::mutex> errorLock(S().completionMutex);
+      if(!error.length)error=S().completionError; }
     uint64_t textureBytes=0, externalTextures=0, retiredTextures=0;
     for (const auto &entry : S().textures) {
         textureBytes += entry.second.texture.width * entry.second.texture.height * 4;
         if (entry.second.external) ++externalTextures;
         if (entry.second.generation && entry.second.generation!=S().activeGeneration) ++retiredTextures;
     }
-    return [NSString stringWithFormat:@"Metal bridge textures=%zu reads=%zu commands=%llu failures=%llu error=%@ read_begin=%llu read_pending_polls=%llu read_complete=%llu read_cancel=%llu snapshot_calls=%llu snapshot_total_ms=%.3f snapshot_max_ms=%.3f snapshot_combined=%llu async_submitted=%llu async_completed=%llu async_inflight=%llu texture_rgba_bytes=%llu external_textures=%llu render_generation=%llu retired_textures=%llu",
-        S().textures.size(),S().reads.size(),S().operations,S().failures,S().lastError,
+    NSString *base=[NSString stringWithFormat:@"Metal bridge textures=%zu reads=%zu commands=%llu failures=%llu error=%@ read_begin=%llu read_pending_polls=%llu read_complete=%llu read_cancel=%llu snapshot_calls=%llu snapshot_total_ms=%.3f snapshot_max_ms=%.3f snapshot_combined=%llu async_submitted=%llu async_completed=%llu async_inflight=%llu texture_rgba_bytes=%llu external_textures=%llu render_generation=%llu retired_textures=%llu",
+        S().textures.size(),S().reads.size(),S().operations.load(),S().failures.load(),error,
         S().readsBegun,S().readsPending,S().readsCompleted,S().readsCancelled,
         S().presentationSnapshots,S().presentationSnapshotMS,S().presentationSnapshotMaxMS,S().presentationCombinedSnapshots,
-        S().asyncSubmitted,S().asyncCompleted,S().asyncSubmitted-S().asyncCompleted,textureBytes,externalTextures,S().activeGeneration,retiredTextures];
+        S().asyncSubmitted,S().asyncCompleted.load(),S().asyncSubmitted-S().asyncCompleted.load(),textureBytes,externalTextures,S().activeGeneration,retiredTextures];
+    return [base stringByAppendingString:[NSString stringWithFormat:@" leases_acquired=%llu leases_live=%llu lease_submitted=%llu lease_completed=%llu lease_failures=%llu frame_detach_copies=%llu",
+        S().leasesAcquired,S().leasesLive.load(),S().leaseSubmitted.load(),S().leaseCompleted.load(),S().leaseFailures.load(),S().frameDetachCopies]];
 }

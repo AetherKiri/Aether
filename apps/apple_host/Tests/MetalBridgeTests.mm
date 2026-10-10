@@ -178,10 +178,9 @@ int main(int argc,char **argv) { @autoreleasepool {
     }
     assert(ready);
     assert((snapshot==Pixel{200,40,60,128}));
-    // A completed request supports repeated polling until explicit discard.
+    // Completion consumes the request, matching the engine's CPU readback owner.
     ready=false;snapshot.fill(0);
-    assert(bridge.poll_read_rgba(request,snapshot.data(),4,4,&ready)&&ready);
-    assert((snapshot==Pixel{200,40,60,128}));
+    assert(!bridge.poll_read_rgba(request,snapshot.data(),4,4,&ready)&&!ready);
     bridge.discard_read_rgba(request);
     assert(!bridge.poll_read_rgba(request,snapshot.data(),snapshot.size(),4,&ready)&&!ready);
     // Discard before completion is safe: Metal retains encoded resources.

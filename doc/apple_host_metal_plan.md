@@ -129,6 +129,8 @@ Apple M1 Max / macOS 15.7.1 一次 Debug 组件测量：关闭批处理 5.012/10
 
 ### 交接与遗留（2026-10-11）
 
+消费者契约修正：实际 `GodotTexture2D::CompletePendingGpuReadback` 在 ready 后清零句柄而不 discard；参考 Godot 桥 `BridgePollReadRgba` 同时消费请求。Metal 桥现已同样在成功 ready poll 后删除记录，修复消费者完成后快照残留。此前“可重复完成 poll 直到 discard”的描述与测试已撤销；discard 对已消费句柄仍安全。桥测试通过，reads/textures=0、failures=0。`EnsureCpuReadable` 在 pending 未完成时会取消并同步回读，因此异步收益依赖复制与首次 CPU 访问之间的间隔，不能推断稳态呈现收益。
+
 带绘制负载的回读基准：新增 `--batched-readback-benchmark`，1080p clear+8 次 alpha blend 保持未提交，计时从回读调用开始（不含先前 CPU 编码）。10 次预热、60 次采样，同步等待 p50/p95/max=6.773/9.047/11.180ms，异步提交=0.089/0.110/0.116ms，异步总完成=6.146/8.902/11.008ms。70 轮异步输出与同步参考逐字节一致，pending 轮询累计 1060232，最终 commands=175、failures=0、reads/textures=0。该结果支持减少调用线程等待，不等同于完整游戏帧率、Godot 对照或跨帧调度收益；忙轮询仅用于组件测量，下一步需检查引擎实际回读消费者是否跨帧使用该接口。
 
 批次回读等待移除：begin 将快照 blit 追加到当前线程的 pending 命令缓冲并直接提交，不再通过 FlushPending 等待 GPU；batch scope 保留，后续绘制进入新缓冲。同队列保证先前写入→快照→后续写入顺序。跨线程遇到 pending 批次时拒绝请求。新增批次内 clear→begin→再次 clear→end 测试，确认快照与最终纹理分别保持对应像素。桥套件与 Debug 宿主构建通过，failures=0、reads/textures=0。无 pending 负载的 1080p 基准提交 p50=0.108ms、总完成 p50=2.558ms，仅记录基线，不作为批次等待优化的量化收益。上一段“begin 仍同步 flush”已由此实现替代。

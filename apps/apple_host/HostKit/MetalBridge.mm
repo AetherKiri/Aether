@@ -395,6 +395,8 @@ bool PollRead(uint64_t token,void *out,size_t capacity,uint32_t stride,bool *rea
             uint8_t *p=(uint8_t *)out+y*stride+x*4; std::swap(p[0],p[2]);
         }
     }
+    // Match the engine/Godot contract: a ready poll consumes the request.
+    S().reads.erase(found);
     *ready=true;return true;
 }
 void DiscardRead(uint64_t token) { Lock lock(S().mutex);S().reads.erase(token); }

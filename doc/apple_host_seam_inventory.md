@@ -29,6 +29,9 @@
 **宿主内部**：
 `renderer`（`godot_native`/`gpu_bridge`/`debug_cpu`/`software` — `ENGINE_OPTION_RENDERER`）、`frame_output`（`surface`/`raw_source` — `ENGINE_OPTION_FRAME_OUTPUT`）、`ime_preedit`、`ime_preedit_cursor`
 
+**本地翻译（2026-10-11 已透传）**：`text_translation.model_path`、`text_translation.target_language`（跟随界面语言，取值 `zh_hans`/`zh_hant`/`en`/`ja`/`ko`）、`text_translation.enabled`（有模型路径即 1）。
+宿主按 `engine_is_text_translation_available()` 决定是否显示设置分区并下发选项；该宏由私有 provider 提供，未链接时引擎返回 `ENGINE_RESULT_NOT_SUPPORTED`，宿主记录实际错误后继续启动。
+
 ## B. GPU 绘制桥（23 个回调）
 
 **关键结构发现（v0.2 修正）**：三条候选呈现路径，各有代价，逐一说明：
@@ -71,8 +74,8 @@ Apple 宿主现已提供实体/屏幕按键及原生弹窗提交 TEXT_INPUT（�
 | operation | 载荷 | 现实现 | 新宿主方案 |
 |---|---|---|---|
 | `open_browser` | URL | shell_open | NSWorkspace ✅ |
-| `call_native` | runtime 定义 | 信号→GDScript | `PlatformAdapter` 分发 🔶（runtime 定义，按需） |
-| `purchase` | runtime 定义 | StoreKit（apple_storekit.swift） | 直接复用 ✅ |
+| `call_native` | runtime 定义 | 空应答 `result=` | 空应答 `result=` ✅（与 Godot 壳一致）；runtime 定义负载按需扩展 |
+| `purchase` | runtime 定义 | macOS 桌面壳：`result=-1` + "In App Billing is unavailable" 降级；StoreKit（apple_storekit.swift）为 iOS 侧能力 | 已实现同款降级响应 ✅；真实 StoreKit 属 iOS/M4 范围 |
 | `dialog` | URL 表单：title/message/text_field/maximum_characters/yes_no/buttons；响应 result/text | Godot 原生壳弹窗，响应文字 URI 编码 | SwiftUI FIFO 请求弹窗 + ABI 响应已实现；真实私有 provider 验收待补 🔶 |
 | `text_input` | title\tmessage\tinitial text；响应 result=cancel 或 result=ok\t正文 | C++ 扩展 `show_runtime_text_input` 原生输入框 | 通用原生输入框、初始值、混合 FIFO、取消/确认与错误重试已实现；真实 provider 验收待补 🔶 |
 | `presentation_sprite` | runtime 定义 payload | `RuntimePresentationSprite`（Godot Sprite2D） | ⚠️ 发射方不在公开树（疑为 AetherInternal/SoftPal 私有包）；公开构建下不会触发。M3+ 按需处理 |
@@ -80,7 +83,13 @@ Apple 宿主现已提供实体/屏幕按键及原生弹窗提交 TEXT_INPUT（�
 | `minori_message` / `_reveal` | 说话人/文本/逐字 | 宿主文字框 | SwiftUI 文字框（M3）🔶 |
 | `minori_audio` | 8 字段 `\t`（槽/总线/文件/音量/淡入淡出） | AudioStreamPlayer + BGM fade | AVAudioEngine（M3）待实现 🔶 |
 | `minori_movie` | 绝对文件路径\t宽\t高\tx\ty\t可跳过(0/1) | `engine_media_*` + 宿主呈现 | 同游戏引擎借用媒体、画布矩形覆盖、complete/skipped/error 回传已实现；真实 Minori VM 验收待补 🔶 |
+| `minori_select` | 选择项数据 | 宿主选择 UI | ⛔ 未实现（随 Minori 适配暂缓）；当前无请求时不影响其它 runtime。见 M 节 TASK 11 |
+| `softpal_*`（window_size/aspect_mode/cursor_visible/open_target/window_geometry/cursor_warp/window_title/name_editor/file_dialog/stand_dialog/http_get） | runtime 定义 | Godot 壳逐项应答（`softpal_http_get` 失败应答 `ok=0`） | ⛔ 未实现：SoftPal 为私有 runtime，本机构建未启用；窗口类操作在 macOS 有直接等价物，启用前需先补此族 |
 | 其他 | — | 信号→壳层 | 默认分发 ✅ |
+
+**应答策略（2026-10-11）**：除 `open_browser` 这类不需应答的操作外，每个 operation 都必须显式回传响应。
+未处理的 operation 会累加 `unhandledPlatformRequests` 并写入宿主日志与会话诊断（`session.json`），
+避免 runtime 静默等待；新增实现前先确认对应 runtime 是否在本构建启用。
 
 ## E. 媒体（视频库与影片）
 
@@ -163,6 +172,8 @@ Apple 宿主现已提供实体/屏幕按键及原生弹窗提交 TEXT_INPUT（�
 - 8. P2 绘制回调的 Metal 实现细节（blend mode 全枚举、mosaic 语义、masked triangles 语义）— M1 开始前
 - 9. `frame_output` 选项在 P2 下的取值与时机 — M1
 - 10. 截图/探针对等物（G0/G1 验收需要）— M0 内
+- 11. `softpal_*` 窗口族、`minori_select`、`softpal_http_get` 的宿主实现（D 节已归档为缺口）— 启用对应 runtime 时
+- 12. 本地翻译真实模型加载与状态（LOADING/READY/FAILED）验收 — 链接私有 provider 后
 
 ### M1 实施补充（2026-10-10）
 

@@ -39,6 +39,10 @@ struct ContentView: View {
                             ProgressView().controlSize(.small)
                             Text(model.text("starting"))
                         }
+                        if engine.translationStatus.state == .loading {
+                            ProgressView().controlSize(.small)
+                            Text(model.text("translationLoading")).font(.caption).foregroundStyle(.secondary)
+                        }
                     }.padding(12)
                     Divider()
                     HStack(spacing: 0) {
@@ -200,6 +204,7 @@ struct ShellSettingsView: View {
                 Text(model.text("virtualControlsHelp")).font(.caption).foregroundStyle(.secondary)
                 Toggle(model.text("logs"), isOn: $model.showLogs)
             }
+            if model.translationAvailable { translationSection }
             Button(model.text("exportDiagnostics")) { model.exportDiagnostics() }
             Divider()
             Text(model.text("storage")).font(.headline)
@@ -208,7 +213,42 @@ struct ShellSettingsView: View {
                 Spacer()
                 Button(model.text("ok")) { model.showSettings = false }.keyboardShortcut(.defaultAction)
             }
-        }.padding(24).frame(width: 460)
+        }
+        .padding(24).frame(width: 460)
+        .onAppear { if model.translationAvailable { model.engine.refreshTranslationStatus() } }
+    }
+
+    /// Local-model translation, mirroring the Godot shell's compatibility row:
+    /// a model path plus the interface language as the translation target.
+    private var translationSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(model.text("translationModel")).font(.headline)
+            Text(model.text("translationModelHelp")).font(.caption).foregroundStyle(.secondary)
+            HStack {
+                Button(model.text("translationModelSelect")) { model.chooseTranslationModel() }
+                if model.translationSettings.isConfigured {
+                    Button(model.text("translationModelClear")) { model.clearTranslationModel() }
+                }
+            }
+            if model.translationSettings.isConfigured {
+                Text(model.text("translationModelSelected") + ": " + model.translationSettings.displayName)
+                    .font(.caption).textSelection(.enabled)
+                Text(model.text("translationModelClearDesc")).font(.caption2).foregroundStyle(.secondary)
+            }
+            Text(model.text("translationTargetHelp")).font(.caption2).foregroundStyle(.secondary)
+            Text(model.engine.translationStatus.summary(model.text))
+                .font(.caption)
+                .foregroundStyle(model.engine.translationStatus.state == .failed ? .red : .secondary)
+            translationDetail
+        }
+    }
+
+    @ViewBuilder
+    private var translationDetail: some View {
+        let detail = model.engine.translationStatus.detail(model.text)
+        if !detail.isEmpty {
+            Text(detail).font(.caption2).foregroundStyle(.secondary).textSelection(.enabled)
+        }
     }
 }
 

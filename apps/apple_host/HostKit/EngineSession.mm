@@ -94,6 +94,35 @@ NSError *EngineError(engine_handle_t handle, NSString *fallback) {
     return ENGINE_API_VERSION;
 }
 
+- (BOOL)isTextTranslationAvailable {
+    return engine_is_text_translation_available() != 0;
+}
+
+- (uint32_t)textTranslationState {
+    return engine_get_text_translation_state();
+}
+
+- (nullable NSDictionary<NSString *, NSNumber *> *)textTranslationStats {
+    engine_text_translation_stats_t stats{};
+    stats.struct_size = sizeof(stats);
+    if (engine_get_text_translation_stats(&stats) != ENGINE_RESULT_OK) {
+        return nil;
+    }
+    return @{
+        @"state" : @(stats.state),
+        @"backend" : @(stats.backend),
+        @"activeJobs" : @(stats.active_jobs),
+        @"modelFileBytes" : @(stats.model_file_bytes),
+        @"translationsCompleted" : @(stats.translations_completed),
+        @"translationsFailed" : @(stats.translations_failed),
+        @"cacheHits" : @(stats.cache_hits),
+        @"cacheMisses" : @(stats.cache_misses),
+        @"modelLoadMicroseconds" : @(stats.model_load_us),
+        @"lastInferenceMicroseconds" : @(stats.last_inference_us),
+        @"maxInferenceMicroseconds" : @(stats.max_inference_us),
+    };
+}
+
 - (BOOL)enableMetalRenderer:(NSError **)error {
     if (!AetherMetalBridgeInitialize(error)) return NO;
     if (![self setOption:@"renderer" value:@"godot_native" error:error]) return NO;

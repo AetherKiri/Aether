@@ -27,6 +27,9 @@ final class ShellModel: ObservableObject {
     @Published var language: ShellLanguage { didSet { UserDefaults.standard.set(language.rawValue, forKey: preferencePrefix + "language") } }
     @Published var renderer: String { didSet { UserDefaults.standard.set(renderer, forKey: preferencePrefix + "renderer") } }
     @Published var showLogs: Bool { didSet { UserDefaults.standard.set(showLogs, forKey: preferencePrefix + "logs") } }
+    @Published var translationModelPath: String { didSet {
+        UserDefaults.standard.set(translationModelPath, forKey: preferencePrefix + "translationModel")
+    } }
     private let preferencePrefix: String
     private var libraryAvailable = true
 
@@ -37,6 +40,7 @@ final class ShellModel: ObservableObject {
         renderer = defaults.string(forKey: preferencePrefix + "renderer") == "metal" ? "metal" : "software"
         showLogs = defaults.bool(forKey: preferencePrefix + "logs")
         showVirtualControls = defaults.bool(forKey: preferencePrefix + "virtualControls")
+        translationModelPath = defaults.string(forKey: preferencePrefix + "translationModel") ?? ""
         let root = ProcessInfo.processInfo.environment["AETHER_HOST_LIBRARY_ROOT"].map {
             URL(fileURLWithPath: $0, isDirectory: true)
         } ?? FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
@@ -136,6 +140,10 @@ final class ShellModel: ObservableObject {
         let path = repository.gameURL(game).path
         guard FileManager.default.fileExists(atPath: path) else { error = text("missing"); return }
         engine.prepareDiagnostics(gamePath: path, title: game.displayTitle)
+        // Applied by initializeEngine() before the game opens; the target
+        // language follows the interface language, as in the Godot shell.
+        engine.translationSettings = translationSettings
+        engine.translationTargetLanguage = TranslationSettings.targetLanguageCode(for: language)
         guard engine.initializeEngine(renderer: renderer), engine.openAndRun(gamePath: path) else {
             error = engine.failureMessage
             engine.shutdown()
@@ -195,6 +203,54 @@ final class ShellModel: ObservableObject {
             ])
             NSWorkspace.shared.activateFileViewerSelecting([destination])
         } catch { self.error = error.localizedDescription }
+    }
+
+    // MARK: - Local translation model (mirrors the Godot shell's settings row)
+
+    var translationSettings: TranslationSettings { TranslationSettings(modelPath: translationModelPath) }
+    var translationAvailable: Bool { engine.textTranslationAvailable }
+
+    func chooseTranslationModel() {
+        let panel = NSOpenPanel()
+        panel.title = text("translationModelSelect")
+        panel.message = text("translationModelHelp")
+        panel.prompt = text("translationModelSelect")
+        panel.canChooseDirectories = false
+        panel.canChooseFiles = true
+        panel.allowsMultipleSelection = false
+        if let gguf = UTType(filenameExtension: TranslationSettings.modelFileExtension) {
+            panel.allowedContentTypes = [gguf]
+        }
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        selectTranslationModel(path: url.path)
+    }
+
+    /// Validates and persists a model path. Returns the user-facing error text
+    /// when the file cannot be used; the previous path is kept in that case.
+    @discardableResult
+    func selectTranslationModel(path: String) -> String? {
+        if let failure = TranslationSettings.validate(path: path) {
+            let message = translationFailureText(failure)
+            error = message
+            engine.log("translation model rejected")
+            return message
+        }
+        translationModelPath = path
+        engine.log("translation model selected (\(TranslationSettings.displayName(for: path)))")
+        return nil
+    }
+
+    func clearTranslationModel() {
+        guard !translationModelPath.isEmpty else { return }
+        translationModelPath = ""
+        engine.log("translation model cleared")
+    }
+
+    private func translationFailureText(_ failure: TranslationSettings.Failure) -> String {
+        switch failure {
+        case .wrongExtension: return text("translationModelExtension")
+        case .empty, .missingFile, .notReadable: return text("translationModelMissing")
+        }
     }
 
     func returnToLibrary() {

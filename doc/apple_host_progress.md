@@ -269,6 +269,14 @@
 - CUA 使用生产 parser/controller/view 的独立 UI fixture，确认预填选中初始文字；你好😀&=+% 在首次失败后保留，Return 重试回传原正文，再完成 dialog、Escape 取消输入、自动取消无效请求。ACK 为明确测试回调，真实 provider 发请求/接收成功响应仍未验收；本项不继续 Minori 标题适配。
 - 证据 `out/apple_host/evidence/m3-text-input/`、`m3-text-input-dialog-regression/`；KAG3/ONS 回归结果见下方最终验证记录。IME preedit/选区自动同步仍待迁移，Minori 与 G1 继续暂缓。
 
+### 2026-10-11：M3 本地翻译设置与平台请求覆盖
+
+- 新增 `TranslationSettings`/`TranslationStatus`：把引擎通用选项 `text_translation.model_path`、`text_translation.target_language`、`text_translation.enabled` 接入宿主，目标语言跟随界面语言，选项顺序与取值对齐 Godot 壳的 `_apply_engine_options`。模型路径去首尾空白、限制 `.gguf`、要求存在且可读，并持久化到偏好。
+- 设置页新增「本地翻译模型」分区：选择 GGUF 模型 / 停用本地翻译 / 已选模型 / 状态行（未启用、加载中、已加载、失败）与统计明细（后端、模型大小、已翻译、失败次数）；加载中在游戏页显示提示。分区按 `engine_is_text_translation_available()` 显隐，与 Godot 壳一致；本机构建未链接私有 provider（探针实测 available=0），仅在 Debug 覆盖 `AETHER_HOST_DEBUG_TRANSLATION=1` 时显示，用于宿主自测。
+- 选项在 `initializeEngine` 内、打开游戏前应用；被引擎拒绝时记录实际错误并继续启动，不中断会话。本机日志确认三个键按顺序下发且返回引擎真实原因 "local-model text translation is unavailable in this build"，游戏仍正常启动。真实模型加载、推理质量与耗时需链接私有 provider 后单独验收。
+- 平台请求覆盖补齐：`call_native` 按原壳回传 `result=`；把「无响应类」（`open_browser`）与「未处理」分开记录，未处理请求累计后写入会话诊断 `unhandledPlatformRequests`，避免运行时静默等待。接缝清单 D 节补记 Godot 壳已应答但宿主尚未实现的 `softpal_*` 窗口族、`minori_select` 与 `softpal_http_get`。
+- `TranslationSettingsTests` 与 `tools/apple_host_translation_test.py` 通过（选项映射/模型校验/状态文案 + 引擎可用性探针）；`ShellStringsTests` 覆盖新增 18 个五语言 key；purchase/browser/input/dialog 测试与 KAG3+ONS 各 30 秒冒烟通过。CUA 验证分区显隐、选型、重启保持、停用与选项应用日志。本轮未改动引擎与 provider ABI。
+
 ## 下一步队列
 
 1. [x] 接缝清单 v0.1（交付物 A）+ 三份文档建立
@@ -289,9 +297,11 @@
 16. [x] **M3 通用 text_input 实现**：原生初始值输入、混合队列及协议响应；真实 provider 验收待补
 17. [x] **通用功能**：Debug 冷启动基准（软件/Metal，本地原创 fixture）
 18. [x] **M3 Purchase 降级基线**：无 StoreKit provider 时确定性完成请求；真实 IAP 待接入
-19. [ ] **M3 后续**：IAP provider/更新逐项迁移；翻译目录审计已完成
-20. [ ] **Minori 暂缓**：音频/文字框/选择/存档及真实游戏验收，待用户重新安排
-21. [x] 同步 spec、接缝清单与进度
+19. [x] **M3 翻译**：本地翻译模型设置、选项透传与状态展示；真实模型加载待私有 provider
+20. [x] **通用宿主**：`call_native` 应答、未处理请求可观测、接缝清单 D 节补全 softpal_*/minori_select
+21. [ ] **M3 后续**：IAP provider 与更新器逐项迁移（macOS 上 purchase 与现产品同为降级响应，真实 IAP 属 iOS/M4 范围）
+22. [ ] **Minori 暂缓**：音频/文字框/选择/存档及真实游戏验收，待用户重新安排
+23. [x] 同步 spec、接缝清单与进度
 
 ## 变更记录
 

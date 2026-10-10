@@ -300,6 +300,30 @@ out/apple_host/shell-strings-tests
 测试会检查 key 覆盖、五语言数量、非空值、locale 映射及缺失 key 回退。
 
 
+## 本地翻译模型
+
+设置页「本地翻译模型」按 `engine_is_text_translation_available()` 显隐，与 Godot 壳一致。
+选择外部 GGUF 模型后，宿主在打开游戏前透传 `text_translation.model_path`、
+`text_translation.target_language`（跟随界面语言）与 `text_translation.enabled`；
+「停用本地翻译」清空路径且不删除磁盘上的模型文件。模型必须存在、可读且为 `.gguf`。
+未链接私有翻译 provider 时引擎返回“不支持”，宿主记录引擎返回的实际原因后继续启动；
+Debug 自测可用 `AETHER_HOST_DEBUG_TRANSLATION=1` 强制显示该分区，仅用于宿主页面验证。
+
+```bash
+python3 tools/apple_host_translation_test.py
+```
+
+该工具运行设置/选项映射与模型校验测试，并记录当前核心是否链接私有翻译 provider。
+真实模型加载（LOADING/READY/FAILED）、推理质量与耗时需该 provider 接入后另行验收。
+
+## 平台请求应答策略
+
+除 `open_browser` 这类无需应答的操作外，每个 operation 都会显式回传响应；
+`call_native` 与原壳一致返回 `result=`。未处理的 operation 计入会话诊断
+`unhandledPlatformRequests` 并写入宿主日志，避免 runtime 静默等待。
+`minori_select`、`softpal_*` 窗口族、`softpal_http_get` 等缺口见
+`doc/apple_host_seam_inventory.md` D 节。
+
 ## Purchase 请求基线
 
 Apple 原生宿主当前未链接 Godot 扩展中的 StoreKit provider，因此 `purchase` 请求不会静默挂起或伪造购买成功。宿主解析 `product_id`，回传与现有壳一致的 `result=-1`、`error_response=-1` 和 URL 编码的不可用原因，并记录产品标识；缺少产品标识也会确定性完成。

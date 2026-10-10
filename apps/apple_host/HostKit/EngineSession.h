@@ -26,6 +26,14 @@ NS_ASSUME_NONNULL_BEGIN
 
 - (uint32_t)engineAPIVersion;
 
+// Optional local-model text translation. Availability and state are
+// process-wide and mirror engine_is_text_translation_available().
+- (BOOL)isTextTranslationAvailable;
+// ENGINE_TEXT_TRANSLATION_DISABLED/LOADING/READY/FAILED
+- (uint32_t)textTranslationState;
+// Process-wide resource/timing snapshot; nil when the query fails.
+- (nullable NSDictionary<NSString *, NSNumber *> *)textTranslationStats;
+
 // M1 opt-in: installs Metal callbacks and selects the existing godot_native ABI backend.
 - (BOOL)enableMetalRenderer:(NSError **)error NS_SWIFT_NAME(enableMetalRenderer());
 - (nullable id<MTLTexture>)copyNativeFrameTexture;

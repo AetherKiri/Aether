@@ -87,6 +87,57 @@ final class EngineController: ObservableObject {
     private var diagnosticWriteFailed = false
     private var diagnosticsPrepared = false
 
+    // Local-model text translation. Availability is process-wide (private
+    // provider); the Debug override only forces the settings section on builds
+    // without that provider so the host page can be exercised.
+    var translationSettings = TranslationSettings()
+    var translationTargetLanguage = TranslationSettings.targetLanguageCode(for: .english)
+    @Published private(set) var translationStatus = TranslationStatus()
+    private var loggedTranslationState: UInt32?
+    var textTranslationAvailable: Bool {
+        session.isTextTranslationAvailable()
+            || ProcessInfo.processInfo.environment["AETHER_HOST_DEBUG_TRANSLATION"] == "1"
+    }
+    private var unhandledPlatformRequests = 0
+
+    /// Operations the host consumes without submitting a response. Every other
+    /// operation must answer explicitly: a runtime waiting on a response would
+    /// otherwise stall silently.
+    private static let operationsWithoutResponse: Set<String> = ["open_browser"]
+
+    /// Applies text_translation.* before a game opens; mirrors the Godot
+    /// shell's option order. Rejections are logged instead of aborting the
+    /// session so an unsupported build still starts the game.
+    @discardableResult
+    func applyTranslationOptions() -> Bool {
+        guard textTranslationAvailable else { return false }
+        var applied = true
+        for option in translationSettings.engineOptions(targetLanguage: translationTargetLanguage) {
+            do { try session.setOption(option.key, value: option.value) }
+            catch {
+                applied = false
+                log("translation option \(option.key) rejected: \(error.localizedDescription)")
+            }
+        }
+        if applied {
+            let model = translationSettings.displayName.isEmpty ? "none" : translationSettings.displayName
+            log("translation options applied (model=\(model), target=\(translationTargetLanguage), enabled=\(translationSettings.isConfigured ? "1" : "0"))")
+        }
+        refreshTranslationStatus()
+        return applied
+    }
+
+    /// Samples the process-wide translation state; logs transitions only.
+    func refreshTranslationStatus() {
+        let stats = session.textTranslationStats()
+        let status = TranslationStatus(state: session.textTranslationState(), stats: stats)
+        translationStatus = status
+        if loggedTranslationState != status.state.rawValue {
+            loggedTranslationState = status.state.rawValue
+            log("translation state -> \(status.state)")
+        }
+    }
+
     func prepareDiagnostics(gamePath: String, title: String = "") {
         diagnosticsPrepared = true
         recordDiagnostics(["gamePath": gamePath, "gameTitle": title, "state": "initializing"], newSession: true)
@@ -154,6 +205,11 @@ final class EngineController: ObservableObject {
             // unconditionally in engine_open_game; same behavior as the Godot
             // host (games live in managed copies there). Parity accepted.
             try session.setOption("console_log_file", value: "0")
+            if textTranslationAvailable {
+                applyTranslationOptions()
+            } else {
+                log("local text translation unavailable in this build")
+            }
             recordDiagnostics(["renderer": nativeRendererEnabled ? "metal" : "software", "api": String(session.engineAPIVersion())])
             status = "引擎已创建 (api v\(session.engineAPIVersion()))"
             log("engine_create OK, renderer=\(nativeRendererEnabled ? "metal-bridge" : "software"), api=\(session.engineAPIVersion())")
@@ -235,6 +291,8 @@ final class EngineController: ObservableObject {
         session.tick(deltaMS: 16)
         tickCount += 1
         if tickCount % 30 == 1 { drainEngineLogs() }
+        // Follow the loading->ready/failed transition while a model loads.
+        if tickCount % 60 == 0, translationStatus.state == .loading { refreshTranslationStatus() }
 
         if !platformDialogs.hasPending {
             session.pollPlatformRequests { [weak self] operation, argument in
@@ -403,9 +461,22 @@ final class EngineController: ObservableObject {
             } catch {
                 log("purchase response failed: \(error.localizedDescription)")
             }
-        } else {
+        } else if operation == "call_native" {
+            // Parity with the Godot shell, which answers an empty native call
+            // so the runtime never waits on it.
+            do {
+                try session.submitPlatformResponse("call_native", argument: "result=")
+                log("call_native acknowledged")
+            } catch {
+                log("call_native response failed: \(error.localizedDescription)")
+            }
+        } else if Self.operationsWithoutResponse.contains(operation) {
             let preview = argument.count > 96 ? String(argument.prefix(96)) + "…" : argument
             log("platform_request: \(operation) \(preview)")
+        } else {
+            let preview = argument.count > 96 ? String(argument.prefix(96)) + "…" : argument
+            unhandledPlatformRequests += 1
+            log("unhandled platform_request (no response): \(operation) \(preview)")
         }
     }
 
@@ -639,7 +710,10 @@ final class EngineController: ObservableObject {
         stopLoop()
         drainEngineLogs()
         recordDiagnostics(["state": failureMessage == nil ? "stopped" : "failed", "closed": ISO8601DateFormatter().string(from: Date()),
-                           "ticks": String(tickCount), "frame": "\(Int(frameSize.width))x\(Int(frameSize.height))"])
+                           "ticks": String(tickCount), "frame": "\(Int(frameSize.width))x\(Int(frameSize.height))",
+                           "unhandledPlatformRequests": String(unhandledPlatformRequests),
+                           "translationState": "\(translationStatus.state)"])
+        unhandledPlatformRequests = 0
         session.shutdown()
         log(session.metalBridgeDiagnostics())
         nativeFrameTexture = nil

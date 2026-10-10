@@ -27,6 +27,7 @@
 - Rust：`~/.cargo`（stable 1.99）
 - 网络：GitHub 经本地代理 `127.0.0.1:10808`（构建/依赖下载需带 `http(s)_proxy`）
 - XcodeGen 2.46.0：已安装（`/opt/homebrew/bin/xcodegen`）
+- 协作：fork = `ColorCard/AetherKiri`（upstream `AetherKiri/Aether` 的 fork，remote 名 `fork`）；Apple 宿主工作分支 `feature/apple-native-host-m0`（推送到 fork，按需向上游开 PR）
 
 ---
 

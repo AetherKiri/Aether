@@ -509,6 +509,12 @@ final class EngineController: ObservableObject {
                 self.handlePlatformRequest("minori_movie", argument: argument)
             }
         }
+        if let argument = env["AETHER_HOST_TEST_PURCHASE"] {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
+                guard self.loopRunning else { return }
+                self.handlePlatformRequest("purchase", argument: argument)
+            }
+        }
         #endif
         if let raw = env["AETHER_HOST_TEST_INPUT"], let delay = Double(raw) {
             DispatchQueue.main.asyncAfter(deadline: .now() + delay) {

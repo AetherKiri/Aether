@@ -239,7 +239,7 @@
 ### 2026-10-11：Purchase 请求降级基线
 
 - Apple 宿主接入 `purchase` operation 的解析与确定性错误响应：提取 URL 表单 `product_id`，回传 `result=-1`、`error_response=-1` 和“App Billing unavailable”，避免公开宿主在没有 StoreKit provider 时让游戏永久等待；日志只记录产品标识，不记录其他请求正文。
-- `PlatformPurchaseTests` 覆盖普通/编码/缺失 product_id 和响应格式；Debug 宿主构建通过。现有 StoreKit 实现位于 Godot 扩展，未被 Apple 原生宿主链接，本项不伪造购买成功。
+- `PlatformPurchaseTests` 覆盖普通/编码/缺失 product_id 和响应格式；Debug 宿主构建通过。通过 Debug-only `AETHER_HOST_TEST_PURCHASE` 在实际宿主进程注入请求，日志确认进入 Purchase 分支、公开核心返回“不支持平台响应”，随后正常 tick/退出并销毁引擎。现有 StoreKit 实现位于 Godot 扩展，未被 Apple 原生宿主链接，本项不伪造购买成功。CUA 可正常查看宿主库界面；macOS 应用单例使注入环境进程未能绑定为独立 AX 窗口，故本次 UI 证据以进程日志为准。
 - 更新器按用户要求留到最后；真实 StoreKit 购买/恢复/entitlement、沙盒商品和交易生命周期仍待 provider 接入。
 
 ### 2026-10-11：五语言文案审计

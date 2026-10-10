@@ -129,6 +129,8 @@ Apple M1 Max / macOS 15.7.1 一次 Debug 组件测量：关闭批处理 5.012/10
 
 ### 交接与遗留（2026-10-11）
 
+合并快照配对组件基准：`--snapshot-benchmark` 在同一进程交替 separate（end_batch 再 Snapshot）与 combined（Snapshot 再 end_batch），每条路径10次预热+60次采样，负载同为1080p clear+8次混合；计时包含编码、提交、GPU完成，像素检查在计时外。两轮 separate p50/p95/max=2.761/3.811/4.078ms、2.794/3.476/4.199ms；combined=2.629/2.972/3.167ms、2.630/2.823/3.564ms。p50下降约5%–6%，两轮共280张快照逐字节一致，failures=0、reads/textures=0。这验证合并提交在该组件负载的收益，不代表整体宿主或Godot对照；真实游戏批次是否在快照前已结束仍影响收益。工具命令已写入README，默认未设置性能断言以避免机器负载导致错误结论。
+
 同步快照合并提交：Snapshot 直接在 pending 绘制缓冲后编码 blit，再一次 Finish，移除原先 FlushPending→Finish 的两次等待；CPU 可读返回及跨队列呈现安全语义保持。新增批次内快照→继续改写→end 测试，像素隔离通过。桥套件、Debug 构建、KAG3 Metal 30 秒输入/截图/关闭回归通过。该轮 snapshot_calls=1754、total=1245.787ms（平均0.710ms）、max=1.974ms、commands=1967、failures=0，证据 `out/apple_host/evidence/combined-snapshot-kag3/`。前轮平均0.808ms仅供诊断参考，两轮带截图且没有严格配对，不能把差值当作性能提升比例；正式对照仍需无截图串行采样。组件 --benchmark 在 snapshot 前已经 end_batch，不覆盖此次合并收益。
 
 呈现快照计时：`AetherMetalBridgeCopyTexture` 记录进程累计 snapshot_calls/total_ms/max_ms（含分配、先前批次 flush、blit 与 GPU 等待；不含获得桥锁的等待）。KAG3 Metal 30 秒输入/截图/正常关闭回归通过，1751 次快照累计 1415.604ms，平均约 0.808ms，最大 2.729ms，failures=0。证据 `out/apple_host/evidence/snapshot-timing-kag3/`，Debug 构建通过。此为带截图测试的诊断基线，不是安静的无截图性能验收。呈现器使用独立 Metal 队列，不能直接删除 Snapshot 的 wait 而不增加跨队列同步；后续需比较共享事件同步或统一队列方案，并验证帧不可变及销毁安全。

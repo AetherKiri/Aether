@@ -103,6 +103,37 @@ static void BenchmarkReadback(bool drawing=false) {
     printf("BENCH readback pending_polls=%u (includes warmup)\n",pending);
     bridge.release_texture(texture);bridge.release_texture(source);
 }
+static void BenchmarkSnapshotSubmission() {
+    tTVPRect rect(0,0,1920,1080);
+    uint64_t dst=bridge.create_rgba(1920,1080,nullptr,0);
+    uint64_t src=bridge.create_rgba(1920,1080,nullptr,0);assert(dst&&src);
+    assert(bridge.clear_rgba(src,0x80c83264,&rect));
+    std::array<std::vector<double>,2> measurements;
+    std::vector<uint8_t> reference(1920*1080*4),pixels(reference.size());
+    for(int frame=0;frame<70;++frame)for(int index=0;index<2;++index) {
+        // Alternate order to reduce temperature/order bias within one run.
+        int mode=(index+frame)%2;
+        auto start=std::chrono::steady_clock::now();
+        uint64_t scope=batch.begin_batch();
+        assert(bridge.clear_rgba(dst,0xff102030,&rect));
+        for(int layer=0;layer<8;++layer)assert(bridge.blend_rect(dst,src,&rect,&rect,2,192,0));
+        if(mode==0)assert(batch.end_batch(scope));
+        auto image=AetherMetalBridgeCopyTexture(dst);assert(image);
+        if(mode==1)assert(batch.end_batch(scope));
+        double ms=std::chrono::duration<double,std::milli>(std::chrono::steady_clock::now()-start).count();
+        if(frame>=10)measurements[mode].push_back(ms);
+        // Validation is outside the timed region.
+        [image getBytes:pixels.data() bytesPerRow:1920*4 fromRegion:MTLRegionMake2D(0,0,1920,1080) mipmapLevel:0];
+        if(frame==0&&index==0)reference=pixels;
+        else assert(pixels==reference);
+    }
+    for(int mode=0;mode<2;++mode) {
+        auto &values=measurements[mode];std::sort(values.begin(),values.end());
+        printf("BENCH snapshot 1920x1080 clear+8-blends mode=%s samples=60 warmup=10 p50_ms=%.3f p95_ms=%.3f max_ms=%.3f\n",
+            mode?"combined":"separate",values[29],values[56],values.back());
+    }
+    bridge.release_texture(dst);bridge.release_texture(src);
+}
 int main(int argc,char **argv) { @autoreleasepool {
     NSError *error=nil;
     if (!AetherMetalBridgeInitialize(&error)) { NSLog(@"%@",error);return 1; }
@@ -272,5 +303,6 @@ int main(int argc,char **argv) { @autoreleasepool {
     if(argc>1&&std::strcmp(argv[1],"--benchmark")==0)Benchmark1080p();
     if(argc>1&&std::strcmp(argv[1],"--readback-benchmark")==0)BenchmarkReadback();
     if(argc>1&&std::strcmp(argv[1],"--batched-readback-benchmark")==0)BenchmarkReadback(true);
+    if(argc>1&&std::strcmp(argv[1],"--snapshot-benchmark")==0)BenchmarkSnapshotSubmission();
     printf("PASS: Metal kernels, exact alpha arithmetic, clear, conversion, multi-source, bounds, overlap, read snapshots, batch, mosaic, triangles, IOSurface ownership\n%s\n",AetherMetalBridgeDiagnostics().UTF8String);
 } }

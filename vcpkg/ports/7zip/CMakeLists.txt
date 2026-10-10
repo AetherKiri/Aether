@@ -420,6 +420,24 @@ target_compile_definitions(7zip
         -D_UNICODE
 )
 
+# libarchive (linked by the KiriKiri core) bundles its own copy of the PPMd8
+# decoder with identical external C symbol names. When a consumer links
+# libarchive and whole-archive 7-Zip into one binary (the GalgameExtractor
+# import backend does exactly that), the nine Ppmd8_* symbols collide
+# (LNK2005 / duplicate symbol on every toolchain). Rename 7-Zip's copy; all
+# references live inside 7zip.lib so the rename is invisible to consumers.
+target_compile_definitions(7zip PRIVATE
+    Ppmd8_Construct=hrd7z_Ppmd8_Construct
+    Ppmd8_Alloc=hrd7z_Ppmd8_Alloc
+    Ppmd8_Free=hrd7z_Ppmd8_Free
+    Ppmd8_Init=hrd7z_Ppmd8_Init
+    Ppmd8_Update1=hrd7z_Ppmd8_Update1
+    Ppmd8_Update1_0=hrd7z_Ppmd8_Update1_0
+    Ppmd8_Update2=hrd7z_Ppmd8_Update2
+    Ppmd8_MakeEscFreq=hrd7z_Ppmd8_MakeEscFreq
+    Ppmd8_DecodeSymbol=hrd7z_Ppmd8_DecodeSymbol
+)
+
 target_include_directories(7zip
     INTERFACE
         $<INSTALL_INTERFACE:include>/7zip/CPP

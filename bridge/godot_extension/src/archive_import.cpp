@@ -83,7 +83,9 @@ void RunJob(const std::shared_ptr<Job> &job, std::string input,
         } else {
             result = "{\"status\":\"error\",\"code\":" +
                      std::to_string(status) + ",\"error\":\"" +
-                     JsonEscape(hrd_status_string(status)) + "\"}";
+                     JsonEscape(hrd_status_string(
+                         static_cast<hrd_status_t>(status))) +
+                     "\"}";
         }
         if (report != nullptr) hrd_free(report);
         hrd_ctx_destroy(ctx);

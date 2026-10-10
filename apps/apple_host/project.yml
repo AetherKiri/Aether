@@ -1,0 +1,54 @@
+name: AetherHost
+options:
+  bundleIdPrefix: org.github.aetherkiri
+  createIntermediateGroups: true
+  deploymentTarget:
+    macOS: "13.0"
+
+settings:
+  base:
+    ARCHS: arm64
+    ONLY_ACTIVE_ARCH: "YES"
+    SWIFT_VERSION: "5.9"
+    CLANG_CXX_LANGUAGE_STANDARD: "c++17"
+    CODE_SIGN_STYLE: Manual
+    CODE_SIGN_IDENTITY: "-"
+    ENABLE_HARDENED_RUNTIME: "NO"
+    LD_RUNPATH_SEARCH_PATHS: "$(inherited) @executable_path/../Frameworks"
+
+targets:
+  AetherHost:
+    type: application
+    platform: macOS
+    sources:
+      - path: AetherHost
+      - path: HostKit
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: org.github.aetherkiri.host.debug
+        PRODUCT_NAME: AetherHost
+        SWIFT_OBJC_BRIDGING_HEADER: HostKit/AetherHost-Bridging-Header.h
+        HEADER_SEARCH_PATHS:
+          - "$(SRCROOT)/../../abi/include"
+        LIBRARY_SEARCH_PATHS:
+          - "$(SRCROOT)/../../out/macos/debug/bridge/apple_host"
+          - "$(SRCROOT)/../../out/macos/debug/abi"
+        GCC_PREPROCESSOR_DEFINITIONS:
+          - "$(inherited)"
+          - "AETHER_HOST_DEBUG=1"
+    info:
+      path: AetherHost/Info.plist
+      properties:
+        CFBundleDisplayName: AetherHost
+        CFBundleShortVersionString: "0.1.0"
+        LSMinimumSystemVersion: "13.0"
+        NSHighResolutionCapable: true
+        NSPrincipalClass: NSApplication
+        LSApplicationCategoryType: public.app-category.games
+    dependencies:
+      - framework: ../../out/macos/debug/bridge/apple_host/libaether_apple_host_core.dylib
+        embed: true
+        codeSign: true
+      - framework: ../../out/macos/debug/abi/libengine_api.dylib
+        embed: true
+        codeSign: true

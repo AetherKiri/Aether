@@ -59,3 +59,10 @@ __pycache__/
 apps/godot_app/android/
 build-linux/
 .aetherkiri-cache
+
+# Apple host: XcodeGen-generated artifacts (regenerate: cd apps/apple_host && xcodegen generate)
+apps/apple_host/AetherHost.xcodeproj/
+apps/apple_host/AetherHost/Info.plist
+
+# Demo runtime artifacts
+demos/*/data/savedata/

@@ -110,6 +110,8 @@ option(ENABLE_TESTS "enable tests execute build(exclude android)" ON)
 option(BUILD_TOOLS "build tools execute build(exclude android ios)" ON)
 option(BUILD_ENGINE_API "build engine_api bridge shared library" ON)
 option(BUILD_GODOT_EXTENSION "build Godot GDExtension host library" ON)
+option(AETHERKIRI_ENABLE_APPLE_HOST
+       "build the Apple-native host core library (SwiftUI + Metal host)" OFF)
 option(AETHERKIRI_ENABLE_RFVP "build the experimental native FVP runtime (requires Rust)" OFF)
 option(BUILD_GPU_BRIDGE "build legacy external GPU bridge renderer" OFF)
 option(AETHERKIRI_ENABLE_ONSCRIPTER
@@ -316,6 +318,11 @@ if(AETHERKIRI_ENABLE_RFVP)
 endif()
 if(BUILD_GODOT_EXTENSION)
     add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/bridge/godot_extension)
+endif()
+# Apple-native host core (SwiftUI + Metal host). Keeps engine_api/provider
+# ABI untouched; see doc/apple_host.md and doc/apple_host_seam_inventory.md.
+if(AETHERKIRI_ENABLE_APPLE_HOST AND APPLE)
+    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/bridge/apple_host)
 endif()
 
 if(ENABLE_TESTS AND NOT (IOS OR ANDROID OR WEB OR EMSCRIPTEN))

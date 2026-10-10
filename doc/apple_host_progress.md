@@ -9,7 +9,7 @@
 
 | 阶段 | 状态 | 备注 |
 |---|---|---|
-| M0 接缝盘点 + 骨架 | 🟡 进行中 | 交付物 A ✅ v0.2；交付物 B ✅；**交付物 C 核心达成**：SwiftUI App + EngineSession + 软件帧上屏 + KAG3 demo 实跑成功（tick 728，画面完整）。剩余：输入透传、CPU 基线、krkr2.log 重定向 |
+| M0 接缝盘点 + 骨架 | 🟢 完成 | 交付物 A ✅ v0.2；交付物 B ✅；交付物 C ✅ **G0 达成**：KAG3 demo 实跑、输入透传验证、CPU 基线 ~35%（software@640x480）、日志行为对齐确认 |
 | M1 Metal 绘制桥 | ⚪ 未开始 | 闸门 G1；已确认 P2 绘制回调路径（无 ANGLE 依赖） |
 | M2 SwiftUI MVP | ⚪ 未开始 | 闸门 G2 |
 | M3 功能迁移 | ⚪ 未开始 | |
@@ -54,6 +54,12 @@
   - Swift 层：`EngineController`（60Hz tick 循环）+ `ContentView`（画面+日志+控制）
   - **实机验证**：KAG3 demo 完整渲染（640x480 标题画面），`startup state: SUCCEEDED`，tick 728 @60Hz，无崩溃
   - 已知待办：输入透传（G0 交互项）；CPU 基线测量；`krkr2.log` 落到游戏目录需重定向（引擎文件日志选项）
+- **M0-C 收尾（G0 达成）**：输入透传实现并验证
+  - `InputMapping.swift`：macOS→Windows VK 键码表、修饰键（0x01/0x02/0x04/0x80）、unicode、aspect-fit 坐标映射（对齐 `game_input_mapping.gd`）
+  - `GameInputView.swift`：透明 NSView 覆盖层捕获鼠标/滚轮/键盘，自动成为第一响应者
+  - `EngineSession` 新增 `sendPointer/sendKey/framePixelSize`；`AETHER_HOST_TEST_INPUT` 确定性冒烟（move→click→Return）
+  - 实测：输入事件全部送达引擎（`input pointer type=2/1/3`、`input key vk=0xd`）；CPU 基线 **~31-37%（单核占比，software@640x480）**
+  - 日志结论：`console_log_file` 控制 console.log 路径；**随游戏的 `krkr2.log` 为引擎无条件行为（与 Godot 宿主产品一致），接受为产品对齐**（spec §6 不侵入引擎原则）
 
 ---
 
@@ -64,8 +70,8 @@
 3. [x] K 节 TASK 1-7 逐项盘点（见清单 v0.2）
 4. [x] `bridge/apple_host/` CMake 目标 `aether_apple_host_core`（**交付物 B**）
 5. [x] `apps/apple_host/` SwiftUI 工程骨架 + EngineSession + 软件帧上屏（**交付物 C 核心**）
-6. [ ] 输入透传（键鼠 → `engine_send_input`，完成 G0 交互项）+ CPU 基线
-7. [ ] `krkr2.log` 落盘重定向（引擎选项）与日志目录规范
+6. [x] 输入透传（`engine_send_input`）+ CPU 基线 + 日志行为确认（**G0 达成**）
+7. [ ] **M1**：Metal 绘制回调（22 个）实现 + 双路径对比 → 闸门 G1
 8. [ ] 更新三份文档（每次工作结束同步）
 
 ## 变更记录

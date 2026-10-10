@@ -10,14 +10,18 @@ final class EngineController: ObservableObject {
     @Published var status = "未初始化"
     @Published var logText = ""
     @Published var frameImage: CGImage?
+    @Published var frameSize: CGSize = .zero
     @Published var tickCount: UInt64 = 0
 
     private let session = AetherEngineSession()
     private var timer: Timer?
     private var lastStartupState: UInt32 = 0
+    private var pointerEventCount = 0
+    private var keyEventCount = 0
     private(set) var loopRunning = false
 
     func log(_ line: String) {
+        print("[host] \(line)")
         logText += line + "\n"
         if logText.count > 12000 {
             logText.removeFirst(logText.count - 12000)
@@ -42,6 +46,11 @@ final class EngineController: ObservableObject {
                 writablePath: support.path, cachePath: cache.path)
             // M0 baseline: software renderer feeds engine_read_frame_rgba.
             try session.setOption("renderer", value: "software")
+            // Disables engine console.log writes (engine DebugIntf path).
+            // NOTE: the sidecar krkr2.log beside the game root attaches
+            // unconditionally in engine_open_game; same behavior as the Godot
+            // host (games live in managed copies there). Parity accepted.
+            try session.setOption("console_log_file", value: "0")
             status = "引擎已创建 (api v\(session.engineAPIVersion()))"
             log("engine_create OK, renderer=software, api=\(session.engineAPIVersion())")
         } catch {
@@ -124,10 +133,42 @@ final class EngineController: ObservableObject {
 
         if let image = session.copyFrameImage() {
             frameImage = image
+            let size = session.framePixelSize()
+            if size.width > 0, size != frameSize {
+                frameSize = size
+                log("frame size \(Int(size.width))x\(Int(size.height))")
+            }
             if tickCount % 300 == 0 {
                 log("frame presented (tick \(tickCount))")
             }
         }
+    }
+
+    // MARK: - Input forwarding (see InputMapping for translation rules)
+
+    func sendPointer(
+        type: UInt32, x: Double, y: Double, dx: Double, dy: Double,
+        button: Int32, modifiers: Int32
+    ) {
+        pointerEventCount += 1
+        if pointerEventCount <= 12 {
+            log("input pointer type=\(type) at (\(Int(x)),\(Int(y))) btn=\(button) mods=\(modifiers)")
+        }
+        session.sendPointer(
+            type: type, pointerId: 0, x: x, y: y, deltaX: dx, deltaY: dy,
+            button: button, modifiers: modifiers)
+    }
+
+    func sendKey(
+        pressed: Bool, keyCode: Int32, modifiers: Int32, unicode: UInt32
+    ) {
+        keyEventCount += 1
+        if keyEventCount <= 12 {
+            log("input key \(pressed ? "down" : "up") vk=0x\(String(keyCode, radix: 16)) unicode=\(unicode) mods=\(modifiers)")
+        }
+        session.sendKey(
+            pressed: pressed, keyCode: keyCode, modifiers: modifiers,
+            unicode: unicode)
     }
 
     func autorunIfRequested() {
@@ -138,11 +179,51 @@ final class EngineController: ObservableObject {
         let path = env["AETHER_HOST_GAME_PATH"] ?? Self.defaultGamePath
         log("AUTORUN: opening \(path)")
         openAndRun(gamePath: path)
+        if let raw = env["AETHER_HOST_TEST_INPUT"], let delay = Double(raw) {
+            DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
+                self.runTestInputSequence()
+            }
+        }
         if let raw = env["AETHER_HOST_EXIT_AFTER"], let seconds = Double(raw) {
             DispatchQueue.main.asyncAfter(deadline: .now() + seconds) {
                 self.log("AUTORUN: exit after \(seconds)s")
                 self.shutdown()
                 NSApp.terminate(nil)
+            }
+        }
+    }
+
+    // Deterministic smoke input: move -> click -> Return through the same
+    // send* entry points the AppKit view uses (env AETHER_HOST_TEST_INPUT).
+    private func runTestInputSequence() {
+        guard loopRunning else {
+            log("TEST INPUT: loop not running, skipping")
+            return
+        }
+        let center = CGPoint(
+            x: frameSize.width / 2, y: frameSize.height / 2)
+        log("TEST INPUT: pointer move -> down -> up at (\(Int(center.x)),\(Int(center.y)))")
+        sendPointer(
+            type: EngineInputEvent.pointerMove,
+            x: Double(center.x), y: Double(center.y), dx: 0, dy: 0,
+            button: 0, modifiers: 0)
+        sendPointer(
+            type: EngineInputEvent.pointerDown,
+            x: Double(center.x), y: Double(center.y), dx: 0, dy: 0,
+            button: 0, modifiers: 0)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+            self.sendPointer(
+                type: EngineInputEvent.pointerUp,
+                x: Double(center.x), y: Double(center.y), dx: 0, dy: 0,
+                button: 0, modifiers: 0)
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+            self.log("TEST INPUT: Return key down/up")
+            self.sendKey(
+                pressed: true, keyCode: 0x0D, modifiers: 0, unicode: 0x0D)
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+                self.sendKey(
+                    pressed: false, keyCode: 0x0D, modifiers: 0, unicode: 0)
             }
         }
     }

@@ -50,6 +50,19 @@ struct ContentView: View {
             } else {
                 Text("无画面").foregroundStyle(.white.opacity(0.6))
             }
+            GameInputView(
+                contentSize: engine.frameSize,
+                onPointer: { type, x, y, dx, dy, button, modifiers in
+                    engine.sendPointer(
+                        type: type, x: x, y: y, dx: dx, dy: dy,
+                        button: button, modifiers: modifiers)
+                },
+                onKey: { pressed, keyCode, modifiers, unicode in
+                    engine.sendKey(
+                        pressed: pressed, keyCode: keyCode,
+                        modifiers: modifiers, unicode: unicode)
+                }
+            )
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }

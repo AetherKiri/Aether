@@ -24,6 +24,7 @@ NSError *EngineError(engine_handle_t handle, NSString *fallback) {
 @implementation AetherEngineSession {
     engine_handle_t _handle;
     std::vector<uint8_t> _frameBuffer;
+    CGSize _framePixelSize;
 }
 
 - (instancetype)init {
@@ -152,6 +153,7 @@ NSError *EngineError(engine_handle_t handle, NSString *fallback) {
         desc.pixel_format != ENGINE_PIXEL_FORMAT_RGBA8888) {
         return nil;
     }
+    _framePixelSize = CGSizeMake(desc.width, desc.height);
     const size_t byteCount =
         static_cast<size_t>(desc.stride_bytes) * desc.height;
     if (_frameBuffer.size() != byteCount) {
@@ -175,6 +177,56 @@ NSError *EngineError(engine_handle_t handle, NSString *fallback) {
     CGImageRef image = CGBitmapContextCreateImage(context);
     CGContextRelease(context);
     return image;
+}
+
+- (void)sendPointerEventWithType:(uint32_t)type
+                       pointerId:(int32_t)pointerId
+                               x:(double)x
+                               y:(double)y
+                          deltaX:(double)deltaX
+                          deltaY:(double)deltaY
+                          button:(int32_t)button
+                       modifiers:(int32_t)modifiers {
+    if (_handle == nullptr) {
+        return;
+    }
+    engine_input_event_t event{};
+    event.struct_size = sizeof(event);
+    event.type = type;
+    event.x = x;
+    event.y = y;
+    event.delta_x = deltaX;
+    event.delta_y = deltaY;
+    event.pointer_id = pointerId;
+    event.button = button;
+    event.modifiers = modifiers;
+    engine_send_input(_handle, &event);
+}
+
+- (void)sendKeyEvent:(BOOL)pressed
+             keyCode:(int32_t)keyCode
+           modifiers:(int32_t)modifiers
+             unicode:(uint32_t)unicode {
+    if (_handle == nullptr) {
+        return;
+    }
+    engine_input_event_t event{};
+    event.struct_size = sizeof(event);
+    event.type = pressed ? ENGINE_INPUT_EVENT_KEY_DOWN : ENGINE_INPUT_EVENT_KEY_UP;
+    event.key_code = keyCode;
+    event.modifiers = modifiers;
+    event.unicode_codepoint = pressed ? unicode : 0;
+    engine_result_t result = engine_send_input(_handle, &event);
+    // KAG edit controls receive printable characters through a distinct
+    // text-input event (mirrors the Godot host contract).
+    if (pressed && result == ENGINE_RESULT_OK && unicode > 0) {
+        event.type = ENGINE_INPUT_EVENT_TEXT_INPUT;
+        engine_send_input(_handle, &event);
+    }
+}
+
+- (CGSize)framePixelSize {
+    return _framePixelSize;
 }
 
 - (void)shutdown {

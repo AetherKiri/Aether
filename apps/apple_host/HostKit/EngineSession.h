@@ -32,6 +32,26 @@ NS_ASSUME_NONNULL_BEGIN
 - (void)pollPlatformRequests:(void (^)(NSString *operation, NSString *argument))handler
     NS_SWIFT_NAME(pollPlatformRequests(_:));
 
+// Input (engine VK codes; coordinates in game canvas space).
+- (void)sendPointerEventWithType:(uint32_t)type
+                       pointerId:(int32_t)pointerId
+                               x:(double)x
+                               y:(double)y
+                          deltaX:(double)deltaX
+                          deltaY:(double)deltaY
+                          button:(int32_t)button
+                       modifiers:(int32_t)modifiers
+    NS_SWIFT_NAME(sendPointer(type:pointerId:x:y:deltaX:deltaY:button:modifiers:));
+
+- (void)sendKeyEvent:(BOOL)pressed
+             keyCode:(int32_t)keyCode
+           modifiers:(int32_t)modifiers
+             unicode:(uint32_t)unicode
+    NS_SWIFT_NAME(sendKey(pressed:keyCode:modifiers:unicode:));
+
+// Size (pixels) of the most recent frame readback; .zero before first frame.
+- (CGSize)framePixelSize;
+
 // Software-render baseline: RGBA8888 frame from the engine readback path.
 - (nullable CGImageRef)copyFrameImage CF_RETURNS_RETAINED;
 

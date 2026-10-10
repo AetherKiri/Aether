@@ -127,7 +127,7 @@ AETHER_HOST_GAME_PATH=/Users/colorcard/Aether/demos/aetherkiri-kag3/data \
   out/apple_host/derived/Build/Products/Debug/AetherHost.app/Contents/MacOS/AetherHost
 ```
 
-环境变量：`AETHER_HOST_GAME_PATH`（游戏路径）、`AETHER_HOST_AUTORUN=1`（自动初始化+打开）、`AETHER_HOST_EXIT_AFTER=<秒>`（自动退出，冒烟用）。
+环境变量：`AETHER_HOST_GAME_PATH`（游戏路径）、`AETHER_HOST_AUTORUN=1`（自动初始化+打开）、`AETHER_HOST_TEST_INPUT=<秒>`（启动后 N 秒自动发送一组指针+回车输入，确定性冒烟）、`AETHER_HOST_EXIT_AFTER=<秒>`（自动退出）。
 
 ---
 

@@ -3,6 +3,7 @@
 import argparse
 import csv
 import hashlib
+import json
 import math
 import os
 from pathlib import Path
@@ -20,6 +21,8 @@ def main():
     parser.add_argument("--require-native", action="store_true", help="require a native GPU frame for a custom game")
     parser.add_argument("--renderer", choices=("software", "metal"), default="software")
     parser.add_argument("--presentation", choices=("metal", "image"), default="metal")
+    parser.add_argument("--snapshots", choices=("sync", "async"), default="sync",
+                        help="explicit native presentation snapshot mode; async checks teardown counters")
     parser.add_argument("--profile", action="store_true", help="record host work and tick-to-GPU-completion, including MTKView")
     parser.add_argument("--drawable-1080p", action="store_true", help="use a real 1920x1080 Metal drawable (requires --profile)")
     parser.add_argument("--output", type=Path)
@@ -28,6 +31,8 @@ def main():
         parser.error("duration must be >=30 to capture input progression")
     if args.drawable_1080p and (not args.profile or args.presentation != "metal"):
         parser.error("drawable-1080p requires --profile and Metal presentation")
+    if args.snapshots == "async" and (args.renderer != "metal" or args.presentation != "metal"):
+        parser.error("async snapshots require Metal renderer and presentation")
     root = Path(__file__).resolve().parent.parent
     binary = root / "out/apple_host/derived/Build/Products/Debug/AetherHost.app/Contents/MacOS/AetherHost"
     output = args.output or root / "out/apple_host/evidence" / time.strftime("smoke-%Y%m%d-%H%M%S")
@@ -47,10 +52,15 @@ def main():
             folder = output / name
             folder.mkdir(parents=True, exist_ok=True)
             env = os.environ.copy()
+            for variable in list(env):
+                if variable.startswith("AETHER_HOST_TEST_"):
+                    env.pop(variable, None)
             env.update(AETHER_HOST_AUTORUN="1", AETHER_HOST_LIBRARY_ROOT=str((folder / "library").resolve()), AETHER_HOST_GAME_PATH=str(game),
                        AETHER_HOST_DEFAULT_FONT=str(root / "apps/godot_app/assets/fonts/aetherkiri-runtime-cjk.otf"),
                        AETHER_HOST_TEST_INPUT="8", AETHER_HOST_PRESENTATION=args.presentation,
                        AETHER_HOST_RENDERER=args.renderer,
+                       AETHER_HOST_ASYNC_SNAPSHOT="1" if args.snapshots == "async" else "0",
+                       AETHER_HOST_SCHEDULING="direct",
                        AETHER_HOST_DRAWABLE_1080P="1" if args.drawable_1080p else "0",
                        AETHER_HOST_PROFILE="1" if args.profile else "0",
                        # Profile runs measure drawable submission, which the
@@ -71,6 +81,7 @@ def main():
             code = process.wait(timeout=max(1, deadline - time.monotonic()))
             log.close()
             text = (folder / "run.log").read_text(errors="replace")
+            async_summary = None
             required = ("startup state: SUCCEEDED", "input pointer type=1", "input pointer type=3",
                         "input key down", "engine destroyed")
             errors = [f"missing {entry}" for entry in required if entry not in text]
@@ -103,6 +114,17 @@ def main():
                     errors.append("native frame path performed unexpected CPU readbacks")
                 if not re.search(r"Metal bridge .*failures=0", text):
                     errors.append("Metal bridge execution errors or missing diagnostics")
+                if args.snapshots == "async":
+                    counters = re.findall(r"async_submitted=(\d+) async_completed=(\d+) async_inflight=(\d+)", text)
+                    if not counters:
+                        errors.append("missing async snapshot teardown counters")
+                    else:
+                        submitted, completed, inflight = map(int, counters[-1])
+                        async_summary = {"submitted": submitted, "completed": completed, "inflight": inflight}
+                        if submitted == 0 or submitted != completed or inflight != 0:
+                            errors.append(f"async snapshots not drained: {submitted}/{completed}/{inflight}")
+                    if "Metal queue drain failed" in text:
+                        errors.append("Metal queue drain failed")
             if args.profile and args.presentation == "metal":
                 csv_path = folder / "aetherhost-presentation.csv"
                 rows = list(csv.DictReader(csv_path.open())) if csv_path.is_file() else []
@@ -118,6 +140,13 @@ def main():
                 if any(not math.isfinite(float(row["tick_to_completion_ms"])) or
                        float(row["tick_to_completion_ms"]) <= 0 for row in rows):
                     errors.append("invalid completion durations")
+            (folder / "result.json").write_text(json.dumps({
+                "game": name, "duration_seconds": args.duration,
+                "renderer": args.renderer, "presentation": args.presentation,
+                "snapshots": args.snapshots, "exit_code": code,
+                "async_teardown": async_summary, "errors": errors,
+                "passed": not errors,
+            }, indent=2) + "\n")
             if errors:
                 failures.append(name)
                 print(f"FAIL {name}: {'; '.join(errors)}")

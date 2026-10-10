@@ -58,6 +58,10 @@ python3 tools/apple_host_smoke.py --game-path tests/fixtures/apple_host_stretch 
   --renderer metal --duration 30
 # P2 原生 Metal 绘制（ONS 验证软件兜底）：
 python3 tools/apple_host_smoke.py --renderer metal
+# 异步呈现快照五分钟回归，同时要求关闭时提交/完成计数一致、无在途快照：
+python3 tools/apple_host_smoke.py --game kag3 --renderer metal --snapshots async --duration 300
+# smoke 默认显式选择 sync，避免继承实验环境变量导致验证模式不明确。
+# 每个游戏目录输出 result.json，记录模式、退出码、异步关闭计数及失败原因。
 # 记录宿主 tick + 纹理获取耗时；不含独立 MTKView 呈现：
 python3 tools/apple_host_smoke.py --duration 30 --renderer metal --profile
 # 指定额外自检项目（传其 data 目录）：

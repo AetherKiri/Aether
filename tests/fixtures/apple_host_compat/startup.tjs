@@ -12,6 +12,21 @@ primary.visible = true;
 var summary = "";
 var probes = 0;
 
+// Link the compatibility modules first: legacy class extensions may only be
+// visible to instances created afterwards.
+function linkModules() {
+  try { Plugins.link("layerExMosaic.dll"); } catch (e) {}
+  try { Plugins.link("layerExSubImage.dll"); } catch (e) {}
+  try { Plugins.link("layerExColor.dll"); } catch (e) {}
+}
+linkModules();
+
+// Layer created after linking (expected to see attached members).
+var late = new Layer(win, primary);
+late.setSize(64, 48);
+late.type = ltOpaque;
+late.visible = false;
+
 function probe(label, action) {
   try {
     var value = action();
@@ -47,6 +62,8 @@ function runProbes() {
   // TJS reports a missing member as void.
   probe("classMosaic", function() { return typeof Layer.mosaic; });
   probe("instMosaic", function() { return typeof primary.mosaic; });
+  probe("lateMosaic", function() { return typeof late.mosaic; });
+  probe("lateMosaicCall", function() { return late.mosaic(); });
   probe("classSubImage", function() { return typeof Layer.copySubImage; });
 }
 

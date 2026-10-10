@@ -333,9 +333,12 @@
 - **三态回执**：`core/utils/DebugIntf.h` 定义 `TJSCompatState{loaded,unimplemented,unavailable,failed}` 与 `TVPAddCompatReceipt()` / `TVPGetCompatReceiptsJSON()`（实现放在已有 spdlog 与有界存储的 `core/plugin/PluginCallTracer.cpp`）。每个 `(feature,state)` 只上报一次，输出稳定可 grep 的一行 `[Compat] feature=… state=… detail=…`，并作为 `compat_receipts` 字段进入 `engine_get_plugin_debug_info`（glue 侧 `bridge/krkr2_runtime/src/krkr2_legacy_engine_api.cpp`）。已接入调用点：插件加载路径（proxy/mock stub → `unimplemented`；无实现 → `unavailable`）与桩类（`dmmcloud.dll` → `unavailable`；`layerExSubImage/Color/Mosaic` 回调 → `unimplemented`）。
 - **插件解析顺序**：核实结论是**无需改动**——我们不做 PE DLL 磁盘搜索，`TVPLoadPlugin → TVPLoadInternalPlugin → ncbAutoRegister::LoadModule` 走的是「模块名 → 注册表」；`tTVPPluginHolder` 的 exe 邻目录回退在本树里是 `#if 0` 且该类已无调用方（死代码），上游修的顺序问题（generic 版缺少 storage 优先）不适用于本架构。已在文档记录该判断。
 - 新增原创夹具 `tests/fixtures/apple_host_compat`：探针覆盖 platformTag、缺失插件、layerEx*/dmmcloud 兼容类，输入驱动重绘，结果同时画进画面与引擎日志。证据 `out/apple_host/evidence/kernel-compat-receipts/`（Metal 30 秒冒烟 PASS，engine/Metal 同刻差值 0），回执行 `tests/fixtures/apple_host_compat/krkr2.log:17`。
-- **回执立刻照出一处既有缺陷（未在本轮修）**：`NCB_ATTACH_CLASS` 把成员挂在**类对象**上（`typeof Layer.mosaic` = `Object`），但 legacy `Layer` 实例看不到（`typeof layer.mosaic` = `undefined`，调用报 `Member "mosaic" does not exist`）。受影响的是 `layerExMosaic.dll`/`layerExColor.dll`/`layerExSubImage.dll` 三个兼容入口，同时意味着它们的 `unimplemented` 回执目前无法触发。子仓库 README 已记录该限制，修法与影响面另立一项。
+- **回执照出一处既有缺陷，并已修复**：`NCB_ATTACH_CLASS` 把成员写在类对象上，只有**挂载之后创建**的实例才看得到。夹具里 `primary` 是 link 之前建的（`typeof primary.mosaic` = undefined、调用报 `Member "mosaic" does not exist`），而 link 之后新建的图层正常（`lateMosaic` = Object，回执也照出来了）——所以不是 ncbind 失效，而是**挂载时机依赖**：游戏若在创建图层之后才 `Plugins.link`，功能会静默丢失。
+- 修法（先例是引擎已为同类原因预加载 `krkrgles.dll`）：把**纯成员挂载**的 16 个兼容模块加入启动预加载清单（`core/plugin/PluginImpl.cpp`）——addFont、fpslimit、json、layerExAreaAverage、layerExColor、layerExMosaic、layerExSubImage、messenger、msdfrender、qrcode、saveStruct、shellExecute、stdio、tasktray、tftSave、toml、windowExProgress；带类注册或存储介质副作用的模块仍按需加载，`plugin_load_mode=aether_all` 本来就全载。
+- 修复验证：夹具中 link **之前**创建的图层现在 `mosaic0=1`、`subImage=1`、`colorize=1`，并触发 `mosaic`/`copySubImage`/`colorize` 三条 `unimplemented` 回执；KAG3+ONS 各 30 秒冒烟通过；真实标题《夏雪》800×600 原生 Metal 路径 30 秒通过（桥 `failures=0`、同刻差值 0）。证据 `out/apple_host/evidence/kernel-eager-natsuyuki/`。
+- 仍未处理的小项（另行跟进）：`new DMMCloud()` 报 `Invalid argument count`（类已注册但构造签名不匹配）；夹具里 `new Zlib().version()` 报成员不存在（需确认是兼容类注册问题还是探针写法问题）。
 - 回归：核心与宿主重编译通过；KAG3+ONS 各 30 秒冒烟通过；`apple_host_compat` Metal 30 秒冒烟通过（同刻差值 0）。本轮未改 ABI、未改既有返回值。
-- 已按子仓库贡献流程开 PR：[AetherKiri/AetherKrkr#4](https://github.com/AetherKiri/AetherKrkr/pull/4) —— 分支 `feat/compat-platform-tag-and-receipts` **重绕到最新 `main`**（原分支叠在上一个 PR #3 的提交上，已 `rebase --onto origin/main` 只留本次 1 个提交），head `9f39cfa`，改动 8 个文件；仓库无 CI 工作流，GitHub 报告 `MERGEABLE / CLEAN`。PR 正文同样只写内核视角，并把 `NCB_ATTACH_CLASS` 那处既有缺陷写成「本次验证发现、另行修复」。**合并后**需把父仓 gitlink 从 `9f39cfa` 重新指向 `main` 上的结果提交。
+- 已按子仓库贡献流程开 PR：[AetherKiri/AetherKrkr#4](https://github.com/AetherKiri/AetherKrkr/pull/4) —— 分支 `feat/compat-platform-tag-and-receipts` **重绕到最新 `main`**（原分支叠在上一个 PR #3 的提交上，已 `rebase --onto origin/main`），现在含 2 个提交（`9f39cfa` 回执+platformTag、`8be4bbc` 挂载顺序修复），head `8be4bbc`；仓库无 CI 工作流，GitHub 报告 `MERGEABLE / CLEAN`。PR 标题与正文已同步为「report … and drop the link-order dependency」，正文同样只写内核视角。**合并后**需把父仓 gitlink 从 `8be4bbc` 重新指向 `main` 上的结果提交。
 
 ## 下一步队列
 
@@ -369,7 +372,8 @@
 28. [ ] **交接给后续代理（2026-10-11 移交）**：用户确认后登记 `verified_games`（含中英文，注明平台/范围与出处、汉化声明考量）；可选做更深流程验证（存档/读档）；剩余 Metal 项为 `begin_read/poll_read` 异步回读与 deferred 调度尾部
 29. [x] **内核层小项（2026-10-11）**：release UB 暂存缓冲 6 处 + `LocaleConfigManager::GetText` 单次查找；新增重采样夹具 `apple_host_stretch`（含跨渲染器同刻对比）。子模块 `c8c1b1e`，PR [AetherKrkr#3](https://github.com/AetherKiri/AetherKrkr/pull/3)
 30. [x] **兼容三连（2026-10-11）**：`System.platformTag`、三态回执（日志 + `engine_get_plugin_debug_info.compat_receipts`）、插件解析顺序核实（无需改）。新增夹具 `apple_host_compat`；PR [AetherKrkr#4](https://github.com/AetherKiri/AetherKrkr/pull/4)，子模块 head `9f39cfa`
-31. [ ] **内核后续：`NCB_ATTACH_CLASS` 对 legacy Layer 无效**：成员只挂到类对象、实例不可见，导致 `layerExMosaic/Color/SubImage` 三个兼容入口不可达（回执因此无法触发）；修挂载路径或改用引擎实际使用的 legacy 扩展机制
+31. [x] **内核已修：兼容成员挂载不再依赖 link 顺序**：16 个纯成员挂载模块启动即注册（先例 `krkrgles.dll`）；未修的小项见下条
+31b. [ ] **两处兼容小项待查**：`new DMMCloud()` 报 `Invalid argument count`；`new Zlib().version()` 报成员不存在（可能只是探针写法/注册方式差异）
 32. [ ] **内核后续：内存可观测（借鉴 `MemoryDesign.md`）**：分配头带 tag + `AllocTagScope` 标签栈，让"谁吃掉了内存"可回答；当前只有粗粒度 `engine_get_memory_stats`
 
 ## 变更记录

@@ -84,10 +84,19 @@ python3 tools/apple_host_smoke.py --game-path <1080p自检目录> \
   --renderer metal --require-native --duration 30 --profile --drawable-1080p
 ```
 
+`--profile` 会带上 `AETHER_HOST_ACTIVATE=1`：宿主窗口被完全遮挡时不会申请
+drawable（`nextDrawable` 的 1 秒超时会卡住主线程），因此无头基准需要可见窗口。
+如果窗口始终无法出帧，工具会直接报错而不是产出空 CSV。手动运行时可用同一环境变量
+让测试宿主自行激活并前置窗口。
+
 `--drawable-1080p` 固定实际 Metal 输出为 1920×1080；游戏画面和输入坐标仍遵循
 游戏尺寸。要测试完整 1080p 绘制工作，源游戏也必须为 1920×1080。
 冒烟检查至少 60 个完成样本、tick 唯一、耗时有效以及输出尺寸正确，
 不把运行成功自动当作 16.6ms 性能通过。截图回读会扰动 GPU 队列，正式基准需另行隔离。
+
+呈现门控：窗口无窗口/隐藏/最小化/被遮挡或 drawable 尺寸为 0 时，宿主跳过本次
+drawable 申请并记录 `presentation paused/resumed`；被跳过的 draw 不计入 profile 样本。
+窗口恢复可见后由下一个 tick 继续出帧，游戏逻辑（tick/音频）不受影响。
 
 ### 串行调度基准
 

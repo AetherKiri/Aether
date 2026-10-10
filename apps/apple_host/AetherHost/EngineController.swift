@@ -20,6 +20,7 @@ final class EngineController: ObservableObject {
     let metalPresenter: MetalFramePresenter? = MTLCreateSystemDefaultDevice().flatMap {
         try? MetalFramePresenter(device: $0)
     }
+    private var metalPresenterGateWired = false
     @Published var useMetalPresentation =
         ProcessInfo.processInfo.environment["AETHER_HOST_PRESENTATION"] != "image"
 
@@ -238,6 +239,13 @@ final class EngineController: ObservableObject {
     @discardableResult
     func initializeEngine(renderer: String? = nil) -> Bool {
         failureMessage = nil
+        if !metalPresenterGateWired, let presenter = metalPresenter {
+            // Drawable requests pause while the window cannot present; the
+            // nextDrawable timeout would otherwise stall the main thread.
+            presenter.onGateChange = { [weak self] message in self?.log(message) }
+            metalPresenterGateWired = true
+        }
+        metalPresenter?.resume()
         do {
             let fm = FileManager.default
             let support = try fm.url(
@@ -754,6 +762,9 @@ final class EngineController: ObservableObject {
     }
 
     func shutdown() {
+        // Stop drawable requests before tearing the session down: a pending
+        // draw against a closing window waits on nextDrawable for a second.
+        metalPresenter?.suspend()
         if !frameWorkMilliseconds.isEmpty {
             let sorted = frameWorkMilliseconds.sorted()
             let p50 = sorted[(sorted.count - 1) / 2]

@@ -135,3 +135,43 @@ GPU 命令完成，排除屏幕扫描输出及未提交的合并 tick。独立�
 逐帧上传/绘制依赖；窗口尺寸更新仍可重绘。串行 1080p 自检中 p95 从
 7.948ms 降至 3.423ms，但 drawable 获取仍存在约 1 秒异常值，G1 继续待验收。
 `tools/apple_host_profile.py` 提供无截图的 sequential deferred/direct 对照。
+
+### drawable 获取停顿：根因与修复（2026-10-11）
+
+复现：同一工具 30 秒 1080p 串行基准，每轮恰好 1–2 个样本超过 900ms，且 933–981ms
+**全部落在 `drawable_acquire_ms`**（deferred tick 172/1740，direct tick 590/1741）；
+其余约 1700 个样本的取帧耗时只有 0.03–0.05ms。
+
+根因：`CAMetalLayer.nextDrawable` 总是阻塞等待可用 drawable，默认只在 1 秒超时后返回空；
+`allowsNextDrawableTimeout = NO` 不是非阻塞开关，反而会**永久阻塞**（SDK 头注释确认）。
+当宿主窗口被完全遮挡或无法出帧时，窗口仍被请求 drawable，于是主线程被卡满一秒。
+这也是此前 profile 数据里「约 1 秒尾部等待」的来源，与 GPU 编码、桥内核无关。
+
+修复（不改 ABI）：
+
+- `MetalFramePresenter` 新增 `PresentationGate`：无窗口、窗口隐藏、最小化、被遮挡或
+  drawable 尺寸为 0 时**不申请 drawable**，本 tick 的呈现丢弃并在下一次 tick 重试；
+  状态变化写一条宿主日志（`presentation paused/resumed`），跳过的 draw 不计入 profile 样本。
+- `EngineController.shutdown()` 先 `metalPresenter.suspend()`，会话销毁与窗口关闭期间不再出帧。
+- 无头基准改为显式激活窗口：`AETHER_HOST_ACTIVATE=1` 时应用启动即
+  `NSApp.activate` 并前置窗口；`tools/apple_host_profile.py` 与
+  `apple_host_smoke.py --profile` 已默认带上，无样本时工具直接报「窗口被遮挡」而不是空 CSV。
+
+证据（同工具、同素材、30 秒 1080p）：
+
+| 运行 | 修复前 max | 修复后 max | 修复后 >16.6ms | 修复后取帧耗时 |
+|---|---|---|---|---|
+| deferred | 968.18ms | 68.46ms | 15 | ≤0.05ms |
+| direct | 959.61ms | 18.92ms | 1 | ≤0.05ms |
+
+修复后没有任何 >100ms 样本，`drawable_acquire_ms` 全程 ≤0.05ms；deferred 剩余尾部
+（最大 68ms）来自 SwiftUI 延后调度本身，不在取帧阶段。直接提交（产品默认）最大
+18.92ms、仅 1 个样本超过 16.6ms。窗口可见时 P2/P0 截图像素对照仍为 0 差异
+（`selftest-gate-*`，16/16）。截图像素对照见「TJS 自检场景对照」。
+
+模式覆盖补充：单源 `blend_rect` 内核当前实现 1/2/3/5/8/10/11/15/16/17/18/19/20/23/24/25/26/27/28/31，
+其中 7 走独立的 AlphaBlendA 管线；多源模式由 `blend_rect2`（4/9/21/22，src2 为 mask/SD 源）与
+`blend_rect3`（12/13/14）承担，单源路径显式拒绝它们以免静默产生错误结果（引擎只会把
+这些模式发给对应的多源回调，见 `GodotRenderManager.cpp` 的 `ConstAlphaBlend_SD*`/`UnivTransBlend*` 分支）。
+模式 6（`ALPHA_A`）在引擎与 Godot 参考宿主中都没有发射方，单源路径返回 false 属防御性空实现；
+后续若出现真实发射方，需要按「目标 alpha 独立语义」新增内核并补对照样例。

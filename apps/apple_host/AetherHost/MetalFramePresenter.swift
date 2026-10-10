@@ -2,6 +2,36 @@ import CoreGraphics
 import MetalKit
 import SwiftUI
 
+/// Decides when the presenter must not ask for a drawable.
+///
+/// CAMetalLayer's nextDrawable() always blocks until a drawable is free and
+/// only gives up after a one second timeout (measured: a ~930ms main-thread
+/// stall when the window could not present). There is no non-blocking variant
+/// (allowsNextDrawableTimeout = NO waits forever), so the presenter skips the
+/// request whenever the window cannot produce frames.
+enum PresentationGate {
+    struct State: Equatable {
+        var suspended = false
+        var hasWindow = true
+        var windowVisible = true
+        var windowMiniaturized = false
+        var windowOccluded = false
+        var drawableWidth = 0
+        var drawableHeight = 0
+    }
+
+    /// Nil when a drawable may be requested; otherwise the pause reason.
+    static func blockedReason(_ state: State) -> String? {
+        if state.suspended { return "presenter suspended" }
+        if !state.hasWindow { return "no window" }
+        if !state.windowVisible { return "window hidden" }
+        if state.windowMiniaturized { return "window minimized" }
+        if state.windowOccluded { return "window occluded" }
+        if state.drawableWidth < 1 || state.drawableHeight < 1 { return "empty drawable" }
+        return nil
+    }
+}
+
 // Metal presentation shared by P0 software uploads and P2 native textures.
 final class MetalFramePresenter: NSObject, MTKViewDelegate {
     let device: MTLDevice
@@ -11,10 +41,27 @@ final class MetalFramePresenter: NSObject, MTKViewDelegate {
     private(set) var lastError: String?
     let directPresentation = ProcessInfo.processInfo.environment["AETHER_HOST_SCHEDULING"] != "deferred"
     private weak var presentationView: MTKView?
+    private var suspended = false
+    private(set) var skippedDraws = 0
+    private var lastGateReason: String?
+    /// Reports presentation pause/resume transitions (host logging).
+    var onGateChange: ((String) -> Void)?
 
     func attach(_ view: MTKView) { presentationView = view }
     func detach(_ view: MTKView) {
         if presentationView === view { presentationView = nil }
+    }
+
+    /// Stops requesting drawables (session shutdown, window teardown).
+    func suspend() {
+        suspended = true
+        pendingProfile = nil
+    }
+
+    func resume() {
+        suspended = false
+        skippedDraws = 0
+        lastGateReason = nil
     }
 
     // Called once per engine tick on the main thread. SwiftUI handles layout,
@@ -162,6 +209,21 @@ final class MetalFramePresenter: NSObject, MTKViewDelegate {
     }
 
     func draw(in view: MTKView) {
+        if let reason = gateReason(view) {
+            // Never wait on nextDrawable for a window that cannot present; the
+            // frame is dropped and the next tick retries.
+            pendingProfile = nil
+            skippedDraws += 1
+            if lastGateReason != reason {
+                lastGateReason = reason
+                onGateChange?("presentation paused: \(reason)")
+            }
+            return
+        }
+        if lastGateReason != nil {
+            lastGateReason = nil
+            onGateChange?("presentation resumed after \(skippedDraws) skipped draws")
+        }
         let drawStarted = ProcessInfo.processInfo.systemUptime
         guard let drawable = view.currentDrawable,
               let command = queue.makeCommandBuffer() else { return }
@@ -208,6 +270,20 @@ final class MetalFramePresenter: NSObject, MTKViewDelegate {
 
     func mtkView(_ view: MTKView, drawableSizeWillChange size: CGSize) {
         view.setNeedsDisplay(view.bounds)
+    }
+
+    /// Current blockers for requesting a drawable (see PresentationGate).
+    private func gateReason(_ view: MTKView) -> String? {
+        let window = view.window
+        let state = PresentationGate.State(
+            suspended: suspended,
+            hasWindow: window != nil,
+            windowVisible: window?.isVisible ?? false,
+            windowMiniaturized: window?.isMiniaturized ?? false,
+            windowOccluded: window.map { !$0.occlusionState.contains(.visible) } ?? true,
+            drawableWidth: Int(view.drawableSize.width),
+            drawableHeight: Int(view.drawableSize.height))
+        return PresentationGate.blockedReason(state)
     }
 
     func renderOffscreen(width: Int, height: Int) throws -> [UInt8] {

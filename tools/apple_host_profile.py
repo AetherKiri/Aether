@@ -34,7 +34,10 @@ def main():
         env.update(AETHER_HOST_AUTORUN='1', AETHER_HOST_LIBRARY_ROOT=str((folder / "library").resolve()), AETHER_HOST_RENDERER='metal',
                    AETHER_HOST_PROFILE='1', AETHER_HOST_DRAWABLE_1080P='1',
                    AETHER_HOST_SCHEDULING=mode, AETHER_HOST_GAME_PATH=str(args.game.resolve()),
-                   AETHER_HOST_CAPTURE_DIR=str(folder.resolve()), AETHER_HOST_EXIT_AFTER=str(args.duration))
+                   AETHER_HOST_CAPTURE_DIR=str(folder.resolve()), AETHER_HOST_EXIT_AFTER=str(args.duration),
+                   # Unattended runs are occluded otherwise; the presenter skips
+                   # drawable requests for occluded windows, so bring it forward.
+                   AETHER_HOST_ACTIVATE='1')
         with (folder / 'run.log').open('w') as log:
             process = subprocess.Popen([str(binary)], env=env, stdout=log, stderr=subprocess.STDOUT)
             try:
@@ -51,7 +54,11 @@ def main():
         assert code == 0 and 'engine destroyed' in text and 'startup state: SUCCEEDED' in text, mode
         assert 'Metal presentation failed' not in text, mode
         assert 'native GPU frame' in text and re.search(r'Metal bridge .*failures=0.*native_readbacks=0', text), mode
-        with (folder / 'aetherhost-presentation.csv').open() as source:
+        csv_path = folder / 'aetherhost-presentation.csv'
+        assert csv_path.is_file(), (
+            f'{mode}: no presentation samples; the host window never presented '
+            '(occluded/hidden window). See run.log for "presentation paused".')
+        with csv_path.open() as source:
             rows = list(csv.DictReader(source))
         assert len(rows) >= 60 and len({r['tick'] for r in rows}) == len(rows), mode
         assert all((r['drawable_width'], r['drawable_height']) == ('1920', '1080') for r in rows), mode

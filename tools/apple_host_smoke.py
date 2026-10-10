@@ -53,6 +53,9 @@ def main():
                        AETHER_HOST_RENDERER=args.renderer,
                        AETHER_HOST_DRAWABLE_1080P="1" if args.drawable_1080p else "0",
                        AETHER_HOST_PROFILE="1" if args.profile else "0",
+                       # Profile runs measure drawable submission, which the
+                       # presenter skips while the window is occluded.
+                       AETHER_HOST_ACTIVATE="1" if args.profile else "0",
                        AETHER_HOST_CAPTURE_AFTER=f"6,20,{final_capture}",
                        AETHER_HOST_CAPTURE_DIR=str(folder.resolve()),
                        AETHER_HOST_EXIT_AFTER=str(args.duration))

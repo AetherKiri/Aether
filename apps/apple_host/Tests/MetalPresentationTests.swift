@@ -41,6 +41,37 @@ struct MetalPresentationTests {
         let empty = try presenter.renderOffscreen(width: 2, height: 2)
         precondition(empty == [0, 0, 0, 255, 0, 0, 0, 255,
                                 0, 0, 0, 255, 0, 0, 0, 255])
-        print("PASS: GPU shader, RGBA/BGRA, orientation, alpha, resize/letterbox, clear")
+
+        // Drawable gating: a request is only allowed while the window can
+        // present, because nextDrawable blocks until availability or its
+        // one second timeout.
+        var gate = PresentationGate.State(
+            drawableWidth: 1920, drawableHeight: 1080)
+        precondition(PresentationGate.blockedReason(gate) == nil)
+        gate.suspended = true
+        precondition(PresentationGate.blockedReason(gate) == "presenter suspended")
+        gate.suspended = false
+        gate.hasWindow = false
+        precondition(PresentationGate.blockedReason(gate) == "no window")
+        gate.hasWindow = true
+        gate.windowVisible = false
+        precondition(PresentationGate.blockedReason(gate) == "window hidden")
+        gate.windowVisible = true
+        gate.windowMiniaturized = true
+        precondition(PresentationGate.blockedReason(gate) == "window minimized")
+        gate.windowMiniaturized = false
+        gate.windowOccluded = true
+        precondition(PresentationGate.blockedReason(gate) == "window occluded")
+        gate.windowOccluded = false
+        gate.drawableWidth = 0
+        precondition(PresentationGate.blockedReason(gate) == "empty drawable")
+        gate.drawableWidth = 1920
+        precondition(PresentationGate.blockedReason(gate) == nil)
+        // Suspension outranks window state so shutdown never waits.
+        gate.windowOccluded = true
+        gate.suspended = true
+        precondition(PresentationGate.blockedReason(gate) == "presenter suspended")
+
+        print("PASS: GPU shader, RGBA/BGRA, orientation, alpha, resize/letterbox, clear, drawable gating")
     }
 }

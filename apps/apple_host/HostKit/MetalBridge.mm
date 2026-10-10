@@ -8,6 +8,9 @@
 #include <cmath>
 #include <chrono>
 #include <cstring>
+#include <cstdlib>
+#include <execinfo.h>
+#include <dlfcn.h>
 #include <map>
 #include <memory>
 #include <mutex>
@@ -28,6 +31,7 @@ struct Record {
     id<MTLTexture> texture;
     std::shared_ptr<ExternalOwner> external;
     uint64_t generation=0;
+    NSString *allocationOrigin=nil;
 };
 struct ReadRequest {
     id<MTLTexture> texture;
@@ -57,6 +61,21 @@ struct State {
     ~State() { if (cache) CFRelease(cache); }
 };
 State &S() { static State state; return state; }
+NSString *AllocationOrigin() {
+    static bool enabled=[] { const char *value=std::getenv("AETHER_HOST_TRACE_TEXTURES"); return value && std::strcmp(value,"1")==0; }();
+    if(!enabled)return nil;
+    void *frames[20];int count=backtrace(frames,20);
+    NSMutableString *result=[NSMutableString string];
+    for(int index=2;index<count;++index) {
+        Dl_info info{};
+        if(dladdr(frames[index],&info) && info.dli_fbase) {
+            NSString *path=[NSString stringWithUTF8String:info.dli_fname ?: "unknown"];
+            [result appendFormat:@"%@%@+0x%llx",result.length ? @";" : @"",path.lastPathComponent,
+                (unsigned long long)((uintptr_t)frames[index]-(uintptr_t)info.dli_fbase)];
+        }
+    }
+    return result;
+}
 using Lock = std::lock_guard<std::recursive_mutex>;
 using Params = std::array<int32_t, 12>;
 thread_local std::vector<uint64_t> batches;
@@ -195,7 +214,7 @@ uint64_t Create(uint32_t width, uint32_t height, const void *pixels, uint32_t st
         }
     }
     uint64_t token = S().next++;
-    S().textures.emplace(token, Record{texture, {}, S().activeGeneration});
+    S().textures.emplace(token, Record{texture, {}, S().activeGeneration, AllocationOrigin()});
     return token;
 }
 void Release(uint64_t token) {
@@ -444,7 +463,7 @@ uint64_t ImportApple(void *image,uint32_t width,uint32_t height) {
     id<MTLTexture> texture=CVMetalTextureGetTexture(wrapper);
     if (!texture) { CFRelease(wrapper);return 0; }
     auto owner=std::make_shared<ExternalOwner>();owner->pixel=(CVPixelBufferRef)CFRetain(pixel);owner->wrapper=wrapper;
-    uint64_t token=S().next++;S().textures.emplace(token,Record{texture,owner,S().activeGeneration});return token;
+    uint64_t token=S().next++;S().textures.emplace(token,Record{texture,owner,S().activeGeneration,AllocationOrigin()});return token;
 }
 bool Prepare(uint64_t token) { Lock lock(S().mutex);return Texture(token)!=nil && Flush(); }
 bool Publish(uint64_t token) { Lock lock(S().mutex);return Texture(token)!=nil && Flush(); }
@@ -512,6 +531,13 @@ BOOL AetherMetalBridgeEndSession(uint64_t generation) {
     Lock lock(S().mutex);
     if(generation!=S().activeGeneration)return NO;
     S().activeGeneration=0;
+    for(const auto &entry:S().textures) {
+        if(entry.second.generation==generation && entry.second.allocationOrigin) {
+            NSLog(@"[Metal resource] retired generation=%llu token=%llu size=%lux%lu origin=%@",
+                generation,entry.first,(unsigned long)entry.second.texture.width,
+                (unsigned long)entry.second.texture.height,entry.second.allocationOrigin);
+        }
+    }
     return YES;
 }
 BOOL AetherMetalBridgeDrain() {

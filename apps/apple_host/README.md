@@ -49,6 +49,10 @@ python3 tools/apple_host_profile.py demos/aetherkiri-kag3/data --duration 30 --c
 # result.json 的 native_cpu_stages 分列取帧接口与快照 CPU 平均/最大耗时。
 # 取帧包含 ABI 分发和运行时查询；包含启动/预热，异步快照不含 GPU 完成等待。
 # 仅 AETHER_HOST_PROFILE=1 采集阶段时钟，普通运行不增加计时调用。
+# 排查关闭后的残留纹理：按需记录分配栈，退役时输出 image+offset 便于 atos 符号化。
+# 会增加追踪开销，不用于性能对照；默认不采集栈。
+AETHER_HOST_TRACE_TEXTURES=1 python3 tools/apple_host_smoke.py --game kag3 \
+  --renderer metal --snapshots async --duration 30
 python3 tools/generate_apple_metal_shaders.py --check
 
 # KAG3 + ONS 并行，各运行 310 秒，截图验证输入推进、GPU RGB 对比及干净退出。

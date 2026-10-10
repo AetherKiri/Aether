@@ -115,6 +115,11 @@ int main(int argc,char **argv) { @autoreleasepool {
     assert(row[0]==10&&row[4]==10&&row[8]==20&&row[12]==30);
     // Read request remains a stable snapshot after update and source release.
     uint64_t request=bridge.begin_read_rgba(src);assert(request);
+    Pixel invalidOutput{};bool invalidReady=true;
+    assert(!bridge.poll_read_rgba(request,invalidOutput.data(),3,4,&invalidReady)&&!invalidReady);
+    assert(!bridge.poll_read_rgba(request,nullptr,4,4,&invalidReady)&&!invalidReady);
+    assert(!bridge.poll_read_rgba(request,invalidOutput.data(),4,3,&invalidReady)&&!invalidReady);
+    assert(!bridge.poll_read_rgba(request,invalidOutput.data(),4,4,nullptr));
     bridge.clear_rgba(src,0xff000000,&one);bridge.release_texture(src);
     Pixel snapshot{};bool ready=false;
     for (int attempt=0;attempt<10000 && !ready;++attempt) {
@@ -123,8 +128,16 @@ int main(int argc,char **argv) { @autoreleasepool {
     }
     assert(ready);
     assert((snapshot==Pixel{200,40,60,128}));
+    // A completed request supports repeated polling until explicit discard.
+    ready=false;snapshot.fill(0);
+    assert(bridge.poll_read_rgba(request,snapshot.data(),4,4,&ready)&&ready);
+    assert((snapshot==Pixel{200,40,60,128}));
     bridge.discard_read_rgba(request);
     assert(!bridge.poll_read_rgba(request,snapshot.data(),snapshot.size(),4,&ready)&&!ready);
+    // Discard before completion is safe: Metal retains encoded resources.
+    uint64_t abandoned=bridge.begin_read_rgba(dst);assert(abandoned);
+    bridge.discard_read_rgba(abandoned);bridge.discard_read_rgba(abandoned);
+    assert(!bridge.poll_read_rgba(abandoned,snapshot.data(),4,4,&ready)&&!ready);
     // Nested batch scopes validate token ordering.
     uint64_t outer=batch.begin_batch(),inner=batch.begin_batch();
     assert(!batch.end_batch(outer));assert(batch.end_batch(inner));assert(batch.end_batch(outer));

@@ -373,6 +373,9 @@ bool PollRead(uint64_t token,void *out,size_t capacity,uint32_t stride,bool *rea
     Lock lock(S().mutex);if (!ready) return false;*ready=false;
     auto found=S().reads.find(token);if (found==S().reads.end()) return false;
     auto &request=found->second;
+    id<MTLTexture> texture=request.texture;
+    // Validate even while pending, so invalid callers cannot appear successful.
+    if (!out || stride<texture.width*4 || capacity<(size_t)stride*texture.height) return false;
     if (request.command.status==MTLCommandBufferStatusError) {
         if (!request.accounted) { ++S().failures; request.accounted=true;
             S().lastError=request.command.error.localizedDescription ?: @"Metal readback failed"; }
@@ -381,8 +384,6 @@ bool PollRead(uint64_t token,void *out,size_t capacity,uint32_t stride,bool *rea
     if (request.command.status!=MTLCommandBufferStatusCompleted) return true;
     if (!request.accounted) { ++S().operations; request.accounted=true; }
     // The snapshot has completed independently; do not flush unrelated work.
-    id<MTLTexture> texture=request.texture;
-    if (!out || stride<texture.width*4 || capacity<(size_t)stride*texture.height) return false;
     [texture getBytes:out bytesPerRow:stride fromRegion:MTLRegionMake2D(0,0,texture.width,texture.height) mipmapLevel:0];
     if (texture.pixelFormat==MTLPixelFormatBGRA8Unorm) {
         for (NSUInteger y=0;y<texture.height;++y) for (NSUInteger x=0;x<texture.width;++x) {

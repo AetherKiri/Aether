@@ -47,6 +47,7 @@ struct State {
     uint64_t next = 1, operations = 0, failures = 0;
     uint64_t readsBegun=0, readsPending=0, readsCompleted=0, readsCancelled=0;
     uint64_t presentationSnapshots=0;
+    uint64_t presentationCombinedSnapshots=0;
     double presentationSnapshotMS=0, presentationSnapshotMaxMS=0;
     NSString *lastError = @"";
     ~State() { if (cache) CFRelease(cache); }
@@ -470,17 +471,19 @@ BOOL AetherMetalBridgeInitialize(NSError **error) {
 id<MTLTexture> AetherMetalBridgeCopyTexture(uint64_t token) {
     Lock lock(S().mutex);
     auto start=std::chrono::steady_clock::now();
+    bool combined=S().pending!=nil;
     id<MTLTexture> result=Snapshot(Texture(token));
     double elapsed=std::chrono::duration<double,std::milli>(std::chrono::steady_clock::now()-start).count();
     ++S().presentationSnapshots;S().presentationSnapshotMS+=elapsed;
+    if(result&&combined)++S().presentationCombinedSnapshots;
     S().presentationSnapshotMaxMS=std::max(S().presentationSnapshotMaxMS,elapsed);
     return result;
 }
 BOOL AetherMetalBridgeReadTexture(uint64_t token, void *pixels, size_t capacity, uint32_t stride) { return Read(token, pixels, capacity, stride); }
 NSString *AetherMetalBridgeDiagnostics() {
     Lock lock(S().mutex);
-    return [NSString stringWithFormat:@"Metal bridge textures=%zu reads=%zu commands=%llu failures=%llu error=%@ read_begin=%llu read_pending_polls=%llu read_complete=%llu read_cancel=%llu snapshot_calls=%llu snapshot_total_ms=%.3f snapshot_max_ms=%.3f",
+    return [NSString stringWithFormat:@"Metal bridge textures=%zu reads=%zu commands=%llu failures=%llu error=%@ read_begin=%llu read_pending_polls=%llu read_complete=%llu read_cancel=%llu snapshot_calls=%llu snapshot_total_ms=%.3f snapshot_max_ms=%.3f snapshot_combined=%llu",
         S().textures.size(),S().reads.size(),S().operations,S().failures,S().lastError,
         S().readsBegun,S().readsPending,S().readsCompleted,S().readsCancelled,
-        S().presentationSnapshots,S().presentationSnapshotMS,S().presentationSnapshotMaxMS];
+        S().presentationSnapshots,S().presentationSnapshotMS,S().presentationSnapshotMaxMS,S().presentationCombinedSnapshots];
 }

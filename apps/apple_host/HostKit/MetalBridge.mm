@@ -72,6 +72,8 @@ struct State {
     uint64_t readsBegun=0, readsPending=0, readsCompleted=0, readsCancelled=0;
     uint64_t presentationSnapshots=0;
     uint64_t presentationCombinedSnapshots=0;
+    uint64_t presentationCommandCreates=0, presentationCommandReuses=0,
+             presentationCommandThreadFlushes=0;
     double presentationSnapshotMS=0, presentationSnapshotMaxMS=0;
     NSString *lastError = @"";
     ~State() { if (cache) CFRelease(cache); }
@@ -538,7 +540,12 @@ extern "C" void AetherMetalBridgeFramePublished(uint64_t token, uint32_t width,
 - (BOOL)submitCommand:(id<MTLCommandBuffer>)command {
     Lock lock(S().mutex);
     if(!_valid || !_generation || _generation!=S().activeGeneration || command.commandQueue!=S().queue ||
-       command.status!=MTLCommandBufferStatusNotEnqueued || !FlushPending())return NO;
+       command.status!=MTLCommandBufferStatusNotEnqueued)return NO;
+    // The direct presenter may be encoding into the bridge's pending command,
+    // which already contains the engine draw. Keep it as one GPU submission;
+    // unrelated callers still flush older pending work before their command.
+    if (command != S().pending && !FlushPending()) return NO;
+    if (command == S().pending) S().pending = nil;
     ++S().leaseSubmitted;
     dispatch_group_enter(S().leaseGroup);
     // Completion uses atomics, never the encoding lock: synchronous engine
@@ -556,10 +563,11 @@ extern "C" void AetherMetalBridgeFramePublished(uint64_t token, uint32_t width,
 }
 @end
 
-AetherMetalFrameLease *AcquireFrameLocked(uint64_t generation,uint64_t token,uint64_t serial) {
+AetherMetalFrameLease *AcquireFrameLocked(uint64_t generation,uint64_t token,uint64_t serial,
+                                         bool flushPending = true) {
     auto found=S().textures.find(token);
     if(!generation || generation!=S().activeGeneration || found==S().textures.end() ||
-       found->second.generation!=generation || !FlushPending())return nil;
+       found->second.generation!=generation || (flushPending && !FlushPending()))return nil;
     auto &record=found->second;
     // External producers can write outside our callback protocol. Give those
     // frames an immutable snapshot; ordinary engine textures are shared directly.
@@ -594,9 +602,26 @@ AetherMetalFrameLease *AetherMetalBridgeAcquirePublishedFrame(uint64_t generatio
         return nil;
     }
     AetherMetalFrameLease *lease = AcquireFrameLocked(
-        generation, S().publishedToken, S().publishedSerial);
+        generation, S().publishedToken, S().publishedSerial, false);
     if(!lease) ++S().publishedAcquireMisses;
     return lease;
+}
+
+id<MTLCommandBuffer> AetherMetalBridgePresentationCommand() {
+    Lock lock(S().mutex);
+    if (!S().activeGeneration || !S().queue) return nil;
+    if (S().pending && S().pendingThread != std::this_thread::get_id()) {
+        ++S().presentationCommandThreadFlushes;
+        if (!FlushPending()) return nil;
+    }
+    if (!S().pending) {
+        S().pending = [S().queue commandBuffer];
+        S().pendingThread = std::this_thread::get_id();
+        ++S().presentationCommandCreates;
+    } else {
+        ++S().presentationCommandReuses;
+    }
+    return S().pending;
 }
 
 BOOL AetherMetalBridgeInitialize(NSError **error) {
@@ -729,8 +754,9 @@ NSString *AetherMetalBridgeDiagnostics() {
         S().readsBegun,S().readsPending,S().readsCompleted,S().readsCancelled,
         S().presentationSnapshots,S().presentationSnapshotMS,S().presentationSnapshotMaxMS,S().presentationCombinedSnapshots,
         S().asyncSubmitted,S().asyncCompleted.load(),S().asyncSubmitted-S().asyncCompleted.load(),textureBytes,externalTextures,S().activeGeneration,retiredTextures];
-    return [base stringByAppendingString:[NSString stringWithFormat:@" leases_acquired=%llu leases_live=%llu lease_submitted=%llu lease_completed=%llu lease_failures=%llu frame_detach_copies=%llu published_acquire_calls=%llu published_acquire_misses=%llu published_acquire_unchanged=%llu published_acquire_fast_unchanged=%llu",
+    return [base stringByAppendingString:[NSString stringWithFormat:@" leases_acquired=%llu leases_live=%llu lease_submitted=%llu lease_completed=%llu lease_failures=%llu frame_detach_copies=%llu published_acquire_calls=%llu published_acquire_misses=%llu published_acquire_unchanged=%llu published_acquire_fast_unchanged=%llu presentation_command_creates=%llu presentation_command_reuses=%llu presentation_command_thread_flushes=%llu",
         S().leasesAcquired,S().leasesLive.load(),S().leaseSubmitted.load(),S().leaseCompleted.load(),S().leaseFailures.load(),S().frameDetachCopies,
         S().publishedAcquireCalls,S().publishedAcquireMisses,S().publishedAcquireUnchanged,
-        S().publishedAcquireFastUnchanged.load()]];
+        S().publishedAcquireFastUnchanged.load(), S().presentationCommandCreates,
+        S().presentationCommandReuses, S().presentationCommandThreadFlushes]];
 }

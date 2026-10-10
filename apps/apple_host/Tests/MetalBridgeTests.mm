@@ -337,6 +337,22 @@ int main(int argc,char **argv) { @autoreleasepool {
     AetherMetalBridgeFramePublished(newToken, 1, 1, 501);
     auto republished=AetherMetalBridgeAcquirePublishedFrame(nextGeneration, 500);
     assert(republished && republished.serial==501);
+    // Native presentation appends to the bridge's pending command and submits
+    // it through the lease, so engine work and the present pass share one GPU
+    // submission boundary.
+    auto unified=AetherMetalBridgeAcquirePublishedFrame(nextGeneration, 501);
+    assert(!unified);
+    AetherMetalBridgeFramePublished(newToken, 1, 1, 502);
+    unified=AetherMetalBridgeAcquirePublishedFrame(nextGeneration, 501);
+    assert(unified && unified.serial==502);
+    auto presentationCommand=AetherMetalBridgePresentationCommand();
+    assert(presentationCommand);
+    assert(AetherMetalBridgePresentationCommand()==presentationCommand);
+    assert([unified submitCommand:presentationCommand]);
+    assert(![unified submitCommand:presentationCommand]);
+    assert([AetherMetalBridgeDiagnostics() containsString:@"presentation_command_creates=1"]);
+    assert([AetherMetalBridgeDiagnostics() containsString:@"presentation_command_reuses=1"]);
+    assert(AetherMetalBridgeDrain());
     bridge.release_texture(oldToken);
     assert([AetherMetalBridgeDiagnostics() containsString:@"retired_textures=0"]);
     @autoreleasepool {

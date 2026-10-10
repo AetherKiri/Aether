@@ -241,8 +241,14 @@ final class MetalFramePresenter: NSObject, MTKViewDelegate {
             onGateChange?("presentation resumed after \(skippedDraws) skipped draws")
         }
         let drawStarted = ProcessInfo.processInfo.systemUptime
-        guard let drawable = view.currentDrawable,
-              let command = queue.makeCommandBuffer() else { return }
+        guard let drawable = view.currentDrawable else { return }
+        let command: MTLCommandBuffer?
+        if frameLease != nil {
+            command = AetherMetalBridgePresentationCommand()
+        } else {
+            command = queue.makeCommandBuffer()
+        }
+        guard let command else { return }
         if debugLabels { command.label = "AetherHost.present-frame" }
         let acquired = ProcessInfo.processInfo.systemUptime
         do {

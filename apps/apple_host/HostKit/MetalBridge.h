@@ -28,6 +28,10 @@ uint64_t AetherMetalBridgeBeginSession(void);
 AetherMetalFrameLease * _Nullable AetherMetalBridgeAcquireFrame(uint64_t generation, uint64_t token, uint64_t serial);
 AetherMetalFrameLease * _Nullable AetherMetalBridgeAcquirePublishedFrame(uint64_t generation,
                                                                           uint64_t afterSerial);
+// Native direct presentation may append its render pass to the engine's
+// pending command buffer. The lease completion callback becomes the single
+// submit boundary for that command.
+id<MTLCommandBuffer> _Nullable AetherMetalBridgePresentationCommand(void);
 void AetherMetalBridgeFramePublished(uint64_t token, uint32_t width,
                                      uint32_t height, uint64_t serial);
 // Producers must be stopped. Retired tokens remain releasable, never presentable.

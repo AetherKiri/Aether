@@ -382,9 +382,24 @@ tick-to-GPU-completion p50/p95 从 `0.931/2.022 ms` 降至 `0.903/1.924 ms`；�
 `published_acquire_fast_unchanged`，用于区分快速未变化返回和锁内未变化返回；这条快路径
 只跳过重复检查，不改变 lease 的所有权或完成回调协议。
 
+native presenter 还可通过 `AetherMetalBridgePresentationCommand` 复用引擎尚未提交的
+pending command；这样引擎写入和 presenter render pass 可以进入同一个 command buffer，
+由 lease 完成回调统一提交。若没有可复用的 pending work，接口只创建一个共享队列上的
+command，不改变现有结果。诊断字段 `presentation_command_creates/reuses/
+thread_flushes` 用于区分这两种情况，避免把“支持合并”误报为“每帧已合并”。
+
 MetalBridge 组件新增 serial 不变/递增测试并通过，`published_acquire_unchanged=1`、
-`published_acquire_fast_unchanged=1`、`failures=0`、`leases_live=0`。KAG3 30 秒直通、
+`published_acquire_fast_unchanged=2`、`failures=0`、`leases_live=0`。KAG3 30 秒直通、
 输入、截图和关闭回归通过，动态 profile 为 host-work p50/p95/max=`0.274/0.907/10.359 ms`、
 tick-to-GPU-completion p50/p95/max=`0.915/1.837/11.000 ms`，`over_16_6=0`；该素材
 每 tick 都发布新帧，因此 `published_acquire_fast_unchanged=0` 属预期。后续需要用静态
 标题或暂停脚本测量该优化的实际 lease 分配减少量。
+
+本轮 command-buffer 合并实测没有把“可合并”当成“已合并”：KAG3 30 秒 direct 回归的
+诊断为 `presentation_command_creates=1748`、`presentation_command_reuses=0`、
+`presentation_command_thread_flushes=0`，说明该标题在 publication 前已经提交了引擎
+GPU 工作；stretch 夹具同样为 `creates=1757/reuses=0`。两者均输入、截图 RGB max diff
+为 0，lease 提交/完成相等且 failures 为 0。KAG3 本轮 profile 为 host-work
+`0.305/1.182/12.075 ms`、tick-to-GPU-completion `0.997/1.945/12.433 ms`，无超
+16.6ms 样本；这个单轮结果不证明延迟收益，command reuse 计数保留为后续引擎侧 pending
+work 接入的验收门槛。

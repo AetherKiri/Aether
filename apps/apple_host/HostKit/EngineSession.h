@@ -1,6 +1,7 @@
 #import <CoreGraphics/CoreGraphics.h>
 #import <Foundation/Foundation.h>
 #import <Metal/Metal.h>
+#include "engine_api.h"
 
 NS_ASSUME_NONNULL_BEGIN
 
@@ -19,6 +20,9 @@ NS_ASSUME_NONNULL_BEGIN
             value:(NSString *)value
             error:(NSError **)error
     NS_SWIFT_NAME(setOption(_:value:));
+
+// Borrow only; close dependent media before shutdown destroys this handle.
+- (engine_handle_t _Nullable)borrowedEngineHandle;
 
 - (uint32_t)engineAPIVersion;
 

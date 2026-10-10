@@ -74,17 +74,17 @@ Apple 宿主现已提供实体/屏幕按键及原生弹窗提交 TEXT_INPUT（�
 | `call_native` | runtime 定义 | 信号→GDScript | `PlatformAdapter` 分发 🔶（runtime 定义，按需） |
 | `purchase` | runtime 定义 | StoreKit（apple_storekit.swift） | 直接复用 ✅ |
 | `dialog` | URL 表单：title/message/text_field/maximum_characters/yes_no/buttons；响应 result/text | Godot 原生壳弹窗，响应文字 URI 编码 | SwiftUI FIFO 请求弹窗 + ABI 响应已实现；真实私有 provider 验收待补 🔶 |
-| `text_input` | 旧清单三字段协议未在公开壳证实 | 文本实际由输入状态 + TEXT_INPUT 驱动 | 手动提交入口已实现；未知 operation 不猜响应，IME/state 待迁移 🔶 |
+| `text_input` | title\tmessage\tinitial text；响应 result=cancel 或 result=ok\t正文 | C++ 扩展 `show_runtime_text_input` 原生输入框 | 协议已确认，请求弹窗待迁移；手动 TEXT_INPUT 入口已实现 🔶 |
 | `presentation_sprite` | runtime 定义 payload | `RuntimePresentationSprite`（Godot Sprite2D） | ⚠️ 发射方不在公开树（疑为 AetherInternal/SoftPal 私有包）；公开构建下不会触发。M3+ 按需处理 |
 | `minori_save_slots` | 存档槽数据 | 宿主 UI | SwiftUI 存档槽（M3）🔶 |
 | `minori_message` / `_reveal` | 说话人/文本/逐字 | 宿主文字框 | SwiftUI 文字框（M3）🔶 |
-| `minori_audio` | 8 字段 `\t`（槽/总线/文件/音量/淡入淡出） | AudioStreamPlayer + BGM fade | AVAudioEngine（M3）✅ |
-| `minori_movie` | 6 字段 | `engine_media_*` + 宿主呈现 | 复用 `engine_media_*` ✅ |
+| `minori_audio` | 8 字段 `\t`（槽/总线/文件/音量/淡入淡出） | AudioStreamPlayer + BGM fade | AVAudioEngine（M3）待实现 🔶 |
+| `minori_movie` | 绝对文件路径\t宽\t高\tx\ty\t可跳过(0/1) | `engine_media_*` + 宿主呈现 | 同游戏引擎借用媒体、画布矩形覆盖、complete/skipped/error 回传已实现；真实 Minori VM 验收待补 🔶 |
 | 其他 | — | 信号→壳层 | 默认分发 ✅ |
 
 ## E. 媒体（视频库与影片）
 
-`engine_media_open/destroy/play/pause/seek/set_rate/set_volume/get_state/get_subtitle_tracks_json/extract_subtitle/read_frame_rgba` + `engine_media_set_volume`。宿主职责：帧呈现、字幕渲染、进度记忆。M3 独立视频已接入 `MediaSession`/`MediaController`（RGBA 基线 + UTF-8 文本字幕 + 本地进度）；视频库及 Minori 请求待接入。
+`engine_media_open/destroy/play/pause/seek/set_rate/set_volume/get_state/get_subtitle_tracks_json/extract_subtitle/read_frame_rgba` + `engine_media_set_volume`。宿主职责：帧呈现、字幕渲染、进度记忆。M3 独立视频已接入 `MediaSession`/`MediaController`（RGBA 基线 + UTF-8 文本字幕 + 本地进度）；Minori 影片已接入 `RuntimeMovieController`，借用游戏引擎且先销毁媒体再回传；视频库及其它 Minori 请求待接入。
 
 ## F. 音频（已确认）
 

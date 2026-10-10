@@ -36,6 +36,27 @@ final class EngineController: ObservableObject {
     private var keyEventCount = 0
     private var keyInput = KeyInputState()
     private var hostInputSuspended = false
+    @Published private(set) var runtimeMovieActive = false
+    private var movieInput = RuntimeMovieInputState()
+    lazy var runtimeMovie: RuntimeMovieController = {
+        let controller = RuntimeMovieController()
+        controller.submit = { [weak self] response in
+            guard let self else { throw CocoaError(.userCancelled) }
+            try self.session.submitPlatformResponse("minori_movie", argument: response)
+        }
+        controller.log = { [weak self] in self?.log($0) }
+        controller.failure = { [weak self] message in
+            self?.failureMessage = message
+            self?.recordDiagnostics(["state": "failed", "error": message])
+        }
+        controller.activityChanged = { [weak self] active in
+            guard let self else { return }
+            self.runtimeMovieActive = active
+            if active { InputNSView.activeView?.cancelPressedButtons() }
+            self.setInputSuspended(self.hostInputSuspended)
+        }
+        return controller
+    }()
     lazy var platformDialogs: PlatformDialogController = {
         let controller = PlatformDialogController()
         controller.submit = { [weak self] response in
@@ -217,20 +238,11 @@ final class EngineController: ObservableObject {
 
         if !platformDialogs.hasPending {
             session.pollPlatformRequests { [weak self] operation, argument in
-                guard let self else { return }
-                if operation == "open_browser", let url = URL(string: argument) {
-                    NSWorkspace.shared.open(url)
-                } else if operation == "dialog" {
-                    self.platformDialogs.enqueue(argument)
-                } else {
-                    let preview = argument.count > 96
-                        ? String(argument.prefix(96)) + "…"
-                        : argument
-                    self.log("platform_request: \(operation) \(preview)")
-                }
+                self?.handlePlatformRequest(operation, argument: argument)
             }
-
         }
+
+        runtimeMovie.update()
 
         let state = session.startupState()
         if state != lastStartupState {
@@ -367,12 +379,30 @@ final class EngineController: ObservableObject {
         }
     }
 
+    func handlePlatformRequest(_ operation: String, argument: String) {
+        if operation == "open_browser", let url = URL(string: argument) {
+            NSWorkspace.shared.open(url)
+        } else if operation == "minori_movie", let handle = session.borrowedEngineHandle() {
+            runtimeMovie.open(argument, engine: handle)
+        } else if operation == "dialog" {
+            platformDialogs.enqueue(argument)
+        } else {
+            let preview = argument.count > 96 ? String(argument.prefix(96)) + "…" : argument
+            log("platform_request: \(operation) \(preview)")
+        }
+    }
+
     // MARK: - Input forwarding (see InputMapping for translation rules)
 
     func sendPointer(
         type: UInt32, x: Double, y: Double, dx: Double, dy: Double,
         button: Int32, modifiers: Int32
     ) {
+        if movieInput.consumePointer(type: type, button: button, movieActive: runtimeMovieActive) {
+            if runtimeMovieActive, type == EngineInputEvent.pointerDown,
+               !hostInputSuspended && !platformDialogs.hasPending { runtimeMovie.skip() }
+            return
+        }
         guard !inputSuspended || type == EngineInputEvent.pointerUp else { return }
         pointerEventCount += 1
         if pointerEventCount <= 12 {
@@ -386,6 +416,11 @@ final class EngineController: ObservableObject {
     func sendKey(
         pressed: Bool, keyCode: Int32, modifiers: Int32, unicode: UInt32
     ) {
+        if movieInput.consumeKey(pressed: pressed, key: keyCode, movieActive: runtimeMovieActive) {
+            if runtimeMovieActive, pressed, !hostInputSuspended && !platformDialogs.hasPending,
+               [13, 27, 32].contains(keyCode) { runtimeMovie.skip() }
+            return
+        }
         guard !pressed || !inputSuspended else { return }
         for transition in keyInput.set(.physical, key: keyCode, pressed: pressed, modifiers: modifiers, unicode: unicode) {
             forwardKey(transition)
@@ -427,7 +462,7 @@ final class EngineController: ObservableObject {
 
     func setInputSuspended(_ suspended: Bool) {
         hostInputSuspended = suspended
-        let effective = suspended || platformDialogs.hasPending
+        let effective = suspended || platformDialogs.hasPending || runtimeMovieActive
         guard inputSuspended != effective else { return }
         inputSuspended = effective
         if effective { releaseAllKeys() }
@@ -439,7 +474,7 @@ final class EngineController: ObservableObject {
     }
 
     func commitGameText(_ text: String) throws {
-        guard loopRunning else { throw CocoaError(.userCancelled) }
+        guard loopRunning, !runtimeMovieActive else { throw CocoaError(.userCancelled) }
         let scalars = GameTextInput.scalars(text)
         for scalar in scalars { try session.sendTextCodepoint(scalar) }
         log("game text committed: \(scalars.count) Unicode scalars")
@@ -454,6 +489,16 @@ final class EngineController: ObservableObject {
         let path = env["AETHER_HOST_GAME_PATH"] ?? Self.defaultGamePath
         log("AUTORUN: opening \(path)")
         openAndRun(gamePath: path)
+        #if DEBUG
+        // Test-only request injection; ACK is intentionally not a real Minori provider.
+        if let argument = env["AETHER_HOST_TEST_RUNTIME_MOVIE"] {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
+                guard self.loopRunning else { return }
+                self.runtimeMovie.submit = { [weak self] response in self?.log("TEST MOVIE ACK: \(response)") }
+                self.handlePlatformRequest("minori_movie", argument: argument)
+            }
+        }
+        #endif
         if let raw = env["AETHER_HOST_TEST_INPUT"], let delay = Double(raw) {
             DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
                 self.runTestInputSequence()
@@ -556,6 +601,8 @@ final class EngineController: ObservableObject {
         if profileFrames, let summary = metalPresenter?.finishProfile() {
             log(summary)
         }
+        runtimeMovie.reset()
+        movieInput.reset()
         platformDialogs.reset()
         releaseAllKeys()
         hostInputSuspended = false

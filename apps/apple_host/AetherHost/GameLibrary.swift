@@ -23,7 +23,7 @@ struct GameLibrary {
         case unsupported, unsafeSource, symbolicLink, invalidManifest
         var errorDescription: String? {
             switch self {
-            case .unsupported: return "No supported game entry was found. Select the folder containing startup.tjs, XP3 archives or an ONS script."
+            case .unsupported: return "No supported game entry was found. Select the folder containing startup.tjs, XP3 archives an ONS script, or supported Minori PAZ files."
             case .unsafeSource: return "The selected folder contains the managed library. Select a game folder outside the library."
             case .symbolicLink: return "This folder contains symbolic links. Import a folder containing the actual game files."
             case .invalidManifest: return "The saved library index is invalid. It has been preserved."
@@ -56,6 +56,11 @@ struct GameLibrary {
     private func isGame(_ folder: URL) throws -> Bool {
         let files = try FileManager.default.contentsOfDirectory(at: folder, includingPropertiesForKeys: [.isRegularFileKey])
         let entries = Set(["startup.tjs", "startup.ks", "0.txt", "00.txt", "nscr_sec.dat", "nscript.___", "nscript.dat", "onscript.nt2", "onscript.nt3"])
+        let regularNames = Set(try files.filter { try $0.resourceValues(forKeys: [.isRegularFileKey]).isRegularFile == true }
+            .map { $0.lastPathComponent.lowercased() })
+        // These markers match the public Minori provider's supported profiles.
+        let minoriExecutables: Set<String> = ["sppl1.exe", "sppl1_cn.exe", "trinoline.exe", "trinoline_chs.exe"]
+        if regularNames.isSuperset(of: ["scr.paz", "sys.paz"]), !regularNames.isDisjoint(with: minoriExecutables) { return true }
         return try files.contains {
             let name = $0.lastPathComponent.lowercased()
             guard entries.contains(name) || name.hasSuffix(".xp3") else { return false }

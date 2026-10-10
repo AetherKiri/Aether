@@ -189,7 +189,7 @@
 - 原生「输入文字」弹窗提交完成后的 Unicode 标量，经 `TEXT_INPUT` 进入游戏，过滤 NUL/CR/LF，一次最多 2048 个标量；取消不发送，宿主仅记录数量。此项是手动提交文字入口，尚未迁移游戏内 IME preedit、光标/选区同步及自动输入框检测，也不等同于平台 `dialog`/`text_input` 请求处理。
 - 新增原创 `tests/fixtures/apple_host_controls/startup.tjs`，画面显示 down/up 与已收到文字。CUA 独立库验证回车/空格/左箭头、保持 Ctrl 后打开文字弹窗、隐藏栏、设置及返回确认再取消：最终 down=7/up=7、text=你好A；取消后未再提交。重启恢复显示且 Ctrl 为 off；补验其余六个键，隐藏应用时日志确认 Ctrl down/up 与 released。画面与宿主日志在 `out/apple_host/evidence/m3-controls/`。
 - `KeyInputStateTests` 覆盖来源重叠、重复、释放、Unicode/长度过滤；`InputTests` 增补焦点/窗口切换松键与取消幂等断言，两组 PASS。Debug 构建成功，KAG3/ONS 各 30 秒回归通过，呈现对比差值 0、GPU failures=0、正常退出，证据 `m3-controls-game-regression/`。
-- 核对现有 Godot 后纠正接缝清单：文本输入依赖输入状态与 TEXT_INPUT；公开壳处理 `dialog` 的 URL 表单请求，未找到旧表所称三字段 `text_input` 协议，不能按猜测提交响应。平台请求、Minori 媒体仍为下一项；**G1 保持暂缓。**
+- 核对现有 Godot 后纠正接缝清单：文本输入依赖输入状态与 TEXT_INPUT；公开壳处理 `dialog` 的 URL 表单请求。2026-10-11 补查 C++ 扩展确认 `text_input` 三字段为标题/消息/初始文字（并非长度参数）；前次仅检查 GDScript 的结论不完整，接缝清单已纠正。平台请求、Minori 媒体仍为下一项；**G1 保持暂缓。**
 
 ### 2026-10-10：M3 平台 dialog 请求
 
@@ -200,6 +200,17 @@
 - `tools/apple_host_dialog_test.py --host-abi` 编译/运行解析队列测试、HostKit 真实 ABI 错误路径，并构建独立 SwiftUI 测试 App。覆盖编码/字数/无效载荷、自定义编号、FIFO、宿主弹窗延后、重复/旧响应、失败重试、会话清理；测试通过。公开核心的未激活 provider 不支持响应，错误被 wrapper 正确传回。
 - CUA 使用生产 parser/controller/view 的独立测试 App，验证中文 `你好+&EXTRA` 截为 `你好+&`、响应失败后原文字保留、重试得到 result=7 和 URI 编码正文，后续是/否与取消按顺序提交；最终版本另验证自定义按钮 Escape 不提交未知编号、Return 重试、中文是/否及肯定/确认响应。证据 `out/apple_host/evidence/m3-dialog/`。这个测试 App 使用明确的测试 ACK 回调，不代表已验证私有 Artemis/Minori provider 实际发请求及接收响应；该真实运行时验收仍待取得 provider。
 - Debug 构建、KAG3/ONS 各 30 秒回归 PASS；输入推进、呈现对比与正常退出通过，证据 `m3-dialog-game-regression/`。本项未接入其它平台 operation、Minori 媒体、自动 IME 或 IAP；**G1 保持暂缓。**
+
+### 2026-10-11：M3 Minori 运行时影片
+
+- `RuntimeMovieController` 接入公开 provider 的六字段 TAB 协议，严格验证绝对路径、Int32 坐标、正尺寸与可跳过标记。按原游戏画布的 aspect-fit 比例呈现指定矩形；影片不改变游戏输入坐标，五语言提供跳过按钮。
+- `MediaSession` 区分自有与借用引擎，影片借用游戏引擎；自然结束/跳过分别发送一次 complete/skipped，错误发送一次 error。先销毁媒体再回应，避免 provider 删除缓存时仍占用文件；关闭游戏先清理媒体，再销毁引擎且不回传完成。响应失败报告实际错误，不重复推进 VM。
+- 播放期间释放已有捕获、暂停游戏键鼠及手动文字提交；可跳过时点击/Enter/Space/Esc 结束，消耗跳过键的重复、松开及鼠标松开。结束后下一次新输入正常送达。
+- 游戏库增加公开两类 Minori profile 的 scr.paz + sys.paz + 四种 EXE 标记识别与复制测试。仅标记识别，不执行 EXE，核心启动时检查档案内容；未宣称支持全部 PAZ 标题。
+- `tools/apple_host_runtime_movie_test.py --run-host` 生成无音轨 AVI，真实核心测试覆盖首帧、EOF、可跳过/不可跳过、错误恢复、重复完成、提交拒绝、借用引擎不被销毁与输入隔离。实际 Xcode 宿主中结束、跳过、提前关闭三例 PASS，ACK 分别 complete、skipped、无响应，正常销毁引擎。证据 `out/apple_host/evidence/m3-runtime-movie-native-host/`。
+- CUA 在实际宿主游戏页验证影片矩形、跳过按钮及返回游戏；跳过后 HUD down=0/up=0，再按 a 得到 down=1/up=1、text=a。界面证据 ui-frame.png 与 ui-resumed.png。组合独立测试 App 曾在 KiriKiri 启动阶段崩溃，未认定原因；验收改用实际 Xcode 宿主并保留失败日志，未将失败 harness 作为交付工具。
+- Debug 构建、游戏库测试、既有三组媒体测试、KAG3 原生/ONS 软件兜底各 30 秒回归通过，呈现对比差值 0、正常退出。证据分别为 `m3-runtime-movie-media-regression/` 与 `m3-runtime-movie-game-regression/`。
+- 本轮请求由 Debug hook 注入，响应是明确的测试 ACK；尚无有效 Minori 游戏验证真实 VM 发请求与接收响应，也未验收实际听音。Minori 音频、文字框/选择/存档、`text_input` 请求仍待迁移；**G1 保持暂缓。**
 
 ## 下一步队列
 
@@ -215,9 +226,10 @@
 10. [x] **M3 独立媒体**：视频播放控制、文本字幕、进度恢复
 11. [x] **M3 屏幕输入**：虚拟按键、原生提交文字、焦点释放
 12. [x] **M3 dialog 实现**：原生平台请求弹窗与响应；私有运行时实机验收待补
-13. [ ] **M3 后续**：Minori 媒体及其它平台请求；IAP/更新/翻译逐项迁移
-14. [ ] M2 扩展：压缩包/库编辑与移除/外部引用；冷启动基准
-15. [x] 同步 spec、接缝清单与进度
+13. [x] **M3 Minori 影片实现**：同游戏引擎播放、矩形呈现、输入隔离与完成响应；真实 VM 验收待补
+14. [ ] **M3 后续**：Minori 音频/文字框/选择/存档、text_input；IAP/更新/翻译逐项迁移
+15. [ ] M2 扩展：压缩包/库编辑与移除/外部引用；冷启动基准
+16. [x] 同步 spec、接缝清单与进度
 
 ## 变更记录
 

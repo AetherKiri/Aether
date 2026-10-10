@@ -2,6 +2,7 @@ import SwiftUI
 
 struct GameSurfaceView: View {
     @ObservedObject var engine: EngineController
+    var language: ShellLanguage = .system
     var body: some View {
         ZStack {
             Color.black.opacity(0.9)
@@ -37,6 +38,8 @@ struct GameSurfaceView: View {
                 }
             )
             .frame(maxWidth: .infinity, maxHeight: .infinity)
+            RuntimeMovieView(movie: engine.runtimeMovie, canvas: engine.frameSize,
+                             skipLabel: language.text("skipMovie"))
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }

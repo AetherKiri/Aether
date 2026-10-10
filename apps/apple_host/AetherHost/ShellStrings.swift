@@ -18,6 +18,7 @@ enum ShellLanguage: String, CaseIterable, Identifiable {
     func text(_ key: String) -> String { Self.strings[key]?[index] ?? key }
     // Same five languages as the existing product; game text is untouched.
     private static let strings: [String: [String]] = [
+        "skipMovie": ["跳过影片", "跳過影片", "Skip Movie", "動画をスキップ", "동영상 건너뛰기"],
         "video": ["视频", "影片", "Video", "動画", "동영상"],
         "openVideo": ["打开视频", "開啟影片", "Open Video", "動画を開く", "동영상 열기"],
         "videoPlay": ["播放", "播放", "Play", "再生", "재생"],
@@ -52,7 +53,7 @@ enum ShellLanguage: String, CaseIterable, Identifiable {
         "importing": ["正在导入…", "正在匯入…", "Importing…", "追加中…", "가져오는 중…"],
         "importHelp": ["选择游戏文件夹。游戏将复制到应用游戏库，存档写入副本。", "選擇遊戲資料夾。遊戲將複製到 App 遊戲庫，存檔寫入副本。", "Choose a game folder. A copy is added to the library; saves stay in the copy.", "ゲームのフォルダを選択してください。コピーをライブラリに追加し、セーブもコピーに保存します。", "게임 폴더를 선택하세요. 라이브러리에 복사되며 저장 파일도 복사본에 보관됩니다."],
         "empty": ["你的游戏库", "你的遊戲庫", "Your Game Library", "ゲームライブラリ", "내 게임 라이브러리"],
-        "emptyHelp": ["导入一个 KiriKiri 或 ONScripter 游戏，开始游玩。", "匯入 KiriKiri 或 ONScripter 遊戲，開始遊玩。", "Import a KiriKiri or ONScripter game to begin.", "KiriKiri または ONScripter のゲームを追加して始めましょう。", "KiriKiri 또는 ONScripter 게임을 가져와 시작하세요."],
+        "emptyHelp": ["导入一个 KiriKiri、ONScripter 或支持的 Minori 游戏，开始游玩。", "匯入 KiriKiri、ONScripter 或支援的 Minori 遊戲，開始遊玩。", "Import a KiriKiri, ONScripter or supported Minori game to begin.", "KiriKiri、ONScripter または対応 Minori のゲームを追加して始めましょう。", "KiriKiri, ONScripter 또는 지원되는 Minori 게임을 가져와 시작하세요."],
         "choose": ["选择一款游戏", "選擇遊戲", "Choose a Game", "ゲームを選択", "게임 선택"],
         "play": ["开始游玩", "開始遊玩", "Play", "プレイ", "플레이"],
         "back": ["返回游戏库", "返回遊戲庫", "Back to Library", "ライブラリに戻る", "라이브러리로 돌아가기"],
@@ -76,7 +77,7 @@ enum ShellLanguage: String, CaseIterable, Identifiable {
         "error": ["无法完成操作", "無法完成操作", "Unable to Complete", "操作を完了できません", "작업을 완료할 수 없음"],
         "ok": ["好", "好", "OK", "OK", "확인"],
         "game": ["游戏", "遊戲", "Game", "ゲーム", "게임"],
-        "unsupported": ["没有找到可识别的游戏入口。请选择包含 startup.tjs、XP3 文件或 ONS 脚本的文件夹。", "找不到可識別的遊戲入口。請選擇含 startup.tjs、XP3 檔案或 ONS 腳本的資料夾。", "No game entry found. Choose a folder containing startup.tjs, XP3 files or an ONS script.", "ゲームが見つかりません。startup.tjs、XP3 または ONS スクリプトのあるフォルダを選択してください。", "게임을 찾을 수 없습니다. startup.tjs, XP3 또는 ONS 스크립트가 있는 폴더를 선택하세요."],
+        "unsupported": ["没有找到可识别的游戏入口。请选择包含 startup.tjs、XP3、ONS 脚本或支持的 Minori PAZ 文件的文件夹。", "找不到可識別的遊戲入口。請選擇含 startup.tjs、XP3、ONS 腳本或支援的 Minori PAZ 檔案的資料夾。", "No game entry found. Choose a folder containing startup.tjs, XP3, an ONS script or supported Minori PAZ files.", "ゲームが見つかりません。startup.tjs、XP3、ONS スクリプトまたは対応 Minori PAZのあるフォルダを選択してください。", "게임을 찾을 수 없습니다. startup.tjs, XP3, ONS 스크립트 또는 지원되는 Minori PAZ가 있는 폴더를 선택하세요."],
         "unsafeSource": ["这个文件夹包含应用游戏库，请选择独立的游戏文件夹。", "此資料夾包含 App 遊戲庫，請選擇獨立的遊戲資料夾。", "This folder contains the app library. Choose a separate game folder.", "このフォルダにはアプリのライブラリが含まれます。別のゲームフォルダを選択してください。", "이 폴더에는 앱 라이브러리가 포함되어 있습니다. 별도의 게임 폴더를 선택하세요."],
         "symbolicLink": ["文件夹内有符号链接，请导入包含实际游戏文件的文件夹。", "資料夾含符號連結，請匯入包含實際遊戲檔案的資料夾。", "The folder contains symbolic links. Choose a folder containing the actual game files.", "シンボリックリンクが含まれます。実際のゲームファイルがあるフォルダを選択してください。", "폴더에 심볼릭 링크가 있습니다. 실제 게임 파일이 있는 폴더를 선택하세요."],
         "invalidIndex": ["游戏库索引无法读取，原索引已保留。", "遊戲庫索引無法讀取，原索引已保留。", "The library index cannot be read. The original index has been preserved.", "ライブラリの一覧を読み込めません。元の一覧は保持されています。", "라이브러리 목록을 읽을 수 없습니다. 원본 목록은 보존되었습니다."],

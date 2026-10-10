@@ -12,6 +12,7 @@ struct EmbeddedSubtitleTrack: Decodable {
 // Call exclusively on the owner/main thread, matching the engine lifecycle ABI.
 final class MediaSession {
     private var engine: engine_handle_t?
+    private var ownsEngine = false
     private var media: engine_media_handle_t?
     private var lastSerial: UInt64?
     private var pixels = Data()
@@ -36,11 +37,20 @@ final class MediaSession {
                     try check(engine_create(&desc, &engine), "create media engine")
                 }
             }
-            try url.path.withCString { try check(engine_media_open(engine, $0, &media), "open video") }
-            guard try state().has_video != 0 else {
-                throw NSError(domain: "AetherMedia", code: -4, userInfo: [NSLocalizedDescriptionKey: "This file has no playable video stream."])
-            }
+            ownsEngine = true
+            try openFile(url)
         } catch { close(); throw error }
+    }
+    func open(_ url: URL, borrowing engine: engine_handle_t) throws {
+        close()
+        self.engine = engine; ownsEngine = false
+        do { try openFile(url) } catch { close(); throw error }
+    }
+    private func openFile(_ url: URL) throws {
+        try url.path.withCString { try check(engine_media_open(engine, $0, &media), "open video") }
+        guard try state().has_video != 0 else {
+            throw NSError(domain: "AetherMedia", code: -4, userInfo: [NSLocalizedDescriptionKey: "This file has no playable video stream."])
+        }
     }
     func play() throws { try check(engine_media_play(media), "play") }
     func pause() throws { try check(engine_media_pause(media), "pause") }
@@ -92,8 +102,8 @@ final class MediaSession {
     func close() {
         if let media { engine_media_destroy(media) }
         media = nil
-        if let engine { engine_destroy(engine) }
-        engine = nil
+        if ownsEngine, let engine { engine_destroy(engine) }
+        engine = nil; ownsEngine = false
         lastSerial = nil; pixels = Data()
     }
     deinit { close() }

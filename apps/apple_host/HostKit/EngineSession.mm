@@ -88,6 +88,8 @@ NSError *EngineError(engine_handle_t handle, NSString *fallback) {
     return YES;
 }
 
+- (engine_handle_t)borrowedEngineHandle { return _handle; }
+
 - (uint32_t)engineAPIVersion {
     return ENGINE_API_VERSION;
 }

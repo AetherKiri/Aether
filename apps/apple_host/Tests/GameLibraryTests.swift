@@ -33,6 +33,17 @@ struct GameLibraryTests {
         let wrapped = try repository.importDirectory(wrapper, existing: played)
         check(wrapped.imported.title == "wrapper")
         check(fm.fileExists(atPath: repository.gameURL(wrapped.imported).appendingPathComponent("0.txt").path))
+        let minori = temp.appendingPathComponent("Minori fixture")
+        try fm.createDirectory(at: minori, withIntermediateDirectories: true)
+        for name in ["scr.paz", "sys.paz", "trinoline.exe"] { try Data("fixture".utf8).write(to: minori.appendingPathComponent(name)) }
+        let minoriImport = try repository.importDirectory(minori, existing: wrapped.games)
+        check(fm.fileExists(atPath: repository.gameURL(minoriImport.imported).appendingPathComponent("scr.paz").path))
+        try fm.removeItem(at: minori.appendingPathComponent("sys.paz"))
+        do { _ = try GameLibrary(root: temp.appendingPathComponent("minori-incomplete")).importDirectory(minori, existing: []); fatalError("incomplete Minori accepted") }
+        catch GameLibrary.Failure.unsupported {}
+        try fm.createDirectory(at: minori.appendingPathComponent("sys.paz"), withIntermediateDirectories: true)
+        do { _ = try GameLibrary(root: temp.appendingPathComponent("minori-directory")).importDirectory(minori, existing: []); fatalError("directory marker accepted") }
+        catch GameLibrary.Failure.unsupported {}
         let unknown = temp.appendingPathComponent("unknown")
         try fm.createDirectory(at: unknown, withIntermediateDirectories: true)
         try fm.createDirectory(at: unknown.appendingPathComponent("startup.tjs"), withIntermediateDirectories: true)
@@ -59,6 +70,6 @@ struct GameLibraryTests {
         do { _ = try repository.load(); fatalError("path escape accepted") }
         catch GameLibrary.Failure.invalidManifest {}
         check(try Data(contentsOf: repository.root.appendingPathComponent("library.json")) == before)
-        print("PASS: managed copy, source isolation, duplicate/save preservation, reload, wrapper detection, symlink/recursive rejection, rollback, manifest path protection")
+        print("PASS: managed copy, source isolation, duplicate/save preservation, reload, wrapper/Minori marker detection, symlink/recursive rejection, rollback, manifest path protection")
     }
 }

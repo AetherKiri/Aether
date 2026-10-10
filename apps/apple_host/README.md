@@ -169,7 +169,7 @@ python3 tools/apple_host_media_test.py
 ```
 
 此工具生成短视频并验证字幕、解码、暂停/跳转/倍速、结束重播与进度恢复。
-它不验证实际听音或全部视频编码；视频库管理、Minori 平台请求接入仍待推进。
+它不验证实际听音或全部视频编码；视频库管理及其它 Minori 平台请求接入仍待推进。
 
 
 ## M3 屏幕按键与文字输入
@@ -177,7 +177,7 @@ python3 tools/apple_host_media_test.py
 游戏页「虚拟按键」或设置开关显示回车/空格/Esc/方向/PgUp/PgDn 与保持 Ctrl。
 实体键与屏幕键共享按下状态；隐藏、失焦、弹窗及关闭释放按键。
 「输入文字」使用原生输入框，先选中游戏内编辑控件再提交；最多 2048 个 Unicode 标量，
-跳过 NUL/换行，取消不发送。此阶段未实现游戏内 IME preedit/选区自动同步或平台请求弹窗。
+跳过 NUL/换行，取消不发送。此阶段未实现游戏内 IME preedit/选区自动同步或 `text_input` 平台请求弹窗。
 
 ```bash
 xcrun swiftc apps/apple_host/AetherHost/KeyInputState.swift \
@@ -207,4 +207,24 @@ python3 tools/apple_host_dialog_test.py --host-abi
 
 工具运行协议/队列与真实 HostKit ABI 错误路径测试，并构建独立 UI fixture。
 UI fixture 的 ACK 为测试回调；当前公开核心无法验证私有 provider 的实际请求/成功响应。
-界面证据在 `out/apple_host/evidence/m3-dialog/`。Minori 媒体及其它平台请求仍待迁移。
+界面证据在 `out/apple_host/evidence/m3-dialog/`。Minori 音频、文字框及其它平台请求仍待迁移。
+
+
+## M3 Minori 运行时影片
+
+`minori_movie` 六个 TAB 字段指定绝对路径、宽、高、x、y 和可跳过标记。
+影片借用正在运行的游戏引擎，按游戏画布坐标覆盖，保留原画布的输入与缩放。
+可跳过影片支持点击、回车、空格、Esc；播放期间隔离游戏输入，跳过键的重复与松开不泄漏到游戏。
+自然结束/跳过分别回传 `result=complete` / `result=skipped`，先关闭解码器再响应，允许 provider 删除缓存。
+错误回传一次 error，关闭游戏不回传完成。这里不保存独立视频的恢复位置。
+导入识别公开 Minori profile 的 scr.paz、sys.paz 与四种 EXE 标记，不执行 EXE；实际档案有效性由核心检查。
+
+```bash
+# 需要已有 Debug 核心、宿主构建和 ffmpeg。
+python3 tools/apple_host_runtime_movie_test.py --run-host
+```
+
+工具生成无音轨 AVI，验证真实解码与借用引擎生命周期，再在实际宿主运行结束、跳过和关闭三种情形。
+`AETHER_HOST_TEST_RUNTIME_MOVIE` 仅 Debug autorun 使用，注入协议并以明确的测试 ACK 替代真实响应。
+测试与界面证据在 `out/apple_host/evidence/m3-runtime-movie-native-host/`，不代表真实 Minori VM 已验收。
+完整 Minori 剧情还依赖音频、文字框、选择与存档等请求迁移；G1 继续暂缓。

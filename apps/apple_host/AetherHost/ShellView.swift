@@ -34,7 +34,7 @@ struct ContentView: View {
                         Button { model.showVirtualControls.toggle() } label: {
                             Label(model.text("virtualControls"), systemImage: "keyboard")
                         }
-                        Button(model.text("enterText")) { model.showGameTextEntry = true }
+                        Button(model.text("enterText")) { model.showGameTextEntry = true }.disabled(engine.runtimeMovieActive)
                         if engine.frameSize == .zero {
                             ProgressView().controlSize(.small)
                             Text(model.text("starting"))
@@ -42,7 +42,7 @@ struct ContentView: View {
                     }.padding(12)
                     Divider()
                     HStack(spacing: 0) {
-                        GameSurfaceView(engine: engine)
+                        GameSurfaceView(engine: engine, language: model.language)
                         if model.showLogs {
                             Divider()
                             ScrollView {
@@ -196,7 +196,7 @@ struct ShellCommands: Commands {
         }
         CommandMenu(model.text("game")) {
             Toggle(model.text("virtualControls"), isOn: $model.showVirtualControls)
-            Button(model.text("enterText")) { model.showGameTextEntry = true }.disabled(model.activeGame == nil)
+            Button(model.text("enterText")) { model.showGameTextEntry = true }.disabled(model.activeGame == nil || model.engine.runtimeMovieActive)
             Divider()
             Button(model.text("play")) { model.play() }.keyboardShortcut("r").disabled(!model.canPlay)
             Button(model.text("back")) { model.confirmReturn = true }.keyboardShortcut("l").disabled(model.activeGame == nil)

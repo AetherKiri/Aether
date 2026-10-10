@@ -53,6 +53,9 @@ python3 tools/apple_host_profile.py demos/aetherkiri-kag3/data --duration 30 --c
 # 会增加追踪开销，不用于性能对照；默认不采集栈。
 AETHER_HOST_TRACE_TEXTURES=1 python3 tools/apple_host_smoke.py --game kag3 \
   --renderer metal --snapshots async --duration 30
+# 原创图层对象图：普通关闭与先失效图层/窗口两轮对照。
+# 显式失效必须无残留；普通关闭残留计数用于定位，不作为完整游戏验收。
+python3 tools/apple_host_texture_lifecycle.py
 python3 tools/generate_apple_metal_shaders.py --check
 
 # KAG3 + ONS 并行，各运行 310 秒，截图验证输入推进、GPU RGB 对比及干净退出。

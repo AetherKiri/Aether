@@ -116,10 +116,40 @@ Apple M1 Max / macOS 15.7.1 一次 Debug 组件测量：关闭批处理 5.012/10
 
 ## G1 验收仍待完成
 
-- P2 与 P0 原尺寸截图对比（覆盖混合、遮罩、三角形、特效和外部纹理）。
-- 至少两个 verified_games 真实标题正确呈现。
-- 1080p 完整帧 ≤16.6ms，包含 tick/桥编码/呈现，并记录采样方法。
-- 2026-10-10 用户调整：G1 暂缓，先推进 M2 游戏库、导入、设置；后续完成后回归此验收。
+2026-10-11 状态（本机 Debug、Apple M1 Max、macOS 15.7.1）：
+
+| 闸门项 | 状态 | 证据 |
+|---|---|---|
+| P2 与 P0 一致 | 🟢 内核级 + 整帧级均通过 | 桥测试覆盖混合（精确 alpha 算术、多源、box blur/mosaic）、遮罩三角形、普通三角形、越界/重叠、回读快照、批处理与 IOSurface 外部纹理；整帧对照见下两行的同刻 RGB 差值为 0 |
+| 真实标题 ① | 🟢 Smoke verified（KiriKiri 800×600） | 《夏雪》`out/apple_host/evidence/g1-natsuyuki-metal/`：`startup state: SUCCEEDED`、native GPU frame、桥 `failures=0`、三处同刻 engine/Metal RGB 差值 0、输入推进、干净退出 |
+| 真实标题 ② | 🟢 Smoke verified（ONScripter 800×600） | 《40日40夜之雨》`out/apple_host/evidence/g1-rain40-metal/`：runtime provider `open_game => OK`、标题画面与 START/LOAD/EXIT 菜单渲染、三处同刻 RGB 差值 0、输入推进、干净退出。该 runtime 发布 CPU 帧，验证的是呈现路径而非 P2 原生桥 |
+| 1080p 完整帧 ≤16.6ms | 🟢 合成 1080p 内容达标；真实标题 p99 达标、转场有离群 | 见下节「1080p 完整帧采样方法」 |
+
+尚待用户确认的收尾项：两款标题都不在 `doc/verified_games.md` 现有列表中，按项目约定该表更新需用户确认后写入（含中英文两份），本机不擅自登记。
+
+2026-10-10 用户调整：G1 暂缓，先推进 M2 游戏库、导入、设置；后续完成后回归此验收。本节记录的是回归后的实测结果。
+
+### 1080p 完整帧采样方法
+
+- 环境：`AETHER_HOST_RENDERER=metal`、`AETHER_HOST_DRAWABLE_1080P=1`（真实 1920×1080 MTKView 目标）、
+  `AETHER_HOST_SCHEDULING=direct`（产品默认的直接提交）、`AETHER_HOST_PROFILE=1`、
+  `AETHER_HOST_ACTIVATE=1`（保证窗口可见，否则呈现门控会跳过 drawable 申请）。
+- 关闭截图与脚本输入；测量区间为「tick 开始 → drawable 提交 → GPU 命令完成」，
+  不含显示器扫描输出；跳过前 60 tick；合并而未提交的 tick 不产生样本。
+- 素材：合成 1920×1080 原生内容（`selftest` 的 1080p 副本）两轮各 60 秒；
+  真实标题《夏雪》在 1080p 输出下 55 秒。
+
+| 运行 | 样本 | p50 | p95 | p99 | max | >16.6ms |
+|---|---|---|---|---|---|---|
+| 合成 1080p #1 | 3519 | 1.42ms | 2.95ms | 4.88ms | 16.27ms | 0 |
+| 合成 1080p #2 | 3510 | 1.36ms | 3.67ms | 10.80ms | 15.76ms | 0 |
+| 夏雪 1080p 输出 | 1216 | 2.17ms | 5.91ms | 8.00ms | 102.21ms | 5 |
+
+证据 `out/apple_host/evidence/g1-1080p-clean-1/`、`g1-1080p-clean-2/`、`g1-natsuyuki-1080p/`。
+合成 1080p 两轮均无超预算样本；真实标题的 p99 在预算内，5 个离群样本出现在
+开场影片与场景切换附近（主线程 `tick_to_draw` 阶段，取帧与 GPU 耗时仍 ≤0.1ms），
+属于转场尖峰而非稳态帧率问题。含并行负载的运行会出现更多离群（同一素材 60 秒曾有
+13/3495），因此正式基准需在安静环境串行执行，这一点已写进工具与 README。
 
 ### 完整呈现关联测量进展
 

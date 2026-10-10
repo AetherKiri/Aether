@@ -161,6 +161,24 @@ GPU 所需引用直到 command completed。这样生产者不会因为 SwiftUI/�
 tick-to-GPU-completion p50/p95/max=`1.016/2.050/13.361 ms`，
 `over_16_6=0`；最终 lease 提交/完成=`1747/1747`，写时分离仍为 0。
 
+### 推送式 native frame publication（2026-10-11）
+
+之前直通每帧仍通过 `engine_get_godot_native_frame_texture` 查询 token。合并查询尝试
+证明 DrawDevice 的 post-draw 发布可能晚于 `engine_tick` 返回，直接在 tick 内读取会
+丢失帧，因此没有保留那个不可靠的实现。随后接入 krkrz 已有的 `TVPSetPostDrawHook`：
+runtime 在每个新标题打开前安装 `engine_native_frame_sink_t`，post-draw 发布完成后
+把 token、尺寸和 serial 推送到 MetalBridge 的 RenderSession 缓存；宿主直通只读取
+缓存并调用内部 `AcquirePublishedFrame`，不进入逐帧 engine handle/registry 查询 ABI。
+
+这保留了旧 `engine_get_godot_native_frame_texture` 供软件、截图和兼容路径使用，同时
+把生命周期边界放在同一个 post-draw publication 与 FrameLease 协议内。KAG3 30 秒
+Debug 直通 profile 证据 `out/apple_host/evidence/direct-render-kag3-push-sink/`：
+`native_get_calls=0`、`frame_detach_copies=0`、`leases_acquired=1750`、
+`lease_submitted=1750`、`lease_completed=1750`、`lease_failures=0`、
+`leases_live=0`，RGB max diff 三次为 0，输入和关闭通过；host-work
+p50/p95/max=`0.291/1.235/14.065 ms`，tick-to-GPU-completion
+p50/p95/max=`0.955/1.987/14.406 ms`，`over_16_6=0`。
+
 双窗口对象图对照已补：保留原单窗口夹具，新增 apple_host_texture_lifecycle_multi（两个Window、各自primary、一个child、共享清理回调），工具 --multi-window 选择，结果标记fixture。当前Debug宿主串行12秒×2验证：普通关闭textures/retired=4，显式清除根引用后经局部变量失效图层/窗口则均0；两轮failures/inflight=0、startup成功、退出码0、无TVPShowScriptException，最终版路径复测相同。证据 out/apple_host/evidence/texture-lifecycle-multi-final/。Window原生Invalidate会先从注册表移除、取消事件/绘制更新、删除DrawBuffer，再失效ObjectVector注册对象；将该动作直接放进引擎关闭时仍有重入/递归finalize风险（运行时代码已有警告）。该浅层共享回调对照不能覆盖游戏自定义finalizer、跨窗口close回调或KAG完整图；下一步应分离关闭阶段并保留对象快照所有权，专门覆盖回调重入后再修改通用关闭流程。本轮未改引擎关闭算法或宣称泄漏修复。Python语法与diff检查通过。
 
 引用对象图最小对照：新增原创 apple_host_texture_lifecycle（一个Window、父/子Layer，无KAG或游戏资产）与串行12秒×2的工具 apple_host_texture_lifecycle.py。普通关闭残留textures=retired=2，逻辑RGBA2457600字节；键输入先把脚本根引用置null、再通过局部变量失效child/primary/window，关闭后textures=retired=0。两轮均failures/inflight=0、startup成功、正常销毁、退出码0，无脚本异常；result.json记录计数。局部变量确保失效回调所属Window后不再通过该已失效上下文访问根变量。证据 out/apple_host/evidence/texture-lifecycle-regression/。这证明该最小图的显式失效能让纹理正常释放，而隐式关闭留下资源；结合分配栈，将关注点收窄到Layer/Window/TJS图关闭，尚未确定KAG的最终引用持有者，也未修改引擎通用关闭流程（多窗口递归析构风险仍需专门覆盖）。工具只要求显式清理无残留，普通模式计数作为对照，未来修复后允许其归零；此测试不是G0/G1或性能测量。Python语法和diff检查通过。

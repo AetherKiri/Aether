@@ -136,6 +136,7 @@ extern "C" void TVPHostSetSurfaceSize(uint32_t width, uint32_t height);
 extern "C" void TVPHostSetPreferGpuFrame(bool prefer_gpu_frame);
 extern "C" void TVPHostSetPublishRawSourceFrame(bool publish_raw_source);
 extern "C" void TVPHostResetForGameSession();
+extern void TVPSetPostDrawHook(void (*hook)());
 extern "C" void AetherKiriMotionResetForGameSession();
 extern void TVPClearScnearioCache();
 extern "C" void TVPHostGetTextInputState(uint32_t* ime_active,
@@ -677,11 +678,31 @@ bool g_engine_bootstrapped = false;
 bool g_runtime_startup_active = false;
 engine_handle_t g_runtime_startup_owner = nullptr;
 std::once_flag g_loggers_init_once;
+std::atomic<engine_native_frame_sink_t> g_native_frame_sink{nullptr};
 std::shared_ptr<spdlog::sinks::sink> g_startup_log_sink;
 std::mutex g_game_log_file_sink_mutex;
 std::shared_ptr<spdlog::sinks::sink> g_game_log_file_sink;
 std::string g_game_log_file_path;
 constexpr size_t kMaxStartupLogs = 4000;
+
+void NotifyNativeFrameSink() {
+  auto sink = g_native_frame_sink.load(std::memory_order_acquire);
+  if (sink == nullptr) return;
+  uint64_t texture = 0;
+  uint32_t width = 0;
+  uint32_t height = 0;
+  uint64_t serial = 0;
+  if (TVPHostGetLatestGodotGpuFrame(&texture, &width, &height, &serial) &&
+      texture != 0 && width != 0 && height != 0) {
+    sink(texture, width, height, serial);
+  }
+}
+
+void InstallNativeFrameSink() {
+  TVPSetPostDrawHook(g_native_frame_sink.load(std::memory_order_acquire) != nullptr
+                         ? &NotifyNativeFrameSink
+                         : nullptr);
+}
 
 void PushRuntimeSpdlogToStartupQueue(const spdlog::details::log_msg& msg);
 
@@ -1989,6 +2010,11 @@ extern void TVPEngineApi_SetGlobalException(const std::string& msg);
 
 extern "C" {
 
+void engine_register_native_frame_sink(engine_native_frame_sink_t sink) {
+  g_native_frame_sink.store(sink, std::memory_order_release);
+  InstallNativeFrameSink();
+}
+
 void engine_register_godot_gpu_bridge(const void* callbacks) {
   TVPGodotGpuBridgeRegister(
       static_cast<const TVPGodotGpuBridgeCallbacks*>(callbacks));
@@ -2234,6 +2260,10 @@ engine_result_t engine_open_game(engine_handle_t handle,
     return SetThreadErrorAndReturn(ENGINE_RESULT_INVALID_ARGUMENT,
                                    "game_root_path_utf8 is null or empty");
   }
+
+  // TVPHostResetForGameSession clears the krkrz post-draw hook during the
+  // previous title's teardown. Reinstall the process-local sink per title.
+  InstallNativeFrameSink();
 
   std::lock_guard<std::recursive_mutex> registry_guard(g_registry_mutex);
   engine_handle_s* impl = nullptr;

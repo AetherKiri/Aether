@@ -3,6 +3,7 @@
 #include "engine_gpu_bridge.h"
 #include "MetalBridgeShaders.h"
 
+
 #include <algorithm>
 #include <atomic>
 #include <array>
@@ -42,6 +43,8 @@ struct ReadRequest {
 };
 struct State {
     uint64_t nextGeneration=1, activeGeneration=0;
+    uint64_t publishedToken=0, publishedSerial=0;
+    uint32_t publishedWidth=0, publishedHeight=0;
     std::atomic<uint64_t> leasesLive{0}, leaseSubmitted{0}, leaseCompleted{0}, leaseFailures{0};
     uint64_t leasesAcquired=0, frameDetachCopies=0;
     NSHashTable<AetherMetalFrameLease *> *frameLeases=[NSHashTable weakObjectsHashTable];
@@ -500,6 +503,16 @@ bool Publish(uint64_t token) { Lock lock(S().mutex);return Texture(token)!=nil &
 uint64_t ImportAndroid(void *,uint32_t,uint32_t) { return 0; }
 } // namespace
 
+extern "C" void AetherMetalBridgeFramePublished(uint64_t token, uint32_t width,
+                                                   uint32_t height, uint64_t serial) {
+    Lock lock(S().mutex);
+    if(!token || !width || !height)return;
+    S().publishedToken=token;
+    S().publishedWidth=width;
+    S().publishedHeight=height;
+    S().publishedSerial=serial;
+}
+
 @implementation AetherMetalFrameLease {
     std::shared_ptr<int> _ownership;
     std::shared_ptr<ExternalOwner> _external;
@@ -556,6 +569,16 @@ AetherMetalFrameLease *AetherMetalBridgeAcquireFrame(uint64_t generation,uint64_
     return lease;
 }
 
+AetherMetalFrameLease *AetherMetalBridgeAcquirePublishedFrame(uint64_t generation) {
+    uint64_t token=0,serial=0;
+    {
+        Lock lock(S().mutex);
+        token=S().publishedToken;serial=S().publishedSerial;
+    }
+    if(!token)return nil;
+    return AetherMetalBridgeAcquireFrame(generation,token,serial);
+}
+
 BOOL AetherMetalBridgeInitialize(NSError **error) {
     Lock lock(S().mutex);
     if (S().library) return YES;
@@ -589,6 +612,10 @@ BOOL AetherMetalBridgeInitialize(NSError **error) {
     TVPGodotGpuExternalTextureCallbacks external={sizeof(external),TVP_GODOT_GPU_EXTERNAL_TEXTURE_CALLBACKS_ABI_VERSION,
         ImportApple,Prepare,ImportAndroid,Publish};
     TVPGodotGpuBridgeRegister(&callbacks);TVPGodotGpuBatchRegister(&batch);TVPGodotGpuExternalTextureRegister(&external);
+    using RegisterFrameSink = void (*)(void (*)(uint64_t, uint32_t, uint32_t, uint64_t));
+    auto registerSink = reinterpret_cast<RegisterFrameSink>(
+        dlsym(RTLD_DEFAULT, "engine_register_native_frame_sink"));
+    if (registerSink != nullptr) registerSink(&AetherMetalBridgeFramePublished);
     S().library=library;return YES;
 }
 id<MTLCommandQueue> AetherMetalBridgeCommandQueue() {
@@ -606,6 +633,8 @@ id<MTLTexture> AetherMetalBridgeCopyPresentationTexture(uint64_t token) {
 uint64_t AetherMetalBridgeBeginSession() {
     Lock lock(S().mutex);
     if(S().activeGeneration)return 0;
+    S().publishedToken=0;S().publishedSerial=0;
+    S().publishedWidth=0;S().publishedHeight=0;
     return S().activeGeneration=S().nextGeneration++;
 }
 BOOL AetherMetalBridgeEndSession(uint64_t generation) {
@@ -617,6 +646,8 @@ BOOL AetherMetalBridgeEndSession(uint64_t generation) {
     Lock lock(S().mutex);
     if(generation!=S().activeGeneration)return NO;
     S().activeGeneration=0;
+    S().publishedToken=0;S().publishedSerial=0;
+    S().publishedWidth=0;S().publishedHeight=0;
     // SwiftUI may retain an old view after the controller has closed the game.
     // The session, rather than eventual view destruction, releases frame storage.
     for(AetherMetalFrameLease *lease in S().frameLeases.allObjects)

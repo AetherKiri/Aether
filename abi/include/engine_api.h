@@ -33,6 +33,11 @@ extern "C" {
    ((uint32_t)(patch)&0xFFFFu))
 
 typedef struct engine_handle_s* engine_handle_t;
+
+typedef void (*engine_native_frame_sink_t)(uint64_t texture_id,
+                                           uint32_t width,
+                                           uint32_t height,
+                                           uint64_t frame_serial);
 typedef struct engine_media_handle_s* engine_media_handle_t;
 
 /* Registers host renderer callbacks. The callback table is renderer-specific. */
@@ -325,6 +330,12 @@ ENGINE_API_EXPORT engine_result_t engine_drain_startup_logs(
  */
 ENGINE_API_EXPORT engine_result_t engine_tick(engine_handle_t handle,
                                               uint32_t delta_ms);
+
+/* Installs a process-local native frame publication sink for Apple/Metal
+ * hosts. The sink is called after the engine's draw-device publication and
+ * is not part of the per-frame query ABI. Pass NULL to detach it. */
+ENGINE_API_EXPORT void engine_register_native_frame_sink(
+    engine_native_frame_sink_t sink);
 
 /*
  * Pauses runtime execution.

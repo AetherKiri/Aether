@@ -260,10 +260,8 @@ NSError *EngineError(engine_handle_t handle, NSString *fallback) {
 
 - (nullable AetherMetalFrameLease *)acquireNativeFrame {
     if(!_handle || !_renderGeneration)return nil;
-    uint64_t token=0,serial=0;uint32_t width=0,height=0;
-    if(engine_get_godot_native_frame_texture(_handle,&token,&width,&height,&serial)!=ENGINE_RESULT_OK)return nil;
-    AetherMetalFrameLease *frame=AetherMetalBridgeAcquireFrame(_renderGeneration,token,serial);
-    if(frame)_framePixelSize=CGSizeMake(width,height);
+    AetherMetalFrameLease *frame=AetherMetalBridgeAcquirePublishedFrame(_renderGeneration);
+    if(frame)_framePixelSize=CGSizeMake(frame.texture.width,frame.texture.height);
     return frame;
 }
 

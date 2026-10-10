@@ -420,3 +420,7 @@ python3 tools/apple_host_smoke.py --game kag3 --renderer metal --snapshots direc
 纹理再次写入会执行写时分离，关闭会话会主动释放仍被 SwiftUI 保留的帧。诊断中的
 `leases_*` 和 `frame_detach_copies` 用于确认提交、GPU 完成和复用边界。截图与
 跨队列回读仍使用不可变快照。
+
+直通模式还通过 krkrz 的 post-draw publication hook 推送最新纹理；每帧不再调用
+`engine_get_godot_native_frame_texture` 查询 ABI。旧查询接口仍保留给软件/兼容路径，
+推送缓存按 RenderSession generation 校验，关闭或下一次会话不会接受旧 token。

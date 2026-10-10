@@ -17,8 +17,10 @@ import argparse
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--output', type=Path)
+    parser.add_argument('--multi-window', action='store_true', help='test two windows sharing a disposal callback')
     args = parser.parse_args()
     root = Path(__file__).resolve().parent.parent
+    fixture = 'apple_host_texture_lifecycle_multi' if args.multi_window else 'apple_host_texture_lifecycle'
     output = args.output or root / 'out/apple_host/evidence' / time.strftime('texture-lifecycle-%Y%m%d-%H%M%S')
     output.mkdir(parents=True, exist_ok=False)
     result = {}
@@ -34,7 +36,7 @@ def main():
                    AETHER_HOST_PRESENTATION='metal', AETHER_HOST_SCHEDULING='direct',
                    AETHER_HOST_TRACE_TEXTURES='1', AETHER_HOST_EXIT_AFTER='12',
                    AETHER_HOST_LIBRARY_ROOT=str((folder / 'library').resolve()),
-                   AETHER_HOST_GAME_PATH=str(root / 'tests/fixtures/apple_host_texture_lifecycle'))
+                   AETHER_HOST_GAME_PATH=str(root / 'tests/fixtures' / fixture))
         if mode == 'explicit':
             env['AETHER_HOST_TEST_INPUT'] = '8'
         with (folder / 'run.log').open('w') as log:
@@ -61,7 +63,7 @@ def main():
             errors.append('missing diagnostics or GPU failure/inflight work')
         if mode == 'explicit' and (stats.get('textures') != 0 or stats.get('retired_textures') != 0):
             errors.append('explicit invalidation left textures')
-        result[mode] = {'exit_code': code, 'stats': stats, 'errors': errors}
+        result[mode] = {'fixture': fixture, 'exit_code': code, 'stats': stats, 'errors': errors}
         (output / 'result.json').write_text(json.dumps(result, indent=2) + '\n')
         print(mode, result[mode], flush=True)
     print('Evidence:', output.resolve())

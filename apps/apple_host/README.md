@@ -56,6 +56,7 @@ AETHER_HOST_TRACE_TEXTURES=1 python3 tools/apple_host_smoke.py --game kag3 \
 # 原创图层对象图：普通关闭与先失效图层/窗口两轮对照。
 # 显式失效必须无残留；普通关闭残留计数用于定位，不作为完整游戏验收。
 python3 tools/apple_host_texture_lifecycle.py
+python3 tools/apple_host_texture_lifecycle.py --multi-window
 python3 tools/generate_apple_metal_shaders.py --check
 
 # KAG3 + ONS 并行，各运行 310 秒，截图验证输入推进、GPU RGB 对比及干净退出。

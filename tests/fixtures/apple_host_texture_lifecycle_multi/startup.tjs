@@ -1,0 +1,48 @@
+// Original two-window resource-lifetime fixture; no game assets or KAG dependencies.
+// No input: leave the object graph to ordinary engine shutdown.
+// Key input: invalidate the graph explicitly before engine shutdown.
+var win = new Window();
+win.setInnerSize(640, 480);
+var primary = new Layer(win, null);
+win.add(primary);
+primary.setSize(640, 480);
+primary.type = ltOpaque;
+primary.visible = true;
+primary.colorRect(0, 0, 640, 480, 0x305070, 255);
+var child = new Layer(win, primary);
+child.setSize(64, 48);
+child.type = ltOpaque;
+child.visible = true;
+child.colorRect(0, 0, 64, 48, 0x70b030, 255);
+// A second window exercises registry mutation and cross-window graph teardown.
+var secondary = new Window();
+secondary.setInnerSize(320, 240);
+var secondaryLayer = new Layer(secondary, null);
+secondary.add(secondaryLayer);
+secondaryLayer.setSize(320, 240);
+secondaryLayer.type = ltOpaque;
+secondaryLayer.visible = true;
+secondaryLayer.colorRect(0, 0, 320, 240, 0x703050, 255);
+var disposeGraph = function(key, shift) {
+    Debug.message("TEXTURE_LIFECYCLE explicit invalidation begins");
+    var closingChild = child;
+    var closingPrimary = primary;
+    var closingWindow = win;
+    var closingSecondary = secondary;
+    var closingSecondaryLayer = secondaryLayer;
+    child = null;
+    primary = null;
+    win = null;
+    secondary = null;
+    secondaryLayer = null;
+    disposeGraph = null;
+    Debug.message("TEXTURE_LIFECYCLE roots cleared; invalidating local graph");
+    if (isvalid closingChild) invalidate closingChild;
+    if (isvalid closingPrimary) invalidate closingPrimary;
+    if (isvalid closingWindow) invalidate closingWindow;
+    if (isvalid closingSecondaryLayer) invalidate closingSecondaryLayer;
+    if (isvalid closingSecondary) invalidate closingSecondary;
+};
+win.onKeyDown = disposeGraph;
+secondary.onKeyDown = disposeGraph;
+Debug.message("TEXTURE_LIFECYCLE fixture ready");

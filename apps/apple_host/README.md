@@ -298,3 +298,16 @@ out/apple_host/shell-strings-tests
 ```
 
 测试会检查 key 覆盖、五语言数量、非空值、locale 映射及缺失 key 回退。
+
+
+## Purchase 请求基线
+
+Apple 原生宿主当前未链接 Godot 扩展中的 StoreKit provider，因此 `purchase` 请求不会静默挂起或伪造购买成功。宿主解析 `product_id`，回传与现有壳一致的 `result=-1`、`error_response=-1` 和 URL 编码的不可用原因，并记录产品标识；缺少产品标识也会确定性完成。
+
+```bash
+xcrun swiftc apps/apple_host/AetherHost/PlatformPurchase.swift \
+  apps/apple_host/Tests/PlatformPurchaseTests.swift -o out/apple_host/platform-purchase-tests
+out/apple_host/platform-purchase-tests
+```
+
+这只是无 StoreKit provider 的降级路径，不代表真实购买、恢复或 entitlement 已验收。完整 StoreKit 接入需单独链接 provider、处理交易生命周期和沙盒商品。

@@ -236,6 +236,12 @@
 - CUA 在隔离库导入含原创 controls fixture 的 ZIP，成功启动与回车（down=1/up=1）、返回；导入 traversal.zip 正确显示中文错误，保留原记录并恢复操作。证据 `out/apple_host/evidence/m2-archive/`，未修改用户游戏库。
 - 此阶段不支持 RAR/7z/密码、取消/字节进度，也不声明全部 ZIP 编码/压缩方式或大包性能已验收；大包需临时解压与最终复制空间。下一项为通用 text_input，Minori 与 G1 继续暂缓。
 
+### 2026-10-11：Purchase 请求降级基线
+
+- Apple 宿主接入 `purchase` operation 的解析与确定性错误响应：提取 URL 表单 `product_id`，回传 `result=-1`、`error_response=-1` 和“App Billing unavailable”，避免公开宿主在没有 StoreKit provider 时让游戏永久等待；日志只记录产品标识，不记录其他请求正文。
+- `PlatformPurchaseTests` 覆盖普通/编码/缺失 product_id 和响应格式；Debug 宿主构建通过。现有 StoreKit 实现位于 Godot 扩展，未被 Apple 原生宿主链接，本项不伪造购买成功。
+- 更新器按用户要求留到最后；真实 StoreKit 购买/恢复/entitlement、沙盒商品和交易生命周期仍待 provider 接入。
+
 ### 2026-10-11：五语言文案审计
 
 - 宿主已有的简体中文、繁體中文、English、日本語、한국어文案表增加只读审计接口；`ShellStringsTests` 检查 80+ key 的五语言数量、非空值、locale 映射和缺失 key 回退，测试通过。
@@ -275,9 +281,10 @@
 15. [x] **M2 ZIP 导入**：单游戏入口识别、受限解压与复制入库
 16. [x] **M3 通用 text_input 实现**：原生初始值输入、混合队列及协议响应；真实 provider 验收待补
 17. [x] **通用功能**：Debug 冷启动基准（软件/Metal，本地原创 fixture）
-18. [ ] **M3 后续**：IAP/更新逐项迁移；翻译目录审计已完成
-19. [ ] **Minori 暂缓**：音频/文字框/选择/存档及真实游戏验收，待用户重新安排
-20. [x] 同步 spec、接缝清单与进度
+18. [x] **M3 Purchase 降级基线**：无 StoreKit provider 时确定性完成请求；真实 IAP 待接入
+19. [ ] **M3 后续**：IAP provider/更新逐项迁移；翻译目录审计已完成
+20. [ ] **Minori 暂缓**：音频/文字框/选择/存档及真实游戏验收，待用户重新安排
+21. [x] 同步 spec、接缝清单与进度
 
 ## 变更记录
 

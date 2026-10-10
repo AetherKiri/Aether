@@ -388,6 +388,15 @@ final class EngineController: ObservableObject {
             platformDialogs.enqueue(argument)
         } else if operation == "text_input" {
             platformDialogs.enqueueTextInput(argument)
+        } else if operation == "purchase" {
+            let request = PlatformPurchaseRequest(argument: argument)
+            let response = PlatformPurchaseResponse.unavailable(productID: request.productID)
+            do {
+                try session.submitPlatformResponse("purchase", argument: response.argument)
+                log("purchase unavailable (product=\(request.productID.isEmpty ? "unknown" : request.productID))")
+            } catch {
+                log("purchase response failed: \(error.localizedDescription)")
+            }
         } else {
             let preview = argument.count > 96 ? String(argument.prefix(96)) + "…" : argument
             log("platform_request: \(operation) \(preview)")

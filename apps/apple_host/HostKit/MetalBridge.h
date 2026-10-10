@@ -9,6 +9,7 @@ extern "C" {
 // Process-wide engine callback table. Initialize before creating/opening an
 // engine; callbacks and token ownership remain installed for process lifetime.
 BOOL AetherMetalBridgeInitialize(NSError **error);
+// Lazily creates the shared device/queue without compiling engine shaders.
 id<MTLCommandQueue> _Nullable AetherMetalBridgeCommandQueue(void);
 // Returns an immutable GPU snapshot suitable for another presentation queue.
 id<MTLTexture> _Nullable AetherMetalBridgeCopyTexture(uint64_t token);

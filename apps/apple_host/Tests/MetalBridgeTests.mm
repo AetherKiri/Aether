@@ -136,7 +136,9 @@ static void BenchmarkSnapshotSubmission() {
 }
 int main(int argc,char **argv) { @autoreleasepool {
     NSError *error=nil;
+    auto initialQueue=AetherMetalBridgeCommandQueue();assert(initialQueue);
     if (!AetherMetalBridgeInitialize(&error)) { NSLog(@"%@",error);return 1; }
+    assert(initialQueue==AetherMetalBridgeCommandQueue());
     assert(bridge.create_rgba&&bridge.blend_rect3&&external.import_apple_pixel_buffer);
     tTVPRect one(0,0,1,1);
     uint64_t dst=Make({20,80,140,100}),src=Make({200,40,60,128});

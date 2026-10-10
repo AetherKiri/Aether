@@ -446,7 +446,8 @@ uint64_t ImportAndroid(void *,uint32_t,uint32_t) { return 0; }
 BOOL AetherMetalBridgeInitialize(NSError **error) {
     Lock lock(S().mutex);
     if (S().library) return YES;
-    S().device=MTLCreateSystemDefaultDevice();S().queue=[S().device newCommandQueue];
+    if (!S().device) S().device=MTLCreateSystemDefaultDevice();
+    if (!S().queue) S().queue=[S().device newCommandQueue];
     if (!S().device||!S().queue) {
         if (error) *error=[NSError errorWithDomain:@"AetherMetalBridge" code:1 userInfo:@{NSLocalizedDescriptionKey:@"Metal is unavailable"}];
         return NO;
@@ -477,7 +478,12 @@ BOOL AetherMetalBridgeInitialize(NSError **error) {
     TVPGodotGpuBridgeRegister(&callbacks);TVPGodotGpuBatchRegister(&batch);TVPGodotGpuExternalTextureRegister(&external);
     S().library=library;return YES;
 }
-id<MTLCommandQueue> AetherMetalBridgeCommandQueue() { Lock lock(S().mutex);return S().queue; }
+id<MTLCommandQueue> AetherMetalBridgeCommandQueue() {
+    Lock lock(S().mutex);
+    if (!S().device) S().device=MTLCreateSystemDefaultDevice();
+    if (!S().queue) S().queue=[S().device newCommandQueue];
+    return S().queue;
+}
 id<MTLTexture> AetherMetalBridgeCopyPresentationTexture(uint64_t token) {
     Lock lock(S().mutex);return Snapshot(Texture(token),false);
 }

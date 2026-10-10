@@ -18,7 +18,6 @@ final class EngineController: ObservableObject {
     @Published var tickCount: UInt64 = 0
 
     let metalPresenter: MetalFramePresenter? = MTLCreateSystemDefaultDevice().flatMap {
-        _ = AetherMetalBridgeInitialize(nil)
         return try? MetalFramePresenter(device: $0, commandQueue: AetherMetalBridgeCommandQueue())
     }
     private var metalPresenterGateWired = false

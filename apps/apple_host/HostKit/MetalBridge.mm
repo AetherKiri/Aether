@@ -6,6 +6,7 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <chrono>
 #include <cstring>
 #include <map>
 #include <memory>
@@ -45,6 +46,8 @@ struct State {
     std::map<uint64_t, ReadRequest> reads;
     uint64_t next = 1, operations = 0, failures = 0;
     uint64_t readsBegun=0, readsPending=0, readsCompleted=0, readsCancelled=0;
+    uint64_t presentationSnapshots=0;
+    double presentationSnapshotMS=0, presentationSnapshotMaxMS=0;
     NSString *lastError = @"";
     ~State() { if (cache) CFRelease(cache); }
 };
@@ -461,11 +464,20 @@ BOOL AetherMetalBridgeInitialize(NSError **error) {
     TVPGodotGpuBridgeRegister(&callbacks);TVPGodotGpuBatchRegister(&batch);TVPGodotGpuExternalTextureRegister(&external);
     S().library=library;return YES;
 }
-id<MTLTexture> AetherMetalBridgeCopyTexture(uint64_t token) { Lock lock(S().mutex);return Snapshot(Texture(token)); }
+id<MTLTexture> AetherMetalBridgeCopyTexture(uint64_t token) {
+    Lock lock(S().mutex);
+    auto start=std::chrono::steady_clock::now();
+    id<MTLTexture> result=Snapshot(Texture(token));
+    double elapsed=std::chrono::duration<double,std::milli>(std::chrono::steady_clock::now()-start).count();
+    ++S().presentationSnapshots;S().presentationSnapshotMS+=elapsed;
+    S().presentationSnapshotMaxMS=std::max(S().presentationSnapshotMaxMS,elapsed);
+    return result;
+}
 BOOL AetherMetalBridgeReadTexture(uint64_t token, void *pixels, size_t capacity, uint32_t stride) { return Read(token, pixels, capacity, stride); }
 NSString *AetherMetalBridgeDiagnostics() {
     Lock lock(S().mutex);
-    return [NSString stringWithFormat:@"Metal bridge textures=%zu reads=%zu commands=%llu failures=%llu error=%@ read_begin=%llu read_pending_polls=%llu read_complete=%llu read_cancel=%llu",
+    return [NSString stringWithFormat:@"Metal bridge textures=%zu reads=%zu commands=%llu failures=%llu error=%@ read_begin=%llu read_pending_polls=%llu read_complete=%llu read_cancel=%llu snapshot_calls=%llu snapshot_total_ms=%.3f snapshot_max_ms=%.3f",
         S().textures.size(),S().reads.size(),S().operations,S().failures,S().lastError,
-        S().readsBegun,S().readsPending,S().readsCompleted,S().readsCancelled];
+        S().readsBegun,S().readsPending,S().readsCompleted,S().readsCancelled,
+        S().presentationSnapshots,S().presentationSnapshotMS,S().presentationSnapshotMaxMS];
 }

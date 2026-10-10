@@ -285,3 +285,16 @@ python3 tools/apple_host_cold_start_benchmark.py --runs 5 --renderer metal \
 ```
 
 当前 Apple M 系列 Debug 环境结果：软件绘制 p50/p95/max=0.398/0.482/0.502 秒；Metal 绘制 p50/p95/max=0.326/0.331/0.331 秒，5/5 轮正常关闭，均低于 2 秒目标。该结果是本机 Debug、原创小型 fixture 的基线，不代表大型真实游戏或发布构建性能。证据位于 `out/apple_host/evidence/cold-start/` 和 `cold-start-metal/`。
+
+
+## 五语言文案审计
+
+宿主界面文案覆盖简体中文、繁體中文、English、日本語、한국어。文案表按 key 提供五个非空值，语言设置同步页面、菜单、弹窗和游戏影片控件；游戏脚本与游戏内文字不翻译。
+
+```bash
+xcrun swiftc apps/apple_host/AetherHost/ShellStrings.swift \
+  apps/apple_host/Tests/ShellStringsTests.swift -o out/apple_host/shell-strings-tests
+out/apple_host/shell-strings-tests
+```
+
+测试会检查 key 覆盖、五语言数量、非空值、locale 映射及缺失 key 回退。

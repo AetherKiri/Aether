@@ -16,6 +16,8 @@ enum ShellLanguage: String, CaseIterable, Identifiable {
         return .english
     }
     func text(_ key: String) -> String { Self.strings[key]?[index] ?? key }
+    static var localizationKeys: [String] { Array(strings.keys).sorted() }
+    static func localizedValues(for key: String) -> [String]? { strings[key] }
     // Same five languages as the existing product; game text is untouched.
     private static let strings: [String: [String]] = [
         "invalidTextRequest": ["输入请求无效，请重试取消响应。", "輸入請求無效，請重試取消回應。", "Invalid text request. Retry the cancellation response.", "入力要求が不正です。取消応答を再試行してください。", "잘못된 입력 요청입니다. 취소 응답을 다시 시도하세요."],

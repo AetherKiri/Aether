@@ -129,6 +129,10 @@ Apple M1 Max / macOS 15.7.1 一次 Debug 组件测量：关闭批处理 5.012/10
 
 ### 交接与遗留（2026-10-11）
 
+引擎直通渲染方向（用户提出）：当前引擎纹理已经走 Metal GPU 路径；每 tick 的取帧经过 ABI Route（registry/handle 两层递归锁与 provider 分发），随后 Snapshot 仍分配纹理并全帧 blit。尚无 ABI 单独耗时证据，不能把全部延迟归因于 ABI。优先实验目标是取消呈现快照分配/复制：引擎输出纹理→同队列呈现→完成后复用，控制/插件公共 ABI 保留；内部热路径可使用会话绑定的原生接口。先分别测 tick、ABI 取帧、snapshot 编码/提交、drawable 与 GPU完成，再以同素材同尺寸配对证明收益。直接借用纹理必须规定生产者与消费者提交顺序、强引用/lease、帧serial、重用与队列身份；deferred 呈现与遮挡恢复不能引用已被下一帧改写的内容，截图仍需不可变快照。暂不直接返回裸纹理替换现有接口。参考 wamsoft/krkrz README 描述的引擎内 Canvas/Texture/Shader/Offscreen 与 LIB 构建：https://github.com/wamsoft/krkrz 。该参考支持架构方向，未证明本项目或其引擎的性能对比。
+
+资源增长同步对照：CUA 普通宿主同步模式同进程两次启动/返回《夏雪》，关闭 textures=19→36、failures=0、async_submitted=0，退出码0；因此增长也存在于同步路径。试加关闭时 RecycleProcess 后仍19→33，未证明该队列是根因，已撤回该运行时改动。诊断新增 texture_rgba_bytes（仅注册纹理宽×高×4的逻辑像素大小，不是驱动实际显存、不含快照）与 external_textures，以便定位残留资源。深度引用生命周期仍待排查，未完成泄漏修复。
+
 CUA 异步窗口验收：以 renderer=metal、ASYNC_SNAPSHOT=1 启动普通宿主，同进程两次启动《夏雪》并确认返回游戏库；第一轮使用原生缩放窗口、最小化与 Raise 恢复。截图显示恢复后游戏启动动画继续，日志记录 window hidden/occluded 与 resumed after 4 skipped draws。两次关闭累计 async_submitted/completed=647/647、1093/1093，inflight=0、failures=0、native_readbacks=0；进程退出码0。日志保存 out/apple_host/evidence/async-cua-window/run.log。注意关闭后桥 textures=17→32，资源数增长尚未定位，不能据此默认启用异步模式；下一步需用同步模式同进程重启对照，判断是否是已有引擎资源生命周期问题。仅验证启动与窗口/会话行为，未登记 verified_games，也未覆盖深度游玩或连续尺寸拖动压力。
 
 工具最终版本另跑30秒，主动继承 AETHER_HOST_TEST_PURCHASE=1 验证测试变量隔离；通过且 result.json 记录 submitted=completed=1772、inflight=0、errors=[]。证据 out/apple_host/evidence/async-drain-result-json/kag3/result.json。Python语法与diff检查通过。

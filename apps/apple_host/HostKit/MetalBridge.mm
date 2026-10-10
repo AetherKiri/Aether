@@ -522,9 +522,14 @@ id<MTLTexture> AetherMetalBridgeCopyTexture(uint64_t token) {
 BOOL AetherMetalBridgeReadTexture(uint64_t token, void *pixels, size_t capacity, uint32_t stride) { return Read(token, pixels, capacity, stride); }
 NSString *AetherMetalBridgeDiagnostics() {
     Lock lock(S().mutex);
-    return [NSString stringWithFormat:@"Metal bridge textures=%zu reads=%zu commands=%llu failures=%llu error=%@ read_begin=%llu read_pending_polls=%llu read_complete=%llu read_cancel=%llu snapshot_calls=%llu snapshot_total_ms=%.3f snapshot_max_ms=%.3f snapshot_combined=%llu async_submitted=%llu async_completed=%llu async_inflight=%llu",
+    uint64_t textureBytes=0, externalTextures=0;
+    for (const auto &entry : S().textures) {
+        textureBytes += entry.second.texture.width * entry.second.texture.height * 4;
+        if (entry.second.external) ++externalTextures;
+    }
+    return [NSString stringWithFormat:@"Metal bridge textures=%zu reads=%zu commands=%llu failures=%llu error=%@ read_begin=%llu read_pending_polls=%llu read_complete=%llu read_cancel=%llu snapshot_calls=%llu snapshot_total_ms=%.3f snapshot_max_ms=%.3f snapshot_combined=%llu async_submitted=%llu async_completed=%llu async_inflight=%llu texture_rgba_bytes=%llu external_textures=%llu",
         S().textures.size(),S().reads.size(),S().operations,S().failures,S().lastError,
         S().readsBegun,S().readsPending,S().readsCompleted,S().readsCancelled,
         S().presentationSnapshots,S().presentationSnapshotMS,S().presentationSnapshotMaxMS,S().presentationCombinedSnapshots,
-        S().asyncSubmitted,S().asyncCompleted,S().asyncSubmitted-S().asyncCompleted];
+        S().asyncSubmitted,S().asyncCompleted,S().asyncSubmitted-S().asyncCompleted,textureBytes,externalTextures];
 }

@@ -236,6 +236,15 @@
 - CUA 在隔离库导入含原创 controls fixture 的 ZIP，成功启动与回车（down=1/up=1）、返回；导入 traversal.zip 正确显示中文错误，保留原记录并恢复操作。证据 `out/apple_host/evidence/m2-archive/`，未修改用户游戏库。
 - 此阶段不支持 RAR/7z/密码、取消/字节进度，也不声明全部 ZIP 编码/压缩方式或大包性能已验收；大包需临时解压与最终复制空间。下一项为通用 text_input，Minori 与 G1 继续暂缓。
 
+### 2026-10-11：M3 通用 text_input 平台请求
+
+- 对齐原 C++ 壳的三字段 TAB 协议：标题、提示、初始文字，最多分割两次；确认发送 result=ok + TAB + 正文，取消仅 result=cancel，允许空正文并保留 Unicode/正文 TAB，不使用 URL 编码。按单行控件过滤 NUL/CR/LF，不继承手动 TEXT_INPUT 的 2048 字限制。
+- 复用原生平台 sheet 与统一 FIFO，按请求 operation 调用 HostKit 响应；初始值自动选中，Return 确认、Escape 取消。待回复隔离游戏输入并停止额外轮询，继续引擎 tick；重复与旧 UUID 无效，关闭游戏清理队列、草稿和错误。
+- 提交失败保留当前输入与错误，明确重试；宿主弹窗暂缓时保存草稿和失败状态，不因重新呈现自动重试。格式错误请求自动排队回传取消，取消提交失败保留可重试弹窗。
+- `PlatformTextInputTests` 与既有 `PlatformDialogTests` 通过，覆盖三字段/空值/初始值 TAB/中文 Emoji/取消隐私、混合 FIFO、暂缓草稿、失败重试、无效请求及清理。HostKit ABI 补验 text_input 的不支持响应错误，保留原未初始化/关闭检查；Debug 构建成功。
+- CUA 使用生产 parser/controller/view 的独立 UI fixture，确认预填选中初始文字；你好😀&=+% 在首次失败后保留，Return 重试回传原正文，再完成 dialog、Escape 取消输入、自动取消无效请求。ACK 为明确测试回调，真实 provider 发请求/接收成功响应仍未验收；本项不继续 Minori 标题适配。
+- 证据 `out/apple_host/evidence/m3-text-input/`、`m3-text-input-dialog-regression/`；KAG3/ONS 回归结果见下方最终验证记录。IME preedit/选区自动同步仍待迁移，Minori 与 G1 继续暂缓。
+
 ## 下一步队列
 
 1. [x] 接缝清单 v0.1（交付物 A）+ 三份文档建立
@@ -253,10 +262,11 @@
 13. [x] **M3 Minori 影片实现**：同游戏引擎播放、矩形呈现、输入隔离与完成响应；真实 VM 验收待补
 14. [x] **M2 游戏库扩展**：重命名、只移除记录、外部目录引用（macOS 非沙盒基线）
 15. [x] **M2 ZIP 导入**：单游戏入口识别、受限解压与复制入库
-16. [ ] **当前优先：通用功能**：text_input 请求；冷启动基准
-17. [ ] **M3 后续**：IAP/更新/翻译逐项迁移
-18. [ ] **Minori 暂缓**：音频/文字框/选择/存档及真实游戏验收，待用户重新安排
-19. [x] 同步 spec、接缝清单与进度
+16. [x] **M3 通用 text_input 实现**：原生初始值输入、混合队列及协议响应；真实 provider 验收待补
+17. [ ] **通用功能**：冷启动基准
+18. [ ] **M3 后续**：IAP/更新/翻译逐项迁移
+19. [ ] **Minori 暂缓**：音频/文字框/选择/存档及真实游戏验收，待用户重新安排
+20. [x] 同步 spec、接缝清单与进度
 
 ## 变更记录
 

@@ -74,7 +74,7 @@ Apple 宿主现已提供实体/屏幕按键及原生弹窗提交 TEXT_INPUT（�
 | `call_native` | runtime 定义 | 信号→GDScript | `PlatformAdapter` 分发 🔶（runtime 定义，按需） |
 | `purchase` | runtime 定义 | StoreKit（apple_storekit.swift） | 直接复用 ✅ |
 | `dialog` | URL 表单：title/message/text_field/maximum_characters/yes_no/buttons；响应 result/text | Godot 原生壳弹窗，响应文字 URI 编码 | SwiftUI FIFO 请求弹窗 + ABI 响应已实现；真实私有 provider 验收待补 🔶 |
-| `text_input` | title\tmessage\tinitial text；响应 result=cancel 或 result=ok\t正文 | C++ 扩展 `show_runtime_text_input` 原生输入框 | 协议已确认，请求弹窗待迁移；手动 TEXT_INPUT 入口已实现 🔶 |
+| `text_input` | title\tmessage\tinitial text；响应 result=cancel 或 result=ok\t正文 | C++ 扩展 `show_runtime_text_input` 原生输入框 | 通用原生输入框、初始值、混合 FIFO、取消/确认与错误重试已实现；真实 provider 验收待补 🔶 |
 | `presentation_sprite` | runtime 定义 payload | `RuntimePresentationSprite`（Godot Sprite2D） | ⚠️ 发射方不在公开树（疑为 AetherInternal/SoftPal 私有包）；公开构建下不会触发。M3+ 按需处理 |
 | `minori_save_slots` | 存档槽数据 | 宿主 UI | SwiftUI 存档槽（M3）🔶 |
 | `minori_message` / `_reveal` | 说话人/文本/逐字 | 宿主文字框 | SwiftUI 文字框（M3）🔶 |

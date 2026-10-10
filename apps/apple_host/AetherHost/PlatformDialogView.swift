@@ -5,16 +5,18 @@ struct PlatformDialogView: View {
     let language: ShellLanguage
     let complete: (Int32, String) -> Void
     var responseFailure: String? = nil
+    var initialText: String? = nil
+    var didEdit: (String) -> Void = { _ in }
     @State private var text = ""
     @FocusState private var focused: Bool
     var body: some View {
         VStack(alignment: .leading, spacing: 18) {
-            Text(dialog.title).font(.title2.bold())
+            Text(dialog.automaticCancellation ? language.text("invalidTextRequest") : dialog.title).font(.title2.bold())
             ScrollView { Text(dialog.message).frame(maxWidth: .infinity, alignment: .leading).textSelection(.enabled) }
                 .frame(maxHeight: 240)
             if dialog.textField {
                 TextField(language.text("enterText"), text: $text).textFieldStyle(.roundedBorder).focused($focused)
-                    .onChange(of: text) { value in text = dialog.limitedText(value) }
+                    .onChange(of: text) { value in text = dialog.limitedText(value); didEdit(text) }
                     .onSubmit { complete(dialog.choices.first?.id ?? 1, text) }
             }
             if let responseFailure { Text(responseFailure).foregroundStyle(.red).textSelection(.enabled) }
@@ -38,7 +40,7 @@ struct PlatformDialogView: View {
                 }
             }
         }.padding(24).frame(width: 500).fixedSize(horizontal: false, vertical: true)
-            .onAppear { focused = dialog.textField }
+            .onAppear { text = initialText ?? dialog.initialText; focused = dialog.textField }
             .interactiveDismissDisabled()
     }
 }
@@ -50,7 +52,9 @@ struct PlatformDialogPresentation: ViewModifier {
         content.sheet(item: Binding(get: { dialogs.active }, set: { _ in }), onDismiss: { dialogs.sheetDismissed() }) { dialog in
             PlatformDialogView(dialog: dialog, language: language, complete: { result, text in
                 dialogs.complete(id: dialog.id, result: result, text: text)
-            }, responseFailure: dialogs.responseFailure)
+            }, responseFailure: dialogs.responseFailure, initialText: dialogs.draft(for: dialog), didEdit: { text in
+                dialogs.updateDraft(id: dialog.id, text: text)
+            })
         }
     }
 }

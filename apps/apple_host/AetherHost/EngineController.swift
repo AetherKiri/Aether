@@ -59,9 +59,9 @@ final class EngineController: ObservableObject {
     }()
     lazy var platformDialogs: PlatformDialogController = {
         let controller = PlatformDialogController()
-        controller.submit = { [weak self] response in
+        controller.submitRequest = { [weak self] operation, response in
             guard let self else { throw CocoaError(.userCancelled) }
-            try self.session.submitPlatformResponse("dialog", argument: response)
+            try self.session.submitPlatformResponse(operation, argument: response)
         }
         controller.log = { [weak self] in self?.log($0) }
         controller.pendingChanged = { [weak self] _ in
@@ -386,6 +386,8 @@ final class EngineController: ObservableObject {
             runtimeMovie.open(argument, engine: handle)
         } else if operation == "dialog" {
             platformDialogs.enqueue(argument)
+        } else if operation == "text_input" {
+            platformDialogs.enqueueTextInput(argument)
         } else {
             let preview = argument.count > 96 ? String(argument.prefix(96)) + "…" : argument
             log("platform_request: \(operation) \(preview)")

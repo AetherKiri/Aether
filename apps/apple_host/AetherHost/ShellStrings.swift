@@ -18,6 +18,7 @@ enum ShellLanguage: String, CaseIterable, Identifiable {
     func text(_ key: String) -> String { Self.strings[key]?[index] ?? key }
     // Same five languages as the existing product; game text is untouched.
     private static let strings: [String: [String]] = [
+        "invalidTextRequest": ["输入请求无效，请重试取消响应。", "輸入請求無效，請重試取消回應。", "Invalid text request. Retry the cancellation response.", "入力要求が不正です。取消応答を再試行してください。", "잘못된 입력 요청입니다. 취소 응답을 다시 시도하세요."],
         "archiveImportHelp": ["选择游戏文件夹或 ZIP。游戏将复制到游戏库，存档写入副本。ZIP 需包含一款游戏，解压上限 32 GiB、10 万项。", "選擇遊戲資料夾或 ZIP。遊戲將複製到遊戲庫，存檔寫入副本。ZIP 須包含一款遊戲，解壓上限 32 GiB、10 萬項。", "Choose a game folder or ZIP. A copy is added to the library; saves stay in the copy. ZIPs must contain one game, up to 32 GiB and 100,000 entries.", "ゲームフォルダまたはZIPを選択してください。コピーとセーブはライブラリに保存します。ZIPはゲーム1本、展開後32 GiB・10万項目までです。", "게임 폴더 또는 ZIP을 선택하세요. 라이브러리에 복사하며 저장 파일도 복사본에 보관합니다. ZIP은 게임 하나, 압축 해제 후 32 GiB와 10만 항목까지 지원합니다."],
         "archiveInvalid": ["ZIP 已损坏、加密或使用不支持的编码，请先自行解压再导入目录。", "ZIP 已損壞、加密或使用不支援的編碼，請先自行解壓再匯入目錄。", "The ZIP is damaged, encrypted, or uses an unsupported encoding. Extract it separately and import the folder.", "ZIPが破損、暗号化、または未対応の形式です。別途展開してフォルダを追加してください。", "ZIP이 손상, 암호화되었거나 지원되지 않는 인코딩입니다. 별도로 압축을 풀고 폴더를 가져오세요."],
         "archiveUnsafe": ["ZIP 包含越界路径、链接或冲突的文件名，无法导入。", "ZIP 含越界路徑、連結或衝突檔名，無法匯入。", "The ZIP contains unsafe paths, links, or conflicting filenames.", "ZIPに不正なパス、リンク、または競合するファイル名があります。", "ZIP에 안전하지 않은 경로, 링크 또는 충돌하는 파일 이름이 있습니다."],

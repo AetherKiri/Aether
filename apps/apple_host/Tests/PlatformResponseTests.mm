@@ -10,6 +10,9 @@ int main(int argc, char **argv) {
         NSString *root = [NSString stringWithUTF8String:argv[1]];
         error = nil;
         assert([session initializeWithWritablePath:root cachePath:root error:&error]);
+        error = nil;
+        assert(![session submitPlatformResponse:@"text_input" argument:@"result=ok\t你好" error:&error]);
+        assert(error && error.localizedDescription.length);
         // The public KiriKiri/idle backend cannot accept provider-only responses.
         error = nil;
         assert(![session submitPlatformResponse:@"dialog" argument:@"result=1&text=%E4%BD%A0" error:&error]);

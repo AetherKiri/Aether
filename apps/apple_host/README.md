@@ -200,7 +200,7 @@ python3 tools/apple_host_media_test.py
 游戏页「虚拟按键」或设置开关显示回车/空格/Esc/方向/PgUp/PgDn 与保持 Ctrl。
 实体键与屏幕键共享按下状态；隐藏、失焦、弹窗及关闭释放按键。
 「输入文字」使用原生输入框，先选中游戏内编辑控件再提交；最多 2048 个 Unicode 标量，
-跳过 NUL/换行，取消不发送。此阶段未实现游戏内 IME preedit/选区自动同步或 `text_input` 平台请求弹窗。
+跳过 NUL/换行，取消不发送。此入口不处理游戏内 IME preedit/选区自动同步；游戏发出的 `text_input` 请求另由平台队列处理。
 
 ```bash
 xcrun swiftc apps/apple_host/AetherHost/KeyInputState.swift \
@@ -230,7 +230,7 @@ python3 tools/apple_host_dialog_test.py --host-abi
 
 工具运行协议/队列与真实 HostKit ABI 错误路径测试，并构建独立 UI fixture。
 UI fixture 的 ACK 为测试回调；当前公开核心无法验证私有 provider 的实际请求/成功响应。
-界面证据在 `out/apple_host/evidence/m3-dialog/`。Minori 音频、文字框及其它平台请求仍待迁移。
+界面证据在 `out/apple_host/evidence/m3-dialog/`。通用 `text_input` 已由下节接入；Minori 音频、文字框及其它平台请求仍待迁移。
 
 
 ## M3 Minori 运行时影片
@@ -251,3 +251,24 @@ python3 tools/apple_host_runtime_movie_test.py --run-host
 `AETHER_HOST_TEST_RUNTIME_MOVIE` 仅 Debug autorun 使用，注入协议并以明确的测试 ACK 替代真实响应。
 测试与界面证据在 `out/apple_host/evidence/m3-runtime-movie-native-host/`，不代表真实 Minori VM 已验收。
 完整 Minori 剧情还依赖音频、文字框、选择与存档等请求迁移；G1 继续暂缓。
+
+
+## M3 通用 text_input 请求
+
+请求为标题、提示、初始文字三个 TAB 字段，最多分割两次，保留初始值里的 TAB。
+原生输入框预填并选中初始文字；Return 确认，Escape 取消。
+确认响应 `result=ok<TAB>正文`，包括空正文；取消响应 `result=cancel`，不回传草稿。
+正文按单行处理，移除 NUL/CR/LF，不进行 URI 编码，也不套用手动文字入口的 2048 字限制。
+`dialog` 与 `text_input` 共用 FIFO；待回复暂停游戏输入及额外请求轮询，继续 tick/渲染。
+提交失败保留输入与错误，支持重试；宿主 sheet 暂缓后保留草稿，关闭游戏清空队列与草稿。
+格式错误请求按原壳行为回传取消；取消响应失败则显示错误供重试。
+
+```bash
+python3 tools/apple_host_text_input_test.py
+python3 tools/apple_host_dialog_test.py --host-abi
+```
+
+测试覆盖协议、初始值、混合队列、草稿保留与失败路径，并生成独立原生 UI fixture。
+fixture 使用明确的测试 ACK，不代表真实 runtime 发请求及成功响应已验收。
+真实 HostKit ABI 的未初始化/不支持响应错误已验证；Minori 标题适配仍暂缓。
+证据 `out/apple_host/evidence/m3-text-input/` 与 `m3-text-input-dialog-regression/`。

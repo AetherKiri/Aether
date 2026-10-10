@@ -47,7 +47,7 @@ struct State {
     uint32_t publishedWidth=0, publishedHeight=0;
     std::atomic<uint64_t> leasesLive{0}, leaseSubmitted{0}, leaseCompleted{0}, leaseFailures{0};
     uint64_t leasesAcquired=0, frameDetachCopies=0;
-    uint64_t publishedAcquireCalls=0, publishedAcquireMisses=0;
+    uint64_t publishedAcquireCalls=0, publishedAcquireMisses=0, publishedAcquireUnchanged=0;
     NSHashTable<AetherMetalFrameLease *> *frameLeases=[NSHashTable weakObjectsHashTable];
     dispatch_group_t snapshotGroup=dispatch_group_create();
     dispatch_group_t leaseGroup=dispatch_group_create();
@@ -574,11 +574,15 @@ AetherMetalFrameLease *AetherMetalBridgeAcquireFrame(uint64_t generation,uint64_
     return AcquireFrameLocked(generation, token, serial);
 }
 
-AetherMetalFrameLease *AetherMetalBridgeAcquirePublishedFrame(uint64_t generation) {
+AetherMetalFrameLease *AetherMetalBridgeAcquirePublishedFrame(uint64_t generation,
+                                                              uint64_t afterSerial) {
     Lock lock(S().mutex);
     ++S().publishedAcquireCalls;
-    if(!S().publishedToken) {
-        ++S().publishedAcquireMisses;
+    if(!S().publishedToken || S().publishedSerial <= afterSerial) {
+        if (S().publishedToken && S().publishedSerial <= afterSerial)
+            ++S().publishedAcquireUnchanged;
+        else
+            ++S().publishedAcquireMisses;
         return nil;
     }
     AetherMetalFrameLease *lease = AcquireFrameLocked(
@@ -715,7 +719,7 @@ NSString *AetherMetalBridgeDiagnostics() {
         S().readsBegun,S().readsPending,S().readsCompleted,S().readsCancelled,
         S().presentationSnapshots,S().presentationSnapshotMS,S().presentationSnapshotMaxMS,S().presentationCombinedSnapshots,
         S().asyncSubmitted,S().asyncCompleted.load(),S().asyncSubmitted-S().asyncCompleted.load(),textureBytes,externalTextures,S().activeGeneration,retiredTextures];
-    return [base stringByAppendingString:[NSString stringWithFormat:@" leases_acquired=%llu leases_live=%llu lease_submitted=%llu lease_completed=%llu lease_failures=%llu frame_detach_copies=%llu published_acquire_calls=%llu published_acquire_misses=%llu",
+    return [base stringByAppendingString:[NSString stringWithFormat:@" leases_acquired=%llu leases_live=%llu lease_submitted=%llu lease_completed=%llu lease_failures=%llu frame_detach_copies=%llu published_acquire_calls=%llu published_acquire_misses=%llu published_acquire_unchanged=%llu",
         S().leasesAcquired,S().leasesLive.load(),S().leaseSubmitted.load(),S().leaseCompleted.load(),S().leaseFailures.load(),S().frameDetachCopies,
-        S().publishedAcquireCalls,S().publishedAcquireMisses]];
+        S().publishedAcquireCalls,S().publishedAcquireMisses,S().publishedAcquireUnchanged]];
 }

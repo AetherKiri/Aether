@@ -366,3 +366,16 @@ Debug KAG3 push-sink 30 秒回归通过：`native_get_calls=0`、
 证据，direct host-work p50/p95 从 `0.266/1.382 ms` 降至 `0.258/1.167 ms`，
 tick-to-GPU-completion p50/p95 从 `0.931/2.022 ms` 降至 `0.903/1.924 ms`；该对照
 仍是单机单轮，后续需重复配对并继续评估统一 command buffer。
+
+### Serial 增量 lease（2026-10-11）
+
+`FrameLease` 获取现在携带 consumer 的 `afterSerial`。MetalBridge 在同一把 session
+锁内拒绝未变化的 publication serial，Swift 宿主保留上一帧 `MTLTexture` 并继续呈现，
+只有新 serial 才创建 lease；generation、token、队列和 GPU 完成约束不变。这样静止
+场景、脚本只更新输入或窗口恢复时不会为同一纹理反复分配 lease。诊断新增
+`published_acquire_unchanged`，动态 KAG3 中为 0 属预期，因为该素材每 tick 都发布新帧。
+
+MetalBridge 组件新增 serial 不变/递增测试并通过，`published_acquire_unchanged=1`、
+`failures=0`、`leases_live=0`。KAG3 30 秒直通、输入、截图和关闭回归通过，动态 profile
+为 host-work p50/p95=`0.287/1.178 ms`、tick-to-GPU-completion p50/p95=`0.917/1.901 ms`，
+无超 16.6ms 样本。后续需要用静态标题或暂停脚本测量该优化的实际 lease 分配减少量。

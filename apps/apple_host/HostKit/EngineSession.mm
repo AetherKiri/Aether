@@ -36,6 +36,7 @@ NSError *EngineError(engine_handle_t handle, NSString *fallback) {
     BOOL _profileNativeStages;
     uint64_t _nativeGetCalls, _nativeSnapshotCalls;
     double _nativeGetMS, _nativeGetMaxMS, _nativeSnapshotMS, _nativeSnapshotMaxMS;
+    uint64_t _nativePublishedSerial;
 }
 
 - (instancetype)init {
@@ -45,6 +46,7 @@ NSError *EngineError(engine_handle_t handle, NSString *fallback) {
         NSDictionary *env = NSProcessInfo.processInfo.environment;
         _asyncSnapshots = [env[@"AETHER_HOST_ASYNC_SNAPSHOT"] isEqualToString:@"1"];
         _profileNativeStages = [env[@"AETHER_HOST_PROFILE"] isEqualToString:@"1"];
+        _nativePublishedSerial = 0;
     }
     return self;
 }
@@ -226,6 +228,7 @@ NSError *EngineError(engine_handle_t handle, NSString *fallback) {
             if (error) *error = EngineError(nullptr, @"another native render session is active");
             return NO;
         }
+        _nativePublishedSerial = 0;
     }
     if (![self setOption:@"renderer" value:@"godot_native" error:error]) return NO;
     _metalRendererEnabled = YES;
@@ -260,8 +263,12 @@ NSError *EngineError(engine_handle_t handle, NSString *fallback) {
 
 - (nullable AetherMetalFrameLease *)acquireNativeFrame {
     if(!_handle || !_renderGeneration)return nil;
-    AetherMetalFrameLease *frame=AetherMetalBridgeAcquirePublishedFrame(_renderGeneration);
-    if(frame)_framePixelSize=CGSizeMake(frame.texture.width,frame.texture.height);
+    AetherMetalFrameLease *frame=AetherMetalBridgeAcquirePublishedFrame(
+        _renderGeneration, _nativePublishedSerial);
+    if(frame) {
+        _nativePublishedSerial = frame.serial;
+        _framePixelSize=CGSizeMake(frame.texture.width,frame.texture.height);
+    }
     return frame;
 }
 
@@ -488,6 +495,7 @@ NSError *EngineError(engine_handle_t handle, NSString *fallback) {
     if (_handle != nullptr) {
         engine_destroy(_handle);
         _handle = nullptr;
+        _nativePublishedSerial = 0;
         _metalRendererEnabled = NO;
         _framePixelSize = CGSizeZero;
     }

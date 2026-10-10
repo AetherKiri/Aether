@@ -26,7 +26,8 @@ BOOL AetherMetalBridgeDrain(void);
 // Internal native ownership boundary; zero indicates an already active session.
 uint64_t AetherMetalBridgeBeginSession(void);
 AetherMetalFrameLease * _Nullable AetherMetalBridgeAcquireFrame(uint64_t generation, uint64_t token, uint64_t serial);
-AetherMetalFrameLease * _Nullable AetherMetalBridgeAcquirePublishedFrame(uint64_t generation);
+AetherMetalFrameLease * _Nullable AetherMetalBridgeAcquirePublishedFrame(uint64_t generation,
+                                                                          uint64_t afterSerial);
 void AetherMetalBridgeFramePublished(uint64_t token, uint32_t width,
                                      uint32_t height, uint64_t serial);
 // Producers must be stopped. Retired tokens remain releasable, never presentable.

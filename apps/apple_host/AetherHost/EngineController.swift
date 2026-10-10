@@ -409,8 +409,22 @@ final class EngineController: ObservableObject {
         }
 
         if nativeRendererEnabled {
-            nativeFrameLease = directRender ? session.acquireNativeFrame() : nil
-            let nextTexture = directRender ? nativeFrameLease?.texture : session.copyNativeFrameTexture()
+            let nextTexture: MTLTexture?
+            if directRender {
+                // A publication serial is monotonic. When the engine did not
+                // publish a new frame, keep presenting the last texture and
+                // avoid allocating a redundant lease for an unchanged frame.
+                if let lease = session.acquireNativeFrame() {
+                    nativeFrameLease = lease
+                    nextTexture = lease.texture
+                } else {
+                    nativeFrameLease = nil
+                    nextTexture = nativeFrameTexture
+                }
+            } else {
+                nativeFrameLease = nil
+                nextTexture = session.copyNativeFrameTexture()
+            }
             if nativeFrameTexture !== nextTexture {
                 nativeFrameTexture = nextTexture
             }

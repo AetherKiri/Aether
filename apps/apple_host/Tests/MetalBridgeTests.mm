@@ -328,6 +328,15 @@ int main(int argc,char **argv) { @autoreleasepool {
     assert(!AetherMetalBridgeCopyPresentationTexture(oldToken));
     uint64_t newToken=bridge.create_rgba(1,1,solid.data(),4);assert(newToken);
     assert(AetherMetalBridgeCopyPresentationTexture(newToken));
+    // Published-frame acquisition is incremental: a repeated serial keeps
+    // the consumer's existing texture without allocating another lease.
+    AetherMetalBridgeFramePublished(newToken, 1, 1, 500);
+    auto published=AetherMetalBridgeAcquirePublishedFrame(nextGeneration, 0);
+    assert(published && published.serial==500);
+    assert(!AetherMetalBridgeAcquirePublishedFrame(nextGeneration, 500));
+    AetherMetalBridgeFramePublished(newToken, 1, 1, 501);
+    auto republished=AetherMetalBridgeAcquirePublishedFrame(nextGeneration, 500);
+    assert(republished && republished.serial==501);
     bridge.release_texture(oldToken);
     assert([AetherMetalBridgeDiagnostics() containsString:@"retired_textures=0"]);
     @autoreleasepool {

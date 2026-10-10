@@ -129,6 +129,8 @@ Apple M1 Max / macOS 15.7.1 一次 Debug 组件测量：关闭批处理 5.012/10
 
 ### 交接与遗留（2026-10-11）
 
+CUA 异步窗口验收：以 renderer=metal、ASYNC_SNAPSHOT=1 启动普通宿主，同进程两次启动《夏雪》并确认返回游戏库；第一轮使用原生缩放窗口、最小化与 Raise 恢复。截图显示恢复后游戏启动动画继续，日志记录 window hidden/occluded 与 resumed after 4 skipped draws。两次关闭累计 async_submitted/completed=647/647、1093/1093，inflight=0、failures=0、native_readbacks=0；进程退出码0。日志保存 out/apple_host/evidence/async-cua-window/run.log。注意关闭后桥 textures=17→32，资源数增长尚未定位，不能据此默认启用异步模式；下一步需用同步模式同进程重启对照，判断是否是已有引擎资源生命周期问题。仅验证启动与窗口/会话行为，未登记 verified_games，也未覆盖深度游玩或连续尺寸拖动压力。
+
 工具最终版本另跑30秒，主动继承 AETHER_HOST_TEST_PURCHASE=1 验证测试变量隔离；通过且 result.json 记录 submitted=completed=1772、inflight=0、errors=[]。证据 out/apple_host/evidence/async-drain-result-json/kag3/result.json。Python语法与diff检查通过。
 
 异步关闭长回归：最新 Debug 构建 KAG3 Metal 300 秒通过输入推进、三次截图与正常销毁；RGB max diff 三次均为0，async_submitted=async_completed=17892，async_inflight=0，failures=0，native_readbacks=3（仅截图）。证据 out/apple_host/evidence/async-drain-g0/kag3/run.log。smoke 新增 --snapshots sync/async（默认显式sync），异步模式要求非零提交、完成数一致、在途为零且无 drain 错误；清理继承的 AETHER_HOST_TEST_*，固定 direct 调度，输出 result.json 供自动审计。该运行证明此素材五分钟异步生命周期稳定，不是全游戏兼容性或Godot性能对照；遮挡/尺寸/重复关闭压力仍待补，保持 opt-in。

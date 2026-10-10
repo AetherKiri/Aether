@@ -47,6 +47,10 @@ python3 tools/generate_apple_metal_shaders.py --check
 python3 tools/apple_host_smoke.py
 # 快速冒烟（不构成五分钟 G0 验收）：
 python3 tools/apple_host_smoke.py --duration 30
+# 引擎缩放绘制（重采样）路径的原创夹具；输入驱动重绘，软件与 Metal 两次
+# 运行可在同一秒直接对比（P2/P0 同刻差值应为 0）：
+python3 tools/apple_host_smoke.py --game-path tests/fixtures/apple_host_stretch \
+  --renderer metal --duration 30
 # P2 原生 Metal 绘制（ONS 验证软件兜底）：
 python3 tools/apple_host_smoke.py --renderer metal
 # 记录宿主 tick + 纹理获取耗时；不含独立 MTKView 呈现：

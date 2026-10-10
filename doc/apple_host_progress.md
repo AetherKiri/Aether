@@ -316,6 +316,15 @@
 - 出处提示：《夏雪》本机副本带第三方推广水印与汉化补丁声明（禁商业使用、24 小时内删除、禁广泛转载、严禁移植到 PC 以外平台）；《40日40夜之雨》未见同类声明。登记公开列表前需要用户确认并考虑该声明。
 - 用户已要求把后续工作交给另一代理：本期只做到「证据齐 + 文档更新」，`verified_games` 登记、更深流程验证（存档/读档）与剩余 Metal 项（异步回读、deferred 尾部）移交接手方。测试宿主进程已停止，临时副本位于 `/tmp/aether-g1.WOmIO8/`（克隆自 Downloads，可随时删除）。
 
+### 2026-10-11：内核层小项（借鉴上游硬化项）
+
+- 背景：对照 wamsoft/krkrz 与 krkrz_dev 的现代化线后，挑出「不改 ABI、不改行为、可验证」的小项落到我们的核（`packages/AetherKrkr`）。
+- 修掉 6 处 release 构建 UB：`core/visual/LoadJXR.cpp` 三处与 `core/visual/gl/ResampleImage.cpp` 三处把暂存缓冲写成「只 `reserve()` 再按 `&buf[0]` 写」。`reserve()` 不改变 `size()`，该写法本身是 UB，且 release 会读到 debug 里已零初始化的字节。改为两种构建统一使用定长缓冲——也就是让 release 与一直作为像素对照基准的 debug 行为一致。
+- 一处微优化：`LocaleConfigManager::GetText` 未命中时对同一 key 做两次哈希（`operator[]` 插入后再 `operator[]`），改为 `find` + `emplace`，保留记忆化语义与返回引用的稳定性。
+- 新增原创夹具 `tests/fixtures/apple_host_stretch`：用 `Layer.stretchCopy` 的 stLinear/stCubic 覆盖现有夹具都没有的重采样路径，输入驱动重绘（冒烟工具可用）。它首次做到**跨渲染器同刻对比**：软件与 Metal 两次运行在 6/20/25 秒的 engine 帧 RGB 差值均为 0；Metal 运行内 engine/Metal 同刻差值同样为 0。
+- 回归：核心库与宿主重编译通过；Metal 桥/呈现/输入/游戏内文字输入套件通过；KAG3+ONS 各 30 秒冒烟通过；`apple_host_stretch` 软件与 Metal 各 30 秒冒烟通过；`apple_host_selftest` 16/16 零差异。另有一次自检在 1080p 的 19/22 秒出现局部差异，重跑干净——判定为该自检「按键后 1 秒采样、两进程相位可能差一 tick」的固有抖动，与本次改动无关（Debug 下 ResampleImage 的分支本来就与改动后等价）。
+- 提交：子模块 `packages/AetherKrkr` 提交 `764bb8e`（分支 `fix/krkr-startup-loader-contract`），父仓同步 gitlink 与夹具。spec 的「不改引擎核心」非目标补充了说明：不做架构/ABI 改写，允许正确性类最小修补（与该包既有兼容修复惯例一致）。
+
 ## 下一步队列
 
 1. [x] 接缝清单 v0.1（交付物 A）+ 三份文档建立
@@ -346,6 +355,7 @@
 26. [ ] **Minori 暂缓**：音频/文字框/选择/存档及真实游戏验收，待用户重新安排
 27. [x] 同步 spec、接缝清单与进度
 28. [ ] **交接给后续代理（2026-10-11 移交）**：用户确认后登记 `verified_games`（含中英文，注明平台/范围与出处、汉化声明考量）；可选做更深流程验证（存档/读档）；剩余 Metal 项为 `begin_read/poll_read` 异步回读与 deferred 调度尾部
+29. [x] **内核层小项（2026-10-11）**：release UB 暂存缓冲 6 处 + `LocaleConfigManager::GetText` 单次查找；新增重采样夹具 `apple_host_stretch`（含跨渲染器同刻对比）。子模块 `764bb8e`
 
 ## 变更记录
 

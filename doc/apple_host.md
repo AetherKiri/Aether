@@ -16,7 +16,7 @@
 当前进展：M0 输入收尾与 P0 Metal 呈现已接入；P2 Metal 绘制桥已接入（显式启用），G1 按用户要求暂缓；M2 目录导入 MVP 与 G2 界面流程已接入并验证。详见 [Metal 实施清单](apple_host_metal_plan.md)。
 
 ### 非目标（本阶段不做）
-- 不改引擎核心与 runtime provider 实现（`packages/AetherKrkr`、`bridge/*_runtime`）。
+- 不改引擎核心与 runtime provider 的实现形态（`packages/AetherKrkr`、`bridge/*_runtime`）：不做架构改写、不加/改 ABI 接口。正确性与硬化类最小修补仍允许，例如把 release 构建下 `reserve()`-only 的暂存缓冲改为定长缓冲（2026-10-11，见进度文档）。
 - 不迁移其他平台（Android/Web/Windows/Linux 继续走 Godot）。
 - 不追求壳的功能完整对齐——MVP 之后按 M3 迭代补齐。
 - 不移植 Godot 的 Lumen UI 代码（只参考其 UX 与文案资源）。

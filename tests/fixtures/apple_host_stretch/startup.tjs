@@ -1,0 +1,37 @@
+// Original fixture for the engine's scaled-blit (resampler) path.
+// Contains no game assets. The frame only changes on input, so the smoke
+// tool's "input changed the frame" check exercises the resampler directly.
+var win = new Window();
+win.setInnerSize(640, 480);
+var primary = new Layer(win, null);
+win.add(primary);
+primary.setSize(640, 480);
+primary.type = ltOpaque;
+primary.visible = true;
+
+// Child layer: TVP parents it to the primary layer (no explicit add).
+var src = new Layer(win, primary);
+src.setSize(64, 48);
+src.type = ltOpaque;
+src.visible = false;
+src.colorRect(0, 0, 64, 48, 0x103050, 255);
+src.colorRect(4, 4, 56, 12, 0xd05030, 255);
+src.colorRect(4, 20, 20, 24, 0x30d050, 255);
+src.drawText(22, 26, "SAMPLE", 0xffffff, 255, true);
+
+var steps = 0;
+function redraw() {
+  steps++;
+  primary.colorRect(0, 0, 640, 480, 0x000000, 255);
+  var grow = (steps % 12) * 8;
+  // Alternate stLinear (2) and stCubic (3): both run the resampler.
+  var type = (steps % 2) == 0 ? 2 : 3;
+  primary.stretchCopy(20, 20, 200 + grow, 150 + grow, src, 0, 0, 64, 48, type);
+  primary.stretchCopy(320, 200, 300, 260, src, 0, 0, 64, 48, type);
+  Debug.message("STRETCH_TEST step=" + steps + " type=" + type + " grow=" + grow);
+}
+
+win.onKeyDown = function(key, shift) { redraw(); };
+win.onKeyPress = function(key) { redraw(); };
+redraw();
+Debug.message("STRETCH_TEST fixture ready");

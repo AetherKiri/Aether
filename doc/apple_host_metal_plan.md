@@ -165,13 +165,14 @@ tick-to-GPU-completion p50/p95/max=`1.016/2.050/13.361 ms`，
 
 之前直通每帧仍通过 `engine_get_godot_native_frame_texture` 查询 token。合并查询尝试
 证明 DrawDevice 的 post-draw 发布可能晚于 `engine_tick` 返回，直接在 tick 内读取会
-丢失帧，因此没有保留那个不可靠的实现。随后接入 krkrz 已有的 `TVPSetPostDrawHook`：
-runtime 在每个新标题打开前安装 `engine_native_frame_sink_t`，post-draw 发布完成后
-把 token、尺寸和 serial 推送到 MetalBridge 的 RenderSession 缓存；宿主直通只读取
-缓存并调用内部 `AcquirePublishedFrame`，不进入逐帧 engine handle/registry 查询 ABI。
+丢失帧，因此没有保留那个不可靠的实现。随后沿 krkrz 的 GPU frame publication 点
+接入 `engine_native_frame_sink_t`：runtime 在每个新标题打开前安装 sink，
+`PublishHostGpuFrame` 更新 token、尺寸和 serial 后直接推送到 MetalBridge 的
+RenderSession 缓存；宿主直通只读取缓存并调用内部 `AcquirePublishedFrame`，不进入
+逐帧 engine handle/registry 查询 ABI，也不再反查 host GPU frame。
 
 这保留了旧 `engine_get_godot_native_frame_texture` 供软件、截图和兼容路径使用，同时
-把生命周期边界放在同一个 post-draw publication 与 FrameLease 协议内。KAG3 30 秒
+把生命周期边界放在同一个 GPU publication 与 FrameLease 协议内。KAG3 30 秒
 Debug 直通 profile 证据 `out/apple_host/evidence/direct-render-kag3-push-sink/`：
 `native_get_calls=0`、`frame_detach_copies=0`、`leases_acquired=1750`、
 `lease_submitted=1750`、`lease_completed=1750`、`lease_failures=0`、
@@ -350,3 +351,18 @@ Metal bridge 组件测试、核心库和 Debug 宿主构建通过；KAG3 Metal 3
 稳态为 p50/p95/max=`1.269/1.782/6.209 ms`，该优化规模较小，需在后续配对基准中
 继续评估；更大的收益仍来自统一引擎与呈现 command buffer、减少 Swift/ObjC 边界和
 纹理分配。
+
+### GPU publication 直推（2026-10-11）
+
+原 sink 在 post-draw 回调中再次调用 `TVPHostGetLatestGodotGpuFrame`，每帧经过
+引擎 frame mutex 后才进入 MetalBridge。现在 `PublishHostGpuFrame` 在完成纹理和
+serial 更新后直接调用内部 publication sink，回调位于 frame mutex 之外；这删除了
+每帧 host frame 反查和一把锁，公共 engine ABI 没有增加。旧 post-draw hook 仍可供
+其他宿主使用，查询接口仍供截图与兼容路径使用。
+
+Debug KAG3 push-sink 30 秒回归通过：`native_get_calls=0`、
+`published_acquire_misses=0`、`leases_acquired/submitted/completed=1750/1750/1750`、
+`frame_detach_copies=0`、`failures=0`、三次 RGB max diff 为 0。相对上一轮同素材
+证据，direct host-work p50/p95 从 `0.266/1.382 ms` 降至 `0.258/1.167 ms`，
+tick-to-GPU-completion p50/p95 从 `0.931/2.022 ms` 降至 `0.903/1.924 ms`；该对照
+仍是单机单轮，后续需重复配对并继续评估统一 command buffer。

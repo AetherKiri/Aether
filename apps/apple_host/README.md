@@ -421,10 +421,11 @@ python3 tools/apple_host_smoke.py --game kag3 --renderer metal --snapshots direc
 `leases_*` 和 `frame_detach_copies` 用于确认提交、GPU 完成和复用边界。截图与
 跨队列回读仍使用不可变快照。
 
-直通模式还通过 krkrz 的 post-draw publication hook 推送最新纹理；每帧不再调用
-`engine_get_godot_native_frame_texture` 查询 ABI。旧查询接口仍保留给软件/兼容路径，
-推送缓存按 RenderSession generation 校验，关闭或下一次会话不会接受旧 token。
+直通模式在 krkrz 的 GPU frame publication 点直接推送最新纹理；每帧不再调用
+`engine_get_godot_native_frame_texture`，也不再为 sink 反查
+`TVPHostGetLatestGodotGpuFrame`。旧查询接口仍保留给软件/兼容路径，推送缓存按
+RenderSession generation 校验，关闭或下一次会话不会接受旧 token。
 
-post-draw hook 的函数指针使用 acquire/release 原子存取，reset、重新安装和绘制线程
-通过同一封装同步。关闭期间清除 hook 不会与正在结束的绘制产生普通函数指针数据竞争；
-sink 是进程常驻函数，不捕获已销毁的宿主 session。
+frame publication sink 的函数指针使用 acquire/release 原子存取，reset、重新安装和
+绘制线程通过同一封装同步。回调在 frame mutex 释放后执行，不形成引擎状态锁与
+MetalBridge 锁的锁序依赖；sink 是进程常驻函数，不捕获已销毁的宿主 session。

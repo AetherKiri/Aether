@@ -137,6 +137,8 @@ extern "C" void TVPHostSetPreferGpuFrame(bool prefer_gpu_frame);
 extern "C" void TVPHostSetPublishRawSourceFrame(bool publish_raw_source);
 extern "C" void TVPHostResetForGameSession();
 extern void TVPSetPostDrawHook(void (*hook)());
+extern "C" void TVPSetHostGpuFramePublishHook(
+    void (*hook)(uint64_t, uint32_t, uint32_t, uint64_t));
 extern "C" void AetherKiriMotionResetForGameSession();
 extern void TVPClearScnearioCache();
 extern "C" void TVPHostGetTextInputState(uint32_t* ime_active,
@@ -685,23 +687,9 @@ std::shared_ptr<spdlog::sinks::sink> g_game_log_file_sink;
 std::string g_game_log_file_path;
 constexpr size_t kMaxStartupLogs = 4000;
 
-void NotifyNativeFrameSink() {
-  auto sink = g_native_frame_sink.load(std::memory_order_acquire);
-  if (sink == nullptr) return;
-  uint64_t texture = 0;
-  uint32_t width = 0;
-  uint32_t height = 0;
-  uint64_t serial = 0;
-  if (TVPHostGetLatestGodotGpuFrame(&texture, &width, &height, &serial) &&
-      texture != 0 && width != 0 && height != 0) {
-    sink(texture, width, height, serial);
-  }
-}
-
 void InstallNativeFrameSink() {
-  TVPSetPostDrawHook(g_native_frame_sink.load(std::memory_order_acquire) != nullptr
-                         ? &NotifyNativeFrameSink
-                         : nullptr);
+  TVPSetHostGpuFramePublishHook(
+      g_native_frame_sink.load(std::memory_order_acquire));
 }
 
 void PushRuntimeSpdlogToStartupQueue(const spdlog::details::log_msg& msg);

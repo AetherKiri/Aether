@@ -9,6 +9,7 @@
 #include <cassert>
 #include <cstdio>
 #include <vector>
+#include <thread>
 
 // Registration is exercised without loading the full engine/provider closure.
 static TVPGodotGpuBridgeCallbacks bridge;
@@ -116,7 +117,11 @@ int main(int argc,char **argv) { @autoreleasepool {
     uint64_t request=bridge.begin_read_rgba(src);assert(request);
     bridge.clear_rgba(src,0xff000000,&one);bridge.release_texture(src);
     Pixel snapshot{};bool ready=false;
-    assert(bridge.poll_read_rgba(request,snapshot.data(),snapshot.size(),4,&ready)&&ready);
+    for (int attempt=0;attempt<10000 && !ready;++attempt) {
+        assert(bridge.poll_read_rgba(request,snapshot.data(),snapshot.size(),4,&ready));
+        if (!ready) std::this_thread::sleep_for(std::chrono::microseconds(100));
+    }
+    assert(ready);
     assert((snapshot==Pixel{200,40,60,128}));
     bridge.discard_read_rgba(request);
     assert(!bridge.poll_read_rgba(request,snapshot.data(),snapshot.size(),4,&ready)&&!ready);

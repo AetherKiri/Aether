@@ -129,6 +129,8 @@ Apple M1 Max / macOS 15.7.1 一次 Debug 组件测量：关闭批处理 5.012/10
 
 ### 交接与遗留（2026-10-11）
 
+异步回读增量：`begin_read_rgba` 提交快照 blit 后直接返回，`poll_read_rgba` 在 GPU 未完成时返回成功且 ready=false；完成后只读取该快照，不再同步 flush 无关批次。请求持有快照及命令直到 discard，错误只计数一次。MetalBridgeTests 已覆盖快照隔离、轮询与丢弃，commands=31、failures=0、reads=0。begin 仍同步 flush 先前批次；尚未测量回读延迟与完整宿主回归，不能据此宣称整体帧率提升。
+
 - 本期交接点：G1 三项证据齐备（上表），唯一未完成的动作是把两款已验证标题登记进
   `doc/verified_games.md` / `verified_games.zh-CN.md`。按
   `.agents/skills/fix-aetherkiri-game-compatibility` 的规定，该表只在**用户确认游戏可用后**更新，

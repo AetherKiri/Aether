@@ -27,6 +27,11 @@ struct Record {
     id<MTLTexture> texture;
     std::shared_ptr<ExternalOwner> external;
 };
+struct ReadRequest {
+    id<MTLTexture> texture;
+    id<MTLCommandBuffer> command;
+    bool accounted = false;
+};
 struct State {
     std::recursive_mutex mutex;
     id<MTLDevice> device;
@@ -37,7 +42,7 @@ struct State {
     CVMetalTextureCacheRef cache = nullptr;
     std::map<std::string, id<MTLComputePipelineState>> pipelines;
     std::map<uint64_t, Record> textures;
-    std::map<uint64_t, id<MTLTexture>> reads;
+    std::map<uint64_t, ReadRequest> reads;
     uint64_t next = 1, operations = 0, failures = 0;
     NSString *lastError = @"";
     ~State() { if (cache) CFRelease(cache); }
@@ -349,14 +354,41 @@ bool Read(uint64_t token,void *out,size_t capacity,uint32_t stride) {
     return ReadTexture(record->second.external?Snapshot(t):t,out,capacity,stride);
 }
 uint64_t BeginRead(uint64_t token) {
-    Lock lock(S().mutex);id<MTLTexture> snapshot=Snapshot(Texture(token));
-    if (!snapshot) return 0;
-    uint64_t request=S().next++;S().reads.emplace(request,snapshot);return request;
+    Lock lock(S().mutex);
+    id<MTLTexture> source=Texture(token);
+    if (!source || !FlushPending()) return 0;
+    id<MTLTexture> snapshot=Allocate((uint32_t)source.width,(uint32_t)source.height,source.pixelFormat);
+    id<MTLCommandBuffer> command=[S().queue commandBuffer];
+    id<MTLBlitCommandEncoder> encoder=[command blitCommandEncoder];
+    if (!snapshot || !encoder) return 0;
+    [encoder copyFromTexture:source sourceSlice:0 sourceLevel:0 sourceOrigin:MTLOriginMake(0,0,0)
+        sourceSize:MTLSizeMake(source.width,source.height,1) toTexture:snapshot
+        destinationSlice:0 destinationLevel:0 destinationOrigin:MTLOriginMake(0,0,0)];
+    [encoder endEncoding];
+    [command commit];
+    uint64_t request=S().next++;
+    S().reads.emplace(request,ReadRequest{snapshot,command,false});return request;
 }
 bool PollRead(uint64_t token,void *out,size_t capacity,uint32_t stride,bool *ready) {
     Lock lock(S().mutex);if (!ready) return false;*ready=false;
     auto found=S().reads.find(token);if (found==S().reads.end()) return false;
-    if (!ReadTexture(found->second,out,capacity,stride)) return false;
+    auto &request=found->second;
+    if (request.command.status==MTLCommandBufferStatusError) {
+        if (!request.accounted) { ++S().failures; request.accounted=true;
+            S().lastError=request.command.error.localizedDescription ?: @"Metal readback failed"; }
+        return false;
+    }
+    if (request.command.status!=MTLCommandBufferStatusCompleted) return true;
+    if (!request.accounted) { ++S().operations; request.accounted=true; }
+    // The snapshot has completed independently; do not flush unrelated work.
+    id<MTLTexture> texture=request.texture;
+    if (!out || stride<texture.width*4 || capacity<(size_t)stride*texture.height) return false;
+    [texture getBytes:out bytesPerRow:stride fromRegion:MTLRegionMake2D(0,0,texture.width,texture.height) mipmapLevel:0];
+    if (texture.pixelFormat==MTLPixelFormatBGRA8Unorm) {
+        for (NSUInteger y=0;y<texture.height;++y) for (NSUInteger x=0;x<texture.width;++x) {
+            uint8_t *p=(uint8_t *)out+y*stride+x*4; std::swap(p[0],p[2]);
+        }
+    }
     *ready=true;return true;
 }
 void DiscardRead(uint64_t token) { Lock lock(S().mutex);S().reads.erase(token); }

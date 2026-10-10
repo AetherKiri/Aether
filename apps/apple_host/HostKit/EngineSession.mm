@@ -5,6 +5,7 @@
 
 #include <vector>
 #include <algorithm>
+#include <chrono>
 
 namespace {
 
@@ -30,12 +31,19 @@ NSError *EngineError(engine_handle_t handle, NSString *fallback) {
     BOOL _metalRendererEnabled;
     uint64_t _nativeReadbacks;
     uint64_t _nativeCopies;
+    BOOL _asyncSnapshots;
+    BOOL _profileNativeStages;
+    uint64_t _nativeGetCalls, _nativeSnapshotCalls;
+    double _nativeGetMS, _nativeGetMaxMS, _nativeSnapshotMS, _nativeSnapshotMaxMS;
 }
 
 - (instancetype)init {
     self = [super init];
     if (self != nil) {
         _handle = nullptr;
+        NSDictionary *env = NSProcessInfo.processInfo.environment;
+        _asyncSnapshots = [env[@"AETHER_HOST_ASYNC_SNAPSHOT"] isEqualToString:@"1"];
+        _profileNativeStages = [env[@"AETHER_HOST_PROFILE"] isEqualToString:@"1"];
     }
     return self;
 }
@@ -222,9 +230,19 @@ NSError *EngineError(engine_handle_t handle, NSString *fallback) {
     if (!_handle) return nil;
     uint64_t token = 0, serial = 0;
     uint32_t width = 0, height = 0;
-    if (engine_get_godot_native_frame_texture(_handle, &token, &width, &height, &serial) != ENGINE_RESULT_OK || !token) return nil;
-    bool async=[NSProcessInfo.processInfo.environment[@"AETHER_HOST_ASYNC_SNAPSHOT"] isEqualToString:@"1"];
-    id<MTLTexture> texture = async ? AetherMetalBridgeCopyPresentationTexture(token) : AetherMetalBridgeCopyTexture(token);
+    auto started = _profileNativeStages ? std::chrono::steady_clock::now() : std::chrono::steady_clock::time_point{};
+    auto result = engine_get_godot_native_frame_texture(_handle, &token, &width, &height, &serial);
+    if (_profileNativeStages) {
+        double elapsed = std::chrono::duration<double,std::milli>(std::chrono::steady_clock::now()-started).count();
+        ++_nativeGetCalls; _nativeGetMS += elapsed; _nativeGetMaxMS = std::max(_nativeGetMaxMS,elapsed);
+    }
+    if (result != ENGINE_RESULT_OK || !token) return nil;
+    if (_profileNativeStages) started = std::chrono::steady_clock::now();
+    id<MTLTexture> texture = _asyncSnapshots ? AetherMetalBridgeCopyPresentationTexture(token) : AetherMetalBridgeCopyTexture(token);
+    if (_profileNativeStages) {
+        double elapsed = std::chrono::duration<double,std::milli>(std::chrono::steady_clock::now()-started).count();
+        ++_nativeSnapshotCalls; _nativeSnapshotMS += elapsed; _nativeSnapshotMaxMS = std::max(_nativeSnapshotMaxMS,elapsed);
+    }
     if (texture) {
         _framePixelSize = CGSizeMake(width, height);
         ++_nativeCopies;
@@ -233,8 +251,9 @@ NSError *EngineError(engine_handle_t handle, NSString *fallback) {
 }
 
 - (NSString *)metalBridgeDiagnostics {
-    return [NSString stringWithFormat:@"%@ native_copies=%llu native_readbacks=%llu",
-        AetherMetalBridgeDiagnostics(), _nativeCopies, _nativeReadbacks];
+    return [NSString stringWithFormat:@"%@ native_copies=%llu native_readbacks=%llu native_get_calls=%llu native_get_total_ms=%.6f native_get_max_ms=%.6f native_snapshot_calls=%llu native_snapshot_total_ms=%.6f native_snapshot_max_ms=%.6f",
+        AetherMetalBridgeDiagnostics(), _nativeCopies, _nativeReadbacks,
+        _nativeGetCalls,_nativeGetMS,_nativeGetMaxMS,_nativeSnapshotCalls,_nativeSnapshotMS,_nativeSnapshotMaxMS];
 }
 
 - (BOOL)openGameAtPath:(NSString *)gamePath error:(NSError **)error {

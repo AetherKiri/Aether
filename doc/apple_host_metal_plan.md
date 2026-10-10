@@ -129,6 +129,10 @@ Apple M1 Max / macOS 15.7.1 一次 Debug 组件测量：关闭批处理 5.012/10
 
 ### 交接与遗留（2026-10-11）
 
+用户澄清直通目标：减少部分 ABI 的意义首先是让渲染层统一管理生命周期，不是仅压低接口调用耗时。当前桥是进程全局 State，纹理 token 表、批次、快照与宿主呈现状态分别管理；公共接口只传 token/尺寸/serial，不能表达帧被谁持有、何时允许重写或销毁。下一阶段以内部 RenderSession 为资源所有者，公共 ABI 保留开关游戏/输入/平台请求/诊断；Apple 内部呈现接口持有带 session generation 与 frame serial 的 FrameLease，显式表达 produced→submitted→GPU completed→reusable。关闭按停止生产/呈现→完成提交与回调→归还 lease→释放会话资源处理，按代际拒绝旧会话帧；共享 device/管线可缓存，纹理与请求须按会话归属。不能直接清空全局 token 表掩盖残留引用，也不能把 borrowed 裸纹理当作不可变快照。先建立所有权与状态验证，再接纹理池/去复制/合并提交；deferred/遮挡保留与截图策略须随 lease 协议明确。即使 ABI 调用耗时很低，这个架构目标仍成立。尚未实现该重构，不宣称生命周期问题已修复。
+
+阶段计时基线：EngineSession 仅 PROFILE=1 测量取帧接口（包含 ABI 路由与运行时查询）及快照 CPU 阶段，profile 输出结构化平均/最大值；快照开关改为会话初始化时读取，避免逐帧查询环境。Debug构建与KAG3真实1080p drawable配对各30秒通过，无截图/readback、failures=0。sync 1786次调用 get平均0.000668ms、快照平均0.654726ms；async 1781次 get平均0.000640ms、快照CPU平均0.113408ms（不含GPU完成）。tick到GPU完成 p50/p95/max：sync 1.256/1.819/5.052ms，async 0.808/1.376/7.551ms，均零16.6ms超预算，但各有2个有效tick未进入呈现样本。证据 out/apple_host/evidence/native-stage-profile/result.json。阶段计数包含启动/预热，与排除前60 tick的呈现分位数口径不同；此素材的接口CPU成本不是主要量级，未证明直通重构收益或Godot对照。Python语法与diff检查通过。
+
 引擎直通渲染方向（用户提出）：当前引擎纹理已经走 Metal GPU 路径；每 tick 的取帧经过 ABI Route（registry/handle 两层递归锁与 provider 分发），随后 Snapshot 仍分配纹理并全帧 blit。尚无 ABI 单独耗时证据，不能把全部延迟归因于 ABI。优先实验目标是取消呈现快照分配/复制：引擎输出纹理→同队列呈现→完成后复用，控制/插件公共 ABI 保留；内部热路径可使用会话绑定的原生接口。先分别测 tick、ABI 取帧、snapshot 编码/提交、drawable 与 GPU完成，再以同素材同尺寸配对证明收益。直接借用纹理必须规定生产者与消费者提交顺序、强引用/lease、帧serial、重用与队列身份；deferred 呈现与遮挡恢复不能引用已被下一帧改写的内容，截图仍需不可变快照。暂不直接返回裸纹理替换现有接口。参考 wamsoft/krkrz README 描述的引擎内 Canvas/Texture/Shader/Offscreen 与 LIB 构建：https://github.com/wamsoft/krkrz 。该参考支持架构方向，未证明本项目或其引擎的性能对比。
 
 资源增长同步对照：CUA 普通宿主同步模式同进程两次启动/返回《夏雪》，关闭 textures=19→36、failures=0、async_submitted=0，退出码0；因此增长也存在于同步路径。试加关闭时 RecycleProcess 后仍19→33，未证明该队列是根因，已撤回该运行时改动。诊断新增 texture_rgba_bytes（仅注册纹理宽×高×4的逻辑像素大小，不是驱动实际显存、不含快照）与 external_textures，以便定位残留资源。深度引用生命周期仍待排查，未完成泄漏修复。

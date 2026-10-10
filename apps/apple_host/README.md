@@ -46,6 +46,9 @@ out/apple_host/metal-bridge-tests --batched-readback-benchmark
 out/apple_host/metal-bridge-tests --snapshot-benchmark
 # Host-level sync/async snapshots, direct scheduling, no screenshots:
 python3 tools/apple_host_profile.py demos/aetherkiri-kag3/data --duration 30 --compare-snapshots
+# result.json 的 native_cpu_stages 分列取帧接口与快照 CPU 平均/最大耗时。
+# 取帧包含 ABI 分发和运行时查询；包含启动/预热，异步快照不含 GPU 完成等待。
+# 仅 AETHER_HOST_PROFILE=1 采集阶段时钟，普通运行不增加计时调用。
 python3 tools/generate_apple_metal_shaders.py --check
 
 # KAG3 + ONS 并行，各运行 310 秒，截图验证输入推进、GPU RGB 对比及干净退出。

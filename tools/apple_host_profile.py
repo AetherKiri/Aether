@@ -83,6 +83,18 @@ def main():
                    'p50_ms': values[(len(values)-1)//2], 'p95_ms': values[int((len(values)-1)*.95)],
                    'max_ms': values[-1], 'over_16_6': sum(v > 16.6 for v in values),
                    'slowest': sorted(rows, key=lambda r: float(r['tick_to_completion_ms']), reverse=True)[:5]}
+        # Includes startup/warmup calls; get includes ABI routing AND runtime query.
+        # Async snapshot CPU duration stops at submit, not GPU completion.
+        stages = re.findall(r'native_get_calls=(\d+) native_get_total_ms=([\d.]+) native_get_max_ms=([\d.]+) native_snapshot_calls=(\d+) native_snapshot_total_ms=([\d.]+) native_snapshot_max_ms=([\d.]+)', text)
+        assert stages, f'{mode}: missing native stage profiling'
+        get_calls, get_total, get_max, snapshot_calls, snapshot_total, snapshot_max = stages[-1]
+        assert int(get_calls) > 0 and int(snapshot_calls) > 0, mode
+        summary['native_cpu_stages'] = {
+            'scope': 'all calls including startup/warmup; get includes runtime query; async snapshot excludes GPU completion',
+            'get_calls': int(get_calls), 'get_avg_ms': float(get_total)/int(get_calls), 'get_max_ms': float(get_max),
+            'snapshot_calls': int(snapshot_calls), 'snapshot_avg_ms': float(snapshot_total)/int(snapshot_calls),
+            'snapshot_max_ms': float(snapshot_max),
+        }
         result['runs'][mode] = summary
         (output / 'result.json').write_text(json.dumps(result, indent=2)+'\n')
         print(mode, json.dumps({k:v for k,v in summary.items() if k != 'slowest'}), flush=True)

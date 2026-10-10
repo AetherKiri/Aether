@@ -129,6 +129,8 @@ Apple M1 Max / macOS 15.7.1 一次 Debug 组件测量：关闭批处理 5.012/10
 
 ### 交接与遗留（2026-10-11）
 
+同步快照合并提交：Snapshot 直接在 pending 绘制缓冲后编码 blit，再一次 Finish，移除原先 FlushPending→Finish 的两次等待；CPU 可读返回及跨队列呈现安全语义保持。新增批次内快照→继续改写→end 测试，像素隔离通过。桥套件、Debug 构建、KAG3 Metal 30 秒输入/截图/关闭回归通过。该轮 snapshot_calls=1754、total=1245.787ms（平均0.710ms）、max=1.974ms、commands=1967、failures=0，证据 `out/apple_host/evidence/combined-snapshot-kag3/`。前轮平均0.808ms仅供诊断参考，两轮带截图且没有严格配对，不能把差值当作性能提升比例；正式对照仍需无截图串行采样。组件 --benchmark 在 snapshot 前已经 end_batch，不覆盖此次合并收益。
+
 呈现快照计时：`AetherMetalBridgeCopyTexture` 记录进程累计 snapshot_calls/total_ms/max_ms（含分配、先前批次 flush、blit 与 GPU 等待；不含获得桥锁的等待）。KAG3 Metal 30 秒输入/截图/正常关闭回归通过，1751 次快照累计 1415.604ms，平均约 0.808ms，最大 2.729ms，failures=0。证据 `out/apple_host/evidence/snapshot-timing-kag3/`，Debug 构建通过。此为带截图测试的诊断基线，不是安静的无截图性能验收。呈现器使用独立 Metal 队列，不能直接删除 Snapshot 的 wait 而不增加跨队列同步；后续需比较共享事件同步或统一队列方案，并验证帧不可变及销毁安全。
 
 真实消费者可观测：桥诊断增加进程累计 read_begin/read_pending_polls/read_complete/read_cancel。组件测试为 begin=3、complete=2、cancel=1，结束 reads=0；无效与重复 discard 不重复计数。Debug 构建及 KAG3 Metal 30 秒截图/输入/正常退出回归通过（`out/apple_host/evidence/readback-counters-kag3/`）。KAG3 本流程 read_begin=0、complete/cancel=0，native_copies=1750、native_readbacks=3（含测试截图），桥 failures=0。因此异步回读组件收益尚未命中该游戏流程，后续优先测量同步呈现快照复制路径；这些计数是进程累计而非每会话重置。

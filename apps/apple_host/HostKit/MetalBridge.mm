@@ -103,16 +103,19 @@ id<MTLTexture> Allocate(uint32_t width, uint32_t height, MTLPixelFormat format =
     return [S().device newTextureWithDescriptor:desc];
 }
 id<MTLTexture> Snapshot(id<MTLTexture> source) {
-    if (!source || !FlushPending()) return nil;
+    if (!source) return nil;
     id<MTLTexture> copy = Allocate((uint32_t)source.width, (uint32_t)source.height, source.pixelFormat);
     if (!copy) return nil;
-    id<MTLCommandBuffer> command = [S().queue commandBuffer];
+    // Append the copy after pending writes, avoiding a separate submit/wait.
+    // The bridge mutex excludes concurrent encoding during this boundary.
+    id<MTLCommandBuffer> command = S().pending ?: [S().queue commandBuffer];
     id<MTLBlitCommandEncoder> encoder = [command blitCommandEncoder];
     if (!encoder) return nil;
     [encoder copyFromTexture:source sourceSlice:0 sourceLevel:0 sourceOrigin:MTLOriginMake(0, 0, 0)
         sourceSize:MTLSizeMake(source.width, source.height, 1) toTexture:copy
         destinationSlice:0 destinationLevel:0 destinationOrigin:MTLOriginMake(0, 0, 0)];
     [encoder endEncoding];
+    if (command == S().pending) S().pending = nil;
     return Finish(command) ? copy : nil;
 }
 bool Valid(id<MTLTexture> texture, const tTVPRect *r) {

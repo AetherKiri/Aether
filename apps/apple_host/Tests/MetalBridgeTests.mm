@@ -205,6 +205,15 @@ int main(int argc,char **argv) { @autoreleasepool {
     assert(ready&&(snapshot==Pixel{0x44,0x55,0x66,255}));
     assert((ReadPixel(dst)==Pixel{0x77,0x88,0x99,255}));
     bridge.discard_read_rgba(batchedRead);
+    outer=batch.begin_batch();
+    assert(bridge.clear_rgba(dst,0xffccbbaa,&one));
+    auto batchSnapshot=AetherMetalBridgeCopyTexture(dst);assert(batchSnapshot);
+    assert(bridge.clear_rgba(dst,0xff332211,&one));
+    assert(batch.end_batch(outer));
+    Pixel copied{};
+    [batchSnapshot getBytes:copied.data() bytesPerRow:4 fromRegion:MTLRegionMake2D(0,0,1,1) mipmapLevel:0];
+    assert((copied==Pixel{0xaa,0xbb,0xcc,255}));
+    assert((ReadPixel(dst)==Pixel{0x11,0x22,0x33,255}));
     // Encoded work observes preceding operations inside a nested batch.
     outer=batch.begin_batch();inner=batch.begin_batch();
     assert(bridge.clear_rgba(dst,0xff332211,&one));

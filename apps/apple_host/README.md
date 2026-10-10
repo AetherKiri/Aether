@@ -108,11 +108,11 @@ Timer 仍为 60 Hz；此改动不宣称已实现显示刷新同步或通过 G1�
 
 ## M2 游戏库
 
-普通启动显示游戏库。点击「导入游戏」选择包含游戏入口的文件夹，复制完成后
+普通启动显示游戏库。点击「导入游戏」选择包含游戏入口的文件夹或 ZIP，复制完成后
 选择「开始游玩」。返回前应在游戏内保存；确认返回会停止游戏。
 默认库在 `~/Library/Application Support/Aether/Games`，同级 `library.json`
 保存条目与最近游玩时间；源文件夹保留，运行日志和存档落在副本。
-支持 KiriKiri/ONS 文件夹（及含 data 的上一级目录），当前不解压压缩包。
+支持 KiriKiri/ONS 文件夹（及含 data 的上一级目录），也支持 ZIP 解压后识别入口。
 重复导入使用现有副本，损坏索引不覆盖，复制/索引写入失败回滚新副本。
 
 快捷键：⌘O 导入、⌘R 启动、⌘L 返回、⌘, 设置。
@@ -126,7 +126,10 @@ G1 按用户要求暂缓，保留软件默认与 Metal 测试选项。
 
 ```bash
 xcrun swiftc apps/apple_host/AetherHost/GameLibrary.swift \
-  apps/apple_host/Tests/GameLibraryTests.swift -o out/apple_host/game-library-tests
+  apps/apple_host/AetherHost/GameArchive.swift \
+  apps/apple_host/Tests/GameLibraryTests.swift \
+  -import-objc-header apps/apple_host/HostKit/ArchiveReader.h -larchive \
+  -o out/apple_host/game-library-tests
 out/apple_host/game-library-tests
 ```
 
@@ -140,7 +143,19 @@ M2 CUA 验证流程及范围见 `doc/apple_host_progress.md`。平台标准菜�
 同模式重复添加沿用条目，复制与外部引用可分别管理。外部目录移动或丢失时需重新添加。
 旧索引默认按管理副本读取，损坏索引仍保留并禁止修改。
 当前 macOS 构建未启用 App Sandbox；外部引用尚未实现 security-scoped bookmark。
-压缩包导入、磁盘清理与冷启动性能基准仍待扩展。
+ZIP 导入复用 macOS 系统 libarchive，不依赖 Homebrew 或外部解压进程。支持平铺或嵌套最多 8 层的
+单个游戏入口、data 包装目录及 ZIP64；__MACOSX 不参与入口识别。多个入口拒绝自动选择。
+限制解压后总文件字节 32 GiB、10 万条目；拒绝链接、绝对/越界路径、加密、重复或大小写/Unicode 冲突路径。
+ZIP 源文件保留；解压到私有临时目录，再复制入库，成功/失败均清理临时目录，索引保存失败回滚新副本。
+按源 ZIP 路径去重，重复导入保留副本及存档；源 ZIP 更新不会自动替换已导入游戏。
+文件名编码支持范围取决于系统 libarchive 的转换能力，无法转换时拒绝；RAR/7z、密码输入、
+导入取消/字节进度、磁盘清理与冷启动性能基准仍待扩展。大包导入需要临时解压及最终副本的空间。
+
+```bash
+python3 tools/apple_host_archive_test.py
+```
+
+此工具生成原创 ZIP 样本并运行压缩包导入与游戏库回归，证据位于 `out/apple_host/evidence/m2-archive/`。
 
 
 ## M3 诊断日志

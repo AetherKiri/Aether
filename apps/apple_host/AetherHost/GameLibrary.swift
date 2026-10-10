@@ -75,7 +75,7 @@ struct GameLibrary {
         return updated
     }
 
-    private func isGame(_ folder: URL) throws -> Bool {
+    func isGame(_ folder: URL) throws -> Bool {
         let files = try FileManager.default.contentsOfDirectory(at: folder, includingPropertiesForKeys: [.isRegularFileKey])
         let entries = Set(["startup.tjs", "startup.ks", "0.txt", "00.txt", "nscr_sec.dat", "nscript.___", "nscript.dat", "onscript.nt2", "onscript.nt3"])
         let regularNames = Set(try files.filter { try $0.resourceValues(forKeys: [.isRegularFileKey]).isRegularFile == true }
@@ -90,7 +90,33 @@ struct GameLibrary {
         }
     }
 
-    func importDirectory(_ selected: URL, existing: [LibraryGame], external: Bool = false) throws -> (games: [LibraryGame], imported: LibraryGame) {
+    func importArchive(_ selected: URL, existing: [LibraryGame]) throws -> (games: [LibraryGame], imported: LibraryGame) {
+        let source = selected.standardizedFileURL.resolvingSymlinksInPath()
+        guard source.pathExtension.lowercased() == "zip" else { throw GameArchive.Failure.invalid }
+        if let duplicate = existing.first(where: { !$0.isExternal && $0.sourcePath == source.path }),
+           FileManager.default.fileExists(atPath: gameURL(duplicate).path) { return (existing, duplicate) }
+        let stage = FileManager.default.temporaryDirectory.appendingPathComponent("aether-zip-" + UUID().uuidString, isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: stage) }
+        try GameArchive.extract(source, to: stage)
+        var candidates: [URL] = []
+        func discover(_ folder: URL, depth: Int) throws {
+            if try isGame(folder) { candidates.append(folder); return }
+            guard depth < 8 else { return }
+            for child in try FileManager.default.contentsOfDirectory(at: folder, includingPropertiesForKeys: [.isDirectoryKey]) {
+                if child.lastPathComponent == "__MACOSX" { continue }
+                if try child.resourceValues(forKeys: [.isDirectoryKey]).isDirectory == true { try discover(child, depth: depth + 1) }
+            }
+        }
+        try discover(stage, depth: 0)
+        guard candidates.count == 1 else {
+            if candidates.isEmpty { throw Failure.unsupported }
+            throw GameArchive.Failure.ambiguous
+        }
+        return try importDirectory(candidates[0], existing: existing, sourceIdentity: source,
+                                   archiveTitle: source.deletingPathExtension().lastPathComponent)
+    }
+
+    func importDirectory(_ selected: URL, existing: [LibraryGame], external: Bool = false, sourceIdentity: URL? = nil, archiveTitle: String? = nil) throws -> (games: [LibraryGame], imported: LibraryGame) {
         let fm = FileManager.default
         let source = selected.standardizedFileURL.resolvingSymlinksInPath()
         if let duplicate = existing.first(where: {
@@ -120,10 +146,10 @@ struct GameLibrary {
         if let enumerationError { throw enumerationError }
         try fm.createDirectory(at: gamesRoot, withIntermediateDirectories: true)
         let id = UUID()
-        let title = source.lastPathComponent.lowercased() == "data"
-            ? source.deletingLastPathComponent().lastPathComponent : source.lastPathComponent
+        let title = archiveTitle ?? (source.lastPathComponent.lowercased() == "data"
+            ? source.deletingLastPathComponent().lastPathComponent : source.lastPathComponent)
         var game = LibraryGame(id: id, title: title,
-                               directory: id.uuidString, sourcePath: source.path,
+                               directory: id.uuidString, sourcePath: (sourceIdentity ?? source).path,
                                importedAt: Date(), lastPlayedAt: nil)
         if external {
             game.externalPath = entry.path

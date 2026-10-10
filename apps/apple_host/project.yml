@@ -37,6 +37,7 @@ targets:
         LIBRARY_SEARCH_PATHS:
           - "$(SRCROOT)/../../out/macos/debug/bridge/apple_host"
           - "$(SRCROOT)/../../out/macos/debug/abi"
+        OTHER_LDFLAGS: ["$(inherited)", "-larchive"]
         GCC_PREPROCESSOR_DEFINITIONS:
           - "$(inherited)"
           - "AETHER_HOST_DEBUG=1"

@@ -56,6 +56,14 @@ final class ShellModel: ObservableObject {
             case .invalidManifest: return text("invalidIndex")
             }
         }
+        if let failure = error as? GameArchive.Failure {
+            switch failure {
+            case .invalid: return text("archiveInvalid")
+            case .unsafe: return text("archiveUnsafe")
+            case .tooLarge: return text("archiveLarge")
+            case .ambiguous: return text("archiveAmbiguous")
+            }
+        }
         if error is DecodingError { return text("invalidIndex") }
         return error.localizedDescription
     }
@@ -76,10 +84,11 @@ final class ShellModel: ObservableObject {
         isImporting = true
         let panel = NSOpenPanel()
         panel.title = text(external ? "linkGame" : "import")
-        panel.message = text(external ? "linkHelp" : "importHelp")
+        panel.message = text(external ? "linkHelp" : "archiveImportHelp")
         panel.prompt = text(external ? "linkGame" : "import")
         panel.canChooseDirectories = true
-        panel.canChooseFiles = false
+        panel.canChooseFiles = !external
+        if !external { panel.allowedContentTypes = [.folder, .zip] }
         panel.allowsMultipleSelection = false
         guard panel.runModal() == .OK, let source = panel.url else { isImporting = false; return }
         let repository = self.repository
@@ -87,7 +96,11 @@ final class ShellModel: ObservableObject {
         Task {
             do {
                 let result = try await Task.detached(priority: .userInitiated) {
-                    try repository.importDirectory(source, existing: existing, external: external)
+                    if !external, source.pathExtension.lowercased() == "zip",
+                       (try source.resourceValues(forKeys: [.isDirectoryKey])).isDirectory != true {
+                        return try repository.importArchive(source, existing: existing)
+                    }
+                    return try repository.importDirectory(source, existing: existing, external: external)
                 }.value
                 games = result.games
                 selection = result.imported.id

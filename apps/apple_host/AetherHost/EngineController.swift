@@ -521,6 +521,12 @@ final class EngineController: ObservableObject {
                 self.handlePlatformRequest("purchase", argument: argument)
             }
         }
+        if let argument = env["AETHER_HOST_TEST_OPEN_BROWSER"] {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
+                guard self.loopRunning else { return }
+                self.handlePlatformRequest("open_browser", argument: argument)
+            }
+        }
         #endif
         if let raw = env["AETHER_HOST_TEST_INPUT"], let delay = Double(raw) {
             DispatchQueue.main.asyncAfter(deadline: .now() + delay) {

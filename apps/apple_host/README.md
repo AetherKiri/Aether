@@ -323,3 +323,6 @@ out/apple_host/platform-browser-tests
 ```
 
 解析层不直接执行系统打开动作，便于在无 UI 的测试环境中覆盖拒绝边界。
+
+Debug 宿主可用 `AETHER_HOST_TEST_OPEN_BROWSER=https://example.com` 注入一次真实请求，
+用于确认平台分发和系统浏览器联动；该开关只编译进 Debug 路径。

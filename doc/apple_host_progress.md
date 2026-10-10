@@ -247,6 +247,7 @@
 - Apple 宿主对通用 `open_browser` 平台请求增加可测试解析层：去除首尾空白，只接受带主机名的 `http`/`https` URL。
 - 空值、相对路径和其他 URL scheme 会被拒绝并记录日志；系统打开失败也会记录 scheme，避免运行时请求静默丢失或触发任意本地 scheme。
 - `PlatformBrowserTests` 与 Debug Xcode 构建通过；未对真实网页做 CUA 导航，因为本项只验证请求边界，不改变宿主界面。
+- Debug 宿主增加 `AETHER_HOST_TEST_OPEN_BROWSER` 一次性注入开关，后续可用 CUA 观察系统浏览器实际联动。
 
 ### 2026-10-11：五语言文案审计
 

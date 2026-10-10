@@ -323,8 +323,8 @@
 - 一处微优化：`LocaleConfigManager::GetText` 未命中时对同一 key 做两次哈希（`operator[]` 插入后再 `operator[]`），改为 `find` + `emplace`，保留记忆化语义与返回引用的稳定性。
 - 新增原创夹具 `tests/fixtures/apple_host_stretch`：用 `Layer.stretchCopy` 的 stLinear/stCubic 覆盖现有夹具都没有的重采样路径，输入驱动重绘（冒烟工具可用）。它首次做到**跨渲染器同刻对比**：软件与 Metal 两次运行在 6/20/25 秒的 engine 帧 RGB 差值均为 0；Metal 运行内 engine/Metal 同刻差值同样为 0。
 - 回归：核心库与宿主重编译通过；Metal 桥/呈现/输入/游戏内文字输入套件通过；KAG3+ONS 各 30 秒冒烟通过；`apple_host_stretch` 软件与 Metal 各 30 秒冒烟通过；`apple_host_selftest` 16/16 零差异。另有一次自检在 1080p 的 19/22 秒出现局部差异，重跑干净——判定为该自检「按键后 1 秒采样、两进程相位可能差一 tick」的固有抖动，与本次改动无关（Debug 下 ResampleImage 的分支本来就与改动后等价）。
-- 提交：子模块 `packages/AetherKrkr` 提交 `764bb8e`（分支 `fix/krkr-startup-loader-contract`），父仓同步 gitlink 与夹具。spec 的「不改引擎核心」非目标补充了说明：不做架构/ABI 改写，允许正确性类最小修补（与该包既有兼容修复惯例一致）。
-- 已按子仓库贡献流程开 PR：[AetherKiri/AetherKrkr#3](https://github.com/AetherKiri/AetherKrkr/pull/3) —— 分支 `fix/core-staging-buffers` 基于最新 `main` 且只含本次 1 个提交（head `764bb8e`），改动 3 个文件；仓库没有 CI 工作流，GitHub 报告 `MERGEABLE / CLEAN`，检查项为空。**合并后**需把父仓 gitlink 从 `764bb8e` 重新指向 `main` 上的结果提交；该分支保留到合并完成（父仓当前 pin 的正是 PR head）。
+- 提交：子模块 `packages/AetherKrkr` 提交 `c8c1b1e`（PR 分支 `fix/core-staging-buffers`），父仓同步 gitlink 与夹具。spec 的「不改引擎核心」非目标补充了说明：不做架构/ABI 改写，允许正确性类最小修补（与该包既有兼容修复惯例一致）。
+- 已按子仓库贡献流程开 PR：[AetherKiri/AetherKrkr#3](https://github.com/AetherKiri/AetherKrkr/pull/3) —— 分支 `fix/core-staging-buffers` 基于最新 `main` 且只含本次 1 个提交（head `c8c1b1e`），改动 3 个文件；仓库没有 CI 工作流，GitHub 报告 `MERGEABLE`、检查项为空。PR 标题、正文与子仓库提交信息**只写内核视角**（改动内容、安全性论证、模块级验证），不出现宿主/本项目/夹具/自检等本仓语境（按用户要求重写过一次）。**合并后**需把父仓 gitlink 从 `c8c1b1e` 重新指向 `main` 上的结果提交；该分支保留到合并完成（父仓当前 pin 的正是 PR head）。
 
 ## 下一步队列
 
@@ -356,7 +356,7 @@
 26. [ ] **Minori 暂缓**：音频/文字框/选择/存档及真实游戏验收，待用户重新安排
 27. [x] 同步 spec、接缝清单与进度
 28. [ ] **交接给后续代理（2026-10-11 移交）**：用户确认后登记 `verified_games`（含中英文，注明平台/范围与出处、汉化声明考量）；可选做更深流程验证（存档/读档）；剩余 Metal 项为 `begin_read/poll_read` 异步回读与 deferred 调度尾部
-29. [x] **内核层小项（2026-10-11）**：release UB 暂存缓冲 6 处 + `LocaleConfigManager::GetText` 单次查找；新增重采样夹具 `apple_host_stretch`（含跨渲染器同刻对比）。子模块 `764bb8e`
+29. [x] **内核层小项（2026-10-11）**：release UB 暂存缓冲 6 处 + `LocaleConfigManager::GetText` 单次查找；新增重采样夹具 `apple_host_stretch`（含跨渲染器同刻对比）。子模块 `c8c1b1e`，PR [AetherKrkr#3](https://github.com/AetherKiri/AetherKrkr/pull/3)
 
 ## 变更记录
 

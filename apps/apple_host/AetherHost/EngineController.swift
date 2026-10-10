@@ -18,6 +18,7 @@ final class EngineController: ObservableObject {
     private var lastStartupState: UInt32 = 0
     private var pointerEventCount = 0
     private var keyEventCount = 0
+    private var appliedSurfaceSize: CGSize = .zero
     private(set) var loopRunning = false
 
     func log(_ line: String) {
@@ -138,9 +139,45 @@ final class EngineController: ObservableObject {
                 frameSize = size
                 log("frame size \(Int(size.width))x\(Int(size.height))")
             }
+            // Game Native surface mode: the presentation canvas AND the
+            // pointer coordinate space must match the game frame. The engine
+            // default surface is 1280x720, which letterboxes a 640x480 game
+            // and makes frame-space input land in the wrong place.
+            if size.width > 0, size != appliedSurfaceSize {
+                do {
+                    try session.setSurfaceSize(
+                        width: UInt32(size.width), height: UInt32(size.height))
+                    appliedSurfaceSize = size
+                    log("surface size -> \(Int(size.width))x\(Int(size.height)) (game native)")
+                } catch {
+                    log("setSurfaceSize failed: \(error.localizedDescription)")
+                }
+            }
             if tickCount % 300 == 0 {
                 log("frame presented (tick \(tickCount))")
             }
+        }
+    }
+
+    // Saves the current engine frame as PNG (env AETHER_HOST_CAPTURE_AFTER).
+    private func saveFrameSnapshot(tag: String) {
+        guard let image = frameImage else {
+            log("capture \(tag): no frame yet")
+            return
+        }
+        let dir = ProcessInfo.processInfo.environment["AETHER_HOST_CAPTURE_DIR"]
+            ?? NSTemporaryDirectory()
+        let path = "\(dir)/aetherhost-frame-\(tag).png"
+        let rep = NSBitmapImageRep(cgImage: image)
+        guard let data = rep.representation(using: .png, properties: [:]) else {
+            log("capture \(tag): PNG encode failed")
+            return
+        }
+        do {
+            try data.write(to: URL(fileURLWithPath: path))
+            log("capture saved: \(path)")
+        } catch {
+            log("capture \(tag) failed: \(error.localizedDescription)")
         }
     }
 
@@ -184,6 +221,18 @@ final class EngineController: ObservableObject {
                 self.runTestInputSequence()
             }
         }
+        // Deterministic frame evidence for CI: comma-separated seconds after
+        // autorun start; each saves the engine frame as PNG.
+        if let raw = env["AETHER_HOST_CAPTURE_AFTER"] {
+            for piece in raw.split(separator: ",") {
+                guard let seconds = Double(piece.trimmingCharacters(in: .whitespaces)) else {
+                    continue
+                }
+                DispatchQueue.main.asyncAfter(deadline: .now() + seconds) {
+                    self.saveFrameSnapshot(tag: piece.trimmingCharacters(in: .whitespaces))
+                }
+            }
+        }
         if let raw = env["AETHER_HOST_EXIT_AFTER"], let seconds = Double(raw) {
             DispatchQueue.main.asyncAfter(deadline: .now() + seconds) {
                 self.log("AUTORUN: exit after \(seconds)s")
@@ -195,8 +244,7 @@ final class EngineController: ObservableObject {
 
     // Deterministic smoke input: move -> click -> Return through the same
     // send* entry points the AppKit view uses (env AETHER_HOST_TEST_INPUT).
-    private func runTestInputSequence() {
-        guard loopRunning else {
+    private func runTestInputSequence() {        guard loopRunning else {
             log("TEST INPUT: loop not running, skipping")
             return
         }

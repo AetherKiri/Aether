@@ -229,6 +229,26 @@ NSError *EngineError(engine_handle_t handle, NSString *fallback) {
     return _framePixelSize;
 }
 
+- (BOOL)setSurfaceSize:(uint32_t)width
+                height:(uint32_t)height
+                 error:(NSError **)error {
+    if (_handle == nullptr) {
+        if (error != nullptr) {
+            *error = EngineError(nullptr, @"engine is not initialized");
+        }
+        return NO;
+    }
+    const engine_result_t result =
+        engine_set_surface_size(_handle, width, height);
+    if (result != ENGINE_RESULT_OK) {
+        if (error != nullptr) {
+            *error = EngineError(_handle, @"engine_set_surface_size failed");
+        }
+        return NO;
+    }
+    return YES;
+}
+
 - (void)shutdown {
     if (_handle != nullptr) {
         engine_destroy(_handle);

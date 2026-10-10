@@ -52,6 +52,14 @@ NS_ASSUME_NONNULL_BEGIN
 // Size (pixels) of the most recent frame readback; .zero before first frame.
 - (CGSize)framePixelSize;
 
+// Surface size controls the presentation canvas AND the pointer coordinate
+// space. Default is 1280x720; set it to the game frame size for a 1:1 "Game
+// Native" canvas (mirrors the Godot host's default surface mode).
+- (BOOL)setSurfaceSize:(uint32_t)width
+                height:(uint32_t)height
+                 error:(NSError **)error
+    NS_SWIFT_NAME(setSurfaceSize(width:height:));
+
 // Software-render baseline: RGBA8888 frame from the engine readback path.
 - (nullable CGImageRef)copyFrameImage CF_RETURNS_RETAINED;
 

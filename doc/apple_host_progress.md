@@ -60,6 +60,9 @@
   - `EngineSession` 新增 `sendPointer/sendKey/framePixelSize`；`AETHER_HOST_TEST_INPUT` 确定性冒烟（move→click→Return）
   - 实测：输入事件全部送达引擎（`input pointer type=2/1/3`、`input key vk=0xd`）；CPU 基线 **~31-37%（单核占比，software@640x480）**
   - 日志结论：`console_log_file` 控制 console.log 路径；**随游戏的 `krkr2.log` 为引擎无条件行为（与 Godot 宿主产品一致），接受为产品对齐**（spec §6 不侵入引擎原则）
+- **输入坐标修复（关键 bug）**：引擎默认 surface **1280x720** 会把 640x480 内容 letterbox——frame 空间坐标落进画面左上角，点击无效。修复：首帧后 `engine_set_surface_size(frame)`（Game Native，对齐 Godot 产品默认模式）
+  - 验证：确定性点击 (320,240) 触发 KAG3 菜单 → 剧情推进（帧导出对比 t=6 标题 vs t=20 对话，截图证据在案）
+  - 新增 CI 能力：`AETHER_HOST_CAPTURE_AFTER=秒[,秒]` 引擎帧直出 PNG（不依赖窗口可见性）
 
 ---
 

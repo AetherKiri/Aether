@@ -72,6 +72,15 @@ union ONScripterGlobalStorage {
 
 ONScripterGlobalStorage ons;
 
+#if defined(_MSC_VER)
+// MSVC mangles the variable type into the symbol name while the upstream
+// builtin layer effects reference `extern ONScripter ons`. The union above
+// has identical layout and lifetime handling, so alias the storage symbol to
+// the type those translation units expect.
+#pragma comment(linker,                                                         \
+                "/alternatename:?ons@@3VONScripter@@A=?ons@@3TONScripterGlobalStorage@@A")
+#endif
+
 namespace {
 
 std::mutex g_present_surface_mutex;
@@ -484,7 +493,10 @@ std::string EnsureTrailingSeparator(const std::string &path) {
     if (last == '/' || last == '\\') {
         return path;
     }
-    return path + fs::path::preferred_separator;
+    // preferred_separator is wchar_t on Windows; keep the narrow encoding.
+    std::string result = path;
+    result.push_back(static_cast<char>(fs::path::preferred_separator));
+    return result;
 }
 
 std::string StableGameDirectoryName(const fs::path &root) {
@@ -1126,11 +1138,11 @@ struct Runtime::Impl final : EmbeddedMovieHost {
             return;
         }
 
-        const int clipped_left = std::max(0, target_x);
-        const int clipped_top = std::max(0, target_y);
-        const int clipped_right = std::min(
+        const int clipped_left = (std::max)(0, target_x);
+        const int clipped_top = (std::max)(0, target_y);
+        const int clipped_right = (std::min)(
             static_cast<int>(frame.width), target_x + target_width);
-        const int clipped_bottom = std::min(
+        const int clipped_bottom = (std::min)(
             static_cast<int>(frame.height), target_y + target_height);
         if (clipped_left >= clipped_right || clipped_top >= clipped_bottom) {
             return;
@@ -1140,14 +1152,14 @@ struct Runtime::Impl final : EmbeddedMovieHost {
         const size_t source_height = latest_media_state.height;
         for (int destination_y = clipped_top;
              destination_y < clipped_bottom; ++destination_y) {
-            const size_t source_y = std::min(
+            const size_t source_y = (std::min)(
                 source_height - 1,
                 static_cast<size_t>(
                     (destination_y - target_y) *
                     static_cast<int64_t>(source_height) / target_height));
             for (int destination_x = clipped_left;
                  destination_x < clipped_right; ++destination_x) {
-                const size_t source_x = std::min(
+                const size_t source_x = (std::min)(
                     source_width - 1,
                     static_cast<size_t>(
                         (destination_x - target_x) *

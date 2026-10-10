@@ -35,3 +35,6 @@
 	path = packages/AetherSoftPal
 	url = git@github.com:AetherKiri/AetherSoftPal.git
 	ignore = dirty
+[submodule "packages/GalgameExtractor"]
+	path = packages/GalgameExtractor
+	url = https://github.com/Aetherkiri/GalgameExtractor.git

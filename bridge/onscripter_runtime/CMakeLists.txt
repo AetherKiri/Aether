@@ -14,6 +14,18 @@ set(ONSCRIPTER_YURI_ROOT "${AETHERKIRI_ONSCRIPTERYURI_DIR}")
 set(ONSCRIPTER_YURI_SOURCE_DIR
     "${ONSCRIPTER_YURI_ROOT}/src/onsyuri")
 
+if(MSVC)
+    # gbk2utf16.cpp carries GBK-encoded string tables. The global /utf-8
+    # misparses GBK shift bytes (and cannot be combined with a code-page
+    # charset flag), so drop it from this directory before the target
+    # snapshots it; it is re-added per source below, leaving gbk2utf16.cpp
+    # on the GBK code page for byte-exact literals.
+    get_directory_property(AETHER_ONSCRIPTER_DIR_OPTIONS COMPILE_OPTIONS)
+    list(REMOVE_ITEM AETHER_ONSCRIPTER_DIR_OPTIONS "/utf-8")
+    set_property(DIRECTORY PROPERTY COMPILE_OPTIONS
+                 "${AETHER_ONSCRIPTER_DIR_OPTIONS}")
+endif()
+
 if(NOT EXISTS "${ONSCRIPTER_YURI_SOURCE_DIR}/ONScripter.cpp")
     message(FATAL_ERROR
         "OnscripterYuri submodule is unavailable. Run "
@@ -105,8 +117,28 @@ target_include_directories(aether_onscripter_runtime
 )
 
 if(MSVC)
+    # Re-add /utf-8 to every source except the code-page table files.
+    # gbk2utf16.cpp carries GBK literals and sjis2utf16.cpp carries SJIS
+    # literals; each keeps its own code page for byte-exact execution bytes.
+    get_target_property(_aether_ons_sources aether_onscripter_runtime SOURCES)
+    foreach(_aether_ons_source IN LISTS _aether_ons_sources)
+        if(_aether_ons_source MATCHES "gbk2utf16\\.cpp$")
+            set_property(SOURCE "${_aether_ons_source}" APPEND PROPERTY
+                COMPILE_OPTIONS "/source-charset:.936;/execution-charset:.936")
+        elseif(_aether_ons_source MATCHES "sjis2utf16\\.cpp$")
+            set_property(SOURCE "${_aether_ons_source}" APPEND PROPERTY
+                COMPILE_OPTIONS "/source-charset:.932;/execution-charset:.932")
+        else()
+            set_property(SOURCE "${_aether_ons_source}" APPEND PROPERTY
+                COMPILE_OPTIONS "/utf-8")
+        endif()
+    endforeach()
+    set_source_files_properties(
+        "${ONSCRIPTER_YURI_SOURCE_DIR}/gbk2utf16.cpp"
+        PROPERTIES COMPILE_OPTIONS
+                   "/source-charset:.936;/execution-charset:.936")
     target_compile_options(aether_onscripter_runtime PRIVATE
-        /FI"${CMAKE_CURRENT_SOURCE_DIR}/src/onscripter_host_shim.h"
+        /FI${CMAKE_CURRENT_SOURCE_DIR}/src/onscripter_host_shim.h
         /W0)
 else()
     target_compile_options(aether_onscripter_runtime PRIVATE

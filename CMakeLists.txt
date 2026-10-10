@@ -314,6 +314,25 @@ endif()
 if(AETHERKIRI_ENABLE_RFVP)
     add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/bridge/rfvp_runtime)
 endif()
+if(BUILD_GODOT_EXTENSION AND NOT (WEB OR EMSCRIPTEN))
+    # GalgameExtractor (HRD) archive import backend. The engine links the
+    # 7-Zip SDK supplied by the vcpkg "7zip" port (the same port AetherKrkr
+    # already consumes), which compiles the official SDK sources on every
+    # native platform — Windows, Linux, macOS, iOS and Android. libarchive is
+    # deliberately never used by the import backend.
+    set(AETHERKIRI_GALGAME_EXTRACTOR_DIR
+        "${CMAKE_CURRENT_SOURCE_DIR}/packages/GalgameExtractor"
+        CACHE PATH "path to the GalgameExtractor checkout")
+    if(NOT TARGET 7zip::7zip)
+        find_package(7zip CONFIG REQUIRED)
+    endif()
+    set(HRD_SEVENZIP_TARGET 7zip::7zip)
+    if(ENABLE_TESTS AND NOT (IOS OR ANDROID))
+        set(HRD_HOST_BUILD_TESTS ON)
+    endif()
+    add_subdirectory(${AETHERKIRI_GALGAME_EXTRACTOR_DIR}/cpp
+        ${CMAKE_BINARY_DIR}/galgame_extractor_host)
+endif()
 if(BUILD_GODOT_EXTENSION)
     add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/bridge/godot_extension)
 endif()

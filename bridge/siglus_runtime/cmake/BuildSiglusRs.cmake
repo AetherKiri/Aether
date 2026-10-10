@@ -167,8 +167,15 @@ function(aetherkiri_add_siglus_rs imported_target)
         "${SIGLUS_RS_WORKSPACE}/crates/siglus_scene_vm/Cargo.toml")
 
     set(SIGLUS_CARGO_TARGET_DIR "${CMAKE_BINARY_DIR}/siglus-rs-target")
-    set(SIGLUS_STATIC_LIB
-        "${SIGLUS_CARGO_TARGET_DIR}/${rust_triple}/${rust_profile}/libsiglus_scene_vm.a")
+    # rustc names staticlib output "lib<CARGO>.a" on GNU toolchains but
+    # "<CARGO>.lib" for MSVC triples.
+    if(rust_triple MATCHES "-msvc$")
+        set(SIGLUS_STATIC_LIB
+            "${SIGLUS_CARGO_TARGET_DIR}/${rust_triple}/${rust_profile}/siglus_scene_vm.lib")
+    else()
+        set(SIGLUS_STATIC_LIB
+            "${SIGLUS_CARGO_TARGET_DIR}/${rust_triple}/${rust_profile}/libsiglus_scene_vm.a")
+    endif()
 
     # Directories prepended to PATH for the cargo invocation. Kept as a single
     # combined PATH assignment because repeated PATH entries passed to
@@ -248,7 +255,19 @@ function(aetherkiri_add_siglus_rs imported_target)
     if(CMAKE_HOST_UNIX)
         list(PREPEND SIGLUS_PATH_PREFIX "PATH=${siglus_path_leading}$ENV{PATH}")
     else()
-        list(PREPEND SIGLUS_PATH_PREFIX "PATH=${siglus_path_leading}\;$ENV{PATH}")
+        # Windows: the host PATH may contain quoted segments whose literal
+        # quotes break `cmake -E env` argument quoting (they did on VS dev
+        # shells), so strip them; quoted multi-directory segments then split
+        # into their real entries. The POSIX-style leading separator from the
+        # prefixes above becomes a Windows separator instead.
+        string(REGEX REPLACE ":$" "" siglus_windows_leading
+             "${siglus_path_leading}")
+        string(REPLACE "\"" "" siglus_windows_path "$ENV{PATH}")
+        # `cmake -E env` receives PATH as one NAME=VALUE argument; semicolons
+        # must be escaped or the value splits into separate command arguments.
+        string(REPLACE ";" "\\;" siglus_windows_path "${siglus_windows_path}")
+        list(PREPEND SIGLUS_PATH_PREFIX
+            "PATH=${siglus_windows_leading}\\;${siglus_windows_path}")
     endif()
 
     # Rust and cc-rs native dependencies must use the same macOS minimum as
@@ -313,9 +332,13 @@ function(aetherkiri_add_siglus_rs imported_target)
         set_property(TARGET ${imported_target} APPEND PROPERTY
             INTERFACE_LINK_LIBRARIES "${siglus_framework_flags}")
     elseif(WIN32)
+        # WinRT (windows-core), wgpu's GL/DX backends and propsys helpers all
+        # resolve through SDK import libraries cargo cannot propagate from a
+        # staticlib.
         set_property(TARGET ${imported_target} APPEND PROPERTY
             INTERFACE_LINK_LIBRARIES
-            ntdll user32 gdi32 shell32 ws2_2 bcrypt advapi32 ole32 oleaut32)
+            ntdll user32 gdi32 shell32 ws2_32 bcrypt advapi32 ole32 oleaut32
+            windowsapp propsys userenv opengl32 d3dcompiler dwmapi uxtheme)
     elseif(UNIX AND NOT ANDROID)
         # Rodio's ALSA backend (siglus_rs movie/media audio) references
         # libasound directly from the static archive. Cargo cannot propagate

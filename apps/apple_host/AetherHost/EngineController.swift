@@ -12,7 +12,10 @@ final class EngineController: ObservableObject {
     @Published var logText = ""
     @Published var frameImage: CGImage?
     @Published var nativeFrameTexture: MTLTexture?
-    @Published var nativeFrameLease: AetherMetalFrameLease?
+    // The lease is an internal render-session handle. Publishing it every
+    // tick would invalidate SwiftUI even when the underlying texture is the
+    // same; the presenter owns it until GPU completion.
+    var nativeFrameLease: AetherMetalFrameLease?
     private let directRender = ProcessInfo.processInfo.environment["AETHER_HOST_DIRECT_RENDER"] == "1"
     private var nativeRendererEnabled = false
     private var loggedNativeFrame = false
@@ -407,7 +410,10 @@ final class EngineController: ObservableObject {
 
         if nativeRendererEnabled {
             nativeFrameLease = directRender ? session.acquireNativeFrame() : nil
-            nativeFrameTexture = directRender ? nativeFrameLease?.texture : session.copyNativeFrameTexture()
+            let nextTexture = directRender ? nativeFrameLease?.texture : session.copyNativeFrameTexture()
+            if nativeFrameTexture !== nextTexture {
+                nativeFrameTexture = nextTexture
+            }
             if nativeFrameTexture != nil, !loggedNativeFrame {
                 loggedNativeFrame = true
                 log("native GPU frame: Metal texture acquired")

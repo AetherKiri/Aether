@@ -333,3 +333,20 @@ GPU 命令完成，排除屏幕扫描输出及未提交的合并 tick。独立�
 这些模式发给对应的多源回调，见 `GodotRenderManager.cpp` 的 `ConstAlphaBlend_SD*`/`UnivTransBlend*` 分支）。
 模式 6（`ALPHA_A`）在引擎与 Godot 参考宿主中都没有发射方，单源路径返回 false 属防御性空实现；
 后续若出现真实发射方，需要按「目标 alpha 独立语义」新增内核并补对照样例。
+
+### Published frame acquire 热路径（2026-10-11）
+
+直通宿主每 tick 都要从 MetalBridge 取得最新 `FrameLease`。此前
+`AcquirePublishedFrame` 先锁桥读取 token，再调用 `AcquireFrame` 二次加锁，形成每帧
+两次递归锁与一次重复查表。本轮抽出 `AcquireFrameLocked`，让 published 路径在一次锁
+持有期间完成代际、纹理和队列前置校验；旧的按 token 接口仍复用同一实现，外部 ABI
+语义不变。诊断新增 `published_acquire_calls/misses`，用于确认 sink 暂无帧或代际失效
+时没有静默吞帧。
+
+Metal bridge 组件测试、核心库和 Debug 宿主构建通过；KAG3 Metal 30 秒 push-sink
+冒烟通过，`published_acquire_calls=1749`、`published_acquire_misses=0`、
+`leases_acquired/submitted/completed=1749/1749/1749`、`failures=0`、
+`frame_detach_copies=0`，三次截图 RGB max diff 均为 0。单轮 profile 的 direct
+稳态为 p50/p95/max=`1.269/1.782/6.209 ms`，该优化规模较小，需在后续配对基准中
+继续评估；更大的收益仍来自统一引擎与呈现 command buffer、减少 Swift/ObjC 边界和
+纹理分配。

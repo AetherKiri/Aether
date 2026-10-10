@@ -47,6 +47,7 @@ struct State {
     uint32_t publishedWidth=0, publishedHeight=0;
     std::atomic<uint64_t> leasesLive{0}, leaseSubmitted{0}, leaseCompleted{0}, leaseFailures{0};
     uint64_t leasesAcquired=0, frameDetachCopies=0;
+    uint64_t publishedAcquireCalls=0, publishedAcquireMisses=0;
     NSHashTable<AetherMetalFrameLease *> *frameLeases=[NSHashTable weakObjectsHashTable];
     dispatch_group_t snapshotGroup=dispatch_group_create();
     dispatch_group_t leaseGroup=dispatch_group_create();
@@ -552,8 +553,7 @@ extern "C" void AetherMetalBridgeFramePublished(uint64_t token, uint32_t width,
 }
 @end
 
-AetherMetalFrameLease *AetherMetalBridgeAcquireFrame(uint64_t generation,uint64_t token,uint64_t serial) {
-    Lock lock(S().mutex);
+AetherMetalFrameLease *AcquireFrameLocked(uint64_t generation,uint64_t token,uint64_t serial) {
     auto found=S().textures.find(token);
     if(!generation || generation!=S().activeGeneration || found==S().textures.end() ||
        found->second.generation!=generation || !FlushPending())return nil;
@@ -569,14 +569,22 @@ AetherMetalFrameLease *AetherMetalBridgeAcquireFrame(uint64_t generation,uint64_
     return lease;
 }
 
+AetherMetalFrameLease *AetherMetalBridgeAcquireFrame(uint64_t generation,uint64_t token,uint64_t serial) {
+    Lock lock(S().mutex);
+    return AcquireFrameLocked(generation, token, serial);
+}
+
 AetherMetalFrameLease *AetherMetalBridgeAcquirePublishedFrame(uint64_t generation) {
-    uint64_t token=0,serial=0;
-    {
-        Lock lock(S().mutex);
-        token=S().publishedToken;serial=S().publishedSerial;
+    Lock lock(S().mutex);
+    ++S().publishedAcquireCalls;
+    if(!S().publishedToken) {
+        ++S().publishedAcquireMisses;
+        return nil;
     }
-    if(!token)return nil;
-    return AetherMetalBridgeAcquireFrame(generation,token,serial);
+    AetherMetalFrameLease *lease = AcquireFrameLocked(
+        generation, S().publishedToken, S().publishedSerial);
+    if(!lease) ++S().publishedAcquireMisses;
+    return lease;
 }
 
 BOOL AetherMetalBridgeInitialize(NSError **error) {
@@ -707,6 +715,7 @@ NSString *AetherMetalBridgeDiagnostics() {
         S().readsBegun,S().readsPending,S().readsCompleted,S().readsCancelled,
         S().presentationSnapshots,S().presentationSnapshotMS,S().presentationSnapshotMaxMS,S().presentationCombinedSnapshots,
         S().asyncSubmitted,S().asyncCompleted.load(),S().asyncSubmitted-S().asyncCompleted.load(),textureBytes,externalTextures,S().activeGeneration,retiredTextures];
-    return [base stringByAppendingString:[NSString stringWithFormat:@" leases_acquired=%llu leases_live=%llu lease_submitted=%llu lease_completed=%llu lease_failures=%llu frame_detach_copies=%llu",
-        S().leasesAcquired,S().leasesLive.load(),S().leaseSubmitted.load(),S().leaseCompleted.load(),S().leaseFailures.load(),S().frameDetachCopies]];
+    return [base stringByAppendingString:[NSString stringWithFormat:@" leases_acquired=%llu leases_live=%llu lease_submitted=%llu lease_completed=%llu lease_failures=%llu frame_detach_copies=%llu published_acquire_calls=%llu published_acquire_misses=%llu",
+        S().leasesAcquired,S().leasesLive.load(),S().leaseSubmitted.load(),S().leaseCompleted.load(),S().leaseFailures.load(),S().frameDetachCopies,
+        S().publishedAcquireCalls,S().publishedAcquireMisses]];
 }

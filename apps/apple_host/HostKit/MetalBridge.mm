@@ -44,6 +44,8 @@ struct ReadRequest {
 struct State {
     uint64_t nextGeneration=1, activeGeneration=0;
     uint64_t publishedToken=0, publishedSerial=0;
+    std::atomic<uint64_t> publishedSerialFast{0};
+    std::atomic<uint64_t> publishedAcquireFastUnchanged{0};
     uint32_t publishedWidth=0, publishedHeight=0;
     std::atomic<uint64_t> leasesLive{0}, leaseSubmitted{0}, leaseCompleted{0}, leaseFailures{0};
     uint64_t leasesAcquired=0, frameDetachCopies=0;
@@ -512,6 +514,7 @@ extern "C" void AetherMetalBridgeFramePublished(uint64_t token, uint32_t width,
     S().publishedWidth=width;
     S().publishedHeight=height;
     S().publishedSerial=serial;
+    S().publishedSerialFast.store(serial, std::memory_order_release);
 }
 
 @implementation AetherMetalFrameLease {
@@ -576,6 +579,11 @@ AetherMetalFrameLease *AetherMetalBridgeAcquireFrame(uint64_t generation,uint64_
 
 AetherMetalFrameLease *AetherMetalBridgeAcquirePublishedFrame(uint64_t generation,
                                                               uint64_t afterSerial) {
+    const uint64_t fastSerial = S().publishedSerialFast.load(std::memory_order_acquire);
+    if (fastSerial != 0 && fastSerial <= afterSerial) {
+        ++S().publishedAcquireFastUnchanged;
+        return nil;
+    }
     Lock lock(S().mutex);
     ++S().publishedAcquireCalls;
     if(!S().publishedToken || S().publishedSerial <= afterSerial) {
@@ -646,6 +654,7 @@ uint64_t AetherMetalBridgeBeginSession() {
     Lock lock(S().mutex);
     if(S().activeGeneration)return 0;
     S().publishedToken=0;S().publishedSerial=0;
+    S().publishedSerialFast.store(0, std::memory_order_release);
     S().publishedWidth=0;S().publishedHeight=0;
     return S().activeGeneration=S().nextGeneration++;
 }
@@ -659,6 +668,7 @@ BOOL AetherMetalBridgeEndSession(uint64_t generation) {
     if(generation!=S().activeGeneration)return NO;
     S().activeGeneration=0;
     S().publishedToken=0;S().publishedSerial=0;
+    S().publishedSerialFast.store(0, std::memory_order_release);
     S().publishedWidth=0;S().publishedHeight=0;
     // SwiftUI may retain an old view after the controller has closed the game.
     // The session, rather than eventual view destruction, releases frame storage.
@@ -719,7 +729,8 @@ NSString *AetherMetalBridgeDiagnostics() {
         S().readsBegun,S().readsPending,S().readsCompleted,S().readsCancelled,
         S().presentationSnapshots,S().presentationSnapshotMS,S().presentationSnapshotMaxMS,S().presentationCombinedSnapshots,
         S().asyncSubmitted,S().asyncCompleted.load(),S().asyncSubmitted-S().asyncCompleted.load(),textureBytes,externalTextures,S().activeGeneration,retiredTextures];
-    return [base stringByAppendingString:[NSString stringWithFormat:@" leases_acquired=%llu leases_live=%llu lease_submitted=%llu lease_completed=%llu lease_failures=%llu frame_detach_copies=%llu published_acquire_calls=%llu published_acquire_misses=%llu published_acquire_unchanged=%llu",
+    return [base stringByAppendingString:[NSString stringWithFormat:@" leases_acquired=%llu leases_live=%llu lease_submitted=%llu lease_completed=%llu lease_failures=%llu frame_detach_copies=%llu published_acquire_calls=%llu published_acquire_misses=%llu published_acquire_unchanged=%llu published_acquire_fast_unchanged=%llu",
         S().leasesAcquired,S().leasesLive.load(),S().leaseSubmitted.load(),S().leaseCompleted.load(),S().leaseFailures.load(),S().frameDetachCopies,
-        S().publishedAcquireCalls,S().publishedAcquireMisses,S().publishedAcquireUnchanged]];
+        S().publishedAcquireCalls,S().publishedAcquireMisses,S().publishedAcquireUnchanged,
+        S().publishedAcquireFastUnchanged.load()]];
 }

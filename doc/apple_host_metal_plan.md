@@ -375,7 +375,16 @@ tick-to-GPU-completion p50/p95 从 `0.931/2.022 ms` 降至 `0.903/1.924 ms`；�
 场景、脚本只更新输入或窗口恢复时不会为同一纹理反复分配 lease。诊断新增
 `published_acquire_unchanged`，动态 KAG3 中为 0 属预期，因为该素材每 tick 都发布新帧。
 
+随后增加了 `publishedSerialFast` 原子镜像：发布端以 release-store 写入 serial，获取端
+先 acquire-load；确认 serial 没有变化时直接返回，不进入 session mutex，只有可能有新帧
+时才走原有的锁内 token、generation、纹理和队列校验。Begin/End session 清零该镜像，
+避免旧代际的 serial 被下一次会话观察到。诊断新增
+`published_acquire_fast_unchanged`，用于区分快速未变化返回和锁内未变化返回；这条快路径
+只跳过重复检查，不改变 lease 的所有权或完成回调协议。
+
 MetalBridge 组件新增 serial 不变/递增测试并通过，`published_acquire_unchanged=1`、
-`failures=0`、`leases_live=0`。KAG3 30 秒直通、输入、截图和关闭回归通过，动态 profile
-为 host-work p50/p95=`0.287/1.178 ms`、tick-to-GPU-completion p50/p95=`0.917/1.901 ms`，
-无超 16.6ms 样本。后续需要用静态标题或暂停脚本测量该优化的实际 lease 分配减少量。
+`published_acquire_fast_unchanged=1`、`failures=0`、`leases_live=0`。KAG3 30 秒直通、
+输入、截图和关闭回归通过，动态 profile 为 host-work p50/p95/max=`0.274/0.907/10.359 ms`、
+tick-to-GPU-completion p50/p95/max=`0.915/1.837/11.000 ms`，`over_16_6=0`；该素材
+每 tick 都发布新帧，因此 `published_acquire_fast_unchanged=0` 属预期。后续需要用静态
+标题或暂停脚本测量该优化的实际 lease 分配减少量。

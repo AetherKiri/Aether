@@ -58,6 +58,7 @@ const RUNTIME_FONT_DIR := "user://runtime_fonts"
 const RUNTIME_DEFAULT_FONT_FILE := "default.otf"
 const RUNTIME_SYMBOL_FONT_FILE := "symbols.ttf"
 const ProbeConfig = preload("res://scripts/probe_config.gd")
+const NativeMenuBar = preload("res://scripts/native_menu.gd")
 const GameMetadata = preload("res://scripts/game_metadata.gd")
 const CoverIndex = preload("res://scripts/cover_index.gd")
 const VNDBCoverResolver = preload("res://scripts/vndb_cover_resolver.gd")
@@ -119,6 +120,11 @@ const STYLE_MODES := [STYLE_DARK, STYLE_CLASSIC, STYLE_WARM_DARK, STYLE_WARM_LIG
 const IOS_UI_SCALE_MODES := ["compact", "comfortable", "standard"]
 const UI_TEXT := {
     LANG_ZH_HANS: {
+        "menu.file": "文件",
+        "menu.view": "视图",
+        "menu.game": "游戏",
+        "menu.fullscreen": "切换全屏",
+        "menu.back_to_library": "返回游戏库",
         "home.subtitle": "多功能媒体播放器",
         "video.status": "视频库",
         "video.empty_title": "Video 文件夹中还没有视频",
@@ -480,6 +486,11 @@ const UI_TEXT := {
         "loading.translation_model_detail": "首次加载可能出现短暂卡顿，请耐心等待。"
     },
     LANG_ZH_HANT: {
+        "menu.file": "檔案",
+        "menu.view": "檢視",
+        "menu.game": "遊戲",
+        "menu.fullscreen": "切換全螢幕",
+        "menu.back_to_library": "返回遊戲庫",
         "home.subtitle": "多功能媒體播放器",
         "video.status": "影片庫",
         "video.empty_title": "Video 資料夾中還沒有影片",
@@ -797,6 +808,11 @@ const UI_TEXT := {
         "loading.translation_model_detail": "首次載入可能會短暫停頓，請耐心等候。"
     },
     LANG_EN: {
+        "menu.file": "File",
+        "menu.view": "View",
+        "menu.game": "Game",
+        "menu.fullscreen": "Toggle Full Screen",
+        "menu.back_to_library": "Back to Library",
         "home.subtitle": "Multifunction Media Player",
         "video.status": "Video Library",
         "video.empty_title": "No videos in the Video folder",
@@ -1158,6 +1174,11 @@ You can find it any time under Settings → QQ Group.",
         "loading.translation_model_detail": "The first load may pause briefly. Please wait."
     },
     LANG_JA: {
+        "menu.file": "ファイル",
+        "menu.view": "表示",
+        "menu.game": "ゲーム",
+        "menu.fullscreen": "フルスクリーン切替",
+        "menu.back_to_library": "ライブラリに戻る",
         "home.subtitle": "多機能メディアプレーヤー",
         "video.status": "ビデオライブラリ",
         "video.empty_title": "Video フォルダーに動画がありません",
@@ -1475,6 +1496,11 @@ You can find it any time under Settings → QQ Group.",
         "loading.translation_model_detail": "初回の読み込みは一時的に停止することがあります。しばらくお待ちください。"
     },
     LANG_KO: {
+        "menu.file": "파일",
+        "menu.view": "보기",
+        "menu.game": "게임",
+        "menu.fullscreen": "전체 화면 전환",
+        "menu.back_to_library": "라이브러리로 돌아가기",
         "home.subtitle": "다기능 미디어 플레이어",
         "video.status": "비디오 라이브러리",
         "video.empty_title": "Video 폴더에 비디오가 없습니다",
@@ -2132,6 +2158,7 @@ var frame_enhancement_custom_chain := PackedStringArray([
     "anime4k_upscale_s", "bicubic", "anime4k_restore_soft_s",
 ])
 var game_running := false
+var native_menu_bar = null
 var runtime_dialog_input: LineEdit = null
 var softpal_name_input_layer: Control = null
 var softpal_name_input: LineEdit = null
@@ -2492,6 +2519,7 @@ func _style_option_label(mode: String) -> String:
 func _apply_language_mode() -> void:
     language_mode = _normalize_language_mode(language_mode)
     active_language = _effective_language_code()
+    _retranslate_native_menu()
 
 func _detect_cli_probe_script() -> String:
     var env_script := _normalize_cli_probe_script(OS.get_environment("AETHERKIRI_CLI_PROBE_SCRIPT"))
@@ -3602,6 +3630,7 @@ func _shell_compact_button(icon_path: String, tooltip: String, callback: Callabl
 
 func _sync_shell_route(route: String) -> void:
     shell_route = route
+    _refresh_native_menu_state()
     if shell_route_label != null:
         shell_route_label.text = APP_DISPLAY_NAME
     _apply_shell_nav_state(shell_dashboard_button, route == "dashboard")
@@ -11651,6 +11680,7 @@ func _ready() -> void:
     diagnostic_session.set_marker_context_provider(func(): return _diagnostic_marker_context())
     diagnostic_session.build_overlay(self)
     _setup_debug_console()
+    _setup_native_menu()
 
     for item in BACKENDS:
         backend.add_item(item)
@@ -11697,6 +11727,55 @@ func _setup_debug_console() -> void:
     )
     _sync_debug_console_state()
 
+func _setup_native_menu() -> void:
+    var bar := NativeMenuBar.new()
+    var actions := {
+        "import": Callable(self, "_on_refresh_or_import"),
+        "refresh": Callable(self, "_on_native_menu_refresh"),
+        "library": Callable(self, "_show_home"),
+        "videos": Callable(self, "_show_video_library"),
+        "dashboard": Callable(self, "_show_dashboard"),
+        "settings": Callable(self, "_show_settings"),
+        "fullscreen": Callable(self, "_toggle_native_fullscreen"),
+        "back_to_library": Callable(self, "_exit_game_for_go_back"),
+        "qq_group": Callable(self, "_open_qq_group"),
+    }
+    if bar.setup(self, Callable(self, "_t"), Callable(self, "_native_menu_state"), actions):
+        native_menu_bar = bar
+
+func _refresh_native_menu_state() -> void:
+    if native_menu_bar != null:
+        native_menu_bar.refresh_state()
+
+func _retranslate_native_menu() -> void:
+    if native_menu_bar != null:
+        native_menu_bar.retranslate()
+
+func _native_menu_state() -> Dictionary:
+    var mode := DisplayServer.window_get_mode()
+    var fullscreen := (
+        mode == DisplayServer.WINDOW_MODE_FULLSCREEN
+        or mode == DisplayServer.WINDOW_MODE_EXCLUSIVE_FULLSCREEN
+    )
+    return {
+        "game_running": game_running,
+        "fullscreen": fullscreen,
+    }
+
+func _on_native_menu_refresh() -> void:
+    if home_library_mode == "video":
+        _refresh_videos()
+    else:
+        _refresh_games()
+
+func _toggle_native_fullscreen() -> void:
+    var mode := DisplayServer.window_get_mode()
+    if mode == DisplayServer.WINDOW_MODE_FULLSCREEN or mode == DisplayServer.WINDOW_MODE_EXCLUSIVE_FULLSCREEN:
+        DisplayServer.window_set_mode(DisplayServer.WINDOW_MODE_WINDOWED)
+    else:
+        DisplayServer.window_set_mode(DisplayServer.WINDOW_MODE_FULLSCREEN)
+    _refresh_native_menu_state()
+
 func _sync_debug_console_state() -> void:
     if debug_console == null:
         return
@@ -11705,6 +11784,7 @@ func _sync_debug_console_state() -> void:
     debug_console.set_game_active(game_running and available)
     if diagnostic_session != null:
         diagnostic_session.set_game_active(game_running and available and not debug_console.is_open())
+    _refresh_native_menu_state()
 
 func _runtime_memory_snapshot() -> Dictionary:
     var memory: Dictionary = {}

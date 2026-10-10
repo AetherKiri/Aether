@@ -16,6 +16,8 @@ def main():
     parser.add_argument('game', type=Path)
     parser.add_argument('--duration', type=float, default=60)
     parser.add_argument('--output', type=Path)
+    parser.add_argument('--compare-snapshots', action='store_true',
+                        help='compare synchronous/async snapshots with direct scheduling')
     args = parser.parse_args()
     if not args.game.is_dir() or not math.isfinite(args.duration) or args.duration < 30:
         parser.error('existing game directory and duration >=30 required')
@@ -24,7 +26,9 @@ def main():
     output = args.output or root / 'out/apple_host/evidence' / time.strftime('profile-%Y%m%d-%H%M%S')
     output.mkdir(parents=True, exist_ok=False)
     result = {'scope': 'tick to onscreen GPU command completion; excludes scanout; no screenshot/input; sequential runs', 'runs': {}}
-    for mode in ('deferred', 'direct'):
+    cases = [('sync', 'direct', '0'), ('async', 'direct', '1')] if args.compare_snapshots else [
+        ('deferred', 'deferred', '0'), ('direct', 'direct', '0')]
+    for mode, scheduling, async_snapshot in cases:
         folder = output / mode
         folder.mkdir()
         env = os.environ.copy()
@@ -36,7 +40,8 @@ def main():
             env.pop(name, None)
         env.update(AETHER_HOST_AUTORUN='1', AETHER_HOST_LIBRARY_ROOT=str((folder / "library").resolve()), AETHER_HOST_RENDERER='metal',
                    AETHER_HOST_PROFILE='1', AETHER_HOST_DRAWABLE_1080P='1',
-                   AETHER_HOST_SCHEDULING=mode, AETHER_HOST_GAME_PATH=str(args.game.resolve()),
+                   AETHER_HOST_SCHEDULING=scheduling, AETHER_HOST_ASYNC_SNAPSHOT=async_snapshot,
+                   AETHER_HOST_GAME_PATH=str(args.game.resolve()),
                    AETHER_HOST_CAPTURE_DIR=str(folder.resolve()), AETHER_HOST_EXIT_AFTER=str(args.duration),
                    # Unattended runs are occluded otherwise; the presenter skips
                    # drawable requests for occluded windows, so bring it forward.
@@ -69,7 +74,8 @@ def main():
         assert all(math.isfinite(v) and v > 0 for v in values), mode
         ticks = max(int(r['tick']) for r in rows) - 60
         eligible = int(re.search(r'PROFILE host-work .*samples=(\d+)', text).group(1))
-        summary = {'samples': len(rows), 'sampled_tick_span': ticks,
+        summary = {'scheduling': scheduling, 'async_snapshot': async_snapshot == '1',
+                   'samples': len(rows), 'sampled_tick_span': ticks,
                    'eligible_ticks': eligible, 'unrepresented_ticks': max(0, eligible - len(rows)),
                    'p50_ms': values[(len(values)-1)//2], 'p95_ms': values[int((len(values)-1)*.95)],
                    'max_ms': values[-1], 'over_16_6': sum(v > 16.6 for v in values),

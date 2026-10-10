@@ -44,6 +44,8 @@ out/apple_host/metal-bridge-tests --benchmark
 out/apple_host/metal-bridge-tests --readback-benchmark
 out/apple_host/metal-bridge-tests --batched-readback-benchmark
 out/apple_host/metal-bridge-tests --snapshot-benchmark
+# Host-level sync/async snapshots, direct scheduling, no screenshots:
+python3 tools/apple_host_profile.py demos/aetherkiri-kag3/data --duration 30 --compare-snapshots
 python3 tools/generate_apple_metal_shaders.py --check
 
 # KAG3 + ONS 并行，各运行 310 秒，截图验证输入推进、GPU RGB 对比及干净退出。

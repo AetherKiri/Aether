@@ -100,6 +100,12 @@ set(AETHERKIRI_GODOT_SOURCES
     src/presentation/RuntimePresentationSprite.cpp
 )
 
+if(TARGET hrd_host)
+    # GalgameExtractor (HRD) archive import — statically linked with the
+    # cross-platform 7-Zip SDK backend from the vcpkg "7zip" port.
+    list(APPEND AETHERKIRI_GODOT_SOURCES src/archive_import.cpp)
+endif()
+
 if(WEB OR EMSCRIPTEN)
     add_executable(aether_kiri_godot ${AETHERKIRI_GODOT_SOURCES})
 elseif(IOS)
@@ -236,6 +242,11 @@ if(TARGET aether_minori_runtime)
     target_compile_definitions(aether_kiri_godot PRIVATE
         AETHERKIRI_WITH_MINORI=1)
 endif()
+if(TARGET hrd_host)
+    target_link_libraries(aether_kiri_godot PRIVATE hrd_host)
+    target_compile_definitions(aether_kiri_godot PRIVATE
+        AETHERKIRI_WITH_HRD=1)
+endif()
 if(IOS)
     # Godot links this static extension archive directly into the app; it
     # does not follow CMake target dependencies. Include the isolated Swift
@@ -246,6 +257,14 @@ if(IOS)
     set(AETHERKIRI_IOS_ARCHIVES
         "$<TARGET_FILE:aether_kiri_godot>"
         "$<TARGET_FILE:aether_kiri_godot_swift>")
+    if(TARGET hrd_host)
+        # The 7-Zip SDK registers handlers through static initializers, so
+        # the merged archive must carry the whole SDK (and the HRD engine)
+        # into the exported app.
+        list(APPEND AETHERKIRI_IOS_ARCHIVES
+            "$<TARGET_FILE:hrd_host>"
+            "$<TARGET_FILE:7zip::7zip>")
+    endif()
     if(TARGET aether_minori_runtime)
         list(APPEND AETHERKIRI_IOS_ARCHIVES
             "$<TARGET_FILE:aether_minori_runtime>")

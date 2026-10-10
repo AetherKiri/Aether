@@ -9,6 +9,9 @@
 #include "RuntimeTickPacer.h"
 #include "presentation/RuntimePresentationSprite.h"
 #include "frame_effect_host.h"
+#if defined(AETHERKIRI_WITH_HRD)
+#include "archive_import.h"
+#endif
 #if defined(AETHERKIRI_WITH_ONSCRIPTER)
 #include "onscripter_runtime.h"
 #endif
@@ -123,6 +126,8 @@ int32_t aether_native_translation_model_file_picker_present(
     const char *title, const char *initial_directory);
 char *aether_native_translation_model_restore_path(
     const char *fallback_path);
+int32_t aether_native_archive_file_picker_present(
+    const char *title, const char *destination_directory);
 char *aether_native_launch_file_picker_copy_result_json();
 void aether_native_launch_file_picker_free_string(char *value);
 }
@@ -11438,6 +11443,45 @@ void main() {
 #endif
     }
 
+    bool native_archive_file_picker_open(
+            const String &title, const String &destination_directory) const {
+#if defined(__APPLE__)
+        const CharString title_utf8 = title.utf8();
+        const CharString destination_utf8 = destination_directory.utf8();
+        return aether_native_archive_file_picker_present(
+                   title_utf8.get_data(), destination_utf8.get_data()) != 0;
+#else
+        (void)title;
+        (void)destination_directory;
+        return false;
+#endif
+    }
+
+    String archive_import_start(const String &input_path,
+                                const String &output_path,
+                                const String &password_db,
+                                const String &password) const {
+#if defined(AETHERKIRI_WITH_HRD)
+        return ArchiveImportStart(input_path, output_path, password_db,
+                                  password);
+#else
+        (void)input_path;
+        (void)output_path;
+        (void)password_db;
+        (void)password;
+        return "";
+#endif
+    }
+
+    String archive_import_take_result(const String &job_id) const {
+#if defined(AETHERKIRI_WITH_HRD)
+        return ArchiveImportTakeResult(job_id);
+#else
+        (void)job_id;
+        return "";
+#endif
+    }
+
     int64_t probe_runtime(const String &runtime_id,
                           const String &game_root_path) const {
         const CharString runtime_utf8 = runtime_id.utf8();
@@ -11608,6 +11652,17 @@ protected:
         ClassDB::bind_method(
             D_METHOD("native_launch_file_picker_take_result_json"),
             &AetherRuntimePlayer::native_launch_file_picker_take_result_json);
+        ClassDB::bind_method(
+            D_METHOD("native_archive_file_picker_open", "title",
+                     "destination_directory"),
+            &AetherRuntimePlayer::native_archive_file_picker_open);
+        ClassDB::bind_method(
+            D_METHOD("archive_import_start", "input_path", "output_path",
+                     "password_db", "password"),
+            &AetherRuntimePlayer::archive_import_start);
+        ClassDB::bind_method(
+            D_METHOD("archive_import_take_result", "job_id"),
+            &AetherRuntimePlayer::archive_import_take_result);
         ClassDB::bind_method(D_METHOD("probe_runtime", "runtime_id", "game_root_path"),
                              &AetherRuntimePlayer::probe_runtime);
         ADD_SIGNAL(MethodInfo(

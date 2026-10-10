@@ -129,6 +129,8 @@ Apple M1 Max / macOS 15.7.1 一次 Debug 组件测量：关闭批处理 5.012/10
 
 ### 交接与遗留（2026-10-11）
 
+共享队列基础：桥提供 AetherMetalBridgeCommandQueue，Swift 呈现器支持注入队列并校验设备 registryID；宿主初始化桥后将同一队列传入呈现器，独立呈现测试仍可默认自行创建队列。桥函数声明增加 C linkage 以供 Swift 直接调用。快照仍同步完成，本轮不宣称性能收益；下一步可在同队列顺序保证下增加专用非阻塞呈现快照接口，保留 CPU 截图的同步接口。Debug 构建和 KAG3 Metal 30 秒输入/截图/关闭回归通过，证据 `out/apple_host/evidence/shared-queue-kag3/`。桥提前初始化会增加软件宿主启动的 shader 初始化工作，需在后续冷启动对照中核验并考虑延迟队列接入。
+
 呈现合并命中率核验：诊断新增 snapshot_combined（成功快照前存在 pending 的次数）。KAG3 无截图/无输入 Metal 30 秒直接运行，startup SUCCEEDED、engine destroyed、native_readbacks=0、failures=0；snapshot_calls=1796、snapshot_combined=0、total=1362.581ms、max=2.007ms。日志 `/tmp/aether-snapshot-hit.log`（临时证据，重启可能丢失）。源码 `WindowIntf.cpp` 的 TVPGodotGpuBatchScope 在窗口绘制内结束，呈现复制发生在其后，因此组件合并提交收益没有命中该呈现流程。下一步需评估绘制与呈现队列的事件同步或共享队列，而非继续把组件基准当成宿主优化收益。宿主 Debug 构建通过。
 
 合并快照配对组件基准：`--snapshot-benchmark` 在同一进程交替 separate（end_batch 再 Snapshot）与 combined（Snapshot 再 end_batch），每条路径10次预热+60次采样，负载同为1080p clear+8次混合；计时包含编码、提交、GPU完成，像素检查在计时外。两轮 separate p50/p95/max=2.761/3.811/4.078ms、2.794/3.476/4.199ms；combined=2.629/2.972/3.167ms、2.630/2.823/3.564ms。p50下降约5%–6%，两轮共280张快照逐字节一致，failures=0、reads/textures=0。这验证合并提交在该组件负载的收益，不代表整体宿主或Godot对照；真实游戏批次是否在快照前已结束仍影响收益。工具命令已写入README，默认未设置性能断言以避免机器负载导致错误结论。

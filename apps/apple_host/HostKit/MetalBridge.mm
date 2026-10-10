@@ -468,6 +468,7 @@ BOOL AetherMetalBridgeInitialize(NSError **error) {
     TVPGodotGpuBridgeRegister(&callbacks);TVPGodotGpuBatchRegister(&batch);TVPGodotGpuExternalTextureRegister(&external);
     S().library=library;return YES;
 }
+id<MTLCommandQueue> AetherMetalBridgeCommandQueue() { Lock lock(S().mutex);return S().queue; }
 id<MTLTexture> AetherMetalBridgeCopyTexture(uint64_t token) {
     Lock lock(S().mutex);
     auto start=std::chrono::steady_clock::now();

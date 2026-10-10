@@ -118,9 +118,10 @@ final class MetalFramePresenter: NSObject, MTKViewDelegate {
 
     enum Failure: Error { case unavailable, unsupportedFrame, allocation, encoding }
 
-    init(device: MTLDevice) throws {
+    init(device: MTLDevice, commandQueue: MTLCommandQueue? = nil) throws {
         self.device = device
-        guard let queue = device.makeCommandQueue() else { throw Failure.unavailable }
+        guard let queue = commandQueue ?? device.makeCommandQueue(),
+              queue.device.registryID == device.registryID else { throw Failure.unavailable }
         self.queue = queue
         let source = """
         #include <metal_stdlib>

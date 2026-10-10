@@ -103,7 +103,7 @@ id<MTLTexture> Allocate(uint32_t width, uint32_t height, MTLPixelFormat format =
     desc.usage = MTLTextureUsageShaderRead | MTLTextureUsageShaderWrite;
     return [S().device newTextureWithDescriptor:desc];
 }
-id<MTLTexture> Snapshot(id<MTLTexture> source) {
+id<MTLTexture> Snapshot(id<MTLTexture> source, bool wait=true) {
     if (!source) return nil;
     id<MTLTexture> copy = Allocate((uint32_t)source.width, (uint32_t)source.height, source.pixelFormat);
     if (!copy) return nil;
@@ -117,6 +117,15 @@ id<MTLTexture> Snapshot(id<MTLTexture> source) {
         destinationSlice:0 destinationLevel:0 destinationOrigin:MTLOriginMake(0, 0, 0)];
     [encoder endEncoding];
     if (command == S().pending) S().pending = nil;
+    if (!wait) {
+        [command addCompletedHandler:^(id<MTLCommandBuffer> completed) {
+            Lock lock(S().mutex);
+            if(completed.status==MTLCommandBufferStatusCompleted)++S().operations;
+            else {++S().failures;S().lastError=completed.error.localizedDescription ?: @"Presentation snapshot failed";}
+        }];
+        [command commit];
+        return copy;
+    }
     return Finish(command) ? copy : nil;
 }
 bool Valid(id<MTLTexture> texture, const tTVPRect *r) {
@@ -469,6 +478,9 @@ BOOL AetherMetalBridgeInitialize(NSError **error) {
     S().library=library;return YES;
 }
 id<MTLCommandQueue> AetherMetalBridgeCommandQueue() { Lock lock(S().mutex);return S().queue; }
+id<MTLTexture> AetherMetalBridgeCopyPresentationTexture(uint64_t token) {
+    Lock lock(S().mutex);return Snapshot(Texture(token),false);
+}
 id<MTLTexture> AetherMetalBridgeCopyTexture(uint64_t token) {
     Lock lock(S().mutex);
     auto start=std::chrono::steady_clock::now();

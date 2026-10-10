@@ -223,7 +223,8 @@ NSError *EngineError(engine_handle_t handle, NSString *fallback) {
     uint64_t token = 0, serial = 0;
     uint32_t width = 0, height = 0;
     if (engine_get_godot_native_frame_texture(_handle, &token, &width, &height, &serial) != ENGINE_RESULT_OK || !token) return nil;
-    id<MTLTexture> texture = AetherMetalBridgeCopyTexture(token);
+    bool async=[NSProcessInfo.processInfo.environment[@"AETHER_HOST_ASYNC_SNAPSHOT"] isEqualToString:@"1"];
+    id<MTLTexture> texture = async ? AetherMetalBridgeCopyPresentationTexture(token) : AetherMetalBridgeCopyTexture(token);
     if (texture) {
         _framePixelSize = CGSizeMake(width, height);
         ++_nativeCopies;

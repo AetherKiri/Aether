@@ -245,6 +245,12 @@ int main(int argc,char **argv) { @autoreleasepool {
     [batchSnapshot getBytes:copied.data() bytesPerRow:4 fromRegion:MTLRegionMake2D(0,0,1,1) mipmapLevel:0];
     assert((copied==Pixel{0xaa,0xbb,0xcc,255}));
     assert((ReadPixel(dst)==Pixel{0x11,0x22,0x33,255}));
+    auto queuedSnapshot=AetherMetalBridgeCopyPresentationTexture(dst);assert(queuedSnapshot);
+    auto queue=AetherMetalBridgeCommandQueue();assert(queue);
+    auto fence=[queue commandBuffer];[fence commit];[fence waitUntilCompleted];
+    assert(fence.status==MTLCommandBufferStatusCompleted);
+    [queuedSnapshot getBytes:copied.data() bytesPerRow:4 fromRegion:MTLRegionMake2D(0,0,1,1) mipmapLevel:0];
+    assert((copied==Pixel{0x11,0x22,0x33,255}));
     // Encoded work observes preceding operations inside a nested batch.
     outer=batch.begin_batch();inner=batch.begin_batch();
     assert(bridge.clear_rgba(dst,0xff332211,&one));

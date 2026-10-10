@@ -129,6 +129,8 @@ Apple M1 Max / macOS 15.7.1 一次 Debug 组件测量：关闭批处理 5.012/10
 
 ### 交接与遗留（2026-10-11）
 
+非阻塞呈现实验：`AETHER_HOST_ASYNC_SNAPSHOT=1` 选择专用 CopyPresentationTexture，提交不可变快照后直接返回；只允许同桥队列的 GPU 消费者，CPU 必须等后续同队列命令完成。同步 CopyTexture 与默认行为保留。完成回调在桥锁内累计 GPU 成功/失败。新增同队列后续 fence 完成后逐像素检查，桥套件通过；Debug 构建及开关开启的 KAG3 Metal 30秒输入/截图/正常退出回归通过，证据 `out/apple_host/evidence/async-presentation-kag3/`。尚需无截图配对性能、遮挡/尺寸切换/关闭压力与冷启动回归，未设为默认；同步 snapshot 计时计数不覆盖实验接口，不能用其零值推导性能。
+
 共享队列基础：桥提供 AetherMetalBridgeCommandQueue，Swift 呈现器支持注入队列并校验设备 registryID；宿主初始化桥后将同一队列传入呈现器，独立呈现测试仍可默认自行创建队列。桥函数声明增加 C linkage 以供 Swift 直接调用。快照仍同步完成，本轮不宣称性能收益；下一步可在同队列顺序保证下增加专用非阻塞呈现快照接口，保留 CPU 截图的同步接口。Debug 构建和 KAG3 Metal 30 秒输入/截图/关闭回归通过，证据 `out/apple_host/evidence/shared-queue-kag3/`。桥提前初始化会增加软件宿主启动的 shader 初始化工作，需在后续冷启动对照中核验并考虑延迟队列接入。
 
 呈现合并命中率核验：诊断新增 snapshot_combined（成功快照前存在 pending 的次数）。KAG3 无截图/无输入 Metal 30 秒直接运行，startup SUCCEEDED、engine destroyed、native_readbacks=0、failures=0；snapshot_calls=1796、snapshot_combined=0、total=1362.581ms、max=2.007ms。日志 `/tmp/aether-snapshot-hit.log`（临时证据，重启可能丢失）。源码 `WindowIntf.cpp` 的 TVPGodotGpuBatchScope 在窗口绘制内结束，呈现复制发生在其后，因此组件合并提交收益没有命中该呈现流程。下一步需评估绘制与呈现队列的事件同步或共享队列，而非继续把组件基准当成宿主优化收益。宿主 Debug 构建通过。

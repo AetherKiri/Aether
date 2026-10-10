@@ -236,6 +236,12 @@
 - CUA 在隔离库导入含原创 controls fixture 的 ZIP，成功启动与回车（down=1/up=1）、返回；导入 traversal.zip 正确显示中文错误，保留原记录并恢复操作。证据 `out/apple_host/evidence/m2-archive/`，未修改用户游戏库。
 - 此阶段不支持 RAR/7z/密码、取消/字节进度，也不声明全部 ZIP 编码/压缩方式或大包性能已验收；大包需临时解压与最终复制空间。下一项为通用 text_input，Minori 与 G1 继续暂缓。
 
+### 2026-10-11：通用宿主冷启动基准
+
+- 新增 `tools/apple_host_cold_start_benchmark.py`：每轮启动全新 Debug 宿主进程、独立库目录和原创 controls fixture，测量从进程启动到首个 `startup state: SUCCEEDED`，检查正常退出与 `engine destroyed`，输出每轮、p50、p95、最大值及 2 秒目标判定。
+- 5 轮软件绘制结果 p50/p95/max=0.398/0.482/0.502 秒；5 轮 Metal 绘制结果 p50/p95/max=0.326/0.331/0.331 秒，均达到本地 2 秒目标。基准不包含导入，不代表大型真实游戏或发布构建；证据 `out/apple_host/evidence/cold-start/` 和 `cold-start-metal/`。
+- 下一步转入 IAP、更新与翻译逐项迁移；Minori 与 G1 继续暂缓。
+
 ### 2026-10-11：M3 通用 text_input 平台请求
 
 - 对齐原 C++ 壳的三字段 TAB 协议：标题、提示、初始文字，最多分割两次；确认发送 result=ok + TAB + 正文，取消仅 result=cancel，允许空正文并保留 Unicode/正文 TAB，不使用 URL 编码。按单行控件过滤 NUL/CR/LF，不继承手动 TEXT_INPUT 的 2048 字限制。
@@ -263,7 +269,7 @@
 14. [x] **M2 游戏库扩展**：重命名、只移除记录、外部目录引用（macOS 非沙盒基线）
 15. [x] **M2 ZIP 导入**：单游戏入口识别、受限解压与复制入库
 16. [x] **M3 通用 text_input 实现**：原生初始值输入、混合队列及协议响应；真实 provider 验收待补
-17. [ ] **通用功能**：冷启动基准
+17. [x] **通用功能**：Debug 冷启动基准（软件/Metal，本地原创 fixture）
 18. [ ] **M3 后续**：IAP/更新/翻译逐项迁移
 19. [ ] **Minori 暂缓**：音频/文字框/选择/存档及真实游戏验收，待用户重新安排
 20. [x] 同步 spec、接缝清单与进度

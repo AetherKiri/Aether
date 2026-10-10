@@ -149,7 +149,7 @@ ZIP 导入复用 macOS 系统 libarchive，不依赖 Homebrew 或外部解压进
 ZIP 源文件保留；解压到私有临时目录，再复制入库，成功/失败均清理临时目录，索引保存失败回滚新副本。
 按源 ZIP 路径去重，重复导入保留副本及存档；源 ZIP 更新不会自动替换已导入游戏。
 文件名编码支持范围取决于系统 libarchive 的转换能力，无法转换时拒绝；RAR/7z、密码输入、
-导入取消/字节进度、磁盘清理与冷启动性能基准仍待扩展。大包导入需要临时解压及最终副本的空间。
+导入取消/字节进度与磁盘清理仍待扩展。大包导入需要临时解压及最终副本的空间。
 
 ```bash
 python3 tools/apple_host_archive_test.py
@@ -272,3 +272,16 @@ python3 tools/apple_host_dialog_test.py --host-abi
 fixture 使用明确的测试 ACK，不代表真实 runtime 发请求及成功响应已验收。
 真实 HostKit ABI 的未初始化/不支持响应错误已验证；Minori 标题适配仍暂缓。
 证据 `out/apple_host/evidence/m3-text-input/` 与 `m3-text-input-dialog-regression/`。
+
+
+## 冷启动基准
+
+使用原创 controls fixture，每轮启动全新宿主进程和隔离库，测量进程启动到首个 `startup state: SUCCEEDED` 日志的时间，随后检查正常引擎销毁。基准不包含导入时间，也不复用上轮进程。
+
+```bash
+python3 tools/apple_host_cold_start_benchmark.py --runs 5 --renderer software
+python3 tools/apple_host_cold_start_benchmark.py --runs 5 --renderer metal \
+  --output out/apple_host/evidence/cold-start-metal
+```
+
+当前 Apple M 系列 Debug 环境结果：软件绘制 p50/p95/max=0.398/0.482/0.502 秒；Metal 绘制 p50/p95/max=0.326/0.331/0.331 秒，5/5 轮正常关闭，均低于 2 秒目标。该结果是本机 Debug、原创小型 fixture 的基线，不代表大型真实游戏或发布构建性能。证据位于 `out/apple_host/evidence/cold-start/` 和 `cold-start-metal/`。

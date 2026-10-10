@@ -123,6 +123,92 @@ NSError *EngineError(engine_handle_t handle, NSString *fallback) {
     };
 }
 
+- (NSDictionary<NSString *, NSNumber *> *)textInputState {
+    NSDictionary<NSString *, NSNumber *> *unavailable = @{
+        @"available" : @NO,
+        @"imeActive" : @NO,
+        @"imeMode" : @0,
+        @"attentionValid" : @NO,
+        @"attentionX" : @0,
+        @"attentionY" : @0,
+        @"textAvailable" : @NO,
+        @"textBytes" : @0,
+        @"selectionStart" : @0,
+        @"selectionEnd" : @0,
+    };
+    if (!_handle) return unavailable;
+    engine_text_input_state_t state{};
+    state.struct_size = sizeof(state);
+    if (engine_get_text_input_state(_handle, &state) != ENGINE_RESULT_OK) {
+        return unavailable;
+    }
+    return @{
+        @"available" : @YES,
+        @"imeActive" : @(state.ime_active != 0),
+        @"imeMode" : @(state.ime_mode),
+        @"attentionValid" : @(state.attention_point_valid != 0),
+        @"attentionX" : @(state.attention_x),
+        @"attentionY" : @(state.attention_y),
+        @"textAvailable" : @(state.text_available != 0),
+        @"textBytes" : @(state.text_utf8_bytes),
+        @"selectionStart" : @(state.selection_start),
+        @"selectionEnd" : @(state.selection_end),
+    };
+}
+
+- (NSString *)copyTextInputText {
+    if (!_handle) return @"";
+    engine_text_input_state_t state{};
+    state.struct_size = sizeof(state);
+    if (engine_get_text_input_state(_handle, &state) != ENGINE_RESULT_OK ||
+        state.text_available == 0 || state.text_utf8_bytes == 0) {
+        return @"";
+    }
+    std::vector<char> buffer(static_cast<size_t>(state.text_utf8_bytes) + 1u, '\0');
+    uint32_t bytes_written = 0;
+    if (engine_copy_text_input_text(_handle, buffer.data(),
+                                    static_cast<uint32_t>(buffer.size()),
+                                    &bytes_written) != ENGINE_RESULT_OK) {
+        return @"";
+    }
+    return [NSString stringWithUTF8String:buffer.data()] ?: @"";
+}
+
+- (BOOL)sendTextInput:(NSString *)text error:(NSError **)error {
+    if (!_handle) {
+        if (error) *error = EngineError(nullptr, @"engine is not initialized");
+        return NO;
+    }
+    for (NSUInteger index = 0; index < text.length; ) {
+        const uint32_t codepoint = [text characterAtIndex:index];
+        if (codepoint >= 0xD800 && codepoint <= 0xDBFF && index + 1 < text.length) {
+            const uint32_t low = [text characterAtIndex:index + 1];
+            if (low >= 0xDC00 && low <= 0xDFFF) {
+                const uint32_t scalar =
+                    0x10000u + ((codepoint - 0xD800u) << 10) + (low - 0xDC00u);
+                if (![self sendTextCodepoint:scalar error:error]) return NO;
+                index += 2;
+                continue;
+            }
+        }
+        index += 1;
+        // Host-side filter mirroring the Godot shell: NUL/CR/LF are dropped.
+        if (codepoint == 0 || codepoint == '\r' || codepoint == '\n') continue;
+        if (![self sendTextCodepoint:codepoint error:error]) return NO;
+    }
+    return YES;
+}
+
+- (BOOL)sendIMEPreedit:(nullable NSString *)text
+           cursorStart:(int32_t)cursorStart
+          cursorLength:(int32_t)cursorLength
+                 error:(NSError **)error {
+    // Option order mirrors the Godot player's send_ime_preedit().
+    NSString *cursor = [NSString stringWithFormat:@"%d,%d", cursorStart, cursorLength];
+    if (![self setOption:@"ime_preedit_cursor" value:cursor error:error]) return NO;
+    return [self setOption:@"ime_preedit" value:(text ?: @"") error:error];
+}
+
 - (BOOL)enableMetalRenderer:(NSError **)error {
     if (!AetherMetalBridgeInitialize(error)) return NO;
     if (![self setOption:@"renderer" value:@"godot_native" error:error]) return NO;

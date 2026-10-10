@@ -98,6 +98,71 @@ final class EngineController: ObservableObject {
         session.isTextTranslationAvailable()
             || ProcessInfo.processInfo.environment["AETHER_HOST_DEBUG_TRANSLATION"] == "1"
     }
+
+    // Focused game text layer (KiriKiri edit control) and IME composition.
+    @Published private(set) var gameTextInput = GameTextInputState()
+    private(set) var gameTextCaretPoint: CGPoint?
+    private var imePreedit = IMEPreeditTracker()
+    private var preeditUnsupported = false
+
+    /// Polls the focused text layer and mirrors the Godot shell's
+    /// _sync_game_text_input_state() activation decision: composed input is
+    /// enabled only while the layer publishes a caret and accepts IME input.
+    func refreshGameTextInput() {
+        let state = GameTextInputState(dictionary: session.textInputState())
+        guard state != gameTextInput else { return }
+        let wasActive = gameTextInput.wantsHostIME
+        gameTextInput = state
+        gameTextCaretPoint = state.wantsHostIME ? state.attention : nil
+        InputNSView.activeView?.inputContext?.invalidateCharacterCoordinates()
+        if state.wantsHostIME {
+            if let view = InputNSView.activeView, view.window?.firstResponder !== view {
+                view.window?.makeFirstResponder(view)
+            }
+            log("game text input active (ime_mode=\(state.imeMode), selection=\(state.selectionStart)..\(state.selectionEnd), caret=\(Int(state.attention.x)),\(Int(state.attention.y)))")
+        } else if wasActive {
+            clearIMEPreedit()
+            log("game text input inactive")
+        }
+    }
+
+    /// Forwards IME composition to the engine. Siglus consumes the preedit
+    /// options; the KiriKiri legacy layer ignores them and receives the
+    /// committed text instead, so a rejected option is reported once.
+    func sendIMEPreedit(markedText: String, selectedRange: NSRange) {
+        guard let payload = imePreedit.update(
+            markedText: markedText, selectedRange: selectedRange) else { return }
+        guard !preeditUnsupported else { return }
+        do {
+            try session.sendIMEPreedit(
+                payload.text,
+                cursorStart: Int32(payload.cursorStart),
+                cursorLength: Int32(payload.cursorLength))
+        } catch {
+            preeditUnsupported = true
+            log("ime preedit unsupported: \(error.localizedDescription)")
+        }
+    }
+
+    func clearIMEPreedit() {
+        guard let payload = imePreedit.clearIfNeeded(), !preeditUnsupported else { return }
+        try? session.sendIMEPreedit(payload.text, cursorStart: 0, cursorLength: 0)
+    }
+
+    /// Committed text from the input method or paste (composed text path).
+    /// Shares the manual entry filter and logs the scalar count only.
+    func commitComposedText(_ text: String) {
+        guard loopRunning, !runtimeMovieActive else { return }
+        let scalars = GameTextInput.scalars(text)
+        guard !scalars.isEmpty else { return }
+        do {
+            try session.sendTextInput(text)
+            log("composed text committed: \(scalars.count) Unicode scalars")
+        } catch {
+            log("composed text failed: \(error.localizedDescription)")
+        }
+    }
+
     private var unhandledPlatformRequests = 0
 
     /// Operations the host consumes without submitting a response. Every other
@@ -293,6 +358,9 @@ final class EngineController: ObservableObject {
         if tickCount % 30 == 1 { drainEngineLogs() }
         // Follow the loading->ready/failed transition while a model loads.
         if tickCount % 60 == 0, translationStatus.state == .loading { refreshTranslationStatus() }
+        // Track the focused game text layer (~100ms) so composition and the
+        // candidate window follow the game's edit control.
+        if tickCount % 6 == 0 { refreshGameTextInput() }
 
         if !platformDialogs.hasPending {
             session.pollPlatformRequests { [weak self] operation, argument in
@@ -704,6 +772,10 @@ final class EngineController: ObservableObject {
         runtimeMovie.reset()
         movieInput.reset()
         platformDialogs.reset()
+        imePreedit.reset()
+        preeditUnsupported = false
+        gameTextInput = GameTextInputState()
+        gameTextCaretPoint = nil
         releaseAllKeys()
         hostInputSuspended = false
         inputSuspended = false

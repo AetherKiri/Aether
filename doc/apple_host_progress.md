@@ -277,6 +277,15 @@
 - 平台请求覆盖补齐：`call_native` 按原壳回传 `result=`；把「无响应类」（`open_browser`）与「未处理」分开记录，未处理请求累计后写入会话诊断 `unhandledPlatformRequests`，避免运行时静默等待。接缝清单 D 节补记 Godot 壳已应答但宿主尚未实现的 `softpal_*` 窗口族、`minori_select` 与 `softpal_http_get`。
 - `TranslationSettingsTests` 与 `tools/apple_host_translation_test.py` 通过（选项映射/模型校验/状态文案 + 引擎可用性探针）；`ShellStringsTests` 覆盖新增 18 个五语言 key；purchase/browser/input/dialog 测试与 KAG3+ONS 各 30 秒冒烟通过。CUA 验证分区显隐、选型、重启保持、停用与选项应用日志。本轮未改动引擎与 provider ABI。
 
+### 2026-10-11：M3 游戏内文字输入（IME 与编辑控件同步）
+
+- 新增 `GameTextInputState`/`IMEPreeditTracker`/`IMECommandMap`/`GameTextCaret`：轮询 `engine_get_text_input_state`（available/ime_active/ime_mode/attention/selection/text），仅在该控件同时发布插入符且接受合成输入（`attention_point_valid && ime_active`）时启用合成输入，判定与 Godot 壳 `_sync_game_text_input_state` 一致。插入符 `attention_x/y` 用与指针一致的等比映射换算到视图坐标（新增 `InputMapping.mapCanvasToView`）。
+- 画布视图成为 AppKit 文本输入客户端：合成内容经 `ime_preedit_cursor`（"start,length"）与 `ime_preedit` 选项下发，提交文本经 `TEXT_INPUT`（按标量发送，跳过 NUL/CR/LF）。合成期间回车/取消/退格/方向/Home/End/PgUp/PgDn 映射回引擎按键事件，未映射命令回退原始按键路径；未聚焦文本控件时按键路径与改动前一致。⌘V 作为提交文本送入游戏。
+- 失焦、隐藏窗口、返回游戏库与关闭会话都会结束合成；关闭会话重置状态与 tracker。宿主只记录状态变化与提交标量数量，不记录正文。`ime_preedit` 目前仅被 Siglus provider 消费，KiriKiri 传统层忽略该选项、只接收提交文本——接缝清单 C 节已注明。
+- `GameTextInputTests` 与 `tools/apple_host_ime_test.py` 通过（状态解析、激活判定、合成去重、命令映射、插入符几何）；工具同时生成「直达输入页」夹具（复制仓库内 KAG3 demo，`first.ks` 跳转到自带计算题 `[edit]` 页）。
+- CUA 实机验收（隔离库导入夹具）：进入计算题页后日志出现 `game text input active (ime_mode=3, caret=51,146)`；输入 28、退格清空、⌘V 粘贴「你好」均在游戏输入框正确呈现；点击 OK 后游戏按 `str2num(f.input) == f.ans` 判定并显示「正解です！」，随后日志 `game text input inactive`。插入符随输入移动（51→79→101）。真实输入法合成的候选窗内容仍需系统输入法下人工确认。
+- 本轮未改动引擎、ABI 与 provider。
+
 ## 下一步队列
 
 1. [x] 接缝清单 v0.1（交付物 A）+ 三份文档建立
@@ -299,9 +308,10 @@
 18. [x] **M3 Purchase 降级基线**：无 StoreKit provider 时确定性完成请求；真实 IAP 待接入
 19. [x] **M3 翻译**：本地翻译模型设置、选项透传与状态展示；真实模型加载待私有 provider
 20. [x] **通用宿主**：`call_native` 应答、未处理请求可观测、接缝清单 D 节补全 softpal_*/minori_select
-21. [ ] **M3 后续**：IAP provider 与更新器逐项迁移（macOS 上 purchase 与现产品同为降级响应，真实 IAP 属 iOS/M4 范围）
-22. [ ] **Minori 暂缓**：音频/文字框/选择/存档及真实游戏验收，待用户重新安排
-23. [x] 同步 spec、接缝清单与进度
+21. [x] **M3 游戏内文字输入**：编辑控件合成输入、提交文本、插入符与候选窗定位；真实输入法候选窗人工确认待补
+22. [ ] **M3 后续**：IAP provider 与更新器逐项迁移（macOS 上 purchase 与现产品同为降级响应，真实 IAP 属 iOS/M4 范围）
+23. [ ] **Minori 暂缓**：音频/文字框/选择/存档及真实游戏验收，待用户重新安排
+24. [x] 同步 spec、接缝清单与进度
 
 ## 变更记录
 

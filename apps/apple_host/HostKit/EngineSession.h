@@ -34,6 +34,22 @@ NS_ASSUME_NONNULL_BEGIN
 // Process-wide resource/timing snapshot; nil when the query fails.
 - (nullable NSDictionary<NSString *, NSNumber *> *)textTranslationStats;
 
+// Focused KiriKiri text layer snapshot (engine_text_input_state_t). Mirrors the
+// Godot player's get_text_input_state(): "available" is false when the query
+// fails or no engine exists.
+- (NSDictionary<NSString *, NSNumber *> *)textInputState;
+// Backing text of the focused editor; empty when unavailable.
+- (NSString *)copyTextInputText;
+// One TEXT_INPUT event per Unicode scalar (NUL/CR/LF skipped), matching the
+// Godot shell's composed-text path.
+- (BOOL)sendTextInput:(NSString *)text error:(NSError **)error;
+// IME composition via the "ime_preedit_cursor" ("start,length") and
+// "ime_preedit" options; nil text clears the pending preedit.
+- (BOOL)sendIMEPreedit:(nullable NSString *)text
+           cursorStart:(int32_t)cursorStart
+          cursorLength:(int32_t)cursorLength
+                 error:(NSError **)error;
+
 // M1 opt-in: installs Metal callbacks and selects the existing godot_native ABI backend.
 - (BOOL)enableMetalRenderer:(NSError **)error NS_SWIFT_NAME(enableMetalRenderer());
 - (nullable id<MTLTexture>)copyNativeFrameTexture;

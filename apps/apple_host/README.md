@@ -200,13 +200,15 @@ python3 tools/apple_host_media_test.py
 游戏页「虚拟按键」或设置开关显示回车/空格/Esc/方向/PgUp/PgDn 与保持 Ctrl。
 实体键与屏幕键共享按下状态；隐藏、失焦、弹窗及关闭释放按键。
 「输入文字」使用原生输入框，先选中游戏内编辑控件再提交；最多 2048 个 Unicode 标量，
-跳过 NUL/换行，取消不发送。此入口不处理游戏内 IME preedit/选区自动同步；游戏发出的 `text_input` 请求另由平台队列处理。
+跳过 NUL/换行，取消不发送。这是手动兜底入口；游戏内编辑控件的合成输入与插入符同步见下节，
+游戏发出的 `text_input` 请求另由平台队列处理。
 
 ```bash
 xcrun swiftc apps/apple_host/AetherHost/KeyInputState.swift \
   apps/apple_host/Tests/KeyInputStateTests.swift -o out/apple_host/key-input-tests
 out/apple_host/key-input-tests
 xcrun swiftc apps/apple_host/AetherHost/InputMapping.swift \
+  apps/apple_host/AetherHost/GameTextInput.swift \
   apps/apple_host/AetherHost/GameInputView.swift apps/apple_host/Tests/InputTests.swift \
   -o out/apple_host/input-tests
 out/apple_host/input-tests
@@ -214,6 +216,31 @@ out/apple_host/input-tests
 
 可导入原创 `tests/fixtures/apple_host_controls`，通过游戏 HUD 验证 down/up 数量及提交文字。
 界面验证证据见 `out/apple_host/evidence/m3-controls/`；G1 继续暂缓。
+
+## M3 游戏内文字输入（IME 与编辑控件同步）
+
+游戏层出现可编辑的 KiriKiri 文本控件（如 KAG 的 `[edit]`）时，宿主轮询
+`engine_get_text_input_state`，并在该控件同时发布插入符与接受合成输入
+（`attention_point_valid` + `ime_active`）时启用合成输入——判定与 Godot 壳的
+`_sync_game_text_input_state` 一致。失焦、隐藏窗口、返回游戏库或关闭会话都会结束合成。
+
+- 画布视图成为 AppKit 的文本输入客户端：合成内容经 `ime_preedit` /
+  `ime_preedit_cursor` 选项下发（Siglus 消费该选项；KiriKiri 传统层忽略它，改在提交时
+  接收文本），提交文本经 `TEXT_INPUT` 进入游戏。
+- 候选窗口跟随游戏插入符：`attention_x/y` 用与指针一致的等比映射换算到视图坐标。
+- 合成期间回车/取消/退格/方向键/Home/End/PgUp/PgDn 仍以引擎按键事件下发；未映射的
+  命令回退到原始按键路径。未聚焦文本控件时按键路径与改动前完全一致。
+- ⌘V 把剪贴板文本作为提交文本送入游戏（Godot 的 macOS 窗口同为文本输入客户端）。
+- 宿主只记录状态变化与提交标量数量，不记录输入正文。
+
+```bash
+python3 tools/apple_host_ime_test.py
+```
+
+该工具运行状态解析、激活判定、合成去重、命令映射与插入符几何测试，并生成「直达输入页」
+夹具（复制仓库内 KAG3 demo，把 `first.ks` 跳转到其自带的计算题输入页）。输入框获得焦点时
+宿主日志打印 `game text input active`，提交后打印标量数量，离开输入页打印
+`game text input inactive`。真实输入法合成（候选窗内容）需在系统输入法下人工确认。
 
 
 ## M3 平台 dialog 弹窗

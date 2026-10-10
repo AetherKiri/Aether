@@ -73,7 +73,7 @@ Apple 特化资产（已存在，直接复用/移植）：
 
 - **会话**：`engine_create`（writable/cache 路径）→ `engine_open_game(_async)` → `engine_get_startup_state` 轮询 → 固定步长 `engine_tick`（参考 1/60）→ 呈现 → `engine_pause/resume/destroy`。
 - **GPU 绘制桥**：23 个回调（主 17 + 批处理 2 + 外部纹理 4），宿主以 Metal 实现；不注册回调时引擎走即时/软件兜底。
-- **输入**：`engine_send_input(engine_input_event_t)`；提交文字经 `TEXT_INPUT`；输入状态由 `engine_get_text_input_state/copy_text_input_text` 获取。原生宿主已提供手动文字弹窗与屏幕按键，IME preedit/状态自动同步待迁移。
+- **输入**：`engine_send_input(engine_input_event_t)`；提交文字经 `TEXT_INPUT`；输入状态由 `engine_get_text_input_state/copy_text_input_text` 获取。原生宿主已提供手动文字弹窗、屏幕按键，以及游戏内编辑控件的合成输入同步：`attention_point_valid && ime_active` 时画布视图成为 AppKit 文本输入客户端，合成经 `ime_preedit`/`ime_preedit_cursor`、提交经 `TEXT_INPUT`、候选窗口跟随 `attention_x/y`（`ime_preedit` 目前只被 Siglus provider 消费）。
 - **平台请求**（字符串通道）：`open_browser`、`call_native`、`purchase`、`dialog`、`text_input`、`presentation_sprite`、`minori_save_slots`、`minori_message(_reveal)`、`minori_audio`、`minori_movie`，其余转交壳层。原生 `dialog`/`text_input` 混合 FIFO 弹窗、初始文字和各自协议响应、失败重试已实现；`call_native` 与原壳一致做空应答，未处理的 operation 计入会话诊断 `unhandledPlatformRequests`，避免 runtime 静默等待。`minori_select`、`softpal_*` 窗口族与 `softpal_http_get` 已归档为缺口（接缝清单 D 节）。私有 provider 实际请求验收仍待补。
 - **本地翻译**：宿主按 `engine_is_text_translation_available()` 显隐设置分区并透传 `text_translation.model_path`/`target_language`/`enabled`（目标语言跟随界面语言）；模型校验限制 `.gguf` 且必须存在可读。未链接私有 provider 时引擎返回不支持，宿主记录实际错误并继续启动。真实模型加载与推理质量待该 provider 接入后验收。
 - **媒体**：`engine_media_*`（FFmpeg 在引擎内）供视频库与 Minori 影片。M3 已接入独立视频最小播放、文本字幕和进度恢复；Minori 影片请求已实现同引擎播放、矩形覆盖及一次性完成/跳过响应，真实 VM 验收待补；视频库管理与其余 Minori 请求后续迁移。
@@ -89,7 +89,7 @@ Apple 特化资产（已存在，直接复用/移植）：
 | **M2**（~4-6 周） | SwiftUI 壳 MVP（D8 范围） | G2：冷启动 → 导入 → 游玩 全程无代码干预 |
 | **M3**（迭代） | 视频/IAP/诊断/更新器/翻译/虚拟按键/i18n | 每项独立验收 |
 
-当前执行顺序（2026-10-11）：通用游戏库重命名、只移除记录及外部目录引用已实现（macOS 非沙盒基线），ZIP 导入已实现，通用文字输入请求、Debug 冷启动基准、五语言文案审计、Purchase 降级基线、本地翻译设置与选项透传、`call_native` 应答与未处理请求可观测已实现。真实 StoreKit provider（iOS/M4 范围）与更新器留待后续；按用户要求，Minori 后续适配与真实游戏验收暂缓，保留已有影片实现；G1 继续暂缓。
+当前执行顺序（2026-10-11）：通用游戏库重命名、只移除记录及外部目录引用已实现（macOS 非沙盒基线），ZIP 导入已实现，通用文字输入请求（手动弹窗 + 游戏内编辑控件合成输入/插入符同步）、Debug 冷启动基准、五语言文案审计、Purchase 降级基线、本地翻译设置与选项透传、`call_native` 应答与未处理请求可观测已实现。真实 StoreKit provider（iOS/M4 范围）与更新器留待后续；按用户要求，Minori 后续适配与真实游戏验收暂缓，保留已有影片实现；G1 继续暂缓。
 | **M4** | iOS/iPadOS 适配 | G4：iPad 真机 demo + 1 个真实标题 |
 
 ---

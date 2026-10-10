@@ -35,7 +35,13 @@ struct GameSurfaceView: View {
                     engine.sendKey(
                         pressed: pressed, keyCode: keyCode,
                         modifiers: modifiers, unicode: unicode)
-                }
+                },
+                imeActiveProvider: { engine.gameTextInput.wantsHostIME },
+                onComposeIME: { text, range in
+                    engine.sendIMEPreedit(markedText: text, selectedRange: range)
+                },
+                onCommitText: { engine.commitComposedText($0) },
+                caretCanvasPointProvider: { engine.gameTextCaretPoint }
             )
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             RuntimeMovieView(movie: engine.runtimeMovie, canvas: engine.frameSize,

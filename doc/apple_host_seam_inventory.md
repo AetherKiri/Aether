@@ -63,7 +63,7 @@
 - `send_ime_preedit(text, start, length)` — 经选项 `ime_preedit` / `ime_preedit_cursor`
 - 文本状态：`engine_get_text_input_state`（available/ime_active/ime_mode/attention_point/selection/text_available）+ `engine_copy_text_input_text`
 
-Apple 宿主现已提供实体/屏幕按键及原生弹窗提交 TEXT_INPUT（最多 2048 个 Unicode 标量）；合并来源所有权并在失焦/隐藏/弹窗/关闭时释放。游戏内 IME preedit 与输入状态自动同步待迁移。
+Apple 宿主现已提供实体/屏幕按键及原生弹窗提交 TEXT_INPUT（最多 2048 个 Unicode 标量）；合并来源所有权并在失焦/隐藏/弹窗/关闭时释放。游戏内文字输入已接入（2026-10-11）：轮询 `engine_get_text_input_state`（available/ime_active/ime_mode/attention/selection/text），在 `attention_point_valid && ime_active` 时把画布视图切换为 AppKit 文本输入客户端，合成内容经 `ime_preedit`/`ime_preedit_cursor` 选项下发、提交经 `TEXT_INPUT`、候选窗口按 `attention_x/y` 等比映射定位；合成期间命令键回退为引擎按键事件，⌘V 作为提交文本。注意：`ime_preedit` 目前由 Siglus provider 消费，KiriKiri 传统层忽略该选项，只接收提交文本；真实输入法合成内容仍需人工听/看确认。
 
 坐标：游戏基准画布坐标（`engine_set_surface_size` 语义见 GDScript `_sync_player_surface_size`）。✅
 

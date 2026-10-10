@@ -109,4 +109,30 @@ enum InputMapping {
         }
         return CGPoint(x: inside.x / scale, y: inside.y / scale)
     }
+
+    // Inverse of mapToSurface: engine canvas point -> view space (top-left
+    // origin). Used to anchor the IME candidate window and in-game caret.
+    // The point is clamped into the drawn canvas so a caret at the text edge
+    // stays on screen instead of being rejected.
+    static func mapCanvasToView(
+        point: CGPoint, viewSize: CGSize, contentSize: CGSize
+    ) -> CGPoint? {
+        guard viewSize.width > 0, viewSize.height > 0,
+              contentSize.width > 0, contentSize.height > 0 else {
+            return nil
+        }
+        let scale = min(
+            viewSize.width / contentSize.width,
+            viewSize.height / contentSize.height)
+        guard scale > 0 else { return nil }
+        let drawn = CGSize(
+            width: contentSize.width * scale,
+            height: contentSize.height * scale)
+        let origin = CGPoint(
+            x: (viewSize.width - drawn.width) / 2,
+            y: (viewSize.height - drawn.height) / 2)
+        let x = min(max(origin.x + point.x * scale, origin.x), origin.x + drawn.width)
+        let y = min(max(origin.y + point.y * scale, origin.y), origin.y + drawn.height)
+        return CGPoint(x: x, y: y)
+    }
 }

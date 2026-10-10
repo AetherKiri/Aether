@@ -129,6 +129,8 @@ Apple M1 Max / macOS 15.7.1 一次 Debug 组件测量：关闭批处理 5.012/10
 
 ### 交接与遗留（2026-10-11）
 
+krkrz 上游实现对照已完成，详见 [渲染生命周期审查](apple_host_krkrz_rendering_review.md)。固定 wamsoft/krkrz 源码版本核对 Show/Canvas/DoneContext/Texture Invalidate/TJS Shutdown：可借鉴的是 DrawDevice 组织目标、直接采样呈现和 context 释放前的明确失效顺序。旧 bitmap 路径仍上传，不能概括为全部 GPU 直绘；Metal CPU replaceRegion 与异步呈现仍需 FrameLease/池协议。上游调用 Shutdown 清 global，而本地注释此调用，是引用图调查点，不能忽略多窗口 Finalize 重入直接恢复。compact + 关闭后 recycle 对照单/双窗口隐式残留仍2/4、显式均0，实验未保留；本轮仅记录源码依据与迁移边界，未宣称关闭修复或性能收益。
+
 双窗口对象图对照已补：保留原单窗口夹具，新增 apple_host_texture_lifecycle_multi（两个Window、各自primary、一个child、共享清理回调），工具 --multi-window 选择，结果标记fixture。当前Debug宿主串行12秒×2验证：普通关闭textures/retired=4，显式清除根引用后经局部变量失效图层/窗口则均0；两轮failures/inflight=0、startup成功、退出码0、无TVPShowScriptException，最终版路径复测相同。证据 out/apple_host/evidence/texture-lifecycle-multi-final/。Window原生Invalidate会先从注册表移除、取消事件/绘制更新、删除DrawBuffer，再失效ObjectVector注册对象；将该动作直接放进引擎关闭时仍有重入/递归finalize风险（运行时代码已有警告）。该浅层共享回调对照不能覆盖游戏自定义finalizer、跨窗口close回调或KAG完整图；下一步应分离关闭阶段并保留对象快照所有权，专门覆盖回调重入后再修改通用关闭流程。本轮未改引擎关闭算法或宣称泄漏修复。Python语法与diff检查通过。
 
 引用对象图最小对照：新增原创 apple_host_texture_lifecycle（一个Window、父/子Layer，无KAG或游戏资产）与串行12秒×2的工具 apple_host_texture_lifecycle.py。普通关闭残留textures=retired=2，逻辑RGBA2457600字节；键输入先把脚本根引用置null、再通过局部变量失效child/primary/window，关闭后textures=retired=0。两轮均failures/inflight=0、startup成功、正常销毁、退出码0，无脚本异常；result.json记录计数。局部变量确保失效回调所属Window后不再通过该已失效上下文访问根变量。证据 out/apple_host/evidence/texture-lifecycle-regression/。这证明该最小图的显式失效能让纹理正常释放，而隐式关闭留下资源；结合分配栈，将关注点收窄到Layer/Window/TJS图关闭，尚未确定KAG的最终引用持有者，也未修改引擎通用关闭流程（多窗口递归析构风险仍需专门覆盖）。工具只要求显式清理无残留，普通模式计数作为对照，未来修复后允许其归零；此测试不是G0/G1或性能测量。Python语法和diff检查通过。

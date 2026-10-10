@@ -242,6 +242,12 @@
 - `PlatformPurchaseTests` 覆盖普通/编码/缺失 product_id 和响应格式；Debug 宿主构建通过。通过 Debug-only `AETHER_HOST_TEST_PURCHASE` 在实际宿主进程注入请求，日志确认进入 Purchase 分支、公开核心返回“不支持平台响应”，随后正常 tick/退出并销毁引擎。现有 StoreKit 实现位于 Godot 扩展，未被 Apple 原生宿主链接，本项不伪造购买成功。CUA 可正常查看宿主库界面；macOS 应用单例使注入环境进程未能绑定为独立 AX 窗口，故本次 UI 证据以进程日志为准。
 - 更新器按用户要求留到最后；真实 StoreKit 购买/恢复/entitlement、沙盒商品和交易生命周期仍待 provider 接入。
 
+### 2026-10-11：`open_browser` URL 边界
+
+- Apple 宿主对通用 `open_browser` 平台请求增加可测试解析层：去除首尾空白，只接受带主机名的 `http`/`https` URL。
+- 空值、相对路径和其他 URL scheme 会被拒绝并记录日志；系统打开失败也会记录 scheme，避免运行时请求静默丢失或触发任意本地 scheme。
+- `PlatformBrowserTests` 与 Debug Xcode 构建通过；未对真实网页做 CUA 导航，因为本项只验证请求边界，不改变宿主界面。
+
 ### 2026-10-11：五语言文案审计
 
 - 宿主已有的简体中文、繁體中文、English、日本語、한국어文案表增加只读审计接口；`ShellStringsTests` 检查 80+ key 的五语言数量、非空值、locale 映射和缺失 key 回退，测试通过。

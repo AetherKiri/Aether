@@ -311,3 +311,15 @@ out/apple_host/platform-purchase-tests
 ```
 
 这只是无 StoreKit provider 的降级路径，不代表真实购买、恢复或 entitlement 已验收。Debug 验证可设置 `AETHER_HOST_TEST_PURCHASE=product_id=com.aether.coffee%2Bbeta` 注入实际宿主进程；公开核心会拒绝 provider 响应并正常退出。由于 macOS 应用单例，注入进程不应与已运行的普通宿主窗口同时启动。完整 StoreKit 接入需单独链接 provider、处理交易生命周期和沙盒商品。
+
+## `open_browser` 请求边界
+
+Apple 宿主只为运行时 `open_browser` 请求打开带主机名的 `http` 或 `https` URL。空值、相对路径以及 `file`、`javascript` 等其他 scheme 会被拒绝并写入宿主日志。
+
+```bash
+xcrun swiftc apps/apple_host/AetherHost/PlatformBrowser.swift \
+  apps/apple_host/Tests/PlatformBrowserTests.swift -o out/apple_host/platform-browser-tests
+out/apple_host/platform-browser-tests
+```
+
+解析层不直接执行系统打开动作，便于在无 UI 的测试环境中覆盖拒绝边界。

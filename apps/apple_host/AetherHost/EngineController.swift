@@ -380,8 +380,14 @@ final class EngineController: ObservableObject {
     }
 
     func handlePlatformRequest(_ operation: String, argument: String) {
-        if operation == "open_browser", let url = URL(string: argument) {
-            NSWorkspace.shared.open(url)
+        if operation == "open_browser" {
+            guard let request = PlatformBrowserRequest(argument: argument) else {
+                log("open_browser rejected invalid URL")
+                return
+            }
+            if !NSWorkspace.shared.open(request.url) {
+                log("open_browser failed for scheme=\(request.url.scheme ?? "unknown")")
+            }
         } else if operation == "minori_movie", let handle = session.borrowedEngineHandle() {
             runtimeMovie.open(argument, engine: handle)
         } else if operation == "dialog" {

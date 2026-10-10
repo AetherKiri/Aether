@@ -129,6 +129,8 @@ Apple M1 Max / macOS 15.7.1 一次 Debug 组件测量：关闭批处理 5.012/10
 
 ### 交接与遗留（2026-10-11）
 
+真实消费者可观测：桥诊断增加进程累计 read_begin/read_pending_polls/read_complete/read_cancel。组件测试为 begin=3、complete=2、cancel=1，结束 reads=0；无效与重复 discard 不重复计数。Debug 构建及 KAG3 Metal 30 秒截图/输入/正常退出回归通过（`out/apple_host/evidence/readback-counters-kag3/`）。KAG3 本流程 read_begin=0、complete/cancel=0，native_copies=1750、native_readbacks=3（含测试截图），桥 failures=0。因此异步回读组件收益尚未命中该游戏流程，后续优先测量同步呈现快照复制路径；这些计数是进程累计而非每会话重置。
+
 消费者契约修正：实际 `GodotTexture2D::CompletePendingGpuReadback` 在 ready 后清零句柄而不 discard；参考 Godot 桥 `BridgePollReadRgba` 同时消费请求。Metal 桥现已同样在成功 ready poll 后删除记录，修复消费者完成后快照残留。此前“可重复完成 poll 直到 discard”的描述与测试已撤销；discard 对已消费句柄仍安全。桥测试通过，reads/textures=0、failures=0。`EnsureCpuReadable` 在 pending 未完成时会取消并同步回读，因此异步收益依赖复制与首次 CPU 访问之间的间隔，不能推断稳态呈现收益。
 
 带绘制负载的回读基准：新增 `--batched-readback-benchmark`，1080p clear+8 次 alpha blend 保持未提交，计时从回读调用开始（不含先前 CPU 编码）。10 次预热、60 次采样，同步等待 p50/p95/max=6.773/9.047/11.180ms，异步提交=0.089/0.110/0.116ms，异步总完成=6.146/8.902/11.008ms。70 轮异步输出与同步参考逐字节一致，pending 轮询累计 1060232，最终 commands=175、failures=0、reads/textures=0。该结果支持减少调用线程等待，不等同于完整游戏帧率、Godot 对照或跨帧调度收益；忙轮询仅用于组件测量，下一步需检查引擎实际回读消费者是否跨帧使用该接口。

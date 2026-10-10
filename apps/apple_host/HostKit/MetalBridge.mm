@@ -44,6 +44,7 @@ struct State {
     std::map<uint64_t, Record> textures;
     std::map<uint64_t, ReadRequest> reads;
     uint64_t next = 1, operations = 0, failures = 0;
+    uint64_t readsBegun=0, readsPending=0, readsCompleted=0, readsCancelled=0;
     NSString *lastError = @"";
     ~State() { if (cache) CFRelease(cache); }
 };
@@ -372,7 +373,7 @@ uint64_t BeginRead(uint64_t token) {
     if (command==S().pending) S().pending=nil;
     [command commit];
     uint64_t request=S().next++;
-    S().reads.emplace(request,ReadRequest{snapshot,command,false});return request;
+    S().reads.emplace(request,ReadRequest{snapshot,command,false});++S().readsBegun;return request;
 }
 bool PollRead(uint64_t token,void *out,size_t capacity,uint32_t stride,bool *ready) {
     Lock lock(S().mutex);if (!ready) return false;*ready=false;
@@ -386,7 +387,7 @@ bool PollRead(uint64_t token,void *out,size_t capacity,uint32_t stride,bool *rea
             S().lastError=request.command.error.localizedDescription ?: @"Metal readback failed"; }
         return false;
     }
-    if (request.command.status!=MTLCommandBufferStatusCompleted) return true;
+    if (request.command.status!=MTLCommandBufferStatusCompleted) { ++S().readsPending;return true; }
     if (!request.accounted) { ++S().operations; request.accounted=true; }
     // The snapshot has completed independently; do not flush unrelated work.
     [texture getBytes:out bytesPerRow:stride fromRegion:MTLRegionMake2D(0,0,texture.width,texture.height) mipmapLevel:0];
@@ -397,9 +398,10 @@ bool PollRead(uint64_t token,void *out,size_t capacity,uint32_t stride,bool *rea
     }
     // Match the engine/Godot contract: a ready poll consumes the request.
     S().reads.erase(found);
+    ++S().readsCompleted;
     *ready=true;return true;
 }
-void DiscardRead(uint64_t token) { Lock lock(S().mutex);S().reads.erase(token); }
+void DiscardRead(uint64_t token) { Lock lock(S().mutex);S().readsCancelled+=S().reads.erase(token); }
 bool Flush() { Lock lock(S().mutex); return FlushPending(); }
 uint64_t BeginBatch() { Lock lock(S().mutex);uint64_t token=S().next++;batches.push_back(token);return token; }
 bool EndBatch(uint64_t token) {
@@ -463,6 +465,7 @@ id<MTLTexture> AetherMetalBridgeCopyTexture(uint64_t token) { Lock lock(S().mute
 BOOL AetherMetalBridgeReadTexture(uint64_t token, void *pixels, size_t capacity, uint32_t stride) { return Read(token, pixels, capacity, stride); }
 NSString *AetherMetalBridgeDiagnostics() {
     Lock lock(S().mutex);
-    return [NSString stringWithFormat:@"Metal bridge textures=%zu reads=%zu commands=%llu failures=%llu error=%@",
-        S().textures.size(),S().reads.size(),S().operations,S().failures,S().lastError];
+    return [NSString stringWithFormat:@"Metal bridge textures=%zu reads=%zu commands=%llu failures=%llu error=%@ read_begin=%llu read_pending_polls=%llu read_complete=%llu read_cancel=%llu",
+        S().textures.size(),S().reads.size(),S().operations,S().failures,S().lastError,
+        S().readsBegun,S().readsPending,S().readsCompleted,S().readsCancelled];
 }

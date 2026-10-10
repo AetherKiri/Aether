@@ -34,6 +34,8 @@ struct ReadRequest {
     bool accounted = false;
 };
 struct State {
+    dispatch_group_t snapshotGroup=dispatch_group_create();
+    uint64_t asyncSubmitted=0, asyncCompleted=0;
     std::recursive_mutex mutex;
     id<MTLDevice> device;
     id<MTLCommandQueue> queue;
@@ -118,10 +120,14 @@ id<MTLTexture> Snapshot(id<MTLTexture> source, bool wait=true) {
     [encoder endEncoding];
     if (command == S().pending) S().pending = nil;
     if (!wait) {
+        dispatch_group_enter(S().snapshotGroup);++S().asyncSubmitted;
         [command addCompletedHandler:^(id<MTLCommandBuffer> completed) {
-            Lock lock(S().mutex);
-            if(completed.status==MTLCommandBufferStatusCompleted)++S().operations;
-            else {++S().failures;S().lastError=completed.error.localizedDescription ?: @"Presentation snapshot failed";}
+            {
+                Lock lock(S().mutex);++S().asyncCompleted;
+                if(completed.status==MTLCommandBufferStatusCompleted)++S().operations;
+                else {++S().failures;S().lastError=completed.error.localizedDescription ?: @"Presentation snapshot failed";}
+            }
+            dispatch_group_leave(S().snapshotGroup);
         }];
         [command commit];
         return copy;
@@ -487,6 +493,21 @@ id<MTLCommandQueue> AetherMetalBridgeCommandQueue() {
 id<MTLTexture> AetherMetalBridgeCopyPresentationTexture(uint64_t token) {
     Lock lock(S().mutex);return Snapshot(Texture(token),false);
 }
+BOOL AetherMetalBridgeDrain() {
+    id<MTLCommandBuffer> fence;
+    {
+        Lock lock(S().mutex);
+        if(!S().queue)return YES;
+        if(!FlushPending())return NO;
+        fence=[S().queue commandBuffer];
+        if(!fence)return NO;
+        [fence commit];
+    }
+    // Completion callbacks take the bridge lock: never wait while holding it.
+    [fence waitUntilCompleted];
+    dispatch_group_wait(S().snapshotGroup,DISPATCH_TIME_FOREVER);
+    return fence.status==MTLCommandBufferStatusCompleted;
+}
 id<MTLTexture> AetherMetalBridgeCopyTexture(uint64_t token) {
     Lock lock(S().mutex);
     auto start=std::chrono::steady_clock::now();
@@ -501,8 +522,9 @@ id<MTLTexture> AetherMetalBridgeCopyTexture(uint64_t token) {
 BOOL AetherMetalBridgeReadTexture(uint64_t token, void *pixels, size_t capacity, uint32_t stride) { return Read(token, pixels, capacity, stride); }
 NSString *AetherMetalBridgeDiagnostics() {
     Lock lock(S().mutex);
-    return [NSString stringWithFormat:@"Metal bridge textures=%zu reads=%zu commands=%llu failures=%llu error=%@ read_begin=%llu read_pending_polls=%llu read_complete=%llu read_cancel=%llu snapshot_calls=%llu snapshot_total_ms=%.3f snapshot_max_ms=%.3f snapshot_combined=%llu",
+    return [NSString stringWithFormat:@"Metal bridge textures=%zu reads=%zu commands=%llu failures=%llu error=%@ read_begin=%llu read_pending_polls=%llu read_complete=%llu read_cancel=%llu snapshot_calls=%llu snapshot_total_ms=%.3f snapshot_max_ms=%.3f snapshot_combined=%llu async_submitted=%llu async_completed=%llu async_inflight=%llu",
         S().textures.size(),S().reads.size(),S().operations,S().failures,S().lastError,
         S().readsBegun,S().readsPending,S().readsCompleted,S().readsCancelled,
-        S().presentationSnapshots,S().presentationSnapshotMS,S().presentationSnapshotMaxMS,S().presentationCombinedSnapshots];
+        S().presentationSnapshots,S().presentationSnapshotMS,S().presentationSnapshotMaxMS,S().presentationCombinedSnapshots,
+        S().asyncSubmitted,S().asyncCompleted,S().asyncSubmitted-S().asyncCompleted];
 }

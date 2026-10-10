@@ -11,6 +11,8 @@ extern "C" {
 BOOL AetherMetalBridgeInitialize(NSError **error);
 // Lazily creates the shared device/queue without compiling engine shaders.
 id<MTLCommandQueue> _Nullable AetherMetalBridgeCommandQueue(void);
+// Stop producers before draining the shared queue and snapshot callbacks.
+BOOL AetherMetalBridgeDrain(void);
 // Returns an immutable GPU snapshot suitable for another presentation queue.
 id<MTLTexture> _Nullable AetherMetalBridgeCopyTexture(uint64_t token);
 // GPU consumers must submit on AetherMetalBridgeCommandQueue; CPU access must

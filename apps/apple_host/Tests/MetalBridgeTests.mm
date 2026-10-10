@@ -248,6 +248,8 @@ int main(int argc,char **argv) { @autoreleasepool {
     assert((copied==Pixel{0xaa,0xbb,0xcc,255}));
     assert((ReadPixel(dst)==Pixel{0x11,0x22,0x33,255}));
     auto queuedSnapshot=AetherMetalBridgeCopyPresentationTexture(dst);assert(queuedSnapshot);
+    assert(AetherMetalBridgeDrain());
+    assert([AetherMetalBridgeDiagnostics() containsString:@"async_inflight=0"]);
     auto queue=AetherMetalBridgeCommandQueue();assert(queue);
     auto fence=[queue commandBuffer];[fence commit];[fence waitUntilCompleted];
     assert(fence.status==MTLCommandBufferStatusCompleted);

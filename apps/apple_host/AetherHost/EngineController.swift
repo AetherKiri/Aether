@@ -765,6 +765,7 @@ final class EngineController: ObservableObject {
         // Stop drawable requests before tearing the session down: a pending
         // draw against a closing window waits on nextDrawable for a second.
         metalPresenter?.suspend()
+        if !AetherMetalBridgeDrain() { log("Metal queue drain failed") }
         if !frameWorkMilliseconds.isEmpty {
             let sorted = frameWorkMilliseconds.sorted()
             let p50 = sorted[(sorted.count - 1) / 2]

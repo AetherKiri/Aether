@@ -129,6 +129,8 @@ Apple M1 Max / macOS 15.7.1 一次 Debug 组件测量：关闭批处理 5.012/10
 
 ### 交接与遗留（2026-10-11）
 
+关闭会话现在先停止新呈现，再 drain 共享 Metal 队列与异步快照完成回调，随后销毁引擎。诊断新增 async_submitted / async_completed / async_inflight；桥接测试确认 drain 后 inflight=0、像素一致、failures=0。Debug 构建及异步呈现 KAG3 30 秒冒烟通过（out/apple_host/evidence/async-drain-kag3），此等待仅用于关闭会话。CUA 另验证实际宿主启动《夏雪》显示启动画面、退出确认并恢复游戏库；该 UI 检查使用普通启动，不能据此宣称异步模式或完整游戏流程通过。未更新 verified_games。
+
 反序宿主复测：profile 新增 --reverse-order，先async后sync，KAG3各30秒无截图1080p。async 1737样本p50/p95/max=0.938/1.232/5.255ms；sync 1735样本=1.444/1.763/5.611ms，均零超预算、无合并遗漏、正常销毁、桥failures=0。反序仍有约35% p50、30% p95下降，证据 `out/apple_host/evidence/snapshot-async-sync-profile/`。与首轮合看，收益方向一致但比例随环境变化；尚未Godot对照。生命周期代码检查：presenter.suspend仅阻止新呈现，不显式drain已提交命令，因此正常退出不能证明没有in-flight任务，后续需加完成计数与会话边界drain验证，再考虑默认启用。Python语法/diff检查通过。
 
 共享队列冷启动修正：CommandQueue getter 仅延迟创建 device/queue，不编译绘制桥 shader；Initialize 复用现有队列，避免软件宿主提前编译管线及后续队列替换。组件新增初始化前后队列身份一致断言，桥套件与Debug构建通过。原创controls夹具全新进程各3轮：软件p50/p95/max=0.337/0.386/0.391秒，Metal=0.313/0.324/0.325秒，全部正常关闭且低于2秒目标。证据 `out/apple_host/evidence/lazy-queue-cold-software/` 与 `lazy-queue-cold-metal/`。这验证当前冷启动目标，不是相对上一版本的严格配对提升；非阻塞呈现仍opt-in，窗口压力和重复性能对照待补。

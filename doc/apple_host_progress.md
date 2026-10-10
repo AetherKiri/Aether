@@ -324,6 +324,7 @@
 - 新增原创夹具 `tests/fixtures/apple_host_stretch`：用 `Layer.stretchCopy` 的 stLinear/stCubic 覆盖现有夹具都没有的重采样路径，输入驱动重绘（冒烟工具可用）。它首次做到**跨渲染器同刻对比**：软件与 Metal 两次运行在 6/20/25 秒的 engine 帧 RGB 差值均为 0；Metal 运行内 engine/Metal 同刻差值同样为 0。
 - 回归：核心库与宿主重编译通过；Metal 桥/呈现/输入/游戏内文字输入套件通过；KAG3+ONS 各 30 秒冒烟通过；`apple_host_stretch` 软件与 Metal 各 30 秒冒烟通过；`apple_host_selftest` 16/16 零差异。另有一次自检在 1080p 的 19/22 秒出现局部差异，重跑干净——判定为该自检「按键后 1 秒采样、两进程相位可能差一 tick」的固有抖动，与本次改动无关（Debug 下 ResampleImage 的分支本来就与改动后等价）。
 - 提交：子模块 `packages/AetherKrkr` 提交 `764bb8e`（分支 `fix/krkr-startup-loader-contract`），父仓同步 gitlink 与夹具。spec 的「不改引擎核心」非目标补充了说明：不做架构/ABI 改写，允许正确性类最小修补（与该包既有兼容修复惯例一致）。
+- 已按子仓库贡献流程开 PR：[AetherKiri/AetherKrkr#3](https://github.com/AetherKiri/AetherKrkr/pull/3) —— 分支 `fix/core-staging-buffers` 基于最新 `main` 且只含本次 1 个提交（head `764bb8e`），改动 3 个文件；仓库没有 CI 工作流，GitHub 报告 `MERGEABLE / CLEAN`，检查项为空。**合并后**需把父仓 gitlink 从 `764bb8e` 重新指向 `main` 上的结果提交；该分支保留到合并完成（父仓当前 pin 的正是 PR head）。
 
 ## 下一步队列
 

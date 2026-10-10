@@ -9701,8 +9701,8 @@ public:
         if (device != nexas_joypad_device_) {
             // Send releases for the former controller before adopting a new
             // one. The provider keeps held battle actions until key-up.
-            for(int button=0;button<32;++button) {
-                const uint32_t bit=uint32_t(1)<<button;
+            for(int button=0;button<36;++button) {
+                const uint64_t bit=uint64_t(1)<<button;
                 if((nexas_joypad_buttons_&bit)==0) continue;
                 engine_input_event_t event{};
                 event.struct_size=sizeof(event);
@@ -9715,9 +9715,13 @@ public:
             nexas_joypad_device_=device;
             nexas_joypad_axis_=0;
         }
-        uint32_t target=0;
+        uint64_t target=0;
         if(device>=0) {
             for(int physical=0;physical<=20;++physical) {
+                // Godot's 11..14 are D-pad buttons. NeXAS reserves 0..31
+                // for configurable physical joystick buttons, so directions
+                // use separate provider codes 32..35 below.
+                if(physical>=11 && physical<=14) continue;
                 if(!input->is_joy_button_pressed(
                         device,static_cast<JoyButton>(physical))) continue;
                 // SDL places Start at 6 and Back at 4. Native Config.dat
@@ -9725,25 +9729,29 @@ public:
                 const int canonical=physical==6 ? 4 :
                                     physical==4 ? 5 :
                                     physical==5 ? 6 : physical;
-                target|=uint32_t(1)<<canonical;
+                target|=uint64_t(1)<<canonical;
             }
+            for(int direction=0;direction<4;++direction)
+                if(input->is_joy_button_pressed(
+                        device,static_cast<JoyButton>(11+direction)))
+                    target|=uint64_t(1)<<(32+direction);
             const float horizontal=input->get_joy_axis(
                 device,JOY_AXIS_LEFT_X);
             const float vertical=input->get_joy_axis(
                 device,JOY_AXIS_LEFT_Y);
             const auto axis_bit=[&](int button,bool engaged,bool neutral) {
-                const uint32_t bit=uint32_t(1)<<button;
+                const uint64_t bit=uint64_t(1)<<button;
                 if(engaged) nexas_joypad_axis_|=bit;
                 else if(neutral) nexas_joypad_axis_&=~bit;
             };
-            axis_bit(11,vertical<-.55f,vertical>-.40f);
-            axis_bit(12,vertical>.55f,vertical<.40f);
-            axis_bit(13,horizontal<-.55f,horizontal>-.40f);
-            axis_bit(14,horizontal>.55f,horizontal<.40f);
+            axis_bit(32,vertical<-.55f,vertical>-.40f);
+            axis_bit(33,vertical>.55f,vertical<.40f);
+            axis_bit(34,horizontal<-.55f,horizontal>-.40f);
+            axis_bit(35,horizontal>.55f,horizontal<.40f);
             target|=nexas_joypad_axis_;
         }
-        for(int button=0;button<32;++button) {
-            const uint32_t bit=uint32_t(1)<<button;
+        for(int button=0;button<36;++button) {
+            const uint64_t bit=uint64_t(1)<<button;
             if((nexas_joypad_buttons_&bit)==(target&bit)) continue;
             engine_input_event_t event{};
             event.struct_size=sizeof(event);
@@ -12614,8 +12622,8 @@ private:
     bool artemis_logical_frame_pacing_ = false;
     bool nexas_joypad_active_ = false;
     int32_t nexas_joypad_device_ = -1;
-    uint32_t nexas_joypad_buttons_ = 0;
-    uint32_t nexas_joypad_axis_ = 0;
+    uint64_t nexas_joypad_buttons_ = 0;
+    uint64_t nexas_joypad_axis_ = 0;
     Ref<ImageTexture> frame_texture_;
     PackedByteArray frame_rgba_buffer_;
     Ref<Texture2DRD> frame_rd_texture_;

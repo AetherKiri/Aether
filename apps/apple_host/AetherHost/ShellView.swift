@@ -63,7 +63,13 @@ struct ContentView: View {
                         GameControlsView(model: model, engine: engine)
                     }
                 }
-            } else { library }
+            } else {
+                switch model.route {
+                case .library: library
+                case .videos: videoLibrary
+                case .dashboard: dashboard
+                }
+            }
         }
         .environment(\.locale, model.language.locale)
         .toolbar {
@@ -82,7 +88,7 @@ struct ContentView: View {
                 }
                 Button { model.showSettings = true } label: {
                     Label(model.text("settings"), systemImage: "gearshape")
-                }
+                }.disabled(!model.canOpenSettings)
             }
         }
         .onReceive(NotificationCenter.default.publisher(for: NSWindow.didResignKeyNotification)) { _ in
@@ -139,6 +145,10 @@ struct ContentView: View {
             }
         }
     }
+
+    private var videoLibrary: some View { VideoLibraryView(model: model) }
+
+    private var dashboard: some View { DashboardView(model: model) }
 
     private var library: some View {
         NavigationSplitView {
@@ -230,6 +240,116 @@ struct ContentView: View {
     }
 }
 
+private struct VideoLibraryView: View {
+    @ObservedObject var model: ShellModel
+
+    private func time(_ seconds: Double) -> String {
+        let value = Int(max(0, seconds))
+        return String(format: "%d:%02d", value / 60, value % 60)
+    }
+
+    var body: some View {
+        NavigationSplitView {
+            List(selection: $model.selectedVideoID) {
+                ForEach(model.videos) { video in
+                    HStack(spacing: 10) {
+                        let videoExists = FileManager.default.fileExists(atPath: video.url.path)
+                        Image(systemName: videoExists ? "film" : "exclamationmark.triangle")
+                            .foregroundStyle(videoExists ? Color.accentColor : Color.red)
+                        VStack(alignment: .leading, spacing: 3) {
+                            Text(video.displayTitle).lineLimit(2)
+                            let progress = model.storedVideoProgress(for: video)
+                            if progress > 0 { Text(time(progress)).font(.caption).foregroundStyle(.secondary) }
+                        }
+                    }.tag(video.id)
+                        .contextMenu {
+                            Button(model.text("removeVideo"), role: .destructive) { model.removeVideo(video) }
+                        }
+                }
+            }
+            .navigationTitle(model.text("videoLibrary"))
+            .navigationSplitViewColumnWidth(min: 260, ideal: 320)
+        } detail: {
+            if let video = model.videos.first(where: { $0.id == model.selectedVideoID }) {
+                VStack(alignment: .leading, spacing: 18) {
+                    Image(systemName: "film.stack").font(.system(size: 64)).foregroundStyle(.tint)
+                    Text(video.displayTitle).font(.title.bold()).textSelection(.enabled)
+                    if FileManager.default.fileExists(atPath: video.url.path) {
+                        Text(video.url.path).font(.caption).foregroundStyle(.secondary).textSelection(.enabled)
+                        let progress = model.storedVideoProgress(for: video)
+                        if progress > 0 { Text(model.text("videoPosition") + ": " + time(progress)).foregroundStyle(.secondary) }
+                        HStack {
+                            Button { model.openVideo(video.url) } label: { Label(model.text("videoPlay"), systemImage: "play.fill") }
+                                .buttonStyle(.borderedProminent)
+                            Button(model.text("removeVideo"), role: .destructive) { model.removeVideo(video) }
+                        }
+                    } else {
+                        Text(model.text("videoMissing")).foregroundStyle(.red)
+                        Button(model.text("removeVideo"), role: .destructive) { model.removeVideo(video) }
+                    }
+                }.frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center).padding(32)
+            } else {
+                VStack(spacing: 18) {
+                    Image(systemName: "film.stack").font(.system(size: 64)).foregroundStyle(.secondary)
+                    Text(model.text("emptyVideos")).font(.title.bold())
+                    Text(model.text("emptyVideosHelp")).foregroundStyle(.secondary)
+                    Button(model.text("importVideo")) { model.chooseVideo() }
+                        .buttonStyle(.borderedProminent).disabled(!model.canOpenVideo)
+                }.frame(maxWidth: .infinity, maxHeight: .infinity).padding(32)
+            }
+        }
+        .toolbar {
+            ToolbarItem {
+                Button { model.chooseVideo() } label: { Label(model.text("importVideo"), systemImage: "plus") }
+                    .disabled(!model.canOpenVideo)
+            }
+        }
+    }
+}
+
+private struct DashboardView: View {
+    @ObservedObject var model: ShellModel
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 24) {
+            Text(model.text("dashboard")).font(.largeTitle.bold())
+            HStack(spacing: 16) {
+                DashboardStat(title: String(format: model.text("gamesCount"), model.games.count), icon: "gamecontroller.fill")
+                DashboardStat(title: String(format: model.text("videosCount"), model.videos.count), icon: "film.fill")
+            }
+            Divider()
+            Text(model.text("recentGames")).font(.title2.bold())
+            if let game = model.games.compactMap({ game in game.lastPlayedAt.map { (game, $0) } }).sorted(by: { $0.1 > $1.1 }).first?.0 {
+                HStack {
+                    Image(systemName: "gamecontroller.fill").foregroundStyle(.tint)
+                    Text(game.displayTitle)
+                    Spacer()
+                    Button(model.text("play")) { model.selection = game.id; model.play() }
+                        .buttonStyle(.borderedProminent)
+                }
+            } else {
+                Text(model.text("never")).foregroundStyle(.secondary)
+            }
+            Spacer()
+            Button(model.text("openLibrary")) { model.showLibrary() }
+                .buttonStyle(.bordered)
+        }
+        .padding(32)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+    }
+}
+
+private struct DashboardStat: View {
+    let title: String
+    let icon: String
+
+    var body: some View {
+        Label(title, systemImage: icon).font(.title3).padding(18)
+            .frame(minWidth: 180, alignment: .leading)
+            .background(.quaternary, in: RoundedRectangle(cornerRadius: 8))
+    }
+}
+
 struct ShellSettingsView: View {
     @ObservedObject var model: ShellModel
     var body: some View {
@@ -302,34 +422,46 @@ struct ShellCommands: Commands {
         CommandGroup(replacing: .newItem) {
             Button(model.text("import")) { model.chooseImport() }.keyboardShortcut("o").disabled(!model.canImport)
             Button(model.text("linkGame")) { model.chooseImport(external: true) }.disabled(!model.canImport)
+            Divider()
+            Button(model.text("refresh")) { model.refreshLibrary() }.keyboardShortcut("r").disabled(!model.canNavigateShell)
         }
         CommandGroup(replacing: .appSettings) {
-            Button(model.text("settings") + "…") { model.showSettings = true }.keyboardShortcut(",")
+            Button(model.text("settings") + "…") { model.showSettings = true }
+                .keyboardShortcut(",").disabled(!model.canOpenSettings)
         }
-        CommandMenu(model.text("video")) {
-            Button(model.text("openVideo") + "…") { model.chooseVideo() }.keyboardShortcut("o", modifiers: [.command, .shift]).disabled(!model.canOpenVideo)
-            Button(model.text("back")) { model.closeVideo() }.disabled(model.activeVideo == nil)
-        }
-        CommandMenu(model.text("game")) {
+        CommandGroup(after: .sidebar) {
+            Button(model.text("visualNovels")) { model.showLibrary() }.keyboardShortcut("1").disabled(!model.canNavigateShell)
+            Button(model.text("videoLibrary")) { model.showVideos() }.keyboardShortcut("2").disabled(!model.canNavigateShell)
+            Button(model.text("dashboard")) { model.showDashboard() }.keyboardShortcut("3").disabled(!model.canNavigateShell)
+            Divider()
             Toggle(model.text("fullscreen"), isOn: Binding(
                 get: { model.isFullscreen },
                 set: { _ in model.toggleFullscreen() }
             ))
                 .keyboardShortcut("f", modifiers: [.command, .control])
                 .disabled(model.activeGame == nil)
+        }
+        CommandMenu(model.text("video")) {
+            Button(model.text("openVideo") + "…") { model.chooseVideo() }.keyboardShortcut("o", modifiers: [.command, .shift]).disabled(!model.canOpenVideo)
+            Button(model.text("back")) { model.closeVideo() }.disabled(model.activeVideo == nil)
+        }
+        CommandMenu(model.text("game")) {
             Toggle(model.text("virtualControls"), isOn: $model.showVirtualControls)
                 .disabled(model.activeGame == nil)
             Button(model.text("enterText")) { model.showGameTextEntry = true }.disabled(model.activeGame == nil || model.engine.runtimeMovieActive)
             Toggle(model.text("logs"), isOn: $model.showLogs).disabled(model.activeGame == nil)
             Button(model.text("folder")) { model.revealActiveGame() }.disabled(model.activeGame == nil)
             Divider()
-            Button(model.text("play")) { model.play() }.keyboardShortcut("r").disabled(!model.canPlay)
+            Button(model.text("play")) { model.play() }.disabled(!model.canPlay)
             Button(model.text("restart")) { model.confirmRestart = true }
                 .keyboardShortcut("r", modifiers: [.command, .shift])
                 .disabled(!model.canRestartGame)
             Button(model.text("back")) { model.confirmReturn = true }.keyboardShortcut("l").disabled(model.activeGame == nil)
             Divider()
             Button(model.text("exportDiagnostics")) { model.exportDiagnostics() }.keyboardShortcut("d", modifiers: [.command, .shift])
+        }
+        CommandGroup(after: .help) {
+            Button(model.text("qqGroup")) { model.openQQGroup() }
         }
     }
 }

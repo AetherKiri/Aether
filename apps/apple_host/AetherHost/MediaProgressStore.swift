@@ -19,4 +19,11 @@ struct MediaProgressStore {
         try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
         try JSONEncoder().encode(limited).write(to: url, options: .atomic)
     }
+
+    func remove(for file: URL) throws {
+        var values = try entries()
+        values.removeValue(forKey: file.standardizedFileURL.path)
+        try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try JSONEncoder().encode(values).write(to: url, options: .atomic)
+    }
 }

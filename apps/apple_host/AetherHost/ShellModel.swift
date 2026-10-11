@@ -2,6 +2,21 @@ import AppKit
 import SwiftUI
 import UniformTypeIdentifiers
 
+enum ShellRoute: String {
+    case library
+    case videos
+    case dashboard
+}
+
+struct LibraryVideo: Codable, Identifiable, Equatable {
+    let id: UUID
+    let path: String
+    let addedAt: Date
+
+    var url: URL { URL(fileURLWithPath: path) }
+    var displayTitle: String { url.lastPathComponent }
+}
+
 @MainActor
 final class ShellModel: ObservableObject {
     let engine = EngineController()
@@ -9,8 +24,11 @@ final class ShellModel: ObservableObject {
     lazy var media = MediaController(root: repository.root, diagnostics: engine.diagnostics, log: { [weak self] in self?.engine.log($0) })
     @Published var activeVideo: URL?
     @Published var games: [LibraryGame] = []
+    @Published var videos: [LibraryVideo] = []
     @Published var selection: UUID?
+    @Published var selectedVideoID: UUID?
     @Published var activeGame: LibraryGame?
+    @Published var route: ShellRoute = .library
     @Published var isImporting = false
     @Published var error: String?
     @Published var renameGame: LibraryGame?
@@ -35,6 +53,8 @@ final class ShellModel: ObservableObject {
     private let preferencePrefix: String
     private var libraryAvailable = true
     private var fullscreenBeforeGame: Bool?
+    private var videoIndexURL: URL { repository.root.appendingPathComponent("video-library.json") }
+    private var mediaProgress: MediaProgressStore { MediaProgressStore(url: repository.root.appendingPathComponent("media-progress.json")) }
 
     init() {
         let defaults = UserDefaults.standard
@@ -52,6 +72,8 @@ final class ShellModel: ObservableObject {
         do {
             games = try repository.backfillDefaultCovers(try repository.load())
             selection = games.first?.id
+            videos = loadVideos()
+            selectedVideoID = videos.first?.id
         }
         catch { self.error = friendlyError(error); libraryAvailable = false }
     }
@@ -90,6 +112,8 @@ final class ShellModel: ObservableObject {
     var canPlay: Bool { !isImporting && activeGame == nil && activeVideo == nil && selectedGame != nil }
     var canRestartGame: Bool { activeGame != nil && activeVideo == nil && !engine.runtimeMovieActive }
     var canEditCover: Bool { canImport && selectedGame != nil }
+    var canNavigateShell: Bool { activeGame == nil && activeVideo == nil && !isImporting }
+    var canOpenSettings: Bool { activeGame == nil && activeVideo == nil }
 
     func coverImage(for game: LibraryGame) -> NSImage? {
         guard let url = repository.coverURL(game), FileManager.default.fileExists(atPath: url.path) else { return nil }
@@ -124,6 +148,70 @@ final class ShellModel: ObservableObject {
             } catch { self.error = friendlyError(error) }
             isImporting = false
         }
+    }
+
+    func refreshLibrary() {
+        guard canNavigateShell else { return }
+        do {
+            let currentSelection = selection
+            games = try repository.backfillDefaultCovers(try repository.load())
+            selection = games.contains(where: { $0.id == currentSelection }) ? currentSelection : games.first?.id
+            videos = loadVideos()
+            selectedVideoID = videos.contains(where: { $0.id == selectedVideoID }) ? selectedVideoID : videos.first?.id
+        } catch let failure { self.error = friendlyError(failure) }
+    }
+
+    func showLibrary() {
+        guard canNavigateShell else { return }
+        route = .library
+        refreshLibrary()
+    }
+
+    func showVideos() {
+        guard canNavigateShell else { return }
+        route = .videos
+        videos = loadVideos()
+        selectedVideoID = videos.first?.id
+    }
+
+    func showDashboard() {
+        guard canNavigateShell else { return }
+        route = .dashboard
+    }
+
+    private func loadVideos() -> [LibraryVideo] {
+        guard FileManager.default.fileExists(atPath: videoIndexURL.path) else { return [] }
+        do { return try JSONDecoder().decode([LibraryVideo].self, from: Data(contentsOf: videoIndexURL)) }
+        catch { self.error = text("invalidIndex"); return [] }
+    }
+
+    private func saveVideos() throws {
+        try FileManager.default.createDirectory(at: repository.root, withIntermediateDirectories: true)
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+        try encoder.encode(videos).write(to: videoIndexURL, options: .atomic)
+    }
+
+    private func rememberVideo(_ url: URL) {
+        let path = url.standardizedFileURL.path
+        guard !videos.contains(where: { $0.path == path }) else { return }
+        videos.append(LibraryVideo(id: UUID(), path: path, addedAt: Date()))
+        do { try saveVideos() } catch let failure { self.error = failure.localizedDescription }
+    }
+
+    func removeVideo(_ video: LibraryVideo) {
+        guard activeGame == nil else { return }
+        if activeVideo?.standardizedFileURL.path == video.url.standardizedFileURL.path { closeVideo() }
+        videos.removeAll { $0.id == video.id }
+        do {
+            try mediaProgress.remove(for: video.url)
+            try saveVideos()
+            selectedVideoID = videos.first?.id
+        } catch let failure { self.error = failure.localizedDescription }
+    }
+
+    func storedVideoProgress(for video: LibraryVideo) -> Double {
+        (try? mediaProgress.position(for: video.url, duration: 1_000_000_000)) ?? 0
     }
 
     func chooseCover() {
@@ -228,16 +316,23 @@ final class ShellModel: ObservableObject {
         panel.allowsMultipleSelection = false
         panel.allowedContentTypes = [.movie, .video] + ["mkv", "webm", "avi", "mpeg", "m4v"].compactMap { UTType(filenameExtension: $0) }
         guard panel.runModal() == .OK, let url = panel.url else { return }
+        openVideo(url)
+    }
+
+    func openVideo(_ url: URL) {
+        guard canOpenVideo else { return }
         if media.open(url) {
             activeVideo = url
+            route = .videos
+            rememberVideo(url)
             if let subtitleError = media.subtitleError { error = subtitleError; media.subtitleError = nil }
-        }
-        else { error = media.failureMessage }
+        } else { error = media.failureMessage }
     }
 
     func closeVideo() {
         media.close()
         activeVideo = nil
+        route = .videos
     }
 
     func closeActiveSession() {
@@ -283,6 +378,11 @@ final class ShellModel: ObservableObject {
             ])
             NSWorkspace.shared.activateFileViewerSelecting([destination])
         } catch { self.error = error.localizedDescription }
+    }
+
+    func openQQGroup() {
+        let url = URL(string: "https://aetherkiri.github.io/qq/")!
+        if !NSWorkspace.shared.open(url) { error = url.absoluteString }
     }
 
     // MARK: - Local translation model (mirrors the Godot shell's settings row)

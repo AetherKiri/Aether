@@ -28,6 +28,7 @@ final class MediaController: ObservableObject {
     private let diagnostics: DiagnosticStore
     private let log: (String) -> Void
     private let progress: MediaProgressStore
+    private var subtitleSelectionsURL: URL { root.appendingPathComponent("media-subtitles.json") }
     private var file: URL?
     private var timer: Timer?
     private var timeline = SubtitleTimeline()
@@ -70,7 +71,9 @@ final class MediaController: ObservableObject {
                                     file: nil, stream: $0.stream_index)
             }
             extractionDirectory = cache.appendingPathComponent(UUID().uuidString, isDirectory: true)
-            if let choice = subtitles.first(where: { $0.file != nil })
+            if let saved = savedSubtitleSelection(for: url) {
+                if saved != "off", subtitles.contains(where: { $0.id == saved }) { selectSubtitle(saved) }
+            } else if let choice = subtitles.first(where: { $0.file != nil })
                 ?? subtitles.first(where: { option in tracks.contains { $0.default && $0.stream_index == option.stream } }) {
                 selectSubtitle(choice.id)
             }
@@ -163,6 +166,7 @@ final class MediaController: ObservableObject {
     }
     func selectSubtitle(_ id: String) {
         selectedSubtitle = id; timeline = SubtitleTimeline(); subtitleText = ""
+        if let file { saveSubtitleSelection(id, for: file) }
         guard id != "off", let option = subtitles.first(where: { $0.id == id }) else { return }
         do {
             let url: URL
@@ -186,6 +190,23 @@ final class MediaController: ObservableObject {
         lastSaved = ProcessInfo.processInfo.systemUptime
         do { try progress.save(ended ? 0 : position, for: file) }
         catch { log("media progress save failed: \(error.localizedDescription)") }
+    }
+
+    private func savedSubtitleSelection(for url: URL) -> String? {
+        guard let data = try? Data(contentsOf: subtitleSelectionsURL),
+              let values = try? JSONDecoder().decode([String: String].self, from: data) else { return nil }
+        return values[url.standardizedFileURL.path]
+    }
+
+    private func saveSubtitleSelection(_ id: String, for url: URL) {
+        var values = (try? Data(contentsOf: subtitleSelectionsURL)).flatMap {
+            try? JSONDecoder().decode([String: String].self, from: $0)
+        } ?? [:]
+        values[url.standardizedFileURL.path] = id
+        do {
+            try FileManager.default.createDirectory(at: subtitleSelectionsURL.deletingLastPathComponent(), withIntermediateDirectories: true)
+            try JSONEncoder().encode(values).write(to: subtitleSelectionsURL, options: .atomic)
+        } catch { log("media subtitle selection save failed: \(error.localizedDescription)") }
     }
     func close() {
         timer?.invalidate(); timer = nil

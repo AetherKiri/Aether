@@ -4,7 +4,7 @@ import AppKit
 enum RendererBehaviorTests {
     @MainActor static func run(root: URL) throws {
         // Renderer tests must not inherit benchmark/presentation overrides.
-        for key in ["AETHER_HOST_RENDERER", "AETHER_HOST_OUTPUT_RESOLUTION", "AETHER_HOST_PRESENTATION", "AETHER_HOST_BENCHMARK", "AETHER_HOST_DIRECT_RENDER"] {
+        for key in ["AETHER_HOST_RENDERER", "AETHER_HOST_OUTPUT_RESOLUTION", "AETHER_HOST_SAMPLING_ALGORITHM", "AETHER_HOST_PRESENTATION", "AETHER_HOST_BENCHMARK", "AETHER_HOST_DIRECT_RENDER"] {
             unsetenv(key)
         }
         let source = URL(fileURLWithPath: FileManager.default.currentDirectoryPath)

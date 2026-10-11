@@ -1,7 +1,7 @@
 # Apple 宿主 UI 与设置对齐实施计划
 
 - 2026-10-11，依据 [产品 UI spec](apple_host_ui_spec.md)。
-- 状态：P0调查完成；P1核心实现与行为测试已接入，完整CUA验收待补；P2集合/详情及四主题已接入，完整视觉/无障碍验收待补；P3a能力/安全回退与P3b画布/输出已实现并通过行为回归及设置页CUA；P3c/P3d与P4–P7尚未实施。阶段按依赖排序，每轮只提交已验证的完整切片。
+- 状态：P0调查完成；P1核心实现与行为测试已接入，完整CUA验收待补；P2集合/详情及四主题已接入，完整视觉/无障碍验收待补；P3a能力/安全回退、P3b画布/输出与P3c采样已实现并通过行为回归及设置页CUA；P3d与P4–P7尚未实施。阶段按依赖排序，每轮只提交已验证的完整切片。
 - 目标是修正产品结构并补齐真实功能；不在一轮中把所有缺项画成无效果控件。
 
 ## P0：调查与规范（本轮）
@@ -163,7 +163,7 @@ P3a重点验证部分Metal激活失败后的资源清理：不得在已打开游
 - [x] Debug应用构建通过；`python3 tools/apple_host_smoke.py --game kag3 --duration 30 --renderer metal --presentation metal --snapshots direct --output out/apple_host/evidence/ui-p3a-native`通过，输入推进、三时点CPU/GPU截图对照和干净退出，证据在指定目录；只是短回归，不宣称新五分钟门槛。
 - [ ] 页面CUA：P3a专属预启动状态仍待补验；P3b设置页已在真实构建窗口完成CUA，不将该证据扩展为P3a完整验收。
 
-下一切片：P3c采样和P3d调度；P1/P2/P3a的剩余CUA补验继续独立推进；P5增强保持独立工作包。
+下一切片：P3d调度；P1/P2/P3a的剩余CUA补验继续独立推进；P5增强保持独立工作包。
 
 ## P3b实施记录：画布与输出
 
@@ -174,4 +174,15 @@ P3a重点验证部分Metal激活失败后的资源清理：不得在已打开游
 - [x] `python3 tools/apple_host_settings_tests.py`、Debug 构建和 KAG3 30 秒 Metal direct smoke 通过。1080p smoke 输出为 1440×1080，逻辑帧为 640×480，`leases_acquired/submitted/completed=446`、`leases_live=0`、`lease_failures=0`、Metal RGB max diff=0。
 - [x] CUA 使用构建产物真实窗口验证渲染设置：可见“画布模式”和“输出分辨率”，切换到“适应显示”与“1080p”，保存后显示“设置已保存”且保存按钮禁用。
 
-下一切片：P3c 采样算法（先核对 smooth/linear 语义，再实现并验收 nearest、bicubic、lanczos）；P3d 调度继续保持独立，不提前开放未实现控件。
+下一切片：P3d 调度（FPS 与模拟时间策略）；P5 增强继续保持独立，不提前开放未实现控件。
+
+## P3c实施记录：采样算法
+
+- [x] 核对 Godot 语义：`smooth` 是 `linear` 的兼容别名；默认算法为 `bicubic`；`nearest`、`linear`、`bicubic`（Catmull-Rom 4×4）和 `lanczos`（半径 3）分别对应真实采样核。
+- [x] `HostSettings` schema v4 持久化 `upscaleAlgorithm`；v1/v2/v3 旧配置迁移为 linear，新安装默认 bicubic，保存时规范化 smooth。
+- [x] Metal presenter 实现四种 GPU 采样核；输出中间纹理只在目标尺寸或 frame revision 变化时重建，最终 drawable pass 不重复应用输出核。软件路径实现同核 CPU fallback，并保留失败回退原始帧。
+- [x] 设置页提供四语言采样选择器与负载说明；诊断记录有效采样算法；smoke 工具支持 `--sampling-algorithm`。
+- [x] 行为测试覆盖 smooth 迁移、四种 CPU/GPU 采样结果对照和持久化；KAG3 Metal direct 30 秒 smoke 已分别通过 nearest、linear、bicubic、lanczos，均无 RGB 差异、呈现失败或未完成 lease。
+- [x] CUA 在真实构建窗口验证四个选项可见、双三次可切换并保存成功；随后恢复原有线性偏好。
+
+下一切片：P3d 调度。FPS 开关与目标值仍未开放，必须先验证固定步长模拟时间、引擎限频、呈现统计及失焦策略。

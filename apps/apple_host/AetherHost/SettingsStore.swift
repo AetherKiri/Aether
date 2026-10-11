@@ -3,13 +3,14 @@ import Foundation
 /// Effective, persisted preferences. Transient controls and engine state do not
 /// belong here. A settings page edits a value copy until a successful save.
 struct HostSettings: Codable, Equatable {
-    static let schemaVersion = 3
+    static let schemaVersion = 4
     var version = schemaVersion
     var languageMode = "system"
     var theme = "classic"
     var renderer = "metal"
     var canvasMode = "game"
     var outputResolution = "1080p"
+    var upscaleAlgorithm = "bicubic"
     var virtualControls = false
     var logs = false
     var translationModelPath = ""
@@ -25,8 +26,11 @@ struct HostSettings: Codable, Equatable {
               ShellTheme(rawValue: theme) != nil,
               ["software", "metal"].contains(renderer),
               CanvasMode(rawValue: canvasMode) != nil, OutputResolution(rawValue: outputResolution) != nil,
+              SamplingAlgorithm.normalized(upscaleAlgorithm) != nil,
               ["krkrsdl3", "aether_all"].contains(pluginLoadMode) else { throw Failure.invalidValue }
-        return self
+        var result = self
+        result.upscaleAlgorithm = SamplingAlgorithm.normalized(upscaleAlgorithm)!.rawValue
+        return result
     }
 
     func normalizedForLoad() throws -> HostSettings {
@@ -39,6 +43,11 @@ struct HostSettings: Codable, Equatable {
         if !["krkrsdl3", "aether_all"].contains(pluginLoadMode) { result.pluginLoadMode = "krkrsdl3" }
         if CanvasMode(rawValue: canvasMode) == nil { result.canvasMode = "game" }
         if OutputResolution(rawValue: outputResolution) == nil { result.outputResolution = "1080p" }
+        if let normalized = SamplingAlgorithm.normalized(upscaleAlgorithm) {
+            result.upscaleAlgorithm = normalized.rawValue
+        } else {
+            result.upscaleAlgorithm = "bicubic"
+        }
         return result
     }
 
@@ -56,7 +65,7 @@ struct HostSettings: Codable, Equatable {
 
 extension HostSettings {
     enum CodingKeys: String, CodingKey {
-        case version, languageMode, theme, renderer, canvasMode, outputResolution, virtualControls, logs, translationModelPath,
+        case version, languageMode, theme, renderer, canvasMode, outputResolution, upscaleAlgorithm, virtualControls, logs, translationModelPath,
              pluginLoadMode, mockEnabled, errorDialogLogs
     }
     init(from decoder: Decoder) throws {
@@ -67,6 +76,7 @@ extension HostSettings {
         renderer = try values.decode(String.self, forKey: .renderer)
         canvasMode = try values.decodeIfPresent(String.self, forKey: .canvasMode) ?? "game"
         outputResolution = try values.decodeIfPresent(String.self, forKey: .outputResolution) ?? (version < 3 ? "original" : "1080p")
+        upscaleAlgorithm = try values.decodeIfPresent(String.self, forKey: .upscaleAlgorithm) ?? (version < 4 ? "linear" : "bicubic")
         virtualControls = try values.decode(Bool.self, forKey: .virtualControls)
         logs = try values.decode(Bool.self, forKey: .logs)
         translationModelPath = try values.decode(String.self, forKey: .translationModelPath)
@@ -97,7 +107,7 @@ struct SettingsStore {
         var settings = HostSettings()
         if ["language", "renderer", "virtualControls", "logs", "translationModel"].contains(where: {
             defaults.object(forKey: legacyPrefix + $0) != nil
-        }) { settings.outputResolution = "original" }
+        }) { settings.outputResolution = "original"; settings.upscaleAlgorithm = "linear" }
         if let language = defaults.string(forKey: legacyPrefix + "language"),
            ShellLanguage(rawValue: language) != nil { settings.languageMode = language }
         if let renderer = defaults.string(forKey: legacyPrefix + "renderer"),

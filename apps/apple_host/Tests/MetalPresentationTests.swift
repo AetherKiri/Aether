@@ -8,6 +8,9 @@ struct MetalPresentationTests {
             fatalError("Metal device required for presentation verification")
         }
         let presenter = try MetalFramePresenter(device: device)
+        // Keep the geometry assertions independent from the product default;
+        // the sampling-specific CPU/GPU checks live in RenderGeometryTests.
+        presenter.samplingAlgorithm = .linear
         // Different colours in every corner expose flips and channel swaps;
         // non-opaque premultiplied pixels expose double alpha multiplication.
         let rgba: [UInt8] = [255, 0, 0, 255, 0, 255, 0, 255,

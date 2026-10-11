@@ -16,6 +16,7 @@ enum RenderGeometryTests {
         let image = fixture()
         let engine = EngineController()
         guard let presenter = engine.metalPresenter else { preconditionFailure("GPU tests require Metal") }
+        presenter.samplingAlgorithm = .linear
         try presenter.upload(image)
         for size in [CGSize(width: 64, height: 48), CGSize(width: 1440, height: 1080),
                      CGSize(width: 1333, height: 1000), CGSize(width: 1920, height: 1440), CGSize(width: 2880, height: 2160)] {
@@ -53,6 +54,36 @@ enum RenderGeometryTests {
             precondition(InputMapping.mapToSurface(point: .zero, viewSize: view, contentSize: source) == nil)
         }
         presenter.clear()
+        precondition(SamplingAlgorithm.normalized("smooth") == .linear)
+        precondition(SamplingAlgorithm.normalized("nearest") == .nearest)
+        let nearest = RenderGeometry.image(image, size: CGSize(width: 17, height: 13), sampling: .nearest)!
+        let bicubic = RenderGeometry.image(image, size: CGSize(width: 17, height: 13), sampling: .bicubic)!
+        precondition(nearest.dataProvider?.data != bicubic.dataProvider?.data,
+                     "distinct sampling algorithms must produce distinct output")
+        // Compare every implemented Metal kernel with its CPU fallback on a
+        // same-aspect deterministic fixture. A small tolerance covers float
+        // rounding at kernel boundaries while still catching wrong kernels,
+        // channel order, or a hidden second resize.
+        for algorithm in SamplingAlgorithm.allCases {
+            presenter.clear()
+            presenter.outputSize = .zero
+            presenter.samplingAlgorithm = algorithm
+            try presenter.upload(image)
+            let gpu = try presenter.renderOffscreen(width: 40, height: 30)
+            let cpu = RenderGeometry.image(image, size: CGSize(width: 40, height: 30), sampling: algorithm)!
+            let cpuData = cpu.dataProvider!.data!
+            let cpuBytes = CFDataGetBytePtr(cpuData)!
+            var maxDifference = 0
+            for y in 0..<30 { for x in 0..<40 {
+                let offset = (y * 40 + x) * 4
+                for channel in 0..<3 {
+                    let gpuChannel = channel == 0 ? 2 : channel == 2 ? 0 : 1
+                    maxDifference = max(maxDifference,
+                        abs(Int(gpu[offset + gpuChannel]) - Int(cpuBytes[offset + channel])))
+                }
+            } }
+            precondition(maxDifference <= 2, "Metal/CPU sampling mismatch for \(algorithm): \(maxDifference)")
+        }
         print("PASS: Godot output bounds, Display Fit/Retina pixels, 4K cap, asymmetric GPU/CPU color/orientation, cached output, pointer/IME round trips and letterbox rejection")
     }
 

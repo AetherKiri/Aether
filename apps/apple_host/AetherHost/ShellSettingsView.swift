@@ -82,6 +82,12 @@ struct ShellSettingsView: View {
                         }
                     }
                     Text(model.text("outputResolutionHelp")).font(.caption).foregroundStyle(palette.secondary.color)
+                    Picker(model.text("samplingAlgorithm"), selection: binding(\.upscaleAlgorithm)) {
+                        ForEach(SamplingAlgorithm.allCases, id: \.rawValue) { algorithm in
+                            Text(model.text("sampling_" + algorithm.rawValue)).tag(algorithm.rawValue)
+                        }
+                    }
+                    Text(model.text("samplingAlgorithmHelp")).font(.caption).foregroundStyle(palette.secondary.color)
                     if let reason = model.capabilities.nativeMetal.reasonKey {
                         Label(model.text(reason), systemImage: "exclamationmark.triangle").font(.caption)
                         if !model.capabilities.nativeMetal.detail.isEmpty {

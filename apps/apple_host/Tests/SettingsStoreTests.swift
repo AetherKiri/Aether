@@ -11,7 +11,7 @@ struct SettingsStoreTests {
         defer { defaults.removePersistentDomain(forName: suite) }
         let store = SettingsStore(url: root.appendingPathComponent("settings.json"))
         let fresh = try store.load(defaults: defaults, legacyPrefix: "fresh.")
-        precondition(fresh.renderer == "metal" && fresh.languageMode == "system" && fresh.mockEnabled && fresh.theme == "classic")
+        precondition(fresh.renderer == "metal" && fresh.languageMode == "system" && fresh.mockEnabled && fresh.theme == "classic" && fresh.upscaleAlgorithm == "bicubic")
         let legacy = SettingsStore(url: root.appendingPathComponent("legacy/settings.json"))
         defaults.set("software", forKey: "shell.renderer")
         defaults.set("japanese", forKey: "shell.language")
@@ -32,7 +32,7 @@ struct SettingsStoreTests {
         let oldData = try JSONSerialization.data(withJSONObject: v1)
         try oldData.write(to: legacy.url)
         let upgraded = try legacy.load(defaults: defaults, legacyPrefix: "shell.")
-        precondition(upgraded == loaded && upgraded.version == 3 && upgraded.theme == "classic")
+        precondition(upgraded == loaded && upgraded.version == 4 && upgraded.theme == "classic")
         check(try Data(contentsOf: legacy.url) == oldData) // Loading does not overwrite the migration source.
         var v2 = v1
         v2["version"] = 2
@@ -41,12 +41,22 @@ struct SettingsStoreTests {
         try JSONSerialization.data(withJSONObject: v2).write(to: legacy.url)
         let oldGeometry = try legacy.load(defaults: defaults, legacyPrefix: "shell.")
         precondition(oldGeometry.outputResolution == "original" && oldGeometry.canvasMode == "game")
+        precondition(oldGeometry.upscaleAlgorithm == "linear")
+        var v3 = v2
+        v3["version"] = 3
+        v3["canvasMode"] = "display"
+        v3["outputResolution"] = "1080p"
+        v3.removeValue(forKey: "upscaleAlgorithm")
+        try JSONSerialization.data(withJSONObject: v3).write(to: legacy.url)
+        let oldSampling = try legacy.load(defaults: defaults, legacyPrefix: "shell.")
+        precondition(oldSampling.canvasMode == "display" && oldSampling.outputResolution == "1080p" && oldSampling.upscaleAlgorithm == "linear")
         precondition(fresh.outputResolution == "1080p")
         for mode in CanvasMode.allCases {
             for resolution in OutputResolution.allCases {
                 var value = loaded
                 value.canvasMode = mode.rawValue
                 value.outputResolution = resolution.rawValue
+                value.upscaleAlgorithm = resolution == .original ? "linear" : "bicubic"
                 try legacy.save(value)
                 check(try legacy.load(defaults: defaults, legacyPrefix: "shell.") == value)
             }
@@ -99,8 +109,15 @@ struct SettingsStoreTests {
         invalid.outputResolution = "8k"
         do { try legacy.save(invalid); preconditionFailure("invalid resolution saved") } catch {}
         invalid.outputResolution = "original"
+        invalid.upscaleAlgorithm = "smooth"
+        try legacy.save(invalid)
+        let normalizedSampling = try legacy.load(defaults: defaults, legacyPrefix: "shell.")
+        precondition(normalizedSampling.upscaleAlgorithm == "linear")
         invalid.canvasMode = "unknown"
         do { try legacy.save(invalid); preconditionFailure("invalid canvas saved") } catch {}
+        invalid.canvasMode = "game"
+        invalid.upscaleAlgorithm = "unknown"
+        do { try legacy.save(invalid); preconditionFailure("invalid sampling saved") } catch {}
         invalid.version = 99
         do { _ = try invalid.validated(); preconditionFailure("future version accepted") } catch {}
         let future = try JSONEncoder().encode(invalid)

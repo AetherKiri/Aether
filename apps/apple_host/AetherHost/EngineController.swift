@@ -29,6 +29,7 @@ final class EngineController: ObservableObject {
     private var failedOutputTarget: CGSize?
     private var sessionCanvasMode: CanvasMode = .game
     private var sessionOutputResolution: OutputResolution = .original
+    private var sessionSamplingAlgorithm: SamplingAlgorithm = .bicubic
 
     func updateDisplayPixels(_ size: CGSize) {
         guard size.width > 0, size.height > 0, size != displayPixels else { return }
@@ -38,6 +39,7 @@ final class EngineController: ObservableObject {
 
     private var geometryDiagnostics: [String: String] {
         ["canvasMode": sessionCanvasMode.rawValue, "outputResolution": sessionOutputResolution.rawValue,
+         "samplingAlgorithm": sessionSamplingAlgorithm.rawValue,
          "logicalCanvas": "\(Int(frameSize.width))x\(Int(frameSize.height))",
          "outputFrame": "\(Int(outputFrameSize.width))x\(Int(outputFrameSize.height))"]
     }
@@ -51,7 +53,8 @@ final class EngineController: ObservableObject {
             if failedOutputTarget == requested {
                 frameImage = sourceFrameImage
                 target = frameSize
-            } else if let resized = RenderGeometry.image(sourceFrameImage, size: requested) {
+            } else if let resized = RenderGeometry.image(sourceFrameImage, size: requested,
+                                                        sampling: sessionSamplingAlgorithm) {
                 frameImage = resized
                 failedOutputTarget = nil
                 if renderState.fallbacks.contains(where: { $0.reasonKey == "outputScalingFailed" }) {
@@ -339,13 +342,16 @@ final class EngineController: ObservableObject {
         }
         let env = ProcessInfo.processInfo.environment
         guard let mode = CanvasMode(rawValue: hostSettings.canvasMode),
-              let resolution = OutputResolution(rawValue: env["AETHER_HOST_OUTPUT_RESOLUTION"] ?? hostSettings.outputResolution) else {
+              let resolution = OutputResolution(rawValue: env["AETHER_HOST_OUTPUT_RESOLUTION"] ?? hostSettings.outputResolution),
+              let sampling = SamplingAlgorithm.normalized(env["AETHER_HOST_SAMPLING_ALGORITHM"] ?? hostSettings.upscaleAlgorithm) else {
             failureMessage = "Invalid canvas or output resolution."
             return false
         }
         failedOutputTarget = nil
         sessionCanvasMode = mode
         sessionOutputResolution = resolution
+        sessionSamplingAlgorithm = sampling
+        metalPresenter?.samplingAlgorithm = sampling
         renderState = RenderSessionState(requested: requestedRenderer)
         useMetalPresentation = metalAvailability.available && ProcessInfo.processInfo.environment["AETHER_HOST_PRESENTATION"] != "image"
         nativeRendererEnabled = false
@@ -726,7 +732,8 @@ final class EngineController: ObservableObject {
                         log("Output capture saved: \(width)x\(height)")
                     }
                 }
-            } else if let output = RenderGeometry.image(image, size: outputFrameSize),
+            } else if let output = RenderGeometry.image(image, size: outputFrameSize,
+                                                        sampling: sessionSamplingAlgorithm),
                       let png = NSBitmapImageRep(cgImage: output).representation(using: .png, properties: [:]) {
                 try png.write(to: URL(fileURLWithPath: "\(dir)/aetherhost-output-\(tag).png"))
             }

@@ -505,7 +505,7 @@
 31b. [ ] **两处兼容小项待查**：`new DMMCloud()` 报 `Invalid argument count`；`new Zlib().version()` 报成员不存在（可能只是探针写法/注册方式差异）
 32. [ ] **内核后续：内存可观测（借鉴 `MemoryDesign.md`）**：分配头带 tag + `AllocTagScope` 标签栈，让"谁吃掉了内存"可回答；当前只有粗粒度 `engine_get_memory_stats`
 
-33. [ ] **产品 UI/设置完整对齐**：调查 P0 已完成；P1核心、P2集合/详情与四主题已接入，完整CUA/无障碍验收待补；P3a能力回退与P3b画布/输出已接入，P3c/P3d及P4–P7见 [实施计划](apple_host_ui_plan.md)。
+33. [ ] **产品 UI/设置完整对齐**：调查 P0 已完成；P1核心、P2集合/详情与四主题已接入，完整CUA/无障碍验收待补；P3a能力回退、P3b画布/输出与P3c采样已接入，P3d及P4–P7见 [实施计划](apple_host_ui_plan.md)。
 
 ## 变更记录
 
@@ -537,3 +537,13 @@
 - 实际 KAG3 30 秒 Metal direct smoke 通过：逻辑帧 640×480，输出 1440×1080；`leases_acquired=446`、`leases_submitted=446`、`leases_completed=446`、`leases_live=0`、`lease_failures=0`，三处 Metal RGB max diff=0。证据：`out/apple_host/evidence/ui-p3b-1080p-rerun/kag3/`。
 - CUA 使用 `/Users/colorcard/Aether/out/apple_host/derived/Build/Products/Debug/AetherHost.app` 验证设置页：渲染分类可见画布模式/输出分辨率，切换“适应显示”和“1080p”，保存后显示“设置已保存”，保存按钮禁用。
 - P3b 完成；下一阶段为 P3c 采样算法，P3d 调度仍待设计和验证。P3a 页面状态的历史待补不影响本轮 P3b CUA 证据。
+
+### 2026-10-12：UI P3c采样算法
+
+- 对照 Godot `main.gd` 确认 `smooth` 是 `linear` 兼容名，默认 `bicubic`；实现并命名对齐 nearest、linear、Catmull-Rom bicubic 4×4 与 Lanczos 半径 3。
+- `HostSettings` schema v4 新增 `upscaleAlgorithm`；v1/v2/v3 旧配置迁移为 linear，新安装默认 bicubic，保存时规范化 smooth；设置页提供五语言采样选择器和负载说明。
+- Metal shader 与软件 fallback 使用同一采样语义；输出中间纹理按尺寸/frame revision 管理，最终呈现不重复应用输出核；诊断记录有效算法。
+- `python3 tools/apple_host_settings_tests.py`通过，含 CPU/GPU 四核对照、迁移、输入/IME、真实引擎和 lease 清理；Debug 构建通过。
+- KAG3 30 秒 Metal direct smoke 四轮全部通过：`nearest`、`linear`、`bicubic`、`lanczos` 均无 RGB 差异、Metal bridge failures=0、lease failures=0、live=0。证据目录：`out/apple_host/evidence/ui-p3c-nearest/`、`ui-p3c-linear/`、`ui-p3c-bicubic/`、`ui-p3c-lanczos/`。
+- CUA 验证真实构建窗口渲染页显示四个采样选项，双三次可切换并显示设置已保存；测试后恢复线性偏好。
+- P3c 完成；下一阶段 P3d 调度，FPS 与模拟时间策略尚未开放。

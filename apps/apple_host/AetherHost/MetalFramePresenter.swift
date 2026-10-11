@@ -41,6 +41,11 @@ final class MetalFramePresenter: NSObject, MTKViewDelegate {
     private(set) var texture: MTLTexture?
     private var frameLease: AetherMetalFrameLease?
     var outputSize: CGSize = .zero
+    var samplingAlgorithm: SamplingAlgorithm = .bicubic {
+        didSet {
+            if oldValue != samplingAlgorithm { outputRevision = nil }
+        }
+    }
     private var outputTexture: MTLTexture?
     private var frameRevision: UInt64 = 0
     private var outputRevision: UInt64?
@@ -142,13 +147,79 @@ final class MetalFramePresenter: NSObject, MTKViewDelegate {
             const float2 uv[] = {float2(0, 0), float2(2, 0), float2(0, 2)};
             return {float4(p[id], 0, 1), uv[id]};
         }
-        fragment float4 frame_fragment(Vertex v [[stage_in]],
-                                       texture2d<float> frame [[texture(0)]]) {
+        float4 sample_point(texture2d<float> frame, float2 uv) {
+            constexpr sampler s(coord::normalized, address::clamp_to_edge,
+                                filter::nearest);
+            return frame.sample(s, clamp(uv, float2(0), float2(1)));
+        }
+        float4 sample_linear(texture2d<float> frame, float2 uv) {
             constexpr sampler s(coord::normalized, address::clamp_to_edge,
                                 filter::linear);
+            return frame.sample(s, clamp(uv, float2(0), float2(1)));
+        }
+        float4 cubic_weights(float v) {
+            float v2 = v * v;
+            float v3 = v2 * v;
+            return float4(-0.5 * v3 + v2 - 0.5 * v,
+                          1.5 * v3 - 2.5 * v2 + 1.0,
+                          -1.5 * v3 + 2.0 * v2 + 0.5 * v,
+                          0.5 * v3 - 0.5 * v2);
+        }
+        float4 sample_bicubic(texture2d<float> frame, float2 uv) {
+            float2 texel = 1.0 / float2(frame.get_width(), frame.get_height());
+            float2 coord = uv / texel - float2(0.5);
+            float2 base = floor(coord);
+            float2 fraction = fract(coord);
+            float4 weights_x = cubic_weights(fraction.x);
+            float4 weights_y = cubic_weights(fraction.y);
+            float4 color = float4(0);
+            for (int y = 0; y < 4; y++) {
+                for (int x = 0; x < 4; x++) {
+                    float2 sample_uv = (base + float2(float(x - 1), float(y - 1)) + float2(0.5)) * texel;
+                    color += sample_point(frame, sample_uv) * weights_x[x] * weights_y[y];
+                }
+            }
+            return float4(clamp(color.rgb, float3(0), float3(1)), 1);
+        }
+        float sinc(float value) {
+            float distance = abs(value);
+            if (distance < 0.0001) return 1.0;
+            return sin(3.14159265359 * distance) / (3.14159265359 * distance);
+        }
+        float lanczos_weight(float value) {
+            float distance = abs(value);
+            if (distance >= 3.0) return 0.0;
+            return sinc(distance) * sinc(distance / 3.0);
+        }
+        float4 sample_lanczos(texture2d<float> frame, float2 uv) {
+            float2 texel = 1.0 / float2(frame.get_width(), frame.get_height());
+            float2 coord = uv / texel - float2(0.5);
+            float2 base = floor(coord);
+            float2 fraction = fract(coord);
+            float4 color = float4(0);
+            float weight_sum = 0.0;
+            for (int y = -2; y <= 3; y++) {
+                for (int x = -2; x <= 3; x++) {
+                    float weight = lanczos_weight(float(x) - fraction.x) * lanczos_weight(float(y) - fraction.y);
+                    float2 sample_uv = (base + float2(float(x), float(y)) + float2(0.5)) * texel;
+                    color += sample_point(frame, sample_uv) * weight;
+                    weight_sum += weight;
+                }
+            }
+            color /= max(weight_sum, 0.0001);
+            return float4(clamp(color.rgb, float3(0), float3(1)), 1);
+        }
+        fragment float4 frame_fragment(Vertex v [[stage_in]],
+                                       texture2d<float> frame [[texture(0)]],
+                                       constant uint &algorithm [[buffer(0)]]) {
+            float4 tex;
+            if (algorithm == 0) tex = sample_point(frame, v.uv);
+            else if (algorithm == 2) tex = sample_bicubic(frame, v.uv);
+            else if (algorithm == 3) tex = sample_lanczos(frame, v.uv);
+            else tex = sample_linear(frame, v.uv);
             // Engine images use premultiplied RGBA. Composite on opaque black
             // without applying alpha again or introducing sRGB conversion.
-            return float4(frame.sample(s, v.uv).rgb, 1);
+            return float4(tex.rgb, 1);
         }
         """
         let library = try device.makeLibrary(source: source, options: nil)
@@ -234,17 +305,20 @@ final class MetalFramePresenter: NSObject, MTKViewDelegate {
                 if outputRevision != frameRevision {
                     // Both passes share the producer queue and the same command.
                     // Its completion retains the source lease and resized target.
-                    try encodeImage(source: texture, target: outputTexture, command: command, aspectFit: false)
+                    try encodeImage(source: texture, target: outputTexture, command: command,
+                                    aspectFit: false, sampling: samplingAlgorithm)
                     outputRevision = frameRevision
                     outputPassCount += 1
                 }
                 source = outputTexture
             }
         }
-        try encodeImage(source: source, target: target, command: command)
+        try encodeImage(source: source, target: target, command: command,
+                        sampling: outputTexture == nil ? samplingAlgorithm : .linear)
     }
 
-    private func encodeImage(source: MTLTexture?, target: MTLTexture, command: MTLCommandBuffer, aspectFit: Bool = true) throws {
+    private func encodeImage(source: MTLTexture?, target: MTLTexture, command: MTLCommandBuffer,
+                             aspectFit: Bool = true, sampling: SamplingAlgorithm) throws {
         let pass = MTLRenderPassDescriptor()
         pass.colorAttachments[0].texture = target
         pass.colorAttachments[0].loadAction = .clear
@@ -265,6 +339,8 @@ final class MetalFramePresenter: NSObject, MTKViewDelegate {
                 width: width, height: height, znear: 0, zfar: 1))
             encoder.setRenderPipelineState(pipeline)
             encoder.setFragmentTexture(texture, index: 0)
+            var algorithm = sampling.metalIndex
+            encoder.setFragmentBytes(&algorithm, length: MemoryLayout<UInt32>.size, index: 0)
             encoder.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 3)
         }
         encoder.endEncoding()

@@ -75,6 +75,8 @@ enum ShellLanguage: String, CaseIterable, Identifiable {
         "play": ["开始游玩", "開始遊玩", "Play", "プレイ", "플레이"],
         "back": ["返回游戏库", "返回遊戲庫", "Back to Library", "ライブラリに戻る", "라이브러리로 돌아가기"],
         "backHelp": ["返回后游戏会停止，请先在游戏内保存进度。", "返回後遊戲會停止，請先在遊戲內儲存進度。", "Returning stops the game. Save your progress in the game first.", "戻るとゲームが終了します。先にゲーム内でセーブしてください。", "돌아가면 게임이 종료됩니다. 먼저 게임 내에서 저장하세요."],
+        "restart": ["重新启动游戏", "重新啟動遊戲", "Restart Game", "ゲームを再起動", "게임 다시 시작"],
+        "restartHelp": ["重新启动会停止当前游戏会话。请先在游戏内保存进度。", "重新啟動會停止目前遊戲工作階段。請先在遊戲內儲存進度。", "Restarting stops the current game session. Save your progress in the game first.", "再起動すると現在のゲームセッションを終了します。先にゲーム内でセーブしてください。", "다시 시작하면 현재 게임 세션이 종료됩니다. 먼저 게임 내에서 저장하세요."],
         "cancel": ["取消", "取消", "Cancel", "キャンセル", "취소"],
         "continue": ["继续游玩", "繼續遊玩", "Keep Playing", "プレイを続ける", "계속 플레이"],
         "settings": ["设置", "設定", "Settings", "設定", "설정"],

@@ -18,6 +18,7 @@ final class ShellModel: ObservableObject {
     @Published var renameError: String?
     @Published var removeGame: LibraryGame?
     @Published var confirmReturn = false { didSet { syncGameInput() } }
+    @Published var confirmRestart = false { didSet { syncGameInput() } }
     @Published var showSettings = false { didSet { syncGameInput() } }
     @Published var showGameTextEntry = false { didSet { syncGameInput() } }
     @Published var showVirtualControls: Bool { didSet {
@@ -30,6 +31,7 @@ final class ShellModel: ObservableObject {
     @Published var translationModelPath: String { didSet {
         UserDefaults.standard.set(translationModelPath, forKey: preferencePrefix + "translationModel")
     } }
+    @Published private(set) var isFullscreen = false
     private let preferencePrefix: String
     private var libraryAvailable = true
     private var fullscreenBeforeGame: Bool?
@@ -77,7 +79,7 @@ final class ShellModel: ObservableObject {
     }
 
     private func syncGameInput() {
-        let suspended = showSettings || confirmReturn || showGameTextEntry
+        let suspended = showSettings || confirmReturn || confirmRestart || showGameTextEntry
         engine.platformDialogs.setPresentationAllowed(!suspended)
         engine.setInputSuspended(suspended)
     }
@@ -86,6 +88,7 @@ final class ShellModel: ObservableObject {
     var selectedGame: LibraryGame? { games.first { $0.id == selection } }
     var canImport: Bool { libraryAvailable && !isImporting && activeGame == nil && activeVideo == nil }
     var canPlay: Bool { !isImporting && activeGame == nil && activeVideo == nil && selectedGame != nil }
+    var canRestartGame: Bool { activeGame != nil && activeVideo == nil && !engine.runtimeMovieActive }
     var canEditCover: Bool { canImport && selectedGame != nil }
 
     func coverImage(for game: LibraryGame) -> NSImage? {
@@ -173,9 +176,17 @@ final class ShellModel: ObservableObject {
 
     func play() {
         guard canPlay, let game = selectedGame else { return }
+        startGame(game, fullscreenBefore: windowIsFullscreen)
+    }
+
+    private func startGame(_ game: LibraryGame, fullscreenBefore: Bool) {
         let path = repository.gameURL(game).path
-        guard FileManager.default.fileExists(atPath: path) else { error = text("missing"); return }
-        fullscreenBeforeGame = windowIsFullscreen
+        guard FileManager.default.fileExists(atPath: path) else {
+            error = text("missing")
+            fullscreenBeforeGame = nil
+            return
+        }
+        fullscreenBeforeGame = fullscreenBefore
         engine.prepareDiagnostics(gamePath: path, title: game.displayTitle)
         // Applied by initializeEngine() before the game opens; the target
         // language follows the interface language, as in the Godot shell.
@@ -184,6 +195,7 @@ final class ShellModel: ObservableObject {
         guard engine.initializeEngine(renderer: renderer), engine.openAndRun(gamePath: path) else {
             error = engine.failureMessage
             engine.shutdown()
+            fullscreenBeforeGame = nil
             return
         }
         activeGame = game
@@ -193,6 +205,16 @@ final class ShellModel: ObservableObject {
             do { try repository.save(updated); games = updated }
             catch { self.error = friendlyError(error) }
         }
+    }
+
+    func restartActiveGame() {
+        guard canRestartGame, let game = activeGame else { return }
+        let fullscreen = windowIsFullscreen
+        showGameTextEntry = false
+        confirmRestart = false
+        engine.shutdown()
+        activeGame = nil
+        startGame(game, fullscreenBefore: fullscreen)
     }
 
     var canOpenVideo: Bool { !isImporting && activeGame == nil && activeVideo == nil }
@@ -227,8 +249,17 @@ final class ShellModel: ObservableObject {
         hostWindow?.styleMask.contains(.fullScreen) ?? false
     }
 
+    func refreshFullscreenState() {
+        isFullscreen = windowIsFullscreen
+    }
+
     func toggleFullscreen() {
         hostWindow?.toggleFullScreen(nil)
+    }
+
+    func revealActiveGame() {
+        guard let game = activeGame else { return }
+        NSWorkspace.shared.activateFileViewerSelecting([repository.gameURL(game)])
     }
 
     private var hostWindow: NSWindow? {
@@ -307,6 +338,7 @@ final class ShellModel: ObservableObject {
         engine.shutdown()
         activeGame = nil
         confirmReturn = false
+        confirmRestart = false
         if let shouldBeFullscreen = fullscreenBeforeGame {
             fullscreenBeforeGame = nil
             if windowIsFullscreen != shouldBeFullscreen { hostWindow?.toggleFullScreen(nil) }

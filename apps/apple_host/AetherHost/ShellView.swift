@@ -91,6 +91,13 @@ struct ContentView: View {
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.didResignActiveNotification)) { _ in
             engine.releaseVirtualKeys()
         }
+        .onReceive(NotificationCenter.default.publisher(for: NSWindow.didEnterFullScreenNotification)) { _ in
+            model.refreshFullscreenState()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: NSWindow.didExitFullScreenNotification)) { _ in
+            model.refreshFullscreenState()
+        }
+        .onAppear { model.refreshFullscreenState() }
         .modifier(PlatformDialogPresentation(dialogs: engine.platformDialogs, language: model.language))
         .sheet(isPresented: $model.showGameTextEntry) { GameTextEntryView(model: model) }
         .sheet(item: $model.renameGame) { _ in
@@ -121,6 +128,10 @@ struct ContentView: View {
             Button(model.text("back")) { model.returnToLibrary() }
             Button(model.text("continue"), role: .cancel) {}
         } message: { Text(model.text("backHelp")) }
+        .confirmationDialog(model.text("restart"), isPresented: $model.confirmRestart, titleVisibility: .visible) {
+            Button(model.text("restart"), role: .destructive) { model.restartActiveGame() }
+            Button(model.text("continue"), role: .cancel) {}
+        } message: { Text(model.text("restartHelp")) }
         .onChange(of: engine.failureMessage) { message in
             if let message, model.activeGame != nil {
                 model.returnToLibrary()
@@ -300,14 +311,22 @@ struct ShellCommands: Commands {
             Button(model.text("back")) { model.closeVideo() }.disabled(model.activeVideo == nil)
         }
         CommandMenu(model.text("game")) {
-            Button(model.text("fullscreen")) { model.toggleFullscreen() }
+            Toggle(model.text("fullscreen"), isOn: Binding(
+                get: { model.isFullscreen },
+                set: { _ in model.toggleFullscreen() }
+            ))
                 .keyboardShortcut("f", modifiers: [.command, .control])
                 .disabled(model.activeGame == nil)
-            Divider()
             Toggle(model.text("virtualControls"), isOn: $model.showVirtualControls)
+                .disabled(model.activeGame == nil)
             Button(model.text("enterText")) { model.showGameTextEntry = true }.disabled(model.activeGame == nil || model.engine.runtimeMovieActive)
+            Toggle(model.text("logs"), isOn: $model.showLogs).disabled(model.activeGame == nil)
+            Button(model.text("folder")) { model.revealActiveGame() }.disabled(model.activeGame == nil)
             Divider()
             Button(model.text("play")) { model.play() }.keyboardShortcut("r").disabled(!model.canPlay)
+            Button(model.text("restart")) { model.confirmRestart = true }
+                .keyboardShortcut("r", modifiers: [.command, .shift])
+                .disabled(!model.canRestartGame)
             Button(model.text("back")) { model.confirmReturn = true }.keyboardShortcut("l").disabled(model.activeGame == nil)
             Divider()
             Button(model.text("exportDiagnostics")) { model.exportDiagnostics() }.keyboardShortcut("d", modifiers: [.command, .shift])

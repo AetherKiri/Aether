@@ -29,6 +29,9 @@ add_subdirectory("${AETHERKIRI_KRKR_DIR}/tests/plugins"
 add_subdirectory("${AETHERKIRI_KRKR_DIR}/tests/tjs2"
     "${CMAKE_BINARY_DIR}/packages/AetherKrkr/tests/tjs2")
 add_subdirectory(unit-tests/engine_api)
+if(AETHERKIRI_INTERNAL_ENABLED)
+    aetherinternal_add_runtime_tests("${CMAKE_SOURCE_DIR}")
+endif()
 if(TARGET aether_siglus_runtime)
     add_subdirectory(unit-tests/siglus_runtime)
 endif()

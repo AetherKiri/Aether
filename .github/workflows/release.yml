@@ -123,6 +123,11 @@ jobs:
 
           cp "$android_apk" "$asset_dir/AetherKiri-${tag}-android.apk"
           cp "$ios_unsigned_ipa" "$asset_dir/AetherKiri-${tag}-ios-unsigned.ipa"
+          for arch in x86_64 arm64; do
+            linux_archive="$(find "$download_dir/linux-release-$arch-app" -type f -name '*.tar.gz' -print -quit)"
+            test -n "$linux_archive"
+            cp "$linux_archive" "$asset_dir/AetherKiri-${tag}-linux-$arch.tar.gz"
+          done
           if [[ -n "$ios_app_store_ipa" ]]; then
             cp "$ios_app_store_ipa" "$asset_dir/AetherKiri-${tag}-ios-app-store.ipa"
           fi

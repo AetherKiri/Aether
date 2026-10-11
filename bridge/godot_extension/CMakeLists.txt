@@ -250,6 +250,12 @@ if(IOS)
         list(APPEND AETHERKIRI_IOS_ARCHIVES
             "$<TARGET_FILE:aether_minori_runtime>")
     endif()
+    get_property(_private_runtime_targets GLOBAL
+        PROPERTY AETHERKIRI_PRIVATE_RUNTIME_TARGETS)
+    foreach(_runtime_target IN LISTS _private_runtime_targets)
+        list(APPEND AETHERKIRI_IOS_ARCHIVES
+            "$<TARGET_FILE:${_runtime_target}>")
+    endforeach()
     if(TARGET softpal_runtime)
         list(APPEND AETHERKIRI_IOS_ARCHIVES
             "$<TARGET_FILE:softpal_runtime>")
@@ -266,6 +272,11 @@ if(IOS)
             "${AETHERKIRI_MERGED_GODOT_ARCHIVE}"
             "$<TARGET_FILE:aether_kiri_godot>"
         VERBATIM)
+endif()
+get_property(_private_runtime_targets GLOBAL
+    PROPERTY AETHERKIRI_PRIVATE_RUNTIME_TARGETS)
+if(_private_runtime_targets)
+    target_link_libraries(aether_kiri_godot PRIVATE ${_private_runtime_targets})
 endif()
 if(TARGET aether_rfvp_runtime)
     target_link_libraries(aether_kiri_godot PRIVATE aether_rfvp_runtime)

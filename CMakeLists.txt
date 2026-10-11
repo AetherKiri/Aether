@@ -118,6 +118,8 @@ option(AETHERKIRI_ENABLE_SIGLUS
        "enable the bundled siglus_rs runtime (requires a Rust toolchain)" ON)
 option(AETHERKIRI_ENABLE_MINORI
        "enable the independent Rust Minori runtime" ON)
+option(AETHERKIRI_ENABLE_BGI
+       "enable the optional private BGI/Ethornell provider" ON)
 option(AETHERKIRI_ENABLE_CODE_OBFUSCATION
        "obfuscate private Internal translation units in release builds" OFF)
 set(AETHERKIRI_OBFUSCATOR_PLUGIN "" CACHE FILEPATH
@@ -167,13 +169,15 @@ if(AETHERKIRI_ENABLE_INTERNAL)
     find_package(AetherInternal CONFIG QUIET
         NO_DEFAULT_PATH)
     if(AetherInternal_FOUND)
-        if(NOT AETHERINTERNAL_PACKAGE_API_VERSION EQUAL 8 OR
+        if(NOT AETHERINTERNAL_PACKAGE_API_VERSION EQUAL 9 OR
            NOT AETHERINTERNAL_REQUIRED_MOTIONPLAYER_API_VERSION EQUAL
                AETHERKIRI_MOTIONPLAYER_BACKEND_API_VERSION OR
            NOT AETHERINTERNAL_REQUIRED_LIVE2D_HOST_API_VERSION EQUAL
                AETHERKIRI_LIVE2D_HOST_API_VERSION OR
            NOT AETHERINTERNAL_REQUIRED_FRAME_EFFECT_HOST_API_VERSION EQUAL
                AETHERKIRI_FRAME_EFFECT_HOST_API_VERSION OR
+           NOT COMMAND aetherinternal_add_runtime_providers OR
+           NOT COMMAND aetherinternal_add_runtime_tests OR
            NOT COMMAND aetherinternal_extend_motionplayer OR
            NOT COMMAND aetherinternal_extend_psbfile OR
            NOT COMMAND aetherinternal_extend_legacy_plugins OR
@@ -310,6 +314,9 @@ endif()
 if(AETHERKIRI_ENABLE_MINORI AND BUILD_GODOT_EXTENSION AND
     (LINUX OR APPLE OR ANDROID OR EMSCRIPTEN))
     add_subdirectory(${AETHERKIRI_MINORI_DIR})
+endif()
+if(AETHERKIRI_INTERNAL_ENABLED)
+    aetherinternal_add_runtime_providers("${CMAKE_CURRENT_SOURCE_DIR}")
 endif()
 if(AETHERKIRI_ENABLE_RFVP)
     add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/bridge/rfvp_runtime)

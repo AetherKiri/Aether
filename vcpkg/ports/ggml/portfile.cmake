@@ -9,10 +9,10 @@ if(DEFINED ENV{SOURCE_DATE_EPOCH})
 endif()
 set(ENV{SOURCE_DATE_EPOCH} "1")
 
-set(_aether_overlay_port_dir "${CURRENT_PORT_DIR}")
-set(CURRENT_PORT_DIR "${VCPKG_ROOT_DIR}/ports/ggml")
-include("${VCPKG_ROOT_DIR}/ports/ggml/portfile.cmake")
-set(CURRENT_PORT_DIR "${_aether_overlay_port_dir}")
+# Keep the upstream recipe and patches aligned with our 0.11.1 manifest.
+# Source: microsoft/vcpkg at 9e593bb18ea69cc5095e012465dcd675a822ed0d.
+# A fresh vcpkg checkout may contain a newer recipe with a different hash.
+include("${CMAKE_CURRENT_LIST_DIR}/upstream-portfile.cmake")
 
 if(_aether_had_source_date_epoch)
     set(ENV{SOURCE_DATE_EPOCH} "${_aether_source_date_epoch}")

@@ -263,6 +263,14 @@ function(aetherkiri_add_siglus_rs imported_target)
     # runtime is still being wired behind the stub provider.
     set(SIGLUS_RUSTFLAGS "-C panic=abort")
 
+    if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+        # This host also links Minori's independently built Rust staticlib.
+        # Thin LTO folds std objects into Siglus archive members that the final
+        # link must extract, duplicating Minori's std definitions. Keep these
+        # members separate so the ELF linker selects one copy of each symbol.
+        list(APPEND SIGLUS_PATH_PREFIX "CARGO_PROFILE_RELEASE_LTO=off")
+    endif()
+
     add_custom_target(siglus_rs_prepare_workspace
         COMMAND ${CMAKE_COMMAND}
             -DSIGLUS_RS_SRC=${SIGLUS_RS_ROOT}

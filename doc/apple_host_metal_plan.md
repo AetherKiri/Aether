@@ -437,3 +437,8 @@ direct/deferred 各做正序与反序 30 秒 profile；direct 的 completion p50
 deferred 各有 5 个。Apple Host 的呈现行数约 57.87/s，受 60Hz 窗口节奏限制；Godot probe
 是 uncapped wall-clock FPS，二者统计口径不同。因此本次只确认 direct 相对旧 Apple Host
 路径约 74--75% 的 completion p50 降低，不把它表述为相对 Godot native 的 FPS 提升。
+
+随后使用仓库内 `.devtools/godot/Godot.app` 重新导出 macOS Debug app 后复测，Godot native
+probe 为 `119.36 FPS`；同轮 Apple Host direct/deferred completion p50 为 `1.396/5.353 ms`，
+超 16.6ms 样本为 `0/5`。重建没有改变结论边界：direct 的优势已在 Apple Host 内部复现，
+但仍没有同一调度口径下的 Godot native 端到端 FPS A/B。

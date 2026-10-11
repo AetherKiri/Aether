@@ -368,6 +368,12 @@
   Godot native 的端到端 FPS 提升。证据目录：`out/apple_host/evidence/godot-native-ab-20261011/`
   与 `godot-native-ab-20261011-reverse/`。
 
+- 随后用仓库内 `.devtools/godot/Godot.app` 重新导出 macOS Debug app，并以重建产物复测：
+  Godot native 为 `119.36 FPS`（`godot_native_gpu_presented`，`rd_gpu=1`）；同轮 Apple Host
+  deferred/direct 呈现样本为 `57.27/57.87 s^-1`，completion p50 为 `5.353/1.396 ms`，
+  p95 为 `7.491/2.484 ms`，最大值为 `33.809/9.459 ms`，超 16.6ms 为 `5/0`。证据目录：
+  `out/apple_host/evidence/godot-native-rebuilt-ab-20261011/`。
+
 ## 下一步队列
 
 ### 性能基准隔离补充

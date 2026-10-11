@@ -3,6 +3,37 @@ extends SceneTree
 const MAIN_SCRIPT := preload("res://scripts/main.gd")
 const ACCESS_POLICY := preload("res://scripts/app_access_policy.gd")
 
+class CoffeePlayer:
+    extends RefCounted
+
+    var requested_products: Array[String] = []
+
+    func iap_refresh_entitlement(product_id: String) -> int:
+        requested_products.append(product_id)
+        return 1
+
+class SoftPalAccessApp:
+    extends "res://scripts/main.gd"
+
+    var enforce_beta_access := true
+    var launched := false
+    var denied := false
+
+    func _game_runtime_kind(_path: String) -> String:
+        return RUNTIME_SOFTPAL
+
+    func _beta_access_enforcement_enabled(_platform_name: String = "") -> bool:
+        return enforce_beta_access
+
+    func _iap_supported_platform() -> bool:
+        return true
+
+    func _start_selected_game_after_entitlements() -> void:
+        launched = true
+
+    func _show_system_alert(_message: String, _title: String = "Aether") -> void:
+        denied = true
+
 var failures := 0
 
 # Assertions are stripped from Release exports; keep these checks active there.
@@ -59,6 +90,7 @@ func _initialize() -> void:
     _expect(not app.modal_layer.visible)
     _expect(not app._runtime_requires_beta_access(app.RUNTIME_ONSCRIPTER))
     _expect(app._runtime_requires_beta_access(app.RUNTIME_MINORI))
+    _expect(app._runtime_requires_beta_access(app.RUNTIME_SOFTPAL))
     _expect(not app._runtime_requires_beta_access(app.RUNTIME_KIRIKIRI))
     # CatSystem2 is a released runtime and must not enter the coffee-only
     # entitlement path.  WA2 remains the explicitly provider-gated runtime.
@@ -91,7 +123,38 @@ func _initialize() -> void:
 
     settings_action.free()
     app.modal_layer.free()
+    app.ui_motion.free()
     app.free()
+    _check_softpal_launch_access()
     if failures == 0:
         print("IAP_CATALOG_LIMIT_OK")
     quit(1 if failures else 0)
+
+func _check_softpal_launch_access() -> void:
+    # Exercise the launch/entitlement round trip without StoreKit or a game.
+    # The platform matrix above verifies which builds enforce this flow.
+    for enforce in [true, false]:
+        for entitled in [true, false]:
+            var app = SoftPalAccessApp.new()
+            var coffee_player = CoffeePlayer.new()
+            app.player = coffee_player
+            app.selected_game = {"path": "/games/softpal"}
+            app.enforce_beta_access = enforce
+            app.iap_coffee_state = {"entitled": entitled}
+            app._start_selected_game_after_iap()
+            if enforce:
+                _expect(coffee_player.requested_products == ["com.aether.coffee"])
+                _expect(not app.launched)
+                _expect(app.iap_pending_beta_check_id > 0)
+                _expect(not app.iap_pending_beta_game.is_empty())
+                app._complete_runtime_beta_check()
+                _expect(app.launched == entitled)
+                _expect(app.denied == (not entitled))
+                _expect(app.iap_pending_beta_game.is_empty())
+            else:
+                _expect(coffee_player.requested_products.is_empty())
+                _expect(app.launched)
+                _expect(not app.denied)
+            app.player = null
+            app.ui_motion.free()
+            app.free()

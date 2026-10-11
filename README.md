@@ -57,9 +57,10 @@ and **Debug CPU** is a diagnostic fallback only.
 - Manual compatibility notes for tested titles in
   [`doc/verified_games.md`](doc/verified_games.md).
 
-In distributed builds, OnsRuntime, A Runtime, and C Runtime are beta features
-that require an active 30-day coffee entitlement. Debug builds keep these
-runtimes unrestricted for compatibility development and testing.
+In iOS and macOS Release distribution builds, Minori, SoftPal, and the
+WHITE ALBUM2 (Leaf TtT / WA2) runtime require an active 30-day coffee
+entitlement. ONScripterYuri, Artemis, and CatSystem2 are generally available.
+Debug builds and Android/Linux releases do not enforce this coffee requirement.
 
 ## Platform Support
 

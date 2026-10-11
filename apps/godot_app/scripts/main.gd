@@ -1825,6 +1825,7 @@ const KEY_MOD_CONTROL := 0x04
 const RUNTIME_KIRIKIRI := "kirikiri"
 const RUNTIME_ONSCRIPTER := "onscripter"
 const RUNTIME_MINORI := "minori"
+const RUNTIME_SOFTPAL := "softpal"
 const RUNTIME_CATSYSTEM2 := "catsystem2"
 const RUNTIME_SIGLUS := "siglus"
 const RUNTIME_WA2 := "wa2"
@@ -10723,8 +10724,8 @@ func _game_runtime_kind(path: String) -> String:
         # before falling back to the legacy KiriKiri host.
         if int(player.probe_runtime(RUNTIME_CATSYSTEM2, root)) > 0:
             return RUNTIME_CATSYSTEM2
-        if int(player.probe_runtime("softpal", root)) > 0:
-            return "softpal"
+        if int(player.probe_runtime(RUNTIME_SOFTPAL, root)) > 0:
+            return RUNTIME_SOFTPAL
         if int(player.probe_runtime(RUNTIME_MINORI, root)) > 0:
             return RUNTIME_MINORI
         # Leaf TtT installs (WHITE ALBUM2) ship .pak archives that carry no
@@ -11378,10 +11379,10 @@ func _start_selected_game_after_iap() -> void:
         _deny_runtime_beta_launch()
 
 func _runtime_requires_beta_access(runtime_kind: String) -> bool:
-    # ONS and Artemis are generally available. Minori remains gated by an
+    # ONS and Artemis are generally available. Minori and SoftPal require an
     # active coffee entitlement in iOS and macOS distribution builds.
     # Provider-backed runtimes such as WA2 are checked separately.
-    return runtime_kind == RUNTIME_MINORI
+    return runtime_kind in [RUNTIME_MINORI, RUNTIME_SOFTPAL]
 
 func _beta_access_enforcement_enabled(platform_name: String = "") -> bool:
     var effective_platform := platform_name if not platform_name.is_empty() else OS.get_name()

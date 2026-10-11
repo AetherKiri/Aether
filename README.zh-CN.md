@@ -51,8 +51,9 @@ Godot App Shell
 - 提供 smoke、渲染、交互、性能与手动复现 probe 脚本。
 - 已验证游戏清单见 [`doc/verified_games.zh-CN.md`](doc/verified_games.zh-CN.md)。
 
-分布式构建中，OnsRuntime、A Runtime 与 C Runtime 为 beta 功能，需要有效的
-30 天 coffee entitlement；Debug 构建保持不受限，便于兼容性开发与测试。
+iOS 和 macOS 的 Release 分发构建中，Minori、SoftPal 与 WHITE ALBUM2
+（Leaf TtT / WA2）运行时需要有效的 30 天咖啡权益。ONScripterYuri、Artemis
+和 CatSystem2 已普遍开放。Debug 构建及 Android/Linux 发布构建不执行该咖啡限制。
 
 ## 平台支持
 

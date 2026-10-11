@@ -38,6 +38,8 @@ final class EngineController: ObservableObject {
     }
 
     private let session = AetherEngineSession()
+    var hostSettings = HostSettings()
+    private(set) var appliedSettingOptions: [String: String] = [:]
     private var timer: Timer?
     private var lastStartupState: UInt32 = 0
     private var pointerEventCount = 0
@@ -285,6 +287,15 @@ final class EngineController: ObservableObject {
             // unconditionally in engine_open_game; same behavior as the Godot
             // host (games live in managed copies there). Parity accepted.
             try session.setOption("console_log_file", value: "0")
+            appliedSettingOptions = [:]
+            for option in hostSettings.engineOptions {
+                do {
+                    try session.setOption(option.key, value: option.value)
+                    appliedSettingOptions[option.key] = option.value
+                    log("settings option \(option.key)=\(option.value) applied")
+                }
+                catch { log("settings option \(option.key) rejected: \(error.localizedDescription)") }
+            }
             if textTranslationAvailable {
                 applyTranslationOptions()
             } else {

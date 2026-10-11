@@ -445,3 +445,17 @@ RenderSession generation 校验，关闭或下一次会话不会接受旧 token�
 frame publication sink 的函数指针使用 acquire/release 原子存取，reset、重新安装和
 绘制线程通过同一封装同步。回调在 frame mutex 释放后执行，不形成引擎状态锁与
 MetalBridge 锁的锁序依赖；sink 是进程常驻函数，不捕获已销毁的宿主 session。
+
+### Settings regression tests
+
+After building the Debug Apple host and its native libraries, run:
+
+```sh
+python3 tools/apple_host_settings_tests.py
+```
+
+The runner builds an isolated command-line target using the real `ShellModel`
+(and HostKit), then checks migration, draft isolation, navigation, save/discard,
+write failures, engine option acknowledgements, bundled documents and the
+five-language catalog. It uses temporary library roots. Native window-close,
+application-quit and layout verification still require CUA.

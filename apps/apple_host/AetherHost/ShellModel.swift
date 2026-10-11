@@ -6,6 +6,15 @@ enum ShellRoute: String {
     case library
     case videos
     case dashboard
+    case settings
+    var textKey: String {
+        switch self {
+        case .library: return "library"
+        case .videos: return "videoLibrary"
+        case .dashboard: return "dashboard"
+        case .settings: return "settings"
+        }
+    }
 }
 
 struct LibraryVideo: Codable, Identifiable, Equatable {
@@ -28,7 +37,7 @@ final class ShellModel: ObservableObject {
     @Published var selection: UUID?
     @Published var selectedVideoID: UUID?
     @Published var activeGame: LibraryGame?
-    @Published var route: ShellRoute = .library
+    @Published private(set) var route: ShellRoute = .library
     @Published var isImporting = false
     @Published var error: String?
     @Published var renameGame: LibraryGame?
@@ -37,18 +46,25 @@ final class ShellModel: ObservableObject {
     @Published var removeGame: LibraryGame?
     @Published var confirmReturn = false { didSet { syncGameInput() } }
     @Published var confirmRestart = false { didSet { syncGameInput() } }
-    @Published var showSettings = false { didSet { syncGameInput() } }
+    @Published var showSettings = false { didSet {
+        if showSettings && settingsDraft == nil { settingsDraft = SettingsDraft(settings) }
+        syncGameInput()
+    } }
     @Published var showGameTextEntry = false { didSet { syncGameInput() } }
     @Published var showVirtualControls: Bool { didSet {
-        UserDefaults.standard.set(showVirtualControls, forKey: preferencePrefix + "virtualControls")
         if !showVirtualControls { engine.releaseVirtualKeys() }
     } }
-    @Published var language: ShellLanguage { didSet { UserDefaults.standard.set(language.rawValue, forKey: preferencePrefix + "language") } }
-    @Published var renderer: String { didSet { UserDefaults.standard.set(renderer, forKey: preferencePrefix + "renderer") } }
-    @Published var showLogs: Bool { didSet { UserDefaults.standard.set(showLogs, forKey: preferencePrefix + "logs") } }
-    @Published var translationModelPath: String { didSet {
-        UserDefaults.standard.set(translationModelPath, forKey: preferencePrefix + "translationModel")
-    } }
+    @Published var language: ShellLanguage
+    @Published var renderer: String
+    @Published var showLogs: Bool
+    @Published var translationModelPath: String
+    @Published private(set) var settings: HostSettings
+    @Published var settingsDraft: SettingsDraft?
+    @Published var confirmDiscardSettings = false
+    private var pendingSettingsAction: (() -> Void)?
+    private var pendingSettingsCancel: (() -> Void)?
+    private let settingsStore: SettingsStore
+    @Published private(set) var settingsAvailable = true
     @Published private(set) var isFullscreen = false
     private let preferencePrefix: String
     private var libraryAvailable = true
@@ -59,16 +75,26 @@ final class ShellModel: ObservableObject {
     init() {
         let defaults = UserDefaults.standard
         preferencePrefix = ProcessInfo.processInfo.environment["AETHER_HOST_LIBRARY_ROOT"].map { $0 + "::shell." } ?? "shell."
-        language = ShellLanguage(rawValue: defaults.string(forKey: preferencePrefix + "language") ?? "") ?? .system
-        renderer = defaults.string(forKey: preferencePrefix + "renderer") == "metal" ? "metal" : "software"
-        showLogs = defaults.bool(forKey: preferencePrefix + "logs")
-        showVirtualControls = defaults.bool(forKey: preferencePrefix + "virtualControls")
-        translationModelPath = defaults.string(forKey: preferencePrefix + "translationModel") ?? ""
         let root = ProcessInfo.processInfo.environment["AETHER_HOST_LIBRARY_ROOT"].map {
             URL(fileURLWithPath: $0, isDirectory: true)
         } ?? FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
             .appendingPathComponent("Aether", isDirectory: true)
         repository = GameLibrary(root: root)
+        settingsStore = SettingsStore(url: root.appendingPathComponent("settings.json"))
+        let initial: HostSettings
+        var settingsFailure: Error?
+        do { initial = try settingsStore.load(defaults: defaults, legacyPrefix: preferencePrefix) }
+        catch { initial = HostSettings(); settingsFailure = error }
+        settings = initial
+        language = initial.language
+        renderer = initial.renderer
+        showLogs = initial.logs
+        showVirtualControls = initial.virtualControls
+        translationModelPath = initial.translationModelPath
+        if let settingsFailure {
+            settingsAvailable = false
+            self.error = text("settingsLoadFailed") + "\n" + settingsFailure.localizedDescription
+        }
         do {
             games = try repository.backfillDefaultCovers(try repository.load())
             selection = games.first?.id
@@ -100,6 +126,72 @@ final class ShellModel: ObservableObject {
         return error.localizedDescription
     }
 
+    var settingsDirty: Bool { settingsDraft?.isDirty ?? false }
+    var canSaveSettings: Bool { settingsAvailable && settingsDirty }
+
+    @discardableResult
+    func saveSettings() -> Bool {
+        guard settingsAvailable, let draft = settingsDraft else { return false }
+        if draft.value.translationModelPath != settings.translationModelPath,
+           !draft.value.translationModelPath.isEmpty,
+           let failure = TranslationSettings.validate(path: draft.value.translationModelPath) {
+            error = translationFailureText(failure)
+            return false
+        }
+        do {
+            try settingsStore.save(draft.value)
+            settings = draft.value
+            language = settings.language
+            renderer = settings.renderer
+            showVirtualControls = settings.virtualControls
+            showLogs = settings.logs
+            translationModelPath = settings.translationModelPath
+            settingsDraft = SettingsDraft(settings)
+            return true
+        } catch { self.error = error.localizedDescription; return false }
+    }
+
+    func requestLeaveSettings(action: @escaping () -> Void, cancel: (() -> Void)? = nil) {
+        if confirmDiscardSettings { cancel?(); return }
+        if settingsDirty {
+            pendingSettingsAction = action
+            pendingSettingsCancel = cancel
+            confirmDiscardSettings = true
+        } else { action() }
+    }
+
+    func resolveSettingsNavigation(save: Bool) {
+        if save && !saveSettings() { cancelSettingsNavigation(); return }
+        let action = pendingSettingsAction
+        settingsDraft = SettingsDraft(settings)
+        pendingSettingsAction = nil
+        pendingSettingsCancel = nil
+        confirmDiscardSettings = false
+        action?()
+    }
+
+    func cancelSettingsNavigation() {
+        pendingSettingsCancel?()
+        pendingSettingsAction = nil
+        pendingSettingsCancel = nil
+        confirmDiscardSettings = false
+    }
+
+    func requestRoute(_ destination: ShellRoute) {
+        guard canNavigateShell, destination != route else { return }
+        requestLeaveSettings { [weak self] in
+            guard let self else { return }
+            self.settingsDraft = nil
+            self.route = destination
+            self.showSettings = destination == .settings
+        }
+    }
+
+    func openSettings() {
+        guard canOpenSettings else { return }
+        requestRoute(.settings)
+    }
+
     private func syncGameInput() {
         let suspended = showSettings || confirmReturn || confirmRestart || showGameTextEntry
         engine.platformDialogs.setPresentationAllowed(!suspended)
@@ -113,7 +205,7 @@ final class ShellModel: ObservableObject {
     var canRestartGame: Bool { activeGame != nil && activeVideo == nil && !engine.runtimeMovieActive }
     var canEditCover: Bool { canImport && selectedGame != nil }
     var canNavigateShell: Bool { activeGame == nil && activeVideo == nil && !isImporting }
-    var canOpenSettings: Bool { activeGame == nil && activeVideo == nil }
+    var canOpenSettings: Bool { activeGame == nil && activeVideo == nil && !isImporting }
 
     func coverImage(for game: LibraryGame) -> NSImage? {
         guard let url = repository.coverURL(game), FileManager.default.fileExists(atPath: url.path) else { return nil }
@@ -163,20 +255,20 @@ final class ShellModel: ObservableObject {
 
     func showLibrary() {
         guard canNavigateShell else { return }
-        route = .library
+        requestRoute(.library)
         refreshLibrary()
     }
 
     func showVideos() {
         guard canNavigateShell else { return }
-        route = .videos
+        requestRoute(.videos)
         videos = loadVideos()
         selectedVideoID = videos.first?.id
     }
 
     func showDashboard() {
         guard canNavigateShell else { return }
-        route = .dashboard
+        requestRoute(.dashboard)
     }
 
     private func loadVideos() -> [LibraryVideo] {
@@ -264,7 +356,13 @@ final class ShellModel: ObservableObject {
 
     func play() {
         guard canPlay, let game = selectedGame else { return }
-        startGame(game, fullscreenBefore: windowIsFullscreen)
+        requestLeaveSettings { [weak self] in
+            guard let self else { return }
+            self.settingsDraft = nil
+            self.showSettings = false
+            self.route = .library
+            self.startGame(game, fullscreenBefore: self.windowIsFullscreen)
+        }
     }
 
     private func startGame(_ game: LibraryGame, fullscreenBefore: Bool) {
@@ -278,6 +376,9 @@ final class ShellModel: ObservableObject {
         engine.prepareDiagnostics(gamePath: path, title: game.displayTitle)
         // Applied by initializeEngine() before the game opens; the target
         // language follows the interface language, as in the Godot shell.
+        engine.hostSettings = settings
+        showVirtualControls = settings.virtualControls
+        showLogs = settings.logs
         engine.translationSettings = translationSettings
         engine.translationTargetLanguage = TranslationSettings.targetLanguageCode(for: language)
         guard engine.initializeEngine(renderer: renderer), engine.openAndRun(gamePath: path) else {
@@ -321,12 +422,17 @@ final class ShellModel: ObservableObject {
 
     func openVideo(_ url: URL) {
         guard canOpenVideo else { return }
-        if media.open(url) {
-            activeVideo = url
-            route = .videos
-            rememberVideo(url)
-            if let subtitleError = media.subtitleError { error = subtitleError; media.subtitleError = nil }
-        } else { error = media.failureMessage }
+        requestLeaveSettings { [weak self] in
+            guard let self else { return }
+            self.settingsDraft = nil
+            self.showSettings = false
+            self.route = .videos
+            if self.media.open(url) {
+                self.activeVideo = url
+                self.rememberVideo(url)
+                if let subtitleError = self.media.subtitleError { self.error = subtitleError; self.media.subtitleError = nil }
+            } else { self.error = self.media.failureMessage }
+        }
     }
 
     func closeVideo() {
@@ -415,14 +521,15 @@ final class ShellModel: ObservableObject {
             engine.log("translation model rejected")
             return message
         }
-        translationModelPath = path
+        guard settingsDraft != nil else { return nil }
+        settingsDraft?.value.translationModelPath = path
         engine.log("translation model selected (\(TranslationSettings.displayName(for: path)))")
         return nil
     }
 
     func clearTranslationModel() {
-        guard !translationModelPath.isEmpty else { return }
-        translationModelPath = ""
+        guard settingsDraft != nil else { return }
+        settingsDraft?.value.translationModelPath = ""
         engine.log("translation model cleared")
     }
 

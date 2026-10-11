@@ -23,6 +23,14 @@ targets:
     sources:
       - path: AetherHost
       - path: HostKit
+      - path: ../godot_app/legal
+        buildPhase: resources
+      - path: ../../LICENSE
+        buildPhase: resources
+      - path: ../../COPYING.iOS
+        buildPhase: resources
+      - path: ../../THIRD_PARTY_LICENSES.md
+        buildPhase: resources
       - path: ../godot_app/assets/fonts/aetherkiri-runtime-cjk.otf
         buildPhase: resources
       - path: ../godot_app/assets/fonts/NotoSerifCJK-OFL.txt

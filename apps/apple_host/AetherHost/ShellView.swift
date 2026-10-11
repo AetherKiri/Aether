@@ -79,9 +79,10 @@ struct ContentView: View {
                         case .library: library
                         case .videos: videoLibrary
                         case .dashboard: dashboard
+                        case .settings: ShellSettingsView(model: model)
                         }
                     }
-                    .navigationTitle(model.text(model.route == .library ? "library" : model.route == .videos ? "videoLibrary" : "dashboard"))
+                    .navigationTitle(model.text(model.route.textKey))
                 }
                 .navigationSplitViewStyle(.balanced)
             }
@@ -89,7 +90,7 @@ struct ContentView: View {
         .environment(\.locale, model.language.locale)
         .toolbar {
             ToolbarItemGroup {
-                if model.activeGame == nil && model.activeVideo == nil {
+                if model.activeGame == nil && model.activeVideo == nil && model.route != .settings {
                     if model.route == .videos {
                         Button { model.chooseVideo() } label: {
                             Label(model.text("importVideo"), systemImage: "plus")
@@ -107,7 +108,7 @@ struct ContentView: View {
                     }.help(model.text("refresh")).disabled(!model.canNavigateShell)
                     if model.isImporting { ProgressView().controlSize(.small) }
                 }
-                Button { model.showSettings = true } label: {
+                Button { model.openSettings() } label: {
                     Label(model.text("settings"), systemImage: "gearshape")
                 }.help(model.text("settings")).disabled(!model.canOpenSettings)
             }
@@ -145,7 +146,11 @@ struct ContentView: View {
             Button(model.text("remove"), role: .destructive) { model.removeSelectedGame() }
             Button(model.text("cancel"), role: .cancel) { model.removeGame = nil }
         } message: { Text(model.text("removeHelp")) }
-        .sheet(isPresented: $model.showSettings) { ShellSettingsView(model: model) }
+        .confirmationDialog(model.text("unsavedTitle"), isPresented: $model.confirmDiscardSettings, titleVisibility: .visible) {
+            Button(model.text("saveLeave")) { model.resolveSettingsNavigation(save: true) }
+            Button(model.text("discardLeave"), role: .destructive) { model.resolveSettingsNavigation(save: false) }
+            Button(model.text("continueEditing"), role: .cancel) { model.cancelSettingsNavigation() }
+        } message: { Text(model.text("unsavedBody")) }
         .alert(model.text("error"), isPresented: Binding(
             get: { model.error != nil }, set: { if !$0 { model.error = nil } }
         )) {
@@ -175,10 +180,10 @@ struct ContentView: View {
         }, set: { value in
             guard model.canNavigateShell, let value else { return }
             if value.hasPrefix("game:"), let id = UUID(uuidString: String(value.dropFirst(5))) {
-                model.selection = id; model.route = .library
+                model.selection = id; model.requestRoute(.library)
             } else if value.hasPrefix("video:"), let id = UUID(uuidString: String(value.dropFirst(6))) {
-                model.selectedVideoID = id; model.route = .videos
-            } else if let route = ShellRoute(rawValue: value) { model.route = route }
+                model.selectedVideoID = id; model.requestRoute(.videos)
+            } else if let route = ShellRoute(rawValue: value) { model.requestRoute(route) }
         })
     }
 
@@ -188,6 +193,7 @@ struct ContentView: View {
                 Label(model.text("dashboard"), systemImage: "house").tag("dashboard")
                 Label(model.text("library"), systemImage: "books.vertical").tag("library")
                 Label(model.text("videoLibrary"), systemImage: "film").tag("videos")
+                Label(model.text("settings"), systemImage: "gearshape").tag("settings")
             }
             if model.route == .library {
                 Section(model.text("library")) {
@@ -385,72 +391,6 @@ private struct DashboardStat: View {
     }
 }
 
-struct ShellSettingsView: View {
-    @ObservedObject var model: ShellModel
-    var body: some View {
-        VStack(alignment: .leading, spacing: 20) {
-            Text(model.text("settings")).font(.title2.bold())
-            Form {
-                Picker(model.text("language"), selection: $model.language) {
-                    ForEach(ShellLanguage.allCases) { Text($0.name).tag($0) }
-                }
-                Picker(model.text("renderer"), selection: $model.renderer) {
-                    Text(model.text("software")).tag("software")
-                    Text(model.text("metal")).tag("metal")
-                }
-                Text(model.text("rendererHelp")).font(.caption).foregroundStyle(.secondary)
-                Toggle(model.text("virtualControls"), isOn: $model.showVirtualControls)
-                Text(model.text("virtualControlsHelp")).font(.caption).foregroundStyle(.secondary)
-                Toggle(model.text("logs"), isOn: $model.showLogs)
-            }
-            if model.translationAvailable { translationSection }
-            Button(model.text("exportDiagnostics")) { model.exportDiagnostics() }
-            Divider()
-            Text(model.text("storage")).font(.headline)
-            Text(model.repository.root.path).font(.caption).textSelection(.enabled)
-            HStack {
-                Spacer()
-                Button(model.text("ok")) { model.showSettings = false }.keyboardShortcut(.defaultAction)
-            }
-        }
-        .padding(24).frame(width: 460)
-        .onAppear { if model.translationAvailable { model.engine.refreshTranslationStatus() } }
-    }
-
-    /// Local-model translation, mirroring the Godot shell's compatibility row:
-    /// a model path plus the interface language as the translation target.
-    private var translationSection: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text(model.text("translationModel")).font(.headline)
-            Text(model.text("translationModelHelp")).font(.caption).foregroundStyle(.secondary)
-            HStack {
-                Button(model.text("translationModelSelect")) { model.chooseTranslationModel() }
-                if model.translationSettings.isConfigured {
-                    Button(model.text("translationModelClear")) { model.clearTranslationModel() }
-                }
-            }
-            if model.translationSettings.isConfigured {
-                Text(model.text("translationModelSelected") + ": " + model.translationSettings.displayName)
-                    .font(.caption).textSelection(.enabled)
-                Text(model.text("translationModelClearDesc")).font(.caption2).foregroundStyle(.secondary)
-            }
-            Text(model.text("translationTargetHelp")).font(.caption2).foregroundStyle(.secondary)
-            Text(model.engine.translationStatus.summary(model.text))
-                .font(.caption)
-                .foregroundStyle(model.engine.translationStatus.state == .failed ? .red : .secondary)
-            translationDetail
-        }
-    }
-
-    @ViewBuilder
-    private var translationDetail: some View {
-        let detail = model.engine.translationStatus.detail(model.text)
-        if !detail.isEmpty {
-            Text(detail).font(.caption2).foregroundStyle(.secondary).textSelection(.enabled)
-        }
-    }
-}
-
 struct ShellCommands: Commands {
     @ObservedObject var model: ShellModel
     var body: some Commands {
@@ -461,7 +401,7 @@ struct ShellCommands: Commands {
             Button(model.text("refresh")) { model.refreshLibrary() }.keyboardShortcut("r").disabled(!model.canNavigateShell)
         }
         CommandGroup(replacing: .appSettings) {
-            Button(model.text("settings") + "…") { model.showSettings = true }
+            Button(model.text("settings") + "…") { model.openSettings() }
                 .keyboardShortcut(",").disabled(!model.canOpenSettings)
         }
         CommandGroup(after: .sidebar) {

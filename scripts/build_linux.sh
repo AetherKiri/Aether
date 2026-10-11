@@ -16,12 +16,17 @@ fi
 
 GODOT_APP_DIR="$PROJECT_ROOT/apps/godot_app"
 GODOT_TEMPLATE_VERSION="${GODOT_TEMPLATE_VERSION:-4.7.2.stable}"
-GODOT_EXPORT_TEMPLATE="${GODOT_EXPORT_TEMPLATE:-$GODOT_TEMPLATE_DIR/$GODOT_TEMPLATE_VERSION/linux_${BUILD_TYPE_LOWER}.x86_64}"
+GODOT_EXPORT_TEMPLATE="${GODOT_EXPORT_TEMPLATE:-$GODOT_TEMPLATE_DIR/$GODOT_TEMPLATE_VERSION/linux_${BUILD_TYPE_LOWER}.${AETHERKIRI_LINUX_ARCH}}"
 CMAKE_CONFIG_PRESET="Linux ${BUILD_TYPE_CAP} Config"
 CMAKE_BUILD_PRESET="Linux ${BUILD_TYPE_CAP} Build"
 CMAKE_BUILD_DIR="$PROJECT_ROOT/out/linux/$BUILD_TYPE_LOWER"
 GODOT_BIN_DIR="$GODOT_APP_DIR/bin/linux/$BUILD_TYPE_LOWER"
 GODOT_EXPORT_PRESET="Linux ${BUILD_TYPE_CAP}"
+if [[ "$AETHERKIRI_LINUX_ARCH" == "arm64" ]]; then
+    CMAKE_CONFIG_PRESET="Linux arm64 ${BUILD_TYPE_CAP} Config"
+    CMAKE_BUILD_PRESET="Linux arm64 ${BUILD_TYPE_CAP} Build"
+    GODOT_EXPORT_PRESET="Linux arm64 ${BUILD_TYPE_CAP}"
+fi
 GODOT_EXPORT_MODE="--export-debug"
 PARALLEL_JOBS="${JOBS:-8}"
 if [[ "$BUILD_TYPE_LOWER" == "release" ]]; then
@@ -88,6 +93,10 @@ ensure_godot_project_cache() {
 
 ensure_godot_project_cache
 command -v cmake >/dev/null
+command -v patchelf >/dev/null || {
+    echo "Error: patchelf is required to bundle Linux runtime libraries." >&2
+    exit 1
+}
 NINJA_BIN="${CMAKE_MAKE_PROGRAM:-$(command -v ninja || command -v ninja-build || true)}"
 if [[ -z "$NINJA_BIN" ]]; then
     echo "Error: Ninja is required for the Linux build." >&2
@@ -97,7 +106,7 @@ export CMAKE_MAKE_PROGRAM="$NINJA_BIN"
 
 stage_vcpkg_runtime_libraries() {
     local source_library="$1"
-    local runtime_dir="$CMAKE_BUILD_DIR/vcpkg_installed/x64-linux/lib"
+    local runtime_dir="$CMAKE_BUILD_DIR/vcpkg_installed/$AETHERKIRI_LINUX_TRIPLET/lib"
     local resolved_library
 
     if [[ ! -d "$runtime_dir" ]]; then
@@ -133,6 +142,15 @@ stage_all_vcpkg_runtime_libraries() {
     done
 }
 
+relocate_linux_libraries() {
+    local library
+    # RUNPATH applies only to a library's direct dependencies. Each bundled
+    # dependency needs its own relative search path for the entire chain.
+    while IFS= read -r -d '' library; do
+        patchelf --set-rpath '$ORIGIN' "$library"
+    done < <(find "$1" -maxdepth 1 -type f -name 'lib*.so*' -print0)
+}
+
 verify_linux_libraries() {
     local library
     local missing=0
@@ -157,7 +175,7 @@ strip_linux_runtime_symbols() {
     while IFS= read -r -d '' binary; do
         binaries+=("$binary")
     done < <(find "$@" -maxdepth 1 -type f \
-        \( -name 'AetherKiri.x86_64' -o -name '*.so' -o -name '*.so.*' \) \
+        \( -name "AetherKiri.$AETHERKIRI_LINUX_ARCH" -o -name '*.so' -o -name '*.so.*' \) \
         -print0)
     if ((${#binaries[@]})); then
         "$PROJECT_ROOT/tools/strip_runtime_symbols.sh" elf "${binaries[@]}"
@@ -195,6 +213,7 @@ mkdir -p "$GODOT_BIN_DIR"
 cp -f "$CMAKE_BUILD_DIR/abi/libengine_api.so" "$GODOT_BIN_DIR/"
 cp -f "$CMAKE_BUILD_DIR/bridge/godot_extension/libaether_kiri_godot.so" "$GODOT_BIN_DIR/"
 stage_all_vcpkg_runtime_libraries
+relocate_linux_libraries "$GODOT_BIN_DIR"
 if [[ "$BUILD_TYPE_LOWER" == "release" ]]; then
     echo "==> Removing non-runtime symbols from staged Linux Release libraries"
     strip_linux_runtime_symbols "$GODOT_BIN_DIR"
@@ -220,7 +239,7 @@ echo "==> Validating GDExtension in headless Godot"
 "$GODOT_BIN" --headless --path "$GODOT_APP_DIR" --editor --quit
 
 GODOT_EXPORT_DIR="$PROJECT_ROOT/out/godot/linux/$BUILD_TYPE_LOWER"
-GODOT_EXPORT_APP="$GODOT_EXPORT_DIR/AetherKiri.x86_64"
+GODOT_EXPORT_APP="$GODOT_EXPORT_DIR/AetherKiri.$AETHERKIRI_LINUX_ARCH"
 mkdir -p "$GODOT_EXPORT_DIR"
 echo "==> Exporting Linux Godot application"
 "$GODOT_BIN" --headless --path "$GODOT_APP_DIR" \

@@ -3,6 +3,10 @@
 
 # Enforce LF for vcpkg patch files, as patch.exe on Windows fails with CRLF line endings
 *.patch text eol=lf
+*.diff text eol=lf
+
+# Unified diffs retain a single context prefix on blank lines.
+vcpkg/ports/ggml/*.diff whitespace=-blank-at-eol
 
 # Product game archives are binary assets.
 *.xp3 -text

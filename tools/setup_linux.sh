@@ -7,7 +7,7 @@ source "$TOOLS_DIR/linux_env.sh"
 
 GODOT_RELEASE="${GODOT_RELEASE:-4.7.2-stable}"
 GODOT_TEMPLATE_VERSION="${GODOT_TEMPLATE_VERSION:-4.7.2.stable}"
-GODOT_ARCHIVE="$AETHERKIRI_CACHE_DIR/downloads/Godot_v${GODOT_RELEASE}_linux.x86_64.zip"
+GODOT_ARCHIVE="$AETHERKIRI_CACHE_DIR/downloads/Godot_v${GODOT_RELEASE}_linux.${AETHERKIRI_LINUX_ARCH}.zip"
 GODOT_TEMPLATE_ARCHIVE="$AETHERKIRI_CACHE_DIR/downloads/Godot_v${GODOT_RELEASE}_export_templates.tpz"
 GODOT_DIR="$AETHERKIRI_CACHE_DIR/godot"
 GODOT_TEMPLATE_DEST="$GODOT_TEMPLATE_DIR/$GODOT_TEMPLATE_VERSION"
@@ -45,15 +45,16 @@ install_arch_tool() {
 install_arch_tool zip zip
 install_arch_tool nasm nasm
 install_arch_tool yasm yasm
+install_arch_tool patchelf patchelf
 
-require_commands=(cmake ninja c++ git curl unzip zip pkg-config)
+require_commands=(cmake ninja c++ git curl unzip zip pkg-config patchelf)
 missing_commands=()
 for command_name in "${require_commands[@]}"; do
     command -v "$command_name" >/dev/null 2>&1 || missing_commands+=("$command_name")
 done
 if ((${#missing_commands[@]})); then
     printf 'Missing required commands: %s\n' "${missing_commands[*]}" >&2
-    echo "Arch Linux: sudo pacman -S --needed base-devel cmake ninja pkgconf git curl unzip zip ccache nasm yasm" >&2
+    echo "Arch Linux: sudo pacman -S --needed base-devel gcc-objc cmake ninja pkgconf git curl unzip zip ccache nasm yasm patchelf" >&2
     exit 1
 fi
 
@@ -74,14 +75,15 @@ if [[ ! -x "$GODOT_BIN" ]]; then
     if [[ ! -f "$GODOT_ARCHIVE" ]]; then
         curl --fail --location --retry 5 --retry-delay 3 --retry-all-errors \
             -o "$GODOT_ARCHIVE" \
-            "https://github.com/godotengine/godot-builds/releases/download/${GODOT_RELEASE}/Godot_v${GODOT_RELEASE}_linux.x86_64.zip"
+            "https://github.com/godotengine/godot-builds/releases/download/${GODOT_RELEASE}/Godot_v${GODOT_RELEASE}_linux.${AETHERKIRI_LINUX_ARCH}.zip"
     fi
     unzip -tq "$GODOT_ARCHIVE"
     unzip -oq "$GODOT_ARCHIVE" -d "$GODOT_DIR"
     chmod +x "$GODOT_BIN"
 fi
 
-if [[ ! -f "$GODOT_TEMPLATE_DEST/linux_debug.x86_64" ]]; then
+if [[ ! -f "$GODOT_TEMPLATE_DEST/linux_debug.${AETHERKIRI_LINUX_ARCH}" ||
+      ! -f "$GODOT_TEMPLATE_DEST/linux_release.${AETHERKIRI_LINUX_ARCH}" ]]; then
     if [[ -f "$GODOT_TEMPLATE_ARCHIVE" ]] && ! unzip -tq "$GODOT_TEMPLATE_ARCHIVE" >/dev/null; then
         rm -f "$GODOT_TEMPLATE_ARCHIVE"
     fi
@@ -102,4 +104,4 @@ echo "Cache root: $AETHERKIRI_CACHE_DIR"
 echo "Godot: $GODOT_BIN"
 echo "vcpkg: $VCPKG_ROOT/vcpkg"
 echo "Optional compiler caching: install host ccache with: sudo pacman -S --needed ccache"
-echo "Missing system-only packages can be installed with: sudo pacman -S --needed base-devel cmake ninja pkgconf git curl unzip zip nasm yasm"
+echo "Missing system-only packages can be installed with: sudo pacman -S --needed base-devel gcc-objc cmake ninja pkgconf git curl unzip zip nasm yasm patchelf"

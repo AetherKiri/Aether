@@ -21,6 +21,9 @@ extern "C" engine_result_t aetherkiri_minori_register_runtime_provider();
 #if defined(AETHERKIRI_WITH_SOFTPAL)
 extern "C" void AetherSoftPalRegisterRuntime(void);
 #endif
+#if defined(AETHERKIRI_INTERNAL_RUNTIME_PROVIDERS)
+void RegisterAetherInternalRuntimeProviders();
+#endif
 #if defined(__APPLE__)
 #include "apple_external_texture.h"
 #if !defined(IOS_ENABLED)
@@ -34,7 +37,9 @@ extern "C" void AetherSoftPalRegisterRuntime(void);
 #include <godot_cpp/classes/audio_effect_panner.hpp>
 #include <godot_cpp/classes/audio_server.hpp>
 #include <godot_cpp/classes/audio_stream_ogg_vorbis.hpp>
+#include <godot_cpp/classes/audio_stream_mp3.hpp>
 #include <godot_cpp/classes/audio_stream_player.hpp>
+#include <godot_cpp/classes/audio_stream_wav.hpp>
 #include <godot_cpp/classes/confirmation_dialog.hpp>
 #include <godot_cpp/classes/engine.hpp>
 #include <godot_cpp/classes/font.hpp>
@@ -9543,7 +9548,13 @@ public:
 
     bool is_game_open() const { return game_open_; }
 
-    bool frame_rendered_this_tick() const { return frame_rendered_this_tick_; }
+    bool frame_rendered_this_tick() const {
+        // Platform-request movies advance independently of the provider's
+        // scene serial. Keep presenting their frames, and present once more
+        // after playback ends to replace the movie with the provider frame.
+        return frame_rendered_this_tick_ || runtime_movie_active_ ||
+               frame_texture_backend_ == "minori_movie";
+    }
 
     String get_last_result() const { return last_result_; }
 
@@ -9697,6 +9708,7 @@ public:
         runtime_presentation_sprite_.Tick(get_viewport(), runtime_delta_seconds);
         update_runtime_save_slot_layout();
         update_runtime_audio_fades(runtime_delta_seconds);
+        update_runtime_audio_completion();
         update_runtime_movie();
         update_last_error(result);
         return result;
@@ -10289,7 +10301,12 @@ public:
         request.target_height = frame_effect_target_height_ > 0
             ? frame_effect_target_height_
             : frame_source_height_;
-        request.frame_serial = frame_texture_serial_;
+        // Host-decoded movie frames have their own serial. Reusing the
+        // provider's idle scene serial would freeze enhancement's cached
+        // output even though the movie texture is being updated.
+        request.frame_serial = runtime_movie_active_ &&
+                frame_texture_backend_ == "minori_movie"
+            ? media_frame_serial_ : frame_texture_serial_;
         request.mode = frame_effect_mode_;
         request.custom_chain = frame_effect_custom_chain_;
 
@@ -10471,6 +10488,9 @@ public:
         }
 
         if (frame_texture_.is_valid() && desc.frame_serial == frame_texture_serial_) {
+            if (frame_texture_backend_ == "minori_movie") {
+                frame_texture_backend_ = "image_texture";
+            }
             return frame_texture_;
         }
 
@@ -11659,7 +11679,7 @@ private:
                 runtime_presentation_sprite_.Update(this, get_viewport(), value);
             } else if (name == "minori_save_slots") {
                 update_runtime_save_slots(value);
-            } else if (name == "minori_message") {
+            } else if (name == "minori_message" || name == "runtime_message") {
                 if (value.is_empty()) {
                     clear_runtime_message();
                 } else {
@@ -11669,18 +11689,29 @@ private:
                             fields[0], fields[1], fields[2].to_int(), fields[3]);
                     } else {
                         clear_runtime_message();
-                        UtilityFunctions::printerr("Malformed Minori message payload");
+                        UtilityFunctions::printerr("Malformed runtime message payload");
                     }
                 }
-            } else if (name == "minori_message_reveal") {
+            } else if (name == "minori_message_reveal" || name == "runtime_message_reveal") {
                 reveal_runtime_message();
-            } else if (name == "minori_audio") {
+            } else if (name == "runtime_audio_pause") {
                 const PackedStringArray fields = value.split("\t");
-                if (fields.size() != 8 || !update_runtime_audio(fields)) {
-                    submit_platform_response(
-                        name, "result=error&message=audio_playback_failed");
+                if (fields.size() == 2) {
+                    const int64_t slot = fields[0].to_int();
+                    if (slot >= 0 && slot < static_cast<int64_t>(runtime_audio_players_.size()) &&
+                        runtime_audio_players_[slot] != nullptr) {
+                        runtime_audio_players_[slot]->set_stream_paused(fields[1] == "1");
+                    }
                 }
-            } else if (name == "minori_movie") {
+            } else if (name == "minori_audio" || name == "runtime_audio" || name == "runtime_audio_gain") {
+                const PackedStringArray fields = value.split("\t");
+                if (fields.size() != 8 || !update_runtime_audio(fields, name == "runtime_audio_gain", name != "minori_audio")) {
+                    submit_platform_response(
+                        name == "runtime_audio_gain" ? String("runtime_audio") : name,
+                        "result=error&slot=" + (fields.is_empty() ? String("-1") : fields[0]) +
+                        "&message=audio_playback_failed");
+                }
+            } else if (name == "minori_movie" || name == "runtime_movie") {
                 const PackedStringArray fields = value.split("\t");
                 if (fields.size() != 6 || !media_open(fields[0]) ||
                     media_play() != ENGINE_RESULT_OK) {
@@ -11692,6 +11723,10 @@ private:
                     runtime_movie_active_ = true;
                     runtime_movie_skippable_ = fields[5] == "1";
                     update_runtime_movie();
+                }
+            } else if (name == "minori_movie_stop" || name == "runtime_movie_stop") {
+                if (runtime_movie_active_) {
+                    finish_runtime_movie("result=cancel");
                 }
             } else {
                 emit_signal("platform_request", name, value);
@@ -11971,20 +12006,48 @@ private:
     void update_runtime_audio_fades(double delta_seconds) {
         RuntimeAudioFade *fades[] = {&runtime_bgm_fade_in_, &runtime_bgm_fade_out_};
         for (RuntimeAudioFade *fade : fades) {
-            if (fade->player == nullptr) continue;
-            fade->elapsed_ms += delta_seconds * 1000.0;
-            while (fade->elapsed_ms >= fade->interval_ms && fade->level != fade->target) {
-                fade->elapsed_ms -= fade->interval_ms;
-                fade->level += fade->step;
-                if ((fade->step > 0 && fade->level > fade->target) ||
-                    (fade->step < 0 && fade->level < fade->target)) {
-                    fade->level = fade->target;
-                }
-                fade->player->set_volume_linear(
-                    static_cast<float>(fade->level) / 100.0f);
-            }
-            if (fade->level == fade->target) finish_runtime_audio_fade(*fade);
+            advance_runtime_audio_fade(*fade, delta_seconds);
         }
+        for (RuntimeAudioFade &fade : runtime_audio_gain_fades_) {
+            advance_runtime_audio_fade(fade, delta_seconds);
+        }
+    }
+
+    void advance_runtime_audio_fade(RuntimeAudioFade &value, double delta_seconds) {
+        RuntimeAudioFade *fade = &value;
+        if (fade->player == nullptr) return;
+        fade->elapsed_ms += delta_seconds * 1000.0;
+        while (fade->elapsed_ms >= fade->interval_ms && fade->level != fade->target) {
+            fade->elapsed_ms -= fade->interval_ms;
+            fade->level += fade->step;
+            if ((fade->step > 0 && fade->level > fade->target) ||
+                (fade->step < 0 && fade->level < fade->target)) {
+                fade->level = fade->target;
+            }
+            fade->player->set_volume_linear(
+                static_cast<float>(fade->level) / 100.0f);
+        }
+        if (fade->level == fade->target) finish_runtime_audio_fade(*fade);
+    }
+
+    void set_runtime_audio_gain_fade(size_t slot, AudioStreamPlayer *player,
+                                    int32_t target, int32_t duration_ms, bool stop_after = false) {
+        RuntimeAudioFade &fade = runtime_audio_gain_fades_[slot];
+        if (fade.stop_after) finish_runtime_audio_fade(fade);
+        fade = RuntimeAudioFade{};
+        if (player == nullptr) return;
+        const int32_t level = std::clamp(
+            static_cast<int32_t>(std::lround(player->get_volume_linear() * 100.0f)), 0, 100);
+        if (duration_ms < 1 || target == level) {
+            fade = RuntimeAudioFade{player, 0.0, 0.0, level, target, 0, stop_after};
+            finish_runtime_audio_fade(fade);
+            return;
+        }
+        // The generic audio service uses a total fade duration; the legacy path uses a
+        // per-percentage interval. Keep those timing contracts independent.
+        fade = RuntimeAudioFade{player,
+            static_cast<double>(duration_ms) / std::abs(target - level), 0.0,
+            level, target, target > level ? 1 : -1, stop_after};
     }
 
     void fade_out_runtime_bgm(int32_t interval_ms) {
@@ -12012,15 +12075,58 @@ private:
                              level, 0, -1, true};
     }
 
-    bool update_runtime_audio(const PackedStringArray &fields) {
+    void update_runtime_audio_completion() {
+        for (size_t slot = 0; slot < runtime_audio_completion_pending_.size(); ++slot) {
+            AudioStreamPlayer *player = runtime_audio_players_[slot];
+            if (!runtime_audio_completion_pending_[slot] || player == nullptr || player->is_playing()) continue;
+            runtime_audio_completion_pending_[slot] = false;
+            submit_platform_response("runtime_audio", "result=complete&slot=" + String::num_int64(slot));
+        }
+    }
+
+    bool update_runtime_audio(const PackedStringArray &fields, bool gain_only = false, bool multi_slot_audio = false) {
         if (fields.size() != 8) return false;
         const int32_t slot = fields[0].to_int();
+        if (multi_slot_audio && slot >= 0 && slot < 512 && slot >= static_cast<int32_t>(runtime_audio_players_.size())) {
+            runtime_audio_players_.resize(slot + 1, nullptr);
+            runtime_audio_names_.resize(slot + 1);
+            runtime_audio_buses_.resize(slot + 1);
+            runtime_audio_completion_pending_.resize(slot + 1, false);
+            runtime_audio_gain_fades_.resize(slot + 1);
+        }
         if (slot < 0 || slot >= static_cast<int32_t>(runtime_audio_players_.size())) {
             return false;
         }
+        if (gain_only) {
+            AudioStreamPlayer *player = runtime_audio_players_[slot];
+            if (player == nullptr) return true;
+            const int32_t target = static_cast<int32_t>(std::clamp<int64_t>(fields[3].to_int(), 0, 100));
+            set_runtime_audio_gain_fade(slot, player, target, fields[6].to_int());
+            AudioServer *server = AudioServer::get_singleton();
+            if (server != nullptr) {
+                const int32_t bus = server->get_bus_index(runtime_audio_buses_[slot]);
+                if (bus >= 0) {
+                    Ref<AudioEffectPanner> panner = server->get_bus_effect(bus, 0);
+                    if (panner.is_valid()) panner->set_pan(static_cast<float>(fields[4].to_int()) / 100.0f);
+                }
+            }
+            return true;
+        }
+        runtime_audio_completion_pending_[slot] = false;
         const int32_t fade_in = fields[6].to_int();
         const int32_t fade_out = fields[7].to_int();
-        if (slot == 0 && runtime_audio_players_[0] != nullptr &&
+        if (multi_slot_audio) {
+            RuntimeAudioFade &fade = runtime_audio_gain_fades_[slot];
+            if (fade.stop_after) finish_runtime_audio_fade(fade);
+            fade = RuntimeAudioFade{};
+            if (fields[1].is_empty()) {
+                set_runtime_audio_gain_fade(slot, runtime_audio_players_[slot], 0, fade_out, true);
+                runtime_audio_players_[slot] = nullptr;
+                runtime_audio_names_[slot] = String();
+                return true;
+            }
+        }
+        if (!multi_slot_audio && slot == 0 && runtime_audio_players_[0] != nullptr &&
             runtime_audio_names_[0] == fields[5]) {
             AudioStreamPlayer *player = runtime_audio_players_[0];
             runtime_bgm_fade_in_ = RuntimeAudioFade{};
@@ -12038,12 +12144,13 @@ private:
             }
             return true;
         }
-        if (slot == 0) {
+        if (!multi_slot_audio && slot == 0) {
             fade_out_runtime_bgm(fade_out);
             runtime_audio_names_[0] = String();
             if (fields[1].is_empty()) return true;
         }
         AudioStreamPlayer *&player = runtime_audio_players_[slot];
+        if (player == nullptr && fields[1].is_empty()) return true;
         AudioServer *server = AudioServer::get_singleton();
         if (runtime_audio_buses_[slot].is_empty()) {
             if (server == nullptr) return false;
@@ -12065,14 +12172,34 @@ private:
         }
         player->stop();
         if (fields[1].is_empty()) return true;
-        Ref<AudioStreamOggVorbis> stream =
-            AudioStreamOggVorbis::load_from_file(fields[1]);
+        Ref<AudioStream> stream;
+        const String audio_path = fields[1].to_lower();
+        if (audio_path.ends_with(".wav")) {
+            Ref<AudioStreamWAV> wav = AudioStreamWAV::load_from_file(fields[1]);
+            if (wav.is_valid()) {
+                wav->set_loop_mode(fields[2] == "1" ? AudioStreamWAV::LOOP_FORWARD
+                                                    : AudioStreamWAV::LOOP_DISABLED);
+                stream = wav;
+            }
+        } else if (audio_path.ends_with(".mp3")) {
+            Ref<AudioStreamMP3> mp3 = AudioStreamMP3::load_from_file(fields[1]);
+            if (mp3.is_valid()) {
+                mp3->set_loop(fields[2] == "1");
+                stream = mp3;
+            }
+        } else {
+            Ref<AudioStreamOggVorbis> ogg =
+                AudioStreamOggVorbis::load_from_file(fields[1]);
+            if (ogg.is_valid()) {
+                ogg->set_loop(fields[2] == "1");
+                stream = ogg;
+            }
+        }
         if (stream.is_null()) return false;
-        stream->set_loop(fields[2] == "1");
         player->set_stream(stream);
         const int32_t target_volume = std::clamp(
             static_cast<int32_t>(fields[3].to_int()), 0, 100);
-        const int32_t initial_volume = slot == 0 && fade_in >= 1 ? 0 : target_volume;
+        const int32_t initial_volume = (multi_slot_audio || slot == 0) && fade_in >= 1 ? 0 : target_volume;
         player->set_volume_linear(static_cast<float>(initial_volume) / 100.0f);
         const int32_t bus_index = server->get_bus_index(runtime_audio_buses_[slot]);
         Ref<AudioEffectPanner> panner = server->get_bus_effect(bus_index, 0);
@@ -12081,7 +12208,10 @@ private:
         }
         player->play();
         runtime_audio_names_[slot] = fields[5];
-        if (slot == 0 && initial_volume != target_volume) {
+        runtime_audio_completion_pending_[slot] = multi_slot_audio && fields[2] != "1";
+        if (multi_slot_audio && initial_volume != target_volume) {
+            set_runtime_audio_gain_fade(slot, player, target_volume, fade_in);
+        } else if (slot == 0 && initial_volume != target_volume) {
             runtime_bgm_fade_in_ = RuntimeAudioFade{
                 player, static_cast<double>(fade_in), 0.0, initial_volume,
                 target_volume, 1, false};
@@ -12596,11 +12726,13 @@ private:
     int32_t runtime_message_reveal_step_ = 0;
     int32_t runtime_message_reveal_total_steps_ = 0;
     std::vector<int32_t> runtime_message_reveal_schedule_;
-    std::array<AudioStreamPlayer *, 5> runtime_audio_players_{};
-    std::array<StringName, 5> runtime_audio_buses_{};
-    std::array<String, 5> runtime_audio_names_{};
+    std::vector<AudioStreamPlayer *> runtime_audio_players_ = std::vector<AudioStreamPlayer *>(5, nullptr);
+    std::vector<StringName> runtime_audio_buses_ = std::vector<StringName>(5);
+    std::vector<String> runtime_audio_names_ = std::vector<String>(5);
+    std::vector<bool> runtime_audio_completion_pending_ = std::vector<bool>(5, false);
     RuntimeAudioFade runtime_bgm_fade_in_{};
     RuntimeAudioFade runtime_bgm_fade_out_{};
+    std::vector<RuntimeAudioFade> runtime_audio_gain_fades_ = std::vector<RuntimeAudioFade>(5);
 };
 
 void InitializeAetherRuntime(ModuleInitializationLevel level) {
@@ -12620,6 +12752,9 @@ void InitializeAetherRuntime(ModuleInitializationLevel level) {
     if (aetherkiri_minori_register_runtime_provider() != ENGINE_RESULT_OK) {
         UtilityFunctions::printerr("Failed to register Minori runtime provider");
     }
+#endif
+#if defined(AETHERKIRI_INTERNAL_RUNTIME_PROVIDERS)
+    RegisterAetherInternalRuntimeProviders();
 #endif
 #if defined(AETHERKIRI_WITH_RFVP)
     aetherkiri::rfvp::RegisterRuntimeProvider();

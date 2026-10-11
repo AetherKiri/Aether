@@ -23,6 +23,8 @@ on:
     secrets:
       AETHERSECRET:
         required: false
+      AETHER_SOFTPAL_DEPLOY_KEY:
+        required: false
       AETHERID:
         required: false
       ANDROID_RELEASE_KEYSTORE_BASE64:
@@ -1009,3 +1011,237 @@ jobs:
         with:
           path: .ccache
           key: ${{ runner.os }}-macos-ccache-v2
+
+  linux:
+    name: Build Linux App (${{ matrix.arch }})
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: x86_64
+            runner: ubuntu-24.04
+            machine: x86_64
+            elf_machine: Advanced Micro Devices X86-64
+          - arch: arm64
+            runner: ubuntu-24.04-arm
+            machine: aarch64
+            elf_machine: AArch64
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: 'true'
+      AETHERKIRI_CACHE_DIR: ${{ github.workspace }}/.aetherkiri-cache
+      CCACHE_DIR: ${{ github.workspace }}/.ccache/linux
+      GODOT_RELEASE: 4.7.2-stable
+      GODOT_TEMPLATE_VERSION: 4.7.2.stable
+      VCPKG_MAX_CONCURRENCY: 2
+      CARGO_BUILD_JOBS: 2
+      CMAKE_C_COMPILER_LAUNCHER: ccache
+      CMAKE_CXX_COMPILER_LAUNCHER: ccache
+
+    steps:
+      - name: Verify native Linux runner
+        run: test "$(uname -m)" = '${{ matrix.machine }}'
+
+      - name: Checkout Repository
+        uses: actions/checkout@v7
+        with:
+          submodules: false
+          persist-credentials: false
+
+      - name: Initialize private runtime submodules
+        if: env.AETHERKIRI_WITH_INTERNAL == 'true'
+        env:
+          AETHER_INTERNAL_DEPLOY_KEY: ${{ secrets.AETHERSECRET }}
+          AETHER_SOFTPAL_DEPLOY_KEY: ${{ secrets.AETHER_SOFTPAL_DEPLOY_KEY }}
+        run: .github/scripts/initialize-private-runtime-submodules.sh
+
+      - name: Initialize public runtime packages
+        if: env.AETHERKIRI_WITH_INTERNAL != 'true'
+        run: |
+          git submodule update --init --depth 1 packages/OnscripterYuri
+          git submodule update --init --recursive --depth 1 packages/psdfile
+          git submodule update --init --depth 1 packages/AetherSiglus
+          git submodule update --init --depth 1 packages/AetherMinori
+          git submodule update --init --depth 1 packages/AetherKrkr
+
+      - name: Verify private runtime packages
+        if: env.AETHERKIRI_WITH_INTERNAL == 'true'
+        run: |
+          set -euo pipefail
+          test -f packages/AetherInternal/cmake/AetherInternalConfig.cmake
+          test -f packages/AetherSoftPal/cmake/AetherSoftPalConfig.cmake
+          for package in AetherInternal AetherSoftPal; do
+            test "$(git -C "packages/$package" rev-parse HEAD)" = \
+              "$(git rev-parse "HEAD:packages/$package")"
+          done
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install Build Systems
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            build-essential gobjc gobjc++ cmake ninja-build pkg-config autoconf autoconf-archive \
+            automake libtool gettext bison flex curl unzip zip zstd nasm yasm patchelf \
+            ccache libclang-dev libgl1-mesa-dev libglu1-mesa-dev \
+            libx11-dev libxrandr-dev libxinerama-dev libxcursor-dev libxi-dev \
+            libxext-dev libxfixes-dev libxrender-dev libwayland-dev libxkbcommon-dev \
+            libasound2-dev libpulse-dev libudev-dev libdbus-1-dev
+
+      - name: Restore ccache
+        id: restore-ccache
+        uses: actions/cache/restore@v6
+        with:
+          path: .ccache/linux
+          key: ${{ runner.os }}-linux-${{ matrix.arch }}-ccache-v1-${{ github.sha }}
+          restore-keys: |
+            ${{ runner.os }}-linux-${{ matrix.arch }}-ccache-
+
+      - name: Setup ccache config
+        run: |
+          ccache --max-size=400M
+          ccache --cleanup
+          ccache -z
+
+      - name: Restore vcpkg source cache
+        id: restore-vcpkg-downloads
+        uses: actions/cache/restore@v6
+        with:
+          path: .aetherkiri-cache/vcpkg-downloads
+          key: ${{ runner.os }}-linux-${{ matrix.arch }}-vcpkg-downloads-${{ hashFiles('vcpkg-configuration.json', 'vcpkg.json', 'vcpkg/ports/**', 'vcpkg/triplets/**') }}
+          restore-keys: |
+            ${{ runner.os }}-linux-${{ matrix.arch }}-vcpkg-downloads-
+
+      - name: Set up Linux build environment
+        run: |
+          tools/setup_linux.sh
+          source tools/linux_env.sh
+          for variable in VCPKG_ROOT VCPKG_DOWNLOADS VCPKG_DEFAULT_BINARY_CACHE \
+                          XDG_CACHE_HOME XDG_CONFIG_HOME XDG_DATA_HOME \
+                          GODOT_BIN GODOT_TEMPLATE_DIR; do
+            echo "$variable=${!variable}" >> "$GITHUB_ENV"
+          done
+          cache_mode=read
+          if [[ "$AETHERKIRI_VCPKG_CACHE_WRITE" == "true" ]]; then
+            cache_mode=readwrite
+          fi
+          echo "VCPKG_BINARY_SOURCES=clear;files,$VCPKG_DEFAULT_BINARY_CACHE,$cache_mode" >> "$GITHUB_ENV"
+
+      - name: Restore vcpkg binary cache
+        id: restore-vcpkg-binaries
+        uses: actions/cache/restore@v6
+        with:
+          path: .aetherkiri-cache/vcpkg-binaries
+          key: ${{ runner.os }}-linux-${{ matrix.arch }}-vcpkg-binaries-v1-${{ hashFiles('vcpkg-configuration.json', 'vcpkg.json', 'vcpkg/ports/**', 'vcpkg/triplets/**') }}-${{ github.sha }}
+          restore-keys: |
+            ${{ runner.os }}-linux-${{ matrix.arch }}-vcpkg-binaries-v1-${{ hashFiles('vcpkg-configuration.json', 'vcpkg.json', 'vcpkg/ports/**', 'vcpkg/triplets/**') }}-
+            ${{ runner.os }}-linux-${{ matrix.arch }}-vcpkg-binaries-v1-
+
+      - name: Set application release version
+        if: env.AETHERKIRI_RELEASE_VERSION != ''
+        run: |
+          release_build_number=$((AETHERKIRI_BUILD_NUMBER * 100 + AETHERKIRI_BUILD_ATTEMPT))
+          python3 .github/scripts/set-release-version.py \
+            "$AETHERKIRI_RELEASE_VERSION" \
+            --build-number "$release_build_number" \
+            --github-env "$GITHUB_ENV"
+
+      - name: Build Linux Release
+        run: |
+          ./build.sh linux release --jobs=2
+          if [[ "$AETHERKIRI_WITH_INTERNAL" == "true" ]]; then
+            grep -Fx 'AETHERKIRI_ENABLE_SOFTPAL_RUNTIME:BOOL=ON' \
+              out/linux/release/CMakeCache.txt
+            grep -Fq 'packages/AetherSoftPal/aether_runtime/provider/SoftPalRuntimeProvider.cpp' \
+              out/linux/release/compile_commands.json
+          fi
+
+      - name: Build Linux Debug
+        run: ./build.sh linux debug --jobs=2
+
+      - name: Run Linux access policy tests
+        run: |
+          timeout 60 "$GODOT_BIN" --headless --path apps/godot_app \
+            --script res://tests/iap_catalog_limit_test.gd \
+            2>&1 | tee "$RUNNER_TEMP/linux-access.log"
+          grep -Fx 'IAP_CATALOG_LIMIT_OK' "$RUNNER_TEMP/linux-access.log"
+
+      - name: Run private runtime unit tests
+        if: env.AETHERKIRI_WITH_INTERNAL == 'true'
+        run: |
+          cmake -S . -B out/linux/debug \
+            -D ENABLE_TESTS=ON -D VCPKG_MANIFEST_INSTALL=OFF
+          cmake --build out/linux/debug --parallel 2 \
+            --target bgi-runtime-vm bgi-runtime-provider
+          ctest --test-dir out/linux/debug/packages/AetherInternal/tests/bgi_runtime \
+            --no-tests=error --parallel 2
+
+      - name: Run OnscripterYuri Godot smoke test
+        env:
+          AETHERKIRI_SMOKE_GAME: ${{ github.workspace }}/tests/fixtures/onscripter_smoke
+        run: |
+          timeout 120 "$GODOT_BIN" --headless \
+            --path apps/godot_app --script res://scripts/smoke_test.gd
+
+      - name: Verify and package Linux applications
+        env:
+          LINUX_ARCH: ${{ matrix.arch }}
+          ELF_MACHINE: ${{ matrix.elf_machine }}
+        run: |
+          for build_type in release debug; do
+            app_dir="out/godot/linux/$build_type"
+            app="$app_dir/AetherKiri.$LINUX_ARCH"
+            test -x "$app"
+            test -f "$app_dir/libaether_kiri_godot.so"
+            test -f "$app_dir/libengine_api.so"
+            for binary in "$app" "$app_dir"/*.so*; do
+              readelf -h "$binary" | grep -F "$ELF_MACHINE"
+            done
+            log="$RUNNER_TEMP/linux-$build_type-startup.log"
+            timeout 60 "$app" --headless --quit-after 5 \
+              2>&1 | tee "$log"
+            if grep -E 'SCRIPT ERROR:|^ERROR:' "$log"; then
+              exit 1
+            fi
+            # Tar preserves executable permissions through artifact downloads.
+            tar -czf "out/godot/linux/Aether-linux-$LINUX_ARCH-$build_type.tar.gz" \
+              -C "$app_dir" .
+          done
+
+      - name: Upload Release App
+        uses: actions/upload-artifact@v7
+        with:
+          name: linux-release-${{ matrix.arch }}-app
+          path: out/godot/linux/Aether-linux-${{ matrix.arch }}-release.tar.gz
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Upload Debug App
+        uses: actions/upload-artifact@v7
+        with:
+          name: linux-debug-${{ matrix.arch }}-app
+          path: out/godot/linux/Aether-linux-${{ matrix.arch }}-debug.tar.gz
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: Save vcpkg source cache
+        if: always() && env.AETHERKIRI_VCPKG_CACHE_WRITE == 'true' && steps.restore-vcpkg-downloads.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v6
+        with:
+          path: .aetherkiri-cache/vcpkg-downloads
+          key: ${{ runner.os }}-linux-${{ matrix.arch }}-vcpkg-downloads-${{ hashFiles('vcpkg-configuration.json', 'vcpkg.json', 'vcpkg/ports/**', 'vcpkg/triplets/**') }}
+
+      - name: Save ccache
+        if: always() && env.AETHERKIRI_VCPKG_CACHE_WRITE == 'true' && steps.restore-ccache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v6
+        with:
+          path: .ccache/linux
+          key: ${{ runner.os }}-linux-${{ matrix.arch }}-ccache-v1-${{ github.sha }}
+
+      - name: Save vcpkg binary cache
+        if: always() && env.AETHERKIRI_VCPKG_CACHE_WRITE == 'true' && steps.restore-vcpkg-binaries.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v6
+        with:
+          path: .aetherkiri-cache/vcpkg-binaries
+          key: ${{ runner.os }}-linux-${{ matrix.arch }}-vcpkg-binaries-v1-${{ hashFiles('vcpkg-configuration.json', 'vcpkg.json', 'vcpkg/ports/**', 'vcpkg/triplets/**') }}-${{ github.sha }}

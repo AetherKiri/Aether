@@ -29,7 +29,8 @@ const QQ_GROUP_URL := "https://aetherkiri.github.io/qq/"
 const SCENE_TEST_SETTINGS_KEY := "aether_kiri/scene_test"
 const IAP_LIST_LIMIT_PRODUCT_ID := "com.aether.list.limit"
 const IAP_COFFEE_PRODUCT_ID := "com.aether.coffee"
-const ANDROID_COFFEE_URL := "https://qr.alipay.com/fkx108053gol728ayzhec90"
+const AppAccessPolicy := preload("res://scripts/app_access_policy.gd")
+const COFFEE_SPONSORSHIP_URL := "https://qr.alipay.com/fkx108053gol728ayzhec90"
 const IAP_POLL_INTERVAL_SEC := 0.12
 const IAP_DETAIL_AUTHORIZATION_TTL_MS := 30000
 const SECRET_UNLOCK_TAP_TARGET := 20
@@ -1827,6 +1828,7 @@ const RUNTIME_MINORI := "minori"
 const RUNTIME_CATSYSTEM2 := "catsystem2"
 const RUNTIME_SIGLUS := "siglus"
 const RUNTIME_WA2 := "wa2"
+const RUNTIME_BGI := "bgi"
 const RUNTIME_PLAYER_CLASS := "AetherRuntimePlayer"
 const ONSCRIPTER_SCRIPT_MARKERS := [
     "0.txt",
@@ -5367,8 +5369,8 @@ func _rebuild_settings_view() -> void:
         groups.append(purchase_rows)
 
     var about_rows := _settings_section(flow, _t("settings.section.about"), animate_page, 0.24, ICON_HELP)
-    if OS.get_name() == "Android":
-        _add_settings_row(about_rows, _settings_action_row(_t("support.coffee.title"), _t("support.coffee.desc"), _t("support.coffee.open"), _open_android_coffee))
+    if _coffee_sponsorship_available():
+        _add_settings_row(about_rows, _settings_action_row(_t("support.coffee.title"), _t("support.coffee.desc"), _t("support.coffee.open"), _open_coffee_sponsorship))
     _add_settings_row(about_rows, _settings_action_row(_t("settings.legal"), _t("settings.legal_desc"), _t("settings.legal_open"), func(): _show_legal_agreement(false)))
     if _apple_app_store_platform():
         _add_settings_row(about_rows, _settings_action_row(_t("settings.ios_statement"), _t("settings.ios_statement_desc"), _t("settings.ios_statement_open"), _show_ios_additional_statement))
@@ -8499,10 +8501,14 @@ func _show_system_alert_once(key: String, message: String, title: String = "Aeth
     shown_system_alerts[key] = true
     _show_system_alert(message, title)
 
-func _open_android_coffee() -> void:
-    if OS.get_name() != "Android":
+func _coffee_sponsorship_available(platform_name: String = "") -> bool:
+    var effective_platform := platform_name if not platform_name.is_empty() else OS.get_name()
+    return AppAccessPolicy.coffee_sponsorship_available(effective_platform)
+
+func _open_coffee_sponsorship() -> void:
+    if not _coffee_sponsorship_available():
         return
-    var result := OS.shell_open(ANDROID_COFFEE_URL)
+    var result := OS.shell_open(COFFEE_SPONSORSHIP_URL)
     if result == OK:
         _show_system_alert(
             _t("support.coffee.thanks"),
@@ -8721,13 +8727,13 @@ func _show_app_update_dialog(info: Dictionary) -> void:
     secondary_row.add_child(later_btn)
 
 func _iap_supported_platform() -> bool:
-    return OS.get_name() in ["iOS", "macOS"]
+    return AppAccessPolicy.purchases_supported(OS.get_name())
 
 func _iap_enforcement_enabled() -> bool:
     # Local/debug artifacts are for compatibility and UI testing. Catalog
     # enforcement is enabled only in Release/TestFlight/App Store builds. A
     # verified secret unlock removes the catalog limit for this installation.
-    return _iap_supported_platform() and not OS.is_debug_build() and not secret_iap_unlocked
+    return AppAccessPolicy.catalog_limit_enabled(OS.get_name(), OS.is_debug_build(), secret_iap_unlocked)
 
 func _initialize_iap() -> void:
     if not _iap_supported_platform() or player == null:
@@ -10709,6 +10715,9 @@ func _game_runtime_kind(path: String) -> String:
     if runtime_kind != RUNTIME_KIRIKIRI:
         return runtime_kind
     if player != null and player.has_method("probe_runtime"):
+        # Format detection stays in the optional private provider.
+        if int(player.probe_runtime(RUNTIME_BGI, root)) >= 90:
+            return RUNTIME_BGI
         # Packed CatSystem2 titles may not expose the loose markers used by
         # GameMetadata. Let the registered provider inspect the game root
         # before falling back to the legacy KiriKiri host.
@@ -11331,7 +11340,7 @@ func _start_selected_game_after_iap() -> void:
     if library_path.is_empty():
         return
     var selected_runtime_kind := _game_runtime_kind(library_path)
-    # Development artifacts and Android releases do not use the Apple-only
+    # Development artifacts and Android/Linux releases do not use the Apple-only
     # beta entitlement flow.
     if not _beta_access_enforcement_enabled():
         if (
@@ -11376,7 +11385,7 @@ func _runtime_requires_beta_access(runtime_kind: String) -> bool:
 
 func _beta_access_enforcement_enabled(platform_name: String = "") -> bool:
     var effective_platform := platform_name if not platform_name.is_empty() else OS.get_name()
-    return effective_platform in ["iOS", "macOS"] and not OS.is_debug_build()
+    return AppAccessPolicy.beta_access_enforced(effective_platform, OS.is_debug_build())
 
 func _selected_game_uses_wa2() -> bool:
     # WHITE ALBUM2 runs on the KiriKiri host through the compiled Wa2
@@ -11959,6 +11968,7 @@ func _switch_runtime_player(runtime_kind: String) -> bool:
         RUNTIME_MINORI,
         RUNTIME_CATSYSTEM2,
         RUNTIME_SIGLUS,
+        RUNTIME_BGI,
     ]:
         normalized = RUNTIME_KIRIKIRI
     if player != null and current_player_runtime_kind == normalized:
@@ -11995,6 +12005,8 @@ func _switch_runtime_player(runtime_kind: String) -> bool:
         if normalized == RUNTIME_CATSYSTEM2
         else "Siglus"
         if normalized == RUNTIME_SIGLUS
+        else "BGI/Ethornell"
+        if normalized == RUNTIME_BGI
         else "KiriKiri"
     ))
     return true
@@ -12617,6 +12629,7 @@ func _ensure_player_initialized() -> bool:
         RUNTIME_MINORI,
         RUNTIME_CATSYSTEM2,
         RUNTIME_SIGLUS,
+        RUNTIME_BGI,
     ]:
         runtime_id = current_player_runtime_kind
     var runtime_result := int(player.set_engine_option("runtime", runtime_id))
@@ -12639,6 +12652,8 @@ func _ensure_player_initialized() -> bool:
         if current_player_runtime_kind == RUNTIME_CATSYSTEM2
         else "Siglus"
         if current_player_runtime_kind == RUNTIME_SIGLUS
+        else "BGI/Ethornell"
+        if current_player_runtime_kind == RUNTIME_BGI
         else "AetherKiri"
     ))
     return true
@@ -13562,6 +13577,14 @@ func _probe_run_actions(config: Dictionary, step: int) -> int:
             player.send_key_event(false, key_code, int(action.get("modifiers", 0)), 0)
             if label.is_empty() or label == "key":
                 label = "key_%d" % key_code
+        elif kind == "text" or kind == "text_input":
+            # Deliver committed text through the same provider API used by
+            # the platform IME bridge.  A key event carries a physical key
+            # edge and cannot represent composed Unicode text faithfully.
+            if player.has_method("send_text_input"):
+                player.send_text_input(String(action.get("text", "")))
+            if label.is_empty() or label == kind:
+                label = "text_input"
         elif kind == "scroll" or kind == "repeat_scroll":
             var pos := ProbeConfig.click_position(action)
             var count: int = max(1, int(action.get("count", 1)))
@@ -16091,7 +16114,7 @@ func _kirikiri_key_modifiers(event: InputEventKey) -> int:
         modifiers |= 0x01
     if event.alt_pressed:
         modifiers |= 0x02
-    if event.ctrl_pressed:
+    if event.ctrl_pressed or (event.meta_pressed and active_runtime_kind == RUNTIME_BGI):
         modifiers |= 0x04
     if event.echo:
         modifiers |= 0x80
@@ -17494,6 +17517,10 @@ func _map_surface_point_to_local(point: Vector2) -> Vector2:
             point.x * texture_size.x / surface_size.x,
             point.y * texture_size.y / surface_size.y
         )
+        if active_runtime_kind == RUNTIME_BGI:
+            var surface_scale := minf(surface_size.x / texture_size.x, surface_size.y / texture_size.y)
+            var surface_offset := (surface_size - texture_size * surface_scale) * 0.5
+            texture_point = (point - surface_offset) / maxf(0.0001, surface_scale)
         var panel_size := viewport.size
         var scale := minf(
             panel_size.x / texture_size.x,

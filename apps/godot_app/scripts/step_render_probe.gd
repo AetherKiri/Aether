@@ -279,6 +279,15 @@ func _run_actions(step: int) -> int:
             player.send_key_event(false, key_code, int(action.get("modifiers", 0)), 0)
             if label.is_empty() or label == "key":
                 label = "key_%d" % key_code
+        elif kind == "text" or kind == "text_input":
+            # Keep committed text delivery explicit in probe scripts.  This
+            # exercises the same path used by the platform IME bridge and
+            # avoids pretending that a key event is equivalent to composed
+            # Unicode text.
+            if player.has_method("send_text_input"):
+                player.send_text_input(String(action.get("text", "")))
+            if label.is_empty() or label == kind:
+                label = "text_input"
         elif kind == "key_hold":
             var key_code := int(action.get("key_code", 17))
             var modifiers := int(action.get("modifiers", 0))

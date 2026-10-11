@@ -104,6 +104,20 @@
       }
     },
     {
+      "name": "Linux arm64 Debug Config",
+      "inherits": "Linux Debug Config",
+      "cacheVariables": {
+        "VCPKG_TARGET_TRIPLET": "arm64-linux"
+      }
+    },
+    {
+      "name": "Linux arm64 Release Config",
+      "inherits": "Linux Release Config",
+      "cacheVariables": {
+        "VCPKG_TARGET_TRIPLET": "arm64-linux"
+      }
+    },
+    {
       "name": "MacOS Config",
       "generator": "Ninja",
       "hidden": true,
@@ -334,6 +348,14 @@
     {
       "name": "Linux Release Build",
       "configurePreset": "Linux Release Config"
+    },
+    {
+      "name": "Linux arm64 Debug Build",
+      "configurePreset": "Linux arm64 Debug Config"
+    },
+    {
+      "name": "Linux arm64 Release Build",
+      "configurePreset": "Linux arm64 Release Config"
     },
     {
       "name": "MacOS Debug Build",

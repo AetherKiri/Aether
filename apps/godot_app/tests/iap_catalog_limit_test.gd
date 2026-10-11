@@ -1,8 +1,32 @@
 extends SceneTree
 
 const MAIN_SCRIPT := preload("res://scripts/main.gd")
+const ACCESS_POLICY := preload("res://scripts/app_access_policy.gd")
+
+var failures := 0
+
+# Assertions are stripped from Release exports; keep these checks active there.
+func _expect(passed: bool) -> void:
+    if not passed:
+        failures += 1
+        push_error("IAP catalog/access policy check failed")
 
 func _initialize() -> void:
+    # Verify Release policy explicitly; the editor itself is a debug build.
+    for platform_name in ["Linux", "Android"]:
+        for debug_build in [true, false]:
+            for unlocked in [true, false]:
+                _expect(not ACCESS_POLICY.catalog_limit_enabled(platform_name, debug_build, unlocked))
+            _expect(not ACCESS_POLICY.beta_access_enforced(platform_name, debug_build))
+        _expect(not ACCESS_POLICY.purchases_supported(platform_name))
+        _expect(ACCESS_POLICY.coffee_sponsorship_available(platform_name))
+    for platform_name in ["iOS", "macOS"]:
+        _expect(ACCESS_POLICY.catalog_limit_enabled(platform_name, false, false))
+        _expect(not ACCESS_POLICY.catalog_limit_enabled(platform_name, true, false))
+        _expect(not ACCESS_POLICY.catalog_limit_enabled(platform_name, false, true))
+        _expect(ACCESS_POLICY.beta_access_enforced(platform_name, false))
+        _expect(not ACCESS_POLICY.beta_access_enforced(platform_name, true))
+        _expect(not ACCESS_POLICY.coffee_sponsorship_available(platform_name))
     var app = MAIN_SCRIPT.new()
     var games: Array[Dictionary] = [
         {"path": "/games/first"},
@@ -15,48 +39,59 @@ func _initialize() -> void:
     app.known_games = games
     app.known_videos = videos
 
-    assert(app._iap_item_is_first("game", {"path": "/games/first"}))
-    assert(not app._iap_item_is_first("game", {"path": "/games/second"}))
-    assert(app._iap_item_is_first("video", {"path": "/videos/first.mp4"}))
-    assert(not app._iap_item_is_first("video", {"path": "/videos/second.mp4"}))
-    assert(not app._iap_item_is_first("video", {"path": "/videos/missing.mp4"}))
+    _expect(app._iap_item_is_first("game", {"path": "/games/first"}))
+    _expect(not app._iap_item_is_first("game", {"path": "/games/second"}))
+    _expect(app._iap_item_is_first("video", {"path": "/videos/first.mp4"}))
+    _expect(not app._iap_item_is_first("video", {"path": "/videos/second.mp4"}))
+    _expect(not app._iap_item_is_first("video", {"path": "/videos/missing.mp4"}))
 
-    # Debug artifacts must never enforce the catalog limit or show its prompt.
+    # Debug artifacts and Linux releases have no catalog or beta-access limits.
     app.modal_layer = Control.new()
     app.modal_layer.visible = false
-    assert(OS.is_debug_build())
-    assert(not app._iap_enforcement_enabled())
-    assert(not app._begin_iap_checked_access("game", games[1], "detail"))
-    assert(app.iap_pending_launch.is_empty())
-    assert(not app.modal_layer.visible)
-    assert(not app._runtime_requires_beta_access(app.RUNTIME_ONSCRIPTER))
-    assert(app._runtime_requires_beta_access(app.RUNTIME_MINORI))
-    assert(not app._runtime_requires_beta_access(app.RUNTIME_KIRIKIRI))
+    _expect(OS.is_debug_build() or OS.get_name() == "Linux")
+    if OS.get_name() == "Linux":
+        _expect(not app._iap_supported_platform())
+    _expect(not app._iap_enforcement_enabled())
+    for intent in ["detail", "launch"]:
+        _expect(not app._begin_iap_checked_access("game", games[1], intent))
+        _expect(not app._begin_iap_checked_access("video", videos[1], intent))
+    _expect(app.iap_pending_launch.is_empty())
+    _expect(not app.modal_layer.visible)
+    _expect(not app._runtime_requires_beta_access(app.RUNTIME_ONSCRIPTER))
+    _expect(app._runtime_requires_beta_access(app.RUNTIME_MINORI))
+    _expect(not app._runtime_requires_beta_access(app.RUNTIME_KIRIKIRI))
     # CatSystem2 is a released runtime and must not enter the coffee-only
     # entitlement path.  WA2 remains the explicitly provider-gated runtime.
-    assert(not app._runtime_requires_beta_access(app.RUNTIME_CATSYSTEM2))
-    assert(not app._beta_access_enforcement_enabled("Android"))
-    assert(not app._beta_access_enforcement_enabled("iOS"))
+    _expect(not app._runtime_requires_beta_access(app.RUNTIME_CATSYSTEM2))
+    _expect(not app._beta_access_enforcement_enabled("Android"))
+    _expect(not app._beta_access_enforcement_enabled("Linux"))
+    _expect(app._beta_access_enforcement_enabled("iOS") == (not OS.is_debug_build()))
+    _expect(app._beta_access_enforcement_enabled("macOS") == (not OS.is_debug_build()))
+    _expect(app._coffee_sponsorship_available("Android"))
+    _expect(app._coffee_sponsorship_available("Linux"))
+    _expect(not app._coffee_sponsorship_available("iOS"))
+    _expect(not app._coffee_sponsorship_available("macOS"))
 
     var settings_action := Button.new()
     app._configure_settings_action_button(settings_action)
-    assert(settings_action.custom_minimum_size == Vector2(150, 54))
-    assert(settings_action.size_flags_horizontal == Control.SIZE_SHRINK_END)
-    assert(settings_action.size_flags_vertical == Control.SIZE_SHRINK_CENTER)
+    _expect(settings_action.custom_minimum_size == Vector2(150, 54))
+    _expect(settings_action.size_flags_horizontal == Control.SIZE_SHRINK_END)
+    _expect(settings_action.size_flags_vertical == Control.SIZE_SHRINK_CENTER)
 
     for language in ["zh_hans", "zh_hant", "en", "ja", "ko"]:
         app.active_language = language
-        assert(not String(app._t("iap.list_limit.title")).is_empty())
-        assert(not String(app._t("iap.limit_body")).is_empty())
-        assert(not String(app._t("iap.restore")).is_empty())
-        assert(not String(app._t("iap.coffee.title")).is_empty())
-        assert(not String(app._t("iap.coffee.desc")).is_empty())
-        assert(not String(app._t("iap.coffee.active_until", ["2030-01-01"])).is_empty())
-        assert(not String(app._t("iap.runtime_unavailable")).is_empty())
-        assert(not String(app._t("iap.beta_runtime_unavailable")).is_empty())
+        _expect(not String(app._t("iap.list_limit.title")).is_empty())
+        _expect(not String(app._t("iap.limit_body")).is_empty())
+        _expect(not String(app._t("iap.restore")).is_empty())
+        _expect(not String(app._t("iap.coffee.title")).is_empty())
+        _expect(not String(app._t("iap.coffee.desc")).is_empty())
+        _expect(not String(app._t("iap.coffee.active_until", ["2030-01-01"])).is_empty())
+        _expect(not String(app._t("iap.runtime_unavailable")).is_empty())
+        _expect(not String(app._t("iap.beta_runtime_unavailable")).is_empty())
 
     settings_action.free()
     app.modal_layer.free()
     app.free()
-    print("IAP_CATALOG_LIMIT_OK")
-    quit(0)
+    if failures == 0:
+        print("IAP_CATALOG_LIMIT_OK")
+    quit(1 if failures else 0)

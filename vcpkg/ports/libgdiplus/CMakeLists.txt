@@ -111,15 +111,11 @@ list(APPEND GDIPLUS_LIBS ${PNG_LIBRARIES})
 
 # X11支持
 if(WITH_X11)
-    find_package(X11 REQUIRED)
-    if(X11_FOUND)
-        set(HAVE_X11 ON)
-        pkg_check_modules(XRENDER REQUIRED xrender)
-        list(APPEND GDIPLUS_LIBS ${X11_LIBRARIES} ${XRENDER_LIBRARIES})
-        list(APPEND GDIPLUS_CFLAGS ${XRENDER_CFLAGS})
-    else()
-        message(FATAL_ERROR "X11 not find")
-    endif()
+    # X11/Xrender are host-system dependencies. vcpkg isolates pkg-config's
+    # search path, so system xrender.pc is not visible there on Linux.
+    find_package(X11 REQUIRED COMPONENTS Xrender)
+    set(HAVE_X11 ON)
+    list(APPEND GDIPLUS_LIBS X11::X11 X11::Xrender)
 endif()
 
 # libexif支持

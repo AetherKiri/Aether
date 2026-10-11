@@ -547,3 +547,25 @@
 - KAG3 30 秒 Metal direct smoke 四轮全部通过：`nearest`、`linear`、`bicubic`、`lanczos` 均无 RGB 差异、Metal bridge failures=0、lease failures=0、live=0。证据目录：`out/apple_host/evidence/ui-p3c-nearest/`、`ui-p3c-linear/`、`ui-p3c-bicubic/`、`ui-p3c-lanczos/`。
 - CUA 验证真实构建窗口渲染页显示四个采样选项，双三次可切换并显示设置已保存；测试后恢复线性偏好。
 - P3c 完成；下一阶段 P3d 调度，FPS 与模拟时间策略尚未开放。
+
+### 2026-10-12：P3d 调度交接记录
+
+- 本轮已完成 P3d 的现状调查，尚未修改实现；工作区在提交 `c959d3a7` 后保持干净，P3c 已推送到 `origin/feature/apple-native-host-m0`。
+- Apple 宿主当前仍由 `EngineController.startLoop()` 使用主 RunLoop 的固定 60 Hz `Timer`，每次调用 `session.tick(deltaMS: 16)`；`offscreen` benchmark 是独立的无限速路径，不应成为产品调度实现。
+- ABI 已有 `fps_limit` 选项。Godot 宿主会把 `fps_limit_enabled ? target_fps : 0` 下发，并在 `_process(delta)` 中把真实帧间隔传入 runtime；Apple `HostSettings` 当前为 schema v4，尚无 `fpsLimitEnabled`/`targetFPS`，`engineOptions` 也尚未下发 `fps_limit`。
+- P3d 不应通过提高 Timer 频率并继续传固定 16 ms 来制造 FPS；必须分开验证模拟时间、引擎 render 限频和 drawable 呈现节奏。关闭限制时应跟随显示节奏（优先 DisplayLink，保留无显示设备时的 Timer fallback）；启用限制时目标值为 60/80/90/120/144，默认关闭、目标 80。
+- 下一代理的最小完整切片：schema v5 与 v1–v4 迁移；设置页五语言 FPS 开关/目标选择；启动前真实下发 `fps_limit`；真实 dt 与显示节奏调度；暂停/失焦不积累追赶 tick；诊断分开记录 tick/render/presentation 统计；行为测试、Debug 构建、KAG3 软件/Metal smoke 和 CUA。
+- 未完成边界：P3a 预启动页面 CUA、P1/P2 无障碍补验、G1 登记/深流程、Minori、P5 增强、IAP 与更新器均不属于本切片，不能借 P3d 提前开放。
+
+#### 后续代理交付 Prompt
+
+> 继续 `/Users/colorcard/Aether` 当前分支 `feature/apple-native-host-m0`，按 `AGENTS.md` 每轮只提交一次并 push。先阅读本节、`doc/apple_host_ui_plan.md` 的 P3d 门槛、`doc/apple_host_ui_spec.md` 的 FPS 契约及现有 `EngineController`/`SettingsStore`/Godot `main.gd`。实现一个真实、可验证的 P3d 完整切片：HostSettings schema v5（`fpsLimitEnabled=false`、`targetFPS=80`，兼容 v1–v4）；五语言设置入口和保存/迁移；启动前把启用状态准确下发为 `fps_limit=0` 或目标值；宿主调度在关闭限制时跟随显示刷新，在启用限制时按目标节奏运行，并把真实 elapsed dt 传入引擎，避免剧情随刷新率加速；处理失焦、隐藏、最小化、暂停和退出，不产生 catch-up burst；区分并记录 tick/render/presentation 统计。不得改已有 ABI，不得开放未实现增强或伪造 FPS。完成后运行现有设置/行为测试，新增有意义的调度单元测试，Debug 构建，KAG3 软件与 Metal 真实 smoke，必要时补 CUA；检查 `git diff --check`，创建本轮唯一 commit 并 push，最终报告证据路径、未覆盖范围和下一阶段。
+
+#### Goal 模式睡前核验目标
+
+1. **配置契约**：`python3 tools/apple_host_settings_tests.py` 通过；schema v1/v2/v3/v4 迁移到 v5，默认值、目标值校验、`fps_limit` 选项值（0/60/80/90/120/144）可从测试证据读出。
+2. **时间正确性**：调度单元测试证明 60/120 Hz 脉冲下目标 80 不超过目标节奏，关闭限制不丢真实 elapsed；同一测试剧情时长下累计模拟毫秒在不同显示脉冲率相同，不能用固定 16 ms 伪造。
+3. **生命周期**：真实 KAG3 软件/Metal 各至少一次启动、输入推进、失焦/恢复或暂停、退出；无 tick 爆发、`lease_failures=0`、`leases_live=0`、Metal failures=0，诊断包含 tick/render/presentation 统计。
+4. **呈现口径**：至少一轮高刷新/模拟高刷新脉冲或明确的 DisplayLink/Timer fallback 证据；统计明确“提交/命令完成/屏幕扫描”边界，不把提交吞吐称为屏幕 FPS。
+5. **交互验收**：真实 Debug 窗口中 FPS 开关、五个目标值、默认关闭/目标 80、保存状态和下次启动生效可见；失焦/退出后窗口与设置状态恢复。
+6. **交付纪律**：`git diff --check`、构建和上述测试通过；本轮只有一个 commit，推送成功；最终回复给出 commit、证据目录、残余未验收项，不把 P3d 之外的暂缓项标成完成。

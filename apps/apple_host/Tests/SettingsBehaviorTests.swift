@@ -8,6 +8,7 @@ struct SettingsBehaviorTests {
         setenv("AETHER_HOST_LIBRARY_ROOT", root.path, 1)
         try RenderGeometryTests.run(root: root)
         try RendererBehaviorTests.run(root: root)
+        FrameSchedulerTests.run()
         let model = ShellModel()
         try checkCollections(model, root: root)
         model.openSettings()
@@ -44,7 +45,28 @@ struct SettingsBehaviorTests {
         precondition(relaunched.settings == model.settings)
         model.engine.hostSettings = model.settings
         precondition(model.engine.initializeEngine(renderer: "software"))
-        precondition(model.engine.appliedSettingOptions == ["plugin_load_mode": "aether_all", "mock_enabled": "1", "error_dialog_logs": "0"])
+        precondition(model.engine.appliedSettingOptions == ["plugin_load_mode": "aether_all", "mock_enabled": "1",
+                                                            "error_dialog_logs": "0", "fps_limit": "0"])
+        model.engine.shutdown()
+        // FPS limit is a draft value that must survive save/relaunch and reach
+        // the engine option as the target value, not as a host-side constant.
+        model.openSettings()
+        model.settingsDraft?.value.fpsLimitEnabled = true
+        model.settingsDraft?.value.targetFPS = 120
+        precondition(model.settings.fpsLimitEnabled == false && model.settingsDirty)
+        precondition(model.saveSettings())
+        let pacedRelaunch = ShellModel()
+        precondition(pacedRelaunch.settings.fpsLimitEnabled && pacedRelaunch.settings.targetFPS == 120)
+        precondition(pacedRelaunch.settings.fpsLimitOption == "120")
+        model.engine.hostSettings = model.settings
+        precondition(model.engine.initializeEngine(renderer: "software"))
+        precondition(model.engine.appliedSettingOptions["fps_limit"] == "120")
+        model.engine.shutdown()
+        model.settingsDraft?.value.fpsLimitEnabled = false
+        precondition(model.saveSettings())
+        model.engine.hostSettings = model.settings
+        precondition(model.engine.initializeEngine(renderer: "software"))
+        precondition(model.engine.appliedSettingOptions["fps_limit"] == "0")
         model.engine.shutdown()
         model.openSettings()
         model.settingsDraft?.value.renderer = "invalid"

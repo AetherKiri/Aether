@@ -12,7 +12,6 @@ struct HostCapabilities {
     let nativeMetal: Availability
     let translation: Availability
     let enhancement = Availability(reasonKey: "enhancementPending", detail: "")
-    let renderConfiguration = Availability(reasonKey: "renderSettingsPending", detail: "")
     let diagnosticProfiles = Availability(reasonKey: "diagnosticSettingsPending", detail: "")
 }
 

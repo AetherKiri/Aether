@@ -55,6 +55,9 @@ final class MetalFramePresenter: NSObject, MTKViewDelegate {
     private weak var presentationView: MTKView?
     private var suspended = false
     private(set) var skippedDraws = 0
+    /// Drawable submissions actually encoded and presented. This is a
+    /// submission counter, not the display scan-out rate.
+    private(set) var presentedFrameCount: UInt64 = 0
     private var lastGateReason: String?
     /// Reports presentation pause/resume transitions (host logging).
     var onGateChange: ((String) -> Void)?
@@ -73,6 +76,7 @@ final class MetalFramePresenter: NSObject, MTKViewDelegate {
     func resume() {
         suspended = false
         skippedDraws = 0
+        presentedFrameCount = 0
         lastGateReason = nil
     }
 
@@ -376,6 +380,7 @@ final class MetalFramePresenter: NSObject, MTKViewDelegate {
         do {
             try encode(target: drawable.texture, command: command)
             command.present(drawable)
+            presentedFrameCount += 1
             let encoded = ProcessInfo.processInfo.systemUptime
             if let sample = pendingProfile, sample.tick > 60,
                lastProfiledTick != sample.tick {

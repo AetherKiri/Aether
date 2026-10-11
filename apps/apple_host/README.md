@@ -116,8 +116,9 @@ python3 tools/apple_host_smoke.py --game-path <1080p自检目录> \
   --renderer metal --require-native --duration 30 --profile --drawable-1080p
 ```
 
-`--profile` 会带上 `AETHER_HOST_ACTIVATE=1`：宿主窗口被完全遮挡时不会申请
-drawable（`nextDrawable` 的 1 秒超时会卡住主线程），因此无头基准需要可见窗口。
+`--profile` 与 `--snapshots direct` 会带上 `AETHER_HOST_ACTIVATE=1`：宿主窗口被完全
+遮挡时不会申请 drawable（`nextDrawable` 的 1 秒超时会卡住主线程），因此需要真实
+drawable 提交的基准必须有可见窗口。
 如果窗口始终无法出帧，工具会直接报错而不是产出空 CSV。手动运行时可用同一环境变量
 让测试宿主自行激活并前置窗口。
 
@@ -130,12 +131,36 @@ drawable（`nextDrawable` 的 1 秒超时会卡住主线程），因此无头基
 drawable 申请并记录 `presentation paused/resumed`；被跳过的 draw 不计入 profile 样本。
 窗口恢复可见后由下一个 tick 继续出帧，游戏逻辑（tick/音频）不受影响。
 
-### 串行调度基准
+### 帧调度与 FPS
 
-默认采用直接呈现：主 RunLoop 的 Timer 同步执行一次 tick、上传/获取纹理并提交
-MTKView 绘制，不为每个 tick 额外排队 Task，也不依赖 SwiftUI 更新来提交画面。
-布局和游戏输入坐标仍由 SwiftUI/AppKit 管理；窗口缩放会触发独立重绘。
-`AETHER_HOST_SCHEDULING=deferred` 保留 SwiftUI 延后呈现作对照。
+宿主不再使用固定 60 Hz Timer 与固定 1/60 tick。`HostFrameClock` 优先使用
+CVDisplayLink 跟随显示刷新；无活动显示（或显式 `AETHER_HOST_PACE=timer`）时退回
+RunLoop Timer，回调在主线程前合并，避免主线程繁忙时回放积压。`FrameScheduler`
+决定每次回调是否推进引擎：关闭 FPS 限制时每个回调一次 tick；启用限制时按目标间隔
+放行，每次回调最多一次 tick，超出部分记 `dropped_catch_up` 而不追赶。目标为
+60/80/90/120/144，默认关闭、目标 80；高于当前刷新率的目标改用 Timer 源。
+
+每次 tick 传入真实 elapsed 毫秒（带亚毫秒余量），单次上限 100 ms；失焦、隐藏、
+最小化、遮挡和系统休眠通过 AppKit/NSWorkspace 通知重置调度时钟并记录
+`host lifecycle ...`，退出时停止帧时钟并解绑观察者。tick/render/presentation
+分开统计并写入日志与诊断：`tick` 是宿主 `engine_tick` 调用数，`render` 是引擎报告
+实际出帧的 tick 数，`presentation` 是 Metal drawable 提交或图像发布数，三者都不等于
+屏幕扫描FPS。设置页保存的 FPS 偏好下次启动生效；`AETHER_HOST_FPS_LIMIT=0|60|80|90|120|144`
+与 `AETHER_HOST_PACE=auto|display|timer` 只作 smoke/benchmark 覆盖。
+
+默认采用直接呈现：帧回调同步执行一次 tick、上传/获取纹理并提交 MTKView 绘制，
+不为每个 tick 额外排队 Task，也不依赖 SwiftUI 更新来提交画面。布局和游戏输入坐标
+仍由 SwiftUI/AppKit 管理；窗口缩放会触发独立重绘。`AETHER_HOST_SCHEDULING=deferred`
+保留 SwiftUI 延后呈现作对照。
+
+```bash
+python3 tools/apple_host_smoke.py --game kag3 --renderer metal --snapshots direct \
+  --duration 30 --pace timer --fps-limit 80 --lifecycle 4:on,7:off
+```
+
+smoke 会解析 `pacing stats:` 并写进 `result.json`：tick/render/presentation 计数、
+目标速率上限、`dropped_catch_up`、调度重置次数和 `max_delta_ms`。`--lifecycle`
+驱动与 AppKit 通知相同的生命周期处理，用于验证暂停/恢复不产生追赶 tick。
 
 ```bash
 python3 tools/apple_host_profile.py <1080p自检目录> --duration 60
@@ -145,7 +170,7 @@ python3 tools/apple_host_profile.py <1080p自检目录> --duration 60
 1080p drawable、唯一 tick、无 GPU 错误与零回读，并记录未采样 tick 数。
 CSV 新增 tick 到 draw、drawable 获取和命令编码耗时，辅助定位慢帧。
 未采样 tick 包含合并/无 drawable/未完成等情况，不直接等同于显示器掉帧。
-Timer 仍为 60 Hz；此改动不宣称已实现显示刷新同步或通过 G1。
+调度已按显示刷新或目标速率运行；这不宣称通过 G1，也不把提交吞吐当作玩家帧率。
 
 ## M2 游戏库
 

@@ -505,7 +505,7 @@
 31b. [ ] **两处兼容小项待查**：`new DMMCloud()` 报 `Invalid argument count`；`new Zlib().version()` 报成员不存在（可能只是探针写法/注册方式差异）
 32. [ ] **内核后续：内存可观测（借鉴 `MemoryDesign.md`）**：分配头带 tag + `AllocTagScope` 标签栈，让"谁吃掉了内存"可回答；当前只有粗粒度 `engine_get_memory_stats`
 
-33. [ ] **产品 UI/设置完整对齐**：调查 P0 已完成；P1核心、P2集合/详情与四主题已接入，完整CUA/无障碍验收待补；P3a能力回退、P3b画布/输出与P3c采样已接入，P3d及P4–P7见 [实施计划](apple_host_ui_plan.md)。
+33. [ ] **产品 UI/设置完整对齐**：调查 P0 已完成；P1核心、P2集合/详情与四主题已接入，完整CUA/无障碍验收待补；P3a能力回退、P3b画布/输出、P3c采样与P3d FPS/调度已接入并通过行为回归、真实smoke及设置页CUA；P4–P7见 [实施计划](apple_host_ui_plan.md)。
 
 ## 变更记录
 
@@ -569,3 +569,15 @@
 4. **呈现口径**：至少一轮高刷新/模拟高刷新脉冲或明确的 DisplayLink/Timer fallback 证据；统计明确“提交/命令完成/屏幕扫描”边界，不把提交吞吐称为屏幕 FPS。
 5. **交互验收**：真实 Debug 窗口中 FPS 开关、五个目标值、默认关闭/目标 80、保存状态和下次启动生效可见；失焦/退出后窗口与设置状态恢复。
 6. **交付纪律**：`git diff --check`、构建和上述测试通过；本轮只有一个 commit，推送成功；最终回复给出 commit、证据目录、残余未验收项，不把 P3d 之外的暂缓项标成完成。
+
+### 2026-10-12：UI P3d 调度实现
+
+- `HostSettings` schema v5 新增 `fpsLimitEnabled=false`、`targetFPS=80`，兼容 v1–v4；目标值只接受 60/80/90/120/144，`engineOptions` 下发 `fps_limit=0` 或目标值。
+- 设置页渲染分类新增五语言 FPS 开关与目标选择；关闭时显示“跟随显示刷新（当前）”，启用时显示五个目标值，文案注明真实经过时间与下次启动生效。
+- 宿主调度重构：`FrameScheduler`（纯逻辑，可单测）+ `HostFrameClock`（CVDisplayLink 优先，无活动显示/显式要求时退回 RunLoop Timer）。关闭限制时跟随显示刷新；启用限制时按目标间隔放行 tick，每次回调最多一次 tick，超出记 `dropped_catch_up`。
+- 每次 tick 传入真实 elapsed 毫秒（含亚毫秒余量），单次上限 100 ms；失焦、隐藏、最小化、遮挡、系统休眠通过 AppKit/NSWorkspace 通知重置调度时钟并记录状态，退出停止帧时钟并解绑观察者，无追赶爆发。
+- tick/render/presentation 分开统计：`engine_tick` 调用数、`engine_get_frame_rendered_flag` 实际出帧数、drawable 提交/图像发布数；诊断含 `frameStatNote` 明确三者都不等于屏幕扫描FPS。
+- 测试：`python3 tools/apple_host_settings_tests.py` 通过，含 60/120 Hz 合成脉冲的调度单元测试（目标 80 不被超过、累计模拟毫秒一致、迟到回调丢弃追赶、100 ms 上限）、schema v1–v5 迁移、目标值校验、真实引擎 `fps_limit` 下发与真实 elapsed 调度；Debug 构建通过。
+- KAG3 30 秒 smoke 三次运行均通过：软件 original 输出 + Timer 跟随显示（113.1 tick/s）、Metal + 限制 80 + Timer（76.0 tick/s，不超过目标）、Metal + DisplayLink 跟随显示（112.9 tick/s）；均 RGB max diff=0、`lease_failures=0`、`leases_live=0`、Metal failures=0，脚本化生命周期事件重置调度且 `max_delta_ms<=100`。证据：`out/apple_host/evidence/ui-p3d-software/`、`ui-p3d-metal-80/`、`ui-p3d-metal-display/`。
+- CUA 在真实 Debug 窗口验证：默认关闭并显示跟随显示刷新、五个目标值可见、选择 120 FPS 保存后显示“设置已保存”且保存禁用、重启后仍为启用 120 FPS。证据：`out/apple_host/evidence/ui-p3d-cua/`。
+- 残余未验收：真机/长期运行的显示器睡眠唤醒与真实系统休眠未单独验收；软件诊断路径在 1080p 输出下的 CPU 双三次缩放在 Debug 构建极慢（30 秒仅约4个 tick，属既有 fallback 性能问题，本轮未改），因此软件 smoke 使用 original 输出；P3a 预启动页面 CUA、P1/P2 无障碍补验、G1 登记/深流程、Minori、P5、IAP 与更新器仍不属本切片。

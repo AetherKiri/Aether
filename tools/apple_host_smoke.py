@@ -23,6 +23,12 @@ def main():
     parser.add_argument("--presentation", choices=("metal", "image"), default="metal")
     parser.add_argument("--output-resolution", choices=("original", "1080p", "2k", "4k"), default="1080p")
     parser.add_argument("--sampling-algorithm", choices=("nearest", "linear", "bicubic", "lanczos"), default="bicubic")
+    parser.add_argument("--fps-limit", choices=("0", "60", "80", "90", "120", "144"), default=None,
+                        help="engine fps_limit override; 0 follows the display refresh")
+    parser.add_argument("--pace", choices=("auto", "display", "timer"), default="auto",
+                        help="host tick callback source; display is preferred, timer is the fallback")
+    parser.add_argument("--lifecycle", default=None,
+                        help="scripted lifecycle events, e.g. 4:on,7:off (focus/hide/minimize equivalent)")
     parser.add_argument("--snapshots", choices=("sync", "async", "direct"), default="sync",
                         help="native frame mode; direct uses session-owned frame leases")
     parser.add_argument("--profile", action="store_true", help="record host work and tick-to-GPU-completion, including MTKView")
@@ -66,14 +72,20 @@ def main():
                        AETHER_HOST_ASYNC_SNAPSHOT="1" if args.snapshots == "async" else "0",
                        AETHER_HOST_DIRECT_RENDER="1" if args.snapshots == "direct" else "0",
                        AETHER_HOST_SCHEDULING="direct",
+                       AETHER_HOST_PACE=args.pace,
                        AETHER_HOST_DRAWABLE_1080P="1" if args.drawable_1080p else "0",
                        AETHER_HOST_PROFILE="1" if args.profile else "0",
-                       # Profile runs measure drawable submission, which the
-                       # presenter skips while the window is occluded.
-                       AETHER_HOST_ACTIVATE="1" if args.profile else "0",
+                       # Profile and direct-lease runs measure drawable
+                       # submission, which the presenter skips while the window
+                       # is occluded, so those runs must bring it forward.
+                       AETHER_HOST_ACTIVATE="1" if (args.profile or args.snapshots == "direct") else "0",
                        AETHER_HOST_CAPTURE_AFTER=f"6,20,{final_capture}",
                        AETHER_HOST_CAPTURE_DIR=str(folder.resolve()),
                        AETHER_HOST_EXIT_AFTER=str(args.duration))
+            if args.fps_limit is not None:
+                env["AETHER_HOST_FPS_LIMIT"] = args.fps_limit
+            if args.lifecycle:
+                env["AETHER_HOST_TEST_LIFECYCLE"] = args.lifecycle
             log = (folder / "run.log").open("w")
             try:
                 process = subprocess.Popen([str(binary)], env=env, stdout=log, stderr=subprocess.STDOUT)
@@ -157,10 +169,50 @@ def main():
                 if any(not math.isfinite(float(row["tick_to_completion_ms"])) or
                        float(row["tick_to_completion_ms"]) <= 0 for row in rows):
                     errors.append("invalid completion durations")
+            # Tick/render/presentation are separate counters; the smoke run must
+            # report all three and never claim them as display scan-out FPS.
+            pacing_stats = None
+            stats_matches = re.findall(
+                r"pacing stats: tick=(\d+) \(([\d.]+)/s\) render=(\d+) \(([\d.]+)/s\) "
+                r"presentation=(\d+) \(([\d.]+)/s\) dropped_catch_up=(\d+) coalesced=(\d+) "
+                r"resets=(\d+) max_delta_ms=(\d+)", text)
+            if not stats_matches:
+                errors.append("missing tick/render/presentation pacing statistics")
+            else:
+                ticks, tick_rate, rendered, _, presented, _, dropped, coalesced, resets, max_delta = stats_matches[-1]
+                pacing_stats = {"ticks": int(ticks), "tick_rate": float(tick_rate),
+                                "rendered": int(rendered), "presentations": int(presented),
+                                "dropped_catch_up": int(dropped), "coalesced_callbacks": int(coalesced),
+                                "pacing_resets": int(resets), "max_delta_ms": int(max_delta)}
+                if int(rendered) > int(ticks) or int(presented) > int(ticks):
+                    errors.append(f"render/presentation counters exceed ticks: {stats_matches[-1]}")
+                if int(max_delta) > 100:
+                    errors.append(f"tick delta exceeded the 100 ms catch-up clamp: {max_delta}")
+            driver = re.search(r"tick loop started \(pacing=.*?driver=([\w-]+)", text)
+            if not driver:
+                errors.append("missing pacing driver log")
+            elif args.pace == "timer" and driver.group(1) != "timer":
+                errors.append(f"timer pacing requested but driver={driver.group(1)}")
+            elif args.pace == "display" and driver.group(1) != "display-link":
+                errors.append(f"display-link pacing requested but driver={driver.group(1)}")
+            if args.fps_limit is not None and int(args.fps_limit) > 0:
+                target = int(args.fps_limit)
+                if f"fps_limit={target}" not in text or f"target={target} FPS" not in text:
+                    errors.append(f"fps_limit={target} was not configured for the session")
+                if pacing_stats and pacing_stats["tick_rate"] > target * 1.1 + 1:
+                    errors.append(f"tick rate {pacing_stats['tick_rate']}/s exceeded target {target}")
+            if args.lifecycle:
+                if "host lifecycle testLifecycle=on" not in text or "host lifecycle testLifecycle=off" not in text:
+                    errors.append("scripted lifecycle transition was not handled")
+                if pacing_stats and pacing_stats["pacing_resets"] < 2:
+                    errors.append("lifecycle transitions did not reset the pacing clock")
             (folder / "result.json").write_text(json.dumps({
                 "game": name, "duration_seconds": args.duration,
                 "renderer": args.renderer, "presentation": args.presentation,
                 "snapshots": args.snapshots, "exit_code": code,
+                "fps_limit": args.fps_limit, "pace": args.pace,
+                "pacing_driver": driver.group(1) if driver else None,
+                "pacing_stats": pacing_stats,
                 "async_teardown": async_summary, "errors": errors,
                 "passed": not errors,
             }, indent=2) + "\n")

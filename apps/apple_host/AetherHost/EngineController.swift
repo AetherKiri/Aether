@@ -125,7 +125,20 @@ final class EngineController: ObservableObject {
     private let session = AetherEngineSession()
     var hostSettings = HostSettings()
     private(set) var appliedSettingOptions: [String: String] = [:]
-    private var timer: Timer?
+    private var frameClock: HostFrameClock?
+    private var scheduler = FrameScheduler(mode: .followDisplay)
+    private(set) var pacingDriver = "none"
+    private(set) var pacingMode = FramePacingMode.followDisplay
+    private(set) var pacingTargetFPS: Int?
+    private(set) var pacingLifecycleReasons: Set<String> = []
+    private(set) var renderTickCount: UInt64 = 0
+    private(set) var presentationCount: UInt64 = 0
+    private(set) var lastTickDeltaMS: UInt32 = 0
+    private(set) var maxTickDeltaMS: UInt32 = 0
+    private var lastPresenterFrameCount: UInt64 = 0
+    private var lastPublishedImage: CGImage?
+    private var pacingSessionStart: TimeInterval = 0
+    private var lifecycleObservers: [NotificationCenter: [NSObjectProtocol]] = [:]
     private var lastStartupState: UInt32 = 0
     private var pointerEventCount = 0
     private var keyEventCount = 0
@@ -416,13 +429,19 @@ final class EngineController: ObservableObject {
             try session.setOption("console_log_file", value: "0")
             appliedSettingOptions = [:]
             for option in hostSettings.engineOptions {
+                // The engine option is applied before any game is opened. The
+                // smoke override may replace it, so record the effective value.
+                let value = option.key == "fps_limit" ? effectiveFPSLimitOption : option.value
                 do {
-                    try session.setOption(option.key, value: option.value)
-                    appliedSettingOptions[option.key] = option.value
-                    log("settings option \(option.key)=\(option.value) applied")
+                    try session.setOption(option.key, value: value)
+                    appliedSettingOptions[option.key] = value
+                    log("settings option \(option.key)=\(value) applied")
                 }
                 catch { log("settings option \(option.key) rejected: \(error.localizedDescription)") }
             }
+            pacingMode = effectivePacingMode
+            pacingTargetFPS = pacingMode.targetFPS
+            log("pacing configured: \(pacingMode.description), fps_limit=\(effectiveFPSLimitOption)")
             if textTranslationAvailable {
                 applyTranslationOptions()
             } else {
@@ -490,34 +509,202 @@ final class EngineController: ObservableObject {
             scheduleBenchmarkStep()
             return
         }
-        // TODO(M1): CVDisplayLink / CADisplayLink pacing; Timer is the M0 smoke.
-        let timer = Timer(timeInterval: 1.0 / 60.0, repeats: true) { [weak self] _ in
-            // Timer is installed exclusively on RunLoop.main. Execute here
-            // instead of enqueueing another task for every fired timer.
-            MainActor.assumeIsolated { self?.step() }
+        configurePacing()
+        observePacingLifecycle()
+        pacingSessionStart = ProcessInfo.processInfo.systemUptime
+        renderTickCount = 0
+        presentationCount = 0
+        maxTickDeltaMS = 0
+        lastPresenterFrameCount = metalPresenter?.presentedFrameCount ?? 0
+        lastPublishedImage = nil
+        scheduler.reset()
+        let clock = HostFrameClock(preference: effectiveClockPreference, interval: pacingClockInterval)
+        // HostFrameClock always delivers callbacks on the main thread; the
+        // assumeIsolated hop mirrors the previous Timer loop's contract.
+        clock.onCallback = { [weak self] now in
+            MainActor.assumeIsolated { self?.handlePacingCallback(now: now) }
         }
-        RunLoop.main.add(timer, forMode: .common)
-        self.timer = timer
-        log("tick loop started (60 Hz timer), presentation=\(metalPresenter?.directPresentation == true ? "direct" : "deferred")")
+        frameClock = clock
+        clock.start()
+        pacingDriver = clock.driver.rawValue
+        log("tick loop started (pacing=\(pacingMode.description), driver=\(pacingDriver)\(clock.fallbackReason.map { " - \($0)" } ?? ""), refresh=\(Int(displayRefreshHz))Hz, presentation=\(metalPresenter?.directPresentation == true ? "direct" : "deferred")")
+        recordDiagnostics(pacingDiagnostics)
     }
 
     private func scheduleBenchmarkStep() {
         guard loopRunning else { return }
         DispatchQueue.main.async { [weak self] in
             guard let self, self.loopRunning else { return }
-            self.step()
+            // Deliberately synthetic: the offscreen benchmark compares submit
+            // throughput at a fixed 1/60 step and is not the product scheduler.
+            self.step(deltaMS: 16, syntheticStep: true)
             self.scheduleBenchmarkStep()
         }
     }
 
     func stopLoop() {
-        timer?.invalidate()
-        timer = nil
+        if loopRunning, !offscreenBenchmark {
+            log("pacing stats: \(frameStatisticsSummary)")
+            recordDiagnostics(pacingDiagnostics)
+        }
+        frameClock?.stop()
+        frameClock = nil
+        removePacingLifecycleObservers()
         loopRunning = false
         log("tick loop stopped")
     }
 
-    private func step() {
+    // MARK: - Pacing
+
+    private var pacingClockPreference: FrameClockPreference {
+        FrameClockPreference(environmentValue: ProcessInfo.processInfo.environment["AETHER_HOST_PACE"])
+    }
+
+    /// A display link can never exceed the refresh rate, so a target above the
+    /// current display uses the timer source instead.
+    private var effectiveClockPreference: FrameClockPreference {
+        let requested = pacingClockPreference
+        guard requested == .automatic else { return requested }
+        if let target = pacingMode.targetFPS, Double(target) > displayRefreshHz + 1 { return .timer }
+        return .automatic
+    }
+
+    /// Display refresh reported by AppKit. Used for the timer fallback interval
+    /// and for the driver choice when a target exceeds the refresh rate.
+    private var displayRefreshHz: Double {
+        let screen = NSScreen.main ?? NSScreen.screens.first
+        let refresh = Double(screen?.maximumFramesPerSecond ?? 60)
+        return refresh > 0 ? refresh : 60
+    }
+
+    /// Effective pacing mode. The persisted settings are authoritative; the
+    /// AETHER_HOST_FPS_LIMIT override exists for smoke/benchmark runs.
+    private var effectivePacingMode: FramePacingMode {
+        if let raw = ProcessInfo.processInfo.environment["AETHER_HOST_FPS_LIMIT"],
+           let value = Int(raw), value >= 0 {
+            if value == 0 { return .followDisplay }
+            if let target = FrameScheduler.normalizedTarget(value) { return .limited(fps: target) }
+        }
+        if hostSettings.fpsLimitEnabled,
+           let target = FrameScheduler.normalizedTarget(hostSettings.targetFPS) {
+            return .limited(fps: target)
+        }
+        return .followDisplay
+    }
+
+    /// Value handed to the engine's `fps_limit` option: `0` or the target rate.
+    var effectiveFPSLimitOption: String {
+        effectivePacingMode.targetFPS.map(String.init) ?? "0"
+    }
+
+    private var pacingClockInterval: TimeInterval {
+        // Drive callbacks at least as fast as the target or the refresh so the
+        // scheduler, not callback jitter, decides the realized tick rate.
+        let sourceRate = min(144, max(60, displayRefreshHz))
+        return 1.0 / max(sourceRate, Double(pacingMode.targetFPS ?? 0))
+    }
+
+    private func configurePacing() {
+        pacingMode = effectivePacingMode
+        pacingTargetFPS = pacingMode.targetFPS
+        scheduler.setMode(pacingMode)
+    }
+
+    private func handlePacingCallback(now: TimeInterval) {
+        guard loopRunning, !offscreenBenchmark else { return }
+        guard let tick = scheduler.tick(now: now) else { return }
+        step(deltaMS: tick.deltaMS, syntheticStep: false)
+    }
+
+    /// Records a focus/hide/minimize/sleep transition. The host deliberately
+    /// keeps ticking so game audio and logic are unaffected by occlusion (the
+    /// presenter gate already withholds drawables); the pacing clock is reset
+    /// in both directions so a long pause can never become a catch-up burst.
+    func handlePacingLifecycle(_ reason: String, active: Bool) {
+        let changed = active ? pacingLifecycleReasons.insert(reason).inserted
+                             : pacingLifecycleReasons.remove(reason) != nil
+        guard changed else { return }
+        scheduler.reset()
+        log("host lifecycle \(reason)=\(active ? "on" : "off"); pacing reset (state=\(pacingStateDescription))")
+        recordDiagnostics(pacingDiagnostics)
+    }
+
+    var pacingStateDescription: String {
+        pacingLifecycleReasons.isEmpty ? "active" : pacingLifecycleReasons.sorted().joined(separator: "+")
+    }
+
+    var frameStatisticsSummary: String {
+        let elapsed = max(0.001, ProcessInfo.processInfo.systemUptime - pacingSessionStart)
+        func rate(_ value: UInt64) -> String { String(format: "%.1f/s", Double(value) / elapsed) }
+        return "tick=\(tickCount) (\(rate(tickCount))) render=\(renderTickCount) (\(rate(renderTickCount))) "
+            + "presentation=\(presentationCount) (\(rate(presentationCount))) "
+            + "dropped_catch_up=\(scheduler.droppedCatchUpIntervals) coalesced=\(scheduler.coalescedCallbacks) "
+            + "resets=\(scheduler.resets) max_delta_ms=\(maxTickDeltaMS)"
+    }
+
+    private var pacingDiagnostics: [String: String] {
+        ["pacingMode": pacingMode.description,
+         "pacingDriver": pacingDriver,
+         "pacingTargetFPS": pacingTargetFPS.map(String.init) ?? "follow-display",
+         "pacingState": pacingStateDescription,
+         "fpsLimitOption": effectiveFPSLimitOption,
+         "tickStat": String(tickCount),
+         "renderStat": String(renderTickCount),
+         "presentationStat": String(presentationCount),
+         "droppedCatchUpIntervals": String(scheduler.droppedCatchUpIntervals),
+         "maxTickDeltaMS": String(maxTickDeltaMS),
+         "frameStatNote": "tick=host engine_tick calls; render=ticks whose engine render step produced a frame; presentation=drawable submissions or image publications; none equals display scan-out FPS"]
+    }
+
+    private func observePacingLifecycle() {
+        guard lifecycleObservers.isEmpty else { return }
+        let application = NotificationCenter.default
+        func observe(_ center: NotificationCenter, _ name: Notification.Name,
+                     _ handler: @escaping @MainActor (Notification) -> Void) {
+            let token = center.addObserver(forName: name, object: nil, queue: .main) { note in
+                MainActor.assumeIsolated { handler(note) }
+            }
+            lifecycleObservers[center, default: []].append(token)
+        }
+        observe(application, NSApplication.didResignActiveNotification) { [weak self] _ in
+            self?.handlePacingLifecycle("appInactive", active: true)
+        }
+        observe(application, NSApplication.didBecomeActiveNotification) { [weak self] _ in
+            self?.handlePacingLifecycle("appInactive", active: false)
+        }
+        observe(application, NSApplication.didHideNotification) { [weak self] _ in
+            self?.handlePacingLifecycle("appHidden", active: true)
+        }
+        observe(application, NSApplication.didUnhideNotification) { [weak self] _ in
+            self?.handlePacingLifecycle("appHidden", active: false)
+        }
+        observe(application, NSWindow.didMiniaturizeNotification) { [weak self] _ in
+            self?.handlePacingLifecycle("windowMiniaturized", active: true)
+        }
+        observe(application, NSWindow.didDeminiaturizeNotification) { [weak self] _ in
+            self?.handlePacingLifecycle("windowMiniaturized", active: false)
+        }
+        observe(application, NSWindow.didChangeOcclusionStateNotification) { [weak self] note in
+            guard let window = note.object as? NSWindow else { return }
+            self?.handlePacingLifecycle("windowOccluded", active: !window.occlusionState.contains(.visible))
+        }
+        let workspace = NSWorkspace.shared.notificationCenter
+        observe(workspace, NSWorkspace.willSleepNotification) { [weak self] _ in
+            self?.handlePacingLifecycle("systemSleep", active: true)
+        }
+        observe(workspace, NSWorkspace.didWakeNotification) { [weak self] _ in
+            self?.handlePacingLifecycle("systemSleep", active: false)
+        }
+    }
+
+    private func removePacingLifecycleObservers() {
+        for (center, tokens) in lifecycleObservers {
+            for token in tokens { center.removeObserver(token) }
+        }
+        lifecycleObservers.removeAll()
+    }
+
+    private func step(deltaMS: UInt32, syntheticStep: Bool) {
         let started = profileFrames ? ProcessInfo.processInfo.systemUptime : 0
         defer {
             // Direct mode also includes upload, drawable acquisition and
@@ -527,9 +714,13 @@ final class EngineController: ObservableObject {
                 frameWorkMilliseconds.append((ProcessInfo.processInfo.systemUptime - started) * 1000)
             }
         }
-        // Fixed step mirrors the Godot host (main.gd passes 1/60).
-        session.tick(deltaMS: 16)
+        // Real elapsed host time for this tick (clamped by the scheduler).
+        // The offscreen benchmark is the only synthetic 1/60 step.
+        session.tick(deltaMS: deltaMS)
         tickCount += 1
+        lastTickDeltaMS = deltaMS
+        maxTickDeltaMS = max(maxTickDeltaMS, deltaMS)
+        if !syntheticStep, session.lastTickRenderedFrame() { renderTickCount += 1 }
         if tickCount % 30 == 1 { drainEngineLogs() }
         // Follow the loading->ready/failed transition while a model loads.
         if tickCount % 60 == 0, translationStatus.state == .loading { refreshTranslationStatus() }
@@ -651,10 +842,22 @@ final class EngineController: ObservableObject {
                 } catch {
                     presentationFailed(String(describing: error))
                 }
+                if !offscreenBenchmark, let presented = metalPresenter?.presentedFrameCount,
+                   presented > lastPresenterFrameCount {
+                    presentationCount += presented - lastPresenterFrameCount
+                }
+                lastPresenterFrameCount = metalPresenter?.presentedFrameCount ?? 0
+            } else if !offscreenBenchmark, renderTickCount > 0,
+                      let image = frameImage, image !== lastPublishedImage {
+                // Image fallback publishes a frame to SwiftUI; still a host
+                // presentation, still not a display scan-out measurement.
+                presentationCount += 1
+                lastPublishedImage = image
             }
-            if tickCount % 300 == 0 {
-                log("frame presented (tick \(tickCount))")
-            }
+        }
+        if tickCount % 300 == 0 {
+            log("pacing stats: \(frameStatisticsSummary)")
+            recordDiagnostics(pacingDiagnostics)
         }
     }
 
@@ -925,6 +1128,20 @@ final class EngineController: ObservableObject {
                 }
             }
         }
+        // Scripted lifecycle events, e.g. "4:on,7:off", drive the same handler
+        // as the AppKit focus/occlusion/minimize notifications.
+        if let raw = env["AETHER_HOST_TEST_LIFECYCLE"] {
+            for entry in raw.split(separator: ",").prefix(32) {
+                let pair = entry.split(separator: ":")
+                guard pair.count == 2, let delay = Double(pair[0]), delay.isFinite, delay >= 0 else { continue }
+                let active = pair[1] == "on"
+                DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
+                    guard self.loopRunning else { return }
+                    self.log("TEST LIFECYCLE: testLifecycle=\(active ? "on" : "off")")
+                    self.handlePacingLifecycle("testLifecycle", active: active)
+                }
+            }
+        }
         // Deterministic frame evidence for CI: comma-separated seconds after
         // autorun start; each saves the engine frame as PNG.
         if let raw = env["AETHER_HOST_CAPTURE_AFTER"] {
@@ -1032,7 +1249,7 @@ final class EngineController: ObservableObject {
         recordDiagnostics(["state": failureMessage == nil ? "stopped" : "failed", "closed": ISO8601DateFormatter().string(from: Date()),
                            "ticks": String(tickCount), "frame": "\(Int(frameSize.width))x\(Int(frameSize.height))",
                            "unhandledPlatformRequests": String(unhandledPlatformRequests),
-                           "translationState": "\(translationStatus.state)"])
+                           "translationState": "\(translationStatus.state)"].merging(pacingDiagnostics) { _, new in new })
         unhandledPlatformRequests = 0
         nativeFrameLease = nil
         nativeFrameTexture = nil

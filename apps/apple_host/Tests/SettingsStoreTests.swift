@@ -12,6 +12,7 @@ struct SettingsStoreTests {
         let store = SettingsStore(url: root.appendingPathComponent("settings.json"))
         let fresh = try store.load(defaults: defaults, legacyPrefix: "fresh.")
         precondition(fresh.renderer == "metal" && fresh.languageMode == "system" && fresh.mockEnabled && fresh.theme == "classic" && fresh.upscaleAlgorithm == "bicubic")
+        precondition(!fresh.fpsLimitEnabled && fresh.targetFPS == 80 && fresh.fpsLimitOption == "0")
         let legacy = SettingsStore(url: root.appendingPathComponent("legacy/settings.json"))
         defaults.set("software", forKey: "shell.renderer")
         defaults.set("japanese", forKey: "shell.language")
@@ -32,7 +33,8 @@ struct SettingsStoreTests {
         let oldData = try JSONSerialization.data(withJSONObject: v1)
         try oldData.write(to: legacy.url)
         let upgraded = try legacy.load(defaults: defaults, legacyPrefix: "shell.")
-        precondition(upgraded == loaded && upgraded.version == 4 && upgraded.theme == "classic")
+        precondition(upgraded == loaded && upgraded.version == 5 && upgraded.theme == "classic")
+        precondition(!upgraded.fpsLimitEnabled && upgraded.targetFPS == 80)
         check(try Data(contentsOf: legacy.url) == oldData) // Loading does not overwrite the migration source.
         var v2 = v1
         v2["version"] = 2
@@ -50,7 +52,28 @@ struct SettingsStoreTests {
         try JSONSerialization.data(withJSONObject: v3).write(to: legacy.url)
         let oldSampling = try legacy.load(defaults: defaults, legacyPrefix: "shell.")
         precondition(oldSampling.canvasMode == "display" && oldSampling.outputResolution == "1080p" && oldSampling.upscaleAlgorithm == "linear")
+        // A v4 file has no FPS fields and must migrate to off with target 80.
+        var v4 = v3
+        v4["version"] = 4
+        v4["upscaleAlgorithm"] = "bicubic"
+        v4.removeValue(forKey: "fpsLimitEnabled")
+        v4.removeValue(forKey: "targetFPS")
+        try JSONSerialization.data(withJSONObject: v4).write(to: legacy.url)
+        let oldFPS = try legacy.load(defaults: defaults, legacyPrefix: "shell.")
+        precondition(oldFPS.upscaleAlgorithm == "bicubic" && !oldFPS.fpsLimitEnabled && oldFPS.targetFPS == 80)
+        precondition(oldFPS.fpsLimitOption == "0")
         precondition(fresh.outputResolution == "1080p")
+        for target in FrameScheduler.supportedTargets {
+            var value = loaded
+            value.fpsLimitEnabled = true
+            value.targetFPS = target
+            try legacy.save(value)
+            let reloaded = try legacy.load(defaults: defaults, legacyPrefix: "shell.")
+            precondition(reloaded == value && reloaded.fpsLimitOption == String(target))
+        }
+        for option in loaded.engineOptions {
+            precondition(option.key != "fps_limit" || option.value == "0")
+        }
         for mode in CanvasMode.allCases {
             for resolution in OutputResolution.allCases {
                 var value = loaded
@@ -118,6 +141,20 @@ struct SettingsStoreTests {
         invalid.canvasMode = "game"
         invalid.upscaleAlgorithm = "unknown"
         do { try legacy.save(invalid); preconditionFailure("invalid sampling saved") } catch {}
+        invalid.upscaleAlgorithm = "bicubic"
+        for invalidTarget in [0, 30, 59, 75, 100, 143, 165] {
+            var value = loaded
+            value.fpsLimitEnabled = true
+            value.targetFPS = invalidTarget
+            do { try legacy.save(value); preconditionFailure("invalid target \(invalidTarget) saved") } catch {}
+        }
+        var invalidMode = loaded
+        invalidMode.fpsLimitEnabled = true
+        invalidMode.targetFPS = 90
+        try legacy.save(invalidMode)
+        let limitedMode = try legacy.load(defaults: defaults, legacyPrefix: "shell.")
+        precondition(limitedMode.fpsLimitOption == "90" && limitedMode.fpsLimitEnabled && limitedMode.targetFPS == 90)
+        try legacy.save(loaded)
         invalid.version = 99
         do { _ = try invalid.validated(); preconditionFailure("future version accepted") } catch {}
         let future = try JSONEncoder().encode(invalid)
@@ -134,7 +171,7 @@ struct SettingsStoreTests {
         try Data("not json".utf8).write(to: store.url)
         do { _ = try store.load(defaults: defaults, legacyPrefix: "shell."); preconditionFailure("corrupt file replaced") } catch {}
         check(try Data(contentsOf: store.url) == Data("not json".utf8))
-        precondition(draft.value.engineOptions.map(\.key) == ["plugin_load_mode", "mock_enabled", "error_dialog_logs"])
-        print("PASS: schema/theme migration, four-theme persistence and contrast, draft isolation, discard/save, validation, filesystem failure and corrupt-file preservation")
+        precondition(draft.value.engineOptions.map(\.key) == ["plugin_load_mode", "mock_enabled", "error_dialog_logs", "fps_limit"])
+        print("PASS: schema v1-v5/theme migration, FPS target persistence and validation, four-theme contrast, draft isolation, discard/save, filesystem failure and corrupt-file preservation")
     }
 }

@@ -3,7 +3,7 @@ import Foundation
 /// Effective, persisted preferences. Transient controls and engine state do not
 /// belong here. A settings page edits a value copy until a successful save.
 struct HostSettings: Codable, Equatable {
-    static let schemaVersion = 4
+    static let schemaVersion = 5
     var version = schemaVersion
     var languageMode = "system"
     var theme = "classic"
@@ -11,6 +11,8 @@ struct HostSettings: Codable, Equatable {
     var canvasMode = "game"
     var outputResolution = "1080p"
     var upscaleAlgorithm = "bicubic"
+    var fpsLimitEnabled = false
+    var targetFPS = FrameScheduler.defaultTargetFPS
     var virtualControls = false
     var logs = false
     var translationModelPath = ""
@@ -27,6 +29,7 @@ struct HostSettings: Codable, Equatable {
               ["software", "metal"].contains(renderer),
               CanvasMode(rawValue: canvasMode) != nil, OutputResolution(rawValue: outputResolution) != nil,
               SamplingAlgorithm.normalized(upscaleAlgorithm) != nil,
+              FrameScheduler.normalizedTarget(targetFPS) != nil,
               ["krkrsdl3", "aether_all"].contains(pluginLoadMode) else { throw Failure.invalidValue }
         var result = self
         result.upscaleAlgorithm = SamplingAlgorithm.normalized(upscaleAlgorithm)!.rawValue
@@ -48,6 +51,7 @@ struct HostSettings: Codable, Equatable {
         } else {
             result.upscaleAlgorithm = "bicubic"
         }
+        if FrameScheduler.normalizedTarget(targetFPS) == nil { result.targetFPS = FrameScheduler.defaultTargetFPS }
         return result
     }
 
@@ -59,14 +63,19 @@ struct HostSettings: Codable, Equatable {
 
     var engineOptions: [(key: String, value: String)] {
         [("plugin_load_mode", pluginLoadMode), ("mock_enabled", mockEnabled ? "1" : "0"),
-         ("error_dialog_logs", errorDialogLogs ? "1" : "0")]
+         ("error_dialog_logs", errorDialogLogs ? "1" : "0"),
+         ("fps_limit", fpsLimitEnabled ? String(targetFPS) : "0")]
     }
+
+    /// Effective ABI value: `0` disables engine-side limiting and lets the
+    /// host follow the display refresh.
+    var fpsLimitOption: String { fpsLimitEnabled ? String(targetFPS) : "0" }
 }
 
 extension HostSettings {
     enum CodingKeys: String, CodingKey {
         case version, languageMode, theme, renderer, canvasMode, outputResolution, upscaleAlgorithm, virtualControls, logs, translationModelPath,
-             pluginLoadMode, mockEnabled, errorDialogLogs
+             fpsLimitEnabled, targetFPS, pluginLoadMode, mockEnabled, errorDialogLogs
     }
     init(from decoder: Decoder) throws {
         let values = try decoder.container(keyedBy: CodingKeys.self)
@@ -77,6 +86,8 @@ extension HostSettings {
         canvasMode = try values.decodeIfPresent(String.self, forKey: .canvasMode) ?? "game"
         outputResolution = try values.decodeIfPresent(String.self, forKey: .outputResolution) ?? (version < 3 ? "original" : "1080p")
         upscaleAlgorithm = try values.decodeIfPresent(String.self, forKey: .upscaleAlgorithm) ?? (version < 4 ? "linear" : "bicubic")
+        fpsLimitEnabled = try values.decodeIfPresent(Bool.self, forKey: .fpsLimitEnabled) ?? false
+        targetFPS = try values.decodeIfPresent(Int.self, forKey: .targetFPS) ?? FrameScheduler.defaultTargetFPS
         virtualControls = try values.decode(Bool.self, forKey: .virtualControls)
         logs = try values.decode(Bool.self, forKey: .logs)
         translationModelPath = try values.decode(String.self, forKey: .translationModelPath)

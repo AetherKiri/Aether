@@ -1,7 +1,7 @@
 # Apple 宿主 UI 与设置对齐实施计划
 
 - 2026-10-11，依据 [产品 UI spec](apple_host_ui_spec.md)。
-- 状态：P0调查完成；P1核心实现与行为测试已接入，完整CUA验收待补；P2集合/详情及四主题已接入，完整视觉/无障碍验收待补；P3a能力/安全回退、P3b画布/输出与P3c采样已实现并通过行为回归及设置页CUA；P3d与P4–P7尚未实施。阶段按依赖排序，每轮只提交已验证的完整切片。
+- 状态：P0调查完成；P1核心实现与行为测试已接入，完整CUA验收待补；P2集合/详情及四主题已接入，完整视觉/无障碍验收待补；P3a能力/安全回退、P3b画布/输出、P3c采样与P3d调度已实现并通过行为回归、真实smoke及设置页CUA；P4–P7尚未实施。阶段按依赖排序，每轮只提交已验证的完整切片。
 - 目标是修正产品结构并补齐真实功能；不在一轮中把所有缺项画成无效果控件。
 
 ## P0：调查与规范（本轮）
@@ -185,4 +185,16 @@ P3a重点验证部分Metal激活失败后的资源清理：不得在已打开游
 - [x] 行为测试覆盖 smooth 迁移、四种 CPU/GPU 采样结果对照和持久化；KAG3 Metal direct 30 秒 smoke 已分别通过 nearest、linear、bicubic、lanczos，均无 RGB 差异、呈现失败或未完成 lease。
 - [x] CUA 在真实构建窗口验证四个选项可见、双三次可切换并保存成功；随后恢复原有线性偏好。
 
-下一切片：P3d 调度。FPS 开关与目标值仍未开放，必须先验证固定步长模拟时间、引擎限频、呈现统计及失焦策略。
+## P3d实施记录：FPS 与调度
+
+- [x] `HostSettings` schema v5 新增 `fpsLimitEnabled=false`、`targetFPS=80`；v1–v4 文件缺字段迁移为默认值，只接受 60/80/90/120/144，保存前完整校验。
+- [x] 设置页渲染分类提供五语言 FPS 开关与目标选择；关闭时显示“跟随显示刷新（当前）”，启用时显示五个目标值；文案说明真实经过时间与下次启动生效。
+- [x] 启动前真实下发 `fps_limit`：关闭为 `0`，启用为目标值；`AETHER_HOST_FPS_LIMIT` 仅作 smoke/benchmark 覆盖，不写入偏好。
+- [x] 宿主调度改为独立帧时钟：CVDisplayLink 优先跟随显示刷新，无活动显示或显式要求时退回 RunLoop Timer；启用限制时由 `FrameScheduler` 按目标间隔放行 tick，每次回调最多一次 tick，超出部分丢弃为 `dropped_catch_up`。
+- [x] 每次 tick 传入真实 elapsed 毫秒（含亚毫秒余量），单次上限 100 ms；失焦/隐藏/最小化/遮挡/系统休眠通过 AppKit 与 NSWorkspace 通知重置调度时钟并记录状态，退出时停止帧时钟并解绑观察者，不产生追赶爆发。
+- [x] 分开记录 tick/render/presentation：`engine_tick` 调用数、`engine_get_frame_rendered_flag` 实际出帧数、drawable 提交/图像发布数；日志与诊断注明三者都不等于屏幕扫描FPS。
+- [x] `python3 tools/apple_host_settings_tests.py` 通过：新增 60/120 Hz 合成脉冲的调度单元测试（目标 80 不被超过、累计模拟毫秒一致、迟到回调丢弃追赶、100 ms 上限），设置迁移/目标校验/engine option 值，真实引擎下发与真实 elapsed 调度。
+- [x] Debug 构建通过；KAG3 30 秒 smoke：软件（original 输出、Timer 跟随显示）113.1 tick/s、Metal 限制 80（Timer）76.0 tick/s 不超过目标、Metal 跟随显示（DisplayLink）112.9 tick/s；三次运行均 RGB max diff=0、`lease_failures=0`、`leases_live=0`、Metal failures=0，脚本化生命周期事件重置调度且 `max_delta_ms<=100`。
+- [x] CUA 在真实 Debug 窗口验证渲染页默认关闭并显示跟随显示刷新、五个目标值、选择 120 FPS 后保存为“设置已保存”且保存禁用，重启后仍为启用 120 FPS。
+
+下一切片：P4 会话/内容与诊断/输入媒体；P5 增强保持独立，不提前开放未实现控件。

@@ -63,7 +63,7 @@ Apple 官方参考：[Settings](https://developer.apple.com/design/human-interfa
 | 输出 original/1080p/2k/4k，默认1080p | 缺失设置 | 按原版目标尺寸/纵横比规范迁移；不是改变显示器分辨率 | P3 |
 | 增强 off/preset/custom | 缺失 | Metal 后处理与能力报告；原始帧降级；P5 前明确不可用 | P5 |
 | 15 个增强预设，16 种自定义算法、顺序添加/移除 | 缺失 | 保留重建2×、目标尺寸缩放、同尺寸修复三种语义；不是统一 resize | P5 |
-| FPS 开关+60/80/90/120/144，默认关闭、目标80 | 缺失；当前60Hz Timer | ABI fps_limit + 宿主调度；关闭限制也不承诺超显示器FPS | P3 |
+| FPS 开关+60/80/90/120/144，默认关闭、目标80 | 已接入 schema v5；DisplayLink 优先、Timer 兜底 | ABI fps_limit + 宿主调度；关闭限制也不承诺超显示器FPS | P3 |
 | 游戏横屏锁定 | 平台不适用 | 移动端 M4 | M4 |
 | 插件核心/完整（krkrsdl3/aether_all） | 缺失 UI/下发 | 已有 engine option，启动前应用并报告实际结果 | P1 |
 | 本地 GGUF 翻译选择/清除、目标跟随界面语言 | 已有，能力不足时整段隐藏 | 纳入草稿；能力不足显示原因；加载状态与偏好分开 | P1 |
@@ -147,7 +147,7 @@ Apple原生Metal、GPU Bridge和Godot RenderingDevice并非三个可直接搬来
 
 增强保持单次输出缩放，处理顺序：原始帧 → 自定义/预设处理 → 输出目标 → drawable等比呈现；保持直通FrameLease所有权和原有批处理。输入按逻辑游戏画布映射。增强失败回原始画面，不得黑屏、双重缩放或帧帧CPU回读。
 
-当前60Hz Timer与固定1/60 tick，无法通过新增144选项实现144FPS。P3必须明确模拟时间、引擎render限频和MTKView呈现的关系；不得提高Timer频率同时仍每tick推进1/60而加速剧情。产品显示的FPS必须标明呈现/渲染统计，提交吞吐benchmark不作为玩家帧率。
+P3d 已明确模拟时间、引擎render限频和MTKView呈现的关系：关闭限制时用 CVDisplayLink 跟随显示刷新（无活动显示或显式要求时退回 RunLoop Timer），启用限制时由宿主调度器按目标节奏放行 tick；两种模式都把真实 elapsed 时间交给引擎，不提高Timer频率同时仍推进固定1/60，因此刷新率不会加速剧情。失焦、隐藏、最小化、遮挡和系统休眠只重置调度时钟并记录状态，不产生追赶 tick；tick/render/presentation 三个计数分开记录，且都不等同于屏幕扫描FPS。
 
 ### 4.4 视觉与可访问性
 
@@ -198,7 +198,7 @@ Godot内容palette按源tokens保留。AppKit原生突出按钮使用白色标�
 | `output_resolution` | `outputResolution` | original/1080p/2k/4k 的目标尺寸、纵横比和资源预算；按比例缩放，不改变显示器分辨率 |
 | `frame_enhancement_enabled` / `frame_enhancement_kind` | 无 | 以 off/preset/custom 为单一有效模式，enabled 仅作旧配置迁移输入 |
 | `frame_enhancement_mode` / `frame_enhancement_custom_chain` | 无 | 15预设、16算法、顺序和不同 pass 尺寸语义；P5独立实现 |
-| `fps_limit_enabled` / `target_fps` | 无；宿主60Hz Timer | 限频、模拟时间和屏幕呈现分开验证，不通过增快剧情制造FPS提升 |
+| `fps_limit_enabled` / `target_fps` | `fpsLimitEnabled` / `targetFPS` → engine option `fps_limit` | 已接入：关闭下发0并跟随显示刷新，启用下发目标值并由宿主调度；真实elapsed dt、失焦重置、tick/render/presentation分开统计 |
 | `plugin_load_mode` | `pluginLoadMode` → engine option | 已接入；完整/核心模式的实际可用插件随构建报告 |
 | `mock_enabled` | `mockEnabled` → engine option | 已接入；启动前生效，默认true |
 | `error_dialog_logs` | `errorDialogLogs` → engine option | 已接入；真实错误弹窗的最近日志显示需场景验收 |
@@ -250,7 +250,7 @@ Apple [Toolbars](https://developer.apple.com/design/human-interface-guidelines/t
 
 游戏页在回退时显示请求管线、实际引擎、显示方式与原因；设置渲染页显示最近会话。运行中的Metal显示失败退为图像呈现，引擎仍可为Metal，不宣称切换为软件引擎。新会话重新尝试用户选择，清除上次回退状态。诊断保留`rendererRequested`/`renderer`/`presentation`/`renderFallback`，包括先初始化后打开游戏的开发入口。
 
-`AETHER_HOST_DEBUG_TRANSLATION`仅用于Debug设置预览，明确说明未链接provider；不改变真实翻译能力或给引擎发送虚假支持选项。P3b已实现画布/输出，P3c已实现采样；FPS、增强、diagnostic profile仍有明确未迁移说明，不开放无实现控件。
+`AETHER_HOST_DEBUG_TRANSLATION`仅用于Debug设置预览，明确说明未链接provider；不改变真实翻译能力或给引擎发送虚假支持选项。P3b已实现画布/输出，P3c已实现采样，P3d已实现FPS与调度；增强和diagnostic profile仍有明确未迁移说明，不开放无实现控件。
 
 行为测试使用实际引擎和隔离KAG3副本，注入无设备、呈现器失败、不支持及实际取得原生generation后失败的边界；验证软件/原生成功启动、显示降级后的tick/画面连续、FrameLease清理、重复回调幂等、重试和报告导出。注入故障验证处理路径，不等于发生真实设备丢失。另用实际应用完成30秒Metal直通输入/截图/退出回归；本轮CUA再次返回native pipe关闭，页面可见性与点击仍待验收。
 
@@ -264,4 +264,12 @@ Apple [Toolbars](https://developer.apple.com/design/human-interface-guidelines/t
 
 Godot 的 `smooth` 仅是线性采样的旧名称，默认值为 bicubic。Apple 现在将有效采样算法作为 schema v4 偏好，加载旧配置时把缺失字段迁移为 linear，保存时把 smooth 规范化为 linear。Metal shader 与软件 fallback 共享 nearest、linear、Catmull-Rom bicubic 4×4、Lanczos 半径 3 的核定义；Metal 输出 pass 只在目标尺寸或帧版本变化时重建中间纹理，最终呈现不会重复执行输出采样。
 
-行为测试逐算法比较 CPU 与 GPU 输出，覆盖迁移和不同核确实产生不同结果；KAG3 direct 30 秒 smoke 分别以四种算法运行，均保持 RGB max diff=0、`lease_failures=0`、`leases_live=0`。设置页 CUA 已验证四个选项、双三次切换和保存状态。P3d FPS/调度仍未开放。
+行为测试逐算法比较 CPU 与 GPU 输出，覆盖迁移和不同核确实产生不同结果；KAG3 direct 30 秒 smoke 分别以四种算法运行，均保持 RGB max diff=0、`lease_failures=0`、`leases_live=0`。设置页 CUA 已验证四个选项、双三次切换和保存状态。
+
+### 7.8 P3d实施结果
+
+`HostSettings` schema v5 新增 `fpsLimitEnabled=false` 与 `targetFPS=80`，v1–v4 旧文件缺字段时迁移为默认值，目标值只接受 60/80/90/120/144。启动前把 `fps_limit` 作为 engine option 下发：关闭时为 `0`（跟随显示刷新），启用时为所选目标值；环境覆盖 `AETHER_HOST_FPS_LIMIT` 只用于 smoke/benchmark，不写入用户偏好。设置页在渲染分类提供开关和目标选择，启用时显示五个目标值，关闭时显示“跟随显示刷新（当前）”，文案说明真实经过时间与下次启动生效。
+
+宿主调度改为独立于引擎的帧时钟：优先 CVDisplayLink 跟随显示刷新，无活动显示或显式 `AETHER_HOST_PACE=timer` 时退回 RunLoop Timer；启用限制时由纯 `FrameScheduler` 按目标间隔放行 tick，每次回调最多一次 tick，超出部分记为 `dropped_catch_up` 而不是追赶。每次 tick 传入真实 elapsed（毫秒，含亚毫秒余量），单次上限 100 ms；失焦、隐藏、最小化、遮挡和系统休眠通过 AppKit/NSWorkspace 通知重置调度时钟并记录状态，退出时停止帧时钟并解绑观察者，因此不会出现追赶爆发。CVDisplayLink 回调在主线程前做合并，主线程繁忙时不会回放积压。
+
+统计口径在日志和诊断中分开：`tick` 是宿主 `engine_tick` 调用次数，`render` 是引擎 `engine_get_frame_rendered_flag` 报告实际出帧的 tick 次数，`presentation` 是 Metal drawable 提交或图像发布次数；`frameStatNote` 明确三者都不等同于屏幕扫描FPS。调度单元测试以 60/120 Hz 合成脉冲验证目标 80 不被超过、累计模拟毫秒在不同脉冲率下相同、迟到回调丢弃追赶和 100 ms 上限。

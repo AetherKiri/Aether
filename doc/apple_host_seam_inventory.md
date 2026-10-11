@@ -16,8 +16,8 @@
 | 创建会话 | `engine_create(engine_create_desc_t)`：`writable_path_utf8` / `cache_path_utf8` / `api_version` | `initialize_engine()` | `EngineSession.create()` ✅ |
 | 打开游戏 | `engine_open_game` / `engine_open_game_async` + `engine_get_startup_state` 轮询 + `engine_drain_startup_logs` | player `open_game()` | 异步 + 进度 UI ✅ |
 | 运行时探测 | `engine_probe_runtime_provider(runtime_id, path)`（>0 = 匹配） | player `probe_runtime()` | 启动前选择 runtime ✅ |
-| 主循环 | 固定步长 `engine_tick(1/60)` + `engine_get_frame_rendered_flag` | main.gd:13419/13566/13736 | CADisplayLink/CVDisplayLink ✅ |
-| 暂停/恢复 | `engine_pause` / `engine_resume` | main.gd 生命周期处理 | scenePhase ✅ |
+| 主循环 | 真实 elapsed `engine_tick(delta_ms)` + `engine_get_frame_rendered_flag` | main.gd:13419/13566/13736 | CVDisplayLink 优先、Timer 兜底；限制模式按目标放行 tick，tick/render/presentation 分开统计 ✅ |
+| 暂停/恢复 | `engine_pause` / `engine_resume` | main.gd 生命周期处理 | AppKit/NSWorkspace 通知重置调度时钟；tick/音频保持连续，退出停止帧时钟 ✅ |
 | 销毁 | `engine_destroy`（先 `release_frame_texture`） | `destroy_engine()` | ✅ |
 | 错误处理 | `engine_get_last_error` / `last_result` | 全量 | Swift throws 包装 ✅ |
 

@@ -88,6 +88,17 @@ struct ShellSettingsView: View {
                         }
                     }
                     Text(model.text("samplingAlgorithmHelp")).font(.caption).foregroundStyle(palette.secondary.color)
+                    Toggle(model.text("fpsLimit"), isOn: binding(\.fpsLimitEnabled))
+                    if model.settingsDraft?.value.fpsLimitEnabled ?? model.settings.fpsLimitEnabled {
+                        Picker(model.text("targetFPS"), selection: binding(\.targetFPS)) {
+                            ForEach(FrameScheduler.supportedTargets, id: \.self) { fps in
+                                Text("\(fps) FPS").tag(fps)
+                            }
+                        }
+                    } else {
+                        Text(model.text("fpsPacingFollowDisplay")).font(.caption).foregroundStyle(palette.secondary.color)
+                    }
+                    Text(model.text("fpsLimitHelp")).font(.caption).foregroundStyle(palette.secondary.color)
                     if let reason = model.capabilities.nativeMetal.reasonKey {
                         Label(model.text(reason), systemImage: "exclamationmark.triangle").font(.caption)
                         if !model.capabilities.nativeMetal.detail.isEmpty {
@@ -95,7 +106,6 @@ struct ShellSettingsView: View {
                         }
                     }
                     Text(model.text("nativeRuntimeCheck")).font(.caption).foregroundStyle(palette.secondary.color)
-                    Text(model.text(model.capabilities.renderConfiguration.reasonKey ?? "renderSettingsPending")).font(.caption).foregroundStyle(palette.secondary.color)
                     Text(model.text(model.capabilities.enhancement.reasonKey ?? "enhancementPending")).font(.caption).foregroundStyle(palette.secondary.color)
                 }.padding(12)
             }

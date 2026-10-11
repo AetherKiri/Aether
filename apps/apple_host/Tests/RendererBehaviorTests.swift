@@ -109,6 +109,46 @@ enum RendererBehaviorTests {
         precondition(display.diagnostics.metadata["logicalCanvas"] == "\(Int(native.width))x\(Int(native.height))")
         display.shutdown()
 
+        // P3d: the real engine must receive fps_limit before a game is opened,
+        // and the host scheduler must pace with real elapsed time.
+        setenv("AETHER_HOST_PACE", "timer", 1)
+        defer { unsetenv("AETHER_HOST_PACE") }
+        let paced = EngineController()
+        paced.hostSettings.fpsLimitEnabled = true
+        paced.hostSettings.targetFPS = 90
+        precondition(paced.initializeEngine(renderer: "software"))
+        precondition(paced.appliedSettingOptions["fps_limit"] == "90")
+        precondition(paced.pacingTargetFPS == 90 && paced.pacingMode == .limited(fps: 90))
+        precondition(paced.openAndRun(gamePath: demo.path))
+        let pacedDeadline = Date().addingTimeInterval(5)
+        while (paced.tickCount < 15 || !paced.logText.contains("startup state: SUCCEEDED")) && Date() < pacedDeadline {
+            RunLoop.main.run(until: Date().addingTimeInterval(0.02))
+        }
+        precondition(paced.failureMessage == nil, paced.failureMessage ?? "paced game failed")
+        precondition(paced.pacingDriver == "timer", "timer pacing must be selectable for hosts without a display")
+        precondition(paced.logText.contains("fps_limit=90"), "effective engine option must be logged")
+        // A lifecycle transition resets pacing; the next delta must stay clamped.
+        paced.handlePacingLifecycle("testStall", active: true)
+        paced.handlePacingLifecycle("testStall", active: false)
+        precondition(paced.pacingStateDescription == "active")
+        precondition(paced.lastTickDeltaMS <= FrameScheduler.maximumDeltaMS)
+        let ticksBefore = paced.tickCount
+        let window = Date().addingTimeInterval(1)
+        while Date() < window { RunLoop.main.run(until: Date().addingTimeInterval(0.02)) }
+        let ticksInWindow = paced.tickCount - ticksBefore
+        precondition(ticksInWindow <= 110, "target 90 FPS must not exceed the target: \(ticksInWindow)")
+        precondition(ticksInWindow >= 10, "pacing must keep ticking: \(ticksInWindow)")
+        precondition(paced.renderTickCount > 0, "the engine must report rendered frames")
+        precondition(paced.lastTickDeltaMS <= FrameScheduler.maximumDeltaMS)
+        for key in ["tickStat", "renderStat", "presentationStat", "pacingMode", "pacingDriver", "frameStatNote"] {
+            precondition(paced.diagnostics.metadata[key] != nil, "missing pacing diagnostic \(key)")
+        }
+        precondition(paced.diagnostics.metadata["pacingDriver"] == "timer")
+        paced.shutdown()
+        // The driver is retained as a session record for the diagnostics report.
+        precondition(!paced.loopRunning && paced.pacingDriver == "timer")
+        precondition(paced.diagnostics.metadata["pacingDriver"] == "timer")
+
         let probe = AetherEngineSession()
         precondition(partial.textTranslationAvailable == probe.isTextTranslationAvailable())
         try probe.initialize(writablePath: root.path, cachePath: root.path)
@@ -121,7 +161,7 @@ enum RendererBehaviorTests {
             precondition(detail.localizedDescription.contains("frame_output"))
         }
         probe.shutdown()
-        print("PASS: device/presenter/runtime/partial-activation fallback, real software/native game frames, display fallback continuity, generation cleanup, retry and diagnostic persistence")
+        print("PASS: device/presenter/runtime/partial-activation fallback, real software/native game frames, display fallback continuity, generation cleanup, retry, fps_limit delivery, real-elapsed pacing and diagnostic persistence")
     }
 
     @MainActor private static func check(_ engine: EngineController, requested: HostRenderer,

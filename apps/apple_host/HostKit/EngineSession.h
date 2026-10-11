@@ -30,6 +30,9 @@ NS_ASSUME_NONNULL_BEGIN
 // Optional local-model text translation. Availability and state are
 // process-wide and mirror engine_is_text_translation_available().
 - (BOOL)isTextTranslationAvailable;
+// Reports whether the last engine_tick produced a new rendered frame.
+// The ABI query is score-once per tick, so call it immediately after tick:.
+- (BOOL)lastTickRenderedFrame;
 // ENGINE_TEXT_TRANSLATION_DISABLED/LOADING/READY/FAILED
 - (uint32_t)textTranslationState;
 // Process-wide resource/timing snapshot; nil when the query fails.

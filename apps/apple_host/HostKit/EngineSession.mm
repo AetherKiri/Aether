@@ -329,6 +329,17 @@ NSError *EngineError(engine_handle_t handle, NSString *fallback) {
     engine_tick(_handle, deltaMS);
 }
 
+- (BOOL)lastTickRenderedFrame {
+    if (_handle == nullptr) {
+        return NO;
+    }
+    uint32_t rendered = 0;
+    if (engine_get_frame_rendered_flag(_handle, &rendered) != ENGINE_RESULT_OK) {
+        return NO;
+    }
+    return rendered != 0;
+}
+
 - (BOOL)submitPlatformResponse:(NSString *)operation argument:(NSString *)argument error:(NSError **)error {
     if (!_handle) {
         if (error) *error = EngineError(nullptr, @"engine is not initialized");

@@ -71,7 +71,7 @@ Apple 特化资产（已存在，直接复用/移植）：
 
 详细职责矩阵见 [apple_host_seam_inventory.md](apple_host_seam_inventory.md)。要点：
 
-- **会话**：`engine_create`（writable/cache 路径）→ `engine_open_game(_async)` → `engine_get_startup_state` 轮询 → 固定步长 `engine_tick`（参考 1/60）→ 呈现 → `engine_pause/resume/destroy`。
+- **会话**：`engine_create`（writable/cache 路径）→ `engine_open_game(_async)` → `engine_get_startup_state` 轮询 → 按显示刷新或目标 FPS 调度的 `engine_tick(真实elapsed)` → 呈现 → `engine_pause/resume/destroy`。
 - **GPU 绘制桥**：23 个回调（主 17 + 批处理 2 + 外部纹理 4），宿主以 Metal 实现；不注册回调时引擎走即时/软件兜底。
 - **输入**：`engine_send_input(engine_input_event_t)`；提交文字经 `TEXT_INPUT`；输入状态由 `engine_get_text_input_state/copy_text_input_text` 获取。原生宿主已提供手动文字弹窗、屏幕按键，以及游戏内编辑控件的合成输入同步：`attention_point_valid && ime_active` 时画布视图成为 AppKit 文本输入客户端，合成经 `ime_preedit`/`ime_preedit_cursor`、提交经 `TEXT_INPUT`、候选窗口跟随 `attention_x/y`（`ime_preedit` 目前只被 Siglus provider 消费）。
 - **平台请求**（字符串通道）：`open_browser`、`call_native`、`purchase`、`dialog`、`text_input`、`presentation_sprite`、`minori_save_slots`、`minori_message(_reveal)`、`minori_audio`、`minori_movie`，其余转交壳层。原生 `dialog`/`text_input` 混合 FIFO 弹窗、初始文字和各自协议响应、失败重试已实现；`call_native` 与原壳一致做空应答，未处理的 operation 计入会话诊断 `unhandledPlatformRequests`，避免 runtime 静默等待。`minori_select`、`softpal_*` 窗口族与 `softpal_http_get` 已归档为缺口（接缝清单 D 节）。私有 provider 实际请求验收仍待补。

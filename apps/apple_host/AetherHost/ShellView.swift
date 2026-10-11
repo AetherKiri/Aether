@@ -57,6 +57,9 @@ struct ContentView: View {
                             Text(model.text("translationLoading")).font(.caption).foregroundStyle(palette.secondary.color)
                         }
                     }.padding(12)
+                    if !engine.renderState.fallbacks.isEmpty {
+                        RenderingStatusView(engine: engine, language: model.language).padding(.horizontal, 12).padding(.bottom, 8)
+                    }
                     Divider()
                     HStack(spacing: 0) {
                         GameSurfaceView(engine: engine, language: model.language)

@@ -3,8 +3,8 @@ import CoreGraphics
 import Metal
 import SwiftUI
 
-// Engine lifecycle and fixed-step ticking. P0 reads software frames; opt-in
-// P2 hands immutable native textures to MetalFramePresenter.
+// Engine lifecycle and fixed-step ticking. Native sessions pass immutable
+// textures to MetalFramePresenter; software remains the diagnostic fallback.
 @MainActor
 final class EngineController: ObservableObject {
     @Published var failureMessage: String?
@@ -24,8 +24,30 @@ final class EngineController: ObservableObject {
     @Published var frameSize: CGSize = .zero
     @Published var tickCount: UInt64 = 0
 
-    let metalPresenter: MetalFramePresenter? = MTLCreateSystemDefaultDevice().flatMap {
-        return try? MetalFramePresenter(device: $0, commandQueue: AetherMetalBridgeCommandQueue())
+    let metalPresenter: MetalFramePresenter?
+    private let metalAvailability: HostCapabilities.Availability
+    private let activateMetal: (AetherEngineSession) throws -> Void
+    @Published private(set) var renderState = RenderSessionState()
+    var capabilities: HostCapabilities {
+        HostCapabilities(nativeMetal: metalAvailability, translation: session.isTextTranslationAvailable()
+                         ? .ready : .init(reasonKey: "translationModelUnavailable", detail: ""))
+    }
+    enum SetupFailure: Error { case noDevice }
+    init(presenterFactory: (() throws -> MetalFramePresenter)? = nil,
+         metalActivation: ((AetherEngineSession) throws -> Void)? = nil) {
+        self.activateMetal = metalActivation ?? { try $0.enableMetalRenderer() }
+        do {
+            if let presenterFactory { metalPresenter = try presenterFactory() }
+            else {
+                guard let device = MTLCreateSystemDefaultDevice() else { throw SetupFailure.noDevice }
+                metalPresenter = try MetalFramePresenter(device: device, commandQueue: AetherMetalBridgeCommandQueue())
+            }
+            metalAvailability = .ready
+        } catch {
+            metalPresenter = nil
+            metalAvailability = .init(reasonKey: error is SetupFailure ? "metalDeviceUnavailable" : "metalPresenterUnavailable",
+                                      detail: String(describing: error))
+        }
     }
     private var metalPresenterGateWired = false
     @Published var useMetalPresentation =
@@ -34,6 +56,14 @@ final class EngineController: ObservableObject {
     func presentationFailed(_ message: String) {
         guard useMetalPresentation else { return }
         useMetalPresentation = false
+        renderState.presentation = .image
+        renderState.fallbacks.append(.init(reasonKey: "metalPresentationFailed", detail: message))
+        metalPresenter?.suspend()
+        if !AetherMetalBridgeDrain() { log("Metal queue drain failed during presentation fallback") }
+        metalPresenter?.clear()
+        nativeFrameLease = nil
+        nativeFrameTexture = nil
+        recordDiagnostics(renderState.diagnostics)
         log("Metal presentation failed, using Image: \(message)")
     }
 
@@ -97,16 +127,14 @@ final class EngineController: ObservableObject {
     private var diagnosticWriteFailed = false
     private var diagnosticsPrepared = false
 
-    // Local-model text translation. Availability is process-wide (private
-    // provider); the Debug override only forces the settings section on builds
-    // without that provider so the host page can be exercised.
+    // Local-model text translation. Availability is process-wide and queried
+    // before a game is started; a settings preview never changes this result.
     var translationSettings = TranslationSettings()
     var translationTargetLanguage = TranslationSettings.targetLanguageCode(for: .english)
     @Published private(set) var translationStatus = TranslationStatus()
     private var loggedTranslationState: UInt32?
     var textTranslationAvailable: Bool {
-        session.isTextTranslationAvailable()
-            || ProcessInfo.processInfo.environment["AETHER_HOST_DEBUG_TRANSLATION"] == "1"
+        capabilities.translation.available
     }
 
     // Focused game text layer (KiriKiri edit control) and IME composition.
@@ -247,7 +275,19 @@ final class EngineController: ObservableObject {
 
     @discardableResult
     func initializeEngine(renderer: String? = nil) -> Bool {
+        guard session.borrowedEngineHandle() == nil else {
+            failureMessage = "The engine must be shut down before initializing another render session."
+            return false
+        }
         failureMessage = nil
+        let requested = ProcessInfo.processInfo.environment["AETHER_HOST_RENDERER"] ?? renderer ?? hostSettings.renderer
+        guard let requestedRenderer = HostRenderer(rawValue: requested) else {
+            failureMessage = "Unknown renderer: " + requested
+            return false
+        }
+        renderState = RenderSessionState(requested: requestedRenderer)
+        useMetalPresentation = metalAvailability.available && ProcessInfo.processInfo.environment["AETHER_HOST_PRESENTATION"] != "image"
+        nativeRendererEnabled = false
         if !metalPresenterGateWired, let presenter = metalPresenter {
             // Drawable requests pause while the window cannot present; the
             // nextDrawable timeout would otherwise stall the main thread.
@@ -268,20 +308,40 @@ final class EngineController: ObservableObject {
             try fm.createDirectory(at: support, withIntermediateDirectories: true)
             try fm.createDirectory(at: cache, withIntermediateDirectories: true)
 
-            try session.initialize(
-                writablePath: support.path, cachePath: cache.path)
-            if let font = ProcessInfo.processInfo.environment["AETHER_HOST_DEFAULT_FONT"]
-                ?? Bundle.main.url(forResource: "aetherkiri-runtime-cjk", withExtension: "otf")?.path {
-                try session.setOption("default_font", value: font)
+            func createBaseSession() throws {
+                try session.initialize(writablePath: support.path, cachePath: cache.path)
+                if let font = ProcessInfo.processInfo.environment["AETHER_HOST_DEFAULT_FONT"]
+                    ?? Bundle.main.url(forResource: "aetherkiri-runtime-cjk", withExtension: "otf")?.path {
+                    try session.setOption("default_font", value: font)
+                }
             }
-            // M0 baseline: software renderer feeds engine_read_frame_rgba.
-            if (ProcessInfo.processInfo.environment["AETHER_HOST_RENDERER"] ?? renderer) == "metal" {
-                try session.enableMetalRenderer()
-                nativeRendererEnabled = true
-            } else {
+            try createBaseSession()
+            if requestedRenderer == .metal {
+                if let reason = metalAvailability.reasonKey {
+                    renderState.fallbacks.append(.init(reasonKey: reason, detail: metalAvailability.detail))
+                } else {
+                    do { try activateMetal(session); nativeRendererEnabled = true }
+                    catch {
+                        let nsError = error as NSError
+                        let unsupported = nsError.domain == "AetherEngineOption" && nsError.code == -3
+                        renderState.fallbacks.append(.init(reasonKey: unsupported ? "metalRuntimeUnsupported" : "metalInitializationFailed",
+                                                          detail: error.localizedDescription))
+                        // Native activation can fail after the generation/backend has
+                        // changed. A fresh engine prevents carrying partial state
+                        // into the software path. No game has been opened yet.
+                        session.shutdown()
+                        try createBaseSession()
+                    }
+                }
+            }
+            if !nativeRendererEnabled {
                 try session.setOption("renderer", value: "software")
-                nativeRendererEnabled = false
+                try session.setOption("frame_output", value: "surface")
             }
+            renderState.effective = nativeRendererEnabled ? .metal : .software
+            renderState.presentation = useMetalPresentation ? .metal : .image
+            renderState.active = true
+            for fallback in renderState.fallbacks { log("renderer fallback \(fallback.reasonKey): \(fallback.detail)") }
             // Disables engine console.log writes (engine DebugIntf path).
             // NOTE: the sidecar krkr2.log beside the game root attaches
             // unconditionally in engine_open_game; same behavior as the Godot
@@ -301,11 +361,17 @@ final class EngineController: ObservableObject {
             } else {
                 log("local text translation unavailable in this build")
             }
-            recordDiagnostics(["renderer": nativeRendererEnabled ? "metal" : "software", "api": String(session.engineAPIVersion())])
+            recordDiagnostics(renderState.diagnostics.merging(["api": String(session.engineAPIVersion())]) { _, new in new })
             status = "引擎已创建 (api v\(session.engineAPIVersion()))"
             log("engine_create OK, renderer=\(nativeRendererEnabled ? "metal-bridge" : "software"), api=\(session.engineAPIVersion())")
             return true
         } catch {
+            session.shutdown()
+            nativeRendererEnabled = false
+            renderState.active = false
+            renderState.effective = nil
+            renderState.presentation = nil
+            recordDiagnostics(renderState.diagnostics)
             failureMessage = error.localizedDescription
             recordDiagnostics(["state": "failed", "error": error.localizedDescription])
             status = "初始化失败"
@@ -326,7 +392,9 @@ final class EngineController: ObservableObject {
             prepareDiagnostics(gamePath: gamePath)
         }
         diagnosticsPrepared = false
-        recordDiagnostics(["renderer": nativeRendererEnabled ? "metal" : "software", "api": String(session.engineAPIVersion())])
+        // Developer callers may initialize before preparing the game report.
+        // Re-publish the complete state after prepareDiagnostics resets metadata.
+        recordDiagnostics(renderState.diagnostics.merging(["api": String(session.engineAPIVersion())]) { _, new in new })
         do {
             try session.openGame(atPath: gamePath)
             drainEngineLogs()
@@ -720,7 +788,7 @@ final class EngineController: ObservableObject {
         let env = ProcessInfo.processInfo.environment
         guard env["AETHER_HOST_AUTORUN"] == "1" else { return }
         log("AUTORUN: initializing engine")
-        log("presentation=\(useMetalPresentation && metalPresenter != nil ? "metal-upload" : "image"), engine renderer=\(env["AETHER_HOST_RENDERER"] ?? "software")")
+        log("presentation=\(useMetalPresentation && metalPresenter != nil ? "metal-upload" : "image"), requested renderer=\(env["AETHER_HOST_RENDERER"] ?? hostSettings.renderer)")
         initializeEngine()
         let path = env["AETHER_HOST_GAME_PATH"] ?? Self.defaultGamePath
         log("AUTORUN: opening \(path)")
@@ -881,6 +949,7 @@ final class EngineController: ObservableObject {
         nativeFrameTexture = nil
         metalPresenter?.clear()
         session.shutdown()
+        renderState.active = false
         log(session.metalBridgeDiagnostics())
         nativeFrameTexture = nil
         nativeRendererEnabled = false

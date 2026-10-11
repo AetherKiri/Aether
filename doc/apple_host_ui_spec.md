@@ -1,6 +1,6 @@
 # Apple 宿主产品与 UI 对齐 Spec
 
-- 版本：v0.5，2026-10-11；状态：P1核心与P2集合/详情已接入；已补部分CUA，四主题已接入，完整视觉验收及其余能力按计划推进。
+- 版本：v0.6，2026-10-11；状态：P1核心与P2集合/详情已接入；已补部分CUA，四主题已接入，完整视觉验收及其余能力按计划推进。
 - 基线：Godot 产品源码与当前 Apple 宿主；调查时 Apple HEAD 为 `e5108c1d`。
 - 范围：macOS 13+；iOS 特有项单列，不阻塞 macOS。Minori、G1、更新器继续按既有优先级暂缓。
 - 关联：[实施计划](apple_host_ui_plan.md) · [架构 spec](apple_host.md) · [进度](apple_host_progress.md)。
@@ -126,7 +126,7 @@ Apple 官方参考：[Settings](https://developer.apple.com/design/human-interfa
 
 `SettingsStore` 保存有效配置；进入页面复制为 `SettingsDraft`，修改不触碰当前引擎与持久配置。保存先校验全部配置，再写盘并发布；失败保留草稿，不能显示成功。无修改时保存禁用。切分类保留草稿；离开设置/关闭主窗口有「保存并离开 / 不保存 / 继续编辑」。不保存丢弃草稿，继续编辑维持页面。保存后新建干净草稿，语言和主题改变保持分类与滚动位置。
 
-现有 shell UserDefaults 首次迁移进版本化存储；保留用户已选software/metal与翻译路径。全新安装以原生Metal为产品默认，初始化失败可回退软件并显示原因；P1已将新安装默认改为Metal；初始化失败可观测回退仍在P3。不要静默覆盖既有选择。Godot配置导入是显式功能，不自动覆盖不同产品储存目录；库schema兼容与设置迁移分别处理。
+现有 shell UserDefaults 首次迁移进版本化存储；保留用户已选software/metal与翻译路径。全新安装以原生Metal为产品默认，初始化失败可回退软件并显示原因；P1已将新安装默认改为Metal；P3a已接入初始化失败可观测回退，行为验收通过，页面CUA待补。不要静默覆盖既有选择。Godot配置导入是显式功能，不自动覆盖不同产品储存目录；库schema兼容与设置迁移分别处理。
 
 | 配置类别 | 目标生效时机 |
 |---|---|
@@ -169,7 +169,7 @@ Lumen四套主题保留内容层、强调色、圆角与封面比例；系统字
 | 设置事务与导航（P1） | 四目的地；分组、JSON草稿/保存、脏状态离开/关闭/退出保护；插件/Mock/错误日志真实下发；协议/许可/版本 | CUA已点验继续编辑、丢弃、保存英文、取消关闭/退出；五语言全分组、文件选择取消、完成关闭/退出与重启待补 |
 | 内容集合与详情（P2） | 目的地侧栏；默认封面网格与紧凑列表；游戏/视频名称和路径搜索；最近时间与标题排序；详情封面编辑与可见常用动作；返回保留搜索和条目滚动锚点 | 运行时搜索待P4元数据；滚动恢复是条目锚点而非逐像素；四主题已接入并点验；VoiceOver完整朗读与全部窗口/语言组合仍待验收 |
 | 视频集合（P2） | 缓存真实位置/总时长；旧无时长条目只显示位置；移除确认同时清理进度与字幕选择，保留视频文件 | 进度数据来自实际播放器，不在导入时伪造时长；封面仍为影片占位符；播放器完整交互在P4 |
-| 渲染与增强（P3/P5） | 保持已有Metal直通与软件路径；P1新安装默认Metal | 统一能力报告、失败回退、画布/采样/输出/FPS、完整增强管线仍未开放 |
+| 渲染与增强（P3/P5） | 启动前设备/呈现器与翻译provider能力；Metal初始化失败安全重建软件会话；报告请求/实际引擎/呈现路径和原因；新安装默认Metal | P3a故障行为与30秒直通回归通过，页面CUA待补；画布/采样/输出/FPS与增强仍未开放 |
 | 统计/运行配置/诊断（P4） | 保持现有MVP | 会话时长、完整主页、启动入口/编码、诊断profile与控制模式待迁移 |
 | 发布功能（P6/P7/M4） | 关于资源已打包 | Demo/VNDB/首次协议单列P6；更新器最后；真实IAP与移动端M4 |
 
@@ -242,3 +242,14 @@ Apple [Toolbars](https://developer.apple.com/design/human-interface-guidelines/t
 - 诊断/控制源：`diagnostic_session.gd`、`debug_console.gd`、`game_virtual_controls.gd`；媒体/发布源：`video_subtitles.gd`、`builtin_demo.gd`、`vndb_cover_resolver.gd`及打包配置。
 - 底层源：`abi/include/engine_options.h`、HostKit `EngineSession.mm`、`EngineController.swift`、`MetalFramePresenter.swift`。已有选项与缺失后处理分别排期。
 - 本轮尝试CUA连接明确构建路径，返回 `native pipe closed before response`。本次没有完成新的视觉或点击验收；沿用已记录证据，不将文档复核或已有构建成功当作CUA通过。
+
+
+### 7.5 P3a实施结果
+
+`HostCapabilities`在启动前检查设备/宿主呈现器并查询真实翻译provider；runtime对Metal选项的接受在初始化时验证。偏好保留Metal，设备/呈现器不可用、原生不支持或初始化失败时有效引擎改为software。部分原生激活失败会先关闭未打开游戏的会话，再创建干净软件会话；不在游戏运行中重建引擎。
+
+游戏页在回退时显示请求管线、实际引擎、显示方式与原因；设置渲染页显示最近会话。运行中的Metal显示失败退为图像呈现，引擎仍可为Metal，不宣称切换为软件引擎。新会话重新尝试用户选择，清除上次回退状态。诊断保留`rendererRequested`/`renderer`/`presentation`/`renderFallback`，包括先初始化后打开游戏的开发入口。
+
+`AETHER_HOST_DEBUG_TRANSLATION`仅用于Debug设置预览，明确说明未链接provider；不改变真实翻译能力或给引擎发送虚假支持选项。画布/采样/输出/FPS、增强、diagnostic profile仍有明确未迁移说明，不开放无实现控件。
+
+行为测试使用实际引擎和隔离KAG3副本，注入无设备、呈现器失败、不支持及实际取得原生generation后失败的边界；验证软件/原生成功启动、显示降级后的tick/画面连续、FrameLease清理、重复回调幂等、重试和报告导出。注入故障验证处理路径，不等于发生真实设备丢失。另用实际应用完成30秒Metal直通输入/截图/退出回归；本轮CUA再次返回native pipe关闭，页面可见性与点击仍待验收。

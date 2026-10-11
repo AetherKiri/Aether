@@ -69,11 +69,22 @@ struct ShellSettingsView: View {
                 VStack(alignment: .leading, spacing: 16) {
                     Picker(model.text("renderer"), selection: binding(\.renderer)) {
                         Text(model.text("software")).tag("software")
-                        Text(model.text("metal")).tag("metal")
+                        Text(model.text("metal")).tag("metal").disabled(!model.capabilities.nativeMetal.available)
                     }
                     Text(model.text("rendererHelp")).font(.caption).foregroundStyle(palette.secondary.color)
-                    Text(model.text("renderSettingsPending")).font(.caption).foregroundStyle(palette.secondary.color)
+                    if let reason = model.capabilities.nativeMetal.reasonKey {
+                        Label(model.text(reason), systemImage: "exclamationmark.triangle").font(.caption)
+                        if !model.capabilities.nativeMetal.detail.isEmpty {
+                            Text(model.capabilities.nativeMetal.detail).font(.caption).foregroundStyle(palette.secondary.color)
+                        }
+                    }
+                    Text(model.text("nativeRuntimeCheck")).font(.caption).foregroundStyle(palette.secondary.color)
+                    Text(model.text(model.capabilities.renderConfiguration.reasonKey ?? "renderSettingsPending")).font(.caption).foregroundStyle(palette.secondary.color)
+                    Text(model.text(model.capabilities.enhancement.reasonKey ?? "enhancementPending")).font(.caption).foregroundStyle(palette.secondary.color)
                 }.padding(12)
+            }
+            if model.engine.renderState.effective != nil {
+                GroupBox(model.text("lastRenderSession")) { RenderingStatusView(engine: model.engine, language: model.language).padding(12) }
             }
         case "compatibilitySection":
             GroupBox {
@@ -92,13 +103,16 @@ struct ShellSettingsView: View {
                 VStack(alignment: .leading, spacing: 12) {
                     Text(model.text("translationModelHelp")).font(.caption).foregroundStyle(palette.secondary.color)
                     if model.translationAvailable {
+                        if model.translationConfigurationPreview {
+                            Text(model.text("translationConfigurationPreview")).font(.caption).foregroundStyle(palette.secondary.color)
+                        }
                         HStack {
                             Button(model.text("translationModelSelect")) { model.chooseTranslationModel() }
                             if !(model.settingsDraft?.value.translationModelPath ?? "").isEmpty {
                                 Button(model.text("translationModelClear")) { model.clearTranslationModel() }
                             }
                         }
-                    } else { Text(model.text("translationModelUnavailable")).foregroundStyle(palette.secondary.color) }
+                    } else { Text(model.text(model.capabilities.translation.reasonKey ?? "translationModelUnavailable")).foregroundStyle(palette.secondary.color) }
                     let path = model.settingsDraft?.value.translationModelPath ?? ""
                     if !path.isEmpty {
                         Text(TranslationSettings.displayName(for: path)).textSelection(.enabled)
@@ -115,7 +129,7 @@ struct ShellSettingsView: View {
                     Toggle(model.text("errorDialogLogs"), isOn: binding(\.errorDialogLogs))
                     Text(model.text("errorDialogLogsHelp")).font(.caption).foregroundStyle(palette.secondary.color)
                     Button(model.text("exportDiagnostics")) { model.exportDiagnostics() }
-                    Text(model.text("diagnosticSettingsPending")).font(.caption).foregroundStyle(palette.secondary.color)
+                    Text(model.text(model.capabilities.diagnosticProfiles.reasonKey ?? "diagnosticSettingsPending")).font(.caption).foregroundStyle(palette.secondary.color)
                 }.padding(12)
             }
         case "advancedSection":

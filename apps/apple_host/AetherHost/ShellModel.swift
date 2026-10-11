@@ -546,7 +546,17 @@ final class ShellModel: ObservableObject {
     // MARK: - Local translation model (mirrors the Godot shell's settings row)
 
     var translationSettings: TranslationSettings { TranslationSettings(modelPath: translationModelPath) }
-    var translationAvailable: Bool { engine.textTranslationAvailable }
+    var capabilities: HostCapabilities { engine.capabilities }
+    var translationAvailable: Bool {
+        capabilities.translation.available || translationConfigurationPreview
+    }
+    var translationConfigurationPreview: Bool {
+        #if DEBUG
+        return !capabilities.translation.available && ProcessInfo.processInfo.environment["AETHER_HOST_DEBUG_TRANSLATION"] == "1"
+        #else
+        return false
+        #endif
+    }
 
     func chooseTranslationModel() {
         let panel = NSOpenPanel()

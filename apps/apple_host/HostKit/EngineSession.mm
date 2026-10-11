@@ -92,7 +92,8 @@ NSError *EngineError(engine_handle_t handle, NSString *fallback) {
     const engine_result_t result = engine_set_option(_handle, &option);
     if (result != ENGINE_RESULT_OK) {
         if (error != nullptr) {
-            *error = EngineError(_handle, @"engine_set_option failed");
+            NSError *detail = EngineError(_handle, @"engine_set_option failed");
+            *error = [NSError errorWithDomain:@"AetherEngineOption" code:result userInfo:detail.userInfo];
         }
         return NO;
     }

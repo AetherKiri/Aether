@@ -47,6 +47,7 @@ targets:
         excludes: [AetherHostApp.swift]
       - path: {q(root / 'apps/apple_host/HostKit')}
       - path: {q(root / 'apps/apple_host/Tests/SettingsBehaviorTests.swift')}
+      - path: {q(root / 'apps/apple_host/Tests/RendererBehaviorTests.swift')}
     settings:
       base:
         ARCHS: arm64

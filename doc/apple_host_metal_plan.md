@@ -403,3 +403,27 @@ GPU 工作；stretch 夹具同样为 `creates=1757/reuses=0`。两者均输入�
 `0.305/1.182/12.075 ms`、tick-to-GPU-completion `0.997/1.945/12.433 ms`，无超
 16.6ms 样本；这个单轮结果不证明延迟收益，command reuse 计数保留为后续引擎侧 pending
 work 接入的验收门槛。
+
+### 内容 serial publication 去重（2026-10-11）
+
+`GodotTexture2D` 增加内部 `ContentSerial()`。CPU/GPU 写入成功后才推进该 serial；
+`HostWindowLayer` 以源 GPU 句柄和内容 serial 作为 publication key。源内容与尺寸均未
+变化时，surface 缩放纹理跳过重复的 GPU copy，宿主也跳过重复的 sink publication，
+因此 `AcquirePublishedFrame` 的 acquire-load 快路径可以保留上一帧 texture，不产生新的
+lease。CPU fallback 会清除 key，避免切回软件帧后复用旧 GPU publication。
+
+同一 Debug 构建、KAG3、30 秒、1920x1080 drawable 的结果如下；软件基线是原有 CPU
+帧上传路径，Metal snapshot 是旧的 native texture 查询+snapshot 路径，Metal direct 是
+当前内容 serial + FrameLease 路径：
+
+| 路径 | host-work p50/p95/max (ms) | tick-to-GPU p50/p95/max (ms) | 16.6ms 超预算 | 关键计数 |
+|---|---:|---:|---:|---|
+| 软件上传基线 | 1.067/1.737/12.744 | 1.677/2.404/13.391 | 0 | 无 Metal lease |
+| Metal snapshot | 0.893/1.850/13.085 | 1.317/2.367/13.381 | 0 | 1748 次 native 查询、1748 次 snapshot |
+| Metal direct | 0.217/1.338/11.124 | 0.890/2.157/11.635 | 0 | 462 次 acquire、202 次 lease 提交、1338 次 fast unchanged |
+
+相对软件上传基线，Metal direct 的 p50 host-work 降低约 79.7%，tick-to-GPU 降低约
+46.9%；相对旧 Metal snapshot 路径，分别降低约 75.7% 和 32.4%。三条路径均完成
+输入、截图和干净退出；direct 三次 engine/Metal RGB max diff 为 0，lease failures=0、
+leases_live=0。该结果证明的是本机 Debug、KAG3、单轮 30 秒对照，不等同于所有标题或
+Release/G1 验收；后续仍需重复配对并覆盖静态标题。

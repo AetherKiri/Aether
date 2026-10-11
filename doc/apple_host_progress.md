@@ -340,6 +340,14 @@
 - 回归：核心与宿主重编译通过；KAG3+ONS 各 30 秒冒烟通过；`apple_host_compat` Metal 30 秒冒烟通过（同刻差值 0）。本轮未改 ABI、未改既有返回值。
 - 已按子仓库贡献流程开 PR：[AetherKiri/AetherKrkr#4](https://github.com/AetherKiri/AetherKrkr/pull/4) —— 分支 `feat/compat-platform-tag-and-receipts` **重绕到最新 `main`**（原分支叠在上一个 PR #3 的提交上，已 `rebase --onto origin/main`），现在含 2 个提交（`9f39cfa` 回执+platformTag、`8be4bbc` 挂载顺序修复），head `8be4bbc`；仓库无 CI 工作流，GitHub 报告 `MERGEABLE / CLEAN`。PR 标题与正文已同步为「report … and drop the link-order dependency」，正文同样只写内核视角。**合并后**需把父仓 gitlink 从 `8be4bbc` 重新指向 `main` 上的结果提交。
 
+### 2026-10-11：Metal 内容 serial publication 去重
+
+- `GodotTexture2D` 增加内部 `ContentSerial()`；成功的 CPU/GPU 写入才推进内容 serial。
+- Apple host 的 surface 缩放缓存按源句柄+内容 serial 去重 GPU copy；GPU publication 按源句柄、内容 serial 与输出尺寸去重 sink 推送。CPU fallback 会清除去重 key。
+- 同一 Debug 构建、KAG3、30 秒、1920x1080 drawable 对照：软件上传基线 host-work p50/tick-to-GPU 为 `1.067/1.677 ms`；旧 Metal snapshot 为 `0.893/1.317 ms`；当前 Metal direct 为 `0.217/0.890 ms`。
+- Metal direct 仅 `462` 次 acquire、`202` 次 lease 提交，`1338` 次 `published_acquire_fast_unchanged`；旧 snapshot 为 `1748` 次 native 查询和 snapshot。direct 输入、截图、退出通过，RGB max diff=0，failures=0、leases_live=0。
+- 该数据是单机 Debug、KAG3 单轮对照，不宣称 Release/G1 或所有真实标题性能结论；下一步需重复配对并覆盖静态标题。
+
 ## 下一步队列
 
 ### 性能基准隔离补充

@@ -427,3 +427,13 @@ lease。CPU fallback 会清除 key，避免切回软件帧后复用旧 GPU publi
 输入、截图和干净退出；direct 三次 engine/Metal RGB max diff 为 0，lease failures=0、
 leases_live=0。该结果证明的是本机 Debug、KAG3、单轮 30 秒对照，不等同于所有标题或
 Release/G1 验收；后续仍需重复配对并覆盖静态标题。
+
+### Godot native A/B 校准（2026-10-11）
+
+已用同一 Debug KAG3、1920x1080 条件运行现有 Godot 宿主：非 headless Metal 路径报告
+`godot_native_gpu_presented`/`rd_gpu=1`，1800 帧 probe 为 `107.63 FPS`。Apple Host
+direct/deferred 各做正序与反序 30 秒 profile；direct 的 completion p50 为
+`1.388/1.504 ms`，deferred 为 `5.570/5.794 ms`，direct 两轮均无 16.6ms 超预算样本，
+deferred 各有 5 个。Apple Host 的呈现行数约 57.87/s，受 60Hz 窗口节奏限制；Godot probe
+是 uncapped wall-clock FPS，二者统计口径不同。因此本次只确认 direct 相对旧 Apple Host
+路径约 74--75% 的 completion p50 降低，不把它表述为相对 Godot native 的 FPS 提升。

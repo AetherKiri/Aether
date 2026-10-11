@@ -348,6 +348,26 @@
 - Metal direct 仅 `462` 次 acquire、`202` 次 lease 提交，`1338` 次 `published_acquire_fast_unchanged`；旧 snapshot 为 `1748` 次 native 查询和 snapshot。direct 输入、截图、退出通过，RGB max diff=0，failures=0、leases_live=0。
 - 该数据是单机 Debug、KAG3 单轮对照，不宣称 Release/G1 或所有真实标题性能结论；下一步需重复配对并覆盖静态标题。
 
+### 2026-10-11：Godot native 与 Apple Host direct 实际对照
+
+- 使用同一 Debug 构建、同一 KAG3 `demos/aetherkiri-kag3/data`、同一 1920x1080
+  surface；Godot 使用真实非 headless Metal 路径（`godot_native_gpu_presented`，`rd_gpu=1`）。
+  Godot `step_render_probe` 的 1800 帧测量窗口为 `107.63 FPS`（约 `9.29 ms/frame`）。
+- Apple Host profile 使用同素材、真实 1920x1080 drawable、30 秒串行运行；两轮分别正序和反序，
+  结果如下。这里的 `tick-to-completion` 是提交到 GPU command completion 的耗时，呈现行数受窗口
+  60Hz 节奏限制，不能与 Godot 的 uncapped probe FPS 直接相除。
+
+| Apple Host 路径 | 呈现样本/秒 | tick-to-completion p50/p95/max (ms) | 超 16.6ms |
+|---|---:|---:|---:|
+| deferred（旧路径）正序/反序 | 57.83 / 57.83 | 5.570/7.287/28.425 / 5.794/7.547/30.373 | 5 / 5 |
+| direct（当前路径）正序/反序 | 57.87 / 57.87 | 1.388/1.875/7.469 / 1.504/1.894/7.509 | 0 / 0 |
+
+- direct 相对 deferred 的 GPU 完成 p50 降低约 75.1%/74.0%，两轮方向一致；但这不能推出
+  “direct 比 Godot native 快 X%”。在当前可复现实验中，Godot native 的共同可见指标是约
+  107.6 FPS，Apple Host 的窗口呈现受 60Hz 限制；两者尚未具备同一帧调度与统计口径，故不宣称
+  Godot native 的端到端 FPS 提升。证据目录：`out/apple_host/evidence/godot-native-ab-20261011/`
+  与 `godot-native-ab-20261011-reverse/`。
+
 ## 下一步队列
 
 ### 性能基准隔离补充

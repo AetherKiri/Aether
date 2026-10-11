@@ -21,6 +21,7 @@ def main():
     parser.add_argument("--require-native", action="store_true", help="require a native GPU frame for a custom game")
     parser.add_argument("--renderer", choices=("software", "metal"), default="software")
     parser.add_argument("--presentation", choices=("metal", "image"), default="metal")
+    parser.add_argument("--output-resolution", choices=("original", "1080p", "2k", "4k"), default="1080p")
     parser.add_argument("--snapshots", choices=("sync", "async", "direct"), default="sync",
                         help="native frame mode; direct uses session-owned frame leases")
     parser.add_argument("--profile", action="store_true", help="record host work and tick-to-GPU-completion, including MTKView")
@@ -59,6 +60,7 @@ def main():
                        AETHER_HOST_DEFAULT_FONT=str(root / "apps/godot_app/assets/fonts/aetherkiri-runtime-cjk.otf"),
                        AETHER_HOST_TEST_INPUT="8", AETHER_HOST_PRESENTATION=args.presentation,
                        AETHER_HOST_RENDERER=args.renderer,
+                       AETHER_HOST_OUTPUT_RESOLUTION=args.output_resolution,
                        AETHER_HOST_ASYNC_SNAPSHOT="1" if args.snapshots == "async" else "0",
                        AETHER_HOST_DIRECT_RENDER="1" if args.snapshots == "direct" else "0",
                        AETHER_HOST_SCHEDULING="direct",
@@ -103,6 +105,10 @@ def main():
                     errors.append(f"GPU/engine RGB comparison failed: {differences}")
                 if "Metal presentation failed" in text or "presentation=metal-upload" not in text:
                     errors.append("Metal presentation fell back or was unavailable")
+                if args.output_resolution != "original":
+                    expected_output = {"1080p": "1440x1080", "2k": "1920x1440", "4k": "2880x2160"}[args.output_resolution]
+                    if f"Output capture saved: {expected_output}" not in text:
+                        errors.append(f"missing configured output capture {expected_output}")
             if args.renderer == "metal":
                 if "renderer=metal-bridge" not in text:
                     errors.append("native renderer was not enabled")

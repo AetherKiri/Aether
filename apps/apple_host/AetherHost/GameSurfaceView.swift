@@ -1,6 +1,7 @@
 import SwiftUI
 
 struct GameSurfaceView: View {
+    @Environment(\.displayScale) private var displayScale
     @ObservedObject var engine: EngineController
     var language: ShellLanguage = .system
     var body: some View {
@@ -27,6 +28,7 @@ struct GameSurfaceView: View {
             }
             GameInputView(
                 contentSize: engine.frameSize,
+                presentationSize: engine.outputFrameSize,
                 onPointer: { type, x, y, dx, dy, button, modifiers in
                     engine.sendPointer(
                         type: type, x: x, y: y, dx: dx, dy: dy,
@@ -49,6 +51,17 @@ struct GameSurfaceView: View {
                              skipLabel: language.text("skipMovie"))
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(GeometryReader { geometry in
+            Color.clear
+                .onAppear { reportDisplay(geometry.size) }
+                .onChange(of: geometry.size) { reportDisplay($0) }
+                .onChange(of: displayScale) { _ in reportDisplay(geometry.size) }
+        })
+    }
+
+    private func reportDisplay(_ size: CGSize) {
+        let pixels = CGSize(width: size.width * displayScale, height: size.height * displayScale)
+        DispatchQueue.main.async { engine.updateDisplayPixels(pixels) }
     }
 
 }

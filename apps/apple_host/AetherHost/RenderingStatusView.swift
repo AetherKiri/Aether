@@ -11,6 +11,12 @@ struct RenderingStatusView: View {
                     .font(.caption).foregroundStyle(palette.secondary.color)
                 Text(String(format: language.text("presentationStatus"), language.text(presentation == .metal ? "metalPresentation" : "imagePresentation")))
                     .font(.caption).foregroundStyle(palette.secondary.color)
+                if engine.frameSize.width > 0 {
+                    Text(String(format: language.text("outputStatus"),
+                        "\(Int(engine.frameSize.width))×\(Int(engine.frameSize.height))",
+                        "\(Int(engine.outputFrameSize.width))×\(Int(engine.outputFrameSize.height))"))
+                        .font(.caption).foregroundStyle(palette.secondary.color)
+                }
                 ForEach(Array(engine.renderState.fallbacks.enumerated()), id: \.offset) { _, fallback in
                     Label(language.text(fallback.reasonKey), systemImage: "exclamationmark.triangle")
                         .font(.caption).fixedSize(horizontal: false, vertical: true)

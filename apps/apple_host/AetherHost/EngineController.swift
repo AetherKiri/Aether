@@ -23,6 +23,58 @@ final class EngineController: ObservableObject {
     private var loggedNativeFrame = false
     @Published var frameSize: CGSize = .zero
     @Published var tickCount: UInt64 = 0
+    @Published private(set) var outputFrameSize: CGSize = .zero
+    private var displayPixels: CGSize = .zero
+    private var sourceFrameImage: CGImage?
+    private var failedOutputTarget: CGSize?
+    private var sessionCanvasMode: CanvasMode = .game
+    private var sessionOutputResolution: OutputResolution = .original
+
+    func updateDisplayPixels(_ size: CGSize) {
+        guard size.width > 0, size.height > 0, size != displayPixels else { return }
+        displayPixels = size
+        updateOutputGeometry()
+    }
+
+    private var geometryDiagnostics: [String: String] {
+        ["canvasMode": sessionCanvasMode.rawValue, "outputResolution": sessionOutputResolution.rawValue,
+         "logicalCanvas": "\(Int(frameSize.width))x\(Int(frameSize.height))",
+         "outputFrame": "\(Int(outputFrameSize.width))x\(Int(outputFrameSize.height))"]
+    }
+
+    private func updateOutputGeometry() {
+        let requested = RenderGeometry.target(source: frameSize, mode: sessionCanvasMode,
+            resolution: sessionOutputResolution, displayPixels: displayPixels)
+        var target = requested
+        var fallbackChanged = false
+        if !useMetalPresentation, let sourceFrameImage, requested.width > 0 {
+            if failedOutputTarget == requested {
+                frameImage = sourceFrameImage
+                target = frameSize
+            } else if let resized = RenderGeometry.image(sourceFrameImage, size: requested) {
+                frameImage = resized
+                failedOutputTarget = nil
+                if renderState.fallbacks.contains(where: { $0.reasonKey == "outputScalingFailed" }) {
+                    renderState.fallbacks.removeAll { $0.reasonKey == "outputScalingFailed" }
+                    fallbackChanged = true
+                }
+            } else {
+                failedOutputTarget = requested
+                frameImage = sourceFrameImage
+                target = frameSize
+                if !renderState.fallbacks.contains(where: { $0.reasonKey == "outputScalingFailed" }) {
+                    renderState.fallbacks.append(.init(reasonKey: "outputScalingFailed", detail: "Software output allocation failed"))
+                    fallbackChanged = true
+                }
+            }
+        }
+        metalPresenter?.outputSize = target
+        if target != outputFrameSize || fallbackChanged {
+            outputFrameSize = target
+            recordDiagnostics(geometryDiagnostics.merging(renderState.diagnostics) { _, new in new })
+            log("output size -> \(Int(target.width))x\(Int(target.height)) (\(sessionCanvasMode.rawValue), \(sessionOutputResolution.rawValue)); logical canvas \(Int(frameSize.width))x\(Int(frameSize.height))")
+        }
+    }
 
     let metalPresenter: MetalFramePresenter?
     private let metalAvailability: HostCapabilities.Availability
@@ -285,6 +337,15 @@ final class EngineController: ObservableObject {
             failureMessage = "Unknown renderer: " + requested
             return false
         }
+        let env = ProcessInfo.processInfo.environment
+        guard let mode = CanvasMode(rawValue: hostSettings.canvasMode),
+              let resolution = OutputResolution(rawValue: env["AETHER_HOST_OUTPUT_RESOLUTION"] ?? hostSettings.outputResolution) else {
+            failureMessage = "Invalid canvas or output resolution."
+            return false
+        }
+        failedOutputTarget = nil
+        sessionCanvasMode = mode
+        sessionOutputResolution = resolution
         renderState = RenderSessionState(requested: requestedRenderer)
         useMetalPresentation = metalAvailability.available && ProcessInfo.processInfo.environment["AETHER_HOST_PRESENTATION"] != "image"
         nativeRendererEnabled = false
@@ -336,7 +397,7 @@ final class EngineController: ObservableObject {
             }
             if !nativeRendererEnabled {
                 try session.setOption("renderer", value: "software")
-                try session.setOption("frame_output", value: "surface")
+                try session.setOption("frame_output", value: "raw_source")
             }
             renderState.effective = nativeRendererEnabled ? .metal : .software
             renderState.presentation = useMetalPresentation ? .metal : .image
@@ -361,7 +422,7 @@ final class EngineController: ObservableObject {
             } else {
                 log("local text translation unavailable in this build")
             }
-            recordDiagnostics(renderState.diagnostics.merging(["api": String(session.engineAPIVersion())]) { _, new in new })
+            recordDiagnostics(geometryDiagnostics.merging(renderState.diagnostics) { _, new in new }.merging(["api": String(session.engineAPIVersion())]) { _, new in new })
             status = "引擎已创建 (api v\(session.engineAPIVersion()))"
             log("engine_create OK, renderer=\(nativeRendererEnabled ? "metal-bridge" : "software"), api=\(session.engineAPIVersion())")
             return true
@@ -394,7 +455,7 @@ final class EngineController: ObservableObject {
         diagnosticsPrepared = false
         // Developer callers may initialize before preparing the game report.
         // Re-publish the complete state after prepareDiagnostics resets metadata.
-        recordDiagnostics(renderState.diagnostics.merging(["api": String(session.engineAPIVersion())]) { _, new in new })
+        recordDiagnostics(geometryDiagnostics.merging(renderState.diagnostics) { _, new in new }.merging(["api": String(session.engineAPIVersion())]) { _, new in new })
         do {
             try session.openGame(atPath: gamePath)
             drainEngineLogs()
@@ -531,9 +592,10 @@ final class EngineController: ObservableObject {
         // CPU frames remain a diagnostic/display fallback; the native Metal
         // path does not read back or upload each frame.
         if !nativeRendererEnabled || !useMetalPresentation || nativeFrameTexture == nil {
-            frameImage = session.copyFrameImage()
+            sourceFrameImage = session.copyFrameImage()
+            frameImage = sourceFrameImage
         }
-        if nativeFrameTexture != nil || frameImage != nil {
+        if nativeFrameTexture != nil || sourceFrameImage != nil {
             let size = nativeFrameTexture.map { CGSize(width: $0.width, height: $0.height) }
                 ?? session.framePixelSize()
             if size.width > 0, size != frameSize {
@@ -548,15 +610,13 @@ final class EngineController: ObservableObject {
                 do {
                     try session.setSurfaceSize(
                         width: UInt32(size.width), height: UInt32(size.height))
-                    if nativeRendererEnabled {
-                        try session.setOption("frame_output", value: "surface")
-                    }
                     appliedSurfaceSize = size
                     log("surface size -> \(Int(size.width))x\(Int(size.height)) (game native)")
                 } catch {
                     log("setSurfaceSize failed: \(error.localizedDescription)")
                 }
             }
+            updateOutputGeometry()
             if useMetalPresentation, let presenter = metalPresenter {
                 if profileFrames { presenter.profileFrame(tick: tickCount, started: started) }
                 do {
@@ -610,6 +670,11 @@ final class EngineController: ObservableObject {
             try data.write(to: URL(fileURLWithPath: path))
             log("capture saved: \(path)")
             if useMetalPresentation, let presenter = metalPresenter {
+                let configuredOutput = presenter.outputSize
+                // Keep the historic source/GPU regression pair unchanged;
+                // capture the configured product output as a separate image.
+                presenter.outputSize = .zero
+                defer { presenter.outputSize = configuredOutput }
                 if let nativeFrameTexture {
                     if let nativeFrameLease { presenter.useNativeFrame(nativeFrameLease) }
                     else { presenter.useNativeTexture(nativeFrameTexture) }
@@ -647,6 +712,23 @@ final class EngineController: ObservableObject {
                     try gpuData.write(to: URL(fileURLWithPath: gpuPath))
                     log("Metal capture saved: \(gpuPath); RGB max diff=\(maxDifference)")
                 }
+                if configuredOutput.width > 0, configuredOutput.height > 0 {
+                    presenter.outputSize = configuredOutput
+                    let width = Int(configuredOutput.width), height = Int(configuredOutput.height)
+                    let output = try presenter.renderOffscreen(width: width, height: height)
+                    let outputImage = CGImage(width: width, height: height, bitsPerComponent: 8,
+                        bitsPerPixel: 32, bytesPerRow: width * 4, space: CGColorSpaceCreateDeviceRGB(),
+                        bitmapInfo: CGBitmapInfo(rawValue: CGImageAlphaInfo.premultipliedFirst.rawValue | CGBitmapInfo.byteOrder32Little.rawValue),
+                        provider: CGDataProvider(data: Data(output) as CFData)!, decode: nil,
+                        shouldInterpolate: false, intent: .defaultIntent)!
+                    if let png = NSBitmapImageRep(cgImage: outputImage).representation(using: .png, properties: [:]) {
+                        try png.write(to: URL(fileURLWithPath: "\(dir)/aetherhost-output-\(tag).png"))
+                        log("Output capture saved: \(width)x\(height)")
+                    }
+                }
+            } else if let output = RenderGeometry.image(image, size: outputFrameSize),
+                      let png = NSBitmapImageRep(cgImage: output).representation(using: .png, properties: [:]) {
+                try png.write(to: URL(fileURLWithPath: "\(dir)/aetherhost-output-\(tag).png"))
             }
         } catch {
             log("capture \(tag) failed: \(error.localizedDescription)")
@@ -955,7 +1037,10 @@ final class EngineController: ObservableObject {
         nativeRendererEnabled = false
         loggedNativeFrame = false
         frameImage = nil
+        sourceFrameImage = nil
         frameSize = .zero
+        outputFrameSize = .zero
+        metalPresenter?.outputSize = .zero
         appliedSurfaceSize = .zero
         lastStartupState = 0
         metalPresenter?.clear()

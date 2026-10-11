@@ -40,6 +40,11 @@ final class MetalFramePresenter: NSObject, MTKViewDelegate {
     private let debugLabels: Bool
     private(set) var texture: MTLTexture?
     private var frameLease: AetherMetalFrameLease?
+    var outputSize: CGSize = .zero
+    private var outputTexture: MTLTexture?
+    private var frameRevision: UInt64 = 0
+    private var outputRevision: UInt64?
+    private(set) var outputPassCount = 0
     private(set) var lastError: String?
     let directPresentation = ProcessInfo.processInfo.environment["AETHER_HOST_SCHEDULING"] != "deferred"
     private weak var presentationView: MTKView?
@@ -179,11 +184,13 @@ final class MetalFramePresenter: NSObject, MTKViewDelegate {
                      mipmapLevel: 0, withBytes: bytes, bytesPerRow: image.bytesPerRow)
         frameLease = nil
         texture = next
+        frameRevision &+= 1
         lastError = nil
     }
 
     func useNativeTexture(_ next: MTLTexture) {
         frameLease = nil
+        if texture !== next { frameRevision &+= 1 }
         texture = next
         lastError = nil
     }
@@ -191,14 +198,53 @@ final class MetalFramePresenter: NSObject, MTKViewDelegate {
     func useNativeFrame(_ frame: AetherMetalFrameLease) {
         guard frame.valid, let next = frame.texture else { clear(); return }
         frameLease = frame
+        frameRevision &+= 1
         texture = next
         lastError = nil
     }
 
-    func clear() { texture = nil; frameLease = nil }
+    func clear() {
+        texture = nil; frameLease = nil
+        outputTexture = nil; outputRevision = nil
+    }
 
     // Shared by onscreen rendering and deterministic offscreen verification.
     func encode(target: MTLTexture, command: MTLCommandBuffer) throws {
+        var source = texture
+        if let texture, outputSize.width > 0, outputSize.height > 0,
+           Int(outputSize.width) != texture.width || Int(outputSize.height) != texture.height {
+            let width = Int(outputSize.width), height = Int(outputSize.height)
+            guard width <= Int(RenderGeometry.maximum.width), height <= Int(RenderGeometry.maximum.height) else {
+                throw Failure.unsupportedFrame
+            }
+            // A drawable command may still be using the previous target when
+            // the next engine frame arrives. Keep the target only while the
+            // source revision is unchanged; a new frame receives a fresh
+            // texture whose lifetime is retained by its command buffer.
+            if outputTexture?.width != width || outputTexture?.height != height || outputRevision != frameRevision {
+                let descriptor = MTLTextureDescriptor.texture2DDescriptor(pixelFormat: .bgra8Unorm,
+                    width: width, height: height, mipmapped: false)
+                descriptor.storageMode = .private
+                descriptor.usage = [.renderTarget, .shaderRead]
+                guard let next = device.makeTexture(descriptor: descriptor) else { throw Failure.allocation }
+                outputTexture = next
+                outputRevision = nil
+            }
+            if let outputTexture {
+                if outputRevision != frameRevision {
+                    // Both passes share the producer queue and the same command.
+                    // Its completion retains the source lease and resized target.
+                    try encodeImage(source: texture, target: outputTexture, command: command, aspectFit: false)
+                    outputRevision = frameRevision
+                    outputPassCount += 1
+                }
+                source = outputTexture
+            }
+        }
+        try encodeImage(source: source, target: target, command: command)
+    }
+
+    private func encodeImage(source: MTLTexture?, target: MTLTexture, command: MTLCommandBuffer, aspectFit: Bool = true) throws {
         let pass = MTLRenderPassDescriptor()
         pass.colorAttachments[0].texture = target
         pass.colorAttachments[0].loadAction = .clear
@@ -208,11 +254,11 @@ final class MetalFramePresenter: NSObject, MTKViewDelegate {
             throw Failure.encoding
         }
         if debugLabels { encoder.label = "AetherHost.frame-encode" }
-        if let texture {
+        if let texture = source {
             let scale = min(Double(target.width) / Double(texture.width),
                             Double(target.height) / Double(texture.height))
-            let width = Double(texture.width) * scale
-            let height = Double(texture.height) * scale
+            let width = aspectFit ? Double(texture.width) * scale : Double(target.width)
+            let height = aspectFit ? Double(texture.height) * scale : Double(target.height)
             encoder.setViewport(MTLViewport(
                 originX: (Double(target.width) - width) / 2,
                 originY: (Double(target.height) - height) / 2,

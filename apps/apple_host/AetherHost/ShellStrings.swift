@@ -20,6 +20,18 @@ enum ShellLanguage: String, CaseIterable, Identifiable {
     static func localizedValues(for key: String) -> [String]? { strings[key] }
     // Same five languages as the existing product; game text is untouched.
     private static let strings: [String: [String]] = [
+        "canvasMode": ["画布模式", "畫布模式", "Canvas Mode", "キャンバスモード", "캔버스 모드"],
+        "canvas_game": ["游戏原生", "遊戲原生", "Game Native", "ゲーム本来のサイズ", "게임 원본"],
+        "canvas_display": ["适应显示", "適應顯示", "Display Fit", "表示に合わせる", "화면에 맞춤"],
+        "canvasModeHelp": ["原始分辨率下，适应显示会跟随游戏区域的实际像素大小；逻辑输入画布始终保持游戏原生尺寸。", "原始解析度下，適應顯示會跟隨遊戲區域的實際像素大小；邏輯輸入畫布維持遊戲原生尺寸。", "At Original resolution, Display Fit follows the game view in pixels. Input coordinates stay in the native game canvas.", "元の解像度では表示領域のピクセルサイズに合わせます。入力座標はゲーム本来のサイズを維持します。", "원본 해상도에서는 게임 표시 영역의 픽셀 크기에 맞춥니다. 입력 좌표는 게임 원본 크기를 유지합니다."],
+        "outputResolution": ["输出分辨率", "輸出解析度", "Output Resolution", "出力解像度", "출력 해상도"],
+        "output_original": ["原始分辨率", "原始解析度", "Original", "元の解像度", "원본"],
+        "output_1080p": ["1080p", "1080p", "1080p", "1080p", "1080p"],
+        "output_2k": ["2K（1440p）", "2K（1440p）", "2K (1440p)", "2K（1440p）", "2K (1440p)"],
+        "output_4k": ["4K（2160p）", "4K（2160p）", "4K (2160p)", "4K（2160p）", "4K (2160p)"],
+        "outputResolutionHelp": ["按游戏比例缩放到所选尺寸上限。更高档位占用更多 GPU 时间和内存；保存后下次启动生效。", "依遊戲比例縮放至所選尺寸上限。較高設定需要更多 GPU 時間與記憶體；儲存後下次啟動生效。", "Preserves the game aspect ratio within the selected bounds. Higher tiers use more GPU time and memory. Applies on next launch.", "縦横比を維持して指定サイズ内に拡大します。高い設定はGPU負荷とメモリ使用量が増えます。次回起動時に適用します。", "게임 비율을 유지해 선택한 크기 이내로 조정합니다. 높은 설정은 GPU 시간과 메모리를 더 사용합니다. 다음 실행에 적용됩니다."],
+        "outputScalingFailed": ["输出缩放失败，暂时显示原始画面。", "輸出縮放失敗，暫時顯示原始畫面。", "Output scaling failed. Original frames are displayed.", "出力の拡大に失敗したため、元の映像を表示します。", "출력 크기 조정에 실패해 원본 화면을 표시합니다."],
+        "outputStatus": ["逻辑画布：%@ · 输出：%@", "邏輯畫布：%@ · 輸出：%@", "Canvas: %@ · Output: %@", "入力サイズ：%@ · 出力：%@", "캔버스: %@ · 출력: %@"],
         "rendererStatus": ["请求管线：%@ · 实际引擎：%@", "要求管線：%@ · 實際引擎：%@", "Requested: %@ · Engine: %@", "指定：%@ · エンジン：%@", "요청: %@ · 엔진: %@"],
         "presentationStatus": ["显示方式：%@", "顯示方式：%@", "Presentation: %@", "表示方式：%@", "표시 방식: %@"],
         "metalPresentation": ["Metal 呈现", "Metal 呈現", "Metal Presentation", "Metal表示", "Metal 표시"],
@@ -79,7 +91,7 @@ enum ShellLanguage: String, CaseIterable, Identifiable {
         "nextLaunch": ["保存后，下次启动游戏时生效。", "儲存後，下次啟動遊戲時生效。", "Applies at the next game launch after saving.", "保存後、次回のゲーム起動時に適用します。", "저장 후 다음 게임 실행 시 적용됩니다."],
         "errorDialogLogs": ["错误弹窗附带日志", "錯誤彈窗附帶日誌", "Include Logs in Error Dialogs", "エラーダイアログにログを表示", "오류 대화상자에 로그 포함"],
         "errorDialogLogsHelp": ["异常弹窗中追加最近 20 行引擎日志，默认关闭。", "異常彈窗中附加最近 20 行引擎日誌，預設關閉。", "Append the latest 20 engine log lines to error dialogs. Off by default.", "エラー表示に直近20行のエンジンログを追加します。初期設定はオフです。", "오류 대화상자에 최근 엔진 로그 20줄을 추가합니다. 기본값은 꺼짐입니다."],
-        "renderSettingsPending": ["画布、缩放、输出分辨率和帧率设置尚未迁移。", "畫布、縮放、輸出解析度和影格率設定尚未移轉。", "Canvas, sampling, output resolution and frame rate settings are not yet available.", "キャンバス、拡大方式、出力解像度、フレームレート設定は未対応です。", "캔버스, 크기 조정, 출력 해상도 및 프레임 속도 설정은 아직 지원되지 않습니다."],
+        "renderSettingsPending": ["缩放算法和帧率设置尚未迁移。", "縮放演算法和影格率設定尚未移轉。", "Sampling and frame rate settings are not yet available.", "拡大方式とフレームレート設定は未対応です。", "크기 조정 알고리즘과 프레임 속도 설정은 아직 지원되지 않습니다."],
         "diagnosticSettingsPending": ["诊断配置和性能覆盖层尚未迁移。", "診斷設定和效能覆蓋層尚未移轉。", "Diagnostic profiles and performance overlays are not yet available.", "診断プロファイルとパフォーマンス表示は未対応です。", "진단 프로필 및 성능 오버레이는 아직 지원되지 않습니다."],
         "invalidTextRequest": ["输入请求无效，请重试取消响应。", "輸入請求無效，請重試取消回應。", "Invalid text request. Retry the cancellation response.", "入力要求が不正です。取消応答を再試行してください。", "잘못된 입력 요청입니다. 취소 응답을 다시 시도하세요."],
         "archiveImportHelp": ["选择游戏文件夹或 ZIP。游戏将复制到游戏库，存档写入副本。ZIP 需包含一款游戏，解压上限 32 GiB、10 万项。", "選擇遊戲資料夾或 ZIP。遊戲將複製到遊戲庫，存檔寫入副本。ZIP 須包含一款遊戲，解壓上限 32 GiB、10 萬項。", "Choose a game folder or ZIP. A copy is added to the library; saves stay in the copy. ZIPs must contain one game, up to 32 GiB and 100,000 entries.", "ゲームフォルダまたはZIPを選択してください。コピーとセーブはライブラリに保存します。ZIPはゲーム1本、展開後32 GiB・10万項目までです。", "게임 폴더 또는 ZIP을 선택하세요. 라이브러리에 복사하며 저장 파일도 복사본에 보관합니다. ZIP은 게임 하나, 압축 해제 후 32 GiB와 10만 항목까지 지원합니다."],

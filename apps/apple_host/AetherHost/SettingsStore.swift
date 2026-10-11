@@ -3,11 +3,13 @@ import Foundation
 /// Effective, persisted preferences. Transient controls and engine state do not
 /// belong here. A settings page edits a value copy until a successful save.
 struct HostSettings: Codable, Equatable {
-    static let schemaVersion = 2
+    static let schemaVersion = 3
     var version = schemaVersion
     var languageMode = "system"
     var theme = "classic"
     var renderer = "metal"
+    var canvasMode = "game"
+    var outputResolution = "1080p"
     var virtualControls = false
     var logs = false
     var translationModelPath = ""
@@ -22,18 +24,21 @@ struct HostSettings: Codable, Equatable {
         guard (["system"] + ShellLanguage.allCases.map(\.rawValue)).contains(languageMode),
               ShellTheme(rawValue: theme) != nil,
               ["software", "metal"].contains(renderer),
+              CanvasMode(rawValue: canvasMode) != nil, OutputResolution(rawValue: outputResolution) != nil,
               ["krkrsdl3", "aether_all"].contains(pluginLoadMode) else { throw Failure.invalidValue }
         return self
     }
 
     func normalizedForLoad() throws -> HostSettings {
-        guard version == 1 || version == Self.schemaVersion else { throw Failure.unsupportedVersion }
+        guard (1...Self.schemaVersion).contains(version) else { throw Failure.unsupportedVersion }
         var result = self
         result.version = Self.schemaVersion
         if ShellTheme(rawValue: theme) == nil { result.theme = "classic" }
         if !(["system"] + ShellLanguage.allCases.map(\.rawValue)).contains(languageMode) { result.languageMode = "system" }
         if !["software", "metal"].contains(renderer) { result.renderer = "metal" }
         if !["krkrsdl3", "aether_all"].contains(pluginLoadMode) { result.pluginLoadMode = "krkrsdl3" }
+        if CanvasMode(rawValue: canvasMode) == nil { result.canvasMode = "game" }
+        if OutputResolution(rawValue: outputResolution) == nil { result.outputResolution = "1080p" }
         return result
     }
 
@@ -51,7 +56,7 @@ struct HostSettings: Codable, Equatable {
 
 extension HostSettings {
     enum CodingKeys: String, CodingKey {
-        case version, languageMode, theme, renderer, virtualControls, logs, translationModelPath,
+        case version, languageMode, theme, renderer, canvasMode, outputResolution, virtualControls, logs, translationModelPath,
              pluginLoadMode, mockEnabled, errorDialogLogs
     }
     init(from decoder: Decoder) throws {
@@ -60,6 +65,8 @@ extension HostSettings {
         languageMode = try values.decode(String.self, forKey: .languageMode)
         theme = try values.decodeIfPresent(String.self, forKey: .theme) ?? "classic"
         renderer = try values.decode(String.self, forKey: .renderer)
+        canvasMode = try values.decodeIfPresent(String.self, forKey: .canvasMode) ?? "game"
+        outputResolution = try values.decodeIfPresent(String.self, forKey: .outputResolution) ?? (version < 3 ? "original" : "1080p")
         virtualControls = try values.decode(Bool.self, forKey: .virtualControls)
         logs = try values.decode(Bool.self, forKey: .logs)
         translationModelPath = try values.decode(String.self, forKey: .translationModelPath)
@@ -88,6 +95,9 @@ struct SettingsStore {
             return try JSONDecoder().decode(HostSettings.self, from: Data(contentsOf: url)).normalizedForLoad()
         }
         var settings = HostSettings()
+        if ["language", "renderer", "virtualControls", "logs", "translationModel"].contains(where: {
+            defaults.object(forKey: legacyPrefix + $0) != nil
+        }) { settings.outputResolution = "original" }
         if let language = defaults.string(forKey: legacyPrefix + "language"),
            ShellLanguage(rawValue: language) != nil { settings.languageMode = language }
         if let renderer = defaults.string(forKey: legacyPrefix + "renderer"),

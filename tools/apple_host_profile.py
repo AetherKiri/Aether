@@ -50,6 +50,7 @@ def main():
         env.update(AETHER_HOST_AUTORUN='1', AETHER_HOST_LIBRARY_ROOT=str((folder / "library").resolve()), AETHER_HOST_RENDERER='metal',
                    AETHER_HOST_PROFILE='1', AETHER_HOST_DRAWABLE_1080P='1',
                    AETHER_HOST_BENCHMARK='1' if args.offscreen else '0',
+                   AETHER_HOST_OUTPUT_RESOLUTION='original',
                    AETHER_HOST_BENCHMARK_WAIT_GPU='1' if args.wait_gpu else '0',
                    AETHER_HOST_DIRECT_RENDER='1' if scheduling == 'direct' else '0',
                    AETHER_HOST_SCHEDULING=scheduling, AETHER_HOST_ASYNC_SNAPSHOT=async_snapshot,

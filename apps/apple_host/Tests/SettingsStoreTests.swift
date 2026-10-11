@@ -27,11 +27,30 @@ struct SettingsStoreTests {
         var v1 = try JSONSerialization.jsonObject(with: Data(contentsOf: legacy.url)) as! [String: Any]
         v1["version"] = 1
         v1.removeValue(forKey: "theme")
+        v1.removeValue(forKey: "canvasMode")
+        v1.removeValue(forKey: "outputResolution")
         let oldData = try JSONSerialization.data(withJSONObject: v1)
         try oldData.write(to: legacy.url)
         let upgraded = try legacy.load(defaults: defaults, legacyPrefix: "shell.")
-        precondition(upgraded == loaded && upgraded.version == 2 && upgraded.theme == "classic")
+        precondition(upgraded == loaded && upgraded.version == 3 && upgraded.theme == "classic")
         check(try Data(contentsOf: legacy.url) == oldData) // Loading does not overwrite the migration source.
+        var v2 = v1
+        v2["version"] = 2
+        v2.removeValue(forKey: "canvasMode")
+        v2.removeValue(forKey: "outputResolution")
+        try JSONSerialization.data(withJSONObject: v2).write(to: legacy.url)
+        let oldGeometry = try legacy.load(defaults: defaults, legacyPrefix: "shell.")
+        precondition(oldGeometry.outputResolution == "original" && oldGeometry.canvasMode == "game")
+        precondition(fresh.outputResolution == "1080p")
+        for mode in CanvasMode.allCases {
+            for resolution in OutputResolution.allCases {
+                var value = loaded
+                value.canvasMode = mode.rawValue
+                value.outputResolution = resolution.rawValue
+                try legacy.save(value)
+                check(try legacy.load(defaults: defaults, legacyPrefix: "shell.") == value)
+            }
+        }
         for theme in ShellTheme.allCases {
             var value = loaded
             value.theme = theme.rawValue
@@ -76,6 +95,12 @@ struct SettingsStoreTests {
         invalid = loaded
         invalid.theme = "unknown"
         do { try legacy.save(invalid); preconditionFailure("invalid theme saved") } catch {}
+        invalid = loaded
+        invalid.outputResolution = "8k"
+        do { try legacy.save(invalid); preconditionFailure("invalid resolution saved") } catch {}
+        invalid.outputResolution = "original"
+        invalid.canvasMode = "unknown"
+        do { try legacy.save(invalid); preconditionFailure("invalid canvas saved") } catch {}
         invalid.version = 99
         do { _ = try invalid.validated(); preconditionFailure("future version accepted") } catch {}
         let future = try JSONEncoder().encode(invalid)

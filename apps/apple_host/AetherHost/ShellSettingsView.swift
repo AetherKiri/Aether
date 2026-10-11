@@ -72,6 +72,16 @@ struct ShellSettingsView: View {
                         Text(model.text("metal")).tag("metal").disabled(!model.capabilities.nativeMetal.available)
                     }
                     Text(model.text("rendererHelp")).font(.caption).foregroundStyle(palette.secondary.color)
+                    Picker(model.text("canvasMode"), selection: binding(\.canvasMode)) {
+                        ForEach(CanvasMode.allCases, id: \.rawValue) { mode in Text(model.text("canvas_" + mode.rawValue)).tag(mode.rawValue) }
+                    }
+                    Text(model.text("canvasModeHelp")).font(.caption).foregroundStyle(palette.secondary.color)
+                    Picker(model.text("outputResolution"), selection: binding(\.outputResolution)) {
+                        ForEach(OutputResolution.allCases, id: \.rawValue) { resolution in
+                            Text(model.text("output_" + resolution.rawValue)).tag(resolution.rawValue)
+                        }
+                    }
+                    Text(model.text("outputResolutionHelp")).font(.caption).foregroundStyle(palette.secondary.color)
                     if let reason = model.capabilities.nativeMetal.reasonKey {
                         Label(model.text(reason), systemImage: "exclamationmark.triangle").font(.caption)
                         if !model.capabilities.nativeMetal.detail.isEmpty {

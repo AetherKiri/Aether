@@ -505,7 +505,7 @@
 31b. [ ] **两处兼容小项待查**：`new DMMCloud()` 报 `Invalid argument count`；`new Zlib().version()` 报成员不存在（可能只是探针写法/注册方式差异）
 32. [ ] **内核后续：内存可观测（借鉴 `MemoryDesign.md`）**：分配头带 tag + `AllocTagScope` 标签栈，让"谁吃掉了内存"可回答；当前只有粗粒度 `engine_get_memory_stats`
 
-33. [ ] **产品 UI/设置完整对齐**：调查 P0 已完成；P1核心、P2集合/详情与四主题已接入，完整CUA/无障碍验收待补；其余 P3–P7 见 [实施计划](apple_host_ui_plan.md)。
+33. [ ] **产品 UI/设置完整对齐**：调查 P0 已完成；P1核心、P2集合/详情与四主题已接入，完整CUA/无障碍验收待补；P3a能力回退与P3b画布/输出已接入，P3c/P3d及P4–P7见 [实施计划](apple_host_ui_plan.md)。
 
 ## 变更记录
 
@@ -528,3 +528,12 @@
 - 原生激活失败关闭部分创建会话后重建软件引擎，保留Metal偏好；运行中显示失败退图像但保留引擎管线，游戏继续推进。设置/回退游戏页与诊断报告分别显示请求、实际引擎、呈现方式、原因；新会话重试。
 - 实际引擎故障注入、KAG3软件/原生启动、直通lease清理、降级连续性、generation重试、真实错误码及设置/集合/五语言测试通过；Debug构建与KAG3 30秒Metal直通输入/截图/退出回归通过，证据`out/apple_host/evidence/ui-p3a-native/`。
 - CUA连接仍报native pipe关闭，新增页面交互未验收。P3a行为已验证但UI验收待补；下一步P3b画布/输出，P3c采样、P3d调度随后推进。
+
+### 2026-10-12：UI P3b画布与输出
+
+- `RenderGeometry` 将逻辑游戏画布与宿主输出分离，支持 `Game Native` / `Display Fit` 和 `Original` / `1080p` / `2K` / `4K`，按原始比例计算目标尺寸并限制 4K 上限；输入指针与 IME 插入符复用同一几何映射。
+- `HostSettings` schema 从 v2 升为 v3，旧 v1/v2 配置兼容；旧配置保持 original 输出语义，新安装默认 1080p。Metal 输出缩放在 GPU 命令中完成，按 frame revision 避免复用仍在 GPU 使用的中间纹理；软件路径提供等价缩放和分配失败回退。
+- `python3 tools/apple_host_settings_tests.py`通过，覆盖迁移、几何、软件/Metal、输入、IME、真实引擎和 lease 清理；Debug 构建通过。
+- 实际 KAG3 30 秒 Metal direct smoke 通过：逻辑帧 640×480，输出 1440×1080；`leases_acquired=446`、`leases_submitted=446`、`leases_completed=446`、`leases_live=0`、`lease_failures=0`，三处 Metal RGB max diff=0。证据：`out/apple_host/evidence/ui-p3b-1080p-rerun/kag3/`。
+- CUA 使用 `/Users/colorcard/Aether/out/apple_host/derived/Build/Products/Debug/AetherHost.app` 验证设置页：渲染分类可见画布模式/输出分辨率，切换“适应显示”和“1080p”，保存后显示“设置已保存”，保存按钮禁用。
+- P3b 完成；下一阶段为 P3c 采样算法，P3d 调度仍待设计和验证。P3a 页面状态的历史待补不影响本轮 P3b CUA 证据。

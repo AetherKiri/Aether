@@ -84,30 +84,36 @@ enum InputMapping {
     }
 
     // Aspect-fit mapping from view space (top-left origin) to engine canvas.
-    // Mirrors GameInputMapping.map_point with surface == content for now.
+    // presentationSize includes integer output rounding; contentSize is the
+    // native engine canvas, independent of output resolution.
     static func mapToSurface(
-        point: CGPoint, viewSize: CGSize, contentSize: CGSize
+        point: CGPoint, viewSize: CGSize, contentSize: CGSize, presentationSize: CGSize? = nil
     ) -> CGPoint? {
         guard viewSize.width > 0, viewSize.height > 0,
               contentSize.width > 0, contentSize.height > 0 else {
             return nil
         }
+        let displayed = presentationSize.flatMap { $0.width > 0 && $0.height > 0 ? $0 : nil } ?? contentSize
         let scale = min(
-            viewSize.width / contentSize.width,
-            viewSize.height / contentSize.height)
+            viewSize.width / displayed.width,
+            viewSize.height / displayed.height)
         guard scale > 0 else { return nil }
         let drawn = CGSize(
-            width: contentSize.width * scale,
-            height: contentSize.height * scale)
+            width: displayed.width * scale,
+            height: displayed.height * scale)
         let origin = CGPoint(
             x: (viewSize.width - drawn.width) / 2,
             y: (viewSize.height - drawn.height) / 2)
         let inside = CGPoint(x: point.x - origin.x, y: point.y - origin.y)
-        guard inside.x >= 0, inside.y >= 0,
-              inside.x <= drawn.width, inside.y <= drawn.height else {
+        // Aspect-fit round trips can land a few ulps outside an exact edge.
+        // Accept only numerical drift; actual letterbox points stay rejected.
+        let epsilon: CGFloat = 0.0000001
+        guard inside.x >= -epsilon, inside.y >= -epsilon,
+              inside.x <= drawn.width + epsilon, inside.y <= drawn.height + epsilon else {
             return nil
         }
-        return CGPoint(x: inside.x / scale, y: inside.y / scale)
+        return CGPoint(x: min(max(inside.x, 0), drawn.width) / drawn.width * contentSize.width,
+                       y: min(max(inside.y, 0), drawn.height) / drawn.height * contentSize.height)
     }
 
     // Inverse of mapToSurface: engine canvas point -> view space (top-left
@@ -115,24 +121,25 @@ enum InputMapping {
     // The point is clamped into the drawn canvas so a caret at the text edge
     // stays on screen instead of being rejected.
     static func mapCanvasToView(
-        point: CGPoint, viewSize: CGSize, contentSize: CGSize
+        point: CGPoint, viewSize: CGSize, contentSize: CGSize, presentationSize: CGSize? = nil
     ) -> CGPoint? {
         guard viewSize.width > 0, viewSize.height > 0,
               contentSize.width > 0, contentSize.height > 0 else {
             return nil
         }
+        let displayed = presentationSize.flatMap { $0.width > 0 && $0.height > 0 ? $0 : nil } ?? contentSize
         let scale = min(
-            viewSize.width / contentSize.width,
-            viewSize.height / contentSize.height)
+            viewSize.width / displayed.width,
+            viewSize.height / displayed.height)
         guard scale > 0 else { return nil }
         let drawn = CGSize(
-            width: contentSize.width * scale,
-            height: contentSize.height * scale)
+            width: displayed.width * scale,
+            height: displayed.height * scale)
         let origin = CGPoint(
             x: (viewSize.width - drawn.width) / 2,
             y: (viewSize.height - drawn.height) / 2)
-        let x = min(max(origin.x + point.x * scale, origin.x), origin.x + drawn.width)
-        let y = min(max(origin.y + point.y * scale, origin.y), origin.y + drawn.height)
+        let x = min(max(origin.x + point.x / contentSize.width * drawn.width, origin.x), origin.x + drawn.width)
+        let y = min(max(origin.y + point.y / contentSize.height * drawn.height, origin.y), origin.y + drawn.height)
         return CGPoint(x: x, y: y)
     }
 }

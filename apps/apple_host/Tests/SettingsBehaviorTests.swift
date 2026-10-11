@@ -6,6 +6,7 @@ struct SettingsBehaviorTests {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent("settings-behavior-" + UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: root) }
         setenv("AETHER_HOST_LIBRARY_ROOT", root.path, 1)
+        try RenderGeometryTests.run(root: root)
         try RendererBehaviorTests.run(root: root)
         let model = ShellModel()
         try checkCollections(model, root: root)

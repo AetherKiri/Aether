@@ -124,10 +124,10 @@ enum GameTextCaret {
     /// point. Nil while the canvas is not laid out.
     static func rect(
         canvasPoint: CGPoint, viewSize: CGSize, contentSize: CGSize,
-        height: CGFloat = defaultHeight
+        presentationSize: CGSize? = nil, height: CGFloat = defaultHeight
     ) -> CGRect? {
         guard let origin = InputMapping.mapCanvasToView(
-            point: canvasPoint, viewSize: viewSize, contentSize: contentSize) else {
+            point: canvasPoint, viewSize: viewSize, contentSize: contentSize, presentationSize: presentationSize) else {
             return nil
         }
         return CGRect(x: origin.x, y: origin.y, width: 1, height: height)

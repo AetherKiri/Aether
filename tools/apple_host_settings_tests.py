@@ -48,6 +48,7 @@ targets:
       - path: {q(root / 'apps/apple_host/HostKit')}
       - path: {q(root / 'apps/apple_host/Tests/SettingsBehaviorTests.swift')}
       - path: {q(root / 'apps/apple_host/Tests/RendererBehaviorTests.swift')}
+      - path: {q(root / 'apps/apple_host/Tests/RenderGeometryTests.swift')}
     settings:
       base:
         ARCHS: arm64
@@ -75,7 +76,7 @@ targets:
     env["AETHER_SETTINGS_APP_BUNDLE"] = str(bundle)
     subprocess.run([str(derived / "Build/Products/Debug/SettingsBehaviorTests")], check=True, cwd=root, env=env, timeout=60)
     for test, sources in [
-        ("SettingsStore", ["ShellStrings", "ThemePalette", "SettingsStore"]),
+        ("SettingsStore", ["ShellStrings", "ThemePalette", "RenderGeometry", "SettingsStore"]),
         ("ShellStrings", ["ShellStrings"]),
     ]:
         binary = root / "out/apple_host" / (test + "Tests")

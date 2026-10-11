@@ -10,6 +10,7 @@ import SwiftUI
 // anchor (canvas rect, coordinate conversion) and first-responder holder.
 struct GameInputView: NSViewRepresentable {
     var contentSize: CGSize
+    var presentationSize: CGSize? = nil
     var onPointer: (UInt32, Double, Double, Double, Double, Int32, Int32) -> Void
     var onKey: (Bool, Int32, Int32, UInt32) -> Void
     /// True while the focused game layer accepts composed text; keys then go
@@ -28,6 +29,7 @@ struct GameInputView: NSViewRepresentable {
     func makeNSView(context: Context) -> InputNSView {
         let view = InputNSView()
         view.contentSize = contentSize
+        view.presentationSize = presentationSize
         view.onPointer = onPointer
         view.onKey = onKey
         apply(to: view)
@@ -36,10 +38,13 @@ struct GameInputView: NSViewRepresentable {
     }
 
     func updateNSView(_ nsView: InputNSView, context: Context) {
+        let geometryChanged = nsView.contentSize != contentSize || nsView.presentationSize != presentationSize
         nsView.contentSize = contentSize
+        nsView.presentationSize = presentationSize
         nsView.onPointer = onPointer
         nsView.onKey = onKey
         apply(to: nsView)
+        if geometryChanged { nsView.inputContext?.invalidateCharacterCoordinates() }
     }
 
     private func apply(to view: InputNSView) {
@@ -113,6 +118,7 @@ final class InputNSView: NSView {
     static weak var activeView: InputNSView?
 
     var contentSize: CGSize = .zero
+    var presentationSize: CGSize?
     var onPointer: ((UInt32, Double, Double, Double, Double, Int32, Int32) -> Void)?
     var onKey: ((Bool, Int32, Int32, UInt32) -> Void)?
     var imeActiveProvider: (() -> Bool)?
@@ -261,7 +267,7 @@ final class InputNSView: NSView {
         InputMapping.mapToSurface(
             point: viewPoint(event),
             viewSize: bounds.size,
-            contentSize: contentSize)
+            contentSize: contentSize, presentationSize: presentationSize)
     }
 
     private func sendPointer(
@@ -361,7 +367,7 @@ extension InputNSView: NSTextInputClient {
         actualRange?.pointee = range
         guard let point = caretCanvasPointProvider?(),
               let topLeft = GameTextCaret.rect(
-                canvasPoint: point, viewSize: bounds.size, contentSize: contentSize),
+                canvasPoint: point, viewSize: bounds.size, contentSize: contentSize, presentationSize: presentationSize),
               let window else {
             return .zero
         }

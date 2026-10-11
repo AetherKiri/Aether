@@ -169,11 +169,11 @@ Lumen四套主题保留内容层、强调色、圆角与封面比例；系统字
 | 设置事务与导航（P1） | 四目的地；分组、JSON草稿/保存、脏状态离开/关闭/退出保护；插件/Mock/错误日志真实下发；协议/许可/版本 | CUA已点验继续编辑、丢弃、保存英文、取消关闭/退出；五语言全分组、文件选择取消、完成关闭/退出与重启待补 |
 | 内容集合与详情（P2） | 目的地侧栏；默认封面网格与紧凑列表；游戏/视频名称和路径搜索；最近时间与标题排序；详情封面编辑与可见常用动作；返回保留搜索和条目滚动锚点 | 运行时搜索待P4元数据；滚动恢复是条目锚点而非逐像素；四主题已接入并点验；VoiceOver完整朗读与全部窗口/语言组合仍待验收 |
 | 视频集合（P2） | 缓存真实位置/总时长；旧无时长条目只显示位置；移除确认同时清理进度与字幕选择，保留视频文件 | 进度数据来自实际播放器，不在导入时伪造时长；封面仍为影片占位符；播放器完整交互在P4 |
-| 渲染与增强（P3/P5） | 启动前设备/呈现器与翻译provider能力；Metal初始化失败安全重建软件会话；报告请求/实际引擎/呈现路径和原因；新安装默认Metal | P3a故障行为与30秒直通回归通过，页面CUA待补；画布/采样/输出/FPS与增强仍未开放 |
+| 渲染与增强（P3/P5） | 启动前设备/呈现器与翻译provider能力；Metal初始化失败安全重建软件会话；报告请求/实际引擎/呈现路径和原因；新安装默认Metal | P3a与P3b行为回归通过；P3b设置页CUA已验证画布/输出；采样/FPS与增强仍未开放 |
 | 统计/运行配置/诊断（P4） | 保持现有MVP | 会话时长、完整主页、启动入口/编码、诊断profile与控制模式待迁移 |
 | 发布功能（P6/P7/M4） | 关于资源已打包 | Demo/VNDB/首次协议单列P6；更新器最后；真实IAP与移动端M4 |
 
-主题设置使用schema v2，读取v1时保留所有旧选项并默认classic，加载本身不改写原文件，下一次成功保存写入v2。未知主题回退classic，未知schema或损坏文件仍禁止保存以保留证据。只按有效设置应用外观，草稿不预览，也不重建页面identity。
+主题设置使用schema v2；渲染设置使用schema v3，读取v1/v2时补齐画布与输出字段并将旧配置迁移为原始输出，加载本身不改写原文件，下一次成功保存写入当前schema。未知主题回退classic，未知schema或损坏文件仍禁止保存以保留证据。只按有效设置应用外观与启动配置，草稿不预览，也不重建页面identity。
 
 Godot内容palette按源tokens保留。AppKit原生突出按钮使用白色标签，专用controlAccent按同一强调色降低亮度至白字对比≥5:1，不使用Godot深色主题的黑字按钮假设；原生侧栏选中、标题栏、菜单、焦点与文件面板仍由macOS绘制。Increase Contrast使用主文字替代次要文字并增强分组边框；本实现不增加页面或主题切换动画。四主题库/设置与深色重启恢复已CUA点验，随后native pipe断开，五语言全分类等剩余验收仍保留。
 
@@ -182,7 +182,7 @@ Godot内容palette按源tokens保留。AppKit原生突出按钮使用白色标�
 
 ## 7. 复核后的设置契约与差异追踪
 
-本节按 Godot `_rebuild_settings_view` 的真实控件、`_current_settings_snapshot` 的草稿字段和 `_apply_settings_snapshot` 的处理链复核，不能把翻译字符串当功能实现。当前交付基线为 `aba88a61`；工作区另有能力检测与渲染回退的 P3 草稿，尚未完成行为/CUA验收，不计入已交付项。调查覆盖项目的产品页、配置、引擎选项、HostKit、渲染、媒体、测试和打包入口；不声称逐行审计全部依赖。
+本节按 Godot `_rebuild_settings_view` 的真实控件、`_current_settings_snapshot` 的草稿字段和 `_apply_settings_snapshot` 的处理链复核，不能把翻译字符串当功能实现。当前交付基线为 `aba88a61`；P3a/P3b 已有实现以各自实施记录和自动/CUA证据为准。调查覆盖项目的产品页、配置、引擎选项、HostKit、渲染、媒体、测试和打包入口；不声称逐行审计全部依赖。
 
 ### 7.1 字段映射
 
@@ -193,9 +193,9 @@ Godot内容palette按源tokens保留。AppKit原生突出按钮使用白色标�
 | `game_virtual_menu_enabled` | `virtualControls` 只控制固定按键条 | 分离控制菜单入口、输入模式和面板显隐，不把三者共用一个 bool |
 | `game_virtual_keyboard_opacity` | 无 | Keyboard 模式透明度；隐藏/切换/失焦释放按键 |
 | `backend` | `renderer`，Metal/软件 | 原生路径与原版后端有意不同；报告请求值、实际引擎路径与呈现路径 |
-| `surface_mode` | 无；已有 HostKit `setSurfaceSize` | Game Native/Display Fit、输入坐标与截图一致 |
+| `surface_mode` | `canvasMode` | Game Native/Display Fit、输入坐标与截图一致；逻辑画布保持原始尺寸 |
 | `upscale_algorithm` | 无；呈现 shader 固定 linear | 核对 smooth 别名；逐算法实现与确定性图像对照 |
-| `output_resolution` | 无 | original/1080p/2k/4k 的目标尺寸、纵横比和资源预算 |
+| `output_resolution` | `outputResolution` | original/1080p/2k/4k 的目标尺寸、纵横比和资源预算；按比例缩放，不改变显示器分辨率 |
 | `frame_enhancement_enabled` / `frame_enhancement_kind` | 无 | 以 off/preset/custom 为单一有效模式，enabled 仅作旧配置迁移输入 |
 | `frame_enhancement_mode` / `frame_enhancement_custom_chain` | 无 | 15预设、16算法、顺序和不同 pass 尺寸语义；P5独立实现 |
 | `fps_limit_enabled` / `target_fps` | 无；宿主60Hz Timer | 限频、模拟时间和屏幕呈现分开验证，不通过增快剧情制造FPS提升 |
@@ -250,6 +250,12 @@ Apple [Toolbars](https://developer.apple.com/design/human-interface-guidelines/t
 
 游戏页在回退时显示请求管线、实际引擎、显示方式与原因；设置渲染页显示最近会话。运行中的Metal显示失败退为图像呈现，引擎仍可为Metal，不宣称切换为软件引擎。新会话重新尝试用户选择，清除上次回退状态。诊断保留`rendererRequested`/`renderer`/`presentation`/`renderFallback`，包括先初始化后打开游戏的开发入口。
 
-`AETHER_HOST_DEBUG_TRANSLATION`仅用于Debug设置预览，明确说明未链接provider；不改变真实翻译能力或给引擎发送虚假支持选项。画布/采样/输出/FPS、增强、diagnostic profile仍有明确未迁移说明，不开放无实现控件。
+`AETHER_HOST_DEBUG_TRANSLATION`仅用于Debug设置预览，明确说明未链接provider；不改变真实翻译能力或给引擎发送虚假支持选项。P3b已实现画布/输出；采样/FPS、增强、diagnostic profile仍有明确未迁移说明，不开放无实现控件。
 
 行为测试使用实际引擎和隔离KAG3副本，注入无设备、呈现器失败、不支持及实际取得原生generation后失败的边界；验证软件/原生成功启动、显示降级后的tick/画面连续、FrameLease清理、重复回调幂等、重试和报告导出。注入故障验证处理路径，不等于发生真实设备丢失。另用实际应用完成30秒Metal直通输入/截图/退出回归；本轮CUA再次返回native pipe关闭，页面可见性与点击仍待验收。
+
+### 7.6 P3b实施结果
+
+`HostSettings` schema v3 持久化画布模式和输出档位，旧配置读取时保持原始输出语义，新安装默认为 1080p。输出目标由逻辑游戏画布、选择的档位和显示像素共同计算，始终保持原始宽高比并限制在 4K 上限；它只改变宿主呈现尺寸，不改变引擎模拟尺寸或显示器分辨率。Metal 使用 GPU 内部缩放并按 frame revision 管理中间纹理生命周期，软件路径提供等价缩放和失败回退。
+
+指针与 IME 插入符都通过同一输出几何映射回逻辑画布；诊断报告同时记录逻辑画布和输出尺寸。行为测试覆盖非对称图像、Display Fit/Retina 像素、4K 上限、软件/Metal 路径、输入与 IME round-trip、缓存输出及 lease 清理。实际 KAG3 30 秒 direct smoke 产生 640×480 源帧和 1440×1080 输出帧，Metal RGB max diff=0 且 446 个 lease 全部提交/完成。真实构建窗口 CUA 已验证渲染页控件可见、选项可切换并保存成功。

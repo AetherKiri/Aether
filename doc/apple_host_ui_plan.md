@@ -1,7 +1,7 @@
 # Apple 宿主 UI 与设置对齐实施计划
 
 - 2026-10-11，依据 [产品 UI spec](apple_host_ui_spec.md)。
-- 状态：P0调查完成；P1核心实现与行为测试已接入，完整CUA验收待补；P2集合/详情及四主题已接入，完整视觉/无障碍验收待补；P3a能力/安全回退已实现并通过行为回归，CUA待补；P3其余与P4–P7尚未实施。阶段按依赖排序，每轮只提交已验证的完整切片。
+- 状态：P0调查完成；P1核心实现与行为测试已接入，完整CUA验收待补；P2集合/详情及四主题已接入，完整视觉/无障碍验收待补；P3a能力/安全回退与P3b画布/输出已实现并通过行为回归及设置页CUA；P3c/P3d与P4–P7尚未实施。阶段按依赖排序，每轮只提交已验证的完整切片。
 - 目标是修正产品结构并补齐真实功能；不在一轮中把所有缺项画成无效果控件。
 
 ## P0：调查与规范（本轮）
@@ -161,6 +161,17 @@ P3a重点验证部分Metal激活失败后的资源清理：不得在已打开游
 - [x] 运行中显示失败退图像、游戏继续，引擎管线不变；清理FrameLease；重复回调幂等；下次启动重试原选择。
 - [x] `python3 tools/apple_host_settings_tests.py`通过：新RendererBehaviorTests实际部分激活失败两次后原生重试成功、KAG3软件/原生启动、显示失败后画面/tick继续、lease/generation清理、报告、真实ABI错误码；原设置/集合/五语言回归通过。
 - [x] Debug应用构建通过；`python3 tools/apple_host_smoke.py --game kag3 --duration 30 --renderer metal --presentation metal --snapshots direct --output out/apple_host/evidence/ui-p3a-native`通过，输入推进、三时点CPU/GPU截图对照和干净退出，证据在指定目录；只是短回归，不宣称新五分钟门槛。
-- [ ] 页面CUA：明确构建路径重新连接仍返回native pipe关闭，未点验新增状态与预启动说明。P3a不宣称全部验收。
+- [ ] 页面CUA：P3a专属预启动状态仍待补验；P3b设置页已在真实构建窗口完成CUA，不将该证据扩展为P3a完整验收。
 
-下一切片：P3b画布/输出配置与输入映射；P1/P2/P3a的CUA待恢复后继续补验。P3c采样和P3d调度依次推进；P5增强保持独立工作包。
+下一切片：P3c采样和P3d调度；P1/P2/P3a的剩余CUA补验继续独立推进；P5增强保持独立工作包。
+
+## P3b实施记录：画布与输出
+
+- [x] `HostSettings` schema v3 增加 `canvasMode` 与 `outputResolution`；v1/v2 配置和旧 UserDefaults 迁移到 `original`，新安装默认 `1080p`，保存前完整校验。
+- [x] `Game Native` / `Display Fit` 与 `Original` / `1080p` / `2K` / `4K` 接入设置页和五语言文案。输出保持游戏原始比例并受目标尺寸上限约束；逻辑输入画布维持原始尺寸。
+- [x] Metal 路径在 GPU 命令中完成输出缩放，同一帧复用中间纹理，新 frame revision 不复用仍可能在 GPU 使用的目标；软件路径使用等价 RGBA 缩放并在分配失败时回退原始帧。
+- [x] 输入指针、IME 插入符和诊断状态使用逻辑画布到输出尺寸的同一映射；诊断同时显示逻辑画布与实际输出尺寸。
+- [x] `python3 tools/apple_host_settings_tests.py`、Debug 构建和 KAG3 30 秒 Metal direct smoke 通过。1080p smoke 输出为 1440×1080，逻辑帧为 640×480，`leases_acquired/submitted/completed=446`、`leases_live=0`、`lease_failures=0`、Metal RGB max diff=0。
+- [x] CUA 使用构建产物真实窗口验证渲染设置：可见“画布模式”和“输出分辨率”，切换到“适应显示”与“1080p”，保存后显示“设置已保存”且保存按钮禁用。
+
+下一切片：P3c 采样算法（先核对 smooth/linear 语义，再实现并验收 nearest、bicubic、lanczos）；P3d 调度继续保持独立，不提前开放未实现控件。

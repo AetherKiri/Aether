@@ -4,7 +4,7 @@ import AppKit
 enum RendererBehaviorTests {
     @MainActor static func run(root: URL) throws {
         // Renderer tests must not inherit benchmark/presentation overrides.
-        for key in ["AETHER_HOST_RENDERER", "AETHER_HOST_PRESENTATION", "AETHER_HOST_BENCHMARK", "AETHER_HOST_DIRECT_RENDER"] {
+        for key in ["AETHER_HOST_RENDERER", "AETHER_HOST_OUTPUT_RESOLUTION", "AETHER_HOST_PRESENTATION", "AETHER_HOST_BENCHMARK", "AETHER_HOST_DIRECT_RENDER"] {
             unsetenv(key)
         }
         let source = URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
@@ -21,6 +21,9 @@ enum RendererBehaviorTests {
         check(noDevice, requested: .metal, effective: .software, presentation: .image, reason: "metalDeviceUnavailable")
         precondition(noDevice.hostSettings.renderer == "metal", "fallback must retain next-launch preference")
         try playUntilFrame(noDevice, demo: demo, root: root)
+        precondition(noDevice.frameImage?.width == Int(noDevice.outputFrameSize.width))
+        precondition(noDevice.frameImage?.height == Int(noDevice.outputFrameSize.height))
+        precondition(noDevice.outputFrameSize == RenderGeometry.fit(noDevice.frameSize, within: CGSize(width: 1920, height: 1080)))
         noDevice.shutdown()
         precondition(!noDevice.renderState.active)
 
@@ -89,6 +92,22 @@ enum RendererBehaviorTests {
         precondition(activations == 4 && partial.useMetalPresentation)
         check(partial, requested: .metal, effective: .metal, presentation: .metal, reason: nil)
         partial.shutdown()
+
+        let display = EngineController()
+        display.hostSettings.canvasMode = "display"
+        display.hostSettings.outputResolution = "original"
+        display.updateDisplayPixels(CGSize(width: 2000, height: 1000))
+        precondition(display.initializeEngine(renderer: "metal"))
+        try playUntilFrame(display, demo: demo, root: root)
+        let native = display.frameSize
+        precondition(display.outputFrameSize == RenderGeometry.fit(native, within: CGSize(width: 2000, height: 1000)))
+        display.updateDisplayPixels(CGSize(width: 800, height: 600))
+        precondition(display.frameSize == native && display.outputFrameSize == RenderGeometry.fit(native, within: CGSize(width: 800, height: 600)))
+        display.hostSettings.outputResolution = "4k" // next launch only
+        display.updateDisplayPixels(CGSize(width: 1600, height: 900))
+        precondition(display.outputFrameSize == RenderGeometry.fit(native, within: CGSize(width: 1600, height: 900)))
+        precondition(display.diagnostics.metadata["logicalCanvas"] == "\(Int(native.width))x\(Int(native.height))")
+        display.shutdown()
 
         let probe = AetherEngineSession()
         precondition(partial.textTranslationAvailable == probe.isTextTranslationAvailable())

@@ -1,6 +1,6 @@
 # Apple 宿主产品与 UI 对齐 Spec
 
-- 版本：v0.4，2026-10-11；状态：P1核心与P2集合/详情已接入；已补部分CUA，四主题已接入，完整视觉验收及其余能力按计划推进。
+- 版本：v0.5，2026-10-11；状态：P1核心与P2集合/详情已接入；已补部分CUA，四主题已接入，完整视觉验收及其余能力按计划推进。
 - 基线：Godot 产品源码与当前 Apple 宿主；调查时 Apple HEAD 为 `e5108c1d`。
 - 范围：macOS 13+；iOS 特有项单列，不阻塞 macOS。Minori、G1、更新器继续按既有优先级暂缓。
 - 关联：[实施计划](apple_host_ui_plan.md) · [架构 spec](apple_host.md) · [进度](apple_host_progress.md)。
@@ -178,3 +178,67 @@ Lumen四套主题保留内容层、强调色、圆角与封面比例；系统字
 Godot内容palette按源tokens保留。AppKit原生突出按钮使用白色标签，专用controlAccent按同一强调色降低亮度至白字对比≥5:1，不使用Godot深色主题的黑字按钮假设；原生侧栏选中、标题栏、菜单、焦点与文件面板仍由macOS绘制。Increase Contrast使用主文字替代次要文字并增强分组边框；本实现不增加页面或主题切换动画。四主题库/设置与深色重启恢复已CUA点验，随后native pipe断开，五语言全分类等剩余验收仍保留。
 
 视频移除跨三个原子写入文件，不宣称多文件事务：清理失败保留条目；索引保存失败恢复内存列表并报错，已清理的记忆可能需要重新建立，重试清理是幂等操作。清理不触碰视频原文件。
+
+
+## 7. 复核后的设置契约与差异追踪
+
+本节按 Godot `_rebuild_settings_view` 的真实控件、`_current_settings_snapshot` 的草稿字段和 `_apply_settings_snapshot` 的处理链复核，不能把翻译字符串当功能实现。当前交付基线为 `aba88a61`；工作区另有能力检测与渲染回退的 P3 草稿，尚未完成行为/CUA验收，不计入已交付项。调查覆盖项目的产品页、配置、引擎选项、HostKit、渲染、媒体、测试和打包入口；不声称逐行审计全部依赖。
+
+### 7.1 字段映射
+
+| Godot 草稿字段 | Apple 已提交字段/状态 | 尚需实现的行为 |
+|---|---|---|
+| `language` | `languageMode` | 五语言所有分类的完整布局验收 |
+| `style` | `theme` | 四主题已实现，完整无障碍/尺寸验收待补 |
+| `game_virtual_menu_enabled` | `virtualControls` 只控制固定按键条 | 分离控制菜单入口、输入模式和面板显隐，不把三者共用一个 bool |
+| `game_virtual_keyboard_opacity` | 无 | Keyboard 模式透明度；隐藏/切换/失焦释放按键 |
+| `backend` | `renderer`，Metal/软件 | 原生路径与原版后端有意不同；报告请求值、实际引擎路径与呈现路径 |
+| `surface_mode` | 无；已有 HostKit `setSurfaceSize` | Game Native/Display Fit、输入坐标与截图一致 |
+| `upscale_algorithm` | 无；呈现 shader 固定 linear | 核对 smooth 别名；逐算法实现与确定性图像对照 |
+| `output_resolution` | 无 | original/1080p/2k/4k 的目标尺寸、纵横比和资源预算 |
+| `frame_enhancement_enabled` / `frame_enhancement_kind` | 无 | 以 off/preset/custom 为单一有效模式，enabled 仅作旧配置迁移输入 |
+| `frame_enhancement_mode` / `frame_enhancement_custom_chain` | 无 | 15预设、16算法、顺序和不同 pass 尺寸语义；P5独立实现 |
+| `fps_limit_enabled` / `target_fps` | 无；宿主60Hz Timer | 限频、模拟时间和屏幕呈现分开验证，不通过增快剧情制造FPS提升 |
+| `plugin_load_mode` | `pluginLoadMode` → engine option | 已接入；完整/核心模式的实际可用插件随构建报告 |
+| `mock_enabled` | `mockEnabled` → engine option | 已接入；启动前生效，默认true |
+| `error_dialog_logs` | `errorDialogLogs` → engine option | 已接入；真实错误弹窗的最近日志显示需场景验收 |
+| `text_translation_model_path` | `translationModelPath` | 草稿已接入；provider能力、模型加载失败与路径错误分别反馈 |
+| `diagnostic_profile` | 无；`logs` 仅面板可见性 | 使用 `config/diagnostic_profiles.json` 的采样语义；日志面板开关不替代profile |
+| `debug_overlay_mode` | 无 | off/summary/detail，标明tick/render/presentation/GPU统计口径 |
+| `ios_ui_scale_mode` / `force_landscape` | macOS不适用 | M4移动端处理，不塞进macOS设置 |
+
+高级追踪、trace、文件日志、TJS导出和场景测试不在普通草稿字段中：原版通过即时handler执行，Apple也应作为会话动作实现。更新预发布/忽略版本、协议接受与购买权益另有持久状态，不能被普通“丢弃设置”撤销。
+
+### 7.2 保留原版语义与明确差异
+
+| 事项 | 契约及原因 |
+|---|---|
+| 设置保存 | 保留原版草稿和显式保存；Apple先校验/写盘成功再发布，不能照搬原版先应用内存再保存的顺序 |
+| 分类 | 原版社群独立区移到“关于”；原版兼容性/诊断/高级分组保留职责。不能仅因分类减少就删掉功能 |
+| 设置容器 | 主窗口目的地是本产品选择；HIG通常描述macOS独立设置窗口，不宣称HIG要求把设置放进侧栏。Cmd-,与窗口内入口调用同一路由 |
+| 渲染后端 | 保留本项目Metal直通；不为视觉相似引入Godot依赖或恢复正常帧CPU回读 |
+| 生效时机 | 当前运行中禁全局设置；渲染/插件/翻译等下次启动应用，这是明确差异。未来即时切换须单独验证生命周期，不沿用原版“保存立即增强”文案 |
+| 能力不足 | 保留已保存偏好并说明不可用原因；不画可用假控件，也不把整组隐藏，让用户知道尚缺哪些能力 |
+| macOS权益/更新 | 不启用库数量限制或假购买；真实IAP放M4，更新器P7最后 |
+
+### 7.3 Apple规范如何落实到本产品
+
+Apple [Toolbars](https://developer.apple.com/design/human-interface-guidelines/toolbars) 提倡让常用操作在工具栏可访问，并保留对应菜单命令；不要求把所有菜单项都复制成按钮。[Settings](https://developer.apple.com/design/human-interface-guidelines/settings) 强调设置应易于找到、按关联组织并控制复杂度。本产品据此采用以下窗口内入口策略，具体四目的地和保存事务是产品决策。
+
+| 当前上下文 | 始终可发现的窗口内入口 | 次级入口与状态 |
+|---|---|---|
+| 游戏/视频集合 | 搜索、导入、刷新、网格/列表 | 导入附近区分复制与外部引用；空库给导入引导，无结果给清除搜索 |
+| 游戏详情 | 返回、开始游玩、封面选择/清除 | 重命名/移除在管理区域；移除明确仅移除索引，不与启动混排 |
+| 游戏运行 | 返回库、全屏、输入/控制入口 | 日志、重启、导出诊断在有标签的会话菜单；重启确认；退出恢复窗口 |
+| 视频运行 | 返回库、播放/暂停、进度、全屏 | 字幕/音量/倍速可发现；自动隐藏不得移走当前键盘或VoiceOver焦点 |
+| 设置 | 分类、标题/说明/控件、保存与状态 | 专家选项渐进展开；保存失败保留草稿；次启动生效与当前有效值明确区分 |
+
+全局菜单、工具栏和页内按钮必须使用一致动作与启用条件。常用操作不依赖hover或顶栏；高风险操作不用颜色作为唯一提示。内容保留Lumen四主题，标题栏、系统文件面板、菜单与焦点行为使用原生控件，不为模仿原版复制装饰动画。
+
+### 7.4 复核证据与验收边界
+
+- 设置源：`apps/godot_app/scripts/main.gd` 的 `_rebuild_settings_view`、`_current_settings_snapshot`、`_apply_settings_snapshot`、`_save_settings_draft`；Apple `SettingsStore.swift`、`ShellSettingsView.swift`、`ShellModel.swift`。
+- 运行配置源：`game_metadata.gd`、`game_launch_entry.gd`；目录runtime必须传根目录，EXE/XP3选择不能覆盖provider根语义；刷新保留显式空自动探测与用户入口选择。
+- 诊断/控制源：`diagnostic_session.gd`、`debug_console.gd`、`game_virtual_controls.gd`；媒体/发布源：`video_subtitles.gd`、`builtin_demo.gd`、`vndb_cover_resolver.gd`及打包配置。
+- 底层源：`abi/include/engine_options.h`、HostKit `EngineSession.mm`、`EngineController.swift`、`MetalFramePresenter.swift`。已有选项与缺失后处理分别排期。
+- 本轮尝试CUA连接明确构建路径，返回 `native pipe closed before response`。本次没有完成新的视觉或点击验收；沿用已记录证据，不将文档复核或已有构建成功当作CUA通过。

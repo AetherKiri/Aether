@@ -316,7 +316,7 @@ final class MetalFramePresenter: NSObject, MTKViewDelegate {
         return PresentationGate.blockedReason(state)
     }
 
-    func renderOffscreen(width: Int, height: Int) throws -> [UInt8] {
+    func renderOffscreen(width: Int, height: Int, waitForCompletion: Bool = true) throws -> [UInt8] {
         guard width > 0, height > 0 else { throw Failure.allocation }
         let descriptor = MTLTextureDescriptor.texture2DDescriptor(
             pixelFormat: .bgra8Unorm, width: width, height: height, mipmapped: false)
@@ -328,6 +328,7 @@ final class MetalFramePresenter: NSObject, MTKViewDelegate {
         if let frameLease {
             guard frameLease.submitCommand(command) else { throw Failure.encoding }
         } else { command.commit() }
+        guard waitForCompletion else { return [] }
         command.waitUntilCompleted()
         if let error = command.error { throw error }
         var bytes = [UInt8](repeating: 0, count: width * height * 4)

@@ -374,6 +374,22 @@
   p95 为 `7.491/2.484 ms`，最大值为 `33.809/9.459 ms`，超 16.6ms 为 `5/0`。证据目录：
   `out/apple_host/evidence/godot-native-rebuilt-ab-20261011/`。
 
+### 2026-10-11：uncapped offscreen benchmark 口径
+
+- Apple Host 新增 `--offscreen` benchmark：不请求 `CAMetalLayer.nextDrawable()`，每个固定
+  `1/60` engine tick 都把当前帧提交到 1920x1080 Metal render target；`--wait-gpu` 用于另一种
+  每帧等待 completion 的延迟口径。普通 profile 仍保留真实窗口/60Hz 呈现测试。
+- 同一 Debug KAG3、30 秒、同一 offscreen target 的提交吞吐（不等待 GPU）为：deferred
+  `143.2 tick/s`，direct `634.9 tick/s`。direct 使用当前 FrameLease，deferred 使用旧的
+  native snapshot；两者都不把 GPU completion 等待计入 tick 吞吐。
+- 同条件逐帧等待 GPU completion 时为：deferred `50.27 tick/s`（p50 `16.883 ms`），direct
+  `52.47 tick/s`（p50 `16.437 ms`）。这说明 direct 的主要收益在提交路径；若把 GPU completion
+  等待纳入端到端吞吐，收益约 4%，不能引用提交吞吐的 4.4 倍作为最终 FPS 提升。
+- 重建后的 Godot native 非 headless probe 为 `116.04 tick/s`（3600 tick、约 31 秒）；它与
+  Apple Host 的 offscreen 提交吞吐属于同一 uncapped wall-clock 类指标，但 Godot 仍包含
+  Godot viewport/TextureRect 调度，Apple Host benchmark 不包含 SwiftUI/scanout。证据目录：
+  `out/apple_host/evidence/offscreen-submit-20261011/`、`offscreen-completion-20261011/`。
+
 ## 下一步队列
 
 ### 性能基准隔离补充

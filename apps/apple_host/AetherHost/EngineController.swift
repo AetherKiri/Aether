@@ -17,6 +17,8 @@ final class EngineController: ObservableObject {
     // same; the presenter owns it until GPU completion.
     var nativeFrameLease: AetherMetalFrameLease?
     private let directRender = ProcessInfo.processInfo.environment["AETHER_HOST_DIRECT_RENDER"] == "1"
+    private let offscreenBenchmark = ProcessInfo.processInfo.environment["AETHER_HOST_BENCHMARK"] == "1"
+    private let offscreenWaitForGPU = ProcessInfo.processInfo.environment["AETHER_HOST_BENCHMARK_WAIT_GPU"] != "0"
     private var nativeRendererEnabled = false
     private var loggedNativeFrame = false
     @Published var frameSize: CGSize = .zero
@@ -337,6 +339,11 @@ final class EngineController: ObservableObject {
     func startLoop() {
         guard !loopRunning else { return }
         loopRunning = true
+        if offscreenBenchmark {
+            log("tick loop started (uncapped offscreen benchmark), presentation=metal-offscreen")
+            scheduleBenchmarkStep()
+            return
+        }
         // TODO(M1): CVDisplayLink / CADisplayLink pacing; Timer is the M0 smoke.
         let timer = Timer(timeInterval: 1.0 / 60.0, repeats: true) { [weak self] _ in
             // Timer is installed exclusively on RunLoop.main. Execute here
@@ -346,6 +353,15 @@ final class EngineController: ObservableObject {
         RunLoop.main.add(timer, forMode: .common)
         self.timer = timer
         log("tick loop started (60 Hz timer), presentation=\(metalPresenter?.directPresentation == true ? "direct" : "deferred")")
+    }
+
+    private func scheduleBenchmarkStep() {
+        guard loopRunning else { return }
+        DispatchQueue.main.async { [weak self] in
+            guard let self, self.loopRunning else { return }
+            self.step()
+            self.scheduleBenchmarkStep()
+        }
     }
 
     func stopLoop() {
@@ -465,7 +481,22 @@ final class EngineController: ObservableObject {
             if useMetalPresentation, let presenter = metalPresenter {
                 if profileFrames { presenter.profileFrame(tick: tickCount, started: started) }
                 do {
-                    try presenter.presentFrame(native: nativeFrameTexture, lease: nativeFrameLease, image: frameImage)
+                    if offscreenBenchmark {
+                        if let nativeFrameLease {
+                            presenter.useNativeFrame(nativeFrameLease)
+                        } else if let nativeFrameTexture {
+                            presenter.useNativeTexture(nativeFrameTexture)
+                        } else if let frameImage {
+                            try presenter.upload(frameImage)
+                        } else {
+                            presenter.clear()
+                        }
+                        _ = try presenter.renderOffscreen(width: 1920, height: 1080,
+                                                          waitForCompletion: offscreenWaitForGPU)
+                        if directRender { nativeFrameLease = nil }
+                    } else {
+                        try presenter.presentFrame(native: nativeFrameTexture, lease: nativeFrameLease, image: frameImage)
+                    }
                     if directRender {
                         // MetalFramePresenter retains the lease through GPU
                         // completion; the controller must not keep the prior
@@ -805,9 +836,14 @@ final class EngineController: ObservableObject {
             log(String(format: "PROFILE host-work %dx%d samples=%d warmup_ticks=60 p50_ms=%.3f p95_ms=%.3f max_ms=%.3f %@",
                        Int(frameSize.width), Int(frameSize.height), sorted.count,
                        p50, p95, sorted.last!,
-                       metalPresenter?.directPresentation == true && useMetalPresentation
+                       offscreenBenchmark
+                           ? "(tick+texture+offscreen GPU completion)"
+                           : metalPresenter?.directPresentation == true && useMetalPresentation
                            ? "(tick+texture+MTKView submit; excludes async GPU completion)"
                            : "(tick+texture; excludes MTKView)"))
+            if offscreenBenchmark {
+                log("PROFILE offscreen ticks=\(tickCount) measured_samples=\(sorted.count)")
+            }
             frameWorkMilliseconds.removeAll(keepingCapacity: true)
         }
         if profileFrames, let summary = metalPresenter?.finishProfile() {

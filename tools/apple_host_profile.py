@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Sequential onscreen benchmarks without screenshot/readback interference."""
+"""Sequential onscreen or uncapped offscreen benchmarks without screenshot/input interference."""
 import argparse
 import csv
 import json
@@ -19,6 +19,10 @@ def main():
     parser.add_argument('--compare-snapshots', action='store_true',
                         help='compare synchronous/async snapshots with direct scheduling')
     parser.add_argument('--reverse-order', action='store_true', help='reverse sequential comparison order')
+    parser.add_argument('--offscreen', action='store_true',
+                        help='run uncapped fixed-step benchmark into a 1920x1080 Metal target')
+    parser.add_argument('--wait-gpu', action='store_true',
+                        help='wait for each offscreen command completion (latency mode)')
     args = parser.parse_args()
     if not args.game.is_dir() or not math.isfinite(args.duration) or args.duration < 30:
         parser.error('existing game directory and duration >=30 required')
@@ -26,7 +30,9 @@ def main():
     binary = root / 'out/apple_host/derived/Build/Products/Debug/AetherHost.app/Contents/MacOS/AetherHost'
     output = args.output or root / 'out/apple_host/evidence' / time.strftime('profile-%Y%m%d-%H%M%S')
     output.mkdir(parents=True, exist_ok=False)
-    result = {'scope': 'tick to onscreen GPU command completion; excludes scanout; no screenshot/input; sequential runs', 'runs': {}}
+    result = {'scope': ('uncapped fixed-step tick to offscreen GPU completion; no drawable/scanout'
+                        if args.offscreen else
+                        'tick to onscreen GPU command completion; excludes scanout; no screenshot/input; sequential runs'), 'runs': {}}
     cases = [('sync', 'direct', '0'), ('async', 'direct', '1')] if args.compare_snapshots else [
         ('deferred', 'deferred', '0'), ('direct', 'direct', '0')]
     if args.reverse_order:
@@ -43,6 +49,9 @@ def main():
             env.pop(name, None)
         env.update(AETHER_HOST_AUTORUN='1', AETHER_HOST_LIBRARY_ROOT=str((folder / "library").resolve()), AETHER_HOST_RENDERER='metal',
                    AETHER_HOST_PROFILE='1', AETHER_HOST_DRAWABLE_1080P='1',
+                   AETHER_HOST_BENCHMARK='1' if args.offscreen else '0',
+                   AETHER_HOST_BENCHMARK_WAIT_GPU='1' if args.wait_gpu else '0',
+                   AETHER_HOST_DIRECT_RENDER='1' if scheduling == 'direct' else '0',
                    AETHER_HOST_SCHEDULING=scheduling, AETHER_HOST_ASYNC_SNAPSHOT=async_snapshot,
                    AETHER_HOST_GAME_PATH=str(args.game.resolve()),
                    AETHER_HOST_CAPTURE_DIR=str(folder.resolve()), AETHER_HOST_EXIT_AFTER=str(args.duration),
@@ -65,6 +74,20 @@ def main():
         assert code == 0 and 'engine destroyed' in text and 'startup state: SUCCEEDED' in text, mode
         assert 'Metal presentation failed' not in text, mode
         assert 'native GPU frame' in text and re.search(r'Metal bridge .*failures=0.*native_readbacks=0', text), mode
+        if args.offscreen:
+            match = re.search(r'PROFILE offscreen ticks=(\d+) measured_samples=(\d+)', text)
+            assert match, f'{mode}: missing offscreen benchmark summary'
+            host = re.search(r'PROFILE host-work .*samples=(\d+) warmup_ticks=60 p50_ms=([\d.]+) p95_ms=([\d.]+) max_ms=([\d.]+)', text)
+            assert host, f'{mode}: missing host-work profile'
+            result['runs'][mode] = {
+                'scheduling': scheduling, 'async_snapshot': async_snapshot == '1',
+                'ticks': int(match.group(1)), 'measured_samples': int(match.group(2)),
+                'p50_ms': float(host.group(2)), 'p95_ms': float(host.group(3)),
+                'max_ms': float(host.group(4)), 'ticks_per_second': int(match.group(1)) / args.duration,
+            }
+            (output / 'result.json').write_text(json.dumps(result, indent=2)+'\n')
+            print(mode, json.dumps(result['runs'][mode]), flush=True)
+            continue
         csv_path = folder / 'aetherhost-presentation.csv'
         assert csv_path.is_file(), (
             f'{mode}: no presentation samples; the host window never presented '

@@ -94,6 +94,7 @@ enum ShellLanguage: String, CaseIterable, Identifiable {
         "cancel": ["取消", "取消", "Cancel", "キャンセル", "취소"],
         "continue": ["继续游玩", "繼續遊玩", "Keep Playing", "プレイを続ける", "계속 플레이"],
         "settings": ["设置", "設定", "Settings", "設定", "설정"],
+        "manage": ["管理游戏", "管理遊戲", "Manage Game", "ゲームを管理", "게임 관리"],
         "qqGroup": ["加入 QQ 交流群", "加入 QQ 交流群", "Join the QQ group", "QQ グループに参加", "QQ 그룹 참여"],
         "language": ["界面语言", "介面語言", "Language", "表示言語", "언어"],
         "renderer": ["绘制方式", "繪製方式", "Rendering", "描画方式", "렌더링"],

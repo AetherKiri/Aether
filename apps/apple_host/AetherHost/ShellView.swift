@@ -70,49 +70,46 @@ struct ContentView: View {
                     }
                 }
             } else {
-                VStack(spacing: 0) {
-                    HStack(spacing: 16) {
-                        Picker(model.text("view"), selection: $model.route) {
-                            Label(model.text("library"), systemImage: "books.vertical").tag(ShellRoute.library)
-                            Label(model.text("videoLibrary"), systemImage: "film").tag(ShellRoute.videos)
-                            Label(model.text("dashboard"), systemImage: "house").tag(ShellRoute.dashboard)
+                NavigationSplitView {
+                    shellSidebar
+                        .navigationSplitViewColumnWidth(min: 220, ideal: 250, max: 320)
+                } detail: {
+                    Group {
+                        switch model.route {
+                        case .library: library
+                        case .videos: videoLibrary
+                        case .dashboard: dashboard
                         }
-                        .pickerStyle(.segmented)
-                        .labelsHidden()
-                        .frame(maxWidth: 460)
-                        .disabled(!model.canNavigateShell)
-                        Spacer()
-                        Button { model.refreshLibrary() } label: {
-                            Label(model.text("refresh"), systemImage: "arrow.clockwise")
-                        }.disabled(!model.canNavigateShell)
-                    }.padding(12)
-                    Divider()
-                    switch model.route {
-                    case .library: library
-                    case .videos: videoLibrary
-                    case .dashboard: dashboard
                     }
+                    .navigationTitle(model.text(model.route == .library ? "library" : model.route == .videos ? "videoLibrary" : "dashboard"))
                 }
+                .navigationSplitViewStyle(.balanced)
             }
         }
         .environment(\.locale, model.language.locale)
         .toolbar {
             ToolbarItemGroup {
                 if model.activeGame == nil && model.activeVideo == nil {
-                    Button { model.chooseVideo() } label: {
-                        Label(model.text("openVideo"), systemImage: "film")
-                    }.disabled(!model.canOpenVideo)
-                    Button { model.chooseImport() } label: {
-                        Label(model.text("import"), systemImage: "plus")
-                    }.disabled(!model.canImport)
-                    Button { model.chooseImport(external: true) } label: {
-                        Label(model.text("linkGame"), systemImage: "link")
-                    }.disabled(!model.canImport)
+                    if model.route == .videos {
+                        Button { model.chooseVideo() } label: {
+                            Label(model.text("importVideo"), systemImage: "plus")
+                        }.help(model.text("importVideo")).disabled(!model.canOpenVideo)
+                    } else {
+                        Button { model.chooseImport() } label: {
+                            Label(model.text("import"), systemImage: "plus")
+                        }.help(model.text("import")).disabled(!model.canImport)
+                        Button { model.chooseImport(external: true) } label: {
+                            Label(model.text("linkGame"), systemImage: "link")
+                        }.help(model.text("linkGame")).disabled(!model.canImport)
+                    }
+                    Button { model.refreshLibrary() } label: {
+                        Label(model.text("refresh"), systemImage: "arrow.clockwise")
+                    }.help(model.text("refresh")).disabled(!model.canNavigateShell)
                     if model.isImporting { ProgressView().controlSize(.small) }
                 }
                 Button { model.showSettings = true } label: {
                     Label(model.text("settings"), systemImage: "gearshape")
-                }.disabled(!model.canOpenSettings)
+                }.help(model.text("settings")).disabled(!model.canOpenSettings)
             }
         }
         .onReceive(NotificationCenter.default.publisher(for: NSWindow.didResignKeyNotification)) { _ in
@@ -170,83 +167,113 @@ struct ContentView: View {
         }
     }
 
+    private var sidebarSelection: Binding<String?> {
+        Binding(get: {
+            if model.route == .library, let id = model.selection { return "game:" + id.uuidString }
+            if model.route == .videos, let id = model.selectedVideoID { return "video:" + id.uuidString }
+            return model.route.rawValue
+        }, set: { value in
+            guard model.canNavigateShell, let value else { return }
+            if value.hasPrefix("game:"), let id = UUID(uuidString: String(value.dropFirst(5))) {
+                model.selection = id; model.route = .library
+            } else if value.hasPrefix("video:"), let id = UUID(uuidString: String(value.dropFirst(6))) {
+                model.selectedVideoID = id; model.route = .videos
+            } else if let route = ShellRoute(rawValue: value) { model.route = route }
+        })
+    }
+
+    private var shellSidebar: some View {
+        List(selection: sidebarSelection) {
+            Section {
+                Label(model.text("dashboard"), systemImage: "house").tag("dashboard")
+                Label(model.text("library"), systemImage: "books.vertical").tag("library")
+                Label(model.text("videoLibrary"), systemImage: "film").tag("videos")
+            }
+            if model.route == .library {
+                Section(model.text("library")) {
+                    ForEach(model.games) { game in
+                        HStack(spacing: 10) {
+                            if let cover = model.coverImage(for: game) {
+                                Image(nsImage: cover).resizable().scaledToFill()
+                                    .frame(width: 30, height: 40).clipped().cornerRadius(4)
+                            } else {
+                                Image(systemName: "gamecontroller").foregroundStyle(.secondary).frame(width: 30)
+                            }
+                            Text(game.displayTitle).lineLimit(2)
+                        }.padding(.vertical, 3).tag("game:" + game.id.uuidString)
+                            .contextMenu {
+                                Button(model.text("rename")) { model.beginRename(game) }
+                                Button(model.text("remove"), role: .destructive) { model.removeGame = game }
+                            }
+                    }
+                }
+            } else if model.route == .videos {
+                Section(model.text("videoLibrary")) {
+                    ForEach(model.videos) { video in
+                        Label(video.displayTitle, systemImage: "film").lineLimit(2)
+                            .tag("video:" + video.id.uuidString)
+                            .contextMenu { Button(model.text("removeVideo"), role: .destructive) { model.removeVideo(video) } }
+                    }
+                }
+            }
+        }.listStyle(.sidebar)
+    }
+
     private var videoLibrary: some View { VideoLibraryView(model: model) }
 
     private var dashboard: some View { DashboardView(model: model) }
 
     private var library: some View {
-        NavigationSplitView {
-            List(selection: $model.selection) {
-                ForEach(model.games) { game in
-                    HStack(spacing: 10) {
+        Group {
+            if let game = model.selectedGame {
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 20) {
                         if let cover = model.coverImage(for: game) {
                             Image(nsImage: cover)
                                 .resizable()
-                                .scaledToFill()
-                                .frame(width: 34, height: 44)
-                                .clipShape(RoundedRectangle(cornerRadius: 4))
+                                .scaledToFit()
+                                .frame(maxWidth: 360, maxHeight: 300)
+                                .clipShape(RoundedRectangle(cornerRadius: 8))
                         } else {
-                            Image(systemName: game.isExternal ? "link" : "gamecontroller")
-                                .frame(width: 34, height: 44)
+                            Image(systemName: "gamecontroller.fill")
+                                .font(.system(size: 64))
                                 .foregroundStyle(.tint)
+                                .frame(height: 120)
                         }
-                        Text(game.displayTitle).lineLimit(2)
-                    }.tag(game.id)
-                        .contextMenu {
+                        Text(game.displayTitle).font(.largeTitle.bold()).textSelection(.enabled)
+                        Grid(alignment: .leading, horizontalSpacing: 20, verticalSpacing: 12) {
+                            GridRow {
+                                Text(model.text("imported")).foregroundStyle(.secondary)
+                                Text(game.importedAt, style: .date)
+                            }
+                            GridRow {
+                                Text(model.text("played")).foregroundStyle(.secondary)
+                                if let last = game.lastPlayedAt { Text(last, style: .date) }
+                                else { Text(model.text("never")) }
+                            }
+                        }
+                        Text(model.text(game.isExternal ? "externalStorage" : "managedStorage")).foregroundStyle(.secondary)
+                        if game.isExternal { Text(model.text("linkHelp")).font(.caption).foregroundStyle(.secondary) }
+                        HStack {
+                            Button { model.play() } label: { Label(model.text("play"), systemImage: "play.fill") }
+                                .buttonStyle(.borderedProminent).controlSize(.large).disabled(!model.canPlay)
+                            Button(model.text("folder")) {
+                                NSWorkspace.shared.activateFileViewerSelecting([model.repository.gameURL(game)])
+                            }
+                        }
+                        Menu {
+                            Button(model.text("setCover")) { model.chooseCover() }.disabled(!model.canEditCover)
+                            if model.coverImage(for: game) != nil {
+                                Button(model.text("clearCover")) { model.clearSelectedCover() }.disabled(!model.canEditCover)
+                            }
+                            Divider()
                             Button(model.text("rename")) { model.beginRename(game) }.disabled(!model.canImport)
-                            Button(model.text("remove")) { model.removeGame = game }.disabled(!model.canImport)
-                        }
+                            Button(model.text("remove"), role: .destructive) { model.removeGame = game }.disabled(!model.canImport)
+                        } label: { Label(model.text("manage"), systemImage: "ellipsis.circle") }
+                        .fixedSize()
+                    }.frame(maxWidth: 600, alignment: .leading).padding(32)
+                        .frame(maxWidth: .infinity, alignment: .leading)
                 }
-            }
-            .navigationTitle(model.text("library"))
-            .navigationSplitViewColumnWidth(min: 220, ideal: 260)
-        } detail: {
-            if let game = model.selectedGame {
-                VStack(alignment: .leading, spacing: 20) {
-                    if let cover = model.coverImage(for: game) {
-                        Image(nsImage: cover)
-                            .resizable()
-                            .scaledToFit()
-                            .frame(maxWidth: 360, maxHeight: 300)
-                            .clipShape(RoundedRectangle(cornerRadius: 8))
-                    } else {
-                        Image(systemName: "gamecontroller.fill")
-                            .font(.system(size: 64))
-                            .foregroundStyle(.tint)
-                            .frame(height: 120)
-                    }
-                    Text(game.displayTitle).font(.largeTitle.bold()).textSelection(.enabled)
-                    Grid(alignment: .leading, horizontalSpacing: 20, verticalSpacing: 12) {
-                        GridRow {
-                            Text(model.text("imported")).foregroundStyle(.secondary)
-                            Text(game.importedAt, style: .date)
-                        }
-                        GridRow {
-                            Text(model.text("played")).foregroundStyle(.secondary)
-                            if let last = game.lastPlayedAt { Text(last, style: .date) }
-                            else { Text(model.text("never")) }
-                        }
-                    }
-                    Text(model.text(game.isExternal ? "externalStorage" : "managedStorage")).foregroundStyle(.secondary)
-                    if game.isExternal { Text(model.text("linkHelp")).font(.caption).foregroundStyle(.secondary) }
-                    HStack {
-                        Button { model.play() } label: { Label(model.text("play"), systemImage: "play.fill") }
-                            .buttonStyle(.borderedProminent).controlSize(.large).disabled(!model.canPlay)
-                        Button(model.text("folder")) {
-                            NSWorkspace.shared.activateFileViewerSelecting([model.repository.gameURL(game)])
-                        }
-                    }
-                    HStack {
-                        Button(model.text("setCover")) { model.chooseCover() }.disabled(!model.canEditCover)
-                        if model.coverImage(for: game) != nil {
-                            Button(model.text("clearCover")) { model.clearSelectedCover() }.disabled(!model.canEditCover)
-                        }
-                    }
-                    HStack {
-                        Button(model.text("rename")) { model.beginRename(game) }.disabled(!model.canImport)
-                        Button(model.text("remove")) { model.removeGame = game }.disabled(!model.canImport)
-                    }
-                }.frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center).padding(32)
             } else {
                 VStack(spacing: 18) {
                     Image(systemName: "books.vertical").font(.system(size: 64)).foregroundStyle(.secondary)
@@ -273,45 +300,28 @@ private struct VideoLibraryView: View {
     }
 
     var body: some View {
-        NavigationSplitView {
-            List(selection: $model.selectedVideoID) {
-                ForEach(model.videos) { video in
-                    HStack(spacing: 10) {
-                        let videoExists = FileManager.default.fileExists(atPath: video.url.path)
-                        Image(systemName: videoExists ? "film" : "exclamationmark.triangle")
-                            .foregroundStyle(videoExists ? Color.accentColor : Color.red)
-                        VStack(alignment: .leading, spacing: 3) {
-                            Text(video.displayTitle).lineLimit(2)
-                            let progress = model.storedVideoProgress(for: video)
-                            if progress > 0 { Text(time(progress)).font(.caption).foregroundStyle(.secondary) }
-                        }
-                    }.tag(video.id)
-                        .contextMenu {
-                            Button(model.text("removeVideo"), role: .destructive) { model.removeVideo(video) }
-                        }
-                }
-            }
-            .navigationTitle(model.text("videoLibrary"))
-            .navigationSplitViewColumnWidth(min: 260, ideal: 320)
-        } detail: {
+        Group {
             if let video = model.videos.first(where: { $0.id == model.selectedVideoID }) {
-                VStack(alignment: .leading, spacing: 18) {
-                    Image(systemName: "film.stack").font(.system(size: 64)).foregroundStyle(.tint)
-                    Text(video.displayTitle).font(.title.bold()).textSelection(.enabled)
-                    if FileManager.default.fileExists(atPath: video.url.path) {
-                        Text(video.url.path).font(.caption).foregroundStyle(.secondary).textSelection(.enabled)
-                        let progress = model.storedVideoProgress(for: video)
-                        if progress > 0 { Text(model.text("videoPosition") + ": " + time(progress)).foregroundStyle(.secondary) }
-                        HStack {
-                            Button { model.openVideo(video.url) } label: { Label(model.text("videoPlay"), systemImage: "play.fill") }
-                                .buttonStyle(.borderedProminent)
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 18) {
+                        Image(systemName: "film.stack").font(.system(size: 64)).foregroundStyle(.tint)
+                        Text(video.displayTitle).font(.title.bold()).textSelection(.enabled)
+                        if FileManager.default.fileExists(atPath: video.url.path) {
+                            Text(video.url.path).font(.caption).foregroundStyle(.secondary).textSelection(.enabled)
+                            let progress = model.storedVideoProgress(for: video)
+                            if progress > 0 { Text(model.text("videoPosition") + ": " + time(progress)).foregroundStyle(.secondary) }
+                            HStack {
+                                Button { model.openVideo(video.url) } label: { Label(model.text("videoPlay"), systemImage: "play.fill") }
+                                    .buttonStyle(.borderedProminent)
+                                Button(model.text("removeVideo"), role: .destructive) { model.removeVideo(video) }
+                            }
+                        } else {
+                            Text(model.text("videoMissing")).foregroundStyle(.red)
                             Button(model.text("removeVideo"), role: .destructive) { model.removeVideo(video) }
                         }
-                    } else {
-                        Text(model.text("videoMissing")).foregroundStyle(.red)
-                        Button(model.text("removeVideo"), role: .destructive) { model.removeVideo(video) }
-                    }
-                }.frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center).padding(32)
+                    }.frame(maxWidth: 600, alignment: .leading).padding(32)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
             } else {
                 VStack(spacing: 18) {
                     Image(systemName: "film.stack").font(.system(size: 64)).foregroundStyle(.secondary)
@@ -322,12 +332,7 @@ private struct VideoLibraryView: View {
                 }.frame(maxWidth: .infinity, maxHeight: .infinity).padding(32)
             }
         }
-        .toolbar {
-            ToolbarItem {
-                Button { model.chooseVideo() } label: { Label(model.text("importVideo"), systemImage: "plus") }
-                    .disabled(!model.canOpenVideo)
-            }
-        }
+
     }
 }
 
@@ -335,31 +340,37 @@ private struct DashboardView: View {
     @ObservedObject var model: ShellModel
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 24) {
-            Text(model.text("dashboard")).font(.largeTitle.bold())
-            HStack(spacing: 16) {
-                DashboardStat(title: String(format: model.text("gamesCount"), model.games.count), icon: "gamecontroller.fill")
-                DashboardStat(title: String(format: model.text("videosCount"), model.videos.count), icon: "film.fill")
-            }
-            Divider()
-            Text(model.text("recentGames")).font(.title2.bold())
-            if let game = model.games.compactMap({ game in game.lastPlayedAt.map { (game, $0) } }).sorted(by: { $0.1 > $1.1 }).first?.0 {
-                HStack {
-                    Image(systemName: "gamecontroller.fill").foregroundStyle(.tint)
-                    Text(game.displayTitle)
-                    Spacer()
-                    Button(model.text("play")) { model.selection = game.id; model.play() }
-                        .buttonStyle(.borderedProminent)
+        ScrollView {
+            VStack(alignment: .leading, spacing: 24) {
+                Text(model.text("dashboard")).font(.largeTitle.bold())
+                HStack(spacing: 16) {
+                    Button { model.showLibrary() } label: {
+                        DashboardStat(title: String(format: model.text("gamesCount"), model.games.count), icon: "gamecontroller.fill")
+                    }.buttonStyle(.plain)
+                    Button { model.showVideos() } label: {
+                        DashboardStat(title: String(format: model.text("videosCount"), model.videos.count), icon: "film.fill")
+                    }.buttonStyle(.plain)
                 }
-            } else {
-                Text(model.text("never")).foregroundStyle(.secondary)
+                Divider()
+                Text(model.text("recentGames")).font(.title2.bold())
+                if let game = model.games.compactMap({ game in game.lastPlayedAt.map { (game, $0) } }).sorted(by: { $0.1 > $1.1 }).first?.0 {
+                    HStack {
+                        Image(systemName: "gamecontroller.fill").foregroundStyle(.tint)
+                        Text(game.displayTitle)
+                        Spacer()
+                        Button(model.text("play")) { model.selection = game.id; model.play() }
+                            .buttonStyle(.borderedProminent)
+                    }
+                } else {
+                    Text(model.text("never")).foregroundStyle(.secondary)
+                }
+                Button(model.text("openLibrary")) { model.showLibrary() }
+                    .buttonStyle(.bordered)
             }
-            Spacer()
-            Button(model.text("openLibrary")) { model.showLibrary() }
-                .buttonStyle(.bordered)
+            .frame(maxWidth: 760, alignment: .leading)
+            .padding(32)
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
-        .padding(32)
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
     }
 }
 
@@ -369,7 +380,7 @@ private struct DashboardStat: View {
 
     var body: some View {
         Label(title, systemImage: icon).font(.title3).padding(18)
-            .frame(minWidth: 180, alignment: .leading)
+            .frame(maxWidth: .infinity, alignment: .leading)
             .background(.quaternary, in: RoundedRectangle(cornerRadius: 8))
     }
 }

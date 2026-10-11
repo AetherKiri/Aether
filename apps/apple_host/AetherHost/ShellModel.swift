@@ -32,6 +32,7 @@ final class ShellModel: ObservableObject {
     } }
     private let preferencePrefix: String
     private var libraryAvailable = true
+    private var fullscreenBeforeGame: Bool?
 
     init() {
         let defaults = UserDefaults.standard
@@ -46,7 +47,10 @@ final class ShellModel: ObservableObject {
         } ?? FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
             .appendingPathComponent("Aether", isDirectory: true)
         repository = GameLibrary(root: root)
-        do { games = try repository.load(); selection = games.first?.id }
+        do {
+            games = try repository.backfillDefaultCovers(try repository.load())
+            selection = games.first?.id
+        }
         catch { self.error = friendlyError(error); libraryAvailable = false }
     }
 
@@ -82,6 +86,12 @@ final class ShellModel: ObservableObject {
     var selectedGame: LibraryGame? { games.first { $0.id == selection } }
     var canImport: Bool { libraryAvailable && !isImporting && activeGame == nil && activeVideo == nil }
     var canPlay: Bool { !isImporting && activeGame == nil && activeVideo == nil && selectedGame != nil }
+    var canEditCover: Bool { canImport && selectedGame != nil }
+
+    func coverImage(for game: LibraryGame) -> NSImage? {
+        guard let url = repository.coverURL(game), FileManager.default.fileExists(atPath: url.path) else { return nil }
+        return NSImage(contentsOf: url)
+    }
 
     func chooseImport(external: Bool = false) {
         guard canImport else { return }
@@ -106,11 +116,37 @@ final class ShellModel: ObservableObject {
                     }
                     return try repository.importDirectory(source, existing: existing, external: external)
                 }.value
-                games = result.games
+                games = try repository.backfillDefaultCovers(result.games)
                 selection = result.imported.id
             } catch { self.error = friendlyError(error) }
             isImporting = false
         }
+    }
+
+    func chooseCover() {
+        guard canEditCover, let game = selectedGame else { return }
+        let panel = NSOpenPanel()
+        panel.title = text("dialogChooseCover")
+        panel.message = text("dialogChooseCoverHelp")
+        panel.prompt = text("setCover")
+        panel.canChooseDirectories = false
+        panel.canChooseFiles = true
+        panel.allowsMultipleSelection = false
+        panel.allowedContentTypes = [.image]
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        guard NSImage(contentsOf: url) != nil else {
+            error = text("messageCoverFileMissing")
+            return
+        }
+        do {
+            games = try repository.setCover(game.id, url: url, existing: games)
+        } catch let failure { error = friendlyError(failure) }
+    }
+
+    func clearSelectedCover() {
+        guard canEditCover, let game = selectedGame else { return }
+        do { games = try repository.clearCover(game.id, existing: games) }
+        catch let failure { error = friendlyError(failure) }
     }
 
     func beginRename(_ game: LibraryGame) {
@@ -139,6 +175,7 @@ final class ShellModel: ObservableObject {
         guard canPlay, let game = selectedGame else { return }
         let path = repository.gameURL(game).path
         guard FileManager.default.fileExists(atPath: path) else { error = text("missing"); return }
+        fullscreenBeforeGame = windowIsFullscreen
         engine.prepareDiagnostics(gamePath: path, title: game.displayTitle)
         // Applied by initializeEngine() before the game opens; the target
         // language follows the interface language, as in the Godot shell.
@@ -184,6 +221,18 @@ final class ShellModel: ObservableObject {
     func closeActiveSession() {
         if activeGame != nil { returnToLibrary() }
         if activeVideo != nil { closeVideo() }
+    }
+
+    var windowIsFullscreen: Bool {
+        hostWindow?.styleMask.contains(.fullScreen) ?? false
+    }
+
+    func toggleFullscreen() {
+        hostWindow?.toggleFullScreen(nil)
+    }
+
+    private var hostWindow: NSWindow? {
+        NSApp.windows.first(where: { $0.identifier?.rawValue == "main" }) ?? NSApp.keyWindow
     }
 
     func exportDiagnostics() {
@@ -258,5 +307,9 @@ final class ShellModel: ObservableObject {
         engine.shutdown()
         activeGame = nil
         confirmReturn = false
+        if let shouldBeFullscreen = fullscreenBeforeGame {
+            fullscreenBeforeGame = nil
+            if windowIsFullscreen != shouldBeFullscreen { hostWindow?.toggleFullScreen(nil) }
+        }
     }
 }

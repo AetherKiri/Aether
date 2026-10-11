@@ -31,6 +31,9 @@ struct ContentView: View {
                         }
                         Text(game.displayTitle).font(.headline)
                         Spacer()
+                        Button { model.toggleFullscreen() } label: {
+                            Label(model.text("fullscreen"), systemImage: "arrow.up.left.and.arrow.down.right")
+                        }
                         Button { model.showVirtualControls.toggle() } label: {
                             Label(model.text("virtualControls"), systemImage: "keyboard")
                         }
@@ -130,7 +133,20 @@ struct ContentView: View {
         NavigationSplitView {
             List(selection: $model.selection) {
                 ForEach(model.games) { game in
-                    Label(game.displayTitle, systemImage: game.isExternal ? "link" : "gamecontroller").tag(game.id)
+                    HStack(spacing: 10) {
+                        if let cover = model.coverImage(for: game) {
+                            Image(nsImage: cover)
+                                .resizable()
+                                .scaledToFill()
+                                .frame(width: 34, height: 44)
+                                .clipShape(RoundedRectangle(cornerRadius: 4))
+                        } else {
+                            Image(systemName: game.isExternal ? "link" : "gamecontroller")
+                                .frame(width: 34, height: 44)
+                                .foregroundStyle(.tint)
+                        }
+                        Text(game.displayTitle).lineLimit(2)
+                    }.tag(game.id)
                         .contextMenu {
                             Button(model.text("rename")) { model.beginRename(game) }.disabled(!model.canImport)
                             Button(model.text("remove")) { model.removeGame = game }.disabled(!model.canImport)
@@ -142,7 +158,18 @@ struct ContentView: View {
         } detail: {
             if let game = model.selectedGame {
                 VStack(alignment: .leading, spacing: 20) {
-                    Image(systemName: "gamecontroller.fill").font(.system(size: 64)).foregroundStyle(.tint)
+                    if let cover = model.coverImage(for: game) {
+                        Image(nsImage: cover)
+                            .resizable()
+                            .scaledToFit()
+                            .frame(maxWidth: 360, maxHeight: 300)
+                            .clipShape(RoundedRectangle(cornerRadius: 8))
+                    } else {
+                        Image(systemName: "gamecontroller.fill")
+                            .font(.system(size: 64))
+                            .foregroundStyle(.tint)
+                            .frame(height: 120)
+                    }
                     Text(game.displayTitle).font(.largeTitle.bold()).textSelection(.enabled)
                     Grid(alignment: .leading, horizontalSpacing: 20, verticalSpacing: 12) {
                         GridRow {
@@ -162,6 +189,12 @@ struct ContentView: View {
                             .buttonStyle(.borderedProminent).controlSize(.large).disabled(!model.canPlay)
                         Button(model.text("folder")) {
                             NSWorkspace.shared.activateFileViewerSelecting([model.repository.gameURL(game)])
+                        }
+                    }
+                    HStack {
+                        Button(model.text("setCover")) { model.chooseCover() }.disabled(!model.canEditCover)
+                        if model.coverImage(for: game) != nil {
+                            Button(model.text("clearCover")) { model.clearSelectedCover() }.disabled(!model.canEditCover)
                         }
                     }
                     HStack {
@@ -267,6 +300,10 @@ struct ShellCommands: Commands {
             Button(model.text("back")) { model.closeVideo() }.disabled(model.activeVideo == nil)
         }
         CommandMenu(model.text("game")) {
+            Button(model.text("fullscreen")) { model.toggleFullscreen() }
+                .keyboardShortcut("f", modifiers: [.command, .control])
+                .disabled(model.activeGame == nil)
+            Divider()
             Toggle(model.text("virtualControls"), isOn: $model.showVirtualControls)
             Button(model.text("enterText")) { model.showGameTextEntry = true }.disabled(model.activeGame == nil || model.engine.runtimeMovieActive)
             Divider()

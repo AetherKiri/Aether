@@ -11,11 +11,23 @@ struct GameLibraryTests {
         let source = temp.appendingPathComponent("游戏 示例")
         try fm.createDirectory(at: source, withIntermediateDirectories: true)
         try Data("script".utf8).write(to: source.appendingPathComponent("startup.tjs"))
+        try Data("image".utf8).write(to: source.appendingPathComponent("cover.png"))
         let repository = GameLibrary(root: temp.appendingPathComponent("library"))
         let imported = try repository.importDirectory(source, existing: [])
         check(imported.games.count == 1 && imported.imported.title == "游戏 示例")
         check(try repository.load() == imported.games)
         let copy = repository.gameURL(imported.imported)
+        let discovered = try repository.backfillDefaultCovers(imported.games)
+        check(discovered[0].coverPath == "game://cover.png")
+        check(repository.coverURL(discovered[0])?.path == copy.appendingPathComponent("cover.png").path)
+        let cleared = try repository.clearCover(discovered[0].id, existing: discovered)
+        check(cleared[0].coverPath == nil && cleared[0].coverSuppressed)
+        check(try repository.backfillDefaultCovers(cleared)[0].coverPath == nil)
+        let manual = temp.appendingPathComponent("manual.jpg")
+        try Data("manual".utf8).write(to: manual)
+        let manuallyCovered = try repository.setCover(cleared[0].id, url: manual, existing: cleared)
+        check(manuallyCovered[0].coverPath == manual.path && !manuallyCovered[0].coverSuppressed)
+        check(try repository.load()[0].coverPath == manual.path)
         try Data("save".utf8).write(to: copy.appendingPathComponent("save1.sav"))
         check(!fm.fileExists(atPath: source.appendingPathComponent("save1.sav").path))
         let repeated = try repository.importDirectory(source, existing: imported.games)
@@ -67,6 +79,7 @@ struct GameLibraryTests {
         let legacy = try JSONSerialization.jsonObject(with: JSONEncoder().encode(played)) as! [[String: Any]]
         check(legacy[0]["externalPath"] == nil)
         check(try JSONDecoder().decode([LibraryGame].self, from: JSONSerialization.data(withJSONObject: legacy))[0].isExternal == false)
+        check(try JSONDecoder().decode([LibraryGame].self, from: JSONSerialization.data(withJSONObject: legacy))[0].coverPath == nil)
         let renamed = try repository.rename(played[0].id, title: "  新名称 🎮  ", existing: played)
         check(renamed[0].title == "新名称 🎮" && renamed[0].lastPlayedAt == played[0].lastPlayedAt)
         check(try repository.load() == renamed)
@@ -108,6 +121,6 @@ struct GameLibraryTests {
         do { _ = try repository.load(); fatalError("path escape accepted") }
         catch GameLibrary.Failure.invalidManifest {}
         check(try Data(contentsOf: repository.root.appendingPathComponent("library.json")) == before)
-        print("PASS: managed copy, source isolation, duplicate/save preservation, reload, wrapper/Minori marker detection, symlink/recursive rejection, rollback, manifest path protection, legacy indexes, rename persistence, external references, non-destructive removal")
+        print("PASS: managed copy, source isolation, duplicate/save preservation, reload, cover discovery/manual/clear persistence, wrapper/Minori marker detection, symlink/recursive rejection, rollback, manifest path protection, legacy indexes, rename persistence, external references, non-destructive removal")
     }
 }

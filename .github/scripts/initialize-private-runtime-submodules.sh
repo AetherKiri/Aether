@@ -19,6 +19,7 @@ git submodule update --init --recursive --depth 1 \
     packages/AetherKrkr \
     packages/AetherMinori \
     packages/AetherSiglus \
+    packages/GalgameExtractor \
     packages/OnscripterYuri \
     packages/psdfile \
     packages/rfvp \

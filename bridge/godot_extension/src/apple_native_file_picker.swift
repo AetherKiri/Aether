@@ -14,6 +14,7 @@ private final class AetherNativeLaunchFilePicker: NSObject, @unchecked Sendable 
         case launchFile
         case coverImage(destinationDirectory: String)
         case translationModel
+        case archive(destinationDirectory: String)
     }
 
     private let lock = NSLock()
@@ -84,6 +85,14 @@ private final class AetherNativeLaunchFilePicker: NSObject, @unchecked Sendable 
             title: title,
             initialDirectory: initialDirectory,
             purpose: .translationModel
+        )
+    }
+
+    func presentArchive(title: String, destinationDirectory: String) -> Bool {
+        return present(
+            title: title,
+            initialDirectory: "",
+            purpose: .archive(destinationDirectory: destinationDirectory)
         )
     }
 
@@ -194,6 +203,26 @@ private final class AetherNativeLaunchFilePicker: NSObject, @unchecked Sendable 
         return destinationURL.standardizedFileURL.path
     }
 
+    private func importedArchivePath(
+        from sourceURL: URL,
+        destinationDirectory: String
+    ) throws -> String {
+        guard sourceURL.isFileURL, !destinationDirectory.isEmpty else {
+            throw NSError(
+                domain: "AetherNativeFilePicker",
+                code: 5,
+                userInfo: [NSLocalizedDescriptionKey: "The selected archive is unavailable"]
+            )
+        }
+        let destinationRoot = URL(fileURLWithPath: destinationDirectory, isDirectory: true)
+        try FileManager.default.createDirectory(at: destinationRoot, withIntermediateDirectories: true)
+        let name = sourceURL.lastPathComponent.isEmpty ? "imported-archive" : sourceURL.lastPathComponent
+        let destinationURL = destinationRoot.appendingPathComponent(
+            "archive-\(UUID().uuidString)-\(name)", isDirectory: false)
+        try FileManager.default.copyItem(at: sourceURL, to: destinationURL)
+        return destinationURL.standardizedFileURL.path
+    }
+
 #if os(iOS)
     private func retainTranslationModelAccess(to sourceURL: URL) throws -> String {
         let url = sourceURL.standardizedFileURL
@@ -279,6 +308,8 @@ private final class AetherNativeLaunchFilePicker: NSObject, @unchecked Sendable 
             ].compactMap { $0 }
         case .translationModel:
             contentTypes = [UTType(filenameExtension: "gguf")].compactMap { $0 }
+        case .archive:
+            contentTypes = [.data]
         }
         let picker = UIDocumentPickerViewController(
             forOpeningContentTypes: contentTypes,
@@ -339,6 +370,8 @@ private final class AetherNativeLaunchFilePicker: NSObject, @unchecked Sendable 
             panel.allowedContentTypes = [
                 UTType(filenameExtension: "gguf"),
             ].compactMap { $0 }
+        case .archive:
+            panel.allowedContentTypes = [.data]
         }
         panel.directoryURL = directoryURL(for: initialDirectory)
         openPanel = panel
@@ -361,6 +394,14 @@ private final class AetherNativeLaunchFilePicker: NSObject, @unchecked Sendable 
                     }
                 case .translationModel:
                     self.complete(status: "selected", path: url.standardizedFileURL.path)
+                case .archive(let destinationDirectory):
+                    do {
+                        let path = try self.importedArchivePath(
+                            from: url, destinationDirectory: destinationDirectory)
+                        self.complete(status: "selected", path: path)
+                    } catch {
+                        self.complete(status: "error", error: error.localizedDescription)
+                    }
                 }
             } else {
                 self.complete(status: "cancelled")
@@ -418,6 +459,14 @@ extension AetherNativeLaunchFilePicker: UIDocumentPickerDelegate {
             } catch {
                 complete(status: "error", error: error.localizedDescription)
             }
+        case .archive(let destinationDirectory):
+            do {
+                let path = try importedArchivePath(
+                    from: url, destinationDirectory: destinationDirectory)
+                complete(status: "selected", path: path)
+            } catch {
+                complete(status: "error", error: error.localizedDescription)
+            }
         }
     }
 
@@ -468,6 +517,17 @@ public func aetherNativeTranslationModelFilePickerPresent(
         title: title,
         initialDirectory: initialDirectory
     ) ? 1 : 0
+}
+
+@_cdecl("aether_native_archive_file_picker_present")
+public func aetherNativeArchiveFilePickerPresent(
+    _ titlePointer: UnsafePointer<CChar>?,
+    _ destinationDirectoryPointer: UnsafePointer<CChar>?
+) -> Int32 {
+    let title = titlePointer.map { String(cString: $0) } ?? ""
+    let destinationDirectory = destinationDirectoryPointer.map { String(cString: $0) } ?? ""
+    return AetherNativeLaunchFilePicker.shared.presentArchive(
+        title: title, destinationDirectory: destinationDirectory) ? 1 : 0
 }
 
 @_cdecl("aether_native_translation_model_restore_path")

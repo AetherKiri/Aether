@@ -4,6 +4,7 @@ vcpkg_from_github(
     REF "n${VERSION}"
     SHA512 c72f4062aecc16d8b2b1e8678d5efe3af4cfaa0cc7c0997052248f9e499e60c2463acf07877cf3b78b246ce3e8078cb043e8d97e90a6b50d06af32ff7369a788
     HEAD_REF master
+    PATCHES "${CMAKE_CURRENT_LIST_DIR}/msvc-detect-locale.patch"
 )
 
 if(SOURCE_PATH MATCHES " ")
@@ -52,6 +53,9 @@ include("${cmake_vars_file}")
 if(VCPKG_DETECTED_MSVC)
     string(APPEND OPTIONS " --disable-inline-asm") # clang-cl has inline assembly but this leads to undefined symbols.
     set(OPTIONS "--toolchain=msvc ${OPTIONS}")
+    # cl 19.50+ rejects the gcc-style "-g<level>" that configure appends for
+    # --enable-debug; debug info comes from the vcpkg-provided /Z7 flag instead.
+    string(REPLACE "--enable-debug=3" "--disable-debug" OPTIONS "${OPTIONS}")
     # This is required because ffmpeg depends upon optimizations to link correctly
     string(APPEND VCPKG_COMBINED_C_FLAGS_DEBUG " -O2")
     string(REGEX REPLACE "(^| )-RTC1( |$)" " " VCPKG_COMBINED_C_FLAGS_DEBUG "${VCPKG_COMBINED_C_FLAGS_DEBUG}")
@@ -334,6 +338,13 @@ if (NOT DEFINED VCPKG_BUILD_TYPE OR VCPKG_BUILD_TYPE STREQUAL "release")
     string(REGEX REPLACE "-arch [A-Za-z0-9_]+" "" VCPKG_COMBINED_SHARED_LINKER_FLAGS_RELEASE_SANITIZED "${VCPKG_COMBINED_SHARED_LINKER_FLAGS_RELEASE}")
     file(WRITE "${ldrsp}" "${VCPKG_COMBINED_SHARED_LINKER_FLAGS_RELEASE_SANITIZED}")
     set(ENV{CFLAGS} "@${crsp}")
+    # C++ sources (WinRT filters) must receive the same CRT and warning set
+    # as C sources; without this they compile with cl defaults (/MT), which
+    # mismatches the triplet CRT inside the debug archive.
+    set(cxxrsp "${CURRENT_BUILDTREES_DIR}/${TARGET_TRIPLET}-rel/cxxflags.rsp")
+    string(REGEX REPLACE "-arch [A-Za-z0-9_]+" "" VCPKG_COMBINED_CXX_FLAGS_RELEASE_SANITIZED "${VCPKG_COMBINED_CXX_FLAGS_RELEASE}")
+    file(WRITE "${cxxrsp}" "${VCPKG_COMBINED_CXX_FLAGS_RELEASE_SANITIZED}")
+    set(ENV{CXXFLAGS} "@${cxxrsp}")
     # All tools except the msvc arm{,64} assembler accept @... as response file syntax.
     # For that assembler, there is no known way to pass in flags. We must hope that not passing flags will work acceptably.
     if(NOT VCPKG_DETECTED_MSVC OR NOT VCPKG_TARGET_ARCHITECTURE MATCHES "^arm")
@@ -377,6 +388,11 @@ if (NOT DEFINED VCPKG_BUILD_TYPE OR VCPKG_BUILD_TYPE STREQUAL "debug")
     string(REGEX REPLACE "-arch [A-Za-z0-9_]+" "" VCPKG_COMBINED_SHARED_LINKER_FLAGS_DEBUG_SANITIZED "${VCPKG_COMBINED_SHARED_LINKER_FLAGS_DEBUG}")
     file(WRITE "${ldrsp}" "${VCPKG_COMBINED_SHARED_LINKER_FLAGS_DEBUG_SANITIZED}")
     set(ENV{CFLAGS} "@${crsp}")
+    # Mirror the C flags onto C++ sources so the debug archive keeps /MDd.
+    set(cxxrsp "${CURRENT_BUILDTREES_DIR}/${TARGET_TRIPLET}-dbg/cxxflags.rsp")
+    string(REGEX REPLACE "-arch [A-Za-z0-9_]+" "" VCPKG_COMBINED_CXX_FLAGS_DEBUG_SANITIZED "${VCPKG_COMBINED_CXX_FLAGS_DEBUG}")
+    file(WRITE "${cxxrsp}" "${VCPKG_COMBINED_CXX_FLAGS_DEBUG_SANITIZED}")
+    set(ENV{CXXFLAGS} "@${cxxrsp}")
     if(NOT VCPKG_DETECTED_MSVC OR NOT VCPKG_TARGET_ARCHITECTURE MATCHES "^arm")
         set(ENV{ASFLAGS} "@${crsp}")
     endif()
@@ -514,6 +530,13 @@ endfunction()
 
 append_dependencies_from_libs(FFMPEG_DEPENDENCIES_RELEASE LIBS "${FFMPEG_PKGCONFIG_LIBS_RELEASE}")
 append_dependencies_from_libs(FFMPEG_DEPENDENCIES_DEBUG   LIBS "${FFMPEG_PKGCONFIG_LIBS_DEBUG}")
+
+if(VCPKG_TARGET_IS_WINDOWS)
+    # The port builds with --enable-iconv, but the generated .pc files do not
+    # list it on Windows; consumers must link vcpkg's libiconv explicitly.
+    list(APPEND FFMPEG_DEPENDENCIES_RELEASE iconv)
+    list(APPEND FFMPEG_DEPENDENCIES_DEBUG iconv)
+endif()
 
 # must remove duplicates from the front to respect link order so reverse first
 list(REVERSE FFMPEG_DEPENDENCIES_RELEASE)

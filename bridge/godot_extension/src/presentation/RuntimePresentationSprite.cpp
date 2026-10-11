@@ -51,7 +51,7 @@ void RuntimePresentationSprite::Update(
 void RuntimePresentationSprite::Tick(Viewport *viewport, double delta_seconds) {
     UpdateLayout(viewport);
     if (sprite_ == nullptr || !sprite_->is_visible()) return;
-    elapsed_ms_ += std::max(0.0, delta_seconds) * 1000.0;
+    elapsed_ms_ += (std::max)(0.0, delta_seconds) * 1000.0;
     const int32_t frame = static_cast<int32_t>(
         elapsed_ms_ / static_cast<double>(interval_ms_)) % frames_;
     sprite_->set_frame(frame);
@@ -68,7 +68,7 @@ void RuntimePresentationSprite::UpdateLayout(Viewport *viewport) {
     constexpr double kLogicalWidth = 1280.0;
     constexpr double kLogicalHeight = 720.0;
     const Vector2 viewport_size = viewport->get_visible_rect().size;
-    const double scale = std::min(
+    const double scale = (std::min)(
         static_cast<double>(viewport_size.x) / kLogicalWidth,
         static_cast<double>(viewport_size.y) / kLogicalHeight);
     const Vector2 offset(

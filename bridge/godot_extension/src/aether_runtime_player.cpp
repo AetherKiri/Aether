@@ -9,6 +9,9 @@
 #include "RuntimeTickPacer.h"
 #include "presentation/RuntimePresentationSprite.h"
 #include "frame_effect_host.h"
+#if defined(AETHERKIRI_WITH_HRD)
+#include "archive_import.h"
+#endif
 #if defined(AETHERKIRI_WITH_ONSCRIPTER)
 #include "onscripter_runtime.h"
 #endif
@@ -123,6 +126,8 @@ int32_t aether_native_translation_model_file_picker_present(
     const char *title, const char *initial_directory);
 char *aether_native_translation_model_restore_path(
     const char *fallback_path);
+int32_t aether_native_archive_file_picker_present(
+    const char *title, const char *destination_directory);
 char *aether_native_launch_file_picker_copy_result_json();
 void aether_native_launch_file_picker_free_string(char *value);
 }
@@ -2192,7 +2197,7 @@ uint ps_mul_blend(uint d, uint s, uint opa) {
     int mr = (dr * int(s & 0xffu)) >> 8;
     int mg = (dg * int((s >> 8) & 0xffu)) >> 8;
     int mb = (db * int((s >> 16) & 0xffu)) >> 8;
-    uint r = uint(clamp(dr + (((mr - dr) * int(a)) >> 8), 0, 255));
+)GLSL" R"GLSL(    uint r = uint(clamp(dr + (((mr - dr) * int(a)) >> 8), 0, 255));
     uint g = uint(clamp(dg + (((mg - dg) * int(a)) >> 8), 0, 255));
     uint b = uint(clamp(db + (((mb - db) * int(a)) >> 8), 0, 255));
     return (d & 0xff000000u) | r | (g << 8) | (b << 16);
@@ -2367,7 +2372,7 @@ void main() {
         out_color = (s & 0x00ffffffu) | 0xff000000u;
         } else if (pc.rect1.z == 19) {
         uint da = (d >> 24) & 0xffu;
-        uint sa = (s >> 24) & 0xffu;
+)GLSL" R"GLSL(        uint sa = (s >> 24) & 0xffu;
         int flags = pc.color0.x;
         bool threshold_mode = pc.color0.y != 0;
         uint out_alpha = da;
@@ -2422,6 +2427,7 @@ void main() {
 
     imageStore(dst_img, dst_pos, unpack_u8(out_color));
 }
+
 )GLSL");
 
     Ref<RDShaderSPIRV> spirv = rd->shader_compile_spirv_from_source(source);
@@ -3353,7 +3359,7 @@ vec4 straight_from_premul(vec3 rgb, float a) {
 vec4 blend_over(vec4 dst, vec4 src) {
     float out_a = src.a + dst.a * (1.0 - src.a);
     vec3 premul = src.rgb * src.a + dst.rgb * dst.a * (1.0 - src.a);
-    return straight_from_premul(premul, out_a);
+)GLSL" R"GLSL(    return straight_from_premul(premul, out_a);
 }
 
 vec4 blend_add_compatible(vec4 dst, vec4 src) {
@@ -3580,7 +3586,7 @@ uint alpha_blend_d(uint d, uint s, uint opa) {
     int sb = int((s >> 16) & 0xffu);
     uint r = uint(clamp(dr + (((sr - dr) * int(blend_alpha)) >> 8), 0, 255));
     uint g = uint(clamp(dg + (((sg - dg) * int(blend_alpha)) >> 8), 0, 255));
-    uint b = uint(clamp(db + (((sb - db) * int(blend_alpha)) >> 8), 0, 255));
+)GLSL" R"GLSL(    uint b = uint(clamp(db + (((sb - db) * int(blend_alpha)) >> 8), 0, 255));
     return (out_alpha << 24) | r | (g << 8) | (b << 16);
 }
 
@@ -3779,7 +3785,7 @@ void main() {
         float w1 = edge(d2, d0, p) / area;
         float w2 = edge(d0, d1, p) / area;
         if (w0 >= -0.0001 && w1 >= -0.0001 && w2 >= -0.0001) {
-            vec2 src_pos_f = v0.zw * w0 + v1.zw * w1 + v2.zw * w2;
+)GLSL" R"GLSL(            vec2 src_pos_f = v0.zw * w0 + v1.zw * w1 + v2.zw * w2;
             vec2 source10 = v1.zw - v0.zw;
             vec2 source20 = v2.zw - v0.zw;
             vec2 source_dx =
@@ -3833,6 +3839,7 @@ void main() {
         imageStore(dst_img, dst_pos, dst);
     }
 }
+
 )GLSL");
 
     Ref<RDShaderSPIRV> spirv = rd->shader_compile_spirv_from_source(source);
@@ -4078,7 +4085,7 @@ vec3 color_blend(int mode, vec3 src, vec3 dst) {
                     soft_light(src.b, dst.b));
     }
     if (mode == 14) {
-        return vec3(hard_light(src.r, dst.r), hard_light(src.g, dst.g),
+)GLSL" R"GLSL(        return vec3(hard_light(src.r, dst.r), hard_light(src.g, dst.g),
                     hard_light(src.b, dst.b));
     }
     if (mode == 15) {
@@ -4226,6 +4233,7 @@ void main() {
         imageStore(dst_img, dst_pos, dst);
     }
 }
+
 )GLSL");
 
     Ref<RDShaderSPIRV> spirv = rd->shader_compile_spirv_from_source(source);
@@ -5137,14 +5145,14 @@ void ExecuteGodotGpuLive2DRasterBatch(
             results[index] = true;
             drew = true;
             if (!mask_write) {
-                union_left = std::min(
+                union_left = (std::min)(
                     union_left, static_cast<int>(op->dst_pos.x));
-                union_top = std::min(
+                union_top = (std::min)(
                     union_top, static_cast<int>(op->dst_pos.y));
-                union_right = std::max(
+                union_right = (std::max)(
                     union_right,
                     static_cast<int>(op->dst_pos.x + op->size.x));
-                union_bottom = std::max(
+                union_bottom = (std::max)(
                     union_bottom,
                     static_cast<int>(op->dst_pos.y + op->size.y));
             }
@@ -6959,7 +6967,7 @@ void main() {
             const uint32_t array_count =
                 match[3].matched
                     ? static_cast<uint32_t>(
-                          std::max(1, std::stoi(match[3].str())))
+                          (std::max)(1, std::stoi(match[3].str())))
                     : 0u;
             ArtemisTranslatedShader::Uniform uniform;
             uniform.type = type;
@@ -7310,7 +7318,7 @@ void WriteArtemisShaderError(const std::string &message, char *error_utf8,
                              uint32_t error_size) {
     if (error_utf8 == nullptr || error_size == 0) return;
     const size_t copy_size =
-        std::min(message.size(), static_cast<size_t>(error_size - 1u));
+        (std::min)(message.size(), static_cast<size_t>(error_size - 1u));
     if (copy_size != 0) {
         std::memcpy(error_utf8, message.data(), copy_size);
     }
@@ -8010,13 +8018,13 @@ bool BridgeCopyRect(uint64_t dst, uint64_t src, const tTVPRect *dst_rect,
 void AppendGodotGpuTriangleBounds(std::vector<float> &vertices,
                                   const tTVPPointD *points) {
     const float min_x = static_cast<float>(
-        std::min({points[0].x, points[1].x, points[2].x}) - 0.25);
+        (std::min)({points[0].x, points[1].x, points[2].x}) - 0.25);
     const float min_y = static_cast<float>(
-        std::min({points[0].y, points[1].y, points[2].y}) - 0.25);
+        (std::min)({points[0].y, points[1].y, points[2].y}) - 0.25);
     const float max_x = static_cast<float>(
-        std::max({points[0].x, points[1].x, points[2].x}) + 0.25);
+        (std::max)({points[0].x, points[1].x, points[2].x}) + 0.25);
     const float max_y = static_cast<float>(
-        std::max({points[0].y, points[1].y, points[2].y}) + 0.25);
+        (std::max)({points[0].y, points[1].y, points[2].y}) + 0.25);
     vertices.push_back(min_x);
     vertices.push_back(min_y);
     vertices.push_back(max_x);
@@ -8759,11 +8767,11 @@ uint32_t CpuPsScreenBlend(uint32_t d, uint32_t s, int opacity) {
     const uint32_t sg = (s >> 8) & 0xffu;
     const uint32_t sb = (s >> 16) & 0xffu;
     const uint32_t r =
-        std::min(dr + (((sr - ((sr * dr) >> 8)) * a) >> 8), 255u);
+        (std::min)(dr + (((sr - ((sr * dr) >> 8)) * a) >> 8), 255u);
     const uint32_t g =
-        std::min(dg + (((sg - ((sg * dg) >> 8)) * a) >> 8), 255u);
+        (std::min)(dg + (((sg - ((sg * dg) >> 8)) * a) >> 8), 255u);
     const uint32_t b =
-        std::min(db + (((sb - ((sb * db) >> 8)) * a) >> 8), 255u);
+        (std::min)(db + (((sb - ((sb * db) >> 8)) * a) >> 8), 255u);
     return (d & 0xff000000u) | r | (g << 8) | (b << 16);
 }
 
@@ -8797,11 +8805,11 @@ uint32_t CpuPsAddBlend(uint32_t d, uint32_t s, int opacity) {
     const int dr = static_cast<int>(d & 0xffu);
     const int dg = static_cast<int>((d >> 8) & 0xffu);
     const int db = static_cast<int>((d >> 16) & 0xffu);
-    const int br = std::min(dr + static_cast<int>(s & 0xffu), 255);
+    const int br = (std::min)(dr + static_cast<int>(s & 0xffu), 255);
     const int bg =
-        std::min(dg + static_cast<int>((s >> 8) & 0xffu), 255);
+        (std::min)(dg + static_cast<int>((s >> 8) & 0xffu), 255);
     const int bb =
-        std::min(db + static_cast<int>((s >> 16) & 0xffu), 255);
+        (std::min)(db + static_cast<int>((s >> 16) & 0xffu), 255);
     const uint32_t r = static_cast<uint32_t>(
         std::clamp(dr + (((br - dr) * static_cast<int>(a)) >> 8), 0, 255));
     const uint32_t g = static_cast<uint32_t>(
@@ -8821,11 +8829,11 @@ uint32_t CpuPsSubBlend(uint32_t d, uint32_t s, int opacity) {
     const int dg = static_cast<int>((d >> 8) & 0xffu);
     const int db = static_cast<int>((d >> 16) & 0xffu);
     const int br =
-        std::max(dr + static_cast<int>(s & 0xffu) - 255, 0);
+        (std::max)(dr + static_cast<int>(s & 0xffu) - 255, 0);
     const int bg =
-        std::max(dg + static_cast<int>((s >> 8) & 0xffu) - 255, 0);
+        (std::max)(dg + static_cast<int>((s >> 8) & 0xffu) - 255, 0);
     const int bb =
-        std::max(db + static_cast<int>((s >> 16) & 0xffu) - 255, 0);
+        (std::max)(db + static_cast<int>((s >> 16) & 0xffu) - 255, 0);
     const uint32_t r = static_cast<uint32_t>(
         std::clamp(dr + (((br - dr) * static_cast<int>(a)) >> 8), 0, 255));
     const uint32_t g = static_cast<uint32_t>(
@@ -8874,13 +8882,13 @@ uint32_t CpuAdditiveAlphaBlendHda(uint32_t d, uint32_t s, int opacity) {
         s = rb | ga;
     }
     const uint32_t inverse_alpha = (~s) >> 24;
-    const uint32_t r = std::min(
+    const uint32_t r = (std::min)(
         (((d & 0xffu) * inverse_alpha) >> 8) + (s & 0xffu), 255u);
-    const uint32_t g = std::min(
+    const uint32_t g = (std::min)(
         (((d >> 8 & 0xffu) * inverse_alpha) >> 8) +
             (s >> 8 & 0xffu),
         255u);
-    const uint32_t b = std::min(
+    const uint32_t b = (std::min)(
         (((d >> 16 & 0xffu) * inverse_alpha) >> 8) +
             (s >> 16 & 0xffu),
         255u);
@@ -8896,15 +8904,15 @@ uint32_t CpuApplyColorMapA(uint32_t d, uint32_t mask, int opacity,
     uint32_t out_alpha = ((d >> 24) & 0xffu) + source_alpha -
                          ((((d >> 24) & 0xffu) * source_alpha) >> 8);
     out_alpha -= out_alpha >> 8;
-    const uint32_t r = std::min(
+    const uint32_t r = (std::min)(
         (((d & 0xffu) * inverse_alpha) >> 8) +
             ((source_alpha * (color & 0xffu)) >> 8),
         255u);
-    const uint32_t g = std::min(
+    const uint32_t g = (std::min)(
         (((d >> 8 & 0xffu) * inverse_alpha) >> 8) +
             ((source_alpha * (color >> 8 & 0xffu)) >> 8),
         255u);
-    const uint32_t b = std::min(
+    const uint32_t b = (std::min)(
         (((d >> 16 & 0xffu) * inverse_alpha) >> 8) +
             ((source_alpha * (color >> 16 & 0xffu)) >> 8),
         255u);
@@ -8914,9 +8922,9 @@ uint32_t CpuApplyColorMapA(uint32_t d, uint32_t mask, int opacity,
 uint32_t CpuAdditiveAlphaToAlpha(uint32_t color) {
     const uint32_t alpha = color >> 24;
     if (alpha == 0u) return color & 0xff000000u;
-    const uint32_t r = std::min((color & 0xffu) * 255u / alpha, 255u);
-    const uint32_t g = std::min(((color >> 8) & 0xffu) * 255u / alpha, 255u);
-    const uint32_t b = std::min(((color >> 16) & 0xffu) * 255u / alpha, 255u);
+    const uint32_t r = (std::min)((color & 0xffu) * 255u / alpha, 255u);
+    const uint32_t g = (std::min)(((color >> 8) & 0xffu) * 255u / alpha, 255u);
+    const uint32_t b = (std::min)(((color >> 16) & 0xffu) * 255u / alpha, 255u);
     return (color & 0xff000000u) | r | (g << 8) | (b << 16);
 }
 
@@ -9664,7 +9672,7 @@ public:
         if (handle_ == nullptr) {
             return ENGINE_RESULT_INVALID_STATE;
         }
-        double runtime_delta_seconds = std::max(0.0, delta_seconds);
+        double runtime_delta_seconds = (std::max)(0.0, delta_seconds);
         if (artemis_logical_frame_pacing_) {
             const auto step = artemis_logical_frame_pacer_.Advance(
                 runtime_delta_seconds);
@@ -9767,7 +9775,7 @@ public:
             return ENGINE_RESULT_INVALID_ARGUMENT;
         }
         const auto position_ms = static_cast<int64_t>(
-            std::max(0.0, position_seconds) * 1000.0);
+            (std::max)(0.0, position_seconds) * 1000.0);
         const engine_result_t result = engine_media_seek(media_, position_ms);
         update_last_error(result);
         return result;
@@ -9920,7 +9928,7 @@ public:
         event.key_code = key_code;
         event.modifiers = modifiers;
         event.unicode_codepoint = static_cast<uint32_t>(
-            std::max(0, unicode_codepoint));
+            (std::max)(0, unicode_codepoint));
         engine_result_t result = engine_send_input(handle_, &event);
         // KAG edit controls receive printable characters through a distinct
         // text-input event; a key-down alone only handles navigation and
@@ -10064,7 +10072,7 @@ public:
         config.category_mask = static_cast<uint64_t>(
             std::max<int64_t>(0, category_mask));
         config.slow_frame_threshold_us = static_cast<uint32_t>(
-            std::max(0, slow_frame_threshold_ms) * 1000);
+            (std::max)(0, slow_frame_threshold_ms) * 1000);
         config.max_events = static_cast<uint32_t>(
             std::clamp(max_events, 64, 10000));
         config.host_monotonic_origin_us =
@@ -11438,6 +11446,45 @@ void main() {
 #endif
     }
 
+    bool native_archive_file_picker_open(
+            const String &title, const String &destination_directory) const {
+#if defined(__APPLE__)
+        const CharString title_utf8 = title.utf8();
+        const CharString destination_utf8 = destination_directory.utf8();
+        return aether_native_archive_file_picker_present(
+                   title_utf8.get_data(), destination_utf8.get_data()) != 0;
+#else
+        (void)title;
+        (void)destination_directory;
+        return false;
+#endif
+    }
+
+    String archive_import_start(const String &input_path,
+                                const String &output_path,
+                                const String &password_db,
+                                const String &password) const {
+#if defined(AETHERKIRI_WITH_HRD)
+        return ArchiveImportStart(input_path, output_path, password_db,
+                                  password);
+#else
+        (void)input_path;
+        (void)output_path;
+        (void)password_db;
+        (void)password;
+        return "";
+#endif
+    }
+
+    String archive_import_take_result(const String &job_id) const {
+#if defined(AETHERKIRI_WITH_HRD)
+        return ArchiveImportTakeResult(job_id);
+#else
+        (void)job_id;
+        return "";
+#endif
+    }
+
     int64_t probe_runtime(const String &runtime_id,
                           const String &game_root_path) const {
         const CharString runtime_utf8 = runtime_id.utf8();
@@ -11608,6 +11655,17 @@ protected:
         ClassDB::bind_method(
             D_METHOD("native_launch_file_picker_take_result_json"),
             &AetherRuntimePlayer::native_launch_file_picker_take_result_json);
+        ClassDB::bind_method(
+            D_METHOD("native_archive_file_picker_open", "title",
+                     "destination_directory"),
+            &AetherRuntimePlayer::native_archive_file_picker_open);
+        ClassDB::bind_method(
+            D_METHOD("archive_import_start", "input_path", "output_path",
+                     "password_db", "password"),
+            &AetherRuntimePlayer::archive_import_start);
+        ClassDB::bind_method(
+            D_METHOD("archive_import_take_result", "job_id"),
+            &AetherRuntimePlayer::archive_import_take_result);
         ClassDB::bind_method(D_METHOD("probe_runtime", "runtime_id", "game_root_path"),
                              &AetherRuntimePlayer::probe_runtime);
         ADD_SIGNAL(MethodInfo(
@@ -11781,14 +11839,14 @@ private:
         constexpr double kLogicalWidth = 1280.0;
         constexpr double kLogicalHeight = 720.0;
         const Vector2 viewport_size = get_viewport()->get_visible_rect().size;
-        const double scale = std::min(
+        const double scale = (std::min)(
             static_cast<double>(viewport_size.x) / kLogicalWidth,
             static_cast<double>(viewport_size.y) / kLogicalHeight);
         const Vector2 offset(
             (viewport_size.x - kLogicalWidth * scale) * 0.5,
             (viewport_size.y - kLogicalHeight * scale) * 0.5);
         const int32_t font_size =
-            std::max(1, static_cast<int32_t>(std::lround(18.0 * scale)));
+            (std::max)(1, static_cast<int32_t>(std::lround(18.0 * scale)));
         for (int32_t slot = 0; slot < 10; ++slot) {
             Label *label = runtime_save_slot_labels_[slot];
             if (label == nullptr) continue;
@@ -11857,7 +11915,7 @@ private:
             runtime_message_reveal_schedule_.push_back(static_cast<int32_t>(
                 std::max<int64_t>(0, schedule_fields[index].to_int())));
         }
-        runtime_message_reveal_total_steps_ = std::max(0, total_steps);
+        runtime_message_reveal_total_steps_ = (std::max)(0, total_steps);
         runtime_message_reveal_step_ = 0;
         runtime_message_reveal_elapsed_ms_ = 0.0;
         runtime_message_reveal_started_ = false;
@@ -11897,7 +11955,7 @@ private:
             runtime_message_reveal_step_ = 1;
         } else {
             runtime_message_reveal_elapsed_ms_ +=
-                std::max(0.0, delta_seconds) * 1000.0;
+                (std::max)(0.0, delta_seconds) * 1000.0;
             while (runtime_message_reveal_elapsed_ms_ >= 100.0 &&
                    runtime_message_reveal_step_ < runtime_message_reveal_total_steps_) {
                 runtime_message_reveal_elapsed_ms_ -= 100.0;
@@ -11923,14 +11981,14 @@ private:
         constexpr double kLogicalWidth = 1280.0;
         constexpr double kLogicalHeight = 720.0;
         const Vector2 viewport_size = get_viewport()->get_visible_rect().size;
-        const double scale = std::min(
+        const double scale = (std::min)(
             static_cast<double>(viewport_size.x) / kLogicalWidth,
             static_cast<double>(viewport_size.y) / kLogicalHeight);
         const Vector2 offset(
             (viewport_size.x - kLogicalWidth * scale) * 0.5,
             (viewport_size.y - kLogicalHeight * scale) * 0.5);
         const int32_t font_size =
-            std::max(1, static_cast<int32_t>(std::lround(26.0 * scale)));
+            (std::max)(1, static_cast<int32_t>(std::lround(26.0 * scale)));
         const bool has_speaker = runtime_message_speaker_label_ != nullptr;
         runtime_message_label_->set_position(
             offset + Vector2(120.0 * scale, (has_speaker ? 590.0 : 552.0) * scale));

@@ -9,7 +9,10 @@ target_include_directories(onscripter-runtime-presentation PRIVATE
 target_link_libraries(onscripter-runtime-presentation
     PRIVATE Catch2::Catch2WithMain)
 
-catch_discover_tests(onscripter-runtime-presentation)
+aetherkiri_copy_engine_api_dll(onscripter-runtime-presentation)
+
+catch_discover_tests(onscripter-runtime-presentation
+    TEST_DL_PATHS ${CMAKE_BINARY_DIR}/abi)
 
 add_executable(onscripter-runtime-save-storage
     save_storage.cpp
@@ -22,7 +25,10 @@ target_include_directories(onscripter-runtime-save-storage PRIVATE
 target_link_libraries(onscripter-runtime-save-storage
     PRIVATE Catch2::Catch2WithMain)
 
-catch_discover_tests(onscripter-runtime-save-storage)
+aetherkiri_copy_engine_api_dll(onscripter-runtime-save-storage)
+
+catch_discover_tests(onscripter-runtime-save-storage
+    TEST_DL_PATHS ${CMAKE_BINARY_DIR}/abi)
 
 add_executable(onscripter-runtime-provider provider.cpp)
 target_compile_features(onscripter-runtime-provider PRIVATE cxx_std_17)
@@ -36,4 +42,7 @@ target_link_libraries(onscripter-runtime-provider PRIVATE
     engine_api
 )
 
-catch_discover_tests(onscripter-runtime-provider)
+aetherkiri_copy_engine_api_dll(onscripter-runtime-provider)
+
+catch_discover_tests(onscripter-runtime-provider
+    TEST_DL_PATHS ${CMAKE_BINARY_DIR}/abi)

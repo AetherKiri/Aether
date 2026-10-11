@@ -1367,10 +1367,10 @@ bool ReadCurrentFrameRgba(const FrameReadbackLayout& layout, void* out_pixels) {
         }
         if (px[0] != 0 || px[1] != 0 || px[2] != 0) {
           non_black += 1;
-          min_x = std::min(min_x, x);
-          min_y = std::min(min_y, y);
-          max_x = std::max(max_x, x);
-          max_y = std::max(max_y, y);
+          min_x = (std::min)(min_x, x);
+          min_y = (std::min)(min_y, y);
+          max_x = (std::max)(max_x, x);
+          max_y = (std::max)(max_y, y);
         }
       }
     }
@@ -4386,7 +4386,7 @@ engine_result_t engine_get_memory_stats(engine_handle_t handle,
 #endif
   }
 #endif
-  out_stats->process_peak_physical_footprint_bytes = std::max(
+  out_stats->process_peak_physical_footprint_bytes = (std::max)(
       out_stats->process_peak_physical_footprint_bytes,
       out_stats->process_physical_footprint_bytes);
 

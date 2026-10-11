@@ -6,6 +6,17 @@ find_package(Catch2 3 REQUIRED)
 include(CTest)
 include(Catch)
 
+# engine_api builds as a shared library on Windows; test executables that
+# link it need the DLL beside them both for catch_discover_tests' build-time
+# discovery run and for ctest.
+function(aetherkiri_copy_engine_api_dll target)
+    if(TARGET engine_api)
+        add_custom_command(TARGET "${target}" POST_BUILD
+            COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                $<TARGET_FILE:engine_api> $<TARGET_FILE_DIR:${target}>)
+    endif()
+endfunction()
+
 set(TEST_CONFIG_DIR "${CMAKE_CURRENT_BINARY_DIR}")
 set(TEST_FILES_PATH ${CMAKE_CURRENT_SOURCE_DIR}/test_files)
 configure_file(test_config.h.in test_config.h)

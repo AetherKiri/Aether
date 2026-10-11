@@ -18,6 +18,25 @@ struct LibraryGame: Codable, Identifiable, Equatable {
     var isExternal: Bool { externalPath != nil }
 }
 
+extension LibraryGame {
+    enum CodingKeys: String, CodingKey {
+        case id, title, directory, sourcePath, importedAt, lastPlayedAt, externalPath, coverPath, coverSuppressed
+    }
+
+    init(from decoder: Decoder) throws {
+        let values = try decoder.container(keyedBy: CodingKeys.self)
+        id = try values.decode(UUID.self, forKey: .id)
+        title = try values.decode(String.self, forKey: .title)
+        directory = try values.decode(String.self, forKey: .directory)
+        sourcePath = try values.decode(String.self, forKey: .sourcePath)
+        importedAt = try values.decode(Date.self, forKey: .importedAt)
+        lastPlayedAt = try values.decodeIfPresent(Date.self, forKey: .lastPlayedAt)
+        externalPath = try values.decodeIfPresent(String.self, forKey: .externalPath)
+        coverPath = try values.decodeIfPresent(String.self, forKey: .coverPath)
+        coverSuppressed = try values.decodeIfPresent(Bool.self, forKey: .coverSuppressed) ?? false
+    }
+}
+
 // Default imports are copied. Explicit external references use the source directly.
 // A staged copy becomes visible only after the manifest is atomically persisted.
 struct GameLibrary {

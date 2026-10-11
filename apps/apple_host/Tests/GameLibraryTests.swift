@@ -76,7 +76,8 @@ struct GameLibraryTests {
         check(fm.fileExists(atPath: data.appendingPathComponent("0.txt").path))
 
         // Legacy records decode without the new optional externalPath field.
-        let legacy = try JSONSerialization.jsonObject(with: JSONEncoder().encode(played)) as! [[String: Any]]
+        var legacy = try JSONSerialization.jsonObject(with: JSONEncoder().encode(played)) as! [[String: Any]]
+        legacy[0].removeValue(forKey: "coverSuppressed")
         check(legacy[0]["externalPath"] == nil)
         check(try JSONDecoder().decode([LibraryGame].self, from: JSONSerialization.data(withJSONObject: legacy))[0].isExternal == false)
         check(try JSONDecoder().decode([LibraryGame].self, from: JSONSerialization.data(withJSONObject: legacy))[0].coverPath == nil)

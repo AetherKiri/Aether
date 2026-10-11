@@ -38,6 +38,12 @@ struct ContentView: View {
                             Label(model.text("virtualControls"), systemImage: "keyboard")
                         }
                         Button(model.text("enterText")) { model.showGameTextEntry = true }.disabled(engine.runtimeMovieActive)
+                        Menu {
+                            Toggle(model.text("logs"), isOn: $model.showLogs)
+                            Button(model.text("folder")) { model.revealActiveGame() }
+                            Button(model.text("restart")) { model.confirmRestart = true }.disabled(!model.canRestartGame)
+                            Button(model.text("exportDiagnostics")) { model.exportDiagnostics() }
+                        } label: { Label(model.text("game"), systemImage: "ellipsis.circle") }
                         if engine.frameSize == .zero {
                             ProgressView().controlSize(.small)
                             Text(model.text("starting"))
@@ -64,10 +70,28 @@ struct ContentView: View {
                     }
                 }
             } else {
-                switch model.route {
-                case .library: library
-                case .videos: videoLibrary
-                case .dashboard: dashboard
+                VStack(spacing: 0) {
+                    HStack(spacing: 16) {
+                        Picker(model.text("view"), selection: $model.route) {
+                            Label(model.text("library"), systemImage: "books.vertical").tag(ShellRoute.library)
+                            Label(model.text("videoLibrary"), systemImage: "film").tag(ShellRoute.videos)
+                            Label(model.text("dashboard"), systemImage: "house").tag(ShellRoute.dashboard)
+                        }
+                        .pickerStyle(.segmented)
+                        .labelsHidden()
+                        .frame(maxWidth: 460)
+                        .disabled(!model.canNavigateShell)
+                        Spacer()
+                        Button { model.refreshLibrary() } label: {
+                            Label(model.text("refresh"), systemImage: "arrow.clockwise")
+                        }.disabled(!model.canNavigateShell)
+                    }.padding(12)
+                    Divider()
+                    switch model.route {
+                    case .library: library
+                    case .videos: videoLibrary
+                    case .dashboard: dashboard
+                    }
                 }
             }
         }

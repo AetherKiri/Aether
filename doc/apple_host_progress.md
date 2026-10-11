@@ -404,6 +404,22 @@
 - 证据目录：`out/apple_host/evidence/complex-offscreen-submit-20261011/` 与
   `complex-offscreen-completion-20261011/`；复杂场景副本为临时测试数据，不进入仓库。
 
+### 2026-10-11：真实《夏雪》对照基准
+
+- 新增 `tools/real_game_benchmark.py`，固定真实游戏目录、1920x1080、60 Hz engine tick，
+  自动串行运行 Godot native probe、Apple deferred/direct 提交吞吐和 Apple deferred/direct
+  逐帧 GPU completion，并输出 `result.json` 与 `REPORT.md`。游戏路径只进入本地证据目录，
+  不写入仓库。
+- 本机 Debug 实测 30 秒：Godot native wall-clock tick loop 为 `140.53 tick/s`；Apple
+  不等待 GPU 的 deferred/direct 为 `203.40/301.77 tick/s`；逐帧等待 1920x1080 GPU
+  completion 的 deferred/direct 为 `42.30/47.10 tick/s`。
+- direct 相对 deferred 的收益在提交口径为 `1.48x`，在端到端 GPU completion 口径为
+  `1.11x`。因此不能把 `301.77/140.53` 宣传成“实际 FPS 提升”；Godot probe 没有同等
+  的逐帧 GPU fence，Apple completion 与 Godot wall-clock 只能并列说明，不能合并为单一
+  speedup。可见窗口 FPS 仍应另做受显示器刷新节奏约束的呈现测试。
+- 证据目录：`out/apple_host/evidence/natsuyuki-real-game-20261011/`；该目录为本地生成物，
+  未纳入版本库。
+
 ## 下一步队列
 
 ### 性能基准隔离补充

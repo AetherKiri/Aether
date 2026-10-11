@@ -457,6 +457,13 @@
 - Debug构建、真实ShellModel/设置/五语言行为检查通过；媒体三套测试通过，含播放器实测总时长持久化。CUA隔离30条目、长中日韩英标题，点验搜索/列表/详情返回/滚动、视频移除取消与确认，以及P1设置继续/丢弃/保存英文/窗口关闭和应用退出取消。
 - 四主题、完整多尺寸/五语言/VoiceOver验收尚未完成；详见[实施计划](apple_host_ui_plan.md)与[当前能力矩阵](apple_host_ui_spec.md#6-实施状态2026-10-11)。
 
+### 2026-10-11：UI P2 四主题与设置迁移
+
+- 接入Godot dark/classic/warm_dark/warm_light的内容palette，主题草稿保存后生效；原生控件明暗协调，分组/卡片/次要文字使用主题tokens。主题不改变引擎option或游戏色彩。
+- Settings schema v2兼容v1原字段，未知主题稳定回退；读取不重写旧文件，保存失败保留有效值。四主题持久化/丢弃/重启、损坏/未来schema保留与真实ShellModel行为检查通过。
+- Godot源码配色交叉检查、正文/次要文字及原生白字按钮专用底色对比度通过；Increase Contrast提升次要文字与边框，无新增自定义动画。
+- Debug构建通过；CUA实测四主题保存切换、深色重启恢复，截图留`out/apple_host/evidence/ui-themes/`。英文界面/渲染分类已记录，继续分类时原生pipe关闭且重连失败，五语言全布局、VoiceOver/完整键盘、多尺寸与系统Reduce Motion仍待验收，P2未宣称全部完成。
+
 ## 下一步队列
 
 ### 性能基准隔离补充

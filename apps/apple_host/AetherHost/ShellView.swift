@@ -3,6 +3,10 @@ import SwiftUI
 struct ContentView: View {
     @ObservedObject var model: ShellModel
     @ObservedObject var engine: EngineController
+    @Environment(\.colorSchemeContrast) private var contrast
+    private var palette: ThemePalette {
+        contrast == .increased ? model.settings.palette.increasedContrast() : model.settings.palette
+    }
 
     private var developerMode: Bool {
         let env = ProcessInfo.processInfo.environment
@@ -50,7 +54,7 @@ struct ContentView: View {
                         }
                         if engine.translationStatus.state == .loading {
                             ProgressView().controlSize(.small)
-                            Text(model.text("translationLoading")).font(.caption).foregroundStyle(.secondary)
+                            Text(model.text("translationLoading")).font(.caption).foregroundStyle(palette.secondary.color)
                         }
                     }.padding(12)
                     Divider()
@@ -72,6 +76,7 @@ struct ContentView: View {
             } else {
                 NavigationSplitView {
                     shellSidebar
+                        .scrollContentBackground(.hidden).background(palette.raised.color)
                         .navigationSplitViewColumnWidth(min: 220, ideal: 250, max: 320)
                 } detail: {
                     Group {
@@ -82,12 +87,19 @@ struct ContentView: View {
                         case .settings: ShellSettingsView(model: model)
                         }
                     }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .background(palette.background.color)
                     .navigationTitle(model.text(model.route.textKey))
                 }
                 .navigationSplitViewStyle(.balanced)
             }
         }
         .environment(\.locale, model.language.locale)
+        .environment(\.shellPalette, palette)
+        .foregroundStyle(palette.primary.color)
+        .tint(palette.accent.color)
+        .preferredColorScheme(palette.dark ? .dark : .light)
+        .groupBoxStyle(LumenGroupBoxStyle())
         .toolbar {
             ToolbarItemGroup {
                 if model.activeGame == nil && model.activeVideo == nil && model.route == .dashboard {
@@ -132,7 +144,7 @@ struct ContentView: View {
             VStack(alignment: .leading, spacing: 16) {
                 Text(model.text("rename")).font(.headline)
                 TextField(model.text("gameTitle"), text: $model.renameTitle)
-                if let error = model.renameError { Text(error).foregroundStyle(.red).font(.caption) }
+                if let error = model.renameError { Text(error).foregroundStyle(palette.danger.color).font(.caption) }
                 HStack {
                     Spacer()
                     Button(model.text("cancel")) { model.renameGame = nil }.keyboardShortcut(.cancelAction)
@@ -205,6 +217,7 @@ struct ContentView: View {
 }
 
 private struct DashboardView: View {
+    @Environment(\.shellPalette) private var palette
     @ObservedObject var model: ShellModel
 
     var body: some View {
@@ -227,10 +240,10 @@ private struct DashboardView: View {
                         Text(game.displayTitle)
                         Spacer()
                         Button(model.text("play")) { model.selection = game.id; model.play() }
-                            .buttonStyle(.borderedProminent)
+                            .lumenPrimaryAction()
                     }
                 } else {
-                    Text(model.text("never")).foregroundStyle(.secondary)
+                    Text(model.text("never")).foregroundStyle(palette.secondary.color)
                 }
                 Button(model.text("openLibrary")) { model.showLibrary() }
                     .buttonStyle(.bordered)
@@ -243,13 +256,14 @@ private struct DashboardView: View {
 }
 
 private struct DashboardStat: View {
+    @Environment(\.shellPalette) private var palette
     let title: String
     let icon: String
 
     var body: some View {
         Label(title, systemImage: icon).font(.title3).padding(18)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .background(.quaternary, in: RoundedRectangle(cornerRadius: 8))
+            .background(palette.surface.color, in: RoundedRectangle(cornerRadius: 8))
     }
 }
 

@@ -1,6 +1,7 @@
 import SwiftUI
 
 struct GameLibraryView: View {
+    @Environment(\.shellPalette) private var palette
     @ObservedObject var model: ShellModel
     var body: some View {
         if let game = model.games.first(where: { $0.id == model.gameDetailID }) {
@@ -21,8 +22,8 @@ struct GameLibraryView: View {
                                     GameCover(model: model, game: game).frame(width: 48, height: 64)
                                     identity(game)
                                     Spacer()
-                                    Image(systemName: "chevron.right").foregroundStyle(.secondary)
-                                }.padding(12).background(.quaternary, in: RoundedRectangle(cornerRadius: 12))
+                                    Image(systemName: "chevron.right").foregroundStyle(palette.secondary.color)
+                                }.padding(12).background(palette.surface.color, in: RoundedRectangle(cornerRadius: 12))
                             } else {
                                 VStack(alignment: .leading, spacing: 12) {
                                     GameCover(model: model, game: game).aspectRatio(0.72, contentMode: .fit)
@@ -42,19 +43,20 @@ struct GameLibraryView: View {
 
     private func identity(_ game: LibraryGame) -> some View {
         VStack(alignment: .leading, spacing: 6) {
-            Text(game.displayTitle).font(.headline).foregroundStyle(.primary).lineLimit(2)
-            Text(model.text(game.isExternal ? "externalStorage" : "managedStorage")).font(.caption).foregroundStyle(.secondary)
-            if let date = game.lastPlayedAt { Text(date, style: .date).font(.caption).foregroundStyle(.secondary) }
+            Text(game.displayTitle).font(.headline).foregroundStyle(palette.primary.color).lineLimit(2)
+            Text(model.text(game.isExternal ? "externalStorage" : "managedStorage")).font(.caption).foregroundStyle(palette.secondary.color)
+            if let date = game.lastPlayedAt { Text(date, style: .date).font(.caption).foregroundStyle(palette.secondary.color) }
         }
     }
 }
 
 struct GameCover: View {
+    @Environment(\.shellPalette) private var palette
     @ObservedObject var model: ShellModel
     let game: LibraryGame
     var body: some View {
         ZStack {
-            RoundedRectangle(cornerRadius: 12).fill(Color.accentColor.opacity(0.12))
+            RoundedRectangle(cornerRadius: 12).fill(palette.accent.color.opacity(palette.dark ? 0.16 : 0.10))
             if let image = model.coverImage(for: game) {
                 GeometryReader { geometry in
                     Image(nsImage: image).resizable().scaledToFill()
@@ -66,6 +68,7 @@ struct GameCover: View {
 }
 
 struct GameDetailView: View {
+    @Environment(\.shellPalette) private var palette
     @ObservedObject var model: ShellModel
     let game: LibraryGame
     var body: some View {
@@ -108,7 +111,7 @@ struct GameDetailView: View {
         VStack(alignment: .leading, spacing: 24) {
             Text(game.displayTitle).font(.largeTitle.bold()).textSelection(.enabled).fixedSize(horizontal: false, vertical: true)
             Button { model.play() } label: { Label(model.text("play"), systemImage: "play.fill") }
-                .buttonStyle(.borderedProminent).controlSize(.large).disabled(!model.canPlay)
+                .lumenPrimaryAction().controlSize(.large).disabled(!model.canPlay)
         }
     }
     private var metadata: some View {
@@ -121,10 +124,10 @@ struct GameDetailView: View {
                     LabeledContent(model.text("played")) {
                         if let date = game.lastPlayedAt { Text(date, style: .date) } else { Text(model.text("never")) }
                     }
-                    Text(model.text(game.isExternal ? "externalStorage" : "managedStorage")).foregroundStyle(.secondary)
-                    if game.isExternal { Text(model.text("linkHelp")).font(.caption).foregroundStyle(.secondary) }
+                    Text(model.text(game.isExternal ? "externalStorage" : "managedStorage")).foregroundStyle(palette.secondary.color)
+                    if game.isExternal { Text(model.text("linkHelp")).font(.caption).foregroundStyle(palette.secondary.color) }
                     if !FileManager.default.fileExists(atPath: model.repository.gameURL(game).path) {
-                        Text(model.text("missing")).foregroundStyle(.red)
+                        Text(model.text("missing")).foregroundStyle(palette.danger.color)
                     }
                 }.padding(12)
             }

@@ -3,10 +3,31 @@
 from pathlib import Path
 import subprocess
 import os
+import re
+
+
+def check_palette_parity(root):
+    """Check the cross-host product contract, not SwiftUI layout internals."""
+    godot = (root / "apps/godot_app/scripts/ui/aether_design_tokens.gd").read_text()
+    swift = (root / "apps/apple_host/AetherHost/ThemePalette.swift").read_text()
+    blocks = dict(re.findall(r"        (WARM_DARK|WARM_LIGHT|LIGHT|_):\n(.*?)(?=        (?:WARM_DARK|WARM_LIGHT|LIGHT|_):|\n    accent_fill)", godot, re.S))
+    palettes = dict(re.findall(r"case \.(\w+):\s+return ThemePalette\((.*?)\)\n", swift, re.S))
+    modes = {"dark": "_", "classic": "LIGHT", "warmDark": "WARM_DARK", "warmLight": "WARM_LIGHT"}
+    fields = {"background": "background", "raised": "background_raised", "surface": "surface",
+              "primary": "text_primary", "secondary": "text_secondary", "accent": "accent",
+              "onAccent": "text_on_accent", "accentText": "accent_text", "danger": "danger"}
+    for mode, key in modes.items():
+        expected = dict(re.findall(r'^\s+(\w+) = Color\("([0-9a-f]{6})"\)', blocks[key], re.M))
+        actual = dict(re.findall(r"(\w+): 0x([0-9a-f]{6})", palettes[mode]))
+        for field, source in fields.items():
+            if actual.get(field) != expected[source]:
+                raise SystemExit(f"Palette mismatch: {mode}.{field} vs Godot {key}.{source}")
+    print("PASS: four product palettes match Godot tokens; native button contrast uses a separate fill", flush=True)
 
 
 def main():
     root = Path(__file__).resolve().parents[1]
+    check_palette_parity(root)
     project = root / "out/apple_host/settings-behavior-project"
     derived = root / "out/apple_host/settings-behavior-derived"
     project.mkdir(parents=True, exist_ok=True)
@@ -53,7 +74,7 @@ targets:
     env["AETHER_SETTINGS_APP_BUNDLE"] = str(bundle)
     subprocess.run([str(derived / "Build/Products/Debug/SettingsBehaviorTests")], check=True, cwd=root, env=env, timeout=60)
     for test, sources in [
-        ("SettingsStore", ["ShellStrings", "SettingsStore"]),
+        ("SettingsStore", ["ShellStrings", "ThemePalette", "SettingsStore"]),
         ("ShellStrings", ["ShellStrings"]),
     ]:
         binary = root / "out/apple_host" / (test + "Tests")

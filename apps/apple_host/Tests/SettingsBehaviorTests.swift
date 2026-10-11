@@ -9,6 +9,18 @@ struct SettingsBehaviorTests {
         let model = ShellModel()
         try checkCollections(model, root: root)
         model.openSettings()
+        model.settingsDraft?.value.theme = "warm_dark"
+        precondition(model.settings.theme == "classic" && model.settingsDirty)
+        model.showLibrary()
+        model.resolveSettingsNavigation(save: false)
+        precondition(model.settings.theme == "classic")
+        model.openSettings()
+        model.settingsDraft?.value.theme = "warm_dark"
+        precondition(model.saveSettings())
+        precondition(model.settings.theme == "warm_dark" && model.settings.palette.dark)
+        let themeRelaunch = ShellModel()
+        precondition(themeRelaunch.settings.theme == "warm_dark")
+        model.openSettings()
         precondition(model.route == .settings && model.settingsDraft != nil)
         model.settingsDraft?.value.mockEnabled = false
         precondition(model.settings.mockEnabled && model.settingsDirty)
@@ -48,6 +60,7 @@ struct SettingsBehaviorTests {
         try FileManager.default.createDirectory(at: settingsURL, withIntermediateDirectories: false)
         precondition(!model.saveSettings())
         precondition(model.settings.renderer == "metal" && model.settingsDirty)
+        precondition(model.settings.theme == "warm_dark")
         var closed = false
         model.requestLeaveSettings(action: { closed = true })
         model.resolveSettingsNavigation(save: false)

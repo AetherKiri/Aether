@@ -3,9 +3,10 @@ import Foundation
 /// Effective, persisted preferences. Transient controls and engine state do not
 /// belong here. A settings page edits a value copy until a successful save.
 struct HostSettings: Codable, Equatable {
-    static let schemaVersion = 1
+    static let schemaVersion = 2
     var version = schemaVersion
     var languageMode = "system"
+    var theme = "classic"
     var renderer = "metal"
     var virtualControls = false
     var logs = false
@@ -19,19 +20,24 @@ struct HostSettings: Codable, Equatable {
     func validated() throws -> HostSettings {
         guard version == Self.schemaVersion else { throw Failure.unsupportedVersion }
         guard (["system"] + ShellLanguage.allCases.map(\.rawValue)).contains(languageMode),
+              ShellTheme(rawValue: theme) != nil,
               ["software", "metal"].contains(renderer),
               ["krkrsdl3", "aether_all"].contains(pluginLoadMode) else { throw Failure.invalidValue }
         return self
     }
 
     func normalizedForLoad() throws -> HostSettings {
-        guard version == Self.schemaVersion else { throw Failure.unsupportedVersion }
+        guard version == 1 || version == Self.schemaVersion else { throw Failure.unsupportedVersion }
         var result = self
+        result.version = Self.schemaVersion
+        if ShellTheme(rawValue: theme) == nil { result.theme = "classic" }
         if !(["system"] + ShellLanguage.allCases.map(\.rawValue)).contains(languageMode) { result.languageMode = "system" }
         if !["software", "metal"].contains(renderer) { result.renderer = "metal" }
         if !["krkrsdl3", "aether_all"].contains(pluginLoadMode) { result.pluginLoadMode = "krkrsdl3" }
         return result
     }
+
+    var palette: ThemePalette { (ShellTheme(rawValue: theme) ?? .classic).palette }
 
     var language: ShellLanguage {
         ShellLanguage(rawValue: languageMode) ?? .system
@@ -40,6 +46,26 @@ struct HostSettings: Codable, Equatable {
     var engineOptions: [(key: String, value: String)] {
         [("plugin_load_mode", pluginLoadMode), ("mock_enabled", mockEnabled ? "1" : "0"),
          ("error_dialog_logs", errorDialogLogs ? "1" : "0")]
+    }
+}
+
+extension HostSettings {
+    enum CodingKeys: String, CodingKey {
+        case version, languageMode, theme, renderer, virtualControls, logs, translationModelPath,
+             pluginLoadMode, mockEnabled, errorDialogLogs
+    }
+    init(from decoder: Decoder) throws {
+        let values = try decoder.container(keyedBy: CodingKeys.self)
+        version = try values.decode(Int.self, forKey: .version)
+        languageMode = try values.decode(String.self, forKey: .languageMode)
+        theme = try values.decodeIfPresent(String.self, forKey: .theme) ?? "classic"
+        renderer = try values.decode(String.self, forKey: .renderer)
+        virtualControls = try values.decode(Bool.self, forKey: .virtualControls)
+        logs = try values.decode(Bool.self, forKey: .logs)
+        translationModelPath = try values.decode(String.self, forKey: .translationModelPath)
+        pluginLoadMode = try values.decode(String.self, forKey: .pluginLoadMode)
+        mockEnabled = try values.decode(Bool.self, forKey: .mockEnabled)
+        errorDialogLogs = try values.decode(Bool.self, forKey: .errorDialogLogs)
     }
 }
 

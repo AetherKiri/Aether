@@ -1,6 +1,7 @@
 import SwiftUI
 
 struct VideoLibraryView: View {
+    @Environment(\.shellPalette) private var palette
     @ObservedObject var model: ShellModel
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
@@ -19,7 +20,7 @@ struct VideoLibraryView: View {
                                     artwork.frame(width: 80, height: 48)
                                     identity(video)
                                     Spacer()
-                                    Image(systemName: "play.circle").foregroundStyle(.secondary)
+                                    Image(systemName: "play.circle").foregroundStyle(palette.secondary.color)
                                 }
                             } else {
                                 VStack(alignment: .leading, spacing: 12) {
@@ -34,7 +35,7 @@ struct VideoLibraryView: View {
                             Spacer()
                             Button(model.text("removeVideo"), role: .destructive) { model.pendingVideoRemoval = video }
                         }
-                    }.padding(12).background(.quaternary, in: RoundedRectangle(cornerRadius: 12))
+                    }.padding(12).background(palette.surface.color, in: RoundedRectangle(cornerRadius: 12))
                         .contextMenu {
                             Button(model.text("folder")) { NSWorkspace.shared.activateFileViewerSelecting([video.url]) }
                             Button(model.text("removeVideo"), role: .destructive) { model.pendingVideoRemoval = video }
@@ -46,17 +47,17 @@ struct VideoLibraryView: View {
 
     private var artwork: some View {
         ZStack {
-            RoundedRectangle(cornerRadius: 8).fill(Color.accentColor.opacity(0.12))
+            RoundedRectangle(cornerRadius: 8).fill(palette.accent.color.opacity(palette.dark ? 0.16 : 0.10))
             Image(systemName: "film").font(.title).foregroundStyle(.tint)
         }.accessibilityHidden(true)
     }
 
     private func identity(_ video: LibraryVideo) -> some View {
         VStack(alignment: .leading, spacing: 6) {
-            Text(video.displayTitle).font(.headline).foregroundStyle(.primary).lineLimit(2)
-            Text(video.path).font(.caption).foregroundStyle(.secondary).lineLimit(1).truncationMode(.middle)
+            Text(video.displayTitle).font(.headline).foregroundStyle(palette.primary.color).lineLimit(2)
+            Text(video.path).font(.caption).foregroundStyle(palette.secondary.color).lineLimit(1).truncationMode(.middle)
             if !FileManager.default.fileExists(atPath: video.path) {
-                Label(model.text("videoMissing"), systemImage: "exclamationmark.triangle").font(.caption).foregroundStyle(.red)
+                Label(model.text("videoMissing"), systemImage: "exclamationmark.triangle").font(.caption).foregroundStyle(palette.danger.color)
             }
         }
     }
@@ -66,9 +67,9 @@ struct VideoLibraryView: View {
             if let duration = entry.duration, duration.isFinite, duration > 0 {
                 ProgressView(value: min(max(entry.seconds, 0), duration), total: duration)
                     .accessibilityLabel(model.text("videoPosition"))
-                Text("\(clock(entry.seconds)) / \(clock(duration))").font(.caption).foregroundStyle(.secondary)
+                Text("\(clock(entry.seconds)) / \(clock(duration))").font(.caption).foregroundStyle(palette.secondary.color)
             } else {
-                Text("\(model.text("videoPosition")): \(clock(entry.seconds))").font(.caption).foregroundStyle(.secondary)
+                Text("\(model.text("videoPosition")): \(clock(entry.seconds))").font(.caption).foregroundStyle(palette.secondary.color)
             }
         }
     }

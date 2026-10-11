@@ -20,6 +20,12 @@ enum ShellLanguage: String, CaseIterable, Identifiable {
     static func localizedValues(for key: String) -> [String]? { strings[key] }
     // Same five languages as the existing product; game text is untouched.
     private static let strings: [String: [String]] = [
+        "theme": ["外观主题", "外觀主題", "Appearance", "外観テーマ", "화면 테마"],
+        "theme_dark": ["深色", "深色", "Dark", "ダーク", "어두운 테마"],
+        "theme_classic": ["经典浅色", "經典淺色", "Classic Light", "クラシックライト", "클래식 밝은 테마"],
+        "theme_warm_dark": ["暖色深色", "暖色深色", "Warm Dark", "ウォームダーク", "따뜻한 어두운 테마"],
+        "theme_warm_light": ["暖色浅色", "暖色淺色", "Warm Light", "ウォームライト", "따뜻한 밝은 테마"],
+        "themeHelp": ["保存后应用于界面，不改变游戏画面的颜色。", "儲存後套用至介面，不改變遊戲畫面的色彩。", "Applies to the interface after saving. Game colors remain unchanged.", "保存後に画面全体へ適用します。ゲーム映像の色は変更しません。", "저장 후 인터페이스에 적용됩니다. 게임 화면의 색상은 바뀌지 않습니다."],
         "searchGames": ["搜索游戏名称或路径", "搜尋遊戲名稱或路徑", "Search games or paths", "ゲーム名またはパスを検索", "게임 이름 또는 경로 검색"],
         "searchVideos": ["搜索视频名称或路径", "搜尋影片名稱或路徑", "Search videos or paths", "動画名またはパスを検索", "동영상 이름 또는 경로 검색"],
         "collectionLayout": ["显示方式", "顯示方式", "Layout", "表示方法", "보기 방식"],

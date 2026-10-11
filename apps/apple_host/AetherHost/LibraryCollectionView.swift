@@ -52,6 +52,7 @@ struct LibraryCollection<Item: Identifiable, Row: View>: View where Item.ID == U
 }
 
 struct CollectionHeader: View {
+    @Environment(\.shellPalette) private var palette
     let title: String
     let count: String
     let searchLabel: String
@@ -66,13 +67,13 @@ struct CollectionHeader: View {
             HStack {
                 VStack(alignment: .leading, spacing: 4) {
                     Text(title).font(.largeTitle.bold())
-                    Text(count).foregroundStyle(.secondary)
+                    Text(count).foregroundStyle(palette.secondary.color)
                 }
                 Spacer()
                 VStack(alignment: .trailing, spacing: 8) {
                     Button(video ? model.text("importVideo") : model.text("import")) {
                         if video { model.chooseVideo() } else { model.chooseImport() }
-                    }.buttonStyle(.borderedProminent).disabled(video ? !model.canOpenVideo : !model.canImport)
+                    }.lumenPrimaryAction().disabled(video ? !model.canOpenVideo : !model.canImport)
                     if !video {
                         Button(model.text("linkGame")) { model.chooseImport(external: true) }
                             .disabled(!model.canImport).help(model.text("linkHelp"))
@@ -102,14 +103,15 @@ struct CollectionHeader: View {
 }
 
 struct CollectionEmptyView: View {
+    @Environment(\.shellPalette) private var palette
     let title: String
     let message: String
     let icon: String
     var body: some View {
         VStack(spacing: 16) {
-            Image(systemName: icon).font(.system(size: 48)).foregroundStyle(.secondary)
+            Image(systemName: icon).font(.system(size: 48)).foregroundStyle(palette.secondary.color)
             Text(title).font(.title2.bold())
-            Text(message).foregroundStyle(.secondary).multilineTextAlignment(.center)
+            Text(message).foregroundStyle(palette.secondary.color).multilineTextAlignment(.center)
         }.frame(maxWidth: .infinity, maxHeight: .infinity).padding(32)
     }
 }

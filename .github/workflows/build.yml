@@ -1161,6 +1161,8 @@ jobs:
         run: ./build.sh linux debug --jobs=2
 
       - name: Run Linux access policy tests
+        env:
+          LD_LIBRARY_PATH: ${{ github.workspace }}/apps/godot_app/bin/linux/debug
         run: |
           timeout 60 "$GODOT_BIN" --headless --path apps/godot_app \
             --script res://tests/iap_catalog_limit_test.gd \
@@ -1180,6 +1182,7 @@ jobs:
       - name: Run OnscripterYuri Godot smoke test
         env:
           AETHERKIRI_SMOKE_GAME: ${{ github.workspace }}/tests/fixtures/onscripter_smoke
+          LD_LIBRARY_PATH: ${{ github.workspace }}/apps/godot_app/bin/linux/debug
         run: |
           timeout 120 "$GODOT_BIN" --headless \
             --path apps/godot_app --script res://scripts/smoke_test.gd

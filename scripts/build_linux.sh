@@ -174,8 +174,8 @@ strip_linux_runtime_libraries() {
 
     while IFS= read -r -d '' binary; do
         binaries+=("$binary")
-    # The official Godot executable is already stripped. Rewriting it after
-    # export can discard its embedded, non-allocated PCK resource section.
+    # The official Godot executable is already stripped; only our runtime
+    # libraries need their non-runtime symbols removed.
     done < <(find "$@" -maxdepth 1 -type f \
         \( -name '*.so' -o -name '*.so.*' \) \
         -print0)
@@ -238,15 +238,28 @@ if [[ ! -f "$GODOT_EXPORT_TEMPLATE" ]]; then
 fi
 
 echo "==> Validating GDExtension in headless Godot"
-"$GODOT_BIN" --headless --path "$GODOT_APP_DIR" --editor --quit
+LD_LIBRARY_PATH="$GODOT_BIN_DIR${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}" \
+    "$GODOT_BIN" --headless --path "$GODOT_APP_DIR" --editor --quit \
+    2>&1 | tee "$CMAKE_BUILD_DIR/godot-editor.log"
+if grep -E 'SCRIPT ERROR:|^ERROR:' "$CMAKE_BUILD_DIR/godot-editor.log"; then
+    echo "Error: Godot editor could not load the staged Linux runtime." >&2
+    exit 1
+fi
 
 GODOT_EXPORT_DIR="$PROJECT_ROOT/out/godot/linux/$BUILD_TYPE_LOWER"
 GODOT_EXPORT_APP="$GODOT_EXPORT_DIR/AetherKiri.$AETHERKIRI_LINUX_ARCH"
 mkdir -p "$GODOT_EXPORT_DIR"
 echo "==> Exporting Linux Godot application"
-"$GODOT_BIN" --headless --path "$GODOT_APP_DIR" \
+LD_LIBRARY_PATH="$GODOT_BIN_DIR${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}" \
+    "$GODOT_BIN" --headless --path "$GODOT_APP_DIR" \
     "$GODOT_EXPORT_MODE" "$GODOT_EXPORT_PRESET" "$GODOT_EXPORT_APP"
 
+# Godot loads Fontconfig before the extension. Use the bundled version at
+# that first load as well, so Pango cannot bind to an older system copy with
+# the same SONAME. Keep the PCK external so relocating ELF sections cannot
+# damage embedded resources.
+test -f "$GODOT_EXPORT_DIR/AetherKiri.pck"
+patchelf --set-rpath '$ORIGIN' "$GODOT_EXPORT_APP"
 stage_export_runtime_libraries
 if [[ "$BUILD_TYPE_LOWER" == "release" ]]; then
     echo "==> Removing non-runtime symbols from exported Linux Release libraries"

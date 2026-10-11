@@ -37,6 +37,8 @@ struct MediaControllerTests {
         controller.close()
         let saved = try MediaProgressStore(url: root.appendingPathComponent("media-progress.json")).position(for: movie, duration: 18)
         check(saved > 6 && saved < 8, "saved progress")
+        let entry = try MediaProgressStore(url: root.appendingPathComponent("media-progress.json")).entries()[movie.standardizedFileURL.path]
+        check(abs((entry?.duration ?? 0) - 18) < 0.1, "measured duration persisted for library progress")
         check(controller.frame == nil && controller.subtitles.isEmpty, "close releases presentation")
         check(controller.open(movie), "reopen")
         controller.setVolume(0)

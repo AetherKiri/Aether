@@ -90,7 +90,7 @@ struct ContentView: View {
         .environment(\.locale, model.language.locale)
         .toolbar {
             ToolbarItemGroup {
-                if model.activeGame == nil && model.activeVideo == nil && model.route != .settings {
+                if model.activeGame == nil && model.activeVideo == nil && model.route == .dashboard {
                     if model.route == .videos {
                         Button { model.chooseVideo() } label: {
                             Label(model.text("importVideo"), systemImage: "plus")
@@ -151,6 +151,14 @@ struct ContentView: View {
             Button(model.text("discardLeave"), role: .destructive) { model.resolveSettingsNavigation(save: false) }
             Button(model.text("continueEditing"), role: .cancel) { model.cancelSettingsNavigation() }
         } message: { Text(model.text("unsavedBody")) }
+        .confirmationDialog(model.text("removeVideo"), isPresented: Binding(
+            get: { model.pendingVideoRemoval != nil }, set: { if !$0 { model.pendingVideoRemoval = nil } }
+        ), titleVisibility: .visible) {
+            Button(model.text("removeVideo"), role: .destructive) {
+                if let video = model.pendingVideoRemoval { model.removeVideo(video) }
+            }
+            Button(model.text("cancel"), role: .cancel) { model.pendingVideoRemoval = nil }
+        } message: { Text(model.text("removeVideoHelp")) }
         .alert(model.text("error"), isPresented: Binding(
             get: { model.error != nil }, set: { if !$0 { model.error = nil } }
         )) {
@@ -173,55 +181,19 @@ struct ContentView: View {
     }
 
     private var sidebarSelection: Binding<String?> {
-        Binding(get: {
-            if model.route == .library, let id = model.selection { return "game:" + id.uuidString }
-            if model.route == .videos, let id = model.selectedVideoID { return "video:" + id.uuidString }
-            return model.route.rawValue
-        }, set: { value in
-            guard model.canNavigateShell, let value else { return }
-            if value.hasPrefix("game:"), let id = UUID(uuidString: String(value.dropFirst(5))) {
-                model.selection = id; model.requestRoute(.library)
-            } else if value.hasPrefix("video:"), let id = UUID(uuidString: String(value.dropFirst(6))) {
-                model.selectedVideoID = id; model.requestRoute(.videos)
-            } else if let route = ShellRoute(rawValue: value) { model.requestRoute(route) }
+        Binding(get: { model.route.rawValue }, set: { value in
+            guard let value, let route = ShellRoute(rawValue: value) else { return }
+            if route == .library { model.showLibrary() }
+            else { model.requestRoute(route) }
         })
     }
 
     private var shellSidebar: some View {
         List(selection: sidebarSelection) {
-            Section {
-                Label(model.text("dashboard"), systemImage: "house").tag("dashboard")
-                Label(model.text("library"), systemImage: "books.vertical").tag("library")
-                Label(model.text("videoLibrary"), systemImage: "film").tag("videos")
-                Label(model.text("settings"), systemImage: "gearshape").tag("settings")
-            }
-            if model.route == .library {
-                Section(model.text("library")) {
-                    ForEach(model.games) { game in
-                        HStack(spacing: 10) {
-                            if let cover = model.coverImage(for: game) {
-                                Image(nsImage: cover).resizable().scaledToFill()
-                                    .frame(width: 30, height: 40).clipped().cornerRadius(4)
-                            } else {
-                                Image(systemName: "gamecontroller").foregroundStyle(.secondary).frame(width: 30)
-                            }
-                            Text(game.displayTitle).lineLimit(2)
-                        }.padding(.vertical, 3).tag("game:" + game.id.uuidString)
-                            .contextMenu {
-                                Button(model.text("rename")) { model.beginRename(game) }
-                                Button(model.text("remove"), role: .destructive) { model.removeGame = game }
-                            }
-                    }
-                }
-            } else if model.route == .videos {
-                Section(model.text("videoLibrary")) {
-                    ForEach(model.videos) { video in
-                        Label(video.displayTitle, systemImage: "film").lineLimit(2)
-                            .tag("video:" + video.id.uuidString)
-                            .contextMenu { Button(model.text("removeVideo"), role: .destructive) { model.removeVideo(video) } }
-                    }
-                }
-            }
+            Label(model.text("dashboard"), systemImage: "house").tag("dashboard")
+            Label(model.text("library"), systemImage: "books.vertical").tag("library")
+            Label(model.text("videoLibrary"), systemImage: "film").tag("videos")
+            Label(model.text("settings"), systemImage: "gearshape").tag("settings")
         }.listStyle(.sidebar)
     }
 
@@ -229,117 +201,7 @@ struct ContentView: View {
 
     private var dashboard: some View { DashboardView(model: model) }
 
-    private var library: some View {
-        Group {
-            if let game = model.selectedGame {
-                ScrollView {
-                    VStack(alignment: .leading, spacing: 20) {
-                        if let cover = model.coverImage(for: game) {
-                            Image(nsImage: cover)
-                                .resizable()
-                                .scaledToFit()
-                                .frame(maxWidth: 360, maxHeight: 300)
-                                .clipShape(RoundedRectangle(cornerRadius: 8))
-                        } else {
-                            Image(systemName: "gamecontroller.fill")
-                                .font(.system(size: 64))
-                                .foregroundStyle(.tint)
-                                .frame(height: 120)
-                        }
-                        Text(game.displayTitle).font(.largeTitle.bold()).textSelection(.enabled)
-                        Grid(alignment: .leading, horizontalSpacing: 20, verticalSpacing: 12) {
-                            GridRow {
-                                Text(model.text("imported")).foregroundStyle(.secondary)
-                                Text(game.importedAt, style: .date)
-                            }
-                            GridRow {
-                                Text(model.text("played")).foregroundStyle(.secondary)
-                                if let last = game.lastPlayedAt { Text(last, style: .date) }
-                                else { Text(model.text("never")) }
-                            }
-                        }
-                        Text(model.text(game.isExternal ? "externalStorage" : "managedStorage")).foregroundStyle(.secondary)
-                        if game.isExternal { Text(model.text("linkHelp")).font(.caption).foregroundStyle(.secondary) }
-                        HStack {
-                            Button { model.play() } label: { Label(model.text("play"), systemImage: "play.fill") }
-                                .buttonStyle(.borderedProminent).controlSize(.large).disabled(!model.canPlay)
-                            Button(model.text("folder")) {
-                                NSWorkspace.shared.activateFileViewerSelecting([model.repository.gameURL(game)])
-                            }
-                        }
-                        Menu {
-                            Button(model.text("setCover")) { model.chooseCover() }.disabled(!model.canEditCover)
-                            if model.coverImage(for: game) != nil {
-                                Button(model.text("clearCover")) { model.clearSelectedCover() }.disabled(!model.canEditCover)
-                            }
-                            Divider()
-                            Button(model.text("rename")) { model.beginRename(game) }.disabled(!model.canImport)
-                            Button(model.text("remove"), role: .destructive) { model.removeGame = game }.disabled(!model.canImport)
-                        } label: { Label(model.text("manage"), systemImage: "ellipsis.circle") }
-                        .fixedSize()
-                    }.frame(maxWidth: 600, alignment: .leading).padding(32)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                }
-            } else {
-                VStack(spacing: 18) {
-                    Image(systemName: "books.vertical").font(.system(size: 64)).foregroundStyle(.secondary)
-                    Text(model.text(model.games.isEmpty ? "empty" : "choose")).font(.title.bold())
-                    Text(model.text("emptyHelp")).foregroundStyle(.secondary)
-                    if model.isImporting {
-                        ProgressView(model.text("importing"))
-                    } else {
-                        Button(model.text("import")) { model.chooseImport() }
-                            .buttonStyle(.borderedProminent).disabled(!model.canImport)
-                    }
-                }.frame(maxWidth: .infinity, maxHeight: .infinity).padding(32)
-            }
-        }
-    }
-}
-
-private struct VideoLibraryView: View {
-    @ObservedObject var model: ShellModel
-
-    private func time(_ seconds: Double) -> String {
-        let value = Int(max(0, seconds))
-        return String(format: "%d:%02d", value / 60, value % 60)
-    }
-
-    var body: some View {
-        Group {
-            if let video = model.videos.first(where: { $0.id == model.selectedVideoID }) {
-                ScrollView {
-                    VStack(alignment: .leading, spacing: 18) {
-                        Image(systemName: "film.stack").font(.system(size: 64)).foregroundStyle(.tint)
-                        Text(video.displayTitle).font(.title.bold()).textSelection(.enabled)
-                        if FileManager.default.fileExists(atPath: video.url.path) {
-                            Text(video.url.path).font(.caption).foregroundStyle(.secondary).textSelection(.enabled)
-                            let progress = model.storedVideoProgress(for: video)
-                            if progress > 0 { Text(model.text("videoPosition") + ": " + time(progress)).foregroundStyle(.secondary) }
-                            HStack {
-                                Button { model.openVideo(video.url) } label: { Label(model.text("videoPlay"), systemImage: "play.fill") }
-                                    .buttonStyle(.borderedProminent)
-                                Button(model.text("removeVideo"), role: .destructive) { model.removeVideo(video) }
-                            }
-                        } else {
-                            Text(model.text("videoMissing")).foregroundStyle(.red)
-                            Button(model.text("removeVideo"), role: .destructive) { model.removeVideo(video) }
-                        }
-                    }.frame(maxWidth: 600, alignment: .leading).padding(32)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                }
-            } else {
-                VStack(spacing: 18) {
-                    Image(systemName: "film.stack").font(.system(size: 64)).foregroundStyle(.secondary)
-                    Text(model.text("emptyVideos")).font(.title.bold())
-                    Text(model.text("emptyVideosHelp")).foregroundStyle(.secondary)
-                    Button(model.text("importVideo")) { model.chooseVideo() }
-                        .buttonStyle(.borderedProminent).disabled(!model.canOpenVideo)
-                }.frame(maxWidth: .infinity, maxHeight: .infinity).padding(32)
-            }
-        }
-
-    }
+    private var library: some View { GameLibraryView(model: model) }
 }
 
 private struct DashboardView: View {

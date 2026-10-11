@@ -20,6 +20,14 @@ enum ShellLanguage: String, CaseIterable, Identifiable {
     static func localizedValues(for key: String) -> [String]? { strings[key] }
     // Same five languages as the existing product; game text is untouched.
     private static let strings: [String: [String]] = [
+        "searchGames": ["搜索游戏名称或路径", "搜尋遊戲名稱或路徑", "Search games or paths", "ゲーム名またはパスを検索", "게임 이름 또는 경로 검색"],
+        "searchVideos": ["搜索视频名称或路径", "搜尋影片名稱或路徑", "Search videos or paths", "動画名またはパスを検索", "동영상 이름 또는 경로 검색"],
+        "collectionLayout": ["显示方式", "顯示方式", "Layout", "表示方法", "보기 방식"],
+        "coverGrid": ["网格", "網格", "Grid", "グリッド", "격자"],
+        "compactList": ["列表", "列表", "List", "リスト", "목록"],
+        "collectionImportHelp": ["导入帮助", "匯入說明", "Import Help", "追加について", "가져오기 도움말"],
+        "noSearchResults": ["没有匹配的内容", "沒有符合的內容", "No matching items", "一致する項目がありません", "일치하는 항목이 없습니다"],
+        "searchHelp": ["尝试其他关键词，或清除搜索查看全部内容。", "請嘗試其他關鍵字，或清除搜尋查看全部內容。", "Try different keywords or clear the search to see all items.", "別のキーワードを試すか、検索を消去してすべて表示してください。", "다른 검색어를 사용하거나 검색을 지워 모든 항목을 확인하세요."],
         "renderSection": ["渲染", "渲染", "Rendering", "描画", "렌더링"],
         "advancedSection": ["高级开发工具", "進階開發工具", "Advanced Tools", "高度な開発ツール", "고급 개발 도구"],
         "advancedToolsPending": ["临时追踪、脚本导出和场景测试工具尚未迁移。", "暫時追蹤、腳本匯出和場景測試工具尚未移轉。", "Temporary tracing, script export and scene preview tools are not yet available.", "一時トレース、スクリプト出力、シーン確認ツールは未対応です。", "임시 추적, 스크립트 내보내기 및 장면 미리 보기 도구는 아직 지원되지 않습니다."],
@@ -75,7 +83,7 @@ enum ShellLanguage: String, CaseIterable, Identifiable {
         "openVideo": ["打开视频", "開啟影片", "Open Video", "動画を開く", "동영상 열기"],
         "importVideo": ["导入视频", "匯入影片", "Import Video", "動画を追加", "동영상 가져오기"],
         "removeVideo": ["移除视频", "移除影片", "Remove Video", "動画を削除", "동영상 제거"],
-        "removeVideoHelp": ["只从视频库移除记录并清除播放进度，不会删除磁盘文件。", "只會從影片庫移除記錄並清除播放進度，不會刪除磁碟檔案。", "Removes the video from the library and clears playback progress without deleting the file.", "動画ライブラリから削除して再生位置を消去します。ファイルは削除しません。", "동영상 목록에서 제거하고 재생 진행을 지웁니다. 파일은 삭제하지 않습니다."],
+        "removeVideoHelp": ["只从视频库移除记录并清除播放进度及字幕选择，不会删除磁盘文件。", "只會從影片庫移除記錄並清除播放進度與字幕選擇，不會刪除磁碟檔案。", "Removes the video from the library and clears playback progress and subtitle selection without deleting the file.", "動画ライブラリから削除して再生位置と字幕選択を消去します。ファイルは削除しません。", "동영상 목록에서 제거하고 재생 진행과 자막 선택을 지웁니다. 파일은 삭제하지 않습니다."],
         "emptyVideos": ["视频库为空", "影片庫是空的", "Your video library is empty", "動画ライブラリは空です", "동영상 라이브러리가 비어 있습니다"],
         "emptyVideosHelp": ["导入视频后可在这里管理播放进度和字幕。", "匯入影片後可在此管理播放進度與字幕。", "Import videos here to manage playback progress and subtitles.", "動画を追加すると再生位置と字幕を管理できます。", "동영상을 가져오면 재생 진행과 자막을 관리할 수 있습니다."],
         "videoMissing": ["视频文件已移动或丢失，请重新导入。", "影片檔案已移動或遺失，請重新匯入。", "The video file is missing. Import it again.", "動画ファイルが見つかりません。もう一度追加してください。", "동영상 파일이 없습니다. 다시 가져오세요."],

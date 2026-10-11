@@ -34,6 +34,15 @@ final class ShellModel: ObservableObject {
     @Published var activeVideo: URL?
     @Published var games: [LibraryGame] = []
     @Published var videos: [LibraryVideo] = []
+    @Published var gameQuery = "" { didSet { if oldValue != gameQuery { gameScrollAnchor = nil } } }
+    @Published var videoQuery = "" { didSet { if oldValue != videoQuery { videoScrollAnchor = nil } } }
+    @Published var gameDetailID: UUID?
+    @Published var gameListLayout = false
+    @Published var videoListLayout = false
+    var gameScrollAnchor: UUID?
+    var videoScrollAnchor: UUID?
+    @Published var pendingVideoRemoval: LibraryVideo?
+    @Published private(set) var videoProgressEntries: [String: MediaProgressStore.Entry] = [:]
     @Published var selection: UUID?
     @Published var selectedVideoID: UUID?
     @Published var activeGame: LibraryGame?
@@ -100,6 +109,7 @@ final class ShellModel: ObservableObject {
             selection = games.first?.id
             videos = loadVideos()
             selectedVideoID = videos.first?.id
+            reloadVideoProgress()
         }
         catch { self.error = friendlyError(error); libraryAvailable = false }
     }
@@ -207,6 +217,37 @@ final class ShellModel: ObservableObject {
     var canNavigateShell: Bool { activeGame == nil && activeVideo == nil && !isImporting }
     var canOpenSettings: Bool { activeGame == nil && activeVideo == nil && !isImporting }
 
+    var visibleGames: [LibraryGame] { LibraryQuery.games(games, query: gameQuery) }
+    var visibleVideos: [LibraryVideo] {
+        videos.filter { LibraryQuery.matches([$0.displayTitle, $0.path], query: videoQuery) }
+            .sorted {
+                let left = videoProgressEntries[$0.path]?.updated ?? $0.addedAt
+                let right = videoProgressEntries[$1.path]?.updated ?? $1.addedAt
+                if left != right { return left > right }
+                let order = $0.displayTitle.localizedStandardCompare($1.displayTitle)
+                return order == .orderedSame ? $0.id.uuidString < $1.id.uuidString : order == .orderedAscending
+            }
+    }
+
+    func openGameDetails(_ game: LibraryGame) {
+        guard canNavigateShell else { return }
+        requestLeaveSettings { [weak self] in
+            guard let self else { return }
+            self.settingsDraft = nil
+            self.showSettings = false
+            self.route = .library
+            self.selection = game.id
+            self.gameDetailID = game.id
+        }
+    }
+
+    func showGameCollection() { gameDetailID = nil }
+
+    private func reloadVideoProgress() {
+        do { videoProgressEntries = try mediaProgress.entries() }
+        catch { self.error = error.localizedDescription }
+    }
+
     func coverImage(for game: LibraryGame) -> NSImage? {
         guard let url = repository.coverURL(game), FileManager.default.fileExists(atPath: url.path) else { return nil }
         return NSImage(contentsOf: url)
@@ -237,6 +278,7 @@ final class ShellModel: ObservableObject {
                 }.value
                 games = try repository.backfillDefaultCovers(result.games)
                 selection = result.imported.id
+                gameDetailID = nil
             } catch { self.error = friendlyError(error) }
             isImporting = false
         }
@@ -249,6 +291,8 @@ final class ShellModel: ObservableObject {
             games = try repository.backfillDefaultCovers(try repository.load())
             selection = games.contains(where: { $0.id == currentSelection }) ? currentSelection : games.first?.id
             videos = loadVideos()
+            reloadVideoProgress()
+            if !games.contains(where: { $0.id == gameDetailID }) { gameDetailID = nil }
             selectedVideoID = videos.contains(where: { $0.id == selectedVideoID }) ? selectedVideoID : videos.first?.id
         } catch let failure { self.error = friendlyError(failure) }
     }
@@ -256,6 +300,7 @@ final class ShellModel: ObservableObject {
     func showLibrary() {
         guard canNavigateShell else { return }
         requestRoute(.library)
+        showGameCollection()
         refreshLibrary()
     }
 
@@ -263,6 +308,7 @@ final class ShellModel: ObservableObject {
         guard canNavigateShell else { return }
         requestRoute(.videos)
         videos = loadVideos()
+        reloadVideoProgress()
         selectedVideoID = videos.first?.id
     }
 
@@ -294,16 +340,20 @@ final class ShellModel: ObservableObject {
     func removeVideo(_ video: LibraryVideo) {
         guard activeGame == nil else { return }
         if activeVideo?.standardizedFileURL.path == video.url.standardizedFileURL.path { closeVideo() }
-        videos.removeAll { $0.id == video.id }
+        let previous = videos
         do {
+            try media.forgetSubtitleSelection(for: video.url)
             try mediaProgress.remove(for: video.url)
-            try saveVideos()
-            selectedVideoID = videos.first?.id
+            videos = videos.filter { $0.id != video.id }
+            do { try saveVideos() } catch { videos = previous; throw error }
+            if selectedVideoID == video.id { selectedVideoID = nil }
+            pendingVideoRemoval = nil
+            reloadVideoProgress()
         } catch let failure { self.error = failure.localizedDescription }
     }
 
     func storedVideoProgress(for video: LibraryVideo) -> Double {
-        (try? mediaProgress.position(for: video.url, duration: 1_000_000_000)) ?? 0
+        videoProgressEntries[video.path]?.seconds ?? 0
     }
 
     func chooseCover() {
@@ -349,7 +399,8 @@ final class ShellModel: ObservableObject {
         guard canImport, let game = removeGame else { return }
         do {
             games = try repository.remove(game.id, existing: games)
-            if selection == game.id { selection = games.first?.id }
+            if selection == game.id { selection = nil }
+            if gameDetailID == game.id { gameDetailID = nil }
             removeGame = nil
         } catch { self.error = friendlyError(error) }
     }
@@ -438,6 +489,7 @@ final class ShellModel: ObservableObject {
     func closeVideo() {
         media.close()
         activeVideo = nil
+        reloadVideoProgress()
         route = .videos
     }
 

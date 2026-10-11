@@ -188,8 +188,15 @@ final class MediaController: ObservableObject {
     private func saveProgress() {
         guard let file else { return }
         lastSaved = ProcessInfo.processInfo.systemUptime
-        do { try progress.save(ended ? 0 : position, for: file) }
+        do { try progress.save(ended ? 0 : position, for: file, duration: duration) }
         catch { log("media progress save failed: \(error.localizedDescription)") }
+    }
+
+    func forgetSubtitleSelection(for file: URL) throws {
+        guard FileManager.default.fileExists(atPath: subtitleSelectionsURL.path) else { return }
+        var values = try JSONDecoder().decode([String: String].self, from: Data(contentsOf: subtitleSelectionsURL))
+        values.removeValue(forKey: file.standardizedFileURL.path)
+        try JSONEncoder().encode(values).write(to: subtitleSelectionsURL, options: .atomic)
     }
 
     private func savedSubtitleSelection(for url: URL) -> String? {

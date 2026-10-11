@@ -1,8 +1,8 @@
 # AetherKiri Apple 原生宿主 Spec（SwiftUI + Metal）
 
-- 状态：Draft v0.1（2026-10-10）
+- 状态：架构基线 + 产品对齐补充（2026-10-11）
 - 适用仓库路径：`apps/apple_host/`（SwiftUI App）、`bridge/apple_host/`（C++/Metal 宿主核心）
-- 相关文档：[接缝清单](apple_host_seam_inventory.md) · [进度](apple_host_progress.md)
+- 相关文档：[接缝清单](apple_host_seam_inventory.md) · [进度](apple_host_progress.md) · [产品 UI spec](apple_host_ui_spec.md) · [UI 实施计划](apple_host_ui_plan.md)
 
 ---
 
@@ -18,8 +18,8 @@
 ### 非目标（本阶段不做）
 - 不改引擎核心与 runtime provider 的实现形态（`packages/AetherKrkr`、`bridge/*_runtime`）：不做架构改写、不加/改 ABI 接口。正确性与硬化类最小修补仍允许，例如把 release 构建下 `reserve()`-only 的暂存缓冲改为定长缓冲（2026-10-11，见进度文档）。
 - 不迁移其他平台（Android/Web/Windows/Linux 继续走 Godot）。
-- 不追求壳的功能完整对齐——MVP 之后按 M3 迭代补齐。
-- 不移植 Godot 的 Lumen UI 代码（只参考其 UX 与文案资源）。
+- MVP 不代表产品功能完整。当前进入 M3 产品对齐阶段，按 [UI 与设置 spec](apple_host_ui_spec.md) 和 [实施计划](apple_host_ui_plan.md)恢复原 Godot 产品职责；平台不适用项与更新器等延后项单列。
+- 不移植 Godot 的 Lumen 控件代码；保留其产品结构、功能语义、主题与文案，用 SwiftUI/AppKit 实现。
 
 ---
 

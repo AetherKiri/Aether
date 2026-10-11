@@ -15,6 +15,9 @@
 #if defined(AETHERKIRI_WITH_SIGLUS)
 #include "siglus_runtime.h"
 #endif
+#if defined(AETHERKIRI_WITH_MAGES)
+#include "mages_runtime.h"
+#endif
 #if defined(AETHERKIRI_WITH_MINORI)
 extern "C" engine_result_t aetherkiri_minori_register_runtime_provider();
 #endif
@@ -12747,6 +12750,9 @@ void InitializeAetherRuntime(ModuleInitializationLevel level) {
 #endif
 #if defined(AETHERKIRI_WITH_SIGLUS)
     aetherkiri::siglus::RegisterRuntimeProvider();
+#endif
+#if defined(AETHERKIRI_WITH_MAGES)
+    aetherkiri::mages::RegisterRuntimeProvider();
 #endif
 #if defined(AETHERKIRI_WITH_MINORI)
     if (aetherkiri_minori_register_runtime_provider() != ENGINE_RESULT_OK) {

@@ -390,6 +390,20 @@
   Godot viewport/TextureRect 调度，Apple Host benchmark 不包含 SwiftUI/scanout。证据目录：
   `out/apple_host/evidence/offscreen-submit-20261011/`、`offscreen-completion-20261011/`。
 
+### 2026-10-11：复杂 KAG3 场景实际帧率
+
+- 使用 KAG3 的 `snow.ks` 雪粒插件、17 个雪粒、多层图层和 crossfade 过渡建立临时复杂场景
+  副本；两边使用同一副本、同一 Debug 构建、1920x1080、固定 `1/60` tick、30 秒 offscreen
+  benchmark。Godot native 非 headless probe 为 `138.62 tick/s`。
+- 不等待 GPU 的 uncapped 游戏帧循环：Apple deferred `329.27 tick/s`，Apple direct
+  `531.03 tick/s`。相对同一 Godot probe，direct 约 `3.83x`，deferred 约 `2.38x`；direct
+  相对 deferred 约 `1.61x`。这仍是提交吞吐口径，不能当作显示器实际 FPS。
+- 逐帧等待 offscreen GPU completion：Apple deferred `54.33 tick/s`（p50 `15.113 ms`），
+  Apple direct `57.23 tick/s`（p50 `14.633 ms`），direct 约提升 `5.3%`。Godot 当前 probe
+  尚未加入等价 GPU fence，因此不把这组 completion 数字与 Godot 的 `138.62` 直接比较。
+- 证据目录：`out/apple_host/evidence/complex-offscreen-submit-20261011/` 与
+  `complex-offscreen-completion-20261011/`；复杂场景副本为临时测试数据，不进入仓库。
+
 ## 下一步队列
 
 ### 性能基准隔离补充

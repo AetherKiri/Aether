@@ -29,7 +29,7 @@ def main():
                         help="host tick callback source; display is preferred, timer is the fallback")
     parser.add_argument("--lifecycle", default=None,
                         help="scripted lifecycle events, e.g. 4:on,7:off (focus/hide/minimize equivalent)")
-    parser.add_argument("--frame-enhancement", choices=("off", "adaptive_sharpen"), default=None,
+    parser.add_argument("--frame-enhancement", choices=("off", "adaptive_sharpen", "fsr1_rcas"), default=None,
                         help="frame enhancement override; off keeps the original frame")
     parser.add_argument("--enhancement-amount", type=float, default=None,
                         help="enhancement strength 0.0-1.0 (defaults to the saved preference)")
@@ -123,7 +123,7 @@ def main():
                     errors.append("input did not change the captured game frame")
             if args.presentation == "metal":
                 differences = [int(value) for value in re.findall(r"RGB max diff=(\d+)", text)]
-                if args.frame_enhancement == "adaptive_sharpen":
+                if args.frame_enhancement in ("adaptive_sharpen", "fsr1_rcas"):
                     # The enhancement intentionally changes the presented frame,
                     # so require a bounded, non-zero effect instead of parity.
                     if len(differences) != 3 or min(differences, default=0) == 0:
@@ -221,7 +221,8 @@ def main():
                     errors.append("scripted lifecycle transition was not handled")
                 if pacing_stats and pacing_stats["pacing_resets"] < 2:
                     errors.append("lifecycle transitions did not reset the pacing clock")
-            if args.frame_enhancement == "adaptive_sharpen" and "frame enhancement adaptive_sharpen amount=" not in text:
+            if args.frame_enhancement and args.frame_enhancement != "off" \
+                    and f"frame enhancement {args.frame_enhancement} amount=" not in text:
                 errors.append("frame enhancement was requested but not applied")
             (folder / "result.json").write_text(json.dumps({
                 "game": name, "duration_seconds": args.duration,

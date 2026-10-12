@@ -61,7 +61,7 @@ Apple 官方参考：[Settings](https://developer.apple.com/design/human-interfa
 | 画布 Game Native/Display Fit | 缺失设置；已有 setSurfaceSize 接缝 | 分离游戏逻辑画布、输出纹理和窗口 drawable；保持输入映射 | P3 |
 | 缩放 smooth/nearest/linear/bicubic/lanczos | 缺失选择器与完整实现 | `smooth` 迁移为 `linear`；提供真实 nearest/linear/bicubic/lanczos 核，名称与 shader 一致 | P3 |
 | 输出 original/1080p/2k/4k，默认1080p | 缺失设置 | 按原版目标尺寸/纵横比规范迁移；不是改变显示器分辨率 | P3 |
-| 增强 off/preset/custom | P5a 已接入 off + 对比度自适应锐化（自研、有 CPU 参考） | Metal 后处理与能力报告；原始帧降级；Godot 算法集逐个移植前不开放 | P5 |
+| 增强 off/preset/custom | P5a/P5b 已接入 off + 对比度自适应锐化（自研、有 CPU 参考）+ FSR1 RCAS（AMD MIT 参考） | Metal 后处理与能力报告；原始帧降级；其余 Godot 算法逐个移植前不开放 | P5 |
 | 15 个增强预设，16 种自定义算法、顺序添加/移除 | 缺失 | 保留重建2×、目标尺寸缩放、同尺寸修复三种语义；不是统一 resize | P5 |
 | FPS 开关+60/80/90/120/144，默认关闭、目标80 | 已接入 schema v5；DisplayLink 优先、Timer 兜底 | ABI fps_limit + 宿主调度；关闭限制也不承诺超显示器FPS | P3 |
 | 游戏横屏锁定 | 平台不适用 | 移动端 M4 | M4 |
@@ -309,3 +309,11 @@ Godot 的 `smooth` 仅是线性采样的旧名称，默认值为 bicubic。Apple
 Godot 的增强实现位于私有 RenderingDevice provider（Anime4K/FSR1/RAVU/CuNNy/NNEDI3/FXAA + 15 条预设链），其 `FrameEffectProvider` 契约直接依赖 Godot RenderingDevice/RID，Apple Metal 呈现路径无法复用，因此本轮先实现一个**完整可验证**的算法：对比度自适应锐化。五抽头核（中心 + 上下左右）按局部对比度加权拉普拉斯，增量被限制在局部对比幅度内，避免光晕；CPU 参考与 Metal shader 使用同一公式，行为测试逐像素对照（最大差 ≤2）。
 
 `HostSettings` schema v8 新增 `frameEnhancement`（off/adaptive_sharpen，未移植的 Godot 算法 id 在加载与保存时都被拒绝）与 `frameEnhancementAmount`（0–1，0.05 步进）；渲染页新增 Godot 同名的「画面增强」选择器与「锐化强度」滑杆，并明确写出 Anime4K/FSR1/RAVU/CuNNy/NNEDI3/FXAA 尚未移植。增强在 Metal 输出缩放之后执行（同尺寸修复语义），资源按 frame revision 管理；分配或 pass 失败时保留原始画面并记录 `lastError`，符合“失败回退原始画面”。能力随原生 Metal 呈现器可用性上报（无 Metal 时显示 Godot 的不可用说明）。smoke 工具新增 `--frame-enhancement`/`--enhancement-amount` 覆盖（仅基准用），在增强开启时把引擎/呈现 RGB 对比从“必须一致”改为“必须有界地不同”。
+
+### 7.15 P5b实施结果：FSR1 RCAS
+
+P5b 首个切片移植 AMD FidelityFX Super Resolution 1 的 **RCAS**（robust contrast adaptive sharpening），因为它是 FSR1 算法集中唯一有公开 MIT 参考（`ffx-fsr/ffx_fsr1.h` 的 `FsrRcasF`）且可独立验证的部分。核函数忠实照搬参考：对 3×3 的 b/d/e/f/h 邻域取环最小值/最大值，`hitMin = min(mn4,e)/(4·mx4)`、`hitMax = (1−max(mx4,e))/(4·mn4−4)`，逐通道 `lobe = max(−hitMin, hitMax)` 后按参考限制在 `[−0.1875, 0]`（`FSR_RCAS_LIMIT`）并乘以强度；`FSR_RCAS_DENOISE` 与中精度倒数未启用（CPU 与 GPU 都用精确倒数）。全黑/全白邻域会让限制分母为 0，参考依赖 GPU 倒数语义，这里在 CPU 与 Metal 两侧都显式把该分支钳为 0，避免 NaN。
+
+`FrameEnhancement` 新增 `fsr1_rcas`（`allCases` 顺序 off → adaptive_sharpen → fsr1_rcas）；Metal 呈现器新增 `rcas_fragment` 与 `rcasPipeline`，与自适应锐化共享强度 buffer 与 texel buffer。渲染页选择器由 `FrameEnhancement.allCases` 驱动，因此自动多出「FSR1 RCAS」，说明文案改为“当前开放已验证的自适应锐化与 FSR1 RCAS”。`FrameEnhancementKernel.fsr1Rcas` 是 Metal pass 的 CPU 参考，行为测试逐像素对照（最大差 ≤2）。
+
+本轮同时修掉一个真实的缓存缺陷：增强 scratch 纹理原先只按 `frameRevision` 缓存，切换算法/强度而源帧不变时会复用上一算法的结果；现在缓存键加入算法与强度（`enhancedConfig`），`clear()` 一并重置。`--frame-enhancement` smoke 覆盖新增 `fsr1_rcas`；许可全文见 `THIRD_PARTY_LICENSES.md`。未移植的 Anime4K、FSR1 EASU、RAVU、CuNNy、NNEDI3、FXAA 仍不开放。

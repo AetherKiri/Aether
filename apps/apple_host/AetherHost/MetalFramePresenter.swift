@@ -38,6 +38,7 @@ final class MetalFramePresenter: NSObject, MTKViewDelegate {
     private let queue: MTLCommandQueue
     private let pipeline: MTLRenderPipelineState
     private let sharpenPipeline: MTLRenderPipelineState
+    private let rcasPipeline: MTLRenderPipelineState
     private let debugLabels: Bool
     private(set) var texture: MTLTexture?
     private var frameLease: AetherMetalFrameLease?
@@ -52,6 +53,10 @@ final class MetalFramePresenter: NSObject, MTKViewDelegate {
     private var outputRevision: UInt64?
     private var enhancedTexture: MTLTexture?
     private var enhancedRevision: UInt64?
+    /// The algorithm and amount baked into `enhancedTexture`. The scratch
+    /// texture is only valid for one source revision and one configuration, so
+    /// switching algorithms on a static frame must re-run the pass.
+    private var enhancedConfig: (FrameEnhancement, Float)?
     private(set) var outputPassCount = 0
     /// Frame enhancement applied after the output scaling pass. Only algorithms
     /// with a verified kernel are exposed; the Godot provider's private shaders
@@ -255,6 +260,33 @@ final class MetalFramePresenter: NSObject, MTKViewDelegate {
             float3 delta = clamp(weight * laplacian, -limit, limit);
             return float4(clamp(center.rgb + delta, float3(0), float3(1)), 1);
         }
+        // FidelityFX FSR1 RCAS, ported from the published AMD reference
+        // (ffx-fsr/ffx_fsr1.h, MIT; see THIRD_PARTY_LICENSES.md). Mirrors
+        // FrameEnhancementKernel.fsr1Rcas including the zero-denominator guard.
+        fragment float4 rcas_fragment(Vertex v [[stage_in]],
+                                      texture2d<float> frame [[texture(0)]],
+                                      constant float &sharpness [[buffer(0)]],
+                                      constant float2 &texel [[buffer(1)]]) {
+            constexpr sampler s(coord::normalized, address::clamp_to_edge, filter::nearest);
+            float3 b = frame.sample(s, v.uv + float2(0, -texel.y)).rgb;
+            float3 d = frame.sample(s, v.uv + float2(-texel.x, 0)).rgb;
+            float3 e = frame.sample(s, v.uv).rgb;
+            float3 f = frame.sample(s, v.uv + float2(texel.x, 0)).rgb;
+            float3 h = frame.sample(s, v.uv + float2(0, texel.y)).rgb;
+            float3 minimum = min(min(b, d), min(f, h));
+            float3 maximum = max(max(b, d), max(f, h));
+            float3 minDenominator = 4.0 * maximum;
+            float3 maxDenominator = 4.0 * minimum - 4.0;
+            float3 hitMin = select(min(minimum, e) / max(minDenominator, float3(1e-6)),
+                                   float3(0), minDenominator < float3(1e-6));
+            float3 hitMax = select((1.0 - max(maximum, e)) / min(maxDenominator, float3(-1e-6)),
+                                   float3(0), abs(maxDenominator) < float3(1e-6));
+            float3 lobe = max(-hitMin, hitMax);
+            float lobeValue = max(-0.1875, min(max(max(lobe.r, lobe.g), lobe.b), 0.0)) * sharpness;
+            float reciprocal = 1.0 / (4.0 * lobeValue + 1.0);
+            float3 result = (lobeValue * (b + d + f + h) + e) * reciprocal;
+            return float4(clamp(result, float3(0), float3(1)), 1);
+        }
         """
         let library = try device.makeLibrary(source: source, options: nil)
         let descriptor = MTLRenderPipelineDescriptor()
@@ -267,6 +299,11 @@ final class MetalFramePresenter: NSObject, MTKViewDelegate {
         sharpenDescriptor.fragmentFunction = library.makeFunction(name: "sharpen_fragment")
         sharpenDescriptor.colorAttachments[0].pixelFormat = .bgra8Unorm
         sharpenPipeline = try device.makeRenderPipelineState(descriptor: sharpenDescriptor)
+        let rcasDescriptor = MTLRenderPipelineDescriptor()
+        rcasDescriptor.vertexFunction = library.makeFunction(name: "frame_vertex")
+        rcasDescriptor.fragmentFunction = library.makeFunction(name: "rcas_fragment")
+        rcasDescriptor.colorAttachments[0].pixelFormat = .bgra8Unorm
+        rcasPipeline = try device.makeRenderPipelineState(descriptor: rcasDescriptor)
         super.init()
     }
 
@@ -316,7 +353,7 @@ final class MetalFramePresenter: NSObject, MTKViewDelegate {
     func clear() {
         texture = nil; frameLease = nil
         outputTexture = nil; outputRevision = nil
-        enhancedTexture = nil; enhancedRevision = nil
+        enhancedTexture = nil; enhancedRevision = nil; enhancedConfig = nil
     }
 
     // Shared by onscreen rendering and deterministic offscreen verification.
@@ -353,7 +390,7 @@ final class MetalFramePresenter: NSObject, MTKViewDelegate {
                 source = outputTexture
             }
         }
-        if enhancement == .adaptiveSharpen, let current = source, enhancementAmount > 0 {
+        if enhancement != .off, let current = source, enhancementAmount > 0 {
             source = enhancedSource(current, command: command)
         }
         try encodeImage(source: source, target: target, command: command,
@@ -365,7 +402,7 @@ final class MetalFramePresenter: NSObject, MTKViewDelegate {
     /// fallback to the original picture" contract.
     private func enhancedSource(_ current: MTLTexture, command: MTLCommandBuffer) -> MTLTexture {
         let width = current.width, height = current.height
-        if enhancedTexture?.width != width || enhancedTexture?.height != height || enhancedRevision != frameRevision {
+        if enhancedTexture?.width != width || enhancedTexture?.height != height {
             let descriptor = MTLTextureDescriptor.texture2DDescriptor(pixelFormat: .bgra8Unorm,
                 width: width, height: height, mipmapped: false)
             descriptor.storageMode = .private
@@ -376,21 +413,30 @@ final class MetalFramePresenter: NSObject, MTKViewDelegate {
             }
             enhancedTexture = next
             enhancedRevision = nil
+            enhancedConfig = nil
         }
         guard let target = enhancedTexture else { return current }
-        if enhancedRevision != frameRevision {
+        let amount = Float(min(1, max(0, enhancementAmount)))
+        if enhancedRevision != frameRevision || enhancedConfig?.0 != enhancement || enhancedConfig?.1 != amount {
             do {
+                let passPipeline: MTLRenderPipelineState
+                switch enhancement {
+                case .fsr1Rcas: passPipeline = rcasPipeline
+                default: passPipeline = sharpenPipeline
+                }
                 try encodeImage(source: current, target: target, command: command,
                                 aspectFit: false, sampling: .nearest,
-                                pipelineOverride: sharpenPipeline,
-                                sharpenAmount: Float(min(1, max(0, enhancementAmount))))
+                                pipelineOverride: passPipeline,
+                                sharpenAmount: amount)
             } catch {
                 lastError = "enhancement pass failed: \(error); presenting the original frame"
                 enhancedTexture = nil
                 enhancedRevision = nil
+                enhancedConfig = nil
                 return current
             }
             enhancedRevision = frameRevision
+            enhancedConfig = (enhancement, amount)
         }
         return target
     }

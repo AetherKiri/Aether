@@ -8,12 +8,14 @@ enum FrameEnhancementTests {
         kernelBasics()
         try gpuMatchesReference()
         try settingsMigration(root: root)
-        print("PASS: enhancement kernel (identity/contrast-adaptive/no overshoot/alpha), Metal parity and schema v8 migration")
+        print("PASS: enhancement kernel (identity/contrast-adaptive/RCAS), Metal parity and schema v8 migration")
     }
 
     private static func kernelBasics() {
-        precondition(FrameEnhancement.allCases.map(\.rawValue) == ["off", "adaptive_sharpen"])
+        precondition(FrameEnhancement.allCases.map(\.rawValue) == ["off", "adaptive_sharpen", "fsr1_rcas"])
         precondition(FrameEnhancement.normalized("adaptive_sharpen") == .adaptiveSharpen)
+        precondition(FrameEnhancement.normalized("fsr1_rcas") == .fsr1Rcas)
+        precondition(FrameEnhancement.normalized("fsr1_easu") == nil, "unported Godot algorithms must not be selectable")
         precondition(FrameEnhancement.normalized("anime4k_upscale_s") == nil, "unported Godot algorithms must not be selectable")
         // Amount 0 is an exact identity.
         let source: [UInt8] = [10, 10, 10, 255, 20, 20, 20, 255, 30, 30, 30, 255,
@@ -42,6 +44,22 @@ enum FrameEnhancementTests {
         // Edges clamp instead of reading out of bounds.
         let edge = FrameEnhancementKernel.sharpen(source, width: 3, height: 3, amount: 1)
         precondition(edge.count == source.count)
+
+        // FSR1 RCAS: identity at zero sharpness, edge enhancement otherwise,
+        // alpha preserved and a fully black neighbourhood stays black.
+        precondition(FrameEnhancementKernel.fsr1Rcas(source, width: 3, height: 3, sharpness: 0) == source)
+        let rcas = FrameEnhancementKernel.fsr1Rcas(source, width: 3, height: 3, sharpness: 1)
+        precondition(rcas[center] > source[center], "RCAS must sharpen a contrasting center")
+        precondition(rcas[center] <= 255)
+        for pixel in 0..<9 {
+            precondition(rcas[pixel * 4 + 3] == source[pixel * 4 + 3], "RCAS preserves alpha")
+        }
+        let black = [UInt8](repeating: 0, count: 3 * 3 * 4)
+        precondition(FrameEnhancementKernel.fsr1Rcas(black, width: 3, height: 3, sharpness: 1) == black,
+                     "a fully black neighbourhood must not produce NaN")
+        let white = [UInt8](repeating: 255, count: 3 * 3 * 4)
+        precondition(FrameEnhancementKernel.fsr1Rcas(white, width: 3, height: 3, sharpness: 1) == white,
+                     "a fully white neighbourhood stays white")
     }
 
     private static func gpuMatchesReference() throws {
@@ -72,24 +90,32 @@ enum FrameEnhancementTests {
                             provider: provider, decode: nil, shouldInterpolate: false, intent: .defaultIntent)!
         try presenter.upload(image)
         let plain = try presenter.renderOffscreen(width: width, height: height)
-        presenter.enhancement = .adaptiveSharpen
-        presenter.enhancementAmount = 0.5
-        let enhanced = try presenter.renderOffscreen(width: width, height: height)
-        let expected = FrameEnhancementKernel.sharpen(rgba, width: width, height: height, amount: 0.5)
-        var maxDifference = 0
-        var changed = 0
-        for pixel in 0..<(width * height) {
-            for channel in 0..<3 {
-                // renderOffscreen returns BGRA; the reference is RGBA.
-                let gpuChannel = channel == 0 ? 2 : (channel == 2 ? 0 : 1)
-                let gpu = Int(enhanced[pixel * 4 + gpuChannel])
-                let cpu = Int(expected[pixel * 4 + channel])
-                maxDifference = max(maxDifference, abs(gpu - cpu))
-                if abs(gpu - Int(plain[pixel * 4 + gpuChannel])) > 0 { changed += 1 }
+        func compare(_ algorithm: FrameEnhancement,
+                     _ reference: ([UInt8], Int, Int, Double) -> [UInt8]) throws {
+            presenter.enhancement = algorithm
+            presenter.enhancementAmount = 0.5
+            let enhanced = try presenter.renderOffscreen(width: width, height: height)
+            let expected = reference(rgba, width, height, 0.5)
+            var maxDifference = 0
+            var changed = 0
+            for pixel in 0..<(width * height) {
+                for channel in 0..<3 {
+                    // renderOffscreen returns BGRA; the reference is RGBA.
+                    let gpuChannel = channel == 0 ? 2 : (channel == 2 ? 0 : 1)
+                    let gpu = Int(enhanced[pixel * 4 + gpuChannel])
+                    let cpu = Int(expected[pixel * 4 + channel])
+                    maxDifference = max(maxDifference, abs(gpu - cpu))
+                    if abs(gpu - Int(plain[pixel * 4 + gpuChannel])) > 0 { changed += 1 }
+                }
             }
+            precondition(maxDifference <= 2, "\(algorithm.rawValue) must match the CPU reference (max diff \(maxDifference))")
+            precondition(changed > 0, "\(algorithm.rawValue) must change at least one pixel")
         }
-        precondition(maxDifference <= 2, "Metal pass must match the CPU reference (max diff \(maxDifference))")
-        precondition(changed > 0, "the enhancement pass must change at least one pixel")
+        // Both run against the same uploaded frame, so this also covers the
+        // scratch-texture cache key: switching algorithms without a new source
+        // revision must re-run the pass instead of reusing the previous result.
+        try compare(.adaptiveSharpen) { FrameEnhancementKernel.sharpen($0, width: $1, height: $2, amount: $3) }
+        try compare(.fsr1Rcas) { FrameEnhancementKernel.fsr1Rcas($0, width: $1, height: $2, sharpness: $3) }
         // Turning the enhancement off restores the unmodified frame.
         presenter.enhancement = .off
         let restored = try presenter.renderOffscreen(width: width, height: height)
@@ -128,8 +154,14 @@ enum FrameEnhancementTests {
                          "amount \(input) -> \(reloaded.frameEnhancementAmount)")
         }
         var invalid = fresh
-        invalid.frameEnhancement = "anime4k_upscale_s"
+        invalid.frameEnhancement = "fsr1_easu"
         do { try store.save(invalid); preconditionFailure("unported algorithm accepted") } catch {}
+        var rcasValue = fresh
+        rcasValue.frameEnhancement = "fsr1_rcas"
+        rcasValue.frameEnhancementAmount = 0.75
+        try store.save(rcasValue)
+        let reloadedRcas = try store.load(defaults: defaults, legacyPrefix: "enh.")
+        precondition(reloadedRcas.frameEnhancement == "fsr1_rcas" && reloadedRcas.frameEnhancementAmount == 0.75)
         invalid = fresh
         invalid.frameEnhancementAmount = 1.5
         do { try store.save(invalid); preconditionFailure("amount above the maximum accepted") } catch {}

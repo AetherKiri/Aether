@@ -221,13 +221,15 @@ scr.paz+sys.paz+可执行文件、校验过文件头的 RFVP `.hcb`），状态�
 启动入口不提供覆盖——`engine_open_game` 的 `startup_script` 参数在当前运行时被忽略；
 RFVP 文本编码同样等到链接 RFVP provider 后再提供，当前显示原因说明。
 
-渲染设置提供 Godot 同名的「画面增强」：当前实现**对比度自适应锐化**（五抽头局部
-对比度加权拉普拉斯，增量限制在局部对比幅度内以避免光晕，CPU 参考与 Metal shader
-同公式并逐像素对照），强度 0–1 按 0.05 步进；Metal 在输出缩放后执行同尺寸修复，
-分配或 pass 失败会保留原始画面。Godot 的 Anime4K/FSR1/RAVU/CuNNy/NNEDI3/FXAA 与
-预设/自定义链位于私有 RenderingDevice provider，需要逐个移植到 Metal 并做参考对照，
-当前在选择器与设置页说明中明确未开放。smoke 可用 `--frame-enhancement
-adaptive_sharpen --enhancement-amount 0.5` 做基准覆盖（仅测试入口，不写入偏好）。
+渲染设置提供 Godot 同名的「画面增强」，当前开放两个**有 CPU 参考并逐像素对照**的
+算法：**对比度自适应锐化**（五抽头局部对比度加权拉普拉斯，增量限制在局部对比幅度内
+以避免光晕）与 **FSR1 RCAS**（AMD FidelityFX Super Resolution 1 的 robust contrast
+adaptive sharpening，忠实移植 `ffx-fsr/ffx_fsr1.h` 的 `FsrRcasF`，MIT，全文见
+`THIRD_PARTY_LICENSES.md`）。强度 0–1 按 0.05 步进；Metal 在输出缩放后执行同尺寸
+修复，分配或 pass 失败会保留原始画面。Godot 的 Anime4K/FSR1 EASU/RAVU/CuNNy/NNEDI3/
+FXAA 与预设/自定义链位于私有 RenderingDevice provider，需要逐个移植到 Metal 并做参考
+对照，当前在选择器与设置页说明中明确未开放。smoke 可用 `--frame-enhancement
+adaptive_sharpen|fsr1_rcas --enhancement-amount 0.5` 做基准覆盖（仅测试入口，不写入偏好）。
 「添加外部游戏目录」直接引用所选目录（支持 data 包装目录），不复制；存档和运行文件写入引用目录。
 同模式重复添加沿用条目，复制与外部引用可分别管理。外部目录移动或丢失时需重新添加。
 旧索引默认按管理副本读取，损坏索引仍保留并禁止修改。

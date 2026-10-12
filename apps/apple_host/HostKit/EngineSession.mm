@@ -2,6 +2,7 @@
 #import "MetalBridge.h"
 
 #include "engine_api.h"
+#include "engine_runtime_provider.h"
 
 #include <vector>
 #include <algorithm>
@@ -37,6 +38,10 @@ NSError *EngineError(engine_handle_t handle, NSString *fallback) {
     uint64_t _nativeGetCalls, _nativeSnapshotCalls;
     double _nativeGetMS, _nativeGetMaxMS, _nativeSnapshotMS, _nativeSnapshotMaxMS;
     uint64_t _nativePublishedSerial;
+}
+
++ (int32_t)probeRuntimeProvider:(NSString *)runtimeId path:(NSString *)gameRootPath {
+    return engine_probe_runtime_provider(runtimeId.UTF8String, gameRootPath.fileSystemRepresentation);
 }
 
 - (instancetype)init {

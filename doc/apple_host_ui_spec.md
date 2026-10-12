@@ -88,8 +88,8 @@ Apple 官方参考：[Settings](https://developer.apple.com/design/human-interfa
 |---|---|---|---|
 | 导航 | 稳定四页入口，窗口内可访问 | 主侧栏只有三页，游戏条目混入导航，设置仅gear sheet | 目的地侧栏四项，菜单同步；P1/P2 |
 | 游戏库 | 封面卡片、数量、搜索、最近游玩排序再按标题、导入/引导 | 条目侧栏，自动进入首个详情，无搜索，无同等排序 | 封面网格为默认，可选列表；搜索标题/运行时/路径；P2 |
-| 详情 | 封面编辑、运行时类型、路径、最近游玩、时长、启动入口、RFVP编码、重命名/移除 | P2 封面/路径/日期已接入；P4a 已显示游玩时长 | 编辑封面在封面区域可发现；管理菜单作补充；运行时类型、启动入口与RFVP编码待P4后续切片 |
-| 导入/刷新 | 探测元数据、目录/文件入口、封面/启动入口回填 | 目录/ZIP复制或外部引用已有；刷新主要重新读取索引和封面发现 | 保留托管/引用差异；Apple当前主要按KAG/ONS文件名、XP3及Minori PAZ识别，与Godot多runtime元数据探测不齐；扩展已链接provider的入口识别，刷新不覆盖手动配置；P2/P4 |
+| 详情 | 封面编辑、运行时类型、路径、最近游玩、时长、启动入口、RFVP编码、重命名/移除 | P2 封面/路径/日期、P4a 游玩时长、P4f 运行时类型/启动入口（只读） | 编辑封面在封面区域可发现；管理菜单作补充；启动入口不提供覆盖（ABI 忽略 startup_script）；RFVP 编码待链接 provider 后提供 |
+| 导入/刷新 | 探测元数据、目录/文件入口、封面/启动入口回填 | 目录/ZIP复制或外部引用已有；P4f 起按 Godot `GameMetadata` 标记识别 KiriKiri（xp3/startup）、ONScripter、Siglus、Minori 与校验过的 RFVP `.hcb` | 保留托管/引用差异；刷新主要重新读取索引和封面发现；未链接 runtime 仍可识别但不宣称可运行 |
 | 内置Demo | 多语言Demo安装、版本与删除记忆 | Apple未接入同等自动安装 | 沙盒测试后打包安装，可移除且重启不恢复；P6 |
 | 在线封面 | VNDB请求、候选标题、索引 | 未迁移 | 单独可选联网操作，失败保留手动封面；P6 |
 | 主页 | 总时长、已玩、近周、最近5款、时长排行、活动/里程碑 | P4a 已迁移 `_dashboard_stats` 与主页内容 | 会话时长只统计成功启动的运行时间；周活动与七天足迹按lastPlayed推导，非完整历史日记 |
@@ -297,3 +297,9 @@ Godot 的 `smooth` 仅是线性采样的旧名称，默认值为 bicubic。Apple
 控制模式在面板内切换（Godot 的 `input_mode_button`）：mouse 模式显示虚拟指针手柄与左键按钮，手柄拖动按显示缩放换算成逻辑画布像素并累加为绝对坐标（`VirtualPointer`，边界收敛到画布内），左键按钮在该坐标发送 down/up；touch 模式隐藏手柄与左键按钮，直接使用真实指针。面板内切换会立即写入偏好（Godot 同样持久化 `virtual_control_mode`）。平台差异：桌面始终保留真实指针输入（Godot mouse 模式会屏蔽画面触摸，这是移动端取向，不在 macOS 复刻）；面板按键集合沿用现有视觉小说推进键，不复制移动端 D-pad/鼠标键/滚动长按。
 
 验证：行为测试用真实会话断言手柄从画布中心开始、拖动累计为绝对坐标并收敛边界、左键发送真实 down/up、模式切换调用 `resetVirtualPointer()`（Godot `_reset_cursor_drag_position`）；CUA 在真实 KAG3 会话中记录 `virtual cursor -> (385,207)/(451,174)/(517,142)`，并验证 `切换模式` 在 `模式 · 虚拟鼠标` 与 `模式 · 直接触摸` 间切换时手柄/左键按钮的显隐与偏好写入。
+
+### 7.13 P4f实施结果：运行时元数据
+
+新增 `GameRuntimeDetector`，按 Godot `GameMetadata.inspect()` 的标记顺序识别当前宿主可驱动的运行时：校验过的 RFVP `.hcb`（文件头 descriptor/start 合理性，端口自 Godot `_hcb_launch_file()`）→ ONScripter（0.txt/00.txt/nscr_sec.dat/nscript.*/onscript.nt*）→ Minori（scr.paz+sys.paz+已知可执行文件）→ Siglus（gameexe.ini/gameexe.dat/scene.pck）→ KiriKiri（XP3 自动挂载或 startup.tjs/ks），并能报告“未识别”。导入门限复用同一检测：Siglus 与校验过的 `.hcb` 目录现在可以加入游戏库，未识别目录仍被拒绝；刷新与托管/引用语义不变。
+
+详情页新增只读「运行时类型」与「启动入口」两行：运行时来自标记检测，状态来自真实的 `engine_probe_runtime_provider(runtime_id, root)`（>0 匹配、0 存在但不识别、<0 本构建未链接该 provider）；KiriKiri 走内置宿主路径，因此 provider 未匹配时显示“使用内置 KiriKiri 宿主路径（无需额外 provider）”，而不是错误地宣称无法启动。启动入口只展示检测到的入口文件（XP3/startup/ONS 脚本/标记/RFVP HCB），不提供覆盖：`engine_open_game` 的 `startup_script` 参数在当前运行时被忽略，提供可点选但无效的下拉会违反“不开放无实现控件”。RFVP 文本编码同样等待链接 RFVP provider 后再提供，当前在 RFVP 游戏详情页显示原因说明。

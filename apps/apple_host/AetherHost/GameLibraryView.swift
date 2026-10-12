@@ -107,6 +107,25 @@ struct GameDetailView: View {
             metadata
         }
     }
+    /// Detected runtime markers plus the provider probe the engine will use.
+    /// Read-only: `engine_open_game` ignores an explicit startup script, so no
+    /// launch-entry override is offered.
+    private var runtimeInspection: GameRuntimeInspection {
+        GameRuntimeDetector.inspect(root: model.repository.gameURL(game))
+    }
+    private var runtimeStatus: String {
+        guard runtimeInspection.isRecognized else { return model.text("runtimeUnrecognized") }
+        guard let providerId = runtimeInspection.runtime.providerId else { return "" }
+        let probe = AetherEngineSession.probeRuntimeProvider(
+            providerId, path: model.repository.gameURL(game).path)
+        if probe > 0 { return model.text("runtimeProviderMatched") }
+        // KiriKiri games run through the built-in host path, so a missing
+        // provider probe is not a launch blocker there (Godot probes only the
+        // dedicated runtimes and keeps kirikiri as the fallback).
+        if runtimeInspection.runtime == .kirikiri { return model.text("runtimeLegacyHost") }
+        if probe == 0 { return model.text("runtimeProviderMismatch") }
+        return model.text("runtimeProviderMissing")
+    }
     private var summary: some View {
         VStack(alignment: .leading, spacing: 24) {
             Text(game.displayTitle).font(.largeTitle.bold()).textSelection(.enabled).fixedSize(horizontal: false, vertical: true)
@@ -128,6 +147,19 @@ struct GameDetailView: View {
                         LabeledContent(model.text("playTime")) {
                             Text(String(format: model.text("dashPlayedLabel"), PlayStats.duration(game.playDurationSeconds)))
                         }
+                    }
+                    LabeledContent(model.text("runtime")) {
+                        Text(model.text(runtimeInspection.runtime.textKey))
+                    }
+                    if !runtimeStatus.isEmpty {
+                        Text(runtimeStatus).font(.caption).foregroundStyle(palette.secondary.color)
+                    }
+                    LabeledContent(model.text("launchEntry")) {
+                        Text(runtimeInspection.entryFile.isEmpty ? model.text("launchEntryDirectory") : runtimeInspection.entryFile)
+                            .textSelection(.enabled)
+                    }
+                    if runtimeInspection.runtime == .rfvp {
+                        Text(model.text("rfvpEncodingPending")).font(.caption).foregroundStyle(palette.secondary.color)
                     }
                     Text(model.text(game.isExternal ? "externalStorage" : "managedStorage")).foregroundStyle(palette.secondary.color)
                     if game.isExternal { Text(model.text("linkHelp")).font(.caption).foregroundStyle(palette.secondary.color) }

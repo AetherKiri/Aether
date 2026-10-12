@@ -197,18 +197,10 @@ struct GameLibrary {
     }
 
     func isGame(_ folder: URL) throws -> Bool {
-        let files = try FileManager.default.contentsOfDirectory(at: folder, includingPropertiesForKeys: [.isRegularFileKey])
-        let entries = Set(["startup.tjs", "startup.ks", "0.txt", "00.txt", "nscr_sec.dat", "nscript.___", "nscript.dat", "onscript.nt2", "onscript.nt3"])
-        let regularNames = Set(try files.filter { try $0.resourceValues(forKeys: [.isRegularFileKey]).isRegularFile == true }
-            .map { $0.lastPathComponent.lowercased() })
-        // These markers match the public Minori provider's supported profiles.
-        let minoriExecutables: Set<String> = ["sppl1.exe", "sppl1_cn.exe", "trinoline.exe", "trinoline_chs.exe"]
-        if regularNames.isSuperset(of: ["scr.paz", "sys.paz"]), !regularNames.isDisjoint(with: minoriExecutables) { return true }
-        return try files.contains {
-            let name = $0.lastPathComponent.lowercased()
-            guard entries.contains(name) || name.hasSuffix(".xp3") else { return false }
-            return try $0.resourceValues(forKeys: [.isRegularFileKey]).isRegularFile == true
-        }
+        // Keep the read error visible for unreadable folders, then use the same
+        // marker detection as the detail page so import and display agree.
+        _ = try FileManager.default.contentsOfDirectory(at: folder, includingPropertiesForKeys: [.isRegularFileKey])
+        return GameRuntimeDetector.inspect(root: folder).isRecognized
     }
 
     func importArchive(_ selected: URL, existing: [LibraryGame]) throws -> (games: [LibraryGame], imported: LibraryGame) {

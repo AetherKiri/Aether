@@ -505,7 +505,7 @@
 31b. [ ] **两处兼容小项待查**：`new DMMCloud()` 报 `Invalid argument count`；`new Zlib().version()` 报成员不存在（可能只是探针写法/注册方式差异）
 32. [ ] **内核后续：内存可观测（借鉴 `MemoryDesign.md`）**：分配头带 tag + `AllocTagScope` 标签栈，让"谁吃掉了内存"可回答；当前只有粗粒度 `engine_get_memory_stats`
 
-33. [ ] **产品 UI/设置完整对齐**：调查 P0 已完成；P1核心、P2集合/详情与四主题已接入，完整CUA/无障碍验收待补；P3a能力回退、P3b画布/输出、P3c采样、P3d FPS/调度、P4a会话时长/主页统计、P4b诊断profile/性能覆盖层、P4d临时高级工具与P4e游戏内虚拟控制已接入并通过行为回归与真实CUA（含手柄拖动/模式切换补验）；P4其余模块与P5–P7见 [实施计划](apple_host_ui_plan.md)（视频库暂停维护）。
+33. [ ] **产品 UI/设置完整对齐**：调查 P0 已完成；P1核心、P2集合/详情与四主题已接入，完整CUA/无障碍验收待补；P3a能力回退、P3b画布/输出、P3c采样、P3d FPS/调度与 P4a/P4b/P4d/P4e/P4f 已接入并通过行为回归与真实CUA；P4 至此完成（调试控制台、场景测试入口、RFVP 编码仍按能力缺口记录），P5–P7见 [实施计划](apple_host_ui_plan.md)（视频库暂停维护）。
 
 ## 变更记录
 
@@ -627,3 +627,12 @@
 - CUA（隔离 fixture 库 + 真实 KAG3）：会话起始只有入口按钮；点击后出现面板、指针手柄与模式行；透明度 0.5 下按键变暗而手柄清晰（首次布局重叠已修复重验）；`左键点击` 在虚拟指针坐标发送真实 down/up（host.log `input pointer type=1/3 at (319,239)`）并推进剧情；`回车` 按键推进剧情。证据：`out/apple_host/evidence/ui-p4e/`。
 - 补验（解锁后重跑）：CUA 拖动手柄产生 `virtual cursor -> (385,207)/(451,174)/(517,142)`；面板内 `切换模式` 切到 `模式 · 直接触摸` 后手柄与左键按钮消失、切回恢复，且 `virtualControlMode` 立即写入偏好；另新增真实会话行为测试覆盖手柄居中、累计、边界收敛、真实 down/up 与模式切换重置。
 - 残余未验收：真实指针与虚拟手柄同时使用的边界行为待观察；手柄拖动依赖显示缩放换算，尚无比对基准。
+
+### 2026-10-12：UI P4f 运行时元数据
+
+- 新增 `GameRuntimeDetector`：按 Godot `GameMetadata.inspect()` 顺序识别 KiriKiri（XP3/startup.tjs/ks）、ONScripter、Siglus、Minori 与校验过的 RFVP `.hcb`（头校验端口自 `_hcb_launch_file()`），并区分“未识别”。
+- 导入门限复用同一检测：Siglus 标记与校验过的 `.hcb` 目录现在可以加入游戏库（此前只能识别 KAG/ONS/XP3/Minori），未识别目录仍拒绝；托管/引用与刷新语义不变。
+- 详情页新增只读「运行时类型」「启动入口」：状态来自真实 `engine_probe_runtime_provider`（>0 匹配 / 0 不识别 / <0 本构建未链接）；KiriKiri 走内置宿主路径，provider 未匹配时显示内置路径说明而不是“无法启动”。启动入口不做覆盖（`engine_open_game` 忽略 `startup_script`），RFVP 编码在未链接 provider 时显示原因、不提供选择。
+- 测试：`python3 tools/apple_host_settings_tests.py` 通过，含标记检测、HCB 校验、导入门限与真实 provider probe（ONScripter 匹配其夹具并拒绝 KAG，未知 id 返回负值）；Debug 构建通过。
+- CUA（隔离 fixture 库）：KAG3 详情显示 `KiriKiri` + 内置宿主说明 + 入口 `startup.tjs`；ONScripter 夹具详情显示 `ONScripter` + `已匹配本机构建中的 runtime provider。` + 入口 `0.txt`。证据：`out/apple_host/evidence/ui-p4f/`。
+- 残余未验收：Siglus/hcb 目录通过真实文件面板导入未走 CUA（导入门限由单测覆盖）；RFVP 编码与 `.hcb` 实机运行需要包含 RFVP provider 的构建；调试控制台与场景测试入口仍未迁移。

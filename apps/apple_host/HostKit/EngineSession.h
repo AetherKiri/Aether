@@ -12,6 +12,12 @@ NS_ASSUME_NONNULL_BEGIN
 // doc/apple_host_seam_inventory.md.
 @interface AetherEngineSession : NSObject
 
+// Probes the registered runtime provider for a game root (>0 = match,
+// 0 = no match, <0 = provider unavailable). Same query the Godot host uses
+// before launch; no engine session is required.
++ (int32_t)probeRuntimeProvider:(NSString *)runtimeId path:(NSString *)gameRootPath
+    NS_SWIFT_NAME(probeRuntimeProvider(_:path:));
+
 - (BOOL)initializeWithWritablePath:(NSString *)writablePath
                          cachePath:(NSString *)cachePath
                              error:(NSError **)error

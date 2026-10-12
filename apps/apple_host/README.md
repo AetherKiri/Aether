@@ -213,6 +213,13 @@ M2 CUA 验证流程及范围见 `doc/apple_host_progress.md`。平台标准菜�
 详情页和列表右键菜单支持重命名、从库移除。名称保存到索引，不改变目录或存档。
 移除只删除列表记录，保留文件；管理副本仍在 Games/<UUID>，可通过「添加外部游戏目录」
 选择保留的副本恢复游玩，也可重新复制导入。重新导入原始目录不会自动找回保留副本的存档。
+
+详情页显示只读的「运行时类型」与「启动入口」：标记识别沿用 Godot `GameMetadata`
+（KiriKiri 的 XP3/startup、ONScripter 脚本、Siglus 的 gameexe/scene、Minori 的
+scr.paz+sys.paz+可执行文件、校验过文件头的 RFVP `.hcb`），状态来自真实
+`engine_probe_runtime_provider`。Siglus 与校验过的 `.hcb` 目录现在也能导入。
+启动入口不提供覆盖——`engine_open_game` 的 `startup_script` 参数在当前运行时被忽略；
+RFVP 文本编码同样等到链接 RFVP provider 后再提供，当前显示原因说明。
 「添加外部游戏目录」直接引用所选目录（支持 data 包装目录），不复制；存档和运行文件写入引用目录。
 同模式重复添加沿用条目，复制与外部引用可分别管理。外部目录移动或丢失时需重新添加。
 旧索引默认按管理副本读取，损坏索引仍保留并禁止修改。

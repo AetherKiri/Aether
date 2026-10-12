@@ -30,5 +30,6 @@
 - macOS 侧现状：M0/M2 完成、M1 证据齐（待用户确认标题登记）、M3 产品对齐按 UI P1–P6 推进并已通过行为回归 + 真实 CUA。基准提交 `e4da4ba8`（`feature/apple-native-host-m0`）。
 - iOS 必做（详见移交文档）：交叉编译 `aether_apple_host_core`/`engine_api`、真实 StoreKit（`com.aether.list.limit`/`com.aether.coffee`）、移动端安全区/横屏/界面比例/触摸输入、`engine_legacy_activate_audio_session_for_host` 音频会话、沙盒目录与书签、「已拒绝」独立页面。
 - iOS 首期只提供 KiriKiri；ONS/Siglus 暂不接入，保留已有实现。
+- 验证顺序按用户安排：先用可用 iOS/iPadOS 26 环境推进，再补 iOS/iPadOS 18 运行验证；不能把 26 的结果写成 18 已验收。
 - iOS/iPadOS 最低部署版本为 18.0；迁移契约与阶段验收以 [iOS spec](doc/apple_host_ios_spec.md) 和 [实践文档](doc/apple_host_ios_plan.md) 为准。
 - 硬约束不变：不改 `engine_api`/provider ABI；未移植的 P5b 算法不开放；视频库暂停维护；每轮一个提交并在检查通过后 push。

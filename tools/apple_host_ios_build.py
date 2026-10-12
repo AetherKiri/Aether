@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """Build the actual native Apple host core with isolated iOS 18 SDK caches.
 
-This builds archives, not an App or proof of iOS 18 runtime compatibility.
+By default this builds archives; --probe-app builds an internal UIKit Demo probe.
+Neither is proof of iOS 18 runtime compatibility.
 A native App must link the complete CMake dependency closure and explicitly
 reference aether_apple_host_core_initialize so static registration survives.
 """
@@ -28,14 +29,16 @@ def commands(root, args):
                  f"-DVCPKG_OVERLAY_TRIPLETS={root / 'vcpkg/triplets'}",
                  f"-DVCPKG_INSTALLED_DIR={build / 'vcpkg_installed'}",
                  "-DCMAKE_EXPORT_COMPILE_COMMANDS=ON", "-DBUILD_GODOT_EXTENSION=OFF",
+                 f"-DAETHERKIRI_APPLE_HOST_IOS_PROBE={'ON' if args.probe_app else 'OFF'}",
                  "-DBUILD_ENGINE_API=ON", "-DAETHERKIRI_ENABLE_APPLE_HOST=ON",
                  "-DENABLE_TESTS=OFF", "-DBUILD_TOOLS=OFF", "-DBUILD_GPU_BRIDGE=OFF",
                  "-DAETHERKIRI_ENABLE_INTERNAL=OFF", "-DAETHERKIRI_ENABLE_MINORI=OFF",
                  "-DAETHERKIRI_ENABLE_RFVP=OFF", "-DAETHERKIRI_ENABLE_SOFTPAL_RUNTIME=OFF",
                  "-DAETHERKIRI_ENABLE_ONSCRIPTER=OFF",
                  "-DAETHERKIRI_ENABLE_SIGLUS=OFF"]
+    targets = ["AetherHostIOSProbe"] if args.probe_app else ["aether_apple_host_core", "engine_api"]
     return build, configure, ["cmake", "--build", str(build), "--target",
-                              "aether_apple_host_core", "engine_api", "--parallel", str(args.jobs)]
+                              *targets, "--parallel", str(args.jobs)]
 
 
 def run_logged(command, path, env):
@@ -53,6 +56,7 @@ def main():
     parser.add_argument("--providers", default="kirikiri", help="only kirikiri in the current migration phase")
     parser.add_argument("--jobs", type=int, default=8)
     parser.add_argument("--dry-run", action="store_true")
+    parser.add_argument("--probe-app", action="store_true", help="build internal UIKit Demo probe")
     parser.add_argument("--configure-only", action="store_true")
     args = parser.parse_args()
     if args.jobs < 1:
@@ -84,6 +88,12 @@ def main():
             for relative in ["bridge/apple_host/libaether_apple_host_core.a", "abi/libengine_api.a"]:
                 if not (build / relative).exists():
                     raise RuntimeError(f"missing archive: {relative}")
+            if args.probe_app:
+                app = build / "bridge/apple_host/AetherHostIOSProbe.app"
+                for relative in ["AetherHostIOSProbe", "Info.plist", "data.xp3", "aetherkiri-runtime-cjk.otf"]:
+                    if not (app / relative).exists():
+                        raise RuntimeError(f"missing probe App component: {relative}")
+                metadata["probeApp"] = str(app)
             metadata["status"] = "built"
         print(f"{metadata['status']}: {build}")
     except (RuntimeError, OSError) as error:

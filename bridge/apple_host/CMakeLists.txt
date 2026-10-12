@@ -82,3 +82,31 @@ set_target_properties(aether_apple_host_core PROPERTIES
     BUILD_WITH_INSTALL_RPATH TRUE
     INSTALL_RPATH "@loader_path"
 )
+
+option(AETHERKIRI_APPLE_HOST_IOS_PROBE "build internal UIKit iOS migration probe" OFF)
+if(IOS AND AETHERKIRI_APPLE_HOST_IOS_PROBE)
+    enable_language(OBJCXX)
+    set(_probe_dir "${CMAKE_SOURCE_DIR}/apps/apple_host/IOSProbe")
+    set(_hostkit "${CMAKE_SOURCE_DIR}/apps/apple_host/HostKit")
+    set(_probe_resources
+        "${CMAKE_SOURCE_DIR}/apps/godot_app/builtin_demos/aetherkiri-kag3/data.xp3"
+        "${CMAKE_SOURCE_DIR}/apps/godot_app/assets/fonts/aetherkiri-runtime-cjk.otf")
+    add_executable(AetherHostIOSProbe MACOSX_BUNDLE
+        "${_probe_dir}/main.mm" "${_hostkit}/EngineSession.mm" "${_hostkit}/MetalBridge.mm"
+        ${_probe_resources})
+    set_source_files_properties(${_probe_resources} PROPERTIES MACOSX_PACKAGE_LOCATION Resources)
+    target_compile_features(AetherHostIOSProbe PRIVATE cxx_std_17)
+    target_compile_options(AetherHostIOSProbe PRIVATE "$<$<COMPILE_LANGUAGE:OBJCXX>:-fobjc-arc>")
+    target_include_directories(AetherHostIOSProbe PRIVATE "${_hostkit}" "${CMAKE_SOURCE_DIR}/abi/include")
+    target_link_libraries(AetherHostIOSProbe PRIVATE aether_apple_host_core engine_api
+        "-framework UIKit" "-framework Foundation" "-framework QuartzCore"
+        "-framework Metal" "-framework MetalKit" "-framework CoreGraphics"
+        "-framework CoreVideo" "-framework CoreMedia" "-framework VideoToolbox"
+        "-framework AVFoundation" "-framework AudioToolbox" "-framework Accelerate"
+        "-framework ImageIO" "-framework CoreText" "-framework Security" "-framework GameController"
+        "-framework CoreHaptics")
+    set_property(TARGET AetherHostIOSProbe PROPERTY LINK_LIBRARY_OVERRIDE_krkr2plugin WHOLE_ARCHIVE)
+    set_target_properties(AetherHostIOSProbe PROPERTIES
+        MACOSX_BUNDLE_INFO_PLIST "${_probe_dir}/Info.plist.in"
+        XCODE_ATTRIBUTE_CODE_SIGNING_ALLOWED NO)
+endif()

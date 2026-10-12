@@ -577,3 +577,17 @@ python3 tools/apple_host_ios_build.py --sdk iphoneos --configuration Debug
 使用已配置的 `VCPKG_ROOT`，否则使用仓库 `.devtools/vcpkg`。`--dry-run`显示命令，`--configure-only`仅配置；产物/日志/状态位于 `out/apple_host/ios/{device,simulator}/{debug,release}/`。专用triplet以18.0为最低版本，不改变Godot旧构建；两平台缓存隔离。当前依赖仍由仓库vcpkg manifest解析；provider关闭不等于全部无关依赖已从manifest移除。
 
 iOS host core为静态库，App须链接完整依赖闭包并显式引用 `aether_apple_host_core_initialize`；仅看到两个 `.a` 文件不能证明provider已注册或游戏能运行。运行验收见 [迁移实践](../../doc/apple_host_ios_plan.md)。
+
+
+内部UIKit迁移探针（非产品Shell）：
+
+```bash
+python3 tools/apple_host_ios_build.py --sdk iphonesimulator --probe-app
+```
+
+成功后App位于 `out/apple_host/ios/simulator/debug/bridge/apple_host/AetherHostIOSProbe.app`。
+用实际 `simctl list devices available` 中的设备ID安装并启动bundle ID
+`org.github.aetherkiri.host.iosprobe`；在Simulator点击Run Demo、画布、Enter与Stop，
+检查后台/返回。当前按用户安排先测iOS26，18运行验收另补。
+该探针包含仓库Demo和字体，仅软件画面与UIKit输入/生命周期，不代表产品导航、
+协议门、Files、StoreKit或Metal/G4完成。完整链接和运行以实践文档证据为准。

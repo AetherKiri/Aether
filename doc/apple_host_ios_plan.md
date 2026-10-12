@@ -1,14 +1,14 @@
 # iOS 18 / iPadOS 18 迁移实践与验收
 
-- 日期：2026-10-12；状态：I0待实施；要求来源：[iOS spec](apple_host_ios_spec.md)。
-- 当前macOS基线 `a52696b6`；当前工程只有macOS target，以下新增文件/命令是实施目标，不是已经存在的工具。
+- 日期：2026-10-12；状态：I0实施中；要求来源：[iOS spec](apple_host_ios_spec.md)。
+- 当前macOS基线 `a52696b6`；正式产品工程仍只有macOS target；iOS核心构建脚本已建立，产品target与后续命令仍是实施目标。
 - 每阶段交付代码、实际执行、失败路径、测试、文档与一次commit/push。阶段标记只依据证据，不依据控件已出现。
 
 ## 1. 工作原则
 
 先阅读AGENTS.md、spec、历史移交、ABI及现有iOS Godot构建参考；记录SDK、Xcode、设备与provider可用性。不得撤销其他任务修改。每轮提交完整已验收切片，不为“移动移植”删除macOS实现或修改公共ABI。
 
-顺序I0→I1→I2→I3→I4→I5→I6；I2b外部引用在复制导入完成后推进。模拟器做布局/逻辑，iPad和iPhone真机做触摸、GPU、音频、内存及商店。iOS18设备或runtime缺失时明示阻塞，不能以更高OS通过冒充18兼容。
+顺序I0→I1→I2→I3→I4→I5→I6；I2b外部引用在复制导入完成后推进。按用户安排先用可用iOS26环境推进，随后补iOS18运行验证；deployment仍为18.0。模拟器做布局/逻辑，iPad和iPhone真机做触摸、GPU、音频、内存及商店。iOS18设备或runtime缺失时明示阻塞，不能以更高OS通过冒充18兼容。
 
 ## 2. 分阶段实践
 
@@ -151,3 +151,19 @@ Goal模式按阶段持续推进，阶段完成不等于整个M4完成。达到G4
 
 - 后续依赖：OpenSSL配置曾因模拟器旧triplet的分号参数列表被legacy make helper截断而失败；本轮专用triplet改为shell参数串后OpenSSL/curl/FFmpeg继续安装。探针Mach-O平台分别为IOS/IOSSIMULATOR，minOS均18.0，SDK26.0。
 - 当前完整simulator核心构建仍进行依赖安装，未产出可验收引擎归档；I0保持“实施中”。最新进程与状态以 `out/apple_host/ios/simulator/debug/build-result.json` 和configure.log为准，下轮先检查，不因观察超时重启任务。
+
+
+## 6. iOS 26 优先验证与 UIKit 探针（2026-10-12）
+
+- 用户允许先测26再逐步补18；18.0部署约束、API可用性及最终18运行验收不变。
+- 新增内部 `IOSProbe`，通过 `python3 tools/apple_host_ios_build.py --sdk iphonesimulator --probe-app` 构建；链接真实KiriKiri静态闭包，显式initialize，携带仓库KAG3 Demo和字体。它只用于迁移接缝验证，不是产品UI，也不提供商店/协议门/Files导入。
+- 探针实现安全区、44pt按钮、软件帧显示、单主指画布映射/黑边拒绝/取消、Enter、停止与scene暂停恢复；使用CADisplayLink真实elapsed并限制恢复追赶。软件帧不构成Metal/GPU性能证据。
+- libffi揭示新make helper需要列表而OpenSSL旧helper需要shell参数串；参数串修正现仅限定OpenSSL，避免破坏其他依赖。
+- 源码SDK语法检查通过；完整App链接与iOS26 CUA结果须另记实际结果。iOS18运行、device核心、产品Shell与G4仍未完成。
+
+### 2026-10-12：iOS 26 Simulator UIKit 探针验收
+
+- `iphonesimulator` Debug 探针已完成完整链接，Mach-O 为 `IOSSIMULATOR`、最低版本18.0、SDK26.0；已补 CoreText 链接以满足 KiriKiri 字体枚举。
+- CUA 设备：iPad Pro 11-inch (M4)，iOS26.0。真实 KAG3 Demo 启动为 `state=2`、输出640x480；点击画布产生 pointer down/up 并推进场景，Enter 产生 key 事件，Stop 清理会话。
+- 通过 Home 切后台、再次启动后继续出帧；日志记录 `Host lifecycle deactivate/activate`，没有黑屏或启动错误。证据：`out/apple_host/evidence/ios-I1-probe26/`（stdout/stderr）及 `out/apple_host/ios/simulator/debug/build-result.json`。
+- 该证据只覆盖 iOS26 Simulator 的 KiriKiri 软件帧、UIKit 触摸/按键和生命周期；不替代 iOS18 runtime、真机 Metal/音频、产品 Shell、Files/StoreKit 或 G4 验收。

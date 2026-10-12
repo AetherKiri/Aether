@@ -2436,6 +2436,7 @@ const HOME_TILE_COVER_WIDTH := 184.0
 const HOME_ROW_HEIGHT := 104.0
 const HOME_ROW_COVER_WIDTH := 70.0
 const HOME_POSTER_ASPECT := 1.38
+const HOME_GRID_SHADOW_GUTTER := 32
 const SHELL_NAV_UNDERLINE := 3.0
 const HOME_COMPACT_BREAKPOINT := 760.0
 const HOME_PHONE_BREAKPOINT := 520.0
@@ -4924,6 +4925,7 @@ func _layout_home_view(window_size: Vector2) -> void:
     _sync_home_action_labels()
     var scroll_bar_width := game_scroll.get_v_scroll_bar().get_combined_minimum_size().x
     var list_width := maxf(HOME_TILE_MIN_WIDTH, window_size.x - margin * 2.0 - scroll_bar_width)
+    var shadow_gutter := mini(HOME_GRID_SHADOW_GUTTER, int(margin))
     var gap := 12.0 if phone else (16.0 if compact else 24.0)
     var columns := 1
     if not compact:
@@ -4931,6 +4933,14 @@ func _layout_home_view(window_size: Vector2) -> void:
     for grid in [game_list, video_list]:
         if grid == null:
             continue
+        # Extend the clip into the page gutter, then inset the grid by the
+        # same amount so edge-card shadows fit without shifting the cards.
+        var pad := grid.get_parent() as MarginContainer
+        var scroll := pad.get_parent() as ScrollContainer
+        scroll.offset_left = -shadow_gutter
+        scroll.offset_right = shadow_gutter
+        pad.add_theme_constant_override("margin_left", shadow_gutter)
+        pad.add_theme_constant_override("margin_right", shadow_gutter)
         grid.columns = columns
         grid.add_theme_constant_override("h_separation", int(gap))
         grid.add_theme_constant_override("v_separation", int(gap + (0.0 if compact else 8.0)))
@@ -18305,8 +18315,8 @@ func _home_grid_pad(grid: GridContainer) -> MarginContainer:
     pad.name = "GridPad"
     pad.size_flags_horizontal = Control.SIZE_EXPAND_FILL
     pad.mouse_filter = Control.MOUSE_FILTER_PASS
-    pad.add_theme_constant_override("margin_top", 18)
-    pad.add_theme_constant_override("margin_bottom", 28)
+    pad.add_theme_constant_override("margin_top", 28)
+    pad.add_theme_constant_override("margin_bottom", 48)
     pad.add_child(grid)
     return pad
 

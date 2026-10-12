@@ -505,7 +505,7 @@
 31b. [ ] **两处兼容小项待查**：`new DMMCloud()` 报 `Invalid argument count`；`new Zlib().version()` 报成员不存在（可能只是探针写法/注册方式差异）
 32. [ ] **内核后续：内存可观测（借鉴 `MemoryDesign.md`）**：分配头带 tag + `AllocTagScope` 标签栈，让"谁吃掉了内存"可回答；当前只有粗粒度 `engine_get_memory_stats`
 
-33. [ ] **产品 UI/设置完整对齐**：调查 P0 已完成；P1核心、P2集合/详情与四主题已接入，完整CUA/无障碍验收待补；P3a能力回退、P3b画布/输出、P3c采样与P3d FPS/调度已接入并通过行为回归、真实smoke及设置页CUA；P4–P7见 [实施计划](apple_host_ui_plan.md)。
+33. [ ] **产品 UI/设置完整对齐**：调查 P0 已完成；P1核心、P2集合/详情与四主题已接入，完整CUA/无障碍验收待补；P3a能力回退、P3b画布/输出、P3c采样、P3d FPS/调度与P4a会话时长/主页统计已接入并通过行为回归与真实CUA；P4其余模块与P5–P7见 [实施计划](apple_host_ui_plan.md)。
 
 ## 变更记录
 
@@ -581,3 +581,14 @@
 - KAG3 30 秒 smoke 三次运行均通过：软件 original 输出 + Timer 跟随显示（113.1 tick/s）、Metal + 限制 80 + Timer（76.0 tick/s，不超过目标）、Metal + DisplayLink 跟随显示（112.9 tick/s）；均 RGB max diff=0、`lease_failures=0`、`leases_live=0`、Metal failures=0，脚本化生命周期事件重置调度且 `max_delta_ms<=100`。证据：`out/apple_host/evidence/ui-p3d-software/`、`ui-p3d-metal-80/`、`ui-p3d-metal-display/`。
 - CUA 在真实 Debug 窗口验证：默认关闭并显示跟随显示刷新、五个目标值可见、选择 120 FPS 保存后显示“设置已保存”且保存禁用、重启后仍为启用 120 FPS。证据：`out/apple_host/evidence/ui-p3d-cua/`。
 - 残余未验收：真机/长期运行的显示器睡眠唤醒与真实系统休眠未单独验收；软件诊断路径在 1080p 输出下的 CPU 双三次缩放在 Debug 构建极慢（30 秒仅约4个 tick，属既有 fallback 性能问题，本轮未改），因此软件 smoke 使用 original 输出；P3a 预启动页面 CUA、P1/P2 无障碍补验、G1 登记/深流程、Minori、P5、IAP 与更新器仍不属本切片。
+
+### 2026-10-12：UI P4a 会话时长与主页统计
+
+- `LibraryGame` 新增 `playDurationSeconds`（旧索引缺字段=0，负值归一）；`GameLibrary.addPlayDuration` 原子累加，沿用 Godot 单次会话上限一天、非正贡献忽略。
+- `EngineController` 仅在 `startup state: SUCCEEDED` 后用单调时钟开始会话，`consumePlaySeconds()` 一次返回自上次提交以来的运行秒数；返回游戏库、重启与应用退出（`applicationWillTerminate`）各提交一次，失败/启动中不计时，重复返回与重启不重复计数。
+- `PlayStats` 迁移 Godot `_dashboard_stats`：总时长、已游玩、近七天活跃、平均时长（整分钟截断）、时长排行（>=60s 前5）、最近游玩（前5）、七天足迹/活跃天数、`DASH_MILESTONES` 里程碑与按小时问候语。
+- 主页重建为 Godot 内容结构：三层进度环与中心累计时长、问候/统计副标题、三条图例、打开库入口、四张统计卡（作品总数/已游玩/本周活跃/平均时长）、近七天足迹、继续阅读卡、时长排行与最近游玩；详情页在有累计时长时显示“游玩时长”。平台差异：SF Symbols、系统日期样式、不做极光/模糊背板与进入动画。
+- `ThemePalette` 新增 Godot `accent_2`/`accent_3`/`success` 并纳入配色交叉检查；主页统计文案五语言补齐（Godot 原版 dash.* 只有 zh-Hans/en）。
+- 测试：`python3 tools/apple_host_settings_tests.py` 通过，含旧索引兼容、时长/问候格式化、固定日历统计算法、上限累加、真实引擎会话累计（启动中/被拒绝启动不计时、重复返回不加时、重启先提交）与五语言 `%s` 说明符防护；Debug 构建通过。
+- CUA（隔离 fixture 库，3 条 10740s）验证主页数值与内容：2 小时 · 59 分钟、平均 59m、里程碑 60%、3/3、3/7、七天足迹、排行与最近列表；点“继续”真实启动游戏并在“返回游戏库”后把条目 5400s → 5452s。证据：`out/apple_host/evidence/ui-p4a/`。
+- 残余未验收：五语言主页文案只点验 zh-Hans；空库主页状态、VoiceOver/键盘遍历未验收；运行时类型/启动入口/RFVP 编码、诊断 profile/覆盖层/临时工具、虚拟控制模式与播放器交互仍属 P4 后续切片。

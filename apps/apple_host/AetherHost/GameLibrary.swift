@@ -7,6 +7,8 @@ struct LibraryGame: Codable, Identifiable, Equatable {
     let sourcePath: String
     let importedAt: Date
     var lastPlayedAt: Date?
+    // Running game time, accumulated per session. Missing in legacy indexes.
+    var playDurationSeconds: Int = 0
     // Missing in legacy indexes: nil means a managed copy.
     var externalPath: String? = nil
     // Covers are stored as game://relative/path when they live inside the
@@ -20,7 +22,8 @@ struct LibraryGame: Codable, Identifiable, Equatable {
 
 extension LibraryGame {
     enum CodingKeys: String, CodingKey {
-        case id, title, directory, sourcePath, importedAt, lastPlayedAt, externalPath, coverPath, coverSuppressed
+        case id, title, directory, sourcePath, importedAt, lastPlayedAt, playDurationSeconds,
+             externalPath, coverPath, coverSuppressed
     }
 
     init(from decoder: Decoder) throws {
@@ -31,6 +34,7 @@ extension LibraryGame {
         sourcePath = try values.decode(String.self, forKey: .sourcePath)
         importedAt = try values.decode(Date.self, forKey: .importedAt)
         lastPlayedAt = try values.decodeIfPresent(Date.self, forKey: .lastPlayedAt)
+        playDurationSeconds = max(0, try values.decodeIfPresent(Int.self, forKey: .playDurationSeconds) ?? 0)
         externalPath = try values.decodeIfPresent(String.self, forKey: .externalPath)
         coverPath = try values.decodeIfPresent(String.self, forKey: .coverPath)
         coverSuppressed = try values.decodeIfPresent(Bool.self, forKey: .coverSuppressed) ?? false
@@ -139,6 +143,18 @@ struct GameLibrary {
         guard let index = updated.firstIndex(where: { $0.id == id }) else { throw Failure.invalidManifest }
         updated[index].coverPath = nil
         updated[index].coverSuppressed = true
+        try save(updated)
+        return updated
+    }
+
+    /// Adds running time to one entry. Mirrors Godot `_add_play_duration`:
+    /// non-positive contributions are ignored and a single session can add at
+    /// most one day, so a suspended clock cannot inflate the statistics.
+    func addPlayDuration(_ seconds: Int, to id: UUID, existing: [LibraryGame]) throws -> [LibraryGame] {
+        guard seconds > 0 else { return existing }
+        var updated = existing
+        guard let index = updated.firstIndex(where: { $0.id == id }) else { throw Failure.invalidManifest }
+        updated[index].playDurationSeconds += min(seconds, PlayStats.maximumSessionSeconds)
         try save(updated)
         return updated
     }

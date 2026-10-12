@@ -452,6 +452,7 @@ final class ShellModel: ObservableObject {
         let fullscreen = windowIsFullscreen
         showGameTextEntry = false
         confirmRestart = false
+        commitPlayTime()
         engine.shutdown()
         activeGame = nil
         startGame(game, fullscreenBefore: fullscreen)
@@ -516,7 +517,10 @@ final class ShellModel: ObservableObject {
     }
 
     private var hostWindow: NSWindow? {
-        NSApp.windows.first(where: { $0.identifier?.rawValue == "main" }) ?? NSApp.keyWindow
+        // NSApp is nil until AppKit finishes launching; unattended entry points
+        // (autorun benchmarks, unit tests) must not crash on window queries.
+        guard let application = NSApp else { return nil }
+        return application.windows.first(where: { $0.identifier?.rawValue == "main" }) ?? application.keyWindow
     }
 
     func exportDiagnostics() {
@@ -604,6 +608,7 @@ final class ShellModel: ObservableObject {
 
     func returnToLibrary() {
         showGameTextEntry = false
+        commitPlayTime()
         engine.shutdown()
         activeGame = nil
         confirmReturn = false
@@ -612,5 +617,16 @@ final class ShellModel: ObservableObject {
             fullscreenBeforeGame = nil
             if windowIsFullscreen != shouldBeFullscreen { hostWindow?.toggleFullScreen(nil) }
         }
+    }
+
+    /// Commits running game time to the active library entry. Failed startups
+    /// have no session, and the engine consumes the accumulated seconds, so a
+    /// restart or repeated return cannot count the same time twice.
+    private func commitPlayTime() {
+        guard let game = activeGame else { return }
+        let seconds = engine.consumePlaySeconds()
+        guard seconds > 0 else { return }
+        do { games = try repository.addPlayDuration(seconds, to: game.id, existing: games) }
+        catch { self.error = friendlyError(error) }
     }
 }

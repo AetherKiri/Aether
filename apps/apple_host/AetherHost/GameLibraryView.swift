@@ -124,6 +124,11 @@ struct GameDetailView: View {
                     LabeledContent(model.text("played")) {
                         if let date = game.lastPlayedAt { Text(date, style: .date) } else { Text(model.text("never")) }
                     }
+                    if game.playDurationSeconds > 0 {
+                        LabeledContent(model.text("playTime")) {
+                            Text(String(format: model.text("dashPlayedLabel"), PlayStats.duration(game.playDurationSeconds)))
+                        }
+                    }
                     Text(model.text(game.isExternal ? "externalStorage" : "managedStorage")).foregroundStyle(palette.secondary.color)
                     if game.isExternal { Text(model.text("linkHelp")).font(.caption).foregroundStyle(palette.secondary.color) }
                     if !FileManager.default.fileExists(atPath: model.repository.gameURL(game).path) {

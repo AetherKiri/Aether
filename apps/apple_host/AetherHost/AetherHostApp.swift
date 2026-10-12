@@ -35,4 +35,10 @@ final class HostAppDelegate: NSObject, NSApplicationDelegate {
             NSApp.windows.first?.makeKeyAndOrderFront(nil)
         }
     }
+
+    /// Commits the running session's play time and destroys the engine before
+    /// the process exits; without this the last session would be lost.
+    func applicationWillTerminate(_ notification: Notification) {
+        model?.closeActiveSession()
+    }
 }

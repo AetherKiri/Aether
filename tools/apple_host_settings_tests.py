@@ -15,6 +15,7 @@ def check_palette_parity(root):
     modes = {"dark": "_", "classic": "LIGHT", "warmDark": "WARM_DARK", "warmLight": "WARM_LIGHT"}
     fields = {"background": "background", "raised": "background_raised", "surface": "surface",
               "primary": "text_primary", "secondary": "text_secondary", "accent": "accent",
+              "accent2": "accent_2", "accent3": "accent_3", "success": "success",
               "onAccent": "text_on_accent", "accentText": "accent_text", "danger": "danger"}
     for mode, key in modes.items():
         expected = dict(re.findall(r'^\s+(\w+) = Color\("([0-9a-f]{6})"\)', blocks[key], re.M))
@@ -50,6 +51,7 @@ targets:
       - path: {q(root / 'apps/apple_host/Tests/RendererBehaviorTests.swift')}
       - path: {q(root / 'apps/apple_host/Tests/RenderGeometryTests.swift')}
       - path: {q(root / 'apps/apple_host/Tests/FrameSchedulerTests.swift')}
+      - path: {q(root / 'apps/apple_host/Tests/PlayStatsTests.swift')}
     settings:
       base:
         ARCHS: arm64

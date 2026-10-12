@@ -139,6 +139,11 @@ final class EngineController: ObservableObject {
     private var lastPublishedImage: CGImage?
     private var pacingSessionStart: TimeInterval = 0
     private var lifecycleObservers: [NotificationCenter: [NSObjectProtocol]] = [:]
+    // Running play time. The session starts only once the engine reports a
+    // successful startup, so failed launches never contribute seconds.
+    private var playSessionStart: TimeInterval?
+    private var accumulatedPlaySeconds = 0
+    private(set) var lastSessionPlaySeconds = 0
     private var lastStartupState: UInt32 = 0
     private var pointerEventCount = 0
     private var keyEventCount = 0
@@ -616,6 +621,33 @@ final class EngineController: ObservableObject {
         step(deltaMS: tick.deltaMS, syntheticStep: false)
     }
 
+    // MARK: - Running play time
+
+    private func beginPlaySession() {
+        guard playSessionStart == nil else { return }
+        playSessionStart = ProcessInfo.processInfo.systemUptime
+    }
+
+    @discardableResult
+    private func finishPlaySession() -> Int {
+        guard let start = playSessionStart else { return 0 }
+        let seconds = Int((ProcessInfo.processInfo.systemUptime - start).rounded(.down))
+        accumulatedPlaySeconds += max(0, seconds)
+        lastSessionPlaySeconds = max(0, seconds)
+        playSessionStart = nil
+        return lastSessionPlaySeconds
+    }
+
+    /// Seconds of *running* game time accumulated since the previous call.
+    /// Finalizes the live session first, so callers can commit exactly once at
+    /// return, restart or quit without double counting.
+    func consumePlaySeconds() -> Int {
+        finishPlaySession()
+        let seconds = accumulatedPlaySeconds
+        accumulatedPlaySeconds = 0
+        return seconds
+    }
+
     /// Records a focus/hide/minimize/sleep transition. The host deliberately
     /// keeps ticking so game audio and logic are unaffected by occlusion (the
     /// presenter gate already withholds drawables); the pacing clock is reset
@@ -746,6 +778,7 @@ final class EngineController: ObservableObject {
                 status = "运行中"
                 drainEngineLogs()
                 recordDiagnostics(["state": "running"])
+                beginPlaySession()
                 log("startup state: SUCCEEDED")
             case 3:
                 status = "启动失败"
@@ -1210,6 +1243,8 @@ final class EngineController: ObservableObject {
     }
 
     func shutdown() {
+        // Preserve running time even if the caller never consumes it.
+        finishPlaySession()
         // Stop drawable requests before tearing the session down: a pending
         // draw against a closing window waits on nextDrawable for a second.
         metalPresenter?.suspend()
@@ -1249,7 +1284,8 @@ final class EngineController: ObservableObject {
         recordDiagnostics(["state": failureMessage == nil ? "stopped" : "failed", "closed": ISO8601DateFormatter().string(from: Date()),
                            "ticks": String(tickCount), "frame": "\(Int(frameSize.width))x\(Int(frameSize.height))",
                            "unhandledPlatformRequests": String(unhandledPlatformRequests),
-                           "translationState": "\(translationStatus.state)"].merging(pacingDiagnostics) { _, new in new })
+                           "translationState": "\(translationStatus.state)",
+                           "playSeconds": String(lastSessionPlaySeconds)].merging(pacingDiagnostics) { _, new in new })
         unhandledPlatformRequests = 0
         nativeFrameLease = nil
         nativeFrameTexture = nil

@@ -9,8 +9,10 @@ struct SettingsBehaviorTests {
         try RenderGeometryTests.run(root: root)
         try RendererBehaviorTests.run(root: root)
         FrameSchedulerTests.run()
+        try PlayStatsTests.run(root: root)
         let model = ShellModel()
         try checkCollections(model, root: root)
+        try checkPlayTimeAccumulation(model, root: root)
         model.openSettings()
         model.settingsDraft?.value.theme = "warm_dark"
         precondition(model.settings.theme == "classic" && model.settingsDirty)
@@ -103,6 +105,69 @@ struct SettingsBehaviorTests {
             }
         }
         print("PASS: real ShellModel navigation, cancel/discard/save, relaunch, pending close, validation and failed-write isolation")
+    }
+
+    /// Runs a real library game and checks the play-time bookkeeping: only a
+    /// successful session accumulates, return/restart commit exactly once and
+    /// a failed startup contributes nothing.
+    @MainActor static func checkPlayTimeAccumulation(_ model: ShellModel, root: URL) throws {
+        let demo = URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
+            .appendingPathComponent("demos/aetherkiri-kag3/data")
+        let imported = try model.repository.importDirectory(demo, existing: model.games, external: true).imported
+        model.refreshLibrary()
+        precondition(imported.playDurationSeconds == 0)
+        setenv("AETHER_HOST_PACE", "timer", 1)
+        defer { unsetenv("AETHER_HOST_PACE") }
+
+        func storedSeconds() throws -> Int {
+            try model.repository.load().first { $0.id == imported.id }?.playDurationSeconds ?? 0
+        }
+        func waitFor(_ marker: String, timeout: TimeInterval = 8) -> Bool {
+            let deadline = Date().addingTimeInterval(timeout)
+            while !model.engine.logText.contains(marker), Date() < deadline {
+                RunLoop.main.run(until: Date().addingTimeInterval(0.02))
+            }
+            return model.engine.logText.contains(marker)
+        }
+        func runLoop(for seconds: TimeInterval) {
+            let until = Date().addingTimeInterval(seconds)
+            while Date() < until { RunLoop.main.run(until: Date().addingTimeInterval(0.02)) }
+        }
+
+        model.selection = imported.id
+        precondition(model.canPlay)
+        model.play()
+        precondition(model.activeGame?.id == imported.id)
+        precondition(model.engine.consumePlaySeconds() == 0, "startup in flight must not count yet")
+        precondition(waitFor("startup state: SUCCEEDED"), "test needs a real running session")
+        runLoop(for: 1.2)
+        model.returnToLibrary()
+        precondition(model.activeGame == nil)
+        let firstTotal = try storedSeconds()
+        precondition(firstTotal >= 1, "a running session must accumulate play time")
+        precondition(model.engine.consumePlaySeconds() == 0, "return must consume the session exactly once")
+
+        // Returning again without a session must not add anything.
+        model.returnToLibrary()
+        let afterSecondReturn = try storedSeconds()
+        precondition(afterSecondReturn == firstTotal)
+
+        // Restart commits the finished session before the new one begins.
+        model.selection = imported.id
+        model.play()
+        precondition(waitFor("startup state: SUCCEEDED"))
+        runLoop(for: 1.2)
+        model.restartActiveGame()
+        let afterRestart = try storedSeconds()
+        precondition(afterRestart >= firstTotal + 1, "restart must commit the previous session: \(afterRestart)")
+        precondition(model.engine.consumePlaySeconds() <= 1, "restart must not leave pending time")
+        model.returnToLibrary()
+
+        // A rejected launch never opens a session, so it cannot accumulate time.
+        precondition(!model.engine.openAndRun(gamePath: ""))
+        precondition(model.engine.consumePlaySeconds() == 0, "a rejected launch must not accumulate time")
+        model.engine.shutdown()
+        print("PASS: running sessions accumulate capped play time; in-flight/rejected launches and repeated returns add nothing")
     }
 
     @MainActor static func checkCollections(_ model: ShellModel, root: URL) throws {

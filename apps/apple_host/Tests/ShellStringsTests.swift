@@ -11,6 +11,9 @@ struct ShellStringsTests {
             guard let values = ShellLanguage.localizedValues(for: key) else { fatalError("missing values: \(key)") }
             precondition(values.count == languages.count, "wrong language count: \(key)")
             precondition(values.allSatisfy { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }, "empty translation: \(key)")
+            // Darwin's String(format:) needs %@ for Swift strings; a %s would
+            // be read as a C string pointer and crash at runtime.
+            precondition(!values.contains { $0.contains("%s") }, "C-string format specifier: \(key)")
             for language in languages {
                 precondition(language.text(key) == values[language.index], "lookup mismatch: \(key)")
             }

@@ -755,3 +755,11 @@
 - 行为回归新增损坏图片、重复应用、取消后旧下载完成与新搜索隔离；`python3 tools/apple_host_settings_tests.py` 和 Debug 构建通过，`git diff --check` 通过。
 - CUA 在真实修复构建、隔离库中完成 VNDB 搜索→取消→再次搜索→下载应用，截图确认详情页封面正常显示；Demo 启动显示 KAG 介绍页，Return 输入后可确认返回游戏库，封面与详情保持。启动失败与延迟响应边界由自动故障注入覆盖，未声称 CUA 实际发生系统 DisplayLink 故障。
 - 本地证据：`out/apple_host/evidence/review-fixes-cua/`（测试、构建、runtime 日志和隔离库）；CUA AX/截图记录在本轮工具记录中。未修改用户实际游戏库。
+
+### 2026-10-12：游戏内诊断页面 CUA 点验
+
+- 基于 `3fcebe85` Debug 构建与隔离 Demo 库实测游戏菜单→诊断控制台。概览显示实际 Metal 管线、640×480 逻辑帧与1440×1080输出；性能页显示 tick/render/presentation、耗时/内存/缓存及统计边界；输入和插件页可切换。
+- 保存快照后界面显示文件名，JSON 实际可解析；自检返回 `session=ok, engine=ok, renderer=ok, storage=ok`；问题标记写入 session.json。日志暂停与 self-check 过滤可操作并显示对应单行；从调试页返回确认后恢复游戏库。
+- 证据：`out/apple_host/evidence/review-fixes-cua/library/Diagnostics/snapshot-2026-10-12T13-24-56Z.json`、`session.json`；本轮 CUA AX 和截图。尚未点验截图保存、导出面板、慢帧捕获及真机 iOS，不扩大本次验收范围。
+- 观察到中文控制台正文仍有大量英文属性名和解释；这是后续本地化修复项。CUA 时性能读数有变化，本次交互操作不作为无扰动性能基准。
+- 判断：macOS 已可作为 M4 移植基线；iOS 构建、UIKit 输入/布局、移动端帧钟、音频会话、沙盒和 StoreKit 尚须单独实现与真机验收，不能视为直接可发布 iOS。

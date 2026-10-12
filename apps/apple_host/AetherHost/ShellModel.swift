@@ -507,6 +507,8 @@ final class ShellModel: ObservableObject {
     func setVirtualControlMode(_ mode: VirtualControlMode) {
         guard settings.virtualControlMode != mode.rawValue else { return }
         settings.virtualControlMode = mode.rawValue
+        // Godot resets the cursor drag position on an input-mode change.
+        engine.resetVirtualPointer()
         do { try settingsStore.save(settings) }
         catch { self.error = friendlyError(error) }
     }

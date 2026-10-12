@@ -203,6 +203,30 @@ enum RendererBehaviorTests {
         precondition(toolsProbe.advancedToolDiagnostics["console_log_file"] == "1")
         toolsProbe.shutdown()
 
+        // Mouse-mode cursor handle: drag deltas become absolute canvas pointer
+        // moves and the click button sends down/up at that position.
+        let cursorProbe = EngineController()
+        precondition(cursorProbe.initializeEngine(renderer: "software"))
+        precondition(cursorProbe.openAndRun(gamePath: demo.path))
+        let cursorDeadline = Date().addingTimeInterval(5)
+        while (cursorProbe.frameSize == .zero || !cursorProbe.logText.contains("startup state: SUCCEEDED")) && Date() < cursorDeadline {
+            RunLoop.main.run(until: Date().addingTimeInterval(0.02))
+        }
+        precondition(cursorProbe.frameSize.width > 0 && cursorProbe.frameSize.height > 0, "test needs a logical canvas")
+        let canvasCenter = CGPoint(x: (cursorProbe.frameSize.width - 1) / 2, y: (cursorProbe.frameSize.height - 1) / 2)
+        precondition(cursorProbe.virtualPointerPosition == canvasCenter, "the handle starts at the canvas center")
+        cursorProbe.moveVirtualPointer(dx: 40, dy: -20)
+        precondition(cursorProbe.virtualPointerPosition == CGPoint(x: canvasCenter.x + 40, y: canvasCenter.y - 20))
+        precondition(cursorProbe.logText.contains("virtual cursor ->"))
+        cursorProbe.moveVirtualPointer(dx: 10_000, dy: 0)
+        precondition(cursorProbe.virtualPointerPosition.x == cursorProbe.frameSize.width - 1, "clamped to the canvas")
+        cursorProbe.clickVirtualPointer()
+        precondition(cursorProbe.logText.contains("input pointer type=1"))
+        precondition(cursorProbe.logText.contains("input pointer type=3"))
+        cursorProbe.resetVirtualPointer()
+        precondition(cursorProbe.virtualPointerPosition == canvasCenter, "input-mode changes reset the handle")
+        cursorProbe.shutdown()
+
         let probe = AetherEngineSession()
         precondition(partial.textTranslationAvailable == probe.isTextTranslationAvailable())
         try probe.initialize(writablePath: root.path, cachePath: root.path)
@@ -215,7 +239,7 @@ enum RendererBehaviorTests {
             precondition(detail.localizedDescription.contains("frame_output"))
         }
         probe.shutdown()
-        print("PASS: device/presenter/runtime/partial-activation fallback, real software/native game frames, display fallback continuity, generation cleanup, retry, fps_limit delivery, real-elapsed pacing and diagnostic persistence")
+        print("PASS: device/presenter/runtime/partial-activation fallback, real software/native game frames, display fallback continuity, generation cleanup, retry, fps_limit delivery, real-elapsed pacing, virtual cursor handle and diagnostic persistence")
     }
 
     @MainActor private static func check(_ engine: EngineController, requested: HostRenderer,

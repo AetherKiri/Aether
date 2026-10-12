@@ -295,3 +295,5 @@ Godot 的 `smooth` 仅是线性采样的旧名称，默认值为 bicubic。Apple
 `HostSettings` schema v7 新增 `virtualControlMode`（`mouse`/`touch`，默认 mouse，与 Godot 相同）、`virtualControlMenuEnabled`（默认 true）与 `virtualControlKeyboardOpacity`（0.2–1.0，0.05 步进，Godot `snapf` 语义）；v1–v6 旧文件迁移为默认值，损坏值在加载时归一、保存时拒绝。游戏画面上按 Godot `_sync_visibility()` 呈现：只有 `virtualControls && virtualControlMenuEnabled` 才显示右上角入口按钮，按键面板默认关闭、由入口按钮开合；关闭入口等于隐藏整条虚拟控制（Godot 同义）。键盘按键与保持 Ctrl 使用配置透明度，鼠标模式的指针手柄保持完全不透明（Godot “指针保持清晰”）；键盘模式按键透明度文案与说明沿用 Godot 五语言资源。
 
 控制模式在面板内切换（Godot 的 `input_mode_button`）：mouse 模式显示虚拟指针手柄与左键按钮，手柄拖动按显示缩放换算成逻辑画布像素并累加为绝对坐标（`VirtualPointer`，边界收敛到画布内），左键按钮在该坐标发送 down/up；touch 模式隐藏手柄与左键按钮，直接使用真实指针。面板内切换会立即写入偏好（Godot 同样持久化 `virtual_control_mode`）。平台差异：桌面始终保留真实指针输入（Godot mouse 模式会屏蔽画面触摸，这是移动端取向，不在 macOS 复刻）；面板按键集合沿用现有视觉小说推进键，不复制移动端 D-pad/鼠标键/滚动长按。
+
+验证：行为测试用真实会话断言手柄从画布中心开始、拖动累计为绝对坐标并收敛边界、左键发送真实 down/up、模式切换调用 `resetVirtualPointer()`（Godot `_reset_cursor_drag_position`）；CUA 在真实 KAG3 会话中记录 `virtual cursor -> (385,207)/(451,174)/(517,142)`，并验证 `切换模式` 在 `模式 · 虚拟鼠标` 与 `模式 · 直接触摸` 间切换时手柄/左键按钮的显隐与偏好写入。

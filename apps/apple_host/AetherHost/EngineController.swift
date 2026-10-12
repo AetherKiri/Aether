@@ -1263,6 +1263,12 @@ final class EngineController: ObservableObject {
                     dx: 0, dy: 0, button: 0, modifiers: 0)
     }
 
+    /// Godot resets the cursor drag position whenever the input mode changes.
+    func resetVirtualPointer() {
+        virtualPointer.resetToCenter(of: frameSize)
+        virtualPointerPosition = virtualPointer.position
+    }
+
     func sendPointer(
         type: UInt32, x: Double, y: Double, dx: Double, dy: Double,
         button: Int32, modifiers: Int32

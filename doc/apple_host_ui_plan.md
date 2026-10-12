@@ -1,7 +1,7 @@
 # Apple 宿主 UI 与设置对齐实施计划
 
 - 2026-10-11，依据 [产品 UI spec](apple_host_ui_spec.md)。
-- 状态：P0调查完成；P1核心实现与行为测试已接入，完整CUA验收待补；P2集合/详情及四主题已接入，完整视觉/无障碍验收待补；P3a–P3d、P4a/P4b/P4d/P4e/P4f 均已实现并通过行为回归与真实CUA；P5a（对比度自适应锐化）与 P5b（FSR1 RCAS + FSR1 EASU + Godot 的 kind/预设/自定义链，AMD MIT 参考 + CPU 对照 + 缓存键修复）已实现并通过行为回归、真实 smoke 与设置页/启动路径 CUA；P6 已接入 macOS 首次使用协议门、内置 Demo 与 VNDB 在线封面并通过行为回归与真实 CUA；P5b 其余 Godot 算法与预设移植、P6 其余（渠道声明）与 P7 尚未实施（视频库暂停维护）。阶段按依赖排序，每轮只提交已验证的完整切片。
+- 状态：P0调查完成；P1核心实现与行为测试已接入，完整CUA验收待补；P2集合/详情及四主题已接入，完整视觉/无障碍验收待补；P3a–P3d、P4a/P4b/P4d/P4e/P4f 与可停靠诊断控制台均已实现并通过行为回归与真实CUA；P5a（对比度自适应锐化）与 P5b（FSR1 RCAS + FSR1 EASU + Godot 的 kind/预设/自定义链，AMD MIT 参考 + CPU 对照 + 缓存键修复）已实现并通过行为回归、真实 smoke 与设置页/启动路径 CUA；P6 已接入 macOS 首次使用协议门、内置 Demo 与 VNDB 在线封面并通过行为回归与真实 CUA；P4 其余（问题标记/快照/自检、场景测试入口、RFVP 编码）、P5b 其余 Godot 算法与预设移植、P6 其余（渠道声明）与 P7 尚未实施（视频库暂停维护）。阶段按依赖排序，每轮只提交已验证的完整切片。
 - 目标是修正产品结构并补齐真实功能；不在一轮中把所有缺项画成无效果控件。
 
 ## P0：调查与规范（本轮）
@@ -243,6 +243,14 @@ P3a重点验证部分Metal激活失败后的资源清理：不得在已打开游
 - [x] 详情页新增只读「运行时类型」与「启动入口」：状态来自真实 `engine_probe_runtime_provider`；KiriKiri 走内置宿主路径时显示对应说明而非“无法启动”；启动入口不做覆盖（ABI 忽略 `startup_script`），RFVP 编码等待链接 provider 后提供并显示原因。
 - [x] `python3 tools/apple_host_settings_tests.py` 通过：新增标记检测、HCB 校验、导入门限与真实 provider probe 断言（ONScripter 匹配夹具并拒绝 KAG；未知 id 返回负值）。
 - [x] Debug 构建通过；CUA 在真实窗口验证 KAG3 详情（KiriKiri + 内置宿主说明 + 入口 startup.tjs）与 ONScripter 夹具详情（ONScripter + provider 已匹配 + 入口 0.txt）。证据：`out/apple_host/evidence/ui-p4f/`。
+
+## P4实施记录：可停靠诊断控制台
+
+- [x] 游戏内「游戏」菜单新增「诊断控制台」开关；打开后在右侧停靠 380pt 面板（关闭时若「显示运行日志」开启则恢复原日志面板）。
+- [x] 五标签：概览（renderer/presentation/frame/output/fpsLimit/tick/回退）、性能（与覆盖层同源的技术行 + pacing/session/cache）、输入（控制模式/指针/IME/全屏/影片）、插件（加载模式 + 当前游戏运行时/入口/信号 + 真实 provider probe + 翻译可用性）、日志（暂停 + 过滤）。
+- [x] 面板打开时引擎在覆盖层关闭的情况下也刷新快照（`diagnosticsConsoleActive`）；底部「复制摘要」写入剪贴板，「导出诊断日志」复用既有导出。
+- [x] Debug 构建通过；CUA 验证菜单开关、面板停靠与概览/性能/插件标签真实数据。证据：`out/apple_host/evidence/ui-p4-console-cua/`。
+- [ ] backlog：问题标记、快照/截图/自检动作、慢帧捕获。
 
 ## P5a实施记录：画面增强（对比度自适应锐化）
 

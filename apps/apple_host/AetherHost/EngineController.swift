@@ -203,6 +203,9 @@ final class EngineController: ObservableObject {
     /// Overlay mode is a live debug aid: saving the settings applies it to the
     /// running session, like the Godot shell's `_set_perf_visible`.
     @Published var debugOverlayMode = "off"
+    /// The in-game diagnostics console consumes the same snapshot as the
+    /// overlay, so refresh it even when the overlay setting is off.
+    var diagnosticsConsoleActive = false
     /// Mouse-mode cursor handle position in logical canvas coordinates, and the
     /// engine's current pointer target for that handle.
     @Published private(set) var virtualPointerPosition = CGPoint.zero
@@ -1122,7 +1125,7 @@ final class EngineController: ObservableObject {
             log("pacing stats: \(frameStatisticsSummary)")
             recordDiagnostics(pacingDiagnostics)
         }
-        if debugOverlayMode != "off", tickCount % 30 == 0 {
+        if (debugOverlayMode != "off" || diagnosticsConsoleActive), tickCount % 30 == 0 {
             overlaySnapshot = performanceSnapshot()
         }
         if tickCount % 30 == 0 { expireAdvancedTools() }

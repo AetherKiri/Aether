@@ -50,6 +50,7 @@ struct ContentView: View {
                         }
                         Button(model.text("enterText")) { model.showGameTextEntry = true }.disabled(engine.runtimeMovieActive)
                         Menu {
+                            Toggle(model.text("consoleTitle"), isOn: $model.showDiagnosticsConsole)
                             Toggle(model.text("logs"), isOn: $model.showLogs)
                             Button(model.text("folder")) { model.revealActiveGame() }
                             Button(model.text("restart")) { model.confirmRestart = true }.disabled(!model.canRestartGame)
@@ -75,7 +76,13 @@ struct ContentView: View {
                                 GameControlsView(model: model, engine: engine)
                             }
                         }
-                        if model.showLogs {
+                        if model.showDiagnosticsConsole {
+                            Divider()
+                            DiagnosticsConsoleView(model: model, engine: engine)
+                                .frame(width: 380)
+                                .onAppear { engine.diagnosticsConsoleActive = true }
+                                .onDisappear { engine.diagnosticsConsoleActive = false }
+                        } else if model.showLogs {
                             Divider()
                             ScrollView {
                                 Text(engine.logText).font(.system(size: 11, design: .monospaced))

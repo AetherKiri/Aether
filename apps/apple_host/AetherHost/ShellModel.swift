@@ -74,6 +74,8 @@ final class ShellModel: ObservableObject {
     @Published var language: ShellLanguage
     @Published var renderer: String
     @Published var showLogs: Bool
+    /// In-game diagnostics console visibility (Godot's dockable debug console).
+    @Published var showDiagnosticsConsole = false
     @Published var translationModelPath: String
     @Published private(set) var settings: HostSettings
     @Published var settingsDraft: SettingsDraft?

@@ -505,7 +505,7 @@
 31b. [ ] **两处兼容小项待查**：`new DMMCloud()` 报 `Invalid argument count`；`new Zlib().version()` 报成员不存在（可能只是探针写法/注册方式差异）
 32. [ ] **内核后续：内存可观测（借鉴 `MemoryDesign.md`）**：分配头带 tag + `AllocTagScope` 标签栈，让"谁吃掉了内存"可回答；当前只有粗粒度 `engine_get_memory_stats`
 
-33. [ ] **产品 UI/设置完整对齐**：调查 P0 已完成；P1核心、P2集合/详情与四主题已接入，完整CUA/无障碍验收待补；P3a–P3d、P4a/P4b/P4d/P4e/P4f、P5a 画面增强、P5b（FSR1 EASU/RCAS + kind/预设/自定义链）、P6（macOS 首次使用协议门 + 内置 Demo + VNDB 在线封面）已接入并通过行为回归与真实CUA；P4 至此完成（调试控制台、场景测试入口、RFVP 编码仍按能力缺口记录），P5b 其余 Godot 算法与预设、P6 其余（渠道声明），P7 见 [实施计划](apple_host_ui_plan.md)（视频库暂停维护）。
+33. [ ] **产品 UI/设置完整对齐**：调查 P0 已完成；P1核心、P2集合/详情与四主题已接入，完整CUA/无障碍验收待补；P3a–P3d、P4a/P4b/P4d/P4e/P4f、可停靠诊断控制台、P5a 画面增强、P5b（FSR1 EASU/RCAS + kind/预设/自定义链）、P6（macOS 首次使用协议门 + 内置 Demo + VNDB 在线封面）已接入并通过行为回归与真实CUA；P4 其余（问题标记/快照/自检、场景测试入口、RFVP 编码仍按能力缺口记录），P5b 其余 Godot 算法与预设、P6 其余（渠道声明），P7 见 [实施计划](apple_host_ui_plan.md)（视频库暂停维护）。
 
 ## 变更记录
 
@@ -699,3 +699,12 @@
 - CUA：kind/预设/自定义 UI、保存 v9、真实启动日志 `frame enhancement fsr1_easu,fsr1_rcas amount=0.50`。证据：`out/apple_host/evidence/ui-p5b-chain-cua/`。
 - 附带修复：内置 Demo 条目 `directory` 改为 `id.uuidString`（原先导致含 Demo 的库重载报「索引无法读取」），`BuiltinDemoTests` 增加 save/load 回归。
 - 残余未验收：Anime4K/RAVU/CuNNy/NNEDI3 的许可与负载评估及移植（对应预设才会放开）；缩放步只允许链首。
+
+### 2026-10-12：P4 续 可停靠诊断控制台
+
+- Godot 有可停靠调试控制台（概览/事件/日志/输入/插件 + 问题标记与快照动作）；Apple 宿主此前只有运行日志文本与导出。本片补上结构化面板，复用已有数据而非截图。
+- 游戏内「游戏」菜单新增「诊断控制台」开关，打开后在右侧停靠 380pt 面板；关闭时若「显示运行日志」开启则恢复原日志面板。
+- 五标签：概览（status/renderer/presentation/frame/output/fpsLimit/tick/回退）、性能（与覆盖层同源的技术行：Backend/api/texture/frame/out、tick/render/presentation 速率并注明不等于屏幕扫描 FPS、frame ms+pacing、fallback/errors、引擎内存、frame-work p50/p95/max、pacing dropped/coalesced/resets、会话 ticks/renders/presentations/play）、输入（控制模式/指针/IME/全屏/影片）、插件（加载模式 + 当前游戏运行时/入口/信号 + 真实 `engine_probe_runtime_provider` 结果 + 翻译可用性）、日志（暂停 + 过滤）。
+- 面板打开时引擎即使覆盖层关闭也刷新快照（`diagnosticsConsoleActive`）；底部提供「复制摘要」与「导出诊断日志」。
+- 测试：五语言 key 覆盖与既有套件全通过；Debug 构建通过。CUA 验证菜单开关、面板停靠与概览/性能/插件标签真实数据（如 `runtime kirikiri entry data.xp3 provider kirikiri = 100`）。证据：`out/apple_host/evidence/ui-p4-console-cua/`。
+- 残余未验收：问题标记、快照/截图/自检动作、慢帧捕获；场景测试入口与 RFVP 编码仍待 P4。

@@ -502,6 +502,15 @@ final class ShellModel: ObservableObject {
         if activeVideo != nil { closeVideo() }
     }
 
+    /// The in-game pad toggles mouse/touch mode; Godot persists that choice in
+    /// the shell config, so the Apple host writes it through the settings store.
+    func setVirtualControlMode(_ mode: VirtualControlMode) {
+        guard settings.virtualControlMode != mode.rawValue else { return }
+        settings.virtualControlMode = mode.rawValue
+        do { try settingsStore.save(settings) }
+        catch { self.error = friendlyError(error) }
+    }
+
     var windowIsFullscreen: Bool {
         hostWindow?.styleMask.contains(.fullScreen) ?? false
     }

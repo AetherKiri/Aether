@@ -55,8 +55,8 @@ Apple 官方参考：[Settings](https://developer.apple.com/design/human-interfa
 | 语言：系统+五语言 | 已有；即时写入 | 保留全部选项，保存后生效，界面语言决定翻译目标 | P1 |
 | 风格：dark/classic/warm_dark/warm_light，默认 classic | 缺失；跟随系统原生外观 | 恢复四个产品主题；原生控件色彩与主题协调 | P2 |
 | iOS 界面比例 | 平台不适用 | M4；macOS 使用响应式布局，不造手机缩放开关 | M4 |
-| 游戏内控制菜单入口开关 | 部分；仅整条虚拟按键显隐 | 区分入口可见性、当前控制模式和按键面板显隐 | P4 |
-| Keyboard 模式按键透明度 | 缺失 | 模式实现后提供透明度；指针不受影响 | P4 |
+| 游戏内控制菜单入口开关 | P4e 已接入：入口按钮 + 可开关面板 | 区分入口可见性、当前控制模式和按键面板显隐 | P4 |
+| Keyboard 模式按键透明度 | P4e 已接入（0.2–1.0，0.05 步进） | 模式实现后提供透明度；指针不受影响 | P4 |
 | 渲染管线 | 部分；software/metal，未配置时默认 software | 显示「原生 Metal / 软件诊断」；不要用 Godot Native 名称冒充依赖；GPU Bridge 非必迁管线 | P3 |
 | 画布 Game Native/Display Fit | 缺失设置；已有 setSurfaceSize 接缝 | 分离游戏逻辑画布、输出纹理和窗口 drawable；保持输入映射 | P3 |
 | 缩放 smooth/nearest/linear/bicubic/lanczos | 缺失选择器与完整实现 | `smooth` 迁移为 `linear`；提供真实 nearest/linear/bicubic/lanczos 核，名称与 shader 一致 | P3 |
@@ -289,3 +289,9 @@ Godot 的 `smooth` 仅是线性采样的旧名称，默认值为 bicubic。Apple
 ### 7.11 P4d实施结果：临时高级工具
 
 设置「高级开发工具」不再显示“尚未迁移”占位，而是 Godot `_set_advanced_tool` 对应的四个真实引擎选项：插件调用追踪（`plugin_trace`）、追踪日志（`trace_log`）、控制台日志文件（`console_log_file`）、导出 TJS 脚本（`export_scripts`）。这些开关是**会话级**的：不进入 `HostSettings`、不产生草稿脏状态、重启自动关闭；`plugin_trace` 与 `trace_log` 开启后 30 秒（Godot `ADVANCED_TRACE_TIMEOUT_MS`）由 tick 循环自动关闭，控制台文件与脚本导出没有时限。开关在有会话时立即下发，否则在下次 `initializeEngine` 时应用，已过期的工具会被丢弃并记录 `expired before launch`。诊断导出附带 Godot `_advanced_snapshot` 形状的选项状态与追踪剩余秒数。场景测试入口（重启并跳转到指定界面）仍未迁移，页面保留明确说明。
+
+### 7.12 P4e实施结果：游戏内虚拟控制
+
+`HostSettings` schema v7 新增 `virtualControlMode`（`mouse`/`touch`，默认 mouse，与 Godot 相同）、`virtualControlMenuEnabled`（默认 true）与 `virtualControlKeyboardOpacity`（0.2–1.0，0.05 步进，Godot `snapf` 语义）；v1–v6 旧文件迁移为默认值，损坏值在加载时归一、保存时拒绝。游戏画面上按 Godot `_sync_visibility()` 呈现：只有 `virtualControls && virtualControlMenuEnabled` 才显示右上角入口按钮，按键面板默认关闭、由入口按钮开合；关闭入口等于隐藏整条虚拟控制（Godot 同义）。键盘按键与保持 Ctrl 使用配置透明度，鼠标模式的指针手柄保持完全不透明（Godot “指针保持清晰”）；键盘模式按键透明度文案与说明沿用 Godot 五语言资源。
+
+控制模式在面板内切换（Godot 的 `input_mode_button`）：mouse 模式显示虚拟指针手柄与左键按钮，手柄拖动按显示缩放换算成逻辑画布像素并累加为绝对坐标（`VirtualPointer`，边界收敛到画布内），左键按钮在该坐标发送 down/up；touch 模式隐藏手柄与左键按钮，直接使用真实指针。面板内切换会立即写入偏好（Godot 同样持久化 `virtual_control_mode`）。平台差异：桌面始终保留真实指针输入（Godot mouse 模式会屏蔽画面触摸，这是移动端取向，不在 macOS 复刻）；面板按键集合沿用现有视觉小说推进键，不复制移动端 D-pad/鼠标键/滚动长按。

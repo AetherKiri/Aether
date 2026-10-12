@@ -3,7 +3,7 @@ import Foundation
 /// Effective, persisted preferences. Transient controls and engine state do not
 /// belong here. A settings page edits a value copy until a successful save.
 struct HostSettings: Codable, Equatable {
-    static let schemaVersion = 6
+    static let schemaVersion = 7
     /// Godot's dev builds default to `baseline` diagnostics; release is off.
     static var defaultDiagnosticProfile: String {
         #if DEBUG
@@ -23,6 +23,9 @@ struct HostSettings: Codable, Equatable {
     var targetFPS = FrameScheduler.defaultTargetFPS
     var diagnosticProfile = HostSettings.defaultDiagnosticProfile
     var debugOverlayMode = "off"
+    var virtualControlMode = "mouse"
+    var virtualControlMenuEnabled = true
+    var virtualControlKeyboardOpacity = 1.0
     var virtualControls = false
     var logs = false
     var translationModelPath = ""
@@ -42,9 +45,13 @@ struct HostSettings: Codable, Equatable {
               FrameScheduler.normalizedTarget(targetFPS) != nil,
               DiagnosticProfile.normalized(diagnosticProfile) != nil,
               DebugOverlayMode.normalized(debugOverlayMode) != nil,
+              VirtualControlMode.normalized(virtualControlMode) != nil,
+              virtualControlKeyboardOpacity.isFinite,
+              (VirtualControlOpacity.minimum...VirtualControlOpacity.maximum).contains(virtualControlKeyboardOpacity),
               ["krkrsdl3", "aether_all"].contains(pluginLoadMode) else { throw Failure.invalidValue }
         var result = self
         result.upscaleAlgorithm = SamplingAlgorithm.normalized(upscaleAlgorithm)!.rawValue
+        result.virtualControlKeyboardOpacity = VirtualControlOpacity.normalized(virtualControlKeyboardOpacity)
         return result
     }
 
@@ -66,6 +73,8 @@ struct HostSettings: Codable, Equatable {
         if FrameScheduler.normalizedTarget(targetFPS) == nil { result.targetFPS = FrameScheduler.defaultTargetFPS }
         if DiagnosticProfile.normalized(diagnosticProfile) == nil { result.diagnosticProfile = Self.defaultDiagnosticProfile }
         if DebugOverlayMode.normalized(debugOverlayMode) == nil { result.debugOverlayMode = "off" }
+        if VirtualControlMode.normalized(virtualControlMode) == nil { result.virtualControlMode = "mouse" }
+        result.virtualControlKeyboardOpacity = VirtualControlOpacity.normalized(virtualControlKeyboardOpacity)
         return result
     }
 
@@ -92,7 +101,8 @@ struct HostSettings: Codable, Equatable {
 extension HostSettings {
     enum CodingKeys: String, CodingKey {
         case version, languageMode, theme, renderer, canvasMode, outputResolution, upscaleAlgorithm, virtualControls, logs, translationModelPath,
-             fpsLimitEnabled, targetFPS, diagnosticProfile, debugOverlayMode, pluginLoadMode, mockEnabled, errorDialogLogs
+             fpsLimitEnabled, targetFPS, diagnosticProfile, debugOverlayMode, virtualControlMode, virtualControlMenuEnabled,
+             virtualControlKeyboardOpacity, pluginLoadMode, mockEnabled, errorDialogLogs
     }
     init(from decoder: Decoder) throws {
         let values = try decoder.container(keyedBy: CodingKeys.self)
@@ -107,6 +117,10 @@ extension HostSettings {
         targetFPS = try values.decodeIfPresent(Int.self, forKey: .targetFPS) ?? FrameScheduler.defaultTargetFPS
         diagnosticProfile = try values.decodeIfPresent(String.self, forKey: .diagnosticProfile) ?? HostSettings.defaultDiagnosticProfile
         debugOverlayMode = try values.decodeIfPresent(String.self, forKey: .debugOverlayMode) ?? "off"
+        virtualControlMode = try values.decodeIfPresent(String.self, forKey: .virtualControlMode) ?? "mouse"
+        virtualControlMenuEnabled = try values.decodeIfPresent(Bool.self, forKey: .virtualControlMenuEnabled) ?? true
+        let storedOpacity = try values.decodeIfPresent(Double.self, forKey: .virtualControlKeyboardOpacity) ?? 1.0
+        virtualControlKeyboardOpacity = VirtualControlOpacity.normalized(storedOpacity)
         virtualControls = try values.decode(Bool.self, forKey: .virtualControls)
         logs = try values.decode(Bool.self, forKey: .logs)
         translationModelPath = try values.decode(String.self, forKey: .translationModelPath)

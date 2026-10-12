@@ -63,7 +63,12 @@ struct ContentView: View {
                     }
                     Divider()
                     HStack(spacing: 0) {
-                        GameSurfaceView(engine: engine, language: model.language)
+                        ZStack(alignment: .topTrailing) {
+                            GameSurfaceView(engine: engine, language: model.language)
+                            if model.showVirtualControls {
+                                GameControlsView(model: model, engine: engine)
+                            }
+                        }
                         if model.showLogs {
                             Divider()
                             ScrollView {
@@ -71,10 +76,6 @@ struct ContentView: View {
                                     .textSelection(.enabled).frame(maxWidth: .infinity, alignment: .leading).padding(8)
                             }.frame(width: 300)
                         }
-                    }
-                    if model.showVirtualControls {
-                        Divider()
-                        GameControlsView(model: model, engine: engine)
                     }
                 }
             } else {

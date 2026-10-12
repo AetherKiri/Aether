@@ -262,6 +262,13 @@ python3 tools/apple_host_archive_test.py
 下发，否则在下次启动游戏时应用（已过期的会在日志中记为 `expired before launch`）。
 场景测试入口（重启并跳转到指定界面）尚未迁移，页面保留说明。
 
+游戏内虚拟控制对齐 Godot `game_virtual_controls.gd`：`虚拟按键` 打开时，游戏画面
+右上角出现入口按钮，点击开合按键面板；关闭「游戏内控制菜单」等于隐藏整条虚拟控制。
+面板按键与「保持 Ctrl」使用「Keyboard 模式按键透明度」（0.2–1.0、0.05 步进），
+鼠标模式的指针手柄保持完全不透明，拖动手柄按显示缩放移动游戏指针，「左键点击」
+在该位置发送点击；面板内可切换 虚拟鼠标/直接触摸，选择立即写入偏好。桌面始终保留
+真实指针输入（Godot mouse 模式会屏蔽画面触摸，属移动端取向，不在 macOS 复刻）。
+
 ```bash
 xcrun swiftc apps/apple_host/AetherHost/DiagnosticStore.swift \
   apps/apple_host/Tests/DiagnosticStoreTests.swift -o out/apple_host/diagnostic-store-tests

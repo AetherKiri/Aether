@@ -12,6 +12,7 @@ struct SettingsBehaviorTests {
         try PlayStatsTests.run(root: root)
         try DiagnosticTests.run(root: root)
         TransientToolsTests.run()
+        VirtualControlsTests.run()
         let model = ShellModel()
         try checkCollections(model, root: root)
         try checkPlayTimeAccumulation(model, root: root)

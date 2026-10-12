@@ -13,8 +13,9 @@ struct SettingsStoreTests {
         let fresh = try store.load(defaults: defaults, legacyPrefix: "fresh.")
         precondition(fresh.renderer == "metal" && fresh.languageMode == "system" && fresh.mockEnabled && fresh.theme == "classic" && fresh.upscaleAlgorithm == "bicubic")
         precondition(!fresh.fpsLimitEnabled && fresh.targetFPS == 80 && fresh.fpsLimitOption == "0")
-        precondition(fresh.version == 6)
+        precondition(fresh.version == 7)
         precondition(fresh.diagnosticProfile == HostSettings.defaultDiagnosticProfile && fresh.debugOverlayMode == "off")
+        precondition(fresh.virtualControlMode == "mouse" && fresh.virtualControlMenuEnabled && fresh.virtualControlKeyboardOpacity == 1.0)
         let legacy = SettingsStore(url: root.appendingPathComponent("legacy/settings.json"))
         defaults.set("software", forKey: "shell.renderer")
         defaults.set("japanese", forKey: "shell.language")
@@ -35,7 +36,7 @@ struct SettingsStoreTests {
         let oldData = try JSONSerialization.data(withJSONObject: v1)
         try oldData.write(to: legacy.url)
         let upgraded = try legacy.load(defaults: defaults, legacyPrefix: "shell.")
-        precondition(upgraded == loaded && upgraded.version == 6 && upgraded.theme == "classic")
+        precondition(upgraded == loaded && upgraded.version == 7 && upgraded.theme == "classic")
         precondition(!upgraded.fpsLimitEnabled && upgraded.targetFPS == 80)
         check(try Data(contentsOf: legacy.url) == oldData) // Loading does not overwrite the migration source.
         var v2 = v1
@@ -64,6 +65,50 @@ struct SettingsStoreTests {
         let oldFPS = try legacy.load(defaults: defaults, legacyPrefix: "shell.")
         precondition(oldFPS.upscaleAlgorithm == "bicubic" && !oldFPS.fpsLimitEnabled && oldFPS.targetFPS == 80)
         precondition(oldFPS.fpsLimitOption == "0")
+        // A v6 file has no virtual-control fields: mouse pad, entry shown, opaque.
+        var v6 = v4
+        v6["version"] = 6
+        v6.removeValue(forKey: "virtualControlMode")
+        v6.removeValue(forKey: "virtualControlMenuEnabled")
+        v6.removeValue(forKey: "virtualControlKeyboardOpacity")
+        try JSONSerialization.data(withJSONObject: v6).write(to: legacy.url)
+        let oldVirtual = try legacy.load(defaults: defaults, legacyPrefix: "shell.")
+        precondition(oldVirtual.version == 7)
+        precondition(oldVirtual.virtualControlMode == "mouse" && oldVirtual.virtualControlMenuEnabled)
+        precondition(oldVirtual.virtualControlKeyboardOpacity == 1.0)
+        // Stored opacity is snapped to 0.05 like Godot; bad values are rejected.
+        for (input, expected) in [(0.62, 0.6), (0.63, 0.65), (0.85, 0.85), (1.0, 1.0), (0.2, 0.2)] {
+            var value = loaded
+            value.virtualControlKeyboardOpacity = input
+            try legacy.save(value)
+            let reloaded = try legacy.load(defaults: defaults, legacyPrefix: "shell.")
+            precondition(abs(reloaded.virtualControlKeyboardOpacity - expected) < 0.0001,
+                         "opacity \(input) -> \(reloaded.virtualControlKeyboardOpacity), expected \(expected)")
+        }
+        for mode in VirtualControlMode.allCases {
+            var value = loaded
+            value.virtualControlMode = mode.rawValue
+            value.virtualControlKeyboardOpacity = 0.2
+            try legacy.save(value)
+            let reloaded = try legacy.load(defaults: defaults, legacyPrefix: "shell.")
+            precondition(reloaded.virtualControlMode == mode.rawValue && reloaded.virtualControlKeyboardOpacity == 0.2)
+        }
+        var invalidVirtual = loaded
+        invalidVirtual.virtualControlMode = "pad"
+        do { try legacy.save(invalidVirtual); preconditionFailure("unknown virtual control mode accepted") } catch {}
+        invalidVirtual = loaded
+        invalidVirtual.virtualControlKeyboardOpacity = 0.1
+        do { try legacy.save(invalidVirtual); preconditionFailure("opacity below the minimum accepted") } catch {}
+        invalidVirtual = loaded
+        invalidVirtual.virtualControlKeyboardOpacity = 1.2
+        do { try legacy.save(invalidVirtual); preconditionFailure("opacity above the maximum accepted") } catch {}
+        var unknownVirtual = loaded
+        unknownVirtual.virtualControlMode = "pad"
+        unknownVirtual.virtualControlKeyboardOpacity = 0.0
+        try JSONEncoder().encode(unknownVirtual).write(to: store.url)
+        let normalizedVirtual = try store.load(defaults: defaults, legacyPrefix: "shell.")
+        precondition(normalizedVirtual.virtualControlMode == "mouse")
+        precondition(normalizedVirtual.virtualControlKeyboardOpacity == 0.2)
         precondition(fresh.outputResolution == "1080p")
         for target in FrameScheduler.supportedTargets {
             var value = loaded

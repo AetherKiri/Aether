@@ -62,6 +62,22 @@ struct ShellSettingsView: View {
                     Text(model.text("themeHelp")).font(.caption).foregroundStyle(palette.secondary.color)
                     Toggle(model.text("virtualControls"), isOn: binding(\.virtualControls))
                     Text(model.text("virtualControlsHelp")).font(.caption).foregroundStyle(palette.secondary.color)
+                    if model.settingsDraft?.value.virtualControls ?? model.settings.virtualControls {
+                        Toggle(model.text("virtualControlMenu"), isOn: binding(\.virtualControlMenuEnabled))
+                        Text(model.text("virtualControlMenuHelp")).font(.caption).foregroundStyle(palette.secondary.color)
+                        HStack {
+                            Text(model.text("virtualKeyboardOpacity"))
+                            Slider(value: binding(\.virtualControlKeyboardOpacity),
+                                   in: VirtualControlOpacity.minimum...VirtualControlOpacity.maximum,
+                                   step: VirtualControlOpacity.step)
+                            Text("\(VirtualControlOpacity.percent(model.settingsDraft?.value.virtualControlKeyboardOpacity ?? model.settings.virtualControlKeyboardOpacity))%")
+                                .font(.caption.monospacedDigit()).frame(width: 44, alignment: .trailing)
+                        }
+                        Text(model.text("virtualKeyboardOpacityHelp")).font(.caption).foregroundStyle(palette.secondary.color)
+                        let mode = VirtualControlMode.normalized(model.settingsDraft?.value.virtualControlMode ?? model.settings.virtualControlMode) ?? .mouse
+                        Text(model.text("virtualModeLabel") + " · " + model.text(mode.textKey) + " · " + model.text(mode.helpKey))
+                            .font(.caption).foregroundStyle(palette.secondary.color)
+                    }
                 }.padding(12)
             }
         case "renderSection":

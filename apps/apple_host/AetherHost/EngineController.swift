@@ -200,6 +200,11 @@ final class EngineController: ObservableObject {
     /// Overlay mode is a live debug aid: saving the settings applies it to the
     /// running session, like the Godot shell's `_set_perf_visible`.
     @Published var debugOverlayMode = "off"
+    /// Mouse-mode cursor handle position in logical canvas coordinates, and the
+    /// engine's current pointer target for that handle.
+    @Published private(set) var virtualPointerPosition = CGPoint.zero
+    private var virtualPointer = VirtualPointer()
+    private var virtualPointerLogCount = 0
     /// Throttled snapshot for the overlay; refreshed from the tick loop so the
     /// view never owns its own timer (which the per-tick publishes would drop).
     @Published private(set) var overlaySnapshot = PerformanceSnapshot()
@@ -1036,6 +1041,9 @@ final class EngineController: ObservableObject {
                 ?? session.framePixelSize()
             if size.width > 0, size != frameSize {
                 frameSize = size
+                virtualPointer.resetToCenter(of: size)
+                virtualPointerPosition = virtualPointer.position
+                virtualPointerLogCount = 0
                 log("frame size \(Int(size.width))x\(Int(size.height))")
             }
             // Game Native surface mode: the presentation canvas AND the
@@ -1232,6 +1240,28 @@ final class EngineController: ObservableObject {
     }
 
     // MARK: - Input forwarding (see InputMapping for translation rules)
+
+    /// Mouse-mode cursor handle: the drag deltas move the engine pointer within
+    /// the logical canvas. Godot's virtual mouse works the same way.
+    func moveVirtualPointer(dx: Double, dy: Double) {
+        let point = virtualPointer.move(dx: dx, dy: dy, frame: frameSize)
+        virtualPointerPosition = point
+        if virtualPointerLogCount < 12 {
+            virtualPointerLogCount += 1
+            log("virtual cursor -> (\(Int(point.x)),\(Int(point.y)))")
+        }
+        sendPointer(type: EngineInputEvent.pointerMove, x: Double(point.x), y: Double(point.y),
+                    dx: dx, dy: dy, button: 0, modifiers: 0)
+    }
+
+    /// Left click through the mouse-mode cursor handle.
+    func clickVirtualPointer() {
+        let point = virtualPointerPosition
+        sendPointer(type: EngineInputEvent.pointerDown, x: Double(point.x), y: Double(point.y),
+                    dx: 0, dy: 0, button: 0, modifiers: 0)
+        sendPointer(type: EngineInputEvent.pointerUp, x: Double(point.x), y: Double(point.y),
+                    dx: 0, dy: 0, button: 0, modifiers: 0)
+    }
 
     func sendPointer(
         type: UInt32, x: Double, y: Double, dx: Double, dy: Double,

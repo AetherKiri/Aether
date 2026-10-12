@@ -6,7 +6,7 @@ enum DiagnosticTests {
         profileCatalog()
         try settingsMigrationAndValidation(root: root)
         overlayComposition()
-        print("PASS: diagnostic profile catalog/availability, schema v6 migration and overlay metric composition")
+        print("PASS: diagnostic profile catalog/availability, schema v7 migration and overlay metric composition")
     }
 
     private static func profileCatalog() {
@@ -50,7 +50,7 @@ enum DiagnosticTests {
         let store = SettingsStore(url: root.appendingPathComponent("diagnostic-settings/settings.json"))
         let fresh = try SettingsStore(url: root.appendingPathComponent("diagnostic-fresh/settings.json"))
             .load(defaults: defaults, legacyPrefix: "diag.")
-        precondition(fresh.version == 6)
+        precondition(fresh.version == 7)
         precondition(fresh.diagnosticProfile == HostSettings.defaultDiagnosticProfile)
         precondition(fresh.debugOverlayMode == "off")
         // A v5 file has neither field and must migrate without losing values.
@@ -61,7 +61,7 @@ enum DiagnosticTests {
         json.removeValue(forKey: "debugOverlayMode")
         try JSONSerialization.data(withJSONObject: json).write(to: store.url)
         let upgraded = try store.load(defaults: defaults, legacyPrefix: "diag.")
-        precondition(upgraded.version == 6)
+        precondition(upgraded.version == 7)
         precondition(upgraded.diagnosticProfile == HostSettings.defaultDiagnosticProfile)
         precondition(upgraded.debugOverlayMode == "off")
         precondition(upgraded == fresh)

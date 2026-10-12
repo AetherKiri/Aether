@@ -9,7 +9,7 @@ enum FrameEnhancementTests {
         try gpuMatchesReference()
         try gpuEasuMatchesReference()
         try settingsMigration(root: root)
-        print("PASS: enhancement kernel (identity/contrast-adaptive/RCAS/EASU), Metal parity and schema v8 migration")
+        print("PASS: enhancement kernel (identity/contrast-adaptive/RCAS/EASU), chain parity and schema v9 migration")
     }
 
     private static func kernelBasics() {
@@ -109,7 +109,7 @@ enum FrameEnhancementTests {
         let plain = try presenter.renderOffscreen(width: width, height: height)
         func compare(_ algorithm: FrameEnhancement,
                      _ reference: ([UInt8], Int, Int, Double) -> [UInt8]) throws {
-            presenter.enhancement = algorithm
+            presenter.enhancementChain = [algorithm]
             presenter.enhancementAmount = 0.5
             let enhanced = try presenter.renderOffscreen(width: width, height: height)
             let expected = reference(rgba, width, height, 0.5)
@@ -133,8 +133,25 @@ enum FrameEnhancementTests {
         // revision must re-run the pass instead of reusing the previous result.
         try compare(.adaptiveSharpen) { FrameEnhancementKernel.sharpen($0, width: $1, height: $2, amount: $3) }
         try compare(.fsr1Rcas) { FrameEnhancementKernel.fsr1Rcas($0, width: $1, height: $2, sharpness: $3) }
+        // A two-step chain applies both kernels in order and matches the CPU
+        // composition of the same two kernels.
+        presenter.enhancementChain = [.fsr1Rcas, .adaptiveSharpen]
+        presenter.enhancementAmount = 0.5
+        let chained = try presenter.renderOffscreen(width: width, height: height)
+        let expectedChain = FrameEnhancementKernel.sharpen(
+            FrameEnhancementKernel.fsr1Rcas(rgba, width: width, height: height, sharpness: 0.5),
+            width: width, height: height, amount: 0.5)
+        var chainDifference = 0
+        for pixel in 0..<(width * height) {
+            for channel in 0..<3 {
+                let gpuChannel = channel == 0 ? 2 : (channel == 2 ? 0 : 1)
+                chainDifference = max(chainDifference,
+                    abs(Int(chained[pixel * 4 + gpuChannel]) - Int(expectedChain[pixel * 4 + channel])))
+            }
+        }
+        precondition(chainDifference <= 2, "a two-step chain must match the CPU composition (max diff \(chainDifference))")
         // Turning the enhancement off restores the unmodified frame.
-        presenter.enhancement = .off
+        presenter.enhancementChain = []
         let restored = try presenter.renderOffscreen(width: width, height: height)
         precondition(restored == plain, "off must present the original frame")
         presenter.clear()
@@ -166,7 +183,7 @@ enum FrameEnhancementTests {
         try presenter.upload(image)
         // EASU owns the output upscale, so it runs only when an output size is
         // configured; the offscreen target then matches the upscaled size.
-        presenter.enhancement = .fsr1Easu
+        presenter.enhancementChain = [.fsr1Easu]
         presenter.outputSize = CGSize(width: outWidth, height: outHeight)
         let enhanced = try presenter.renderOffscreen(width: outWidth, height: outHeight)
         let expected = FrameEnhancementKernel.fsr1Easu(rgba, width: width, height: height,
@@ -191,52 +208,73 @@ enum FrameEnhancementTests {
         let store = SettingsStore(url: root.appendingPathComponent("enhancement-settings/settings.json"))
         let fresh = try SettingsStore(url: root.appendingPathComponent("enhancement-fresh/settings.json"))
             .load(defaults: defaults, legacyPrefix: "enh.")
-        precondition(fresh.version == 8)
-        precondition(fresh.frameEnhancement == "off" && fresh.frameEnhancementAmount == 0.5)
-        // A v7 file has neither field and migrates to off/0.5.
+        precondition(fresh.version == 9)
+        precondition(fresh.frameEnhancementKind == "off" && fresh.frameEnhancementAmount == 0.5)
+        precondition(fresh.enhancementSteps.isEmpty)
         try store.save(fresh)
         var json = try JSONSerialization.jsonObject(with: Data(contentsOf: store.url)) as! [String: Any]
+        // A v8 file stored a single algorithm; it migrates to a 1-step custom chain.
+        json["version"] = 8
+        json["frameEnhancement"] = "fsr1_rcas"
+        json.removeValue(forKey: "frameEnhancementKind")
+        json.removeValue(forKey: "frameEnhancementPreset")
+        json.removeValue(forKey: "frameEnhancementChain")
+        try JSONSerialization.data(withJSONObject: json).write(to: store.url)
+        let upgraded = try store.load(defaults: defaults, legacyPrefix: "enh.")
+        precondition(upgraded.version == 9)
+        precondition(upgraded.frameEnhancementKind == "custom")
+        precondition(upgraded.enhancementSteps == [.fsr1Rcas])
+        // A v7 file has no enhancement keys and migrates to off.
         json["version"] = 7
         json.removeValue(forKey: "frameEnhancement")
         json.removeValue(forKey: "frameEnhancementAmount")
         try JSONSerialization.data(withJSONObject: json).write(to: store.url)
-        let upgraded = try store.load(defaults: defaults, legacyPrefix: "enh.")
-        precondition(upgraded.version == 8)
-        precondition(upgraded.frameEnhancement == "off" && upgraded.frameEnhancementAmount == 0.5)
+        let legacy = try store.load(defaults: defaults, legacyPrefix: "enh.")
+        precondition(legacy.frameEnhancementKind == "off" && legacy.enhancementSteps.isEmpty)
+        // The fsr1 preset resolves to EASU then RCAS.
+        var presetValue = fresh
+        presetValue.frameEnhancementKind = "preset"
+        presetValue.frameEnhancementPreset = "fsr1"
+        try store.save(presetValue)
+        let reloadedPreset = try store.load(defaults: defaults, legacyPrefix: "enh.")
+        precondition(reloadedPreset.enhancementSteps == [.fsr1Easu, .fsr1Rcas])
+        // A custom chain round-trips in order.
+        var chainValue = fresh
+        chainValue.frameEnhancementKind = "custom"
+        chainValue.frameEnhancementChain = ["fsr1_rcas", "adaptive_sharpen"]
+        try store.save(chainValue)
+        let reloadedChain = try store.load(defaults: defaults, legacyPrefix: "enh.")
+        precondition(reloadedChain.enhancementSteps == [.fsr1Rcas, .adaptiveSharpen])
+        // Unported algorithms, a scaling step after a same-size step and two
+        // scaling steps are all rejected.
+        for bad in [["anime4k_upscale_s"], ["fsr1_rcas", "fsr1_easu"], ["fsr1_easu", "fsr1_easu"], []] {
+            var invalid = fresh
+            invalid.frameEnhancementKind = "custom"
+            invalid.frameEnhancementChain = bad
+            do { try store.save(invalid); preconditionFailure("invalid chain accepted: \(bad)") } catch {}
+        }
         // Amounts snap to 0.05 like Godot's slider; invalid values are rejected.
         for (input, expected) in [(0.62, 0.6), (0.63, 0.65), (0.0, 0.0), (1.0, 1.0)] {
             var value = fresh
-            value.frameEnhancement = "adaptive_sharpen"
+            value.frameEnhancementKind = "custom"
+            value.frameEnhancementChain = ["adaptive_sharpen"]
             value.frameEnhancementAmount = input
             try store.save(value)
             let reloaded = try store.load(defaults: defaults, legacyPrefix: "enh.")
-            precondition(reloaded.frameEnhancement == "adaptive_sharpen")
+            precondition(reloaded.enhancementSteps == [.adaptiveSharpen])
             precondition(abs(reloaded.frameEnhancementAmount - expected) < 0.0001,
                          "amount \(input) -> \(reloaded.frameEnhancementAmount)")
         }
-        var invalid = fresh
-        invalid.frameEnhancement = "anime4k_upscale_s"
-        do { try store.save(invalid); preconditionFailure("unported algorithm accepted") } catch {}
-        var easuValue = fresh
-        easuValue.frameEnhancement = "fsr1_easu"
-        easuValue.frameEnhancementAmount = 1.0
-        try store.save(easuValue)
-        let reloadedEasu = try store.load(defaults: defaults, legacyPrefix: "enh.")
-        precondition(reloadedEasu.frameEnhancement == "fsr1_easu")
-        var rcasValue = fresh
-        rcasValue.frameEnhancement = "fsr1_rcas"
-        rcasValue.frameEnhancementAmount = 0.75
-        try store.save(rcasValue)
-        let reloadedRcas = try store.load(defaults: defaults, legacyPrefix: "enh.")
-        precondition(reloadedRcas.frameEnhancement == "fsr1_rcas" && reloadedRcas.frameEnhancementAmount == 0.75)
-        invalid = fresh
-        invalid.frameEnhancementAmount = 1.5
-        do { try store.save(invalid); preconditionFailure("amount above the maximum accepted") } catch {}
+        var invalidAmount = fresh
+        invalidAmount.frameEnhancementAmount = 1.5
+        do { try store.save(invalidAmount); preconditionFailure("amount above the maximum accepted") } catch {}
+        // An unknown algorithm normalizes a custom chain to off.
         var unknown = fresh
-        unknown.frameEnhancement = "anime4k_upscale_s"
+        unknown.frameEnhancementKind = "custom"
+        unknown.frameEnhancementChain = ["anime4k_upscale_s"]
         unknown.frameEnhancementAmount = -1
         try JSONEncoder().encode(unknown).write(to: store.url)
         let normalized = try store.load(defaults: defaults, legacyPrefix: "enh.")
-        precondition(normalized.frameEnhancement == "off" && normalized.frameEnhancementAmount == 0.0)
+        precondition(normalized.frameEnhancementKind == "off" && normalized.frameEnhancementAmount == 0.0)
     }
 }

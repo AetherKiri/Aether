@@ -505,7 +505,7 @@
 31b. [ ] **两处兼容小项待查**：`new DMMCloud()` 报 `Invalid argument count`；`new Zlib().version()` 报成员不存在（可能只是探针写法/注册方式差异）
 32. [ ] **内核后续：内存可观测（借鉴 `MemoryDesign.md`）**：分配头带 tag + `AllocTagScope` 标签栈，让"谁吃掉了内存"可回答；当前只有粗粒度 `engine_get_memory_stats`
 
-33. [ ] **产品 UI/设置完整对齐**：调查 P0 已完成；P1核心、P2集合/详情与四主题已接入，完整CUA/无障碍验收待补；P3a–P3d、P4a/P4b/P4d/P4e/P4f、P5a 画面增强与 P5b FSR1 EASU/RCAS、P6（macOS 首次使用协议门 + 内置 Demo + VNDB 在线封面）已接入并通过行为回归与真实CUA；P4 至此完成（调试控制台、场景测试入口、RFVP 编码仍按能力缺口记录），P5b 其余 Godot 算法移植与预设/自定义链、P6 其余（渠道声明），P7 见 [实施计划](apple_host_ui_plan.md)（视频库暂停维护）。
+33. [ ] **产品 UI/设置完整对齐**：调查 P0 已完成；P1核心、P2集合/详情与四主题已接入，完整CUA/无障碍验收待补；P3a–P3d、P4a/P4b/P4d/P4e/P4f、P5a 画面增强、P5b（FSR1 EASU/RCAS + kind/预设/自定义链）、P6（macOS 首次使用协议门 + 内置 Demo + VNDB 在线封面）已接入并通过行为回归与真实CUA；P4 至此完成（调试控制台、场景测试入口、RFVP 编码仍按能力缺口记录），P5b 其余 Godot 算法与预设、P6 其余（渠道声明），P7 见 [实施计划](apple_host_ui_plan.md)（视频库暂停维护）。
 
 ## 变更记录
 
@@ -688,3 +688,14 @@
 - 测试：`python3 tools/apple_host_settings_tests.py` 新增 `CoverSearchTests`（请求形状/只发标题/空标题拒绝、响应解析丢弃无图行、注入式 search/apply 缓存与索引、失败保留）全通过；Debug 构建通过。
 - CUA：真实 VNDB 搜索「Aether Demo」→ 选候选 → 缓存 `Covers/vndb-v21873.jpg`（18KB）→ library.json coverPath 指向它 → 详情页出现清除封面。证据：`out/apple_host/evidence/ui-p6-vndb-cua/`。
 - 残余未验收：只提供每查询的首个候选（与 Godot 一致）；Godot 的后台自动查询刻意未镜像；渠道额外声明仍待 P6。
+
+### 2026-10-12：P5b 续 增强 kind/预设/自定义链
+
+- Godot 的增强设置是 `frame_enhancement_kind`（off/preset/custom）+ 预设选择 + 自定义算法链编辑器；Apple 宿主此前只有一个扁平算法下拉。本片对齐该模型（schema v9）。
+- `HostSettings` v9 用 `frameEnhancementKind`/`frameEnhancementPreset`/`frameEnhancementChain` 替换 v8 的单一 `frameEnhancement`；v8→一步自定义链、v7→off 迁移；`enhancementSteps` 解析最终链。
+- 预设先开放可组合的「均衡清晰（FSR1）」= EASU→RCAS（Godot `fsr1`）；需要未移植算法的预设不列出。自定义链编辑器：有序步骤行、每步算法选择、移除、＋ 添加算法（上限 32）；只列已验证算法，EASU 只允许作为第一步。
+- 渲染：`MetalFramePresenter.enhancementChain` 把链首缩放步（EASU）作为输出 pass，其余在同尺寸 ping-pong scratch 上按序执行；缓存键含链/强度/采样算法；单算法链与旧行为一致。
+- 测试：`python3 tools/apple_host_settings_tests.py` 通过（v8→v9 迁移、预设解析、链往返、非法链拒绝、两步链与 CPU 组合一致）；Debug 构建通过；30 秒 KAG3 Metal direct smoke 通过。
+- CUA：kind/预设/自定义 UI、保存 v9、真实启动日志 `frame enhancement fsr1_easu,fsr1_rcas amount=0.50`。证据：`out/apple_host/evidence/ui-p5b-chain-cua/`。
+- 附带修复：内置 Demo 条目 `directory` 改为 `id.uuidString`（原先导致含 Demo 的库重载报「索引无法读取」），`BuiltinDemoTests` 增加 save/load 回归。
+- 残余未验收：Anime4K/RAVU/CuNNy/NNEDI3 的许可与负载评估及移植（对应预设才会放开）；缩放步只允许链首。

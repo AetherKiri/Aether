@@ -1,7 +1,7 @@
 # Apple 宿主 UI 与设置对齐实施计划
 
 - 2026-10-11，依据 [产品 UI spec](apple_host_ui_spec.md)。
-- 状态：P0调查完成；P1核心实现与行为测试已接入，完整CUA验收待补；P2集合/详情及四主题已接入，完整视觉/无障碍验收待补；P3a–P3d、P4a/P4b/P4d/P4e/P4f 均已实现并通过行为回归与真实CUA；P5a（对比度自适应锐化）与 P5b（FSR1 RCAS + FSR1 EASU，AMD MIT 参考 + CPU 对照 + 缓存键修复）已实现并通过行为回归、真实 smoke 与设置页/启动路径 CUA；P6 已接入 macOS 首次使用协议门、内置 Demo（打包安装、详情页删除、删除记忆）与 VNDB 在线封面（显式触发、只发标题、缓存到库根）并通过行为回归与真实 CUA；P5b 其余 Godot 算法移植与预设/自定义链、P6 其余（渠道声明）与 P7 尚未实施（视频库暂停维护）。阶段按依赖排序，每轮只提交已验证的完整切片。
+- 状态：P0调查完成；P1核心实现与行为测试已接入，完整CUA验收待补；P2集合/详情及四主题已接入，完整视觉/无障碍验收待补；P3a–P3d、P4a/P4b/P4d/P4e/P4f 均已实现并通过行为回归与真实CUA；P5a（对比度自适应锐化）与 P5b（FSR1 RCAS + FSR1 EASU + Godot 的 kind/预设/自定义链，AMD MIT 参考 + CPU 对照 + 缓存键修复）已实现并通过行为回归、真实 smoke 与设置页/启动路径 CUA；P6 已接入 macOS 首次使用协议门、内置 Demo 与 VNDB 在线封面并通过行为回归与真实 CUA；P5b 其余 Godot 算法与预设移植、P6 其余（渠道声明）与 P7 尚未实施（视频库暂停维护）。阶段按依赖排序，每轮只提交已验证的完整切片。
 - 目标是修正产品结构并补齐真实功能；不在一轮中把所有缺项画成无效果控件。
 
 ## P0：调查与规范（本轮）
@@ -267,7 +267,17 @@ P3a重点验证部分Metal激活失败后的资源清理：不得在已打开游
 - [x] FSR1 EASU：`FrameEnhancementKernel.fsr1Easu` 与 Metal `easu_fragment` 移植 `FsrEasuCon`/`FsrEasuSetF`/`FsrEasuTapF`/`FsrEasuF`；硬件 `gather4` 用四次钳位点采样模拟、近似 `rcp`/`rsqrt` 换精确值，CPU 与 GPU 逐像素一致（≤2）。EASU 自己完成输出放大（`scalesOutput`），由输出 pass 承担；`outputConfig` 缓存键加入采样/增强算法。渲染页选择器多出「FSR1 EASU」，文案改为“当前开放已验证的自适应锐化与 FSR1 EASU/RCAS”。
 - [x] EASU 验证：Debug 构建通过；30 秒 KAG3 Metal direct smoke（`--frame-enhancement fsr1_easu`）通过（放大输出 1440x1080 视觉正确，源尺寸 parity 捕获因 EASU 1:1 锐化核而有大差异，smoke 对放大类增强只要求非零效果）。证据：`out/apple_host/evidence/ui-p5b-easu/`。
 
-下一切片：P5b 其余部分（评估 Anime4K/RAVU/CuNNy/NNEDI3 的许可与负载），随后预设链与自定义链编辑器；视频库/播放器暂停维护。
+## P5b实施记录：增强 kind/预设/自定义链
+
+- [x] `HostSettings` schema v9：用 `frameEnhancementKind`（off/preset/custom）、`frameEnhancementPreset`、`frameEnhancementChain` 替换 v8 的单一 `frameEnhancement`；v8→一步自定义链、v7→off 迁移；`enhancementSteps` 解析最终链。加载不改写原文件。
+- [x] 预设：先开放可组合的「均衡清晰（FSR1）」= EASU→RCAS（Godot `fsr1`）；需要未移植算法的预设不列出。
+- [x] 自定义链编辑器：有序步骤行（步骤 N · 算法 + 说明）、每步算法选择、移除按钮、＋ 添加算法（上限 32）；只列已验证算法，EASU 只允许作为第一步。
+- [x] 渲染：`MetalFramePresenter.enhancementChain` 把链首缩放步（EASU）作为输出 pass，其余在同尺寸 ping-pong scratch 上按序执行；缓存键含链/强度/采样算法。单算法链与旧行为一致。
+- [x] 测试：`FrameEnhancementTests` 覆盖 v8→v9 迁移、预设解析、链往返、非法链拒绝、两步链与 CPU 组合一致；Debug 构建通过；30 秒 KAG3 Metal direct smoke 通过。
+- [x] CUA：kind/预设/自定义 UI、保存 v9、真实启动日志 `frame enhancement fsr1_easu,fsr1_rcas amount=0.50`。证据：`out/apple_host/evidence/ui-p5b-chain-cua/`。
+- [x] 附带修复：内置 Demo 条目 `directory` 改为 `id.uuidString`（原先导致含 Demo 的库重载报索引无法读取），`BuiltinDemoTests` 增加 save/load 回归。
+
+下一切片：P5b 其余部分（评估 Anime4K/RAVU/CuNNy/NNEDI3 的许可与负载并逐个移植，逐步放开对应预设）；视频库/播放器暂停维护。
 
 ## P6实施记录：首次使用协议门（macOS 首片）
 

@@ -12,8 +12,6 @@ struct BuiltinDemo {
     static let title = "Aether Demo"
     static let resourceName = "data"
     static let resourceExtension = "xp3"
-    static let directoryName = "builtin-aetherkiri-demo"
-
     let root: URL
     let sourceURL: URL?
 
@@ -98,7 +96,7 @@ struct BuiltinDemo {
         guard let directory = ensureInstalled() else { return others }
         if let existing {
             let demo = LibraryGame(id: existing.id, title: existing.title,
-                                   directory: existing.directory, sourcePath: directory.path,
+                                   directory: existing.id.uuidString, sourcePath: directory.path,
                                    importedAt: existing.importedAt, lastPlayedAt: existing.lastPlayedAt,
                                    playDurationSeconds: existing.playDurationSeconds,
                                    externalPath: directory.path, coverPath: existing.coverPath,
@@ -106,7 +104,8 @@ struct BuiltinDemo {
                                    builtinId: Self.id, builtinVersion: Self.version)
             return others + [demo]
         }
-        let demo = LibraryGame(id: UUID(), title: Self.title, directory: Self.directoryName,
+        let id = UUID()
+        let demo = LibraryGame(id: id, title: Self.title, directory: id.uuidString,
                                sourcePath: directory.path, importedAt: Date(),
                                externalPath: directory.path,
                                builtinId: Self.id, builtinVersion: Self.version)

@@ -13,7 +13,7 @@ struct SettingsStoreTests {
         let fresh = try store.load(defaults: defaults, legacyPrefix: "fresh.")
         precondition(fresh.renderer == "metal" && fresh.languageMode == "system" && fresh.mockEnabled && fresh.theme == "classic" && fresh.upscaleAlgorithm == "bicubic")
         precondition(!fresh.fpsLimitEnabled && fresh.targetFPS == 80 && fresh.fpsLimitOption == "0")
-        precondition(fresh.version == 8)
+        precondition(fresh.version == 9)
         precondition(fresh.diagnosticProfile == HostSettings.defaultDiagnosticProfile && fresh.debugOverlayMode == "off")
         precondition(fresh.virtualControlMode == "mouse" && fresh.virtualControlMenuEnabled && fresh.virtualControlKeyboardOpacity == 1.0)
         let legacy = SettingsStore(url: root.appendingPathComponent("legacy/settings.json"))
@@ -36,7 +36,7 @@ struct SettingsStoreTests {
         let oldData = try JSONSerialization.data(withJSONObject: v1)
         try oldData.write(to: legacy.url)
         let upgraded = try legacy.load(defaults: defaults, legacyPrefix: "shell.")
-        precondition(upgraded == loaded && upgraded.version == 8 && upgraded.theme == "classic")
+        precondition(upgraded == loaded && upgraded.version == 9 && upgraded.theme == "classic")
         precondition(!upgraded.fpsLimitEnabled && upgraded.targetFPS == 80)
         check(try Data(contentsOf: legacy.url) == oldData) // Loading does not overwrite the migration source.
         var v2 = v1
@@ -73,7 +73,7 @@ struct SettingsStoreTests {
         v6.removeValue(forKey: "virtualControlKeyboardOpacity")
         try JSONSerialization.data(withJSONObject: v6).write(to: legacy.url)
         let oldVirtual = try legacy.load(defaults: defaults, legacyPrefix: "shell.")
-        precondition(oldVirtual.version == 8)
+        precondition(oldVirtual.version == 9)
         precondition(oldVirtual.virtualControlMode == "mouse" && oldVirtual.virtualControlMenuEnabled)
         precondition(oldVirtual.virtualControlKeyboardOpacity == 1.0)
         // Stored opacity is snapped to 0.05 like Godot; bad values are rejected.

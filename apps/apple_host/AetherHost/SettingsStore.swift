@@ -3,7 +3,7 @@ import Foundation
 /// Effective, persisted preferences. Transient controls and engine state do not
 /// belong here. A settings page edits a value copy until a successful save.
 struct HostSettings: Codable, Equatable {
-    static let schemaVersion = 8
+    static let schemaVersion = 9
     /// Godot's dev builds default to `baseline` diagnostics; release is off.
     static var defaultDiagnosticProfile: String {
         #if DEBUG
@@ -26,7 +26,9 @@ struct HostSettings: Codable, Equatable {
     var virtualControlMode = "mouse"
     var virtualControlMenuEnabled = true
     var virtualControlKeyboardOpacity = 1.0
-    var frameEnhancement = "off"
+    var frameEnhancementKind = "off"
+    var frameEnhancementPreset = EnhancementPreset.defaultPreset.id
+    var frameEnhancementChain: [String] = EnhancementPreset.defaultPreset.steps.map(\.rawValue)
     var frameEnhancementAmount = 0.5
     var virtualControls = false
     var logs = false
@@ -50,7 +52,10 @@ struct HostSettings: Codable, Equatable {
               VirtualControlMode.normalized(virtualControlMode) != nil,
               virtualControlKeyboardOpacity.isFinite,
               (VirtualControlOpacity.minimum...VirtualControlOpacity.maximum).contains(virtualControlKeyboardOpacity),
-              FrameEnhancement.normalized(frameEnhancement) != nil,
+              FrameEnhancementKind(rawValue: frameEnhancementKind) != nil,
+              EnhancementPreset.normalized(frameEnhancementPreset) != nil,
+              frameEnhancementKind != FrameEnhancementKind.custom.rawValue
+                || FrameEnhancementChain.normalized(frameEnhancementChain) != nil,
               frameEnhancementAmount.isFinite,
               FrameEnhancementKernel.amountRange.contains(frameEnhancementAmount),
               ["krkrsdl3", "aether_all"].contains(pluginLoadMode) else { throw Failure.invalidValue }
@@ -81,7 +86,17 @@ struct HostSettings: Codable, Equatable {
         if DebugOverlayMode.normalized(debugOverlayMode) == nil { result.debugOverlayMode = "off" }
         if VirtualControlMode.normalized(virtualControlMode) == nil { result.virtualControlMode = "mouse" }
         result.virtualControlKeyboardOpacity = VirtualControlOpacity.normalized(virtualControlKeyboardOpacity)
-        if FrameEnhancement.normalized(frameEnhancement) == nil { result.frameEnhancement = "off" }
+        if FrameEnhancementKind(rawValue: frameEnhancementKind) == nil { result.frameEnhancementKind = "off" }
+        if EnhancementPreset.normalized(frameEnhancementPreset) == nil {
+            result.frameEnhancementPreset = EnhancementPreset.defaultPreset.id
+        }
+        if result.frameEnhancementKind == FrameEnhancementKind.custom.rawValue,
+           FrameEnhancementChain.normalized(frameEnhancementChain) == nil {
+            result.frameEnhancementKind = "off"
+        }
+        if let chain = FrameEnhancementChain.normalized(frameEnhancementChain) {
+            result.frameEnhancementChain = chain.map(\.rawValue)
+        }
         result.frameEnhancementAmount = Self.normalizedEnhancementAmount(frameEnhancementAmount)
         return result
     }
@@ -113,13 +128,28 @@ struct HostSettings: Codable, Equatable {
     /// Effective ABI value: `0` disables engine-side limiting and lets the
     /// host follow the display refresh.
     var fpsLimitOption: String { fpsLimitEnabled ? String(targetFPS) : "0" }
+
+    /// The resolved enhancement chain: off → none, preset → the preset's steps,
+    /// custom → the stored chain. Only verified algorithms are ever returned.
+    var enhancementSteps: [FrameEnhancement] {
+        switch FrameEnhancementKind(rawValue: frameEnhancementKind) ?? .off {
+        case .off: return []
+        case .preset: return EnhancementPreset.normalized(frameEnhancementPreset)?.steps ?? []
+        case .custom: return FrameEnhancementChain.normalized(frameEnhancementChain) ?? []
+        }
+    }
 }
 
 extension HostSettings {
     enum CodingKeys: String, CodingKey {
         case version, languageMode, theme, renderer, canvasMode, outputResolution, upscaleAlgorithm, virtualControls, logs, translationModelPath,
              fpsLimitEnabled, targetFPS, diagnosticProfile, debugOverlayMode, virtualControlMode, virtualControlMenuEnabled,
-             virtualControlKeyboardOpacity, frameEnhancement, frameEnhancementAmount, pluginLoadMode, mockEnabled, errorDialogLogs
+             virtualControlKeyboardOpacity, frameEnhancementAmount, pluginLoadMode, mockEnabled, errorDialogLogs,
+             frameEnhancementKind, frameEnhancementPreset, frameEnhancementChain
+    }
+    /// v8 and earlier stored a single algorithm under this key.
+    private enum LegacyCodingKeys: String, CodingKey {
+        case frameEnhancement
     }
     init(from decoder: Decoder) throws {
         let values = try decoder.container(keyedBy: CodingKeys.self)
@@ -138,7 +168,22 @@ extension HostSettings {
         virtualControlMenuEnabled = try values.decodeIfPresent(Bool.self, forKey: .virtualControlMenuEnabled) ?? true
         let storedOpacity = try values.decodeIfPresent(Double.self, forKey: .virtualControlKeyboardOpacity) ?? 1.0
         virtualControlKeyboardOpacity = VirtualControlOpacity.normalized(storedOpacity)
-        frameEnhancement = try values.decodeIfPresent(String.self, forKey: .frameEnhancement) ?? "off"
+        let legacyValues = try decoder.container(keyedBy: LegacyCodingKeys.self)
+        let legacyEnhancement = try legacyValues.decodeIfPresent(String.self, forKey: .frameEnhancement) ?? "off"
+        if let kind = try values.decodeIfPresent(String.self, forKey: .frameEnhancementKind) {
+            frameEnhancementKind = kind
+        } else {
+            frameEnhancementKind = legacyEnhancement == "off" ? "off" : FrameEnhancementKind.custom.rawValue
+        }
+        frameEnhancementPreset = try values.decodeIfPresent(String.self, forKey: .frameEnhancementPreset)
+            ?? EnhancementPreset.defaultPreset.id
+        if let chain = try values.decodeIfPresent([String].self, forKey: .frameEnhancementChain) {
+            frameEnhancementChain = chain
+        } else if legacyEnhancement != "off" {
+            frameEnhancementChain = [legacyEnhancement]
+        } else {
+            frameEnhancementChain = EnhancementPreset.defaultPreset.steps.map(\.rawValue)
+        }
         let storedEnhancement = try values.decodeIfPresent(Double.self, forKey: .frameEnhancementAmount) ?? 0.5
         frameEnhancementAmount = HostSettings.normalizedEnhancementAmount(storedEnhancement)
         virtualControls = try values.decode(Bool.self, forKey: .virtualControls)

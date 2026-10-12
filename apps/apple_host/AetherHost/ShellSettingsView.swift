@@ -13,6 +13,10 @@ struct ShellSettingsView: View {
         })
     }
 
+    private var draftEnhancementKind: FrameEnhancementKind {
+        FrameEnhancementKind(rawValue: (model.settingsDraft?.value ?? model.settings).frameEnhancementKind) ?? .off
+    }
+
     var body: some View {
         VStack(spacing: 0) {
             HStack(alignment: .top, spacing: 28) {
@@ -108,12 +112,21 @@ struct ShellSettingsView: View {
                         }
                     }
                     Text(model.text("samplingAlgorithmHelp")).font(.caption).foregroundStyle(palette.secondary.color)
-                    Picker(model.text("frameEnhancement"), selection: binding(\.frameEnhancement)) {
-                        ForEach(FrameEnhancement.allCases) { enhancement in
-                            Text(model.text(enhancement.textKey)).tag(enhancement.rawValue)
+                    Picker(model.text("frameEnhancement"), selection: binding(\.frameEnhancementKind)) {
+                        ForEach(FrameEnhancementKind.allCases) { kind in
+                            Text(model.text(kind.textKey)).tag(kind.rawValue)
                         }
                     }
-                    if (model.settingsDraft?.value.frameEnhancement ?? model.settings.frameEnhancement) != "off" {
+                    if draftEnhancementKind == .preset {
+                        Picker(model.text("enhancementMode"), selection: binding(\.frameEnhancementPreset)) {
+                            ForEach(EnhancementPreset.all) { preset in
+                                Text(model.text(preset.textKey)).tag(preset.id)
+                            }
+                        }
+                    } else if draftEnhancementKind == .custom {
+                        EnhancementChainEditor(model: model)
+                    }
+                    if draftEnhancementKind != .off {
                         HStack {
                             Text(model.text("enhancementAmount"))
                             Slider(value: binding(\.frameEnhancementAmount),
@@ -247,5 +260,73 @@ struct ShellSettingsView: View {
                 }.padding(12)
             }
         }
+    }
+}
+/// Godot's custom enhancement chain editor: ordered steps, each with an
+/// algorithm picker and a remove button, plus an add action. Only verified
+/// algorithms are offered; the first step may scale the output (EASU), later
+/// steps run at the output resolution.
+private struct EnhancementChainEditor: View {
+    @Environment(\.shellPalette) private var palette
+    @ObservedObject var model: ShellModel
+
+    private var chain: [String] { (model.settingsDraft?.value ?? model.settings).frameEnhancementChain }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            if chain.isEmpty {
+                Text(model.text("enhancementCustomEmpty")).font(.caption).foregroundStyle(palette.secondary.color)
+            }
+            ForEach(Array(chain.enumerated()), id: \.offset) { index, algorithm in
+                HStack(alignment: .center, spacing: 10) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(String(format: model.text("enhancementCustomStep"), index + 1)).font(.subheadline)
+                        Text(model.text("enhancementDesc_" + algorithm)).font(.caption).foregroundStyle(palette.secondary.color)
+                    }
+                    Spacer()
+                    Picker("", selection: chainBinding(index)) {
+                        ForEach(availableSteps(for: index)) { step in
+                            Text(model.text(step.textKey)).tag(step.rawValue)
+                        }
+                    }.labelsHidden().frame(width: 220)
+                    Button { removeStep(index) } label: { Image(systemName: "minus.circle") }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel(model.text("enhancementCustomRemove"))
+                }
+            }
+            Button(model.text("enhancementCustomAdd")) { addStep() }
+                .disabled(chain.count >= FrameEnhancementChain.maximumSteps)
+        }
+    }
+
+    private func availableSteps(for index: Int) -> [FrameEnhancement] {
+        let steps = FrameEnhancement.allCases.filter { $0.isStep }
+        return index == 0 ? steps : steps.filter { !$0.scalesOutput }
+    }
+
+    private func chainBinding(_ index: Int) -> Binding<String> {
+        Binding(
+            get: { chain.indices.contains(index) ? chain[index] : FrameEnhancement.fsr1Rcas.rawValue },
+            set: { value in
+                guard var draft = model.settingsDraft,
+                      draft.value.frameEnhancementChain.indices.contains(index) else { return }
+                draft.value.frameEnhancementChain[index] = value
+                model.settingsDraft = draft
+            }
+        )
+    }
+
+    private func addStep() {
+        guard var draft = model.settingsDraft,
+              draft.value.frameEnhancementChain.count < FrameEnhancementChain.maximumSteps else { return }
+        draft.value.frameEnhancementChain.append(FrameEnhancement.fsr1Rcas.rawValue)
+        model.settingsDraft = draft
+    }
+
+    private func removeStep(_ index: Int) {
+        guard var draft = model.settingsDraft,
+              draft.value.frameEnhancementChain.indices.contains(index) else { return }
+        draft.value.frameEnhancementChain.remove(at: index)
+        model.settingsDraft = draft
     }
 }

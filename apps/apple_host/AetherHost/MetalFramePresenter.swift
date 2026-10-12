@@ -56,18 +56,24 @@ final class MetalFramePresenter: NSObject, MTKViewDelegate {
     /// to EASU (or changing the sampler) must re-run the output pass even when
     /// the source frame revision is unchanged.
     private var outputConfig: String?
-    private var scalingConfig: String { "\(samplingAlgorithm.rawValue)|\(enhancement.rawValue)" }
+    private var scalingConfig: String {
+        "\(samplingAlgorithm.rawValue)|\(enhancementChain.first { $0.scalesOutput }?.rawValue ?? "none")"
+    }
     private var enhancedTexture: MTLTexture?
     private var enhancedRevision: UInt64?
-    /// The algorithm and amount baked into `enhancedTexture`. The scratch
+    /// Ping-pong scratch for multi-step same-size chains.
+    private var enhanceScratchA: MTLTexture?
+    private var enhanceScratchB: MTLTexture?
+    /// The same-size chain and amount baked into `enhancedTexture`. The scratch
     /// texture is only valid for one source revision and one configuration, so
-    /// switching algorithms on a static frame must re-run the pass.
-    private var enhancedConfig: (FrameEnhancement, Float)?
+    /// switching the chain on a static frame must re-run the passes.
+    private var enhancedConfig: String?
     private(set) var outputPassCount = 0
-    /// Frame enhancement applied after the output scaling pass. Only algorithms
-    /// with a verified kernel are exposed; the Godot provider's private shaders
-    /// cannot be reused by this Metal path.
-    var enhancement: FrameEnhancement = .off
+    /// Ordered enhancement chain. Only algorithms with a verified kernel are
+    /// exposed; the Godot provider's private shaders cannot be reused by this
+    /// Metal path. A leading EASU step owns the output scaling; the remaining
+    /// steps are same-size passes run in order at the output resolution.
+    var enhancementChain: [FrameEnhancement] = []
     var enhancementAmount: Double = 0.5
     private(set) var lastError: String?
     let directPresentation = ProcessInfo.processInfo.environment["AETHER_HOST_SCHEDULING"] != "deferred"
@@ -479,6 +485,7 @@ final class MetalFramePresenter: NSObject, MTKViewDelegate {
         texture = nil; frameLease = nil
         outputTexture = nil; outputRevision = nil; outputConfig = nil
         enhancedTexture = nil; enhancedRevision = nil; enhancedConfig = nil
+        enhanceScratchA = nil; enhanceScratchB = nil
     }
 
     // Shared by onscreen rendering and deterministic offscreen verification.
@@ -487,8 +494,10 @@ final class MetalFramePresenter: NSObject, MTKViewDelegate {
         // EASU performs the edge-adaptive upscale itself, so it owns the output
         // pass (1:1 when no output size is configured); the other enhancements
         // are same-size passes after the output.
-        let scalingEnhancement = enhancement.scalesOutput
-        if let texture, scalingEnhancement {
+        let steps = enhancementChain.filter { $0.isStep }
+        let scalingStep = steps.first { $0.scalesOutput }
+        let sameSizeSteps = steps.filter { !$0.scalesOutput }
+        if let texture, scalingStep != nil {
             let hasOutput = outputSize.width > 0 && outputSize.height > 0
             let width = hasOutput ? Int(outputSize.width) : texture.width
             let height = hasOutput ? Int(outputSize.height) : texture.height
@@ -532,8 +541,8 @@ final class MetalFramePresenter: NSObject, MTKViewDelegate {
                 source = outputTexture
             }
         }
-        if !scalingEnhancement, enhancement != .off, let current = source, enhancementAmount > 0 {
-            source = enhancedSource(current, command: command)
+        if !sameSizeSteps.isEmpty, enhancementAmount > 0, let current = source {
+            source = sameSizeChain(current, steps: sameSizeSteps, command: command)
         }
         try encodeImage(source: source, target: target, command: command,
                         sampling: outputTexture == nil ? samplingAlgorithm : .linear)
@@ -607,48 +616,65 @@ final class MetalFramePresenter: NSObject, MTKViewDelegate {
         encoder.endEncoding()
     }
 
-    /// Runs the enhancement pass into a scratch texture. A missing allocation
-    /// or a failed pass keeps the original frame, matching Godot's "safe
-    /// fallback to the original picture" contract.
-    private func enhancedSource(_ current: MTLTexture, command: MTLCommandBuffer) -> MTLTexture {
-        let width = current.width, height = current.height
-        if enhancedTexture?.width != width || enhancedTexture?.height != height {
-            let descriptor = MTLTextureDescriptor.texture2DDescriptor(pixelFormat: .bgra8Unorm,
-                width: width, height: height, mipmapped: false)
-            descriptor.storageMode = .private
-            descriptor.usage = [.renderTarget, .shaderRead]
-            guard let next = device.makeTexture(descriptor: descriptor) else {
-                lastError = "enhancement allocation failed; presenting the original frame"
-                return current
-            }
-            enhancedTexture = next
-            enhancedRevision = nil
-            enhancedConfig = nil
-        }
-        guard let target = enhancedTexture else { return current }
+    /// Runs the ordered same-size chain into a cached result texture, using two
+    /// ping-pong scratches for the intermediate steps. A missing allocation or a
+    /// failed pass keeps the original frame, matching Godot's "safe fallback to
+    /// the original picture" contract.
+    private func sameSizeChain(_ input: MTLTexture, steps: [FrameEnhancement],
+                               command: MTLCommandBuffer) -> MTLTexture {
+        let width = input.width, height = input.height
         let amount = Float(min(1, max(0, enhancementAmount)))
-        if enhancedRevision != frameRevision || enhancedConfig?.0 != enhancement || enhancedConfig?.1 != amount {
-            do {
-                let passPipeline: MTLRenderPipelineState
-                switch enhancement {
-                case .fsr1Rcas: passPipeline = rcasPipeline
-                default: passPipeline = sharpenPipeline
-                }
-                try encodeImage(source: current, target: target, command: command,
-                                aspectFit: false, sampling: .nearest,
-                                pipelineOverride: passPipeline,
-                                sharpenAmount: amount)
-            } catch {
-                lastError = "enhancement pass failed: \(error); presenting the original frame"
-                enhancedTexture = nil
-                enhancedRevision = nil
-                enhancedConfig = nil
-                return current
-            }
-            enhancedRevision = frameRevision
-            enhancedConfig = (enhancement, amount)
+        let config = "\(width)x\(height)|\(steps.map(\.rawValue).joined(separator: ","))|\(amount)|\(scalingConfig)"
+        if enhancedRevision == frameRevision, enhancedConfig == config, let cached = enhancedTexture {
+            return cached
         }
-        return target
+        guard let result = makeScratch(&enhancedTexture, width: width, height: height) else {
+            lastError = "enhancement allocation failed; presenting the original frame"
+            return input
+        }
+        var current = input
+        do {
+            if steps.count == 1 {
+                try encodeStep(source: current, target: result, step: steps[0], amount: amount, command: command)
+            } else {
+                guard let scratchA = makeScratch(&enhanceScratchA, width: width, height: height),
+                      let scratchB = makeScratch(&enhanceScratchB, width: width, height: height) else {
+                    lastError = "enhancement allocation failed; presenting the original frame"
+                    return input
+                }
+                for (index, step) in steps.enumerated() {
+                    let target = index == steps.count - 1 ? result : (index % 2 == 0 ? scratchA : scratchB)
+                    try encodeStep(source: current, target: target, step: step, amount: amount, command: command)
+                    current = target
+                }
+            }
+        } catch {
+            lastError = "enhancement pass failed: \(error); presenting the original frame"
+            enhancedTexture = nil; enhancedRevision = nil; enhancedConfig = nil
+            return input
+        }
+        enhancedRevision = frameRevision
+        enhancedConfig = config
+        return result
+    }
+
+    private func makeScratch(_ storage: inout MTLTexture?, width: Int, height: Int) -> MTLTexture? {
+        if let texture = storage, texture.width == width, texture.height == height { return texture }
+        let descriptor = MTLTextureDescriptor.texture2DDescriptor(pixelFormat: .bgra8Unorm,
+            width: width, height: height, mipmapped: false)
+        descriptor.storageMode = .private
+        descriptor.usage = [.renderTarget, .shaderRead]
+        guard let next = device.makeTexture(descriptor: descriptor) else { return nil }
+        storage = next
+        return next
+    }
+
+    private func encodeStep(source: MTLTexture, target: MTLTexture, step: FrameEnhancement,
+                            amount: Float, command: MTLCommandBuffer) throws {
+        let pipeline: MTLRenderPipelineState = step == .fsr1Rcas ? rcasPipeline : sharpenPipeline
+        try encodeImage(source: source, target: target, command: command,
+                        aspectFit: false, sampling: .nearest,
+                        pipelineOverride: pipeline, sharpenAmount: amount)
     }
 
     private func encodeImage(source: MTLTexture?, target: MTLTexture, command: MTLCommandBuffer,

@@ -61,8 +61,8 @@ Apple 官方参考：[Settings](https://developer.apple.com/design/human-interfa
 | 画布 Game Native/Display Fit | 缺失设置；已有 setSurfaceSize 接缝 | 分离游戏逻辑画布、输出纹理和窗口 drawable；保持输入映射 | P3 |
 | 缩放 smooth/nearest/linear/bicubic/lanczos | 缺失选择器与完整实现 | `smooth` 迁移为 `linear`；提供真实 nearest/linear/bicubic/lanczos 核，名称与 shader 一致 | P3 |
 | 输出 original/1080p/2k/4k，默认1080p | 缺失设置 | 按原版目标尺寸/纵横比规范迁移；不是改变显示器分辨率 | P3 |
-| 增强 off/preset/custom | P5a/P5b 已接入 off + 对比度自适应锐化（自研、有 CPU 参考）+ FSR1 EASU/RCAS（AMD MIT 参考） | Metal 后处理与能力报告；原始帧降级；其余 Godot 算法逐个移植前不开放 | P5 |
-| 15 个增强预设，16 种自定义算法、顺序添加/移除 | 缺失 | 保留重建2×、目标尺寸缩放、同尺寸修复三种语义；不是统一 resize | P5 |
+| 增强 off/preset/custom | P5b 已接入 Godot 的 kind 模型：关闭/预设/自定义；预设先开放可组合的「均衡清晰（FSR1）」= EASU+RCAS | Metal 后处理与能力报告；原始帧降级；其余 Godot 算法逐个移植前不开放 | P5 |
+| 15 个增强预设，16 种自定义算法、顺序添加/移除 | 自定义链编辑器已接入（有序步骤、每步算法选择、添加/移除、上限 32）；预设仅列出可组合项 | 保留重建2×、目标尺寸缩放、同尺寸修复三种语义；不是统一 resize | P5 |
 | FPS 开关+60/80/90/120/144，默认关闭、目标80 | 已接入 schema v5；DisplayLink 优先、Timer 兜底 | ABI fps_limit + 宿主调度；关闭限制也不承诺超显示器FPS | P3 |
 | 游戏横屏锁定 | 平台不适用 | 移动端 M4 | M4 |
 | 插件核心/完整（krkrsdl3/aether_all） | 缺失 UI/下发 | 已有 engine option，启动前应用并报告实际结果 | P1 |
@@ -353,3 +353,14 @@ Godot 用 `vndb_cover_resolver.gd` 后台把游戏标题发给 VNDB 并取首个
 - 结果以候选列表展示（缩略图 + 标题 + VNDB id），选择后下载封面并缓存到库根 `Covers/vndb-<id>.jpg`，再通过既有 `setCover` 指向它；失败保留当前封面并显示原因。`CoverSearchProviding`/`CoverImageLoading` 协议便于测试注入假实现。
 - 测试 `CoverSearchTests`：请求形状（只发标题、空标题拒绝）、响应解析（无图行丢弃）、注入式 search/apply（缓存文件 + 索引）、失败保留。CUA 用真实 VNDB 验证「搜索 → 选择 → 缓存到库根 → 详情页出现清除封面」。证据：`out/apple_host/evidence/ui-p6-vndb-cua/`。
 - 与 Godot 的差异：本实现不做后台自动查询；候选选择是显式动作，符合 spec 对隐私的要求。
+
+### 7.20 P5b 续：增强 kind/预设/自定义链
+
+Godot 的增强设置是 `frame_enhancement_kind`（off/preset/custom）+ 预设选择 + 自定义算法链编辑器。Apple 宿主此前只有一个扁平算法下拉。本片改为对齐该模型（schema v9）：
+
+- `HostSettings` v9 用 `frameEnhancementKind`（off/preset/custom）、`frameEnhancementPreset`、`frameEnhancementChain`（有序算法 id）替换 v8 的单一 `frameEnhancement`；v8 文件迁移为一步自定义链，v7（无该字段）迁移为 off，加载不改写原文件。`enhancementSteps` 解析出最终链。
+- 预设先开放可组合的「均衡清晰（FSR1）」= EASU→RCAS（Godot 的 `fsr1` 预设）；需要未移植算法的 Anime4K/RAVU/CuNNy/NNEDI3 预设不列出。
+- 自定义链编辑器：有序「步骤 N · 算法」行、每步算法选择、移除按钮、＋ 添加算法（上限 32，与 Godot 一致）。只列出已验证算法；EASU 只允许作为第一步（本移植把“缩放”固定为链首，其余为输出分辨率下的同尺寸修复）。
+- 渲染：`MetalFramePresenter.enhancementChain` 把链首的缩放步（EASU）作为输出 pass，其余按顺序在同尺寸 ping-pong scratch 上执行；缓存键含链、强度与采样算法，切换链在静态帧上也会重跑。单算法链行为与之前一致。
+- 测试：`FrameEnhancementTests` 覆盖 v8→v9 迁移、预设解析、自定义链往返、非法链（未移植算法/缩放步非首位/两个缩放步/空链）拒绝，以及两步链（RCAS→自适应锐化）与 CPU 组合逐像素一致。CUA 验证 kind/预设/自定义 UI、保存 v9 与真实启动日志 `frame enhancement fsr1_easu,fsr1_rcas amount=0.50`。证据：`out/apple_host/evidence/ui-p5b-chain-cua/`。
+- 本轮同时修掉内置 Demo 的库索引缺陷：Demo 条目的 `directory` 曾不是 UUID，导致含 Demo 的库重载报「索引无法读取」；现改为 `id.uuidString` 并加测试。

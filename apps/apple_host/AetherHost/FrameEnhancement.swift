@@ -22,7 +22,47 @@ enum FrameEnhancement: String, CaseIterable, Identifiable {
     /// a same-size pass after the output pass, matching Godot's split between
     /// reconstruction/scaling and same-size restore.
     var scalesOutput: Bool { self == .fsr1Easu }
+    /// A chain step is any algorithm except `off`.
+    var isStep: Bool { self != .off }
     static func normalized(_ raw: String) -> FrameEnhancement? { FrameEnhancement(rawValue: raw) }
+}
+
+/// Godot's `settings.frame_enhancement_kind`: off / preset / custom.
+enum FrameEnhancementKind: String, CaseIterable, Identifiable {
+    case off, preset, custom
+    var id: String { rawValue }
+    var textKey: String { "enhancementKind_" + rawValue }
+}
+
+/// A named chain, mirroring Godot's preset modes. Only presets that can be
+/// composed entirely from verified algorithms are exposed; the private provider
+/// presets (Anime4K/RAVU/CuNNy/NNEDI3 chains) stay unlisted until ported.
+struct EnhancementPreset: Identifiable, Equatable {
+    let id: String
+    let steps: [FrameEnhancement]
+    var textKey: String { "enhancementPreset_" + id }
+
+    /// Godot's `fsr1` preset ("均衡清晰"): edge-adaptive upscale then RCAS.
+    static let all: [EnhancementPreset] = [
+        EnhancementPreset(id: "fsr1", steps: [.fsr1Easu, .fsr1Rcas]),
+    ]
+    static var defaultPreset: EnhancementPreset { all[0] }
+    static func normalized(_ raw: String) -> EnhancementPreset? { all.first { $0.id == raw } }
+}
+
+/// Godot caps the custom chain at 32 steps.
+enum FrameEnhancementChain {
+    static let maximumSteps = 32
+    /// Only the first step may scale the output (our EASU); later steps run at
+    /// the output resolution.
+    static func normalized(_ raw: [String]) -> [FrameEnhancement]? {
+        let steps = raw.compactMap(FrameEnhancement.normalized)
+        guard steps.count == raw.count, !steps.isEmpty, steps.count <= maximumSteps else { return nil }
+        guard steps.allSatisfy({ $0.isStep }) else { return nil }
+        let scaling = steps.filter { $0.scalesOutput }
+        guard scaling.count <= 1, scaling.isEmpty || steps[0].scalesOutput else { return nil }
+        return steps
+    }
 }
 
 /// CPU reference for the Metal pass. Both use the same five-tap,

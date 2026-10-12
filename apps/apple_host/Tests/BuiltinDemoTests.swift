@@ -15,6 +15,12 @@ enum BuiltinDemoTests {
         precondition(games[0].isBuiltin)
         precondition(FileManager.default.fileExists(atPath: demo.installURL.path))
         precondition(demo.isPath(demo.installDirectory.path))
+        // The reconciled entry must survive the library's own validation, so a
+        // relaunch reloads it instead of reporting a corrupt index.
+        let library = GameLibrary(root: root)
+        try library.save(games)
+        let reloaded = try library.load()
+        precondition(reloaded.count == 1, "the demo entry must pass library validation")
         // Idempotent: re-reconciling keeps one entry and preserves play time.
         games[0].playDurationSeconds = 120
         games = demo.reconciled(games)

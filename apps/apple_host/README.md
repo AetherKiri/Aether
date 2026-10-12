@@ -221,15 +221,18 @@ scr.paz+sys.paz+可执行文件、校验过文件头的 RFVP `.hcb`），状态�
 启动入口不提供覆盖——`engine_open_game` 的 `startup_script` 参数在当前运行时被忽略；
 RFVP 文本编码同样等到链接 RFVP provider 后再提供，当前显示原因说明。
 
-渲染设置提供 Godot 同名的「画面增强」，当前开放三个**有 CPU 参考并逐像素对照**的
-算法：**对比度自适应锐化**（五抽头局部对比度加权拉普拉斯，增量限制在局部对比幅度内
-以避免光晕）、**FSR1 RCAS**（AMD FidelityFX Super Resolution 1 的 robust contrast
-adaptive sharpening）与 **FSR1 EASU**（edge-adaptive 上采样），后两者忠实移植
+渲染设置提供 Godot 同名的「画面增强」，并采用 Godot 的 kind 模型：关闭 / 预设 / 自定义。
+当前开放三个**有 CPU 参考并逐像素对照**的算法：**对比度自适应锐化**（五抽头局部对比度
+加权拉普拉斯，增量限制在局部对比幅度内以避免光晕）、**FSR1 RCAS**（AMD FidelityFX
+Super Resolution 1 的 robust contrast adaptive sharpening）与 **FSR1 EASU**（edge-adaptive
+上采样），后两者忠实移植
 `ffx-fsr/ffx_fsr1.h` 的 `FsrRcasF` 与 `FsrEasuF`（MIT，全文见
 `THIRD_PARTY_LICENSES.md`；EASU 的硬件 `gather4` 用四次钳位点采样等价模拟）。RCAS 与
 自适应锐化是输出缩放后的同尺寸修复（强度 0–1 按 0.05 步进）；EASU 自己完成到输出
-分辨率的放大，分配或 pass 失败会保留原始画面。Godot 的 Anime4K/RAVU/CuNNy/NNEDI3/
-FXAA 与预设/自定义链位于私有 RenderingDevice provider，需要逐个移植到 Metal 并做参考
+分辨率的放大。预设先开放可组合的「均衡清晰（FSR1）」= EASU→RCAS；自定义模式提供有序
+算法链编辑器（每步算法选择、添加/移除、上限 32，EASU 只允许作为第一步），按顺序在同尺寸
+scratch 上执行。分配或 pass 失败会保留原始画面。Godot 的 Anime4K/RAVU/CuNNy/NNEDI3/
+FXAA 与依赖它们的预设位于私有 RenderingDevice provider，需要逐个移植到 Metal 并做参考
 对照，当前在选择器与设置页说明中明确未开放。smoke 可用 `--frame-enhancement
 adaptive_sharpen|fsr1_rcas|fsr1_easu --enhancement-amount 0.5` 做基准覆盖（仅测试入口，不写入偏好）。
 首次启动会显示 Godot 同版本（`2026-07-27.4`）的隐私/免责协议门：正文取自打包的

@@ -395,14 +395,16 @@ final class EngineController: ObservableObject {
         metalPresenter?.samplingAlgorithm = sampling
         // Benchmark override, mirroring the sampling/output env seams; the
         // persisted setting stays authoritative for product runs.
-        let enhancement = FrameEnhancement.normalized(
-            env["AETHER_HOST_FRAME_ENHANCEMENT"] ?? hostSettings.frameEnhancement) ?? .off
+        // Benchmark override, mirroring the sampling/output env seams; the
+        // persisted setting stays authoritative for product runs.
+        let enhancementOverride = env["AETHER_HOST_FRAME_ENHANCEMENT"].flatMap(FrameEnhancement.normalized)
+        let enhancementChain = enhancementOverride.map { $0.isStep ? [$0] : [] } ?? hostSettings.enhancementSteps
         let enhancementAmount = Double(env["AETHER_HOST_FRAME_ENHANCEMENT_AMOUNT"] ?? "")
             ?? hostSettings.frameEnhancementAmount
-        metalPresenter?.enhancement = enhancement
+        metalPresenter?.enhancementChain = enhancementChain
         metalPresenter?.enhancementAmount = HostSettings.normalizedEnhancementAmount(enhancementAmount)
-        if enhancement != .off {
-            log("frame enhancement \(enhancement.rawValue) amount=\(String(format: "%.2f", HostSettings.normalizedEnhancementAmount(enhancementAmount)))")
+        if !enhancementChain.isEmpty {
+            log("frame enhancement \(enhancementChain.map(\.rawValue).joined(separator: ",")) amount=\(String(format: "%.2f", HostSettings.normalizedEnhancementAmount(enhancementAmount)))")
         }
         renderState = RenderSessionState(requested: requestedRenderer)
         useMetalPresentation = metalAvailability.available && ProcessInfo.processInfo.environment["AETHER_HOST_PRESENTATION"] != "image"

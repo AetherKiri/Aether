@@ -2,7 +2,7 @@
 
 [简体中文](verified_games.zh-CN.md)
 
-Last updated: 2026-10-05
+Last updated: 2026-10-12
 
 This document tracks games that have been manually smoke-tested with
 AetherKiri. It is a compatibility notebook, not a guarantee that every route,
@@ -82,6 +82,7 @@ movie, plugin path, or save state in a title has been exhaustively validated.
 | 大図書館の羊飼い | iOS/iPadOS release app build on iPad | ONS game startup and virtual Ctrl press/release flow, including stopping fast-forward after release | Flow verified | [@akitaSummer](https://github.com/akitaSummer) | Uses the ONScripterYuri runtime. Local game files are not committed. |
 | 穢翼のユースティア | macOS debug app; iOS/iPadOS debug app build on iPad | ONS game import, startup, title/menu rendering, new-game and second-save load flows, opening subtitles and transitions, scene/text rendering, audio playback, skip mode, save-list scrolling, and mouse/touch input | Flow verified | [@akitaSummer](https://github.com/akitaSummer) | Uses the ONScripterYuri runtime. Local game files are not committed. |
 | 美少女万華鏡 -呪われし伝説の少女- | macOS debug app; iOS/iPadOS debug app build on iPad | ONS game import, startup, initial title/menu rendering, scene/text rendering, audio playback, and basic input | Smoke verified | [@akitaSummer](https://github.com/akitaSummer) | Uses the ONScripterYuri runtime. Local game files are not committed. |
+| [ディメンション凸ラバース！！](https://crystalia.amusecraft.com/totsulover/) | iOS/iPadOS debug app build 4711 on iPad | Game selection, startup, and title rendering | Smoke verified | [@MadCcc](https://github.com/MadCcc) | Uses the SoftPal runtime. This iPad check covers startup only; NEXT, BACK, and save/load require separate verification. Local game files are not committed. |
 
 ## How To Add A Game
 

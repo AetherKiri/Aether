@@ -9255,13 +9255,6 @@ public:
         : frame_effect_provider_(CreateFrameEffectProvider()) {}
     ~AetherRuntimePlayer() override {
         destroy_engine();
-        AudioServer *server = AudioServer::get_singleton();
-        if (server != nullptr) {
-            for (const StringName &bus : runtime_audio_buses_) {
-                const int32_t index = server->get_bus_index(bus);
-                if (index >= 0) server->remove_bus(index);
-            }
-        }
     }
 
     bool initialize_engine(const String &writable_path, const String &cache_path) {
@@ -9342,6 +9335,7 @@ public:
     }
 
     void destroy_engine() {
+        clear_runtime_audio();
         media_close();
         clear_runtime_message();
         clear_runtime_save_slots();
@@ -9645,6 +9639,7 @@ public:
             return ENGINE_RESULT_INVALID_STATE;
         }
 
+        clear_runtime_audio();
         AndroidBridgeLog("event=open_game_begin path=%s async=%d runtime=%s",
                          game_root_path.utf8().get_data(), async ? 1 : 0,
                          runtime_id_.utf8().get_data());
@@ -11991,6 +11986,40 @@ private:
         int32_t step = 0;
         bool stop_after = false;
     };
+
+    void clear_runtime_audio() {
+        // A fading-out player can be detached from its slot. Collect both
+        // sources before resetting fades, and stop immediately: queue_free
+        // alone leaves audio playing until the scene tree flushes deletion.
+        std::unordered_set<AudioStreamPlayer *> players;
+        for (auto *player : runtime_audio_players_) {
+            if (player != nullptr) players.insert(player);
+        }
+        const auto clear_fade = [&players](RuntimeAudioFade &fade) {
+            if (fade.player != nullptr) players.insert(fade.player);
+            fade = RuntimeAudioFade{};
+        };
+        clear_fade(runtime_bgm_fade_in_);
+        clear_fade(runtime_bgm_fade_out_);
+        for (auto &fade : runtime_audio_gain_fades_) clear_fade(fade);
+        for (auto *player : players) {
+            player->stop();
+            player->set_stream(Ref<AudioStream>());
+            if (!player->is_queued_for_deletion()) player->queue_free();
+        }
+        AudioServer *server = AudioServer::get_singleton();
+        if (server != nullptr) {
+            for (const StringName &bus : runtime_audio_buses_) {
+                const int32_t index = server->get_bus_index(bus);
+                if (index > 0) server->remove_bus(index);
+            }
+        }
+        runtime_audio_players_.assign(5, nullptr);
+        runtime_audio_buses_.assign(5, StringName());
+        runtime_audio_names_.assign(5, String());
+        runtime_audio_completion_pending_.assign(5, false);
+        runtime_audio_gain_fades_.assign(5, RuntimeAudioFade{});
+    }
 
     void finish_runtime_audio_fade(RuntimeAudioFade &fade) {
         if (fade.player != nullptr) {

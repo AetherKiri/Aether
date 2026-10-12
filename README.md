@@ -1,8 +1,8 @@
 <p align="center">
-  <img src="apps/godot_app/assets/icon.png" width="112" alt="AetherKiri app icon">
+  <img src="apps/godot_app/assets/icon.png" width="112" alt="Aether app icon">
 </p>
 
-<h1 align="center">AetherKiri</h1>
+<h1 align="center">Aether</h1>
 
 <p align="center">
   A Godot-hosted, extensible multi-runtime platform for visual novels.<br>
@@ -10,15 +10,17 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/AetherKiri/AetherKiri/actions/workflows/build.yml"><img alt="macOS Build" src="https://img.shields.io/github/actions/workflow/status/AetherKiri/AetherKiri/build.yml?branch=main&amp;job=Build%20macOS%20App&amp;label=macOS"></a>
-  <a href="https://github.com/AetherKiri/AetherKiri/actions/workflows/build.yml"><img alt="iOS Build" src="https://img.shields.io/github/actions/workflow/status/AetherKiri/AetherKiri/build.yml?branch=main&amp;job=Build%20iOS%20App&amp;label=iOS"></a>
-  <a href="https://github.com/AetherKiri/AetherKiri/actions/workflows/build.yml"><img alt="Android Build" src="https://img.shields.io/github/actions/workflow/status/AetherKiri/AetherKiri/build.yml?branch=main&amp;job=Build%20Android%20App&amp;label=Android"></a>
-  <a href="https://github.com/AetherKiri/AetherKiri/blob/main/LICENSE"><img alt="License" src="https://img.shields.io/github/license/AetherKiri/AetherKiri?logo=gnu&label=license"></a>
+  <a href="https://github.com/AetherKiri/Aether/actions/workflows/build.yml"><img alt="macOS Build" src="https://img.shields.io/github/actions/workflow/status/AetherKiri/Aether/build.yml?branch=main&amp;job=Build%20macOS%20App&amp;label=macOS"></a>
+  <a href="https://github.com/AetherKiri/Aether/actions/workflows/build.yml"><img alt="iOS Build" src="https://img.shields.io/github/actions/workflow/status/AetherKiri/Aether/build.yml?branch=main&amp;job=Build%20iOS%20App&amp;label=iOS"></a>
+  <a href="https://github.com/AetherKiri/Aether/actions/workflows/build.yml"><img alt="Android Build" src="https://img.shields.io/github/actions/workflow/status/AetherKiri/Aether/build.yml?branch=main&amp;job=Build%20Android%20App&amp;label=Android"></a>
+  <a href="https://github.com/AetherKiri/Aether/actions/workflows/build.yml"><img alt="Linux x86_64 Build" src="https://img.shields.io/github/actions/workflow/status/AetherKiri/Aether/build.yml?branch=main&amp;job=Build%20Linux%20App%20%28x86_64%29&amp;label=Linux%20x86_64"></a>
+  <a href="https://github.com/AetherKiri/Aether/actions/workflows/build.yml"><img alt="Linux arm64 Build" src="https://img.shields.io/github/actions/workflow/status/AetherKiri/Aether/build.yml?branch=main&amp;job=Build%20Linux%20App%20%28arm64%29&amp;label=Linux%20arm64"></a>
+  <a href="https://github.com/AetherKiri/Aether/blob/main/LICENSE"><img alt="License" src="https://img.shields.io/github/license/AetherKiri/Aether?logo=gnu&label=license"></a>
 </p>
 
 ## Overview
 
-AetherKiri runs multiple visual-novel engines inside one Godot 4.7 app. A
+Aether runs multiple visual-novel engines inside one Godot 4.7 app. A
 single `AetherRuntimePlayer` hosts the native runtimes behind a versioned
 provider ABI, while Godot owns the product surface: UI, final-frame
 presentation, input, settings, export presets, and platform packaging. The
@@ -29,11 +31,13 @@ capabilities.
 Godot App Shell
   └─ AetherRuntimePlayer
        └─ Runtime Dispatcher
-            ├─ KiriRuntime ─── KiriKiri2 core / plugins
-            ├─ OnsRuntime ─── OnscripterYuri
-            ├─ SiglusRuntime ─ siglus_rs
-            ├─ A Runtime ───── Artemis (private package)
-            └─ C Runtime ───── CatSystem2 (private package)
+            ├─ KiriRuntime ──────── KiriKiri2 core / plugins
+            ├─ OnsRuntime ───────── OnscripterYuri
+            ├─ SiglusRuntime ────── siglus_rs
+            ├─ Artemis Runtime ──── Artemis (private package)
+            ├─ CatSystem2 Runtime ─ CatSystem2 (private package)
+            ├─ BGI Runtime ──────── BGI / Ethornell (private package)
+            └─ SoftPal Runtime ──── SoftPal (private package)
 ```
 
 The default product renderer is **Godot Native**: engine frames are rendered
@@ -57,9 +61,10 @@ and **Debug CPU** is a diagnostic fallback only.
 - Manual compatibility notes for tested titles in
   [`doc/verified_games.md`](doc/verified_games.md).
 
-In distributed builds, OnsRuntime, A Runtime, and C Runtime are beta features
-that require an active 30-day coffee entitlement. Debug builds keep these
-runtimes unrestricted for compatibility development and testing.
+In iOS and macOS Release distribution builds, Minori, SoftPal, and the
+WHITE ALBUM2 (Leaf TtT / WA2) runtime require an active 30-day coffee
+entitlement. ONScripterYuri, Artemis, and CatSystem2 are generally available.
+Debug builds and Android/Linux releases do not enforce this coffee requirement.
 
 ## Platform Support
 
@@ -69,7 +74,7 @@ runtimes unrestricted for compatibility development and testing.
 | iOS / iPadOS | iOS / iPadOS 16.0, `arm64` | App Store; simulator builds for development |
 | Android | Android 8.0 (API 26), `arm64-v8a` | GitHub Release APK |
 | Web | Browser with wasm SIMD + threads, `SharedArrayBuffer`, COOP/COEP | Self-hosted static export |
-| Linux | Build from source | `x86_64` export via `./build.sh linux release` |
+| Linux | `x86_64` or `arm64` | GitHub Release archive; build from source via `./build.sh linux release` |
 | Windows | Build from source | Native targets compile locally |
 
 ## Repository Layout
@@ -267,10 +272,10 @@ session, because render resources must be recreated.
   `onscript.nt3`). Saves are written to the game's `savedata/` directory so
   they survive app updates; the default script encoding matches upstream (GBK)
   and can be overridden with `AETHERKIRI_ONS_ENCODING=gbk|sjis|utf8`. ONS
-  `mpegplay`/`avi`/`movie` commands share AetherKiri's FFmpeg media pipeline.
+  `mpegplay`/`avi`/`movie` commands share Aether's FFmpeg media pipeline.
   Integration permission and licensing are recorded in
   [upstream issue #75](https://github.com/YuriSizuku/OnscripterYuri/issues/75).
-- **Built-in demo** — the multilingual AetherKiri KAG3 demo ships inside the
+- **Built-in demo** — the multilingual Aether KAG3 demo ships inside the
   app package and is staged into the library on first launch, using the same
   flow as an imported game. Deleting it removes the staged copy and its saves.
   Source: [`demos/aetherkiri-kag3/`](demos/aetherkiri-kag3/).
@@ -310,7 +315,7 @@ store packaging flow.
 
 ## License
 
-AetherKiri is distributed under GPL-3.0-or-later (`LICENSE`); third-party
+Aether is distributed under GPL-3.0-or-later (`LICENSE`); third-party
 notices are preserved in `THIRD_PARTY_LICENSES.md`. For Apple App Store
 distribution, `COPYING.iOS` records the limited additional permission granted
 by approving copyright holders solely for the official Aether iOS or macOS

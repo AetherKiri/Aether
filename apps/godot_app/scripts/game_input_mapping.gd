@@ -149,3 +149,8 @@ static func touch_drag_release_is_cancelled(
     dragged: bool
 ) -> bool:
     return dragged and runtime_kind.strip_edges().to_lower() == "catsystem2"
+
+static func touch_drag_is_cursor_only(runtime_kind: String) -> bool:
+    # BGI scripts observe mouse activation edges separately from cursor
+    # position. Hold off those edges until a finger is classified as a tap.
+    return runtime_kind.strip_edges().to_lower() == "bgi"

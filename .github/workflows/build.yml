@@ -1220,14 +1220,6 @@ jobs:
           if-no-files-found: error
           retention-days: 7
 
-      - name: Upload Debug App
-        uses: actions/upload-artifact@v7
-        with:
-          name: linux-debug-${{ matrix.arch }}-app
-          path: out/godot/linux/Aether-linux-${{ matrix.arch }}-debug.tar.gz
-          if-no-files-found: error
-          retention-days: 7
-
       - name: Save vcpkg source cache
         if: always() && env.AETHERKIRI_VCPKG_CACHE_WRITE == 'true' && steps.restore-vcpkg-downloads.outputs.cache-hit != 'true'
         uses: actions/cache/save@v6

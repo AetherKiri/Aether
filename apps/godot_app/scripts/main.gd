@@ -1825,6 +1825,7 @@ const KEY_MOD_CONTROL := 0x04
 const RUNTIME_KIRIKIRI := "kirikiri"
 const RUNTIME_ONSCRIPTER := "onscripter"
 const RUNTIME_MINORI := "minori"
+const RUNTIME_SOFTPAL := "softpal"
 const RUNTIME_CATSYSTEM2 := "catsystem2"
 const RUNTIME_SIGLUS := "siglus"
 const RUNTIME_WA2 := "wa2"
@@ -10723,8 +10724,8 @@ func _game_runtime_kind(path: String) -> String:
         # before falling back to the legacy KiriKiri host.
         if int(player.probe_runtime(RUNTIME_CATSYSTEM2, root)) > 0:
             return RUNTIME_CATSYSTEM2
-        if int(player.probe_runtime("softpal", root)) > 0:
-            return "softpal"
+        if int(player.probe_runtime(RUNTIME_SOFTPAL, root)) > 0:
+            return RUNTIME_SOFTPAL
         if int(player.probe_runtime(RUNTIME_MINORI, root)) > 0:
             return RUNTIME_MINORI
         # Leaf TtT installs (WHITE ALBUM2) ship .pak archives that carry no
@@ -11378,10 +11379,10 @@ func _start_selected_game_after_iap() -> void:
         _deny_runtime_beta_launch()
 
 func _runtime_requires_beta_access(runtime_kind: String) -> bool:
-    # ONS and Artemis are generally available. Minori remains gated by an
+    # ONS and Artemis are generally available. Minori and SoftPal require an
     # active coffee entitlement in iOS and macOS distribution builds.
     # Provider-backed runtimes such as WA2 are checked separately.
-    return runtime_kind == RUNTIME_MINORI
+    return runtime_kind in [RUNTIME_MINORI, RUNTIME_SOFTPAL]
 
 func _beta_access_enforcement_enabled(platform_name: String = "") -> bool:
     var effective_platform := platform_name if not platform_name.is_empty() else OS.get_name()
@@ -16897,7 +16898,8 @@ func _handle_game_pointer_event(event: InputEvent) -> bool:
         if mapped.x < 0.0 or mapped.y < 0.0:
             mapped = active_touch_points.get(pointer_id, Vector2.ZERO)
         var down_mapped: Vector2 = touch_down_points.get(pointer_id, mapped)
-        if not dragging_touch_points.has(pointer_id):
+        var dragged := dragging_touch_points.has(pointer_id)
+        if not dragged:
             mapped = GameInputMapping.stable_tap_point(
                 down_mapped,
                 mapped,
@@ -16907,6 +16909,12 @@ func _handle_game_pointer_event(event: InputEvent) -> bool:
         touch_down_points.erase(pointer_id)
         dragging_touch_points.erase(pointer_id)
         last_forwarded_touch_move_msec_by_id.erase(pointer_id)
+        if GameInputMapping.touch_drag_is_cursor_only(active_runtime_kind):
+            if not dragged:
+                _set_pending_touch(pointer_id, down_mapped)
+                _send_pending_touch_click(pointer_id, mapped)
+            # Cursor-only holds never sent DOWN, so they must not send UP.
+            return true
         _send_game_pointer_event(POINTER_UP, _touch_engine_pointer_id(pointer_id), mapped.x, mapped.y, 0.0, 0.0, 0)
         last_forwarded_touch_up_msec = Time.get_ticks_msec()
         _apply_touch_action_cooldown()
@@ -16948,10 +16956,12 @@ func _handle_game_pointer_event(event: InputEvent) -> bool:
             active_touch_points[pointer_id] = mapped
             var rel := _map_viewport_delta(drag.relative)
             var move_modifiers := POINTER_MOD_LEFT
-            if _is_touch_platform() and active_runtime_kind == RUNTIME_ONSCRIPTER:
-                # Treat touch-drag as cursor positioning for ONS. Keeping the
-                # left-button modifier set turns it into a mouse drag, which
-                # prevents title-menu hover state from following the finger.
+            if (
+                GameInputMapping.touch_drag_is_cursor_only(active_runtime_kind)
+                or (_is_touch_platform() and active_runtime_kind == RUNTIME_ONSCRIPTER)
+            ):
+                # These runtimes use touch-drag to position the cursor.
+                # A held-left modifier would also activate script controls.
                 move_modifiers = 0
             _send_game_pointer_event(
                 POINTER_MOVE,
@@ -17047,6 +17057,11 @@ func _flush_pending_touch_press(force: bool = false) -> bool:
             quarantined_mapped
         )
         return false
+    var cursor_only := GameInputMapping.touch_drag_is_cursor_only(active_runtime_kind)
+    if cursor_only and not force:
+        # A stationary hold can still become either a tap or a two-finger
+        # gesture. Sending DOWN on a timer would advance BGI before release.
+        return false
     if not force and now - pending_touch_down_msec < TOUCH_SINGLE_TAP_DELAY_MS:
         return false
 
@@ -17060,7 +17075,8 @@ func _flush_pending_touch_press(force: bool = false) -> bool:
     last_forwarded_touch_down_msec = now
     _remember_button_position(mapped)
     _send_game_pointer_event(POINTER_MOVE, _touch_engine_pointer_id(pointer_id), mapped.x, mapped.y, 0.0, 0.0, 0)
-    _send_game_pointer_event(POINTER_DOWN, _touch_engine_pointer_id(pointer_id), mapped.x, mapped.y, 0.0, 0.0, 0)
+    if not cursor_only:
+        _send_game_pointer_event(POINTER_DOWN, _touch_engine_pointer_id(pointer_id), mapped.x, mapped.y, 0.0, 0.0, 0)
     _trace_touch_route("primary_hold_down", pointer_id, mapped)
     _queue_artemis_input_state_trace("primary_hold_down")
     _arm_tick_trace()
@@ -17151,16 +17167,17 @@ func _send_touch_secondary_click(pointer_id: int, mapped: Vector2) -> void:
         # The first finger may already have crossed the single-touch delay.
         # Reclassifying it as a two-finger gesture must cancel that press; a
         # normal UP would also dispatch Artemis setonpush/adv_click.
-        _send_game_pointer_event(
-            POINTER_UP,
-            _touch_engine_pointer_id(first_id),
-            first_mapped.x,
-            first_mapped.y,
-            0.0,
-            0.0,
-            0,
-            POINTER_MOD_CANCEL
-        )
+        if not GameInputMapping.touch_drag_is_cursor_only(active_runtime_kind):
+            _send_game_pointer_event(
+                POINTER_UP,
+                _touch_engine_pointer_id(first_id),
+                first_mapped.x,
+                first_mapped.y,
+                0.0,
+                0.0,
+                0,
+                POINTER_MOD_CANCEL
+            )
         active_touch_points.erase(first_id)
         touch_down_points.erase(first_id)
         dragging_touch_points.erase(first_id)

@@ -1,8 +1,8 @@
 <p align="center">
-  <img src="apps/godot_app/assets/icon.png" width="112" alt="AetherKiri 应用图标">
+  <img src="apps/godot_app/assets/icon.png" width="112" alt="Aether 应用图标">
 </p>
 
-<h1 align="center">AetherKiri</h1>
+<h1 align="center">Aether</h1>
 
 <p align="center">
   一个由 Godot 承载、可扩展的多 Runtime 视觉小说平台。<br>
@@ -10,15 +10,17 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/AetherKiri/AetherKiri/actions/workflows/build.yml"><img alt="macOS Build" src="https://img.shields.io/github/actions/workflow/status/AetherKiri/AetherKiri/build.yml?branch=main&amp;job=Build%20macOS%20App&amp;label=macOS"></a>
-  <a href="https://github.com/AetherKiri/AetherKiri/actions/workflows/build.yml"><img alt="iOS Build" src="https://img.shields.io/github/actions/workflow/status/AetherKiri/AetherKiri/build.yml?branch=main&amp;job=Build%20iOS%20App&amp;label=iOS"></a>
-  <a href="https://github.com/AetherKiri/AetherKiri/actions/workflows/build.yml"><img alt="Android Build" src="https://img.shields.io/github/actions/workflow/status/AetherKiri/AetherKiri/build.yml?branch=main&amp;job=Build%20Android%20App&amp;label=Android"></a>
-  <a href="https://github.com/AetherKiri/AetherKiri/blob/main/LICENSE"><img alt="License" src="https://img.shields.io/github/license/AetherKiri/AetherKiri?logo=gnu&label=license"></a>
+  <a href="https://github.com/AetherKiri/Aether/actions/workflows/build.yml"><img alt="macOS Build" src="https://img.shields.io/github/actions/workflow/status/AetherKiri/Aether/build.yml?branch=main&amp;job=Build%20macOS%20App&amp;label=macOS"></a>
+  <a href="https://github.com/AetherKiri/Aether/actions/workflows/build.yml"><img alt="iOS Build" src="https://img.shields.io/github/actions/workflow/status/AetherKiri/Aether/build.yml?branch=main&amp;job=Build%20iOS%20App&amp;label=iOS"></a>
+  <a href="https://github.com/AetherKiri/Aether/actions/workflows/build.yml"><img alt="Android Build" src="https://img.shields.io/github/actions/workflow/status/AetherKiri/Aether/build.yml?branch=main&amp;job=Build%20Android%20App&amp;label=Android"></a>
+  <a href="https://github.com/AetherKiri/Aether/actions/workflows/build.yml"><img alt="Linux x86_64 Build" src="https://img.shields.io/github/actions/workflow/status/AetherKiri/Aether/build.yml?branch=main&amp;job=Build%20Linux%20App%20%28x86_64%29&amp;label=Linux%20x86_64"></a>
+  <a href="https://github.com/AetherKiri/Aether/actions/workflows/build.yml"><img alt="Linux arm64 Build" src="https://img.shields.io/github/actions/workflow/status/AetherKiri/Aether/build.yml?branch=main&amp;job=Build%20Linux%20App%20%28arm64%29&amp;label=Linux%20arm64"></a>
+  <a href="https://github.com/AetherKiri/Aether/blob/main/LICENSE"><img alt="License" src="https://img.shields.io/github/license/AetherKiri/Aether?logo=gnu&label=license"></a>
 </p>
 
 ## 项目概览
 
-AetherKiri 在一个 Godot 4.7 应用内运行多个视觉小说引擎。统一的
+Aether 在一个 Godot 4.7 应用内运行多个视觉小说引擎。统一的
 `AetherRuntimePlayer` 通过版本化 Provider ABI 承载各原生 Runtime；Godot 负责
 产品面：UI、最终帧显示、输入、设置、导出配置与平台打包。Runtime
 Dispatcher 根据每个游戏的标记和能力选择对应引擎。
@@ -27,11 +29,13 @@ Dispatcher 根据每个游戏的标记和能力选择对应引擎。
 Godot App Shell
   └─ AetherRuntimePlayer
        └─ Runtime Dispatcher
-            ├─ KiriRuntime ─── KiriKiri2 Core / Plugins
-            ├─ OnsRuntime ─── OnscripterYuri
-            ├─ SiglusRuntime ─ siglus_rs
-            ├─ A Runtime ───── Artemis（私有 package）
-            └─ C Runtime ───── CatSystem2（私有 package）
+            ├─ KiriRuntime ──────── KiriKiri2 Core / Plugins
+            ├─ OnsRuntime ───────── OnscripterYuri
+            ├─ SiglusRuntime ────── siglus_rs
+            ├─ Artemis Runtime ──── Artemis（私有 package）
+            ├─ CatSystem2 Runtime ─ CatSystem2（私有 package）
+            ├─ BGI Runtime ──────── BGI / Ethornell（私有 package）
+            └─ SoftPal Runtime ──── SoftPal（私有 package）
 ```
 
 默认产品渲染链路是 **Godot Native**：引擎帧通过 Godot 持有的
@@ -51,8 +55,9 @@ Godot App Shell
 - 提供 smoke、渲染、交互、性能与手动复现 probe 脚本。
 - 已验证游戏清单见 [`doc/verified_games.zh-CN.md`](doc/verified_games.zh-CN.md)。
 
-分布式构建中，OnsRuntime、A Runtime 与 C Runtime 为 beta 功能，需要有效的
-30 天 coffee entitlement；Debug 构建保持不受限，便于兼容性开发与测试。
+iOS 和 macOS 的 Release 分发构建中，Minori、SoftPal 与 WHITE ALBUM2
+（Leaf TtT / WA2）运行时需要有效的 30 天咖啡权益。ONScripterYuri、Artemis
+和 CatSystem2 已普遍开放。Debug 构建及 Android/Linux 发布构建不执行该咖啡限制。
 
 ## 平台支持
 
@@ -62,7 +67,7 @@ Godot App Shell
 | iOS / iPadOS | iOS / iPadOS 16.0，`arm64` 真机 | App Store；另有模拟器开发构建 |
 | Android | Android 8.0（API 26），`arm64-v8a` | GitHub Release APK |
 | Web | 支持 wasm SIMD + threads、`SharedArrayBuffer`、COOP/COEP 的浏览器 | 自托管静态导出 |
-| Linux | 自行编译 | `./build.sh linux release` 导出 `x86_64` |
+| Linux | `x86_64` 或 `arm64` | GitHub Release 归档包；也可通过 `./build.sh linux release` 自行编译 |
 | Windows | 自行编译 | 本地编译 native 目标 |
 
 ## 仓库结构
@@ -247,9 +252,9 @@ npm install && npm run web:dev:debug   # 附带所需的 COOP/COEP 头
   `nscr_sec.dat`、`nscript.___`、`onscript.nt2`、`onscript.nt3`）。存档写入
   游戏的 `savedata/` 目录，应用更新后依然保留；默认脚本编码与上游一致
   （GBK），可用 `AETHERKIRI_ONS_ENCODING=gbk|sjis|utf8` 覆盖。ONS 的
-  `mpegplay`/`avi`/`movie` 命令共用 AetherKiri 的 FFmpeg 媒体管线。集成
+  `mpegplay`/`avi`/`movie` 命令共用 Aether 的 FFmpeg 媒体管线。集成
   授权与许可记录见[上游 issue #75](https://github.com/YuriSizuku/OnscripterYuri/issues/75)。
-- **内置 Demo**——多语言 AetherKiri KAG3 Demo 随应用包分发，首次启动时
+- **内置 Demo**——多语言 Aether KAG3 Demo 随应用包分发，首次启动时
   自动加入游戏库，与导入游戏走完全相同的流程。删除时会一并清理可写副本与
   存档。源码：[`demos/aetherkiri-kag3/`](demos/aetherkiri-kag3/)。
 
@@ -286,7 +291,7 @@ Connect 与 GitHub Release。所需仓库 secrets 与商店打包流程见
 
 ## 许可证
 
-AetherKiri 以 GPL-3.0-or-later 分发（`LICENSE`）；第三方授权声明保留在
+Aether 以 GPL-3.0-or-later 分发（`LICENSE`）；第三方授权声明保留在
 `THIRD_PARTY_LICENSES.md`。Apple App Store 分发相关的有限额外许可见
 `COPYING.iOS`：仅供 Aether 官方 iOS/macOS 版本或版权持有人书面授权的发布者
 使用；第三方分支及衍生 App 不得援引，该许可不代表其他版权持有人授予上游或

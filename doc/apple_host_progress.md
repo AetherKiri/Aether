@@ -602,3 +602,9 @@
 - 测试：`python3 tools/apple_host_settings_tests.py` 通过，含 profile 目录/可用性/映射、schema v6 迁移与校验、覆盖层文本组合（内存口径、detail 增量、翻译行），真实引擎的 profile 下发、`renderer_info`/`memory_stats`、帧工作采样与导出上下文；Debug 构建通过。
 - CUA（隔离 fixture 库）验证诊断设置页与真实 KAG3 覆盖层：tick 111.3/s、render 11.2/s、presentation 111.3/s、App 168.7 MB/Peak 181.9 MB/System free 9.7 GB/Cache 1.2 MB、p50 3.65/p95 9.50/max 12.60 ms、会话 930 tick/94 render/930 presentation，返回后覆盖层消失且会话计时提交（3600→3672s）。证据：`out/apple_host/evidence/ui-p4b/`。
 - 残余未验收：storage/script/audio/video 采样源仍未实现（按 Godot 目录保留但隐藏）；调试控制台与临时追踪工具（含 30 秒自动关闭）未迁移；新诊断文案只点验 zh-Hans；GPU 内存估算需要引擎侧新增来源。
+
+### 2026-10-12：范围调整（视频库暂停维护）
+
+- 用户决定：项目聚焦视觉小说，视频库模块暂停维护。已有视频实现（导入/移除与进度、字幕选择记忆、播放器基本控件、P2/P3 的测试与 CUA 证据）保留，不再推进视频导入/播放器/字幕/视频库 UI 的改动，只做不破坏兼容性的修复。
+- 本轮已回退正在进行的视频播放器改进（控件自动显隐、方向键 seek、拖拽 seek、Esc 返回、全屏恢复）与对应测试/工具改动，未提交任何视频相关修改；工作区保持在 `cd0ac25a`。
+- P4 剩余切片调整为视觉小说相关项：运行时元数据与启动入口/编码、调试控制台与临时追踪工具（含 30 秒自动关闭）、虚拟控制模式与入口/透明度。P5 增强保持独立。

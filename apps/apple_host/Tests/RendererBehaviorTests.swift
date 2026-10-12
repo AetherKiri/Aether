@@ -149,6 +149,43 @@ enum RendererBehaviorTests {
         precondition(!paced.loopRunning && paced.pacingDriver == "timer")
         precondition(paced.diagnostics.metadata["pacingDriver"] == "timer")
 
+        // Diagnostic profiles drive real engine trace options before launch,
+        // and the overlay reads live engine memory/backend data.
+        let diagnosed = EngineController()
+        diagnosed.hostSettings.diagnosticProfile = DiagnosticProfile.full.rawValue
+        diagnosed.hostSettings.debugOverlayMode = DebugOverlayMode.detail.rawValue
+        precondition(diagnosed.initializeEngine(renderer: "software"))
+        precondition(diagnosed.appliedSettingOptions["input_trace"] == "1")
+        precondition(diagnosed.appliedSettingOptions["plugin_trace"] == "1")
+        precondition(diagnosed.appliedSettingOptions["trace_log"] == "1")
+        precondition(diagnosed.debugOverlayMode == "detail")
+        precondition(diagnosed.logText.contains("diagnostic profile full: input_trace=1 applied"))
+        precondition(diagnosed.openAndRun(gamePath: demo.path))
+        let diagnosedDeadline = Date().addingTimeInterval(5)
+        // Frame-work sampling only starts after the warmup ticks.
+        while (diagnosed.tickCount < 70 || !diagnosed.logText.contains("startup state: SUCCEEDED")) && Date() < diagnosedDeadline {
+            RunLoop.main.run(until: Date().addingTimeInterval(0.02))
+        }
+        precondition(diagnosed.failureMessage == nil, diagnosed.failureMessage ?? "diagnosed game failed")
+        let snapshot = diagnosed.performanceSnapshot()
+        precondition(snapshot.mode == "detail")
+        precondition(!snapshot.backend.isEmpty && snapshot.backend != "-")
+        precondition(snapshot.frameWidth > 0 && snapshot.frameHeight > 0)
+        precondition(snapshot.tickRate > 0 && snapshot.presentationRate >= 0)
+        precondition(snapshot.memory.available, "engine memory stats must be available while running")
+        precondition(snapshot.memory.appBytes > 0 && snapshot.memory.peakBytes >= snapshot.memory.appBytes)
+        precondition(snapshot.frameWorkP50MS > 0 && snapshot.frameWorkMaxMS >= snapshot.frameWorkP50MS,
+                     "the full profile must sample frame work")
+        let overlayLines = DiagnosticOverlay.lines(snapshot)
+        precondition(overlayLines.count >= 10)
+        let overlayText = overlayLines.joined(separator: "\n")
+        precondition(overlayText.contains("tick") && overlayText.contains("render") && overlayText.contains("presentation"))
+        precondition(overlayText.contains("Memory App"))
+        let export = diagnosed.diagnosticExportContext
+        precondition(export["diagnosticProfile"] == "full" && export["debugOverlayMode"] == "detail")
+        precondition(export["diagnosticBackend"] != nil && export["diagnosticMemoryApp"] != nil)
+        diagnosed.shutdown()
+
         let probe = AetherEngineSession()
         precondition(partial.textTranslationAvailable == probe.isTextTranslationAvailable())
         try probe.initialize(writablePath: root.path, cachePath: root.path)

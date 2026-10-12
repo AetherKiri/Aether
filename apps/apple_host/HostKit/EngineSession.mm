@@ -110,6 +110,42 @@ NSError *EngineError(engine_handle_t handle, NSString *fallback) {
     return engine_is_text_translation_available() != 0;
 }
 
+- (NSString *)rendererInfo {
+    if (_handle == nullptr) return @"";
+    char buffer[512] = {};
+    if (engine_get_renderer_info(_handle, buffer, sizeof(buffer)) != ENGINE_RESULT_OK) return @"";
+    return [NSString stringWithUTF8String:buffer] ?: @"";
+}
+
+- (nullable NSDictionary<NSString *, NSNumber *> *)memoryStats {
+    if (_handle == nullptr) return nil;
+    engine_memory_stats_t stats{};
+    stats.struct_size = sizeof(stats);
+    if (engine_get_memory_stats(_handle, &stats) != ENGINE_RESULT_OK) return nil;
+    return @{
+        @"selfUsedMB" : @(stats.self_used_mb),
+        @"systemFreeMB" : @(stats.system_free_mb),
+        @"systemTotalMB" : @(stats.system_total_mb),
+        @"graphicCacheBytes" : @(stats.graphic_cache_bytes),
+        @"graphicCacheLimitBytes" : @(stats.graphic_cache_limit_bytes),
+        @"xp3SegmentCacheBytes" : @(stats.xp3_segment_cache_bytes),
+        @"psbCacheBytes" : @(stats.psb_cache_bytes),
+        @"psbCacheEntries" : @(stats.psb_cache_entries),
+        @"psbCacheEntryLimit" : @(stats.psb_cache_entry_limit),
+        @"psbCacheHits" : @(stats.psb_cache_hits),
+        @"psbCacheMisses" : @(stats.psb_cache_misses),
+        @"archiveCacheEntries" : @(stats.archive_cache_entries),
+        @"archiveCacheLimit" : @(stats.archive_cache_limit),
+        @"autopathCacheEntries" : @(stats.autopath_cache_entries),
+        @"autopathCacheLimit" : @(stats.autopath_cache_limit),
+        @"autopathTableEntries" : @(stats.autopath_table_entries),
+        @"processResidentBytes" : @(stats.process_resident_bytes),
+        @"processPhysicalFootprintBytes" : @(stats.process_physical_footprint_bytes),
+        @"processPeakPhysicalFootprintBytes" : @(stats.process_peak_physical_footprint_bytes),
+        @"processAvailableBytes" : @(stats.process_available_bytes),
+    };
+}
+
 - (uint32_t)textTranslationState {
     return engine_get_text_translation_state();
 }

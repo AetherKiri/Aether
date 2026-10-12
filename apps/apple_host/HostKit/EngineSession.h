@@ -30,6 +30,11 @@ NS_ASSUME_NONNULL_BEGIN
 // Optional local-model text translation. Availability and state are
 // process-wide and mirror engine_is_text_translation_available().
 - (BOOL)isTextTranslationAvailable;
+// Active graphics backend string (engine_get_renderer_info); empty when the
+// runtime is not active.
+- (NSString *)rendererInfo;
+// Runtime memory/cache snapshot (engine_get_memory_stats); nil when inactive.
+- (nullable NSDictionary<NSString *, NSNumber *> *)memoryStats;
 // Reports whether the last engine_tick produced a new rendered frame.
 // The ABI query is score-once per tick, so call it immediately after tick:.
 - (BOOL)lastTickRenderedFrame;

@@ -68,8 +68,8 @@ Apple 官方参考：[Settings](https://developer.apple.com/design/human-interfa
 | 插件核心/完整（krkrsdl3/aether_all） | 缺失 UI/下发 | 已有 engine option，启动前应用并报告实际结果 | P1 |
 | 本地 GGUF 翻译选择/清除、目标跟随界面语言 | 已有，能力不足时整段隐藏 | 纳入草稿；能力不足显示原因；加载状态与偏好分开 | P1 |
 | Mock 绕过，默认 true | 缺失 UI/下发 | engine option；保存后下次启动生效 | P1 |
-| 诊断 profile：off/baseline/input/render/storage/script/audio/video/plugin/system/full | 缺失；只有日志显隐/导出 | 迁移 profile catalog、采样与导出内容；Debug baseline，Release off | P4 |
-| 调试覆盖层 off/summary/detail | 缺失 | CPU/tick/GPU/呈现FPS分开命名；进程与GPU估算内存注明统计口径 | P4 |
+| 诊断 profile：off/baseline/input/render/storage/script/audio/video/plugin/system/full | P4b 已接入目录与可执行部分；storage/script/audio/video 本构建无采样源 | 迁移 profile catalog、采样与导出内容；Debug baseline，Release off | P4 |
+| 调试覆盖层 off/summary/detail | P4b 已接入 | CPU/tick/GPU/呈现FPS分开命名；进程与GPU估算内存注明统计口径 | P4 |
 | 错误弹窗追加最近20行日志 | 缺失 | UI 与引擎 error_dialog_logs 联动，默认关闭 | P1 |
 | 插件追踪/trace日志/控制台文件/TJS导出 | 部分；console_log_file硬编码0，其余未提供 | 临时会话工具；不作为普通持久偏好，追踪与trace 30秒自动关闭 | P4 |
 | 场景测试：主页/设置/详情/视频库/视频播放器/游戏，运行状态变体 | 缺失 | 独立测试 fixture 与启动参数，退出可恢复；Debug工具 | P4 |
@@ -170,7 +170,7 @@ Lumen四套主题保留内容层、强调色、圆角与封面比例；系统字
 | 内容集合与详情（P2） | 目的地侧栏；默认封面网格与紧凑列表；游戏/视频名称和路径搜索；最近时间与标题排序；详情封面编辑与可见常用动作；返回保留搜索和条目滚动锚点 | 运行时搜索待P4元数据；滚动恢复是条目锚点而非逐像素；四主题已接入并点验；VoiceOver完整朗读与全部窗口/语言组合仍待验收 |
 | 视频集合（P2） | 缓存真实位置/总时长；旧无时长条目只显示位置；移除确认同时清理进度与字幕选择，保留视频文件 | 进度数据来自实际播放器，不在导入时伪造时长；封面仍为影片占位符；播放器完整交互在P4 |
 | 渲染与增强（P3/P5） | 启动前设备/呈现器与翻译provider能力；Metal初始化失败安全重建软件会话；报告请求/实际引擎/呈现路径和原因；新安装默认Metal | P3a–P3d行为回归通过；P3b/P3c/P3d设置页CUA已验证；增强仍未开放 |
-| 统计/运行配置/诊断（P4） | 会话时长与完整主页已接入（P4a） | 启动入口/编码、诊断profile/覆盖层/临时工具、控制模式与播放器交互待后续P4切片 |
+| 统计/运行配置/诊断（P4） | 会话时长与完整主页（P4a）、诊断 profile 与性能覆盖层（P4b）已接入 | 启动入口/编码、调试控制台/临时工具（30 秒自动关闭）、控制模式与播放器交互待后续P4切片 |
 | 发布功能（P6/P7/M4） | 关于资源已打包 | Demo/VNDB/首次协议单列P6；更新器最后；真实IAP与移动端M4 |
 
 主题设置使用schema v2；渲染设置使用schema v4，读取v1/v2/v3时补齐画布、输出与采样字段并将旧配置迁移为原始输出/线性采样，加载本身不改写原文件，下一次成功保存写入当前schema。未知主题回退classic，未知schema或损坏文件仍禁止保存以保留证据。只按有效设置应用外观与启动配置，草稿不预览，也不重建页面identity。
@@ -203,8 +203,8 @@ Godot内容palette按源tokens保留。AppKit原生突出按钮使用白色标�
 | `mock_enabled` | `mockEnabled` → engine option | 已接入；启动前生效，默认true |
 | `error_dialog_logs` | `errorDialogLogs` → engine option | 已接入；真实错误弹窗的最近日志显示需场景验收 |
 | `text_translation_model_path` | `translationModelPath` | 草稿已接入；provider能力、模型加载失败与路径错误分别反馈 |
-| `diagnostic_profile` | 无；`logs` 仅面板可见性 | 使用 `config/diagnostic_profiles.json` 的采样语义；日志面板开关不替代profile |
-| `debug_overlay_mode` | 无 | off/summary/detail，标明tick/render/presentation/GPU统计口径 |
+| `diagnostic_profile` | `diagnosticProfile` → engine options + 宿主采样 | 已接入：input/plugin/full 下发 `input_trace`/`plugin_trace`/`trace_log`；baseline/render 采宿主帧工作；system/full 记录系统快照；storage/script/audio/video 本构建无采样源并在 UI 说明 |
+| `debug_overlay_mode` | `debugOverlayMode` → 游戏画面覆盖层 | 已接入 off/summary/detail；tick/render/presentation 分开命名，内存标注进程/系统/引擎缓存口径，并明确本构建没有 GPU 估算 |
 | `ios_ui_scale_mode` / `force_landscape` | macOS不适用 | M4移动端处理，不塞进macOS设置 |
 
 高级追踪、trace、文件日志、TJS导出和场景测试不在普通草稿字段中：原版通过即时handler执行，Apple也应作为会话动作实现。更新预发布/忽略版本、协议接受与购买权益另有持久状态，不能被普通“丢弃设置”撤销。
@@ -279,3 +279,9 @@ Godot 的 `smooth` 仅是线性采样的旧名称，默认值为 bicubic。Apple
 `LibraryGame` 新增 `playDurationSeconds`（旧索引缺字段读取为 0，负值归一为 0），`GameLibrary.addPlayDuration` 原子累加并沿用 Godot `_add_play_duration` 的上限语义：非正贡献忽略、单次会话最多加一天。`EngineController` 只在引擎报告 `startup state: SUCCEEDED` 后开始用单调时钟计session，`consumePlaySeconds()` 终结当前会话并返回自上次提交以来的秒数；返回游戏库、重启与应用退出（`applicationWillTerminate`）各提交一次，因此失败启动或启动中的会话不计时，重复返回或重启不会重复计数。主页统计由 `PlayStats` 从索引推导：总时长、已游玩（有时长或最近游玩）、近七天活跃、平均时长（Godot 同样截断到整分钟）、时长排行（>=60s，取前 5）、最近游玩（取前 5）、七天足迹与活跃天数、里程碑（Godot `DASH_MILESTONES`）与口号/问候语（按本地小时）。
 
 主页按 Godot 内容结构重建：三层进度环与中心累计时长、问候与统计副标题、三条图例（时长里程碑/书库探索/活跃天数）、打开库入口、四张统计卡、近七天足迹（每天标题或“这天没有游玩”与汇总）、继续阅读卡、时长排行与最近游玩。平台差异：图标使用 SF Symbols，最近游玩显示系统日期样式而不是“N 天前”，既不复制 Godot 的极光/模糊背板与进入动画，也不引入新的动效；新增 `accent2`/`accent3`/`success` 三个 Godot Lumen token 供进度环使用并纳入配色交叉检查。详情页在有累计时长时显示“游玩时长”一行。运行时类型、启动入口与 RFVP 编码仍属 P4 后续切片。
+
+### 7.10 P4b实施结果：诊断 profile 与性能覆盖层
+
+`HostSettings` schema v6 新增 `diagnosticProfile`（off/baseline/input/render/storage/script/audio/video/plugin/system/full，Debug 默认 baseline、Release 默认 off，与 Godot 一致）与 `debugOverlayMode`（off/summary/detail），v1–v5 旧文件迁移为默认值。profile 的映射只使用 Apple 真实存在的来源：input/plugin/full 启动前下发 `input_trace`/`plugin_trace`/`trace_log`；baseline/render 采集宿主帧工作；input/full 记录宿主输入事件；system/full 在诊断导出写入 backend/内存快照；storage/script/audio/video 在本构建没有采样源，因此不出现在选择器中，设置页与日志都说明原因。覆盖层模式保存后立即作用于运行中的会话，trace 类选项仍是下次启动生效。
+
+性能覆盖层在游戏画面上以等宽英文技术输出显示（与 Godot 覆盖层一致）：后端/API/纹理来源/逻辑与输出尺寸、`tick`/`render`/`presentation` 三个分开的速率和口径说明、帧工作耗时与调度模式、fallback/错误数、进程内存（App/Peak）与系统空闲或进程余量、引擎 graphic/XP3/PSB 缓存；detail 追加帧工作 p50/p95/max、调度 dropped/coalesced/resets、会话计数与缓存明细。GPU 估算在本构建没有来源，覆盖层明确写“not available”而不是猜测。快照由 tick 循环节流刷新（每 30 tick），视图不持有定时器，因此每 tick 的发布不会打断订阅。诊断导出附带 `diagnosticProfile`/`debugOverlayMode` 与 backend/内存/速率上下文。

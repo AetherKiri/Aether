@@ -156,6 +156,9 @@ final class ShellModel: ObservableObject {
             showVirtualControls = settings.virtualControls
             showLogs = settings.logs
             translationModelPath = settings.translationModelPath
+            // The overlay is a live debug aid, like Godot's save-triggered
+            // `_set_perf_visible`; trace profiles still apply at next launch.
+            engine.debugOverlayMode = settings.debugOverlayMode
             settingsDraft = SettingsDraft(settings)
             return true
         } catch { self.error = error.localizedDescription; return false }
@@ -537,7 +540,7 @@ final class ShellModel: ObservableObject {
                 "architecture": "arm64", "language": language.rawValue,
                 "nextLaunchRenderer": renderer, "library": repository.root.path,
                 "liveStatus": activeVideo == nil ? engine.status : media.playing ? "video playing" : "video paused", "liveTicks": String(engine.tickCount)
-            ])
+            ].merging(engine.diagnosticExportContext) { _, new in new })
             NSWorkspace.shared.activateFileViewerSelecting([destination])
         } catch { self.error = error.localizedDescription }
     }

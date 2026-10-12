@@ -72,6 +72,16 @@ struct TranslationSettings: Equatable {
 /// engine_text_translation_state_t.
 enum TranslationState: UInt32 {
     case disabled = 0, loading = 1, ready = 2, failed = 3
+
+    /// Short English label used by the debug overlay (Godot overlay parity).
+    var label: String {
+        switch self {
+        case .disabled: return "off"
+        case .loading: return "loading"
+        case .ready: return "ready"
+        case .failed: return "failed"
+        }
+    }
 }
 
 /// engine_text_translation_backend_t.

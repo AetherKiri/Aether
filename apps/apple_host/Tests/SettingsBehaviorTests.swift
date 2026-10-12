@@ -10,6 +10,7 @@ struct SettingsBehaviorTests {
         try RendererBehaviorTests.run(root: root)
         FrameSchedulerTests.run()
         try PlayStatsTests.run(root: root)
+        try DiagnosticTests.run(root: root)
         let model = ShellModel()
         try checkCollections(model, root: root)
         try checkPlayTimeAccumulation(model, root: root)

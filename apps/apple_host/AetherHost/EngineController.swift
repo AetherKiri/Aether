@@ -110,6 +110,7 @@ final class EngineController: ObservableObject {
 
     func presentationFailed(_ message: String) {
         guard useMetalPresentation else { return }
+        diagnosticErrorCount += 1
         useMetalPresentation = false
         renderState.presentation = .image
         renderState.fallbacks.append(.init(reasonKey: "metalPresentationFailed", detail: message))
@@ -186,8 +187,20 @@ final class EngineController: ObservableObject {
     @Published private(set) var virtualControlHeld = false
     @Published private(set) var inputSuspended = false
     private var appliedSurfaceSize: CGSize = .zero
-    private let profileFrames = ProcessInfo.processInfo.environment["AETHER_HOST_PROFILE"] == "1"
+    private let environmentProfileFrames = ProcessInfo.processInfo.environment["AETHER_HOST_PROFILE"] == "1"
+    private var profileFrames: Bool { environmentProfileFrames || diagnosticFlags.sampleFrameWork }
     private var frameWorkMilliseconds: [Double] = []
+    private(set) var lastFrameWorkMS: Double = 0
+    /// Applied before a game opens; the settings page edits the persisted value.
+    private var diagnosticFlags = HostDiagnosticFlags()
+    private(set) var diagnosticProfileValue = "off"
+    private(set) var diagnosticErrorCount = 0
+    /// Overlay mode is a live debug aid: saving the settings applies it to the
+    /// running session, like the Godot shell's `_set_perf_visible`.
+    @Published var debugOverlayMode = "off"
+    /// Throttled snapshot for the overlay; refreshed from the tick loop so the
+    /// view never owns its own timer (which the per-tick publishes would drop).
+    @Published private(set) var overlaySnapshot = PerformanceSnapshot()
     private(set) var loopRunning = false
 
     let diagnostics: DiagnosticStore = {
@@ -444,6 +457,25 @@ final class EngineController: ObservableObject {
                 }
                 catch { log("settings option \(option.key) rejected: \(error.localizedDescription)") }
             }
+            // Diagnostic profiles drive the engine trace options this ABI
+            // exposes; host-side sampling is applied to the frame loop below.
+            let profile = hostSettings.profile
+            diagnosticFlags = profile.hostFlags
+            diagnosticProfileValue = profile.rawValue
+            for option in profile.engineOptions {
+                do {
+                    try session.setOption(option.key, value: option.value)
+                    appliedSettingOptions[option.key] = option.value
+                    log("diagnostic profile \(profile.rawValue): \(option.key)=\(option.value) applied")
+                } catch { log("diagnostic profile \(profile.rawValue): \(option.key) rejected: \(error.localizedDescription)") }
+            }
+            if !profile.unavailableCategories.isEmpty {
+                log("diagnostic profile \(profile.rawValue) has no Apple sampling source for: \(profile.unavailableCategories.joined(separator: ", "))")
+            }
+            debugOverlayMode = hostSettings.debugOverlayMode
+            var initialSnapshot = PerformanceSnapshot()
+            initialSnapshot.mode = debugOverlayMode
+            overlaySnapshot = initialSnapshot
             pacingMode = effectivePacingMode
             pacingTargetFPS = pacingMode.targetFPS
             log("pacing configured: \(pacingMode.description), fps_limit=\(effectiveFPSLimitOption)")
@@ -492,6 +524,9 @@ final class EngineController: ObservableObject {
             recordDiagnostics(["state": "starting"])
             log("engine_open_game: \(gamePath)")
             tickCount = 0
+            diagnosticErrorCount = 0
+            lastFrameWorkMS = 0
+            overlaySnapshot = PerformanceSnapshot()
             frameWorkMilliseconds.removeAll(keepingCapacity: true)
             metalPresenter?.resetProfile()
             status = "启动中…"
@@ -674,6 +709,126 @@ final class EngineController: ObservableObject {
             + "resets=\(scheduler.resets) max_delta_ms=\(maxTickDeltaMS)"
     }
 
+    // MARK: - Performance overlay
+
+    /// One overlay refresh. Rates are session averages of the separated
+    /// counters, so a SwiftUI re-render cannot inflate them.
+    func performanceSnapshot() -> PerformanceSnapshot {
+        var snapshot = PerformanceSnapshot()
+        snapshot.mode = debugOverlayMode
+        let runtime = session.rendererInfo()
+        snapshot.backend = Self.backendLabel(runtime, nativeRendererEnabled: nativeRendererEnabled)
+        snapshot.apiVersion = session.engineAPIVersion()
+        snapshot.textureBackend = nativeFrameTexture != nil || nativeFrameLease != nil ? "native-texture" : "image"
+        snapshot.frameWidth = Int(frameSize.width)
+        snapshot.frameHeight = Int(frameSize.height)
+        snapshot.outputWidth = Int(outputFrameSize.width)
+        snapshot.outputHeight = Int(outputFrameSize.height)
+        let fallbacks = renderState.fallbacks.map(\.reasonKey)
+        snapshot.fallback = fallbacks.isEmpty ? "none" : fallbacks.joined(separator: ",")
+        snapshot.errorCount = diagnosticErrorCount
+        let elapsed = max(0.001, ProcessInfo.processInfo.systemUptime - pacingSessionStart)
+        snapshot.tickRate = Double(tickCount) / elapsed
+        snapshot.renderRate = Double(renderTickCount) / elapsed
+        snapshot.presentationRate = Double(presentationCount) / elapsed
+        snapshot.frameWorkMS = lastFrameWorkMS
+        if !frameWorkMilliseconds.isEmpty {
+            let sorted = frameWorkMilliseconds.sorted()
+            snapshot.frameWorkP50MS = sorted[(sorted.count - 1) / 2]
+            snapshot.frameWorkP95MS = sorted[Int(Double(sorted.count - 1) * 0.95)]
+            snapshot.frameWorkMaxMS = sorted.last ?? 0
+        }
+        snapshot.pacingMode = pacingMode.description
+        snapshot.pacingDriver = pacingDriver
+        snapshot.pacingState = pacingStateDescription
+        snapshot.pacingTarget = pacingTargetFPS.map(String.init) ?? "follow-display"
+        snapshot.droppedCatchUp = scheduler.droppedCatchUpIntervals
+        snapshot.coalescedCallbacks = scheduler.coalescedCallbacks
+        snapshot.pacingResets = scheduler.resets
+        snapshot.maxDeltaMS = maxTickDeltaMS
+        snapshot.ticks = tickCount
+        snapshot.renders = renderTickCount
+        snapshot.presentations = presentationCount
+        snapshot.playSeconds = playSessionStart.map {
+            max(0, Int(ProcessInfo.processInfo.systemUptime - $0))
+        } ?? lastSessionPlaySeconds
+        snapshot.memory = engineMemorySnapshot()
+        if translationStatus.state != .disabled {
+            snapshot.translationState = translationStatus.state.label
+            snapshot.translationBackend = translationStatus.backend.isEmpty ? "-" : translationStatus.backend
+            snapshot.translationCompleted = translationStatus.translationsCompleted
+            snapshot.translationFailed = translationStatus.translationsFailed
+            let stats = session.textTranslationStats()
+            snapshot.translationJobs = Int(stats?["activeJobs"]?.intValue ?? 0)
+            snapshot.translationCacheHits = stats?["cacheHits"]?.uint64Value ?? 0
+            snapshot.translationCacheMisses = stats?["cacheMisses"]?.uint64Value ?? 0
+        }
+        return snapshot
+    }
+
+    private func engineMemorySnapshot() -> DiagnosticMemory {
+        var memory = DiagnosticMemory()
+        guard let stats = session.memoryStats() else { return memory }
+        func bytes(_ key: String) -> UInt64 { stats[key]?.uint64Value ?? 0 }
+        memory.available = true
+        memory.appBytes = bytes("processPhysicalFootprintBytes")
+        if memory.appBytes == 0 { memory.appBytes = UInt64(stats["selfUsedMB"]?.uint32Value ?? 0) * 1_048_576 }
+        memory.peakBytes = max(bytes("processPeakPhysicalFootprintBytes"), memory.appBytes)
+        memory.headroomBytes = bytes("processAvailableBytes")
+        memory.systemFreeBytes = UInt64(stats["systemFreeMB"]?.uint32Value ?? 0) * 1_048_576
+        memory.residentBytes = bytes("processResidentBytes")
+        memory.graphicCacheBytes = bytes("graphicCacheBytes")
+        memory.graphicCacheLimitBytes = bytes("graphicCacheLimitBytes")
+        memory.xp3CacheBytes = bytes("xp3SegmentCacheBytes")
+        memory.psbCacheBytes = bytes("psbCacheBytes")
+        memory.psbEntries = Int(stats["psbCacheEntries"]?.intValue ?? 0)
+        memory.psbHits = bytes("psbCacheHits")
+        memory.psbMisses = bytes("psbCacheMisses")
+        return memory
+    }
+
+    /// The legacy runtime reports a long diagnostics string; keep the backend
+    /// and path tokens so the overlay line stays readable (Godot shows a short
+    /// `get_renderer_info()` string).
+    private static func backendLabel(_ info: String, nativeRendererEnabled: Bool) -> String {
+        let fallback = nativeRendererEnabled ? "native-metal" : "software-bridge"
+        guard !info.isEmpty else { return fallback }
+        func token(_ name: String) -> String? {
+            for part in info.split(separator: " ") where part.hasPrefix(name + "=") {
+                let value = part.dropFirst(name.count + 1)
+                return value.isEmpty ? nil : String(value)
+            }
+            return nil
+        }
+        if let backend = token("backend") {
+            if let path = token("path") { return "\(backend) (\(path))" }
+            return backend
+        }
+        return info.count <= 64 ? info : String(info.prefix(61)) + "..."
+    }
+
+    /// Extra export context for the selected diagnostic profile.
+    var diagnosticExportContext: [String: String] {
+        var context = ["diagnosticProfile": diagnosticProfileValue,
+                       "debugOverlayMode": debugOverlayMode]
+        if diagnosticFlags.sampleSystemInfo || diagnosticProfileValue != "off" {
+            let snapshot = performanceSnapshot()
+            context["diagnosticBackend"] = snapshot.backend
+            context["diagnosticTexture"] = snapshot.textureBackend
+            context["diagnosticFrame"] = "\(snapshot.frameWidth)x\(snapshot.frameHeight)"
+            context["diagnosticOutput"] = "\(snapshot.outputWidth)x\(snapshot.outputHeight)"
+            context["diagnosticTickRate"] = String(format: "%.2f", snapshot.tickRate)
+            context["diagnosticRenderRate"] = String(format: "%.2f", snapshot.renderRate)
+            context["diagnosticPresentationRate"] = String(format: "%.2f", snapshot.presentationRate)
+            if snapshot.memory.available {
+                context["diagnosticMemoryApp"] = DiagnosticOverlay.bytes(snapshot.memory.appBytes)
+                context["diagnosticMemoryPeak"] = DiagnosticOverlay.bytes(snapshot.memory.peakBytes)
+                context["diagnosticMemoryHeadroom"] = DiagnosticOverlay.bytes(snapshot.memory.headroomBytes)
+            }
+        }
+        return context
+    }
+
     private var pacingDiagnostics: [String: String] {
         ["pacingMode": pacingMode.description,
          "pacingDriver": pacingDriver,
@@ -737,13 +892,15 @@ final class EngineController: ObservableObject {
     }
 
     private func step(deltaMS: UInt32, syntheticStep: Bool) {
-        let started = profileFrames ? ProcessInfo.processInfo.systemUptime : 0
+        let started = ProcessInfo.processInfo.systemUptime
         defer {
             // Direct mode also includes upload, drawable acquisition and
             // presentation encoding. Deferred mode excludes the later draw.
+            let elapsedMS = (ProcessInfo.processInfo.systemUptime - started) * 1000
+            lastFrameWorkMS = elapsedMS
             if profileFrames, tickCount > 60, frameSize.width > 0,
                frameWorkMilliseconds.count < 10_000 {
-                frameWorkMilliseconds.append((ProcessInfo.processInfo.systemUptime - started) * 1000)
+                frameWorkMilliseconds.append(elapsedMS)
             }
         }
         // Real elapsed host time for this tick (clamped by the scheduler).
@@ -892,6 +1049,9 @@ final class EngineController: ObservableObject {
             log("pacing stats: \(frameStatisticsSummary)")
             recordDiagnostics(pacingDiagnostics)
         }
+        if debugOverlayMode != "off", tickCount % 30 == 0 {
+            overlaySnapshot = performanceSnapshot()
+        }
     }
 
     // Saves the current engine frame as PNG (env AETHER_HOST_CAPTURE_AFTER).
@@ -1034,7 +1194,7 @@ final class EngineController: ObservableObject {
         }
         guard !inputSuspended || type == EngineInputEvent.pointerUp else { return }
         pointerEventCount += 1
-        if pointerEventCount <= 12 {
+        if pointerEventCount <= 12 || diagnosticFlags.logInputEvents {
             log("input pointer type=\(type) at (\(Int(x)),\(Int(y))) btn=\(button) mods=\(modifiers)")
         }
         session.sendPointer(
@@ -1051,6 +1211,9 @@ final class EngineController: ObservableObject {
             return
         }
         guard !pressed || !inputSuspended else { return }
+        if diagnosticFlags.logInputEvents {
+            log("input trace key \(pressed ? "down" : "up") vk=\(keyCode) unicode=\(unicode) mods=\(modifiers)")
+        }
         for transition in keyInput.set(.physical, key: keyCode, pressed: pressed, modifiers: modifiers, unicode: unicode) {
             forwardKey(transition)
         }

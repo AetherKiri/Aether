@@ -241,6 +241,20 @@ python3 tools/apple_host_archive_test.py
 报告注明缺失、文件时间与截断大小，日志可能含较早会话、路径或引擎打印的文本。
 运行日志显示开关只控制界面。启动失败记录具体错误，关闭会话后可启动其他游戏。
 
+「设置 → 诊断」提供 Godot 同名的诊断模式与调试悬浮信息两档：
+
+- 诊断模式（Debug 默认 `基础`，Release 默认 `关闭`）沿用 Godot 目录。Apple 能执行的
+  部分为：`输入/插件/完整` 在启动前下发 `input_trace`/`plugin_trace`/`trace_log`，
+  `基础/渲染` 采集宿主帧工作，`输入/完整` 记录输入事件，`系统/完整` 在导出里写入
+  backend/内存快照。`存储/脚本/音频/视频` 在本构建还没有采样源，因此不出现在选择器，
+  设置页与日志会说明原因（不伪造采样）。trace 类选项下次启动生效。
+- 调试悬浮信息 `关闭/简要/详细` 保存后立即作用于运行中的游戏：显示后端/API/纹理/尺寸、
+  `tick`（宿主 `engine_tick` 次数）、`render`（引擎实际出帧的 tick 数）、
+  `presentation`（drawable 提交或图像发布）三个分开的速率与口径说明、帧工作耗时、
+  调度模式、fallback/错误、进程内存（App/Peak）与系统空闲/引擎缓存；`详细` 追加
+  p50/p95/max、dropped/coalesced/resets、会话计数与缓存明细。GPU 内存估算在本构建
+  没有来源，覆盖层明确标注不可用而不是猜测。返回游戏库后覆盖层自动消失。
+
 ```bash
 xcrun swiftc apps/apple_host/AetherHost/DiagnosticStore.swift \
   apps/apple_host/Tests/DiagnosticStoreTests.swift -o out/apple_host/diagnostic-store-tests

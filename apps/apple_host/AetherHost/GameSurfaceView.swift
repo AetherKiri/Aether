@@ -49,6 +49,15 @@ struct GameSurfaceView: View {
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             RuntimeMovieView(movie: engine.runtimeMovie, canvas: engine.frameSize,
                              skipLabel: language.text("skipMovie"))
+            if engine.debugOverlayMode != "off" {
+                VStack {
+                    HStack {
+                        DiagnosticOverlayView(engine: engine)
+                        Spacer(minLength: 0)
+                    }
+                    Spacer(minLength: 0)
+                }
+            }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(GeometryReader { geometry in

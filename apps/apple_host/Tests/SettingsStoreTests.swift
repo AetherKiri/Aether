@@ -13,6 +13,8 @@ struct SettingsStoreTests {
         let fresh = try store.load(defaults: defaults, legacyPrefix: "fresh.")
         precondition(fresh.renderer == "metal" && fresh.languageMode == "system" && fresh.mockEnabled && fresh.theme == "classic" && fresh.upscaleAlgorithm == "bicubic")
         precondition(!fresh.fpsLimitEnabled && fresh.targetFPS == 80 && fresh.fpsLimitOption == "0")
+        precondition(fresh.version == 6)
+        precondition(fresh.diagnosticProfile == HostSettings.defaultDiagnosticProfile && fresh.debugOverlayMode == "off")
         let legacy = SettingsStore(url: root.appendingPathComponent("legacy/settings.json"))
         defaults.set("software", forKey: "shell.renderer")
         defaults.set("japanese", forKey: "shell.language")
@@ -33,7 +35,7 @@ struct SettingsStoreTests {
         let oldData = try JSONSerialization.data(withJSONObject: v1)
         try oldData.write(to: legacy.url)
         let upgraded = try legacy.load(defaults: defaults, legacyPrefix: "shell.")
-        precondition(upgraded == loaded && upgraded.version == 5 && upgraded.theme == "classic")
+        precondition(upgraded == loaded && upgraded.version == 6 && upgraded.theme == "classic")
         precondition(!upgraded.fpsLimitEnabled && upgraded.targetFPS == 80)
         check(try Data(contentsOf: legacy.url) == oldData) // Loading does not overwrite the migration source.
         var v2 = v1

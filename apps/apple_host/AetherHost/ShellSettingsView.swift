@@ -69,7 +69,11 @@ struct ShellSettingsView: View {
                 VStack(alignment: .leading, spacing: 16) {
                     Picker(model.text("renderer"), selection: binding(\.renderer)) {
                         Text(model.text("software")).tag("software")
-                        Text(model.text("metal")).tag("metal").disabled(!model.capabilities.nativeMetal.available)
+                        // Menu items ignore `.disabled` in this SwiftUI picker
+                        // style, so an unavailable option must not be listed.
+                        if model.capabilities.nativeMetal.available || model.settingsDraft?.value.renderer == "metal" {
+                            Text(model.text("metal")).tag("metal")
+                        }
                     }
                     Text(model.text("rendererHelp")).font(.caption).foregroundStyle(palette.secondary.color)
                     Picker(model.text("canvasMode"), selection: binding(\.canvasMode)) {
@@ -151,11 +155,30 @@ struct ShellSettingsView: View {
         case "diagnosticsSection":
             GroupBox {
                 VStack(alignment: .leading, spacing: 16) {
+                    // Only profiles with a real sampling source are listed; the
+                    // note below names the categories this build cannot sample.
+                    let profileValue = model.settingsDraft?.value.diagnosticProfile ?? model.settings.diagnosticProfile
+                    Picker(model.text("diagnosticProfile"), selection: binding(\.diagnosticProfile)) {
+                        ForEach(DiagnosticProfile.allCases.filter { $0.hasAppleSampling || $0.rawValue == profileValue }) { profile in
+                            Text(model.text(profile.textKey)).tag(profile.rawValue)
+                        }
+                    }
+                    Text(model.text("diagnosticProfileHelp")).font(.caption).foregroundStyle(palette.secondary.color)
+                    if let profile = DiagnosticProfile.normalized(model.settingsDraft?.value.diagnosticProfile ?? model.settings.diagnosticProfile) {
+                        Text(model.text(profile.textKey) + " · " + profile.summary)
+                            .font(.caption).foregroundStyle(palette.secondary.color)
+                    }
+                    Text(model.text("diagnosticProfileUnavailable")).font(.caption).foregroundStyle(palette.secondary.color)
+                    Picker(model.text("diagnosticOverlay"), selection: binding(\.debugOverlayMode)) {
+                        ForEach(DebugOverlayMode.allCases) { mode in
+                            Text(model.text(mode.textKey)).tag(mode.rawValue)
+                        }
+                    }
+                    Text(model.text("diagnosticOverlayHelp")).font(.caption).foregroundStyle(palette.secondary.color)
                     Toggle(model.text("logs"), isOn: binding(\.logs))
                     Toggle(model.text("errorDialogLogs"), isOn: binding(\.errorDialogLogs))
                     Text(model.text("errorDialogLogsHelp")).font(.caption).foregroundStyle(palette.secondary.color)
                     Button(model.text("exportDiagnostics")) { model.exportDiagnostics() }
-                    Text(model.text(model.capabilities.diagnosticProfiles.reasonKey ?? "diagnosticSettingsPending")).font(.caption).foregroundStyle(palette.secondary.color)
                 }.padding(12)
             }
         case "advancedSection":

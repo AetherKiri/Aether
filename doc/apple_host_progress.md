@@ -505,7 +505,7 @@
 31b. [ ] **两处兼容小项待查**：`new DMMCloud()` 报 `Invalid argument count`；`new Zlib().version()` 报成员不存在（可能只是探针写法/注册方式差异）
 32. [ ] **内核后续：内存可观测（借鉴 `MemoryDesign.md`）**：分配头带 tag + `AllocTagScope` 标签栈，让"谁吃掉了内存"可回答；当前只有粗粒度 `engine_get_memory_stats`
 
-33. [ ] **产品 UI/设置完整对齐**：调查 P0 已完成；P1核心、P2集合/详情与四主题已接入，完整CUA/无障碍验收待补；P3a能力回退、P3b画布/输出、P3c采样、P3d FPS/调度与P4a会话时长/主页统计已接入并通过行为回归与真实CUA；P4其余模块与P5–P7见 [实施计划](apple_host_ui_plan.md)。
+33. [ ] **产品 UI/设置完整对齐**：调查 P0 已完成；P1核心、P2集合/详情与四主题已接入，完整CUA/无障碍验收待补；P3a能力回退、P3b画布/输出、P3c采样、P3d FPS/调度、P4a会话时长/主页统计与P4b诊断profile/性能覆盖层已接入并通过行为回归与真实CUA；P4其余模块与P5–P7见 [实施计划](apple_host_ui_plan.md)。
 
 ## 变更记录
 
@@ -592,3 +592,13 @@
 - 测试：`python3 tools/apple_host_settings_tests.py` 通过，含旧索引兼容、时长/问候格式化、固定日历统计算法、上限累加、真实引擎会话累计（启动中/被拒绝启动不计时、重复返回不加时、重启先提交）与五语言 `%s` 说明符防护；Debug 构建通过。
 - CUA（隔离 fixture 库，3 条 10740s）验证主页数值与内容：2 小时 · 59 分钟、平均 59m、里程碑 60%、3/3、3/7、七天足迹、排行与最近列表；点“继续”真实启动游戏并在“返回游戏库”后把条目 5400s → 5452s。证据：`out/apple_host/evidence/ui-p4a/`。
 - 残余未验收：五语言主页文案只点验 zh-Hans；空库主页状态、VoiceOver/键盘遍历未验收；运行时类型/启动入口/RFVP 编码、诊断 profile/覆盖层/临时工具、虚拟控制模式与播放器交互仍属 P4 后续切片。
+
+### 2026-10-12：UI P4b 诊断 profile 与性能覆盖层
+
+- `HostSettings` schema v6 新增 `diagnosticProfile`（off/baseline/input/render/storage/script/audio/video/plugin/system/full；Debug 默认 baseline、Release 默认 off，与 Godot 相同）与 `debugOverlayMode`（off/summary/detail）；v1–v5 迁移、校验与往返保存。
+- profile 只映射 Apple 真实来源：input/plugin/full 启动前下发 `input_trace`/`plugin_trace`/`trace_log`；baseline/render 采宿主帧工作；input/full 记录输入事件；system/full 导出系统快照；storage/script/audio/video 本构建无采样源，不进入选择器且在设置页与日志说明原因（不伪造采样）。
+- 性能覆盖层显示后端/API/纹理/逻辑与输出尺寸、`tick`/`render`/`presentation` 分开速率和口径说明、帧工作耗时、调度模式、fallback/错误、进程内存与系统空闲/引擎缓存；detail 追加 p50/p95/max、dropped/coalesced/resets、会话计数与缓存明细；GPU 估算明确标注本构建不可用。快照由 tick 循环每 30 tick 节流刷新，视图不持定时器；保存后立即生效，返回游戏库后消失。
+- 顺带修正：SwiftUI 菜单式 Picker 的菜单项忽略 `.disabled`，原先"不可用但可点选"的 Metal 与 profile 档位改为只列出可用项（当前值仍可见），避免出现可选中却没有实现的配置。
+- 测试：`python3 tools/apple_host_settings_tests.py` 通过，含 profile 目录/可用性/映射、schema v6 迁移与校验、覆盖层文本组合（内存口径、detail 增量、翻译行），真实引擎的 profile 下发、`renderer_info`/`memory_stats`、帧工作采样与导出上下文；Debug 构建通过。
+- CUA（隔离 fixture 库）验证诊断设置页与真实 KAG3 覆盖层：tick 111.3/s、render 11.2/s、presentation 111.3/s、App 168.7 MB/Peak 181.9 MB/System free 9.7 GB/Cache 1.2 MB、p50 3.65/p95 9.50/max 12.60 ms、会话 930 tick/94 render/930 presentation，返回后覆盖层消失且会话计时提交（3600→3672s）。证据：`out/apple_host/evidence/ui-p4b/`。
+- 残余未验收：storage/script/audio/video 采样源仍未实现（按 Godot 目录保留但隐藏）；调试控制台与临时追踪工具（含 30 秒自动关闭）未迁移；新诊断文案只点验 zh-Hans；GPU 内存估算需要引擎侧新增来源。

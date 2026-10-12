@@ -3,7 +3,15 @@ import Foundation
 /// Effective, persisted preferences. Transient controls and engine state do not
 /// belong here. A settings page edits a value copy until a successful save.
 struct HostSettings: Codable, Equatable {
-    static let schemaVersion = 5
+    static let schemaVersion = 6
+    /// Godot's dev builds default to `baseline` diagnostics; release is off.
+    static var defaultDiagnosticProfile: String {
+        #if DEBUG
+        return "baseline"
+        #else
+        return "off"
+        #endif
+    }
     var version = schemaVersion
     var languageMode = "system"
     var theme = "classic"
@@ -13,6 +21,8 @@ struct HostSettings: Codable, Equatable {
     var upscaleAlgorithm = "bicubic"
     var fpsLimitEnabled = false
     var targetFPS = FrameScheduler.defaultTargetFPS
+    var diagnosticProfile = HostSettings.defaultDiagnosticProfile
+    var debugOverlayMode = "off"
     var virtualControls = false
     var logs = false
     var translationModelPath = ""
@@ -30,6 +40,8 @@ struct HostSettings: Codable, Equatable {
               CanvasMode(rawValue: canvasMode) != nil, OutputResolution(rawValue: outputResolution) != nil,
               SamplingAlgorithm.normalized(upscaleAlgorithm) != nil,
               FrameScheduler.normalizedTarget(targetFPS) != nil,
+              DiagnosticProfile.normalized(diagnosticProfile) != nil,
+              DebugOverlayMode.normalized(debugOverlayMode) != nil,
               ["krkrsdl3", "aether_all"].contains(pluginLoadMode) else { throw Failure.invalidValue }
         var result = self
         result.upscaleAlgorithm = SamplingAlgorithm.normalized(upscaleAlgorithm)!.rawValue
@@ -52,8 +64,13 @@ struct HostSettings: Codable, Equatable {
             result.upscaleAlgorithm = "bicubic"
         }
         if FrameScheduler.normalizedTarget(targetFPS) == nil { result.targetFPS = FrameScheduler.defaultTargetFPS }
+        if DiagnosticProfile.normalized(diagnosticProfile) == nil { result.diagnosticProfile = Self.defaultDiagnosticProfile }
+        if DebugOverlayMode.normalized(debugOverlayMode) == nil { result.debugOverlayMode = "off" }
         return result
     }
+
+    var profile: DiagnosticProfile { DiagnosticProfile.normalized(diagnosticProfile) ?? .off }
+    var overlayMode: DebugOverlayMode { DebugOverlayMode.normalized(debugOverlayMode) ?? .off }
 
     var palette: ThemePalette { (ShellTheme(rawValue: theme) ?? .classic).palette }
 
@@ -75,7 +92,7 @@ struct HostSettings: Codable, Equatable {
 extension HostSettings {
     enum CodingKeys: String, CodingKey {
         case version, languageMode, theme, renderer, canvasMode, outputResolution, upscaleAlgorithm, virtualControls, logs, translationModelPath,
-             fpsLimitEnabled, targetFPS, pluginLoadMode, mockEnabled, errorDialogLogs
+             fpsLimitEnabled, targetFPS, diagnosticProfile, debugOverlayMode, pluginLoadMode, mockEnabled, errorDialogLogs
     }
     init(from decoder: Decoder) throws {
         let values = try decoder.container(keyedBy: CodingKeys.self)
@@ -88,6 +105,8 @@ extension HostSettings {
         upscaleAlgorithm = try values.decodeIfPresent(String.self, forKey: .upscaleAlgorithm) ?? (version < 4 ? "linear" : "bicubic")
         fpsLimitEnabled = try values.decodeIfPresent(Bool.self, forKey: .fpsLimitEnabled) ?? false
         targetFPS = try values.decodeIfPresent(Int.self, forKey: .targetFPS) ?? FrameScheduler.defaultTargetFPS
+        diagnosticProfile = try values.decodeIfPresent(String.self, forKey: .diagnosticProfile) ?? HostSettings.defaultDiagnosticProfile
+        debugOverlayMode = try values.decodeIfPresent(String.self, forKey: .debugOverlayMode) ?? "off"
         virtualControls = try values.decode(Bool.self, forKey: .virtualControls)
         logs = try values.decode(Bool.self, forKey: .logs)
         translationModelPath = try values.decode(String.self, forKey: .translationModelPath)

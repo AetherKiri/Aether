@@ -1,7 +1,7 @@
 # Apple 宿主 UI 与设置对齐实施计划
 
 - 2026-10-11，依据 [产品 UI spec](apple_host_ui_spec.md)。
-- 状态：P0调查完成；P1核心实现与行为测试已接入，完整CUA验收待补；P2集合/详情及四主题已接入，完整视觉/无障碍验收待补；P3a能力/安全回退、P3b画布/输出、P3c采样与P3d调度已实现并通过行为回归、真实smoke及设置页CUA；P4会话时长与主页统计（P4a）已实现并通过行为回归与真实CUA；P4其余模块与P5–P7尚未实施。阶段按依赖排序，每轮只提交已验证的完整切片。
+- 状态：P0调查完成；P1核心实现与行为测试已接入，完整CUA验收待补；P2集合/详情及四主题已接入，完整视觉/无障碍验收待补；P3a能力/安全回退、P3b画布/输出、P3c采样与P3d调度已实现并通过行为回归、真实smoke及设置页CUA；P4会话时长/主页统计（P4a）与诊断profile/性能覆盖层（P4b）已实现并通过行为回归与真实CUA；P4其余模块与P5–P7尚未实施。阶段按依赖排序，每轮只提交已验证的完整切片。
 - 目标是修正产品结构并补齐真实功能；不在一轮中把所有缺项画成无效果控件。
 
 ## P0：调查与规范（本轮）
@@ -207,4 +207,13 @@ P3a重点验证部分Metal激活失败后的资源清理：不得在已打开游
 - [x] `python3 tools/apple_host_settings_tests.py` 通过：新增旧索引兼容、时长/问候格式化、固定日历下的统计算法、上限累加，以及真实引擎的会话累计（启动中/被拒绝的启动不计时、重复返回不加时、重启先提交）；五语言目录新增 `%s` 说明符防护。
 - [x] Debug 构建通过；CUA 用隔离 fixture 库（3 条，10740s）验证主页数值（2 小时 · 59 分钟、平均 59m、里程碑 60%、3/3、3/7、七天足迹与排行/最近列表），并用“继续→返回游戏库”实测真实会话把条目从 5400s 累加到 5452s。证据：`out/apple_host/evidence/ui-p4a/`。
 
-下一切片：P4 其余模块（运行时元数据与启动入口/编码、诊断 profile 与覆盖层、虚拟控制模式与播放器交互）；P5 增强保持独立，不提前开放未实现控件。
+## P4b实施记录：诊断 profile 与性能覆盖层
+
+- [x] `HostSettings` schema v6 新增 `diagnosticProfile`（11 档，Debug 默认 baseline/Release off）与 `debugOverlayMode`（off/summary/detail）；v1–v5 迁移、取值校验与往返保存。
+- [x] profile 映射到真实来源：input/plugin/full 启动前下发 `input_trace`/`plugin_trace`/`trace_log`；baseline/render 采宿主帧工作；input/full 记录输入事件；system/full 导出系统快照；storage/script/audio/video 无 Apple 采样源，不出现在选择器并在设置页/日志说明原因。
+- [x] 性能覆盖层：后端/API/纹理/尺寸、tick 与 render 与 presentation 分开的速率和口径说明、帧工作耗时、调度状态、fallback/错误、进程内存与系统空闲/引擎缓存；detail 追加 p50/p95/max、dropped/coalesced/resets、会话计数与缓存明细；GPU 估算明确标注本构建不可用。
+- [x] 覆盖层保存后立即作用于运行中的会话；快照由 tick 循环每 30 tick 节流刷新，视图不持有定时器（每 tick 发布不会打断订阅）；返回游戏库后覆盖层消失。
+- [x] `python3 tools/apple_host_settings_tests.py` 通过：profile 目录/可用性/映射、schema v6 迁移与校验、覆盖层文本组合（含内存口径与 detail 增量），以及真实引擎的 profile 下发、`renderer_info`/`memory_stats`/帧工作采样/导出上下文。
+- [x] Debug 构建通过；CUA 验证诊断设置页（默认基础、可用档位过滤、存储等不可用档位不再可选、选择完整档位显示真实映射、悬浮信息三档、保存状态）与真实 KAG3 覆盖层（tick 111.3/s、render 11.2/s、presentation 111.3/s、App/Peak/System free/Cache、p50/p95/max、会话与缓存明细），返回后会话计时正常提交。证据：`out/apple_host/evidence/ui-p4b/`。
+
+下一切片：P4 其余模块（运行时元数据与启动入口/编码、调试控制台/临时追踪工具与 30 秒自动关闭、虚拟控制模式与播放器交互）；P5 增强保持独立，不提前开放未实现控件。

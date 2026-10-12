@@ -95,6 +95,7 @@ if(WEB OR EMSCRIPTEN)
 endif()
 
 set(AETHERKIRI_GODOT_SOURCES
+    src/flash_player.cpp
     src/aether_runtime_player.cpp
     src/frame_effect_host.cpp
     src/presentation/RuntimePresentationSprite.cpp
@@ -106,6 +107,12 @@ elseif(IOS)
     add_library(aether_kiri_godot STATIC ${AETHERKIRI_GODOT_SOURCES})
 else()
     add_library(aether_kiri_godot SHARED ${AETHERKIRI_GODOT_SOURCES})
+endif()
+
+if(AETHERKIRI_ENABLE_FLASH AND NOT (WEB OR EMSCRIPTEN))
+    add_subdirectory("${CMAKE_SOURCE_DIR}/bridge/flash_runtime" "${CMAKE_BINARY_DIR}/bridge/flash_runtime")
+    target_link_libraries(aether_kiri_godot PRIVATE aether_flash_native)
+    target_compile_definitions(aether_kiri_godot PRIVATE AETHERKIRI_WITH_FLASH=1)
 endif()
 
 if(APPLE)
@@ -165,8 +172,9 @@ if(ANDROID)
         src/android_external_texture.cpp)
     target_link_libraries(aether_kiri_godot PRIVATE
         android vulkan ${CMAKE_DL_LIBS})
-    if(TARGET aether_minori_runtime AND TARGET aether_siglus_runtime)
-        # Minori and Siglus are independently-built Rust static libraries.
+    if((TARGET aether_minori_runtime AND TARGET aether_siglus_runtime) OR
+       (TARGET aether_flash_native AND (TARGET aether_minori_runtime OR TARGET aether_siglus_runtime)))
+        # Flash, Minori and Siglus are independently-built Rust static libraries.
         # Each archive carries the Rust runtime objects it needs, so lld sees
         # duplicate std/alloc symbols when both providers are pulled into the
         # Android extension. They are built by the same toolchain; keep one
@@ -246,6 +254,9 @@ if(IOS)
     set(AETHERKIRI_IOS_ARCHIVES
         "$<TARGET_FILE:aether_kiri_godot>"
         "$<TARGET_FILE:aether_kiri_godot_swift>")
+    if(TARGET aether_flash_native)
+        list(APPEND AETHERKIRI_IOS_ARCHIVES "$<TARGET_FILE:aether_flash_native>")
+    endif()
     if(TARGET aether_minori_runtime)
         list(APPEND AETHERKIRI_IOS_ARCHIVES
             "$<TARGET_FILE:aether_minori_runtime>")

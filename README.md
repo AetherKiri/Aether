@@ -29,6 +29,7 @@ capabilities.
 
 ```text
 Godot App Shell
+  ├─ AetherFlashPlayer ─────── Ruffle (Flash)
   └─ AetherRuntimePlayer
        └─ Runtime Dispatcher
             ├─ KiriRuntime ──────── KiriKiri2 core / plugins
@@ -54,6 +55,8 @@ and **Debug CPU** is a diagnostic fallback only.
 - OnscripterYuri integration with Godot pointer/touch/keyboard input mapped
   back to ONS events.
 - Export presets for macOS, iOS/iPadOS, Android, Web, and Linux.
+- A separate Flash library powered by native Ruffle, with sound, keyboard,
+  mouse, touch, and the visual-novel virtual controls.
 - Runtime-selectable render backend with persisted settings.
 - Bundled multilingual KAG3 demo, playable from the library and deletable by
   the player.
@@ -65,6 +68,20 @@ In iOS and macOS Release distribution builds, Minori, SoftPal, and the
 WHITE ALBUM2 (Leaf TtT / WA2) runtime require an active 30-day coffee
 entitlement. ONScripterYuri, Artemis, and CatSystem2 are generally available.
 Debug builds and Android/Linux releases do not enforce this coffee requirement.
+
+## Flash Library
+
+Import `.swf` files or folders from the Flash category on macOS, Linux, and
+Android. Folders retain their hierarchy, and search can find nested SWFs.
+On iOS, copy files or folders into **Files → On My iPhone/iPad → Aether → Flash**,
+then refresh the Flash library. Local relative assets are resolved beside the
+SWF; SharedObject saves persist between sessions. The player provides pause,
+restart, and the same virtual keyboard and pointer controls as visual novels.
+The virtual joystick can switch between arrow keys and WASD.
+
+Playback compatibility follows Ruffle. This native integration currently loads
+local content; browser scripting, remote downloads, and Web exports are not
+supported by the Flash player.
 
 ## Platform Support
 
@@ -87,9 +104,11 @@ Debug builds and Android/Linux releases do not enforce this coffee requirement.
 | | `bridge/krkr2_runtime/` | KiriKiri2 integration glue (legacy engine implementation, host hooks). |
 | | `bridge/onscripter_runtime/` | Headless OnscripterYuri host, frame capture, input bridge. |
 | | `bridge/siglus_runtime/` | Siglus provider plus the build-time overlay applied to pristine `siglus_rs`. |
+| | `bridge/flash_runtime/` | Ruffle static library and native playback/input/audio bridge. |
 | Engines | `packages/AetherKrkr/` | KiriKiri2 engine runtime submodule. |
 | | `packages/OnscripterYuri/` | Public OnscripterYuri submodule. |
 | | `packages/AetherSiglus/` | Public siglus_rs submodule (kept pristine). |
+| | `packages/ruffle/` | Pinned upstream Flash runtime submodule (kept pristine). |
 | | `packages/AetherInternal/` | Optional private E-mote package; public builds work without it. |
 | | `packages/AetherSoftPal/` | Optional private native SoftPal runtime submodule. |
 | Support | `demos/aetherkiri-kag3/` | Source of the built-in KAG3 demo. |
@@ -107,7 +126,8 @@ Debug builds and Android/Linux releases do not enforce this coffee requirement.
 | NASM | Native FFmpeg | |
 | vcpkg | All builds | `.devtools/vcpkg` or `VCPKG_ROOT` |
 | Godot 4.7 | Exports | `/Applications/Godot.app` or `GODOT_BIN=/path/to/Godot` |
-| Rust (rustup) | Siglus runtime | `rustup target add aarch64-linux-android`; builds degrade to "Siglus disabled" without it |
+| Current stable Rust (rustup) | Flash, Siglus, Minori | `rustup update stable`; use `RUSTUP_TOOLCHAIN=stable` consistently for all native runtimes |
+| Java 17+ | Flash player builtins | `java` on PATH; on macOS, e.g. `brew install openjdk@17` and add its `bin` directory to PATH |
 | Xcode | macOS / iOS | Tagged iOS releases need the iOS 26 SDK |
 | Android SDK/NDK | Android | NDK `28.1.13356709`; `ANDROID_HOME` or `$HOME/Library/Android/sdk` |
 | Emscripten (emsdk) | Web | `emcc`/`em++`/`emar` on PATH; Godot dlink templates (`web_dlink_*.zip`) |
@@ -119,16 +139,18 @@ Debug builds and Android/Linux releases do not enforce this coffee requirement.
 ```bash
 git submodule update --init \
   packages/AetherKrkr packages/OnscripterYuri packages/psdfile \
-  packages/AetherSiglus packages/AetherMinori
+  packages/AetherSiglus packages/AetherMinori packages/ruffle
 ./build.sh macos debug        # or: macos release / ios debug --simulator /
                                # ios release / android debug --abi=arm64-v8a /
                                / web debug / linux release
 ```
 
-These five public runtime submodules are the minimum for a default build
+These six public runtime submodules are the minimum for a default build
 (the engine repository is a hard configure requirement; Siglus and Minori
 degrade gracefully without a Rust toolchain, but the checkouts must be
-present). `AetherInternal`, `AetherSoftPal`, `tjs2Decompiler`, and `rfvp` are
+present; Flash requires current stable Rust and Java). Set
+`AETHERKIRI_ENABLE_FLASH=OFF` to build without Flash playback.
+`AetherInternal`, `AetherSoftPal`, `tjs2Decompiler`, and `rfvp` are
 optional — see [Optional Components](#optional-components). `AetherKrkr`,
 `psdfile`, and
 `AetherMinori` are recorded with SSH URLs in `.gitmodules`; without SSH

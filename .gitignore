@@ -17,6 +17,7 @@ vcpkg_installed/
 *.lock
 !package-lock.json
 !bridge/rfvp_runtime/Cargo.lock
+!bridge/flash_runtime/Cargo.lock
 node_modules/
 .vite/
 /stats_server

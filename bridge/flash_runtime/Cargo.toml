@@ -1,0 +1,27 @@
+[package]
+name = "aether_flash"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[lib]
+crate-type = ["staticlib"]
+
+[workspace]
+
+[dependencies]
+ruffle_core = { path = "../../packages/ruffle/core", features = ["audio", "mp3", "aac", "lzma", "default_font", "default_compatibility_rules"] }
+ruffle_render_wgpu = { path = "../../packages/ruffle/render/wgpu" }
+ruffle_video_software = { path = "../../packages/ruffle/video/software" }
+sha2 = "0.10"
+
+[dev-dependencies]
+swf = { path = "../../packages/ruffle/swf" }
+
+[profile.dev]
+opt-level = 1
+debug = 0
+
+[profile.release]
+lto = "thin"
+codegen-units = 1

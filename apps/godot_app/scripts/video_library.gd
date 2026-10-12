@@ -10,10 +10,12 @@ var navigation_root := ""
 var automatic_root := ""
 var _list_path: String
 var _hidden_path: String
+var _extensions: Array
 
-func _init(list_path: String, hidden_path: String) -> void:
+func _init(list_path: String, hidden_path: String, extensions: Array = EXTENSIONS) -> void:
     _list_path = list_path
     _hidden_path = hidden_path
+    _extensions = extensions.duplicate()
 
 func refresh(root: String = "") -> void:
     automatic_root = normalize_path(root) if not root.is_empty() else ""
@@ -21,7 +23,7 @@ func refresh(root: String = "") -> void:
         sources = _load_sources()
     else:
         DirAccess.make_dir_recursive_absolute(automatic_root)
-        sources = list_directory(automatic_root)
+        sources = list_directory(automatic_root, _extensions)
 
     # Keep a single flat catalog for playback authorization. Folder cards never
     # count as videos, and importing overlapping folders cannot duplicate it.
@@ -34,7 +36,7 @@ func refresh(root: String = "") -> void:
         if is_directory(entry):
             if not visited.has(path):
                 visited[path] = true
-                pending.append_array(list_directory(path))
+                pending.append_array(list_directory(path, _extensions))
         else:
             found[path] = entry
     var hidden := _load_hidden()
@@ -55,7 +57,7 @@ func refresh(root: String = "") -> void:
 
 func add_source(path: String) -> bool:
     var normalized := normalize_path(path)
-    var entry := entry_info(normalized)
+    var entry := entry_info(normalized, _extensions)
     if entry.is_empty():
         return false
     var next := _load_sources()
@@ -170,7 +172,7 @@ func _resolve_location() -> void:
         current_directory = current_directory.get_base_dir()
 
 func _update_entries() -> void:
-    var candidates := sources if current_directory.is_empty() else list_directory(current_directory)
+    var candidates := sources if current_directory.is_empty() else list_directory(current_directory, _extensions)
     var visible_paths := {}
     for video in videos:
         visible_paths[video["path"]] = true
@@ -195,7 +197,7 @@ func _load_sources() -> Array[Dictionary]:
         var path := String(item.get("path", ""))
         if path.is_empty():
             continue
-        var entry := entry_info(normalize_path(path))
+        var entry := entry_info(normalize_path(path), _extensions)
         if not entry.is_empty() and not seen.has(entry["path"]):
             result.append(entry)
             seen[entry["path"]] = true
@@ -230,11 +232,11 @@ static func is_directory(entry: Dictionary) -> bool:
 static func contains_path(root: String, path: String) -> bool:
     return not root.is_empty() and (path == root or path.begins_with(root.trim_suffix("/") + "/"))
 
-static func entry_info(path: String) -> Dictionary:
+static func entry_info(path: String, extensions: Array = EXTENSIONS) -> Dictionary:
     if DirAccess.dir_exists_absolute(path):
         var name := path.get_file() if not path.get_file().is_empty() else path
         return {"path": path, "name": name, "fileName": name, "isDirectory": true}
-    if not FileAccess.file_exists(path) or not path.get_extension().to_lower() in EXTENSIONS:
+    if not FileAccess.file_exists(path) or not path.get_extension().to_lower() in extensions:
         return {}
     return {
         "path": path,
@@ -243,7 +245,7 @@ static func entry_info(path: String) -> Dictionary:
         "modified": FileAccess.get_modified_time(path),
     }
 
-static func list_directory(root: String) -> Array[Dictionary]:
+static func list_directory(root: String, extensions: Array = EXTENSIONS) -> Array[Dictionary]:
     var result: Array[Dictionary] = []
     var dir := DirAccess.open(root)
     if dir == null:
@@ -255,7 +257,7 @@ static func list_directory(root: String) -> Array[Dictionary]:
             # Directory symlinks can lead back into a parent during catalog
             # scanning. Ordinary directories keep their original hierarchy.
             if not dir.current_is_dir() or not dir.is_link(name):
-                var entry := entry_info(root.path_join(name))
+                var entry := entry_info(root.path_join(name), extensions)
                 if not entry.is_empty():
                     result.append(entry)
         name = dir.get_next()

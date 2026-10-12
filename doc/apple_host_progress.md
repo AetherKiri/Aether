@@ -747,3 +747,11 @@
 - 测试：`python3 tools/apple_host_settings_tests.py` 的 `LegalAcceptanceTests` 重写为两份文档的顺序门（privacy→statement、每份版本门、旧单文档迁移、损坏文件、debug 绕过）全通过；Debug 构建通过。
 - CUA：全新库先弹 privacy（1/2，版本 2026-07-27.4），同意后弹 statement（2/2，版本 2026-08-04），再同意才进库；写出 `{"privacy":{...},"statement":{...}}`，重开不再弹门，关于页出现两项。证据：`out/apple_host/evidence/ui-p6-statement/`。
 - 差异：「已拒绝」独立页面属 iOS/M4；macOS 保持拒绝即退出（对齐 Godot 桌面行为）。
+
+### 2026-10-12：审阅问题修复与 CUA 回归
+
+- `HostFrameClock` 检查 DisplayLink handler 安装与启动返回值；启动失败记录原因并回退 Timer。注入真实 DisplayLink 启动失败测试验证 Timer 仍产生回调、停止后无回调。
+- 在线封面下载绑定搜索会话和游戏 ID，应用期间拒绝重复请求；关闭窗口取消任务并使旧结果失效。下载内容需可解码为图片后才写缓存和索引，损坏内容保持原封面字节不变。
+- 行为回归新增损坏图片、重复应用、取消后旧下载完成与新搜索隔离；`python3 tools/apple_host_settings_tests.py` 和 Debug 构建通过，`git diff --check` 通过。
+- CUA 在真实修复构建、隔离库中完成 VNDB 搜索→取消→再次搜索→下载应用，截图确认详情页封面正常显示；Demo 启动显示 KAG 介绍页，Return 输入后可确认返回游戏库，封面与详情保持。启动失败与延迟响应边界由自动故障注入覆盖，未声称 CUA 实际发生系统 DisplayLink 故障。
+- 本地证据：`out/apple_host/evidence/review-fixes-cua/`（测试、构建、runtime 日志和隔离库）；CUA AX/截图记录在本轮工具记录中。未修改用户实际游戏库。

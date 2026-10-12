@@ -36,6 +36,7 @@ final class HostFrameClock {
     private(set) var fallbackReason: String?
     private let preference: FrameClockPreference
     private let interval: TimeInterval
+    private let startDisplayLink: (CVDisplayLink) -> CVReturn
     private var link: CVDisplayLink?
     private var timer: Timer?
     private var started = false
@@ -46,7 +47,9 @@ final class HostFrameClock {
     /// Called on the main thread with a monotonic host timestamp in seconds.
     var onCallback: ((TimeInterval) -> Void)?
 
-    init(preference: FrameClockPreference, interval: TimeInterval) {
+    init(preference: FrameClockPreference, interval: TimeInterval,
+         startDisplayLink: @escaping (CVDisplayLink) -> CVReturn = CVDisplayLinkStart) {
+        self.startDisplayLink = startDisplayLink
         self.preference = preference
         self.interval = min(1.0, max(1.0 / 1000.0, interval))
         guard preference != .timer else { return }
@@ -56,9 +59,13 @@ final class HostFrameClock {
             fallbackReason = "CVDisplayLinkCreateWithActiveCGDisplays status \(status)"
             return
         }
-        CVDisplayLinkSetOutputHandler(created) { [weak self] _, _, _, _, _ in
+        let handlerStatus = CVDisplayLinkSetOutputHandler(created) { [weak self] _, _, _, _, _ in
             self?.enqueueDisplayLinkCallback()
             return kCVReturnSuccess
+        }
+        guard handlerStatus == kCVReturnSuccess else {
+            fallbackReason = "CVDisplayLinkSetOutputHandler status \(handlerStatus)"
+            return
         }
         link = created
         driver = .displayLink
@@ -72,8 +79,11 @@ final class HostFrameClock {
         guard !started else { return }
         started = true
         if let link {
-            CVDisplayLinkStart(link)
-            return
+            let status = startDisplayLink(link)
+            if status == kCVReturnSuccess { return }
+            fallbackReason = "CVDisplayLinkStart status \(status)"
+            self.link = nil
+            driver = .timer
         }
         // Run-loop timer fallback: same callback contract, coarser source.
         let timer = Timer(timeInterval: interval, repeats: true) { [weak self] _ in

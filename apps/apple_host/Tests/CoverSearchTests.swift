@@ -1,4 +1,4 @@
-import Foundation
+import AppKit
 
 /// Online cover lookup: request shape, response parsing and the injected
 /// search/apply path on the model.
@@ -14,6 +14,13 @@ enum CoverSearchTests {
     private struct FailingLoader: CoverImageLoading {
         struct Boom: Error {}
         func load(_ url: URL) async throws -> Data { throw Boom() }
+    }
+
+    @MainActor private final class DelayedLoader: CoverImageLoading {
+        var continuation: CheckedContinuation<Data, Never>?
+        func load(_ url: URL) async throws -> Data {
+            await withCheckedContinuation { continuation = $0 }
+        }
     }
 
     @MainActor static func run(root: URL) async throws {
@@ -45,7 +52,7 @@ enum CoverSearchTests {
         let model = ShellModel(root: libraryRoot)
         let candidate = parsed[0]
         model.coverSearch = FakeSearch(results: [candidate])
-        model.coverImageLoader = FakeLoader(data: Data(repeating: 9, count: 32))
+        model.coverImageLoader = FakeLoader(data: png())
         await model.performCoverSearch()
         precondition(model.coverCandidates.count == 1 && !model.coverSearchBusy)
         let applied = await model.performCoverApply(candidate)
@@ -59,6 +66,34 @@ enum CoverSearchTests {
         let failed = await model.performCoverApply(candidate)
         precondition(!failed)
         precondition(model.selectedGame?.coverPath == cover)
+        await model.performCoverSearch()
+        let previousBytes = try Data(contentsOf: URL(fileURLWithPath: cover))
+        model.coverImageLoader = FakeLoader(data: Data("<html>broken</html>".utf8))
+        let invalid = await model.performCoverApply(candidate)
+        precondition(!invalid)
+        precondition(model.selectedGame?.coverPath == cover)
+        let cached = try Data(contentsOf: URL(fileURLWithPath: cover))
+        precondition(cached == previousBytes)
+        await model.performCoverSearch()
+        let delayed = DelayedLoader()
+        model.coverImageLoader = delayed
+        let pending = Task { await model.performCoverApply(candidate) }
+        while delayed.continuation == nil { await Task.yield() }
+        let duplicate = await model.performCoverApply(candidate)
+        precondition(!duplicate)
+        model.showCoverSearch = false
+        await model.performCoverSearch() // a new sheet must survive the old completion
+        delayed.continuation?.resume(returning: png())
+        let stale = await pending.value
+        precondition(!stale && model.showCoverSearch && !model.coverSearchBusy)
+        let finalBytes = try Data(contentsOf: URL(fileURLWithPath: cover))
+        precondition(finalBytes == previousBytes)
         print("PASS: online cover request shape, response parsing, injected search/apply and failure retention")
+    }
+    private static func png() -> Data {
+        let bitmap = NSBitmapImageRep(bitmapDataPlanes: nil, pixelsWide: 2, pixelsHigh: 2,
+            bitsPerSample: 8, samplesPerPixel: 4, hasAlpha: true, isPlanar: false,
+            colorSpaceName: .deviceRGB, bytesPerRow: 8, bitsPerPixel: 32)!
+        return bitmap.representation(using: .png, properties: [:])!
     }
 }

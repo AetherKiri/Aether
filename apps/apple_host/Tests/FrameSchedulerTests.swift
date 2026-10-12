@@ -1,4 +1,5 @@
 import Foundation
+import CoreVideo
 
 /// Synthetic callback pulses for the pure pacing clock. These checks are what
 /// separate "host tick rate" from "engine render rate" and "display scan-out".
@@ -10,6 +11,19 @@ enum FrameSchedulerTests {
         lateCallbackDropsCatchUpInsteadOfBursting()
         clampAndModeReset()
         targetValidation()
+        let failedClock = HostFrameClock(preference: .display, interval: 0.01,
+                                        startDisplayLink: { _ in kCVReturnError })
+        precondition(failedClock.driver == .displayLink)
+        var callbacks = 0
+        failedClock.onCallback = { _ in callbacks += 1 }
+        failedClock.start()
+        precondition(failedClock.driver == .timer && failedClock.fallbackReason?.contains("CVDisplayLinkStart") == true)
+        RunLoop.main.run(until: Date().addingTimeInterval(0.05))
+        precondition(callbacks > 0)
+        failedClock.stop()
+        let stopped = callbacks
+        RunLoop.main.run(until: Date().addingTimeInterval(0.03))
+        precondition(callbacks == stopped)
         print("PASS: scheduler pacing under 60/120 Hz pulses, real elapsed delta, target rate ceiling, catch-up dropping and target validation")
     }
 

@@ -57,7 +57,15 @@ final class ShellModel: ObservableObject {
     /// only runs on an explicit user action and sends just the title.
     var coverSearch: CoverSearchProviding = VNDBCoverSearch()
     var coverImageLoader: CoverImageLoading = URLSessionCoverImageLoader()
-    @Published var showCoverSearch = false
+    private var coverTask: Task<Void, Never>?
+    private var coverRequestID = UUID()
+    private var coverGameID: UUID?
+    @Published var showCoverSearch = false { didSet {
+        if !showCoverSearch {
+            coverTask?.cancel(); coverTask = nil
+            coverRequestID = UUID(); coverGameID = nil; coverSearchBusy = false
+        }
+    } }
     @Published private(set) var coverSearchBusy = false
     @Published private(set) var coverCandidates: [CoverCandidate] = []
     @Published var coverSearchError: String?
@@ -432,13 +440,17 @@ final class ShellModel: ObservableObject {
     /// display title is sent to the cover service.
     func beginCoverSearch() {
         guard canEditCover else { return }
-        Task { await performCoverSearch() }
+        coverTask?.cancel()
+        coverTask = Task { await performCoverSearch() }
     }
 
     /// Runs the lookup and publishes the result. Only the display title leaves
     /// the device.
     func performCoverSearch() async {
         guard let game = selectedGame else { return }
+        let requestID = UUID()
+        coverRequestID = requestID
+        coverGameID = game.id
         coverCandidates = []
         coverSearchError = nil
         coverSearchBusy = true
@@ -447,31 +459,44 @@ final class ShellModel: ObservableObject {
         let title = game.displayTitle
         do {
             let results = try await provider.search(title: title)
+            guard coverRequestID == requestID, !Task.isCancelled else { return }
             coverCandidates = results
             if results.isEmpty { coverSearchError = text("coverSearchEmpty") }
         } catch {
+            guard coverRequestID == requestID, !Task.isCancelled else { return }
             coverSearchError = text("coverSearchFailed")
         }
         coverSearchBusy = false
     }
 
     func applyCoverCandidate(_ candidate: CoverCandidate) {
-        Task { await performCoverApply(candidate) }
+        guard !coverSearchBusy else { return }
+        coverTask = Task { await performCoverApply(candidate) }
     }
 
     /// Downloads a chosen candidate into the host cover cache and points the
     /// game at it. A failure keeps the current cover.
     @discardableResult
     func performCoverApply(_ candidate: CoverCandidate) async -> Bool {
-        guard let game = selectedGame else { return false }
+        guard showCoverSearch, !coverSearchBusy, let gameID = coverGameID,
+              games.contains(where: { $0.id == gameID }) else { return false }
+        let requestID = coverRequestID
+        coverSearchBusy = true
+        defer { if coverRequestID == requestID { coverSearchBusy = false } }
         do {
             let data = try await coverImageLoader.load(candidate.imageURL)
+            guard coverRequestID == requestID, !Task.isCancelled,
+                  games.contains(where: { $0.id == gameID }) else { return false }
+            guard let image = NSImage(data: data), image.cgImage(forProposedRect: nil, context: nil, hints: nil) != nil else {
+                throw CoverSearchError.invalidResponse
+            }
             let url = try cacheCoverImage(data, identifier: candidate.id)
-            games = try repository.setCover(game.id, url: url, existing: games)
+            games = try repository.setCover(gameID, url: url, existing: games)
             showCoverSearch = false
             coverCandidates = []
             return true
         } catch {
+            guard coverRequestID == requestID, !Task.isCancelled else { return false }
             coverSearchError = text("coverSearchFailed")
             return false
         }

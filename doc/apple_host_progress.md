@@ -505,7 +505,7 @@
 31b. [ ] **两处兼容小项待查**：`new DMMCloud()` 报 `Invalid argument count`；`new Zlib().version()` 报成员不存在（可能只是探针写法/注册方式差异）
 32. [ ] **内核后续：内存可观测（借鉴 `MemoryDesign.md`）**：分配头带 tag + `AllocTagScope` 标签栈，让"谁吃掉了内存"可回答；当前只有粗粒度 `engine_get_memory_stats`
 
-33. [ ] **产品 UI/设置完整对齐**：调查 P0 已完成；P1核心、P2集合/详情与四主题已接入，完整CUA/无障碍验收待补；P3a–P3d、P4a/P4b/P4d/P4e/P4f、可停靠诊断控制台（含标记/慢帧捕获/快照/截图/自检）、场景测试入口、P5a 画面增强、P5b（FSR1 EASU/RCAS + kind/预设/自定义链）、P6（macOS 首次使用协议门 + 内置 Demo + VNDB 在线封面）已接入并通过行为回归与真实CUA；P4 其余（RFVP 编码仍按能力缺口记录），P5b 其余 Godot 算法与预设、P6 其余（渠道声明），P7 见 [实施计划](apple_host_ui_plan.md)（视频库暂停维护）。
+33. [ ] **产品 UI/设置完整对齐**：调查 P0 已完成；P1核心、P2集合/详情与四主题已接入，完整CUA/无障碍验收待补；P3a–P3d、P4a/P4b/P4d/P4e/P4f、可停靠诊断控制台（含标记/慢帧捕获/快照/截图/自检）、场景测试入口、P5a 画面增强、P5b（FSR1 EASU/RCAS + 双三次/Lanczos 链步骤 + kind/预设/自定义链）、P6（macOS 首次使用协议门 + 内置 Demo + VNDB 在线封面）已接入并通过行为回归与真实CUA；P4 其余（RFVP 编码仍按能力缺口记录），P5b 其余 Godot 算法与预设、P6 其余（渠道声明），P7 见 [实施计划](apple_host_ui_plan.md)（视频库暂停维护）。
 
 ## 变更记录
 
@@ -727,3 +727,13 @@
 - 测试：`python3 tools/apple_host_settings_tests.py` 的 `DiagnosticTests` 覆盖状态机（未武装忽略、快帧保持武装、慢帧报告并解除、一次性）全通过；Debug 构建通过。
 - CUA：真实会话中武装后写入 `slowFrameCapture = "armed (threshold 20 ms)"`，随后真实捕获 `slowFrameCaptured = "20.17 ms host work at tick 7800"`。证据：`out/apple_host/evidence/ui-p4-slow-frame/`。
 - 与 Godot 的差异：本移植只记录 tick 与 host work，不复刻 Godot 的近期事件环；RFVP 编码仍待 P4。
+
+### 2026-10-12：P5b 续 双三次/Lanczos 链步骤与预设
+
+- Godot 的增强算法表里 `bicubic`/`lanczos` 也是链算法，且 `frame_enhancement_mode.bicubic/lanczos` 是对应预设；Apple 宿主已有这两个已验证的采样核，本轮接入链。
+- `FrameEnhancement` 新增 `bicubic`/`lanczos`（`scalesOutput` + `samplingAlgorithm` 映射；EASU 仍走自己的 shader，双三次/Lanczos 复用采样 shader）。链的缩放步骤覆盖 `upscaleAlgorithm`，符合 Godot 链语义。
+- 预设列表扩到 3 项：均衡清晰（FSR1）=EASU+RCAS、自然柔和（双三次）=bicubic+RCAS、锐利细节（Lanczos）=lanczos+RCAS；自定义链首步可选 EASU/双三次/Lanczos。说明文案同步更新。
+- 渲染：`MetalFramePresenter` 用链的缩放步骤做输出 pass，其余步骤按序同尺寸执行；`scalingConfig` 含“有效采样 + 缩放步骤”。
+- 测试：`python3 tools/apple_host_settings_tests.py` 全通过（`allCases`/预设/采样映射、lanczos+RCAS 链往返、非法链拒绝、bicubic+RCAS 与单独 bicubic/单独 lanczos 都不同）；Debug 构建通过；30 秒 KAG3 Metal smoke 通过。
+- CUA：预设列表三项、保存 `preset=bicubic`、真实启动日志 `frame enhancement bicubic,fsr1_rcas amount=0.50`。证据：`out/apple_host/evidence/ui-p5b-sampling-cua/`。
+- 残余未验收：Anime4K/RAVU/CuNNy/NNEDI3/FXAA 及其预设；预设内 RCAS 强度用用户滑杆值（Godot 私有的 `fsr1_rcas_low` 不可复现）。

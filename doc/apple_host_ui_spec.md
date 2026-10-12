@@ -61,8 +61,8 @@ Apple 官方参考：[Settings](https://developer.apple.com/design/human-interfa
 | 画布 Game Native/Display Fit | 缺失设置；已有 setSurfaceSize 接缝 | 分离游戏逻辑画布、输出纹理和窗口 drawable；保持输入映射 | P3 |
 | 缩放 smooth/nearest/linear/bicubic/lanczos | 缺失选择器与完整实现 | `smooth` 迁移为 `linear`；提供真实 nearest/linear/bicubic/lanczos 核，名称与 shader 一致 | P3 |
 | 输出 original/1080p/2k/4k，默认1080p | 缺失设置 | 按原版目标尺寸/纵横比规范迁移；不是改变显示器分辨率 | P3 |
-| 增强 off/preset/custom | P5b 已接入 Godot 的 kind 模型：关闭/预设/自定义；预设先开放可组合的「均衡清晰（FSR1）」= EASU+RCAS | Metal 后处理与能力报告；原始帧降级；其余 Godot 算法逐个移植前不开放 | P5 |
-| 15 个增强预设，16 种自定义算法、顺序添加/移除 | 自定义链编辑器已接入（有序步骤、每步算法选择、添加/移除、上限 32）；预设仅列出可组合项 | 保留重建2×、目标尺寸缩放、同尺寸修复三种语义；不是统一 resize | P5 |
+| 增强 off/preset/custom | P5b 已接入 Godot 的 kind 模型：关闭/预设/自定义；预设开放可组合的 均衡清晰（FSR1）=EASU+RCAS、自然柔和（双三次）=bicubic+RCAS、锐利细节（Lanczos）=lanczos+RCAS | Metal 后处理与能力报告；原始帧降级；其余 Godot 算法逐个移植前不开放 | P5 |
+| 15 个增强预设，16 种自定义算法、顺序添加/移除 | 自定义链编辑器已接入（有序步骤、每步算法选择、添加/移除、上限 32；缩放步骤含 EASU/双三次/Lanczos）；预设仅列出可组合项 | 保留重建2×、目标尺寸缩放、同尺寸修复三种语义；不是统一 resize | P5 |
 | FPS 开关+60/80/90/120/144，默认关闭、目标80 | 已接入 schema v5；DisplayLink 优先、Timer 兜底 | ABI fps_limit + 宿主调度；关闭限制也不承诺超显示器FPS | P3 |
 | 游戏横屏锁定 | 平台不适用 | 移动端 M4 | M4 |
 | 插件核心/完整（krkrsdl3/aether_all） | 缺失 UI/下发 | 已有 engine option，启动前应用并报告实际结果 | P1 |
@@ -402,3 +402,13 @@ Godot 控制台的「慢帧捕获」会武装一次性捕获，下一帧 host wo
 - 控制台动作区新增「慢帧捕获」按钮，武装后显示「已武装：将捕获下一个超过 20 ms 的帧」。
 - 测试 `DiagnosticTests` 覆盖状态机：未武装忽略、快帧保持武装、慢帧报告并解除、一次性。CUA 验证真实会话：武装写入 `slowFrameCapture`，随后真实捕获 `slowFrameCaptured = "20.17 ms host work at tick 7800"`。证据：`out/apple_host/evidence/ui-p4-slow-frame/`。
 - 与 Godot 的差异：本移植只记录 tick 与 host work，不复刻 Godot 的近期事件环。
+
+### 7.25 P5b 续：双三次/Lanczos 链步骤与预设
+
+Godot 的增强算法表里 `bicubic`/`lanczos` 也是链算法（“自然柔和地缩放到所选输出分辨率”/“锐利地缩放到所选输出分辨率”），且 `frame_enhancement_mode.bicubic/lanczos` 是对应预设。Apple 宿主已有这两个**已验证的采样核**，因此本轮把它们接入链：
+
+- `FrameEnhancement` 新增 `bicubic`/`lanczos`：`scalesOutput == true`，并给出 `samplingAlgorithm` 映射（EASU 仍走自己的 shader，双三次/Lanczos 复用采样 shader）。链的缩放步骤覆盖 `upscaleAlgorithm` 设置，符合 Godot 的链语义。
+- 预设列表从 1 项扩到 3 项：均衡清晰（FSR1）=EASU+RCAS、自然柔和（双三次）=bicubic+RCAS、锐利细节（Lanczos）=lanczos+RCAS（标签与说明取 Godot 模式名）。
+- 渲染：`MetalFramePresenter` 用链的缩放步骤做输出 pass（EASU 或采样），其余步骤仍按序在同尺寸 ping-pong scratch 上执行；`scalingConfig` 改为含“有效采样 + 缩放步骤”。
+- 测试：`FrameEnhancementTests` 扩展 `allCases`/预设/采样映射断言，新增 lanczos+RCAS 链往返、非法链（缩放步骤非首位、两个缩放步骤）拒绝，以及 bicubic+RCAS 与单独 bicubic、单独 lanczos 都不同。CUA 验证预设列表三项、保存 `preset=bicubic` 与真实启动日志 `frame enhancement bicubic,fsr1_rcas amount=0.50`。证据：`out/apple_host/evidence/ui-p5b-sampling-cua/`。
+- 差异：预设里的 RCAS 强度使用用户的「锐化强度」（Godot 私有的 `fsr1_rcas_low` 值不可复现）；Anime4K/RAVU/CuNNy/NNEDI3/FXAA 与其预设仍不列出。

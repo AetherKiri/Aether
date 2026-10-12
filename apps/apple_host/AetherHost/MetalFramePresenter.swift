@@ -56,9 +56,11 @@ final class MetalFramePresenter: NSObject, MTKViewDelegate {
     /// to EASU (or changing the sampler) must re-run the output pass even when
     /// the source frame revision is unchanged.
     private var outputConfig: String?
-    private var scalingConfig: String {
-        "\(samplingAlgorithm.rawValue)|\(enhancementChain.first { $0.scalesOutput }?.rawValue ?? "none")"
-    }
+    private var chainScalingStep: FrameEnhancement? { enhancementChain.first { $0.scalesOutput } }
+    /// The sampler used for the output pass: the chain's scaling step overrides
+    /// the upscale setting, matching Godot's chain semantics.
+    private var effectiveSampling: SamplingAlgorithm { chainScalingStep?.samplingAlgorithm ?? samplingAlgorithm }
+    private var scalingConfig: String { "\(effectiveSampling.rawValue)|\(chainScalingStep?.rawValue ?? "none")" }
     private var enhancedTexture: MTLTexture?
     private var enhancedRevision: UInt64?
     /// Ping-pong scratch for multi-step same-size chains.
@@ -497,48 +499,24 @@ final class MetalFramePresenter: NSObject, MTKViewDelegate {
         let steps = enhancementChain.filter { $0.isStep }
         let scalingStep = steps.first { $0.scalesOutput }
         let sameSizeSteps = steps.filter { !$0.scalesOutput }
-        if let texture, scalingStep != nil {
+        if let texture {
             let hasOutput = outputSize.width > 0 && outputSize.height > 0
             let width = hasOutput ? Int(outputSize.width) : texture.width
             let height = hasOutput ? Int(outputSize.height) : texture.height
-            guard width <= Int(RenderGeometry.maximum.width), height <= Int(RenderGeometry.maximum.height) else {
-                throw Failure.unsupportedFrame
-            }
-            if let upscaled = easuOutput(texture, width: width, height: height, command: command) {
-                source = upscaled
-            }
-        } else if let texture, outputSize.width > 0, outputSize.height > 0,
-                  Int(outputSize.width) != texture.width || Int(outputSize.height) != texture.height {
-            let width = Int(outputSize.width), height = Int(outputSize.height)
-            guard width <= Int(RenderGeometry.maximum.width), height <= Int(RenderGeometry.maximum.height) else {
-                throw Failure.unsupportedFrame
-            }
-            // A drawable command may still be using the previous target when
-            // the next engine frame arrives. Keep the target only while the
-            // source revision is unchanged; a new frame receives a fresh
-            // texture whose lifetime is retained by its command buffer.
-            if outputTexture?.width != width || outputTexture?.height != height
-                || outputRevision != frameRevision || outputConfig != scalingConfig {
-                let descriptor = MTLTextureDescriptor.texture2DDescriptor(pixelFormat: .bgra8Unorm,
-                    width: width, height: height, mipmapped: false)
-                descriptor.storageMode = .private
-                descriptor.usage = [.renderTarget, .shaderRead]
-                guard let next = device.makeTexture(descriptor: descriptor) else { throw Failure.allocation }
-                outputTexture = next
-                outputRevision = nil
-                outputConfig = nil
-            }
-            if let outputTexture {
-                if outputRevision != frameRevision || outputConfig != scalingConfig {
-                    // Both passes share the producer queue and the same command.
-                    // Its completion retains the source lease and resized target.
-                    try encodeImage(source: texture, target: outputTexture, command: command,
-                                    aspectFit: false, sampling: samplingAlgorithm)
-                    outputRevision = frameRevision
-                    outputConfig = scalingConfig
-                    outputPassCount += 1
+            let needsScaling = scalingStep != nil
+                || (hasOutput && (width != texture.width || height != texture.height))
+            if needsScaling {
+                guard width <= Int(RenderGeometry.maximum.width), height <= Int(RenderGeometry.maximum.height) else {
+                    throw Failure.unsupportedFrame
                 }
-                source = outputTexture
+                if scalingStep == .fsr1Easu {
+                    if let upscaled = easuOutput(texture, width: width, height: height, command: command) {
+                        source = upscaled
+                    }
+                } else {
+                    source = try samplingOutput(texture, width: width, height: height,
+                                                sampling: effectiveSampling, command: command)
+                }
             }
         }
         if !sameSizeSteps.isEmpty, enhancementAmount > 0, let current = source {
@@ -546,6 +524,37 @@ final class MetalFramePresenter: NSObject, MTKViewDelegate {
         }
         try encodeImage(source: source, target: target, command: command,
                         sampling: outputTexture == nil ? samplingAlgorithm : .linear)
+    }
+
+    /// Runs the sampling upscale into a cached scratch texture. A drawable
+    /// command may still be using the previous target when the next engine frame
+    /// arrives, so the target is kept only while the source revision and config
+    /// are unchanged; a new frame receives a fresh texture whose lifetime is
+    /// retained by its command buffer.
+    private func samplingOutput(_ current: MTLTexture, width: Int, height: Int,
+                                sampling: SamplingAlgorithm, command: MTLCommandBuffer) throws -> MTLTexture {
+        if outputTexture?.width != width || outputTexture?.height != height
+            || outputRevision != frameRevision || outputConfig != scalingConfig {
+            let descriptor = MTLTextureDescriptor.texture2DDescriptor(pixelFormat: .bgra8Unorm,
+                width: width, height: height, mipmapped: false)
+            descriptor.storageMode = .private
+            descriptor.usage = [.renderTarget, .shaderRead]
+            guard let next = device.makeTexture(descriptor: descriptor) else { throw Failure.allocation }
+            outputTexture = next
+            outputRevision = nil
+            outputConfig = nil
+        }
+        guard let target = outputTexture else { throw Failure.allocation }
+        if outputRevision != frameRevision || outputConfig != scalingConfig {
+            // Both passes share the producer queue and the same command. Its
+            // completion retains the source lease and resized target.
+            try encodeImage(source: current, target: target, command: command,
+                            aspectFit: false, sampling: sampling)
+            outputRevision = frameRevision
+            outputConfig = scalingConfig
+            outputPassCount += 1
+        }
+        return target
     }
 
     /// Runs EASU into a cached scratch texture. A missing allocation or a failed

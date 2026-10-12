@@ -1,7 +1,7 @@
 # Apple 宿主 UI 与设置对齐实施计划
 
 - 2026-10-11，依据 [产品 UI spec](apple_host_ui_spec.md)。
-- 状态：P0调查完成；P1核心实现与行为测试已接入，完整CUA验收待补；P2集合/详情及四主题已接入，完整视觉/无障碍验收待补；P3a–P3d、P4a/P4b/P4d/P4e/P4f、可停靠诊断控制台（含标记/慢帧捕获/快照/截图/自检）与场景测试入口均已实现并通过行为回归与真实CUA；P5a（对比度自适应锐化）与 P5b（FSR1 RCAS + FSR1 EASU + Godot 的 kind/预设/自定义链，AMD MIT 参考 + CPU 对照 + 缓存键修复）已实现并通过行为回归、真实 smoke 与设置页/启动路径 CUA；P6 已接入 macOS 首次使用协议门、内置 Demo 与 VNDB 在线封面并通过行为回归与真实 CUA；P4 其余（RFVP 编码待链接 provider）、P5b 其余 Godot 算法与预设移植、P6 其余（渠道声明）与 P7 尚未实施（视频库暂停维护）。阶段按依赖排序，每轮只提交已验证的完整切片。
+- 状态：P0调查完成；P1核心实现与行为测试已接入，完整CUA验收待补；P2集合/详情及四主题已接入，完整视觉/无障碍验收待补；P3a–P3d、P4a/P4b/P4d/P4e/P4f、可停靠诊断控制台（含标记/慢帧捕获/快照/截图/自检）与场景测试入口均已实现并通过行为回归与真实CUA；P5a（对比度自适应锐化）与 P5b（FSR1 RCAS/EASU + 双三次/Lanczos 链步骤 + Godot 的 kind/预设/自定义链，AMD MIT 参考 + CPU 对照 + 缓存键修复）已实现并通过行为回归、真实 smoke 与设置页/启动路径 CUA；P6 已接入 macOS 首次使用协议门、内置 Demo 与 VNDB 在线封面并通过行为回归与真实 CUA；P4 其余（RFVP 编码待链接 provider）、P5b 其余 Godot 算法与预设移植、P6 其余（渠道声明）与 P7 尚未实施（视频库暂停维护）。阶段按依赖排序，每轮只提交已验证的完整切片。
 - 目标是修正产品结构并补齐真实功能；不在一轮中把所有缺项画成无效果控件。
 
 ## P0：调查与规范（本轮）
@@ -293,7 +293,15 @@ P3a重点验证部分Metal激活失败后的资源清理：不得在已打开游
 - [x] CUA：kind/预设/自定义 UI、保存 v9、真实启动日志 `frame enhancement fsr1_easu,fsr1_rcas amount=0.50`。证据：`out/apple_host/evidence/ui-p5b-chain-cua/`。
 - [x] 附带修复：内置 Demo 条目 `directory` 改为 `id.uuidString`（原先导致含 Demo 的库重载报索引无法读取），`BuiltinDemoTests` 增加 save/load 回归。
 
-下一切片：P5b 其余部分（评估 Anime4K/RAVU/CuNNy/NNEDI3 的许可与负载并逐个移植，逐步放开对应预设）；视频库/播放器暂停维护。
+## P5b实施记录：双三次/Lanczos 链步骤与预设
+
+- [x] `FrameEnhancement` 新增 `bicubic`/`lanczos`（`scalesOutput` + `samplingAlgorithm` 映射）；链的缩放步骤覆盖 `upscaleAlgorithm`，符合 Godot 链语义。
+- [x] 预设列表扩到 3 项：均衡清晰（FSR1）、自然柔和（双三次）、锐利细节（Lanczos）；自定义链首步可选 EASU/双三次/Lanczos。
+- [x] `MetalFramePresenter` 用链的缩放步骤做输出 pass（EASU 或采样），其余步骤仍按序同尺寸执行；`scalingConfig` 含“有效采样 + 缩放步骤”。
+- [x] 测试：`allCases`/预设/采样映射断言、lanczos+RCAS 链往返、非法链（缩放步骤非首位/两个缩放步骤）拒绝、bicubic+RCAS 与单独 bicubic、单独 lanczos 都不同；Debug 构建通过；30 秒 KAG3 Metal smoke 通过。
+- [x] CUA：预设列表三项、保存 `preset=bicubic`、真实启动日志 `frame enhancement bicubic,fsr1_rcas amount=0.50`。证据：`out/apple_host/evidence/ui-p5b-sampling-cua/`。
+
+下一切片：P5b 其余部分（评估 Anime4K/RAVU/CuNNy/NNEDI3/FXAA 的许可与负载并逐个移植，逐步放开对应预设）；视频库/播放器暂停维护。
 
 ## P6实施记录：首次使用协议门（macOS 首片）
 

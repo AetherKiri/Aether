@@ -13,11 +13,16 @@ enum FrameEnhancementTests {
     }
 
     private static func kernelBasics() {
-        precondition(FrameEnhancement.allCases.map(\.rawValue) == ["off", "adaptive_sharpen", "fsr1_easu", "fsr1_rcas"])
+        precondition(FrameEnhancement.allCases.map(\.rawValue)
+            == ["off", "adaptive_sharpen", "fsr1_easu", "fsr1_rcas", "bicubic", "lanczos"])
         precondition(FrameEnhancement.normalized("adaptive_sharpen") == .adaptiveSharpen)
         precondition(FrameEnhancement.normalized("fsr1_rcas") == .fsr1Rcas)
         precondition(FrameEnhancement.normalized("fsr1_easu") == .fsr1Easu)
         precondition(FrameEnhancement.fsr1Easu.scalesOutput && !FrameEnhancement.fsr1Rcas.scalesOutput)
+        precondition(FrameEnhancement.bicubic.scalesOutput && FrameEnhancement.lanczos.scalesOutput)
+        precondition(FrameEnhancement.bicubic.samplingAlgorithm == .bicubic
+            && FrameEnhancement.lanczos.samplingAlgorithm == .lanczos)
+        precondition(EnhancementPreset.all.map(\.id) == ["fsr1", "bicubic", "lanczos"])
         precondition(FrameEnhancement.normalized("anime4k_upscale_s") == nil, "unported Godot algorithms must not be selectable")
         // Amount 0 is an exact identity.
         let source: [UInt8] = [10, 10, 10, 255, 20, 20, 20, 255, 30, 30, 30, 255,
@@ -198,6 +203,17 @@ enum FrameEnhancementTests {
             }
         }
         precondition(maxDifference <= 2, "fsr1_easu must match the CPU reference (max diff \(maxDifference))")
+        // A sampling scaling step (bicubic/lanczos) followed by a same-size pass
+        // runs both kernels, and the two samplers differ.
+        presenter.enhancementAmount = 0.5
+        presenter.enhancementChain = [.bicubic]
+        let bicubicOnly = try presenter.renderOffscreen(width: outWidth, height: outHeight)
+        presenter.enhancementChain = [.bicubic, .fsr1Rcas]
+        let bicubicRcas = try presenter.renderOffscreen(width: outWidth, height: outHeight)
+        precondition(bicubicRcas != bicubicOnly, "the RCAS step must run after the bicubic upscale")
+        presenter.enhancementChain = [.lanczos]
+        let lanczosOnly = try presenter.renderOffscreen(width: outWidth, height: outHeight)
+        precondition(lanczosOnly != bicubicOnly, "lanczos and bicubic must use different kernels")
         presenter.clear()
     }
 
@@ -245,9 +261,17 @@ enum FrameEnhancementTests {
         try store.save(chainValue)
         let reloadedChain = try store.load(defaults: defaults, legacyPrefix: "enh.")
         precondition(reloadedChain.enhancementSteps == [.fsr1Rcas, .adaptiveSharpen])
+        // A sampling scaling step (bicubic/lanczos) may lead a chain too.
+        var samplingChain = fresh
+        samplingChain.frameEnhancementKind = "custom"
+        samplingChain.frameEnhancementChain = ["lanczos", "fsr1_rcas"]
+        try store.save(samplingChain)
+        let reloadedSampling = try store.load(defaults: defaults, legacyPrefix: "enh.")
+        precondition(reloadedSampling.enhancementSteps == [.lanczos, .fsr1Rcas])
         // Unported algorithms, a scaling step after a same-size step and two
         // scaling steps are all rejected.
-        for bad in [["anime4k_upscale_s"], ["fsr1_rcas", "fsr1_easu"], ["fsr1_easu", "fsr1_easu"], []] {
+        for bad in [["anime4k_upscale_s"], ["fsr1_rcas", "fsr1_easu"], ["fsr1_easu", "fsr1_easu"],
+                    ["fsr1_rcas", "bicubic"], ["bicubic", "lanczos"], []] {
             var invalid = fresh
             invalid.frameEnhancementKind = "custom"
             invalid.frameEnhancementChain = bad

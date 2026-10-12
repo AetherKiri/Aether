@@ -15,13 +15,27 @@ enum FrameEnhancement: String, CaseIterable, Identifiable {
     case fsr1Easu = "fsr1_easu"
     /// AMD FidelityFX FSR1 RCAS, ported from the published MIT reference.
     case fsr1Rcas = "fsr1_rcas"
+    /// Godot's `bicubic` chain algorithm: natural scaling to the output size.
+    case bicubic
+    /// Godot's `lanczos` chain algorithm: sharp scaling to the output size.
+    case lanczos
 
     var id: String { rawValue }
     var textKey: String { "enhancement_" + rawValue }
-    /// EASU owns the output scaling (edge-adaptive upscale); the others run as
-    /// a same-size pass after the output pass, matching Godot's split between
+    /// Scaling steps own the output pass (EASU is edge-adaptive, bicubic and
+    /// lanczos reuse the verified sampling kernels); the others run as a
+    /// same-size pass after the output, matching Godot's split between
     /// reconstruction/scaling and same-size restore.
-    var scalesOutput: Bool { self == .fsr1Easu }
+    var scalesOutput: Bool { self == .fsr1Easu || self == .bicubic || self == .lanczos }
+    /// The sampling kernel a scaling step uses (nil for EASU, which has its own
+    /// shader).
+    var samplingAlgorithm: SamplingAlgorithm? {
+        switch self {
+        case .bicubic: return .bicubic
+        case .lanczos: return .lanczos
+        default: return nil
+        }
+    }
     /// A chain step is any algorithm except `off`.
     var isStep: Bool { self != .off }
     static func normalized(_ raw: String) -> FrameEnhancement? { FrameEnhancement(rawValue: raw) }
@@ -42,9 +56,11 @@ struct EnhancementPreset: Identifiable, Equatable {
     let steps: [FrameEnhancement]
     var textKey: String { "enhancementPreset_" + id }
 
-    /// Godot's `fsr1` preset ("均衡清晰"): edge-adaptive upscale then RCAS.
+    /// Only presets fully composable from verified algorithms are listed.
     static let all: [EnhancementPreset] = [
         EnhancementPreset(id: "fsr1", steps: [.fsr1Easu, .fsr1Rcas]),
+        EnhancementPreset(id: "bicubic", steps: [.bicubic, .fsr1Rcas]),
+        EnhancementPreset(id: "lanczos", steps: [.lanczos, .fsr1Rcas]),
     ]
     static var defaultPreset: EnhancementPreset { all[0] }
     static func normalized(_ raw: String) -> EnhancementPreset? { all.first { $0.id == raw } }

@@ -255,6 +255,13 @@ python3 tools/apple_host_archive_test.py
   p50/p95/max、dropped/coalesced/resets、会话计数与缓存明细。GPU 内存估算在本构建
   没有来源，覆盖层明确标注不可用而不是猜测。返回游戏库后覆盖层自动消失。
 
+「设置 → 高级开发工具」提供 Godot 同名的四个**临时**引擎开关：插件调用追踪
+（`plugin_trace`）、追踪日志（`trace_log`）、控制台日志文件（`console_log_file`）、
+导出 TJS 脚本（`export_scripts`）。它们不写入设置文件、不产生未保存状态、重启自动
+关闭；前两个开启后 30 秒由 tick 循环自动关闭，后两个没有时限。已有游戏会话时立即
+下发，否则在下次启动游戏时应用（已过期的会在日志中记为 `expired before launch`）。
+场景测试入口（重启并跳转到指定界面）尚未迁移，页面保留说明。
+
 ```bash
 xcrun swiftc apps/apple_host/AetherHost/DiagnosticStore.swift \
   apps/apple_host/Tests/DiagnosticStoreTests.swift -o out/apple_host/diagnostic-store-tests

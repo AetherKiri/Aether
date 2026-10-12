@@ -195,6 +195,8 @@ final class EngineController: ObservableObject {
     private var diagnosticFlags = HostDiagnosticFlags()
     private(set) var diagnosticProfileValue = "off"
     private(set) var diagnosticErrorCount = 0
+    /// Session-only advanced tools (Godot `_set_advanced_tool`); never saved.
+    @Published private(set) var advancedTools = TransientDiagnosticsTools()
     /// Overlay mode is a live debug aid: saving the settings applies it to the
     /// running session, like the Godot shell's `_set_perf_visible`.
     @Published var debugOverlayMode = "off"
@@ -472,6 +474,17 @@ final class EngineController: ObservableObject {
             if !profile.unavailableCategories.isEmpty {
                 log("diagnostic profile \(profile.rawValue) has no Apple sampling source for: \(profile.unavailableCategories.joined(separator: ", "))")
             }
+            // Temporary advanced tools last for this session only; anything
+            // whose 30-second window already passed is dropped, not applied.
+            for option in advancedTools.expire(now: ProcessInfo.processInfo.systemUptime) {
+                log("advanced tool \(option.rawValue) expired before launch")
+            }
+            for option in advancedTools.engineOptions {
+                do {
+                    try session.setOption(option.key, value: option.value)
+                    log("advanced tool \(option.key)=\(option.value) applied")
+                } catch { log("advanced tool \(option.key) rejected: \(error.localizedDescription)") }
+            }
             debugOverlayMode = hostSettings.debugOverlayMode
             var initialSnapshot = PerformanceSnapshot()
             initialSnapshot.mode = debugOverlayMode
@@ -711,6 +724,41 @@ final class EngineController: ObservableObject {
 
     // MARK: - Performance overlay
 
+    /// Enables or disables one temporary advanced tool. Tracing options get a
+    /// 30-second deadline; the tick loop turns them off when it passes.
+    func setAdvancedTool(_ option: TransientDiagnosticsTools.Option, enabled: Bool) {
+        let now = ProcessInfo.processInfo.systemUptime
+        advancedTools.set(option, enabled: enabled, now: now)
+        log(enabled
+            ? "advanced tool \(option.rawValue)=on\(option.expires ? " (auto-off in \(Int(TransientDiagnosticsTools.traceTimeout)) s)" : "")"
+            : "advanced tool \(option.rawValue)=off")
+        guard session.borrowedEngineHandle() != nil else { return }
+        do {
+            try session.setOption(option.rawValue, value: enabled ? option.engineValue : "0")
+        } catch {
+            // Keep the UI state honest when the engine rejects the option.
+            advancedTools.set(option, enabled: !enabled, now: now)
+            log("advanced tool \(option.rawValue) rejected: \(error.localizedDescription)")
+        }
+    }
+
+    private func expireAdvancedTools() {
+        let expired = advancedTools.expire(now: ProcessInfo.processInfo.systemUptime)
+        guard !expired.isEmpty else { return }
+        for option in expired {
+            log("advanced tool \(option.rawValue) expired after \(Int(TransientDiagnosticsTools.traceTimeout)) s")
+            if session.borrowedEngineHandle() != nil {
+                do { try session.setOption(option.rawValue, value: "0") }
+                catch { log("advanced tool \(option.rawValue) could not be cleared: \(error.localizedDescription)") }
+            }
+        }
+        recordDiagnostics(advancedToolDiagnostics)
+    }
+
+    var advancedToolDiagnostics: [String: String] {
+        advancedTools.snapshot(now: ProcessInfo.processInfo.systemUptime)
+    }
+
     /// One overlay refresh. Rates are session averages of the separated
     /// counters, so a SwiftUI re-render cannot inflate them.
     func performanceSnapshot() -> PerformanceSnapshot {
@@ -811,6 +859,7 @@ final class EngineController: ObservableObject {
     var diagnosticExportContext: [String: String] {
         var context = ["diagnosticProfile": diagnosticProfileValue,
                        "debugOverlayMode": debugOverlayMode]
+        for (key, value) in advancedToolDiagnostics { context[key] = value }
         if diagnosticFlags.sampleSystemInfo || diagnosticProfileValue != "off" {
             let snapshot = performanceSnapshot()
             context["diagnosticBackend"] = snapshot.backend
@@ -1052,6 +1101,7 @@ final class EngineController: ObservableObject {
         if debugOverlayMode != "off", tickCount % 30 == 0 {
             overlaySnapshot = performanceSnapshot()
         }
+        if tickCount % 30 == 0 { expireAdvancedTools() }
     }
 
     // Saves the current engine frame as PNG (env AETHER_HOST_CAPTURE_AFTER).

@@ -11,6 +11,7 @@ struct SettingsBehaviorTests {
         FrameSchedulerTests.run()
         try PlayStatsTests.run(root: root)
         try DiagnosticTests.run(root: root)
+        TransientToolsTests.run()
         let model = ShellModel()
         try checkCollections(model, root: root)
         try checkPlayTimeAccumulation(model, root: root)

@@ -71,7 +71,7 @@ Apple 官方参考：[Settings](https://developer.apple.com/design/human-interfa
 | 诊断 profile：off/baseline/input/render/storage/script/audio/video/plugin/system/full | P4b 已接入目录与可执行部分；storage/script/audio/video 本构建无采样源 | 迁移 profile catalog、采样与导出内容；Debug baseline，Release off | P4 |
 | 调试覆盖层 off/summary/detail | P4b 已接入 | CPU/tick/GPU/呈现FPS分开命名；进程与GPU估算内存注明统计口径 | P4 |
 | 错误弹窗追加最近20行日志 | 缺失 | UI 与引擎 error_dialog_logs 联动，默认关闭 | P1 |
-| 插件追踪/trace日志/控制台文件/TJS导出 | 部分；console_log_file硬编码0，其余未提供 | 临时会话工具；不作为普通持久偏好，追踪与trace 30秒自动关闭 | P4 |
+| 插件追踪/trace日志/控制台文件/TJS导出 | P4d 已接入为临时会话工具（不写入偏好，追踪 30 秒自动关闭） | 临时会话工具；不作为普通持久偏好，追踪与trace 30秒自动关闭 | P4 |
 | 场景测试：主页/设置/详情/视频库/视频播放器/游戏，运行状态变体 | 缺失 | 独立测试 fixture 与启动参数，退出可恢复；Debug工具 | P4 |
 | QQ社群 | 部分；Help有入口、设置没有 | 设置中也可访问；默认不复制启动推广弹窗 | P1 |
 | 关于版本、协议查看 | 缺失设置分区 | Bundle实际版本/构建、五语言协议资源、许可证入口 | P1 |
@@ -285,3 +285,7 @@ Godot 的 `smooth` 仅是线性采样的旧名称，默认值为 bicubic。Apple
 `HostSettings` schema v6 新增 `diagnosticProfile`（off/baseline/input/render/storage/script/audio/video/plugin/system/full，Debug 默认 baseline、Release 默认 off，与 Godot 一致）与 `debugOverlayMode`（off/summary/detail），v1–v5 旧文件迁移为默认值。profile 的映射只使用 Apple 真实存在的来源：input/plugin/full 启动前下发 `input_trace`/`plugin_trace`/`trace_log`；baseline/render 采集宿主帧工作；input/full 记录宿主输入事件；system/full 在诊断导出写入 backend/内存快照；storage/script/audio/video 在本构建没有采样源，因此不出现在选择器中，设置页与日志都说明原因。覆盖层模式保存后立即作用于运行中的会话，trace 类选项仍是下次启动生效。
 
 性能覆盖层在游戏画面上以等宽英文技术输出显示（与 Godot 覆盖层一致）：后端/API/纹理来源/逻辑与输出尺寸、`tick`/`render`/`presentation` 三个分开的速率和口径说明、帧工作耗时与调度模式、fallback/错误数、进程内存（App/Peak）与系统空闲或进程余量、引擎 graphic/XP3/PSB 缓存；detail 追加帧工作 p50/p95/max、调度 dropped/coalesced/resets、会话计数与缓存明细。GPU 估算在本构建没有来源，覆盖层明确写“not available”而不是猜测。快照由 tick 循环节流刷新（每 30 tick），视图不持有定时器，因此每 tick 的发布不会打断订阅。诊断导出附带 `diagnosticProfile`/`debugOverlayMode` 与 backend/内存/速率上下文。
+
+### 7.11 P4d实施结果：临时高级工具
+
+设置「高级开发工具」不再显示“尚未迁移”占位，而是 Godot `_set_advanced_tool` 对应的四个真实引擎选项：插件调用追踪（`plugin_trace`）、追踪日志（`trace_log`）、控制台日志文件（`console_log_file`）、导出 TJS 脚本（`export_scripts`）。这些开关是**会话级**的：不进入 `HostSettings`、不产生草稿脏状态、重启自动关闭；`plugin_trace` 与 `trace_log` 开启后 30 秒（Godot `ADVANCED_TRACE_TIMEOUT_MS`）由 tick 循环自动关闭，控制台文件与脚本导出没有时限。开关在有会话时立即下发，否则在下次 `initializeEngine` 时应用，已过期的工具会被丢弃并记录 `expired before launch`。诊断导出附带 Godot `_advanced_snapshot` 形状的选项状态与追踪剩余秒数。场景测试入口（重启并跳转到指定界面）仍未迁移，页面保留明确说明。

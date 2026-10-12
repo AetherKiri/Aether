@@ -182,7 +182,19 @@ struct ShellSettingsView: View {
                 }.padding(12)
             }
         case "advancedSection":
-            Text(model.text("advancedToolsPending")).foregroundStyle(palette.secondary.color)
+            GroupBox {
+                VStack(alignment: .leading, spacing: 16) {
+                    Text(model.text("advancedDesc")).font(.caption).foregroundStyle(palette.secondary.color)
+                    ForEach(TransientDiagnosticsTools.Option.allCases) { option in
+                        Toggle(model.text(option.textKey), isOn: Binding(
+                            get: { model.engine.advancedTools.isEnabled(option) },
+                            set: { model.engine.setAdvancedTool(option, enabled: $0) }
+                        ))
+                        Text(model.text(option.descKey)).font(.caption).foregroundStyle(palette.secondary.color)
+                    }
+                    Text(model.text("advancedScenePending")).font(.caption).foregroundStyle(palette.secondary.color)
+                }.padding(12)
+            }
         default:
             GroupBox {
                 VStack(alignment: .leading, spacing: 16) {

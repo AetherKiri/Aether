@@ -1,7 +1,7 @@
 # Apple 宿主 UI 与设置对齐实施计划
 
 - 2026-10-11，依据 [产品 UI spec](apple_host_ui_spec.md)。
-- 状态：P0调查完成；P1核心实现与行为测试已接入，完整CUA验收待补；P2集合/详情及四主题已接入，完整视觉/无障碍验收待补；P3a能力/安全回退、P3b画布/输出、P3c采样与P3d调度已实现并通过行为回归、真实smoke及设置页CUA；P4会话时长/主页统计（P4a）与诊断profile/性能覆盖层（P4b）已实现并通过行为回归与真实CUA；P4其余模块与P5–P7尚未实施。阶段按依赖排序，每轮只提交已验证的完整切片。
+- 状态：P0调查完成；P1核心实现与行为测试已接入，完整CUA验收待补；P2集合/详情及四主题已接入，完整视觉/无障碍验收待补；P3a能力/安全回退、P3b画布/输出、P3c采样与P3d调度已实现并通过行为回归、真实smoke及设置页CUA；P4会话时长/主页统计（P4a）、诊断profile/性能覆盖层（P4b）与临时高级工具（P4d）已实现并通过行为回归与真实CUA；P4其余模块与P5–P7尚未实施（视频库暂停维护）。阶段按依赖排序，每轮只提交已验证的完整切片。
 - 目标是修正产品结构并补齐真实功能；不在一轮中把所有缺项画成无效果控件。
 
 ## P0：调查与规范（本轮）
@@ -218,4 +218,12 @@ P3a重点验证部分Metal激活失败后的资源清理：不得在已打开游
 - [x] `python3 tools/apple_host_settings_tests.py` 通过：profile 目录/可用性/映射、schema v6 迁移与校验、覆盖层文本组合（含内存口径与 detail 增量），以及真实引擎的 profile 下发、`renderer_info`/`memory_stats`/帧工作采样/导出上下文。
 - [x] Debug 构建通过；CUA 验证诊断设置页（默认基础、可用档位过滤、存储等不可用档位不再可选、选择完整档位显示真实映射、悬浮信息三档、保存状态）与真实 KAG3 覆盖层（tick 111.3/s、render 11.2/s、presentation 111.3/s、App/Peak/System free/Cache、p50/p95/max、会话与缓存明细），返回后会话计时正常提交。证据：`out/apple_host/evidence/ui-p4b/`。
 
-下一切片：P4 其余模块（运行时元数据与启动入口/编码、调试控制台/临时追踪工具与 30 秒自动关闭、虚拟控制模式与入口/透明度）；视频库/播放器暂停维护，P5 增强保持独立，不提前开放未实现控件。
+## P4d实施记录：临时高级工具
+
+- [x] 设置「高级开发工具」接入 Godot `_set_advanced_tool` 的四个真实引擎选项：`plugin_trace`、`trace_log`、`console_log_file`、`export_scripts`；五语言标签/说明沿用 Godot 文案。
+- [x] 会话级语义：不写入 `HostSettings`、不产生草稿脏状态、重启自动关闭；`plugin_trace`/`trace_log` 开启后 30 秒由 tick 循环自动关闭并下发 "0"；`console_log_file`/`export_scripts` 无时限。
+- [x] 应用时机：有会话时立即下发并在被拒绝时回滚 UI 状态；否则在 `initializeEngine` 应用，已过期项丢弃并记录 `expired before launch`；诊断导出附带选项状态与剩余秒数。
+- [x] `python3 tools/apple_host_settings_tests.py` 通过：新增工具目录/30 秒到期/无时限项/快照/重置单测，以及真实引擎的预启动应用、运行中关闭、`appliedSettingOptions` 不含临时工具。
+- [x] Debug 构建通过；CUA 验证高级页四个开关与说明、切换不产生未保存状态；真实 KAG3 会话日志显示 `plugin_trace=1`/`trace_log=1` 应用、引擎 `engine_set_option: plugin_trace/trace_log=true`，30 秒后自动 `expired after 30 s` 且下发 `false`。证据：`out/apple_host/evidence/ui-p4d/`。
+
+下一切片：P4 其余模块（运行时元数据与启动入口/编码的只读部分、虚拟控制模式与入口/透明度）；视频库/播放器暂停维护，P5 增强保持独立，不提前开放未实现控件。

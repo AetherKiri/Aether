@@ -186,6 +186,23 @@ enum RendererBehaviorTests {
         precondition(export["diagnosticBackend"] != nil && export["diagnosticMemoryApp"] != nil)
         diagnosed.shutdown()
 
+        // Temporary advanced tools are session-only: they apply when the engine
+        // initializes, can be cleared live, and never join the settings options.
+        let toolsProbe = EngineController()
+        toolsProbe.setAdvancedTool(.pluginTrace, enabled: true)
+        precondition(toolsProbe.advancedTools.isEnabled(.pluginTrace))
+        precondition((toolsProbe.advancedTools.remainingSeconds(.pluginTrace, now: ProcessInfo.processInfo.systemUptime) ?? 0) > 25)
+        precondition(toolsProbe.initializeEngine(renderer: "software"))
+        precondition(toolsProbe.logText.contains("advanced tool plugin_trace=1 applied"))
+        precondition(toolsProbe.appliedSettingOptions["plugin_trace"] == nil, "advanced tools are transient, not settings")
+        toolsProbe.setAdvancedTool(.pluginTrace, enabled: false)
+        precondition(!toolsProbe.advancedTools.isEnabled(.pluginTrace))
+        precondition(toolsProbe.logText.contains("advanced tool plugin_trace=off"))
+        toolsProbe.setAdvancedTool(.consoleLogFile, enabled: true)
+        precondition(toolsProbe.advancedTools.deadline(.consoleLogFile) == nil, "console logging has no auto-off")
+        precondition(toolsProbe.advancedToolDiagnostics["console_log_file"] == "1")
+        toolsProbe.shutdown()
+
         let probe = AetherEngineSession()
         precondition(partial.textTranslationAvailable == probe.isTextTranslationAvailable())
         try probe.initialize(writablePath: root.path, cachePath: root.path)

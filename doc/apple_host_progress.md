@@ -505,7 +505,7 @@
 31b. [ ] **两处兼容小项待查**：`new DMMCloud()` 报 `Invalid argument count`；`new Zlib().version()` 报成员不存在（可能只是探针写法/注册方式差异）
 32. [ ] **内核后续：内存可观测（借鉴 `MemoryDesign.md`）**：分配头带 tag + `AllocTagScope` 标签栈，让"谁吃掉了内存"可回答；当前只有粗粒度 `engine_get_memory_stats`
 
-33. [ ] **产品 UI/设置完整对齐**：调查 P0 已完成；P1核心、P2集合/详情与四主题已接入，完整CUA/无障碍验收待补；P3a能力回退、P3b画布/输出、P3c采样、P3d FPS/调度、P4a会话时长/主页统计与P4b诊断profile/性能覆盖层已接入并通过行为回归与真实CUA；P4其余模块与P5–P7见 [实施计划](apple_host_ui_plan.md)。
+33. [ ] **产品 UI/设置完整对齐**：调查 P0 已完成；P1核心、P2集合/详情与四主题已接入，完整CUA/无障碍验收待补；P3a能力回退、P3b画布/输出、P3c采样、P3d FPS/调度、P4a会话时长/主页统计、P4b诊断profile/性能覆盖层与P4d临时高级工具已接入并通过行为回归与真实CUA；P4其余模块与P5–P7见 [实施计划](apple_host_ui_plan.md)（视频库暂停维护）。
 
 ## 变更记录
 
@@ -608,3 +608,12 @@
 - 用户决定：项目聚焦视觉小说，视频库模块暂停维护。已有视频实现（导入/移除与进度、字幕选择记忆、播放器基本控件、P2/P3 的测试与 CUA 证据）保留，不再推进视频导入/播放器/字幕/视频库 UI 的改动，只做不破坏兼容性的修复。
 - 本轮已回退正在进行的视频播放器改进（控件自动显隐、方向键 seek、拖拽 seek、Esc 返回、全屏恢复）与对应测试/工具改动，未提交任何视频相关修改；工作区保持在 `cd0ac25a`。
 - P4 剩余切片调整为视觉小说相关项：运行时元数据与启动入口/编码、调试控制台与临时追踪工具（含 30 秒自动关闭）、虚拟控制模式与入口/透明度。P5 增强保持独立。
+
+### 2026-10-12：UI P4d 临时高级工具
+
+- 设置「高级开发工具」接入 Godot `_set_advanced_tool` 的四个真实引擎选项：插件调用追踪 `plugin_trace`、追踪日志 `trace_log`、控制台日志文件 `console_log_file`、导出 TJS 脚本 `export_scripts`；五语言标签与说明沿用 Godot 文案，场景测试入口仍保留未迁移说明。
+- 会话级语义：这四个开关不进入 `HostSettings`、不产生草稿脏状态、重启自动关闭；`plugin_trace`/`trace_log` 开启后 30 秒（Godot `ADVANCED_TRACE_TIMEOUT_MS`）由 tick 循环自动下发 "0"，`console_log_file`/`export_scripts` 无时限。
+- 应用时机：已有会话时立即下发，被拒绝则回滚 UI 状态；否则在 `initializeEngine` 应用，过期项丢弃并记录 `expired before launch`。诊断导出附带选项状态与追踪剩余秒数。
+- 测试：`python3 tools/apple_host_settings_tests.py` 通过，含工具目录/30 秒到期/无时限项/快照/重置单测与真实引擎的预启动应用、运行中关闭、`appliedSettingOptions` 不含临时工具；Debug 构建通过。
+- CUA（隔离 fixture 库）验证高级页四个开关与说明、切换不产生未保存状态；真实 KAG3 会话日志：`advanced tool plugin_trace=on (auto-off in 30 s)`、`trace_log=on`、`plugin_trace=1 applied`、`trace_log=1 applied`、引擎 `engine_set_option: plugin_trace/trace_log=true`，30 秒后 `advanced tool ... expired after 30 s` 并下发 `false`。证据：`out/apple_host/evidence/ui-p4d/`。
+- 残余未验收：`console_log_file`/`export_scripts` 未在真实会话中逐项启用验收（引擎选项应用由行为测试覆盖）；场景测试入口（重启跳转）未迁移；新文案只点验 zh-Hans。

@@ -10,12 +10,12 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/AetherKiri/AetherKiri/actions/workflows/build.yml"><img alt="macOS Build" src="https://img.shields.io/github/actions/workflow/status/AetherKiri/AetherKiri/build.yml?branch=main&amp;job=Build%20macOS%20App&amp;label=macOS"></a>
-  <a href="https://github.com/AetherKiri/AetherKiri/actions/workflows/build.yml"><img alt="iOS Build" src="https://img.shields.io/github/actions/workflow/status/AetherKiri/AetherKiri/build.yml?branch=main&amp;job=Build%20iOS%20App&amp;label=iOS"></a>
-  <a href="https://github.com/AetherKiri/AetherKiri/actions/workflows/build.yml"><img alt="Android Build" src="https://img.shields.io/github/actions/workflow/status/AetherKiri/AetherKiri/build.yml?branch=main&amp;job=Build%20Android%20App&amp;label=Android"></a>
-  <a href="https://github.com/AetherKiri/AetherKiri/actions/workflows/build.yml"><img alt="Linux x86_64 Build" src="https://img.shields.io/github/actions/workflow/status/AetherKiri/AetherKiri/build.yml?branch=main&amp;job=Build%20Linux%20App%20%28x86_64%29&amp;label=Linux%20x86_64"></a>
-  <a href="https://github.com/AetherKiri/AetherKiri/actions/workflows/build.yml"><img alt="Linux arm64 Build" src="https://img.shields.io/github/actions/workflow/status/AetherKiri/AetherKiri/build.yml?branch=main&amp;job=Build%20Linux%20App%20%28arm64%29&amp;label=Linux%20arm64"></a>
-  <a href="https://github.com/AetherKiri/AetherKiri/blob/main/LICENSE"><img alt="License" src="https://img.shields.io/github/license/AetherKiri/AetherKiri?logo=gnu&label=license"></a>
+  <a href="https://github.com/AetherKiri/Aether/actions/workflows/build.yml"><img alt="macOS Build" src="https://img.shields.io/github/actions/workflow/status/AetherKiri/Aether/build.yml?branch=main&amp;job=Build%20macOS%20App&amp;label=macOS"></a>
+  <a href="https://github.com/AetherKiri/Aether/actions/workflows/build.yml"><img alt="iOS Build" src="https://img.shields.io/github/actions/workflow/status/AetherKiri/Aether/build.yml?branch=main&amp;job=Build%20iOS%20App&amp;label=iOS"></a>
+  <a href="https://github.com/AetherKiri/Aether/actions/workflows/build.yml"><img alt="Android Build" src="https://img.shields.io/github/actions/workflow/status/AetherKiri/Aether/build.yml?branch=main&amp;job=Build%20Android%20App&amp;label=Android"></a>
+  <a href="https://github.com/AetherKiri/Aether/actions/workflows/build.yml"><img alt="Linux x86_64 Build" src="https://img.shields.io/github/actions/workflow/status/AetherKiri/Aether/build.yml?branch=main&amp;job=Build%20Linux%20App%20%28x86_64%29&amp;label=Linux%20x86_64"></a>
+  <a href="https://github.com/AetherKiri/Aether/actions/workflows/build.yml"><img alt="Linux arm64 Build" src="https://img.shields.io/github/actions/workflow/status/AetherKiri/Aether/build.yml?branch=main&amp;job=Build%20Linux%20App%20%28arm64%29&amp;label=Linux%20arm64"></a>
+  <a href="https://github.com/AetherKiri/Aether/blob/main/LICENSE"><img alt="License" src="https://img.shields.io/github/license/AetherKiri/Aether?logo=gnu&label=license"></a>
 </p>
 
 ## Overview

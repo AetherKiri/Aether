@@ -5,6 +5,7 @@
 #include "impacto_host.h"
 
 #include <algorithm>
+#include <cctype>
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
@@ -12,6 +13,7 @@
 #include <filesystem>
 #include <memory>
 #include <new>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -43,27 +45,65 @@ namespace aetherkiri::mages {
 #endif
         }
 
+        // The impacto profile system is game-generic: every game registered
+        // in the host package's gamedefinitions.lua (mo8, chlcc, cclcc,
+        // mo6tw, darling, dash, rne, ...) mounts its archives from
+        // <game-root>/<game-id>/ with a script.* or system.* archive in it.
+        // The provider only recognises that layout; the host's "auto" mode
+        // resolves the concrete registered game id.
+        std::optional<std::string> DetectMagesInstallLayout(
+            const std::filesystem::path& root) {
+            std::error_code ec;
+            if(!std::filesystem::is_directory(root, ec)) {
+                return std::nullopt;
+            }
+            for(const auto& entry :
+                std::filesystem::directory_iterator(root, ec)) {
+                std::error_code entryEc;
+                if(!entry.is_directory(entryEc) || entryEc) continue;
+                std::string name = entry.path().filename().string();
+                std::transform(name.begin(), name.end(), name.begin(),
+                               [](unsigned char c) {
+                                   return static_cast<char>(
+                                       std::tolower(c));
+                               });
+                const std::filesystem::path gameDir = entry.path();
+                for(const auto& file :
+                    std::filesystem::directory_iterator(gameDir, entryEc)) {
+                    std::error_code fileEc;
+                    if(!file.is_regular_file(fileEc) || fileEc) continue;
+                    std::string fileName = file.path().filename().string();
+                    std::transform(fileName.begin(), fileName.end(),
+                                   fileName.begin(), [](unsigned char c) {
+                                       return static_cast<char>(
+                                           std::tolower(c));
+                                   });
+                    if(fileName.rfind("script.", 0) == 0 ||
+                       fileName.rfind("system.", 0) == 0) {
+                        return name;
+                    }
+                }
+            }
+            return std::nullopt;
+        }
+
         int32_t Probe(void*, const char* game_root_path) {
             if(game_root_path == nullptr || game_root_path[0] == '\0') {
                 return 0;
             }
             try {
                 const std::filesystem::path root(game_root_path);
-                std::error_code ec;
-                if(!std::filesystem::is_directory(root, ec)) {
-                    return 0;
-                }
-                // MAGES. Switch layout: a mo8/ directory carrying the .cls
-                // script/system archives and .cpk data packs.
-                const std::filesystem::path mo8 = root / "mo8";
-                if(std::filesystem::exists(mo8 / "script.cls", ec) ||
-                   std::filesystem::exists(mo8 / "system.cls", ec)) {
+                // MAGES. install layout: a <game-id>/ directory carrying
+                // the script/system archives. The game id itself is
+                // resolved against the host registry on open.
+                if(DetectMagesInstallLayout(root)) {
                     return 85;
                 }
-                // PC layout: script.mpk/system.mpk at the game root. The
-                // mo8 profile currently targets the Switch layout, so this
-                // only marks the directory as a MAGES. game; opening may be
-                // limited until the PC profile lands.
+                // PC layout: script.mpk/system.mpk at the game root. No
+                // shipped profile mounts that layout yet, so this only
+                // marks the directory as a MAGES. game; opening may be
+                // limited until a PC profile lands.
+                std::error_code ec;
                 if(std::filesystem::exists(root / "script.mpk", ec) &&
                    std::filesystem::exists(root / "system.mpk", ec)) {
                     return 70;
@@ -346,20 +386,20 @@ namespace aetherkiri::mages {
                 return ENGINE_RESULT_NOT_SUPPORTED;
             }
 
-            // The mo8 profile expects RootGamedataDir/mo8/{script.cls,...};
-            // a root without those archives is opened through the engine's
-            // (data-free) launcher loop instead, which still renders frames
-            // at the design resolution.
-            std::filesystem::path gamedata(game_root_path_utf8);
-            std::error_code ec;
-            const bool has_mo8_data =
-                std::filesystem::exists(gamedata / "mo8" / "script.cls", ec) ||
-                std::filesystem::exists(gamedata / "mo8" / "system.cls", ec);
-            const char* game_id = has_mo8_data ? "mo8" : "launcher";
-            if(!has_mo8_data) {
+            // A root carrying the MAGES. install layout is opened through
+            // the host's "auto" mode, which resolves the registered game id
+            // from gamedefinitions.lua; any other root (including one with
+            // an unregistered or PC-layout game) falls back to the engine's
+            // data-free launcher loop, which still renders frames at the
+            // design resolution.
+            const std::filesystem::path gamedata(game_root_path_utf8);
+            const std::optional<std::string> detected =
+                DetectMagesInstallLayout(gamedata);
+            const char* game_id = detected ? "auto" : "launcher";
+            if(!detected) {
                 LogHost(instance, ENGINE_RUNTIME_LOG_WARNING,
-                        "mo8 data directory not found; opening the "
-                        "data-free launcher loop");
+                        "no MAGES. game data found; opening the data-free "
+                        "launcher loop");
             }
 
             const int32_t result = impacto_host_open_game(

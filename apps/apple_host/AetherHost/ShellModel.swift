@@ -740,6 +740,9 @@ final class ShellModel: ObservableObject {
         return summary
     }
 
+    /// Console: arm Godot's one-shot slow-frame capture.
+    func armSlowFrameCapture() -> Bool { engine.armSlowFrameCapture() }
+
     private static func stamp() -> String {
         ISO8601DateFormatter().string(from: Date()).replacingOccurrences(of: ":", with: "-")
     }

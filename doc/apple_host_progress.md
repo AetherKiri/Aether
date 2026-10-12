@@ -505,7 +505,7 @@
 31b. [ ] **两处兼容小项待查**：`new DMMCloud()` 报 `Invalid argument count`；`new Zlib().version()` 报成员不存在（可能只是探针写法/注册方式差异）
 32. [ ] **内核后续：内存可观测（借鉴 `MemoryDesign.md`）**：分配头带 tag + `AllocTagScope` 标签栈，让"谁吃掉了内存"可回答；当前只有粗粒度 `engine_get_memory_stats`
 
-33. [ ] **产品 UI/设置完整对齐**：调查 P0 已完成；P1核心、P2集合/详情与四主题已接入，完整CUA/无障碍验收待补；P3a–P3d、P4a/P4b/P4d/P4e/P4f、可停靠诊断控制台（含标记/快照/截图/自检）、场景测试入口、P5a 画面增强、P5b（FSR1 EASU/RCAS + kind/预设/自定义链）、P6（macOS 首次使用协议门 + 内置 Demo + VNDB 在线封面）已接入并通过行为回归与真实CUA；P4 其余（慢帧捕获、RFVP 编码仍按能力缺口记录），P5b 其余 Godot 算法与预设、P6 其余（渠道声明），P7 见 [实施计划](apple_host_ui_plan.md)（视频库暂停维护）。
+33. [ ] **产品 UI/设置完整对齐**：调查 P0 已完成；P1核心、P2集合/详情与四主题已接入，完整CUA/无障碍验收待补；P3a–P3d、P4a/P4b/P4d/P4e/P4f、可停靠诊断控制台（含标记/慢帧捕获/快照/截图/自检）、场景测试入口、P5a 画面增强、P5b（FSR1 EASU/RCAS + kind/预设/自定义链）、P6（macOS 首次使用协议门 + 内置 Demo + VNDB 在线封面）已接入并通过行为回归与真实CUA；P4 其余（RFVP 编码仍按能力缺口记录），P5b 其余 Godot 算法与预设、P6 其余（渠道声明），P7 见 [实施计划](apple_host_ui_plan.md)（视频库暂停维护）。
 
 ## 变更记录
 
@@ -708,7 +708,7 @@
 - 面板打开时引擎即使覆盖层关闭也刷新快照（`diagnosticsConsoleActive`）；底部提供「复制摘要」与「导出诊断日志」。
 - 测试：五语言 key 覆盖与既有套件全通过；Debug 构建通过。CUA 验证菜单开关、面板停靠与概览/性能/插件标签真实数据（如 `runtime kirikiri entry data.xp3 provider kirikiri = 100`）。证据：`out/apple_host/evidence/ui-p4-console-cua/`。
 - 追加：问题标记（Godot `MARKER_TYPES`，上限 8）+ 保存快照（JSON，含完整 metrics）+ 截图（PNG）+ 自检（session/engine/renderer/storage，记录到 session）已接入；`DiagnosticTests` 覆盖 marker cap（8 接受、第 9 拒绝、重载仍在）。CUA 验证四项动作真实产出。证据：`out/apple_host/evidence/ui-p4-console-actions/`。
-- 残余未验收：慢帧捕获（`capture_slow_frame_requested`）。
+- 慢帧捕获已在下一条记录补齐。
 
 ### 2026-10-12：P4 续 场景测试入口
 
@@ -718,4 +718,12 @@
 - 与 Godot 的差异：不镜像独立的默认/加载/启动状态选择器（加载态为瞬态，无法诚实预览）；视频播放器场景打开库里第一个视频。
 - 测试：`python3 tools/apple_host_settings_tests.py` 新增 `SceneTestTests`（Godot 键、往返、清除、未知值降级）全通过；Debug 构建通过。
 - CUA：进入游戏详情场景并显示横幅、`defaults read org.github.aetherkiri.host.debug "aether_kiri/scene_test" -> detail`、重启仍进入、退出清除键并回到库。证据：`out/apple_host/evidence/ui-p4-scene-test/`。
-- 残余未验收：慢帧捕获、RFVP 编码（待链接 provider）仍待 P4。
+- 残余未验收：RFVP 编码（待链接 provider）。
+
+### 2026-10-12：P4 续 慢帧捕获
+
+- Godot 控制台的「慢帧捕获」会武装一次性捕获，下一帧 host work 超过 `slow_frame_threshold_ms`（20 ms）时记录一次并解除武装。本片按同一语义实现。
+- 引擎新增 `SlowFrameCapture` 状态机（arm / note）与 `armSlowFrameCapture()`（无活动会话时返回 false）；tick 的 `defer` 在算出本帧 host work 后调用检查，超过 20 ms 时把 `slowFrameCaptured` 写入诊断 session 并写日志，然后解除武装。控制台动作区新增「慢帧捕获」按钮。
+- 测试：`python3 tools/apple_host_settings_tests.py` 的 `DiagnosticTests` 覆盖状态机（未武装忽略、快帧保持武装、慢帧报告并解除、一次性）全通过；Debug 构建通过。
+- CUA：真实会话中武装后写入 `slowFrameCapture = "armed (threshold 20 ms)"`，随后真实捕获 `slowFrameCaptured = "20.17 ms host work at tick 7800"`。证据：`out/apple_host/evidence/ui-p4-slow-frame/`。
+- 与 Godot 的差异：本移植只记录 tick 与 host work，不复刻 Godot 的近期事件环；RFVP 编码仍待 P4。

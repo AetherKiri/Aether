@@ -7,7 +7,8 @@ enum DiagnosticTests {
         try settingsMigrationAndValidation(root: root)
         overlayComposition()
         try markerCap()
-        print("PASS: diagnostic profile catalog/availability, schema v9 migration, overlay metric composition and marker cap")
+        slowFrameCapture()
+        print("PASS: diagnostic profile catalog/availability, schema v9 migration, overlay metric composition, marker cap and slow-frame capture")
     }
 
     private static func profileCatalog() {
@@ -186,5 +187,20 @@ enum DiagnosticTests {
         // Markers survive a reload from session.json.
         let reloaded = DiagnosticStore(root: root)
         precondition(reloaded.markerCount == DiagnosticStore.maximumMarkers)
+    }
+
+    /// Godot's armed slow-frame capture reports only the next slow frame.
+    private static func slowFrameCapture() {
+        var capture = SlowFrameCapture()
+        precondition(!capture.armed)
+        precondition(capture.note(workMS: 100) == nil, "an unarmed capture must ignore frames")
+        capture.arm()
+        precondition(capture.armed)
+        precondition(capture.note(workMS: SlowFrameCapture.thresholdMS - 1) == nil, "a fast frame must not capture")
+        precondition(capture.armed, "a fast frame keeps the capture armed")
+        let slow = SlowFrameCapture.thresholdMS + 5
+        precondition(capture.note(workMS: slow) == slow)
+        precondition(!capture.armed, "a captured slow frame disarms")
+        precondition(capture.note(workMS: 1000) == nil, "a capture is one-shot")
     }
 }

@@ -155,8 +155,13 @@ struct DiagnosticsConsoleView: View {
                 Spacer()
             }
             HStack(spacing: 10) {
+                Button(model.text("consoleSlowFrame")) {
+                    result = model.armSlowFrameCapture() ? model.text("consoleSlowArmed") : model.text("consoleFailed")
+                }
                 Button(model.text("consoleSnapshot")) { report(model.captureDiagnosticSnapshot()) }
                 Button(model.text("consoleScreenshot")) { report(model.captureDiagnosticScreenshot()) }
+            }
+            HStack(spacing: 10) {
                 Button(model.text("consoleSelfCheck")) {
                     result = model.runDiagnosticSelfCheck()
                 }

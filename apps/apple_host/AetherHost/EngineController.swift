@@ -216,6 +216,26 @@ final class EngineController: ObservableObject {
     @Published private(set) var overlaySnapshot = PerformanceSnapshot()
     /// The most recent frame for the diagnostics console screenshot action.
     func copyDiagnosticFrameImage() -> CGImage? { session.copyFrameImage() ?? frameImage }
+    /// Godot's armed slow-frame capture state machine.
+    private var slowFrameCapture = SlowFrameCapture()
+    var slowFrameCaptureArmed: Bool { slowFrameCapture.armed }
+
+    /// Arms a one-shot slow-frame capture. Returns false when no game is running.
+    @discardableResult
+    func armSlowFrameCapture() -> Bool {
+        guard loopRunning else { return false }
+        slowFrameCapture.arm()
+        recordDiagnostics(["slowFrameCapture": "armed (threshold \(Int(SlowFrameCapture.thresholdMS)) ms)"])
+        log("slow frame capture armed (threshold \(Int(SlowFrameCapture.thresholdMS)) ms)")
+        return true
+    }
+
+    private func checkSlowFrameCapture(_ workMS: Double) {
+        guard let captured = slowFrameCapture.note(workMS: workMS) else { return }
+        let summary = String(format: "%.2f ms host work at tick %llu", captured, tickCount)
+        recordDiagnostics(["slowFrameCaptured": summary])
+        log("slow frame captured: \(summary)")
+    }
     private(set) var loopRunning = false
 
     let diagnostics: DiagnosticStore = {
@@ -977,6 +997,7 @@ final class EngineController: ObservableObject {
                frameWorkMilliseconds.count < 10_000 {
                 frameWorkMilliseconds.append(elapsedMS)
             }
+            checkSlowFrameCapture(elapsedMS)
         }
         // Real elapsed host time for this tick (clamped by the scheduler).
         // The offscreen benchmark is the only synthetic 1/60 step.

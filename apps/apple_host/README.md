@@ -279,7 +279,8 @@ presentation 速率、frame ms、pacing、会话计数与缓存，均注明不�
 （控制模式/指针/IME/全屏/影片）、插件（加载模式 + 当前游戏运行时/入口/信号 + 真实
 `engine_probe_runtime_provider` 结果 + 翻译可用性）、日志（暂停 + 过滤）；底部可复制摘要
 或导出诊断日志。动作区还对齐 Godot 的调试控制台：问题标记（类型取自 `MARKER_TYPES`，
-上限 8，与 `DiagnosticSession.MAX_MARKERS` 一致）、保存快照（JSON，含完整性能明细）、
+上限 8，与 `DiagnosticSession.MAX_MARKERS` 一致）、慢帧捕获（武装后记录下一个 host work
+超过 20 ms 的帧，阈值同 Godot `slow_frame_threshold_ms`）、保存快照（JSON，含完整性能明细）、
 截图（PNG）与自检（session/engine/renderer/storage）；这些文件写入库同级的
 `Diagnostics/`。面板打开时即使覆盖层关闭也会刷新性能快照。
 「高级开发工具」还提供**场景测试**（对齐 Godot `settings.scene_test`）：选择首页/设置/

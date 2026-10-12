@@ -327,6 +327,8 @@ enum ShellLanguage: String, CaseIterable, Identifiable {
         "consoleSelfCheck": ["自检", "自我檢查", "Self-check", "セルフチェック", "자가 점검"],
         "consoleSaved": ["已保存", "已儲存", "Saved", "保存しました", "저장됨"],
         "consoleFailed": ["操作失败", "操作失敗", "Action failed", "操作に失敗しました", "작업 실패"],
+        "consoleSlowFrame": ["慢帧捕获", "慢幀擷取", "Capture Slow Frame", "低速フレームを取得", "느린 프레임 캡처"],
+        "consoleSlowArmed": ["已武装：将捕获下一个超过 20 ms 的帧", "已武裝：將擷取下一個超過 20 ms 的影格", "Armed: the next frame over 20 ms will be captured", "待機中：20 ms を超える次のフレームを取得します", "대기 중: 20ms를 초과하는 다음 프레임을 캡처합니다"],
         "folder": ["在访达中显示", "在 Finder 中顯示", "Show in Finder", "Finder で表示", "Finder에서 보기"],
         "setCover": ["设置封面", "設定封面", "Set Cover", "カバーを設定", "표지 설정"],
         "clearCover": ["清除封面", "清除封面", "Clear Cover", "カバーを消去", "표지 지우기"],

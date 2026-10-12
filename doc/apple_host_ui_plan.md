@@ -1,7 +1,7 @@
 # Apple 宿主 UI 与设置对齐实施计划
 
 - 2026-10-11，依据 [产品 UI spec](apple_host_ui_spec.md)。
-- 状态：P0调查完成；P1核心实现与行为测试已接入，完整CUA验收待补；P2集合/详情及四主题已接入，完整视觉/无障碍验收待补；P3a–P3d、P4a/P4b/P4d/P4e/P4f、可停靠诊断控制台（含标记/快照/截图/自检）与场景测试入口均已实现并通过行为回归与真实CUA；P5a（对比度自适应锐化）与 P5b（FSR1 RCAS + FSR1 EASU + Godot 的 kind/预设/自定义链，AMD MIT 参考 + CPU 对照 + 缓存键修复）已实现并通过行为回归、真实 smoke 与设置页/启动路径 CUA；P6 已接入 macOS 首次使用协议门、内置 Demo 与 VNDB 在线封面并通过行为回归与真实 CUA；P4 其余（慢帧捕获、RFVP 编码）、P5b 其余 Godot 算法与预设移植、P6 其余（渠道声明）与 P7 尚未实施（视频库暂停维护）。阶段按依赖排序，每轮只提交已验证的完整切片。
+- 状态：P0调查完成；P1核心实现与行为测试已接入，完整CUA验收待补；P2集合/详情及四主题已接入，完整视觉/无障碍验收待补；P3a–P3d、P4a/P4b/P4d/P4e/P4f、可停靠诊断控制台（含标记/慢帧捕获/快照/截图/自检）与场景测试入口均已实现并通过行为回归与真实CUA；P5a（对比度自适应锐化）与 P5b（FSR1 RCAS + FSR1 EASU + Godot 的 kind/预设/自定义链，AMD MIT 参考 + CPU 对照 + 缓存键修复）已实现并通过行为回归、真实 smoke 与设置页/启动路径 CUA；P6 已接入 macOS 首次使用协议门、内置 Demo 与 VNDB 在线封面并通过行为回归与真实 CUA；P4 其余（RFVP 编码待链接 provider）、P5b 其余 Godot 算法与预设移植、P6 其余（渠道声明）与 P7 尚未实施（视频库暂停维护）。阶段按依赖排序，每轮只提交已验证的完整切片。
 - 目标是修正产品结构并补齐真实功能；不在一轮中把所有缺项画成无效果控件。
 
 ## P0：调查与规范（本轮）
@@ -251,7 +251,7 @@ P3a重点验证部分Metal激活失败后的资源清理：不得在已打开游
 - [x] 面板打开时引擎在覆盖层关闭的情况下也刷新快照（`diagnosticsConsoleActive`）；底部「复制摘要」写入剪贴板，「导出诊断日志」复用既有导出。
 - [x] Debug 构建通过；CUA 验证菜单开关、面板停靠与概览/性能/插件标签真实数据。证据：`out/apple_host/evidence/ui-p4-console-cua/`。
 - [x] 问题标记（Godot `MARKER_TYPES`，上限 `MAX_MARKERS=8`）+ 保存快照（JSON，含完整 metrics）+ 截图（PNG）+ 自检（session/engine/renderer/storage，记录到 session）；`DiagnosticTests` 覆盖 marker cap。CUA 验证四项动作真实产出。证据：`out/apple_host/evidence/ui-p4-console-actions/`。
-- [ ] backlog：慢帧捕获（`capture_slow_frame_requested`）。
+- [x] 慢帧捕获（Godot `slow_frame_threshold_ms = 20`）：`SlowFrameCapture` 状态机 + `armSlowFrameCapture()`，tick 的 host work 超阈值时记录 `slowFrameCaptured` 并解除武装；控制台新增按钮；`DiagnosticTests` 覆盖状态机。CUA 验证真实捕获 `20.17 ms`。证据：`out/apple_host/evidence/ui-p4-slow-frame/`。
 
 ## P4实施记录：场景测试入口
 

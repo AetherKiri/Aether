@@ -1,5 +1,22 @@
 import Foundation
 
+/// Godot's armed slow-frame capture (`DiagnosticSession.arm_next_slow_frame`):
+/// arming makes the next frame whose host work exceeds the threshold report
+/// once, then disarm.
+struct SlowFrameCapture {
+    static let thresholdMS = 20.0
+    private(set) var armed = false
+
+    mutating func arm() { armed = true }
+
+    /// Returns the captured work value when armed and this frame is slow.
+    mutating func note(workMS: Double) -> Double? {
+        guard armed, workMS >= Self.thresholdMS else { return nil }
+        armed = false
+        return workMS
+    }
+}
+
 // Bounded local evidence; reports include only known logs, never game assets or saves.
 final class DiagnosticStore {
     /// Godot's `DiagnosticSession.MAX_MARKERS`.

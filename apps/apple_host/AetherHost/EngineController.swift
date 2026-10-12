@@ -22,7 +22,10 @@ final class EngineController: ObservableObject {
     private var nativeRendererEnabled = false
     private var loggedNativeFrame = false
     @Published var frameSize: CGSize = .zero
-    @Published var tickCount: UInt64 = 0
+    // Engine counter is exact; UI telemetry must not invalidate the shell every tick.
+    private(set) var tickCount: UInt64 = 0
+    @Published private(set) var displayedTickCount: UInt64 = 0
+    private var lastTelemetryPublication: TimeInterval = 0
     @Published private(set) var outputFrameSize: CGSize = .zero
     private var displayPixels: CGSize = .zero
     private var sourceFrameImage: CGImage?
@@ -583,6 +586,8 @@ final class EngineController: ObservableObject {
             recordDiagnostics(["state": "starting"])
             log("engine_open_game: \(gamePath)")
             tickCount = 0
+            displayedTickCount = 0
+            lastTelemetryPublication = 0
             diagnosticErrorCount = 0
             lastFrameWorkMS = 0
             overlaySnapshot = PerformanceSnapshot()
@@ -1062,7 +1067,10 @@ final class EngineController: ObservableObject {
                 }
             } else {
                 nativeFrameLease = nil
-                nextTexture = session.copyNativeFrameTexture()
+                // A skipped render keeps the previous immutable texture. Copying
+                // it again would publish a new identity and rebuild every view.
+                nextTexture = nativeFrameTexture == nil || session.lastTickRenderedFrame()
+                    ? session.copyNativeFrameTexture() : nativeFrameTexture
             }
             if nativeFrameTexture !== nextTexture {
                 nativeFrameTexture = nextTexture
@@ -1148,8 +1156,13 @@ final class EngineController: ObservableObject {
             log("pacing stats: \(frameStatisticsSummary)")
             recordDiagnostics(pacingDiagnostics)
         }
-        if (debugOverlayMode != "off" || diagnosticsConsoleActive), tickCount % 30 == 0 {
-            overlaySnapshot = performanceSnapshot()
+        let telemetryNow = ProcessInfo.processInfo.systemUptime
+        if telemetryNow - lastTelemetryPublication >= 0.25 {
+            lastTelemetryPublication = telemetryNow
+            displayedTickCount = tickCount
+            if debugOverlayMode != "off" || diagnosticsConsoleActive {
+                overlaySnapshot = performanceSnapshot()
+            }
         }
         if tickCount % 30 == 0 { expireAdvancedTools() }
     }

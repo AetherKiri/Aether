@@ -71,6 +71,7 @@ struct ContentView: View {
                             Button(model.text("restart")) { model.confirmRestart = true }.disabled(!model.canRestartGame)
                             Button(model.text("exportDiagnostics")) { model.exportDiagnostics() }
                         } label: { Label(model.text("game"), systemImage: "ellipsis.circle") }
+                        .fixedSize(horizontal: true, vertical: false)
                         if engine.frameSize == .zero {
                             ProgressView().controlSize(.small)
                             Text(model.text("starting"))

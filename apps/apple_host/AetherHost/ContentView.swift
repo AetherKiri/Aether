@@ -34,7 +34,7 @@ struct DeveloperContentView: View {
                 Toggle("Metal 呈现", isOn: $engine.useMetalPresentation)
                     .disabled(engine.metalPresenter == nil)
                 Spacer()
-                Text("tick \(engine.tickCount)")
+                Text("tick \(engine.displayedTickCount)")
                     .font(.callout.monospacedDigit())
                     .foregroundStyle(.secondary)
             }

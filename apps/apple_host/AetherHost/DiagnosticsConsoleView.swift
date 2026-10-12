@@ -67,7 +67,7 @@ struct DiagnosticsConsoleView: View {
             row("frame", "\(Int(engine.frameSize.width))x\(Int(engine.frameSize.height))")
             row("output", "\(Int(engine.outputFrameSize.width))x\(Int(engine.outputFrameSize.height))")
             row("fpsLimit", model.settings.fpsLimitOption)
-            row("tick", "\(engine.tickCount)")
+            row("tick", "\(engine.displayedTickCount)")
             ForEach(Array(engine.renderState.fallbacks.enumerated()), id: \.offset) { _, fallback in
                 row("fallback", fallback.reasonKey + ": " + fallback.detail)
             }

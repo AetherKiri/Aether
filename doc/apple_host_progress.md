@@ -775,3 +775,10 @@
 - 顶栏与菜单直接展开/收起，画布入口和诊断共享 ShellModel 会话状态；修复面板收起后 virtualPanel 仍显示 visible。新会话重置，隐藏/禁用/返回释放虚拟按键。
 - 模式标签使用白色以修复浅色主题下黑色面板对比度。画布入口偏好与顶栏显式打开动作分离，保持原有设置持久化。
 - 设置行为/虚拟控制呈现测试与全套 `apple_host_settings_tests.py`、Debug 构建、diff 检查通过。CUA 实测单击展开、白色标签、Ctrl 后收起、诊断 hidden/held=no 和返回库；本轮不扩展声称全部 VK/虚拟指针精度已验收。
+
+### 2026-10-12：游戏菜单/诊断卡顿修复
+
+- 实跑 Demo + 诊断控制台，主线程 sample 显示 SwiftUI Graph/布局更新为热点；tickCount 每 tick Published 及非 lease 路径未渲染时仍复制纹理都会让整壳高频重建。
+- 精确 tickCount 保持内部计数，UI displayedTickCount 与性能快照按单调时钟最多每秒四次发布；引擎 dt/tick 节奏不变。非 lease native 仅在渲染新帧或首帧时复制纹理，未变化帧保留身份；不支持可选 rendered 查询的 provider 保持原来更新语义。游戏 Menu 固定内容宽度。
+- Debug 构建、全套设置/真实引擎行为测试、diff 检查通过。CUA 验证诊断打开、诊断开启时菜单展开与关闭；调用观察由约4秒降至约0.6秒，仅工具交互参考，不作为严格延迟基准。
+- 同机3秒主线程采样：修复前1479/2244样本落在 SwiftUI 更新链，修复后1903/2401样本等待事件。证据 `out/apple_host/evidence/menu-refresh-fix/`；该短期 Demo 数据不是游戏FPS或真实标题长期性能结论。

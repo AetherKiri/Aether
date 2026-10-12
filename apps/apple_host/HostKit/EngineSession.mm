@@ -376,7 +376,8 @@ NSError *EngineError(engine_handle_t handle, NSString *fallback) {
     }
     uint32_t rendered = 0;
     if (engine_get_frame_rendered_flag(_handle, &rendered) != ENGINE_RESULT_OK) {
-        return NO;
+        // Optional query: preserve frame updates for older providers.
+        return YES;
     }
     return rendered != 0;
 }

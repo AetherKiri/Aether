@@ -6,7 +6,6 @@ import SwiftUI
 struct GameControlsView: View {
     @ObservedObject var model: ShellModel
     @ObservedObject var engine: EngineController
-    @State private var panelOpen = false
     @State private var lastDragTranslation: CGSize = .zero
     private let keys: [(String, Int32)] = [("enterKey", 0x0D), ("spaceKey", 0x20), ("Esc", 0x1B),
                                            ("←", 0x25), ("↑", 0x26), ("→", 0x27), ("↓", 0x28),
@@ -16,7 +15,7 @@ struct GameControlsView: View {
         VirtualControlsPresentation(
             enabled: model.showVirtualControls,
             entryAllowed: model.settings.virtualControlMenuEnabled,
-            panelOpen: panelOpen,
+            panelOpen: model.virtualPanelOpen,
             mode: VirtualControlMode.normalized(model.settings.virtualControlMode) ?? .mouse,
             opacity: model.settings.virtualControlKeyboardOpacity)
     }
@@ -30,12 +29,12 @@ struct GameControlsView: View {
                 HStack {
                     Spacer(minLength: 0)
                     if presentation.showsEntry {
-                        Button { panelOpen.toggle() } label: {
+                        Button { model.toggleVirtualPanel() } label: {
                             Label(model.text("virtualControls"),
-                                  systemImage: panelOpen ? "xmark.circle" : "keyboard")
+                                  systemImage: model.virtualPanelOpen ? "xmark.circle" : "keyboard")
                                 .labelStyle(.iconOnly)
                         }
-                        .help(model.text(panelOpen ? "virtualControlsHide" : "virtualControlsShow"))
+                        .help(model.text(model.virtualPanelOpen ? "virtualControlsHide" : "virtualControlsShow"))
                         .accessibilityIdentifier("virtual-controls-entry")
                     }
                 }
@@ -52,7 +51,7 @@ struct GameControlsView: View {
         VStack(alignment: .leading, spacing: 10) {
             HStack(spacing: 10) {
                 Text(model.text("virtualModeLabel") + " · " + model.text(presentation.mode.textKey))
-                    .font(.caption)
+                    .font(.caption).foregroundStyle(.white)
                 Button(model.text("virtualModeSwitch")) { toggleMode(presentation.mode) }
                     .controlSize(.small)
                     .help(model.text(presentation.mode.helpKey))

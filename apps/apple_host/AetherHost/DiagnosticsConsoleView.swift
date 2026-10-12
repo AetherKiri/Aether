@@ -89,7 +89,7 @@ struct DiagnosticsConsoleView: View {
     private var input: some View {
         Group {
             row("virtualMode", model.settings.virtualControlMode)
-            row("virtualPanel", model.showVirtualControls ? "visible" : "hidden")
+            row("virtualPanel", model.virtualPanelVisible ? "visible" : "hidden")
             row("virtualHeld", engine.virtualControlHeld ? "yes" : "no")
             row("pointer", String(format: "%.0f, %.0f", engine.virtualPointerPosition.x, engine.virtualPointerPosition.y))
             row("textEntry", model.showGameTextEntry ? "open" : "closed")

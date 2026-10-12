@@ -45,7 +45,9 @@ enum VirtualControlsTests {
                                                  mode: .mouse, opacity: 1)
         precondition(!hidden.showsEntry && !hidden.showsPanel)
         hidden.togglePanel()
-        precondition(!hidden.panelOpen, "the pad cannot open without the entry")
+        precondition(!hidden.panelOpen, "the canvas entry cannot open when disabled")
+        hidden.panelOpen = true // explicit toolbar action remains available
+        precondition(hidden.showsPanel && !hidden.showsEntry)
         // Entry on, pad closed: only the entry button is visible.
         var pad = VirtualControlsPresentation(enabled: true, entryAllowed: true, panelOpen: false,
                                              mode: .mouse, opacity: 0.5)

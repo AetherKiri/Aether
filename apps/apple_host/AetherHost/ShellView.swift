@@ -60,8 +60,8 @@ struct ContentView: View {
                         Button { model.toggleFullscreen() } label: {
                             Label(model.text("fullscreen"), systemImage: "arrow.up.left.and.arrow.down.right")
                         }
-                        Button { model.showVirtualControls.toggle() } label: {
-                            Label(model.text("virtualControls"), systemImage: "keyboard")
+                        Button { model.toggleVirtualPanel() } label: {
+                            Label(model.text(model.virtualPanelVisible ? "virtualControlsHide" : "virtualControlsShow"), systemImage: "keyboard")
                         }
                         Button(model.text("enterText")) { model.showGameTextEntry = true }.disabled(engine.runtimeMovieActive)
                         Menu {
@@ -580,7 +580,7 @@ struct ShellCommands: Commands {
             Button(model.text("back")) { model.closeVideo() }.disabled(model.activeVideo == nil)
         }
         CommandMenu(model.text("game")) {
-            Toggle(model.text("virtualControls"), isOn: $model.showVirtualControls)
+            Toggle(model.text("virtualControls"), isOn: Binding(get: { model.virtualPanelVisible }, set: { _ in model.toggleVirtualPanel() }))
                 .disabled(model.activeGame == nil)
             Button(model.text("enterText")) { model.showGameTextEntry = true }.disabled(model.activeGame == nil || model.engine.runtimeMovieActive)
             Toggle(model.text("logs"), isOn: $model.showLogs).disabled(model.activeGame == nil)

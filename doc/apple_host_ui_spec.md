@@ -424,3 +424,8 @@ Godot 在 Apple 平台（iOS 与 macOS）首次使用前要求**两份**文档�
 - 拒绝在 macOS 上仍退出应用（对齐 Godot 桌面行为）；非交互入口继续走 debug-only `AETHER_HOST_BYPASS_LEGAL_GATE=1`。
 - 测试：`LegalAcceptanceTests` 重写为两份文档的顺序门（privacy→statement、每份版本门、旧单文档迁移、损坏文件、debug 绕过）全通过；Debug 构建通过。CUA：全新库先弹 privacy（1/2），同意后弹 statement（2/2，版本 2026-08-04），再同意才进库；写出的 `legal-acceptance.json` 含两份条目，重开不再弹门，关于页出现两项。证据：`out/apple_host/evidence/ui-p6-statement/`。
 - 差异：「已拒绝」独立页面属 iOS/M4；macOS 保持拒绝即退出。
+
+
+### 虚拟控制板交互修正（2026-10-12）
+
+顶栏与 Game 菜单直接展开/收起控制板，画布图标使用同一会话状态。入口偏好只控制画布入口可见性，显式顶栏操作可直接打开面板；不修改持久设置。诊断显示实际面板可见性，收起/禁用/返回释放虚拟按键，新游戏开始重置面板。浅色主题黑色面板的模式标签采用白色。

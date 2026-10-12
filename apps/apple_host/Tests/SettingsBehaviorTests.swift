@@ -20,6 +20,15 @@ struct SettingsBehaviorTests {
         try await CoverSearchTests.run(root: root)
         SceneTestTests.run()
         let model = ShellModel()
+        model.showVirtualControls = false
+        model.toggleVirtualPanel()
+        precondition(model.virtualPanelVisible)
+        model.toggleVirtualPanel()
+        precondition(!model.virtualPanelVisible)
+        model.toggleVirtualPanel()
+        model.showVirtualControls = false
+        precondition(!model.virtualPanelOpen && !model.virtualPanelVisible)
+
         try checkCollections(model, root: root)
         try checkPlayTimeAccumulation(model, root: root)
         model.openSettings()

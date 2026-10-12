@@ -77,8 +77,16 @@ final class ShellModel: ObservableObject {
     } }
     @Published var showGameTextEntry = false { didSet { syncGameInput() } }
     @Published var showVirtualControls: Bool { didSet {
-        if !showVirtualControls { engine.releaseVirtualKeys() }
+        if !showVirtualControls { virtualPanelOpen = false; engine.releaseVirtualKeys() }
     } }
+    @Published var virtualPanelOpen = false { didSet {
+        if !virtualPanelOpen { engine.releaseVirtualKeys() }
+    } }
+    var virtualPanelVisible: Bool { showVirtualControls && virtualPanelOpen }
+    func toggleVirtualPanel() {
+        if virtualPanelVisible { virtualPanelOpen = false }
+        else { showVirtualControls = true; virtualPanelOpen = true }
+    }
     @Published var language: ShellLanguage
     @Published var renderer: String
     @Published var showLogs: Bool
@@ -565,6 +573,7 @@ final class ShellModel: ObservableObject {
         // Applied by initializeEngine() before the game opens; the target
         // language follows the interface language, as in the Godot shell.
         engine.hostSettings = settings
+        virtualPanelOpen = false
         showVirtualControls = settings.virtualControls
         showLogs = settings.logs
         engine.translationSettings = translationSettings
@@ -880,6 +889,7 @@ final class ShellModel: ObservableObject {
     }
 
     func returnToLibrary() {
+        virtualPanelOpen = false
         showGameTextEntry = false
         commitPlayTime()
         engine.shutdown()

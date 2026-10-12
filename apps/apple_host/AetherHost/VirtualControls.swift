@@ -32,9 +32,8 @@ enum VirtualControlOpacity {
     }
 }
 
-/// Godot `_sync_visibility()` semantics: the overlay exists only when virtual
-/// controls are enabled and the in-game menu entry is allowed; the pad itself
-/// is shown once the user opened it. The key caps dim with the configured
+/// The canvas entry follows the visibility preference. Explicit toolbar/menu
+/// actions can open the panel independently of that entry. The key caps dim with the configured
 /// opacity while the pointer handle stays fully opaque.
 struct VirtualControlsPresentation: Equatable {
     var enabled: Bool
@@ -44,7 +43,7 @@ struct VirtualControlsPresentation: Equatable {
     var opacity: Double
 
     var showsEntry: Bool { enabled && entryAllowed }
-    var showsPanel: Bool { showsEntry && panelOpen }
+    var showsPanel: Bool { enabled && panelOpen }
     var showsPointerHandle: Bool { showsPanel && mode == .mouse }
     var keyOpacity: Double { VirtualControlOpacity.normalized(opacity) }
 

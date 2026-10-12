@@ -121,8 +121,6 @@ func _run() -> void:
     app.video_library = Library.new(base.path_join("videos.json"), base.path_join("videos-hidden.json"))
     _expect(not app.flash_library.add_source(video), "Flash file import rejects video files")
     _expect(not app.video_library.add_source(game), "Video file import rejects SWF files")
-    app.flash_library.add_source(collection)
-    app.video_library.add_source(video)
     app.home_library_mode = "flash"
     app.shell_route = "flash"
     app.active_language = app.LANG_ZH_HANS
@@ -130,7 +128,38 @@ func _run() -> void:
     await _settle()
     _expect(app.home_title_label.text == app._t("nav.flash"), "Flash has its own navigation category")
     _expect(app.home_search_input.placeholder_text == app._t("flash.search_placeholder"), "Flash search has its own label")
+    _expect(app.video_empty_state.visible and app.video_empty_title_label.text == app._t("flash.empty_title"), "An empty Flash catalog initially shows the Flash empty state")
+    app._show_video_library()
+    _expect(app.video_empty_title_label.text == app._t("video.empty_title"), "The empty video catalog keeps its video label")
+    _expect(app.video_empty_icon.texture == app._load_ui_icon(app.ICON_VIDEO), "The empty video catalog uses the video icon")
+    app._show_flash_library()
+    _expect(app.video_empty_icon.texture == app._load_ui_icon(app.ICON_FLASH), "The empty Flash catalog uses the Flash icon after switching categories")
+    for language in [app.LANG_ZH_HANS, app.LANG_ZH_HANT, app.LANG_EN, app.LANG_JA, app.LANG_KO]:
+        app.active_language = language
+        app._refresh_language_texts()
+        _expect(app.video_empty_title_label.text == app._t("flash.empty_title"), "Language refresh retains the Flash empty title: " + language)
+    app.active_language = app.LANG_ZH_HANS
+    app._refresh_language_texts()
+    await _capture("empty-flash-library")
+    app._on_home_search_text_changed("不存在的文件")
+    _expect(app.video_empty_title_label.text == app._t("search.no_results_title"), "Empty Flash search results use the search label")
+    app._on_home_search_text_changed("")
+    _expect(app.video_empty_title_label.text == app._t("flash.empty_title"), "Clearing Flash search restores its empty title")
+    var empty_folder := collection.path_join("空文件夹")
+    DirAccess.make_dir_recursive_absolute(empty_folder)
+    app.flash_library.add_source(collection)
+    app.video_library.add_source(video)
+    app._refresh_file_library()
     _card("Flash").pressed.emit()
+    _card("空文件夹").pressed.emit()
+    _expect(app.video_empty_state.visible, "An empty Flash subfolder displays the empty state")
+    for language in [app.LANG_ZH_HANS, app.LANG_ZH_HANT, app.LANG_EN, app.LANG_JA, app.LANG_KO]:
+        app.active_language = language
+        app._refresh_language_texts()
+        _expect(app.video_empty_title_label.text == app._t("flash.empty_folder_title"), "Empty Flash folders retain their localized label: " + language)
+    app.active_language = app.LANG_ZH_HANS
+    app._refresh_language_texts()
+    app._handle_go_back_request()
     _card("小游戏").pressed.emit()
     _card("益智").pressed.emit()
     _card("游戏").pressed.emit()
@@ -164,7 +193,7 @@ func _run() -> void:
     _expect(FileAccess.file_exists(loose) and app.flash_library.videos.size() == 1, "Removing Flash from the library preserves its original file")
     _expect(app.video_library.videos.size() == 1, "Flash removal does not alter the video catalog")
     for language in [app.LANG_ZH_HANS, app.LANG_ZH_HANT, app.LANG_EN, app.LANG_JA, app.LANG_KO]:
-        for key in ["nav.flash", "flash.import_file", "flash.import_folder", "flash.guide_body_ios", "flash.open_failed", "flash.pause"]:
+        for key in ["nav.flash", "flash.import_file", "flash.import_folder", "flash.guide_body_ios", "flash.open_failed", "flash.refresh"]:
             _expect(app.UI_TEXT[language].has(key), "Flash string exists for " + language + ": " + key)
 
     root.size = Vector2i(390, 844)
@@ -185,6 +214,19 @@ func _run() -> void:
     image.fill(Color(0.15, 0.3, 0.5))
     view.surface.texture = ImageTexture.create_from_image(image)
     view.controls.set_enabled(true)
+    _expect(not view.header.visible, "Flash starts without a visible header")
+    _expect(view.surface.get_rect() == app._ui_safe_rect(view.size), "Flash fills the safe area without reserving header space")
+    var content_rect: Rect2 = view._content_rect()
+    _expect(view.toolbar.get_child_count() == 3 and view.refresh_button.tooltip_text == app._t("flash.refresh"), "The header contains only Back, title and Refresh")
+    view.controls.menu_button.pressed.emit()
+    _expect(view.header.visible and view.controls.is_menu_open(), "Opening the virtual menu reveals the header")
+    view.controls.virtual_controls_button.pressed.emit()
+    _expect(not view.header.visible and view.controls.is_panel_open(), "Opening virtual keys hides the header")
+    view.controls.menu_button.pressed.emit()
+    _expect(view.header.visible and view.controls.is_menu_open(), "Reopening the menu from virtual keys reveals the header")
+    view.controls.menu_button.pressed.emit()
+    _expect(not view.header.visible, "Collapsing the virtual menu hides the header")
+    _expect(view._content_rect() == content_rect, "Opening and closing the header does not move or resize the movie")
     view.controls.show_virtual_controls()
     view.controls.space_button.button_down.emit()
     view.controls.space_button.button_up.emit()
@@ -193,11 +235,6 @@ func _run() -> void:
     view.controls.w_button.button_down.emit()
     view.controls.w_button.button_up.emit()
     _expect(native.events.size() == 2 and native.events[0].code == 38 and native.events[1].code == 38, "Flash joystick defaults to arrow keys")
-    view._toggle_direction_keys()
-    native.events.clear()
-    view.controls.w_button.button_down.emit()
-    view.controls.w_button.button_up.emit()
-    _expect(native.events.size() == 3 and native.events[0].code == 87 and native.events[1].unicode == 119 and native.events[2].code == 87, "Joystick can switch to WASD without duplicating arrow input")
     native.events.clear()
     var center: Vector2 = view._content_rect().get_center()
     view.controls.pointer_move_requested.emit(center, Vector2.ZERO)
@@ -217,6 +254,7 @@ func _run() -> void:
     view.controls.enter_button.button_down.emit()
     view.set_paused(true)
     _expect(native.paused and native.events.back().kind == 2, "Pausing releases held virtual keys before pausing the runtime")
+    _expect(not view.header.visible, "Disabling controls also hides the Flash header")
     var count := native.events.size()
     view._send(1, Vector2.ZERO, 32, 32)
     _expect(native.events.size() == count, "Paused Flash ignores input")

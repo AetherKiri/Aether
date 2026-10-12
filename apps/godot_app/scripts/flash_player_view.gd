@@ -8,10 +8,9 @@ var host
 var native
 var surface: TextureRect
 var controls
+var header: PanelContainer
 var toolbar: HBoxContainer
-var pause_button: Button
-var direction_button: Button
-var direction_arrows := true
+var refresh_button: Button
 var entry: Dictionary
 var paused := false
 var lifecycle_paused := false
@@ -37,9 +36,20 @@ func setup(app) -> void:
     surface.mouse_filter = Control.MOUSE_FILTER_STOP
     surface.gui_input.connect(_surface_input)
     add_child(surface)
+    header = PanelContainer.new()
+    header.name = "Header"
+    var header_style := StyleBoxFlat.new()
+    header_style.bg_color = Color(0.025, 0.025, 0.03, 0.9)
+    header_style.content_margin_left = 12
+    header_style.content_margin_right = 12
+    header_style.content_margin_top = 4
+    header_style.content_margin_bottom = 4
+    header.add_theme_stylebox_override("panel", header_style)
+    header.hide()
+    add_child(header)
     toolbar = HBoxContainer.new()
     toolbar.add_theme_constant_override("separation", 12)
-    add_child(toolbar)
+    header.add_child(toolbar)
     var back := _button("‹", host._t("flash.back"))
     back.pressed.connect(close)
     var title := Label.new()
@@ -48,18 +58,15 @@ func setup(app) -> void:
     title.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
     title.add_theme_color_override("font_color", Color.WHITE)
     toolbar.add_child(title)
-    direction_button = _button("↑↓←→", host._t("flash.direction_keys"))
-    direction_button.pressed.connect(_toggle_direction_keys)
-    pause_button = _button("Ⅱ", host._t("flash.pause"))
-    pause_button.pressed.connect(func(): set_paused(not paused))
-    var restart := _button("↻", host._t("flash.restart"))
-    restart.pressed.connect(_restart)
+    refresh_button = _button("↻", host._t("flash.refresh"))
+    refresh_button.pressed.connect(_restart)
     controls = VirtualControls.new()
     add_child(controls)
     controls.setup(host.ui_tokens)
     controls.set_input_mode(host.game_virtual_input_mode)
     controls.set_menu_button_enabled(host.game_virtual_menu_enabled)
     controls.set_keyboard_controls_opacity(host.game_virtual_keyboard_opacity)
+    controls.menu_open_changed.connect(header.set_visible)
     controls.key_event_requested.connect(_virtual_key)
     controls.pointer_move_requested.connect(func(position: Vector2, _delta: Vector2): _send(3, _map(position)))
     controls.pointer_button_requested.connect(func(pressed: bool, button: int, _modifiers: int, position: Vector2):
@@ -70,7 +77,10 @@ func setup(app) -> void:
         if DisplayServer.has_feature(DisplayServer.FEATURE_VIRTUAL_KEYBOARD):
             DisplayServer.virtual_keyboard_show("")
     )
-    _sync_direction_keys()
+    controls.w_button.text = "↑"
+    controls.a_button.text = "←"
+    controls.s_button.text = "↓"
+    controls.d_button.text = "→"
     resized.connect(_layout)
     _layout()
 
@@ -89,11 +99,12 @@ func _layout() -> void:
     if surface == null:
         return
     var safe: Rect2 = host._ui_safe_rect(size)
-    toolbar.position = safe.position + Vector2(12, 4)
-    toolbar.size = Vector2(maxf(0, safe.size.x - 24), 48)
-    surface.position = safe.position + Vector2(0, 56)
-    surface.size = Vector2(safe.size.x, maxf(0, safe.size.y - 56))
-    controls.layout(size, Rect2(surface.position, surface.size))
+    header.position = safe.position
+    header.size = Vector2(safe.size.x, 56)
+    surface.position = safe.position
+    surface.size = safe.size
+    # Overlay the header without resizing the movie or moving the virtual menu.
+    controls.layout(size, Rect2(safe.position + Vector2(0, 56), Vector2(safe.size.x, maxf(0, safe.size.y - 56))))
 
 func open_entry(value: Dictionary) -> String:
     entry = value.duplicate(true)
@@ -128,22 +139,10 @@ func _restart() -> void:
 
 func _virtual_key(pressed: bool, code: int, modifiers: int) -> void:
     var arrows := {87: 38, 65: 37, 83: 40, 68: 39}
-    if direction_arrows and arrows.has(code):
+    if arrows.has(code):
         _send(1 if pressed else 2, Vector2.ZERO, int(arrows[code]))
     else:
         _send(1 if pressed else 2, Vector2.ZERO, code, host._virtual_key_unicode(pressed, code, modifiers))
-
-func _toggle_direction_keys() -> void:
-    controls.release_all()
-    direction_arrows = not direction_arrows
-    _sync_direction_keys()
-
-func _sync_direction_keys() -> void:
-    direction_button.text = "↑↓←→" if direction_arrows else "WASD"
-    controls.w_button.text = "↑" if direction_arrows else "W"
-    controls.a_button.text = "←" if direction_arrows else "A"
-    controls.s_button.text = "↓" if direction_arrows else "S"
-    controls.d_button.text = "→" if direction_arrows else "D"
 
 func set_paused(value: bool) -> void:
     if value:
@@ -152,9 +151,6 @@ func set_paused(value: bool) -> void:
     if native != null:
         native.set_paused(paused or lifecycle_paused)
     controls.set_enabled(not paused and not lifecycle_paused)
-    pause_button.text = "▶" if paused else "Ⅱ"
-    pause_button.tooltip_text = host._t("flash.resume" if paused else "flash.pause")
-    pause_button.accessibility_name = pause_button.tooltip_text
 
 func close() -> void:
     _release_inputs()

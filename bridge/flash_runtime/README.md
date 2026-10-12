@@ -10,7 +10,8 @@ GPU texture; RGBA readback feeds a Godot `ImageTexture`. Its audio mixer feeds a
 44.1 kHz stereo `AudioStreamGenerator`. Input coordinates account for the
 letterboxed image, while the shared visual-novel controls supply virtual keys
 and pointer events. Focus loss pauses playback and releases held input.
-The Flash joystick defaults to arrow keys and can switch to WASD.
+The Flash joystick uses arrow keys. The header offers Back and Refresh only
+while the menu options are open; it stays hidden when virtual keys are shown.
 
 SharedObject storage is under `user://flash_saves`, with hashed filenames and
 atomic replacement. Relative local resources resolve beside the imported SWF.

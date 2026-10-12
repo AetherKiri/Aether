@@ -75,9 +75,11 @@ Import `.swf` files or folders from the Flash category on macOS, Linux, and
 Android. Folders retain their hierarchy, and search can find nested SWFs.
 On iOS, copy files or folders into **Files → On My iPhone/iPad → Aether → Flash**,
 then refresh the Flash library. Local relative assets are resolved beside the
-SWF; SharedObject saves persist between sessions. The player provides pause,
-restart, and the same virtual keyboard and pointer controls as visual novels.
-The virtual joystick can switch between arrow keys and WASD.
+SWF; SharedObject saves persist between sessions. Playback fills the available
+area. Back and Refresh appear only while the menu options are open; showing
+virtual keys hides the header again.
+The player uses the same virtual keyboard and pointer controls as visual novels,
+with arrow keys on the virtual joystick.
 
 Playback compatibility follows Ruffle. This native integration currently loads
 local content; browser scripting, remote downloads, and Web exports are not

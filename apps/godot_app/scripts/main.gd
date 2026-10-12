@@ -127,7 +127,7 @@ const UI_TEXT := {
     LANG_ZH_HANS: {
         "nav.flash": "Flash",
         "flash.search_placeholder": "搜索 Flash",
-        "flash.empty_title": "Flash 库中还没有文件",
+        "flash.empty_title": "还没有 Flash 文件",
         "flash.empty_help_ios": "使用「文件」App 将 SWF 文件或文件夹复制到：\n我的 iPhone / iPad > Aether > Flash\n支持多层子文件夹",
         "flash.empty_help_desktop": "点击「导入 Flash」添加 SWF 文件或文件夹",
         "flash.import": "导入 Flash",
@@ -135,7 +135,7 @@ const UI_TEXT := {
         "flash.import_file": "选择 Flash 文件",
         "flash.import_folder": "选择 Flash 文件夹",
         "flash.open_folder": "点击查看文件夹中的 Flash",
-        "flash.empty_folder_title": "此文件夹中还没有 Flash",
+        "flash.empty_folder_title": "此文件夹中还没有 Flash 文件",
         "flash.empty_folder_help": "返回上级文件夹，或添加 SWF 文件后刷新。",
         "flash.remove_folder_body": "从 Flash 库移除「%s」？不会删除磁盘上的文件夹或文件。",
         "flash.remove": "移除 Flash",
@@ -143,10 +143,7 @@ const UI_TEXT := {
         "flash.guide_body_ios": "将 SWF 文件和所需资源一起复制到「文件」App > Aether > Flash，支持多层目录。返回应用点击刷新，打开文件夹或 SWF 开始播放。可使用右上角菜单中的虚拟按钮、键盘和鼠标。",
         "flash.guide_body_desktop": "导入 SWF 文件，或导入包含 SWF 及所需资源的文件夹。打开文件夹逐层浏览，点击 SWF 播放。支持键鼠、触摸和虚拟按钮；返回或切到后台时保存 Flash 本地存档。",
         "flash.back": "返回",
-        "flash.direction_keys": "切换方向键 / WASD",
-        "flash.pause": "暂停",
-        "flash.resume": "继续",
-        "flash.restart": "重新开始",
+        "flash.refresh": "刷新",
         "flash.unavailable": "此构建未包含 Flash 播放器",
         "flash.open_failed": "无法播放 Flash：%s",
         "flash.guide_title": "导入 Flash",
@@ -522,7 +519,7 @@ const UI_TEXT := {
     LANG_ZH_HANT: {
         "nav.flash": "Flash",
         "flash.search_placeholder": "搜尋 Flash",
-        "flash.empty_title": "Flash 庫中還沒有檔案",
+        "flash.empty_title": "還沒有 Flash 檔案",
         "flash.empty_help_ios": "使用「檔案」App 將 SWF 檔案或資料夾複製到：\n我的 iPhone / iPad > Aether > Flash\n支援多層子資料夾",
         "flash.empty_help_desktop": "點選「匯入 Flash」加入 SWF 檔案或資料夾",
         "flash.import": "匯入 Flash",
@@ -530,7 +527,7 @@ const UI_TEXT := {
         "flash.import_file": "選擇 Flash 檔案",
         "flash.import_folder": "選擇 Flash 資料夾",
         "flash.open_folder": "點選查看資料夾中的 Flash",
-        "flash.empty_folder_title": "此資料夾中還沒有 Flash",
+        "flash.empty_folder_title": "此資料夾中還沒有 Flash 檔案",
         "flash.empty_folder_help": "返回上層資料夾，或新增 SWF 檔案後重新整理。",
         "flash.remove_folder_body": "從 Flash 庫移除「%s」？不會刪除磁碟上的資料夾或檔案。",
         "flash.remove": "移除 Flash",
@@ -538,10 +535,7 @@ const UI_TEXT := {
         "flash.guide_body_ios": "將 SWF 檔案和所需資源一起複製到「檔案」App > Aether > Flash，支援多層目錄。返回 App 點選重新整理，開啟資料夾或 SWF 開始播放。右上角選單提供虛擬按鈕、鍵盤與滑鼠。",
         "flash.guide_body_desktop": "匯入 SWF 檔案，或包含 SWF 和所需資源的資料夾。逐層瀏覽資料夾並點選 SWF 播放。支援鍵鼠、觸控和虛擬按鈕；返回或切到背景時儲存 Flash 本機存檔。",
         "flash.back": "返回",
-        "flash.direction_keys": "切換方向鍵 / WASD",
-        "flash.pause": "暫停",
-        "flash.resume": "繼續",
-        "flash.restart": "重新開始",
+        "flash.refresh": "重新整理",
         "flash.unavailable": "此版本未包含 Flash 播放器",
         "flash.open_failed": "無法播放 Flash：%s",
         "flash.guide_title": "匯入 Flash",
@@ -889,10 +883,7 @@ const UI_TEXT := {
         "flash.guide_body_ios": "Copy SWF files and their resources into Files > Aether > Flash, including nested folders. Tap Refresh, open a folder, then play a SWF. The top-right menu provides virtual buttons, keyboard and mouse controls.",
         "flash.guide_body_desktop": "Import a SWF file or a folder containing SWFs and their resources. Browse folders and select a SWF to play. Keyboard, mouse, touch and virtual controls are supported. Flash local saves are flushed when leaving playback or moving to the background.",
         "flash.back": "Back",
-        "flash.direction_keys": "Switch arrow keys / WASD",
-        "flash.pause": "Pause",
-        "flash.resume": "Resume",
-        "flash.restart": "Restart",
+        "flash.refresh": "Refresh",
         "flash.unavailable": "Flash playback is not included in this build",
         "flash.open_failed": "Unable to play Flash: %s",
         "flash.guide_title": "Import Flash",
@@ -1276,7 +1267,7 @@ You can find it any time under Settings → QQ Group.",
         "flash.import_file": "Flash ファイルを選択",
         "flash.import_folder": "Flash フォルダーを選択",
         "flash.open_folder": "フォルダー内の Flash を表示",
-        "flash.empty_folder_title": "このフォルダーに Flash はありません",
+        "flash.empty_folder_title": "このフォルダーに Flash ファイルがありません",
         "flash.empty_folder_help": "上の階層に戻るか、SWF を追加して更新してください。",
         "flash.remove_folder_body": "「%s」を Flash ライブラリから削除しますか？ディスク上のファイルは保持されます。",
         "flash.remove": "Flash を削除",
@@ -1284,10 +1275,7 @@ You can find it any time under Settings → QQ Group.",
         "flash.guide_body_ios": "SWF と必要なリソースを「ファイル」> Aether > Flash にコピーします。サブフォルダーに対応。「更新」後にフォルダーを開き SWF を再生してください。右上のメニューに仮想ボタン、キーボード、マウスがあります。",
         "flash.guide_body_desktop": "SWF または必要なリソースを含むフォルダーを読み込み、SWF を選択して再生します。キーボード、マウス、タッチ、仮想ボタンに対応。戻る際やバックグラウンド移行時に Flash のローカルセーブを保存します。",
         "flash.back": "戻る",
-        "flash.direction_keys": "方向キー / WASD を切り替え",
-        "flash.pause": "一時停止",
-        "flash.resume": "再開",
-        "flash.restart": "最初から",
+        "flash.refresh": "更新",
         "flash.unavailable": "このビルドに Flash プレイヤーは含まれていません",
         "flash.open_failed": "Flash を再生できません：%s",
         "flash.guide_title": "Flash を読み込む",
@@ -1635,10 +1623,7 @@ You can find it any time under Settings → QQ Group.",
         "flash.guide_body_ios": "SWF와 필요한 리소스를 파일 > Aether > Flash에 복사하세요. 하위 폴더를 지원합니다. 새로 고침 후 폴더를 열어 SWF를 재생하세요. 오른쪽 위 메뉴에서 가상 버튼, 키보드와 마우스를 사용할 수 있습니다.",
         "flash.guide_body_desktop": "SWF 파일 또는 리소스가 포함된 폴더를 가져오고 SWF를 선택해 재생하세요. 키보드, 마우스, 터치와 가상 버튼을 지원합니다. 재생을 종료하거나 백그라운드로 이동하면 Flash 로컬 저장 데이터를 보관합니다.",
         "flash.back": "뒤로",
-        "flash.direction_keys": "방향키 / WASD 전환",
-        "flash.pause": "일시 정지",
-        "flash.resume": "계속",
-        "flash.restart": "다시 시작",
+        "flash.refresh": "새로고침",
         "flash.unavailable": "이 빌드에 Flash 플레이어가 포함되어 있지 않습니다",
         "flash.open_failed": "Flash를 재생할 수 없습니다: %s",
         "flash.guide_title": "Flash 가져오기",
@@ -2154,6 +2139,7 @@ var home_subtitle_label: Label
 var empty_title_label: Label
 var empty_help_label: Label
 var video_empty_title_label: Label
+var video_empty_icon: TextureRect
 var video_empty_help_label: Label
 var empty_primary_button: Button
 var home_primary_button: Button
@@ -5363,9 +5349,10 @@ func _build_home_view() -> void:
     video_empty_state.mouse_filter = Control.MOUSE_FILTER_IGNORE
     video_empty_state.visible = false
     library_body.add_child(video_empty_state)
-    var video_parts := _empty_state_panel(ICON_VIDEO, _t("video.empty_title"), _video_empty_help_text())
+    var video_parts := _empty_state_panel(_file_library_icon(), _media_text("video.empty_title"), _video_empty_help_text())
     video_empty_state.add_child(video_parts["root"])
     video_empty_title_label = video_parts["title"]
+    video_empty_icon = video_parts["icon"]
     video_empty_help_label = video_parts["body"]
     _apply_home_library_visibility()
     call_deferred("_animate_home_header")
@@ -8038,7 +8025,7 @@ func _refresh_language_texts() -> void:
     if is_instance_valid(empty_help_label):
         empty_help_label.text = _empty_help_text()
     if is_instance_valid(video_empty_title_label):
-        video_empty_title_label.text = _t("video.empty_title")
+        video_empty_title_label.text = _media_text("video.empty_title")
     if is_instance_valid(video_empty_help_label):
         video_empty_help_label.text = _video_empty_help_text()
     _sync_home_empty_state_text()
@@ -8088,6 +8075,8 @@ func _apply_home_library_visibility() -> void:
 
 func _sync_home_empty_state_text() -> void:
     var searching := not _current_home_search_query().is_empty()
+    if is_instance_valid(video_empty_icon):
+        video_empty_icon.texture = _load_ui_icon(_file_library_icon())
     if is_instance_valid(empty_title_label):
         empty_title_label.text = _t("search.no_results_title") if searching else _t("home.empty_title")
     if is_instance_valid(empty_help_label):
@@ -8095,7 +8084,7 @@ func _sync_home_empty_state_text() -> void:
     if is_instance_valid(empty_primary_button):
         empty_primary_button.visible = not searching
     if is_instance_valid(video_empty_title_label):
-        video_empty_title_label.text = _media_text("search.no_results_title") if searching else _t(
+        video_empty_title_label.text = _media_text("search.no_results_title") if searching else _media_text(
             "video.empty_folder_title" if _active_file_library().can_go_up() else "video.empty_title"
         )
     if is_instance_valid(video_empty_help_label):
@@ -18102,7 +18091,7 @@ func _empty_state_panel(icon_path: String, title_text: String, body_text: String
     body.add_theme_color_override("font_color", ui_tokens.text_secondary)
     body.add_theme_constant_override("line_spacing", 4)
     box.add_child(body)
-    return {"root": box, "title": title, "body": body}
+    return {"root": box, "title": title, "body": body, "icon": glyph}
 
 func _cascade_grid(grid: GridContainer) -> void:
     if grid != null and is_instance_valid(grid) and grid.is_visible_in_tree():

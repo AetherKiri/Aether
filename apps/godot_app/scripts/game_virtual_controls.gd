@@ -12,6 +12,7 @@ signal pointer_scroll_requested(delta_y: float, screen_position: Vector2)
 signal keyboard_requested
 signal virtual_controls_requested
 signal input_mode_changed(mode: String)
+signal menu_open_changed(open: bool)
 
 const VK_RETURN := 0x0D
 const VK_CONTROL := 0x11
@@ -83,6 +84,7 @@ var _menu_button_enabled := true
 var _keyboard_controls_opacity := 1.0
 var _panel_open := false
 var _menu_open := false
+var _menu_visible := false
 var _safe_rect := Rect2()
 var _held_keys := {}
 var _held_mouse_buttons := {}
@@ -1196,6 +1198,10 @@ func _sync_visibility() -> void:
     mouse_left_button.visible = show_virtual_mouse
     mouse_right_button.visible = show_virtual_mouse
     cursor_handle.visible = show_virtual_mouse
+    var menu_visible := controls_visible and _menu_open
+    if menu_visible != _menu_visible:
+        _menu_visible = menu_visible
+        menu_open_changed.emit(menu_visible)
 
 func _apply_keyboard_controls_opacity() -> void:
     for control in _panel_controls:

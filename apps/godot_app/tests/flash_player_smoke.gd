@@ -56,6 +56,8 @@ func _run() -> void:
     var view = app.flash_view
     var texture: Texture2D = view.surface.texture
     _expect(texture != null and texture.get_width() > 0 and texture.get_height() > 0, "Flash provides a usable texture")
+    _expect(not view.header.visible, "Native playback starts with the header hidden")
+    _expect(view.surface.get_rect() == app._ui_safe_rect(view.size), "Native playback uses the complete safe area")
     await create_timer(0.15).timeout
     var initial := texture.get_image().get_data()
     var animated := false
@@ -63,22 +65,35 @@ func _run() -> void:
         await create_timer(0.02).timeout
         animated = animated or texture.get_image().get_data() != initial
     _expect(animated, "Native Godot playback updates the animated SWF texture")
-    view.controls.show_virtual_controls()
+    await _capture("native-flash-player")
+    var movie_rect: Rect2 = view._content_rect()
+    view.controls.menu_button.pressed.emit()
+    _expect(view.header.visible and view.controls.is_menu_open(), "The virtual menu reveals the native player's header")
+    await _capture("native-flash-menu")
+    view.controls.virtual_controls_button.pressed.emit()
+    _expect(not view.header.visible and view.controls.is_panel_open(), "Virtual keys display without the native player's header")
     view.controls.space_button.button_down.emit()
     view.controls.space_button.button_up.emit()
     _expect(view.held_keys.is_empty(), "Virtual keys release after forwarding input to Ruffle")
-    await _capture("native-flash-player")
+    await _capture("native-flash-controls")
+    view.controls.menu_button.pressed.emit()
+    view.controls.menu_button.pressed.emit()
+    _expect(not view.header.visible and view._content_rect() == movie_rect, "Collapsing the menu hides the header without changing the movie size")
     view.set_paused(true)
     var paused := texture.get_image().get_data()
     await create_timer(0.2).timeout
     _expect(texture.get_image().get_data() == paused, "Pausing holds the current rendered frame")
     view.set_paused(false)
-    view._restart()
-    _expect(app._is_flash_active() and view.native != null, "Restart recreates a working native player")
+    view.controls.menu_button.pressed.emit()
+    var previous_player: int = view.native.get_instance_id()
+    view.refresh_button.pressed.emit()
+    _expect(app._is_flash_active() and view.native != null and view.native.get_instance_id() != previous_player, "Refresh recreates a working native player")
+    _expect(view.header.visible, "Refresh keeps the menu and header open")
     root.size = Vector2i(844, 390)
     app._fit_full_rects()
     await create_timer(0.15).timeout
     view.controls.show_virtual_controls()
+    _expect(not view.header.visible, "The landscape control pad also hides the header")
     _expect(view.size.is_equal_approx(Vector2(844, 390)), "Flash resizes with the mobile viewport")
     _expect(Rect2(Vector2.ZERO, view.size).encloses(view.controls.enter_button.get_global_rect()), "Virtual buttons remain within the landscape viewport")
     await _capture("native-flash-controls-landscape")

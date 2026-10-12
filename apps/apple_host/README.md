@@ -236,11 +236,14 @@ Super Resolution 1 的 robust contrast adaptive sharpening）与 **FSR1 EASU**�
 FXAA 与依赖它们的预设位于私有 RenderingDevice provider，需要逐个移植到 Metal 并做参考
 对照，当前在选择器与设置页说明中明确未开放。smoke 可用 `--frame-enhancement
 adaptive_sharpen|fsr1_rcas|fsr1_easu --enhancement-amount 0.5` 做基准覆盖（仅测试入口，不写入偏好）。
-首次启动会显示 Godot 同版本（`2026-07-27.4`）的隐私/免责协议门：正文取自打包的
-`privacy_disclaimer_*.txt` 五语言资源，按钮为 拒绝 / 同意并继续；同意把
-`{version, acceptedAt}` 写到库根 `legal-acceptance.json`（与可撤销的设置草稿分开），
-拒绝在 macOS 退出应用。非交互测试/基准入口用 debug-only 的
-`AETHER_HOST_BYPASS_LEGAL_GATE=1` 绕过（对应 Godot 的 `AETHERKIRI_BYPASS_LEGAL_GATE`）。
+首次启动会依次显示 Godot 同版本的两份文档门：先隐私/免责协议（`2026-07-27.4`，
+`privacy_disclaimer_*.txt`），再 App Store 额外声明（`2026-08-04`，
+`ios_app_store_statement_*.txt`），正文均取自打包的五语言资源，按钮为
+拒绝 / 同意并继续；同意按文档写入库根 `legal-acceptance.json` 的
+`{privacy, statement}` 条目（与可撤销的设置草稿分开，旧单文档文件自动迁移到
+privacy），两份都同意后才进库。拒绝在 macOS 退出应用。非交互测试/基准入口用
+debug-only 的 `AETHER_HOST_BYPASS_LEGAL_GATE=1` 绕过（对应 Godot 的
+`AETHERKIRI_BYPASS_LEGAL_GATE`）。
 首次运行还会把打包的多语言 Demo（`data.xp3`，与 Godot 共用同一份
 `builtin_demos/aetherkiri-kag3` 资源）安装进库：复制到
 `<库根>/builtin_games/aetherkiri-demo/` 并在 `aetherkiri_builtin_demo.cfg` 记录状态。

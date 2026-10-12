@@ -1,20 +1,22 @@
 import SwiftUI
 
 enum SettingsDocument: String, Identifiable {
-    case privacy, license, additionalLicense, thirdParty
+    case privacy, statement, license, additionalLicense, thirdParty
     var id: String { rawValue }
     var titleKey: String {
         switch self {
         case .privacy: return "privacyDocument"
+        case .statement: return "statementTitle"
         case .license: return "licenses"
         case .additionalLicense: return "additionalLicense"
         case .thirdParty: return "thirdPartyLicenses"
         }
     }
     func resource(language: ShellLanguage) -> (String, String?) {
+        let languageSuffix = ["zh_hans", "zh_hant", "en", "ja", "ko"][language.index]
         switch self {
-        case .privacy:
-            return ("privacy_disclaimer_" + ["zh_hans", "zh_hant", "en", "ja", "ko"][language.index], "txt")
+        case .privacy: return ("privacy_disclaimer_" + languageSuffix, "txt")
+        case .statement: return ("ios_app_store_statement_" + languageSuffix, "txt")
         case .license: return ("LICENSE", nil)
         case .additionalLicense: return ("COPYING", "iOS")
         case .thirdParty: return ("THIRD_PARTY_LICENSES", "md")
@@ -49,16 +51,17 @@ struct SettingsDocumentView: View {
 /// First-use legal gate. Presented modally and non-dismissable until the user
 /// either accepts (persisted separately from settings) or declines (quit).
 struct LegalAgreementView: View {
+    let document: LegalDocument
     let language: ShellLanguage
     let accept: () -> Void
     let decline: () -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text(language.text("legalTitle")).font(.title2.bold())
-            Text(language.text("legalFirstSummary")).font(.callout).foregroundStyle(.secondary)
+            Text(language.text(document.titleKey)).font(.title2.bold())
+            Text(language.text(document.summaryKey)).font(.callout).foregroundStyle(.secondary)
             ScrollView {
-                Text(SettingsDocument.privacy.contents(language: language) ?? language.text("documentUnavailable"))
+                Text(document.settingsDocument.contents(language: language) ?? language.text("documentUnavailable"))
                     .textSelection(.enabled).frame(maxWidth: .infinity, alignment: .leading).padding(12)
             }
             HStack {

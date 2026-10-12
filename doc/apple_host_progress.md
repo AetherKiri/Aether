@@ -505,7 +505,7 @@
 31b. [ ] **两处兼容小项待查**：`new DMMCloud()` 报 `Invalid argument count`；`new Zlib().version()` 报成员不存在（可能只是探针写法/注册方式差异）
 32. [ ] **内核后续：内存可观测（借鉴 `MemoryDesign.md`）**：分配头带 tag + `AllocTagScope` 标签栈，让"谁吃掉了内存"可回答；当前只有粗粒度 `engine_get_memory_stats`
 
-33. [ ] **产品 UI/设置完整对齐**：调查 P0 已完成；P1核心、P2集合/详情与四主题已接入，完整CUA/无障碍验收待补；P3a–P3d、P4a/P4b/P4d/P4e/P4f、可停靠诊断控制台（含标记/慢帧捕获/快照/截图/自检）、场景测试入口、P5a 画面增强、P5b（FSR1 EASU/RCAS + 双三次/Lanczos 链步骤 + kind/预设/自定义链）、P6（macOS 首次使用协议门 + 内置 Demo + VNDB 在线封面）已接入并通过行为回归与真实CUA；P4 其余（RFVP 编码仍按能力缺口记录），P5b 其余 Godot 算法与预设、P6 其余（渠道声明），P7 见 [实施计划](apple_host_ui_plan.md)（视频库暂停维护）。
+33. [ ] **产品 UI/设置完整对齐**：调查 P0 已完成；P1核心、P2集合/详情与四主题已接入，完整CUA/无障碍验收待补；P3a–P3d、P4a/P4b/P4d/P4e/P4f、可停靠诊断控制台（含标记/慢帧捕获/快照/截图/自检）、场景测试入口、P5a 画面增强、P5b（FSR1 EASU/RCAS + 双三次/Lanczos 链步骤 + kind/预设/自定义链）、P6（macOS 首次使用双文档协议门：隐私协议 + App Store 额外声明 + 内置 Demo + VNDB 在线封面）已接入并通过行为回归与真实CUA；P4 其余（RFVP 编码仍按能力缺口记录），P5b 其余 Godot 算法与预设，P7 见 [实施计划](apple_host_ui_plan.md)（视频库暂停维护）。
 
 ## 变更记录
 
@@ -737,3 +737,13 @@
 - 测试：`python3 tools/apple_host_settings_tests.py` 全通过（`allCases`/预设/采样映射、lanczos+RCAS 链往返、非法链拒绝、bicubic+RCAS 与单独 bicubic/单独 lanczos 都不同）；Debug 构建通过；30 秒 KAG3 Metal smoke 通过。
 - CUA：预设列表三项、保存 `preset=bicubic`、真实启动日志 `frame enhancement bicubic,fsr1_rcas amount=0.50`。证据：`out/apple_host/evidence/ui-p5b-sampling-cua/`。
 - 残余未验收：Anime4K/RAVU/CuNNy/NNEDI3/FXAA 及其预设；预设内 RCAS 强度用用户滑杆值（Godot 私有的 `fsr1_rcas_low` 不可复现）。
+
+### 2026-10-12：P6 续 App Store 额外声明门
+
+- Godot 在 Apple 平台（iOS 与 macOS）首次使用前要求**两份**文档：先隐私/免责协议（`LEGAL_AGREEMENT_VERSION = "2026-07-27.4"`），再 App Store 分发额外声明（`IOS_STATEMENT_VERSION = "2026-08-04"`，正文 `legal/ios_app_store_statement_*.txt`）。P6 首片只接了第一份，本轮补齐第二份并把首次门改为按文档顺序推进。
+- `LegalAgreement.statementVersion` 对齐 Godot；新增 `LegalDocument`（privacy/statement），每份带自己的版本、标题、首用说明与 `SettingsDocument`。
+- `LegalAcceptanceStore` 记录由单文档 `{version, acceptedAt}` 改为 `{privacy, statement}` 两份 `Entry`；旧单文档文件迁移到 privacy 条目；`isSatisfied(_:)` 按文档比对版本，`requiredDocument()` 返回顺序里第一个未满足者（缺失/损坏/版本不符一律视为未同意）。
+- `ShellModel.legalGateRequired` 换成 `requiredLegalDocument`；`acceptLegalDocument()` 写入当前文档后推进到下一份，两份都满足才关掉首次门；`LegalAgreementView` 按当前文档取标题、首用说明与五语言正文。「设置 > 关于」在隐私协议旁新增「Apple App Store 额外声明」入口。
+- 测试：`python3 tools/apple_host_settings_tests.py` 的 `LegalAcceptanceTests` 重写为两份文档的顺序门（privacy→statement、每份版本门、旧单文档迁移、损坏文件、debug 绕过）全通过；Debug 构建通过。
+- CUA：全新库先弹 privacy（1/2，版本 2026-07-27.4），同意后弹 statement（2/2，版本 2026-08-04），再同意才进库；写出 `{"privacy":{...},"statement":{...}}`，重开不再弹门，关于页出现两项。证据：`out/apple_host/evidence/ui-p6-statement/`。
+- 差异：「已拒绝」独立页面属 iOS/M4；macOS 保持拒绝即退出（对齐 Godot 桌面行为）。

@@ -36,11 +36,13 @@ struct ContentView: View {
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.willTerminateNotification)) { _ in
             model.closeActiveSession()
         }
-        .sheet(isPresented: Binding(get: { model.legalGateRequired }, set: { _ in })) {
-            LegalAgreementView(language: model.language,
-                               accept: { model.acceptLegalAgreement() },
-                               decline: { model.declineLegalAgreement() })
-                .interactiveDismissDisabled()
+        .sheet(isPresented: Binding(get: { model.requiredLegalDocument != nil }, set: { _ in })) {
+            if let document = model.requiredLegalDocument {
+                LegalAgreementView(document: document, language: model.language,
+                                   accept: { model.acceptLegalDocument() },
+                                   decline: { model.declineLegalAgreement() })
+                    .interactiveDismissDisabled()
+            }
         }
     }
 

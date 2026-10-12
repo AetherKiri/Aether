@@ -89,8 +89,10 @@ final class ShellModel: ObservableObject {
     private let settingsStore: SettingsStore
     private let legalAcceptance: LegalAcceptanceStore
     private let builtinDemo: BuiltinDemo
-    /// First-use legal agreement gate; kept separate from the settings draft.
-    @Published private(set) var legalGateRequired = false
+    /// The first-use legal document that still needs acceptance, if any.
+    /// Kept separate from the settings draft so discarding settings cannot
+    /// revoke acceptance.
+    @Published private(set) var requiredLegalDocument: LegalDocument?
     @Published private(set) var settingsAvailable = true
     @Published private(set) var isFullscreen = false
     private let preferencePrefix: String
@@ -120,7 +122,7 @@ final class ShellModel: ObservableObject {
         showLogs = initial.logs
         showVirtualControls = initial.virtualControls
         translationModelPath = initial.translationModelPath
-        legalGateRequired = !LegalAgreement.bypassRequested() && !legalAcceptance.isSatisfied()
+        requiredLegalDocument = LegalAgreement.bypassRequested() ? nil : legalAcceptance.requiredDocument()
         if let settingsFailure {
             settingsAvailable = false
             self.error = text("settingsLoadFailed") + "\n" + settingsFailure.localizedDescription
@@ -207,14 +209,16 @@ final class ShellModel: ObservableObject {
         action?()
     }
 
-    /// Records explicit first-use acceptance. Nothing here pre-accepts on the
-    /// user's behalf; a failed write leaves the gate in place.
-    func acceptLegalAgreement() {
-        guard legalAcceptance.accept() else {
+    /// Records explicit first-use acceptance of the current document. Nothing
+    /// here pre-accepts on the user's behalf; a failed write leaves the gate in
+    /// place, and accepting one document advances to the next required one.
+    func acceptLegalDocument() {
+        guard let document = requiredLegalDocument else { return }
+        guard legalAcceptance.accept(document) else {
             error = text("documentUnavailable")
             return
         }
-        legalGateRequired = false
+        requiredLegalDocument = legalAcceptance.requiredDocument()
     }
 
     /// macOS mirrors Godot's desktop behaviour: declining quits the app.

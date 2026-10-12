@@ -120,6 +120,8 @@ enum ShellLanguage: String, CaseIterable, Identifiable {
         "privacyDocument": ["隐私与免责协议", "隱私與免責協議", "Privacy and Disclaimer", "プライバシーと免責事項", "개인정보 및 면책 안내"],
         "legalTitle": ["隐私政策与使用免责协议", "隱私政策與使用免責協議", "Privacy Policy, Terms & Disclaimer", "プライバシーポリシー・利用条件・免責事項", "개인정보 처리방침, 이용약관 및 면책"],
         "legalFirstSummary": ["首次使用前，请阅读并选择是否同意。协议可在「设置 > 关于」中随时查看。", "首次使用前，請閱讀並選擇是否同意。協議可在「設定 > 關於」中隨時查看。", "Please read and choose whether to agree before first use. You can review this document later under Settings > About.", "初回利用前に内容を読み、同意するか選択してください。設定 > 情報からいつでも確認できます。", "처음 사용하기 전에 내용을 읽고 동의 여부를 선택해 주세요. 이 문서는 설정 > 정보에서 언제든 다시 볼 수 있습니다."],
+        "statementTitle": ["Apple App Store 额外声明", "Apple App Store 額外聲明", "Apple App Store Additional Permission & Notice", "Apple App Store 追加許諾および声明", "Apple App Store 추가 허가 및 고지"],
+        "statementFirstSummary": ["Apple 平台首次使用确认（第 2/2 份）。您需要同时同意本声明和隐私与免责协议，才能使用视觉小说与视频功能。", "Apple 平台首次使用確認（第 2/2 份）。您需要同時同意本聲明和隱私與免責協議，才能使用視覺小說與影片功能。", "Apple-platform first-use confirmation (document 2 of 2). You must accept both this notice and the Privacy Policy, Terms & Disclaimer before using visual novel or video features.", "Apple プラットフォーム初回確認（2/2）。ビジュアルノベルおよび動画機能を使用するには、本声明とプライバシー・利用条件・免責事項の両方への同意が必要です。", "Apple 플랫폼 최초 확인(2/2). 비주얼 노벨 및 비디오 기능을 사용하려면 이 고지와 개인정보·이용 조건·면책 조항에 모두 동의해야 합니다."],
         "legalAccept": ["同意并继续", "同意並繼續", "Agree and Continue", "同意して続行", "동의하고 계속"],
         "legalDecline": ["拒绝", "拒絕", "Decline", "拒否", "거부"],
         "licenses": ["开源许可证", "開源授權", "Open Source Licenses", "オープンソースライセンス", "오픈 소스 라이선스"],

@@ -263,6 +263,7 @@ struct ShellSettingsView: View {
                     Text((Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "—")
                          + " (" + (Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "—") + ")")
                     Button(model.text("privacyDocument")) { document = .privacy }
+                    Button(model.text("statementTitle")) { document = .statement }
                     Menu(model.text("licenses")) {
                         Button("GNU GPLv3") { document = .license }
                         Button(model.text("additionalLicense")) { document = .additionalLicense }

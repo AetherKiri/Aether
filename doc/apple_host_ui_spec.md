@@ -75,7 +75,7 @@ Apple 官方参考：[Settings](https://developer.apple.com/design/human-interfa
 | 场景测试：主页/设置/详情/视频库/视频播放器/游戏，运行状态变体 | P4 已接入：高级工具里的场景选择 + 进入/退出，持久化在 Godot 键 `aether_kiri/scene_test`，重启仍进入、退出可恢复；未镜像独立的默认/加载/启动状态选择器 | 独立测试 fixture 与启动参数，退出可恢复；Debug工具 | P4 |
 | QQ社群 | 部分；Help有入口、设置没有 | 设置中也可访问；默认不复制启动推广弹窗 | P1 |
 | 关于版本、协议查看 | 缺失设置分区 | Bundle实际版本/构建、五语言协议资源、许可证入口 | P1 |
-| 首次使用协议状态与分发相关额外声明 | P6 已接入 macOS 首次协议门（版本化 AcceptanceStore + 五语言协议正文 + 同意/拒绝）；渠道额外声明（App Store）留 M4 | 单独 AcceptanceStore，按分发渠道、版本管理，不能混入可撤销草稿 | P6 |
+| 首次使用协议状态与分发相关额外声明 | P6 已接入 macOS 首次协议门：隐私/免责协议（2026-07-27.4）后接 App Store 额外声明（2026-08-04），两份均版本化、五语言正文、同意/拒绝；「已拒绝」页留 M4 | 单独 AcceptanceStore，按文档/分发渠道、版本管理，不能混入可撤销草稿 | P6 |
 | IAP库数量解锁、coffee、恢复购买 | macOS无真实provider | macOS不启用数量限制；M4实现真实购买；不画可购买假按钮 | M4 |
 | 检查更新、预发布开关、跳过版本 | 缺失 | 渠道策略后实施；用户要求留到最后 | P7 |
 | 版本隐藏解锁 | 缺失 | 内部测试替代入口；不列为macOS核心交互或借此绕过正式权益 | P6/M4 |
@@ -171,7 +171,7 @@ Lumen四套主题保留内容层、强调色、圆角与封面比例；系统字
 | 视频集合（P2） | 缓存真实位置/总时长；旧无时长条目只显示位置；移除确认同时清理进度与字幕选择，保留视频文件 | 进度数据来自实际播放器，不在导入时伪造时长；封面仍为影片占位符；播放器完整交互在P4 |
 | 渲染与增强（P3/P5） | 启动前设备/呈现器与翻译provider能力；Metal初始化失败安全重建软件会话；报告请求/实际引擎/呈现路径和原因；新安装默认Metal | P3a–P3d行为回归通过；P3b/P3c/P3d设置页CUA已验证；增强仍未开放 |
 | 统计/运行配置/诊断（P4） | 会话时长与完整主页（P4a）、诊断 profile 与性能覆盖层（P4b）、临时工具（P4d，30 秒自动关闭）、可停靠诊断控制台（含全部动作）、场景测试入口已接入 | RFVP 编码待链接 provider |
-| 发布功能（P6/P7/M4） | 关于资源已打包；macOS 首次使用协议门已接入；内置 Demo 已接入；VNDB 在线封面已接入（显式触发、只发标题、缓存到库根） | 渠道额外声明仍单列 P6；更新器最后；真实IAP与移动端M4 |
+| 发布功能（P6/P7/M4） | 关于资源已打包；macOS 首次使用协议门已接入（隐私协议 + App Store 额外声明两份）；内置 Demo 已接入；VNDB 在线封面已接入（显式触发、只发标题、缓存到库根） | 更新器最后；真实IAP与移动端M4 |
 
 主题设置使用schema v2；渲染设置使用schema v4，读取v1/v2/v3时补齐画布、输出与采样字段并将旧配置迁移为原始输出/线性采样，加载本身不改写原文件，下一次成功保存写入当前schema。未知主题回退classic，未知schema或损坏文件仍禁止保存以保留证据。只按有效设置应用外观与启动配置，草稿不预览，也不重建页面identity。
 
@@ -412,3 +412,15 @@ Godot 的增强算法表里 `bicubic`/`lanczos` 也是链算法（“自然柔�
 - 渲染：`MetalFramePresenter` 用链的缩放步骤做输出 pass（EASU 或采样），其余步骤仍按序在同尺寸 ping-pong scratch 上执行；`scalingConfig` 改为含“有效采样 + 缩放步骤”。
 - 测试：`FrameEnhancementTests` 扩展 `allCases`/预设/采样映射断言，新增 lanczos+RCAS 链往返、非法链（缩放步骤非首位、两个缩放步骤）拒绝，以及 bicubic+RCAS 与单独 bicubic、单独 lanczos 都不同。CUA 验证预设列表三项、保存 `preset=bicubic` 与真实启动日志 `frame enhancement bicubic,fsr1_rcas amount=0.50`。证据：`out/apple_host/evidence/ui-p5b-sampling-cua/`。
 - 差异：预设里的 RCAS 强度使用用户的「锐化强度」（Godot 私有的 `fsr1_rcas_low` 值不可复现）；Anime4K/RAVU/CuNNy/NNEDI3/FXAA 与其预设仍不列出。
+
+### 7.26 P6 续：App Store 额外声明门
+
+Godot 在 Apple 平台（iOS 与 macOS）首次使用前要求**两份**文档：先隐私/免责协议（`LEGAL_AGREEMENT_VERSION = "2026-07-27.4"`），再 App Store 分发额外声明（`IOS_STATEMENT_VERSION = "2026-08-04"`，正文为 `legal/ios_app_store_statement_*.txt`）。P6 首片只接了第一份；本片补齐第二份，并把首次门改成按文档顺序推进：
+
+- `LegalAgreement.statementVersion = "2026-08-04"`（对齐 Godot 常量）；新增 `LegalDocument`（`privacy`、`statement`），每份带自己的 `version`/`titleKey`/`summaryKey`/`SettingsDocument`。
+- `LegalAcceptanceStore` 的库根记录由单文档 `{version, acceptedAt}` 改为 `{privacy, statement}` 两份 `Entry`；旧单文档文件迁移到 `privacy` 条目。`isSatisfied(_:)` 按文档比对版本，`requiredDocument()` 返回顺序里第一个未满足者（缺失/损坏/版本不符一律视为未同意）。
+- `ShellModel` 的 `legalGateRequired` 换成 `requiredLegalDocument: LegalDocument?`；`acceptLegalDocument()` 写入当前文档后推进到下一份，两份都满足才关掉首次门。首次门 sheet 与 `LegalAgreementView` 按当前文档取标题、首用说明与五语言正文。
+- 「设置 > 关于」在隐私协议旁新增「Apple App Store 额外声明」入口，可随时复读该声明正文。
+- 拒绝在 macOS 上仍退出应用（对齐 Godot 桌面行为）；非交互入口继续走 debug-only `AETHER_HOST_BYPASS_LEGAL_GATE=1`。
+- 测试：`LegalAcceptanceTests` 重写为两份文档的顺序门（privacy→statement、每份版本门、旧单文档迁移、损坏文件、debug 绕过）全通过；Debug 构建通过。CUA：全新库先弹 privacy（1/2），同意后弹 statement（2/2，版本 2026-08-04），再同意才进库；写出的 `legal-acceptance.json` 含两份条目，重开不再弹门，关于页出现两项。证据：`out/apple_host/evidence/ui-p6-statement/`。
+- 差异：「已拒绝」独立页面属 iOS/M4；macOS 保持拒绝即退出。

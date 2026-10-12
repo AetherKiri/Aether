@@ -1,7 +1,7 @@
 # Apple 宿主 UI 与设置对齐实施计划
 
 - 2026-10-11，依据 [产品 UI spec](apple_host_ui_spec.md)。
-- 状态：P0调查完成；P1核心实现与行为测试已接入，完整CUA验收待补；P2集合/详情及四主题已接入，完整视觉/无障碍验收待补；P3a–P3d、P4a/P4b/P4d/P4e/P4f、可停靠诊断控制台（含标记/慢帧捕获/快照/截图/自检）与场景测试入口均已实现并通过行为回归与真实CUA；P5a（对比度自适应锐化）与 P5b（FSR1 RCAS/EASU + 双三次/Lanczos 链步骤 + Godot 的 kind/预设/自定义链，AMD MIT 参考 + CPU 对照 + 缓存键修复）已实现并通过行为回归、真实 smoke 与设置页/启动路径 CUA；P6 已接入 macOS 首次使用协议门、内置 Demo 与 VNDB 在线封面并通过行为回归与真实 CUA；P4 其余（RFVP 编码待链接 provider）、P5b 其余 Godot 算法与预设移植、P6 其余（渠道声明）与 P7 尚未实施（视频库暂停维护）。阶段按依赖排序，每轮只提交已验证的完整切片。
+- 状态：P0调查完成；P1核心实现与行为测试已接入，完整CUA验收待补；P2集合/详情及四主题已接入，完整视觉/无障碍验收待补；P3a–P3d、P4a/P4b/P4d/P4e/P4f、可停靠诊断控制台（含标记/慢帧捕获/快照/截图/自检）与场景测试入口均已实现并通过行为回归与真实CUA；P5a（对比度自适应锐化）与 P5b（FSR1 RCAS/EASU + 双三次/Lanczos 链步骤 + Godot 的 kind/预设/自定义链，AMD MIT 参考 + CPU 对照 + 缓存键修复）已实现并通过行为回归、真实 smoke 与设置页/启动路径 CUA；P6 已接入 macOS 首次使用双文档协议门（隐私协议 + App Store 额外声明）、内置 Demo 与 VNDB 在线封面并通过行为回归与真实 CUA；P4 其余（RFVP 编码待链接 provider）、P5b 其余 Godot 算法与预设移植与 P7 尚未实施（视频库暂停维护）。阶段按依赖排序，每轮只提交已验证的完整切片。
 - 目标是修正产品结构并补齐真实功能；不在一轮中把所有缺项画成无效果控件。
 
 ## P0：调查与规范（本轮）
@@ -327,4 +327,13 @@ P3a重点验证部分Metal激活失败后的资源清理：不得在已打开游
 - [x] 测试：`CoverSearchTests`（请求形状/只发标题/空标题拒绝、响应解析丢弃无图行、注入式 search/apply 缓存与索引、失败保留）全通过；Debug 构建通过。
 - [x] CUA：真实 VNDB 搜索「Aether Demo」→ 选候选 → 缓存 `Covers/vndb-v21873.jpg` → 详情页出现清除封面。证据：`out/apple_host/evidence/ui-p6-vndb-cua/`。
 
-下一切片：P6 其余（渠道额外声明）与 P5b 其余算法/预设链并行评估；视频库/播放器暂停维护。
+## P6实施记录：App Store 额外声明门
+
+- [x] `LegalAgreement.statementVersion = "2026-08-04"`（对齐 Godot 的 `IOS_STATEMENT_VERSION`）；新增 `LegalDocument`（privacy/statement）与每份文档的版本/标题/首用说明/正文映射。
+- [x] `LegalAcceptanceStore` 记录由单文档改为 `{privacy, statement}` 两份 `Entry`；旧单文档 `{version, acceptedAt}` 迁移到 privacy；`requiredDocument()` 返回顺序里第一个未满足者（缺失/损坏/版本不符视为未同意）。
+- [x] `ShellModel` 以 `requiredLegalDocument` 驱动首次门，`acceptLegalDocument()` 逐份推进；`LegalAgreementView` 按当前文档取标题、首用说明与五语言正文；「设置 > 关于」新增「Apple App Store 额外声明」入口。
+- [x] 测试：`LegalAcceptanceTests` 重写为两份文档的顺序门 + 每份版本门 + 旧单文档迁移 + 损坏文件 + debug 绕过，全通过；Debug 构建通过。
+- [x] CUA：全新库先弹 privacy（1/2），同意后弹 statement（2/2，版本 2026-08-04），再同意才进库；写出含两份条目的 `legal-acceptance.json`，重开不再弹门，关于页出现两项。证据：`out/apple_host/evidence/ui-p6-statement/`。
+- [ ] 「已拒绝」独立页面属 iOS/M4；macOS 保持拒绝即退出（对齐 Godot 桌面行为）。
+
+下一切片：P5b 其余 Godot 算法/预设链评估与移植；视频库/播放器暂停维护。

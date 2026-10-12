@@ -1,7 +1,7 @@
 # Apple 宿主 UI 与设置对齐实施计划
 
 - 2026-10-11，依据 [产品 UI spec](apple_host_ui_spec.md)。
-- 状态：P0调查完成；P1核心实现与行为测试已接入，完整CUA验收待补；P2集合/详情及四主题已接入，完整视觉/无障碍验收待补；P3a–P3d、P4a/P4b/P4d/P4e/P4f 均已实现并通过行为回归与真实CUA；P5a（对比度自适应锐化）与 P5b（FSR1 RCAS + FSR1 EASU，AMD MIT 参考 + CPU 对照 + 缓存键修复）已实现并通过行为回归、真实 smoke 与设置页/启动路径 CUA；P6 已接入 macOS 首次使用协议门与内置 Demo（打包安装、详情页删除、删除记忆）并通过行为回归与真实 CUA；P5b 其余 Godot 算法移植与预设/自定义链、P6 其余（VNDB/渠道声明）与 P7 尚未实施（视频库暂停维护）。阶段按依赖排序，每轮只提交已验证的完整切片。
+- 状态：P0调查完成；P1核心实现与行为测试已接入，完整CUA验收待补；P2集合/详情及四主题已接入，完整视觉/无障碍验收待补；P3a–P3d、P4a/P4b/P4d/P4e/P4f 均已实现并通过行为回归与真实CUA；P5a（对比度自适应锐化）与 P5b（FSR1 RCAS + FSR1 EASU，AMD MIT 参考 + CPU 对照 + 缓存键修复）已实现并通过行为回归、真实 smoke 与设置页/启动路径 CUA；P6 已接入 macOS 首次使用协议门、内置 Demo（打包安装、详情页删除、删除记忆）与 VNDB 在线封面（显式触发、只发标题、缓存到库根）并通过行为回归与真实 CUA；P5b 其余 Godot 算法移植与预设/自定义链、P6 其余（渠道声明）与 P7 尚未实施（视频库暂停维护）。阶段按依赖排序，每轮只提交已验证的完整切片。
 - 目标是修正产品结构并补齐真实功能；不在一轮中把所有缺项画成无效果控件。
 
 ## P0：调查与规范（本轮）
@@ -286,4 +286,11 @@ P3a重点验证部分Metal激活失败后的资源清理：不得在已打开游
 - [x] 测试：`BuiltinDemoTests`（安装、幂等 reconcile、删除记忆、缺失资源降级）全通过；Debug 构建通过。
 - [x] CUA：首启安装 17MB Demo、详情页徽标/删除、确认删除后库为空且重启不恢复。证据：`out/apple_host/evidence/ui-p6-demo-cua/`。
 
-下一切片：P6 其余（VNDB 在线封面、渠道额外声明）与 P5b 其余算法/预设链并行评估；视频库/播放器暂停维护。
+## P6实施记录：VNDB 在线封面
+
+- [x] 详情页新增「搜索在线封面」按钮（显式触发，不做后台自动扫描）；`VNDBCoverSearch` 向 `https://api.vndb.org/kana/vn` POST `{"filters":["search","=",标题],"fields":"id,title,image.url,image.thumbnail"}`，请求体只含标题，不含本机路径/存档。
+- [x] 候选列表（缩略图 + 标题 + id）；选择后下载封面缓存到库根 `Covers/vndb-<id>.jpg` 并 `setCover` 指向；失败保留当前封面并显示原因。`CoverSearchProviding`/`CoverImageLoading` 便于测试注入。
+- [x] 测试：`CoverSearchTests`（请求形状/只发标题/空标题拒绝、响应解析丢弃无图行、注入式 search/apply 缓存与索引、失败保留）全通过；Debug 构建通过。
+- [x] CUA：真实 VNDB 搜索「Aether Demo」→ 选候选 → 缓存 `Covers/vndb-v21873.jpg` → 详情页出现清除封面。证据：`out/apple_host/evidence/ui-p6-vndb-cua/`。
+
+下一切片：P6 其余（渠道额外声明）与 P5b 其余算法/预设链并行评估；视频库/播放器暂停维护。

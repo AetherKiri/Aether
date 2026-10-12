@@ -2,7 +2,7 @@ import AppKit
 
 @main
 struct SettingsBehaviorTests {
-    @MainActor static func main() throws {
+    @MainActor static func main() async throws {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent("settings-behavior-" + UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: root) }
         setenv("AETHER_HOST_LIBRARY_ROOT", root.path, 1)
@@ -17,6 +17,7 @@ struct SettingsBehaviorTests {
         try FrameEnhancementTests.run(root: root)
         try LegalAcceptanceTests.run(root: root)
         try BuiltinDemoTests.run(root: root)
+        try await CoverSearchTests.run(root: root)
         let model = ShellModel()
         try checkCollections(model, root: root)
         try checkPlayTimeAccumulation(model, root: root)

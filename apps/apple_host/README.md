@@ -241,6 +241,9 @@ adaptive_sharpen|fsr1_rcas|fsr1_easu --enhancement-amount 0.5` 做基准覆盖�
 `builtin_demos/aetherkiri-kag3` 资源）安装进库：复制到
 `<库根>/builtin_games/aetherkiri-demo/` 并在 `aetherkiri_builtin_demo.cfg` 记录状态。
 详情页显示「内置 Demo」徽标与「删除内置 Demo」，删除会清除安装目录并记住，重启不再恢复。
+详情页的「搜索在线封面」是**显式**的联网动作：只把游戏标题发给 VNDB
+（`api.vndb.org/kana/vn`），不发送本机路径或存档；候选封面下载后缓存到库根
+`Covers/vndb-<id>.jpg` 并写入封面路径，失败时保留当前封面。宿主不做后台自动查询。
 「添加外部游戏目录」直接引用所选目录（支持 data 包装目录），不复制；存档和运行文件写入引用目录。
 同模式重复添加沿用条目，复制与外部引用可分别管理。外部目录移动或丢失时需重新添加。
 旧索引默认按管理副本读取，损坏索引仍保留并禁止修改。

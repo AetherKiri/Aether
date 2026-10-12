@@ -53,6 +53,14 @@ final class ShellModel: ObservableObject {
     @Published var renameTitle = ""
     @Published var renameError: String?
     @Published var removeGame: LibraryGame?
+    /// Online cover lookup. Injected so tests can supply a fake; the real one
+    /// only runs on an explicit user action and sends just the title.
+    var coverSearch: CoverSearchProviding = VNDBCoverSearch()
+    var coverImageLoader: CoverImageLoading = URLSessionCoverImageLoader()
+    @Published var showCoverSearch = false
+    @Published private(set) var coverSearchBusy = false
+    @Published private(set) var coverCandidates: [CoverCandidate] = []
+    @Published var coverSearchError: String?
     @Published var confirmReturn = false { didSet { syncGameInput() } }
     @Published var confirmRestart = false { didSet { syncGameInput() } }
     @Published var showSettings = false { didSet {
@@ -85,10 +93,10 @@ final class ShellModel: ObservableObject {
     private var videoIndexURL: URL { repository.root.appendingPathComponent("video-library.json") }
     private var mediaProgress: MediaProgressStore { MediaProgressStore(url: repository.root.appendingPathComponent("media-progress.json")) }
 
-    init() {
+    init(root overrideRoot: URL? = nil) {
         let defaults = UserDefaults.standard
         preferencePrefix = ProcessInfo.processInfo.environment["AETHER_HOST_LIBRARY_ROOT"].map { $0 + "::shell." } ?? "shell."
-        let root = ProcessInfo.processInfo.environment["AETHER_HOST_LIBRARY_ROOT"].map {
+        let root = overrideRoot ?? ProcessInfo.processInfo.environment["AETHER_HOST_LIBRARY_ROOT"].map {
             URL(fileURLWithPath: $0, isDirectory: true)
         } ?? FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
             .appendingPathComponent("Aether", isDirectory: true)
@@ -408,6 +416,65 @@ final class ShellModel: ObservableObject {
         guard canEditCover, let game = selectedGame else { return }
         do { games = try repository.clearCover(game.id, existing: games) }
         catch let failure { error = friendlyError(failure) }
+    }
+
+    /// Starts an explicit online cover lookup for the selected game. Only the
+    /// display title is sent to the cover service.
+    func beginCoverSearch() {
+        guard canEditCover else { return }
+        Task { await performCoverSearch() }
+    }
+
+    /// Runs the lookup and publishes the result. Only the display title leaves
+    /// the device.
+    func performCoverSearch() async {
+        guard let game = selectedGame else { return }
+        coverCandidates = []
+        coverSearchError = nil
+        coverSearchBusy = true
+        showCoverSearch = true
+        let provider = coverSearch
+        let title = game.displayTitle
+        do {
+            let results = try await provider.search(title: title)
+            coverCandidates = results
+            if results.isEmpty { coverSearchError = text("coverSearchEmpty") }
+        } catch {
+            coverSearchError = text("coverSearchFailed")
+        }
+        coverSearchBusy = false
+    }
+
+    func applyCoverCandidate(_ candidate: CoverCandidate) {
+        Task { await performCoverApply(candidate) }
+    }
+
+    /// Downloads a chosen candidate into the host cover cache and points the
+    /// game at it. A failure keeps the current cover.
+    @discardableResult
+    func performCoverApply(_ candidate: CoverCandidate) async -> Bool {
+        guard let game = selectedGame else { return false }
+        do {
+            let data = try await coverImageLoader.load(candidate.imageURL)
+            let url = try cacheCoverImage(data, identifier: candidate.id)
+            games = try repository.setCover(game.id, url: url, existing: games)
+            showCoverSearch = false
+            coverCandidates = []
+            return true
+        } catch {
+            coverSearchError = text("coverSearchFailed")
+            return false
+        }
+    }
+
+    private func cacheCoverImage(_ data: Data, identifier: String) throws -> URL {
+        let directory = repository.root.appendingPathComponent("Covers", isDirectory: true)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        let safe = identifier.filter { $0.isLetter || $0.isNumber || $0 == "-" }
+        let name = safe.isEmpty ? UUID().uuidString : safe
+        let url = directory.appendingPathComponent("vndb-\(name).jpg", isDirectory: false)
+        try data.write(to: url, options: .atomic)
+        return url
     }
 
     func beginRename(_ game: LibraryGame) {

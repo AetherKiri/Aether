@@ -59,6 +59,7 @@ targets:
       - path: {q(root / 'apps/apple_host/Tests/FrameEnhancementTests.swift')}
       - path: {q(root / 'apps/apple_host/Tests/LegalAcceptanceTests.swift')}
       - path: {q(root / 'apps/apple_host/Tests/BuiltinDemoTests.swift')}
+      - path: {q(root / 'apps/apple_host/Tests/CoverSearchTests.swift')}
     settings:
       base:
         ARCHS: arm64

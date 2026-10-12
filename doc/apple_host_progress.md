@@ -505,7 +505,7 @@
 31b. [ ] **两处兼容小项待查**：`new DMMCloud()` 报 `Invalid argument count`；`new Zlib().version()` 报成员不存在（可能只是探针写法/注册方式差异）
 32. [ ] **内核后续：内存可观测（借鉴 `MemoryDesign.md`）**：分配头带 tag + `AllocTagScope` 标签栈，让"谁吃掉了内存"可回答；当前只有粗粒度 `engine_get_memory_stats`
 
-33. [ ] **产品 UI/设置完整对齐**：调查 P0 已完成；P1核心、P2集合/详情与四主题已接入，完整CUA/无障碍验收待补；P3a–P3d、P4a/P4b/P4d/P4e/P4f、P5a 画面增强与 P5b FSR1 EASU/RCAS、P6（macOS 首次使用协议门 + 内置 Demo）已接入并通过行为回归与真实CUA；P4 至此完成（调试控制台、场景测试入口、RFVP 编码仍按能力缺口记录），P5b 其余 Godot 算法移植与预设/自定义链、P6 其余（VNDB/渠道声明），P7 见 [实施计划](apple_host_ui_plan.md)（视频库暂停维护）。
+33. [ ] **产品 UI/设置完整对齐**：调查 P0 已完成；P1核心、P2集合/详情与四主题已接入，完整CUA/无障碍验收待补；P3a–P3d、P4a/P4b/P4d/P4e/P4f、P5a 画面增强与 P5b FSR1 EASU/RCAS、P6（macOS 首次使用协议门 + 内置 Demo + VNDB 在线封面）已接入并通过行为回归与真实CUA；P4 至此完成（调试控制台、场景测试入口、RFVP 编码仍按能力缺口记录），P5b 其余 Godot 算法移植与预设/自定义链、P6 其余（渠道声明），P7 见 [实施计划](apple_host_ui_plan.md)（视频库暂停维护）。
 
 ## 变更记录
 
@@ -679,3 +679,12 @@
 - 测试：`python3 tools/apple_host_settings_tests.py` 新增 `BuiltinDemoTests`（安装、幂等 reconcile、删除记忆、缺失资源降级）全通过；Debug 构建通过。
 - CUA：首启安装 Demo 并在库中显示「Aether Demo」、详情页徽标/删除按钮、确认删除后库为空且重启不恢复。证据：`out/apple_host/evidence/ui-p6-demo-cua/`。
 - 残余未验收：Demo 的多版本升级路径（当前只有 version 4）；VNDB 在线封面、渠道额外声明仍待 P6。
+
+### 2026-10-12：P6 续 VNDB 在线封面
+
+- Godot 用 `vndb_cover_resolver.gd` 后台把标题发给 VNDB 取首个结果封面；Apple 宿主此前没有在线封面。本片按 spec 的“单独可选联网动作”实现，隐私优先。
+- 详情页新增「搜索在线封面」按钮（显式触发，不做后台自动扫描）；`VNDBCoverSearch` POST 到 `https://api.vndb.org/kana/vn`，请求体只含标题与 `fields`，不含本机路径/存档。结果以候选列表（缩略图 + 标题 + VNDB id）展示。
+- 选择候选后下载封面缓存到库根 `Covers/vndb-<id>.jpg` 并 `setCover` 指向；失败保留当前封面并显示原因。`CoverSearchProviding`/`CoverImageLoading` 协议便于测试注入。
+- 测试：`python3 tools/apple_host_settings_tests.py` 新增 `CoverSearchTests`（请求形状/只发标题/空标题拒绝、响应解析丢弃无图行、注入式 search/apply 缓存与索引、失败保留）全通过；Debug 构建通过。
+- CUA：真实 VNDB 搜索「Aether Demo」→ 选候选 → 缓存 `Covers/vndb-v21873.jpg`（18KB）→ library.json coverPath 指向它 → 详情页出现清除封面。证据：`out/apple_host/evidence/ui-p6-vndb-cua/`。
+- 残余未验收：只提供每查询的首个候选（与 Godot 一致）；Godot 的后台自动查询刻意未镜像；渠道额外声明仍待 P6。

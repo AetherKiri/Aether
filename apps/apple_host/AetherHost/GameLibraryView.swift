@@ -50,6 +50,49 @@ struct GameLibraryView: View {
     }
 }
 
+struct CoverSearchView: View {
+    @Environment(\.shellPalette) private var palette
+    @ObservedObject var model: ShellModel
+    var body: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            Text(model.text("coverSearch")).font(.title2.bold())
+            Text(model.text("coverSearchHelp")).font(.callout).foregroundStyle(palette.secondary.color)
+            if model.coverSearchBusy {
+                HStack(spacing: 8) { ProgressView().controlSize(.small); Text(model.text("coverSearchBusy")) }
+                Spacer()
+            } else if let error = model.coverSearchError {
+                Text(error).foregroundStyle(palette.danger.color)
+                Spacer()
+            } else {
+                ScrollView {
+                    LazyVStack(alignment: .leading, spacing: 8) {
+                        ForEach(model.coverCandidates) { candidate in
+                            Button { model.applyCoverCandidate(candidate) } label: {
+                                HStack(spacing: 12) {
+                                    AsyncImage(url: candidate.thumbnailURL) { image in
+                                        image.resizable().scaledToFill()
+                                    } placeholder: { Color.secondary.opacity(0.15) }
+                                    .frame(width: 64, height: 88)
+                                    .clipShape(RoundedRectangle(cornerRadius: 6))
+                                    VStack(alignment: .leading, spacing: 4) {
+                                        Text(candidate.title).font(.headline)
+                                        Text(candidate.id).font(.caption).foregroundStyle(palette.secondary.color)
+                                    }
+                                    Spacer()
+                                }.contentShape(Rectangle())
+                            }.buttonStyle(.plain)
+                        }
+                    }
+                }
+            }
+            HStack {
+                Spacer()
+                Button(model.text("cancel")) { model.showCoverSearch = false }.keyboardShortcut(.cancelAction)
+            }
+        }.padding(24).frame(width: 560, height: 520)
+    }
+}
+
 struct GameCover: View {
     @Environment(\.shellPalette) private var palette
     @ObservedObject var model: ShellModel
@@ -91,11 +134,13 @@ struct GameDetailView: View {
                 }
             }.padding(32).frame(maxWidth: 1120, alignment: .leading).frame(maxWidth: .infinity, alignment: .top)
         }
+        .sheet(isPresented: $model.showCoverSearch) { CoverSearchView(model: model) }
     }
     private var coverEditor: some View {
         VStack(alignment: .leading, spacing: 12) {
             GameCover(model: model, game: game).aspectRatio(0.72, contentMode: .fit)
             Button(model.text("setCover")) { model.chooseCover() }.disabled(!model.canEditCover)
+            Button(model.text("coverSearch")) { model.beginCoverSearch() }.disabled(!model.canEditCover)
             if model.coverImage(for: game) != nil {
                 Button(model.text("clearCover")) { model.clearSelectedCover() }.disabled(!model.canEditCover)
             }

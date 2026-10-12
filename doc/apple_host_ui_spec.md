@@ -93,7 +93,7 @@ Apple 官方参考：[Settings](https://developer.apple.com/design/human-interfa
 | 内置Demo | 多语言Demo安装、版本与删除记忆 | P6 已接入：打包 `data.xp3`，首启安装到库、详情页显示「内置 Demo」并可「删除内置 Demo」，删除记忆使重启不再恢复 | 与 Godot 的 `BuiltinDemo` 对齐；升级路径（多版本）待后续 demo 版本 |
 | 在线封面 | VNDB请求、候选标题、索引 | P6 已接入：详情页「搜索在线封面」显式触发，只发标题、候选缩略图选择、封面缓存到库根 `Covers/`、失败保留当前封面 | 与 Godot 的 VNDB 语义对齐；本实现不做后台自动扫描（隐私优先） |
 | 主页 | 总时长、已玩、近周、最近5款、时长排行、活动/里程碑 | P4a 已迁移 `_dashboard_stats` 与主页内容 | 会话时长只统计成功启动的运行时间；周活动与七天足迹按lastPlayed推导，非完整历史日记 |
-| 调试控制台 | 概览、事件、日志暂停/过滤、输入、插件、问题标记及临时工具 | P4 已接入可停靠诊断面板（概览/性能/输入/插件/日志五标签，复用现有数据）；问题标记与快照/截图/自检动作仍在 backlog | 可停靠诊断面板，复用数据而非把原面板截成图片；P4 |
+| 调试控制台 | 概览、事件、日志暂停/过滤、输入、插件、问题标记及临时工具 | P4 已接入可停靠诊断面板（五标签）+ 问题标记（上限 8）+ 快照/截图/自检/复制摘要/导出动作；仅慢帧捕获仍在 backlog | 可停靠诊断面板，复用数据而非把原面板截成图片；P4 |
 | 游戏控制 | 多模式虚拟控制、菜单/调试/输入、平台适配 | 固定按钮条，文本/全屏/日志/重启已有 | 优先桌面输入与可见操作；模式及焦点状态独立；P4 |
 | 视频库 | 搜索、视频卡片、位置/总时长/进度、导入引导、移除确认 | 基础索引和位置；无同等搜索/时长/移除确认 | 网格/列表、真实进度、移除前确认并清理对应记忆；P2 |
 | 视频播放器 | seek、倍速/字幕/音量、播放进度、控件自动收起及手势 | 基础控件+字幕选择持久化已有，控件固定占位 | 桌面悬停显示/自动收起、全屏入口、键盘、无障碍；P4 |
@@ -373,3 +373,14 @@ Godot 有可停靠的调试控制台（概览/事件/日志/输入/插件 + 问�
 - 五个标签：**概览**（status、请求/实际 renderer、presentation、frame/output 尺寸、fpsLimit、tick、回退与失败原因）、**性能**（与覆盖层同源的英文技术行：Backend/api/texture/frame/out、tick/render/presentation 速率并注明“均不等于屏幕扫描 FPS”、frame ms+pacing、fallback/errors、引擎内存、frame-work p50/p95/max、pacing dropped/coalesced/resets、会话 ticks/renders/presentations/play）、**输入**（控制模式、面板显隐、held、指针、文本输入/IME、全屏、运行时影片）、**插件**（插件加载模式、mock、当前游戏的运行时/入口/标记信号与真实 `engine_probe_runtime_provider` 结果、翻译可用性）、**日志**（运行日志 + 暂停 + 过滤）。
 - 面板打开时引擎即使关闭覆盖层也会刷新快照（`diagnosticsConsoleActive`），保证性能标签有实时数据；底部提供「复制摘要」与「导出诊断日志」。
 - 未迁移（保留在 backlog）：问题标记、快照/截图/自检动作、慢帧捕获。CUA 验证菜单开关、面板停靠与概览/性能/插件标签的真实数据。证据：`out/apple_host/evidence/ui-p4-console-cua/`。
+
+### 7.22 P4 续：控制台问题标记与动作
+
+Godot 控制台除标签外还有问题标记与快照/截图/自检等动作。本片补齐（慢帧捕获除外）：
+
+- **问题标记**：标记类型选择器使用 Godot 的 `MARKER_TYPES`（user_issue/slow_frame/input_issue/visual_issue/audio_issue/loading_issue），「标记问题」把 `marker.N` 写入诊断 session；`DiagnosticStore.markIssue` 与 Godot 一样上限 8（`MAX_MARKERS`），达上限返回 false 并提示。
+- **保存快照**：把当前状态与完整性能明细写成本地 JSON（`snapshot-<时间>.json`），强制包含 detail 行，不受覆盖层设置影响。
+- **截图**：把当前帧写成 PNG（`screenshot-<时间>.png`）。
+- **自检**：按 Godot 的 session/engine/renderer/storage 四项检查，记录到 session 并写日志；控制台显示结果行。
+- 测试：`DiagnosticTests` 增加 marker cap（8 个接受、第 9 个拒绝、重载后仍在）。CUA 验证四项动作真实产出：`session.json` 的 `marker.0`/`selfCheck`、`snapshot-*.json`（含完整 metrics）、`screenshot-*.png`（304 KB）。证据：`out/apple_host/evidence/ui-p4-console-actions/`。
+- 仍未迁移：慢帧捕获（`capture_slow_frame_requested`）——Apple 宿主暂无 arming 钩子。

@@ -6,7 +6,8 @@ enum DiagnosticTests {
         profileCatalog()
         try settingsMigrationAndValidation(root: root)
         overlayComposition()
-        print("PASS: diagnostic profile catalog/availability, schema v9 migration and overlay metric composition")
+        try markerCap()
+        print("PASS: diagnostic profile catalog/availability, schema v9 migration, overlay metric composition and marker cap")
     }
 
     private static func profileCatalog() {
@@ -167,5 +168,23 @@ enum DiagnosticTests {
         systemFree.memory.headroomBytes = 0
         systemFree.memory.systemFreeBytes = 8 * 1_073_741_824
         precondition(DiagnosticOverlay.lines(systemFree).joined(separator: "\n").contains("System free 8.0 GB"))
+    }
+
+    /// Godot caps the session at `DiagnosticSession.MAX_MARKERS` (8).
+    private static func markerCap() throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("diag-markers-" + UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let store = DiagnosticStore(root: root)
+        precondition(store.markerCount == 0)
+        for index in 0..<DiagnosticStore.maximumMarkers {
+            precondition(store.markIssue("issue-\(index)"), "marker \(index) was rejected")
+        }
+        precondition(store.markerCount == DiagnosticStore.maximumMarkers)
+        precondition(!store.markIssue("overflow"), "the marker cap must reject extra markers")
+        precondition(store.markerCount == DiagnosticStore.maximumMarkers)
+        precondition(store.metadata["marker.0"]?.contains("issue-0") == true)
+        // Markers survive a reload from session.json.
+        let reloaded = DiagnosticStore(root: root)
+        precondition(reloaded.markerCount == DiagnosticStore.maximumMarkers)
     }
 }

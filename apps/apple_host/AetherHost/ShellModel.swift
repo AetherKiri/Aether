@@ -662,6 +662,84 @@ final class ShellModel: ObservableObject {
         if !NSWorkspace.shared.open(url) { error = url.absoluteString }
     }
 
+    // MARK: - Diagnostics console actions (mirrors Godot's debug console)
+
+    /// Records a problem marker; Godot caps the session at 8 markers.
+    @discardableResult
+    func markDiagnosticIssue(_ label: String) -> Bool {
+        engine.diagnostics.markIssue(label)
+    }
+
+    /// Writes a JSON snapshot of the live console data next to the diagnostics logs.
+    func captureDiagnosticSnapshot() -> URL? {
+        var snapshot = engine.performanceSnapshot()
+        // The console is an explicit diagnostics surface; always include the
+        // full detail lines rather than gating on the overlay setting.
+        snapshot.mode = "detail"
+        let payload: [String: Any] = [
+            "captured": ISO8601DateFormatter().string(from: Date()),
+            "status": engine.status,
+            "rendererRequested": engine.renderState.requested.rawValue,
+            "renderer": engine.renderState.effective?.rawValue ?? "uninitialized",
+            "presentation": engine.renderState.presentation?.rawValue ?? "uninitialized",
+            "frame": "\(Int(engine.frameSize.width))x\(Int(engine.frameSize.height))",
+            "output": "\(Int(engine.outputFrameSize.width))x\(Int(engine.outputFrameSize.height))",
+            "fpsLimit": settings.fpsLimitOption,
+            "metrics": DiagnosticOverlay.lines(snapshot),
+        ]
+        let directory = engine.diagnostics.root
+        let url = directory.appendingPathComponent("snapshot-\(Self.stamp()).json")
+        do {
+            try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+            let data = try JSONSerialization.data(withJSONObject: payload, options: [.prettyPrinted, .sortedKeys])
+            try data.write(to: url, options: .atomic)
+            return url
+        } catch {
+            return nil
+        }
+    }
+
+    /// Saves the current frame as a PNG next to the diagnostics logs.
+    func captureDiagnosticScreenshot() -> URL? {
+        guard let image = engine.copyDiagnosticFrameImage(),
+              let data = NSBitmapImageRep(cgImage: image).representation(using: .png, properties: [:]) else {
+            return nil
+        }
+        let directory = engine.diagnostics.root
+        let url = directory.appendingPathComponent("screenshot-\(Self.stamp()).png")
+        do {
+            try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+            try data.write(to: url, options: .atomic)
+            return url
+        } catch {
+            return nil
+        }
+    }
+
+    /// Godot's self-check: session/engine/renderer/storage.
+    func runDiagnosticSelfCheck() -> String {
+        var checks = ["session=" + (engine.loopRunning ? "ok" : "failed"),
+                      "engine=" + (engine.renderState.active ? "ok" : "failed"),
+                      "renderer=" + (engine.renderState.effective != nil ? "ok" : "failed")]
+        let probe = engine.diagnostics.root.appendingPathComponent(".self-check")
+        var writable = false
+        do {
+            try FileManager.default.createDirectory(at: engine.diagnostics.root, withIntermediateDirectories: true)
+            try Data("ok".utf8).write(to: probe, options: .atomic)
+            try? FileManager.default.removeItem(at: probe)
+            writable = true
+        } catch {}
+        checks.append("storage=" + (writable ? "ok" : "failed"))
+        let summary = checks.joined(separator: ", ")
+        try? engine.diagnostics.update(["selfCheck": summary])
+        engine.log("diagnostic self-check: \(summary)")
+        return summary
+    }
+
+    private static func stamp() -> String {
+        ISO8601DateFormatter().string(from: Date()).replacingOccurrences(of: ":", with: "-")
+    }
+
     // MARK: - Local translation model (mirrors the Godot shell's settings row)
 
     var translationSettings: TranslationSettings { TranslationSettings(modelPath: translationModelPath) }

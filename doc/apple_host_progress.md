@@ -707,4 +707,5 @@
 - 五标签：概览（status/renderer/presentation/frame/output/fpsLimit/tick/回退）、性能（与覆盖层同源的技术行：Backend/api/texture/frame/out、tick/render/presentation 速率并注明不等于屏幕扫描 FPS、frame ms+pacing、fallback/errors、引擎内存、frame-work p50/p95/max、pacing dropped/coalesced/resets、会话 ticks/renders/presentations/play）、输入（控制模式/指针/IME/全屏/影片）、插件（加载模式 + 当前游戏运行时/入口/信号 + 真实 `engine_probe_runtime_provider` 结果 + 翻译可用性）、日志（暂停 + 过滤）。
 - 面板打开时引擎即使覆盖层关闭也刷新快照（`diagnosticsConsoleActive`）；底部提供「复制摘要」与「导出诊断日志」。
 - 测试：五语言 key 覆盖与既有套件全通过；Debug 构建通过。CUA 验证菜单开关、面板停靠与概览/性能/插件标签真实数据（如 `runtime kirikiri entry data.xp3 provider kirikiri = 100`）。证据：`out/apple_host/evidence/ui-p4-console-cua/`。
-- 残余未验收：问题标记、快照/截图/自检动作、慢帧捕获；场景测试入口与 RFVP 编码仍待 P4。
+- 追加：问题标记（Godot `MARKER_TYPES`，上限 8）+ 保存快照（JSON，含完整 metrics）+ 截图（PNG）+ 自检（session/engine/renderer/storage，记录到 session）已接入；`DiagnosticTests` 覆盖 marker cap（8 接受、第 9 拒绝、重载仍在）。CUA 验证四项动作真实产出。证据：`out/apple_host/evidence/ui-p4-console-actions/`。
+- 残余未验收：慢帧捕获（`capture_slow_frame_requested`）；场景测试入口与 RFVP 编码仍待 P4。

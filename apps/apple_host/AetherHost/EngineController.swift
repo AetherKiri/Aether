@@ -214,6 +214,8 @@ final class EngineController: ObservableObject {
     /// Throttled snapshot for the overlay; refreshed from the tick loop so the
     /// view never owns its own timer (which the per-tick publishes would drop).
     @Published private(set) var overlaySnapshot = PerformanceSnapshot()
+    /// The most recent frame for the diagnostics console screenshot action.
+    func copyDiagnosticFrameImage() -> CGImage? { session.copyFrameImage() ?? frameImage }
     private(set) var loopRunning = false
 
     let diagnostics: DiagnosticStore = {

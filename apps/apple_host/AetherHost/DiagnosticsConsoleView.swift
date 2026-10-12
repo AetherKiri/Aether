@@ -13,7 +13,11 @@ struct DiagnosticsConsoleView: View {
     @State private var paused = false
     @State private var filter = ""
     @State private var frozenLog = ""
-    @State private var copied = false
+    @State private var markerType = DiagnosticsConsoleView.markerTypes[0]
+    @State private var result: String?
+
+    /// Godot's `DebugConsole.MARKER_TYPES`.
+    static let markerTypes = ["user_issue", "slow_frame", "input_issue", "visual_issue", "audio_issue", "loading_issue"]
 
     enum ConsoleTab: String, CaseIterable, Identifiable {
         case overview, performance, input, plugins, log
@@ -136,14 +140,39 @@ struct DiagnosticsConsoleView: View {
     }
 
     private var actions: some View {
-        HStack(spacing: 10) {
-            Button(model.text("consoleCopySummary")) { copySummary() }
-            Button(model.text("exportDiagnostics")) { model.exportDiagnostics() }
-            if copied {
-                Text(model.text("consoleCopied")).font(.caption).foregroundStyle(palette.secondary.color)
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 8) {
+                Picker("", selection: $markerType) {
+                    ForEach(Self.markerTypes, id: \.self) { type in
+                        Text(type.replacingOccurrences(of: "_", with: " ")).tag(type)
+                    }
+                }.labelsHidden().frame(width: 150)
+                Button(model.text("consoleMark")) {
+                    result = model.markDiagnosticIssue(markerType)
+                        ? model.text("consoleMarked") + " \(markerType)"
+                        : model.text("consoleMarkerLimit")
+                }
+                Spacer()
             }
-            Spacer()
+            HStack(spacing: 10) {
+                Button(model.text("consoleSnapshot")) { report(model.captureDiagnosticSnapshot()) }
+                Button(model.text("consoleScreenshot")) { report(model.captureDiagnosticScreenshot()) }
+                Button(model.text("consoleSelfCheck")) {
+                    result = model.runDiagnosticSelfCheck()
+                }
+                Button(model.text("consoleCopySummary")) { copySummary() }
+                Button(model.text("exportDiagnostics")) { model.exportDiagnostics() }
+            }
+            if let result {
+                Text(result).font(.caption).foregroundStyle(palette.secondary.color)
+                    .lineLimit(2).truncationMode(.middle)
+            }
         }
+    }
+
+    private func report(_ url: URL?) {
+        guard let url else { result = model.text("consoleFailed"); return }
+        result = model.text("consoleSaved") + " " + url.lastPathComponent
     }
 
     private func copySummary() {
@@ -155,6 +184,6 @@ struct DiagnosticsConsoleView: View {
         ].joined(separator: "\n") + "\n" + DiagnosticOverlay.lines(engine.overlaySnapshot).joined(separator: "\n")
         NSPasteboard.general.clearContents()
         NSPasteboard.general.setString(summary, forType: .string)
-        copied = true
+        result = model.text("consoleCopied")
     }
 }

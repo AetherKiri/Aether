@@ -250,7 +250,8 @@ P3a重点验证部分Metal激活失败后的资源清理：不得在已打开游
 - [x] 五标签：概览（renderer/presentation/frame/output/fpsLimit/tick/回退）、性能（与覆盖层同源的技术行 + pacing/session/cache）、输入（控制模式/指针/IME/全屏/影片）、插件（加载模式 + 当前游戏运行时/入口/信号 + 真实 provider probe + 翻译可用性）、日志（暂停 + 过滤）。
 - [x] 面板打开时引擎在覆盖层关闭的情况下也刷新快照（`diagnosticsConsoleActive`）；底部「复制摘要」写入剪贴板，「导出诊断日志」复用既有导出。
 - [x] Debug 构建通过；CUA 验证菜单开关、面板停靠与概览/性能/插件标签真实数据。证据：`out/apple_host/evidence/ui-p4-console-cua/`。
-- [ ] backlog：问题标记、快照/截图/自检动作、慢帧捕获。
+- [x] 问题标记（Godot `MARKER_TYPES`，上限 `MAX_MARKERS=8`）+ 保存快照（JSON，含完整 metrics）+ 截图（PNG）+ 自检（session/engine/renderer/storage，记录到 session）；`DiagnosticTests` 覆盖 marker cap。CUA 验证四项动作真实产出。证据：`out/apple_host/evidence/ui-p4-console-actions/`。
+- [ ] backlog：慢帧捕获（`capture_slow_frame_requested`）。
 
 ## P5a实施记录：画面增强（对比度自适应锐化）
 

@@ -2,6 +2,8 @@ import Foundation
 
 // Bounded local evidence; reports include only known logs, never game assets or saves.
 final class DiagnosticStore {
+    /// Godot's `DiagnosticSession.MAX_MARKERS`.
+    static let maximumMarkers = 8
     let root: URL
     let limit: Int
     private(set) var metadata: [String: String]
@@ -41,6 +43,24 @@ final class DiagnosticStore {
         defer { try? handle.close() }
         try handle.seekToEnd()
         try handle.write(contentsOf: data)
+    }
+
+    var markerCount: Int {
+        (0..<Self.maximumMarkers).filter { metadata["marker.\($0)"] != nil }.count
+    }
+
+    /// Records a problem marker, mirroring Godot's `mark_issue` (capped at
+    /// MAX_MARKERS). Returns false when the cap is reached or the write fails.
+    @discardableResult
+    func markIssue(_ label: String, at date: Date = Date()) -> Bool {
+        let count = markerCount
+        guard count < Self.maximumMarkers else { return false }
+        do {
+            try update(["marker.\(count)": "\(formatter.string(from: date)) \(label)"])
+            return true
+        } catch {
+            return false
+        }
     }
 
     private func tail(_ url: URL) -> String {

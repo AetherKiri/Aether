@@ -237,6 +237,10 @@ adaptive_sharpen|fsr1_rcas|fsr1_easu --enhancement-amount 0.5` 做基准覆盖�
 `{version, acceptedAt}` 写到库根 `legal-acceptance.json`（与可撤销的设置草稿分开），
 拒绝在 macOS 退出应用。非交互测试/基准入口用 debug-only 的
 `AETHER_HOST_BYPASS_LEGAL_GATE=1` 绕过（对应 Godot 的 `AETHERKIRI_BYPASS_LEGAL_GATE`）。
+首次运行还会把打包的多语言 Demo（`data.xp3`，与 Godot 共用同一份
+`builtin_demos/aetherkiri-kag3` 资源）安装进库：复制到
+`<库根>/builtin_games/aetherkiri-demo/` 并在 `aetherkiri_builtin_demo.cfg` 记录状态。
+详情页显示「内置 Demo」徽标与「删除内置 Demo」，删除会清除安装目录并记住，重启不再恢复。
 「添加外部游戏目录」直接引用所选目录（支持 data 包装目录），不复制；存档和运行文件写入引用目录。
 同模式重复添加沿用条目，复制与外部引用可分别管理。外部目录移动或丢失时需重新添加。
 旧索引默认按管理副本读取，损坏索引仍保留并禁止修改。

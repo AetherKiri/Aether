@@ -163,12 +163,12 @@ struct ContentView: View {
                 }
             }.padding(24).frame(width: 400)
         }
-        .confirmationDialog(model.text("remove"), isPresented: Binding(
+        .confirmationDialog(model.text(model.removeGameIsBuiltin ? "deleteBuiltin" : "remove"), isPresented: Binding(
             get: { model.removeGame != nil }, set: { if !$0 { model.removeGame = nil } }
         ), titleVisibility: .visible) {
-            Button(model.text("remove"), role: .destructive) { model.removeSelectedGame() }
+            Button(model.text(model.removeGameIsBuiltin ? "deleteBuiltin" : "remove"), role: .destructive) { model.removeSelectedGame() }
             Button(model.text("cancel"), role: .cancel) { model.removeGame = nil }
-        } message: { Text(model.text("removeHelp")) }
+        } message: { Text(model.text(model.removeGameIsBuiltin ? "deleteBuiltinBody" : "removeHelp")) }
         .confirmationDialog(model.text("unsavedTitle"), isPresented: $model.confirmDiscardSettings, titleVisibility: .visible) {
             Button(model.text("saveLeave")) { model.resolveSettingsNavigation(save: true) }
             Button(model.text("discardLeave"), role: .destructive) { model.resolveSettingsNavigation(save: false) }

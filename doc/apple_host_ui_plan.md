@@ -1,7 +1,7 @@
 # Apple 宿主 UI 与设置对齐实施计划
 
 - 2026-10-11，依据 [产品 UI spec](apple_host_ui_spec.md)。
-- 状态：P0调查完成；P1核心实现与行为测试已接入，完整CUA验收待补；P2集合/详情及四主题已接入，完整视觉/无障碍验收待补；P3a–P3d、P4a/P4b/P4d/P4e/P4f 均已实现并通过行为回归与真实CUA；P5a（对比度自适应锐化）与 P5b（FSR1 RCAS + FSR1 EASU，AMD MIT 参考 + CPU 对照 + 缓存键修复）已实现并通过行为回归、真实 smoke 与设置页/启动路径 CUA；P6 首片（macOS 首次使用协议门）已实现并通过行为回归与真实 CUA；P5b 其余 Godot 算法移植与预设/自定义链、P6 其余（Demo/VNDB/渠道声明）与 P7 尚未实施（视频库暂停维护）。阶段按依赖排序，每轮只提交已验证的完整切片。
+- 状态：P0调查完成；P1核心实现与行为测试已接入，完整CUA验收待补；P2集合/详情及四主题已接入，完整视觉/无障碍验收待补；P3a–P3d、P4a/P4b/P4d/P4e/P4f 均已实现并通过行为回归与真实CUA；P5a（对比度自适应锐化）与 P5b（FSR1 RCAS + FSR1 EASU，AMD MIT 参考 + CPU 对照 + 缓存键修复）已实现并通过行为回归、真实 smoke 与设置页/启动路径 CUA；P6 已接入 macOS 首次使用协议门与内置 Demo（打包安装、详情页删除、删除记忆）并通过行为回归与真实 CUA；P5b 其余 Godot 算法移植与预设/自定义链、P6 其余（VNDB/渠道声明）与 P7 尚未实施（视频库暂停维护）。阶段按依赖排序，每轮只提交已验证的完整切片。
 - 目标是修正产品结构并补齐真实功能；不在一轮中把所有缺项画成无效果控件。
 
 ## P0：调查与规范（本轮）
@@ -277,4 +277,13 @@ P3a重点验证部分Metal激活失败后的资源清理：不得在已打开游
 - [x] `python3 tools/apple_host_settings_tests.py` 通过：新增 `LegalAcceptanceTests`（版本门、持久化、损坏文件、过期版本、debug 绕过）；Debug 构建通过。
 - [x] CUA 验证：全新库弹门并显示五语言协议正文、同意后写 `legal-acceptance.json`、重开不再弹门。证据：`out/apple_host/evidence/ui-p6-legal-cua/`；30 秒软件回归 smoke 通过（工具带 bypass）。证据：`out/apple_host/evidence/ui-p6-legal-smoke/`。
 
-下一切片：P6 其余（内置 Demo 打包安装与移除记忆、VNDB 在线封面、渠道额外声明）与 P5b 其余算法/预设链并行评估；视频库/播放器暂停维护。
+## P6实施记录：内置 Demo
+
+- [x] `BuiltinDemo` 对齐 `scripts/builtin_demo.gd`：`id="aetherkiri-kag3-demo"`、`version=4`，把打包的 `data.xp3` 复制到 `<库根>/builtin_games/aetherkiri-demo/`，状态写 `<库根>/aetherkiri_builtin_demo.cfg`。
+- [x] 启动时幂等 reconcile 入库（保留既有条目的游玩时长/封面/标题）；删除写 `removed=true` 并删安装目录，重启不再恢复。库条目新增只读 `builtinId`/`builtinVersion`（旧索引兼容）。
+- [x] 详情页对内置 Demo 显示「内置 Demo」徽标与「删除内置 Demo」（而非「从游戏库移除」），确认框写明删除后不恢复；五语言文案。
+- [x] `data.xp3` 随 App 打包（`project.yml`），与 Godot 共用同一资源；非交互入口走 bypass。
+- [x] 测试：`BuiltinDemoTests`（安装、幂等 reconcile、删除记忆、缺失资源降级）全通过；Debug 构建通过。
+- [x] CUA：首启安装 17MB Demo、详情页徽标/删除、确认删除后库为空且重启不恢复。证据：`out/apple_host/evidence/ui-p6-demo-cua/`。
+
+下一切片：P6 其余（VNDB 在线封面、渠道额外声明）与 P5b 其余算法/预设链并行评估；视频库/播放器暂停维护。

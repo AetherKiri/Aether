@@ -16,6 +16,7 @@ struct SettingsBehaviorTests {
         try GameRuntimeTests.run(root: root)
         try FrameEnhancementTests.run(root: root)
         try LegalAcceptanceTests.run(root: root)
+        try BuiltinDemoTests.run(root: root)
         let model = ShellModel()
         try checkCollections(model, root: root)
         try checkPlayTimeAccumulation(model, root: root)

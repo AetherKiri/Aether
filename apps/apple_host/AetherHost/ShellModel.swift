@@ -74,6 +74,7 @@ final class ShellModel: ObservableObject {
     private var pendingSettingsCancel: (() -> Void)?
     private let settingsStore: SettingsStore
     private let legalAcceptance: LegalAcceptanceStore
+    private let builtinDemo: BuiltinDemo
     /// First-use legal agreement gate; kept separate from the settings draft.
     @Published private(set) var legalGateRequired = false
     @Published private(set) var settingsAvailable = true
@@ -94,6 +95,7 @@ final class ShellModel: ObservableObject {
         repository = GameLibrary(root: root)
         settingsStore = SettingsStore(url: root.appendingPathComponent("settings.json"))
         legalAcceptance = LegalAcceptanceStore(url: root.appendingPathComponent("legal-acceptance.json"))
+        builtinDemo = BuiltinDemo(root: root)
         let initial: HostSettings
         var settingsFailure: Error?
         do { initial = try settingsStore.load(defaults: defaults, legacyPrefix: preferencePrefix) }
@@ -110,7 +112,10 @@ final class ShellModel: ObservableObject {
             self.error = text("settingsLoadFailed") + "\n" + settingsFailure.localizedDescription
         }
         do {
-            games = try repository.backfillDefaultCovers(try repository.load())
+            let loaded = try repository.backfillDefaultCovers(try repository.load())
+            let reconciled = builtinDemo.reconciled(loaded)
+            if reconciled != loaded { try? repository.save(reconciled) }
+            games = reconciled
             selection = games.first?.id
             videos = loadVideos()
             selectedVideoID = videos.first?.id
@@ -421,12 +426,19 @@ final class ShellModel: ObservableObject {
     func removeSelectedGame() {
         guard canImport, let game = removeGame else { return }
         do {
+            if builtinDemo.isGame(game) {
+                guard builtinDemo.remove() else { self.error = text("builtinDeleteFailed"); return }
+            }
             games = try repository.remove(game.id, existing: games)
             if selection == game.id { selection = nil }
             if gameDetailID == game.id { gameDetailID = nil }
             removeGame = nil
         } catch { self.error = friendlyError(error) }
     }
+
+    /// The bundled demo offers "delete" rather than "remove".
+    func isBuiltinDemo(_ game: LibraryGame) -> Bool { builtinDemo.isGame(game) }
+    var removeGameIsBuiltin: Bool { removeGame.map { builtinDemo.isGame($0) } ?? false }
 
     func play() {
         guard canPlay, let game = selectedGame else { return }

@@ -505,7 +505,7 @@
 31b. [ ] **两处兼容小项待查**：`new DMMCloud()` 报 `Invalid argument count`；`new Zlib().version()` 报成员不存在（可能只是探针写法/注册方式差异）
 32. [ ] **内核后续：内存可观测（借鉴 `MemoryDesign.md`）**：分配头带 tag + `AllocTagScope` 标签栈，让"谁吃掉了内存"可回答；当前只有粗粒度 `engine_get_memory_stats`
 
-33. [ ] **产品 UI/设置完整对齐**：调查 P0 已完成；P1核心、P2集合/详情与四主题已接入，完整CUA/无障碍验收待补；P3a–P3d、P4a/P4b/P4d/P4e/P4f、P5a 画面增强与 P5b FSR1 EASU/RCAS、P6 首片（macOS 首次使用协议门）已接入并通过行为回归与真实CUA；P4 至此完成（调试控制台、场景测试入口、RFVP 编码仍按能力缺口记录），P5b 其余 Godot 算法移植与预设/自定义链、P6 其余（Demo/VNDB/渠道声明），P7 见 [实施计划](apple_host_ui_plan.md)（视频库暂停维护）。
+33. [ ] **产品 UI/设置完整对齐**：调查 P0 已完成；P1核心、P2集合/详情与四主题已接入，完整CUA/无障碍验收待补；P3a–P3d、P4a/P4b/P4d/P4e/P4f、P5a 画面增强与 P5b FSR1 EASU/RCAS、P6（macOS 首次使用协议门 + 内置 Demo）已接入并通过行为回归与真实CUA；P4 至此完成（调试控制台、场景测试入口、RFVP 编码仍按能力缺口记录），P5b 其余 Godot 算法移植与预设/自定义链、P6 其余（VNDB/渠道声明），P7 见 [实施计划](apple_host_ui_plan.md)（视频库暂停维护）。
 
 ## 变更记录
 
@@ -669,3 +669,13 @@
 - 测试：`python3 tools/apple_host_settings_tests.py` 新增 `LegalAcceptanceTests`（版本门、持久化、损坏文件、过期版本、debug 绕过）全通过；Debug 构建通过。
 - CUA：全新库弹门并显示五语言协议正文、同意后写 `legal-acceptance.json`、重开不再弹门；30 秒软件回归 smoke（工具带 bypass）通过。证据：`out/apple_host/evidence/ui-p6-legal-cua/`、`ui-p6-legal-smoke/`。
 - 残余未验收：渠道额外声明（App Store statement）与「已拒绝」页面属 iOS/M4；内置 Demo、VNDB 在线封面仍待 P6。
+
+### 2026-10-12：P6 续 内置 Demo
+
+- Godot 首次运行会把打包的多语言 Demo 安装进库，删除后记住、不再恢复；Apple 宿主此前只能手动导入。本片补齐（对齐 `scripts/builtin_demo.gd`）。
+- `BuiltinDemo`：`id="aetherkiri-kag3-demo"`、`version=4`；把打包的 `data.xp3` 复制到 `<库根>/builtin_games/aetherkiri-demo/data.xp3`，状态写 `<库根>/aetherkiri_builtin_demo.cfg`（`{removed, installedVersion, installedSize}`）。启动时幂等 reconcile（保留既有条目游玩时长/封面/标题）；删除写 `removed=true` 并删安装目录，重启不再恢复。
+- 库条目新增只读 `builtinId`/`builtinVersion`（旧索引解码为 nil）；详情页对内置 Demo 显示「内置 Demo」徽标与「删除内置 Demo」，确认框写明删除后不恢复；五语言文案。
+- `data.xp3`（17MB）随 App 打包（`project.yml`），与 Godot 共用同一份 Demo 资源。
+- 测试：`python3 tools/apple_host_settings_tests.py` 新增 `BuiltinDemoTests`（安装、幂等 reconcile、删除记忆、缺失资源降级）全通过；Debug 构建通过。
+- CUA：首启安装 Demo 并在库中显示「Aether Demo」、详情页徽标/删除按钮、确认删除后库为空且重启不恢复。证据：`out/apple_host/evidence/ui-p6-demo-cua/`。
+- 残余未验收：Demo 的多版本升级路径（当前只有 version 4）；VNDB 在线封面、渠道额外声明仍待 P6。

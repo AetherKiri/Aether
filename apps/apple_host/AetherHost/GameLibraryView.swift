@@ -33,7 +33,7 @@ struct GameLibraryView: View {
                         }.buttonStyle(.plain).accessibilityLabel(game.displayTitle)
                             .contextMenu {
                                 Button(model.text("rename")) { model.beginRename(game) }
-                                Button(model.text("remove"), role: .destructive) { model.removeGame = game }
+                                Button(model.text(model.isBuiltinDemo(game) ? "deleteBuiltin" : "remove"), role: .destructive) { model.removeGame = game }
                             }
                     }
                 }
@@ -161,8 +161,16 @@ struct GameDetailView: View {
                     if runtimeInspection.runtime == .rfvp {
                         Text(model.text("rfvpEncodingPending")).font(.caption).foregroundStyle(palette.secondary.color)
                     }
-                    Text(model.text(game.isExternal ? "externalStorage" : "managedStorage")).foregroundStyle(palette.secondary.color)
-                    if game.isExternal { Text(model.text("linkHelp")).font(.caption).foregroundStyle(palette.secondary.color) }
+                    HStack(spacing: 8) {
+                        Text(model.text(game.isExternal ? "externalStorage" : "managedStorage"))
+                        if game.isBuiltin {
+                            Text(model.text("builtinDemo")).font(.caption)
+                                .padding(.horizontal, 6).padding(.vertical, 2)
+                                .background(palette.accent.color.opacity(0.15),
+                                            in: RoundedRectangle(cornerRadius: 6))
+                        }
+                    }.foregroundStyle(palette.secondary.color)
+                    if game.isExternal && !game.isBuiltin { Text(model.text("linkHelp")).font(.caption).foregroundStyle(palette.secondary.color) }
                     if !FileManager.default.fileExists(atPath: model.repository.gameURL(game).path) {
                         Text(model.text("missing")).foregroundStyle(palette.danger.color)
                     }
@@ -171,7 +179,7 @@ struct GameDetailView: View {
             HStack(spacing: 12) {
                 Button(model.text("folder")) { NSWorkspace.shared.activateFileViewerSelecting([model.repository.gameURL(game)]) }
                 Button(model.text("rename")) { model.beginRename(game) }.disabled(!model.canImport)
-                Button(model.text("remove"), role: .destructive) { model.removeGame = game }.disabled(!model.canImport)
+                Button(model.text(model.isBuiltinDemo(game) ? "deleteBuiltin" : "remove"), role: .destructive) { model.removeGame = game }.disabled(!model.canImport)
             }
         }
     }

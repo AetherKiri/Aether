@@ -16,14 +16,19 @@ struct LibraryGame: Codable, Identifiable, Equatable {
     var coverPath: String? = nil
     // A manual clear must survive the next automatic cover scan.
     var coverSuppressed: Bool = false
+    // Set for the bundled demo so the detail page can offer "delete" instead of
+    // "remove" and so the entry is reconciled rather than re-imported.
+    var builtinId: String? = nil
+    var builtinVersion: Int? = nil
     var displayTitle: String { title }
     var isExternal: Bool { externalPath != nil }
+    var isBuiltin: Bool { builtinId != nil }
 }
 
 extension LibraryGame {
     enum CodingKeys: String, CodingKey {
         case id, title, directory, sourcePath, importedAt, lastPlayedAt, playDurationSeconds,
-             externalPath, coverPath, coverSuppressed
+             externalPath, coverPath, coverSuppressed, builtinId, builtinVersion
     }
 
     init(from decoder: Decoder) throws {
@@ -38,6 +43,8 @@ extension LibraryGame {
         externalPath = try values.decodeIfPresent(String.self, forKey: .externalPath)
         coverPath = try values.decodeIfPresent(String.self, forKey: .coverPath)
         coverSuppressed = try values.decodeIfPresent(Bool.self, forKey: .coverSuppressed) ?? false
+        builtinId = try values.decodeIfPresent(String.self, forKey: .builtinId)
+        builtinVersion = try values.decodeIfPresent(Int.self, forKey: .builtinVersion)
     }
 }
 

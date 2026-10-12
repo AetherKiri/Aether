@@ -90,7 +90,7 @@ Apple 官方参考：[Settings](https://developer.apple.com/design/human-interfa
 | 游戏库 | 封面卡片、数量、搜索、最近游玩排序再按标题、导入/引导 | 条目侧栏，自动进入首个详情，无搜索，无同等排序 | 封面网格为默认，可选列表；搜索标题/运行时/路径；P2 |
 | 详情 | 封面编辑、运行时类型、路径、最近游玩、时长、启动入口、RFVP编码、重命名/移除 | P2 封面/路径/日期、P4a 游玩时长、P4f 运行时类型/启动入口（只读） | 编辑封面在封面区域可发现；管理菜单作补充；启动入口不提供覆盖（ABI 忽略 startup_script）；RFVP 编码待链接 provider 后提供 |
 | 导入/刷新 | 探测元数据、目录/文件入口、封面/启动入口回填 | 目录/ZIP复制或外部引用已有；P4f 起按 Godot `GameMetadata` 标记识别 KiriKiri（xp3/startup）、ONScripter、Siglus、Minori 与校验过的 RFVP `.hcb` | 保留托管/引用差异；刷新主要重新读取索引和封面发现；未链接 runtime 仍可识别但不宣称可运行 |
-| 内置Demo | 多语言Demo安装、版本与删除记忆 | Apple未接入同等自动安装 | 沙盒测试后打包安装，可移除且重启不恢复；P6 |
+| 内置Demo | 多语言Demo安装、版本与删除记忆 | P6 已接入：打包 `data.xp3`，首启安装到库、详情页显示「内置 Demo」并可「删除内置 Demo」，删除记忆使重启不再恢复 | 与 Godot 的 `BuiltinDemo` 对齐；升级路径（多版本）待后续 demo 版本 |
 | 在线封面 | VNDB请求、候选标题、索引 | 未迁移 | 单独可选联网操作，失败保留手动封面；P6 |
 | 主页 | 总时长、已玩、近周、最近5款、时长排行、活动/里程碑 | P4a 已迁移 `_dashboard_stats` 与主页内容 | 会话时长只统计成功启动的运行时间；周活动与七天足迹按lastPlayed推导，非完整历史日记 |
 | 调试控制台 | 概览、事件、日志暂停/过滤、输入、插件、问题标记及临时工具 | 只有日志文本和导出 | 可停靠诊断面板，复用数据而非把原面板截成图片；P4 |
@@ -171,7 +171,7 @@ Lumen四套主题保留内容层、强调色、圆角与封面比例；系统字
 | 视频集合（P2） | 缓存真实位置/总时长；旧无时长条目只显示位置；移除确认同时清理进度与字幕选择，保留视频文件 | 进度数据来自实际播放器，不在导入时伪造时长；封面仍为影片占位符；播放器完整交互在P4 |
 | 渲染与增强（P3/P5） | 启动前设备/呈现器与翻译provider能力；Metal初始化失败安全重建软件会话；报告请求/实际引擎/呈现路径和原因；新安装默认Metal | P3a–P3d行为回归通过；P3b/P3c/P3d设置页CUA已验证；增强仍未开放 |
 | 统计/运行配置/诊断（P4） | 会话时长与完整主页（P4a）、诊断 profile 与性能覆盖层（P4b）已接入 | 启动入口/编码、调试控制台/临时工具（30 秒自动关闭）、控制模式与播放器交互待后续P4切片 |
-| 发布功能（P6/P7/M4） | 关于资源已打包；macOS 首次使用协议门已接入（版本化 AcceptanceStore + 五语言正文 + 同意/拒绝/退出） | Demo/VNDB/渠道额外声明仍单列 P6；更新器最后；真实IAP与移动端M4 |
+| 发布功能（P6/P7/M4） | 关于资源已打包；macOS 首次使用协议门已接入；内置 Demo 已接入（打包 `data.xp3`、首启安装、详情页删除并记忆） | VNDB 在线封面与渠道额外声明仍单列 P6；更新器最后；真实IAP与移动端M4 |
 
 主题设置使用schema v2；渲染设置使用schema v4，读取v1/v2/v3时补齐画布、输出与采样字段并将旧配置迁移为原始输出/线性采样，加载本身不改写原文件，下一次成功保存写入当前schema。未知主题回退classic，未知schema或损坏文件仍禁止保存以保留证据。只按有效设置应用外观与启动配置，草稿不预览，也不重建页面identity。
 
@@ -334,3 +334,13 @@ Godot 首次使用前会弹出隐私/免责协议（`LEGAL_AGREEMENT_VERSION = "
 - 首次启动（无该文件）弹出不可关闭的 `LegalAgreementView`：标题、首用说明与打包好的五语言协议正文（`privacy_disclaimer_*.txt`），按钮为 拒绝 / 同意并继续。同意写入版本与时间戳；拒绝在 macOS 上退出应用（与 Godot 桌面行为一致）。
 - 非交互测试/基准入口用 debug-only 的 `AETHER_HOST_BYPASS_LEGAL_GATE=1` 绕过（对应 Godot 的 `AETHERKIRI_BYPASS_LEGAL_GATE`），smoke/selftest/profile/cold-start/texture-lifecycle/runtime-movie 工具已设置该变量。
 - 渠道额外声明（App Store statement）与「已拒绝」页面属 iOS/M4，本片不涉及。
+
+### 7.18 P6 续：内置 Demo
+
+Godot 在首次运行时把打包的多语言 Demo（`builtin_demos/aetherkiri-kag3/data.xp3`）安装进库，并在删除后记住、不再恢复。Apple 宿主此前只能手动导入，没有同等自动安装。本片补齐：
+
+- `BuiltinDemo` 对齐 `scripts/builtin_demo.gd`：`id = "aetherkiri-kag3-demo"`、`version = 4`；把打包的 `data.xp3` 复制到 `<库根>/builtin_games/aetherkiri-demo/data.xp3`，状态写到 `<库根>/aetherkiri_builtin_demo.cfg`（`{removed, installedVersion, installedSize}`）。
+- 启动时 `reconciled(_:)` 幂等地把 Demo 条目并入库（保留既有条目的游玩时长/封面/标题），删除后 `removed=true` 并删除安装目录，重启不再恢复。库条目新增只读 `builtinId`/`builtinVersion`（旧索引解码为 nil）。
+- 详情页对内置 Demo 显示「内置 Demo」徽标与「删除内置 Demo」（而非「从游戏库移除」），确认框写明「删除后不会自动恢复」。文案五语言。
+- `data.xp3` 作为资源随 App 打包（`project.yml`），与 Godot 共用同一份 Demo 资源；非交互测试/基准入口仍走 bypass。
+- 测试 `BuiltinDemoTests`：安装、幂等 reconcile、删除记忆、缺失资源降级；CUA 验证首启安装、详情页徽标/删除、重启不恢复。证据：`out/apple_host/evidence/ui-p6-demo-cua/`。

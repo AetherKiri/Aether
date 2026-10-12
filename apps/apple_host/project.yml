@@ -25,6 +25,8 @@ targets:
       - path: HostKit
       - path: ../godot_app/legal
         buildPhase: resources
+      - path: ../godot_app/builtin_demos/aetherkiri-kag3/data.xp3
+        buildPhase: resources
       - path: ../../LICENSE
         buildPhase: resources
       - path: ../../COPYING.iOS

@@ -39,6 +39,7 @@ final class MetalFramePresenter: NSObject, MTKViewDelegate {
     private let pipeline: MTLRenderPipelineState
     private let sharpenPipeline: MTLRenderPipelineState
     private let rcasPipeline: MTLRenderPipelineState
+    private let easuPipeline: MTLRenderPipelineState
     private let debugLabels: Bool
     private(set) var texture: MTLTexture?
     private var frameLease: AetherMetalFrameLease?
@@ -51,6 +52,11 @@ final class MetalFramePresenter: NSObject, MTKViewDelegate {
     private var outputTexture: MTLTexture?
     private var frameRevision: UInt64 = 0
     private var outputRevision: UInt64?
+    /// Sampling algorithm + enhancement baked into `outputTexture`. Switching
+    /// to EASU (or changing the sampler) must re-run the output pass even when
+    /// the source frame revision is unchanged.
+    private var outputConfig: String?
+    private var scalingConfig: String { "\(samplingAlgorithm.rawValue)|\(enhancement.rawValue)" }
     private var enhancedTexture: MTLTexture?
     private var enhancedRevision: UInt64?
     /// The algorithm and amount baked into `enhancedTexture`. The scratch
@@ -287,6 +293,120 @@ final class MetalFramePresenter: NSObject, MTKViewDelegate {
             float3 result = (lobeValue * (b + d + f + h) + e) * reciprocal;
             return float4(clamp(result, float3(0), float3(1)), 1);
         }
+        // FidelityFX FSR1 EASU, ported from the published AMD reference
+        // (ffx-fsr/ffx_fsr1.h, MIT; see THIRD_PARTY_LICENSES.md). Mirrors
+        // FrameEnhancementKernel.fsr1Easu: hardware gather4 is emulated with
+        // four clamped texel reads, and the reference's approximate reciprocal
+        // and rsqrt are replaced by exact ones so the CPU reference agrees.
+        float4 easuGather(texture2d<float> t, float2 p, int ch) {
+            constexpr sampler s(coord::normalized, address::clamp_to_edge, filter::nearest);
+            float2 size = float2(t.get_width(), t.get_height());
+            float2 base = floor(p * size - 0.5);
+            float2 o = (base + 0.5) / size;
+            float4 a = t.sample(s, o);
+            float4 b = t.sample(s, o + float2(1.0 / size.x, 0.0));
+            float4 c = t.sample(s, o + float2(0.0, 1.0 / size.y));
+            float4 d = t.sample(s, o + float2(1.0 / size.x, 1.0 / size.y));
+            return float4(a[ch], b[ch], c[ch], d[ch]);
+        }
+        void easuTap(thread float3 &aC, thread float &aW, float2 off, float2 dir,
+                     float2 len, float lob, float clp, float3 c) {
+            float2 v;
+            v.x = off.x * dir.x + off.y * dir.y;
+            v.y = off.x * (-dir.y) + off.y * dir.x;
+            v *= len;
+            float d2 = min(v.x * v.x + v.y * v.y, clp);
+            float wB = (2.0 / 5.0) * d2 - 1.0;
+            float wA = lob * d2 - 1.0;
+            wB *= wB; wA *= wA;
+            wB = (25.0 / 16.0) * wB - (25.0 / 16.0 - 1.0);
+            float w = wB * wA;
+            aC += c * w; aW += w;
+        }
+        void easuSet(thread float2 &dir, thread float &len, float2 pp, bool bS, bool bT, bool bU, bool bV,
+                     float lA, float lB, float lC, float lD, float lE) {
+            float w = 0.0;
+            if (bS) w = (1.0 - pp.x) * (1.0 - pp.y);
+            if (bT) w = pp.x * (1.0 - pp.y);
+            if (bU) w = (1.0 - pp.x) * pp.y;
+            if (bV) w = pp.x * pp.y;
+            float lenX = 1.0 / max(max(abs(lD - lC), abs(lC - lB)), 1e-30);
+            float dirX = lD - lB;
+            dir.x += dirX * w;
+            float lx = saturate(abs(dirX) * lenX);
+            len += lx * lx * w;
+            float lenY = 1.0 / max(max(abs(lE - lC), abs(lC - lA)), 1e-30);
+            float dirY = lE - lA;
+            dir.y += dirY * w;
+            float ly = saturate(abs(dirY) * lenY);
+            len += ly * ly * w;
+        }
+        fragment float4 easu_fragment(Vertex v [[stage_in]],
+                                      texture2d<float> frame [[texture(0)]],
+                                      constant float4 &con0 [[buffer(0)]],
+                                      constant float4 &con1 [[buffer(1)]],
+                                      constant float4 &con2 [[buffer(2)]],
+                                      constant float4 &con3 [[buffer(3)]],
+                                      constant float2 &outSize [[buffer(4)]]) {
+            float2 ip = v.uv * outSize - 0.5;
+            float2 pp = ip * con0.xy + con0.zw;
+            float2 fp = floor(pp);
+            pp -= fp;
+            float2 p0 = fp * con1.xy + con1.zw;
+            float2 p1 = p0 + con2.xy;
+            float2 p2 = p0 + con2.zw;
+            float2 p3 = p0 + con3.xy;
+            float4 bczzR = easuGather(frame, p0, 0), bczzG = easuGather(frame, p0, 1), bczzB = easuGather(frame, p0, 2);
+            float4 ijfeR = easuGather(frame, p1, 0), ijfeG = easuGather(frame, p1, 1), ijfeB = easuGather(frame, p1, 2);
+            float4 klhgR = easuGather(frame, p2, 0), klhgG = easuGather(frame, p2, 1), klhgB = easuGather(frame, p2, 2);
+            float4 zzonR = easuGather(frame, p3, 0), zzonG = easuGather(frame, p3, 1), zzonB = easuGather(frame, p3, 2);
+            float4 bczzL = bczzB * 0.5 + (bczzR * 0.5 + bczzG);
+            float4 ijfeL = ijfeB * 0.5 + (ijfeR * 0.5 + ijfeG);
+            float4 klhgL = klhgB * 0.5 + (klhgR * 0.5 + klhgG);
+            float4 zzonL = zzonB * 0.5 + (zzonR * 0.5 + zzonG);
+            float bL = bczzL.x, cL = bczzL.y;
+            float iL = ijfeL.x, jL = ijfeL.y, fL = ijfeL.z, eL = ijfeL.w;
+            float kL = klhgL.x, lL = klhgL.y, hL = klhgL.z, gL = klhgL.w;
+            float oL = zzonL.z, nL = zzonL.w;
+            float2 dir = float2(0.0); float len = 0.0;
+            easuSet(dir, len, pp, true, false, false, false, bL, eL, fL, gL, jL);
+            easuSet(dir, len, pp, false, true, false, false, cL, fL, gL, hL, kL);
+            easuSet(dir, len, pp, false, false, true, false, fL, iL, jL, kL, nL);
+            easuSet(dir, len, pp, false, false, false, true, gL, jL, kL, lL, oL);
+            float2 dir2 = dir * dir;
+            float dirR = dir2.x + dir2.y;
+            bool zro = dirR < (1.0 / 32768.0);
+            dirR = zro ? 1.0 : 1.0 / sqrt(max(dirR, 1e-30));
+            dir.x = zro ? 1.0 : dir.x;
+            dir *= dirR;
+            len *= 0.5; len *= len;
+            float stretch = (dir.x * dir.x + dir.y * dir.y) / max(max(abs(dir.x), abs(dir.y)), 1e-30);
+            float2 len2 = float2(1.0 + (stretch - 1.0) * len, 1.0 - 0.5 * len);
+            float lob = 0.5 + ((1.0 / 4.0 - 0.04) - 0.5) * len;
+            float clp = 1.0 / max(lob, 1e-30);
+            float3 min4 = float3(min(min(ijfeR.z, min(klhgR.w, ijfeR.y)), klhgR.x),
+                                 min(min(ijfeG.z, min(klhgG.w, ijfeG.y)), klhgG.x),
+                                 min(min(ijfeB.z, min(klhgB.w, ijfeB.y)), klhgB.x));
+            float3 max4 = float3(max(max(ijfeR.z, max(klhgR.w, ijfeR.y)), klhgR.x),
+                                 max(max(ijfeG.z, max(klhgG.w, ijfeG.y)), klhgG.x),
+                                 max(max(ijfeB.z, max(klhgB.w, ijfeB.y)), klhgB.x));
+            float3 aC = float3(0.0); float aW = 0.0;
+            easuTap(aC, aW, float2(0, -1) - pp, dir, len2, lob, clp, float3(bczzR.x, bczzG.x, bczzB.x));
+            easuTap(aC, aW, float2(1, -1) - pp, dir, len2, lob, clp, float3(bczzR.y, bczzG.y, bczzB.y));
+            easuTap(aC, aW, float2(-1, 1) - pp, dir, len2, lob, clp, float3(ijfeR.x, ijfeG.x, ijfeB.x));
+            easuTap(aC, aW, float2(0, 1) - pp, dir, len2, lob, clp, float3(ijfeR.y, ijfeG.y, ijfeB.y));
+            easuTap(aC, aW, float2(0, 0) - pp, dir, len2, lob, clp, float3(ijfeR.z, ijfeG.z, ijfeB.z));
+            easuTap(aC, aW, float2(-1, 0) - pp, dir, len2, lob, clp, float3(ijfeR.w, ijfeG.w, ijfeB.w));
+            easuTap(aC, aW, float2(1, 1) - pp, dir, len2, lob, clp, float3(klhgR.x, klhgG.x, klhgB.x));
+            easuTap(aC, aW, float2(2, 1) - pp, dir, len2, lob, clp, float3(klhgR.y, klhgG.y, klhgB.y));
+            easuTap(aC, aW, float2(2, 0) - pp, dir, len2, lob, clp, float3(klhgR.z, klhgG.z, klhgB.z));
+            easuTap(aC, aW, float2(1, 0) - pp, dir, len2, lob, clp, float3(klhgR.w, klhgG.w, klhgB.w));
+            easuTap(aC, aW, float2(1, 2) - pp, dir, len2, lob, clp, float3(zzonR.z, zzonG.z, zzonB.z));
+            easuTap(aC, aW, float2(0, 2) - pp, dir, len2, lob, clp, float3(zzonR.w, zzonG.w, zzonB.w));
+            float3 average = aC * (1.0 / max(aW, 1e-30));
+            float3 pix = min(max4, max(min4, average));
+            return float4(clamp(pix, float3(0), float3(1)), 1);
+        }
         """
         let library = try device.makeLibrary(source: source, options: nil)
         let descriptor = MTLRenderPipelineDescriptor()
@@ -304,6 +424,11 @@ final class MetalFramePresenter: NSObject, MTKViewDelegate {
         rcasDescriptor.fragmentFunction = library.makeFunction(name: "rcas_fragment")
         rcasDescriptor.colorAttachments[0].pixelFormat = .bgra8Unorm
         rcasPipeline = try device.makeRenderPipelineState(descriptor: rcasDescriptor)
+        let easuDescriptor = MTLRenderPipelineDescriptor()
+        easuDescriptor.vertexFunction = library.makeFunction(name: "frame_vertex")
+        easuDescriptor.fragmentFunction = library.makeFunction(name: "easu_fragment")
+        easuDescriptor.colorAttachments[0].pixelFormat = .bgra8Unorm
+        easuPipeline = try device.makeRenderPipelineState(descriptor: easuDescriptor)
         super.init()
     }
 
@@ -352,15 +477,29 @@ final class MetalFramePresenter: NSObject, MTKViewDelegate {
 
     func clear() {
         texture = nil; frameLease = nil
-        outputTexture = nil; outputRevision = nil
+        outputTexture = nil; outputRevision = nil; outputConfig = nil
         enhancedTexture = nil; enhancedRevision = nil; enhancedConfig = nil
     }
 
     // Shared by onscreen rendering and deterministic offscreen verification.
     func encode(target: MTLTexture, command: MTLCommandBuffer) throws {
         var source = texture
-        if let texture, outputSize.width > 0, outputSize.height > 0,
-           Int(outputSize.width) != texture.width || Int(outputSize.height) != texture.height {
+        // EASU performs the edge-adaptive upscale itself, so it owns the output
+        // pass (1:1 when no output size is configured); the other enhancements
+        // are same-size passes after the output.
+        let scalingEnhancement = enhancement.scalesOutput
+        if let texture, scalingEnhancement {
+            let hasOutput = outputSize.width > 0 && outputSize.height > 0
+            let width = hasOutput ? Int(outputSize.width) : texture.width
+            let height = hasOutput ? Int(outputSize.height) : texture.height
+            guard width <= Int(RenderGeometry.maximum.width), height <= Int(RenderGeometry.maximum.height) else {
+                throw Failure.unsupportedFrame
+            }
+            if let upscaled = easuOutput(texture, width: width, height: height, command: command) {
+                source = upscaled
+            }
+        } else if let texture, outputSize.width > 0, outputSize.height > 0,
+                  Int(outputSize.width) != texture.width || Int(outputSize.height) != texture.height {
             let width = Int(outputSize.width), height = Int(outputSize.height)
             guard width <= Int(RenderGeometry.maximum.width), height <= Int(RenderGeometry.maximum.height) else {
                 throw Failure.unsupportedFrame
@@ -369,7 +508,8 @@ final class MetalFramePresenter: NSObject, MTKViewDelegate {
             // the next engine frame arrives. Keep the target only while the
             // source revision is unchanged; a new frame receives a fresh
             // texture whose lifetime is retained by its command buffer.
-            if outputTexture?.width != width || outputTexture?.height != height || outputRevision != frameRevision {
+            if outputTexture?.width != width || outputTexture?.height != height
+                || outputRevision != frameRevision || outputConfig != scalingConfig {
                 let descriptor = MTLTextureDescriptor.texture2DDescriptor(pixelFormat: .bgra8Unorm,
                     width: width, height: height, mipmapped: false)
                 descriptor.storageMode = .private
@@ -377,24 +517,94 @@ final class MetalFramePresenter: NSObject, MTKViewDelegate {
                 guard let next = device.makeTexture(descriptor: descriptor) else { throw Failure.allocation }
                 outputTexture = next
                 outputRevision = nil
+                outputConfig = nil
             }
             if let outputTexture {
-                if outputRevision != frameRevision {
+                if outputRevision != frameRevision || outputConfig != scalingConfig {
                     // Both passes share the producer queue and the same command.
                     // Its completion retains the source lease and resized target.
                     try encodeImage(source: texture, target: outputTexture, command: command,
                                     aspectFit: false, sampling: samplingAlgorithm)
                     outputRevision = frameRevision
+                    outputConfig = scalingConfig
                     outputPassCount += 1
                 }
                 source = outputTexture
             }
         }
-        if enhancement != .off, let current = source, enhancementAmount > 0 {
+        if !scalingEnhancement, enhancement != .off, let current = source, enhancementAmount > 0 {
             source = enhancedSource(current, command: command)
         }
         try encodeImage(source: source, target: target, command: command,
                         sampling: outputTexture == nil ? samplingAlgorithm : .linear)
+    }
+
+    /// Runs EASU into a cached scratch texture. A missing allocation or a failed
+    /// pass keeps the original frame, matching the "safe fallback" contract.
+    private func easuOutput(_ current: MTLTexture, width: Int, height: Int,
+                            command: MTLCommandBuffer) -> MTLTexture? {
+        if outputTexture?.width != width || outputTexture?.height != height
+            || outputRevision != frameRevision || outputConfig != scalingConfig {
+            let descriptor = MTLTextureDescriptor.texture2DDescriptor(pixelFormat: .bgra8Unorm,
+                width: width, height: height, mipmapped: false)
+            descriptor.storageMode = .private
+            descriptor.usage = [.renderTarget, .shaderRead]
+            guard let next = device.makeTexture(descriptor: descriptor) else {
+                lastError = "EASU allocation failed; presenting the original frame"
+                return nil
+            }
+            outputTexture = next
+            outputRevision = nil
+            outputConfig = nil
+        }
+        guard let target = outputTexture else { return nil }
+        if outputRevision != frameRevision || outputConfig != scalingConfig {
+            do {
+                try encodeEasu(source: current, target: target, command: command)
+            } catch {
+                lastError = "EASU pass failed: \(error); presenting the original frame"
+                outputTexture = nil
+                outputRevision = nil
+                outputConfig = nil
+                return nil
+            }
+            outputRevision = frameRevision
+            outputConfig = scalingConfig
+            outputPassCount += 1
+        }
+        return target
+    }
+
+    /// Runs FSR1 EASU from the source texture to the target texture size.
+    private func encodeEasu(source: MTLTexture, target: MTLTexture, command: MTLCommandBuffer) throws {
+        let pass = MTLRenderPassDescriptor()
+        pass.colorAttachments[0].texture = target
+        pass.colorAttachments[0].loadAction = .clear
+        pass.colorAttachments[0].storeAction = .store
+        pass.colorAttachments[0].clearColor = MTLClearColorMake(0, 0, 0, 1)
+        guard let encoder = command.makeRenderCommandEncoder(descriptor: pass) else {
+            throw Failure.encoding
+        }
+        if debugLabels { encoder.label = "AetherHost.easu-upscale" }
+        encoder.setRenderPipelineState(easuPipeline)
+        encoder.setViewport(MTLViewport(originX: 0, originY: 0,
+                                        width: Double(target.width), height: Double(target.height),
+                                        znear: 0, zfar: 1))
+        encoder.setFragmentTexture(source, index: 0)
+        let iw = Float(source.width), ih = Float(source.height)
+        let ow = Float(target.width), oh = Float(target.height)
+        var con0 = SIMD4<Float>(iw / ow, ih / oh, 0.5 * iw / ow - 0.5, 0.5 * ih / oh - 0.5)
+        var con1 = SIMD4<Float>(1 / iw, 1 / ih, 1 / iw, -1 / ih)
+        var con2 = SIMD4<Float>(-1 / iw, 2 / ih, 1 / iw, 2 / ih)
+        var con3 = SIMD4<Float>(0, 4 / ih, 0, 0)
+        var outSize = SIMD2<Float>(ow, oh)
+        encoder.setFragmentBytes(&con0, length: MemoryLayout<SIMD4<Float>>.size, index: 0)
+        encoder.setFragmentBytes(&con1, length: MemoryLayout<SIMD4<Float>>.size, index: 1)
+        encoder.setFragmentBytes(&con2, length: MemoryLayout<SIMD4<Float>>.size, index: 2)
+        encoder.setFragmentBytes(&con3, length: MemoryLayout<SIMD4<Float>>.size, index: 3)
+        encoder.setFragmentBytes(&outSize, length: MemoryLayout<SIMD2<Float>>.size, index: 4)
+        encoder.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 3)
+        encoder.endEncoding()
     }
 
     /// Runs the enhancement pass into a scratch texture. A missing allocation

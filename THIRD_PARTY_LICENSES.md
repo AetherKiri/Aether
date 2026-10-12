@@ -947,13 +947,16 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 ------------------------------------------------------------------------
 
 ----------------------------------------------------------------------------
-AMD FidelityFX Super Resolution 1 (FSR1) - RCAS
+AMD FidelityFX Super Resolution 1 (FSR1) - EASU and RCAS
 ----------------------------------------------------------------------------
 Source: https://github.com/GPUOpen-Effects/FidelityFX-FSR
-Ported portion: the RCAS pass (`FsrRcasF` / `FsrRcasCon`) in
+Ported portion: the EASU pass (`FsrEasuF` / `FsrEasuSetF` / `FsrEasuTapF` /
+`FsrEasuCon`) and the RCAS pass (`FsrRcasF` / `FsrRcasCon`) in
 `ffx-fsr/ffx_fsr1.h`, reimplemented for the Apple host CPU reference
-(`apps/apple_host/AetherHost/FrameEnhancement.swift`) and the Metal shader
-(`apps/apple_host/AetherHost/MetalFramePresenter.swift`).
+(`apps/apple_host/AetherHost/FrameEnhancement.swift`) and the Metal shaders
+(`apps/apple_host/AetherHost/MetalFramePresenter.swift`). EASU's hardware
+`gather4` is emulated with four clamped point reads, and the reference's
+approximate reciprocal and square-root are replaced by exact ones.
 
 Copyright (c) 2021 Advanced Micro Devices, Inc. All rights reserved.
 

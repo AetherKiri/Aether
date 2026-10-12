@@ -505,7 +505,7 @@
 31b. [ ] **两处兼容小项待查**：`new DMMCloud()` 报 `Invalid argument count`；`new Zlib().version()` 报成员不存在（可能只是探针写法/注册方式差异）
 32. [ ] **内核后续：内存可观测（借鉴 `MemoryDesign.md`）**：分配头带 tag + `AllocTagScope` 标签栈，让"谁吃掉了内存"可回答；当前只有粗粒度 `engine_get_memory_stats`
 
-33. [ ] **产品 UI/设置完整对齐**：调查 P0 已完成；P1核心、P2集合/详情与四主题已接入，完整CUA/无障碍验收待补；P3a–P3d、P4a/P4b/P4d/P4e/P4f、P5a 画面增强与 P5b FSR1 RCAS 已接入并通过行为回归与真实CUA；P4 至此完成（调试控制台、场景测试入口、RFVP 编码仍按能力缺口记录），P5b 其余 Godot 算法移植与预设/自定义链，P6/P7 见 [实施计划](apple_host_ui_plan.md)（视频库暂停维护）。
+33. [ ] **产品 UI/设置完整对齐**：调查 P0 已完成；P1核心、P2集合/详情与四主题已接入，完整CUA/无障碍验收待补；P3a–P3d、P4a/P4b/P4d/P4e/P4f、P5a 画面增强与 P5b FSR1 EASU/RCAS 已接入并通过行为回归与真实CUA；P4 至此完成（调试控制台、场景测试入口、RFVP 编码仍按能力缺口记录），P5b 其余 Godot 算法移植与预设/自定义链，P6/P7 见 [实施计划](apple_host_ui_plan.md)（视频库暂停维护）。
 
 ## 变更记录
 
@@ -648,13 +648,14 @@
 - 真实 30 秒 Metal direct smoke：关闭时 RGB max diff 0/0/0；开启（0.5）时 121/123/123（呈现被锐化、引擎帧未变），两次均通过启动/输入/截图/退出与 lease 检查。CUA 验证渲染页选择器只有 关闭/对比度自适应锐化、选择后出现 50% 强度滑杆、保存写入 v8 偏好，真实会话日志 `frame enhancement adaptive_sharpen amount=0.50`。证据：`out/apple_host/evidence/ui-p5a-off/`、`ui-p5a-on/`、`ui-p5a-cua/`。
 - 残余未验收：Godot 算法集（Anime4K/FSR1/RAVU/CuNNy/NNEDI3/FXAA）与 15 条预设链、自定义链编辑器均未迁移；增强只在 Metal 路径生效（软件诊断路径保持原始画面）；增强与输出缩放/4K 组合的负载报告待补。
 
-### 2026-10-12：P5b FSR1 RCAS（Godot 算法逐个移植）
+### 2026-10-12：P5b FSR1 RCAS + EASU（Godot 算法逐个移植）
 
-- 结论：FSR1 的 RCAS 有公开 MIT 参考（`ffx-fsr/ffx_fsr1.h` 的 `FsrRcasF`）且可独立验证，作为 P5b 首个切片移植；其余 Godot 算法（Anime4K/FSR1 EASU/RAVU/CuNNy/NNEDI3/FXAA）需要更大的实现与许可评估，暂不开放。
+- 结论：FSR1 的 RCAS 与 EASU 都有公开 MIT 参考（`ffx-fsr/ffx_fsr1.h`）且可独立验证，作为 P5b 先移植；其余 Godot 算法（Anime4K/RAVU/CuNNy/NNEDI3/FXAA）需要更大的实现与许可评估，暂不开放。
 - 实现 `FrameEnhancementKernel.fsr1Rcas` 与 Metal `rcas_fragment`：忠实照搬参考的环最小值/最大值、`hitMin = min(mn4,e)/(4·mx4)`、`hitMax = (1−max(mx4,e))/(4·mn4−4)`、逐通道 lobe 与 `[−0.1875, 0]` 限制、`(lobe·ring+e)/(4·lobe+1)` 解析；全黑/全白邻域的 0 分母在 CPU 与 GPU 两侧显式钳为 0，避免 NaN；`FSR_RCAS_DENOISE` 与中精度倒数未启用。
 - `FrameEnhancement` 新增 `fsr1_rcas`（顺序 off → adaptive_sharpen → fsr1_rcas）；渲染页选择器由 `allCases` 驱动自动多出该算法，说明文案改为“当前开放已验证的自适应锐化与 FSR1 RCAS”；许可全文写入 `THIRD_PARTY_LICENSES.md`。
 - 修复真实缓存缺陷：增强 scratch 纹理原先只按 `frameRevision` 缓存，切换算法/强度而源帧不变时会复用上一算法结果；缓存键加入算法与强度（`enhancedConfig`），`clear()` 一并重置。测试用“同一帧上先跑自适应再跑 RCAS”回归该缺陷。
 - 测试：`python3 tools/apple_host_settings_tests.py` 全通过（RCAS identity/对比/alpha/黑白色有限性、Metal 与 CPU 参考一致 ≤2、缓存键回归、schema v8 往返 `fsr1_rcas` 且仍拒绝 `fsr1_easu`）；Debug 构建通过。
 - 真实 30 秒 KAG3 Metal direct smoke（`--frame-enhancement fsr1_rcas --enhancement-amount 0.5`）与 30 秒软件回归 smoke 均通过；RCAS smoke 的引擎/呈现 RGB max diff=44/14/14（有界、非零），日志含 `frame enhancement fsr1_rcas amount=0.50`。证据：`out/apple_host/evidence/ui-p5b-rcas/`、`ui-p5b-software/`。
 - CUA 验证渲染页「画面增强」只有 关闭/对比度自适应锐化/FSR1 RCAS 三项、选择后出现 50% 强度滑杆、保存写入 v8 偏好；随后经真实产品路径（游戏库 → 开始游玩）启动 KAG3，Diagnostics 日志出现 `frame enhancement fsr1_rcas amount=0.50`。证据：`out/apple_host/evidence/ui-p5b-cua/`。
-- 残余未验收：FSR1 EASU 需要完整的 EASU 上采样实现与参考对照；Anime4K/RAVU/CuNNy/NNEDI3/FXAA 的许可与负载评估、15 条预设链、自定义链编辑器均未迁移；增强只在 Metal 路径生效（软件诊断路径保持原始画面）；增强与输出缩放/4K 组合的负载报告待补。
+- FSR1 EASU：`FrameEnhancementKernel.fsr1Easu` 与 Metal `easu_fragment` 移植 `FsrEasuCon`/`FsrEasuSetF`/`FsrEasuTapF`/`FsrEasuF`；硬件 `gather4` 用四次钳位点采样模拟、近似 `rcp`/`rsqrt` 换精确值，CPU 与 GPU 逐像素一致（≤2）。EASU 自己完成输出放大（`scalesOutput`），由输出 pass 承担；`outputConfig` 缓存键加入采样/增强算法。渲染页选择器多出「FSR1 EASU」，文案改为“当前开放已验证的自适应锐化与 FSR1 EASU/RCAS”。30 秒 KAG3 Metal direct smoke（`--frame-enhancement fsr1_easu`）通过，放大输出 1440x1080 视觉正确。证据：`out/apple_host/evidence/ui-p5b-easu/`。
+- 残余未验收：Anime4K/RAVU/CuNNy/NNEDI3/FXAA 的许可与负载评估、15 条预设链、自定义链编辑器均未迁移；EASU 在 1:1（输出分辨率等于输入）时锐化核会在锐边产生可见差异（算法在非放大场景下的行为，默认 1080p 放大路径不受影响）；增强只在 Metal 路径生效（软件诊断路径保持原始画面）；增强与输出缩放/4K 组合的负载报告待补。

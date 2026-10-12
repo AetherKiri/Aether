@@ -61,7 +61,7 @@ Apple 官方参考：[Settings](https://developer.apple.com/design/human-interfa
 | 画布 Game Native/Display Fit | 缺失设置；已有 setSurfaceSize 接缝 | 分离游戏逻辑画布、输出纹理和窗口 drawable；保持输入映射 | P3 |
 | 缩放 smooth/nearest/linear/bicubic/lanczos | 缺失选择器与完整实现 | `smooth` 迁移为 `linear`；提供真实 nearest/linear/bicubic/lanczos 核，名称与 shader 一致 | P3 |
 | 输出 original/1080p/2k/4k，默认1080p | 缺失设置 | 按原版目标尺寸/纵横比规范迁移；不是改变显示器分辨率 | P3 |
-| 增强 off/preset/custom | P5a/P5b 已接入 off + 对比度自适应锐化（自研、有 CPU 参考）+ FSR1 RCAS（AMD MIT 参考） | Metal 后处理与能力报告；原始帧降级；其余 Godot 算法逐个移植前不开放 | P5 |
+| 增强 off/preset/custom | P5a/P5b 已接入 off + 对比度自适应锐化（自研、有 CPU 参考）+ FSR1 EASU/RCAS（AMD MIT 参考） | Metal 后处理与能力报告；原始帧降级；其余 Godot 算法逐个移植前不开放 | P5 |
 | 15 个增强预设，16 种自定义算法、顺序添加/移除 | 缺失 | 保留重建2×、目标尺寸缩放、同尺寸修复三种语义；不是统一 resize | P5 |
 | FPS 开关+60/80/90/120/144，默认关闭、目标80 | 已接入 schema v5；DisplayLink 优先、Timer 兜底 | ABI fps_limit + 宿主调度；关闭限制也不承诺超显示器FPS | P3 |
 | 游戏横屏锁定 | 平台不适用 | 移动端 M4 | M4 |
@@ -316,4 +316,12 @@ P5b 首个切片移植 AMD FidelityFX Super Resolution 1 的 **RCAS**（robust c
 
 `FrameEnhancement` 新增 `fsr1_rcas`（`allCases` 顺序 off → adaptive_sharpen → fsr1_rcas）；Metal 呈现器新增 `rcas_fragment` 与 `rcasPipeline`，与自适应锐化共享强度 buffer 与 texel buffer。渲染页选择器由 `FrameEnhancement.allCases` 驱动，因此自动多出「FSR1 RCAS」，说明文案改为“当前开放已验证的自适应锐化与 FSR1 RCAS”。`FrameEnhancementKernel.fsr1Rcas` 是 Metal pass 的 CPU 参考，行为测试逐像素对照（最大差 ≤2）。
 
-本轮同时修掉一个真实的缓存缺陷：增强 scratch 纹理原先只按 `frameRevision` 缓存，切换算法/强度而源帧不变时会复用上一算法的结果；现在缓存键加入算法与强度（`enhancedConfig`），`clear()` 一并重置。`--frame-enhancement` smoke 覆盖新增 `fsr1_rcas`；许可全文见 `THIRD_PARTY_LICENSES.md`。未移植的 Anime4K、FSR1 EASU、RAVU、CuNNy、NNEDI3、FXAA 仍不开放。
+本轮同时修掉一个真实的缓存缺陷：增强 scratch 纹理原先只按 `frameRevision` 缓存，切换算法/强度而源帧不变时会复用上一算法的结果；现在缓存键加入算法与强度（`enhancedConfig`），`clear()` 一并重置。`--frame-enhancement` smoke 覆盖新增 `fsr1_rcas`；许可全文见 `THIRD_PARTY_LICENSES.md`。
+
+### 7.16 P5b 续：FSR1 EASU
+
+接着移植 FSR1 的另一半：**EASU**（edge-adaptive spatial upscaling），参考同样来自 MIT 的 `ffx-fsr/ffx_fsr1.h`（`FsrEasuCon`/`FsrEasuSetF`/`FsrEasuTapF`/`FsrEasuF`）。EASU 与同尺寸修复算法不同：它自己完成到输出分辨率的放大，因此 `FrameEnhancement.fsr1Easu.scalesOutput == true`，由输出 pass 承担（未配置输出尺寸时按 1:1 运行）；`frameEnhancement` 选择器随之多出「FSR1 EASU」，说明文案改为“当前开放已验证的自适应锐化与 FSR1 EASU/RCAS”。
+
+关键实现点：硬件 `gather4` 用四次钳位点采样模拟（同一 2×2 足迹），参考里的近似 `rcp`/`rsqrt` 换成精确值，使 CPU 参考（`FrameEnhancementKernel.fsr1Easu`，输出 RGBA，alpha 置 255）与 Metal `easu_fragment` 逐像素一致（测试 max diff ≤2）。输出 scratch 纹理的缓存键（`outputConfig`）加入采样算法与增强算法，避免切换算法/采样时复用旧帧。许可全文见 `THIRD_PARTY_LICENSES.md`。
+
+已知限制：EASU 依赖硬件 `gather4` 的具体取址语义，本移植用点采样等价模拟；在 1:1（输出分辨率等于输入）时其锐化核会在锐边处产生可见差异，属算法在非放大场景下的行为，产品默认 1080p 放大路径不受影响。未移植的 Anime4K、RAVU、CuNNy、NNEDI3、FXAA 仍不开放。

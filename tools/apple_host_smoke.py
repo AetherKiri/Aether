@@ -29,7 +29,7 @@ def main():
                         help="host tick callback source; display is preferred, timer is the fallback")
     parser.add_argument("--lifecycle", default=None,
                         help="scripted lifecycle events, e.g. 4:on,7:off (focus/hide/minimize equivalent)")
-    parser.add_argument("--frame-enhancement", choices=("off", "adaptive_sharpen", "fsr1_rcas"), default=None,
+    parser.add_argument("--frame-enhancement", choices=("off", "adaptive_sharpen", "fsr1_easu", "fsr1_rcas"), default=None,
                         help="frame enhancement override; off keeps the original frame")
     parser.add_argument("--enhancement-amount", type=float, default=None,
                         help="enhancement strength 0.0-1.0 (defaults to the saved preference)")
@@ -124,12 +124,19 @@ def main():
             if args.presentation == "metal":
                 differences = [int(value) for value in re.findall(r"RGB max diff=(\d+)", text)]
                 if args.frame_enhancement in ("adaptive_sharpen", "fsr1_rcas"):
-                    # The enhancement intentionally changes the presented frame,
-                    # so require a bounded, non-zero effect instead of parity.
+                    # The same-size enhancement intentionally changes the
+                    # presented frame, so require a bounded, non-zero effect
+                    # instead of parity.
                     if len(differences) != 3 or min(differences, default=0) == 0:
                         errors.append(f"enhancement did not change the presented frame: {differences}")
                     if max(differences, default=255) > 160:
                         errors.append(f"enhancement diff exceeded the local contrast bound: {differences}")
+                elif args.frame_enhancement == "fsr1_easu":
+                    # EASU is an edge-adaptive upscaler; the source-size parity
+                    # capture runs it 1:1 where its sharpening kernel legitimately
+                    # differs at edges, so only require a non-zero effect.
+                    if len(differences) != 3 or min(differences, default=0) == 0:
+                        errors.append(f"EASU did not change the presented frame: {differences}")
                 elif len(differences) != 3 or max(differences, default=255) > 1:
                     errors.append(f"GPU/engine RGB comparison failed: {differences}")
                 if "Metal presentation failed" in text or "presentation=metal-upload" not in text:

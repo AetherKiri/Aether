@@ -7,15 +7,17 @@ enum FrameEnhancementTests {
     static func run(root: URL) throws {
         kernelBasics()
         try gpuMatchesReference()
+        try gpuEasuMatchesReference()
         try settingsMigration(root: root)
-        print("PASS: enhancement kernel (identity/contrast-adaptive/RCAS), Metal parity and schema v8 migration")
+        print("PASS: enhancement kernel (identity/contrast-adaptive/RCAS/EASU), Metal parity and schema v8 migration")
     }
 
     private static func kernelBasics() {
-        precondition(FrameEnhancement.allCases.map(\.rawValue) == ["off", "adaptive_sharpen", "fsr1_rcas"])
+        precondition(FrameEnhancement.allCases.map(\.rawValue) == ["off", "adaptive_sharpen", "fsr1_easu", "fsr1_rcas"])
         precondition(FrameEnhancement.normalized("adaptive_sharpen") == .adaptiveSharpen)
         precondition(FrameEnhancement.normalized("fsr1_rcas") == .fsr1Rcas)
-        precondition(FrameEnhancement.normalized("fsr1_easu") == nil, "unported Godot algorithms must not be selectable")
+        precondition(FrameEnhancement.normalized("fsr1_easu") == .fsr1Easu)
+        precondition(FrameEnhancement.fsr1Easu.scalesOutput && !FrameEnhancement.fsr1Rcas.scalesOutput)
         precondition(FrameEnhancement.normalized("anime4k_upscale_s") == nil, "unported Godot algorithms must not be selectable")
         // Amount 0 is an exact identity.
         let source: [UInt8] = [10, 10, 10, 255, 20, 20, 20, 255, 30, 30, 30, 255,
@@ -60,6 +62,21 @@ enum FrameEnhancementTests {
         let white = [UInt8](repeating: 255, count: 3 * 3 * 4)
         precondition(FrameEnhancementKernel.fsr1Rcas(white, width: 3, height: 3, sharpness: 1) == white,
                      "a fully white neighbourhood stays white")
+
+        // FSR1 EASU: a flat neighbourhood upscales unchanged, grows to the
+        // requested size and emits opaque alpha.
+        let flatSource = [UInt8](repeating: 90, count: 4 * 4 * 4)
+        let upscaled = FrameEnhancementKernel.fsr1Easu(flatSource, width: 4, height: 4,
+                                                       outputWidth: 8, outputHeight: 8)
+        precondition(upscaled.count == 8 * 8 * 4)
+        for pixel in 0..<(8 * 8) {
+            precondition(upscaled[pixel * 4] == 90 && upscaled[pixel * 4 + 1] == 90 && upscaled[pixel * 4 + 2] == 90,
+                         "a flat neighbourhood upscales unchanged")
+            precondition(upscaled[pixel * 4 + 3] == 255, "EASU emits opaque alpha")
+        }
+        // EASU preserves the output size even for a 1:1 request.
+        let identity = FrameEnhancementKernel.fsr1Easu(source, width: 3, height: 3, outputWidth: 3, outputHeight: 3)
+        precondition(identity.count == source.count)
     }
 
     private static func gpuMatchesReference() throws {
@@ -123,6 +140,50 @@ enum FrameEnhancementTests {
         presenter.clear()
     }
 
+    private static func gpuEasuMatchesReference() throws {
+        guard let device = MTLCreateSystemDefaultDevice() else {
+            print("SKIP: Metal device unavailable; EASU CPU reference only")
+            return
+        }
+        let presenter = try MetalFramePresenter(device: device)
+        presenter.samplingAlgorithm = .linear
+        let width = 12, height = 10, outWidth = 25, outHeight = 21
+        var rgba = [UInt8](repeating: 0, count: width * height * 4)
+        for y in 0..<height {
+            for x in 0..<width {
+                let offset = (y * width + x) * 4
+                rgba[offset] = UInt8((x * 20 + y * 7) % 256)
+                rgba[offset + 1] = UInt8((x * 11 + y * 31) % 256)
+                rgba[offset + 2] = UInt8(255 - (x * 9 + y * 13) % 256)
+                rgba[offset + 3] = 255
+            }
+        }
+        let provider = CGDataProvider(data: Data(rgba) as CFData)!
+        let image = CGImage(width: width, height: height, bitsPerComponent: 8, bitsPerPixel: 32,
+                            bytesPerRow: width * 4, space: CGColorSpaceCreateDeviceRGB(),
+                            bitmapInfo: CGBitmapInfo(rawValue: CGImageAlphaInfo.premultipliedLast.rawValue),
+                            provider: provider, decode: nil, shouldInterpolate: false, intent: .defaultIntent)!
+        try presenter.upload(image)
+        // EASU owns the output upscale, so it runs only when an output size is
+        // configured; the offscreen target then matches the upscaled size.
+        presenter.enhancement = .fsr1Easu
+        presenter.outputSize = CGSize(width: outWidth, height: outHeight)
+        let enhanced = try presenter.renderOffscreen(width: outWidth, height: outHeight)
+        let expected = FrameEnhancementKernel.fsr1Easu(rgba, width: width, height: height,
+                                                       outputWidth: outWidth, outputHeight: outHeight)
+        var maxDifference = 0
+        for pixel in 0..<(outWidth * outHeight) {
+            for channel in 0..<3 {
+                // renderOffscreen returns BGRA; the reference is RGBA.
+                let gpuChannel = channel == 0 ? 2 : (channel == 2 ? 0 : 1)
+                maxDifference = max(maxDifference,
+                                    abs(Int(enhanced[pixel * 4 + gpuChannel]) - Int(expected[pixel * 4 + channel])))
+            }
+        }
+        precondition(maxDifference <= 2, "fsr1_easu must match the CPU reference (max diff \(maxDifference))")
+        presenter.clear()
+    }
+
     private static func settingsMigration(root: URL) throws {
         let suite = "aether-enhancement-tests-" + UUID().uuidString
         let defaults = UserDefaults(suiteName: suite)!
@@ -154,8 +215,14 @@ enum FrameEnhancementTests {
                          "amount \(input) -> \(reloaded.frameEnhancementAmount)")
         }
         var invalid = fresh
-        invalid.frameEnhancement = "fsr1_easu"
+        invalid.frameEnhancement = "anime4k_upscale_s"
         do { try store.save(invalid); preconditionFailure("unported algorithm accepted") } catch {}
+        var easuValue = fresh
+        easuValue.frameEnhancement = "fsr1_easu"
+        easuValue.frameEnhancementAmount = 1.0
+        try store.save(easuValue)
+        let reloadedEasu = try store.load(defaults: defaults, legacyPrefix: "enh.")
+        precondition(reloadedEasu.frameEnhancement == "fsr1_easu")
         var rcasValue = fresh
         rcasValue.frameEnhancement = "fsr1_rcas"
         rcasValue.frameEnhancementAmount = 0.75

@@ -1169,6 +1169,20 @@ jobs:
             2>&1 | tee "$RUNNER_TEMP/linux-access.log"
           grep -Fx 'IAP_CATALOG_LIMIT_OK' "$RUNNER_TEMP/linux-access.log"
 
+      - name: Run Linux video library tests
+        env:
+          LD_LIBRARY_PATH: ${{ github.workspace }}/apps/godot_app/bin/linux/debug
+        run: |
+          for test in video_library_folders video_library_ui video_import_permissions; do
+            timeout 60 "$GODOT_BIN" --headless --path apps/godot_app \
+              --script "res://tests/${test}_test.gd" \
+              2>&1 | tee "$RUNNER_TEMP/${test}.log"
+            grep -Fx "${test^^}_OK" "$RUNNER_TEMP/${test}.log"
+            if grep -E 'SCRIPT ERROR:|^ERROR:' "$RUNNER_TEMP/${test}.log"; then
+              exit 1
+            fi
+          done
+
       - name: Run private runtime unit tests
         if: env.AETHERKIRI_WITH_INTERNAL == 'true'
         run: |

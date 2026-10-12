@@ -1,0 +1,141 @@
+# iOS 18 / iPadOS 18 迁移实践与验收
+
+- 日期：2026-10-12；状态：I0待实施；要求来源：[iOS spec](apple_host_ios_spec.md)。
+- 当前macOS基线 `a52696b6`；当前工程只有macOS target，以下新增文件/命令是实施目标，不是已经存在的工具。
+- 每阶段交付代码、实际执行、失败路径、测试、文档与一次commit/push。阶段标记只依据证据，不依据控件已出现。
+
+## 1. 工作原则
+
+先阅读AGENTS.md、spec、历史移交、ABI及现有iOS Godot构建参考；记录SDK、Xcode、设备与provider可用性。不得撤销其他任务修改。每轮提交完整已验收切片，不为“移动移植”删除macOS实现或修改公共ABI。
+
+顺序I0→I1→I2→I3→I4→I5→I6；I2b外部引用在复制导入完成后推进。模拟器做布局/逻辑，iPad和iPhone真机做触摸、GPU、音频、内存及商店。iOS18设备或runtime缺失时明示阻塞，不能以更高OS通过冒充18兼容。
+
+## 2. 分阶段实践
+
+### I0：依赖盘点与交叉编译（IOS-01/02）
+
+- [ ] 保存工具链与设备清单；运行 `xcodebuild -version`、`xcodebuild -showsdks`、`xcrun simctl list devices available`、`xcrun devicectl list devices`。
+- [ ] 盘点CMake/vcpkg/Rust/FFmpeg/OpenAL/插件的iphoneos与iphonesimulator支持；记录每个provider可用、缺依赖或暂缓原因。首个闭环至少KiriKiri，不用假provider代替。
+- [ ] 新增可重复的 `tools/apple_host_ios_build.py`（建议名），参数区分device/simulator、configuration和provider集合；产物隔离在 `out/apple_host/ios/{device,simulator}/`。
+- [ ] CMake明确iOS system、SDK、arm64、deployment18.0；依赖自身最低版本也审计。device与simulator虽同arm64，平台不同，不共用对象/缓存目录。
+- [ ] 确立链接ADR：首版优先静态core+engine闭包，macOS保持现SHARED；如果用动态库须构建合法framework并签名。明确static constructor是否被dead-strip，provider注册须有实际探针；force-load仅对确有需要的归档，避免重复engine单例。
+- [ ] `file`/`otool -L`/`xcrun vtool -show-build`检查平台、minOS与依赖；不得出现macOS dylib、Godot或SDL宿主依赖。
+
+验收：两个SDK的真实core构建日志、ABI差异为零、provider注册与API version可查询；将准确triplet/选项固化到脚本，不复制macOS路径当成功。失败依赖有最小复现与下一动作。
+
+### I1：原生target与平台接缝（IOS-01/02/06/08）
+
+- [ ] 在XcodeGen中新增 `AetherHostIOS` target/scheme，iOS18.0、iPhone+iPad、独立bundle id与Info.plist；签名team由本机配置提供，不把证书/账户写入仓库。
+- [ ] 提取平台路径、浏览器、scene、帧钟、文件与导出接口；AppKit视图保留macOS，UIKit实现按平台source group隔离。共享层不能import AppKit。
+- [ ] 桥接头审计，legacy音频session符号可在HostKit内部封装；不修改ABI/provider表。
+- [ ] UIKit MTKView、CADisplayLink、FrameScheduler连接最小Demo；保留native lease和GPU错误回退，兼容可选rendered query。
+- [ ] 生命周期采用暂停理由集合，旧async回调绑定session generation；不能允许后台timer运行或恢复追赶。
+- [ ] 打包五语言/字体/许可证/Demo；双协议门与拒绝页先接入，Release禁用绕过。
+
+验收：iOS18模拟器启动，iPad真机显示Demo且可tick，切后台返回正常，反复启动/退出资源清理；macOS构建和既有行为回归通过。模拟器缺GPU能力可测fallback，但不能替代iPad Metal证明。
+
+### I2：库、导入与移动导航（IOS-03/04/08）
+
+- [ ] iPhone三目的地导航、iPad自适应侧栏、详情推入/返回；停止独立视频库入口，非仅隐藏仍可误触的按钮。
+- [ ] 平台目录服务；相对托管路径持久化，库索引与staging原子发布。
+- [ ] Files目录/ZIP导入：scope、协调、iCloud材料化、空间预检、解压限制、取消、重复导入、出错恢复。
+- [ ] 图片选择/清除/发现；在线搜索绑定游戏与request ID，取消后结果失效，验证图片再替换。
+- [ ] 设置草稿、五语言、四主题、Dynamic Type、移动界面比例与横屏偏好迁移；移动默认original/off，macOS默认不变。
+
+验收：iPhone/iPad从Files导入fixture，无代码干预完成启动/返回/重启恢复；导入失败不留下幽灵条目。云文件、权限拒绝/磁盘不足分别测试，不用内置Demo替代文件导入验收。
+
+#### I2b：外部目录引用与书签（IOS-03）
+
+- [ ] 独立于复制导入选择；scope贯穿引擎读写会话，开始/停止配对，书签解析、失效重选、provider移动/离线清楚提示。
+- [ ] 真实文件provider验证书签与存档写入；受限provider不支持时回到复制导入，不能伪称引用成功。
+
+验收：重启、目录移动、访问撤销、iCloud离线、存档写入。若不支持可靠引用，记录能力原因并禁用该入口，不能牺牲复制闭环。
+
+### I3：触屏、IME、方向与音频（IOS-04/05/07）
+
+- [ ] UIKit触摸状态机：单主指、第二指忽略、cancel/release；宿主按钮与画布互斥命中，系统边缘手势保留。
+- [ ] aspect-fit矩形是指针、虚拟拖动与caret共用输入；pt/pixel/output三种尺寸分离，所有resize/旋转取消捕获。
+- [ ] 控制板两行/分组44pt布局、顶栏直接开关、状态/诊断统一、Ctrl保持与释放、鼠标指针可见。
+- [ ] UIKit IME客户端与provider预编辑能力、手动输入sheet、FIFO平台请求及取消响应；不抢焦点、不重复Unicode提交。
+- [ ] scene方向请求失败处理；iPad窄窗口与键盘占用不强制物理横屏。返库恢复方向策略。
+- [ ] 引擎音频session激活、中断/路由监听与暂停理由；category和静音开关的实际行为写入最终ADR，前后台不申请后台音频。
+
+必须执行的事件矩阵：
+
+| 场景 | 期望 |
+|---|---|
+| 画布点击四角/中心、黑边点击 | 映射fixture正确，黑边零down |
+| 拖出边界后抬起、系统取消 | 完整down→move→up/cancel，没有残留 |
+| 两指交叠、先抬主指 | 无重复点击、无第二指接管 |
+| 控制板点击、显示工具栏、系统modal | 不穿透游戏，既有捕获取消 |
+| Ctrl按住后隐藏/切模式/失焦/返库 | held=no，引擎收到对应release |
+| 旋转、窄窗resize、键盘出现 | 新坐标正确、旧序列取消 |
+| 中日韩合成、删除、粘贴、取消 | 候选可用、最终文本一次提交 |
+| 来电/系统中断、耳机拔出、前后台 | 音频按契约暂停/恢复，dt无后台间隔 |
+
+验收：单元事件序列+实际引擎fixture+iPhone/iPad真机视频/日志；CJK候选窗不能只用字符串单测证明。辅助技术验证宿主控件，不夸大像素游戏内部可访问性。
+
+### I4：画面、诊断与负载（IOS-06/10）
+
+- [ ] 原生/软件fixture同刻对照，GPU lease清理、resize/旋转/恢复稳定；增强按移动能力开放，未验证4K禁用。
+- [ ] 60Hz与高刷新设备真实dt/限频与统计口径；高刷新目标不可超设备能力，低电量/系统变频不加速剧情。
+- [ ] compact诊断sheet与宽屏dock；缓存插件信息，不在View.body读磁盘/provider；统计≤4Hz，静态native帧不复制发布新纹理。
+- [ ] 复测 `a52696b6` 菜单卡顿修复、`8175b1f2` 控制板状态修复，菜单开关不重建全壳120次/秒。
+- [ ] 截图、快照、导出分享实际文件可解析；后台分享完成不响应旧session。
+- [ ] 内存警告、thermal策略、可重建缓存回收、无黑屏回退；在低内存代表设备记录峰值及可用输出档。
+
+验收：每种路径至少5分钟短回归；代表iPhone和iPad至少30分钟游玩+10轮后台/返回+10轮会话重开，记录峰值、增长趋势、失败计数和lease。预算未定稿前不勾IOS-10完成；snapshot/self-check通过不替代渲染长期验收。
+
+### I5：StoreKit与产品限制（IOS-09）
+
+- [ ] 从既有apple_storekit.swift核对商品类型、coffee叠加期限、库阈值与平台purchase协议，形成共享权益模型和断言。
+- [ ] 启动监听updates、verified交易、transaction ID台账、发放持久成功后finish、恢复/currentEntitlements/撤销；coffee独立台账与Keychain失败保留待发交易。
+- [ ] 首先本地StoreKit配置与故障注入：购买成功/取消/pending/unverified/退款/过期/重复通知/崩溃中断；随后sandbox真机。
+- [ ] 仅真实provider就绪后启用库限制与购买入口；超限保留既有条目，macOS不受限制。无网不能删除缓存权益，缓存是否过期与重新验证策略明确。
+
+验收：本地和sandbox证据分别列出；恢复非消耗型、coffee重投不重复延长、发放失败重试；实际商店提交/交易由用户操作，代理不得伪造签名或购买成功。需要商店账号/商品状态时先完成其余可验收工作。
+
+### I6：G4与交付审计（IOS-01…10）
+
+- [ ] iPad iOS18真机Demo + 1真实标题（导入、剧情、选择、存读档、返库/冷启动恢复）；标题出处/平台测试范围满足用户授权，Minori仍不加入。
+- [ ] iPhone18真机触摸闭环；再测当前更高OS以确认兼容性；SDK更高不等于能调用仅更高OS API。
+- [ ] 中文/繁中/英/日/韩、四主题、Dynamic Type最大辅助档、VoiceOver、Reduce Motion、横竖屏/窄窗/安全区验收。
+- [ ] Release归档、资源/许可证、签名、权限声明、隐私manifest按实际SDK诊断核实；不增加无用途权限，不自动发布商店。
+- [ ] IOS要求矩阵全部有证据或明确未完成；用户确认后才登记verified_games。
+
+最终交付：构建脚本与复现命令、provider支持矩阵、真机报告、截图/录屏、遗留列表、commit；不因一个绿构建或仅更高OS成功就宣布18支持完成。
+
+## 3. 实施命令契约
+
+以下命令需I0/I1创建工具/target后才能执行；参数/产物约定应与最终实现一致并随代码修订：
+
+```bash
+python3 tools/apple_host_ios_build.py --sdk iphoneos --configuration Debug
+python3 tools/apple_host_ios_build.py --sdk iphonesimulator --configuration Debug
+xcodegen generate --spec apps/apple_host/project.yml
+xcodebuild -project apps/apple_host/AetherHost.xcodeproj -scheme AetherHostIOS \
+  -configuration Debug -destination 'generic/platform=iOS Simulator' \
+  -derivedDataPath out/apple_host/ios/simulator-app build CODE_SIGNING_ALLOWED=NO
+xcodebuild -project apps/apple_host/AetherHost.xcodeproj -scheme AetherHostIOS \
+  -configuration Debug -destination 'generic/platform=iOS' \
+  -derivedDataPath out/apple_host/ios/device-app build CODE_SIGNING_ALLOWED=NO
+python3 tools/apple_host_settings_tests.py
+```
+
+无签名device构建只证明编译，安装真机需已配置签名与实际device ID。xcrun devicectl/simctl用本机帮助确认参数，设备ID从清单读取，不编造。iOS18模拟器runtime缺失时记录并配置可用runtime后再验收。
+
+新增共享逻辑应进现有行为套件；新增UIKit逻辑建立iOS XCTest target（建议 `AetherHostIOSTests`），涵盖状态机/映射/scene lifecycle；XCUITest用于控制板/Files/设置/协议交互。若CUA仅能控制桌面，可控制Simulator窗口做可见点验；真机采用实际设备自动化或人工步骤+录屏/日志，不声称桌面CUA等于真机触屏。
+
+## 4. 证据与推进记录模板
+
+证据放 `out/apple_host/evidence/ios-I<n>-<case>/`；out不入Git，进度文档记录目录与关键结论。可复现fixture源码/脚本入Git，真实游戏内容与凭据不入Git。
+
+每份报告记录：commit、Xcode/SDK、OS/device/model、device/simulator、configuration、provider列表、renderer/output/增强、操作步骤、实际结果、日志/截图/视频路径、未覆盖项。日志至少含dt、tick/render/presentation、pause原因、session generation、GPU/lease结果；不得混用scanout与提交FPS。
+
+阶段更新模板：
+
+| 要求ID/案例 | 当前状态 | 证据路径/命令 | 失败原因或未覆盖 | 下一动作 |
+|---|---|---|---|---|
+| IOS-xx / case | 未开始/实现中/已验证/受阻 | 实际日志或文件 | 明确边界 | 可执行动作 |
+
+Goal模式按阶段持续推进，阶段完成不等于整个M4完成。达到G4前对照IOS-01…10和所有I0…I6检查项重新审计；缺真机/商品/签名时保持未完成，记录具体阻塞，继续独立任务。每轮commit/push并报告验证结果，更新器/视频/Minori暂缓不反复占用队列。

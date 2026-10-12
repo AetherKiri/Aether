@@ -3,6 +3,7 @@
 - 状态：macOS 侧 M0/M2 已完成、M1 证据齐（待用户确认标题登记）、M3 产品对齐按 UI P1–P6 推进，均已通过行为回归 + 真实 CUA；本文件用于把工作移交到 iOS 端开发。
 - 编写时间：2026-10-12。基准提交：`e4da4ba8`（`feature/apple-native-host-m0`）。
 - 关联文档：[spec](apple_host.md) · [接缝清单](apple_host_seam_inventory.md) · [进度](apple_host_progress.md) · [UI spec](apple_host_ui_spec.md) · [UI 计划](apple_host_ui_plan.md) · [Metal 清单](apple_host_metal_plan.md)。
+- 最新迁移约束（2026-10-12）：最低 iOS/iPadOS **18.0**；实施以 [迁移 spec](apple_host_ios_spec.md) 和 [实践与验收](apple_host_ios_plan.md) 为准。本文件保留历史调查，旧 iOS 16 参考不再作为部署目标。最新 macOS 修复基线 `a52696b6`。
 - 交接对象：接手 iOS/iPadOS 适配的 AI 或开发者。请先读 [spec](apple_host.md) 第 1、3、5 节与 [接缝清单](apple_host_seam_inventory.md) F/J/L/K 节，再读本文件。
 
 ---
@@ -48,7 +49,7 @@
 
 ### 4.1 工程与构建
 
-- 现工程 `apps/apple_host/project.yml`（XcodeGen）只声明 `platform: macOS`、`deploymentTarget.macOS: "13.0"`、`ARCHS: arm64`、`PRODUCT_BUNDLE_IDENTIFIER: org.github.aetherkiri.host.debug`。iOS 需新增 iOS target（或 platform 条件），设置 `deploymentTarget.iOS`（Godot 侧 iOS 预设用 `min_ios_version = 16.0`，见 `apps/godot_app/export_presets.cfg`，可作为基线）、iOS bundle id、`UISupportedInterfaceOrientations`、App 图标、`Info.plist` 平台项。
+- 现工程 `apps/apple_host/project.yml`（XcodeGen）只声明 `platform: macOS`、`deploymentTarget.macOS: "13.0"`、`ARCHS: arm64`、`PRODUCT_BUNDLE_IDENTIFIER: org.github.aetherkiri.host.debug`。iOS 需新增 iOS target（或 platform 条件），设置 `deploymentTarget.iOS`为 18.0（Godot 旧预设 16.0 只作历史参考）、iOS bundle id、`UISupportedInterfaceOrientations`、App 图标、`Info.plist` 平台项。
 - `aether_apple_host_core` 与 `engine_api` 需为 iOS（`iphoneos`/`iphonesimulator`，arm64）交叉编译；确认 vcpkg 依赖（FFmpeg 等）有 iOS triplet，或走已启用的 provider 子集。
 - 链接方式沿用 macOS：`libaether_apple_host_core` + `libengine_api`（embed + code sign）。iOS 上静态链接更简单，可评估（对应 spec 开放问题 4）。
 - 新 Swift 文件加入后需 `(cd apps/apple_host && xcodegen generate)` 再构建。

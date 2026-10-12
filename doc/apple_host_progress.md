@@ -782,3 +782,9 @@
 - 精确 tickCount 保持内部计数，UI displayedTickCount 与性能快照按单调时钟最多每秒四次发布；引擎 dt/tick 节奏不变。非 lease native 仅在渲染新帧或首帧时复制纹理，未变化帧保留身份；不支持可选 rendered 查询的 provider 保持原来更新语义。游戏 Menu 固定内容宽度。
 - Debug 构建、全套设置/真实引擎行为测试、diff 检查通过。CUA 验证诊断打开、诊断开启时菜单展开与关闭；调用观察由约4秒降至约0.6秒，仅工具交互参考，不作为严格延迟基准。
 - 同机3秒主线程采样：修复前1479/2244样本落在 SwiftUI 更新链，修复后1903/2401样本等待事件。证据 `out/apple_host/evidence/menu-refresh-fix/`；该短期 Demo 数据不是游戏FPS或真实标题长期性能结论。
+
+### 2026-10-12：iOS 18 迁移 spec 与实践基线
+
+- 建立 `apple_host_ios_spec.md` 和 `apple_host_ios_plan.md`，最低iOS/iPadOS18.0，iPhone/iPad原生target；10项需求矩阵、I0–I6实施阶段与可核验交付。
+- 明确44pt触控、安全区、自适应导航、单主指事件/取消/映射、虚拟控制板、IME、CADisplayLink/lifecycle、音频、Files复制与书签、真实StoreKit、诊断低频刷新与真机G4。
+- 同步AGENTS、总spec与历史移交链接及18.0约束；本文档不构成iOS实现/构建/真机已通过证明。仅文档变更，检查Markdown本地链接与diff，不重复运行应用测试。

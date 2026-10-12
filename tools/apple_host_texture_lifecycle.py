@@ -33,6 +33,7 @@ def main():
                 env.pop(key, None)
         env.update(AETHER_HOST_AUTORUN='1', AETHER_HOST_RENDERER='metal',
                    AETHER_HOST_ASYNC_SNAPSHOT='1', AETHER_HOST_PROFILE='0',
+                   AETHER_HOST_BYPASS_LEGAL_GATE='1',
                    AETHER_HOST_PRESENTATION='metal', AETHER_HOST_SCHEDULING='direct',
                    AETHER_HOST_TRACE_TEXTURES='1', AETHER_HOST_EXIT_AFTER='12',
                    AETHER_HOST_LIBRARY_ROOT=str((folder / 'library').resolve()),

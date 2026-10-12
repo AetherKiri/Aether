@@ -45,3 +45,27 @@ struct SettingsDocumentView: View {
         }.padding(24).frame(width: 720, height: 560)
     }
 }
+
+/// First-use legal gate. Presented modally and non-dismissable until the user
+/// either accepts (persisted separately from settings) or declines (quit).
+struct LegalAgreementView: View {
+    let language: ShellLanguage
+    let accept: () -> Void
+    let decline: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text(language.text("legalTitle")).font(.title2.bold())
+            Text(language.text("legalFirstSummary")).font(.callout).foregroundStyle(.secondary)
+            ScrollView {
+                Text(SettingsDocument.privacy.contents(language: language) ?? language.text("documentUnavailable"))
+                    .textSelection(.enabled).frame(maxWidth: .infinity, alignment: .leading).padding(12)
+            }
+            HStack {
+                Button(language.text("legalDecline"), action: decline).keyboardShortcut(.cancelAction)
+                Spacer()
+                Button(language.text("legalAccept"), action: accept).keyboardShortcut(.defaultAction)
+            }
+        }.padding(24).frame(width: 720, height: 600)
+    }
+}

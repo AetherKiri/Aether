@@ -73,6 +73,9 @@ final class ShellModel: ObservableObject {
     private var pendingSettingsAction: (() -> Void)?
     private var pendingSettingsCancel: (() -> Void)?
     private let settingsStore: SettingsStore
+    private let legalAcceptance: LegalAcceptanceStore
+    /// First-use legal agreement gate; kept separate from the settings draft.
+    @Published private(set) var legalGateRequired = false
     @Published private(set) var settingsAvailable = true
     @Published private(set) var isFullscreen = false
     private let preferencePrefix: String
@@ -90,6 +93,7 @@ final class ShellModel: ObservableObject {
             .appendingPathComponent("Aether", isDirectory: true)
         repository = GameLibrary(root: root)
         settingsStore = SettingsStore(url: root.appendingPathComponent("settings.json"))
+        legalAcceptance = LegalAcceptanceStore(url: root.appendingPathComponent("legal-acceptance.json"))
         let initial: HostSettings
         var settingsFailure: Error?
         do { initial = try settingsStore.load(defaults: defaults, legacyPrefix: preferencePrefix) }
@@ -100,6 +104,7 @@ final class ShellModel: ObservableObject {
         showLogs = initial.logs
         showVirtualControls = initial.virtualControls
         translationModelPath = initial.translationModelPath
+        legalGateRequired = !LegalAgreement.bypassRequested() && !legalAcceptance.isSatisfied()
         if let settingsFailure {
             settingsAvailable = false
             self.error = text("settingsLoadFailed") + "\n" + settingsFailure.localizedDescription
@@ -181,6 +186,21 @@ final class ShellModel: ObservableObject {
         pendingSettingsCancel = nil
         confirmDiscardSettings = false
         action?()
+    }
+
+    /// Records explicit first-use acceptance. Nothing here pre-accepts on the
+    /// user's behalf; a failed write leaves the gate in place.
+    func acceptLegalAgreement() {
+        guard legalAcceptance.accept() else {
+            error = text("documentUnavailable")
+            return
+        }
+        legalGateRequired = false
+    }
+
+    /// macOS mirrors Godot's desktop behaviour: declining quits the app.
+    func declineLegalAgreement() {
+        NSApp?.terminate(nil)
     }
 
     func cancelSettingsNavigation() {

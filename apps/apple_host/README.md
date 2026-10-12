@@ -232,6 +232,11 @@ adaptive sharpening）与 **FSR1 EASU**（edge-adaptive 上采样），后两者
 FXAA 与预设/自定义链位于私有 RenderingDevice provider，需要逐个移植到 Metal 并做参考
 对照，当前在选择器与设置页说明中明确未开放。smoke 可用 `--frame-enhancement
 adaptive_sharpen|fsr1_rcas|fsr1_easu --enhancement-amount 0.5` 做基准覆盖（仅测试入口，不写入偏好）。
+首次启动会显示 Godot 同版本（`2026-07-27.4`）的隐私/免责协议门：正文取自打包的
+`privacy_disclaimer_*.txt` 五语言资源，按钮为 拒绝 / 同意并继续；同意把
+`{version, acceptedAt}` 写到库根 `legal-acceptance.json`（与可撤销的设置草稿分开），
+拒绝在 macOS 退出应用。非交互测试/基准入口用 debug-only 的
+`AETHER_HOST_BYPASS_LEGAL_GATE=1` 绕过（对应 Godot 的 `AETHERKIRI_BYPASS_LEGAL_GATE`）。
 「添加外部游戏目录」直接引用所选目录（支持 data 包装目录），不复制；存档和运行文件写入引用目录。
 同模式重复添加沿用条目，复制与外部引用可分别管理。外部目录移动或丢失时需重新添加。
 旧索引默认按管理副本读取，损坏索引仍保留并禁止修改。

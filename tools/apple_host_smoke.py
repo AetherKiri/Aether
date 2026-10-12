@@ -67,7 +67,8 @@ def main():
             for variable in list(env):
                 if variable.startswith("AETHER_HOST_TEST_"):
                     env.pop(variable, None)
-            env.update(AETHER_HOST_AUTORUN="1", AETHER_HOST_LIBRARY_ROOT=str((folder / "library").resolve()), AETHER_HOST_GAME_PATH=str(game),
+            env.update(AETHER_HOST_AUTORUN="1", AETHER_HOST_BYPASS_LEGAL_GATE="1",
+                       AETHER_HOST_LIBRARY_ROOT=str((folder / "library").resolve()), AETHER_HOST_GAME_PATH=str(game),
                        AETHER_HOST_DEFAULT_FONT=str(root / "apps/godot_app/assets/fonts/aetherkiri-runtime-cjk.otf"),
                        AETHER_HOST_TEST_INPUT="8", AETHER_HOST_PRESENTATION=args.presentation,
                        AETHER_HOST_RENDERER=args.renderer,

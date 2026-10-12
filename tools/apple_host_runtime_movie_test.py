@@ -52,6 +52,7 @@ def main():
             folder.mkdir(exist_ok=True)
             env = os.environ.copy()
             env.update(AETHER_HOST_AUTORUN='1', AETHER_HOST_GAME_PATH=str(game),
+                       AETHER_HOST_BYPASS_LEGAL_GATE='1',
                        AETHER_HOST_LIBRARY_ROOT=str(folder / 'library'),
                        AETHER_HOST_DEFAULT_FONT=str(root / 'apps/godot_app/assets/fonts/aetherkiri-runtime-cjk.otf'),
                        AETHER_HOST_RENDERER='software', AETHER_HOST_EXIT_AFTER=str(duration),

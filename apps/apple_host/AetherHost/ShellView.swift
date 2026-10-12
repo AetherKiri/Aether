@@ -23,6 +23,12 @@ struct ContentView: View {
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.willTerminateNotification)) { _ in
             model.closeActiveSession()
         }
+        .sheet(isPresented: Binding(get: { model.legalGateRequired }, set: { _ in })) {
+            LegalAgreementView(language: model.language,
+                               accept: { model.acceptLegalAgreement() },
+                               decline: { model.declineLegalAgreement() })
+                .interactiveDismissDisabled()
+        }
     }
 
     private var shell: some View {

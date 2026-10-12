@@ -505,7 +505,7 @@
 31b. [ ] **两处兼容小项待查**：`new DMMCloud()` 报 `Invalid argument count`；`new Zlib().version()` 报成员不存在（可能只是探针写法/注册方式差异）
 32. [ ] **内核后续：内存可观测（借鉴 `MemoryDesign.md`）**：分配头带 tag + `AllocTagScope` 标签栈，让"谁吃掉了内存"可回答；当前只有粗粒度 `engine_get_memory_stats`
 
-33. [ ] **产品 UI/设置完整对齐**：调查 P0 已完成；P1核心、P2集合/详情与四主题已接入，完整CUA/无障碍验收待补；P3a–P3d、P4a/P4b/P4d/P4e/P4f、P5a 画面增强与 P5b FSR1 EASU/RCAS 已接入并通过行为回归与真实CUA；P4 至此完成（调试控制台、场景测试入口、RFVP 编码仍按能力缺口记录），P5b 其余 Godot 算法移植与预设/自定义链，P6/P7 见 [实施计划](apple_host_ui_plan.md)（视频库暂停维护）。
+33. [ ] **产品 UI/设置完整对齐**：调查 P0 已完成；P1核心、P2集合/详情与四主题已接入，完整CUA/无障碍验收待补；P3a–P3d、P4a/P4b/P4d/P4e/P4f、P5a 画面增强与 P5b FSR1 EASU/RCAS、P6 首片（macOS 首次使用协议门）已接入并通过行为回归与真实CUA；P4 至此完成（调试控制台、场景测试入口、RFVP 编码仍按能力缺口记录），P5b 其余 Godot 算法移植与预设/自定义链、P6 其余（Demo/VNDB/渠道声明），P7 见 [实施计划](apple_host_ui_plan.md)（视频库暂停维护）。
 
 ## 变更记录
 
@@ -659,3 +659,13 @@
 - CUA 验证渲染页「画面增强」只有 关闭/对比度自适应锐化/FSR1 RCAS 三项、选择后出现 50% 强度滑杆、保存写入 v8 偏好；随后经真实产品路径（游戏库 → 开始游玩）启动 KAG3，Diagnostics 日志出现 `frame enhancement fsr1_rcas amount=0.50`。证据：`out/apple_host/evidence/ui-p5b-cua/`。
 - FSR1 EASU：`FrameEnhancementKernel.fsr1Easu` 与 Metal `easu_fragment` 移植 `FsrEasuCon`/`FsrEasuSetF`/`FsrEasuTapF`/`FsrEasuF`；硬件 `gather4` 用四次钳位点采样模拟、近似 `rcp`/`rsqrt` 换精确值，CPU 与 GPU 逐像素一致（≤2）。EASU 自己完成输出放大（`scalesOutput`），由输出 pass 承担；`outputConfig` 缓存键加入采样/增强算法。渲染页选择器多出「FSR1 EASU」，文案改为“当前开放已验证的自适应锐化与 FSR1 EASU/RCAS”。30 秒 KAG3 Metal direct smoke（`--frame-enhancement fsr1_easu`）通过，放大输出 1440x1080 视觉正确。证据：`out/apple_host/evidence/ui-p5b-easu/`。
 - 残余未验收：Anime4K/RAVU/CuNNy/NNEDI3/FXAA 的许可与负载评估、15 条预设链、自定义链编辑器均未迁移；EASU 在 1:1（输出分辨率等于输入）时锐化核会在锐边产生可见差异（算法在非放大场景下的行为，默认 1080p 放大路径不受影响）；增强只在 Metal 路径生效（软件诊断路径保持原始画面）；增强与输出缩放/4K 组合的负载报告待补。
+
+### 2026-10-12：P6 首片 首次使用协议门（macOS）
+
+- Godot 首次使用前弹隐私/免责协议（`LEGAL_AGREEMENT_VERSION = "2026-07-27.4"`），同意后进入主界面、拒绝则退出；Apple 宿主此前只能在「设置 > 关于」查看文档，没有首次门。本片补齐 macOS 侧首次门。
+- `LegalAgreement.version` 与 Godot 一致；`LegalAcceptanceStore` 把 `{version, acceptedAt}` 写入库根 `legal-acceptance.json`，与可撤销的设置草稿分开；缺失/损坏/版本不符一律视为未同意并重新弹门。
+- 首次启动弹不可关闭的 `LegalAgreementView`：标题 + 首用说明 + 打包好的五语言协议正文（`privacy_disclaimer_*.txt`）+ 拒绝 / 同意并继续。同意写版本与时间戳；拒绝在 macOS 退出应用（对齐 Godot 桌面行为）。
+- 非交互入口用 debug-only `AETHER_HOST_BYPASS_LEGAL_GATE=1` 绕过（对应 Godot 的 `AETHERKIRI_BYPASS_LEGAL_GATE`）；smoke/selftest/profile/cold-start/texture-lifecycle/runtime-movie 工具已设置该变量。
+- 测试：`python3 tools/apple_host_settings_tests.py` 新增 `LegalAcceptanceTests`（版本门、持久化、损坏文件、过期版本、debug 绕过）全通过；Debug 构建通过。
+- CUA：全新库弹门并显示五语言协议正文、同意后写 `legal-acceptance.json`、重开不再弹门；30 秒软件回归 smoke（工具带 bypass）通过。证据：`out/apple_host/evidence/ui-p6-legal-cua/`、`ui-p6-legal-smoke/`。
+- 残余未验收：渠道额外声明（App Store statement）与「已拒绝」页面属 iOS/M4；内置 Demo、VNDB 在线封面仍待 P6。

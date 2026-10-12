@@ -1,7 +1,7 @@
 # Apple 宿主 UI 与设置对齐实施计划
 
 - 2026-10-11，依据 [产品 UI spec](apple_host_ui_spec.md)。
-- 状态：P0调查完成；P1核心实现与行为测试已接入，完整CUA验收待补；P2集合/详情及四主题已接入，完整视觉/无障碍验收待补；P3a–P3d、P4a/P4b/P4d/P4e/P4f 均已实现并通过行为回归与真实CUA；P5a（对比度自适应锐化）与 P5b（FSR1 RCAS + FSR1 EASU，AMD MIT 参考 + CPU 对照 + 缓存键修复）已实现并通过行为回归、真实 smoke 与设置页/启动路径 CUA；P5b 其余 Godot 算法移植与预设/自定义链、P6/P7 尚未实施（视频库暂停维护）。阶段按依赖排序，每轮只提交已验证的完整切片。
+- 状态：P0调查完成；P1核心实现与行为测试已接入，完整CUA验收待补；P2集合/详情及四主题已接入，完整视觉/无障碍验收待补；P3a–P3d、P4a/P4b/P4d/P4e/P4f 均已实现并通过行为回归与真实CUA；P5a（对比度自适应锐化）与 P5b（FSR1 RCAS + FSR1 EASU，AMD MIT 参考 + CPU 对照 + 缓存键修复）已实现并通过行为回归、真实 smoke 与设置页/启动路径 CUA；P6 首片（macOS 首次使用协议门）已实现并通过行为回归与真实 CUA；P5b 其余 Godot 算法移植与预设/自定义链、P6 其余（Demo/VNDB/渠道声明）与 P7 尚未实施（视频库暂停维护）。阶段按依赖排序，每轮只提交已验证的完整切片。
 - 目标是修正产品结构并补齐真实功能；不在一轮中把所有缺项画成无效果控件。
 
 ## P0：调查与规范（本轮）
@@ -268,3 +268,13 @@ P3a重点验证部分Metal激活失败后的资源清理：不得在已打开游
 - [x] EASU 验证：Debug 构建通过；30 秒 KAG3 Metal direct smoke（`--frame-enhancement fsr1_easu`）通过（放大输出 1440x1080 视觉正确，源尺寸 parity 捕获因 EASU 1:1 锐化核而有大差异，smoke 对放大类增强只要求非零效果）。证据：`out/apple_host/evidence/ui-p5b-easu/`。
 
 下一切片：P5b 其余部分（评估 Anime4K/RAVU/CuNNy/NNEDI3 的许可与负载），随后预设链与自定义链编辑器；视频库/播放器暂停维护。
+
+## P6实施记录：首次使用协议门（macOS 首片）
+
+- [x] `LegalAgreement.version = "2026-07-27.4"`（对齐 Godot 常量）；`LegalAcceptanceStore` 把 `{version, acceptedAt}` 写到库根 `legal-acceptance.json`，与可撤销的设置草稿分开；缺失/损坏/版本不符一律视为未同意并重新弹门。
+- [x] 首次启动弹出不可关闭的 `LegalAgreementView`：标题 + 首用说明 + 打包好的五语言协议正文（`privacy_disclaimer_*.txt`）+ 拒绝 / 同意并继续。同意写入版本与时间戳；拒绝在 macOS 退出应用（对齐 Godot 桌面行为）。
+- [x] debug-only `AETHER_HOST_BYPASS_LEGAL_GATE=1` 供非交互入口绕过；smoke/selftest/profile/cold-start/texture-lifecycle/runtime-movie 工具已设置。
+- [x] `python3 tools/apple_host_settings_tests.py` 通过：新增 `LegalAcceptanceTests`（版本门、持久化、损坏文件、过期版本、debug 绕过）；Debug 构建通过。
+- [x] CUA 验证：全新库弹门并显示五语言协议正文、同意后写 `legal-acceptance.json`、重开不再弹门。证据：`out/apple_host/evidence/ui-p6-legal-cua/`；30 秒软件回归 smoke 通过（工具带 bypass）。证据：`out/apple_host/evidence/ui-p6-legal-smoke/`。
+
+下一切片：P6 其余（内置 Demo 打包安装与移除记忆、VNDB 在线封面、渠道额外声明）与 P5b 其余算法/预设链并行评估；视频库/播放器暂停维护。

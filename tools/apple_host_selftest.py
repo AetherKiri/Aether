@@ -53,7 +53,8 @@ def main():
                 folder = output / name
                 folder.mkdir()
                 env = os.environ.copy()
-                env.update(AETHER_HOST_AUTORUN="1", AETHER_HOST_LIBRARY_ROOT=str((folder / "library").resolve()), AETHER_HOST_GAME_PATH=str(game),
+                env.update(AETHER_HOST_AUTORUN="1", AETHER_HOST_BYPASS_LEGAL_GATE="1",
+                           AETHER_HOST_LIBRARY_ROOT=str((folder / "library").resolve()), AETHER_HOST_GAME_PATH=str(game),
                            AETHER_HOST_RENDERER=renderer, AETHER_HOST_PRESENTATION="metal",
                            AETHER_HOST_PROFILE="1", AETHER_HOST_TEST_INPUT="5",
                            AETHER_HOST_TEST_KEYS=KEYS, AETHER_HOST_EXIT_AFTER="28",

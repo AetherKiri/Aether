@@ -57,6 +57,7 @@ targets:
       - path: {q(root / 'apps/apple_host/Tests/VirtualControlsTests.swift')}
       - path: {q(root / 'apps/apple_host/Tests/GameRuntimeTests.swift')}
       - path: {q(root / 'apps/apple_host/Tests/FrameEnhancementTests.swift')}
+      - path: {q(root / 'apps/apple_host/Tests/LegalAcceptanceTests.swift')}
     settings:
       base:
         ARCHS: arm64

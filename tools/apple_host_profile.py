@@ -47,7 +47,8 @@ def main():
                 env.pop(name, None)
         for name in ('AETHER_HOST_CAPTURE_AFTER', 'AETHER_HOST_PRESENTATION'):
             env.pop(name, None)
-        env.update(AETHER_HOST_AUTORUN='1', AETHER_HOST_LIBRARY_ROOT=str((folder / "library").resolve()), AETHER_HOST_RENDERER='metal',
+        env.update(AETHER_HOST_AUTORUN='1', AETHER_HOST_BYPASS_LEGAL_GATE='1',
+                   AETHER_HOST_LIBRARY_ROOT=str((folder / "library").resolve()), AETHER_HOST_RENDERER='metal',
                    AETHER_HOST_PROFILE='1', AETHER_HOST_DRAWABLE_1080P='1',
                    AETHER_HOST_BENCHMARK='1' if args.offscreen else '0',
                    AETHER_HOST_OUTPUT_RESOLUTION='original',

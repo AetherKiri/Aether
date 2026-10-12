@@ -72,7 +72,7 @@ Apple 官方参考：[Settings](https://developer.apple.com/design/human-interfa
 | 调试覆盖层 off/summary/detail | P4b 已接入 | CPU/tick/GPU/呈现FPS分开命名；进程与GPU估算内存注明统计口径 | P4 |
 | 错误弹窗追加最近20行日志 | 缺失 | UI 与引擎 error_dialog_logs 联动，默认关闭 | P1 |
 | 插件追踪/trace日志/控制台文件/TJS导出 | P4d 已接入为临时会话工具（不写入偏好，追踪 30 秒自动关闭） | 临时会话工具；不作为普通持久偏好，追踪与trace 30秒自动关闭 | P4 |
-| 场景测试：主页/设置/详情/视频库/视频播放器/游戏，运行状态变体 | 缺失 | 独立测试 fixture 与启动参数，退出可恢复；Debug工具 | P4 |
+| 场景测试：主页/设置/详情/视频库/视频播放器/游戏，运行状态变体 | P4 已接入：高级工具里的场景选择 + 进入/退出，持久化在 Godot 键 `aether_kiri/scene_test`，重启仍进入、退出可恢复；未镜像独立的默认/加载/启动状态选择器 | 独立测试 fixture 与启动参数，退出可恢复；Debug工具 | P4 |
 | QQ社群 | 部分；Help有入口、设置没有 | 设置中也可访问；默认不复制启动推广弹窗 | P1 |
 | 关于版本、协议查看 | 缺失设置分区 | Bundle实际版本/构建、五语言协议资源、许可证入口 | P1 |
 | 首次使用协议状态与分发相关额外声明 | P6 已接入 macOS 首次协议门（版本化 AcceptanceStore + 五语言协议正文 + 同意/拒绝）；渠道额外声明（App Store）留 M4 | 单独 AcceptanceStore，按分发渠道、版本管理，不能混入可撤销草稿 | P6 |
@@ -170,7 +170,7 @@ Lumen四套主题保留内容层、强调色、圆角与封面比例；系统字
 | 内容集合与详情（P2） | 目的地侧栏；默认封面网格与紧凑列表；游戏/视频名称和路径搜索；最近时间与标题排序；详情封面编辑与可见常用动作；返回保留搜索和条目滚动锚点 | 运行时搜索待P4元数据；滚动恢复是条目锚点而非逐像素；四主题已接入并点验；VoiceOver完整朗读与全部窗口/语言组合仍待验收 |
 | 视频集合（P2） | 缓存真实位置/总时长；旧无时长条目只显示位置；移除确认同时清理进度与字幕选择，保留视频文件 | 进度数据来自实际播放器，不在导入时伪造时长；封面仍为影片占位符；播放器完整交互在P4 |
 | 渲染与增强（P3/P5） | 启动前设备/呈现器与翻译provider能力；Metal初始化失败安全重建软件会话；报告请求/实际引擎/呈现路径和原因；新安装默认Metal | P3a–P3d行为回归通过；P3b/P3c/P3d设置页CUA已验证；增强仍未开放 |
-| 统计/运行配置/诊断（P4） | 会话时长与完整主页（P4a）、诊断 profile 与性能覆盖层（P4b）、临时工具（P4d，30 秒自动关闭）、可停靠诊断控制台已接入 | RFVP 编码待链接 provider；控制台的问题标记/快照/自检动作与场景测试入口仍在 backlog |
+| 统计/运行配置/诊断（P4） | 会话时长与完整主页（P4a）、诊断 profile 与性能覆盖层（P4b）、临时工具（P4d，30 秒自动关闭）、可停靠诊断控制台、场景测试入口已接入 | RFVP 编码待链接 provider；控制台的慢帧捕获仍在 backlog |
 | 发布功能（P6/P7/M4） | 关于资源已打包；macOS 首次使用协议门已接入；内置 Demo 已接入；VNDB 在线封面已接入（显式触发、只发标题、缓存到库根） | 渠道额外声明仍单列 P6；更新器最后；真实IAP与移动端M4 |
 
 主题设置使用schema v2；渲染设置使用schema v4，读取v1/v2/v3时补齐画布、输出与采样字段并将旧配置迁移为原始输出/线性采样，加载本身不改写原文件，下一次成功保存写入当前schema。未知主题回退classic，未知schema或损坏文件仍禁止保存以保留证据。只按有效设置应用外观与启动配置，草稿不预览，也不重建页面identity。
@@ -288,7 +288,7 @@ Godot 的 `smooth` 仅是线性采样的旧名称，默认值为 bicubic。Apple
 
 ### 7.11 P4d实施结果：临时高级工具
 
-设置「高级开发工具」不再显示“尚未迁移”占位，而是 Godot `_set_advanced_tool` 对应的四个真实引擎选项：插件调用追踪（`plugin_trace`）、追踪日志（`trace_log`）、控制台日志文件（`console_log_file`）、导出 TJS 脚本（`export_scripts`）。这些开关是**会话级**的：不进入 `HostSettings`、不产生草稿脏状态、重启自动关闭；`plugin_trace` 与 `trace_log` 开启后 30 秒（Godot `ADVANCED_TRACE_TIMEOUT_MS`）由 tick 循环自动关闭，控制台文件与脚本导出没有时限。开关在有会话时立即下发，否则在下次 `initializeEngine` 时应用，已过期的工具会被丢弃并记录 `expired before launch`。诊断导出附带 Godot `_advanced_snapshot` 形状的选项状态与追踪剩余秒数。场景测试入口（重启并跳转到指定界面）仍未迁移，页面保留明确说明。
+设置「高级开发工具」不再显示“尚未迁移”占位，而是 Godot `_set_advanced_tool` 对应的四个真实引擎选项：插件调用追踪（`plugin_trace`）、追踪日志（`trace_log`）、控制台日志文件（`console_log_file`）、导出 TJS 脚本（`export_scripts`）。这些开关是**会话级**的：不进入 `HostSettings`、不产生草稿脏状态、重启自动关闭；`plugin_trace` 与 `trace_log` 开启后 30 秒（Godot `ADVANCED_TRACE_TIMEOUT_MS`）由 tick 循环自动关闭，控制台文件与脚本导出没有时限。开关在有会话时立即下发，否则在下次 `initializeEngine` 时应用，已过期的工具会被丢弃并记录 `expired before launch`。诊断导出附带 Godot `_advanced_snapshot` 形状的选项状态与追踪剩余秒数。场景测试入口（重启并跳转到指定界面）已迁移，见 7.23。
 
 ### 7.12 P4e实施结果：游戏内虚拟控制
 
@@ -384,3 +384,12 @@ Godot 控制台除标签外还有问题标记与快照/截图/自检等动作。
 - **自检**：按 Godot 的 session/engine/renderer/storage 四项检查，记录到 session 并写日志；控制台显示结果行。
 - 测试：`DiagnosticTests` 增加 marker cap（8 个接受、第 9 个拒绝、重载后仍在）。CUA 验证四项动作真实产出：`session.json` 的 `marker.0`/`selfCheck`、`snapshot-*.json`（含完整 metrics）、`screenshot-*.png`（304 KB）。证据：`out/apple_host/evidence/ui-p4-console-actions/`。
 - 仍未迁移：慢帧捕获（`capture_slow_frame_requested`）——Apple 宿主暂无 arming 钩子。
+
+### 7.23 P4 续：场景测试入口
+
+Godot 的「高级开发工具」里有场景测试（`settings.scene_test`）：选择界面后重启进入预览，退出后恢复。Apple 宿主此前在高级区保留“尚未迁移”的占位文字。本片补齐：
+
+- 高级区改为真实控件：场景选择器（首页/设置/游戏详情/视频库/视频播放器/游戏界面）+ 说明 + 进入场景；处于场景测试模式时按钮变为退出场景测试。
+- `SceneTestStore` 用 Godot 的键 `aether_kiri/scene_test` 持久化所选场景；进入即导航并显示顶部「场景测试模式」横幅；重启后 `applySceneTestIfRequested()` 重新进入；退出清除键并返回游戏库。
+- 与 Godot 的差异：不镜像独立的默认/加载/启动状态选择器（加载态在此为瞬态，无法诚实地“预览”）；视频播放器场景打开库里第一个视频。
+- 测试 `SceneTestTests`：Godot 键、往返、清除、未知值降级；Debug 构建通过。CUA 验证进入详情场景 + 横幅、重启仍进入（`defaults read … aether_kiri/scene_test -> detail`）、退出清除键并回到库。证据：`out/apple_host/evidence/ui-p4-scene-test/`。

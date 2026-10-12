@@ -239,7 +239,21 @@ struct ShellSettingsView: View {
                         ))
                         Text(model.text(option.descKey)).font(.caption).foregroundStyle(palette.secondary.color)
                     }
-                    Text(model.text("advancedScenePending")).font(.caption).foregroundStyle(palette.secondary.color)
+                    Divider()
+                    Picker(model.text("sceneTest"), selection: $model.sceneTestScene) {
+                        ForEach(SceneTestScene.allCases) { scene in
+                            Text(model.text(scene.textKey)).tag(scene)
+                        }
+                    }.disabled(model.sceneTestActive)
+                    Text(model.text("sceneTestHelp")).font(.caption).foregroundStyle(palette.secondary.color)
+                    HStack {
+                        Spacer()
+                        if model.sceneTestActive {
+                            Button(model.text("sceneTestExit")) { model.exitSceneTest() }
+                        } else {
+                            Button(model.text("sceneTestEnter")) { model.enterSceneTest() }
+                        }
+                    }
                 }.padding(12)
             }
         default:

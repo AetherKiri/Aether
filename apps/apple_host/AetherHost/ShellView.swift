@@ -15,10 +15,23 @@ struct ContentView: View {
     }
 
     var body: some View {
-        Group {
-            if developerMode { DeveloperContentView() }
-            else { shell }
+        VStack(spacing: 0) {
+            if model.sceneTestActive {
+                HStack(spacing: 10) {
+                    Label(model.text("sceneTestMode"), systemImage: "testtube.2")
+                    Spacer()
+                    Button(model.text("sceneTestExit")) { model.exitSceneTest() }
+                }
+                .font(.caption).padding(.horizontal, 12).padding(.vertical, 6)
+                .background(palette.accent.color.opacity(palette.dark ? 0.18 : 0.10))
+                Divider()
+            }
+            Group {
+                if developerMode { DeveloperContentView() }
+                else { shell }
+            }
         }
+        .onAppear { model.applySceneTestIfRequested() }
         .onDisappear { model.closeActiveSession() }
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.willTerminateNotification)) { _ in
             model.closeActiveSession()

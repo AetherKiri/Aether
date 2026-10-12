@@ -76,6 +76,10 @@ final class ShellModel: ObservableObject {
     @Published var showLogs: Bool
     /// In-game diagnostics console visibility (Godot's dockable debug console).
     @Published var showDiagnosticsConsole = false
+    /// Debug-only scene preview (Godot's `settings.scene_test`).
+    @Published var sceneTestScene: SceneTestScene = .home
+    @Published private(set) var sceneTestActive = false
+    private let sceneTestStore = SceneTestStore()
     @Published var translationModelPath: String
     @Published private(set) var settings: HostSettings
     @Published var settingsDraft: SettingsDraft?
@@ -738,6 +742,50 @@ final class ShellModel: ObservableObject {
 
     private static func stamp() -> String {
         ISO8601DateFormatter().string(from: Date()).replacingOccurrences(of: ":", with: "-")
+    }
+
+    // MARK: - Debug scene test (mirrors Godot's settings.scene_test)
+
+    /// Persists the requested scene and navigates to it now. A relaunch also
+    /// re-enters it, matching Godot's "restart into the scene".
+    func enterSceneTest() {
+        sceneTestStore.save(sceneTestScene)
+        sceneTestActive = true
+        applySceneTest(sceneTestScene)
+    }
+
+    /// Leaves scene-test mode and returns to the game library.
+    func exitSceneTest() {
+        sceneTestStore.clear()
+        sceneTestActive = false
+        showLibrary()
+    }
+
+    /// Applies a persisted request on launch (no-op when none is stored).
+    func applySceneTestIfRequested() {
+        guard let scene = sceneTestStore.load() else { return }
+        sceneTestScene = scene
+        sceneTestActive = true
+        applySceneTest(scene)
+    }
+
+    private func applySceneTest(_ scene: SceneTestScene) {
+        switch scene {
+        case .home:
+            showDashboard()
+        case .settings:
+            openSettings()
+        case .detail:
+            showLibrary()
+            gameDetailID = games.first?.id
+        case .video:
+            showVideos()
+        case .videoPlayer:
+            showVideos()
+            if let first = videos.first { openVideo(first.url) }
+        case .game:
+            if let game = games.first { startGame(game, fullscreenBefore: windowIsFullscreen) }
+        }
     }
 
     // MARK: - Local translation model (mirrors the Godot shell's settings row)

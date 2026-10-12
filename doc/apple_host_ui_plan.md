@@ -1,7 +1,7 @@
 # Apple 宿主 UI 与设置对齐实施计划
 
 - 2026-10-11，依据 [产品 UI spec](apple_host_ui_spec.md)。
-- 状态：P0调查完成；P1核心实现与行为测试已接入，完整CUA验收待补；P2集合/详情及四主题已接入，完整视觉/无障碍验收待补；P3a–P3d、P4a/P4b/P4d/P4e/P4f 与可停靠诊断控制台均已实现并通过行为回归与真实CUA；P5a（对比度自适应锐化）与 P5b（FSR1 RCAS + FSR1 EASU + Godot 的 kind/预设/自定义链，AMD MIT 参考 + CPU 对照 + 缓存键修复）已实现并通过行为回归、真实 smoke 与设置页/启动路径 CUA；P6 已接入 macOS 首次使用协议门、内置 Demo 与 VNDB 在线封面并通过行为回归与真实 CUA；P4 其余（问题标记/快照/自检、场景测试入口、RFVP 编码）、P5b 其余 Godot 算法与预设移植、P6 其余（渠道声明）与 P7 尚未实施（视频库暂停维护）。阶段按依赖排序，每轮只提交已验证的完整切片。
+- 状态：P0调查完成；P1核心实现与行为测试已接入，完整CUA验收待补；P2集合/详情及四主题已接入，完整视觉/无障碍验收待补；P3a–P3d、P4a/P4b/P4d/P4e/P4f、可停靠诊断控制台（含标记/快照/截图/自检）与场景测试入口均已实现并通过行为回归与真实CUA；P5a（对比度自适应锐化）与 P5b（FSR1 RCAS + FSR1 EASU + Godot 的 kind/预设/自定义链，AMD MIT 参考 + CPU 对照 + 缓存键修复）已实现并通过行为回归、真实 smoke 与设置页/启动路径 CUA；P6 已接入 macOS 首次使用协议门、内置 Demo 与 VNDB 在线封面并通过行为回归与真实 CUA；P4 其余（慢帧捕获、RFVP 编码）、P5b 其余 Godot 算法与预设移植、P6 其余（渠道声明）与 P7 尚未实施（视频库暂停维护）。阶段按依赖排序，每轮只提交已验证的完整切片。
 - 目标是修正产品结构并补齐真实功能；不在一轮中把所有缺项画成无效果控件。
 
 ## P0：调查与规范（本轮）
@@ -252,6 +252,13 @@ P3a重点验证部分Metal激活失败后的资源清理：不得在已打开游
 - [x] Debug 构建通过；CUA 验证菜单开关、面板停靠与概览/性能/插件标签真实数据。证据：`out/apple_host/evidence/ui-p4-console-cua/`。
 - [x] 问题标记（Godot `MARKER_TYPES`，上限 `MAX_MARKERS=8`）+ 保存快照（JSON，含完整 metrics）+ 截图（PNG）+ 自检（session/engine/renderer/storage，记录到 session）；`DiagnosticTests` 覆盖 marker cap。CUA 验证四项动作真实产出。证据：`out/apple_host/evidence/ui-p4-console-actions/`。
 - [ ] backlog：慢帧捕获（`capture_slow_frame_requested`）。
+
+## P4实施记录：场景测试入口
+
+- [x] 高级区去掉「尚未迁移」占位，改为真实控件：场景选择器（首页/设置/游戏详情/视频库/视频播放器/游戏界面）+ 说明 + 进入场景；处于场景测试模式时按钮变为退出场景测试。
+- [x] `SceneTestStore` 用 Godot 的键 `aether_kiri/scene_test` 持久化；进入即导航并显示顶部「场景测试模式」横幅，重启后重新进入，退出清除键并返回库。
+- [x] 与 Godot 的差异：不镜像独立的默认/加载/启动状态选择器（加载态为瞬态）；视频播放器场景打开库里第一个视频。
+- [x] 测试 `SceneTestTests`（Godot 键、往返、清除、未知值降级）；Debug 构建通过；CUA 验证进入 + 横幅、重启仍进入、退出清除。证据：`out/apple_host/evidence/ui-p4-scene-test/`。
 
 ## P5a实施记录：画面增强（对比度自适应锐化）
 

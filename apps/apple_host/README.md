@@ -282,6 +282,10 @@ presentation 速率、frame ms、pacing、会话计数与缓存，均注明不�
 上限 8，与 `DiagnosticSession.MAX_MARKERS` 一致）、保存快照（JSON，含完整性能明细）、
 截图（PNG）与自检（session/engine/renderer/storage）；这些文件写入库同级的
 `Diagnostics/`。面板打开时即使覆盖层关闭也会刷新性能快照。
+「高级开发工具」还提供**场景测试**（对齐 Godot `settings.scene_test`）：选择首页/设置/
+游戏详情/视频库/视频播放器/游戏界面后「进入场景」，顶部显示「场景测试模式」横幅；所选
+场景持久化在 Godot 的键 `aether_kiri/scene_test`，重启仍会进入，直到「退出场景测试」。
+Godot 的独立默认/加载/启动状态选择器未镜像（加载态在此为瞬态）。
 运行日志显示开关只控制界面。启动失败记录具体错误，关闭会话后可启动其他游戏。
 
 「设置 → 诊断」提供 Godot 同名的诊断模式与调试悬浮信息两档：

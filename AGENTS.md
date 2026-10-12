@@ -13,7 +13,7 @@
 - Minori 游戏适配暂缓：保留已有实现，不继续推进 Minori 音频、文字框、选择、存档或真实游戏验收，待用户重新安排。
 - 已完成：库重命名/移除/外部目录引用、压缩包导入、通用文字输入（含游戏内 IME 与编辑控件同步）、本地翻译设置、平台请求应答覆盖、五语言文案审计、冷启动基准。
 - 视频库暂停维护（2026-10-12）：项目聚焦视觉小说，不再推进视频导入/播放器/字幕/视频库 UI 的改动；已有实现保留，只做不破坏兼容性的修复。
-- 下一步：游戏库封面图（手动选择/清除、游戏目录自动发现、列表与详情页显示）与全屏切换；随后按 [Apple 宿主 UI 与设置对齐实施计划](doc/apple_host_ui_plan.md) 推进设置/主页/诊断等视觉小说相关切片。
+- 当前方向（2026-10-12）：转入 iOS/iPadOS 开发（M4），起步见 [Apple 宿主 iOS 开发移交说明](doc/apple_host_ios_handoff.md)。macOS 侧产品对齐（封面库/详情、四主题、设置、诊断、画面增强、法律门等）已按 [Apple 宿主 UI 与设置对齐实施计划](doc/apple_host_ui_plan.md) 推进并通过行为回归 + 真实 CUA，后续仅做必要修复。
 - 视频库与游戏库的条目数量限制由 IAP 商品 `com.aether.list.limit` 解锁；macOS 当前无法完成真实购买，宿主不启用该限制。
 - 真实 IAP provider 属 iOS/M4 范围；更新器留到最后。
 - G1 继续暂缓，后续再回头优化，不作为当前功能推进的阻塞条件。
@@ -23,3 +23,10 @@
 - G1 证据已齐：drawable 慢帧根因修复、两款真实标题同刻 P2/P0 差值 0、合成 1080p 两轮 0 超预算（Debug）。唯一未完成动作是把两款标题登记进 `doc/verified_games.md` 与 `verified_games.zh-CN.md`；按兼容性技能规定，该表只在用户确认游戏可用后更新，且只用官方原标题、只写实测平台与范围、不写本机路径。
 - 登记前需考虑出处：本机《夏雪》副本带第三方推广水印与汉化补丁声明（禁商业使用、24 小时内删除、禁广泛转载、严禁移植到 PC 以外平台）。
 - 后续可选：更深流程验证（存档/读档）、Metal 异步回读、deferred 调度尾部；顺序与细节见 `doc/apple_host_metal_plan.md`「交接与遗留」与进度文档「下一步队列」第 28 项。
+
+## 当前交接点（2026-10-12，转向 iOS）
+
+- 用户决定转入 iOS/iPadOS 开发（M4，闸门 G4 = iPad 真机 demo + 1 个真实标题）。macOS 侧工作已交接，起步说明见 [Apple 宿主 iOS 开发移交说明](doc/apple_host_ios_handoff.md)。
+- macOS 侧现状：M0/M2 完成、M1 证据齐（待用户确认标题登记）、M3 产品对齐按 UI P1–P6 推进并已通过行为回归 + 真实 CUA。基准提交 `e4da4ba8`（`feature/apple-native-host-m0`）。
+- iOS 必做（详见移交文档）：交叉编译 `aether_apple_host_core`/`engine_api`、真实 StoreKit（`com.aether.list.limit`/`com.aether.coffee`）、移动端安全区/横屏/界面比例/触摸输入、`engine_legacy_activate_audio_session_for_host` 音频会话、沙盒目录与书签、「已拒绝」独立页面。
+- 硬约束不变：不改 `engine_api`/provider ABI；未移植的 P5b 算法不开放；视频库暂停维护；每轮一个提交并在检查通过后 push。

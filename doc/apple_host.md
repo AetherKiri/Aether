@@ -2,7 +2,7 @@
 
 - 状态：架构基线 + 产品对齐补充（2026-10-11）
 - 适用仓库路径：`apps/apple_host/`（SwiftUI App）、`bridge/apple_host/`（C++/Metal 宿主核心）
-- 相关文档：[接缝清单](apple_host_seam_inventory.md) · [进度](apple_host_progress.md) · [产品 UI spec](apple_host_ui_spec.md) · [UI 实施计划](apple_host_ui_plan.md)
+- 相关文档：[接缝清单](apple_host_seam_inventory.md) · [进度](apple_host_progress.md) · [产品 UI spec](apple_host_ui_spec.md) · [UI 实施计划](apple_host_ui_plan.md) · [iOS 移交说明](apple_host_ios_handoff.md)
 
 ---
 

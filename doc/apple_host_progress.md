@@ -1,7 +1,7 @@
 # Apple 原生宿主进度（Living Document）
 
 - 最后更新：2026-10-11
-- 关联：[spec](apple_host.md) · [接缝清单](apple_host_seam_inventory.md) · [UI spec](apple_host_ui_spec.md) · [UI 计划](apple_host_ui_plan.md)
+- 关联：[spec](apple_host.md) · [接缝清单](apple_host_seam_inventory.md) · [UI spec](apple_host_ui_spec.md) · [UI 计划](apple_host_ui_plan.md) · [iOS 移交说明](apple_host_ios_handoff.md)
 
 ---
 
@@ -13,7 +13,7 @@
 | M1 Metal 绘制桥 | 🟢 G1 证据齐（待用户确认标题登记） | 2026-10-11 回归：两款真实标题同刻 P2/P0 差值为 0；合成 1080p 两轮 0 超预算（max 16.27/15.76ms）；取帧停顿已定位修复。详见 [Metal 清单](apple_host_metal_plan.md) |
 | M2 SwiftUI MVP | 🟢 目录导入 MVP | 库/导入/启动/返回/封面/全屏/设置/菜单快捷键/五语言已接入；G2 的 KAG3+ONS 目录流程经界面验证 |
 | M3 功能迁移 | 🟡 进行中 | 诊断与独立视频/文本字幕完成最小流程；设置/产品完整对齐按 UI spec 的 P1–P6 推进，不能将 MVP 视为完整迁移 |
-| M4 iOS/iPadOS | ⚪ 未开始 | 闸门 G4 |
+| M4 iOS/iPadOS | ⚪ 未开始 | 闸门 G4；起步交接见 [iOS 移交说明](apple_host_ios_handoff.md) |
 
 图例：⚪ 未开始 · 🟡 进行中 · 🟢 完成 · 🔴 阻塞
 

@@ -115,7 +115,7 @@ P3应先完成能力/配置，再逐项实现，禁止一次开放所有尚未�
 - 版本/许可/品牌资源与发布包核对；合法渠道权益能力单列，不以隐藏入口替代真实provider。
 - 完整对齐矩阵复核，每项标成已验收/明确差异/平台不适用/延后。
 
-M4：真实StoreKit、数量与coffee权益、restore、移动端横屏/安全区/界面比例独立计划，macOS当前数量不限。Minori和G1不成为P1–P6阻塞。
+M4：真实StoreKit、数量与coffee权益、restore、移动端横屏/安全区/界面比例独立计划，macOS当前数量不限。起步交接见 [iOS 移交说明](apple_host_ios_handoff.md)。Minori和G1不成为P1–P6阻塞。
 
 ## P7：更新器（最后）
 

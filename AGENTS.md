@@ -29,5 +29,6 @@
 - 用户决定转入 iOS/iPadOS 开发（M4，闸门 G4 = iPad 真机 demo + 1 个真实标题）。macOS 侧工作已交接，起步说明见 [Apple 宿主 iOS 开发移交说明](doc/apple_host_ios_handoff.md)。
 - macOS 侧现状：M0/M2 完成、M1 证据齐（待用户确认标题登记）、M3 产品对齐按 UI P1–P6 推进并已通过行为回归 + 真实 CUA。基准提交 `e4da4ba8`（`feature/apple-native-host-m0`）。
 - iOS 必做（详见移交文档）：交叉编译 `aether_apple_host_core`/`engine_api`、真实 StoreKit（`com.aether.list.limit`/`com.aether.coffee`）、移动端安全区/横屏/界面比例/触摸输入、`engine_legacy_activate_audio_session_for_host` 音频会话、沙盒目录与书签、「已拒绝」独立页面。
+- iOS 首期只提供 KiriKiri；ONS/Siglus 暂不接入，保留已有实现。
 - iOS/iPadOS 最低部署版本为 18.0；迁移契约与阶段验收以 [iOS spec](doc/apple_host_ios_spec.md) 和 [实践文档](doc/apple_host_ios_plan.md) 为准。
 - 硬约束不变：不改 `engine_api`/provider ABI；未移植的 P5b 算法不开放；视频库暂停维护；每轮一个提交并在检查通过后 push。

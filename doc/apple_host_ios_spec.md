@@ -9,7 +9,7 @@
 
 M4 交付可在 iOS 18 起运行的视觉小说宿主：协议门→游戏库→目录/ZIP 导入→详情→游戏→返回，含封面、五语言、四主题、设置、移动输入、诊断与真实 IAP。完成与否由实践文档逐项证据判定。
 
-保留 `engine_api`/provider ABI，不把 Godot/SDL 引入原生 App；不得将 macOS 二进制作为 iOS 链接依赖。视频库不在 iOS 导航中，不新增维护；Minori 暂缓；未实现 P5b 算法不开放；G1 不阻塞 M4；更新器最后，iOS 分发走商店渠道。游戏中的影片如由既有 runtime 播放，不等同于独立视频库。
+保留 `engine_api`/provider ABI，不把 Godot/SDL 引入原生 App；不得将 macOS 二进制作为 iOS 链接依赖。首期只提供 KiriKiri；ONS/Siglus 按用户最新安排暂缓，保留原实现，不作为首期运行时闸门。视频库不在 iOS 导航中，不新增维护；Minori 暂缓；未实现 P5b 算法不开放；G1 不阻塞 M4；更新器最后，iOS 分发走商店渠道。游戏中的影片如由既有 runtime 播放，不等同于独立视频库。
 
 G4 仍要求 iPad 真机 Demo + 一个用户提供、允许在该平台测试的真实标题。本 spec 另要求 iPhone 触屏与布局验收；模拟器、StoreKit 本地配置和测试注入不能替代真机证据。verified_games 只在用户确认后登记。
 

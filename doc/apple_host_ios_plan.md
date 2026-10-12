@@ -15,7 +15,7 @@
 ### I0：依赖盘点与交叉编译（IOS-01/02）
 
 - [ ] 保存工具链与设备清单；运行 `xcodebuild -version`、`xcodebuild -showsdks`、`xcrun simctl list devices available`、`xcrun devicectl list devices`。
-- [ ] 盘点CMake/vcpkg/Rust/FFmpeg/OpenAL/插件的iphoneos与iphonesimulator支持；记录每个provider可用、缺依赖或暂缓原因。首个闭环至少KiriKiri，不用假provider代替。
+- [ ] 盘点CMake/vcpkg/Rust/FFmpeg/OpenAL/插件的iphoneos与iphonesimulator支持；记录每个provider可用、缺依赖或暂缓原因。首期只提供KiriKiri，ONS/Siglus按用户最新安排暂不接入，不用假provider代替。
 - [ ] 新增可重复的 `tools/apple_host_ios_build.py`（建议名），参数区分device/simulator、configuration和provider集合；产物隔离在 `out/apple_host/ios/{device,simulator}/`。
 - [ ] CMake明确iOS system、SDK、arm64、deployment18.0；依赖自身最低版本也审计。device与simulator虽同arm64，平台不同，不共用对象/缓存目录。
 - [ ] 确立链接ADR：首版优先静态core+engine闭包，macOS保持现SHARED；如果用动态库须构建合法framework并签名。明确static constructor是否被dead-strip，provider注册须有实际探针；force-load仅对确有需要的归档，避免重复engine单例。
@@ -139,3 +139,15 @@ python3 tools/apple_host_settings_tests.py
 | IOS-xx / case | 未开始/实现中/已验证/受阻 | 实际日志或文件 | 明确边界 | 可执行动作 |
 
 Goal模式按阶段持续推进，阶段完成不等于整个M4完成。达到G4前对照IOS-01…10和所有I0…I6检查项重新审计；缺真机/商品/签名时保持未完成，记录具体阻塞，继续独立任务。每轮commit/push并报告验证结果，更新器/视频/Minori暂缓不反复占用队列。
+
+
+## 5. I0 实践记录（2026-10-12）
+
+- 工具链：Xcode26.0.1 / iOS26 SDK；模拟器只有26.0。配对iPad Pro11 (4th gen)与iPhone16 Pro均offline/unavailable；最低18.0构建不等于已实测18运行。
+- 已建立 `tools/apple_host_ios_build.py`，专用arm64-ios18 / arm64-ios18-simulator triplet、独立build/cache、默认且仅允许KiriKiri；Godot宿主及ONS/Siglus/Minori/Internal不构建（依赖manifest仍包含godot-cpp等额外包），旧Godot配置保留。
+- iOS host core改STATIC（macOS仍SHARED）；静态App后续必须显式调用initialize并验证注册与链接闭包。当前脚本生成core与engine_api归档，不是App打包器。
+- 首次simulator配置在GNU libiconv命令行安装包装器缺 `_memeq` 失败；两SDK系统iconv编译/链接探针通过，新triplet使用SDK iconv，vcpkg已越过该失败点。应用中文编码正确性尚须fixture验证。
+- SDK分离、18.0配置、暂缓provider拒绝与脚本语法检查通过；引擎构建结果以各build目录的build-result.json与日志为准，不由脚本语法通过推导完成。
+
+- 后续依赖：OpenSSL配置曾因模拟器旧triplet的分号参数列表被legacy make helper截断而失败；本轮专用triplet改为shell参数串后OpenSSL/curl/FFmpeg继续安装。探针Mach-O平台分别为IOS/IOSSIMULATOR，minOS均18.0，SDK26.0。
+- 当前完整simulator核心构建仍进行依赖安装，未产出可验收引擎归档；I0保持“实施中”。最新进程与状态以 `out/apple_host/ios/simulator/debug/build-result.json` 和configure.log为准，下轮先检查，不因观察超时重启任务。

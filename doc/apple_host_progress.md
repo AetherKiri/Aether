@@ -788,3 +788,10 @@
 - 建立 `apple_host_ios_spec.md` 和 `apple_host_ios_plan.md`，最低iOS/iPadOS18.0，iPhone/iPad原生target；10项需求矩阵、I0–I6实施阶段与可核验交付。
 - 明确44pt触控、安全区、自适应导航、单主指事件/取消/映射、虚拟控制板、IME、CADisplayLink/lifecycle、音频、Files复制与书签、真实StoreKit、诊断低频刷新与真机G4。
 - 同步AGENTS、总spec与历史移交链接及18.0约束；本文档不构成iOS实现/构建/真机已通过证明。仅文档变更，检查Markdown本地链接与diff，不重复运行应用测试。
+
+### 2026-10-12：I0 iOS核心构建起步（仅KiriKiri）
+
+- 用户指定ONS/Siglus暂不提供，已撤回本轮provider构建条件扩展并同步AGENTS/spec/实践。建立两SDK隔离的构建脚本及18.0 triplet；iOS核心STATIC，macOS保持SHARED，公共ABI不变。
+- 两SDK系统iconv探针编译链接及Mach-O平台/minOS检查通过，脚本SDK/配置/暂缓provider校验与语法、diff检查通过。
+- 实际simulator依赖配置修复了GNU libiconv工具安装链接与OpenSSL配置参数截断；完整core构建尚在依赖安装，I0未完成，不声称已生成iOS App。日志/状态在 `out/apple_host/ios/simulator/debug/`；设备清单证据 `out/apple_host/evidence/ios-I0-core/`。
+- Xcode26.0.1，只有26.0 simulator runtime；已配对iPad/iPhone目前unavailable。18.0运行兼容和G4仍需真实环境验收。

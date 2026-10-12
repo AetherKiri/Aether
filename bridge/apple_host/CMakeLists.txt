@@ -15,7 +15,12 @@ set(AETHERKIRI_APPLE_HOST_SOURCES
     src/host_core.cpp
 )
 
-add_library(aether_apple_host_core SHARED ${AETHERKIRI_APPLE_HOST_SOURCES})
+# iOS consumes the host core statically; macOS keeps its dylib interface.
+if(IOS)
+    add_library(aether_apple_host_core STATIC ${AETHERKIRI_APPLE_HOST_SOURCES})
+else()
+    add_library(aether_apple_host_core SHARED ${AETHERKIRI_APPLE_HOST_SOURCES})
+endif()
 
 target_compile_features(aether_apple_host_core PRIVATE cxx_std_17)
 

@@ -14,6 +14,7 @@ struct SettingsBehaviorTests {
         TransientToolsTests.run()
         VirtualControlsTests.run()
         try GameRuntimeTests.run(root: root)
+        try FrameEnhancementTests.run(root: root)
         let model = ShellModel()
         try checkCollections(model, root: root)
         try checkPlayTimeAccumulation(model, root: root)

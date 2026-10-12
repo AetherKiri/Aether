@@ -108,6 +108,25 @@ struct ShellSettingsView: View {
                         }
                     }
                     Text(model.text("samplingAlgorithmHelp")).font(.caption).foregroundStyle(palette.secondary.color)
+                    Picker(model.text("frameEnhancement"), selection: binding(\.frameEnhancement)) {
+                        ForEach(FrameEnhancement.allCases) { enhancement in
+                            Text(model.text(enhancement.textKey)).tag(enhancement.rawValue)
+                        }
+                    }
+                    if (model.settingsDraft?.value.frameEnhancement ?? model.settings.frameEnhancement) != "off" {
+                        HStack {
+                            Text(model.text("enhancementAmount"))
+                            Slider(value: binding(\.frameEnhancementAmount),
+                                   in: FrameEnhancementKernel.amountRange, step: 0.05)
+                            Text("\(Int((HostSettings.normalizedEnhancementAmount(model.settingsDraft?.value.frameEnhancementAmount ?? model.settings.frameEnhancementAmount) * 100).rounded()))%")
+                                .font(.caption.monospacedDigit()).frame(width: 44, alignment: .trailing)
+                        }
+                    }
+                    Text(model.text("frameEnhancementHelp")).font(.caption).foregroundStyle(palette.secondary.color)
+                    Text(model.text("enhancementNotMigrated")).font(.caption).foregroundStyle(palette.secondary.color)
+                    if let reason = model.capabilities.enhancement.reasonKey {
+                        Text(model.text(reason)).font(.caption).foregroundStyle(palette.secondary.color)
+                    }
                     Toggle(model.text("fpsLimit"), isOn: binding(\.fpsLimitEnabled))
                     if model.settingsDraft?.value.fpsLimitEnabled ?? model.settings.fpsLimitEnabled {
                         Picker(model.text("targetFPS"), selection: binding(\.targetFPS)) {
@@ -126,7 +145,6 @@ struct ShellSettingsView: View {
                         }
                     }
                     Text(model.text("nativeRuntimeCheck")).font(.caption).foregroundStyle(palette.secondary.color)
-                    Text(model.text(model.capabilities.enhancement.reasonKey ?? "enhancementPending")).font(.caption).foregroundStyle(palette.secondary.color)
                 }.padding(12)
             }
             if model.engine.renderState.effective != nil {

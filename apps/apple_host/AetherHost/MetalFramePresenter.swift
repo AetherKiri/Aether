@@ -37,6 +37,7 @@ final class MetalFramePresenter: NSObject, MTKViewDelegate {
     let device: MTLDevice
     private let queue: MTLCommandQueue
     private let pipeline: MTLRenderPipelineState
+    private let sharpenPipeline: MTLRenderPipelineState
     private let debugLabels: Bool
     private(set) var texture: MTLTexture?
     private var frameLease: AetherMetalFrameLease?
@@ -49,7 +50,14 @@ final class MetalFramePresenter: NSObject, MTKViewDelegate {
     private var outputTexture: MTLTexture?
     private var frameRevision: UInt64 = 0
     private var outputRevision: UInt64?
+    private var enhancedTexture: MTLTexture?
+    private var enhancedRevision: UInt64?
     private(set) var outputPassCount = 0
+    /// Frame enhancement applied after the output scaling pass. Only algorithms
+    /// with a verified kernel are exposed; the Godot provider's private shaders
+    /// cannot be reused by this Metal path.
+    var enhancement: FrameEnhancement = .off
+    var enhancementAmount: Double = 0.5
     private(set) var lastError: String?
     let directPresentation = ProcessInfo.processInfo.environment["AETHER_HOST_SCHEDULING"] != "deferred"
     private weak var presentationView: MTKView?
@@ -225,6 +233,28 @@ final class MetalFramePresenter: NSObject, MTKViewDelegate {
             // without applying alpha again or introducing sRGB conversion.
             return float4(tex.rgb, 1);
         }
+        // Contrast-adaptive five-tap sharpen. Mirrors FrameEnhancementKernel:
+        // only locally contrasting pixels are sharpened and the delta is limited
+        // to the local contrast amplitude so no halo can be introduced.
+        fragment float4 sharpen_fragment(Vertex v [[stage_in]],
+                                         texture2d<float> frame [[texture(0)]],
+                                         constant float &amount [[buffer(0)]],
+                                         constant float2 &texel [[buffer(1)]]) {
+            constexpr sampler s(coord::normalized, address::clamp_to_edge,
+                                filter::nearest);
+            float4 center = frame.sample(s, v.uv);
+            float4 north = frame.sample(s, v.uv + float2(0, -texel.y));
+            float4 south = frame.sample(s, v.uv + float2(0, texel.y));
+            float4 west = frame.sample(s, v.uv + float2(-texel.x, 0));
+            float4 east = frame.sample(s, v.uv + float2(texel.x, 0));
+            float3 minimum = min(min(north.rgb, south.rgb), min(west.rgb, east.rgb));
+            float3 maximum = max(max(north.rgb, south.rgb), max(west.rgb, east.rgb));
+            float3 weight = amount * (maximum - minimum);
+            float3 laplacian = 4.0 * center.rgb - (north.rgb + south.rgb + west.rgb + east.rgb);
+            float3 limit = maximum - minimum;
+            float3 delta = clamp(weight * laplacian, -limit, limit);
+            return float4(clamp(center.rgb + delta, float3(0), float3(1)), 1);
+        }
         """
         let library = try device.makeLibrary(source: source, options: nil)
         let descriptor = MTLRenderPipelineDescriptor()
@@ -232,6 +262,11 @@ final class MetalFramePresenter: NSObject, MTKViewDelegate {
         descriptor.fragmentFunction = library.makeFunction(name: "frame_fragment")
         descriptor.colorAttachments[0].pixelFormat = .bgra8Unorm
         pipeline = try device.makeRenderPipelineState(descriptor: descriptor)
+        let sharpenDescriptor = MTLRenderPipelineDescriptor()
+        sharpenDescriptor.vertexFunction = library.makeFunction(name: "frame_vertex")
+        sharpenDescriptor.fragmentFunction = library.makeFunction(name: "sharpen_fragment")
+        sharpenDescriptor.colorAttachments[0].pixelFormat = .bgra8Unorm
+        sharpenPipeline = try device.makeRenderPipelineState(descriptor: sharpenDescriptor)
         super.init()
     }
 
@@ -281,6 +316,7 @@ final class MetalFramePresenter: NSObject, MTKViewDelegate {
     func clear() {
         texture = nil; frameLease = nil
         outputTexture = nil; outputRevision = nil
+        enhancedTexture = nil; enhancedRevision = nil
     }
 
     // Shared by onscreen rendering and deterministic offscreen verification.
@@ -317,12 +353,52 @@ final class MetalFramePresenter: NSObject, MTKViewDelegate {
                 source = outputTexture
             }
         }
+        if enhancement == .adaptiveSharpen, let current = source, enhancementAmount > 0 {
+            source = enhancedSource(current, command: command)
+        }
         try encodeImage(source: source, target: target, command: command,
                         sampling: outputTexture == nil ? samplingAlgorithm : .linear)
     }
 
+    /// Runs the enhancement pass into a scratch texture. A missing allocation
+    /// or a failed pass keeps the original frame, matching Godot's "safe
+    /// fallback to the original picture" contract.
+    private func enhancedSource(_ current: MTLTexture, command: MTLCommandBuffer) -> MTLTexture {
+        let width = current.width, height = current.height
+        if enhancedTexture?.width != width || enhancedTexture?.height != height || enhancedRevision != frameRevision {
+            let descriptor = MTLTextureDescriptor.texture2DDescriptor(pixelFormat: .bgra8Unorm,
+                width: width, height: height, mipmapped: false)
+            descriptor.storageMode = .private
+            descriptor.usage = [.renderTarget, .shaderRead]
+            guard let next = device.makeTexture(descriptor: descriptor) else {
+                lastError = "enhancement allocation failed; presenting the original frame"
+                return current
+            }
+            enhancedTexture = next
+            enhancedRevision = nil
+        }
+        guard let target = enhancedTexture else { return current }
+        if enhancedRevision != frameRevision {
+            do {
+                try encodeImage(source: current, target: target, command: command,
+                                aspectFit: false, sampling: .nearest,
+                                pipelineOverride: sharpenPipeline,
+                                sharpenAmount: Float(min(1, max(0, enhancementAmount))))
+            } catch {
+                lastError = "enhancement pass failed: \(error); presenting the original frame"
+                enhancedTexture = nil
+                enhancedRevision = nil
+                return current
+            }
+            enhancedRevision = frameRevision
+        }
+        return target
+    }
+
     private func encodeImage(source: MTLTexture?, target: MTLTexture, command: MTLCommandBuffer,
-                             aspectFit: Bool = true, sampling: SamplingAlgorithm) throws {
+                             aspectFit: Bool = true, sampling: SamplingAlgorithm,
+                             pipelineOverride: MTLRenderPipelineState? = nil,
+                             sharpenAmount: Float = 0) throws {
         let pass = MTLRenderPassDescriptor()
         pass.colorAttachments[0].texture = target
         pass.colorAttachments[0].loadAction = .clear
@@ -341,10 +417,17 @@ final class MetalFramePresenter: NSObject, MTKViewDelegate {
                 originX: (Double(target.width) - width) / 2,
                 originY: (Double(target.height) - height) / 2,
                 width: width, height: height, znear: 0, zfar: 1))
-            encoder.setRenderPipelineState(pipeline)
+            encoder.setRenderPipelineState(pipelineOverride ?? pipeline)
             encoder.setFragmentTexture(texture, index: 0)
-            var algorithm = sampling.metalIndex
-            encoder.setFragmentBytes(&algorithm, length: MemoryLayout<UInt32>.size, index: 0)
+            if sharpenAmount > 0 {
+                var amount = sharpenAmount
+                var texel = SIMD2<Float>(1 / Float(max(1, target.width)), 1 / Float(max(1, target.height)))
+                encoder.setFragmentBytes(&amount, length: MemoryLayout<Float>.size, index: 0)
+                encoder.setFragmentBytes(&texel, length: MemoryLayout<SIMD2<Float>>.size, index: 1)
+            } else {
+                var algorithm = sampling.metalIndex
+                encoder.setFragmentBytes(&algorithm, length: MemoryLayout<UInt32>.size, index: 0)
+            }
             encoder.drawPrimitives(type: .triangle, vertexStart: 0, vertexCount: 3)
         }
         encoder.endEncoding()

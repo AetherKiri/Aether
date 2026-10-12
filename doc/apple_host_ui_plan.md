@@ -1,7 +1,7 @@
 # Apple 宿主 UI 与设置对齐实施计划
 
 - 2026-10-11，依据 [产品 UI spec](apple_host_ui_spec.md)。
-- 状态：P0调查完成；P1核心实现与行为测试已接入，完整CUA验收待补；P2集合/详情及四主题已接入，完整视觉/无障碍验收待补；P3a能力/安全回退、P3b画布/输出、P3c采样与P3d调度已实现并通过行为回归、真实smoke及设置页CUA；P4会话时长/主页统计（P4a）、诊断profile/性能覆盖层（P4b）、临时高级工具（P4d）、游戏内虚拟控制（P4e）与运行时元数据（P4f）已实现并通过行为回归与真实CUA；P4 至此完成，P5–P7尚未实施（视频库暂停维护）。阶段按依赖排序，每轮只提交已验证的完整切片。
+- 状态：P0调查完成；P1核心实现与行为测试已接入，完整CUA验收待补；P2集合/详情及四主题已接入，完整视觉/无障碍验收待补；P3a–P3d、P4a/P4b/P4d/P4e/P4f 均已实现并通过行为回归与真实CUA；P5a（画面增强：对比度自适应锐化 + CPU 参考 + 能力/回退）已实现并通过行为回归、真实 smoke 与设置页 CUA；P5b 起为 Godot 算法逐个移植与预设/自定义链，P6/P7 尚未实施（视频库暂停维护）。阶段按依赖排序，每轮只提交已验证的完整切片。
 - 目标是修正产品结构并补齐真实功能；不在一轮中把所有缺项画成无效果控件。
 
 ## P0：调查与规范（本轮）
@@ -244,4 +244,14 @@ P3a重点验证部分Metal激活失败后的资源清理：不得在已打开游
 - [x] `python3 tools/apple_host_settings_tests.py` 通过：新增标记检测、HCB 校验、导入门限与真实 provider probe 断言（ONScripter 匹配夹具并拒绝 KAG；未知 id 返回负值）。
 - [x] Debug 构建通过；CUA 在真实窗口验证 KAG3 详情（KiriKiri + 内置宿主说明 + 入口 startup.tjs）与 ONScripter 夹具详情（ONScripter + provider 已匹配 + 入口 0.txt）。证据：`out/apple_host/evidence/ui-p4f/`。
 
-下一切片：P5 增强管线（独立渲染工作包，依赖 P3 原始帧/输出尺寸/能力模型）；视频库/播放器暂停维护，P6/P7 按计划排序。
+## P5a实施记录：画面增强（对比度自适应锐化）
+
+- [x] 结论：Godot 增强实现位于私有 RenderingDevice provider（`FrameEffectProvider` 依赖 RenderingDevice/RID），Metal 路径无法复用，必须逐个算法移植并做参考对照；本轮先交付一个完整可验证的算法。
+- [x] 实现对比度自适应锐化：五抽头局部对比度加权拉普拉斯，增量限制在局部对比幅度内避免光晕；CPU 参考与 Metal shader 同公式，逐像素对照最大差 ≤2。
+- [x] `HostSettings` schema v8 新增 `frameEnhancement`（off/adaptive_sharpen；未移植的 Godot 算法 id 加载归一、保存拒绝）与 `frameEnhancementAmount`（0–1、0.05 步进）；渲染页新增 Godot 同名「画面增强」与「锐化强度」，并写明 Anime4K/FSR1/RAVU/CuNNy/NNEDI3/FXAA 尚未移植。
+- [x] Metal 在输出缩放后执行同尺寸修复 pass，资源按 frame revision 管理；分配或 pass 失败保留原始画面并记录原因；能力随原生 Metal 呈现器可用性上报（无 Metal 时显示 Godot 不可用说明）。
+- [x] smoke 工具新增 `--frame-enhancement`/`--enhancement-amount`；增强开启时把引擎/呈现 RGB 对比从“必须一致”改为“必须有界地不同（≤160）”，并在 result.json 记录。
+- [x] `python3 tools/apple_host_settings_tests.py` 通过（15 组）：核函数 identity/对比度自适应/增量限幅/alpha 保留/平坦区无操作、Metal 与 CPU 参考一致、关闭恢复原始帧、schema v8 迁移与校验。
+- [x] Debug 构建通过；真实 30 秒 Metal direct smoke：关闭时引擎/呈现 RGB max diff=0/0/0，开启（0.5）时 121/123/123（呈现被锐化、引擎帧未变），两次都通过启动/输入/截图/退出与 lease 检查。CUA 验证渲染页「画面增强」只有 关闭/对比度自适应锐化 两项、选择后出现 50% 强度滑杆、保存写入 v8 偏好，真实会话日志 `frame enhancement adaptive_sharpen amount=0.50`。证据：`out/apple_host/evidence/ui-p5a-off/`、`ui-p5a-on/`、`ui-p5a-cua/`。
+
+下一切片：P5b（把 Godot 算法逐个移植到 Metal 并做参考对照：先 FSR1 EASU/RCAS 公开参考实现，再评估 Anime4K/RAVU/CuNNy/NNEDI3 的许可与负载），随后预设链与自定义链编辑器；视频库/播放器暂停维护。

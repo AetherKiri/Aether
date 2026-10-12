@@ -11,7 +11,9 @@ struct HostCapabilities {
     /// acceptance of the native backend is still checked at engine launch.
     let nativeMetal: Availability
     let translation: Availability
-    let enhancement = Availability(reasonKey: "enhancementPending", detail: "")
+    /// The Metal presenter owns the enhancement pass, so it is available
+    /// exactly when the native presenter is.
+    let enhancement: Availability
 }
 
 enum HostRenderer: String { case metal, software }

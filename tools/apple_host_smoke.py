@@ -29,6 +29,10 @@ def main():
                         help="host tick callback source; display is preferred, timer is the fallback")
     parser.add_argument("--lifecycle", default=None,
                         help="scripted lifecycle events, e.g. 4:on,7:off (focus/hide/minimize equivalent)")
+    parser.add_argument("--frame-enhancement", choices=("off", "adaptive_sharpen"), default=None,
+                        help="frame enhancement override; off keeps the original frame")
+    parser.add_argument("--enhancement-amount", type=float, default=None,
+                        help="enhancement strength 0.0-1.0 (defaults to the saved preference)")
     parser.add_argument("--snapshots", choices=("sync", "async", "direct"), default="sync",
                         help="native frame mode; direct uses session-owned frame leases")
     parser.add_argument("--profile", action="store_true", help="record host work and tick-to-GPU-completion, including MTKView")
@@ -86,6 +90,10 @@ def main():
                 env["AETHER_HOST_FPS_LIMIT"] = args.fps_limit
             if args.lifecycle:
                 env["AETHER_HOST_TEST_LIFECYCLE"] = args.lifecycle
+            if args.frame_enhancement is not None:
+                env["AETHER_HOST_FRAME_ENHANCEMENT"] = args.frame_enhancement
+            if args.enhancement_amount is not None:
+                env["AETHER_HOST_FRAME_ENHANCEMENT_AMOUNT"] = str(args.enhancement_amount)
             log = (folder / "run.log").open("w")
             try:
                 process = subprocess.Popen([str(binary)], env=env, stdout=log, stderr=subprocess.STDOUT)
@@ -115,7 +123,14 @@ def main():
                     errors.append("input did not change the captured game frame")
             if args.presentation == "metal":
                 differences = [int(value) for value in re.findall(r"RGB max diff=(\d+)", text)]
-                if len(differences) != 3 or max(differences, default=255) > 1:
+                if args.frame_enhancement == "adaptive_sharpen":
+                    # The enhancement intentionally changes the presented frame,
+                    # so require a bounded, non-zero effect instead of parity.
+                    if len(differences) != 3 or min(differences, default=0) == 0:
+                        errors.append(f"enhancement did not change the presented frame: {differences}")
+                    if max(differences, default=255) > 160:
+                        errors.append(f"enhancement diff exceeded the local contrast bound: {differences}")
+                elif len(differences) != 3 or max(differences, default=255) > 1:
                     errors.append(f"GPU/engine RGB comparison failed: {differences}")
                 if "Metal presentation failed" in text or "presentation=metal-upload" not in text:
                     errors.append("Metal presentation fell back or was unavailable")
@@ -206,11 +221,14 @@ def main():
                     errors.append("scripted lifecycle transition was not handled")
                 if pacing_stats and pacing_stats["pacing_resets"] < 2:
                     errors.append("lifecycle transitions did not reset the pacing clock")
+            if args.frame_enhancement == "adaptive_sharpen" and "frame enhancement adaptive_sharpen amount=" not in text:
+                errors.append("frame enhancement was requested but not applied")
             (folder / "result.json").write_text(json.dumps({
                 "game": name, "duration_seconds": args.duration,
                 "renderer": args.renderer, "presentation": args.presentation,
                 "snapshots": args.snapshots, "exit_code": code,
                 "fps_limit": args.fps_limit, "pace": args.pace,
+                "frame_enhancement": args.frame_enhancement,
                 "pacing_driver": driver.group(1) if driver else None,
                 "pacing_stats": pacing_stats,
                 "async_teardown": async_summary, "errors": errors,

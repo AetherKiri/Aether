@@ -84,8 +84,11 @@ final class EngineController: ObservableObject {
     private let activateMetal: (AetherEngineSession) throws -> Void
     @Published private(set) var renderState = RenderSessionState()
     var capabilities: HostCapabilities {
-        HostCapabilities(nativeMetal: metalAvailability, translation: session.isTextTranslationAvailable()
-                         ? .ready : .init(reasonKey: "translationModelUnavailable", detail: ""))
+        HostCapabilities(nativeMetal: metalAvailability,
+                         translation: session.isTextTranslationAvailable()
+                             ? .ready : .init(reasonKey: "translationModelUnavailable", detail: ""),
+                         enhancement: metalAvailability.available
+                             ? .ready : .init(reasonKey: "frameEnhancementUnavailable", detail: ""))
     }
     enum SetupFailure: Error { case noDevice }
     init(presenterFactory: (() throws -> MetalFramePresenter)? = nil,
@@ -390,6 +393,17 @@ final class EngineController: ObservableObject {
         sessionOutputResolution = resolution
         sessionSamplingAlgorithm = sampling
         metalPresenter?.samplingAlgorithm = sampling
+        // Benchmark override, mirroring the sampling/output env seams; the
+        // persisted setting stays authoritative for product runs.
+        let enhancement = FrameEnhancement.normalized(
+            env["AETHER_HOST_FRAME_ENHANCEMENT"] ?? hostSettings.frameEnhancement) ?? .off
+        let enhancementAmount = Double(env["AETHER_HOST_FRAME_ENHANCEMENT_AMOUNT"] ?? "")
+            ?? hostSettings.frameEnhancementAmount
+        metalPresenter?.enhancement = enhancement
+        metalPresenter?.enhancementAmount = HostSettings.normalizedEnhancementAmount(enhancementAmount)
+        if enhancement != .off {
+            log("frame enhancement \(enhancement.rawValue) amount=\(String(format: "%.2f", HostSettings.normalizedEnhancementAmount(enhancementAmount)))")
+        }
         renderState = RenderSessionState(requested: requestedRenderer)
         useMetalPresentation = metalAvailability.available && ProcessInfo.processInfo.environment["AETHER_HOST_PRESENTATION"] != "image"
         nativeRendererEnabled = false

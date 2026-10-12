@@ -3,7 +3,7 @@ import Foundation
 /// Effective, persisted preferences. Transient controls and engine state do not
 /// belong here. A settings page edits a value copy until a successful save.
 struct HostSettings: Codable, Equatable {
-    static let schemaVersion = 7
+    static let schemaVersion = 8
     /// Godot's dev builds default to `baseline` diagnostics; release is off.
     static var defaultDiagnosticProfile: String {
         #if DEBUG
@@ -26,6 +26,8 @@ struct HostSettings: Codable, Equatable {
     var virtualControlMode = "mouse"
     var virtualControlMenuEnabled = true
     var virtualControlKeyboardOpacity = 1.0
+    var frameEnhancement = "off"
+    var frameEnhancementAmount = 0.5
     var virtualControls = false
     var logs = false
     var translationModelPath = ""
@@ -48,10 +50,14 @@ struct HostSettings: Codable, Equatable {
               VirtualControlMode.normalized(virtualControlMode) != nil,
               virtualControlKeyboardOpacity.isFinite,
               (VirtualControlOpacity.minimum...VirtualControlOpacity.maximum).contains(virtualControlKeyboardOpacity),
+              FrameEnhancement.normalized(frameEnhancement) != nil,
+              frameEnhancementAmount.isFinite,
+              FrameEnhancementKernel.amountRange.contains(frameEnhancementAmount),
               ["krkrsdl3", "aether_all"].contains(pluginLoadMode) else { throw Failure.invalidValue }
         var result = self
         result.upscaleAlgorithm = SamplingAlgorithm.normalized(upscaleAlgorithm)!.rawValue
         result.virtualControlKeyboardOpacity = VirtualControlOpacity.normalized(virtualControlKeyboardOpacity)
+        result.frameEnhancementAmount = Self.normalizedEnhancementAmount(frameEnhancementAmount)
         return result
     }
 
@@ -75,7 +81,18 @@ struct HostSettings: Codable, Equatable {
         if DebugOverlayMode.normalized(debugOverlayMode) == nil { result.debugOverlayMode = "off" }
         if VirtualControlMode.normalized(virtualControlMode) == nil { result.virtualControlMode = "mouse" }
         result.virtualControlKeyboardOpacity = VirtualControlOpacity.normalized(virtualControlKeyboardOpacity)
+        if FrameEnhancement.normalized(frameEnhancement) == nil { result.frameEnhancement = "off" }
+        result.frameEnhancementAmount = Self.normalizedEnhancementAmount(frameEnhancementAmount)
         return result
+    }
+
+    /// Godot's enhancement slider snaps to 0.05 steps.
+    static func normalizedEnhancementAmount(_ value: Double) -> Double {
+        guard value.isFinite else { return 0.5 }
+        let clamped = min(FrameEnhancementKernel.amountRange.upperBound,
+                          max(FrameEnhancementKernel.amountRange.lowerBound, value))
+        let steps = (clamped / 0.05).rounded()
+        return (steps * 0.05 * 1000).rounded() / 1000
     }
 
     var profile: DiagnosticProfile { DiagnosticProfile.normalized(diagnosticProfile) ?? .off }
@@ -102,7 +119,7 @@ extension HostSettings {
     enum CodingKeys: String, CodingKey {
         case version, languageMode, theme, renderer, canvasMode, outputResolution, upscaleAlgorithm, virtualControls, logs, translationModelPath,
              fpsLimitEnabled, targetFPS, diagnosticProfile, debugOverlayMode, virtualControlMode, virtualControlMenuEnabled,
-             virtualControlKeyboardOpacity, pluginLoadMode, mockEnabled, errorDialogLogs
+             virtualControlKeyboardOpacity, frameEnhancement, frameEnhancementAmount, pluginLoadMode, mockEnabled, errorDialogLogs
     }
     init(from decoder: Decoder) throws {
         let values = try decoder.container(keyedBy: CodingKeys.self)
@@ -121,6 +138,9 @@ extension HostSettings {
         virtualControlMenuEnabled = try values.decodeIfPresent(Bool.self, forKey: .virtualControlMenuEnabled) ?? true
         let storedOpacity = try values.decodeIfPresent(Double.self, forKey: .virtualControlKeyboardOpacity) ?? 1.0
         virtualControlKeyboardOpacity = VirtualControlOpacity.normalized(storedOpacity)
+        frameEnhancement = try values.decodeIfPresent(String.self, forKey: .frameEnhancement) ?? "off"
+        let storedEnhancement = try values.decodeIfPresent(Double.self, forKey: .frameEnhancementAmount) ?? 0.5
+        frameEnhancementAmount = HostSettings.normalizedEnhancementAmount(storedEnhancement)
         virtualControls = try values.decode(Bool.self, forKey: .virtualControls)
         logs = try values.decode(Bool.self, forKey: .logs)
         translationModelPath = try values.decode(String.self, forKey: .translationModelPath)

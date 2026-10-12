@@ -61,7 +61,7 @@ Apple 官方参考：[Settings](https://developer.apple.com/design/human-interfa
 | 画布 Game Native/Display Fit | 缺失设置；已有 setSurfaceSize 接缝 | 分离游戏逻辑画布、输出纹理和窗口 drawable；保持输入映射 | P3 |
 | 缩放 smooth/nearest/linear/bicubic/lanczos | 缺失选择器与完整实现 | `smooth` 迁移为 `linear`；提供真实 nearest/linear/bicubic/lanczos 核，名称与 shader 一致 | P3 |
 | 输出 original/1080p/2k/4k，默认1080p | 缺失设置 | 按原版目标尺寸/纵横比规范迁移；不是改变显示器分辨率 | P3 |
-| 增强 off/preset/custom | 缺失 | Metal 后处理与能力报告；原始帧降级；P5 前明确不可用 | P5 |
+| 增强 off/preset/custom | P5a 已接入 off + 对比度自适应锐化（自研、有 CPU 参考） | Metal 后处理与能力报告；原始帧降级；Godot 算法集逐个移植前不开放 | P5 |
 | 15 个增强预设，16 种自定义算法、顺序添加/移除 | 缺失 | 保留重建2×、目标尺寸缩放、同尺寸修复三种语义；不是统一 resize | P5 |
 | FPS 开关+60/80/90/120/144，默认关闭、目标80 | 已接入 schema v5；DisplayLink 优先、Timer 兜底 | ABI fps_limit + 宿主调度；关闭限制也不承诺超显示器FPS | P3 |
 | 游戏横屏锁定 | 平台不适用 | 移动端 M4 | M4 |
@@ -303,3 +303,9 @@ Godot 的 `smooth` 仅是线性采样的旧名称，默认值为 bicubic。Apple
 新增 `GameRuntimeDetector`，按 Godot `GameMetadata.inspect()` 的标记顺序识别当前宿主可驱动的运行时：校验过的 RFVP `.hcb`（文件头 descriptor/start 合理性，端口自 Godot `_hcb_launch_file()`）→ ONScripter（0.txt/00.txt/nscr_sec.dat/nscript.*/onscript.nt*）→ Minori（scr.paz+sys.paz+已知可执行文件）→ Siglus（gameexe.ini/gameexe.dat/scene.pck）→ KiriKiri（XP3 自动挂载或 startup.tjs/ks），并能报告“未识别”。导入门限复用同一检测：Siglus 与校验过的 `.hcb` 目录现在可以加入游戏库，未识别目录仍被拒绝；刷新与托管/引用语义不变。
 
 详情页新增只读「运行时类型」与「启动入口」两行：运行时来自标记检测，状态来自真实的 `engine_probe_runtime_provider(runtime_id, root)`（>0 匹配、0 存在但不识别、<0 本构建未链接该 provider）；KiriKiri 走内置宿主路径，因此 provider 未匹配时显示“使用内置 KiriKiri 宿主路径（无需额外 provider）”，而不是错误地宣称无法启动。启动入口只展示检测到的入口文件（XP3/startup/ONS 脚本/标记/RFVP HCB），不提供覆盖：`engine_open_game` 的 `startup_script` 参数在当前运行时被忽略，提供可点选但无效的下拉会违反“不开放无实现控件”。RFVP 文本编码同样等待链接 RFVP provider 后再提供，当前在 RFVP 游戏详情页显示原因说明。
+
+### 7.14 P5a实施结果：画面增强（对比度自适应锐化）
+
+Godot 的增强实现位于私有 RenderingDevice provider（Anime4K/FSR1/RAVU/CuNNy/NNEDI3/FXAA + 15 条预设链），其 `FrameEffectProvider` 契约直接依赖 Godot RenderingDevice/RID，Apple Metal 呈现路径无法复用，因此本轮先实现一个**完整可验证**的算法：对比度自适应锐化。五抽头核（中心 + 上下左右）按局部对比度加权拉普拉斯，增量被限制在局部对比幅度内，避免光晕；CPU 参考与 Metal shader 使用同一公式，行为测试逐像素对照（最大差 ≤2）。
+
+`HostSettings` schema v8 新增 `frameEnhancement`（off/adaptive_sharpen，未移植的 Godot 算法 id 在加载与保存时都被拒绝）与 `frameEnhancementAmount`（0–1，0.05 步进）；渲染页新增 Godot 同名的「画面增强」选择器与「锐化强度」滑杆，并明确写出 Anime4K/FSR1/RAVU/CuNNy/NNEDI3/FXAA 尚未移植。增强在 Metal 输出缩放之后执行（同尺寸修复语义），资源按 frame revision 管理；分配或 pass 失败时保留原始画面并记录 `lastError`，符合“失败回退原始画面”。能力随原生 Metal 呈现器可用性上报（无 Metal 时显示 Godot 的不可用说明）。smoke 工具新增 `--frame-enhancement`/`--enhancement-amount` 覆盖（仅基准用），在增强开启时把引擎/呈现 RGB 对比从“必须一致”改为“必须有界地不同”。

@@ -505,7 +505,7 @@
 31b. [ ] **两处兼容小项待查**：`new DMMCloud()` 报 `Invalid argument count`；`new Zlib().version()` 报成员不存在（可能只是探针写法/注册方式差异）
 32. [ ] **内核后续：内存可观测（借鉴 `MemoryDesign.md`）**：分配头带 tag + `AllocTagScope` 标签栈，让"谁吃掉了内存"可回答；当前只有粗粒度 `engine_get_memory_stats`
 
-33. [ ] **产品 UI/设置完整对齐**：调查 P0 已完成；P1核心、P2集合/详情与四主题已接入，完整CUA/无障碍验收待补；P3a能力回退、P3b画布/输出、P3c采样、P3d FPS/调度与 P4a/P4b/P4d/P4e/P4f 已接入并通过行为回归与真实CUA；P4 至此完成（调试控制台、场景测试入口、RFVP 编码仍按能力缺口记录），P5–P7见 [实施计划](apple_host_ui_plan.md)（视频库暂停维护）。
+33. [ ] **产品 UI/设置完整对齐**：调查 P0 已完成；P1核心、P2集合/详情与四主题已接入，完整CUA/无障碍验收待补；P3a–P3d、P4a/P4b/P4d/P4e/P4f 与 P5a 画面增强已接入并通过行为回归与真实CUA；P4 至此完成（调试控制台、场景测试入口、RFVP 编码仍按能力缺口记录），P5b 起为 Godot 算法逐个移植与预设/自定义链，P6/P7 见 [实施计划](apple_host_ui_plan.md)（视频库暂停维护）。
 
 ## 变更记录
 
@@ -636,3 +636,14 @@
 - 测试：`python3 tools/apple_host_settings_tests.py` 通过，含标记检测、HCB 校验、导入门限与真实 provider probe（ONScripter 匹配其夹具并拒绝 KAG，未知 id 返回负值）；Debug 构建通过。
 - CUA（隔离 fixture 库）：KAG3 详情显示 `KiriKiri` + 内置宿主说明 + 入口 `startup.tjs`；ONScripter 夹具详情显示 `ONScripter` + `已匹配本机构建中的 runtime provider。` + 入口 `0.txt`。证据：`out/apple_host/evidence/ui-p4f/`。
 - 残余未验收：Siglus/hcb 目录通过真实文件面板导入未走 CUA（导入门限由单测覆盖）；RFVP 编码与 `.hcb` 实机运行需要包含 RFVP provider 的构建；调试控制台与场景测试入口仍未迁移。
+
+### 2026-10-12：P5a 画面增强（对比度自适应锐化）
+
+- 调查结论：Godot 增强实现位于私有 RenderingDevice provider（`FrameEffectProvider` 直接依赖 RenderingDevice/RID 与 Godot `Texture2D`），Apple Metal 呈现路径无法复用，必须逐算法移植并做参考对照；15 条预设链/16 算法仍属 P5b 起的工作包。
+- 实现对比度自适应锐化：五抽头（中心 + 上下左右）局部对比度加权拉普拉斯，增量限制在局部对比幅度内避免光晕；CPU 参考与 Metal shader 同公式，行为测试逐像素对照（最大差 ≤2），平坦区无操作、alpha 保留。
+- `HostSettings` schema v8 新增 `frameEnhancement`（off/adaptive_sharpen）与 `frameEnhancementAmount`（0–1、0.05 步进）；未移植的 Godot 算法 id 在加载时归一、保存时拒绝。渲染页新增 Godot 同名「画面增强」选择器与「锐化强度」滑杆，并明确列出 Anime4K/FSR1/RAVU/CuNNy/NNEDI3/FXAA 尚未移植。
+- Metal 在输出缩放之后执行同尺寸修复 pass，中间纹理按 frame revision 管理；分配或 pass 失败保留原始画面并记录原因；能力随原生 Metal 呈现器可用性上报（无 Metal 时显示 Godot 不可用说明）。
+- smoke 工具新增 `--frame-enhancement`/`--enhancement-amount` 覆盖；增强开启时把引擎/呈现 RGB 对比从“必须一致”改为“必须有界地不同（≤160）”，并在 `result.json` 记录 `frame_enhancement`。
+- 测试：`python3 tools/apple_host_settings_tests.py` 15 组全通过（含核函数、Metal/CPU 对照、关闭恢复原帧、schema v8 迁移与校验）；Debug 构建通过。
+- 真实 30 秒 Metal direct smoke：关闭时 RGB max diff 0/0/0；开启（0.5）时 121/123/123（呈现被锐化、引擎帧未变），两次均通过启动/输入/截图/退出与 lease 检查。CUA 验证渲染页选择器只有 关闭/对比度自适应锐化、选择后出现 50% 强度滑杆、保存写入 v8 偏好，真实会话日志 `frame enhancement adaptive_sharpen amount=0.50`。证据：`out/apple_host/evidence/ui-p5a-off/`、`ui-p5a-on/`、`ui-p5a-cua/`。
+- 残余未验收：Godot 算法集（Anime4K/FSR1/RAVU/CuNNy/NNEDI3/FXAA）与 15 条预设链、自定义链编辑器均未迁移；增强只在 Metal 路径生效（软件诊断路径保持原始画面）；增强与输出缩放/4K 组合的负载报告待补。

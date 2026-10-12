@@ -56,6 +56,7 @@ targets:
       - path: {q(root / 'apps/apple_host/Tests/TransientToolsTests.swift')}
       - path: {q(root / 'apps/apple_host/Tests/VirtualControlsTests.swift')}
       - path: {q(root / 'apps/apple_host/Tests/GameRuntimeTests.swift')}
+      - path: {q(root / 'apps/apple_host/Tests/FrameEnhancementTests.swift')}
     settings:
       base:
         ARCHS: arm64
@@ -83,7 +84,7 @@ targets:
     env["AETHER_SETTINGS_APP_BUNDLE"] = str(bundle)
     subprocess.run([str(derived / "Build/Products/Debug/SettingsBehaviorTests")], check=True, cwd=root, env=env, timeout=60)
     for test, sources in [
-        ("SettingsStore", ["ShellStrings", "ThemePalette", "RenderGeometry", "FrameScheduler", "DiagnosticProfile", "VirtualControls", "SettingsStore"]),
+        ("SettingsStore", ["ShellStrings", "ThemePalette", "RenderGeometry", "FrameScheduler", "DiagnosticProfile", "VirtualControls", "FrameEnhancement", "SettingsStore"]),
         ("ShellStrings", ["ShellStrings"]),
     ]:
         binary = root / "out/apple_host" / (test + "Tests")

@@ -52,7 +52,13 @@ extension LibraryGame {
 // A staged copy becomes visible only after the manifest is atomically persisted.
 struct GameLibrary {
     let root: URL
-    private var gamesRoot: URL { root.appendingPathComponent("Games", isDirectory: true) }
+    private let managedGamesRoot: URL?
+    private let supportedRuntimes: Set<GameRuntime>?
+    private let autoDiscoverCovers: Bool
+    init(root: URL, managedGamesRoot: URL? = nil, supportedRuntimes: Set<GameRuntime>? = nil, autoDiscoverCovers: Bool = false) {
+        self.root=root; self.managedGamesRoot=managedGamesRoot; self.supportedRuntimes=supportedRuntimes; self.autoDiscoverCovers=autoDiscoverCovers
+    }
+    private var gamesRoot: URL { managedGamesRoot ?? root.appendingPathComponent("Games", isDirectory: true) }
     private var manifest: URL { root.appendingPathComponent("library.json") }
 
     enum Failure: LocalizedError {
@@ -116,10 +122,10 @@ struct GameLibrary {
         return nil
     }
 
-    func backfillDefaultCovers(_ existing: [LibraryGame]) throws -> [LibraryGame] {
+    func backfillDefaultCovers(_ existing: [LibraryGame], includeExternal: Bool = true) throws -> [LibraryGame] {
         var updated = existing
         var changed = false
-        for index in updated.indices where updated[index].coverPath == nil && !updated[index].coverSuppressed {
+        for index in updated.indices where (includeExternal || !updated[index].isExternal) && updated[index].coverPath == nil && !updated[index].coverSuppressed {
             if let discovered = discoverDefaultCoverPath(for: updated[index]) {
                 updated[index].coverPath = discovered
                 changed = true
@@ -207,19 +213,26 @@ struct GameLibrary {
         // Keep the read error visible for unreadable folders, then use the same
         // marker detection as the detail page so import and display agree.
         _ = try FileManager.default.contentsOfDirectory(at: folder, includingPropertiesForKeys: [.isRegularFileKey])
-        return GameRuntimeDetector.inspect(root: folder).isRecognized
+        let inspection = GameRuntimeDetector.inspect(root: folder)
+        return inspection.isRecognized && (supportedRuntimes?.contains(inspection.runtime) ?? true)
     }
 
-    func importArchive(_ selected: URL, existing: [LibraryGame]) throws -> (games: [LibraryGame], imported: LibraryGame) {
+    func importArchive(_ selected: URL, existing: [LibraryGame], limits: GameArchive.Limits = .init(),
+                       checkCancellation: (() throws -> Void)? = nil, progress: ((Int64, Int64) -> Void)? = nil,
+                       publication: ((() throws -> Void) throws -> Void)? = nil) throws -> (games: [LibraryGame], imported: LibraryGame) {
+        try checkCancellation?()
+        guard try selected.resourceValues(forKeys:[.isSymbolicLinkKey]).isSymbolicLink != true else { throw Failure.symbolicLink }
         let source = selected.standardizedFileURL.resolvingSymlinksInPath()
         guard source.pathExtension.lowercased() == "zip" else { throw GameArchive.Failure.invalid }
         if let duplicate = existing.first(where: { !$0.isExternal && $0.sourcePath == source.path }),
            FileManager.default.fileExists(atPath: gameURL(duplicate).path) { return (existing, duplicate) }
         let stage = FileManager.default.temporaryDirectory.appendingPathComponent("aether-zip-" + UUID().uuidString, isDirectory: true)
         defer { try? FileManager.default.removeItem(at: stage) }
-        try GameArchive.extract(source, to: stage)
+        try checkCancellation?()
+        try GameArchive.extract(source, to: stage, limits: limits, checkCancellation: checkCancellation, progress: progress)
         var candidates: [URL] = []
         func discover(_ folder: URL, depth: Int) throws {
+            try checkCancellation?()
             if try isGame(folder) { candidates.append(folder); return }
             guard depth < 8 else { return }
             for child in try FileManager.default.contentsOfDirectory(at: folder, includingPropertiesForKeys: [.isDirectoryKey]) {
@@ -233,10 +246,14 @@ struct GameLibrary {
             throw GameArchive.Failure.ambiguous
         }
         return try importDirectory(candidates[0], existing: existing, sourceIdentity: source,
-                                   archiveTitle: source.deletingPathExtension().lastPathComponent)
+                                   archiveTitle: source.deletingPathExtension().lastPathComponent, checkCancellation: checkCancellation,
+                                   progress: progress, maximumBytes: limits.bytes, publication: publication)
     }
 
-    func importDirectory(_ selected: URL, existing: [LibraryGame], external: Bool = false, sourceIdentity: URL? = nil, archiveTitle: String? = nil) throws -> (games: [LibraryGame], imported: LibraryGame) {
+    func importDirectory(_ selected: URL, existing: [LibraryGame], external: Bool = false, sourceIdentity: URL? = nil, archiveTitle: String? = nil,
+                         checkCancellation: (() throws -> Void)? = nil, progress: ((Int64, Int64) -> Void)? = nil,
+                         maximumBytes: Int64? = nil, publication: ((() throws -> Void) throws -> Void)? = nil) throws -> (games: [LibraryGame], imported: LibraryGame) {
+        try checkCancellation?()
         let fm = FileManager.default
         let source = selected.standardizedFileURL.resolvingSymlinksInPath()
         if let duplicate = existing.first(where: {
@@ -244,9 +261,11 @@ struct GameLibrary {
         }), fm.fileExists(atPath: gameURL(duplicate).path) {
             return (existing, duplicate)
         }
-        let canonicalRoot = root.standardizedFileURL.resolvingSymlinksInPath().path
-        guard canonicalRoot != source.path, !canonicalRoot.hasPrefix(source.path.hasSuffix("/") ? source.path : source.path + "/") else {
-            throw Failure.unsafeSource
+        try checkCancellation?()
+        guard try selected.resourceValues(forKeys: [.isSymbolicLinkKey]).isSymbolicLink != true else { throw Failure.symbolicLink }
+        for storage in [root, gamesRoot] {
+            let canonicalRoot = storage.standardizedFileURL.resolvingSymlinksInPath().path
+            guard canonicalRoot != source.path, !canonicalRoot.hasPrefix(source.path.hasSuffix("/") ? source.path : source.path + "/") else { throw Failure.unsafeSource }
         }
         var entry = source
         if try !isGame(entry) {
@@ -261,6 +280,7 @@ struct GameLibrary {
             throw Failure.unsupported
         }
         for case let item as URL in enumerator {
+            try checkCancellation?()
             if try item.resourceValues(forKeys: Set(keys)).isSymbolicLink == true { throw Failure.symbolicLink }
         }
         if let enumerationError { throw enumerationError }
@@ -281,11 +301,18 @@ struct GameLibrary {
         let destination = gameURL(game)
         var moved = false
         do {
-            try fm.copyItem(at: entry, to: stage)
-            try fm.moveItem(at: stage, to: destination)
-            moved = true
-            let updated = existing + [game]
-            try save(updated)
+            if checkCancellation != nil || progress != nil || maximumBytes != nil {
+                try GameCopy.copy(entry, to: stage, maximumBytes: maximumBytes,
+                                  checkCancellation: checkCancellation, progress: progress)
+            } else { try fm.copyItem(at: entry, to: stage) }
+            var updated = existing + [game]
+            func publish() throws {
+                try checkCancellation?()
+                try fm.moveItem(at: stage, to: destination); moved = true
+                if autoDiscoverCovers { game.coverPath=discoverDefaultCoverPath(for:game); updated=existing+[game] }
+                try save(updated)
+            }
+            if let publication { try publication(publish) } else { try publish() }
             return (updated, game)
         } catch {
             // These paths are generated for this transaction, never user input.

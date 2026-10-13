@@ -54,7 +54,7 @@ def main():
     # Playable original test script for manual UI validation, no third-party game files.
     make('playable', [('示例/data/startup.tjs', (root / 'tests/fixtures/apple_host_controls/startup.tjs').read_bytes())])
     source = root / 'apps/apple_host'
-    common = [str(source / 'AetherHost' / f) for f in ['GameLibrary.swift', 'GameArchive.swift']]
+    common = [str(source / 'AetherHost' / f) for f in ['GameLibrary.swift', 'GameArchive.swift', 'GameRuntime.swift', 'PlayStats.swift', 'GameCopy.swift']]
     for suite in ['GameArchiveTests', 'GameLibraryTests']:
         binary = output / suite
         subprocess.run(['xcrun', 'swiftc', *common, str(source / 'Tests' / (suite + '.swift')),

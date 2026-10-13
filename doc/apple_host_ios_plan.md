@@ -202,3 +202,15 @@ Goal模式按阶段持续推进，阶段完成不等于整个M4完成。达到G4
 - iPadOS26 Simulator真实KAG3 Metal首帧640x480，截图视觉核查方向、比例与文本；正常XCTest至少提交10帧，`native_copies=0`、`native_readbacks=0`，结束后 `leases_live=0`、`lease_failures=0`、`render_generation=0`。失败注入产生至少3张软件图像并收到 `metalPresentationFailed`，同样正常清理；这是编码前故障注入，不等于物理GPU device-loss测试。
 - 全部6项iOS XCTest通过，device Debug产品构建与macOS完整行为回归通过。证据 `out/apple_host/evidence/ios-I1-metal/`（`tests-final.xcresult`、运行日志、frame.png）；无本轮CUA点击或真机验收。
 - I1仍需平台能力/请求完善及完整产品资源行为审计；I4还需同刻像素对照、旋转/窄窗、60/高刷新与长时/内存/真实GPU故障恢复。现有帧钟暂用60上限，高刷新与持久FPS偏好尚未接入，不勾完整IOS-06/10。历史GPU错误计数与drain/新会话恢复路径也需专项故障审计。
+
+
+## 10. 移动游戏库与 Files 复制导入（2026-10-13）
+
+- 共享GameLibrary保持旧JSON字段与macOS默认目录，新增可选独立managedGamesRoot/运行时集合；iOS索引在Application Support、托管游戏在Documents/Games，以UUID相对目录定位。原sourcePath只作来源/重复识别，不用于托管游戏重启定位。iOS仅接受KiriKiri；不开放无书签的外部引用。
+- 新增MobileLibraryState、UIDocumentPicker（目录/ZIP）、NSFileCoordinator与成对security scope；后台复制、≤4Hz进度、取消协调/复制/解压，发布阶段明确拒绝过晚取消。源、stage与原子索引发布分离；失败回收本次目录，移除只删除记录，保留游戏与存档。
+- 复制器用选定根目录描述符/openat/O_NOFOLLOW拒绝链接逃逸，拒绝特殊文件，限制10万项及实际字节；ZIP通过调用方拥有的fd解压，保留路径/链接/大小/编码/CRC等防护。空间预检保留32MiB余量；ZIP预算考虑解压后再次复制的双份占用。/var与/private/var别名误拒绝已实测修复。
+- iOS自动封面相对路径与索引在同次发布中保存，列表和详情异步生成缩略图；无法解码时显示占位图。不读取未授权external记录/外部封面，不可用游戏禁止启动。手动封面/清除/搜索仍待后续。
+- 宽布局原生侧栏，紧凑布局主页/游戏库tab；列表→详情→游戏，支持重命名/保留文件移除。设置目的地尚未接入，未用空设置页凑三tab；统计、完整设置/主题/手动封面继续I2。
+- iOS26 XCTest共11项通过：目录/ZIP、重复与存档保留、搬迁后相对路径、索引重开、封面索引、KiriKiri-only、取消/发布边界、预算、链接拒绝/失败回滚，及之前协议/Metal回归。device Debug产品构建、macOS完整行为回归与独立GameArchiveTests/GameLibraryTests通过；独立归档工具的过时Swift依赖清单已修正。
+- 证据 `out/apple_host/evidence/ios-I2-library-final5.xcresult`，UI隔离预览/截图在 `out/apple_host/evidence/ios-I2-library/`。Debug `--ios-library-preview`在临时目录复制仓库Demo并显示列表，不写真实库/协议接受记录；Release不提供该入口。
+- 本轮没有CUA工具，未声称完成Files系统选择/真实外部provider、iCloud材料化与离线、实际磁盘不足、用户触屏取消的端到端验收。测试用App/测试bundle与临时目录的URL验证协调链路，不能替代真机Files。I2/I2b/IOS-03/04完整验收仍未完成；I6补入磁盘/文件元数据所用API的隐私manifest审计。

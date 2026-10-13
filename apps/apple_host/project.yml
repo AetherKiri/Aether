@@ -78,6 +78,11 @@ targets:
       - path: IOSHost
       - path: HostKit/EngineSession.mm
       - path: HostKit/MetalBridge.mm
+      - path: AetherHost/GameLibrary.swift
+      - path: AetherHost/GameRuntime.swift
+      - path: AetherHost/GameArchive.swift
+      - path: AetherHost/GameCopy.swift
+      - path: AetherHost/PlayStats.swift
       - path: AetherHost/LegalAcceptance.swift
       - path: AetherHost/ShellStrings.swift
       - path: AetherHost/SettingsDocumentView.swift
@@ -130,6 +135,8 @@ targets:
     deploymentTarget: "18.0"
     sources:
       - path: Tests/MobileShellIOSTests.swift
+      - path: Tests/Fixtures
+        buildPhase: resources
     dependencies:
       - target: AetherHostIOS
     settings:

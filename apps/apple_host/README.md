@@ -620,7 +620,7 @@ python3 tools/apple_host_ios_shell_tests.py
 链接响应文件位于 `out/apple_host/ios/link/{Debug,Release}/{iphoneos,iphonesimulator}.rsp`，
 由CMake实际闭包生成；构建Release前需先用 `--configuration Release`生成对应归档。
 目标支持iPhone/iPad与18.0部署。当前提供双协议/拒绝页、主页Demo和文档阅读、原始Metal画布与软件回退；
-库/Files/完整设置与Metal仍在实施，不宣称可发布。
+库与Files复制导入已接入，完整设置及真机验收仍在实施，不宣称可发布。
 
 `AetherHostIOSTests`已纳入该scheme；用本机实际Simulator UUID运行 `xcodebuild test -destination 'platform=iOS Simulator,id=<UUID>'`。
 模型测试用隔离临时目录，不保存真实用户接受记录。自动Demo smoke仅Debug可使用
@@ -631,3 +631,15 @@ iOS产品默认Metal lease呈现：引擎与MTKView共用bridge队列，正常�
 `AetherHostIOSTests`包含真实引擎至少10帧与清理、软件回退注入测试。
 Debug可用 `AETHER_IOS_SOFTWARE=1`对照软件启动，或 `AETHER_IOS_FAIL_PRESENTATION=1`
 注入呈现失败；这些环境选项不是产品设置，Release不提供。当前仍需真机和完整I4验证。
+
+
+移动库索引使用共享LibraryGame格式；托管目录在Documents/Games、索引在Application Support。
+Files目录与ZIP导入只接受KiriKiri，显示进度并可取消，移除条目保留实际文件和存档。
+外部书签、手动封面和完整设置尚未提供。运行归档/库回归：
+
+```bash
+python3 tools/apple_host_archive_test.py
+```
+
+Debug隔离预览可用 `AETHER_HOST_BYPASS_LEGAL_GATE=1` 与 `--ios-library-preview`，
+库与来源均位于临时fixture目录；它不替代真实Files/provider的验收。

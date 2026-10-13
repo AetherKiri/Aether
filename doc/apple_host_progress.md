@@ -818,3 +818,11 @@
 - 产品默认Metal/MTKView，同队列FrameLease提交、原始输出/比例适配；修复iOS静态frame sink的dlsym注册缺失，ABI未改。
 - iPadOS26真实Demo图像通过视觉核查；6项iOS XCTest覆盖10帧正常呈现零回读/复制、故障注入软件图像与退出lease/generation清理。device Debug与macOS行为回归通过。
 - 证据 `out/apple_host/evidence/ios-I1-metal/`；当前60上限、同刻像素/旋转/内存/高刷新/实际GPU故障仍需I4，真机G4未完成，未声称本轮CUA。
+
+
+### 2026-10-13：移动游戏库与复制导入
+
+- 支持独立Documents/Games托管路径、Application Support索引；KiriKiri-only目录/ZIP导入、权限/协调生命周期、限量复制与取消/原子发布/回滚。
+- 新增自适应库/详情、重命名/保留文件移除、自动封面相对持久化和缩略图；设置/主题与手动封面尚未接入。
+- 11项iOS XCTest、device Debug、macOS行为与归档/库套件通过；捕获并修复临时目录/var与/private/var路径别名误拒绝。证据 `ios-I2-library-final5.xcresult` 与 `ios-I2-library/`。
+- 真实Files/iCloud/低空间/触屏取消与真机G4未验收。本轮为隔离fixture与截图核查，没有CUA点击证据；目标继续。

@@ -20,6 +20,7 @@ enum ShellLanguage: String, CaseIterable, Identifiable {
     static func localizedValues(for key: String) -> [String]? { strings[key] }
     // Same five languages as the existing product; game text is untouched.
     private static let strings: [String: [String]] = [
+        "mobileImportKiriHelp": ["从文件中选择 KiriKiri 游戏目录或 ZIP，复制到游戏库。", "從檔案中選擇 KiriKiri 遊戲目錄或 ZIP，複製到遊戲庫。", "Choose a KiriKiri game folder or ZIP from Files to copy into your library.", "ファイルからKiriKiriのゲームフォルダまたはZIPを選び、ライブラリにコピーします。", "파일에서 KiriKiri 게임 폴더 또는 ZIP을 선택하여 라이브러리에 복사하세요."],
         "mobileDeclined": ["已拒绝", "已拒絕", "Declined", "同意しませんでした", "동의하지 않음"],
         "mobileDeclinedBody": ["同意两份协议后才能开始游戏。您可以重新阅读并选择。", "同意兩份協議後才能開始遊戲。您可以重新閱讀並選擇。", "Both documents are required before playing. You can review them again.", "ゲームを始めるには両方の文書への同意が必要です。もう一度読むことができます。", "게임을 시작하려면 두 문서에 동의해야 합니다. 다시 읽어 볼 수 있습니다."],
         "mobileReviewAgain": ["重新阅读", "重新閱讀", "Review Again", "もう一度読む", "다시 읽기"],

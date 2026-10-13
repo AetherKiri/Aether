@@ -1,4 +1,9 @@
 import Foundation
+#if canImport(Darwin)
+import Darwin
+#else
+import Glibc
+#endif
 
 // Extracts regular files itself; archive paths are never passed to a disk writer.
 struct GameArchive {
@@ -17,11 +22,17 @@ struct GameArchive {
             }
         }
     }
-    static func extract(_ source: URL, to destination: URL, limits: Limits = Limits()) throws {
+    static func extract(_ source: URL, to destination: URL, limits: Limits = Limits(), checkCancellation: (() throws -> Void)? = nil,
+                        progress: ((Int64, Int64) -> Void)? = nil) throws {
+        let descriptor=source.path.withCString { open($0,O_RDONLY | O_NOFOLLOW | O_NONBLOCK) }
+        guard descriptor >= 0 else { throw Failure.invalid }
+        defer { close(descriptor) }
+        var sourceStat=stat()
+        guard fstat(descriptor,&sourceStat)==0, (sourceStat.st_mode & S_IFMT)==S_IFREG else { throw Failure.unsafe }
         guard let reader = archive_read_new() else { throw Failure.invalid }
         defer { archive_read_free(reader) }
         guard archive_read_support_format_zip(reader) == 0,
-              source.path.withCString({ archive_read_open_filename(reader, $0, 64 * 1024) }) == 0 else { throw Failure.invalid }
+              archive_read_open_fd(reader, descriptor, 64 * 1024) == 0 else { throw Failure.invalid }
         let fm = FileManager.default
         try fm.createDirectory(at: destination, withIntermediateDirectories: true)
         var names = Set<String>()
@@ -30,6 +41,7 @@ struct GameArchive {
         var total: Int64 = 0
         var buffer = [UInt8](repeating: 0, count: 64 * 1024)
         while true {
+            try checkCancellation?()
             var entry: OpaquePointer?
             let status = archive_read_next_header(reader, &entry)
             if status == 1 { break } // ARCHIVE_EOF
@@ -68,12 +80,14 @@ struct GameArchive {
             do {
                 var written: Int64 = 0
                 while true {
+                    try checkCancellation?()
                     let size = buffer.withUnsafeMutableBytes { archive_read_data(reader, $0.baseAddress, $0.count) }
                     guard size >= 0 else { throw Failure.invalid }
                     if size == 0 { break }
                     guard Int64(size) <= limits.bytes - total else { throw Failure.tooLarge }
                     total += Int64(size); written += Int64(size)
                     try file.write(contentsOf: Data(buffer.prefix(size)))
+                    progress?(total, 0)
                 }
                 guard written == declared else { throw Failure.invalid }
                 try file.close()

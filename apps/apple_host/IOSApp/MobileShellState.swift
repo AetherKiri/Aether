@@ -9,11 +9,13 @@ final class MobileShellState: ObservableObject {
     @Published var error: String?
     let legalStore: LegalAcceptanceStore
     let gamesRoot: URL
+    let supportRoot: URL
     private let bypass: Bool
 
     init(supportRoot: URL? = nil, gamesRoot: URL? = nil, environment: [String: String] = ProcessInfo.processInfo.environment) {
         let fm = FileManager.default
         let support = supportRoot ?? fm.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0].appendingPathComponent("Aether", isDirectory: true)
+        self.supportRoot = support
         self.gamesRoot = gamesRoot ?? fm.urls(for: .documentDirectory, in: .userDomainMask)[0].appendingPathComponent("Games", isDirectory: true)
         legalStore = LegalAcceptanceStore(url: support.appendingPathComponent("legal-acceptance.json"))
         bypass = LegalAgreement.bypassRequested(environment: environment)

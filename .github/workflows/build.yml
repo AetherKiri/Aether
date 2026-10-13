@@ -683,7 +683,7 @@ jobs:
 
   macos:
     name: Build macOS App
-    runs-on: macos-14
+    runs-on: macos-15
     env:
       FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: 'true'
       CCACHE_DIR: ${{ github.workspace }}/.ccache

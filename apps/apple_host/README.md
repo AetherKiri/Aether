@@ -591,3 +591,15 @@ python3 tools/apple_host_ios_build.py --sdk iphonesimulator --probe-app
 检查后台/返回。当前按用户安排先测iOS26，18运行验收另补。
 该探针包含仓库Demo和字体，仅软件画面与UIKit输入/生命周期，不代表产品导航、
 协议门、Files、StoreKit或Metal/G4完成。完整链接和运行以实践文档证据为准。
+
+
+移动生命周期接缝回归（真实引擎 + Debug通知注入）：
+
+```bash
+python3 tools/apple_host_ios_lifecycle_tests.py --device <booted-simulator-UUID>
+```
+
+从 `xcrun simctl list devices booted` 获取真实UUID。脚本检查暂停期间无tick、
+重叠原因不被覆盖、恢复首dt为0，报告写入 `out/apple_host/evidence/ios-I3-lifecycle26/`。
+`--skip-build`可复用刚构建的Debug探针；不能用本测试代替真机耳机、来电或CUA验收。
+`IOSHost/MobileSessionDriver`可用于后续正式移动宿主；调用方先stop driver，再drain GPU并shutdown引擎。

@@ -33,6 +33,10 @@ NS_ASSUME_NONNULL_BEGIN
 
 - (uint32_t)engineAPIVersion;
 
+// Internal host adapter; calls the existing KiriKiri audio activation hook on
+// iOS. No engine_api/provider ABI change; other platforms return success.
+- (BOOL)activateHostAudioSession:(NSError **)error;
+
 // Optional local-model text translation. Availability and state are
 // process-wide and mirror engine_is_text_translation_available().
 - (BOOL)isTextTranslationAvailable;

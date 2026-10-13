@@ -4,6 +4,11 @@
 #include "engine_api.h"
 #include "engine_runtime_provider.h"
 
+#include <TargetConditionals.h>
+#if TARGET_OS_IPHONE
+extern "C" bool engine_legacy_activate_audio_session_for_host(void);
+#endif
+
 #include <vector>
 #include <algorithm>
 #include <chrono>
@@ -260,6 +265,16 @@ NSError *EngineError(engine_handle_t handle, NSString *fallback) {
     NSString *cursor = [NSString stringWithFormat:@"%d,%d", cursorStart, cursorLength];
     if (![self setOption:@"ime_preedit_cursor" value:cursor error:error]) return NO;
     return [self setOption:@"ime_preedit" value:(text ?: @"") error:error];
+}
+
+- (BOOL)activateHostAudioSession:(NSError **)error {
+#if TARGET_OS_IPHONE
+    if (!engine_legacy_activate_audio_session_for_host()) {
+        if (error) *error = EngineError(_handle, @"iOS host audio activation failed or application is inactive");
+        return NO;
+    }
+#endif
+    return YES;
 }
 
 - (BOOL)enableMetalRenderer:(NSError **)error {

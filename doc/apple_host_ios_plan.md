@@ -14,9 +14,9 @@
 
 ### I0：依赖盘点与交叉编译（IOS-01/02）
 
-- [ ] 保存工具链与设备清单；运行 `xcodebuild -version`、`xcodebuild -showsdks`、`xcrun simctl list devices available`、`xcrun devicectl list devices`。
+- [x] 保存工具链与设备清单；运行 `xcodebuild -version`、`xcodebuild -showsdks`、`xcrun simctl list devices available`、`xcrun devicectl list devices`。
 - [ ] 盘点CMake/vcpkg/Rust/FFmpeg/OpenAL/插件的iphoneos与iphonesimulator支持；记录每个provider可用、缺依赖或暂缓原因。首期只提供KiriKiri，ONS/Siglus按用户最新安排暂不接入，不用假provider代替。
-- [ ] 新增可重复的 `tools/apple_host_ios_build.py`（建议名），参数区分device/simulator、configuration和provider集合；产物隔离在 `out/apple_host/ios/{device,simulator}/`。
+- [x] 新增可重复的 `tools/apple_host_ios_build.py`（建议名），参数区分device/simulator、configuration和provider集合；产物隔离在 `out/apple_host/ios/{device,simulator}/`。
 - [ ] CMake明确iOS system、SDK、arm64、deployment18.0；依赖自身最低版本也审计。device与simulator虽同arm64，平台不同，不共用对象/缓存目录。
 - [ ] 确立链接ADR：首版优先静态core+engine闭包，macOS保持现SHARED；如果用动态库须构建合法framework并签名。明确static constructor是否被dead-strip，provider注册须有实际探针；force-load仅对确有需要的归档，避免重复engine单例。
 - [ ] `file`/`otool -L`/`xcrun vtool -show-build`检查平台、minOS与依赖；不得出现macOS dylib、Godot或SDL宿主依赖。
@@ -150,7 +150,7 @@ Goal模式按阶段持续推进，阶段完成不等于整个M4完成。达到G4
 - SDK分离、18.0配置、暂缓provider拒绝与脚本语法检查通过；引擎构建结果以各build目录的build-result.json与日志为准，不由脚本语法通过推导完成。
 
 - 后续依赖：OpenSSL配置曾因模拟器旧triplet的分号参数列表被legacy make helper截断而失败；本轮专用triplet改为shell参数串后OpenSSL/curl/FFmpeg继续安装。探针Mach-O平台分别为IOS/IOSSIMULATOR，minOS均18.0，SDK26.0。
-- 当前完整simulator核心构建仍进行依赖安装，未产出可验收引擎归档；I0保持“实施中”。最新进程与状态以 `out/apple_host/ios/simulator/debug/build-result.json` 和configure.log为准，下轮先检查，不因观察超时重启任务。
+- 当轮完整simulator核心构建仍进行依赖安装，未产出可验收引擎归档；I0保持“实施中”。最新进程与状态以 `out/apple_host/ios/simulator/debug/build-result.json` 和configure.log为准，下轮先检查，不因观察超时重启任务。
 
 
 ## 6. iOS 26 优先验证与 UIKit 探针（2026-10-12）
@@ -167,3 +167,15 @@ Goal模式按阶段持续推进，阶段完成不等于整个M4完成。达到G4
 - CUA 设备：iPad Pro 11-inch (M4)，iOS26.0。真实 KAG3 Demo 启动为 `state=2`、输出640x480；点击画布产生 pointer down/up 并推进场景，Enter 产生 key 事件，Stop 清理会话。
 - 通过 Home 切后台、再次启动后继续出帧；日志记录 `Host lifecycle deactivate/activate`，没有黑屏或启动错误。证据：`out/apple_host/evidence/ios-I1-probe26/`（stdout/stderr）及 `out/apple_host/ios/simulator/debug/build-result.json`。
 - 该证据只覆盖 iOS26 Simulator 的 KiriKiri 软件帧、UIKit 触摸/按键和生命周期；不替代 iOS18 runtime、真机 Metal/音频、产品 Shell、Files/StoreKit 或 G4 验收。
+
+
+## 7. 双 SDK 与移动生命周期接缝（2026-10-13）
+
+- 中断前的device构建已实际结束且成功。现在 `iphoneos` / `iphonesimulator` Debug 核心和 UIKit 探针均完整构建；两个App的Mach-O分别为IOS / IOSSIMULATOR，minOS18.0、SDK26.0。日志与build-result分别在 `out/apple_host/ios/{device,simulator}/debug/`。device未签名、未安装真机，不据此宣称G4或18运行通过。
+- 新增可复用 `IOSHost/MobileSessionDriver`，接管CADisplayLink、毫秒余数、scene/application通知、音频中断与路由暂停；HostKit封装既有 `engine_legacy_activate_audio_session_for_host`，公共ABI/provider表未改。
+- 原因集合覆盖scene inactive、application inactive、音频中断、等待用户恢复、音频激活失败、系统modal及媒体服务丢失。清除一个原因不会恢复其他原因仍存在的会话；停止移除观察者并递增generation，延迟旧通知不得访问新会话。
+- 实测修复scene先激活、UIApplication仍inactive导致音频激活被拒绝的时序问题：单独保留application暂停原因，收到真正的应用激活后重试。恢复首tick为0，后台间隔不追赶，单次前台stall最多100ms。
+- 音频策略ADR：宿主在开启会话前配置 `.playback` / `.default` / 无混音选项，前台游戏音频按代码契约不受静音开关限制；不启用后台音频。runtime负责OpenAL与共享激活。耳机输出消失暂停并允许显式恢复；媒体服务丢失/重置保持暂停，须重开游戏，不把未验证的OpenAL重建当作已实现。静音/扬声器/耳机/电话中断实际行为仍待真机记录。
+- `MobileSessionTimingTests.cpp`：120Hz一秒推进1000ms、重叠暂停、恢复/停止时钟清零、长帧上限、非法与倒退时钟通过。
+- `tools/apple_host_ios_lifecycle_tests.py --device <booted simulator UUID>`：编译上述测试、构建安装真实KiriKiri探针、运行Debug-only通知注入并保存JSON。15项测试全部通过；暂停期间tick不增加，恢复首dt=0，停止后观察者和帧钟不再响应。证据 `out/apple_host/evidence/ios-I3-lifecycle26/result.json` / stdout.log / stderr.log。这是通知注入，不是真机音频或本轮CUA证据；本轮无可用CUA工具，未声称可见操作验收。
+- macOS完整 `apple_host_settings_tests.py` 回归通过。正式XcodeGen iOS产品target、Metal直通、协议门、库/Files、IME/控制板、StoreKit与iOS18/真机验收仍未完成；I0/I1/I3保持实施中。

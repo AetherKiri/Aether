@@ -795,3 +795,11 @@
 - 两SDK系统iconv探针编译链接及Mach-O平台/minOS检查通过，脚本SDK/配置/暂缓provider校验与语法、diff检查通过。
 - 实际simulator依赖配置修复了GNU libiconv工具安装链接与OpenSSL配置参数截断；完整core构建尚在依赖安装，I0未完成，不声称已生成iOS App。日志/状态在 `out/apple_host/ios/simulator/debug/`；设备清单证据 `out/apple_host/evidence/ios-I0-core/`。
 - Xcode26.0.1，只有26.0 simulator runtime；已配对iPad/iPhone目前unavailable。18.0运行兼容和G4仍需真实环境验收。
+
+
+### 2026-10-13：双 SDK 构建与移动生命周期
+
+- device与simulator Debug核心/探针完整构建通过，Mach-O平台分别IOS/IOSSIMULATOR，minOS18.0、SDK26.0；device未进行真机安装。
+- 新增可复用MobileSessionDriver、暂停原因集合和音频激活封装，修复scene/application激活先后导致恢复卡住；恢复首tick清零。前台playback策略、耳机路由等待恢复、媒体服务丢失要求重开已明确。
+- 120Hz时钟/重叠暂停测试、15项真实引擎通知注入、macOS完整设置行为回归通过。证据 `out/apple_host/evidence/ios-I3-lifecycle26/`；本轮未做CUA或真机音频测试。
+- M4仍未完成：正式iOS产品target/Metal、协议门、Files/库、移动输入/IME与StoreKit继续推进；iOS18运行与真机G4另验收。

@@ -3,7 +3,11 @@
 #import <UIKit/UIKit.h>
 #import <QuartzCore/QuartzCore.h>
 #import "EngineSession.h"
+#import "MobileSessionDriver.h"
 extern "C" uint32_t aether_apple_host_core_initialize(void);
+#if DEBUG
+void RunMobileDriverIntegrationTests(AetherMobileSessionDriver *, AetherEngineSession *, UIWindowScene *);
+#endif
 
 @interface ProbeCanvas : UIImageView
 @property(nonatomic, copy) void (^pointer)(uint32_t, CGPoint, int32_t);
@@ -56,12 +60,10 @@ extern "C" uint32_t aether_apple_host_core_initialize(void);
 
 @interface ProbeController : UIViewController
 @property(nonatomic) AetherEngineSession *session;
-@property(nonatomic) CADisplayLink *link;
+@property(nonatomic) AetherMobileSessionDriver *driver;
 @property(nonatomic) ProbeCanvas *canvas;
 @property(nonatomic) UILabel *status;
-@property(nonatomic) CFTimeInterval previous;
 @property(nonatomic) CFTimeInterval lastStatus;
-@property(nonatomic) double remainder;
 @property(nonatomic) uint64_t ticks;
 @property(nonatomic) BOOL running;
 @end
@@ -79,7 +81,7 @@ extern "C" uint32_t aether_apple_host_core_initialize(void);
     __weak ProbeController *weakSelf = self;
     self.canvas.pointer = ^(uint32_t type, CGPoint p, int32_t modifiers) {
         ProbeController *owner = weakSelf;
-        if (!owner.running) return;
+        if (!owner.running || (owner.driver.pauseReasons != 0 && !(modifiers & ENGINE_INPUT_MODIFIER_POINTER_CANCEL))) return;
         [owner.session sendPointerEventWithType:type pointerId:0 x:p.x y:p.y deltaX:0 deltaY:0 button:0 modifiers:modifiers];
         NSLog(@"PROBE pointer type=%u x=%.1f y=%.1f", type,p.x,p.y);
     };
@@ -92,7 +94,10 @@ extern "C" uint32_t aether_apple_host_core_initialize(void);
     UIButton *stop = [UIButton buttonWithType:UIButtonTypeSystem];
     [stop setTitle:@"Stop" forState:UIControlStateNormal];
     [stop addTarget:self action:@selector(stopDemo) forControlEvents:UIControlEventTouchUpInside];
-    UIStackView *buttons = [[UIStackView alloc] initWithArrangedSubviews:@[start,enter,stop]];
+    UIButton *resume = [UIButton buttonWithType:UIButtonTypeSystem];
+    [resume setTitle:@"Resume Audio" forState:UIControlStateNormal];
+    [resume addTarget:self action:@selector(resumeAudio) forControlEvents:UIControlEventTouchUpInside];
+    UIStackView *buttons = [[UIStackView alloc] initWithArrangedSubviews:@[start,enter,stop,resume]];
     buttons.distribution = UIStackViewDistributionFillEqually;
     [buttons.heightAnchor constraintGreaterThanOrEqualToConstant:44].active = YES;
     UIStackView *stack = [[UIStackView alloc] initWithArrangedSubviews:@[self.status,buttons,self.canvas]];
@@ -102,8 +107,15 @@ extern "C" uint32_t aether_apple_host_core_initialize(void);
     [NSLayoutConstraint activateConstraints:@[[stack.leadingAnchor constraintEqualToAnchor:safe.leadingAnchor constant:12],
         [stack.trailingAnchor constraintEqualToAnchor:safe.trailingAnchor constant:-12],
         [stack.topAnchor constraintEqualToAnchor:safe.topAnchor], [stack.bottomAnchor constraintEqualToAnchor:safe.bottomAnchor]]];
-    [NSNotificationCenter.defaultCenter addObserver:self selector:@selector(inactive) name:UISceneWillDeactivateNotification object:nil];
-    [NSNotificationCenter.defaultCenter addObserver:self selector:@selector(active) name:UISceneDidActivateNotification object:nil];
+}
+- (void)viewDidAppear:(BOOL)animated {
+    [super viewDidAppear:animated];
+#if DEBUG
+    if ([NSProcessInfo.processInfo.arguments containsObject:@"--lifecycle-self-test"]) {
+        [self startDemo];
+        if (self.running) RunMobileDriverIntegrationTests(self.driver,self.session,self.view.window.windowScene);
+    }
+#endif
 }
 - (void)startDemo {
     [self stopDemo];
@@ -127,20 +139,22 @@ extern "C" uint32_t aether_apple_host_core_initialize(void);
     if (![self.session initializeWithWritablePath:documents.path cachePath:cache.path error:&error]
         || ![self.session setOption:@"renderer" value:@"software" error:&error]
         || ![self.session setOption:@"frame_output" value:@"raw_source" error:&error]
-        || ![self.session setOption:@"default_font" value:font error:&error]
-        || ![self.session openGameAtPath:game.path error:&error]) { [self failed:error]; return; }
-    self.running = YES; self.ticks = 0; self.previous = 0; self.remainder = 0;
-    self.link = [CADisplayLink displayLinkWithTarget:self selector:@selector(tick:)];
-    self.link.preferredFrameRateRange = CAFrameRateRangeMake(30,60,60);
-    [self.link addToRunLoop:NSRunLoop.mainRunLoop forMode:NSRunLoopCommonModes];
+        || ![self.session setOption:@"default_font" value:font error:&error]) { [self failed:error]; return; }
+    self.running = YES; self.ticks = 0; self.lastStatus = 0;
+    self.driver = [[AetherMobileSessionDriver alloc] initWithSession:self.session scene:self.view.window.windowScene];
+    __weak ProbeController *weakSelf = self;
+    self.driver.tick = ^(uint32_t delta) { [weakSelf tickWithDelta:delta]; };
+    self.driver.willPause = ^{ [weakSelf.canvas cancelPointer]; };
+    self.driver.stateChanged = ^(uint32_t reasons) {
+        if (reasons) weakSelf.status.text = [NSString stringWithFormat:@"Paused · reasons %u · %@",reasons,
+            (reasons & (1u << 5)) ? @"Audio services lost; restart Demo" : @"Resume Audio when all interruption reasons have cleared"];
+    };
+    if (![self.driver start:&error] || ![self.session openGameAtPath:game.path error:&error]) { [self failed:error]; return; }
     NSLog(@"PROBE started api=%u",self.session.engineAPIVersion);
 }
 - (void)failed:(NSError *)error { [self stopDemo]; self.status.text = error.localizedDescription ?: @"Engine start failed"; NSLog(@"PROBE failed %@",error); }
-- (void)tick:(CADisplayLink *)link {
-    double elapsed = self.previous == 0 ? 0 : MAX(0,link.timestamp-self.previous);
-    self.previous = link.timestamp;
-    double exact = MIN(0.1,elapsed)*1000+self.remainder;
-    uint32_t delta = (uint32_t)MAX(0,round(exact)); self.remainder = exact-delta;
+- (void)tickWithDelta:(uint32_t)delta {
+    CFTimeInterval timestamp = CACurrentMediaTime();
     [self.session tickWithDeltaMS:delta]; self.ticks++;
     CGImageRef image = [self.session copyFrameImage];
     if (image) {
@@ -149,33 +163,25 @@ extern "C" uint32_t aether_apple_host_core_initialize(void);
         [self.session setSurfaceSize:(uint32_t)self.canvas.canvas.width height:(uint32_t)self.canvas.canvas.height error:nil];
     }
     if (self.session.startupState == ENGINE_STARTUP_STATE_FAILED) { [self failed:[NSError errorWithDomain:@"Probe" code:1 userInfo:@{NSLocalizedDescriptionKey:self.session.lastError}]]; return; }
-    if (link.timestamp-self.lastStatus > 0.25) {
-        self.lastStatus = link.timestamp;
+    if (timestamp-self.lastStatus > 0.25) {
+        self.lastStatus = timestamp;
         self.status.text = [NSString stringWithFormat:@"Software · state %u · tick %llu · %.0f×%.0f",self.session.startupState,self.ticks,self.canvas.canvas.width,self.canvas.canvas.height];
     }
 }
 - (void)enter {
-    if (!self.running) return;
+    if (!self.running || self.driver.pauseReasons != 0) return;
     [self.session sendKeyEvent:YES keyCode:0x0D modifiers:0 unicode:0];
     [self.session sendKeyEvent:NO keyCode:0x0D modifiers:0 unicode:0];
     NSLog(@"PROBE enter");
 }
-- (void)inactive {
-    [self.canvas cancelPointer]; self.link.paused = YES; self.previous = 0; self.remainder = 0;
-    if (self.running) engine_pause(self.session.borrowedEngineHandle);
-}
-- (void)active {
-    self.previous = 0; self.remainder = 0;
-    if (self.running) engine_resume(self.session.borrowedEngineHandle);
-    self.link.paused = NO;
-}
+- (void)resumeAudio { [self.driver requestUserResume]; }
 - (void)stopDemo {
-    [self.canvas cancelPointer]; [self.link invalidate]; self.link = nil;
+    [self.canvas cancelPointer]; [self.driver stop]; self.driver = nil;
     [self.session shutdown]; self.session = nil; self.running = NO;
     self.canvas.image = nil; self.status.text = @"Stopped · Run Demo to start";
     NSLog(@"PROBE stopped");
 }
-- (void)dealloc { [NSNotificationCenter.defaultCenter removeObserver:self]; [self.link invalidate]; [self.session shutdown]; }
+- (void)dealloc { [self.driver stop]; [self.session shutdown]; }
 @end
 
 @interface ProbeScene : UIResponder <UIWindowSceneDelegate>

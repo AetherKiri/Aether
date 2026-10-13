@@ -309,6 +309,79 @@ final class MobileShellIOSTests: XCTestCase {
         XCTAssertFalse(body.contains(root.path))
     }
 
+    func testMobileThemesKeepReadableControlText() {
+        for theme in ShellTheme.allCases {
+            let palette=theme.palette
+            XCTAssertGreaterThanOrEqual(palette.accentText.contrast(with:palette.background),4.5)
+            XCTAssertGreaterThanOrEqual(palette.accentText.contrast(with:palette.surface),4.5)
+            XCTAssertGreaterThanOrEqual(palette.primary.contrast(with:palette.surface),4.5)
+            XCTAssertGreaterThanOrEqual(ThemePalette.Ink(hex:0xffffff).contrast(with:palette.controlAccent),4.5)
+        }
+    }
+    func testMobileSettingsDraftPersistenceMigrationAndFailedWrite() throws {
+        try withFixture {root in
+            let model=MobilePreferencesState(root:root)
+            XCTAssertEqual(model.settings.host.outputResolution,"original")
+            XCTAssertEqual(model.settings.host.frameEnhancementKind,"off")
+            XCTAssertEqual(model.settings.interfaceScale,"comfortable")
+            model.draft.host.theme="warm_dark"; model.draft.interfaceScale="compact"
+            XCTAssertEqual(model.settings.host.theme,"classic"); XCTAssertTrue(model.isDirty)
+            model.discard(); XCTAssertFalse(model.isDirty)
+            model.draft.host.theme="warm_light"; model.draft.host.renderer="software"
+            model.draft.host.pluginLoadMode="aether_all"; model.draft.host.mockEnabled=false
+            XCTAssertTrue(model.save()); XCTAssertFalse(model.isDirty)
+            let reopened=MobilePreferencesState(root:root)
+            XCTAssertEqual(reopened.settings,model.settings)
+            reopened.draft.host.theme="dark"
+            reopened.quickLanguage(.japanese)
+            XCTAssertEqual(reopened.settings.host.languageMode,"japanese")
+            XCTAssertEqual(reopened.settings.host.theme,"warm_light")
+            XCTAssertEqual(reopened.draft.host.theme,"dark"); XCTAssertTrue(reopened.isDirty)
+            let saved=try Data(contentsOf:model.store.url)
+            try FileManager.default.removeItem(at:model.store.url)
+            try FileManager.default.createDirectory(at:model.store.url,withIntermediateDirectories:true)
+            XCTAssertFalse(reopened.save()); XCTAssertTrue(reopened.isDirty)
+            XCTAssertEqual(reopened.settings.host.theme,"warm_light")
+            try FileManager.default.removeItem(at:model.store.url)
+            try saved.write(to:model.store.url)
+            // Desktop choices must not be reset to mobile defaults during migration.
+            var desktop=HostSettings(); desktop.outputResolution="4k"; desktop.frameEnhancementKind="preset"
+            try JSONEncoder().encode(desktop).write(to:model.store.url)
+            let migrated=MobilePreferencesState(root:root)
+            XCTAssertEqual(migrated.settings.host.outputResolution,"4k")
+            XCTAssertEqual(migrated.settings.host.frameEnhancementKind,"preset")
+            XCTAssertEqual(migrated.settings.interfaceScale,"comfortable")
+            migrated.draft.host.theme="dark"; XCTAssertTrue(migrated.save())
+            let encoded=try JSONSerialization.jsonObject(with:Data(contentsOf:model.store.url)) as? [String:Any]
+            XCTAssertEqual(encoded?["version"] as? Int,1); XCTAssertNotNil(encoded?["host"])
+            try Data("broken".utf8).write(to:model.store.url)
+            let broken=MobilePreferencesState(root:root)
+            XCTAssertFalse(broken.writable); XCTAssertFalse(broken.save())
+            XCTAssertEqual(try Data(contentsOf:model.store.url),Data("broken".utf8))
+        }
+    }
+    func testSavedSoftwareRendererActuallyStartsSoftwareDemo() async throws {
+        let scene=try XCTUnwrap(UIApplication.shared.connectedScenes.compactMap {$0 as? UIWindowScene}.first)
+        let previous=scene.windows.first(where:{$0.isKeyWindow})
+        let root=FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        let shell=MobileShellState(supportRoot:root,gamesRoot:root.appendingPathComponent("Games"),environment:[LegalAgreement.bypassEnvironmentKey:"1"])
+        let preferences=MobilePreferencesState(root:root)
+        preferences.draft.host.renderer="software"; preferences.draft.host.mockEnabled=false
+        XCTAssertTrue(preferences.save())
+        let model=MobileGameViewModel(url:try shell.prepareDemo(),settings:preferences.settings.host)
+        let controller=model.controller
+        XCTAssertTrue(controller.prefersSoftwareRendering)
+        XCTAssertEqual(controller.engineOptions["mock_enabled"],"0")
+        let window=UIWindow(windowScene:scene); window.rootViewController=controller; window.makeKeyAndVisible()
+        defer {controller.stop(); window.isHidden=true; previous?.makeKeyAndVisible(); try? FileManager.default.removeItem(at:root)}
+        for _ in 0..<200 {
+            if controller.softwareFrameCount() >= 3 || model.error != nil {break}
+            try await Task.sleep(for:.milliseconds(50))
+        }
+        XCTAssertNil(model.error); XCTAssertGreaterThanOrEqual(controller.softwareFrameCount(),3)
+        XCTAssertEqual(controller.submittedMetalFrames(),0)
+    }
+
 }
 
 private final class ControlledMobileCoverSearch: CoverSearchProviding {

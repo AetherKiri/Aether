@@ -20,6 +20,14 @@ enum ShellLanguage: String, CaseIterable, Identifiable {
     static func localizedValues(for key: String) -> [String]? { strings[key] }
     // Same five languages as the existing product; game text is untouched.
     private static let strings: [String: [String]] = [
+        "mobileInterfaceScale": ["界面比例", "介面比例", "Interface Scale", "UI スケール", "인터페이스 크기"],
+        "mobileScale_compact": ["较小", "較小", "Smaller", "小さめ", "작게"],
+        "mobileScale_comfortable": ["合适", "合適", "Comfortable", "快適", "편안하게"],
+        "mobileScale_standard": ["标准", "標準", "Standard", "標準", "표준"],
+        "mobileScaleHelp": ["调整界面间距；文字继续跟随系统字体大小，触控区域保持至少44点。", "調整介面間距；文字繼續遵循系統字體大小，觸控區域保持至少44點。", "Adjusts interface spacing. Text follows Dynamic Type and touch targets stay at least 44 points.", "画面の間隔を調整します。文字はシステムの文字サイズに従い、タッチ領域は44ポイント以上です。", "화면 간격을 조절합니다. 글자는 시스템 크기를 따르며 터치 영역은 최소 44포인트를 유지합니다."],
+        "mobileSettingsNextGame": ["保存后下次启动游戏生效。", "儲存後下次啟動遊戲生效。", "Applies to the next game launch after saving.", "保存後、次回のゲーム起動時に適用します。", "저장 후 다음 게임 실행부터 적용됩니다."],
+        "mobileRenderPending": ["移动输出缩放和增强尚未接入，当前有效输出为原始尺寸、增强关闭；保留已有偏好。", "行動輸出縮放和增強尚未接入，目前有效輸出為原始尺寸、增強關閉；保留既有偏好。", "Mobile output scaling and enhancement are pending. Effective output is Original with enhancement Off; stored preferences are retained.", "モバイル出力の拡大と画質強化は未接続です。実際は原寸・強化なしで、保存済みの設定は保持します。", "모바일 출력 확대와 화질 향상은 아직 연결되지 않았습니다. 실제 출력은 원본 크기이며 향상은 꺼짐이고 기존 설정은 유지됩니다."],
+        "mobileSettingsRemaining": ["横屏策略、帧率调度、诊断和虚拟控制板仍在迁移，相关偏好不会丢失。", "橫向策略、影格率排程、診斷和虛擬控制面板仍在遷移，相關偏好不會遺失。", "Landscape policy, frame pacing, diagnostics and virtual controls are still being migrated. Their stored preferences are retained.", "横向き設定、フレーム調整、診断と仮想操作パネルは移行中です。保存済みの設定は保持します。", "가로 방향 정책, 프레임 조절, 진단 및 가상 조작 패널은 이전 중입니다. 기존 설정은 유지됩니다."],
         "mobileImportKiriHelp": ["从文件中选择 KiriKiri 游戏目录或 ZIP，复制到游戏库。", "從檔案中選擇 KiriKiri 遊戲目錄或 ZIP，複製到遊戲庫。", "Choose a KiriKiri game folder or ZIP from Files to copy into your library.", "ファイルからKiriKiriのゲームフォルダまたはZIPを選び、ライブラリにコピーします。", "파일에서 KiriKiri 게임 폴더 또는 ZIP을 선택하여 라이브러리에 복사하세요."],
         "mobileDeclined": ["已拒绝", "已拒絕", "Declined", "同意しませんでした", "동의하지 않음"],
         "mobileDeclinedBody": ["同意两份协议后才能开始游戏。您可以重新阅读并选择。", "同意兩份協議後才能開始遊戲。您可以重新閱讀並選擇。", "Both documents are required before playing. You can review them again.", "ゲームを始めるには両方の文書への同意が必要です。もう一度読むことができます。", "게임을 시작하려면 두 문서에 동의해야 합니다. 다시 읽어 볼 수 있습니다."],

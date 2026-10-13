@@ -84,6 +84,14 @@ targets:
       - path: AetherHost/GameCopy.swift
       - path: AetherHost/CoverSearch.swift
       - path: AetherHost/PlayStats.swift
+      - path: AetherHost/SettingsStore.swift
+      - path: AetherHost/ThemePalette.swift
+      - path: AetherHost/ShellTheme.swift
+      - path: AetherHost/RenderGeometry.swift
+      - path: AetherHost/FrameScheduler.swift
+      - path: AetherHost/DiagnosticProfile.swift
+      - path: AetherHost/VirtualControls.swift
+      - path: AetherHost/FrameEnhancement.swift
       - path: AetherHost/LegalAcceptance.swift
       - path: AetherHost/ShellStrings.swift
       - path: AetherHost/SettingsDocumentView.swift

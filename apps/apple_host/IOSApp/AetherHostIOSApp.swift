@@ -4,12 +4,20 @@ import SwiftUI
 struct AetherHostIOSApp: App {
     @StateObject private var shell: MobileShellState
     @StateObject private var library: MobileLibraryState
+    @StateObject private var preferences: MobilePreferencesState
     init() {
         let state=MobileShellState()
+        #if DEBUG
+        let fixture=(ProcessInfo.processInfo.arguments.contains("--ios-library-preview") || ProcessInfo.processInfo.arguments.contains("--ios-settings-preview")) ? FileManager.default.temporaryDirectory.appendingPathComponent("AetherLibraryPreview-" + UUID().uuidString) : nil
+        #else
+        let fixture: URL? = nil
+        #endif
+        let preferences=MobilePreferencesState(root:fixture?.appendingPathComponent("Support") ?? state.supportRoot)
+        state.language=preferences.settings.host.language
+        _preferences=StateObject(wrappedValue:preferences)
         _shell=StateObject(wrappedValue:state)
         #if DEBUG
-        if ProcessInfo.processInfo.arguments.contains("--ios-library-preview") {
-            let fixture=FileManager.default.temporaryDirectory.appendingPathComponent("AetherLibraryPreview-" + UUID().uuidString)
+        if let fixture {
             _library=StateObject(wrappedValue:MobileLibraryState(supportRoot:fixture.appendingPathComponent("Support"),gamesRoot:fixture.appendingPathComponent("Games"),initialLoad:state.canPlay))
         } else {
             _library=StateObject(wrappedValue:MobileLibraryState(supportRoot:state.supportRoot,gamesRoot:state.gamesRoot,initialLoad:state.canPlay))
@@ -19,13 +27,21 @@ struct AetherHostIOSApp: App {
         #endif
     }
     var body: some Scene {
-        WindowGroup { MobileRootView(shell: shell, library: library) }
+        WindowGroup { MobileRootView(shell: shell, library: library, preferences: preferences) }
     }
 }
 
 struct MobileRootView: View {
     @ObservedObject var shell: MobileShellState
     @ObservedObject var library: MobileLibraryState
+    @ObservedObject var preferences: MobilePreferencesState
+    @State private var pendingDestination: String?
+    private var palette: ThemePalette {preferences.settings.host.palette}
+    private var selection: Binding<String?> {Binding(get:{destination},set:{requested in
+        guard requested != destination else {return}
+        if destination == "settings", preferences.isDirty {pendingDestination=requested}
+        else {destination=requested}
+    })}
     @Environment(\.horizontalSizeClass) private var sizeClass
     @State private var destination: String?="home"
     @State private var game: MobileGameRoute?
@@ -35,9 +51,9 @@ struct MobileRootView: View {
             if shell.canPlay {productNavigation}
             else {NavigationStack {legalContent.toolbar {languageToolbar}}}
         }
-            .alert(shell.language.text("error"), isPresented: Binding(get: { shell.error != nil }, set: { if !$0 { shell.error = nil } })) {
-                Button(shell.language.text("ok")) { shell.error = nil }
-            } message: { Text(shell.error ?? "") }
+            .alert(shell.language.text("error"), isPresented: Binding(get: { shell.error != nil || preferences.error != nil }, set: { if !$0 { shell.error = nil; preferences.error = nil } })) {
+                Button(shell.language.text("ok")) { shell.error = nil; preferences.error = nil }
+            } message: { Text(preferences.error ?? shell.error ?? "") }
             .sheet(item: $document) { item in
                 NavigationStack {
                     ScrollView { Text(item.contents(language: shell.language) ?? shell.language.text("documentUnavailable")).textSelection(.enabled).frame(maxWidth: .infinity, alignment: .leading).padding() }
@@ -45,11 +61,29 @@ struct MobileRootView: View {
                         .toolbar { ToolbarItem(placement: .confirmationAction) { Button(shell.language.text("ok")) { document = nil }.frame(minHeight: 44) } }
                 }
             }
-            .fullScreenCover(item: $game) { route in MobileGameView(route: route, language: shell.language) { game = nil } }
+            .fullScreenCover(item: $game) { route in MobileGameView(route: route, language: shell.language, settings: preferences.settings.host) { game = nil } }
         .environment(\.locale, shell.language.locale)
+        .environment(\.shellPalette,palette)
+        .environment(\.defaultMinListRowHeight,44 + 2 * preferences.settings.verticalPadding)
+        .preferredColorScheme(palette.dark ? .dark : .light)
+        .tint(palette.accentText.color)
+        .background(palette.background.color)
+        .onChange(of:preferences.settings) {_, settings in shell.language=settings.host.language}
+        .confirmationDialog(shell.language.text("unsavedTitle"),isPresented:Binding(get:{pendingDestination != nil},set:{if !$0 {pendingDestination=nil}})) {
+            Button(shell.language.text("saveLeave")) {if preferences.save() {destination=pendingDestination}; pendingDestination=nil}
+            Button(shell.language.text("discardLeave"),role:.destructive) {preferences.discard(); destination=pendingDestination; pendingDestination=nil}
+            Button(shell.language.text("cancel"),role:.cancel) {pendingDestination=nil}
+        } message: {Text(shell.language.text("unsavedBody"))}
         .onChange(of: shell.canPlay) { _, allowed in if allowed {library.reload()} }
         .onAppear {
             #if DEBUG
+            if LegalAgreement.bypassRequested(), ProcessInfo.processInfo.arguments.contains("--ios-settings-preview") {
+                if let option=ProcessInfo.processInfo.arguments.first(where:{$0.hasPrefix("--ios-preview-theme=")}),
+                   let theme=ShellTheme(rawValue:String(option.dropFirst("--ios-preview-theme=".count))) {
+                    preferences.draft.host.theme=theme.rawValue; preferences.save()
+                }
+                destination="settings"
+            }
             if LegalAgreement.bypassRequested(), ProcessInfo.processInfo.arguments.contains("--ios-library-preview") {
                 Task {
                     do {
@@ -74,7 +108,7 @@ struct MobileRootView: View {
     private var languageToolbar: some ToolbarContent {
                 ToolbarItem(placement: .topBarTrailing) {
                     Menu {
-                        Picker(shell.language.text("language"), selection: $shell.language) {
+                        Picker(shell.language.text("language"), selection: Binding(get:{shell.language},set:{preferences.quickLanguage($0)})) {
                             ForEach(ShellLanguage.allCases) { language in Text(language.name).tag(language) }
                         }
                     } label: { Label(shell.language.text("language"), systemImage: "globe").frame(minWidth: 44, minHeight: 44) }
@@ -99,21 +133,24 @@ struct MobileRootView: View {
         Group {
             if sizeClass == .regular {
                 NavigationSplitView {
-                    List(selection:$destination) {
+                    List(selection:selection) {
                         Label(shell.language.text("dashboard"),systemImage:"house").tag("home")
                         Label(shell.language.text("library"),systemImage:"books.vertical").tag("library")
+                        Label(shell.language.text("settings"),systemImage:"gearshape").tag("settings")
                     }.navigationTitle("Aether")
-                } detail: {NavigationStack {if destination=="library" {libraryPage} else {home.toolbar {languageToolbar}}}}
+                } detail: {NavigationStack {if destination=="library" {libraryPage} else if destination=="settings" {settingsPage} else {home.toolbar {languageToolbar}}}}
             } else {
-                TabView(selection:$destination) {
+                TabView(selection:selection) {
                     NavigationStack {home.toolbar {languageToolbar}}.tabItem {Label(shell.language.text("dashboard"),systemImage:"house")}.tag("home")
                     NavigationStack {libraryPage}.tabItem {Label(shell.language.text("library"),systemImage:"books.vertical")}.tag("library")
+                    NavigationStack {settingsPage}.tabItem {Label(shell.language.text("settings"),systemImage:"gearshape")}.tag("settings")
                 }
             }
         }
     }
+    private var settingsPage: some View {MobileSettingsView(preferences:preferences,language:shell.language)}
     private var libraryPage: some View {
-        MobileLibraryView(model:library,shell:shell) { item in
+        MobileLibraryView(model:library,shell:shell,preferences:preferences) { item in
             game=MobileGameRoute(url:library.library.gameURL(item),title:item.displayTitle)
         }
     }
@@ -126,15 +163,15 @@ struct MobileRootView: View {
                     Button(shell.language.text("play")) {
                         do { game = MobileGameRoute(url: try shell.prepareDemo()) }
                         catch { shell.error = error.localizedDescription }
-                    }.disabled(library.isImporting || library.isEditingCover).buttonStyle(.borderedProminent).frame(minHeight: 44)
+                    }.disabled(library.isImporting || library.isEditingCover).buttonStyle(.borderedProminent).tint(palette.controlAccent.color).frame(minHeight: 44)
                 }.padding(.vertical, 8)
-            }
+            }.listRowBackground(palette.surface.color)
             Section(shell.language.text("aboutSection")) {
                 ForEach([SettingsDocument.privacy, .statement, .license, .additionalLicense, .thirdParty]) { item in
                     Button(shell.language.text(item.titleKey)) { document = item }.frame(minHeight: 44)
                 }
-            }
-        }.navigationTitle(shell.language.text("dashboard"))
+            }.listRowBackground(palette.surface.color)
+        }.listRowBackground(palette.surface.color).scrollContentBackground(.hidden).background(palette.background.color).navigationTitle(shell.language.text("dashboard"))
     }
     private func agreement(_ required: LegalDocument) -> some View {
         let body = required.settingsDocument.contents(language: shell.language)
@@ -152,7 +189,7 @@ struct MobileRootView: View {
     }
     private func acceptButton(_ readable: Bool) -> some View {
         Button(shell.language.text("legalAccept")) { shell.acceptDocument() }
-            .buttonStyle(.borderedProminent).frame(minHeight: 44).disabled(!readable)
+            .buttonStyle(.borderedProminent).tint(palette.controlAccent.color).frame(minHeight: 44).disabled(!readable)
     }
 }
 
@@ -167,8 +204,10 @@ final class MobileGameViewModel: ObservableObject {
     @Published var status = ""
     @Published var fallbackKey: String?
     @Published var error: String?
-    init(url: URL) {
+    init(url: URL, settings: HostSettings) {
         controller = AetherMobileGameController(gameURL: url)
+        controller.prefersSoftwareRendering = settings.renderer == "software"
+        controller.engineOptions = Dictionary(uniqueKeysWithValues:settings.engineOptions.filter {$0.key != "fps_limit"}.map {($0.key,$0.value)})
         controller.statusChanged = { [weak self] in self?.status = $0 }
         controller.failed = { [weak self] in self?.error = $0 }
         controller.presentationFallback = { [weak self] in self?.fallbackKey = $0 }
@@ -186,8 +225,8 @@ struct MobileGameView: View {
     let close: () -> Void
     let title: String
     @State private var confirmReturn = false
-    init(route: MobileGameRoute, language: ShellLanguage, close: @escaping () -> Void) {
-        _game = StateObject(wrappedValue: MobileGameViewModel(url: route.url))
+    init(route: MobileGameRoute, language: ShellLanguage, settings: HostSettings, close: @escaping () -> Void) {
+        _game = StateObject(wrappedValue: MobileGameViewModel(url: route.url, settings: settings))
         self.language=language; self.close=close; self.title=route.title
     }
     var body: some View {

@@ -649,3 +649,9 @@ Debug隔离预览可用 `AETHER_HOST_BYPASS_LEGAL_GATE=1` 与 `--ios-library-pre
 取消/页面离开/图片校验或索引失败不替换原封面。
 `MobileCoverEditor`测试采用网络fixture；真实服务、外部Files图片选择与触屏端到端仍需核验。
 最新测试证据：`out/apple_host/evidence/ios-I2-covers-final2.xcresult`。
+
+iOS现提供第三个设置目的地：独立草稿、保存/丢弃/离页确认，五语言、四主题、原生行间距密度与下次启动的renderer/插件选项。
+移动`settings.json`以v1 envelope保留共享HostSettings v9字段；flat旧文件迁移不丢输出/增强偏好，初装默认original/off。
+尚未迁移的FPS、输出增强、控制板、诊断及横屏仍有明确能力说明。
+`--ios-settings-preview --ios-preview-theme=warm_dark`（配合Debug法律绕过）只写临时测试偏好；Release不提供此入口。
+证据：`out/apple_host/evidence/ios-I2-settings-final.xcresult`与`ios-I2-settings/`内iPhone/iPad四主题截图；截图不是CUA点击验收。

@@ -19,7 +19,7 @@ extern "C" uint32_t aether_apple_host_core_initialize(void);
     uint64_t _softwareFrames;
 }
 - (instancetype)initWithGameURL:(NSURL *)game {
-    if ((self = [super init])) _game = game;
+    if ((self = [super init])) {_game = game; _engineOptions=@{};}
     return self;
 }
 - (void)viewDidLoad {
@@ -58,9 +58,14 @@ extern "C" uint32_t aether_apple_host_core_initialize(void);
         ![_session setOption:@"default_font" value:font error:&error]) {
         [self fail:error.localizedDescription ?: @"Missing runtime font"]; return;
     }
-    BOOL forceSoftware=NO;
+    for (NSString *key in self.engineOptions) {
+        if (![_session setOption:key value:self.engineOptions[key] error:&error]) {
+            [self fail:error.localizedDescription]; return;
+        }
+    }
+    BOOL forceSoftware=self.prefersSoftwareRendering;
 #if DEBUG
-    forceSoftware=[NSProcessInfo.processInfo.environment[@"AETHER_IOS_SOFTWARE"] isEqualToString:@"1"];
+    forceSoftware=forceSoftware || [NSProcessInfo.processInfo.environment[@"AETHER_IOS_SOFTWARE"] isEqualToString:@"1"];
 #endif
     if (!forceSoftware && [_session enableMetalRenderer:&error]) {
         _presenter=[[AetherMobileMetalPresenter alloc] initWithError:&error];

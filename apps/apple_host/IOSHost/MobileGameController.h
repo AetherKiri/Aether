@@ -4,6 +4,8 @@ NS_ASSUME_NONNULL_BEGIN
 @property(nonatomic, copy, nullable) void (^statusChanged)(NSString *status);
 @property(nonatomic, copy, nullable) void (^failed)(NSString *message);
 @property(nonatomic, copy, nullable) void (^presentationFallback)(NSString *localizationKey);
+@property(nonatomic) BOOL prefersSoftwareRendering;
+@property(nonatomic, copy) NSDictionary<NSString *,NSString *> *engineOptions;
 - (instancetype)initWithGameURL:(NSURL *)game;
 - (void)sendEnter;
 - (void)resumeAudio;

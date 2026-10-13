@@ -1,7 +1,7 @@
 # iOS 18 / iPadOS 18 迁移实践与验收
 
 - 日期：2026-10-12；状态：I0/I1实施中；要求来源：[iOS spec](apple_host_ios_spec.md)。
-- 当前macOS基线 `a52696b6`；正式工程已新增AetherHostIOS/AetherHostIOSTests；目前为协议门、主页与软件Demo的产品起步，完整库/设置与Metal仍在实施。
+- 当前macOS基线 `a52696b6`；正式工程已新增AetherHostIOS/AetherHostIOSTests；目前已接协议门、原生库/Files、封面、基础设置与Metal/软件Demo；完整移动输入、平台请求、设置能力及阶段验收仍在实施。
 - 每阶段交付代码、实际执行、失败路径、测试、文档与一次commit/push。阶段标记只依据证据，不依据控件已出现。
 
 ## 1. 工作原则
@@ -224,3 +224,14 @@ Goal模式按阶段持续推进，阶段完成不等于整个M4完成。达到G4
 - iOS26共13项XCTest通过（含之前11项协议/导入/Metal）：手动复制后删除外部源、索引重开与Support迁移、损坏/超限图片、清除持久化、路径逃逸拒绝、索引写失败无孤儿新文件；在线只传标题、取消后旧结果隔离、成功替换与后续失败保留、详情失效拒绝重发。线上服务与图片由fixture注入，不声称真实VNDB服务可用性验收。
 - 最新结果 `out/apple_host/evidence/ios-I2-covers-final2.xcresult`；device Debug产品构建、macOS完整行为与GameArchiveTests/GameLibraryTests回归通过。本轮无CUA工具，系统Files图片选择、候选点击、VoiceOver/最大Dynamic Type与真实外部provider待端到端核验；iOS18/真机/G4保持未验收。
 - I2下一步：完整设置草稿、四主题、第三个设置目的地、移动默认original/off与比例/横屏偏好；封面/搜索实现已落地但不据此勾满I2。
+
+## 12. 移动设置事务、第三目的地与四主题（2026-10-13）
+
+- 新增 MobilePreferences/Store/State，settings.json使用移动envelope v1包裹全部HostSettings v9字段；不更改macOS schema。旧共享flat文件读入后保留输出/算法/增强/FPS等偏好，下一次成功保存转为envelope。新移动安装默认original/off、comfortable。损坏/未来版本不可写，失败保留源文件；草稿保存、丢弃与快捷语言修改的独立重基均有测试。
+- iPhone三个tab「主页/游戏库/设置」，宽iPad三个侧栏目的地；离开脏设置页先提供保存/丢弃/继续，写盘失败留在设置。游戏全屏cover屏蔽壳导航，启动使用已提交HostSettings快照，未提交草稿不进入引擎。
+- 设置页接入五语言/跟随系统、四主题、compact/comfortable/standard间距密度、Metal/software和插件范围/Mock/错误日志选项。UIKit版本的界面比例调整列表最低行高与库行间距，不缩放系统字体或触控坐标；保持Dynamic Type与至少44pt。对Godot按viewport整体缩放的方式做原生适配，不强行缩小辅助字体。
+- 保存语言/主题/密度立即生效；renderer与三项插件选项经已有setOption在下次open前应用，默认Metal、请求software真实走软件引擎。FPS选项尚未应用，输出/采样/增强目前只显示保存值及有效original/off原因，保留偏好不伪装已启用；虚拟控制、诊断、翻译与横屏仍待迁移。错误日志选项只验证传入引擎，移动平台异常对话行为需后续请求应答验收。
+- 四主题复用Godot/桌面palette，用accentText给原生选项/tab可读文字着色，用controlAccent给白字主按钮。初版全局controlAccent导致暗色主题文字偏暗，截图审阅后已改正；全局foregroundStyle亦移除，恢复原生禁用状态。列表/详情/设置使用主题背景，系统控件保留原生布局。
+- iOS26共16项XCTest通过：含此前13项、设置草稿/丢弃/保存/重开/flat迁移/写失败/损坏保留、已保存software真实Demo出帧与mock选项，以及四主题文字/白字按钮至少4.5对比度。device Debug与macOS完整行为回归通过。`out/apple_host/evidence/ios-I2-settings-final.xcresult`为行为证据。
+- 两模拟器四主题共8张设置预览在 `out/apple_host/evidence/ios-I2-settings/`。Debug-only --ios-settings-preview与--ios-preview-theme使用临时库/设置根，不写真实偏好或法律接受；Release无此入口。截图来自simctl视觉核查，不是CUA点选或真机证明。CUA、最大Dynamic Type/VoiceOver、实际离页确认点击、iOS18/真机仍待验收。
+- 下一步按I2/I3继续横屏scene策略与恢复、完整移动输入/控制板和平台请求；再接帧钟/输出预算、诊断与StoreKit。当前不能勾满I2/IOS-08或M4。

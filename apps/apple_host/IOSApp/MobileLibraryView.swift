@@ -24,6 +24,8 @@ struct MobileDocumentPicker: UIViewControllerRepresentable {
 struct MobileLibraryView: View {
     @ObservedObject var model: MobileLibraryState
     @ObservedObject var shell: MobileShellState
+    @ObservedObject var preferences: MobilePreferencesState
+    @Environment(\.shellPalette) private var palette
     private var language: ShellLanguage {shell.language}
     let play: (LibraryGame) -> Void
     private var visibleGames: [LibraryGame] {model.games.filter {query.isEmpty || $0.displayTitle.localizedStandardContains(query)}}
@@ -47,8 +49,9 @@ struct MobileLibraryView: View {
                     HStack {
                         MobileCoverThumbnail(url:model.coverURL(game)).frame(width:48,height:64)
                         Text(game.displayTitle).lineLimit(3)
-                    }.frame(minHeight:64)
+                    }.frame(minHeight:64).padding(.vertical,preferences.settings.verticalPadding)
                 }
+                .listRowBackground(palette.surface.color)
                 .swipeActions { Button(language.text("remove"),role:.destructive) { remove=game }.disabled(model.isImporting || model.isEditingCover) }
             }
         }
@@ -58,11 +61,12 @@ struct MobileLibraryView: View {
                 else if visibleGames.isEmpty {ContentUnavailableView.search(text:query)}
             }
         }
+        .scrollContentBackground(.hidden).background(palette.background.color)
         .navigationTitle(language.text("library"))
         .searchable(text:$query, prompt:language.text("mobileLibrarySearch"))
         .toolbar { ToolbarItemGroup(placement:.topBarTrailing) {
             Menu {
-                Picker(language.text("language"),selection:$shell.language) {
+                Picker(language.text("language"),selection:Binding(get:{shell.language},set:{preferences.quickLanguage($0)})) {
                     ForEach(ShellLanguage.allCases) {Text($0.name).tag($0)}
                 }
             } label: {Label(language.text("language"),systemImage:"globe").frame(minWidth:44,minHeight:44)}
@@ -84,6 +88,7 @@ struct MobileLibraryView: View {
 }
 struct MobileGameDetailView: View {
     @ObservedObject var model: MobileLibraryState
+    @Environment(\.shellPalette) private var palette
     let id: UUID
     let language: ShellLanguage
     let play: (LibraryGame)->Void
@@ -106,18 +111,18 @@ struct MobileGameDetailView: View {
                         Text("KiriKiri").foregroundStyle(.secondary)
                         Button(language.text("play")) {play(game)}.frame(minHeight:44).disabled(model.isImporting || model.isEditingCover || !model.available.contains(game.id))
                         if !model.available.contains(game.id) {Text(language.text("mobileImportKiriHelp")).font(.caption)}
-                    }
+                    }.listRowBackground(palette.surface.color)
                     Section {
                         Button(language.text("setCover")) {coverPicker=true}.disabled(!cover.canEdit)
                         Button(language.text("clearCover")) {cover.clear()}.disabled(!cover.canEdit || game.coverPath == nil)
                         Button(language.text("coverSearch")) {online=true}.disabled(!cover.canEdit)
                         Text(language.text("mobileCoverCopyHelp")).font(.caption).foregroundStyle(.secondary)
                         if cover.busy {ProgressView(); Button(language.text("cancel")) {cover.cancel()}}
-                    }
+                    }.listRowBackground(palette.surface.color)
                     Section {
                         Button(language.text("rename")) {title=game.title;rename=true}.frame(minHeight:44).disabled(model.isImporting || model.isEditingCover || !model.writable)
-                    }
-                }.navigationTitle(game.displayTitle)
+                    }.listRowBackground(palette.surface.color)
+                }.listRowBackground(palette.surface.color).scrollContentBackground(.hidden).background(palette.background.color).navigationTitle(game.displayTitle)
             } else {ContentUnavailableView(language.text("library"),systemImage:"books.vertical")}
         }
         .sheet(isPresented:$coverPicker) {MobileDocumentPicker(types:[.image]) {url in

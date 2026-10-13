@@ -10,6 +10,7 @@ const FLASH_LIST_FILE := "user://aether_flash.json"
 const FLASH_HIDDEN_FILE := "user://aether_flash_hidden.json"
 const FlashPlayerView = preload("res://scripts/flash_player_view.gd")
 const TyranoPlayerView = preload("res://scripts/tyrano_player_view.gd")
+const RenpyPlayerView = preload("res://scripts/renpy_player_view.gd")
 const VIDEO_LIST_FILE := "user://aetherkiri_videos.json"
 const VIDEO_PROGRESS_FILE := "user://aetherkiri_video_progress.json"
 const VIDEO_HIDDEN_FILE := "user://aetherkiri_hidden_videos.json"
@@ -126,6 +127,16 @@ const STYLE_MODES := [STYLE_DARK, STYLE_CLASSIC, STYLE_WARM_DARK, STYLE_WARM_LIG
 const IOS_UI_SCALE_MODES := ["compact", "comfortable", "standard"]
 const UI_TEXT := {
     LANG_ZH_HANS: {
+        "renpy.menu": "菜单",
+        "renpy.keys": "虚拟按键",
+        "renpy.loading": "正在启动 Ren’Py…",
+        "renpy.window_hint": "游戏在独立窗口中运行。关闭游戏窗口即可返回游戏库。",
+        "renpy.unavailable": "此 Ren’Py 原型目前仅支持 macOS 和 Linux。",
+        "renpy.invalid_project": "未找到有效的 Ren’Py 游戏目录。",
+        "renpy.runtime_missing": "当前构建未配置 Ren’Py 8 运行时。",
+        "renpy.session_failed": "无法创建 Ren’Py 游戏会话。",
+        "renpy.startup_timeout": "Ren’Py 启动超时。",
+        "renpy.failed": "Ren’Py 启动失败：%s\n日志：%s",
         "nav.flash": "Flash",
         "flash.search_placeholder": "搜索 Flash",
         "flash.empty_title": "还没有 Flash 文件",
@@ -523,6 +534,16 @@ const UI_TEXT := {
         "loading.translation_model_detail": "首次加载可能出现短暂卡顿，请耐心等待。"
     },
     LANG_ZH_HANT: {
+        "renpy.menu": "選單",
+        "renpy.keys": "虛擬按鍵",
+        "renpy.loading": "正在啟動 Ren’Py…",
+        "renpy.window_hint": "遊戲在獨立視窗中執行。關閉遊戲視窗即可返回遊戲庫。",
+        "renpy.unavailable": "此 Ren’Py 原型目前僅支援 macOS 和 Linux。",
+        "renpy.invalid_project": "找不到有效的 Ren’Py 遊戲目錄。",
+        "renpy.runtime_missing": "目前版本未設定 Ren’Py 8 執行環境。",
+        "renpy.session_failed": "無法建立 Ren’Py 遊戲工作階段。",
+        "renpy.startup_timeout": "Ren’Py 啟動逾時。",
+        "renpy.failed": "Ren’Py 啟動失敗：%s\n日誌：%s",
         "nav.flash": "Flash",
         "flash.search_placeholder": "搜尋 Flash",
         "flash.empty_title": "還沒有 Flash 檔案",
@@ -876,6 +897,16 @@ const UI_TEXT := {
         "loading.translation_model_detail": "首次載入可能會短暫停頓，請耐心等候。"
     },
     LANG_EN: {
+        "renpy.menu": "Menu",
+        "renpy.keys": "Virtual keys",
+        "renpy.loading": "Starting Ren’Py…",
+        "renpy.window_hint": "The game runs in a separate window. Close it to return to the library.",
+        "renpy.unavailable": "This Ren’Py prototype currently supports macOS and Linux.",
+        "renpy.invalid_project": "No valid Ren’Py game directory was found.",
+        "renpy.runtime_missing": "This build has no configured Ren’Py 8 runtime.",
+        "renpy.session_failed": "Could not create a Ren’Py game session.",
+        "renpy.startup_timeout": "Ren’Py startup timed out.",
+        "renpy.failed": "Ren’Py could not start: %s\nLog: %s",
         "nav.flash": "Flash",
         "flash.search_placeholder": "Search Flash",
         "flash.empty_title": "No Flash files yet",
@@ -1273,6 +1304,16 @@ You can find it any time under Settings → QQ Group.",
         "loading.translation_model_detail": "The first load may pause briefly. Please wait."
     },
     LANG_JA: {
+        "renpy.menu": "メニュー",
+        "renpy.keys": "仮想キー",
+        "renpy.loading": "Ren’Py を起動中…",
+        "renpy.window_hint": "ゲームは別のウィンドウで実行されます。閉じるとライブラリに戻ります。",
+        "renpy.unavailable": "この Ren’Py 試作版は macOS と Linux に対応しています。",
+        "renpy.invalid_project": "有効な Ren’Py ゲームフォルダーが見つかりません。",
+        "renpy.runtime_missing": "このビルドには Ren’Py 8 ランタイムが設定されていません。",
+        "renpy.session_failed": "Ren’Py のゲームセッションを作成できませんでした。",
+        "renpy.startup_timeout": "Ren’Py の起動がタイムアウトしました。",
+        "renpy.failed": "Ren’Py を起動できませんでした：%s\nログ：%s",
         "nav.flash": "Flash",
         "flash.search_placeholder": "Flash を検索",
         "flash.empty_title": "Flash ファイルがありません",
@@ -1626,6 +1667,16 @@ You can find it any time under Settings → QQ Group.",
         "loading.translation_model_detail": "初回の読み込みは一時的に停止することがあります。しばらくお待ちください。"
     },
     LANG_KO: {
+        "renpy.menu": "메뉴",
+        "renpy.keys": "가상 키",
+        "renpy.loading": "Ren’Py 시작 중…",
+        "renpy.window_hint": "게임이 별도 창에서 실행됩니다. 창을 닫으면 라이브러리로 돌아갑니다.",
+        "renpy.unavailable": "이 Ren’Py 프로토타입은 현재 macOS와 Linux를 지원합니다.",
+        "renpy.invalid_project": "유효한 Ren’Py 게임 폴더를 찾을 수 없습니다.",
+        "renpy.runtime_missing": "이 빌드에는 Ren’Py 8 런타임이 설정되어 있지 않습니다.",
+        "renpy.session_failed": "Ren’Py 게임 세션을 만들 수 없습니다.",
+        "renpy.startup_timeout": "Ren’Py 시작 시간이 초과되었습니다.",
+        "renpy.failed": "Ren’Py를 시작할 수 없습니다: %s\n로그: %s",
         "nav.flash": "Flash",
         "flash.search_placeholder": "Flash 검색",
         "flash.empty_title": "Flash 파일이 없습니다",
@@ -2014,6 +2065,7 @@ const RUNTIME_MINORI := "minori"
 const RUNTIME_SOFTPAL := "softpal"
 const RUNTIME_CATSYSTEM2 := "catsystem2"
 const RUNTIME_SIGLUS := "siglus"
+const RUNTIME_RENPY := "renpy"
 const RUNTIME_WA2 := "wa2"
 const RUNTIME_BGI := "bgi"
 const RUNTIME_TYRANO := "tyranoscript"
@@ -2195,6 +2247,7 @@ var video_library := VideoLibrary.new(VIDEO_LIST_FILE, VIDEO_HIDDEN_FILE)
 var flash_library := VideoLibrary.new(FLASH_LIST_FILE, FLASH_HIDDEN_FILE, ["swf"])
 var flash_view
 var tyrano_view
+var renpy_view
 var home_library_mode := "game"
 var home_search_queries := {"game": "", "video": "", "flash": ""}
 var home_search_syncing := false
@@ -10178,6 +10231,37 @@ func _open_tyrano_game(game: Dictionary) -> void:
     _set_game_runtime_orientation(true)
     shell_root.visible = false
 
+func _is_renpy_active() -> bool:
+    return is_instance_valid(renpy_view) and renpy_view.visible
+
+func _open_renpy_player(entry: Dictionary) -> void:
+    if _is_renpy_active():
+        return
+    _reset_shell_scroll_drag()
+    renpy_view = RenpyPlayerView.new()
+    add_child(renpy_view)
+    renpy_view.setup(self)
+    renpy_view.game_ready.connect(func():
+        var library_path := String(entry.get("path", ""))
+        var played_game := _mark_game_played(library_path)
+        if not played_game.is_empty():
+            selected_game = played_game
+        active_game_path = library_path
+        active_game_started_msec = Time.get_ticks_msec()
+    )
+    renpy_view.closed.connect(func():
+        _finalize_active_game_session()
+        renpy_view = null
+        shell_root.visible = true
+        _refresh_games()
+    )
+    var error: String = renpy_view.open_entry(entry)
+    if not error.is_empty():
+        renpy_view.close()
+        _show_message(error)
+        return
+    shell_root.visible = false
+
 func _open_flash_player(entry: Dictionary) -> void:
     if _is_flash_active() or not _require_legal_documents_for_media():
         return
@@ -11647,12 +11731,15 @@ func _finish_launch_transition() -> void:
     shell_root.pivot_offset = Vector2.ZERO
 
 func _start_selected_game_after_iap() -> void:
-    if player == null:
-        return
     var library_path := String(selected_game.get("path", "")).strip_edges()
     if library_path.is_empty():
         return
     var selected_runtime_kind := _game_runtime_kind(library_path)
+    if selected_runtime_kind == RUNTIME_RENPY:
+        _start_selected_game_after_entitlements()
+        return
+    if player == null:
+        return
     # Development artifacts and Android/Linux releases do not use the Apple-only
     # beta entitlement flow.
     if not _beta_access_enforcement_enabled():
@@ -11741,6 +11828,9 @@ func _start_selected_game_after_entitlements() -> void:
     active_runtime_kind = _game_runtime_kind(library_path)
     if active_runtime_kind == RUNTIME_TYRANO:
         _open_tyrano_game(selected_game)
+        return
+    if active_runtime_kind == RUNTIME_RENPY:
+        _open_renpy_player(selected_game)
         return
     if not _switch_runtime_player(active_runtime_kind):
         return
@@ -15234,6 +15324,8 @@ func _notification(what: int) -> void:
     if what == NOTIFICATION_WM_GO_BACK_REQUEST:
         _handle_go_back_request()
         return
+    if what == NOTIFICATION_WM_CLOSE_REQUEST and _is_renpy_active():
+        renpy_view.close()
     if what == NOTIFICATION_WM_CLOSE_REQUEST and _is_flash_active():
         flash_view.close()
     if what == NOTIFICATION_WM_CLOSE_REQUEST and _is_tyrano_active():
@@ -15283,6 +15375,9 @@ func _handle_go_back_request() -> void:
     # explicitly through the graceful exit paths instead.
     if modal_layer != null and modal_layer.visible:
         _dismiss_modal()
+        return
+    if _is_renpy_active():
+        renpy_view.close()
         return
     if _is_flash_active():
         flash_view.close()

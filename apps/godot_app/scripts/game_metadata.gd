@@ -8,6 +8,7 @@ const RUNTIME_ARTEMIS := "artemis"
 const RUNTIME_SIGLUS := "siglus"
 const RUNTIME_CATSYSTEM2 := "catsystem2"
 const RUNTIME_TYRANO := "tyranoscript"
+const RUNTIME_RENPY := "renpy"
 
 static func inspect(path: String) -> Dictionary:
     var root := path
@@ -26,6 +27,7 @@ static func inspect(path: String) -> Dictionary:
     var candidates: PackedStringArray = []
     var files := _file_names(root)
     var tyrano_entry := tyrano_entry_file(root)
+    var renpy_directory := renpy_game_directory(root)
     var hcb := _hcb_launch_file(root, path)
     if not tyrano_entry.is_empty():
         result.engine = RUNTIME_TYRANO
@@ -35,6 +37,15 @@ static func inspect(path: String) -> Dictionary:
         var title_pattern := RegEx.new()
         title_pattern.compile('(?m)^\\s*;?System\\.title\\s*=\\s*"([^"\\r\\n]+)"')
         var title_match := title_pattern.search(config)
+        if title_match != null:
+            candidates.append(title_match.get_string(1))
+    elif not renpy_directory.is_empty():
+        result.engine = RUNTIME_RENPY
+        result.signals.append("renpy-game-directory")
+        var options := _read_text(root.path_join(renpy_directory).path_join("options.rpy"))
+        var pattern := RegEx.new()
+        pattern.compile('(?m)^\\s*define\\s+config\\.name\\s*=\\s*_?\\(?\\s*"([^"\\r\\n]+)"')
+        var title_match := pattern.search(options)
         if title_match != null:
             candidates.append(title_match.get_string(1))
     elif not hcb.is_empty():
@@ -121,6 +132,37 @@ static func tyrano_entry_file(root: String) -> String:
         ):
             return relative
     return ""
+
+static func renpy_game_directory(root: String) -> String:
+    for relative in ["game", "Contents/Resources/autorun/game", "."]:
+        var directory := root.path_join(relative)
+        if _has_renpy_scripts(directory, 3 if relative != "." or root.get_file().to_lower() == "game" else 0):
+            return relative
+    return ""
+
+static func _has_renpy_scripts(root: String, depth: int) -> bool:
+    var directory := DirAccess.open(root)
+    if directory == null:
+        return false
+    for name in directory.get_files():
+        var extension := name.get_extension().to_lower()
+        if extension == "rpy":
+            return true
+        if extension not in ["rpyc", "rpa"]:
+            continue
+        var file := FileAccess.open(root.path_join(name), FileAccess.READ)
+        if file == null:
+            continue
+        var signature := file.get_buffer(10).get_string_from_ascii()
+        if (extension == "rpyc" and signature.begins_with("RENPY RPC2")) or (extension == "rpa" and (signature.begins_with("RPA-3.0 ") or signature.begins_with("RPA-2.0 "))):
+            return true
+    if depth > 0:
+        for name in directory.get_directories():
+            if name in ["cache", "saves", "savedata", "renpy", "lib", ".git"] or directory.is_link(name):
+                continue
+            if _has_renpy_scripts(root.path_join(name), depth - 1):
+                return true
+    return false
 
 static func _hcb_launch_file(root: String, requested: String) -> String:
     var dir := DirAccess.open(root)

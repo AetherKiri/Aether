@@ -603,3 +603,25 @@ python3 tools/apple_host_ios_lifecycle_tests.py --device <booted-simulator-UUID>
 重叠原因不被覆盖、恢复首dt为0，报告写入 `out/apple_host/evidence/ios-I3-lifecycle26/`。
 `--skip-build`可复用刚构建的Debug探针；不能用本测试代替真机耳机、来电或CUA验收。
 `IOSHost/MobileSessionDriver`可用于后续正式移动宿主；调用方先stop driver，再drain GPU并shutdown引擎。
+
+
+### 正式 iOS 宿主起步
+
+```bash
+python3 tools/apple_host_ios_xcode_link.py --configuration Debug
+xcodegen generate --spec apps/apple_host/project.yml
+xcodebuild -project apps/apple_host/AetherHost.xcodeproj -scheme AetherHostIOS \
+  -configuration Debug -destination 'generic/platform=iOS Simulator' \
+  -derivedDataPath out/apple_host/ios/simulator-app build CODE_SIGNING_ALLOWED=NO
+python3 tools/apple_host_ios_shell_tests.py
+```
+
+`AetherHostIOS`为产品target，bundle ID `org.github.aetherkiri.host.ios`；UIKit探针保持独立。
+链接响应文件位于 `out/apple_host/ios/link/{Debug,Release}/{iphoneos,iphonesimulator}.rsp`，
+由CMake实际闭包生成；构建Release前需先用 `--configuration Release`生成对应归档。
+目标支持iPhone/iPad与18.0部署。当前提供双协议/拒绝页、主页Demo和文档阅读、原始软件画布；
+库/Files/完整设置与Metal仍在实施，不宣称可发布。
+
+`AetherHostIOSTests`已纳入该scheme；用本机实际Simulator UUID运行 `xcodebuild test -destination 'platform=iOS Simulator,id=<UUID>'`。
+模型测试用隔离临时目录，不保存真实用户接受记录。自动Demo smoke仅Debug可使用
+`AETHER_HOST_BYPASS_LEGAL_GATE=1`与`--ios-demo-smoke`，Release不响应。

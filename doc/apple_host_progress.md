@@ -803,3 +803,11 @@
 - 新增可复用MobileSessionDriver、暂停原因集合和音频激活封装，修复scene/application激活先后导致恢复卡住；恢复首tick清零。前台playback策略、耳机路由等待恢复、媒体服务丢失要求重开已明确。
 - 120Hz时钟/重叠暂停测试、15项真实引擎通知注入、macOS完整设置行为回归通过。证据 `out/apple_host/evidence/ios-I3-lifecycle26/`；本轮未做CUA或真机音频测试。
 - M4仍未完成：正式iOS产品target/Metal、协议门、Files/库、移动输入/IME与StoreKit继续推进；iOS18运行与真机G4另验收。
+
+
+### 2026-10-13：正式 iOS 产品 target 起步
+
+- 新增AetherHostIOS/AetherHostIOSTests与CMake File API静态链接闭包导出；device/simulator Debug产品构建通过，最低18.0。
+- 实现五语言双协议门/独立拒绝页、主页Demo与文档入口、UIKit游戏控制器、确认返回与停止；复用移动生命周期及画布，当前仅software原始画面。
+- Debug/Release隔离模型测试、iOS26四项XCTest、15项生命周期注入及macOS回归通过。普通首启协议页与Debug隔离Demo第一帧截图/日志确认；本轮无CUA点击验收或真机验收。
+- 证据 `out/apple_host/evidence/ios-I1-product-shell/`。M4仍在实施，下一步优先Metal呈现及完整移动产品流程。

@@ -1,6 +1,6 @@
 # Aether 原生宿主 iOS/iPadOS 迁移 Spec
 
-- 日期：2026-10-12；版本：1.0；状态：设计基线，尚未实现 iOS target。
+- 日期：2026-10-12；版本：1.0；状态：实施中，iOS target 与协议门已建立，完整要求仍以实践文档验收。
 - macOS 代码基线：`a52696b6`；既有功能来源见 [UI spec](apple_host_ui_spec.md)。
 - 最低部署版本：**iOS 18.0 / iPadOS 18.0**，iPhone 与 iPad 原生应用，不走 Mac Catalyst。
 - 关联：[实践与验收](apple_host_ios_plan.md) · [历史移交](apple_host_ios_handoff.md) · [接缝](apple_host_seam_inventory.md)。本 spec 覆盖旧移交说明中的 iOS 16 基线。
@@ -120,4 +120,4 @@ Documents/Games为托管库，Application Support存设置/库索引/协议/诊�
 
 全部IOS-01…10及实践文档阶段I0…I6闭环后才可称M4完成；构建成功或模拟器单图不能证明真机可玩。证据记录commit、设备/OS、构建配置、provider集合、数据fixture、执行步骤和PASS/FAIL；未覆盖、阻塞与暂缓逐项保留。
 
-本 spec 是项目实现要求；Apple链接用于技术依据，不等于本项目已通过Apple审核。当前仅文档建立，iOS构建/触屏/StoreKit都未验收。
+本 spec 是项目实现要求；Apple链接用于技术依据，不等于本项目已通过Apple审核。当前已完成双SDK Debug构建、iOS26软件Demo及部分协议/生命周期测试；其余需求仍未验收，不据此宣称M4完成。

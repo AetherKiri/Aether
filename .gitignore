@@ -66,3 +66,5 @@ apps/apple_host/AetherHost/Info.plist
 
 # Demo runtime artifacts
 demos/*/data/savedata/
+
+apps/apple_host/IOSApp/Info.plist

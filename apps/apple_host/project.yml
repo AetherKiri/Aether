@@ -68,3 +68,87 @@ targets:
       - framework: ../../out/macos/debug/abi/libengine_api.dylib
         embed: true
         codeSign: true
+  AetherHostIOS:
+    type: application
+    platform: iOS
+    deploymentTarget: "18.0"
+    sources:
+      - path: IOSApp
+        excludes: [Info.plist]
+      - path: IOSHost
+      - path: HostKit/EngineSession.mm
+      - path: HostKit/MetalBridge.mm
+      - path: AetherHost/LegalAcceptance.swift
+      - path: AetherHost/ShellStrings.swift
+      - path: AetherHost/SettingsDocumentView.swift
+      - path: ../godot_app/legal
+        buildPhase: resources
+      - path: ../godot_app/builtin_demos/aetherkiri-kag3/data.xp3
+        buildPhase: resources
+      - path: ../godot_app/assets/fonts/aetherkiri-runtime-cjk.otf
+        buildPhase: resources
+      - path: ../godot_app/assets/fonts/NotoSerifCJK-OFL.txt
+        buildPhase: resources
+      - path: ../../LICENSE
+        buildPhase: resources
+      - path: ../../COPYING.iOS
+        buildPhase: resources
+      - path: ../../THIRD_PARTY_LICENSES.md
+        buildPhase: resources
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: org.github.aetherkiri.host.ios
+        PRODUCT_NAME: AetherHostIOS
+        TARGETED_DEVICE_FAMILY: "1,2"
+        CODE_SIGN_STYLE: Automatic
+        CODE_SIGN_IDENTITY: ""
+        SWIFT_OBJC_BRIDGING_HEADER: IOSApp/IOS-Bridging-Header.h
+        CLANG_ENABLE_OBJC_ARC: "YES"
+        LD_RUNPATH_SEARCH_PATHS: "$(inherited) @executable_path/Frameworks"
+        HEADER_SEARCH_PATHS:
+          - "$(SRCROOT)/HostKit"
+          - "$(SRCROOT)/IOSHost"
+          - "$(SRCROOT)/../../abi/include"
+        OTHER_LDFLAGS:
+          - "$(inherited)"
+          - "@$(SRCROOT)/../../out/apple_host/ios/link/$(CONFIGURATION)/$(PLATFORM_NAME).rsp"
+    info:
+      path: IOSApp/Info.plist
+      properties:
+        CFBundleDisplayName: Aether
+        CFBundleShortVersionString: "0.1.0"
+        CFBundleVersion: "1"
+        CFBundleLocalizations: [en, zh-Hans, zh-Hant, ja, ko]
+        UILaunchScreen: {}
+        UIApplicationSceneManifest:
+          UIApplicationSupportsMultipleScenes: false
+        UISupportedInterfaceOrientations: [UIInterfaceOrientationPortrait, UIInterfaceOrientationLandscapeLeft, UIInterfaceOrientationLandscapeRight]
+        UISupportedInterfaceOrientations~ipad: [UIInterfaceOrientationPortrait, UIInterfaceOrientationPortraitUpsideDown, UIInterfaceOrientationLandscapeLeft, UIInterfaceOrientationLandscapeRight]
+  AetherHostIOSTests:
+    type: bundle.unit-test
+    platform: iOS
+    deploymentTarget: "18.0"
+    sources:
+      - path: Tests/MobileShellIOSTests.swift
+    dependencies:
+      - target: AetherHostIOS
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: org.github.aetherkiri.host.ios.tests
+        CODE_SIGN_STYLE: Automatic
+        CODE_SIGN_IDENTITY: ""
+        GENERATE_INFOPLIST_FILE: "YES"
+        TEST_HOST: "$(BUILT_PRODUCTS_DIR)/AetherHostIOS.app/AetherHostIOS"
+        BUNDLE_LOADER: "$(TEST_HOST)"
+        HEADER_SEARCH_PATHS:
+          - "$(SRCROOT)/HostKit"
+          - "$(SRCROOT)/IOSHost"
+          - "$(SRCROOT)/../../abi/include"
+schemes:
+  AetherHostIOS:
+    build:
+      targets:
+        AetherHostIOS: all
+        AetherHostIOSTests: [test]
+    test:
+      targets: [AetherHostIOSTests]

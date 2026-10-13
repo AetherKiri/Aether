@@ -20,6 +20,15 @@ enum ShellLanguage: String, CaseIterable, Identifiable {
     static func localizedValues(for key: String) -> [String]? { strings[key] }
     // Same five languages as the existing product; game text is untouched.
     private static let strings: [String: [String]] = [
+        "mobileDeclined": ["已拒绝", "已拒絕", "Declined", "同意しませんでした", "동의하지 않음"],
+        "mobileDeclinedBody": ["同意两份协议后才能开始游戏。您可以重新阅读并选择。", "同意兩份協議後才能開始遊戲。您可以重新閱讀並選擇。", "Both documents are required before playing. You can review them again.", "ゲームを始めるには両方の文書への同意が必要です。もう一度読むことができます。", "게임을 시작하려면 두 문서에 동의해야 합니다. 다시 읽어 볼 수 있습니다."],
+        "mobileReviewAgain": ["重新阅读", "重新閱讀", "Review Again", "もう一度読む", "다시 읽기"],
+        "mobileLegalWriteFailed": ["无法保存协议记录，请重试。", "無法儲存協議記錄，請重試。", "Could not save your agreement. Please try again.", "同意の記録を保存できませんでした。もう一度お試しください。", "동의 기록을 저장하지 못했습니다. 다시 시도해 주세요."],
+        "mobileResumeAudio": ["恢复音频", "恢復音訊", "Resume Audio", "音声を再開", "오디오 재개"],
+        "mobileBackHome": ["返回主页", "返回主頁", "Back to Home", "ホームに戻る", "홈으로 돌아가기"],
+        "mobileRunning": ["游戏运行中", "遊戲執行中", "Game Running", "ゲーム実行中", "게임 실행 중"],
+        "mobileAudioRestart": ["音频服务已中断，请返回并重新启动游戏。", "音訊服務已中斷，請返回並重新啟動遊戲。", "Audio services were lost. Return and restart the game.", "音声サービスが停止しました。戻ってゲームを再起動してください。", "오디오 서비스가 중단되었습니다. 돌아가서 게임을 다시 시작해 주세요."],
+        "mobilePaused": ["游戏已暂停", "遊戲已暫停", "Game Paused", "ゲームを一時停止中", "게임 일시 정지"],
         "canvasMode": ["画布模式", "畫布模式", "Canvas Mode", "キャンバスモード", "캔버스 모드"],
         "canvas_game": ["游戏原生", "遊戲原生", "Game Native", "ゲーム本来のサイズ", "게임 원본"],
         "canvas_display": ["适应显示", "適應顯示", "Display Fit", "表示に合わせる", "화면에 맞춤"],

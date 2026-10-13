@@ -1,7 +1,7 @@
 # iOS 18 / iPadOS 18 迁移实践与验收
 
-- 日期：2026-10-12；状态：I0实施中；要求来源：[iOS spec](apple_host_ios_spec.md)。
-- 当前macOS基线 `a52696b6`；正式产品工程仍只有macOS target；iOS核心构建脚本已建立，产品target与后续命令仍是实施目标。
+- 日期：2026-10-12；状态：I0/I1实施中；要求来源：[iOS spec](apple_host_ios_spec.md)。
+- 当前macOS基线 `a52696b6`；正式工程已新增AetherHostIOS/AetherHostIOSTests；目前为协议门、主页与软件Demo的产品起步，完整库/设置与Metal仍在实施。
 - 每阶段交付代码、实际执行、失败路径、测试、文档与一次commit/push。阶段标记只依据证据，不依据控件已出现。
 
 ## 1. 工作原则
@@ -25,7 +25,7 @@
 
 ### I1：原生target与平台接缝（IOS-01/02/06/08）
 
-- [ ] 在XcodeGen中新增 `AetherHostIOS` target/scheme，iOS18.0、iPhone+iPad、独立bundle id与Info.plist；签名team由本机配置提供，不把证书/账户写入仓库。
+- [x] 在XcodeGen中新增 `AetherHostIOS` target/scheme，iOS18.0、iPhone+iPad、独立bundle id与Info.plist；签名team由本机配置提供，不把证书/账户写入仓库。
 - [ ] 提取平台路径、浏览器、scene、帧钟、文件与导出接口；AppKit视图保留macOS，UIKit实现按平台source group隔离。共享层不能import AppKit。
 - [ ] 桥接头审计，legacy音频session符号可在HostKit内部封装；不修改ABI/provider表。
 - [ ] UIKit MTKView、CADisplayLink、FrameScheduler连接最小Demo；保留native lease和GPU错误回退，兼容可选rendered query。
@@ -107,11 +107,12 @@
 
 ## 3. 实施命令契约
 
-以下命令需I0/I1创建工具/target后才能执行；参数/产物约定应与最终实现一致并随代码修订：
+以下Debug命令已实际执行。先从CMake生成两个SDK的链接闭包，再生成Xcode工程；Release需对应用 `--configuration Release` 生成自己的归档与响应文件：
 
 ```bash
 python3 tools/apple_host_ios_build.py --sdk iphoneos --configuration Debug
 python3 tools/apple_host_ios_build.py --sdk iphonesimulator --configuration Debug
+python3 tools/apple_host_ios_xcode_link.py --configuration Debug
 xcodegen generate --spec apps/apple_host/project.yml
 xcodebuild -project apps/apple_host/AetherHost.xcodeproj -scheme AetherHostIOS \
   -configuration Debug -destination 'generic/platform=iOS Simulator' \
@@ -179,3 +180,15 @@ Goal模式按阶段持续推进，阶段完成不等于整个M4完成。达到G4
 - `MobileSessionTimingTests.cpp`：120Hz一秒推进1000ms、重叠暂停、恢复/停止时钟清零、长帧上限、非法与倒退时钟通过。
 - `tools/apple_host_ios_lifecycle_tests.py --device <booted simulator UUID>`：编译上述测试、构建安装真实KiriKiri探针、运行Debug-only通知注入并保存JSON。15项测试全部通过；暂停期间tick不增加，恢复首dt=0，停止后观察者和帧钟不再响应。证据 `out/apple_host/evidence/ios-I3-lifecycle26/result.json` / stdout.log / stderr.log。这是通知注入，不是真机音频或本轮CUA证据；本轮无可用CUA工具，未声称可见操作验收。
 - macOS完整 `apple_host_settings_tests.py` 回归通过。正式XcodeGen iOS产品target、Metal直通、协议门、库/Files、IME/控制板、StoreKit与iOS18/真机验收仍未完成；I0/I1/I3保持实施中。
+
+
+## 8. 正式 iOS target 与协议门（2026-10-13）
+
+- 新增XcodeGen `AetherHostIOS` / `AetherHostIOSTests`，原生iPhone+iPad、最低18.0，独立bundle ID `org.github.aetherkiri.host.ios`。Debug的device与simulator产品构建通过；签名团队由本机Xcode提供，未写入账户/证书。
+- `apple_host_ios_xcode_link.py`通过CMake File API读取已构建探针的真实静态链接闭包，输出按configuration/SDK分开的driver响应文件。产品独立编译自己的HostKit/IOSHost对象，不链接探针main或测试helper；过滤构建机rpath，macOS依赖/target保持原样。首次产品构建须先生成响应文件，不能仅拿两个.a当完整engine。
+- 移动主壳复用LegalAcceptanceStore和全部五语言法律/字体/许可证资源，按privacy→statement独立版本记录；拒绝进入独立页面，允许重读；资源不可读禁用接受、写盘失败不放行。主页提供可实际启动的Demo和文档阅读，未提供未完成的库/设置控件。
+- 独立MobileGameController复用MobileSessionDriver与抽出的MobileGameCanvas；当前为software/raw_source原始输出，绑定逻辑尺寸与输入，确认返回暂停modal，停止时释放输入、停钟、drain后销毁。返回实际主页；后续I2接完整游戏库后再改返库。
+- Debug/Release语义的隔离模型测试通过：拒绝/重读、双文档顺序、独立持久化、失败写入、损坏记录、Demo原子安装、Release忽略Debug绕过。iOS26实际XCTest四项通过，包括打包的五语言两文档资源（`xctest-r3.xcresult`）。
+- iPadOS26的iPad Pro M4与iOS26的iPhone17 Pro Simulator普通首启截图均为协议页，正文可滚动、操作区避开安全区；Debug环境 `AETHER_HOST_BYPASS_LEGAL_GATE=1` + `--ios-demo-smoke`启动真实Demo，日志API17170432、第一帧software640x480。没有代理点击同意按钮，没有写入真实协议接受记录。该入口在Release条件编译移除。
+- 证据 `out/apple_host/evidence/ios-I1-product-shell/`，含gate.png、demo.png、模型测试日志、XCTest结果、正式App运行日志。截图为simctl开发工具捕获并视觉核查，不声称本轮CUA点击/返回流程已验收；CUA工具本轮未提供。
+- 抽取画布后15项真实引擎生命周期注入及macOS完整行为回归通过。仍未完成：Metal/lease直通、完整库/Files/封面/设置/主题/移动IME控制板、平台请求、StoreKit、iOS18 runtime、真机音频/长时/G4及Release正式归档。

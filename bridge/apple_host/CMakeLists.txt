@@ -94,6 +94,7 @@ if(IOS AND AETHERKIRI_APPLE_HOST_IOS_PROBE)
     add_executable(AetherHostIOSProbe MACOSX_BUNDLE
         "${_probe_dir}/main.mm" "${_hostkit}/EngineSession.mm" "${_hostkit}/MetalBridge.mm"
         "${CMAKE_SOURCE_DIR}/apps/apple_host/IOSHost/MobileSessionDriver.mm"
+        "${CMAKE_SOURCE_DIR}/apps/apple_host/IOSHost/MobileGameCanvas.mm"
         "$<$<CONFIG:Debug>:${CMAKE_SOURCE_DIR}/apps/apple_host/Tests/MobileSessionDriverIntegration.mm>"
         ${_probe_resources})
     set_source_files_properties(${_probe_resources} PROPERTIES MACOSX_PACKAGE_LOCATION Resources)

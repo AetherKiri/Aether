@@ -126,7 +126,7 @@ if(APPLE)
     target_sources(aether_kiri_godot PRIVATE src/tyrano_webview.mm)
     set_source_files_properties(src/tyrano_webview.mm
         PROPERTIES LANGUAGE CXX COMPILE_FLAGS "-x objective-c++ -fobjc-arc")
-    target_link_libraries(aether_kiri_godot PRIVATE "-framework WebKit")
+    target_link_libraries(aether_kiri_godot PRIVATE "-framework WebKit" "-framework CoreGraphics")
     target_sources(aether_kiri_godot PRIVATE src/apple_external_texture.mm)
     set_source_files_properties(src/apple_external_texture.mm
         PROPERTIES LANGUAGE CXX COMPILE_FLAGS "-x objective-c++")

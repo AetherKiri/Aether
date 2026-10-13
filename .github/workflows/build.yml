@@ -254,6 +254,9 @@ jobs:
           fi
           echo "ANDROID_NDK_HOME=${ndk_root}" >> "$GITHUB_ENV"
 
+      - name: Check TyranoScript Android host and resources
+        run: python3 tools/test_tyrano_android.py
+
       - name: Bootstrap vcpkg
         run: |
           set -euo pipefail

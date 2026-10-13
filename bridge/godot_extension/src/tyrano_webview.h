@@ -1,8 +1,9 @@
 #pragma once
 #include <cstdint>
 
-// All calls are made on the application/UI thread. Rectangles use normalized
-// Godot viewport coordinates so backing scale and content stretch stay aligned.
+// Apple calls are marshalled to the UI thread. Pass WINDOW_VIEW (UIView) on
+// iOS, WINDOW_HANDLE (NSWindow) on macOS. Rectangles use normalized Godot
+// viewport coordinates so backing scale and content stretch stay aligned.
 extern "C" {
 void *aether_tyrano_open(uint64_t window, const char *entry, const char *storage, char **error);
 void aether_tyrano_close(void *handle);

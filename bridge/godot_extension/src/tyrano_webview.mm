@@ -14,6 +14,11 @@
 static NSString *const TyranoScheme = @"aether-tyrano";
 static NSString *const TyranoErrorDomain = @"AetherTyrano";
 
+static void TyranoOnUI(dispatch_block_t action) {
+    if (NSThread.isMainThread) action();
+    else dispatch_sync(dispatch_get_main_queue(), action);
+}
+
 @interface AetherTyranoResources : NSObject <WKURLSchemeHandler>
 @property(nonatomic, strong) NSURL *root;
 @end
@@ -95,9 +100,14 @@ static NSString *const TyranoErrorDomain = @"AetherTyrano";
 @property(nonatomic, strong) NSString *storageJSON;
 @property(nonatomic, strong) NSMutableArray<NSDictionary *> *events;
 @property(nonatomic) BOOL closed;
+@property(nonatomic) BOOL paused;
+@property(nonatomic) BOOL inactive;
+@property(nonatomic) BOOL controls;
+@property(nonatomic, strong) NSMutableArray *observers;
 - (void)push:(NSString *)type value:(id)value;
 - (NSString *)persist:(NSString *)json;
 - (void)detach;
+- (void)applyState;
 @end
 
 @implementation AetherTyranoWebHost
@@ -108,10 +118,19 @@ static NSString *const TyranoErrorDomain = @"AetherTyrano";
 }
 - (void)detach {
     self.closed = YES;
+    for (id observer in self.observers) [NSNotificationCenter.defaultCenter removeObserver:observer];
+    self.observers = nil;
     [self.web stopLoading];
     [self.web.configuration.userContentController removeScriptMessageHandlerForName:@"aetherTyrano"];
     self.web.navigationDelegate = nil; self.web.UIDelegate = nil;
     [self.web removeFromSuperview]; self.web = nil;
+}
+- (void)applyState {
+    if (self.closed) return;
+    BOOL suspended = self.paused || self.inactive;
+    [self.web evaluateJavaScript:[NSString stringWithFormat:@"window.AetherTyranoHost?.pause(%@);window.AetherTyranoHost?.controls(%@)",
+        suspended ? @"true" : @"false", self.controls ? @"true" : @"false"] completionHandler:nil];
+    [self.web setAllMediaPlaybackSuspended:suspended completionHandler:^{}];
 }
 - (NSString *)persist:(NSString *)json {
     NSData *data = [json isKindOfClass:NSString.class] ? [json dataUsingEncoding:NSUTF8StringEncoding] : nil;
@@ -134,6 +153,7 @@ static NSString *const TyranoErrorDomain = @"AetherTyrano";
     if (![type isKindOfClass:NSString.class]) return;
     if ([@[@"ready", @"log", @"close"] containsObject:type]) {
         [self push:type value:[body[@"value"] isKindOfClass:NSString.class] ? body[@"value"] : @""];
+        if ([type isEqualToString:@"ready"]) [self applyState];
     }
 }
 - (void)webView:(WKWebView *)webView didFinishNavigation:(WKNavigation *)navigation {
@@ -196,6 +216,11 @@ static NSString *const TyranoErrorDomain = @"AetherTyrano";
 @end
 
 extern "C" void *aether_tyrano_open(uint64_t nativeWindow, const char *entryPath, const char *storagePath, char **outError) {
+    if (!NSThread.isMainThread) {
+        __block void *result = nullptr;
+        TyranoOnUI(^{ result = aether_tyrano_open(nativeWindow, entryPath, storagePath, outError); });
+        return result;
+    }
     @autoreleasepool {
         if (outError) *outError = nullptr;
         auto fail = [&](NSString *message) -> void * {
@@ -238,6 +263,20 @@ extern "C" void *aether_tyrano_open(uint64_t nativeWindow, const char *entryPath
 #if TARGET_OS_IPHONE
         UIView *parent = (__bridge UIView *)(reinterpret_cast<void *>(nativeWindow));
         host.web.underPageBackgroundColor = UIColor.blackColor;
+        host.web.scrollView.contentInsetAdjustmentBehavior = UIScrollViewContentInsetAdjustmentNever;
+        host.web.scrollView.bounces = NO;
+        host.web.scrollView.scrollEnabled = NO;
+        host.inactive = UIApplication.sharedApplication.applicationState != UIApplicationStateActive;
+        host.observers = [NSMutableArray new];
+        __weak AetherTyranoWebHost *weakHost = host;
+        for (NSNotificationName name in @[UIApplicationWillResignActiveNotification, UIApplicationDidEnterBackgroundNotification, UIApplicationDidBecomeActiveNotification]) {
+            id observer = [NSNotificationCenter.defaultCenter addObserverForName:name object:nil queue:NSOperationQueue.mainQueue usingBlock:^(NSNotification *note) {
+                AetherTyranoWebHost *current = weakHost;
+                current.inactive = ![note.name isEqualToString:UIApplicationDidBecomeActiveNotification];
+                [current applyState];
+            }];
+            [host.observers addObject:observer];
+        }
 #else
         NSView *parent = ((__bridge NSWindow *)(reinterpret_cast<void *>(nativeWindow))).contentView;
         host.web.underPageBackgroundColor = NSColor.blackColor;
@@ -252,35 +291,44 @@ extern "C" void *aether_tyrano_open(uint64_t nativeWindow, const char *entryPath
 extern "C" void aether_tyrano_close(void *handle) {
     if (!handle) return;
     AetherTyranoWebHost *host = (__bridge_transfer AetherTyranoWebHost *)handle;
-    [host detach];
+    TyranoOnUI(^{ [host detach]; });
 }
 extern "C" void aether_tyrano_rect(void *handle, double x, double y, double width, double height) {
     AetherTyranoWebHost *host = (__bridge AetherTyranoWebHost *)handle;
-    if (!host.web.superview) return;
-    CGRect bounds = host.web.superview.bounds;
-    CGRect rect = CGRectMake(x * bounds.size.width, y * bounds.size.height, width * bounds.size.width, height * bounds.size.height);
+    TyranoOnUI(^{
+        if (!host.web.superview) return;
+        CGRect bounds = host.web.superview.bounds;
+        CGRect rect = CGRectMake(x * bounds.size.width, y * bounds.size.height, width * bounds.size.width, height * bounds.size.height);
 #if !TARGET_OS_IPHONE
-    if (!host.web.superview.isFlipped) rect.origin.y = bounds.size.height - rect.origin.y - rect.size.height;
+        if (!host.web.superview.isFlipped) rect.origin.y = bounds.size.height - rect.origin.y - rect.size.height;
 #endif
-    if (!CGRectEqualToRect(host.web.frame, rect)) host.web.frame = rect;
+        if (!CGRectEqualToRect(host.web.frame, rect)) host.web.frame = rect;
+    });
 }
 extern "C" void aether_tyrano_evaluate(void *handle, const char *script) {
     AetherTyranoWebHost *host = (__bridge AetherTyranoWebHost *)handle;
-    if (!host.web || !script) return;
-    [host.web evaluateJavaScript:@(script) completionHandler:^(id result, NSError *error) {
-        [host push:error ? @"evaluation_error" : @"evaluation" value:error ? error.localizedDescription : result];
-    }];
+    if (!script) return;
+    NSString *source = @(script);
+    TyranoOnUI(^{
+        [host.web evaluateJavaScript:source completionHandler:^(id result, NSError *error) {
+            [host push:error ? @"evaluation_error" : @"evaluation" value:error ? error.localizedDescription : result];
+        }];
+    });
 }
 extern "C" void aether_tyrano_pause(void *handle, bool paused) {
     AetherTyranoWebHost *host = (__bridge AetherTyranoWebHost *)handle;
-    [host.web evaluateJavaScript:paused ? @"window.AetherTyranoHost?.pause(true)" : @"window.AetherTyranoHost?.pause(false)" completionHandler:nil];
-    [host.web setAllMediaPlaybackSuspended:paused completionHandler:^{}];
+    TyranoOnUI(^{ host.paused = paused; [host applyState]; });
 }
 extern "C" void aether_tyrano_controls(void *handle, bool visible) {
     AetherTyranoWebHost *host = (__bridge AetherTyranoWebHost *)handle;
-    [host.web evaluateJavaScript:visible ? @"window.AetherTyranoHost?.controls(true)" : @"window.AetherTyranoHost?.controls(false)" completionHandler:nil];
+    TyranoOnUI(^{ host.controls = visible; [host applyState]; });
 }
 extern "C" char *aether_tyrano_poll(void *handle) {
+    if (!NSThread.isMainThread) {
+        __block char *result = nullptr;
+        TyranoOnUI(^{ result = aether_tyrano_poll(handle); });
+        return result;
+    }
     AetherTyranoWebHost *host = (__bridge AetherTyranoWebHost *)handle;
     if (!host.events.count) return nullptr;
     NSDictionary *event = host.events.firstObject;

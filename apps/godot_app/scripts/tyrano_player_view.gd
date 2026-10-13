@@ -44,6 +44,8 @@ func setup(app) -> void:
     toolbar.add_child(title)
     var keys := _button(toolbar, "⌨", host._t("settings.virtual_control_menu"))
     keys.toggle_mode = true
+    controls_visible = OS.has_feature("mobile")
+    keys.button_pressed = controls_visible
     keys.toggled.connect(func(value: bool):
         controls_visible = value
         if native != null:
@@ -84,7 +86,7 @@ static func storage_path(root: String) -> String:
 
 func open_entry(value: Dictionary) -> String:
     entry = value.duplicate(true)
-    var root: String = host._game_runtime_root(String(entry.get("path", "")))
+    var root := ProjectSettings.globalize_path(host._game_runtime_root(String(entry.get("path", ""))))
     var launch := Metadata.tyrano_entry_file(root)
     if launch.is_empty():
         return host._t("tyrano.invalid_project")

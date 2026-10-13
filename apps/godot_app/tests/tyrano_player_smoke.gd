@@ -100,6 +100,8 @@ func _run() -> void:
     await _wait("TYRANO.kag.stat.f.probe_step === 1 && !TYRANO.kag.stat.is_adding_text", "The first Chinese line is rendered")
     _expect(await _query("document.body.innerText.includes('第一句')") == true, "Chinese text reaches the actual DOM")
     app.tyrano_view.native.set_virtual_controls(true)
+    _expect(await _query("(()=>{let leaked=0;const listener=()=>leaked++;document.addEventListener('touchstart',listener);const event=new Event('touchstart',{bubbles:true,cancelable:true});document.getElementById('aether-tyrano-controls').dispatchEvent(event);document.removeEventListener('touchstart',listener);return leaked===0&&event.defaultPrevented})()") == true,
+        "Virtual keys do not leak a second touch gesture to the game")
     await _query("(AetherTyranoHost.key(13, true), AetherTyranoHost.key(13, false), true)")
     await _wait("TYRANO.kag.stat.f.probe_step === 2 && !TYRANO.kag.stat.is_adding_text", "Virtual Enter advances the real scenario")
     await _query("(jQuery('.layer_event_click').trigger('click'), true)")

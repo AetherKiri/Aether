@@ -1,6 +1,10 @@
 (() => {
     "use strict";
-    const post = (type, value) => window.webkit.messageHandlers.aetherTyrano.postMessage({type, value});
+    const post = (type, value) => {
+        if (window.webkit?.messageHandlers?.aetherTyrano) {
+            window.webkit.messageHandlers.aetherTyrano.postMessage({type, value});
+        } else nativePrompt("__AETHER_TYRANO_EVENT__", JSON.stringify({type, value}));
+    };
     // Custom-scheme pages do not have a portable Web Storage origin. Keep the
     // synchronous Storage contract, with native atomic persistence per game.
     const nativePrompt = window.prompt.bind(window);
@@ -63,7 +67,7 @@
         timer.native = nativeTimeout(() => {
             if (!timers.has(timer.id)) return;
             if (!timer.interval) timers.delete(timer.id);
-            try { timer.callback(...timer.args); }
+            try { timer.callback.apply(window, timer.args); }
             finally { if (timer.interval && timers.has(timer.id)) schedule(timer, timer.delay); }
         }, delay);
     }
@@ -90,7 +94,31 @@
     window.cancelAnimationFrame = id => {
         const frame = frames.get(id); if (frame) { nativeCancelRAF(frame.native); frames.delete(id); }
     };
-    let animations = []; const held = new Map();
+    const audioContexts = new Set();
+    for (const name of ["AudioContext", "webkitAudioContext"]) {
+        if (window[name]) window[name] = new Proxy(window[name], {
+            construct(target, args, type) {
+                const context = Reflect.construct(target, args, type);
+                audioContexts.add(context);
+                if (paused) context.suspend().catch(() => {});
+                return context;
+            },
+        });
+    }
+    let animations = []; const held = new Map(); let playingMedia = []; let playingContexts = [];
+    let virtualKeyDepth = 0;
+    function hasLegacyTap(jq, element) {
+        // Tyrano's mobile adapter aliases $.fn.click to $.fn.tap, but its
+        // keyboard actions still dispatch "click". Translate only those
+        // virtual-key clicks whose target actually has a legacy tap handler.
+        return jq && typeof jq.fn.tap === "function" && jq.fn.click === jq.fn.tap &&
+            typeof jq._data === "function" && jq._data(element, "events")?.tap;
+    }
+    document.addEventListener("click", event => {
+        if (!virtualKeyDepth || event.isTrusted || !hasLegacyTap(window.jQuery, event.target)) return;
+        event.preventDefault(); event.stopImmediatePropagation();
+        window.jQuery(event.target).trigger("tap");
+    }, true);
     function key(code, pressed) {
         const names = {13: "Enter", 27: "Escape", 32: " ", 17: "Control", 33: "PageUp", 34: "PageDown",
             37: "ArrowLeft", 38: "ArrowUp", 39: "ArrowRight", 40: "ArrowDown"};
@@ -101,14 +129,32 @@
         Object.defineProperty(event, "keyCode", {get: () => code});
         Object.defineProperty(event, "which", {get: () => code});
         if (pressed) held.set(code, true); else held.delete(code);
-        (document.activeElement || document.body || document).dispatchEvent(event);
+        const jq = window.jQuery;
+        const trigger = jq?.fn.trigger;
+        const translate = function(type, ...args) {
+            if (type !== "click") return trigger.call(this, type, ...args);
+            return this.each(function() { trigger.call(jq(this), hasLegacyTap(jq, this) ? "tap" : type, ...args); });
+        };
+        if (jq && typeof jq.fn.tap === "function" && jq.fn.click === jq.fn.tap) jq.fn.trigger = translate;
+        virtualKeyDepth++;
+        try { (document.activeElement || document.body || document).dispatchEvent(event); }
+        finally {
+            virtualKeyDepth--;
+            if (jq?.fn.trigger === translate) jq.fn.trigger = trigger;
+        }
     }
     function releaseKeys() { for (const code of Array.from(held.keys())) key(code, false); }
     let panel;
     function controls(visible) {
         if (!panel) {
             panel = document.createElement("div");
+            panel.id = "aether-tyrano-controls";
             panel.style.cssText = "position:fixed;inset:auto 8px 8px auto;z-index:2147483647;";
+            // Mobile engines also listen for document-level touch gestures.
+            // A virtual key must not become a second game tap or swipe.
+            for (const name of ["touchstart", "touchmove", "touchend", "touchcancel", "mousedown", "mouseup", "click", "contextmenu", "wheel"]) {
+                panel.addEventListener(name, event => { event.preventDefault(); event.stopPropagation(); }, {passive: false});
+            }
             const shadow = panel.attachShadow({mode: "closed"});
             shadow.innerHTML = `<style>:host{font:16px sans-serif}div{display:flex;gap:6px;flex-wrap:wrap;max-width:340px}
                 button{touch-action:none;min-width:44px;min-height:44px;background:#242833d9;color:white;border:1px solid #aab0c0;border-radius:24px}
@@ -141,11 +187,19 @@
                 }
                 animations = document.getAnimations().filter(animation => animation.playState === "running");
                 for (const animation of animations) animation.pause();
+                playingMedia = Array.from(document.querySelectorAll("audio,video")).filter(media => !media.paused);
+                for (const media of playingMedia) media.pause();
+                playingContexts = Array.from(audioContexts).filter(context => context.state === "running");
+                for (const context of playingContexts) context.suspend().catch(() => {});
             } else {
                 for (const frame of frames.values()) scheduleFrame(frame);
                 for (const timer of timers.values()) schedule(timer, timer.remaining);
                 for (const animation of animations) animation.play();
                 animations = [];
+                for (const media of playingMedia) media.play().catch(() => {});
+                playingMedia = [];
+                for (const context of playingContexts) context.resume().catch(() => {});
+                playingContexts = [];
             }
         },
     });

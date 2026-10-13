@@ -103,11 +103,13 @@ struct MobileGameRoute: Identifiable {
 final class MobileGameViewModel: ObservableObject {
     let controller: AetherMobileGameController
     @Published var status = ""
+    @Published var fallbackKey: String?
     @Published var error: String?
     init(url: URL) {
         controller = AetherMobileGameController(gameURL: url)
         controller.statusChanged = { [weak self] in self?.status = $0 }
         controller.failed = { [weak self] in self?.error = $0 }
+        controller.presentationFallback = { [weak self] in self?.fallbackKey = $0 }
     }
 }
 struct MobileGameSurface: UIViewControllerRepresentable {
@@ -135,6 +137,7 @@ struct MobileGameView: View {
                     Button(language.text("mobileResumeAudio")) { game.controller.resumeAudio() }.frame(minWidth: 44, minHeight: 44)
                 }.buttonStyle(.bordered).padding(.horizontal).frame(minHeight: 52)
             }
+            if let key = game.fallbackKey { Text(language.text(key)).font(.caption).padding(.horizontal) }
             MobileGameSurface(controller: game.controller)
             Text(game.status == "paused" ? language.text("mobilePaused") : game.status == "running" ? language.text("mobileRunning") : game.status == "restartRequired" ? language.text("mobileAudioRestart") : game.status)
                 .font(.caption).frame(minHeight: 24).foregroundStyle(.secondary)

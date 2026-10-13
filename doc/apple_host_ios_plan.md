@@ -192,3 +192,13 @@ Goal模式按阶段持续推进，阶段完成不等于整个M4完成。达到G4
 - iPadOS26的iPad Pro M4与iOS26的iPhone17 Pro Simulator普通首启截图均为协议页，正文可滚动、操作区避开安全区；Debug环境 `AETHER_HOST_BYPASS_LEGAL_GATE=1` + `--ios-demo-smoke`启动真实Demo，日志API17170432、第一帧software640x480。没有代理点击同意按钮，没有写入真实协议接受记录。该入口在Release条件编译移除。
 - 证据 `out/apple_host/evidence/ios-I1-product-shell/`，含gate.png、demo.png、模型测试日志、XCTest结果、正式App运行日志。截图为simctl开发工具捕获并视觉核查，不声称本轮CUA点击/返回流程已验收；CUA工具本轮未提供。
 - 抽取画布后15项真实引擎生命周期注入及macOS完整行为回归通过。仍未完成：Metal/lease直通、完整库/Files/封面/设置/主题/移动IME控制板、平台请求、StoreKit、iOS18 runtime、真机音频/长时/G4及Release正式归档。
+
+
+## 9. iOS Metal 同队列呈现（2026-10-13）
+
+- 产品游戏控制器默认启用既有godot_native ABI后端和原始帧；新增MobileMetalPresenter，通过MTKView、同一bridge队列及FrameLease提交边界显示，不做正常路径CPU回读。没有新帧时保留纹理，不重新获取同一serial的lease；drawable按比例适配，输入仍以原始逻辑像素映射。
+- 实测修复静态App的frame sink注册缺失：iOS直接调用已有 `engine_register_native_frame_sink`，防止dlsym可见性/dead-strip使注册静默失效；macOS保持可选动态符号查找，ABI未改。
+- 初始化失败选择软件引擎；呈现失败移除Metal视图、释放lease/drain后使用软件图像，保留实际引擎后端。界面显示五语言降级文案；Debug注入 `AETHER_IOS_FAIL_PRESENTATION=1`用于验证后者，Release不包含注入。
+- iPadOS26 Simulator真实KAG3 Metal首帧640x480，截图视觉核查方向、比例与文本；正常XCTest至少提交10帧，`native_copies=0`、`native_readbacks=0`，结束后 `leases_live=0`、`lease_failures=0`、`render_generation=0`。失败注入产生至少3张软件图像并收到 `metalPresentationFailed`，同样正常清理；这是编码前故障注入，不等于物理GPU device-loss测试。
+- 全部6项iOS XCTest通过，device Debug产品构建与macOS完整行为回归通过。证据 `out/apple_host/evidence/ios-I1-metal/`（`tests-final.xcresult`、运行日志、frame.png）；无本轮CUA点击或真机验收。
+- I1仍需平台能力/请求完善及完整产品资源行为审计；I4还需同刻像素对照、旋转/窄窗、60/高刷新与长时/内存/真实GPU故障恢复。现有帧钟暂用60上限，高刷新与持久FPS偏好尚未接入，不勾完整IOS-06/10。历史GPU错误计数与drain/新会话恢复路径也需专项故障审计。

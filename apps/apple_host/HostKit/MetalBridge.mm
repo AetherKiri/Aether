@@ -1,6 +1,8 @@
 #import "MetalBridge.h"
 #import <CoreVideo/CoreVideo.h>
 #include "engine_gpu_bridge.h"
+#include "engine_api.h"
+#include <TargetConditionals.h>
 #include "MetalBridgeShaders.h"
 
 
@@ -657,10 +659,16 @@ BOOL AetherMetalBridgeInitialize(NSError **error) {
     TVPGodotGpuExternalTextureCallbacks external={sizeof(external),TVP_GODOT_GPU_EXTERNAL_TEXTURE_CALLBACKS_ABI_VERSION,
         ImportApple,Prepare,ImportAndroid,Publish};
     TVPGodotGpuBridgeRegister(&callbacks);TVPGodotGpuBatchRegister(&batch);TVPGodotGpuExternalTextureRegister(&external);
+#if TARGET_OS_IPHONE
+    // Static iOS links do not promise dlsym visibility for this optional ABI
+    // symbol. A strong reference also prevents dead stripping the sink hook.
+    engine_register_native_frame_sink(&AetherMetalBridgeFramePublished);
+#else
     using RegisterFrameSink = void (*)(void (*)(uint64_t, uint32_t, uint32_t, uint64_t));
     auto registerSink = reinterpret_cast<RegisterFrameSink>(
         dlsym(RTLD_DEFAULT, "engine_register_native_frame_sink"));
     if (registerSink != nullptr) registerSink(&AetherMetalBridgeFramePublished);
+#endif
     S().library=library;return YES;
 }
 id<MTLCommandQueue> AetherMetalBridgeCommandQueue() {

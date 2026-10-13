@@ -1,6 +1,7 @@
 #import "MobileGameController.h"
 #import "MobileGameCanvas.h"
 #import "MobileSessionDriver.h"
+#import "MobileMetalPresenter.h"
 #import <QuartzCore/QuartzCore.h>
 extern "C" uint32_t aether_apple_host_core_initialize(void);
 
@@ -9,9 +10,13 @@ extern "C" uint32_t aether_apple_host_core_initialize(void);
     AetherMobileCanvas *_canvas;
     AetherEngineSession *_session;
     AetherMobileSessionDriver *_driver;
+    AetherMobileMetalPresenter *_presenter;
+    BOOL _native;
     BOOL _closed;
     BOOL _seenFrame;
     CFTimeInterval _lastStatus;
+    NSString *_finalMetalDiagnostics;
+    uint64_t _softwareFrames;
 }
 - (instancetype)initWithGameURL:(NSURL *)game {
     if ((self = [super init])) _game = game;
@@ -53,6 +58,28 @@ extern "C" uint32_t aether_apple_host_core_initialize(void);
         ![_session setOption:@"default_font" value:font error:&error]) {
         [self fail:error.localizedDescription ?: @"Missing runtime font"]; return;
     }
+    BOOL forceSoftware=NO;
+#if DEBUG
+    forceSoftware=[NSProcessInfo.processInfo.environment[@"AETHER_IOS_SOFTWARE"] isEqualToString:@"1"];
+#endif
+    if (!forceSoftware && [_session enableMetalRenderer:&error]) {
+        _presenter=[[AetherMobileMetalPresenter alloc] initWithError:&error];
+        if (_presenter) {
+            _native=YES;
+            MTKView *metal=_presenter.view; metal.translatesAutoresizingMaskIntoConstraints=NO;
+            [self.view insertSubview:metal belowSubview:_canvas];
+            [NSLayoutConstraint activateConstraints:@[
+                [metal.leadingAnchor constraintEqualToAnchor:_canvas.leadingAnchor],
+                [metal.trailingAnchor constraintEqualToAnchor:_canvas.trailingAnchor],
+                [metal.topAnchor constraintEqualToAnchor:_canvas.topAnchor],
+                [metal.bottomAnchor constraintEqualToAnchor:_canvas.bottomAnchor]]];
+        }
+    }
+    if (!_native) {
+        NSLog(@"IOS Metal unavailable; using software: %@",error);
+        if (!forceSoftware && self.presentationFallback) self.presentationFallback(@"metalPresenterUnavailable");
+        if (![_session setOption:@"renderer" value:@"software" error:&error]) { [self fail:error.localizedDescription]; return; }
+    }
     _driver = [[AetherMobileSessionDriver alloc] initWithSession:_session scene:self.view.window.windowScene];
     __weak AetherMobileGameController *weakSelf = self;
     _driver.tick = ^(uint32_t delta) { [weakSelf tick:delta]; };
@@ -68,8 +95,27 @@ extern "C" uint32_t aether_apple_host_core_initialize(void);
 }
 - (void)tick:(uint32_t)delta {
     [_session tickWithDeltaMS:delta];
-    CGImageRef image = [_session copyFrameImage];
+    if (_presenter.lastError) {
+        NSLog(@"IOS Metal presentation fallback: %@",_presenter.lastError);
+        [_presenter stop]; [_presenter.view removeFromSuperview]; _presenter=nil; _native=NO;
+        AetherMetalBridgeDrain();
+        if (self.presentationFallback) self.presentationFallback(@"metalPresentationFailed");
+    }
+    if (_native) {
+        AetherMetalFrameLease *frame=[_session acquireNativeFrame];
+        if (frame) {
+            CGSize size=CGSizeMake(frame.texture.width,frame.texture.height);
+            if (!CGSizeEqualToSize(size,_canvas.canvas)) {
+                [_canvas cancelPointer]; _canvas.canvas=size;
+                [_session setSurfaceSize:(uint32_t)size.width height:(uint32_t)size.height error:nil];
+            }
+            if (!_seenFrame) { _seenFrame=YES; NSLog(@"IOS product first frame metal %.0fx%.0f",size.width,size.height); }
+        }
+        [_presenter presentFrame:frame];
+    }
+    CGImageRef image = _native ? nil : [_session copyFrameImage];
     if (image) {
+        ++_softwareFrames;
         CGSize size = CGSizeMake(CGImageGetWidth(image),CGImageGetHeight(image));
         if (!_seenFrame) { _seenFrame=YES; NSLog(@"IOS product first frame software %.0fx%.0f",size.width,size.height); }
         if (!CGSizeEqualToSize(size,_canvas.canvas)) {
@@ -95,9 +141,19 @@ extern "C" uint32_t aether_apple_host_core_initialize(void);
 }
 - (void)resumeAudio { [_driver requestUserResume]; }
 - (void)setSystemModalPresented:(BOOL)presented { [_driver setSystemModalPresented:presented]; }
+- (uint64_t)softwareFrameCount { return _softwareFrames; }
+- (uint64_t)submittedMetalFrames { return _presenter.submittedFrames; }
+- (NSString *)metalDiagnostics { return _session ? [_session metalBridgeDiagnostics] : _finalMetalDiagnostics ?: @""; }
 - (void)stop {
     _closed=YES; [_canvas cancelPointer]; [_driver stop]; _driver=nil;
-    if (_session) { AetherMetalBridgeDrain(); [_session shutdown]; _session=nil; }
+    if (_session) {
+        uint64_t frames=_presenter.submittedFrames;
+        [_presenter stop]; [_presenter.view removeFromSuperview]; _presenter=nil;
+        AetherMetalBridgeDrain(); [_session shutdown];
+        _finalMetalDiagnostics=[_session metalBridgeDiagnostics];
+        NSLog(@"IOS stopped submitted=%llu %@",frames,_finalMetalDiagnostics);
+        _session=nil;
+    }
     _canvas.image=nil;
 }
 - (void)dealloc { [self stop]; }

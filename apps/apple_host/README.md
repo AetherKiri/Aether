@@ -619,9 +619,15 @@ python3 tools/apple_host_ios_shell_tests.py
 `AetherHostIOS`为产品target，bundle ID `org.github.aetherkiri.host.ios`；UIKit探针保持独立。
 链接响应文件位于 `out/apple_host/ios/link/{Debug,Release}/{iphoneos,iphonesimulator}.rsp`，
 由CMake实际闭包生成；构建Release前需先用 `--configuration Release`生成对应归档。
-目标支持iPhone/iPad与18.0部署。当前提供双协议/拒绝页、主页Demo和文档阅读、原始软件画布；
+目标支持iPhone/iPad与18.0部署。当前提供双协议/拒绝页、主页Demo和文档阅读、原始Metal画布与软件回退；
 库/Files/完整设置与Metal仍在实施，不宣称可发布。
 
 `AetherHostIOSTests`已纳入该scheme；用本机实际Simulator UUID运行 `xcodebuild test -destination 'platform=iOS Simulator,id=<UUID>'`。
 模型测试用隔离临时目录，不保存真实用户接受记录。自动Demo smoke仅Debug可使用
 `AETHER_HOST_BYPASS_LEGAL_GATE=1`与`--ios-demo-smoke`，Release不响应。
+
+
+iOS产品默认Metal lease呈现：引擎与MTKView共用bridge队列，正常路径不回读。
+`AetherHostIOSTests`包含真实引擎至少10帧与清理、软件回退注入测试。
+Debug可用 `AETHER_IOS_SOFTWARE=1`对照软件启动，或 `AETHER_IOS_FAIL_PRESENTATION=1`
+注入呈现失败；这些环境选项不是产品设置，Release不提供。当前仍需真机和完整I4验证。

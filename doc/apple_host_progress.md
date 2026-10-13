@@ -811,3 +811,10 @@
 - 实现五语言双协议门/独立拒绝页、主页Demo与文档入口、UIKit游戏控制器、确认返回与停止；复用移动生命周期及画布，当前仅software原始画面。
 - Debug/Release隔离模型测试、iOS26四项XCTest、15项生命周期注入及macOS回归通过。普通首启协议页与Debug隔离Demo第一帧截图/日志确认；本轮无CUA点击验收或真机验收。
 - 证据 `out/apple_host/evidence/ios-I1-product-shell/`。M4仍在实施，下一步优先Metal呈现及完整移动产品流程。
+
+
+### 2026-10-13：iOS Metal lease 呈现
+
+- 产品默认Metal/MTKView，同队列FrameLease提交、原始输出/比例适配；修复iOS静态frame sink的dlsym注册缺失，ABI未改。
+- iPadOS26真实Demo图像通过视觉核查；6项iOS XCTest覆盖10帧正常呈现零回读/复制、故障注入软件图像与退出lease/generation清理。device Debug与macOS行为回归通过。
+- 证据 `out/apple_host/evidence/ios-I1-metal/`；当前60上限、同刻像素/旋转/内存/高刷新/实际GPU故障仍需I4，真机G4未完成，未声称本轮CUA。

@@ -41,6 +41,70 @@ final class MobileShellIOSTests: XCTestCase {
             XCTAssertEqual(reload.requiredDocument,.privacy); XCTAssertFalse(reload.canPlay)
         }
     }
+    func testMetalFrameLeasePresentationAndStop() async throws {
+        let scene = try XCTUnwrap(UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first)
+        let previous = scene.windows.first(where: { $0.isKeyWindow })
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        let fixture = MobileShellState(supportRoot: root, gamesRoot: root.appendingPathComponent("Games"),
+            environment: [LegalAgreement.bypassEnvironmentKey: "1"])
+        let controller = AetherMobileGameController(gameURL: try fixture.prepareDemo())
+        var failure: String?
+        controller.failed = { failure = $0 }
+        let window = UIWindow(windowScene: scene)
+        window.rootViewController = controller; window.makeKeyAndVisible()
+        defer {
+            controller.stop(); window.isHidden = true; previous?.makeKeyAndVisible()
+            try? FileManager.default.removeItem(at: root)
+        }
+        for _ in 0..<200 {
+            if controller.submittedMetalFrames() >= 10 || failure != nil { break }
+            try await Task.sleep(nanoseconds: 50_000_000)
+        }
+        XCTAssertNil(failure)
+        XCTAssertGreaterThanOrEqual(controller.submittedMetalFrames(), 10)
+        let live = controller.metalDiagnostics()
+        XCTAssertTrue(live.contains("native_readbacks=0"), live)
+        XCTAssertTrue(live.contains("native_copies=0"), live)
+        controller.stop()
+        let final = controller.metalDiagnostics()
+        XCTAssertTrue(final.contains("leases_live=0"), final)
+        XCTAssertTrue(final.contains("lease_failures=0"), final)
+        XCTAssertTrue(final.contains("render_generation=0"), final)
+        print("IOS Metal test final " + final)
+    }
+    func testPresentationFailureFallsBackAndReleasesLeases() async throws {
+        setenv("AETHER_IOS_FAIL_PRESENTATION", "1", 1)
+        defer { unsetenv("AETHER_IOS_FAIL_PRESENTATION") }
+        let scene = try XCTUnwrap(UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first)
+        let previous = scene.windows.first(where: { $0.isKeyWindow })
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        let fixture = MobileShellState(supportRoot: root, gamesRoot: root.appendingPathComponent("Games"),
+            environment: [LegalAgreement.bypassEnvironmentKey: "1"])
+        let controller = AetherMobileGameController(gameURL: try fixture.prepareDemo())
+        var failure: String?
+        var fallbackKey: String?
+        controller.failed = { failure = $0 }
+        controller.presentationFallback = { fallbackKey = $0 }
+        let window = UIWindow(windowScene: scene)
+        window.rootViewController = controller; window.makeKeyAndVisible()
+        defer {
+            controller.stop(); window.isHidden = true; previous?.makeKeyAndVisible()
+            try? FileManager.default.removeItem(at: root)
+        }
+        for _ in 0..<200 {
+            if controller.softwareFrameCount() >= 3 || failure != nil { break }
+            try await Task.sleep(nanoseconds: 50_000_000)
+        }
+        XCTAssertNil(failure)
+        XCTAssertEqual(fallbackKey,"metalPresentationFailed")
+        XCTAssertGreaterThanOrEqual(controller.softwareFrameCount(), 3)
+        controller.stop()
+        let final = controller.metalDiagnostics()
+        XCTAssertTrue(final.contains("leases_live=0"), final)
+        XCTAssertTrue(final.contains("lease_failures=0"), final)
+        XCTAssertTrue(final.contains("render_generation=0"), final)
+        print("IOS fallback test final " + final)
+    }
     func testAllRequiredLocalizedResourcesExist() {
         for language in ShellLanguage.allCases {
             for document in LegalDocument.allCases {

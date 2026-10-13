@@ -27,6 +27,7 @@ Dispatcher 根据每个游戏的标记和能力选择对应引擎。
 
 ```text
 Godot App Shell
+  ├─ AetherFlashPlayer ─────── Ruffle（Flash）
   └─ AetherRuntimePlayer
        └─ Runtime Dispatcher
             ├─ KiriRuntime ──────── KiriKiri2 Core / Plugins
@@ -50,6 +51,7 @@ Godot App Shell
   [`AetherKrkr`](https://github.com/AetherKiri/AetherKrkr) submodule 接入。
 - 集成 OnscripterYuri，Godot 的鼠标/触摸/键盘输入会映射回 ONS 事件。
 - 覆盖 macOS、iOS/iPadOS、Android、Web 与 Linux 的导出配置。
+- 独立的 Flash 分类，使用原生 Ruffle 播放，支持声音、键鼠、触摸以及视觉小说的虚拟按钮。
 - 渲染后端可运行时切换并持久化设置。
 - 内置多语言 KAG3 Demo，可从游戏库直接游玩，也可由玩家删除。
 - 提供 smoke、渲染、交互、性能与手动复现 probe 脚本。
@@ -58,6 +60,18 @@ Godot App Shell
 iOS 和 macOS 的 Release 分发构建中，Minori、SoftPal 与 WHITE ALBUM2
 （Leaf TtT / WA2）运行时需要有效的 30 天咖啡权益。ONScripterYuri、Artemis
 和 CatSystem2 已普遍开放。Debug 构建及 Android/Linux 发布构建不执行该咖啡限制。
+
+## Flash 播放
+
+macOS、Linux 和 Android 可在 Flash 分类中导入 `.swf` 文件或文件夹，
+保留嵌套目录，也可以搜索目录内的 SWF。iOS 可通过“文件”App 将文件或
+文件夹复制到 **我的 iPhone/iPad → Aether → Flash**，回到应用后刷新。
+播放时隐藏顶部栏，点击菜单时显示返回与刷新；展开虚拟按键后再次隐藏顶部栏。
+播放器支持与视觉小说相同的虚拟键盘和鼠标按钮，虚拟摇杆使用方向键。
+SWF 引用的本地相对路径资源从其所在目录读取，SharedObject 存档会跨会话保存。
+
+播放兼容性取决于 Ruffle。目前的原生接入支持本地内容，暂不支持浏览器脚本、
+远程资源下载和 Web 导出中的 Flash 播放。
 
 ## 平台支持
 
@@ -80,9 +94,11 @@ iOS 和 macOS 的 Release 分发构建中，Minori、SoftPal 与 WHITE ALBUM2
 | | `bridge/krkr2_runtime/` | KiriKiri2 集成胶水（legacy 引擎实现、host hooks）。 |
 | | `bridge/onscripter_runtime/` | OnscripterYuri 无窗口宿主、帧读取、输入桥接。 |
 | | `bridge/siglus_runtime/` | Siglus provider 与应用到 pristine `siglus_rs` 的构建期 overlay。 |
+| | `bridge/flash_runtime/` | Ruffle 静态库与原生画面、输入、音频桥接。 |
 | 引擎 | `packages/AetherKrkr/` | KiriKiri2 引擎运行时 submodule。 |
 | | `packages/OnscripterYuri/` | 公开 OnscripterYuri submodule。 |
 | | `packages/AetherSiglus/` | 公开 siglus_rs submodule（保持只读）。 |
+| | `packages/ruffle/` | 固定版本的上游 Flash runtime submodule（保持只读）。 |
 | | `packages/AetherInternal/` | 可选私有 E-mote package；公开构建不依赖它。 |
 | | `packages/AetherSoftPal/` | 可选私有原生 SoftPal 运行时 submodule。 |
 | 支撑 | `demos/aetherkiri-kag3/` | 内置 KAG3 Demo 源码。 |
@@ -100,7 +116,8 @@ iOS 和 macOS 的 Release 分发构建中，Minori、SoftPal 与 WHITE ALBUM2
 | NASM | 原生 FFmpeg | |
 | vcpkg | 所有构建 | `.devtools/vcpkg` 或 `VCPKG_ROOT` |
 | Godot 4.7 | 导出 | `/Applications/Godot.app` 或 `GODOT_BIN=/path/to/Godot` |
-| Rust（rustup） | Siglus 运行时 | `rustup target add aarch64-linux-android`；无工具链时自动降级为“禁用 Siglus” |
+| 最新 stable Rust（rustup） | Flash、Siglus、Minori | `rustup update stable`；原生运行时统一使用 `RUSTUP_TOOLCHAIN=stable` |
+| Java 17+ | Flash 内建类 | `java` 需在 PATH 中；macOS 可用 `brew install openjdk@17`，再将其 `bin` 目录加入 PATH |
 | Xcode | macOS / iOS | 标签发布的 iOS 构建需要 iOS 26 SDK |
 | Android SDK/NDK | Android | NDK `28.1.13356709`；`ANDROID_HOME` 或 `$HOME/Library/Android/sdk` |
 | Emscripten（emsdk） | Web | `emcc`/`em++`/`emar` 在 PATH；Godot dlink 模板（`web_dlink_*.zip`） |
@@ -112,14 +129,16 @@ iOS 和 macOS 的 Release 分发构建中，Minori、SoftPal 与 WHITE ALBUM2
 ```bash
 git submodule update --init \
   packages/AetherKrkr packages/OnscripterYuri packages/psdfile \
-  packages/AetherSiglus packages/AetherMinori
+  packages/AetherSiglus packages/AetherMinori packages/ruffle
 ./build.sh macos debug        # 或：macos release / ios debug --simulator /
                                # ios release / android debug --abi=arm64-v8a /
                                # web debug / linux release
 ```
 
-这五个公开 runtime submodule 是默认构建的最小集合（引擎仓是 configure
-硬依赖；Siglus 与 Minori 在无 Rust 工具链时会优雅降级，但检出必须存在）。
+这六个公开 runtime submodule 是默认构建的最小集合（引擎仓是 configure
+硬依赖；Siglus 与 Minori 在无 Rust 工具链时会优雅降级，但检出必须存在；
+Flash 需要最新 stable Rust 和 Java）。设置 `AETHERKIRI_ENABLE_FLASH=OFF`
+可构建不包含 Flash 播放的版本。
 `AetherInternal`、`AetherSoftPal`、`tjs2Decompiler` 与 `rfvp` 为可选——见
 [可选组件](#可选组件)。`AetherKrkr`、`psdfile`、`AetherMinori` 在
 `.gitmodules` 中记录为 SSH URL；无 SSH 凭据时做一次 HTTPS 映射即可，与

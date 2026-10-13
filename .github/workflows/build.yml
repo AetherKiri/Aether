@@ -96,7 +96,7 @@ jobs:
           AETHER_SOFTPAL_DEPLOY_KEY: ${{ secrets.AETHER_SOFTPAL_DEPLOY_KEY }}
         run: .github/scripts/initialize-private-runtime-submodules.sh
 
-      - name: Set up Rust for Minori
+      - name: Set up Rust for native runtimes
         uses: dtolnay/rust-toolchain@stable
         with:
           targets: aarch64-linux-android, armv7-linux-androideabi, x86_64-linux-android, i686-linux-android
@@ -121,6 +121,12 @@ jobs:
         if: env.AETHERKIRI_WITH_INTERNAL == 'true'
         run: packages/AetherInternal/tools/prepare_ci_dependencies.sh --platform android
 
+      - name: Set up Java for Flash
+        uses: actions/setup-java@v6
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
       - name: Initialize public runtime packages
         if: env.AETHERKIRI_WITH_INTERNAL != 'true'
         run: |
@@ -129,6 +135,7 @@ jobs:
           git submodule update --init --depth 1 packages/AetherSiglus
           git submodule update --init --depth 1 packages/AetherMinori
           git submodule update --init --depth 1 packages/AetherKrkr
+          git submodule update --init --depth 1 packages/ruffle
 
       - name: Set application release version
         if: env.AETHERKIRI_RELEASE_VERSION != ''
@@ -169,12 +176,6 @@ jobs:
           ccache --max-size=400M
           ccache --cleanup
           ccache -z
-
-      - name: Set up Java
-        uses: actions/setup-java@v6
-        with:
-          distribution: 'temurin'
-          java-version: '17'
 
       - name: Validate Gradle wrappers
         uses: gradle/actions/wrapper-validation@v6
@@ -391,7 +392,7 @@ jobs:
           AETHER_SOFTPAL_DEPLOY_KEY: ${{ secrets.AETHER_SOFTPAL_DEPLOY_KEY }}
         run: .github/scripts/initialize-private-runtime-submodules.sh
 
-      - name: Set up Rust for Minori
+      - name: Set up Rust for native runtimes
         uses: dtolnay/rust-toolchain@stable
         with:
           targets: aarch64-apple-ios
@@ -415,6 +416,12 @@ jobs:
         if: env.AETHERKIRI_WITH_INTERNAL == 'true'
         run: packages/AetherInternal/tools/prepare_ci_dependencies.sh --platform apple
 
+      - name: Set up Java for Flash
+        uses: actions/setup-java@v6
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
       - name: Initialize public runtime packages
         if: env.AETHERKIRI_WITH_INTERNAL != 'true'
         run: |
@@ -423,6 +430,7 @@ jobs:
           git submodule update --init --depth 1 packages/AetherSiglus
           git submodule update --init --depth 1 packages/AetherMinori
           git submodule update --init --depth 1 packages/AetherKrkr
+          git submodule update --init --depth 1 packages/ruffle
 
       - name: Set application release version
         if: env.AETHERKIRI_RELEASE_VERSION != ''
@@ -706,7 +714,7 @@ jobs:
           AETHER_SOFTPAL_DEPLOY_KEY: ${{ secrets.AETHER_SOFTPAL_DEPLOY_KEY }}
         run: .github/scripts/initialize-private-runtime-submodules.sh
 
-      - name: Set up Rust for Minori
+      - name: Set up Rust for native runtimes
         uses: dtolnay/rust-toolchain@stable
         with:
           targets: aarch64-apple-darwin
@@ -730,6 +738,12 @@ jobs:
         if: env.AETHERKIRI_WITH_INTERNAL == 'true'
         run: packages/AetherInternal/tools/prepare_ci_dependencies.sh --platform macos
 
+      - name: Set up Java for Flash
+        uses: actions/setup-java@v6
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
       - name: Initialize public runtime packages
         if: env.AETHERKIRI_WITH_INTERNAL != 'true'
         run: |
@@ -738,6 +752,7 @@ jobs:
           git submodule update --init --depth 1 packages/AetherSiglus
           git submodule update --init --depth 1 packages/AetherMinori
           git submodule update --init --depth 1 packages/AetherKrkr
+          git submodule update --init --depth 1 packages/ruffle
 
       - name: Set application release version
         if: env.AETHERKIRI_RELEASE_VERSION != ''
@@ -1055,6 +1070,12 @@ jobs:
           AETHER_SOFTPAL_DEPLOY_KEY: ${{ secrets.AETHER_SOFTPAL_DEPLOY_KEY }}
         run: .github/scripts/initialize-private-runtime-submodules.sh
 
+      - name: Set up Java for Flash
+        uses: actions/setup-java@v6
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
       - name: Initialize public runtime packages
         if: env.AETHERKIRI_WITH_INTERNAL != 'true'
         run: |
@@ -1063,6 +1084,7 @@ jobs:
           git submodule update --init --depth 1 packages/AetherSiglus
           git submodule update --init --depth 1 packages/AetherMinori
           git submodule update --init --depth 1 packages/AetherKrkr
+          git submodule update --init --depth 1 packages/ruffle
 
       - name: Verify private runtime packages
         if: env.AETHERKIRI_WITH_INTERNAL == 'true'
@@ -1168,6 +1190,20 @@ jobs:
             --script res://tests/iap_catalog_limit_test.gd \
             2>&1 | tee "$RUNNER_TEMP/linux-access.log"
           grep -Fx 'IAP_CATALOG_LIMIT_OK' "$RUNNER_TEMP/linux-access.log"
+
+      - name: Run Linux media library tests
+        env:
+          LD_LIBRARY_PATH: ${{ github.workspace }}/apps/godot_app/bin/linux/debug
+        run: |
+          for test in video_library_folders video_library_ui video_import_permissions flash_library; do
+            timeout 60 "$GODOT_BIN" --headless --path apps/godot_app \
+              --script "res://tests/${test}_test.gd" \
+              2>&1 | tee "$RUNNER_TEMP/${test}.log"
+            grep -Fx "${test^^}_OK" "$RUNNER_TEMP/${test}.log"
+            if grep -E 'SCRIPT ERROR:|^ERROR:' "$RUNNER_TEMP/${test}.log"; then
+              exit 1
+            fi
+          done
 
       - name: Run private runtime unit tests
         if: env.AETHERKIRI_WITH_INTERNAL == 'true'

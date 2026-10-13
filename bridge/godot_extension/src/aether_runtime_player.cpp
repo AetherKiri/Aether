@@ -1,6 +1,7 @@
 #include "engine_api.h"
 #include "engine_options.h"
 #include "engine_runtime_provider.h"
+#include "flash_player.h"
 #if defined(AETHERKIRI_WITH_RFVP)
 #include "rfvp_runtime_provider.h"
 #endif
@@ -12800,6 +12801,7 @@ void InitializeAetherRuntime(ModuleInitializationLevel level) {
             ResultToString(shader_result));
     }
     ClassDB::register_class<AetherRuntimePlayer>();
+    RegisterAetherFlashPlayer();
 }
 
 void DeinitializeAetherRuntime(ModuleInitializationLevel level) {

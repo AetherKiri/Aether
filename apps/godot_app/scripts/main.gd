@@ -6,11 +6,13 @@ const SETTINGS_KEY := "aether_kiri/render_backend"
 const GAME_PATH_KEY := "aether_kiri/game_path"
 const GAME_AUTO_COVER_SCANNED_FIELD := "_autoCoverScanned"
 const GAME_LIST_FILE := "user://aetherkiri_games.json"
+const FLASH_LIST_FILE := "user://aether_flash.json"
+const FLASH_HIDDEN_FILE := "user://aether_flash_hidden.json"
+const FlashPlayerView = preload("res://scripts/flash_player_view.gd")
 const VIDEO_LIST_FILE := "user://aetherkiri_videos.json"
 const VIDEO_PROGRESS_FILE := "user://aetherkiri_video_progress.json"
 const VIDEO_HIDDEN_FILE := "user://aetherkiri_hidden_videos.json"
 const IMPORT_STATE_FILE := "user://aetherkiri_import_state.cfg"
-const VIDEO_EXTENSIONS := ["mp4", "mkv", "mov", "m4v", "avi", "webm", "flv", "ts", "m2ts", "mpeg", "mpg", "wmv"]
 const SUBTITLE_EXTENSIONS := ["srt", "vtt", "ass", "ssa"]
 const COVER_IMAGE_EXTENSIONS := ["png", "webp", "jpg", "jpeg"]
 # These candidates are deliberately independent of the selected UI language.
@@ -70,6 +72,7 @@ const DebugConsole = preload("res://scripts/debug_console.gd")
 const BuiltinDemo = preload("res://scripts/builtin_demo.gd")
 const GameLaunchEntry = preload("res://scripts/game_launch_entry.gd")
 const VideoSubtitles = preload("res://scripts/video_subtitles.gd")
+const VideoLibrary = preload("res://scripts/video_library.gd")
 const AetherDesignTokens = preload("res://scripts/ui/aether_design_tokens.gd")
 const AetherMotion = preload("res://scripts/ui/aether_motion.gd")
 const AetherWidgets = preload("res://scripts/ui/aether_widgets.gd")
@@ -92,7 +95,9 @@ const ICON_HELP := UI_ICON_DIR + "help.svg"
 const ICON_LIBRARY := UI_ICON_DIR + "library.svg"
 const ICON_GAMEPAD := UI_ICON_DIR + "gamepad-bold.svg"
 const ICON_PLAY := UI_ICON_DIR + "game-controller.svg"
+const ICON_FLASH := UI_ICON_DIR + "flash.svg"
 const ICON_VIDEO := UI_ICON_DIR + "video.svg"
+const ICON_FOLDER := UI_ICON_DIR + "folder.svg"
 const ICON_PERFORMANCE := UI_ICON_DIR + "performance-fill.svg"
 const ICON_HOME := UI_ICON_DIR + "round-home.svg"
 const ICON_DELETE := UI_ICON_DIR + "round-delete-forever.svg"
@@ -120,17 +125,48 @@ const STYLE_MODES := [STYLE_DARK, STYLE_CLASSIC, STYLE_WARM_DARK, STYLE_WARM_LIG
 const IOS_UI_SCALE_MODES := ["compact", "comfortable", "standard"]
 const UI_TEXT := {
     LANG_ZH_HANS: {
+        "nav.flash": "Flash",
+        "flash.search_placeholder": "搜索 Flash",
+        "flash.empty_title": "还没有 Flash 文件",
+        "flash.empty_help_ios": "使用「文件」App 将 SWF 文件或文件夹复制到：\n我的 iPhone / iPad > Aether > Flash\n支持多层子文件夹",
+        "flash.empty_help_desktop": "点击「导入 Flash」添加 SWF 文件或文件夹",
+        "flash.import": "导入 Flash",
+        "flash.android_storage_help": "需要允许 Aether 访问文件系统后才能导入 Flash 文件或文件夹。请在系统弹窗或权限设置中授予文件访问权限，然后再试。",
+        "flash.import_file": "选择 Flash 文件",
+        "flash.import_folder": "选择 Flash 文件夹",
+        "flash.open_folder": "点击查看文件夹中的 Flash",
+        "flash.empty_folder_title": "此文件夹中还没有 Flash 文件",
+        "flash.empty_folder_help": "返回上级文件夹，或添加 SWF 文件后刷新。",
+        "flash.remove_folder_body": "从 Flash 库移除「%s」？不会删除磁盘上的文件夹或文件。",
+        "flash.remove": "移除 Flash",
+        "flash.remove_body": "从 Flash 库移除「%s」？不会删除磁盘上的文件或 Flash 存档。",
+        "flash.guide_body_ios": "将 SWF 文件和所需资源一起复制到「文件」App > Aether > Flash，支持多层目录。返回应用点击刷新，打开文件夹或 SWF 开始播放。可使用右上角菜单中的虚拟按钮、键盘和鼠标。",
+        "flash.guide_body_desktop": "导入 SWF 文件，或导入包含 SWF 及所需资源的文件夹。打开文件夹逐层浏览，点击 SWF 播放。支持键鼠、触摸和虚拟按钮；返回或切到后台时保存 Flash 本地存档。",
+        "flash.back": "返回",
+        "flash.refresh": "刷新",
+        "flash.unavailable": "此构建未包含 Flash 播放器",
+        "flash.open_failed": "无法播放 Flash：%s",
+        "flash.guide_title": "导入 Flash",
         "home.subtitle": "多功能媒体播放器",
         "video.status": "视频库",
-        "video.empty_title": "Video 文件夹中还没有视频",
-        "video.empty_help_ios": "使用「文件」App 将视频复制到：\n我的 iPhone / iPad > Aether > Video\n支持同名 SRT、VTT、ASS 字幕",
-        "video.empty_help_desktop": "点击「导入视频」添加本地视频；同目录同名字幕会自动载入",
+        "video.empty_title": "视频库中还没有视频",
+        "video.empty_help_ios": "使用「文件」App 将视频或文件夹复制到：\n我的 iPhone / iPad > Aether > Video\n支持多层文件夹及同名 SRT、VTT、ASS 字幕",
+        "video.empty_help_desktop": "点击「导入视频」添加视频文件或文件夹；同目录同名字幕会自动载入",
         "video.import": "导入视频",
+        "video.import_file": "选择视频文件",
+        "video.import_folder": "选择视频文件夹",
+        "video.folder": "文件夹",
+        "video.open_folder": "点击查看文件夹中的视频",
+        "video.parent_folder": "返回上级文件夹",
+        "video.empty_folder_title": "此文件夹中还没有视频",
+        "video.empty_folder_help": "可以返回上级文件夹，或将视频和子文件夹添加到此目录后刷新。",
+        "video.remove_folder": "移除文件夹",
+        "video.remove_folder_body": "从视频库移除「%s」？不会删除磁盘上的文件夹、视频或字幕，播放进度会保留。",
         "video.refresh": "刷新",
         "video.guide": "使用说明",
         "video.guide_title": "导入视频",
-        "video.guide_body_ios": "请使用「文件」App 将视频复制到本应用的目录：\n\n1. 打开 iPhone / iPad 上的「文件」App\n2. 前往：我的 iPhone / iPad > Aether > Video\n3. 将视频和同名字幕复制到 Video 目录\n4. 返回本应用，点击「刷新」检测新视频\n\n视频目录：Video/\n字幕支持：SRT、VTT、ASS、SSA",
-        "video.guide_body_desktop": "请将本地视频导入视频库：\n\n1. 点击「导入视频」\n2. 选择需要播放的视频文件\n3. 如需字幕，请将同名字幕放在视频所在目录\n4. 返回视频库即可播放，进度会自动记录\n\n字幕支持：SRT、VTT、ASS、SSA",
+        "video.guide_body_ios": "请使用「文件」App 将视频或文件夹复制到本应用的目录：\n\n1. 打开 iPhone / iPad 上的「文件」App\n2. 前往：我的 iPhone / iPad > Aether > Video\n3. 将视频、文件夹和同名字幕复制到 Video 目录，支持多层子文件夹\n4. 返回本应用，点击「刷新」，点击文件夹可逐层浏览\n\n视频目录：Video/\n字幕放在对应视频旁，支持：SRT、VTT、ASS、SSA",
+        "video.guide_body_desktop": "请将本地视频或文件夹导入视频库：\n\n1. 点击「导入视频」\n2. 选择视频文件，或选择包含视频的文件夹\n3. 点击文件夹逐层浏览；同名字幕放在对应视频旁\n4. 播放进度会自动记录，重新进入视频库时会检测文件夹中的新视频\n\n字幕支持：SRT、VTT、ASS、SSA",
         "video.remove": "移除视频",
         "video.remove_body": "从视频库移除「%s」？不会删除磁盘上的视频文件，并会清除该视频的播放进度。",
         "video.back": "返回",
@@ -177,7 +213,7 @@ const UI_TEXT := {
         "dash.continue": "继续",
         "home.empty_title": "尚未添加任何游戏",
         "home.game_count": "%d 个游戏",
-        "video.video_count": "%d 个视频",
+        "video.item_count": "%d 个项目",
         "search.games_placeholder": "搜索视觉小说",
         "search.videos_placeholder": "搜索视频",
         "search.filtered_count": "显示 %d / %d",
@@ -481,17 +517,48 @@ const UI_TEXT := {
         "loading.translation_model_detail": "首次加载可能出现短暂卡顿，请耐心等待。"
     },
     LANG_ZH_HANT: {
+        "nav.flash": "Flash",
+        "flash.search_placeholder": "搜尋 Flash",
+        "flash.empty_title": "還沒有 Flash 檔案",
+        "flash.empty_help_ios": "使用「檔案」App 將 SWF 檔案或資料夾複製到：\n我的 iPhone / iPad > Aether > Flash\n支援多層子資料夾",
+        "flash.empty_help_desktop": "點選「匯入 Flash」加入 SWF 檔案或資料夾",
+        "flash.import": "匯入 Flash",
+        "flash.android_storage_help": "需要允許 Aether 存取檔案系統後才能匯入 Flash 檔案或資料夾。請在系統彈窗或權限設定中授予檔案存取權限，然後再試。",
+        "flash.import_file": "選擇 Flash 檔案",
+        "flash.import_folder": "選擇 Flash 資料夾",
+        "flash.open_folder": "點選查看資料夾中的 Flash",
+        "flash.empty_folder_title": "此資料夾中還沒有 Flash 檔案",
+        "flash.empty_folder_help": "返回上層資料夾，或新增 SWF 檔案後重新整理。",
+        "flash.remove_folder_body": "從 Flash 庫移除「%s」？不會刪除磁碟上的資料夾或檔案。",
+        "flash.remove": "移除 Flash",
+        "flash.remove_body": "從 Flash 庫移除「%s」？不會刪除磁碟上的檔案或 Flash 存檔。",
+        "flash.guide_body_ios": "將 SWF 檔案和所需資源一起複製到「檔案」App > Aether > Flash，支援多層目錄。返回 App 點選重新整理，開啟資料夾或 SWF 開始播放。右上角選單提供虛擬按鈕、鍵盤與滑鼠。",
+        "flash.guide_body_desktop": "匯入 SWF 檔案，或包含 SWF 和所需資源的資料夾。逐層瀏覽資料夾並點選 SWF 播放。支援鍵鼠、觸控和虛擬按鈕；返回或切到背景時儲存 Flash 本機存檔。",
+        "flash.back": "返回",
+        "flash.refresh": "重新整理",
+        "flash.unavailable": "此版本未包含 Flash 播放器",
+        "flash.open_failed": "無法播放 Flash：%s",
+        "flash.guide_title": "匯入 Flash",
         "home.subtitle": "多功能媒體播放器",
         "video.status": "影片庫",
-        "video.empty_title": "Video 資料夾中還沒有影片",
-        "video.empty_help_ios": "使用「檔案」App 將影片複製到：\n我的 iPhone / iPad > Aether > Video\n支援同名 SRT、VTT、ASS 字幕",
-        "video.empty_help_desktop": "點擊「匯入影片」加入本機影片；同目錄同名字幕會自動載入",
+        "video.empty_title": "影片庫中還沒有影片",
+        "video.empty_help_ios": "使用「檔案」App 將影片或資料夾複製到：\n我的 iPhone / iPad > Aether > Video\n支援多層資料夾及同名 SRT、VTT、ASS 字幕",
+        "video.empty_help_desktop": "點選「匯入影片」加入影片檔案或資料夾；同目錄同名字幕會自動載入",
         "video.import": "匯入影片",
+        "video.import_file": "選擇影片檔案",
+        "video.import_folder": "選擇影片資料夾",
+        "video.folder": "資料夾",
+        "video.open_folder": "點選查看資料夾中的影片",
+        "video.parent_folder": "返回上一層資料夾",
+        "video.empty_folder_title": "此資料夾中還沒有影片",
+        "video.empty_folder_help": "可返回上一層資料夾，或將影片和子資料夾加入此目錄後重新整理。",
+        "video.remove_folder": "移除資料夾",
+        "video.remove_folder_body": "從影片庫移除「%s」？不會刪除磁碟上的資料夾、影片或字幕，播放進度會保留。",
         "video.refresh": "重新整理",
         "video.guide": "使用說明",
         "video.guide_title": "匯入影片",
-        "video.guide_body_ios": "請使用「檔案」App 將影片複製到本 App 的目錄：\n\n1. 開啟 iPhone / iPad 上的「檔案」App\n2. 前往：我的 iPhone / iPad > Aether > Video\n3. 將影片和同名字幕複製到 Video 目錄\n4. 返回本 App，點選「重新整理」偵測新影片\n\n影片目錄：Video/\n字幕支援：SRT、VTT、ASS、SSA",
-        "video.guide_body_desktop": "請將本機影片匯入影片庫：\n\n1. 點選「匯入影片」\n2. 選擇需要播放的影片檔案\n3. 如需字幕，請將同名字幕放在影片所在目錄\n4. 返回影片庫即可播放，進度會自動記錄\n\n字幕支援：SRT、VTT、ASS、SSA",
+        "video.guide_body_ios": "請使用「檔案」App 將影片或資料夾複製到本 App 的目錄：\n\n1. 開啟 iPhone / iPad 上的「檔案」App\n2. 前往：我的 iPhone / iPad > Aether > Video\n3. 將影片、資料夾和同名字幕複製到 Video 目錄，支援多層子資料夾\n4. 返回本 App，點選「重新整理」，點選資料夾可逐層瀏覽\n\n影片目錄：Video/\n字幕放在對應影片旁，支援：SRT、VTT、ASS、SSA",
+        "video.guide_body_desktop": "請將本機影片或資料夾匯入影片庫：\n\n1. 點選「匯入影片」\n2. 選擇影片檔案，或選擇包含影片的資料夾\n3. 點選資料夾逐層瀏覽；同名字幕放在對應影片旁\n4. 播放進度會自動記錄，重新進入影片庫時會偵測資料夾中的新影片\n\n字幕支援：SRT、VTT、ASS、SSA",
         "video.remove": "移除影片",
         "video.remove_body": "要從影片庫移除「%s」嗎？不會刪除磁碟上的影片檔案，並會清除該影片的播放進度。",
         "video.back": "返回",
@@ -507,7 +574,7 @@ const UI_TEXT := {
         "nav.videos": "影片庫",
         "home.empty_title": "尚未加入任何遊戲",
         "home.game_count": "%d 個遊戲",
-        "video.video_count": "%d 個影片",
+        "video.item_count": "%d 個項目",
         "search.games_placeholder": "搜尋視覺小說",
         "search.videos_placeholder": "搜尋影片",
         "search.filtered_count": "顯示 %d / %d",
@@ -798,17 +865,48 @@ const UI_TEXT := {
         "loading.translation_model_detail": "首次載入可能會短暫停頓，請耐心等候。"
     },
     LANG_EN: {
+        "nav.flash": "Flash",
+        "flash.search_placeholder": "Search Flash",
+        "flash.empty_title": "No Flash files yet",
+        "flash.empty_help_ios": "Copy SWF files or folders with the Files app to:\nOn My iPhone / iPad > Aether > Flash\nNested folders are supported",
+        "flash.empty_help_desktop": "Import a SWF file or a folder containing Flash files",
+        "flash.import": "Import Flash",
+        "flash.android_storage_help": "Allow Aether to access the file system before importing Flash files or folders. Grant file access in the system prompt or permission settings, then try again.",
+        "flash.import_file": "Choose Flash file",
+        "flash.import_folder": "Choose Flash folder",
+        "flash.open_folder": "Open to browse Flash files",
+        "flash.empty_folder_title": "No Flash files in this folder",
+        "flash.empty_folder_help": "Go up a folder, or add SWF files and refresh.",
+        "flash.remove_folder_body": "Remove “%s” from the Flash library? Files and folders on disk will be kept.",
+        "flash.remove": "Remove Flash",
+        "flash.remove_body": "Remove “%s” from the Flash library? Files and Flash saves will be kept.",
+        "flash.guide_body_ios": "Copy SWF files and their resources into Files > Aether > Flash, including nested folders. Tap Refresh, open a folder, then play a SWF. The top-right menu provides virtual buttons, keyboard and mouse controls.",
+        "flash.guide_body_desktop": "Import a SWF file or a folder containing SWFs and their resources. Browse folders and select a SWF to play. Keyboard, mouse, touch and virtual controls are supported. Flash local saves are flushed when leaving playback or moving to the background.",
+        "flash.back": "Back",
+        "flash.refresh": "Refresh",
+        "flash.unavailable": "Flash playback is not included in this build",
+        "flash.open_failed": "Unable to play Flash: %s",
+        "flash.guide_title": "Import Flash",
         "home.subtitle": "Multifunction Media Player",
         "video.status": "Video Library",
-        "video.empty_title": "No videos in the Video folder",
-        "video.empty_help_ios": "Copy videos with the Files app to:\nOn My iPhone / iPad > Aether > Video\nMatching SRT, VTT and ASS subtitles are supported",
-        "video.empty_help_desktop": "Import a local video; matching subtitles in the same folder load automatically",
+        "video.empty_title": "No videos in the library",
+        "video.empty_help_ios": "Copy videos or folders with the Files app to:\nOn My iPhone / iPad > Aether > Video\nNested folders and matching SRT, VTT and ASS subtitles are supported",
+        "video.empty_help_desktop": "Import a video file or folder; matching subtitles beside each video load automatically",
         "video.import": "Import video",
+        "video.import_file": "Choose video file",
+        "video.import_folder": "Choose video folder",
+        "video.folder": "Folder",
+        "video.open_folder": "Open to browse videos",
+        "video.parent_folder": "Parent folder",
+        "video.empty_folder_title": "No videos in this folder",
+        "video.empty_folder_help": "Go back to the parent folder, or add videos and subfolders here and refresh.",
+        "video.remove_folder": "Remove folder",
+        "video.remove_folder_body": "Remove “%s” from the library? The folder, videos and subtitles stay on disk. Playback progress is kept.",
         "video.refresh": "Refresh",
         "video.guide": "How to use",
         "video.guide_title": "Import Video",
-        "video.guide_body_ios": "Use the Files app to copy videos into this app's directory:\n\n1. Open the Files app on your iPhone / iPad\n2. Go to: On My iPhone / iPad > Aether > Video\n3. Copy videos and matching subtitle files into Video\n4. Return to this app and tap Refresh to detect new videos\n\nVideo directory: Video/\nSubtitles: SRT, VTT, ASS, SSA",
-        "video.guide_body_desktop": "Import a local video into the video library:\n\n1. Click Import Video\n2. Select the video file you want to play\n3. For subtitles, place a matching subtitle file beside the video\n4. Return to the library to play; progress is saved automatically\n\nSubtitles: SRT, VTT, ASS, SSA",
+        "video.guide_body_ios": "Use the Files app to copy videos or folders into this app's directory:\n\n1. Open the Files app on your iPhone / iPad\n2. Go to: On My iPhone / iPad > Aether > Video\n3. Copy videos, folders and matching subtitles into Video; nested folders are supported\n4. Return to this app, tap Refresh, then open folders to browse\n\nVideo directory: Video/\nKeep subtitles beside each video: SRT, VTT, ASS, SSA",
+        "video.guide_body_desktop": "Import local videos or folders into the library:\n\n1. Click Import Video\n2. Choose a video file or a folder containing videos\n3. Open folders to browse; keep matching subtitles beside each video\n4. Progress is saved automatically. Returning to the library detects new videos in imported folders\n\nSubtitles: SRT, VTT, ASS, SSA",
         "video.remove": "Remove Video",
         "video.remove_body": "Remove \"%s\" from the video library? The video file will remain on disk, and its playback progress will be cleared.",
         "video.back": "Back",
@@ -855,7 +953,7 @@ const UI_TEXT := {
         "dash.continue": "Continue",
         "home.empty_title": "No games added yet",
         "home.game_count": "%d games",
-        "video.video_count": "%d videos",
+        "video.item_count": "%d items",
         "search.games_placeholder": "Search visual novels",
         "search.videos_placeholder": "Search videos",
         "search.filtered_count": "Showing %d of %d",
@@ -1159,17 +1257,48 @@ You can find it any time under Settings → QQ Group.",
         "loading.translation_model_detail": "The first load may pause briefly. Please wait."
     },
     LANG_JA: {
+        "nav.flash": "Flash",
+        "flash.search_placeholder": "Flash を検索",
+        "flash.empty_title": "Flash ファイルがありません",
+        "flash.empty_help_ios": "「ファイル」App で SWF やフォルダーをコピー：\nこの iPhone / iPad 内 > Aether > Flash\n複数階層のフォルダーに対応",
+        "flash.empty_help_desktop": "SWF ファイルまたはフォルダーを読み込んでください",
+        "flash.import": "Flash を読み込む",
+        "flash.android_storage_help": "Flash ファイルやフォルダのインポートには、Aether にファイルシステムへのアクセスを許可する必要があります。システムの権限ダイアログまたは設定でファイルアクセスを許可してから、もう一度お試しください。",
+        "flash.import_file": "Flash ファイルを選択",
+        "flash.import_folder": "Flash フォルダーを選択",
+        "flash.open_folder": "フォルダー内の Flash を表示",
+        "flash.empty_folder_title": "このフォルダーに Flash ファイルがありません",
+        "flash.empty_folder_help": "上の階層に戻るか、SWF を追加して更新してください。",
+        "flash.remove_folder_body": "「%s」を Flash ライブラリから削除しますか？ディスク上のファイルは保持されます。",
+        "flash.remove": "Flash を削除",
+        "flash.remove_body": "「%s」を Flash ライブラリから削除しますか？ファイルと Flash セーブは保持されます。",
+        "flash.guide_body_ios": "SWF と必要なリソースを「ファイル」> Aether > Flash にコピーします。サブフォルダーに対応。「更新」後にフォルダーを開き SWF を再生してください。右上のメニューに仮想ボタン、キーボード、マウスがあります。",
+        "flash.guide_body_desktop": "SWF または必要なリソースを含むフォルダーを読み込み、SWF を選択して再生します。キーボード、マウス、タッチ、仮想ボタンに対応。戻る際やバックグラウンド移行時に Flash のローカルセーブを保存します。",
+        "flash.back": "戻る",
+        "flash.refresh": "更新",
+        "flash.unavailable": "このビルドに Flash プレイヤーは含まれていません",
+        "flash.open_failed": "Flash を再生できません：%s",
+        "flash.guide_title": "Flash を読み込む",
         "home.subtitle": "多機能メディアプレーヤー",
         "video.status": "ビデオライブラリ",
-        "video.empty_title": "Video フォルダーに動画がありません",
-        "video.empty_help_ios": "「ファイル」App で動画を次へコピー：\nこのiPhone / iPad内 > Aether > Video\n同名の SRT、VTT、ASS 字幕に対応",
-        "video.empty_help_desktop": "ローカル動画を読み込むと、同じフォルダーの同名字幕も自動で読み込みます",
+        "video.empty_title": "ライブラリに動画がありません",
+        "video.empty_help_ios": "「ファイル」App で動画やフォルダーを次へコピー：\nこの iPhone / iPad 内 > Aether > Video\n階層フォルダーと同名の SRT、VTT、ASS 字幕に対応",
+        "video.empty_help_desktop": "動画ファイルまたはフォルダーを読み込むと、各動画と同じ場所にある同名字幕も自動で読み込みます",
         "video.import": "動画を読み込む",
+        "video.import_file": "動画ファイルを選択",
+        "video.import_folder": "動画フォルダーを選択",
+        "video.folder": "フォルダー",
+        "video.open_folder": "開いて動画を表示",
+        "video.parent_folder": "上のフォルダーに戻る",
+        "video.empty_folder_title": "このフォルダーに動画がありません",
+        "video.empty_folder_help": "上のフォルダーに戻るか、この場所に動画やサブフォルダーを追加して更新してください。",
+        "video.remove_folder": "フォルダーを削除",
+        "video.remove_folder_body": "「%s」をライブラリから削除しますか？ディスク上のフォルダー、動画、字幕と再生位置は保持されます。",
         "video.refresh": "更新",
         "video.guide": "使い方",
         "video.guide_title": "動画を読み込む",
-        "video.guide_body_ios": "「ファイル」App で動画をこのアプリのディレクトリにコピーしてください：\n\n1. iPhone / iPad で「ファイル」App を開く\n2. 移動先：この iPhone / iPad 内 > Aether > Video\n3. 動画と同名の字幕を Video にコピー\n4. アプリに戻り、「更新」をタップして新しい動画を検出\n\n動画ディレクトリ：Video/\n字幕：SRT、VTT、ASS、SSA",
-        "video.guide_body_desktop": "ローカル動画をビデオライブラリに読み込みます：\n\n1. 「動画を読み込む」をクリック\n2. 再生する動画ファイルを選択\n3. 字幕を使う場合は、同名の字幕を動画と同じ場所に配置\n4. ライブラリに戻って再生すると、進捗は自動保存されます\n\n字幕：SRT、VTT、ASS、SSA",
+        "video.guide_body_ios": "「ファイル」App で動画やフォルダーをこのアプリのディレクトリにコピーしてください：\n\n1. iPhone / iPad で「ファイル」App を開く\n2. 移動先：この iPhone / iPad 内 > Aether > Video\n3. 動画、フォルダー、同名字幕を Video にコピー。複数階層に対応\n4. アプリに戻って「更新」をタップし、フォルダーを開いて動画を表示\n\n動画ディレクトリ：Video/\n字幕は各動画の隣に配置：SRT、VTT、ASS、SSA",
+        "video.guide_body_desktop": "ローカル動画やフォルダーをライブラリに読み込みます：\n\n1. 「動画を読み込む」をクリック\n2. 動画ファイル、または動画を含むフォルダーを選択\n3. フォルダーを開いて動画を表示。同名字幕は各動画の隣に配置\n4. 再生位置は自動保存され、ライブラリに戻ると新しい動画を検出\n\n字幕：SRT、VTT、ASS、SSA",
         "video.remove": "動画を削除",
         "video.remove_body": "「%s」をビデオライブラリから削除しますか？ディスク上の動画ファイルは削除されず、再生進捗は消去されます。",
         "video.back": "戻る",
@@ -1185,7 +1314,7 @@ You can find it any time under Settings → QQ Group.",
         "nav.videos": "ビデオ",
         "home.empty_title": "ゲームはまだ追加されていません",
         "home.game_count": "%d 本のゲーム",
-        "video.video_count": "%d 本のビデオ",
+        "video.item_count": "%d 項目",
         "search.games_placeholder": "ビジュアルノベルを検索",
         "search.videos_placeholder": "ビデオを検索",
         "search.filtered_count": "%d / %d 件を表示",
@@ -1476,17 +1605,48 @@ You can find it any time under Settings → QQ Group.",
         "loading.translation_model_detail": "初回の読み込みは一時的に停止することがあります。しばらくお待ちください。"
     },
     LANG_KO: {
+        "nav.flash": "Flash",
+        "flash.search_placeholder": "Flash 검색",
+        "flash.empty_title": "Flash 파일이 없습니다",
+        "flash.empty_help_ios": "파일 앱으로 SWF 파일이나 폴더를 복사하세요:\n나의 iPhone / iPad > Aether > Flash\n여러 단계의 하위 폴더를 지원합니다",
+        "flash.empty_help_desktop": "SWF 파일 또는 Flash가 포함된 폴더를 가져오세요",
+        "flash.import": "Flash 가져오기",
+        "flash.android_storage_help": "Flash 파일이나 폴더를 가져오려면 Aether의 파일 시스템 접근을 허용해야 합니다. 시스템 권한 창 또는 권한 설정에서 파일 접근 권한을 허용한 뒤 다시 시도하세요.",
+        "flash.import_file": "Flash 파일 선택",
+        "flash.import_folder": "Flash 폴더 선택",
+        "flash.open_folder": "폴더의 Flash 파일 보기",
+        "flash.empty_folder_title": "이 폴더에 Flash 파일이 없습니다",
+        "flash.empty_folder_help": "상위 폴더로 이동하거나 SWF 파일을 추가한 후 새로 고침하세요.",
+        "flash.remove_folder_body": "Flash 라이브러리에서 “%s”을(를) 제거할까요? 디스크의 파일과 폴더는 유지됩니다.",
+        "flash.remove": "Flash 제거",
+        "flash.remove_body": "Flash 라이브러리에서 “%s”을(를) 제거할까요? 파일과 Flash 저장 데이터는 유지됩니다.",
+        "flash.guide_body_ios": "SWF와 필요한 리소스를 파일 > Aether > Flash에 복사하세요. 하위 폴더를 지원합니다. 새로 고침 후 폴더를 열어 SWF를 재생하세요. 오른쪽 위 메뉴에서 가상 버튼, 키보드와 마우스를 사용할 수 있습니다.",
+        "flash.guide_body_desktop": "SWF 파일 또는 리소스가 포함된 폴더를 가져오고 SWF를 선택해 재생하세요. 키보드, 마우스, 터치와 가상 버튼을 지원합니다. 재생을 종료하거나 백그라운드로 이동하면 Flash 로컬 저장 데이터를 보관합니다.",
+        "flash.back": "뒤로",
+        "flash.refresh": "새로고침",
+        "flash.unavailable": "이 빌드에 Flash 플레이어가 포함되어 있지 않습니다",
+        "flash.open_failed": "Flash를 재생할 수 없습니다: %s",
+        "flash.guide_title": "Flash 가져오기",
         "home.subtitle": "다기능 미디어 플레이어",
         "video.status": "비디오 라이브러리",
-        "video.empty_title": "Video 폴더에 비디오가 없습니다",
-        "video.empty_help_ios": "파일 앱에서 비디오를 다음 위치로 복사하세요:\n나의 iPhone / iPad > Aether > Video\n같은 이름의 SRT, VTT, ASS 자막 지원",
-        "video.empty_help_desktop": "로컬 비디오를 가져오면 같은 폴더의 동일한 이름 자막을 자동으로 불러옵니다",
+        "video.empty_title": "라이브러리에 비디오가 없습니다",
+        "video.empty_help_ios": "파일 앱에서 비디오나 폴더를 다음 위치로 복사하세요:\n나의 iPhone / iPad > Aether > Video\n여러 단계의 하위 폴더와 같은 이름의 SRT, VTT, ASS 자막 지원",
+        "video.empty_help_desktop": "비디오 파일이나 폴더를 가져오면 각 비디오 옆의 같은 이름 자막을 자동으로 불러옵니다",
         "video.import": "비디오 가져오기",
+        "video.import_file": "비디오 파일 선택",
+        "video.import_folder": "비디오 폴더 선택",
+        "video.folder": "폴더",
+        "video.open_folder": "열어서 비디오 보기",
+        "video.parent_folder": "상위 폴더로 돌아가기",
+        "video.empty_folder_title": "이 폴더에 비디오가 없습니다",
+        "video.empty_folder_help": "상위 폴더로 돌아가거나 여기에 비디오와 하위 폴더를 추가한 후 새로 고침하세요.",
+        "video.remove_folder": "폴더 제거",
+        "video.remove_folder_body": "라이브러리에서 “%s”을(를) 제거할까요? 디스크의 폴더, 비디오, 자막과 재생 위치는 유지됩니다.",
         "video.refresh": "새로 고침",
         "video.guide": "사용 방법",
         "video.guide_title": "비디오 가져오기",
-        "video.guide_body_ios": "파일 앱으로 비디오를 이 앱의 디렉터리에 복사하세요:\n\n1. iPhone / iPad에서 파일 앱을 엽니다\n2. 이동: 나의 iPhone / iPad > Aether > Video\n3. 비디오와 같은 이름의 자막을 Video에 복사합니다\n4. 앱으로 돌아와 새로 고침을 눌러 새 비디오를 감지합니다\n\n비디오 디렉터리: Video/\n자막: SRT, VTT, ASS, SSA",
-        "video.guide_body_desktop": "로컬 비디오를 비디오 라이브러리로 가져옵니다:\n\n1. 비디오 가져오기를 클릭합니다\n2. 재생할 비디오 파일을 선택합니다\n3. 자막이 필요하면 같은 이름의 자막을 비디오 옆에 둡니다\n4. 라이브러리에서 재생하면 진행 위치가 자동 저장됩니다\n\n자막: SRT, VTT, ASS, SSA",
+        "video.guide_body_ios": "파일 앱으로 비디오나 폴더를 이 앱의 디렉터리에 복사하세요:\n\n1. iPhone / iPad에서 파일 앱을 엽니다\n2. 이동: 나의 iPhone / iPad > Aether > Video\n3. 비디오, 폴더와 같은 이름의 자막을 Video에 복사합니다. 여러 단계의 하위 폴더를 지원합니다\n4. 앱으로 돌아와 새로 고침한 후 폴더를 열어 비디오를 봅니다\n\n비디오 디렉터리: Video/\n자막은 각 비디오 옆에 배치: SRT, VTT, ASS, SSA",
+        "video.guide_body_desktop": "로컬 비디오나 폴더를 라이브러리로 가져옵니다:\n\n1. 비디오 가져오기를 클릭합니다\n2. 비디오 파일이나 비디오가 들어 있는 폴더를 선택합니다\n3. 폴더를 열어 비디오를 봅니다. 같은 이름의 자막은 각 비디오 옆에 둡니다\n4. 재생 위치가 자동 저장되며 라이브러리로 돌아오면 새 비디오를 감지합니다\n\n자막: SRT, VTT, ASS, SSA",
         "video.remove": "비디오 제거",
         "video.remove_body": "\"%s\"을(를) 비디오 라이브러리에서 제거할까요? 디스크의 비디오 파일은 삭제되지 않으며 재생 진행 위치는 지워집니다.",
         "video.back": "뒤로",
@@ -1502,7 +1662,7 @@ You can find it any time under Settings → QQ Group.",
         "nav.videos": "비디오",
         "home.empty_title": "아직 추가된 게임이 없습니다",
         "home.game_count": "게임 %d개",
-        "video.video_count": "비디오 %d개",
+        "video.item_count": "항목 %d개",
         "search.games_placeholder": "비주얼 노벨 검색",
         "search.videos_placeholder": "비디오 검색",
         "search.filtered_count": "%d / %d 표시",
@@ -1923,6 +2083,7 @@ var shell_route_label: Label
 var launch_transition_tween: Tween
 var shell_library_button: Button
 var shell_video_button: Button
+var shell_flash_button: Button
 var shell_settings_button: Button
 var shell_dashboard_button: Button
 var shell_compact_dashboard_button: Button
@@ -1930,6 +2091,7 @@ var dashboard_view: ScrollContainer
 var dashboard_compact := false
 var shell_compact_library_button: Button
 var shell_compact_video_button: Button
+var shell_compact_flash_button: Button
 var shell_compact_settings_button: Button
 var shell_sidebar_brand: HBoxContainer
 var shell_sidebar_brand_labels: VBoxContainer
@@ -1958,6 +2120,10 @@ var game_list: GridContainer
 var video_scroll: ScrollContainer
 var video_list: GridContainer
 var video_empty_state: Control
+var video_folder_navigation: HBoxContainer
+var video_folder_back_button: Button
+var video_folder_root_button: Button
+var video_folder_path_label: Label
 var home_game_tab: Button
 var home_video_tab: Button
 var home_actions: HBoxContainer
@@ -1973,6 +2139,7 @@ var home_subtitle_label: Label
 var empty_title_label: Label
 var empty_help_label: Label
 var video_empty_title_label: Label
+var video_empty_icon: TextureRect
 var video_empty_help_label: Label
 var empty_primary_button: Button
 var home_primary_button: Button
@@ -1997,8 +2164,11 @@ var known_games: Array[Dictionary] = []
 var vndb_cover_queue: Array[Dictionary] = []
 var vndb_cover_busy := false
 var known_videos: Array[Dictionary] = []
+var video_library := VideoLibrary.new(VIDEO_LIST_FILE, VIDEO_HIDDEN_FILE)
+var flash_library := VideoLibrary.new(FLASH_LIST_FILE, FLASH_HIDDEN_FILE, ["swf"])
+var flash_view
 var home_library_mode := "game"
-var home_search_queries := {"game": "", "video": ""}
+var home_search_queries := {"game": "", "video": "", "flash": ""}
 var home_search_syncing := false
 var home_filtered_game_count := 0
 var home_filtered_video_count := 0
@@ -2385,6 +2555,7 @@ const HOME_TILE_COVER_WIDTH := 184.0
 const HOME_ROW_HEIGHT := 104.0
 const HOME_ROW_COVER_WIDTH := 70.0
 const HOME_POSTER_ASPECT := 1.38
+const HOME_GRID_SHADOW_GUTTER := 32
 const SHELL_NAV_UNDERLINE := 3.0
 const HOME_COMPACT_BREAKPOINT := 760.0
 const HOME_PHONE_BREAKPOINT := 520.0
@@ -3280,6 +3451,8 @@ func _build_shell_chrome() -> void:
     tabs.add_child(shell_library_button)
     shell_video_button = _shell_nav_button(_t("nav.videos"), ICON_VIDEO, _show_video_library)
     tabs.add_child(shell_video_button)
+    shell_flash_button = _shell_nav_button(_t("nav.flash"), ICON_FLASH, _show_flash_library)
+    tabs.add_child(shell_flash_button)
     shell_settings_button = _shell_nav_button(_t("settings.title"), ICON_SETTINGS, _show_settings)
     tabs.add_child(shell_settings_button)
 
@@ -3343,6 +3516,8 @@ func _build_shell_chrome() -> void:
     dock_row.add_child(shell_compact_library_button)
     shell_compact_video_button = _shell_compact_button(ICON_VIDEO, _t("nav.videos"), _show_video_library)
     dock_row.add_child(shell_compact_video_button)
+    shell_compact_flash_button = _shell_compact_button(ICON_FLASH, _t("nav.flash"), _show_flash_library)
+    dock_row.add_child(shell_compact_flash_button)
     shell_compact_settings_button = _shell_compact_button(ICON_SETTINGS, _t("settings.title"), _show_settings)
     dock_row.add_child(shell_compact_settings_button)
 
@@ -3350,12 +3525,14 @@ func _build_shell_chrome() -> void:
         {"button": shell_dashboard_button, "action": _show_dashboard, "route": "dashboard"},
         {"button": shell_library_button, "action": _show_home, "route": "library"},
         {"button": shell_video_button, "action": _show_video_library, "route": "videos"},
+        {"button": shell_flash_button, "action": _show_flash_library, "route": "flash"},
         {"button": shell_settings_button, "action": _show_settings, "route": "settings"},
     ]
     var dock_specs := [
         {"button": shell_compact_dashboard_button, "action": _show_dashboard, "route": "dashboard"},
         {"button": shell_compact_library_button, "action": _show_home, "route": "library"},
         {"button": shell_compact_video_button, "action": _show_video_library, "route": "videos"},
+        {"button": shell_compact_flash_button, "action": _show_flash_library, "route": "flash"},
         {"button": shell_compact_settings_button, "action": _show_settings, "route": "settings"},
     ]
     for spec in bar_specs:
@@ -3376,7 +3553,7 @@ func _build_shell_chrome() -> void:
     call_deferred("_animate_shell_chrome_in")
 
 func _nav_pill_goal(pill: Control, buttons: Array, compact: bool) -> Variant:
-    var route_index: int = {"dashboard": 0, "library": 1, "videos": 2, "settings": 3}.get(shell_route, -1)
+    var route_index: int = {"dashboard": 0, "library": 1, "videos": 2, "flash": 3, "settings": 4}.get(shell_route, -1)
     if route_index < 0 or route_index >= buttons.size():
         return null
     var button: Button = buttons[route_index]
@@ -3395,13 +3572,13 @@ func _follow_nav_pills() -> void:
         return
     if shell_nav_indicator != null and is_instance_valid(shell_nav_indicator) \
             and shell_nav_indicator.visible and shell_sidebar != null and is_instance_valid(shell_sidebar) and shell_sidebar.visible:
-        var goal = _nav_pill_goal(shell_nav_indicator, [shell_dashboard_button, shell_library_button, shell_video_button, shell_settings_button], false)
+        var goal = _nav_pill_goal(shell_nav_indicator, [shell_dashboard_button, shell_library_button, shell_video_button, shell_flash_button, shell_settings_button], false)
         if goal != null:
             ui_motion.spring_property(shell_nav_indicator, "position", goal["pos"], 0.30, 1.0)
             ui_motion.spring_property(shell_nav_indicator, "size", goal["size"], 0.18, 1.0)
     if shell_compact_indicator != null and is_instance_valid(shell_compact_indicator) \
             and shell_compact_indicator.visible and shell_compact_header != null and is_instance_valid(shell_compact_header) and shell_compact_header.visible:
-        var goal_compact = _nav_pill_goal(shell_compact_indicator, [shell_compact_dashboard_button, shell_compact_library_button, shell_compact_video_button, shell_compact_settings_button], true)
+        var goal_compact = _nav_pill_goal(shell_compact_indicator, [shell_compact_dashboard_button, shell_compact_library_button, shell_compact_video_button, shell_compact_flash_button, shell_compact_settings_button], true)
         if goal_compact != null:
             ui_motion.spring_property(shell_compact_indicator, "position", goal_compact["pos"], 0.30, 1.0)
             ui_motion.spring_property(shell_compact_indicator, "size", goal_compact["size"], 0.18, 1.0)
@@ -3610,10 +3787,12 @@ func _sync_shell_route(route: String) -> void:
     _apply_shell_nav_state(shell_dashboard_button, route == "dashboard")
     _apply_shell_nav_state(shell_library_button, route == "library")
     _apply_shell_nav_state(shell_video_button, route == "videos")
+    _apply_shell_nav_state(shell_flash_button, route == "flash")
     _apply_shell_nav_state(shell_settings_button, route == "settings")
     _apply_shell_compact_state(shell_compact_dashboard_button, route == "dashboard")
     _apply_shell_compact_state(shell_compact_library_button, route == "library")
     _apply_shell_compact_state(shell_compact_video_button, route == "videos")
+    _apply_shell_compact_state(shell_compact_flash_button, route == "flash")
     _apply_shell_compact_state(shell_compact_settings_button, route == "settings")
     call_deferred("_update_nav_indicator", true)
     call_deferred("_update_compact_indicator", true)
@@ -3626,7 +3805,7 @@ func _update_nav_indicator(spring: bool) -> void:
     if shell_sidebar == null or not is_instance_valid(shell_sidebar) or not shell_sidebar.visible or shell_route == "detail":
         shell_nav_indicator.visible = false
         return
-    var goal = _nav_pill_goal(shell_nav_indicator, [shell_dashboard_button, shell_library_button, shell_video_button, shell_settings_button], false)
+    var goal = _nav_pill_goal(shell_nav_indicator, [shell_dashboard_button, shell_library_button, shell_video_button, shell_flash_button, shell_settings_button], false)
     if goal == null:
         return
     _place_route_indicator(shell_nav_indicator, goal, spring, true)
@@ -3655,7 +3834,7 @@ func _update_compact_indicator(spring: bool) -> void:
     if shell_compact_header == null or not is_instance_valid(shell_compact_header) or not shell_compact_header.visible or shell_route == "detail":
         shell_compact_indicator.visible = false
         return
-    var goal = _nav_pill_goal(shell_compact_indicator, [shell_compact_dashboard_button, shell_compact_library_button, shell_compact_video_button, shell_compact_settings_button], true)
+    var goal = _nav_pill_goal(shell_compact_indicator, [shell_compact_dashboard_button, shell_compact_library_button, shell_compact_video_button, shell_compact_flash_button, shell_compact_settings_button], true)
     if goal == null:
         return
     _place_route_indicator(shell_compact_indicator, goal, spring, true)
@@ -3675,6 +3854,7 @@ func _apply_sidebar_presentation(_animate_labels: bool) -> void:
         return
     shell_library_button.text = _t("nav.library")
     shell_video_button.text = _t("nav.videos")
+    shell_flash_button.text = _t("nav.flash")
     shell_settings_button.text = _t("settings.title")
     if is_instance_valid(shell_dashboard_button):
         shell_dashboard_button.text = _t("nav.dashboard")
@@ -3682,6 +3862,7 @@ func _apply_sidebar_presentation(_animate_labels: bool) -> void:
         [shell_compact_dashboard_button, "nav.dashboard"],
         [shell_compact_library_button, "nav.library"],
         [shell_compact_video_button, "nav.videos"],
+        [shell_compact_flash_button, "nav.flash"],
         [shell_compact_settings_button, "settings.title"],
     ]:
         var button: Button = pair[0]
@@ -4873,6 +5054,7 @@ func _layout_home_view(window_size: Vector2) -> void:
     _sync_home_action_labels()
     var scroll_bar_width := game_scroll.get_v_scroll_bar().get_combined_minimum_size().x
     var list_width := maxf(HOME_TILE_MIN_WIDTH, window_size.x - margin * 2.0 - scroll_bar_width)
+    var shadow_gutter := mini(HOME_GRID_SHADOW_GUTTER, int(margin))
     var gap := 12.0 if phone else (16.0 if compact else 24.0)
     var columns := 1
     if not compact:
@@ -4880,6 +5062,14 @@ func _layout_home_view(window_size: Vector2) -> void:
     for grid in [game_list, video_list]:
         if grid == null:
             continue
+        # Extend the clip into the page gutter, then inset the grid by the
+        # same amount so edge-card shadows fit without shifting the cards.
+        var pad := grid.get_parent() as MarginContainer
+        var scroll := pad.get_parent() as ScrollContainer
+        scroll.offset_left = -shadow_gutter
+        scroll.offset_right = shadow_gutter
+        pad.add_theme_constant_override("margin_left", shadow_gutter)
+        pad.add_theme_constant_override("margin_right", shadow_gutter)
         grid.columns = columns
         grid.add_theme_constant_override("h_separation", int(gap))
         grid.add_theme_constant_override("v_separation", int(gap + (0.0 if compact else 8.0)))
@@ -4887,16 +5077,17 @@ func _layout_home_view(window_size: Vector2) -> void:
     if not home_layout_initialized or home_compact_layout != compact:
         home_compact_layout = compact
         home_layout_initialized = true
-        if home_library_mode == "video" and not known_videos.is_empty():
-            call_deferred("_refresh_videos")
+        if home_library_mode != "game" and not _active_file_library().entries.is_empty():
+            call_deferred("_refresh_file_library")
         elif not known_games.is_empty():
             call_deferred("_refresh_games")
 
 func _sync_home_header_text() -> void:
     if is_instance_valid(home_title_label):
-        home_title_label.text = _t("nav.videos") if home_library_mode == "video" else _t("nav.library")
+        home_title_label.text = _t("nav.flash" if home_library_mode == "flash" else "nav.videos") if home_library_mode != "game" else _t("nav.library")
     _sync_home_search_box()
     _sync_home_subtitle_text()
+    _sync_video_folder_navigation()
 
 func _current_home_search_query() -> String:
     return String(home_search_queries.get(home_library_mode, "")).strip_edges()
@@ -4905,7 +5096,7 @@ func _sync_home_search_box() -> void:
     if not is_instance_valid(home_search_input):
         return
     home_search_input.placeholder_text = _t(
-        "search.videos_placeholder" if home_library_mode == "video" else "search.games_placeholder"
+        "flash.search_placeholder" if home_library_mode == "flash" else ("search.videos_placeholder" if home_library_mode == "video" else "search.games_placeholder")
     )
     home_search_input.accessibility_name = home_search_input.placeholder_text
     var desired_text := String(home_search_queries.get(home_library_mode, ""))
@@ -4918,15 +5109,17 @@ func _sync_home_search_box() -> void:
 func _sync_home_subtitle_text() -> void:
     if not is_instance_valid(home_subtitle_label):
         return
-    var total := known_videos.size() if home_library_mode == "video" else known_games.size()
-    var visible := home_filtered_video_count if home_library_mode == "video" else home_filtered_game_count
     var searching := not _current_home_search_query().is_empty()
+    var total := known_games.size()
+    if home_library_mode != "game":
+        total = _active_file_library().search_entries().size() if searching else _active_file_library().entries.size()
+    var visible := home_filtered_video_count if home_library_mode != "game" else home_filtered_game_count
     var target := visible if searching else total
-    var key := "video.video_count" if home_library_mode == "video" else "home.game_count"
+    var key := "video.item_count" if home_library_mode != "game" else "home.game_count"
     var formatter := func(value: int) -> String:
         if searching:
             return _t("search.filtered_count", [value, total])
-        return _t(key, [value])
+        return _media_text(key, [value])
     var start := home_count_value if home_subtitle_label.is_visible_in_tree() else target
     home_count_value = target
     ui_motion.count_up(home_subtitle_label, start, target, formatter, 0.5)
@@ -4962,7 +5155,7 @@ func _on_home_search_text_changed(value: String) -> void:
     if home_search_syncing:
         return
     home_search_queries[home_library_mode] = value
-    if home_library_mode == "video":
+    if home_library_mode != "game":
         _rebuild_video_cards(false)
     else:
         _rebuild_game_cards(false)
@@ -4977,16 +5170,18 @@ func _home_search_outer_style() -> StyleBoxFlat:
 
 func _sync_home_action_labels() -> void:
     if is_instance_valid(home_primary_button):
-        var primary_text := _t("video.refresh") if OS.get_name() == "iOS" else _t("video.import")
+        var primary_text := _media_text("video.refresh") if OS.get_name() == "iOS" else _media_text("video.import")
         if home_library_mode == "game":
             primary_text = _t("home.refresh") if OS.get_name() == "iOS" else _t("home.import")
         _set_pill_button_text(home_primary_button, primary_text)
         home_primary_button.tooltip_text = primary_text
         home_primary_button.accessibility_name = primary_text
     if is_instance_valid(home_guide_button):
-        home_guide_button.tooltip_text = _t("video.guide") if home_library_mode == "video" else _t("home.import_guide")
+        home_guide_button.tooltip_text = _t("video.guide") if home_library_mode != "game" else _t("home.import_guide")
 
 func _build_home_view() -> void:
+    if OS.get_name() == "iOS":
+        DirAccess.make_dir_recursive_absolute("user://Flash")
     home_layout_initialized = false
     home_header_layout_initialized = false
     home_view = Control.new()
@@ -5097,6 +5292,29 @@ func _build_home_view() -> void:
     home_primary_button.pressed.connect(_on_refresh_or_import)
     home_actions.add_child(home_primary_button)
 
+    video_folder_navigation = HBoxContainer.new()
+    video_folder_navigation.name = "VideoFolderNavigation"
+    video_folder_navigation.add_theme_constant_override("separation", 10)
+    page.add_child(video_folder_navigation)
+    video_folder_back_button = _shell_compact_button(ICON_BACK, _t("video.parent_folder"), _go_up_video_directory)
+    video_folder_back_button.name = "VideoFolderBack"
+    video_folder_navigation.add_child(video_folder_back_button)
+    video_folder_root_button = _shell_compact_button(ICON_HOME, _t("nav.videos"), _go_to_video_library_root)
+    video_folder_root_button.name = "VideoFolderRoot"
+    video_folder_navigation.add_child(video_folder_root_button)
+    for button in [video_folder_back_button, video_folder_root_button]:
+        button.text = ""
+        button.custom_minimum_size = Vector2(40, 40)
+        button.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
+        ui_widgets.toolbar_button(button)
+    video_folder_path_label = Label.new()
+    video_folder_path_label.name = "VideoFolderPath"
+    video_folder_path_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+    video_folder_path_label.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+    video_folder_path_label.add_theme_font_size_override("font_size", 14)
+    video_folder_path_label.add_theme_color_override("font_color", ui_tokens.text_secondary)
+    video_folder_navigation.add_child(video_folder_path_label)
+
     var library_body := Control.new()
     library_body.size_flags_horizontal = Control.SIZE_EXPAND_FILL
     library_body.size_flags_vertical = Control.SIZE_EXPAND_FILL
@@ -5131,9 +5349,10 @@ func _build_home_view() -> void:
     video_empty_state.mouse_filter = Control.MOUSE_FILTER_IGNORE
     video_empty_state.visible = false
     library_body.add_child(video_empty_state)
-    var video_parts := _empty_state_panel(ICON_VIDEO, _t("video.empty_title"), _video_empty_help_text())
+    var video_parts := _empty_state_panel(_file_library_icon(), _media_text("video.empty_title"), _video_empty_help_text())
     video_empty_state.add_child(video_parts["root"])
     video_empty_title_label = video_parts["title"]
+    video_empty_icon = video_parts["icon"]
     video_empty_help_label = video_parts["body"]
     _apply_home_library_visibility()
     call_deferred("_animate_home_header")
@@ -7806,7 +8025,7 @@ func _refresh_language_texts() -> void:
     if is_instance_valid(empty_help_label):
         empty_help_label.text = _empty_help_text()
     if is_instance_valid(video_empty_title_label):
-        video_empty_title_label.text = _t("video.empty_title")
+        video_empty_title_label.text = _media_text("video.empty_title")
     if is_instance_valid(video_empty_help_label):
         video_empty_help_label.text = _video_empty_help_text()
     _sync_home_empty_state_text()
@@ -7824,22 +8043,26 @@ func _empty_help_text() -> String:
     return _t("home.empty_help_desktop")
 
 func _video_empty_help_text() -> String:
-    return _t("video.empty_help_ios") if OS.get_name() == "iOS" else _t("video.empty_help_desktop")
+    if _active_file_library().can_go_up():
+        return _media_text("video.empty_folder_help")
+    return _media_text("video.empty_help_ios") if OS.get_name() == "iOS" else _media_text("video.empty_help_desktop")
 
 func _select_home_library(mode: String) -> void:
-    if not mode in ["game", "video"]:
+    if not mode in ["game", "video", "flash"]:
         return
     home_library_mode = mode
-    _sync_shell_route("videos" if mode == "video" else "library")
+    _sync_shell_route(_library_route(mode))
     _apply_home_library_visibility()
     _refresh_language_texts()
-    if mode == "video":
-        _refresh_videos()
+    if mode != "game":
+        _refresh_file_library()
     else:
         _refresh_games()
 
 func _apply_home_library_visibility() -> void:
-    var video_mode := home_library_mode == "video"
+    var video_mode := home_library_mode != "game"
+    if is_instance_valid(video_folder_navigation):
+        video_folder_navigation.visible = video_mode
     if is_instance_valid(game_scroll):
         game_scroll.visible = not video_mode and home_filtered_game_count > 0
     if is_instance_valid(empty_state):
@@ -7852,6 +8075,8 @@ func _apply_home_library_visibility() -> void:
 
 func _sync_home_empty_state_text() -> void:
     var searching := not _current_home_search_query().is_empty()
+    if is_instance_valid(video_empty_icon):
+        video_empty_icon.texture = _load_ui_icon(_file_library_icon())
     if is_instance_valid(empty_title_label):
         empty_title_label.text = _t("search.no_results_title") if searching else _t("home.empty_title")
     if is_instance_valid(empty_help_label):
@@ -7859,7 +8084,9 @@ func _sync_home_empty_state_text() -> void:
     if is_instance_valid(empty_primary_button):
         empty_primary_button.visible = not searching
     if is_instance_valid(video_empty_title_label):
-        video_empty_title_label.text = _t("search.no_results_title") if searching else _t("video.empty_title")
+        video_empty_title_label.text = _media_text("search.no_results_title") if searching else _media_text(
+            "video.empty_folder_title" if _active_file_library().can_go_up() else "video.empty_title"
+        )
     if is_instance_valid(video_empty_help_label):
         video_empty_help_label.text = _t("search.no_results_help") if searching else _video_empty_help_text()
 
@@ -7907,7 +8134,7 @@ func _cascade_home_cards() -> void:
     if is_instance_valid(home_header_box):
         ui_motion.enter(home_header_box, Vector2(0, 12))
         ui_motion.wipe_in(home_title_label, 0.04, 0.45)
-    if home_library_mode == "video":
+    if home_library_mode != "game":
         ui_motion.cascade_grid(video_list)
     else:
         ui_motion.cascade_grid(game_list)
@@ -7915,11 +8142,14 @@ func _cascade_home_cards() -> void:
 func _show_home() -> void:
     _show_library("game")
 
+func _show_flash_library() -> void:
+    _show_library("flash")
+
 func _show_video_library() -> void:
     _show_library("video")
 
 func _show_library(mode: String) -> void:
-    if not mode in ["game", "video"]:
+    if not mode in ["game", "video", "flash"]:
         mode = "game"
     if _request_settings_navigation(
         Callable(self, "_show_library").bind(mode)
@@ -7936,9 +8166,9 @@ func _show_library(mode: String) -> void:
     home_library_mode = mode
     _sync_home_header_text()
     _sync_home_action_labels()
-    _sync_shell_route("videos" if mode == "video" else "library")
-    if mode == "video":
-        _refresh_videos()
+    _sync_shell_route(_library_route(mode))
+    if mode != "game":
+        _refresh_file_library()
     else:
         _refresh_games()
     if previous_route != "library":
@@ -8476,9 +8706,9 @@ func _dismiss_modal(after: Callable = Callable()) -> void:
 func _show_import_guide() -> void:
     var guide_title := _t("dialog.import_title")
     var guide_body := _t("dialog.import_guide_body")
-    if home_library_mode == "video":
-        guide_title = _t("video.guide_title")
-        guide_body = _t("video.guide_body_ios") if OS.get_name() == "iOS" else _t("video.guide_body_desktop")
+    if home_library_mode != "game":
+        guide_title = _media_text("video.guide_title")
+        guide_body = _media_text("video.guide_body_ios") if OS.get_name() == "iOS" else _media_text("video.guide_body_desktop")
     var dialog := _modal_dialog(Vector2(560, 400), 0.46)
     var box := _modal_stack(dialog, guide_title, ICON_HELP)
     box.add_child(_dialog_body_label(guide_body))
@@ -9503,12 +9733,12 @@ func _confirm_remove_selected() -> void:
     buttons.add_child(remove)
 
 func _on_refresh_or_import() -> void:
-    if home_library_mode == "video":
+    if home_library_mode != "game":
         if OS.get_name() == "Android":
             _open_video_import_dialog()
             return
         if OS.get_name() == "iOS":
-            _refresh_videos()
+            _refresh_file_library()
         else:
             _open_video_import_dialog()
         return
@@ -9864,24 +10094,63 @@ func _rebuild_game_cards(animate_cards: bool = false) -> void:
     _sync_home_header_text()
     _apply_home_library_visibility()
 
+func _library_route(mode: String) -> String:
+    return "flash" if mode == "flash" else ("videos" if mode == "video" else "library")
+
+func _active_file_library() -> VideoLibrary:
+    return flash_library if home_library_mode == "flash" else video_library
+
+func _file_library_icon() -> String:
+    return ICON_FLASH if home_library_mode == "flash" else ICON_VIDEO
+
+func _media_text(key: String, args: Array = []) -> String:
+    var flash_key := key.replace("video.", "flash.").replace("nav.videos", "nav.flash")
+    if home_library_mode == "flash" and UI_TEXT[LANG_EN].has(flash_key):
+        return _t(flash_key, args)
+    return _t(key, args)
+
+func _refresh_file_library() -> void:
+    if home_library_mode != "flash":
+        _refresh_videos()
+        return
+    flash_library.refresh("user://Flash" if OS.get_name() == "iOS" else "")
+    _rebuild_video_cards(false)
+
+func _is_flash_active() -> bool:
+    return is_instance_valid(flash_view) and flash_view.visible
+
+func _open_flash_player(entry: Dictionary) -> void:
+    if _is_flash_active() or not _require_legal_documents_for_media():
+        return
+    _reset_shell_scroll_drag()
+    flash_view = FlashPlayerView.new()
+    add_child(flash_view)
+    flash_view.setup(self)
+    flash_view.closed.connect(func():
+        flash_view = null
+        shell_root.visible = true
+        _refresh_file_library()
+    )
+    var error: String = flash_view.open_entry(entry)
+    if not error.is_empty():
+        flash_view.close()
+        _show_message(error)
+        return
+    shell_root.visible = false
+
 func _refresh_videos() -> void:
     if video_progress_data.is_empty():
         video_progress_data = _load_video_progress()
-    known_videos = _load_video_list()
-    if OS.get_name() == "iOS":
-        var video_root := ProjectSettings.globalize_path("user://Video")
-        DirAccess.make_dir_recursive_absolute(video_root)
-        known_videos = _filter_hidden_ios_videos(_scan_video_directory(video_root))
-        _save_video_list(known_videos)
-    known_videos.sort_custom(func(a: Dictionary, b: Dictionary):
-        return String(a.get("name", "")).naturalnocasecmp_to(String(b.get("name", ""))) < 0
-    )
-    _rebuild_video_cards(false)
+    video_library.refresh("user://Video" if OS.get_name() == "iOS" else "")
+    known_videos = video_library.videos
+    if home_library_mode != "flash":
+        _rebuild_video_cards(false)
 
 func _rebuild_video_cards(_animate_cards: bool = false) -> void:
-    var query := String(home_search_queries.get("video", ""))
+    var query := String(home_search_queries.get(home_library_mode, ""))
     var filtered_videos: Array[Dictionary] = []
-    for video in known_videos:
+    var candidates := _active_file_library().entries if query.strip_edges().is_empty() else _active_file_library().search_entries()
+    for video in candidates:
         if _video_matches_home_search(video, query):
             filtered_videos.append(video)
     home_filtered_video_count = filtered_videos.size()
@@ -9896,113 +10165,62 @@ func _rebuild_video_cards(_animate_cards: bool = false) -> void:
     _sync_home_header_text()
     _apply_home_library_visibility()
 
-func _load_video_list() -> Array[Dictionary]:
-    var file := FileAccess.open(VIDEO_LIST_FILE, FileAccess.READ)
-    if file == null:
-        return []
-    var parsed = JSON.parse_string(file.get_as_text())
-    if not parsed is Array:
-        return []
-    var videos: Array[Dictionary] = []
-    for item in parsed:
-        if not item is Dictionary:
-            continue
-        var path := String(item.get("path", ""))
-        if FileAccess.file_exists(path) and _is_video_path(path):
-            videos.append(_video_info(path))
-    return videos
-
-func _save_video_list(videos: Array[Dictionary]) -> void:
-    var file := FileAccess.open(VIDEO_LIST_FILE, FileAccess.WRITE)
-    if file != null:
-        file.store_string(JSON.stringify(videos))
-
-func _load_hidden_videos() -> Dictionary:
-    var file := FileAccess.open(VIDEO_HIDDEN_FILE, FileAccess.READ)
-    if file == null:
-        return {}
-    var parsed = JSON.parse_string(file.get_as_text())
-    return parsed if parsed is Dictionary else {}
-
-func _save_hidden_videos(hidden: Dictionary) -> void:
-    var file := FileAccess.open(VIDEO_HIDDEN_FILE, FileAccess.WRITE)
-    if file != null:
-        file.store_string(JSON.stringify(hidden))
-
-func _filter_hidden_ios_videos(videos: Array[Dictionary]) -> Array[Dictionary]:
-    var hidden := _load_hidden_videos()
-    var retained_hidden := {}
-    var visible: Array[Dictionary] = []
-    for video in videos:
-        var path := String(video.get("path", ""))
-        var modified := int(video.get("modified", 0))
-        if int(hidden.get(path, -1)) == modified:
-            retained_hidden[path] = modified
-        else:
-            visible.append(video)
-    if JSON.stringify(retained_hidden) != JSON.stringify(hidden):
-        _save_hidden_videos(retained_hidden)
-    return visible
-
-func _scan_video_directory(root: String) -> Array[Dictionary]:
-    var videos: Array[Dictionary] = []
-    _scan_video_directory_into(root, videos)
-    return videos
-
-func _scan_video_directory_into(root: String, videos: Array[Dictionary]) -> void:
-    var dir := DirAccess.open(root)
-    if dir == null:
+func _sync_video_folder_navigation() -> void:
+    if not is_instance_valid(video_folder_navigation):
         return
-    dir.list_dir_begin()
-    while true:
-        var name := dir.get_next()
-        if name.is_empty():
-            break
-        if name.begins_with("."):
-            continue
-        var path := root.path_join(name)
-        if dir.current_is_dir():
-            _scan_video_directory_into(path, videos)
-        elif _is_video_path(path):
-            videos.append(_video_info(path))
-    dir.list_dir_end()
+    var can_go_up := _active_file_library().can_go_up()
+    video_folder_back_button.disabled = not can_go_up
+    video_folder_back_button.tooltip_text = _t("video.parent_folder")
+    video_folder_back_button.accessibility_name = _t("video.parent_folder")
+    video_folder_root_button.disabled = not can_go_up
+    video_folder_root_button.tooltip_text = _t("nav.flash" if home_library_mode == "flash" else "nav.videos")
+    video_folder_root_button.accessibility_name = _t("nav.flash" if home_library_mode == "flash" else "nav.videos")
+    var location := _active_file_library().location_label()
+    video_folder_path_label.text = _t("nav.flash" if home_library_mode == "flash" else "nav.videos") if location.is_empty() else location
+    video_folder_path_label.tooltip_text = _active_file_library().current_directory
 
-func _is_video_path(path: String) -> bool:
-    return path.get_extension().to_lower() in VIDEO_EXTENSIONS
+func _enter_video_directory(path: String) -> void:
+    if _active_file_library().enter_directory(path):
+        _finish_video_directory_navigation()
 
-func _video_info(path: String) -> Dictionary:
-    return {
-        "path": path,
-        "name": path.get_file().get_basename(),
-        "fileName": path.get_file(),
-        "modified": FileAccess.get_modified_time(path),
-    }
+func _go_up_video_directory() -> void:
+    if _active_file_library().go_up():
+        _finish_video_directory_navigation()
+
+func _go_to_video_library_root() -> void:
+    _active_file_library().go_to_library()
+    _finish_video_directory_navigation()
+
+func _finish_video_directory_navigation() -> void:
+    _reset_shell_scroll_drag()
+    home_search_queries[home_library_mode] = ""
+    if home_library_mode != "flash":
+        known_videos = video_library.videos
+    if is_instance_valid(video_scroll):
+        video_scroll.scroll_vertical = 0
+    _rebuild_video_cards(false)
 
 func _add_video_path(path: String) -> void:
-    var normalized := path.simplify_path()
-    if not FileAccess.file_exists(normalized) or not _is_video_path(normalized):
-        return
-    var videos := _load_video_list()
-    var next: Array[Dictionary] = []
-    for video in videos:
-        if String(video.get("path", "")) != normalized:
-            next.append(video)
-    next.append(_video_info(normalized))
-    _save_video_list(next)
-    _refresh_videos()
+    if _active_file_library().add_source(path):
+        _active_file_library().go_to_library()
+        _finish_video_directory_navigation()
 
 func _open_video_import_dialog() -> void:
+    var message_key := "flash.android_storage_help" if home_library_mode == "flash" else "message.android_video_storage_permission_required"
     if OS.get_name() == "Android":
         if not android_video_import_notice_shown:
             android_video_import_notice_shown = true
             _show_android_storage_permission_prompt(
                 Callable(self, "_continue_video_import_after_permission_notice"),
-                "message.android_video_storage_permission_required"
+                message_key
             )
             return
-        if not _ensure_android_storage_permission_for_import(true):
+    if home_library_mode == "flash":
+        if not _ensure_android_storage_permission_for_path("/storage/emulated/0", message_key):
             return
-    _show_video_file_dialog()
+    elif not _ensure_android_storage_permission_for_import(true):
+        return
+    _show_video_import_picker()
 
 func _continue_video_import_after_permission_notice() -> void:
     if not _android_has_external_storage_permission():
@@ -10010,12 +10228,28 @@ func _continue_video_import_after_permission_notice() -> void:
         return
     _open_video_import_dialog()
 
+func _show_video_import_picker() -> void:
+    var dialog := _modal_dialog(Vector2(480, 300))
+    var box := _modal_stack(dialog, _media_text("video.import"), ICON_ADD)
+    var file_button := _detail_action(_file_library_icon(), _media_text("video.import_file"))
+    file_button.pressed.connect(func(): _dismiss_modal(_show_video_file_dialog))
+    box.add_child(file_button)
+    var folder_button := _detail_action(ICON_FOLDER, _media_text("video.import_folder"))
+    folder_button.pressed.connect(func(): _dismiss_modal(_show_video_folder_dialog))
+    box.add_child(folder_button)
+    var cancel := _secondary_dialog_button(_media_text("dialog.cancel"), Vector2(108, 44))
+    cancel.size_flags_horizontal = Control.SIZE_SHRINK_END
+    cancel.pressed.connect(_dismiss_modal)
+    box.add_child(cancel)
+
 func _show_video_file_dialog() -> void:
     var filters := PackedStringArray([
         "*.mp4,*.mkv,*.mov,*.m4v,*.avi,*.webm,*.flv,*.ts,*.m2ts,*.mpeg,*.mpg,*.wmv;Video files"
     ])
+    if home_library_mode == "flash":
+        filters = PackedStringArray(["*.swf;Flash files"])
     var dialog := _create_file_dialog(
-        _t("video.import"),
+        _media_text("video.import"),
         FileDialog.FILE_MODE_OPEN_FILE,
         filters
     )
@@ -10023,16 +10257,24 @@ func _show_video_file_dialog() -> void:
     add_child(dialog)
     dialog.popup_centered(Vector2i(900, 640))
 
+func _show_video_folder_dialog() -> void:
+    var dialog := _create_file_dialog(_media_text("video.import_folder"), FileDialog.FILE_MODE_OPEN_DIR)
+    dialog.dir_selected.connect(_add_video_path)
+    add_child(dialog)
+    dialog.popup_centered(Vector2i(900, 640))
+
 func _video_card(video: Dictionary) -> Control:
+    var flash := home_library_mode == "flash"
+    var folder := VideoLibrary.is_directory(video)
     var path := String(video.get("path", ""))
-    var progress: Dictionary = video_progress_data.get(path, {})
+    var progress: Dictionary = {} if flash else video_progress_data.get(path, {})
     var position := float(progress.get("position", 0.0))
     var duration := float(progress.get("duration", 0.0))
-    var detail := String(video.get("fileName", path.get_file()))
+    var detail := _media_text("video.open_folder") if folder else String(video.get("fileName", path.get_file()))
     if position > 1.0:
         detail = "%s  ·  %s" % [
             detail,
-            _t("video.progress", [_format_video_time(position), _format_video_time(duration)]),
+            _media_text("video.progress", [_format_video_time(position), _format_video_time(duration)]),
         ]
 
     var card := Control.new()
@@ -10046,7 +10288,16 @@ func _video_card(video: Dictionary) -> Control:
     button.text = ""
     _style_home_card_button(button, home_compact_layout)
     var captured := video.duplicate(true)
-    button.pressed.connect(func(): _open_video_player(captured))
+    button.tooltip_text = path
+    button.accessibility_name = String(video.get("name", path.get_file()))
+    button.pressed.connect(func():
+        if folder:
+            _enter_video_directory(path)
+        elif flash:
+            _open_flash_player(captured)
+        else:
+            _open_video_player(captured)
+    )
     card.add_child(button)
 
     if home_compact_layout:
@@ -10057,9 +10308,11 @@ func _video_card(video: Dictionary) -> Control:
     var poster: Control = button.get_meta("hero_cover", null)
     _add_video_card_progress(poster if poster != null else card, position, duration)
 
+    if not _active_file_library().can_remove(video):
+        return card
     var remove := Button.new()
-    remove.tooltip_text = _t("video.remove")
-    remove.accessibility_name = _t("video.remove")
+    remove.tooltip_text = _media_text("video.remove_folder" if folder else "video.remove")
+    remove.accessibility_name = remove.tooltip_text
     remove.focus_mode = Control.FOCUS_ALL
     ui_widgets.toolbar_button(remove)
     remove.add_theme_stylebox_override("normal", ui_tokens.panel(ui_tokens.tint(ui_tokens.background, 0.72), 10))
@@ -10130,7 +10383,7 @@ func _build_desktop_video_card(button: Button, video: Dictionary, detail: String
     column.set_anchors_preset(Control.PRESET_FULL_RECT)
     column.add_theme_constant_override("separation", 10)
     button.add_child(column)
-    var poster := _card_poster(button, {}, ICON_VIDEO)
+    var poster := _card_poster(button, {}, ICON_FOLDER if VideoLibrary.is_directory(video) else _file_library_icon())
     poster.size_flags_vertical = Control.SIZE_EXPAND_FILL
     column.add_child(poster)
     _populate_video_card_metadata(column, video, detail, false)
@@ -10141,11 +10394,11 @@ func _build_compact_video_card(button: Button, video: Dictionary, detail: String
     row.set_anchors_preset(Control.PRESET_FULL_RECT)
     row.offset_left = 8
     row.offset_top = 8
-    row.offset_right = -56
+    row.offset_right = -56 if _active_file_library().can_remove(video) else -8
     row.offset_bottom = -8
     row.add_theme_constant_override("separation", 14)
     button.add_child(row)
-    var poster := _card_poster(button, {}, ICON_VIDEO)
+    var poster := _card_poster(button, {}, ICON_FOLDER if VideoLibrary.is_directory(video) else _file_library_icon())
     poster.custom_minimum_size = Vector2(HOME_ROW_COVER_WIDTH, 0)
     row.add_child(poster)
     _populate_video_card_metadata(row, video, detail, true)
@@ -10156,11 +10409,13 @@ func _populate_video_card_cover(cover_host: Control, compact: bool) -> void:
 func _populate_video_card_metadata(host: Control, video: Dictionary, detail: String, compact: bool) -> void:
     var button := host.get_parent() as Button
     var extension := String(video.get("fileName", "")).get_extension().to_upper()
+    if VideoLibrary.is_directory(video):
+        extension = _media_text("video.folder")
     var caption := _card_caption(
         button,
         String(video.get("name", String(video.get("path", "")).get_file())),
         detail,
-        extension if not extension.is_empty() else _t("nav.videos")
+        extension if not extension.is_empty() else _media_text("nav.videos")
     )
     if compact:
         caption.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -10172,30 +10427,28 @@ func _confirm_remove_video(video: Dictionary) -> void:
     if path.is_empty():
         return
     var dialog := _modal_dialog(Vector2(560, 270), 0.40)
-    var box := _modal_stack(dialog, _t("video.remove"), ICON_DELETE)
-    box.add_child(_dialog_body_label(_t("video.remove_body", [String(video.get("name", path.get_file()))]), 16))
+    var folder := VideoLibrary.is_directory(video)
+    var box := _modal_stack(dialog, _media_text("video.remove_folder" if folder else "video.remove"), ICON_DELETE)
+    box.add_child(_dialog_body_label(_media_text(
+        "video.remove_folder_body" if folder else "video.remove_body", [String(video.get("name", path.get_file()))]
+    ), 16))
     var buttons := _dialog_button_row()
     box.add_child(buttons)
-    var cancel := _secondary_dialog_button(_t("dialog.cancel"))
+    var cancel := _secondary_dialog_button(_media_text("dialog.cancel"))
     cancel.pressed.connect(func(): _dismiss_modal())
     buttons.add_child(cancel)
-    var remove := _danger_button(_t("dialog.remove"))
+    var remove := _danger_button(_media_text("dialog.remove"))
     remove.pressed.connect(func():
         _dismiss_modal(func(): _remove_video(path))
     )
     buttons.add_child(remove)
 
 func _remove_video(path: String) -> void:
-    var videos := _load_video_list()
-    var next: Array[Dictionary] = []
-    for video in videos:
-        if String(video.get("path", "")) != path:
-            next.append(video)
-    _save_video_list(next)
-    if OS.get_name() == "iOS":
-        var hidden := _load_hidden_videos()
-        hidden[path] = int(FileAccess.get_modified_time(path))
-        _save_hidden_videos(hidden)
+    if home_library_mode == "flash":
+        flash_library.remove_entry(path)
+        _refresh_file_library()
+        return
+    video_library.remove_entry(path)
     video_progress_data.erase(path)
     _save_video_progress_file()
     _refresh_videos()
@@ -12960,7 +13213,7 @@ func _capture_ui_after_ready() -> void:
     ]:
         var capture_video := OS.get_environment("AETHERKIRI_CAPTURE_UI_VIDEO")
         if not capture_video.is_empty() and FileAccess.file_exists(capture_video):
-            _open_video_player(_video_info(capture_video))
+            _open_video_player(VideoLibrary.entry_info(capture_video))
         elif not known_videos.is_empty():
             _open_video_player(known_videos[0])
         if action in [
@@ -14919,6 +15172,8 @@ func _notification(what: int) -> void:
     if what == NOTIFICATION_WM_GO_BACK_REQUEST:
         _handle_go_back_request()
         return
+    if what == NOTIFICATION_WM_CLOSE_REQUEST and _is_flash_active():
+        flash_view.close()
     if player == null:
         return
     if what == NOTIFICATION_APPLICATION_PAUSED or what == NOTIFICATION_APPLICATION_FOCUS_OUT:
@@ -14965,11 +15220,17 @@ func _handle_go_back_request() -> void:
     if modal_layer != null and modal_layer.visible:
         _dismiss_modal()
         return
+    if _is_flash_active():
+        flash_view.close()
+        return
     if video_playing:
         _close_video_player()
         return
     if game_running or cached_startup_state == STARTUP_RUNNING:
         _confirm_exit_game_for_go_back()
+        return
+    if shell_route in ["videos", "flash"] and _active_file_library().can_go_up():
+        _go_up_video_directory()
         return
     if shell_route == "detail" or shell_route == "settings":
         _show_home()
@@ -16206,14 +16467,14 @@ func _reset_mobile_edge_back_gesture() -> void:
     mobile_edge_back_cancelled = false
 
 func _mobile_edge_back_available() -> bool:
-    if not _mobile_runtime() or game_running or video_playing:
+    if not _mobile_runtime() or game_running or video_playing or _is_flash_active():
         return false
     if shell_root == null or not shell_root.visible:
         return false
     if modal_layer != null and modal_layer.visible:
         # The mandatory first-use documents cannot be bypassed by a gesture.
         return _next_required_legal_document().is_empty()
-    return shell_route in ["detail", "settings"]
+    return shell_route in ["detail", "settings"] or (shell_route in ["videos", "flash"] and _active_file_library().can_go_up())
 
 func _edge_back_gesture_qualified(
     start: Vector2,
@@ -16234,6 +16495,9 @@ func _edge_back_gesture_qualified(
 func _perform_mobile_shell_back() -> bool:
     if modal_layer != null and modal_layer.visible:
         _dismiss_modal()
+        return true
+    if shell_route in ["videos", "flash"] and _active_file_library().can_go_up():
+        _go_up_video_directory()
         return true
     if shell_route == "detail":
         _show_library("game")
@@ -16337,12 +16601,18 @@ func _trace_ios_raw_pointer_event(event: InputEvent) -> void:
         perf_log_file.flush()
 
 func _input(event: InputEvent) -> void:
+    if _is_flash_active():
+        return
     _trace_ios_raw_pointer_event(event)
     _note_backdrop_touch(event)
     if event is InputEventKey:
         var shell_key := event as InputEventKey
         if shell_key.pressed and not shell_key.echo and shell_key.keycode == KEY_ESCAPE and modal_layer != null and modal_layer.visible:
             _dismiss_modal()
+            get_viewport().set_input_as_handled()
+            return
+        if shell_key.pressed and not shell_key.echo and shell_key.keycode == KEY_ESCAPE and not video_playing and not game_running and shell_route in ["videos", "flash"] and _active_file_library().can_go_up():
+            _go_up_video_directory()
             get_viewport().set_input_as_handled()
             return
     if video_playing and _handle_video_player_input(event):
@@ -17746,7 +18016,7 @@ func _animate_shell_chrome_in() -> void:
                 shell_compact_header.remove_meta("aether_entering")
         )
     var index := 0
-    for item in [shell_brand_mark, shell_dashboard_button, shell_library_button, shell_video_button, shell_settings_button]:
+    for item in [shell_brand_mark, shell_dashboard_button, shell_library_button, shell_video_button, shell_flash_button, shell_settings_button]:
         if is_instance_valid(item) and item.is_visible_in_tree():
             ui_motion.pop_in(item, 0.06 + 0.06 * float(index), 0.7)
             index += 1
@@ -17821,7 +18091,7 @@ func _empty_state_panel(icon_path: String, title_text: String, body_text: String
     body.add_theme_color_override("font_color", ui_tokens.text_secondary)
     body.add_theme_constant_override("line_spacing", 4)
     box.add_child(body)
-    return {"root": box, "title": title, "body": body}
+    return {"root": box, "title": title, "body": body, "icon": glyph}
 
 func _cascade_grid(grid: GridContainer) -> void:
     if grid != null and is_instance_valid(grid) and grid.is_visible_in_tree():
@@ -18248,8 +18518,8 @@ func _home_grid_pad(grid: GridContainer) -> MarginContainer:
     pad.name = "GridPad"
     pad.size_flags_horizontal = Control.SIZE_EXPAND_FILL
     pad.mouse_filter = Control.MOUSE_FILTER_PASS
-    pad.add_theme_constant_override("margin_top", 18)
-    pad.add_theme_constant_override("margin_bottom", 28)
+    pad.add_theme_constant_override("margin_top", 28)
+    pad.add_theme_constant_override("margin_bottom", 48)
     pad.add_child(grid)
     return pad
 

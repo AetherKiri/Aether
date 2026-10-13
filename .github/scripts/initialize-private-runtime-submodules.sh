@@ -21,6 +21,7 @@ git submodule update --init --recursive --depth 1 \
     packages/AetherSiglus \
     packages/OnscripterYuri \
     packages/psdfile \
+    packages/ruffle \
     packages/rfvp \
     packages/tjs2Decompiler
 

@@ -172,15 +172,18 @@ if(ANDROID)
         src/android_external_texture.cpp)
     target_link_libraries(aether_kiri_godot PRIVATE
         android vulkan ${CMAKE_DL_LIBS})
+endif()
+
+if(ANDROID OR CMAKE_SYSTEM_NAME STREQUAL "Linux")
     if((TARGET aether_minori_runtime AND TARGET aether_siglus_runtime) OR
        (TARGET aether_flash_native AND (TARGET aether_minori_runtime OR TARGET aether_siglus_runtime)))
         # Flash, Minori and Siglus are independently-built Rust static libraries.
-        # Each archive carries the Rust runtime objects it needs, so lld sees
-        # duplicate std/alloc symbols when both providers are pulled into the
-        # Android extension. They are built by the same toolchain; keep one
-        # definition at the final shared-library link.
+        # Each archive carries the Rust runtime objects it needs. Both GNU ld
+        # and lld can see duplicate std/alloc symbols when multiple providers
+        # are pulled into the extension, especially with Release LTO. They are
+        # built by the same toolchain; keep one definition at the final link.
         target_link_options(aether_kiri_godot PRIVATE
-            "-Wl,--allow-multiple-definition")
+            "LINKER:--allow-multiple-definition")
     endif()
 endif()
 

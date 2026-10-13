@@ -96,6 +96,7 @@ endif()
 
 set(AETHERKIRI_GODOT_SOURCES
     src/flash_player.cpp
+    src/tyrano_player.cpp
     src/aether_runtime_player.cpp
     src/frame_effect_host.cpp
     src/presentation/RuntimePresentationSprite.cpp
@@ -116,6 +117,16 @@ if(AETHERKIRI_ENABLE_FLASH AND NOT (WEB OR EMSCRIPTEN))
 endif()
 
 if(APPLE)
+    file(READ "${CMAKE_SOURCE_DIR}/bridge/tyrano_runtime/host.js" AETHER_TYRANO_HOST_JS)
+    set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
+        "${CMAKE_SOURCE_DIR}/bridge/tyrano_runtime/host.js")
+    configure_file("${CMAKE_SOURCE_DIR}/bridge/tyrano_runtime/host_script.h.in"
+        "${CMAKE_CURRENT_BINARY_DIR}/tyrano_host_script.h" @ONLY)
+    target_include_directories(aether_kiri_godot PRIVATE "${CMAKE_CURRENT_BINARY_DIR}")
+    target_sources(aether_kiri_godot PRIVATE src/tyrano_webview.mm)
+    set_source_files_properties(src/tyrano_webview.mm
+        PROPERTIES LANGUAGE CXX COMPILE_FLAGS "-x objective-c++ -fobjc-arc")
+    target_link_libraries(aether_kiri_godot PRIVATE "-framework WebKit")
     target_sources(aether_kiri_godot PRIVATE src/apple_external_texture.mm)
     set_source_files_properties(src/apple_external_texture.mm
         PROPERTIES LANGUAGE CXX COMPILE_FLAGS "-x objective-c++")

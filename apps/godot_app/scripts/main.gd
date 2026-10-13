@@ -9,6 +9,7 @@ const GAME_LIST_FILE := "user://aetherkiri_games.json"
 const FLASH_LIST_FILE := "user://aether_flash.json"
 const FLASH_HIDDEN_FILE := "user://aether_flash_hidden.json"
 const FlashPlayerView = preload("res://scripts/flash_player_view.gd")
+const TyranoPlayerView = preload("res://scripts/tyrano_player_view.gd")
 const VIDEO_LIST_FILE := "user://aetherkiri_videos.json"
 const VIDEO_PROGRESS_FILE := "user://aetherkiri_video_progress.json"
 const VIDEO_HIDDEN_FILE := "user://aetherkiri_hidden_videos.json"
@@ -145,6 +146,11 @@ const UI_TEXT := {
         "flash.back": "返回",
         "flash.refresh": "刷新",
         "flash.unavailable": "此构建未包含 Flash 播放器",
+        "tyrano.invalid_project": "这不是完整的 TyranoScript 网页游戏目录。",
+        "tyrano.unavailable": "当前 TyranoScript 原型仅支持 macOS。",
+        "tyrano.open_failed": "无法启动 TyranoScript：%s",
+        "tyrano.loading": "加载中",
+        "tyrano.startup_timeout": "TyranoScript 启动超时。请导入解包后的网页游戏目录；依赖桌面专用插件的游戏可能需要额外适配。",
         "flash.open_failed": "无法播放 Flash：%s",
         "flash.guide_title": "导入 Flash",
         "home.subtitle": "多功能媒体播放器",
@@ -537,6 +543,11 @@ const UI_TEXT := {
         "flash.back": "返回",
         "flash.refresh": "重新整理",
         "flash.unavailable": "此版本未包含 Flash 播放器",
+        "tyrano.invalid_project": "這不是完整的 TyranoScript 網頁遊戲目錄。",
+        "tyrano.unavailable": "目前 TyranoScript 原型僅支援 macOS。",
+        "tyrano.open_failed": "無法啟動 TyranoScript：%s",
+        "tyrano.loading": "載入中",
+        "tyrano.startup_timeout": "TyranoScript 啟動逾時。請匯入解包後的網頁遊戲目錄；依賴桌面專用外掛的遊戲可能需要額外適配。",
         "flash.open_failed": "無法播放 Flash：%s",
         "flash.guide_title": "匯入 Flash",
         "home.subtitle": "多功能媒體播放器",
@@ -885,6 +896,11 @@ const UI_TEXT := {
         "flash.back": "Back",
         "flash.refresh": "Refresh",
         "flash.unavailable": "Flash playback is not included in this build",
+        "tyrano.invalid_project": "This is not a complete TyranoScript browser-game folder.",
+        "tyrano.unavailable": "The TyranoScript prototype currently supports macOS only.",
+        "tyrano.open_failed": "Could not start TyranoScript: %s",
+        "tyrano.loading": "Loading",
+        "tyrano.startup_timeout": "TyranoScript did not finish starting. Import an unpacked browser project; desktop-only plugins may need additional adaptation.",
         "flash.open_failed": "Unable to play Flash: %s",
         "flash.guide_title": "Import Flash",
         "home.subtitle": "Multifunction Media Player",
@@ -1277,6 +1293,11 @@ You can find it any time under Settings → QQ Group.",
         "flash.back": "戻る",
         "flash.refresh": "更新",
         "flash.unavailable": "このビルドに Flash プレイヤーは含まれていません",
+        "tyrano.invalid_project": "完全な TyranoScript ブラウザーゲームのフォルダーではありません。",
+        "tyrano.unavailable": "TyranoScript の試作版は現在 macOS のみ対応しています。",
+        "tyrano.open_failed": "TyranoScript を起動できません：%s",
+        "tyrano.loading": "読み込み中",
+        "tyrano.startup_timeout": "TyranoScript の起動がタイムアウトしました。展開済みのブラウザーゲームを読み込んでください。デスクトップ専用プラグインは追加対応が必要な場合があります。",
         "flash.open_failed": "Flash を再生できません：%s",
         "flash.guide_title": "Flash を読み込む",
         "home.subtitle": "多機能メディアプレーヤー",
@@ -1625,6 +1646,11 @@ You can find it any time under Settings → QQ Group.",
         "flash.back": "뒤로",
         "flash.refresh": "새로고침",
         "flash.unavailable": "이 빌드에 Flash 플레이어가 포함되어 있지 않습니다",
+        "tyrano.invalid_project": "완전한 TyranoScript 브라우저 게임 폴더가 아닙니다.",
+        "tyrano.unavailable": "TyranoScript 프로토타입은 현재 macOS만 지원합니다.",
+        "tyrano.open_failed": "TyranoScript를 시작할 수 없습니다: %s",
+        "tyrano.loading": "불러오는 중",
+        "tyrano.startup_timeout": "TyranoScript 시작 시간이 초과되었습니다. 압축을 푼 브라우저 게임을 가져오세요. 데스크톱 전용 플러그인은 추가 지원이 필요할 수 있습니다.",
         "flash.open_failed": "Flash를 재생할 수 없습니다: %s",
         "flash.guide_title": "Flash 가져오기",
         "home.subtitle": "다기능 미디어 플레이어",
@@ -1990,6 +2016,7 @@ const RUNTIME_CATSYSTEM2 := "catsystem2"
 const RUNTIME_SIGLUS := "siglus"
 const RUNTIME_WA2 := "wa2"
 const RUNTIME_BGI := "bgi"
+const RUNTIME_TYRANO := "tyranoscript"
 const RUNTIME_PLAYER_CLASS := "AetherRuntimePlayer"
 const ONSCRIPTER_SCRIPT_MARKERS := [
     "0.txt",
@@ -2167,6 +2194,7 @@ var known_videos: Array[Dictionary] = []
 var video_library := VideoLibrary.new(VIDEO_LIST_FILE, VIDEO_HIDDEN_FILE)
 var flash_library := VideoLibrary.new(FLASH_LIST_FILE, FLASH_HIDDEN_FILE, ["swf"])
 var flash_view
+var tyrano_view
 var home_library_mode := "game"
 var home_search_queries := {"game": "", "video": "", "flash": ""}
 var home_search_syncing := false
@@ -10119,6 +10147,37 @@ func _refresh_file_library() -> void:
 func _is_flash_active() -> bool:
     return is_instance_valid(flash_view) and flash_view.visible
 
+func _is_tyrano_active() -> bool:
+    return is_instance_valid(tyrano_view) and tyrano_view.visible
+
+func _open_tyrano_game(game: Dictionary) -> void:
+    if _is_tyrano_active():
+        return
+    _reset_shell_scroll_drag()
+    tyrano_view = TyranoPlayerView.new()
+    add_child(tyrano_view)
+    tyrano_view.setup(self)
+    tyrano_view.game_ready.connect(func():
+        if active_game_started_msec == 0:
+            active_game_path = String(game.get("path", ""))
+            active_game_started_msec = Time.get_ticks_msec()
+            _mark_game_played(active_game_path)
+    )
+    tyrano_view.closed.connect(func():
+        _finalize_active_game_session()
+        tyrano_view = null
+        _set_game_runtime_orientation(false)
+        shell_root.visible = true
+        _refresh_games()
+    )
+    var error: String = tyrano_view.open_entry(game)
+    if not error.is_empty():
+        tyrano_view.close()
+        _show_message(error)
+        return
+    _set_game_runtime_orientation(true)
+    shell_root.visible = false
+
 func _open_flash_player(entry: Dictionary) -> void:
     if _is_flash_active() or not _require_legal_documents_for_media():
         return
@@ -11680,6 +11739,9 @@ func _start_selected_game_after_entitlements() -> void:
     if not _mount_web_game(selected_game):
         return
     active_runtime_kind = _game_runtime_kind(library_path)
+    if active_runtime_kind == RUNTIME_TYRANO:
+        _open_tyrano_game(selected_game)
+        return
     if not _switch_runtime_player(active_runtime_kind):
         return
     if active_runtime_kind == "rfvp":
@@ -15174,6 +15236,8 @@ func _notification(what: int) -> void:
         return
     if what == NOTIFICATION_WM_CLOSE_REQUEST and _is_flash_active():
         flash_view.close()
+    if what == NOTIFICATION_WM_CLOSE_REQUEST and _is_tyrano_active():
+        tyrano_view.close()
     if player == null:
         return
     if what == NOTIFICATION_APPLICATION_PAUSED or what == NOTIFICATION_APPLICATION_FOCUS_OUT:
@@ -15222,6 +15286,9 @@ func _handle_go_back_request() -> void:
         return
     if _is_flash_active():
         flash_view.close()
+        return
+    if _is_tyrano_active():
+        tyrano_view.close()
         return
     if video_playing:
         _close_video_player()
@@ -16467,7 +16534,7 @@ func _reset_mobile_edge_back_gesture() -> void:
     mobile_edge_back_cancelled = false
 
 func _mobile_edge_back_available() -> bool:
-    if not _mobile_runtime() or game_running or video_playing or _is_flash_active():
+    if not _mobile_runtime() or game_running or video_playing or _is_flash_active() or _is_tyrano_active():
         return false
     if shell_root == null or not shell_root.visible:
         return false
@@ -16601,7 +16668,7 @@ func _trace_ios_raw_pointer_event(event: InputEvent) -> void:
         perf_log_file.flush()
 
 func _input(event: InputEvent) -> void:
-    if _is_flash_active():
+    if _is_flash_active() or _is_tyrano_active():
         return
     _trace_ios_raw_pointer_event(event)
     _note_backdrop_touch(event)

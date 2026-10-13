@@ -1,0 +1,30 @@
+; Original Aether integration fixture. The test runner supplies the engine.
+[title name="Aether TyranoScript 验证"]
+[layopt layer="message0" visible="true"]
+[position layer="message0" left="40" top="330" width="880" height="170" color="0x142032" opacity="230"]
+[font color="0xffffff" size="28"]
+[iscript]
+document.querySelector('#tyrano_base').style.background = 'linear-gradient(135deg,#123c55,#30274f)';
+[endscript]
+*start
+[eval exp="f.probe_step = 1"]
+第一句：TyranoScript 已在 Aether 中运行。[l][r]
+[eval exp="f.probe_step = 2"]
+第二句：鼠标和虚拟 Enter 都可以推进。[l][r]
+[eval exp="f.probe_step = 3"]
+第三句：请选择一条路线。[r]
+[glink text="中文选项 A" target="*route_a" x="80" y="230"]
+[glink text="中文选项 B" target="*route_b" x="430" y="230"]
+[s]
+*route_a
+[eval exp="f.probe_route = 'A'"]
+[cm]
+已选择 A。现在可以保存、重启并读取存档。[l][r]
+[eval exp="f.probe_step = 4"]
+读取成功后仍可继续推进。[l][r]
+[s]
+*route_b
+[eval exp="f.probe_route = 'B'"]
+[cm]
+已选择 B。[l][r]
+[s]

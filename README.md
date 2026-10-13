@@ -30,6 +30,7 @@ capabilities.
 ```text
 Godot App Shell
   ├─ AetherFlashPlayer ─────── Ruffle (Flash)
+  ├─ AetherTyranoPlayer ────── WebKit / Android WebView (TyranoScript)
   └─ AetherRuntimePlayer
        └─ Runtime Dispatcher
             ├─ KiriRuntime ──────── KiriKiri2 core / plugins
@@ -57,6 +58,9 @@ and **Debug CPU** is a diagnostic fallback only.
 - Export presets for macOS, iOS/iPadOS, Android, Web, and Linux.
 - A separate Flash library powered by native Ruffle, with sound, keyboard,
   mouse, touch, and the visual-novel virtual controls.
+- Experimental TyranoScript browser-project playback from the visual-novel
+  library on macOS, iOS/iPadOS and Android, with isolated saves and virtual keys. See the
+  [prototype scope and tests](bridge/tyrano_runtime/README.md).
 - Runtime-selectable render backend with persisted settings.
 - Bundled multilingual KAG3 demo, playable from the library and deletable by
   the player.

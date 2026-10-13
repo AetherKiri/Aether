@@ -10,6 +10,7 @@ const DIRECTORY_RUNTIME_KINDS := [
     "onscripter",
     "siglus",
     "softpal",
+    "tyranoscript",
     "wa2",
 ]
 const RFVP_ENCODING_FIELD := "rfvpEncoding"

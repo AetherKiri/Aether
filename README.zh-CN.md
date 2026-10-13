@@ -28,6 +28,7 @@ Dispatcher 根据每个游戏的标记和能力选择对应引擎。
 ```text
 Godot App Shell
   ├─ AetherFlashPlayer ─────── Ruffle（Flash）
+  ├─ AetherTyranoPlayer ────── WebKit / Android WebView（TyranoScript）
   └─ AetherRuntimePlayer
        └─ Runtime Dispatcher
             ├─ KiriRuntime ──────── KiriKiri2 Core / Plugins
@@ -52,6 +53,8 @@ Godot App Shell
 - 集成 OnscripterYuri，Godot 的鼠标/触摸/键盘输入会映射回 ONS 事件。
 - 覆盖 macOS、iOS/iPadOS、Android、Web 与 Linux 的导出配置。
 - 独立的 Flash 分类，使用原生 Ruffle 播放，支持声音、键鼠、触摸以及视觉小说的虚拟按钮。
+- macOS、iOS/iPadOS 和 Android 原型支持从视觉小说库运行 TyranoScript 网页项目，提供独立存档和虚拟按键。
+  支持范围与验证方法见 [接入说明](bridge/tyrano_runtime/README.md)。
 - 渲染后端可运行时切换并持久化设置。
 - 内置多语言 KAG3 Demo，可从游戏库直接游玩，也可由玩家删除。
 - 提供 smoke、渲染、交互、性能与手动复现 probe 脚本。

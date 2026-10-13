@@ -247,3 +247,15 @@ Goal模式按阶段持续推进，阶段完成不等于整个M4完成。达到G4
 - 横屏UI检查也修正旧「返回主页」文案为「返回 / 退出并返回」，因为游戏应回到来源页（库详情、主页，或隔离预览设置页）。Debug预览现在连Demo/法律读取/设置/库都在同一临时沙盒根；--ios-preview-landscape仅在Debug设置预览内应用，不写真实用户数据。
 - device Debug构建与macOS完整回归通过，最低18.0不变。本轮没有CUA工具；XCUITest是实际UI自动点击证据，仍不替代真机触摸/iPad窄窗多任务/外接屏、所有旋转中捕获取消、音频与iOS18运行。不能勾满I3/IOS-04/05/07/G4。
 - 下一步：移动虚拟控制板、UIKit IME/平台FIFO请求与输入共享矩形；之后完善调度、诊断、输出预算与StoreKit。
+
+## 14. 移动控制板与触摸序列（2026-10-13）
+
+- 顶栏直接显示/隐藏控制板，画布入口与游戏菜单共享同一会话状态；入口关闭不阻止顶栏打开。菜单/返回弹层取消捕获、释放按键并暂停；菜单键动作先解除自己的modal原因，不覆盖其他暂停原因。顶栏ViewThatFits在窄窗/大字体重排，初期不自动隐藏入口；沉浸工具栏恢复仍待实现。
+- 回车/空格/Esc/四方向/PgUp/PgDn与保持Ctrl使用共享KeyInputState，普通键down/up、重复Ctrl去重。隐藏、模式切换、失焦/音频暂停、resize/旋转、source变化、取消、stop均release。派发期间的重入reset也必须只有一个up；Ctrl通过input epoch防止重入后重新锁定视觉状态或modifiers。
+- 原生控制板自适应网格、最小44pt；字体跟随Dynamic Type，不缩字。键帽透明度不改变命中区，模式/鼠标手柄/指针不随透明度变暗。移动设置明确复用字段：virtualControls=启动时显示，virtualControlMenuEnabled=画布入口，另有模式与按键透明度；移动新安装默认touch，已有mouse偏好保留。
+- AetherMobileCanvas提供统一contentRect，触摸坐标、虚拟鼠标delta和可见白色指针共用aspect-fit比例与逻辑尺寸，黑边拒绝、拖出夹边，取消回传最后有效点。模式mouse只由手柄移动与独立左键按钮发事件；离开/resize后的旧手柄移动由epoch拒绝。
+- 共享C++ TouchSequence用于画布与原生手柄：主指抬起后剩余手指不能接管，等全部离开才开始新序列。直接UIView内容触摸在ScrollView中会被延迟/纵向滚动抢走；UI测试暴露该问题后改用公开UIGestureRecognizer子类，先捕获主指并让面板滚动等待，移动不使用多指质心，保留系统边缘手势。
+- iPhone26/iPad26各23项XCTest通过，覆盖真实引擎的键对/修饰符、Ctrl重复/暂停/模式/resize/隐藏/stop释放、重入派发、虚拟鼠标同一比例与旧拖动失效；另有MobileTouchSequenceTests.cpp覆盖第二指、all-lift、取消和黑边拒绝。输入observer证明真实EngineSession派发，不据此声称所有游戏解释VK行为相同。
+- 原生UI测试共3项通过：入口点击不产生游戏点击、Ctrl隐藏后释放/重新打开未选中、鼠标横纵拖动与左键成对；最大辅助字号实际UIKit category核对、面板滚动后完整可见按钮操作与44pt检查；原横屏返回回归。发现的纵向拖动抢占已修复。证据 `out/apple_host/evidence/ios-I3-controls-ui-final2.xcresult`、`ios-I3-controls-{phone,pad}-final2.xcresult`，截图附件在 `ios-I3-controls-ui-final2-attachments/`。
+- 游戏像素图像有五语言VoiceOver标签/语义限制提示，指针手柄提供四方向可访问动作；完整VoiceOver操作尚未实际验收。Debug-only AX输入计数/字号类别辅助测试，Release不提供这些诊断值。device Debug、macOS完整行为与五语言回归通过，engine_api/provider ABI未改。
+- 无CUA工具；本轮证据是XCUITest实际点按/拖动、XCTest、截图核查，不代替真机多指/Pencil/鼠标、iOS18或所有游戏输入验收。I3继续：UIKit IME/手动文本、平台FIFO请求、沉浸工具栏恢复与完整无障碍，不能勾满IOS-04/05/G4。

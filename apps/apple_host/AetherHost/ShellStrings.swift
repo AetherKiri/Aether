@@ -20,6 +20,17 @@ enum ShellLanguage: String, CaseIterable, Identifiable {
     static func localizedValues(for key: String) -> [String]? { strings[key] }
     // Same five languages as the existing product; game text is untouched.
     private static let strings: [String: [String]] = [
+        "mobileControlsAtLaunch": ["启动时显示控制板", "啟動時顯示控制面板", "Show Control Pad at Launch", "起動時に操作パネルを表示", "시작 시 조작 패널 표시"],
+        "mobileControlsEntry": ["画布控制板入口", "畫布控制面板入口", "Canvas Control Pad Entry", "ゲーム画面の操作パネル入口", "게임 화면 조작 패널 버튼"],
+        "mobileControlOpacity": ["按键透明度", "按鍵透明度", "Key Opacity", "キーの不透明度", "키 불투명도"],
+        "mobileGameImage": ["游戏图像", "遊戲圖像", "Game Image", "ゲーム画像", "게임 화면"],
+        "mobileGameImageHint": ["游戏像素画面没有语义信息，可使用宿主控制板。", "遊戲像素畫面沒有語意資訊，可使用宿主控制面板。", "The game pixel image has no semantic information. Host controls are available.", "ゲーム画像に意味情報はありません。アプリの操作パネルを利用できます。", "게임 픽셀 화면에는 의미 정보가 없습니다. 앱 조작 패널을 사용할 수 있습니다."],
+        "mobileGameMenu": ["游戏菜单", "遊戲選單", "Game Menu", "ゲームメニュー", "게임 메뉴"],
+        "mobilePointerPad": ["拖动指针", "拖動指標", "Drag Pointer", "ポインターを移動", "포인터 이동"],
+        "mobilePointerLeft": ["指针左移", "指標左移", "Move Pointer Left", "ポインターを左へ", "포인터 왼쪽 이동"],
+        "mobilePointerRight": ["指针右移", "指標右移", "Move Pointer Right", "ポインターを右へ", "포인터 오른쪽 이동"],
+        "mobilePointerUp": ["指针上移", "指標上移", "Move Pointer Up", "ポインターを上へ", "포인터 위로 이동"],
+        "mobilePointerDown": ["指针下移", "指標下移", "Move Pointer Down", "ポインターを下へ", "포인터 아래로 이동"],
         "mobileReturnShell": ["返回", "返回", "Back", "戻る", "뒤로"],
         "mobileCloseGame": ["退出并返回", "退出並返回", "Leave Game and Return", "ゲームを終了して戻る", "게임 종료 후 돌아가기"],
         "mobileLandscape": ["游戏横屏", "遊戲橫向", "Landscape Games", "ゲームを横向きに表示", "게임 가로 모드"],
@@ -33,7 +44,7 @@ enum ShellLanguage: String, CaseIterable, Identifiable {
         "mobileScaleHelp": ["调整界面间距；文字继续跟随系统字体大小，触控区域保持至少44点。", "調整介面間距；文字繼續遵循系統字體大小，觸控區域保持至少44點。", "Adjusts interface spacing. Text follows Dynamic Type and touch targets stay at least 44 points.", "画面の間隔を調整します。文字はシステムの文字サイズに従い、タッチ領域は44ポイント以上です。", "화면 간격을 조절합니다. 글자는 시스템 크기를 따르며 터치 영역은 최소 44포인트를 유지합니다."],
         "mobileSettingsNextGame": ["保存后下次启动游戏生效。", "儲存後下次啟動遊戲生效。", "Applies to the next game launch after saving.", "保存後、次回のゲーム起動時に適用します。", "저장 후 다음 게임 실행부터 적용됩니다."],
         "mobileRenderPending": ["移动输出缩放和增强尚未接入，当前有效输出为原始尺寸、增强关闭；保留已有偏好。", "行動輸出縮放和增強尚未接入，目前有效輸出為原始尺寸、增強關閉；保留既有偏好。", "Mobile output scaling and enhancement are pending. Effective output is Original with enhancement Off; stored preferences are retained.", "モバイル出力の拡大と画質強化は未接続です。実際は原寸・強化なしで、保存済みの設定は保持します。", "모바일 출력 확대와 화질 향상은 아직 연결되지 않았습니다. 실제 출력은 원본 크기이며 향상은 꺼짐이고 기존 설정은 유지됩니다."],
-        "mobileSettingsRemaining": ["帧率调度、诊断和虚拟控制板仍在迁移，相关偏好不会丢失。", "影格率排程、診斷和虛擬控制面板仍在遷移，相關偏好不會遺失。", "Frame pacing, diagnostics and virtual controls are still being migrated. Their stored preferences are retained.", "フレーム調整、診断と仮想操作パネルは移行中です。保存済みの設定は保持します。", "프레임 조절, 진단 및 가상 조작 패널은 이전 중입니다. 기존 설정은 유지됩니다."],
+        "mobileSettingsRemaining": ["帧率调度、诊断和完整文字输入仍在迁移，相关偏好不会丢失。", "影格率排程、診斷和完整文字輸入仍在遷移，相關偏好不會遺失。", "Frame pacing, diagnostics and full text input are still being migrated. Their stored preferences are retained.", "フレーム調整、診断と完全な文字入力は移行中です。保存済みの設定は保持します。", "프레임 조절, 진단 및 전체 문자 입력은 이전 중입니다. 기존 설정은 유지됩니다."],
         "mobileImportKiriHelp": ["从文件中选择 KiriKiri 游戏目录或 ZIP，复制到游戏库。", "從檔案中選擇 KiriKiri 遊戲目錄或 ZIP，複製到遊戲庫。", "Choose a KiriKiri game folder or ZIP from Files to copy into your library.", "ファイルからKiriKiriのゲームフォルダまたはZIPを選び、ライブラリにコピーします。", "파일에서 KiriKiri 게임 폴더 또는 ZIP을 선택하여 라이브러리에 복사하세요."],
         "mobileDeclined": ["已拒绝", "已拒絕", "Declined", "同意しませんでした", "동의하지 않음"],
         "mobileDeclinedBody": ["同意两份协议后才能开始游戏。您可以重新阅读并选择。", "同意兩份協議後才能開始遊戲。您可以重新閱讀並選擇。", "Both documents are required before playing. You can review them again.", "ゲームを始めるには両方の文書への同意が必要です。もう一度読むことができます。", "게임을 시작하려면 두 문서에 동의해야 합니다. 다시 읽어 볼 수 있습니다."],

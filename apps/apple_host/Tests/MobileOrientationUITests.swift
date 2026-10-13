@@ -27,4 +27,68 @@ final class MobileOrientationUITests: XCTestCase {
         XCTAssertFalse(back.exists)
         let returned=XCTAttachment(screenshot:XCUIScreen.main.screenshot()); returned.name="product-returned-settings"; returned.lifetime = .keepAlways; add(returned)
     }
+    func testControlPadEntryConsumesTouchCtrlReleasesAndMouseMoves() throws {
+        continueAfterFailure=false
+        let app=XCUIApplication(bundleIdentifier:"org.github.aetherkiri.host.ios")
+        app.launchEnvironment["AETHER_HOST_BYPASS_LEGAL_GATE"]="1"
+        app.launchArguments=["--ios-settings-preview","--ios-demo-smoke"]
+        app.launch(); defer {app.terminate()}
+        let canvas=app.images["mobile.game.canvas"].firstMatch
+        XCTAssertTrue(canvas.waitForExistence(timeout:15))
+        let baseline=canvas.value as? String
+        let entry=app.buttons["mobile.controls.entry"].firstMatch
+        XCTAssertTrue(entry.waitForExistence(timeout:5)); entry.tap()
+        let ctrl=app.buttons["mobile.controls.ctrl"].firstMatch
+        XCTAssertTrue(ctrl.waitForExistence(timeout:5))
+        XCTAssertEqual(canvas.value as? String,baseline,"Entry must not send a game click")
+        ctrl.tap(); XCTAssertTrue(ctrl.isSelected)
+        app.buttons["mobile.controls.toggle"].firstMatch.tap()
+        XCTAssertFalse(ctrl.exists)
+        XCTAssertEqual(canvas.value as? String,"key=2 pointer=0")
+        app.buttons["mobile.controls.toggle"].firstMatch.tap()
+        XCTAssertTrue(ctrl.waitForExistence(timeout:5)); XCTAssertFalse(ctrl.isSelected)
+        app.buttons["mobile.controls.mode.mouse"].firstMatch.tap()
+        let handle=app.staticTexts["mobile.controls.pointerPad"].firstMatch
+        XCTAssertTrue(handle.waitForExistence(timeout:5))
+        let begin=handle.coordinate(withNormalizedOffset:CGVector(dx:0.3,dy:0.5))
+        let end=handle.coordinate(withNormalizedOffset:CGVector(dx:0.6,dy:0.5))
+        begin.press(forDuration:0.1,thenDragTo:end)
+        func pointers() -> Int {
+            let value=canvas.value as? String ?? ""
+            return Int(value.components(separatedBy:"pointer=").last ?? "") ?? -1
+        }
+        let horizontal=pointers(); XCTAssertGreaterThan(horizontal,0)
+        let verticalEnd=handle.coordinate(withNormalizedOffset:CGVector(dx:0.3,dy:0.85))
+        begin.press(forDuration:0.1,thenDragTo:verticalEnd)
+        let moved=pointers(); XCTAssertGreaterThan(moved,horizontal,"Vertical pointer drag must not be consumed by panel scrolling")
+        app.buttons["mobile.controls.click"].firstMatch.tap()
+        XCTAssertEqual(pointers(),moved+2)
+        let screenshot=XCTAttachment(screenshot:XCUIScreen.main.screenshot()); screenshot.name="control-pad-mouse"; screenshot.lifetime = .keepAlways; add(screenshot)
+    }
+
+    func testLargeTextControlPadRemainsScrollableAndTouchable() throws {
+        continueAfterFailure=false
+        let app=XCUIApplication(bundleIdentifier:"org.github.aetherkiri.host.ios")
+        app.launchEnvironment["AETHER_HOST_BYPASS_LEGAL_GATE"]="1"
+        app.launchArguments=["--ios-settings-preview","--ios-demo-smoke","-UIPreferredContentSizeCategoryName",UIContentSizeCategory.accessibilityExtraExtraExtraLarge.rawValue]
+        app.launch(); defer {app.terminate()}
+        let toggle=app.buttons["mobile.controls.toggle"].firstMatch
+        XCTAssertTrue(toggle.waitForExistence(timeout:15)); toggle.tap()
+        let canvas=app.images["mobile.game.canvas"].firstMatch
+        XCTAssertTrue(canvas.label.contains(UIContentSizeCategory.accessibilityExtraExtraExtraLarge.rawValue),canvas.label)
+        let ctrl=app.buttons["mobile.controls.ctrl"].firstMatch
+        let pad=app.descendants(matching:.any)["mobile.controls.pad"].firstMatch
+        XCTAssertTrue(pad.waitForExistence(timeout:5))
+        for _ in 0..<10 {
+            if ctrl.exists && ctrl.isHittable && pad.frame.contains(ctrl.frame) {break}
+            pad.swipeUp()
+        }
+        XCTAssertTrue(ctrl.isHittable)
+        XCTAssertGreaterThanOrEqual(ctrl.frame.height,44); XCTAssertGreaterThanOrEqual(ctrl.frame.width,44)
+        ctrl.tap(); XCTAssertTrue(ctrl.isSelected,"canvas=\(canvas.value ?? "nil") frame=\(ctrl.frame) viewport=\(pad.frame)")
+        let capture=XCTAttachment(screenshot:XCUIScreen.main.screenshot()); capture.name="control-pad-large-text"; capture.lifetime = .keepAlways; add(capture)
+        toggle.tap()
+        XCTAssertFalse(ctrl.exists)
+    }
+
 }

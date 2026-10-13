@@ -508,6 +508,79 @@ final class MobileShellIOSTests: XCTestCase {
         XCTAssertEqual(model.controller.submittedMetalFrames(),0)
     }
 
+    func testMobileCanvasUsesOneAspectFitMappingForTouchAndCursor() throws {
+        let canvas=AetherMobileCanvas(frame:CGRect(x:0,y:0,width:300,height:300))
+        canvas.canvas=CGSize(width:640,height:480)
+        XCTAssertEqual(canvas.contentRect,CGRect(x:0,y:37.5,width:300,height:225))
+        XCTAssertEqual(canvas.logicalPoint(forViewPoint:CGPoint(x:150,y:150),clamp:false),CGPoint(x:320,y:240))
+        XCTAssertEqual(canvas.logicalPoint(forViewPoint:CGPoint(x:150,y:10),clamp:false),CGPoint(x:-1,y:-1))
+        XCTAssertEqual(canvas.logicalPoint(forViewPoint:CGPoint(x:-5,y:500),clamp:true),CGPoint(x:0,y:479))
+        canvas.virtualMouse=true
+        XCTAssertEqual(canvas.moveCursor(by:CGSize(width:30,height:15)),CGPoint(x:383.5,y:271.5))
+        XCTAssertEqual(canvas.moveCursor(by:CGSize(width:10000,height:-10000)),CGPoint(x:639,y:0))
+    }
+    func testMobileControlsPairsModifiersPauseResizeAndCursorScope() async throws {
+        let scene=try XCTUnwrap(UIApplication.shared.connectedScenes.compactMap {$0 as? UIWindowScene}.first)
+        let previous=scene.windows.first(where:{$0.isKeyWindow})
+        let root=FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        let shell=MobileShellState(supportRoot:root,gamesRoot:root.appendingPathComponent("Games"),environment:[LegalAgreement.bypassEnvironmentKey:"1"])
+        let model=MobileGameViewModel(url:try shell.prepareDemo(),settings:MobilePreferences.defaultHost)
+        var events: [[String:NSNumber]]=[]
+        model.controller.hostInputObserved={events.append($0)}
+        let window=UIWindow(windowScene:scene); window.rootViewController=model.controller; window.makeKeyAndVisible()
+        defer {model.controller.stop(); window.isHidden=true; previous?.makeKeyAndVisible(); try? FileManager.default.removeItem(at:root)}
+        for _ in 0..<100 {
+            if model.controller.submittedMetalFrames() >= 3 || model.error != nil {break}
+            try await Task.sleep(for:.milliseconds(50))
+        }
+        XCTAssertNil(model.error); XCTAssertTrue(model.controller.inputAvailable)
+        XCTAssertEqual(model.controlMode,.touch)
+        model.toggleControls(); model.setControlHeld(true); model.setControlHeld(true)
+        model.tapKey(0x20); model.tapKey(0x20)
+        XCTAssertEqual(events.map {$0["type"]?.intValue},[5,5,6,5,6])
+        XCTAssertEqual(events.map {$0["modifiers"]?.intValue},[4,4,4,4,4])
+        model.controller.setSystemModalPresented(true)
+        XCTAssertFalse(model.controlHeld); XCTAssertEqual(events.last?["key"]?.intValue,0x11)
+        XCTAssertEqual(events.last?["type"]?.intValue,6); XCTAssertEqual(events.last?["modifiers"]?.intValue,0)
+        let paused=events.count; model.setControlHeld(true); model.tapKey(0x20)
+        XCTAssertFalse(model.controlHeld); XCTAssertEqual(events.count,paused)
+        model.controller.setSystemModalPresented(false)
+        model.setControlHeld(true); model.setControlMode(.mouse)
+        XCTAssertFalse(model.controlHeld); XCTAssertTrue(model.controller.virtualMouseMode)
+        events=[]
+        model.controller.hostInputObserved={event in
+            events.append(event)
+            if event["type"]?.intValue == 5 {model.controller.cancelHostInput()}
+        }
+        model.tapKey(0x20)
+        XCTAssertEqual(events.map {$0["type"]?.intValue},[5,6],"A reset during down dispatch must release exactly once")
+        events=[]; model.setControlHeld(true)
+        XCTAssertFalse(model.controlHeld); XCTAssertEqual(model.controller.hostInputModifiers,0)
+        XCTAssertEqual(events.map {$0["type"]?.intValue},[5,6],"A reset during Ctrl down must not relatch its UI or modifier")
+        model.controller.hostInputObserved={events.append($0)}
+        events=[]
+        let start=model.controller.virtualCursorPosition(), rect=model.controller.inputContentRect(), size=model.controller.logicalCanvasSize()
+        let drag=model.beginCursorDrag(); model.moveCursor(CGSize(width:12,height:0),owner:drag)
+        XCTAssertEqual(model.controller.virtualCursorPosition().x,start.x+12*size.width/rect.width,accuracy:0.001)
+        model.clickCursor()
+        XCTAssertEqual(events.map {$0["type"]?.intValue},[2,1,3])
+        model.controller.cancelHostInput()
+        let before=model.controller.virtualCursorPosition(); model.moveCursor(CGSize(width:12,height:0),owner:drag)
+        XCTAssertEqual(model.controller.virtualCursorPosition(),before)
+        let newer=model.beginCursorDrag()
+        model.moveCursor(CGSize(width:12,height:0),owner:drag); model.endCursorDrag(drag)
+        XCTAssertEqual(model.controller.virtualCursorPosition(),before)
+        model.moveCursor(CGSize(width:12,height:0),owner:newer)
+        XCTAssertGreaterThan(model.controller.virtualCursorPosition().x,before.x)
+        model.setControlHeld(true)
+        model.controller.view.bounds.size.width -= 20; model.controller.view.setNeedsLayout(); model.controller.view.layoutIfNeeded()
+        XCTAssertFalse(model.controlHeld)
+        model.setControlHeld(true); model.toggleControls()
+        XCTAssertFalse(model.controlsVisible); XCTAssertFalse(model.controlHeld); XCTAssertFalse(model.controller.virtualMouseMode)
+        model.toggleControls(); model.setControlHeld(true); model.controller.stop()
+        XCTAssertFalse(model.controlHeld); XCTAssertEqual(events.last?["type"]?.intValue,6)
+    }
+
 }
 
 private final class ControlledMobileCoverSearch: CoverSearchProviding {

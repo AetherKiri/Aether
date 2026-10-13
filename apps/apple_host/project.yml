@@ -91,6 +91,7 @@ targets:
       - path: AetherHost/FrameScheduler.swift
       - path: AetherHost/DiagnosticProfile.swift
       - path: AetherHost/VirtualControls.swift
+      - path: AetherHost/KeyInputState.swift
       - path: AetherHost/FrameEnhancement.swift
       - path: AetherHost/LegalAcceptance.swift
       - path: AetherHost/ShellStrings.swift

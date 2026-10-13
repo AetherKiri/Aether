@@ -39,6 +39,15 @@ struct MobileSettingsView: View {
                 Toggle(language.text("mockEnabled"),isOn:$preferences.draft.host.mockEnabled)
                 Toggle(language.text("errorDialogLogs"),isOn:$preferences.draft.host.errorDialogLogs)
             }.listRowBackground(palette.surface.color)
+            Section(language.text("virtualControls")) {
+                Toggle(language.text("mobileControlsAtLaunch"),isOn:$preferences.draft.host.virtualControls)
+                Toggle(language.text("mobileControlsEntry"),isOn:$preferences.draft.host.virtualControlMenuEnabled)
+                Picker(language.text("virtualModeLabel"),selection:$preferences.draft.host.virtualControlMode) {
+                    ForEach(VirtualControlMode.allCases) {Text(language.text($0.textKey)).tag($0.rawValue)}
+                }
+                Slider(value:$preferences.draft.host.virtualControlKeyboardOpacity,in:0.2...1,step:0.05) {Text(language.text("mobileControlOpacity"))}
+                Text(language.text("virtualControlsHelp")).font(.caption).foregroundStyle(palette.secondary.color)
+            }.listRowBackground(palette.surface.color)
             Section {
                 Text(language.text("mobileSettingsRemaining")).font(.callout).foregroundStyle(palette.secondary.color)
             }.listRowBackground(palette.surface.color)

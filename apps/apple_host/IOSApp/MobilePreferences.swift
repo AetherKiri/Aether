@@ -26,6 +26,7 @@ struct MobilePreferences: Codable, Equatable {
         var settings = HostSettings()
         settings.outputResolution = "original"
         settings.frameEnhancementKind = "off"
+        settings.virtualControlMode = "touch"
         return settings
     }
     func validated() throws -> MobilePreferences {

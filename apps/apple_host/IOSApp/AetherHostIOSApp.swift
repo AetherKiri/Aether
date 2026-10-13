@@ -208,9 +208,24 @@ final class MobileGameViewModel: ObservableObject {
     @Published var error: String?
     @Published var orientationFailed = false
     private let orientation: MobileOrientationOwner
+    @Published private(set) var controlsVisible: Bool
+    @Published private(set) var controlMode: VirtualControlMode
+    @Published private(set) var controlHeld = false
+    let controlOpacity: Double
+    let controlEntryAllowed: Bool
+    private var keyState=KeyInputState()
+    private var inputEpoch=UUID()
+    private var cursorDragOwner: (id: UUID, epoch: UUID)?
     init(url: URL, settings: HostSettings, landscapeLocked: Bool = false) {
+        controlsVisible=settings.virtualControls
+        controlMode=VirtualControlMode.normalized(settings.virtualControlMode) ?? .touch
+        controlOpacity=VirtualControlOpacity.normalized(settings.virtualControlKeyboardOpacity)
+        controlEntryAllowed=settings.virtualControlMenuEnabled
         orientation = MobileOrientationOwner(locked:landscapeLocked)
         controller = AetherMobileGameController(gameURL: url)
+        controller.gameCanvasLabel=settings.language.text("mobileGameImage")
+        controller.gameCanvasHint=settings.language.text("mobileGameImageHint")
+        controller.virtualMouseMode=controlsVisible && controlMode == .mouse
         controller.prefersSoftwareRendering = settings.renderer == "software"
         controller.engineOptions = Dictionary(uniqueKeysWithValues:settings.engineOptions.filter {$0.key != "fps_limit"}.map {($0.key,$0.value)})
         controller.statusChanged = { [weak self] in self?.status = $0 }
@@ -219,8 +234,54 @@ final class MobileGameViewModel: ObservableObject {
         orientation.failure = { [weak self] in self?.orientationFailed = true }
         controller.sceneReady = { [owner=orientation] in owner.begin(scene:$0) }
         controller.didClose = { [owner=orientation] in owner.end() }
+        controller.inputWillReset = { [weak self] in self?.releaseInputs() }
     }
     func retryOrientation() {orientationFailed=false; orientation.retry()}
+    func releaseInputs() {
+        inputEpoch=UUID()
+        for event in keyState.releaseAll() {_ = controller.sendHostKey(pressed:event.pressed,keyCode:event.key,modifiers:event.modifiers)}
+        controller.hostInputModifiers=0
+        if controlHeld {controlHeld=false}
+    }
+    func toggleControls() {
+        controller.cancelHostInput(); controlsVisible.toggle()
+        controller.virtualMouseMode=controlsVisible && controlMode == .mouse
+    }
+    func setControlMode(_ mode: VirtualControlMode) {
+        guard mode != controlMode else {return}
+        controller.cancelHostInput(); controlMode=mode
+        controller.virtualMouseMode=controlsVisible && controlMode == .mouse
+    }
+    func tapKey(_ key: Int32) {
+        guard controller.inputAvailable else {return}
+        let modifiers: Int32=controlHeld ? 0x04 : 0
+        for event in keyState.set(.virtual,key:key,pressed:true,modifiers:modifiers) {
+            _ = controller.sendHostKey(pressed:event.pressed,keyCode:event.key,modifiers:event.modifiers)
+        }
+        for event in keyState.set(.virtual,key:key,pressed:false,modifiers:modifiers) {
+            _ = controller.sendHostKey(pressed:event.pressed,keyCode:event.key,modifiers:event.modifiers)
+        }
+    }
+    func setControlHeld(_ held: Bool) {
+        guard !held || controller.inputAvailable else {return}
+        let epoch=inputEpoch
+        for event in keyState.set(.virtual,key:0x11,pressed:held,modifiers:held ? 0x04 : 0) {
+            _ = controller.sendHostKey(pressed:event.pressed,keyCode:event.key,modifiers:event.modifiers)
+        }
+        guard inputEpoch == epoch else {return}
+        controller.hostInputModifiers=held ? 0x04 : 0; controlHeld=held
+    }
+    func beginCursorDrag() -> UUID {
+        let id=UUID(); cursorDragOwner=(id,inputEpoch); return id
+    }
+    func moveCursor(_ delta: CGSize, owner: UUID) {
+        guard cursorDragOwner?.id == owner, cursorDragOwner?.epoch == inputEpoch else {return}
+        nudgeCursor(delta)
+    }
+    func endCursorDrag(_ owner: UUID) {if cursorDragOwner?.id == owner {cursorDragOwner=nil}}
+    func nudgeCursor(_ delta: CGSize) {controller.moveVirtualCursor(by:delta)}
+    func clickCursor() {controller.clickVirtualCursor()}
+
 }
 struct MobileGameSurface: UIViewControllerRepresentable {
     let controller: AetherMobileGameController
@@ -238,25 +299,47 @@ struct MobileGameView: View {
         _game = StateObject(wrappedValue: MobileGameViewModel(url: route.url, settings: settings.host, landscapeLocked: settings.landscapeLocked))
         self.language=language; self.close=close; self.title=route.title
     }
+    @State private var showGameMenu=false
+    private var controlsButton: some View {
+        Button(language.text(game.controlsVisible ? "virtualControlsHide" : "virtualControlsShow")) {game.toggleControls()}
+            .frame(minHeight:44).accessibilityIdentifier("mobile.controls.toggle")
+    }
+    private var backButton: some View {
+        Button {confirmReturn=true} label: {Label(language.text("mobileReturnShell"),systemImage:"chevron.left")}
+            .frame(minWidth:44,minHeight:44).accessibilityIdentifier("mobile.game.return")
+    }
+    private var menuButton: some View {
+        Button {showGameMenu=true} label: {Label(language.text("mobileGameMenu"),systemImage:"ellipsis.circle").labelStyle(.iconOnly)}
+            .frame(minWidth:44,minHeight:44).accessibilityIdentifier("mobile.game.menu")
+    }
     var body: some View {
-        VStack(spacing: 0) {
-            ScrollView(.horizontal) {
-                HStack {
-                    Button { confirmReturn = true } label: { Label(language.text("mobileReturnShell"), systemImage: "chevron.left") }.frame(minWidth: 44, minHeight: 44).accessibilityIdentifier("mobile.game.return")
-                    Text(title).font(.headline)
-                    Button(language.text("enterKey")) { game.controller.sendEnter() }.frame(minWidth: 44, minHeight: 44)
-                    Button(language.text("mobileResumeAudio")) { game.controller.resumeAudio() }.frame(minWidth: 44, minHeight: 44)
-                }.buttonStyle(.bordered).padding(.horizontal).frame(minHeight: 52)
-            }
-            if let key = game.fallbackKey { Text(language.text(key)).font(.caption).padding(.horizontal) }
-            if game.orientationFailed {
-                Text(language.text("mobileLandscapeFailed")).font(.caption).padding(.horizontal)
-                Button(language.text("mobileLandscapeRetry")) {game.retryOrientation()}.frame(minHeight:44)
-            }
-            MobileGameSurface(controller: game.controller)
-            Text(game.status == "paused" ? language.text("mobilePaused") : game.status == "running" ? language.text("mobileRunning") : game.status == "restartRequired" ? language.text("mobileAudioRestart") : game.status)
-                .font(.caption).frame(minHeight: 24).foregroundStyle(.secondary)
-        }.background(Color.black).foregroundStyle(.white)
+        GeometryReader {geometry in
+            VStack(spacing:0) {
+                ViewThatFits(in:.horizontal) {
+                    HStack {backButton; Text(title).font(.headline).lineLimit(1); Spacer(); controlsButton; menuButton}
+                    VStack {HStack {backButton; Text(title).font(.headline).lineLimit(1); Spacer(); menuButton}; controlsButton}
+                }.buttonStyle(.bordered).padding(.horizontal)
+                if let key=game.fallbackKey {Text(language.text(key)).font(.caption).padding(.horizontal)}
+                if game.orientationFailed {
+                    Text(language.text("mobileLandscapeFailed")).font(.caption).padding(.horizontal)
+                    Button(language.text("mobileLandscapeRetry")) {game.retryOrientation()}.frame(minHeight:44)
+                }
+                MobileGameSurface(controller:game.controller)
+                    .overlay(alignment:.topTrailing) {
+                        if game.controlEntryAllowed && !game.controlsVisible {
+                            Button {game.toggleControls()} label: {Label(language.text("virtualControlsShow"),systemImage:"keyboard").labelStyle(.iconOnly)}
+                                .frame(minWidth:44,minHeight:44).buttonStyle(.borderedProminent).padding(8)
+                                .accessibilityIdentifier("mobile.controls.entry")
+                        }
+                    }
+                if game.controlsVisible {
+                    MobileControlPad(game:game,language:language)
+                        .frame(maxHeight:min(260,max(88,geometry.size.height*0.42)))
+                }
+                Text(game.status == "paused" ? language.text("mobilePaused") : game.status == "running" ? language.text("mobileRunning") : game.status == "restartRequired" ? language.text("mobileAudioRestart") : game.status)
+                    .font(.caption).frame(minHeight:24).foregroundStyle(.secondary)
+            }.background(Color.black).foregroundStyle(.white)
+        }
         .confirmationDialog(language.text("mobileReturnShell"), isPresented: $confirmReturn) {
             Button(language.text("mobileCloseGame")) { game.controller.stop(); close() }.accessibilityIdentifier("mobile.game.confirmReturn")
             Button(language.text("continue"), role: .cancel) {}
@@ -264,7 +347,14 @@ struct MobileGameView: View {
         .alert(language.text("error"), isPresented: Binding(get: { game.error != nil }, set: { if !$0 { game.error=nil } })) {
             Button(language.text("ok")) { game.controller.stop(); close() }
         } message: { Text(game.error ?? "") }
-        .onChange(of: confirmReturn) { _, presented in game.controller.setSystemModalPresented(presented) }
+        .confirmationDialog(language.text("mobileGameMenu"),isPresented:$showGameMenu) {
+            Button(language.text(game.controlsVisible ? "virtualControlsHide" : "virtualControlsShow")) {showGameMenu=false; game.controller.setSystemModalPresented(false); game.toggleControls()}
+            Button(language.text("enterKey")) {showGameMenu=false; game.controller.setSystemModalPresented(false); game.tapKey(0x0D)}
+            Button(language.text("mobileResumeAudio")) {showGameMenu=false; game.controller.setSystemModalPresented(false); game.controller.resumeAudio()}
+            Button(language.text("mobileCloseGame")) {showGameMenu=false; confirmReturn=true}
+            Button(language.text("cancel"),role:.cancel) {}
+        }
+        .onChange(of: confirmReturn || showGameMenu) {_, presented in game.controller.setSystemModalPresented(presented)}
         .onDisappear { game.controller.stop() }
     }
 }

@@ -661,3 +661,11 @@ iOS现提供第三个设置目的地：独立草稿、保存/丢弃/离页确认
 使用隔离Debug预览与仓库Demo，不代替法律协议接受或真机验收。
 `--ios-settings-preview --ios-preview-landscape --ios-demo-smoke`可在Debug开启同一隔离产品预览。
 方向证据：`out/apple_host/evidence/ios-I3-orientation-ui-verified.xcresult`与phone/pad XCTest结果。
+
+移动游戏页控制板现有顶栏/画布/菜单入口、普通VK按键与Ctrl保持、直接触摸/虚拟鼠标模式、可见指针和独立左键。
+隐藏/暂停/旋转/resize/模式/退出释放输入；鼠标手柄与画布共用aspect-fit映射且忽略旧scope的拖动。
+移动`virtualControls`表示启动时显示，`virtualControlMenuEnabled`表示画布入口；顶栏始终可显式打开，初装touch。
+IME、平台FIFO请求、沉浸工具栏及完整无障碍仍未完成。
+验证：`AetherHostIOS`的23项XCTest、`AetherHostIOSUI`的3项UI测试（含最大辅助字号和横纵拖动），
+以及`clang++ -std=c++17 apps/apple_host/Tests/MobileTouchSequenceTests.cpp -o out/apple_host/ios/touch-sequence-tests`后运行该程序。
+证据 `out/apple_host/evidence/ios-I3-controls-ui-final2.xcresult`与`ios-I3-controls-{phone,pad}-final2.xcresult`。

@@ -349,6 +349,8 @@ enum ShellLanguage: String, CaseIterable, Identifiable {
         "consoleSlowArmed": ["已武装：将捕获下一个超过 20 ms 的帧", "已武裝：將擷取下一個超過 20 ms 的影格", "Armed: the next frame over 20 ms will be captured", "待機中：20 ms を超える次のフレームを取得します", "대기 중: 20ms를 초과하는 다음 프레임을 캡처합니다"],
         "folder": ["在访达中显示", "在 Finder 中顯示", "Show in Finder", "Finder で表示", "Finder에서 보기"],
         "setCover": ["设置封面", "設定封面", "Set Cover", "カバーを設定", "표지 설정"],
+        "mobileLibrarySearch": ["搜索游戏", "搜尋遊戲", "Search Games", "ゲームを検索", "게임 검색"],
+        "mobileCoverCopyHelp": ["选择的图片会复制到应用内，取消或读取失败时保留原封面。", "選擇的圖片會複製到應用程式內，取消或讀取失敗時保留原封面。", "The selected image is copied into the app. Cancellation or a read failure keeps the current cover.", "選択した画像はアプリ内にコピーされます。キャンセルや読み込み失敗時は現在のカバーを保持します。", "선택한 이미지는 앱 내부에 복사됩니다. 취소하거나 읽기에 실패하면 기존 표지를 유지합니다."],
         "clearCover": ["清除封面", "清除封面", "Clear Cover", "カバーを消去", "표지 지우기"],
         "coverSearch": ["搜索在线封面", "搜尋線上封面", "Search Online Cover", "オンラインカバーを検索", "온라인 표지 검색"],
         "coverSearchHelp": ["向 VNDB 发送游戏标题以查找候选封面；不会发送本机路径或存档。选择后封面缓存到本机，失败时保留当前封面。", "向 VNDB 傳送遊戲標題以尋找候選封面；不會傳送本機路徑或存檔。選擇後封面快取到本機，失敗時保留目前封面。", "Sends only the game title to VNDB to find candidate covers; no local path or save data is sent. A chosen cover is cached locally and a failure keeps the current cover.", "候補カバーの検索のため VNDB へゲームタイトルのみを送信します（ローカルパスやセーブは送信しません）。選択したカバーは端末にキャッシュし、失敗時は現在のカバーを保持します。", "후보 표지를 찾기 위해 VNDB로 게임 제목만 전송합니다(로컬 경로나 저장 파일은 전송하지 않음). 선택한 표지는 기기에 캐시되며 실패하면 현재 표지를 유지합니다."],

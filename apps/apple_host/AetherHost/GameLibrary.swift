@@ -81,10 +81,11 @@ struct GameLibrary {
 
     func coverURL(_ game: LibraryGame) -> URL? {
         guard let stored = game.coverPath, !stored.isEmpty else { return nil }
-        if stored.hasPrefix("game://") {
-            let relative = String(stored.dropFirst("game://".count))
+        if stored.hasPrefix("game://") || stored.hasPrefix("library://") {
+            let libraryRelative = stored.hasPrefix("library://")
+            let relative = String(stored.dropFirst(libraryRelative ? "library://".count : "game://".count))
             guard !relative.isEmpty, !relative.hasPrefix("/"), !relative.contains("\0") else { return nil }
-            let root = gameURL(game).standardizedFileURL.resolvingSymlinksInPath()
+            let root = (libraryRelative ? self.root : gameURL(game)).standardizedFileURL.resolvingSymlinksInPath()
             let candidate = root.appendingPathComponent(relative, isDirectory: false)
                 .standardizedFileURL.resolvingSymlinksInPath()
             guard candidate.path == root.path || candidate.path.hasPrefix(root.path + "/") else { return nil }
@@ -135,7 +136,7 @@ struct GameLibrary {
         return updated
     }
 
-    func setCover(_ id: UUID, url: URL, existing: [LibraryGame]) throws -> [LibraryGame] {
+    func setCover(_ id: UUID, url: URL, existing: [LibraryGame], relativeToLibrary: Bool = false) throws -> [LibraryGame] {
         guard FileManager.default.fileExists(atPath: url.path) else { throw Failure.invalidManifest }
         var updated = existing
         guard let index = updated.firstIndex(where: { $0.id == id }) else { throw Failure.invalidManifest }
@@ -143,6 +144,10 @@ struct GameLibrary {
         let resolved = url.standardizedFileURL.resolvingSymlinksInPath()
         if resolved.path.hasPrefix(root + "/") {
             updated[index].coverPath = "game://" + String(resolved.path.dropFirst(root.count + 1))
+        } else if relativeToLibrary {
+            let storage = self.root.standardizedFileURL.resolvingSymlinksInPath().path
+            guard resolved.path.hasPrefix(storage + "/") else { throw Failure.unsafeSource }
+            updated[index].coverPath = "library://" + String(resolved.path.dropFirst(storage.count + 1))
         } else {
             updated[index].coverPath = resolved.path
         }

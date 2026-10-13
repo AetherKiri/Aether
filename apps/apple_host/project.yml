@@ -82,6 +82,7 @@ targets:
       - path: AetherHost/GameRuntime.swift
       - path: AetherHost/GameArchive.swift
       - path: AetherHost/GameCopy.swift
+      - path: AetherHost/CoverSearch.swift
       - path: AetherHost/PlayStats.swift
       - path: AetherHost/LegalAcceptance.swift
       - path: AetherHost/ShellStrings.swift

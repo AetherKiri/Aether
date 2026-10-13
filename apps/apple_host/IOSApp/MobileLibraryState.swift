@@ -41,6 +41,7 @@ final class MobileImportControl: @unchecked Sendable {
 final class MobileLibraryState: ObservableObject {
     @Published private(set) var games: [LibraryGame] = []
     @Published private(set) var isImporting=false
+    @Published var isEditingCover=false
     @Published private(set) var cancelling=false
     @Published private(set) var fraction: Double?
     @Published private(set) var bytes: Int64=0
@@ -60,7 +61,7 @@ final class MobileLibraryState: ObservableObject {
     }
     func cancelImport() { if control?.cancel() == true { cancelling=true } }
     func importURL(_ url: URL) async {
-        guard writable, !isImporting else { return }
+        guard writable, !isImporting, !isEditingCover else { return }
         let token=MobileImportControl(); control=token
         isImporting=true; cancelling=false; fraction=nil; bytes=0; error=nil; errorKey=nil
         let library=self.library, existing=games
@@ -140,12 +141,18 @@ final class MobileLibraryState: ObservableObject {
         else {errorKey=nil}
         self.error=error.localizedDescription
     }
+    func publishCover(_ id: UUID, url: URL) throws {
+        games = try library.setCover(id, url: url, existing: games, relativeToLibrary: true)
+    }
+    func clearCover(_ id: UUID) throws {
+        games = try library.clearCover(id, existing: games)
+    }
     func rename(_ id: UUID, title: String) {
-        guard writable, !isImporting else { return }
+        guard writable, !isImporting, !isEditingCover else { return }
         do { games=try library.rename(id,title:title,existing:games) } catch { recordError(error) }
     }
     func remove(_ id: UUID) {
-        guard writable, !isImporting else { return }
+        guard writable, !isImporting, !isEditingCover else { return }
         do { games=try library.remove(id,existing:games) } catch { recordError(error) }
     }
 }

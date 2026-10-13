@@ -643,3 +643,9 @@ python3 tools/apple_host_archive_test.py
 
 Debug隔离预览可用 `AETHER_HOST_BYPASS_LEGAL_GATE=1` 与 `--ios-library-preview`，
 库与来源均位于临时fixture目录；它不替代真实Files/provider的验收。
+
+移动库现支持本地搜索和详情封面编辑（Files图片复制、清除、显式VNDB候选查询）。
+封面保存为Application Support/Covers内的受限PNG及`library://`相对索引，
+取消/页面离开/图片校验或索引失败不替换原封面。
+`MobileCoverEditor`测试采用网络fixture；真实服务、外部Files图片选择与触屏端到端仍需核验。
+最新测试证据：`out/apple_host/evidence/ios-I2-covers-final2.xcresult`。

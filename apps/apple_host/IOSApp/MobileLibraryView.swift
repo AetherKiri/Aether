@@ -4,10 +4,11 @@ import UniformTypeIdentifiers
 import ImageIO
 
 struct MobileDocumentPicker: UIViewControllerRepresentable {
+    var types: [UTType] = [.folder, .zip]
     let selected: (URL?) -> Void
     func makeCoordinator() -> Coordinator { Coordinator(selected) }
     func makeUIViewController(context: Context) -> UIDocumentPickerViewController {
-        let picker=UIDocumentPickerViewController(forOpeningContentTypes:[.folder,.zip],asCopy:false)
+        let picker=UIDocumentPickerViewController(forOpeningContentTypes:types,asCopy:false)
         picker.allowsMultipleSelection=false; picker.delegate=context.coordinator
         return picker
     }
@@ -25,6 +26,8 @@ struct MobileLibraryView: View {
     @ObservedObject var shell: MobileShellState
     private var language: ShellLanguage {shell.language}
     let play: (LibraryGame) -> Void
+    private var visibleGames: [LibraryGame] {model.games.filter {query.isEmpty || $0.displayTitle.localizedStandardContains(query)}}
+    @State private var query=""
     @State private var picker=false
     @State private var remove: LibraryGame?
     var body: some View {
@@ -37,7 +40,7 @@ struct MobileLibraryView: View {
                     Button(language.text("cancel")) { model.cancelImport() }.disabled(model.cancelling)
                 }
             }
-            ForEach(model.games) { game in
+            ForEach(visibleGames) { game in
                 NavigationLink {
                     MobileGameDetailView(model:model, id:game.id, language:language, play:play)
                 } label: {
@@ -46,11 +49,17 @@ struct MobileLibraryView: View {
                         Text(game.displayTitle).lineLimit(3)
                     }.frame(minHeight:64)
                 }
-                .swipeActions { Button(language.text("remove"),role:.destructive) { remove=game }.disabled(model.isImporting) }
+                .swipeActions { Button(language.text("remove"),role:.destructive) { remove=game }.disabled(model.isImporting || model.isEditingCover) }
             }
         }
-        .overlay { if model.games.isEmpty && !model.isImporting { ContentUnavailableView(language.text("library"),systemImage:"books.vertical",description:Text(language.text("mobileImportKiriHelp"))) } }
+        .overlay {
+            if !model.isImporting {
+                if model.games.isEmpty {ContentUnavailableView(language.text("library"),systemImage:"books.vertical",description:Text(language.text("mobileImportKiriHelp")))}
+                else if visibleGames.isEmpty {ContentUnavailableView.search(text:query)}
+            }
+        }
         .navigationTitle(language.text("library"))
+        .searchable(text:$query, prompt:language.text("mobileLibrarySearch"))
         .toolbar { ToolbarItemGroup(placement:.topBarTrailing) {
             Menu {
                 Picker(language.text("language"),selection:$shell.language) {
@@ -58,7 +67,7 @@ struct MobileLibraryView: View {
                 }
             } label: {Label(language.text("language"),systemImage:"globe").frame(minWidth:44,minHeight:44)}
             Button { picker=true } label: { Label(language.text("import"),systemImage:"plus").frame(minWidth:44,minHeight:44) }
-                .disabled(model.isImporting || !model.writable)
+                .disabled(model.isImporting || model.isEditingCover || !model.writable)
         } }
         .sheet(isPresented:$picker) { MobileDocumentPicker { url in
             picker=false
@@ -78,6 +87,13 @@ struct MobileGameDetailView: View {
     let id: UUID
     let language: ShellLanguage
     let play: (LibraryGame)->Void
+    @StateObject private var cover: MobileCoverEditor
+    @State private var coverPicker=false
+    @State private var online=false
+    init(model: MobileLibraryState, id: UUID, language: ShellLanguage, play: @escaping (LibraryGame)->Void) {
+        self.model=model; self.id=id; self.language=language; self.play=play
+        _cover=StateObject(wrappedValue:MobileCoverEditor(model:model,gameID:id))
+    }
     @State private var rename=false
     @State private var title=""
     var body: some View {
@@ -88,15 +104,51 @@ struct MobileGameDetailView: View {
                         MobileCoverThumbnail(url:model.coverURL(game)).frame(height:160)
                         Text(game.displayTitle).font(.title2)
                         Text("KiriKiri").foregroundStyle(.secondary)
-                        Button(language.text("play")) {play(game)}.frame(minHeight:44).disabled(model.isImporting || !model.available.contains(game.id))
+                        Button(language.text("play")) {play(game)}.frame(minHeight:44).disabled(model.isImporting || model.isEditingCover || !model.available.contains(game.id))
                         if !model.available.contains(game.id) {Text(language.text("mobileImportKiriHelp")).font(.caption)}
                     }
                     Section {
-                        Button(language.text("rename")) {title=game.title;rename=true}.frame(minHeight:44).disabled(model.isImporting || !model.writable)
+                        Button(language.text("setCover")) {coverPicker=true}.disabled(!cover.canEdit)
+                        Button(language.text("clearCover")) {cover.clear()}.disabled(!cover.canEdit || game.coverPath == nil)
+                        Button(language.text("coverSearch")) {online=true}.disabled(!cover.canEdit)
+                        Text(language.text("mobileCoverCopyHelp")).font(.caption).foregroundStyle(.secondary)
+                        if cover.busy {ProgressView(); Button(language.text("cancel")) {cover.cancel()}}
+                    }
+                    Section {
+                        Button(language.text("rename")) {title=game.title;rename=true}.frame(minHeight:44).disabled(model.isImporting || model.isEditingCover || !model.writable)
                     }
                 }.navigationTitle(game.displayTitle)
             } else {ContentUnavailableView(language.text("library"),systemImage:"books.vertical")}
         }
+        .sheet(isPresented:$coverPicker) {MobileDocumentPicker(types:[.image]) {url in
+            coverPicker=false
+            if let url {cover.selectFile(url)}
+        }}
+        .sheet(isPresented:$online,onDismiss:{cover.cancel()}) {
+            NavigationStack {
+                List {
+                    Text(language.text("coverSearchHelp")).font(.callout)
+                    Button(language.text("coverSearch")) {cover.searchOnline()}.disabled(cover.busy)
+                    if cover.busy {ProgressView(); Button(language.text("cancel")) {cover.cancel()}}
+                    ForEach(cover.candidates) {candidate in
+                        Button {cover.selectCandidate(candidate)} label: {
+                            HStack {
+                                MobileRemoteCoverThumbnail(url:candidate.thumbnailURL).frame(width:64,height:88)
+                                Text(candidate.title).lineLimit(3)
+                            }
+                        }.disabled(cover.busy)
+                    }
+                    if let key=cover.errorKey {Text(language.text(key)).foregroundStyle(.secondary)}
+                }.navigationTitle(language.text("coverSearch"))
+                .toolbar {ToolbarItem(placement:.cancellationAction) {Button(language.text("cancel")) {cover.cancel(); online=false}}}
+            }
+        }
+        .onChange(of:cover.applied) {_, applied in if applied {online=false}}
+        .onAppear {cover.activate()}
+        .onDisappear {cover.deactivate()}
+        .alert(language.text("error"),isPresented:Binding(get:{cover.errorKey != nil && !online},set:{if !$0 {cover.errorKey=nil}})) {
+            Button(language.text("ok")) {cover.errorKey=nil}
+        } message: {Text(language.text(cover.errorKey ?? "messageCoverFileMissing"))}
         .alert(language.text("rename"),isPresented:$rename) {
             TextField(language.text("gameTitle"),text:$title)
             Button(language.text("ok")) {model.rename(id,title:title)}
@@ -120,6 +172,25 @@ struct MobileCoverThumbnail: View {
                 return UIImage(cgImage:cg)
             }.value
             if !Task.isCancelled {image=thumbnail}
+        }
+    }
+}
+
+/// Fetches previews only after an explicit search, with the same byte/decode limits.
+private struct MobileRemoteCoverThumbnail: View {
+    let url: URL
+    @State private var image: UIImage?
+    var body: some View {
+        Group {
+            if let image {Image(uiImage:image).resizable().scaledToFit()}
+            else {Image(systemName:"photo").foregroundStyle(.secondary)}
+        }.task(id:url) {
+            image=nil
+            do {
+                let data=try await MobileCoverImageLoader().load(url)
+                let normalized=try await Task.detached(priority:.utility) {try MobileCoverImage.normalized(data)}.value
+                if !Task.isCancelled {image=UIImage(data:normalized)}
+            } catch { /* A failed preview never changes the selected cover. */ }
         }
     }
 }

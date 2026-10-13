@@ -126,7 +126,7 @@ struct MobileRootView: View {
                     Button(shell.language.text("play")) {
                         do { game = MobileGameRoute(url: try shell.prepareDemo()) }
                         catch { shell.error = error.localizedDescription }
-                    }.disabled(library.isImporting).buttonStyle(.borderedProminent).frame(minHeight: 44)
+                    }.disabled(library.isImporting || library.isEditingCover).buttonStyle(.borderedProminent).frame(minHeight: 44)
                 }.padding(.vertical, 8)
             }
             Section(shell.language.text("aboutSection")) {

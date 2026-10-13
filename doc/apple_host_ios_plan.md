@@ -214,3 +214,13 @@ Goal模式按阶段持续推进，阶段完成不等于整个M4完成。达到G4
 - iOS26 XCTest共11项通过：目录/ZIP、重复与存档保留、搬迁后相对路径、索引重开、封面索引、KiriKiri-only、取消/发布边界、预算、链接拒绝/失败回滚，及之前协议/Metal回归。device Debug产品构建、macOS完整行为回归与独立GameArchiveTests/GameLibraryTests通过；独立归档工具的过时Swift依赖清单已修正。
 - 证据 `out/apple_host/evidence/ios-I2-library-final5.xcresult`，UI隔离预览/截图在 `out/apple_host/evidence/ios-I2-library/`。Debug `--ios-library-preview`在临时目录复制仓库Demo并显示列表，不写真实库/协议接受记录；Release不提供该入口。
 - 本轮没有CUA工具，未声称完成Files系统选择/真实外部provider、iCloud材料化与离线、实际磁盘不足、用户触屏取消的端到端验收。测试用App/测试bundle与临时目录的URL验证协调链路，不能替代真机Files。I2/I2b/IOS-03/04完整验收仍未完成；I6补入磁盘/文件元数据所用API的隐私manifest审计。
+
+## 11. 移动封面编辑与库搜索（2026-10-13）
+
+- 游戏库加入原生搜索；详情页提供 Files 图片选择、清除、在线 VNDB 封面搜索。首次打开详情/搜索面板不发送标题；用户点击查询才复用共享 VNDB API，候选显示标题与受限缩略图。在线下载失败、损坏图片、取消/离开详情后的迟到结果均保留原封面。
+- 新增 MobileCoverEditor，按游戏 UUID + request generation 绑定异步结果；编辑期间禁用并行导入、重命名/移除与启动。离开详情使 editor 失效；取消释放 UI 锁并取消任务，文件协调亦支持取消。网络 provider/图片 loader 可注入，不修改 engine_api/provider ABI。
+- 手动图片使用成对 security scope、NSFileCoordinator、O_NOFOLLOW 与 regular-file 检查；文件/网络编码字节最多16MiB，输入最多4000万像素且单边不超过16384，ImageIO按2048上限解码并重编码PNG。网络仅HTTPS，下载按实际字节限额；候选预览失败只显示占位。
+- 校验后的图片复制到 Application Support/Covers，UUID新文件与索引事务分离；保存失败或迟到结果移除本次文件，不覆盖原文件。共享索引增加可解析的 library:// 相对路径，setCover默认macOS行为不变；iOS路径迁移后仍可重定位。清除写入 coverSuppressed，重启扫描不自动恢复；此前已发布的缓存图片暂不垃圾回收。
+- iOS26共13项XCTest通过（含之前11项协议/导入/Metal）：手动复制后删除外部源、索引重开与Support迁移、损坏/超限图片、清除持久化、路径逃逸拒绝、索引写失败无孤儿新文件；在线只传标题、取消后旧结果隔离、成功替换与后续失败保留、详情失效拒绝重发。线上服务与图片由fixture注入，不声称真实VNDB服务可用性验收。
+- 最新结果 `out/apple_host/evidence/ios-I2-covers-final2.xcresult`；device Debug产品构建、macOS完整行为与GameArchiveTests/GameLibraryTests回归通过。本轮无CUA工具，系统Files图片选择、候选点击、VoiceOver/最大Dynamic Type与真实外部provider待端到端核验；iOS18/真机/G4保持未验收。
+- I2下一步：完整设置草稿、四主题、第三个设置目的地、移动默认original/off与比例/横屏偏好；封面/搜索实现已落地但不据此勾满I2。

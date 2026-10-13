@@ -33,7 +33,7 @@ the host cannot run TyranoScript.
 The host supports browser-compatible projects, their DOM/CSS rendering, direct
 mouse/keyboard input, on-screen keys, standard browser media, and Tyrano's own
 menus and save/load logic. The toolbar returns to the library, recreates the
-player, or toggles virtual keys, which start enabled on mobile. The system
+player, or toggles virtual keys, which start disabled on all platforms. The system
 browser owns the game surface; Godot owns the surrounding library and toolbar.
 
 Packed `app.asar`, encrypted resources, Node/Electron/NW.js APIs, native plugins,

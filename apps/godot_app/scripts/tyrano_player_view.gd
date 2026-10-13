@@ -44,7 +44,6 @@ func setup(app) -> void:
     toolbar.add_child(title)
     var keys := _button(toolbar, "⌨", host._t("settings.virtual_control_menu"))
     keys.toggle_mode = true
-    controls_visible = OS.has_feature("mobile")
     keys.button_pressed = controls_visible
     keys.toggled.connect(func(value: bool):
         controls_visible = value

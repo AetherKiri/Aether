@@ -838,3 +838,9 @@
 - 第三个设置tab/侧栏目的地落地，提供保存/丢弃/离页确认；移动v1 envelope保留共享v9全部字段，初装original/off、comfortable，旧输出与算法不静默覆盖。损坏与失败写盘保持原文件及已生效设置。
 - 五语言/四主题/原生界面间距生效，renderer与插件选项使用已提交快照下次启动；software真实Demo测试出帧。未迁移的FPS/输出增强/控制板/横屏明确保留偏好并说明能力，不宣称完整设置已对齐。
 - iOS26共16项测试、device Debug、macOS行为回归通过；iPhone/iPad各四主题设置截图视觉核查。无CUA/真机/18证据。详情及下一步见ios_plan第12节。
+
+### 2026-10-13：iOS横屏策略与真实UI返回验证
+
+- 设置envelope v2加入横屏偏好，旧v1默认false；scene范围的方向掩码与系统几何请求，失败提示/重试，旧回调隔离，stop/断开恢复壳策略。实现不改变engine_api/provider ABI，不强制iPad全屏。
+- iPhone26实测横屏并回到原竖屏；iPad26当前窗口模式拒绝时保持可玩并恢复策略。两环境各21项单元/真实引擎测试通过；新增原生XCUITest正式游戏页点返回/确认，恢复竖屏设置且横屏偏好保留。
+- device Debug与macOS回归通过；无CUA工具，但本轮有XCUITest实际UI点按及附件证据。iOS18、真机、多任务与完整输入/音频验收未完成。详情见ios_plan第13节，继续控制板/IME/平台请求。

@@ -17,6 +17,8 @@ struct MobileSettingsView: View {
                 Picker(language.text("mobileInterfaceScale"),selection:$preferences.draft.interfaceScale) {
                     ForEach(["compact","comfortable","standard"],id:\.self) {Text(language.text("mobileScale_"+$0)).tag($0)}
                 }
+                Toggle(language.text("mobileLandscape"),isOn:$preferences.draft.landscapeLocked).accessibilityIdentifier("mobile.settings.landscape")
+                Text(language.text("mobileLandscapeHelp")).font(.caption).foregroundStyle(palette.secondary.color)
                 Text(language.text("mobileScaleHelp")).font(.caption).foregroundStyle(palette.secondary.color)
             }.listRowBackground(palette.surface.color)
             Section(language.text("renderer")) {

@@ -17,6 +17,7 @@ extern "C" uint32_t aether_apple_host_core_initialize(void);
     CFTimeInterval _lastStatus;
     NSString *_finalMetalDiagnostics;
     uint64_t _softwareFrames;
+    id _disconnectObserver;
 }
 - (instancetype)initWithGameURL:(NSURL *)game {
     if ((self = [super init])) {_game = game; _engineOptions=@{};}
@@ -45,6 +46,14 @@ extern "C" uint32_t aether_apple_host_core_initialize(void);
 - (void)viewDidAppear:(BOOL)animated {
     [super viewDidAppear:animated];
     if (_closed || _session) return;
+    UIWindowScene *scene=self.view.window.windowScene;
+    if (!scene) { [self fail:@"An owning window scene is required"]; return; }
+    if (self.sceneReady) self.sceneReady(scene);
+    __weak AetherMobileGameController *weakController=self;
+    _disconnectObserver=[NSNotificationCenter.defaultCenter addObserverForName:UISceneDidDisconnectNotification
+        object:scene queue:NSOperationQueue.mainQueue usingBlock:^(NSNotification *note) {
+            [weakController stop];
+        }];
     aether_apple_host_core_initialize();
     _session = [AetherEngineSession new];
     NSFileManager *fm = NSFileManager.defaultManager;
@@ -85,7 +94,7 @@ extern "C" uint32_t aether_apple_host_core_initialize(void);
         if (!forceSoftware && self.presentationFallback) self.presentationFallback(@"metalPresenterUnavailable");
         if (![_session setOption:@"renderer" value:@"software" error:&error]) { [self fail:error.localizedDescription]; return; }
     }
-    _driver = [[AetherMobileSessionDriver alloc] initWithSession:_session scene:self.view.window.windowScene];
+    _driver = [[AetherMobileSessionDriver alloc] initWithSession:_session scene:scene];
     __weak AetherMobileGameController *weakSelf = self;
     _driver.tick = ^(uint32_t delta) { [weakSelf tick:delta]; };
     _driver.willPause = ^{ AetherMobileGameController *owner = weakSelf; if (owner) [owner->_canvas cancelPointer]; };
@@ -150,7 +159,10 @@ extern "C" uint32_t aether_apple_host_core_initialize(void);
 - (uint64_t)submittedMetalFrames { return _presenter.submittedFrames; }
 - (NSString *)metalDiagnostics { return _session ? [_session metalBridgeDiagnostics] : _finalMetalDiagnostics ?: @""; }
 - (void)stop {
-    _closed=YES; [_canvas cancelPointer]; [_driver stop]; _driver=nil;
+    if (_closed) return;
+    _closed=YES;
+    if (_disconnectObserver) { [NSNotificationCenter.defaultCenter removeObserver:_disconnectObserver]; _disconnectObserver=nil; }
+    [_canvas cancelPointer]; [_driver stop]; _driver=nil;
     if (_session) {
         uint64_t frames=_presenter.submittedFrames;
         [_presenter stop]; [_presenter.view removeFromSuperview]; _presenter=nil;
@@ -160,6 +172,7 @@ extern "C" uint32_t aether_apple_host_core_initialize(void);
         _session=nil;
     }
     _canvas.image=nil;
+    if (self.didClose) self.didClose();
 }
 - (void)dealloc { [self stop]; }
 @end

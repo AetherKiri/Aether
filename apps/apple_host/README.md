@@ -651,7 +651,13 @@ Debug隔离预览可用 `AETHER_HOST_BYPASS_LEGAL_GATE=1` 与 `--ios-library-pre
 最新测试证据：`out/apple_host/evidence/ios-I2-covers-final2.xcresult`。
 
 iOS现提供第三个设置目的地：独立草稿、保存/丢弃/离页确认，五语言、四主题、原生行间距密度与下次启动的renderer/插件选项。
-移动`settings.json`以v1 envelope保留共享HostSettings v9字段；flat旧文件迁移不丢输出/增强偏好，初装默认original/off。
-尚未迁移的FPS、输出增强、控制板、诊断及横屏仍有明确能力说明。
+移动`settings.json`以v2 envelope保留共享HostSettings v9字段，v1自动补横屏偏好false；flat旧文件迁移不丢输出/增强偏好，初装默认original/off。
+尚未迁移的FPS、输出增强、控制板及诊断仍有明确能力说明。
 `--ios-settings-preview --ios-preview-theme=warm_dark`（配合Debug法律绕过）只写临时测试偏好；Release不提供此入口。
 证据：`out/apple_host/evidence/ios-I2-settings-final.xcresult`与`ios-I2-settings/`内iPhone/iPad四主题截图；截图不是CUA点击验收。
+
+横屏偏好下次启动应用到拥有scene的游戏，系统拒绝时保留当前布局并可重试，退出恢复壳方向范围及原方向请求。
+`AetherHostIOSUI` scheme提供正式游戏横屏→UI点返回/确认→竖屏设置的XCUITest；
+使用隔离Debug预览与仓库Demo，不代替法律协议接受或真机验收。
+`--ios-settings-preview --ios-preview-landscape --ios-demo-smoke`可在Debug开启同一隔离产品预览。
+方向证据：`out/apple_host/evidence/ios-I3-orientation-ui-verified.xcresult`与phone/pad XCTest结果。

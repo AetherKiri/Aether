@@ -2,17 +2,18 @@ import SwiftUI
 
 @main
 struct AetherHostIOSApp: App {
+    @UIApplicationDelegateAdaptor(MobileAppDelegate.self) private var appDelegate
     @StateObject private var shell: MobileShellState
     @StateObject private var library: MobileLibraryState
     @StateObject private var preferences: MobilePreferencesState
     init() {
-        let state=MobileShellState()
         #if DEBUG
         let fixture=(ProcessInfo.processInfo.arguments.contains("--ios-library-preview") || ProcessInfo.processInfo.arguments.contains("--ios-settings-preview")) ? FileManager.default.temporaryDirectory.appendingPathComponent("AetherLibraryPreview-" + UUID().uuidString) : nil
         #else
         let fixture: URL? = nil
         #endif
-        let preferences=MobilePreferencesState(root:fixture?.appendingPathComponent("Support") ?? state.supportRoot)
+        let state=MobileShellState(supportRoot:fixture?.appendingPathComponent("Support"),gamesRoot:fixture?.appendingPathComponent("Games"))
+        let preferences=MobilePreferencesState(root:state.supportRoot)
         state.language=preferences.settings.host.language
         _preferences=StateObject(wrappedValue:preferences)
         _shell=StateObject(wrappedValue:state)
@@ -61,7 +62,7 @@ struct MobileRootView: View {
                         .toolbar { ToolbarItem(placement: .confirmationAction) { Button(shell.language.text("ok")) { document = nil }.frame(minHeight: 44) } }
                 }
             }
-            .fullScreenCover(item: $game) { route in MobileGameView(route: route, language: shell.language, settings: preferences.settings.host) { game = nil } }
+            .fullScreenCover(item: $game) { route in MobileGameView(route: route, language: shell.language, settings: preferences.settings) { game = nil } }
         .environment(\.locale, shell.language.locale)
         .environment(\.shellPalette,palette)
         .environment(\.defaultMinListRowHeight,44 + 2 * preferences.settings.verticalPadding)
@@ -82,6 +83,7 @@ struct MobileRootView: View {
                    let theme=ShellTheme(rawValue:String(option.dropFirst("--ios-preview-theme=".count))) {
                     preferences.draft.host.theme=theme.rawValue; preferences.save()
                 }
+                if ProcessInfo.processInfo.arguments.contains("--ios-preview-landscape") {preferences.draft.landscapeLocked=true; preferences.save()}
                 destination="settings"
             }
             if LegalAgreement.bypassRequested(), ProcessInfo.processInfo.arguments.contains("--ios-library-preview") {
@@ -204,14 +206,21 @@ final class MobileGameViewModel: ObservableObject {
     @Published var status = ""
     @Published var fallbackKey: String?
     @Published var error: String?
-    init(url: URL, settings: HostSettings) {
+    @Published var orientationFailed = false
+    private let orientation: MobileOrientationOwner
+    init(url: URL, settings: HostSettings, landscapeLocked: Bool = false) {
+        orientation = MobileOrientationOwner(locked:landscapeLocked)
         controller = AetherMobileGameController(gameURL: url)
         controller.prefersSoftwareRendering = settings.renderer == "software"
         controller.engineOptions = Dictionary(uniqueKeysWithValues:settings.engineOptions.filter {$0.key != "fps_limit"}.map {($0.key,$0.value)})
         controller.statusChanged = { [weak self] in self?.status = $0 }
         controller.failed = { [weak self] in self?.error = $0 }
         controller.presentationFallback = { [weak self] in self?.fallbackKey = $0 }
+        orientation.failure = { [weak self] in self?.orientationFailed = true }
+        controller.sceneReady = { [owner=orientation] in owner.begin(scene:$0) }
+        controller.didClose = { [owner=orientation] in owner.end() }
     }
+    func retryOrientation() {orientationFailed=false; orientation.retry()}
 }
 struct MobileGameSurface: UIViewControllerRepresentable {
     let controller: AetherMobileGameController
@@ -225,27 +234,31 @@ struct MobileGameView: View {
     let close: () -> Void
     let title: String
     @State private var confirmReturn = false
-    init(route: MobileGameRoute, language: ShellLanguage, settings: HostSettings, close: @escaping () -> Void) {
-        _game = StateObject(wrappedValue: MobileGameViewModel(url: route.url, settings: settings))
+    init(route: MobileGameRoute, language: ShellLanguage, settings: MobilePreferences, close: @escaping () -> Void) {
+        _game = StateObject(wrappedValue: MobileGameViewModel(url: route.url, settings: settings.host, landscapeLocked: settings.landscapeLocked))
         self.language=language; self.close=close; self.title=route.title
     }
     var body: some View {
         VStack(spacing: 0) {
             ScrollView(.horizontal) {
                 HStack {
-                    Button { confirmReturn = true } label: { Label(language.text("mobileBackHome"), systemImage: "chevron.left") }.frame(minWidth: 44, minHeight: 44)
+                    Button { confirmReturn = true } label: { Label(language.text("mobileReturnShell"), systemImage: "chevron.left") }.frame(minWidth: 44, minHeight: 44).accessibilityIdentifier("mobile.game.return")
                     Text(title).font(.headline)
                     Button(language.text("enterKey")) { game.controller.sendEnter() }.frame(minWidth: 44, minHeight: 44)
                     Button(language.text("mobileResumeAudio")) { game.controller.resumeAudio() }.frame(minWidth: 44, minHeight: 44)
                 }.buttonStyle(.bordered).padding(.horizontal).frame(minHeight: 52)
             }
             if let key = game.fallbackKey { Text(language.text(key)).font(.caption).padding(.horizontal) }
+            if game.orientationFailed {
+                Text(language.text("mobileLandscapeFailed")).font(.caption).padding(.horizontal)
+                Button(language.text("mobileLandscapeRetry")) {game.retryOrientation()}.frame(minHeight:44)
+            }
             MobileGameSurface(controller: game.controller)
             Text(game.status == "paused" ? language.text("mobilePaused") : game.status == "running" ? language.text("mobileRunning") : game.status == "restartRequired" ? language.text("mobileAudioRestart") : game.status)
                 .font(.caption).frame(minHeight: 24).foregroundStyle(.secondary)
         }.background(Color.black).foregroundStyle(.white)
-        .confirmationDialog(language.text("mobileBackHome"), isPresented: $confirmReturn) {
-            Button(language.text("mobileBackHome")) { game.controller.stop(); close() }
+        .confirmationDialog(language.text("mobileReturnShell"), isPresented: $confirmReturn) {
+            Button(language.text("mobileCloseGame")) { game.controller.stop(); close() }.accessibilityIdentifier("mobile.game.confirmReturn")
             Button(language.text("continue"), role: .cancel) {}
         }
         .alert(language.text("error"), isPresented: Binding(get: { game.error != nil }, set: { if !$0 { game.error=nil } })) {

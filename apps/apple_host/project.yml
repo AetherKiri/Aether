@@ -160,6 +160,21 @@ targets:
           - "$(SRCROOT)/HostKit"
           - "$(SRCROOT)/IOSHost"
           - "$(SRCROOT)/../../abi/include"
+  AetherHostIOSUITests:
+    type: bundle.ui-testing
+    platform: iOS
+    deploymentTarget: "18.0"
+    sources:
+      - path: Tests/MobileOrientationUITests.swift
+    dependencies:
+      - target: AetherHostIOS
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: org.github.aetherkiri.host.ios.uitests
+        CODE_SIGN_STYLE: Automatic
+        CODE_SIGN_IDENTITY: ""
+        GENERATE_INFOPLIST_FILE: "YES"
+        TEST_TARGET_NAME: AetherHostIOS
 schemes:
   AetherHostIOS:
     build:
@@ -168,3 +183,10 @@ schemes:
         AetherHostIOSTests: [test]
     test:
       targets: [AetherHostIOSTests]
+  AetherHostIOSUI:
+    build:
+      targets:
+        AetherHostIOS: all
+        AetherHostIOSUITests: [test]
+    test:
+      targets: [AetherHostIOSUITests]

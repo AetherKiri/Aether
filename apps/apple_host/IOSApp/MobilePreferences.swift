@@ -4,9 +4,24 @@ import Combine
 /// Mobile-only envelope keeps every shared preference, including unsupported
 /// output/algorithm choices, without changing the desktop settings schema.
 struct MobilePreferences: Codable, Equatable {
-    var version = 1
+    var version = 2
     var host = MobilePreferences.defaultHost
     var interfaceScale = "comfortable"
+    var landscapeLocked = false
+    enum CodingKeys: String, CodingKey {case version, host, interfaceScale, landscapeLocked}
+    init() {}
+    init(from decoder: Decoder) throws {
+        let values=try decoder.container(keyedBy:CodingKeys.self)
+        version=try values.decode(Int.self,forKey:.version)
+        host=try values.decode(HostSettings.self,forKey:.host)
+        interfaceScale=try values.decodeIfPresent(String.self,forKey:.interfaceScale) ?? "comfortable"
+        landscapeLocked=try values.decodeIfPresent(Bool.self,forKey:.landscapeLocked) ?? false
+    }
+    func migrated() throws -> MobilePreferences {
+        guard (1...2).contains(version) else {throw HostSettings.Failure.unsupportedVersion}
+        var value=self; value.version=2; value.host=try host.normalizedForLoad()
+        return try value.validated()
+    }
     static var defaultHost: HostSettings {
         var settings = HostSettings()
         settings.outputResolution = "original"
@@ -14,7 +29,7 @@ struct MobilePreferences: Codable, Equatable {
         return settings
     }
     func validated() throws -> MobilePreferences {
-        guard version == 1, ["compact", "comfortable", "standard"].contains(interfaceScale) else {throw HostSettings.Failure.invalidValue}
+        guard version == 2, ["compact", "comfortable", "standard"].contains(interfaceScale) else {throw HostSettings.Failure.invalidValue}
         var result=self; result.host=try host.validated(); return result
     }
     var verticalPadding: CGFloat {
@@ -28,9 +43,7 @@ struct MobilePreferencesStore {
         let data=try Data(contentsOf:url)
         let object=try JSONSerialization.jsonObject(with:data) as? [String:Any]
         if object?["host"] != nil {
-            var value=try JSONDecoder().decode(MobilePreferences.self,from:data)
-            value.host=try value.host.normalizedForLoad()
-            return try value.validated()
+            return try JSONDecoder().decode(MobilePreferences.self,from:data).migrated()
         }
         // A copied desktop/previous shared file keeps its exact output choices.
         var value=MobilePreferences()

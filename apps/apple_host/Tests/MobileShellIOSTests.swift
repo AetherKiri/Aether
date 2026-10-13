@@ -353,7 +353,7 @@ final class MobileShellIOSTests: XCTestCase {
             XCTAssertEqual(migrated.settings.interfaceScale,"comfortable")
             migrated.draft.host.theme="dark"; XCTAssertTrue(migrated.save())
             let encoded=try JSONSerialization.jsonObject(with:Data(contentsOf:model.store.url)) as? [String:Any]
-            XCTAssertEqual(encoded?["version"] as? Int,1); XCTAssertNotNil(encoded?["host"])
+            XCTAssertEqual(encoded?["version"] as? Int,2); XCTAssertNotNil(encoded?["host"])
             try Data("broken".utf8).write(to:model.store.url)
             let broken=MobilePreferencesState(root:root)
             XCTAssertFalse(broken.writable); XCTAssertFalse(broken.save())
@@ -380,6 +380,132 @@ final class MobileShellIOSTests: XCTestCase {
         }
         XCTAssertNil(model.error); XCTAssertGreaterThanOrEqual(controller.softwareFrameCount(),3)
         XCTAssertEqual(controller.submittedMetalFrames(),0)
+    }
+
+    func testMobileLandscapeEnvelopeMigrationAndFuturePreservation() throws {
+        try withFixture {root in
+            let model=MobilePreferencesState(root:root)
+            var v1=try JSONSerialization.jsonObject(with:JSONEncoder().encode(model.settings)) as! [String:Any]
+            v1["version"]=1; v1.removeValue(forKey:"landscapeLocked")
+            try FileManager.default.createDirectory(at:root,withIntermediateDirectories:true)
+            try JSONSerialization.data(withJSONObject:v1).write(to:model.store.url)
+            let migrated=MobilePreferencesState(root:root)
+            XCTAssertEqual(migrated.settings.version,2); XCTAssertFalse(migrated.settings.landscapeLocked)
+            migrated.draft.landscapeLocked=true
+            XCTAssertFalse(migrated.settings.landscapeLocked)
+            XCTAssertTrue(migrated.save())
+            XCTAssertTrue(MobilePreferencesState(root:root).settings.landscapeLocked)
+            var future=migrated.settings; future.version=3
+            let data=try JSONEncoder().encode(future); try data.write(to:model.store.url)
+            let preserved=MobilePreferencesState(root:root)
+            XCTAssertFalse(preserved.writable); XCTAssertFalse(preserved.save())
+            XCTAssertEqual(try Data(contentsOf:model.store.url),data)
+        }
+    }
+    func testOrientationDenialRetryStaleCallbacksAndOwnerIsolation() async throws {
+        let scene=try XCTUnwrap(UIApplication.shared.connectedScenes.compactMap {$0 as? UIWindowScene}.first)
+        let window=UIWindow(windowScene:scene)
+        var requests: [UIInterfaceOrientationMask]=[]
+        var callbacks: [(Error)->Void]=[]
+        let policy=MobileOrientationPolicy {_, mask, failure in requests.append(mask); callbacks.append(failure)}
+        var failures=0
+        let first=try XCTUnwrap(policy.begin(scene:scene,locked:true) {failures += 1})
+        XCTAssertEqual(requests,[.landscape]); XCTAssertEqual(policy.supportedMask(for:window),.landscape)
+        XCTAssertNil(policy.begin(scene:scene,locked:true) {XCTFail("Another owner was accepted")})
+        policy.retry(first) {failures += 1}
+        callbacks[0](CocoaError(.featureUnsupported))
+        for _ in 0..<10 {await Task.yield()}
+        XCTAssertEqual(failures,0); XCTAssertEqual(policy.supportedMask(for:window),.landscape)
+        callbacks[1](CocoaError(.featureUnsupported))
+        for _ in 0..<10 {await Task.yield()}
+        XCTAssertEqual(failures,1); XCTAssertEqual(policy.supportedMask(for:window),MobileOrientationPolicy.shellMask(scene))
+        policy.end(first)
+        let second=try XCTUnwrap(policy.begin(scene:scene,locked:true) {failures += 1})
+        policy.end(first); callbacks[1](CocoaError(.featureUnsupported))
+        for _ in 0..<10 {await Task.yield()}
+        XCTAssertEqual(policy.supportedMask(for:window),.landscape); XCTAssertEqual(failures,1)
+        policy.end(second); policy.end(second)
+        XCTAssertEqual(policy.supportedMask(for:window),MobileOrientationPolicy.shellMask(scene))
+    }
+    func testOrientationUnlockedAndDisconnectRelease() async throws {
+        let scene=try XCTUnwrap(UIApplication.shared.connectedScenes.compactMap {$0 as? UIWindowScene}.first)
+        let window=UIWindow(windowScene:scene)
+        var requests=0
+        let policy=MobileOrientationPolicy {_,_,_ in requests += 1}
+        let owner=MobileOrientationOwner(locked:false,policy:policy)
+        owner.begin(scene:scene); owner.begin(scene:scene)
+        XCTAssertEqual(requests,0)
+        NotificationCenter.default.post(name:UIScene.didDisconnectNotification,object:scene)
+        for _ in 0..<10 {await Task.yield()}
+        XCTAssertEqual(policy.supportedMask(for:window),MobileOrientationPolicy.shellMask(scene))
+        XCTAssertNotNil(policy.begin(scene:scene,locked:false) {})
+        owner.end() // Its obsolete token must not release the newer owner.
+        XCTAssertNil(policy.begin(scene:scene,locked:false) {})
+        NotificationCenter.default.post(name:UIScene.didDisconnectNotification,object:scene)
+        for _ in 0..<10 {await Task.yield()}
+    }
+    func testRealGeometryRequestRotatesOrReportsDenialAndUnlocksOnStop() async throws {
+        let scene=try XCTUnwrap(UIApplication.shared.connectedScenes.compactMap {$0 as? UIWindowScene}.first)
+        let previousWindow=scene.windows.first(where:{$0.isKeyWindow})
+        let previousOrientation=scene.interfaceOrientation
+        let root=FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        let shell=MobileShellState(supportRoot:root,gamesRoot:root.appendingPathComponent("Games"),environment:[LegalAgreement.bypassEnvironmentKey:"1"])
+        let model=MobileGameViewModel(url:try shell.prepareDemo(),settings:MobilePreferences.defaultHost,landscapeLocked:true)
+        let window=UIWindow(windowScene:scene); window.rootViewController=model.controller; window.makeKeyAndVisible()
+        defer {model.controller.stop(); window.isHidden=true; previousWindow?.makeKeyAndVisible(); try? FileManager.default.removeItem(at:root)}
+        for _ in 0..<80 {
+            if model.error != nil || model.orientationFailed || scene.interfaceOrientation.isLandscape {break}
+            try await Task.sleep(for:.milliseconds(50))
+        }
+        XCTAssertNil(model.error)
+        XCTAssertTrue(model.orientationFailed || scene.interfaceOrientation.isLandscape)
+        if model.orientationFailed {
+            XCTAssertEqual(MobileOrientationPolicy.shared.supportedMask(for:window),MobileOrientationPolicy.shellMask(scene))
+        } else {
+            XCTAssertEqual(MobileOrientationPolicy.shared.supportedMask(for:window),.landscape)
+        }
+        for _ in 0..<100 {
+            if model.controller.submittedMetalFrames() >= 3 || model.error != nil {break}
+            try await Task.sleep(for:.milliseconds(50))
+        }
+        XCTAssertNil(model.error); XCTAssertGreaterThanOrEqual(model.controller.submittedMetalFrames(),3)
+        print("IOS geometry outcome landscape=\(scene.interfaceOrientation.isLandscape) denied=\(model.orientationFailed)")
+        model.controller.stop(); model.controller.stop()
+        XCTAssertEqual(MobileOrientationPolicy.shared.supportedMask(for:window),MobileOrientationPolicy.shellMask(scene))
+        for _ in 0..<80 {
+            if scene.interfaceOrientation == previousOrientation {break}
+            try await Task.sleep(for:.milliseconds(50))
+        }
+        print("IOS geometry restored previous=\(previousOrientation.rawValue) actual=\(scene.interfaceOrientation.rawValue)")
+        // Rotation is a system request; policy restoration is required even
+        // when a narrow/multitasking scene refuses the preferred geometry.
+    }
+
+    func testSceneDisconnectStopsEngineAndOrientationOnce() async throws {
+        let scene=try XCTUnwrap(UIApplication.shared.connectedScenes.compactMap {$0 as? UIWindowScene}.first)
+        let previous=scene.windows.first(where:{$0.isKeyWindow})
+        let root=FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        let shell=MobileShellState(supportRoot:root,gamesRoot:root.appendingPathComponent("Games"),environment:[LegalAgreement.bypassEnvironmentKey:"1"])
+        let model=MobileGameViewModel(url:try shell.prepareDemo(),settings:MobilePreferences.defaultHost)
+        let window=UIWindow(windowScene:scene); window.rootViewController=model.controller; window.makeKeyAndVisible()
+        defer {model.controller.stop(); window.isHidden=true; previous?.makeKeyAndVisible(); try? FileManager.default.removeItem(at:root)}
+        for _ in 0..<100 {
+            if model.controller.submittedMetalFrames() >= 3 || model.error != nil {break}
+            try await Task.sleep(for:.milliseconds(50))
+        }
+        XCTAssertNil(model.error); XCTAssertGreaterThanOrEqual(model.controller.submittedMetalFrames(),3)
+        XCTAssertNil(MobileOrientationPolicy.shared.begin(scene:scene,locked:false) {})
+        NotificationCenter.default.post(name:UIScene.didDisconnectNotification,object:scene)
+        for _ in 0..<10 {await Task.yield()}
+        let final=model.controller.metalDiagnostics()
+        XCTAssertTrue(final.contains("leases_live=0"),final)
+        XCTAssertTrue(final.contains("render_generation=0"),final)
+        XCTAssertTrue(final.contains("lease_failures=0"),final)
+        let newOwner=try XCTUnwrap(MobileOrientationPolicy.shared.begin(scene:scene,locked:false) {})
+        NotificationCenter.default.post(name:UIScene.didDisconnectNotification,object:scene)
+        for _ in 0..<10 {await Task.yield()}
+        model.controller.stop(); MobileOrientationPolicy.shared.end(newOwner)
+        XCTAssertEqual(model.controller.submittedMetalFrames(),0)
     }
 
 }

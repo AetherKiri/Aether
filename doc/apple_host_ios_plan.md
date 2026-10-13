@@ -235,3 +235,15 @@ Goal模式按阶段持续推进，阶段完成不等于整个M4完成。达到G4
 - iOS26共16项XCTest通过：含此前13项、设置草稿/丢弃/保存/重开/flat迁移/写失败/损坏保留、已保存software真实Demo出帧与mock选项，以及四主题文字/白字按钮至少4.5对比度。device Debug与macOS完整行为回归通过。`out/apple_host/evidence/ios-I2-settings-final.xcresult`为行为证据。
 - 两模拟器四主题共8张设置预览在 `out/apple_host/evidence/ios-I2-settings/`。Debug-only --ios-settings-preview与--ios-preview-theme使用临时库/设置根，不写真实偏好或法律接受；Release无此入口。截图来自simctl视觉核查，不是CUA点选或真机证明。CUA、最大Dynamic Type/VoiceOver、实际离页确认点击、iOS18/真机仍待验收。
 - 下一步按I2/I3继续横屏scene策略与恢复、完整移动输入/控制板和平台请求；再接帧钟/输出预算、诊断与StoreKit。当前不能勾满I2/IOS-08或M4。
+
+## 13. 横屏偏好与 scene 方向恢复（2026-10-13）
+
+- 移动设置envelope升级v2，加入landscapeLocked，默认false（沿用Godot）；v1缺失字段迁移false，flat共享字段与原输出/增强/密度保留。未来版本/损坏文件禁止覆盖。保存后的完整MobilePreferences快照进入游戏，未保存横屏草稿不生效。
+- MobileOrientationPolicy由一个scene/游戏token拥有，通过UIApplicationDelegate窗口方向掩码与UIWindowScene.requestGeometryUpdate请求横屏；递归通知实际root/呈现/子controller更新支持范围。不使用UIDevice KVC强迫物理方向，不给iPad设置全屏排他。
+- 系统拒绝时释放landscape限制、显示五语言说明与重试，继续现有aspect-fit布局，保持偏好。每次重试另有request ID，旧请求/旧会话错误不能改变新策略；scene断开或stop释放拥有者。回到壳先恢复允许范围，并请求进入游戏前方向；即使游戏尚未完成旋转也发恢复请求，覆盖排队中的旧几何请求。系统拒绝恢复时仍保留已恢复的壳策略，不阻止返回。
+- 游戏controller增加sceneReady/didClose宿主回调，开始前要求拥有scene；监听该scene断开直接stop，stop幂等且在停钟、取消输入、lease/drain/销毁后释放方向；回调独立拥有方向lease，不依赖已析构的SwiftUI模型。engine_api/provider ABI不变。
+- iOS26 iPhone17 Pro实际请求成功转横屏，stop后interfaceOrientation从landscape回到进入前portrait；iPad Pro M4当前窗口模式拒绝程序方向请求（UIKit说明当前窗口模式不允许），提示且Metal继续出帧，stop策略恢复。两模拟器各21项XCTest通过，覆盖v1/v2/未来版本、重试/旧错误/旧owner隔离、解锁/断开通知注入与真实引擎lease/drain清理。证据 `ios-I3-orientation-phone-verified.xcresult`、`ios-I3-orientation-pad-final2.xcresult`及对应日志。
+- 新增独立AetherHostIOSUI scheme和UITest target：正式SwiftUI fullScreen游戏→点返回→点确认→设置页，断言横屏/竖屏geometry与横屏偏好保持，实际UI测试通过。iOS26的confirmationDialog产生同action嵌套Button节点，使用命名action firstMatch消除重复查询；不是放宽结果断言。证据 `out/apple_host/evidence/ios-I3-orientation-ui-verified.xcresult`，截图附件导出到 `ios-I3-orientation-ui-verified-attachments/`。
+- 横屏UI检查也修正旧「返回主页」文案为「返回 / 退出并返回」，因为游戏应回到来源页（库详情、主页，或隔离预览设置页）。Debug预览现在连Demo/法律读取/设置/库都在同一临时沙盒根；--ios-preview-landscape仅在Debug设置预览内应用，不写真实用户数据。
+- device Debug构建与macOS完整回归通过，最低18.0不变。本轮没有CUA工具；XCUITest是实际UI自动点击证据，仍不替代真机触摸/iPad窄窗多任务/外接屏、所有旋转中捕获取消、音频与iOS18运行。不能勾满I3/IOS-04/05/07/G4。
+- 下一步：移动虚拟控制板、UIKit IME/平台FIFO请求与输入共享矩形；之后完善调度、诊断、输出预算与StoreKit。

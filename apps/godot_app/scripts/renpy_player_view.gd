@@ -33,6 +33,9 @@ static func runtime_root() -> String:
             return candidate.simplify_path()
     return ""
 
+func _probe_enabled() -> bool:
+    return OS.is_debug_build()
+
 func open_entry(value: Dictionary) -> String:
     state = {}
     commands.clear()
@@ -79,7 +82,7 @@ func open_entry(value: Dictionary) -> String:
     if host.runtime_default_font_path.is_empty():
         host._stage_runtime_fonts()
     var manifest := {"sdk": sdk, "game": root.path_join(relative), "saves": storage_path(root), "ui_font": host.runtime_default_font_path,
-        "embedded": true, "forward_input": OS.get_name() in ["macOS", "iOS"], "parent_pid": OS.get_process_id(), "debug": OS.is_debug_build(),
+        "embedded": true, "forward_input": OS.get_name() in ["macOS", "iOS"], "parent_pid": OS.get_process_id(), "debug": _probe_enabled(),
         "labels": {"menu": host._t("renpy.menu"), "keys": host._t("renpy.keys"), "back": host._t("flash.back")}}
     var path := session_directory.path_join("manifest.json")
     var file := FileAccess.open(path, FileAccess.WRITE)

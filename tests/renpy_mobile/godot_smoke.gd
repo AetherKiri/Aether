@@ -2,6 +2,11 @@ extends Control
 
 # Runs the production player, including its toolbar, input and refresh path.
 const Player = preload("res://scripts/renpy_player_view.gd")
+class ProbePlayer:
+    extends "res://scripts/renpy_player_view.gd"
+    func _probe_enabled() -> bool:
+        # Maven's engine AAR uses release export features, even in a debuggable APK.
+        return true
 class Widgets:
     func toolbar_button(_button: Button) -> void:
         pass
@@ -73,7 +78,7 @@ func _has_save() -> bool:
     return false
 
 func _launch() -> void:
-    view = Player.new()
+    view = ProbePlayer.new()
     add_child(view)
     view.setup(self)
     var message: String = view.open_entry({"path":original, "name":"Ren'Py native smoke"})

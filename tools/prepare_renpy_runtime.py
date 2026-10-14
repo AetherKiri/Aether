@@ -61,6 +61,7 @@ def main():
     args = parser.parse_args()
     cache = args.cache.resolve(); cache.mkdir(parents=True, exist_ok=True)
     fingerprint = hashlib.sha256()
+    fingerprint.update((args.platform + "/" + args.arch).encode())
     inputs = [*REPO.glob("tools/*renpy*.py"), *REPO.glob("bridge/renpy_runtime/ios_sdl_adapter.mm"),
               *REPO.glob("bridge/renpy_runtime/android/**/*.cpp"), *REPO.glob("bridge/renpy_runtime/android/**/*.java")]
     for file in sorted(inputs):

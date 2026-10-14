@@ -8,6 +8,7 @@ static void *runtime;
 static int (*python_run)(const char *);
 static void (*configure_adapter)(void (*)(void *), int, int);
 static NSString *runtime_path;
+static NSString *runtime_error;
 static void OnUI(dispatch_block_t block) {
     if (NSThread.isMainThread) block(); else dispatch_sync(dispatch_get_main_queue(), block);
 }
@@ -61,8 +62,12 @@ extern "C" void *aether_renpy_native_open(uint64_t native, const char *sdkPath, 
     __block void *result = nullptr;
     OnUI(^{
         if (outError) *outError = nullptr;
-        auto fail = [&](NSString *message) { if (outError) *outError = strdup(message.UTF8String); };
+        auto fail = [&](NSString *message) {
+            if (outError) *outError = strdup(message.UTF8String);
+            if (runtime && !runtime_path) runtime_error = message;
+        };
         if (active) { fail(@"A Ren'Py session is already open"); return; }
+        if (runtime_error) { fail([runtime_error stringByAppendingString:@"; restart Aether before retrying"]); return; }
         NSString *sdk = @(sdkPath);
         if (runtime_path && ![runtime_path isEqualToString:sdk]) { fail(@"Restart Aether before selecting another Ren'Py runtime"); return; }
         UIView *godot = (__bridge UIView *)(reinterpret_cast<void *>(native));
@@ -87,7 +92,11 @@ extern "C" void *aether_renpy_native_open(uint64_t native, const char *sdkPath, 
                 fail(@"The packaged Ren'Py framework has an incompatible native API"); active = nil; [host.parent removeFromSuperview]; return;
             }
             configure_adapter(Adopt, godot.bounds.size.width, godot.bounds.size.height);
+#if defined(__x86_64__)
+            setenv("RENPY_PLATFORM", "ios-x86_64", 1);
+#else
             setenv("RENPY_PLATFORM", "ios-arm64", 1);
+#endif
             setenv("RENPY_GL_VSYNC", "0", 1);
             NSString *path = [sdk stringByAppendingPathComponent:@"lib/python3.12"];
             NSUInteger length = [path lengthOfBytesUsingEncoding:NSUTF32LittleEndianStringEncoding] / sizeof(wchar_t);

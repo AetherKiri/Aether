@@ -1,7 +1,7 @@
-"""Development desktop host for a separately supplied Ren'Py 8 SDK.
+"""Per-game native Ren'Py host, using Aether-owned sessions and save folders.
 
-Runs in the SDK's Python process, on its main thread. The Godot process owns
-the session and exchanges allowlisted commands through atomic JSON files.
+The embedded loop and allowlisted JSON probe share the same interpreter.
+The command-line entry point also supports isolated SDK diagnostics.
 """
 import argparse
 import ctypes
@@ -27,6 +27,7 @@ _last_publish = 0.0
 _inspect_names = []
 _command_error = ""
 _keys_down = set()
+_raw_keys_down = set()
 _mouse_position = (0, 0)
 _mouse_buttons = [False, False, False]
 _compiled_cache = None
@@ -159,7 +160,7 @@ def _pygame():
     return renpy.display.core.pygame
 
 
-def key(name, pressed):
+def key(name, pressed, modifier=None, repeat=False, text=None):
     pygame = _pygame()
     keys = {"esc": pygame.K_ESCAPE, "enter": pygame.K_RETURN, "space": pygame.K_SPACE,
             "ctrl": pygame.K_LCTRL, "up": pygame.K_UP, "down": pygame.K_DOWN,
@@ -171,9 +172,10 @@ def key(name, pressed):
         _keys_down.add(name)
     else:
         _keys_down.discard(name)
-    modifier = pygame.KMOD_CTRL if "ctrl" in _keys_down else 0
+    if modifier is None:
+        modifier = pygame.KMOD_CTRL if "ctrl" in _keys_down else 0
     pygame.event.post(pygame.event.Event(pygame.KEYDOWN if pressed else pygame.KEYUP,
-        key=code, unicode="\r" if name == "enter" else " " if name == "space" else "", mod=modifier, repeat=False))
+        key=code, unicode=text if text is not None else "\r" if name == "enter" else " " if name == "space" else "", mod=modifier, repeat=repeat))
 
 
 def tap_key(name):
@@ -184,6 +186,10 @@ def tap_key(name):
 def release_keys():
     for name in tuple(_keys_down):
         key(name, False)
+    pygame = _pygame()
+    for code in _raw_keys_down:
+        pygame.event.post(pygame.event.Event(pygame.KEYUP, key=code, unicode="", mod=0, repeat=False))
+    _raw_keys_down.clear()
 
 
 def release_pointer():
@@ -212,7 +218,7 @@ def input_event(event):
         aliases = {"escape": "esc", "return": "enter", "pageup": "pgup", "pagedown": "pgdn", "control": "ctrl"}
         name = aliases.get(name, name)
         if name in {"esc", "enter", "space", "ctrl", "up", "down", "left", "right", "pgup", "pgdn", "f5", "f9"}:
-            key(name, bool(event.get("pressed")))
+            key(name, bool(event.get("pressed")), event.get("mod"), bool(event.get("repeat")), text_input)
             commit_text()
             return
         special = {"shift": "LSHIFT", "alt": "LALT", "meta": "LGUI", "backspace": "BACKSPACE", "tab": "TAB",
@@ -222,6 +228,10 @@ def input_event(event):
         if code is None and len(name) == 1:
             code = ord(name)
         if code is not None:
+            if event.get("pressed"):
+                _raw_keys_down.add(code)
+            else:
+                _raw_keys_down.discard(code)
             pygame.event.post(pygame.event.Event(pygame.KEYDOWN if event.get("pressed") else pygame.KEYUP,
                 key=code, unicode=event.get("text", ""), mod=int(event.get("mod", 0)), repeat=bool(event.get("repeat"))))
         commit_text()

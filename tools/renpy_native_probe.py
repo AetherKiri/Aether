@@ -118,7 +118,11 @@ android {
     }
     compileOptions { sourceCompatibility JavaVersion.VERSION_17; targetCompatibility JavaVersion.VERSION_17 }
 }
-dependencies { implementation 'org.godotengine:godot:4.7.2.stable' }
+dependencies {
+    implementation 'org.godotengine:godot:4.7.2.stable'
+    implementation 'androidx.fragment:fragment:1.8.6'
+    implementation 'androidx.core:core-splashscreen:1.0.1'
+}
 '''.replace("ABI_PLACEHOLDER", args.abi))
     java = gradle / "src/main/java/com/godot/game"; java.mkdir(parents=True, exist_ok=True)
     (java / "GodotApp.java").write_text('''package com.godot.game;

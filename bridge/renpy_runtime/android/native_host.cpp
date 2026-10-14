@@ -65,13 +65,19 @@ extern "C" __attribute__((visibility("default"))) int aether_renpy_android_main(
     PyObject *module = nullptr;
     while (true) {
         Request request;
+        PyThreadState *idle = initialized ? PyEval_SaveThread() : nullptr;
+        bool stop;
         {
             std::unique_lock<std::mutex> lock(mutex);
             changed.wait(lock, [] { return stopping || !requests.empty(); });
-            if (stopping) break;
-            request = std::move(requests.front()); requests.pop_front();
-            running = true; closing = false; input.clear();
+            stop = stopping;
+            if (!stop) {
+                request = std::move(requests.front()); requests.pop_front();
+                running = true; closing = false; input.clear();
+            }
         }
+        if (idle) PyEval_RestoreThread(idle);
+        if (stop) break;
         if (!initialized) {
             sdk_root = request.sdk;
             setenv("ANDROID_PRIVATE", sdk_root.c_str(), 1);

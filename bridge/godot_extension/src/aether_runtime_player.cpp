@@ -3,6 +3,7 @@
 #include "engine_runtime_provider.h"
 #include "flash_player.h"
 #include "tyrano_player.h"
+#include "renpy_native.h"
 #if defined(AETHERKIRI_WITH_RFVP)
 #include "rfvp_runtime_provider.h"
 #endif
@@ -12804,6 +12805,7 @@ void InitializeAetherRuntime(ModuleInitializationLevel level) {
     ClassDB::register_class<AetherRuntimePlayer>();
     RegisterAetherFlashPlayer();
     RegisterAetherTyranoPlayer();
+    RegisterAetherRenpyNativePlayer();
 }
 
 void DeinitializeAetherRuntime(ModuleInitializationLevel level) {

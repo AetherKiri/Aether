@@ -1,0 +1,3 @@
+{
+  "enabled_classes": ["Node", "Window", "DisplayServer", "JSON", "Engine", "JavaClassWrapper", "JavaClass", "JavaObject"]
+}

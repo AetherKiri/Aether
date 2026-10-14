@@ -1,0 +1,110 @@
+name: Renpy Native
+
+on:
+  push:
+    branches: ['codex/renpy-runtime']
+  pull_request:
+    paths:
+      - 'apps/godot_app/renpy_runtime/**'
+      - 'apps/godot_app/scripts/renpy_player_view.gd'
+      - 'bridge/renpy_runtime/**'
+      - 'bridge/godot_extension/src/renpy_native*'
+      - 'tests/renpy_mobile/**'
+      - 'tools/*renpy*.py'
+      - '.github/workflows/renpy-native.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: renpy-native-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  linux:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install native display dependencies
+        run: sudo apt-get update && sudo apt-get install -y xvfb libgl1-mesa-dri libglx-mesa0 libglu1-mesa libopenal1 libxrandr2 libxinerama1 libxcursor1 libxi6 libxss1 libasound2t64 libpulse0
+      - name: Download Godot
+        run: |
+          curl --fail --location --retry 3 https://github.com/godotengine/godot-builds/releases/download/4.7.2-stable/Godot_v4.7.2-stable_linux.x86_64.zip -o /tmp/godot.zip
+          unzip -q /tmp/godot.zip -d /tmp/godot
+          chmod +x /tmp/godot/Godot*
+          mkdir -p out
+      - name: Prepare pinned native runtime
+        run: python3 tools/prepare_renpy_runtime.py linux --arch x86_64 --output "$RUNNER_TEMP/renpy-runtime"
+      - name: Test X11 embedding, saves, refresh and return
+        env:
+          LIBGL_ALWAYS_SOFTWARE: '1'
+          SDL_AUDIODRIVER: dummy
+          ALSOFT_DRIVERS: null
+        run: |
+          xvfb-run -a python3 tools/renpy_native_probe.py linux --runtime "$RUNNER_TEMP/renpy-runtime" --sdk .devtools/renpy/8.5.3/source-sdk --output out/renpy-probe --godot /tmp/godot/Godot_v4.7.2-stable_linux.x86_64 2>&1 | tee out/renpy-linux.log
+          ! grep -E 'SCRIPT ERROR:|^ERROR:|RENPY_NATIVE_GODOT_FAILED' out/renpy-linux.log
+          grep 'RENPY_NATIVE_GODOT_OK' out/renpy-linux.log
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: renpy-linux-diagnostics
+          path: |
+            out/renpy-linux.log
+            ~/.local/share/godot/app_userdata/Aether Renpy Native Probe/renpy-native-result.json
+            ~/.local/share/godot/app_userdata/Aether Renpy Native Probe/renpy_sessions/**/runtime.log
+            ~/.local/share/godot/app_userdata/Aether Renpy Native Probe/renpy_sessions/**/screenshot.png
+          if-no-files-found: ignore
+
+  android:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.12.1'
+      - name: Prepare toolchains
+        run: |
+          sdkmanager 'platforms;android-35' 'build-tools;35.0.0' 'ndk;28.2.13676358'
+          curl --fail --location --retry 3 https://github.com/godotengine/godot-builds/releases/download/4.7.2-stable/Godot_v4.7.2-stable_linux.x86_64.zip -o /tmp/godot.zip
+          unzip -q /tmp/godot.zip -d /tmp/godot
+          chmod +x /tmp/godot/Godot*
+          mkdir -p out
+      - name: Prepare pinned Android runtime
+        run: python3 tools/prepare_renpy_runtime.py android --arch x86_64 --ndk "$ANDROID_HOME/ndk/28.2.13676358" --output "$RUNNER_TEMP/renpy-runtime"
+      - name: Build production host probe
+        run: |
+          python3 tools/renpy_native_probe.py android --abi x86_64 --ndk "$ANDROID_HOME/ndk/28.2.13676358" --runtime "$RUNNER_TEMP/renpy-runtime" --sdk .devtools/renpy/8.5.3/source-sdk --output out/renpy-probe --godot /tmp/godot/Godot_v4.7.2-stable_linux.x86_64
+          gradle -p out/renpy-probe/android assembleDebug
+      - name: Enable emulator acceleration
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - name: Test native Surface in the Godot Activity
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          arch: x86_64
+          profile: pixel_6
+          disable-animations: true
+          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -camera-back none
+          script: python3 tools/renpy_android_smoke.py --apk out/renpy-probe/android/build/outputs/apk/debug/android-debug.apk --output out/renpy-android-diagnostics
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: renpy-android-diagnostics
+          path: out/renpy-android-diagnostics
+          if-no-files-found: ignore

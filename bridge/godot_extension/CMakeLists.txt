@@ -97,6 +97,7 @@ endif()
 set(AETHERKIRI_GODOT_SOURCES
     src/flash_player.cpp
     src/tyrano_player.cpp
+    src/renpy_native_player.cpp
     src/aether_runtime_player.cpp
     src/frame_effect_host.cpp
     src/presentation/RuntimePresentationSprite.cpp
@@ -117,6 +118,22 @@ if(AETHERKIRI_ENABLE_FLASH AND NOT (WEB OR EMSCRIPTEN))
 endif()
 
 if(APPLE)
+    if(IOS)
+        target_sources(aether_kiri_godot PRIVATE src/renpy_native_ios.mm)
+        set_source_files_properties(src/renpy_native_ios.mm
+            PROPERTIES LANGUAGE CXX COMPILE_FLAGS "-x objective-c++ -fobjc-arc")
+    else()
+        add_library(aether_renpy_sdl_hook SHARED "${CMAKE_SOURCE_DIR}/bridge/renpy_runtime/sdl_dynamic_hook.cpp")
+        add_custom_command(TARGET aether_renpy_sdl_hook POST_BUILD
+            COMMAND ${CMAKE_COMMAND} -E make_directory
+                "${CMAKE_SOURCE_DIR}/apps/godot_app/bin/macos/$<LOWER_CASE:$<CONFIG>>"
+            COMMAND ${CMAKE_COMMAND} -E copy_if_different "$<TARGET_FILE:aether_renpy_sdl_hook>"
+                "${CMAKE_SOURCE_DIR}/apps/godot_app/bin/macos/$<LOWER_CASE:$<CONFIG>>/libaether_renpy_sdl_hook.dylib")
+        add_dependencies(aether_kiri_godot aether_renpy_sdl_hook)
+        target_sources(aether_kiri_godot PRIVATE src/renpy_native_macos.mm)
+        set_source_files_properties(src/renpy_native_macos.mm
+            PROPERTIES LANGUAGE CXX COMPILE_FLAGS "-x objective-c++ -fobjc-arc")
+    endif()
     file(READ "${CMAKE_SOURCE_DIR}/bridge/tyrano_runtime/host.js" AETHER_TYRANO_HOST_JS)
     set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
         "${CMAKE_SOURCE_DIR}/bridge/tyrano_runtime/host.js")
@@ -167,6 +184,18 @@ if(APPLE)
         "-framework UniformTypeIdentifiers"
         "-framework Security"
         "-framework StoreKit")
+endif()
+
+if(UNIX AND NOT APPLE AND NOT ANDROID AND NOT (WEB OR EMSCRIPTEN))
+    add_library(aether_renpy_sdl_hook SHARED "${CMAKE_SOURCE_DIR}/bridge/renpy_runtime/sdl_dynamic_hook.cpp")
+    target_link_libraries(aether_renpy_sdl_hook PRIVATE ${CMAKE_DL_LIBS})
+    target_sources(aether_kiri_godot PRIVATE src/renpy_native_linux.cpp)
+    target_link_libraries(aether_kiri_godot PRIVATE ${CMAKE_DL_LIBS})
+    add_dependencies(aether_kiri_godot aether_renpy_sdl_hook)
+    add_custom_command(TARGET aether_renpy_sdl_hook POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E make_directory "${CMAKE_SOURCE_DIR}/apps/godot_app/bin/linux/$<LOWER_CASE:$<CONFIG>>"
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different "$<TARGET_FILE:aether_renpy_sdl_hook>"
+            "${CMAKE_SOURCE_DIR}/apps/godot_app/bin/linux/$<LOWER_CASE:$<CONFIG>>/libaether_renpy_sdl_hook.so")
 endif()
 
 if(APPLE AND NOT IOS)
@@ -355,6 +384,9 @@ if(APPLE AND NOT IOS AND TARGET engine_api)
         COMMAND ${CMAKE_COMMAND} -E copy_if_different
             "$<TARGET_FILE:engine_api>"
             "${_aetherkiri_macos_godot_bin}/libengine_api.dylib"
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            "$<TARGET_FILE:aether_renpy_sdl_hook>"
+            "${_aetherkiri_macos_godot_bin}/libaether_renpy_sdl_hook.dylib"
         VERBATIM
     )
 endif()

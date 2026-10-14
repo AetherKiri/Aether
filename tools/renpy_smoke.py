@@ -59,12 +59,14 @@ def pack_fixture(game):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--sdk", type=Path, required=True)
+    parser.add_argument("--runtime", type=Path, help="Prepared native runtime (defaults to --sdk)")
     parser.add_argument("--godot", type=Path)
     parser.add_argument("--output", type=Path)
     parser.add_argument("--packed", action="store_true", help="Compile then test a packed .rpa-only fixture")
     args = parser.parse_args()
     repo = Path(__file__).resolve().parents[1]
     sdk = args.sdk.resolve()
+    runtime = (args.runtime or args.sdk).resolve()
     if not (sdk / "renpy.py").is_file():
         parser.error("--sdk must point to a Ren'Py 8 SDK")
     platform = "mac-universal" if os.uname().sysname == "Darwin" else "linux-aarch64" if os.uname().machine in {"arm64", "aarch64"} else "linux-x86_64"
@@ -78,7 +80,7 @@ def main():
     game = output / "game"
     shutil.copytree(repo / "tests/fixtures/renpy_host", game)
     shutil.copy2(sdk / "sdk-fonts/SourceHanSansLite.ttf", game / "game/probe.ttf")
-    env = dict(os.environ, AETHER_RENPY_SDK=str(sdk), AETHER_RENPY_TEST_GAME=str(game),
+    env = dict(os.environ, AETHER_RENPY_SDK=str(runtime), AETHER_RENPY_TEST_GAME=str(game),
                AETHER_RENPY_TEST_RESULT=str(output / "player-result.json"))
     if args.packed:
         compile_env = dict(env, RENPY_PATH_TO_SAVES=str(output / "compile-data"), RENPY_LOG_BASE=str(output))

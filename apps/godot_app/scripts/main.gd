@@ -10243,6 +10243,8 @@ func _open_renpy_player(entry: Dictionary) -> void:
     renpy_view.setup(self)
     renpy_view.game_ready.connect(func():
         var library_path := String(entry.get("path", ""))
+        if active_game_path == library_path and active_game_started_msec > 0:
+            return
         var played_game := _mark_game_played(library_path)
         if not played_game.is_empty():
             selected_game = played_game
@@ -16629,7 +16631,7 @@ func _reset_mobile_edge_back_gesture() -> void:
     mobile_edge_back_cancelled = false
 
 func _mobile_edge_back_available() -> bool:
-    if not _mobile_runtime() or game_running or video_playing or _is_flash_active() or _is_tyrano_active():
+    if not _mobile_runtime() or game_running or video_playing or _is_flash_active() or _is_tyrano_active() or _is_renpy_active():
         return false
     if shell_root == null or not shell_root.visible:
         return false
@@ -16763,7 +16765,7 @@ func _trace_ios_raw_pointer_event(event: InputEvent) -> void:
         perf_log_file.flush()
 
 func _input(event: InputEvent) -> void:
-    if _is_flash_active() or _is_tyrano_active():
+    if _is_flash_active() or _is_tyrano_active() or _is_renpy_active():
         return
     _trace_ios_raw_pointer_event(event)
     _note_backdrop_touch(event)

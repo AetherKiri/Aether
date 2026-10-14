@@ -10,6 +10,7 @@ var header: PanelContainer
 var title: Label
 var entry: Dictionary
 var controls_visible := false
+var keys_button: Button
 var ready_received := false
 var startup_elapsed := 0.0
 var closing := false
@@ -42,18 +43,20 @@ func setup(app) -> void:
     title.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
     title.add_theme_color_override("font_color", Color.WHITE)
     toolbar.add_child(title)
-    var keys := _button(toolbar, "⌨", host._t("settings.virtual_control_menu"))
-    keys.toggle_mode = true
-    keys.button_pressed = controls_visible
-    keys.toggled.connect(func(value: bool):
-        controls_visible = value
-        if native != null:
-            native.set_virtual_controls(value)
-    )
+    keys_button = _button(toolbar, "⌨", host._t("settings.virtual_control_menu"))
+    keys_button.toggle_mode = true
+    keys_button.button_pressed = controls_visible
+    keys_button.toggled.connect(set_virtual_controls)
     var refresh := _button(toolbar, "↻", host._t("flash.refresh"))
     refresh.pressed.connect(_restart)
     resized.connect(_layout)
     _layout()
+
+func set_virtual_controls(value: bool) -> void:
+    controls_visible = value
+    keys_button.set_pressed_no_signal(value)
+    if native != null:
+        native.set_virtual_controls(value)
 
 func _button(toolbar: HBoxContainer, text: String, tooltip: String) -> Button:
     var button := Button.new()

@@ -6,11 +6,11 @@ the session and exchanges allowlisted commands through atomic JSON files.
 import argparse
 import ctypes
 import json
+import importlib.util
 import math
 import os
 from pathlib import Path
 import re
-import runpy
 import shutil
 import stat
 import sys
@@ -27,9 +27,29 @@ _last_publish = 0.0
 _inspect_names = []
 _command_error = ""
 _keys_down = set()
+_mouse_position = (0, 0)
+_mouse_buttons = [False, False, False]
 _compiled_cache = None
+_log = None
 controls_visible = False
 menu_visible = False
+
+
+class SessionLog:
+    """Mobile Ren'Py snapshots its log sinks; keep the open file out of saves."""
+    encoding = "utf-8"
+
+    def write(self, value):
+        log = sys.modules["aether_renpy_host"]._log
+        return log.write(value) if log is not None and not log.closed else len(value)
+
+    def flush(self):
+        log = sys.modules["aether_renpy_host"]._log
+        if log is not None and not log.closed:
+            log.flush()
+
+    def isatty(self):
+        return False
 
 
 def atomic_json(path, value):
@@ -116,6 +136,12 @@ def _publish(phase="ready", **extra):
     if _ready and phase == "ready":
         value["renderer"] = dict(renpy.exports.get_renderer_info())
         value["size"] = list(renpy.exports.get_physical_size())
+        rect = renpy.display.interface.old_text_rect
+        if rect is not None:
+            x, y, w, h = rect
+            point = renpy.display.draw.untranslate_point(x, y + h)
+            width, height = value["size"]
+            value["ime"] = [point[0] / max(1, width), point[1] / max(1, height)]
         if _manifest.get("debug"):
             # Read the already substituted Text; never evaluate the game's
             # interpolation expressions a second time from the probe.
@@ -160,6 +186,63 @@ def release_keys():
         key(name, False)
 
 
+def release_pointer():
+    pygame = _pygame()
+    for index, pressed in enumerate(_mouse_buttons):
+        if pressed:
+            pygame.event.post(pygame.event.Event(pygame.MOUSEBUTTONUP, button=index + 1, pos=_mouse_position))
+    _mouse_buttons[:] = [False, False, False]
+
+
+def input_event(event):
+    """Translate Aether input at a safe point in the native SDL event loop."""
+    global _mouse_position
+    pygame = _pygame()
+    kind = event.get("type")
+    if kind == "composition":
+        pygame.event.post(pygame.event.Event(pygame.TEXTEDITING, text=event.get("text", ""),
+            start=int(event.get("start", 0)), length=int(event.get("length", 0))))
+        return
+    if kind == "key":
+        name = event.get("key", "")
+        text_input = event.get("text", "")
+        def commit_text():
+            if event.get("pressed") and isinstance(text_input, str) and text_input.isprintable() and not int(event.get("mod", 0)) & (pygame.KMOD_CTRL | pygame.KMOD_ALT | pygame.KMOD_GUI):
+                pygame.event.post(pygame.event.Event(pygame.TEXTINPUT, text=text_input))
+        aliases = {"escape": "esc", "return": "enter", "pageup": "pgup", "pagedown": "pgdn", "control": "ctrl"}
+        name = aliases.get(name, name)
+        if name in {"esc", "enter", "space", "ctrl", "up", "down", "left", "right", "pgup", "pgdn", "f5", "f9"}:
+            key(name, bool(event.get("pressed")))
+            commit_text()
+            return
+        special = {"shift": "LSHIFT", "alt": "LALT", "meta": "LGUI", "backspace": "BACKSPACE", "tab": "TAB",
+                   "delete": "DELETE", "insert": "INSERT", "home": "HOME", "end": "END"}
+        symbol = special.get(name, name.upper() if re.fullmatch(r"f(?:[1-9]|1[0-2])", name) else name)
+        code = getattr(pygame, "K_" + symbol, None)
+        if code is None and len(name) == 1:
+            code = ord(name)
+        if code is not None:
+            pygame.event.post(pygame.event.Event(pygame.KEYDOWN if event.get("pressed") else pygame.KEYUP,
+                key=code, unicode=event.get("text", ""), mod=int(event.get("mod", 0)), repeat=bool(event.get("repeat"))))
+        commit_text()
+        return
+    if kind not in {"move", "button"}:
+        return
+    width, height = pygame.display.get_size()
+    previous = _mouse_position
+    _mouse_position = (int(float(event.get("x", 0)) * width), int(float(event.get("y", 0)) * height))
+    pygame.event.post(pygame.event.Event(pygame.MOUSEMOTION, pos=_mouse_position,
+        rel=(_mouse_position[0] - previous[0], _mouse_position[1] - previous[1]), buttons=tuple(_mouse_buttons), touch=bool(event.get("touch"))))
+    if kind == "button":
+        button = int(event.get("button", 1))
+        pressed = bool(event.get("pressed"))
+        if 1 <= button <= 3:
+            _mouse_buttons[button - 1] = pressed
+        if 1 <= button <= 7:
+            pygame.event.post(pygame.event.Event(pygame.MOUSEBUTTONDOWN if pressed else pygame.MOUSEBUTTONUP,
+                button=button, pos=_mouse_position, touch=bool(event.get("touch"))))
+
+
 def toggle_controls():
     global controls_visible
     import renpy
@@ -183,6 +266,7 @@ def text(name):
 def quit_game():
     import renpy
     release_keys()
+    release_pointer()
     renpy.exports.quit(relaunch=False, status=0)
 
 
@@ -215,7 +299,7 @@ def _dispatch(command):
 
 def _periodic():
     global _ack, _last_publish, _command_error
-    if os.getppid() != int(_manifest["parent_pid"]):
+    if not _manifest.get("embedded") and os.getppid() != int(_manifest["parent_pid"]):
         quit_game()
     path = _session / "command.json"
     if path.exists():
@@ -253,32 +337,61 @@ def _watch_parent():
 
 def install():
     import renpy
+    if _manifest.get("embedded") and _manifest.get("forward_input", True):
+        pygame = _pygame()
+        pygame.mouse.get_pos = lambda: _mouse_position
+        pygame.mouse.get_pressed = lambda: tuple(_mouse_buttons)
     if _periodic not in renpy.config.periodic_callbacks:
         renpy.config.periodic_callbacks.append(_periodic)
     if _display_started not in renpy.config.display_start_callbacks:
         renpy.config.display_start_callbacks.append(_display_started)
     if "_aether_renpy_overlay" not in renpy.config.overlay_screens:
         renpy.config.overlay_screens.append("_aether_renpy_overlay")
+    if _manifest.get("embedded"):
+        renpy.config.quit_on_mobile_background = False
+
+
+def run_engine(sdk):
+    # These are distributor hooks in the original launcher. Mobile launchers
+    # choose a shared Documents/private directory before processing --savedir;
+    # supply Aether's per-game namespace before any persistent data is read.
+    spec = importlib.util.spec_from_file_location("_aether_renpy_entry", sdk / "renpy.py")
+    entry = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = entry
+    spec.loader.exec_module(entry)
+    entry.path_to_saves = lambda *_args, **_kwargs: _manifest["saves"]
+    previous_main = sys.modules.get("__main__")
+    entry.__name__ = "__main__"
+    sys.modules["__main__"] = entry
+    try:
+        entry.main()
+    finally:
+        sys.modules["__main__"] = previous_main
 
 
 def main():
-    global _manifest, _session, _compiled_cache
+    global _manifest, _session, _compiled_cache, _log
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--manifest", type=Path, required=True)
     args = parser.parse_args()
     _session = args.manifest.resolve().parent
     os.chmod(_session, 0o700)
     _manifest = json.loads(args.manifest.read_text(encoding="utf-8"))
-    threading.Thread(target=_watch_parent, daemon=True).start()
+    if not _manifest.get("embedded"):
+        threading.Thread(target=_watch_parent, daemon=True).start()
     sdk = Path(_manifest["sdk"]).resolve(strict=True)
     source = Path(_manifest["game"]).resolve(strict=True)
     project = _session / "project"
     exit_code = 1
     failed = False
+    previous_cwd = Path.cwd()
+    previous_argv = sys.argv[:]
     with (_session / "runtime.log").open("w", encoding="utf-8", buffering=1) as log:
-        os.dup2(log.fileno(), 1)
-        os.dup2(log.fileno(), 2)
-        sys.stdout = sys.stderr = log
+        if not _manifest.get("embedded"):
+            os.dup2(log.fileno(), 1)
+            os.dup2(log.fileno(), 2)
+        _log = log
+        sys.stdout = sys.stderr = SessionLog()
         sys.path.insert(0, str(sdk))
         sys.modules["aether_renpy_host"] = sys.modules[__name__]
         os.environ["RENPY_LOG_BASE"] = str(_session)
@@ -304,7 +417,7 @@ def main():
             Path(_manifest["saves"]).mkdir(parents=True, exist_ok=True)
             sys.argv = [str(sdk / "renpy.py"), str(project), "run", "--savedir", _manifest["saves"]]
             os.chdir(project)
-            runpy.run_path(str(sdk / "renpy.py"), run_name="__main__")
+            run_engine(sdk)
             exit_code = 0
         except SystemExit as error:
             exit_code = int(error.code or 0)
@@ -327,7 +440,8 @@ def main():
                 exit_code = 1
                 traceback.print_exc()
                 _publish("error", error=str(error))
-            os.chdir(_session)
+            os.chdir(previous_cwd)
+            sys.argv = previous_argv
             if project.exists():
                 shutil.rmtree(project)
     sys.stdout, sys.stderr = sys.__stdout__, sys.__stderr__

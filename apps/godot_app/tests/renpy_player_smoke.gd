@@ -64,7 +64,7 @@ func _launch() -> bool:
     app._start_selected_game_after_iap()
     _expect(app._is_renpy_active() and not app.shell_root.visible and not app.game_running,
         "Normal library launch opens the native host without entering the KiriKiri dispatcher")
-    if not await _wait(func(): return app._is_renpy_active() and app.renpy_view.ready_received, "The SDK opens a real GPU window"):
+    if not await _wait(func(): return app._is_renpy_active() and app.renpy_view.ready_received, "The native renderer starts inside Aether"):
         return false
     _expect(not app.renpy_view.controls_visible and not bool(app.renpy_view.state.get("controls", true)), "Virtual keys start disabled")
     _expect(String(app.renpy_view.state.get("renderer", {}).get("renderer", "")) in ["gl2", "angle2"], "Ren'Py owns its native model renderer")
@@ -85,9 +85,10 @@ func _run() -> void:
         app.queue_free()
         quit(1)
         return
-    _expect(app.marked == [original], "Last-played changes after the native window is ready")
+    _expect(app.marked == [original], "Last-played changes after the native renderer is ready")
     var session: String = app.renpy_view.session_directory
-    var first_process: int = app.renpy_view.process_id
+    var first_process: int = int(app.renpy_view.state.get("pid", 0))
+    _expect(first_process == OS.get_process_id(), "Ren’Py executes in Aether’s process")
     await _key("enter")
     await _wait(func(): return int(_variables().get("aether_probe_step", 0)) == 1 and _dialogue().contains("第一句"), "The Chinese scenario starts through native SDL input")
     app.renpy_view.set_virtual_controls(true)
@@ -115,19 +116,27 @@ func _run() -> void:
     await _wait(func(): return int(_variables().get("aether_probe_step", 0)) == 4, "The scenario advances beyond the saved scene")
     await _key("f9")
     await _wait(func(): return int(_variables().get("aether_probe_step", 0)) == 3 and _dialogue().contains("已选择 A"), "Loading restores the route and the rendered Chinese scene")
+    app.renpy_view.set_virtual_controls(true)
+    await _wait(func(): return bool(app.renpy_view.state.get("controls", false)), "Controls can be enabled before refresh")
+    var played_since := app.active_game_started_msec
+    var before_refresh: String = app.renpy_view.session_directory
+    app.renpy_view._restart()
+    await _wait(func(): return app._is_renpy_active() and app.renpy_view.session_directory != before_refresh and app.renpy_view.ready_received and bool(app.renpy_view.state.get("main_menu", false)), "Refresh restarts inside the same window")
+    _expect(not app.renpy_view.controls_visible and not app.renpy_view.keys_button.button_pressed, "Refresh resets the virtual-keys menu")
+    _expect(app.active_game_started_msec == played_since and app.marked.size() == 1, "Refresh retains the existing play session")
     app._handle_go_back_request()
-    await _wait(func(): return not app._is_renpy_active(), "Back gracefully exits the SDK process")
-    _expect(not OS.is_process_running(first_process) and app.shell_root.visible, "Returning reaps the child and restores the library")
+    await _wait(func(): return not app._is_renpy_active(), "Back gracefully closes the embedded game")
+    _expect(OS.is_process_running(first_process) and app.shell_root.visible, "Returning retains Aether and restores the library")
     _expect(app.play_seconds > 0 and app.active_game_started_msec == 0, "Returning finalizes play time")
     if not await _launch():
         app.queue_free()
         quit(1)
         return
-    _expect(app.renpy_view.process_id != first_process, "Reopening creates a fresh Python VM")
+    _expect(int(app.renpy_view.state.get("pid", 0)) == first_process, "Reopening uses the embedded Python runtime")
     await _key("enter")
-    await _wait(func(): return int(_variables().get("aether_probe_step", 0)) == 1, "The fresh VM starts the scenario")
+    await _wait(func(): return int(_variables().get("aether_probe_step", 0)) == 1, "The reopened game starts the scenario")
     await _key("f9")
-    await _wait(func(): return int(_variables().get("aether_probe_step", 0)) == 3 and _dialogue().contains("已选择 A"), "The save survives complete VM recreation")
+    await _wait(func(): return int(_variables().get("aether_probe_step", 0)) == 3 and _dialogue().contains("已选择 A"), "The save survives complete game recreation")
     _expect(app.marked.size() == 2, "Each successful launch creates one play session")
     app.renpy_view.send_command("quit")
     await _wait(func(): return not app._is_renpy_active(), "Quitting inside Ren'Py also returns to the library")

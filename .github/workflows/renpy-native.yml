@@ -44,7 +44,7 @@ jobs:
         env:
           LIBGL_ALWAYS_SOFTWARE: '1'
           SDL_AUDIODRIVER: dummy
-          ALSOFT_DRIVERS: null
+          ALSOFT_DRIVERS: 'null'
         run: |
           xvfb-run -a python3 tools/renpy_native_probe.py linux --runtime "$RUNNER_TEMP/renpy-runtime" --sdk .devtools/renpy/8.5.3/source-sdk --output out/renpy-probe --godot /tmp/godot/Godot_v4.7.2-stable_linux.x86_64 2>&1 | tee out/renpy-linux.log
           ! grep -E 'SCRIPT ERROR:|^ERROR:|RENPY_NATIVE_GODOT_FAILED' out/renpy-linux.log
@@ -75,6 +75,7 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.12.1'
+      - uses: android-actions/setup-android@v3
       - name: Prepare toolchains
         run: |
           sdkmanager 'platforms;android-35' 'build-tools;35.0.0' 'ndk;28.2.13676358'

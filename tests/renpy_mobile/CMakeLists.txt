@@ -3,6 +3,7 @@ project(aether_renpy_probe LANGUAGES CXX)
 include(FetchContent)
 set(GODOTCPP_BUILD_PROFILE "${CMAKE_CURRENT_SOURCE_DIR}/build_profile.json" CACHE FILEPATH "" FORCE)
 set(GODOTCPP_TARGET template_debug CACHE STRING "" FORCE)
+set(GODOTCPP_API_VERSION "4.6" CACHE STRING "" FORCE)
 FetchContent_Declare(godot_cpp
     URL https://codeload.github.com/godotengine/godot-cpp/tar.gz/10.0.0-stable
     URL_HASH SHA256=ebbf64f0f8f8b8b66bc4bc4d3797db97f95b19cf0dfb5b3f8cf56683d9df7db4)

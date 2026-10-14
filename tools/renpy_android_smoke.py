@@ -4,6 +4,7 @@ import argparse
 from pathlib import Path
 import subprocess
 import time
+import re
 
 
 def main():
@@ -34,8 +35,14 @@ def main():
                 break
     finally:
         with (args.output / "app-files.tar").open("wb") as file:
-            subprocess.run(["adb", "exec-out", "run-as", package, "tar", "-cf", "-", "files"], stdout=file, check=False)
+            subprocess.run(["adb", "exec-out", "run-as", package, "tar", "-cf", "-", "files/renpy_sessions", "files/renpy_saves", "files/renpy-native-result.json"], stdout=file, check=False)
     if not passed:
+        logs = subprocess.run(["adb", "shell", "run-as", package, "find", "files/renpy_sessions", "-name", "runtime.log"], capture_output=True, text=True).stdout
+        for file in logs.splitlines():
+            if re.fullmatch(r"files/renpy_sessions/[0-9-]+/runtime\.log", file):
+                result = subprocess.run(["adb", "exec-out", "run-as", package, "cat", file], capture_output=True, text=True, errors="replace")
+                print(file + "\n" + result.stdout[-12000:])
+        print("\n".join(line for line in log.splitlines() if any(tag in line for tag in ("godot", "python", "AndroidRuntime", "AetherRenpy", "FATAL")))[-12000:])
         raise RuntimeError("Native Android scenario failed; see " + str(args.output / "logcat.txt"))
     print("RENPY_ANDROID_SMOKE_OK")
 

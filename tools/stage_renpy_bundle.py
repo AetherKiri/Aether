@@ -22,12 +22,12 @@ def stage(platform, runtime, destination):
     if platform == "linux":
         target = destination / "renpy-runtime"
         reset(target)
-        shutil.copytree(runtime, target, copy_function=clone)
+        shutil.copytree(runtime, target, copy_function=clone, ignore=shutil.ignore_patterns("__pycache__"))
         return
     bundle = destination.resolve()
     target = bundle / "Contents/Resources/renpy-runtime"
     reset(target)
-    shutil.copytree(runtime, target, copy_function=clone)
+    shutil.copytree(runtime, target, copy_function=clone, ignore=shutil.ignore_patterns("__pycache__"))
     # Put executable code in Frameworks so distribution signing covers it in
     # the same pass as Aether's other native libraries. Python data stays in
     # Resources; relative symlinks preserve the SDK's import/layout contract.

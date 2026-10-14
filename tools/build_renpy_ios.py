@@ -92,6 +92,14 @@ def main():
                 target = angle / relative
                 target.parent.mkdir(parents=True, exist_ok=True)
                 target.write_bytes(archive.read(member))
+        angle_binary = angle / "MetalANGLE"
+        angle_archs = subprocess.check_output(["xcrun", "lipo", "-archs", str(angle_binary)], text=True).split()
+        if args.arch not in angle_archs:
+            parser.error("MetalANGLE does not contain " + args.arch)
+        if len(angle_archs) > 1:
+            thinned = angle_binary.with_suffix(".thin")
+            run(["xcrun", "lipo", "-thin", args.arch, angle_binary, "-output", thinned])
+            thinned.replace(angle_binary)
         prototype_sources = {}
         for name in ("Log.m", "VideoPlayer.m", "IAPHelper.m"):
             source = output / name

@@ -98,6 +98,7 @@ extern "C" void *aether_renpy_native_open(uint64_t native, const char *sdkPath, 
             setenv("RENPY_PLATFORM", "ios-arm64", 1);
 #endif
             setenv("RENPY_GL_VSYNC", "0", 1);
+            setenv("PYTHONDONTWRITEBYTECODE", "1", 1);
             NSString *path = [sdk stringByAppendingPathComponent:@"lib/python3.12"];
             NSUInteger length = [path lengthOfBytesUsingEncoding:NSUTF32LittleEndianStringEncoding] / sizeof(wchar_t);
             std::vector<wchar_t> wide(length + 1);

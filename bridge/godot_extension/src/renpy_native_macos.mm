@@ -94,6 +94,7 @@ extern "C" void *aether_renpy_native_open(uint64_t native, const char *sdkPath, 
             setenv("RENPY_PLATFORM", "mac-arm64", 1);
 #endif
             setenv("RENPY_GL_VSYNC", "0", 1);
+            setenv("PYTHONDONTWRITEBYTECODE", "1", 1);
             runtime = dlopen(library.UTF8String, RTLD_NOW | RTLD_GLOBAL);
             if (!runtime) { fail(@(dlerror())); active = nil; [host.parent removeFromSuperview]; return; }
             auto init = reinterpret_cast<void (*)()>(dlsym(runtime, "init_librenpy"));

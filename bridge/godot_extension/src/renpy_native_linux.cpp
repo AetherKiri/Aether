@@ -107,6 +107,7 @@ extern "C" void *aether_renpy_native_open(uint64_t window, const char *sdk, cons
         setenv("AETHER_RENPY_NATIVE_ADOPT", std::to_string(reinterpret_cast<uintptr_t>(&adopt)).c_str(), 1);
         setenv("RENPY_PLATFORM", platform.c_str(), 1);
         setenv("PYTHONUTF8", "1", 1);
+        setenv("PYTHONDONTWRITEBYTECODE", "1", 1);
         int flags = RTLD_NOW | RTLD_GLOBAL;
 #ifdef RTLD_DEEPBIND
         flags |= RTLD_DEEPBIND;

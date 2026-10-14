@@ -85,6 +85,7 @@ extern "C" __attribute__((visibility("default"))) int aether_renpy_android_main(
             setenv("ANDROID_OLD_PUBLIC", sdk_root.c_str(), 1);
             setenv("AETHER_RENPY_EMBEDDED", "1", 1);
             setenv("PYTHONUTF8", "1", 1);
+            setenv("PYTHONDONTWRITEBYTECODE", "1", 1);
 #if defined(__aarch64__)
             setenv("RENPY_PLATFORM", "android-arm64", 1);
 #else

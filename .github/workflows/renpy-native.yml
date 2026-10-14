@@ -69,6 +69,10 @@ jobs:
           if-no-files-found: ignore
 
   android:
+    strategy:
+      fail-fast: false
+      matrix:
+        renderer: [mobile, gl_compatibility]
     runs-on: ubuntu-24.04
     timeout-minutes: 35
     steps:
@@ -97,7 +101,7 @@ jobs:
         run: python3 tools/prepare_renpy_runtime.py android --arch x86_64 --ndk "$ANDROID_HOME/ndk/28.2.13676358" --output "$RUNNER_TEMP/renpy-runtime"
       - name: Build production host probe
         run: |
-          python3 tools/renpy_native_probe.py android --abi x86_64 --ndk "$ANDROID_HOME/ndk/28.2.13676358" --runtime "$RUNNER_TEMP/renpy-runtime" --sdk .devtools/renpy/8.5.3/source-sdk --output out/renpy-probe --godot /tmp/godot/Godot_v4.7.2-stable_linux.x86_64
+          python3 tools/renpy_native_probe.py android --abi x86_64 --android-renderer ${{ matrix.renderer }} --ndk "$ANDROID_HOME/ndk/28.2.13676358" --runtime "$RUNNER_TEMP/renpy-runtime" --sdk .devtools/renpy/8.5.3/source-sdk --output out/renpy-probe --godot /tmp/godot/Godot_v4.7.2-stable_linux.x86_64
           gradle -p out/renpy-probe/android assembleDebug
       - name: Enable emulator acceleration
         run: |
@@ -111,11 +115,11 @@ jobs:
           arch: x86_64
           profile: pixel_6
           disable-animations: true
-          emulator-options: -no-window -gpu swangle -no-snapshot -noaudio -no-boot-anim -camera-back none
+          emulator-options: -no-window -gpu lavapipe -no-snapshot -noaudio -no-boot-anim -camera-back none
           script: python3 tools/renpy_android_smoke.py --apk out/renpy-probe/android/build/outputs/apk/debug --output out/renpy-android-diagnostics
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: renpy-android-diagnostics
+          name: renpy-android-${{ matrix.renderer }}-diagnostics
           path: out/renpy-android-diagnostics
           if-no-files-found: ignore

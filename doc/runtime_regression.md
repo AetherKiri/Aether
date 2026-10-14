@@ -1,0 +1,102 @@
+# Runtime regressions on macOS and iPad
+
+`tools/run_runtime_regression.py` runs a JSON case in a visible Godot app, drives
+the existing player input API, checks runtime state after each action, and
+collects a structured result plus console logs. It captures no images.
+
+The installed app or Godot project must include
+`res://scripts/runtime_regression_probe.gd`. Normal launches do not run it.
+The host tool enables the probe explicitly using the existing CLI probe
+environment variables and gives every run a new writable directory beneath
+`user://regressions/`. Engine saves and settings go into that directory.
+`--seed` optionally copies an existing writable-state tree into the isolated
+directory; it never passes the original save directory to the engine.
+
+## Run a case
+
+macOS, with a built native extension in the project:
+
+```sh
+python3 tools/run_runtime_regression.py /path/to/case.json \
+  --platform macos --project apps/godot_app \
+  --user-data-dir '/path/to/the/project/user-data-directory' \
+  --game '/path/to/game' --seed /path/to/writable-state-copy \
+  --output /path/to/regression-artifacts
+```
+
+iPad, with the development app already installed and trusted, the game already
+in its Documents directory, and the device unlocked:
+
+```sh
+DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer \
+python3 tools/run_runtime_regression.py /path/to/case.json \
+  --platform ios --device DEVICE_ID --bundle DEVELOPMENT_BUNDLE_ID \
+  --game 'Documents/Games/Game' --seed /path/to/writable-state-copy \
+  --output /path/to/regression-artifacts --timeout 240
+```
+
+`--game` overrides the case's `game_path`. The iOS path uses the same relative
+Documents convention as the existing game launch probes. The host tool starts
+the app with `devicectl --console`, pulls the result after it exits, and returns
+nonzero for a failed assertion, crash, launch failure, or timeout. A locked
+device must be unlocked before a run can start.
+
+For a currently locked iPad, `--prepare-only` queues the case using the existing
+one-shot probe request file. The next normal launch consumes the request,
+executes the case, saves its result, and exits; subsequent launches are normal.
+The host summary records the device's `result_source`. Retrieve it afterwards
+with `devicectl device copy from` using the same app data-container domain.
+A prepared case is not a passed test. This option runs one case on one launch;
+it does not enable recurring background execution.
+
+Each artifact directory contains the effective case, console output,
+`regression-result.json`, and `summary.json`. The iOS run also saves SDK command
+results. Keep these artifacts and game-specific cases outside the public repo;
+private runtime packages own cases requiring private callback identifiers.
+Run directories are retained for investigation and can be removed afterwards.
+
+## Case format
+
+```json
+{
+  "name": "return-to-saved-line",
+  "surface_size": [1280, 720],
+  "startup_timeout_frames": 1800,
+  "steps": [
+    {
+      "type": "wait",
+      "label": "dialogue-ready",
+      "until": [{"field": "dialogue_active", "equals": 1}]
+    },
+    {"type": "snapshot", "label": "saved-line"},
+    {"type": "key", "key_code": 13, "after_frames": 90},
+    {
+      "type": "assert",
+      "conditions": [{"field": "dialogue_key", "changed_from": "saved-line.dialogue_key"}]
+    }
+  ]
+}
+```
+
+Actions are `move`, `click`, `key`, `wait`, `snapshot`, and `assert`. Pointer
+coordinates use the source frame's pixels. A click can select a visible, enabled
+button with a partial `button` dictionary instead of coordinates, or use
+`point_from` to find a saved rectangle (`x`, `y`, `w`, `h`).
+
+Conditions use dot paths through dictionaries and arrays. Supported comparisons
+are `equals`, `not_equals`, `same_as` and `changed_from` (against a named
+snapshot), and `contains` (a partial dictionary inside an array). Missing fields
+or snapshot references fail the condition. `until_any` accepts alternative
+condition arrays, useful when a saved setting controls a confirmation dialog;
+`when` makes an action conditional. Finish such a flow with a destination
+assertion so either branch must reach the intended state.
+
+Waits have a wall-clock `timeout_ms` (default 15000) and require `stable_frames`
+consecutive matches (default 3). Other actions support `after_frames`; click and
+key actions also support `hold_frames`. The host has a separate overall
+`--timeout` watchdog for stalls that prevent the probe from running.
+
+These checks cover engine input, runtime navigation, save restoration, and
+render-state metadata. They do not compare visual pixels or exercise physical
+touch gestures. Use precise target identities and cleared navigation flags as
+the success criteria; absence of an error message alone is insufficient.

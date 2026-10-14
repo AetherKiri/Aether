@@ -62,6 +62,11 @@ func _key(key: String) -> void:
     await _command("key_tap", {"key":key})
 func _step() -> int:
     return int(view.state.get("variables", {}).get("aether_probe_step", 0))
+func _has_save() -> bool:
+    for file in DirAccess.get_files_at(Player.storage_path(original)):
+        if file.ends_with(".save"):
+            return true
+    return false
 
 func _launch() -> void:
     view = Player.new()
@@ -98,7 +103,7 @@ func _ready() -> void:
         failure = "Native screenshot missing"
         _report(false)
     await _key("f5")
-    await _wait(func(): return not DirAccess.get_files_at(Player.storage_path(original)).filter(func(file): return file.ends_with(".save")).is_empty(), "Native save missing")
+    await _wait(_has_save, "Native save missing")
     await _key("enter")
     await _wait(func(): return _step() == 4, "Scenario did not advance")
     await _key("f9")

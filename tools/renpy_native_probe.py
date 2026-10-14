@@ -63,6 +63,7 @@ compatibility_minimum="4.6"
     shutil.copytree(REPO / "apps/godot_app/renpy_runtime", project / "renpy_runtime", dirs_exist_ok=True)
     shutil.copytree(REPO / "tests/fixtures/renpy_host", project / "fixture", dirs_exist_ok=True)
     shutil.copy2(args.sdk / "sdk-fonts/SourceHanSansLite.ttf", project / "fixture/game/probe.ttf")
+    (project / "fixture/game/probe.ttf.import").write_text('[remap]\nimporter="keep"\n')
     shutil.copy2(REPO / "tests/renpy_mobile/godot_smoke.gd", project / "smoke.gd")
     (project / "main.tscn").write_text('''[gd_scene load_steps=2 format=3]
 [ext_resource type="Script" path="res://smoke.gd" id="1"]

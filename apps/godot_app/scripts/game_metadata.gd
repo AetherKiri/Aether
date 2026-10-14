@@ -7,6 +7,7 @@ const RUNTIME_RFVP := "rfvp"
 const RUNTIME_ARTEMIS := "artemis"
 const RUNTIME_SIGLUS := "siglus"
 const RUNTIME_CATSYSTEM2 := "catsystem2"
+const RUNTIME_TYRANO := "tyranoscript"
 
 static func inspect(path: String) -> Dictionary:
     var root := path
@@ -24,8 +25,19 @@ static func inspect(path: String) -> Dictionary:
 
     var candidates: PackedStringArray = []
     var files := _file_names(root)
+    var tyrano_entry := tyrano_entry_file(root)
     var hcb := _hcb_launch_file(root, path)
-    if not hcb.is_empty():
+    if not tyrano_entry.is_empty():
+        result.engine = RUNTIME_TYRANO
+        result.launchFile = tyrano_entry
+        result.signals.append("tyranoscript-web-project")
+        var config := _read_text(root.path_join(tyrano_entry).get_base_dir().path_join("data/system/Config.tjs"))
+        var title_pattern := RegEx.new()
+        title_pattern.compile('(?m)^\\s*;?System\\.title\\s*=\\s*"([^"\\r\\n]+)"')
+        var title_match := title_pattern.search(config)
+        if title_match != null:
+            candidates.append(title_match.get_string(1))
+    elif not hcb.is_empty():
         result.engine = RUNTIME_RFVP
         result.signals.append("fvp-hcb")
         result.launchFile = hcb
@@ -95,6 +107,20 @@ static func inspect(path: String) -> Dictionary:
     if not candidates.is_empty():
         result.title = candidates[0]
     return result
+
+static func tyrano_entry_file(root: String) -> String:
+    # A normal HTML export and an unpacked Electron export both carry their
+    # own engine. An arbitrary index.html must not be classified as Tyrano.
+    for relative in ["index.html", "resources/app/index.html", "app/index.html"]:
+        var directory := root.path_join(relative).get_base_dir()
+        if (
+            FileAccess.file_exists(root.path_join(relative))
+            and FileAccess.file_exists(directory.path_join("tyrano/tyrano.js"))
+            and FileAccess.file_exists(directory.path_join("tyrano/plugins/kag/kag.js"))
+            and FileAccess.file_exists(directory.path_join("data/system/Config.tjs"))
+        ):
+            return relative
+    return ""
 
 static func _hcb_launch_file(root: String, requested: String) -> String:
     var dir := DirAccess.open(root)

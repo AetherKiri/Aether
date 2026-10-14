@@ -229,6 +229,11 @@ if [[ ! -f "$GODOT_APP_DIR/android/.build_version" || ! -f "$GODOT_APP_DIR/andro
     : > "$GODOT_APP_DIR/android/build/.gdignore"
 fi
 
+# The generated Gradle template owns Java/resources outside the Godot PCK.
+# Stage the source host on every build so template updates cannot omit it.
+python3 "$PROJECT_ROOT/tools/stage_tyrano_android.py" \
+    --build-dir "$GODOT_APP_DIR/android/build"
+
 command -v cmake >/dev/null
 NINJA_BIN="${CMAKE_MAKE_PROGRAM:-$(command -v ninja || command -v ninja-build || true)}"
 if [[ -z "$NINJA_BIN" ]]; then

@@ -2,7 +2,7 @@
 
 [English](verified_games.md)
 
-最后更新：2026-10-05
+最后更新：2026-10-13
 
 本文档记录已经用 AetherKiri 手动 smoke test 或 flow test 过的游戏。它是兼容性记录，
 不代表每条路线、每个视频、每个插件路径或每个存档状态都已经完整验证。
@@ -82,6 +82,7 @@
 | 大図書館の羊飼い | iOS/iPadOS iPad release app build | ONS 游戏启动与虚拟 Ctrl 按下/松开流程，包括松开后停止快进 | 流程验证通过 | [@akitaSummer](https://github.com/akitaSummer) | 使用 ONScripterYuri Runtime；本地游戏文件不提交到仓库。 |
 | 穢翼のユースティア | macOS debug app；iOS/iPadOS iPad debug app build | ONS 游戏导入、启动、标题/菜单渲染、开始游戏与第二个存档读取流程、开场字幕和转场、场景/文字渲染、音频播放、快进、存档列表滚动，以及鼠标/触控输入 | 流程验证通过 | [@akitaSummer](https://github.com/akitaSummer) | 使用 ONScripterYuri Runtime；本地游戏文件不提交到仓库。 |
 | 美少女万華鏡 -呪われし伝説の少女- | macOS debug app；iOS/iPadOS iPad debug app build | ONS 游戏导入、启动、初始标题/菜单渲染、场景/文字渲染、音频播放和基础输入 | 冒烟验证通过 | [@akitaSummer](https://github.com/akitaSummer) | 使用 ONScripterYuri Runtime；本地游戏文件不提交到仓库。 |
+| [ディメンション凸ラバース！！](https://crystalia.amusecraft.com/totsulover/) | iOS/iPadOS iPad debug app build 4711、release app build 4714 | Debug 4711：游戏选择、启动和标题渲染。Release 4714：读取已有存档、连续使用菜单 NEXT 跳到选项，以及选项处 NEXT 确认框的显示层级 | 流程验证通过（release 4714） | [@MadCcc](https://github.com/MadCcc) | 使用 SoftPal Runtime。NEXT 验证时已开启跳过未读文本。点击“是”后的确认语音仍缺失；BACK、QUICK SAVE/QUICK LOAD 需单独复测。本地游戏文件不提交到仓库。 |
 
 ## 如何新增游戏
 

@@ -2,7 +2,7 @@
 
 [简体中文](verified_games.zh-CN.md)
 
-Last updated: 2026-10-05
+Last updated: 2026-10-13
 
 This document tracks games that have been manually smoke-tested with
 AetherKiri. It is a compatibility notebook, not a guarantee that every route,
@@ -82,6 +82,7 @@ movie, plugin path, or save state in a title has been exhaustively validated.
 | 大図書館の羊飼い | iOS/iPadOS release app build on iPad | ONS game startup and virtual Ctrl press/release flow, including stopping fast-forward after release | Flow verified | [@akitaSummer](https://github.com/akitaSummer) | Uses the ONScripterYuri runtime. Local game files are not committed. |
 | 穢翼のユースティア | macOS debug app; iOS/iPadOS debug app build on iPad | ONS game import, startup, title/menu rendering, new-game and second-save load flows, opening subtitles and transitions, scene/text rendering, audio playback, skip mode, save-list scrolling, and mouse/touch input | Flow verified | [@akitaSummer](https://github.com/akitaSummer) | Uses the ONScripterYuri runtime. Local game files are not committed. |
 | 美少女万華鏡 -呪われし伝説の少女- | macOS debug app; iOS/iPadOS debug app build on iPad | ONS game import, startup, initial title/menu rendering, scene/text rendering, audio playback, and basic input | Smoke verified | [@akitaSummer](https://github.com/akitaSummer) | Uses the ONScripterYuri runtime. Local game files are not committed. |
+| [ディメンション凸ラバース！！](https://crystalia.amusecraft.com/totsulover/) | iOS/iPadOS debug app build 4711 and release app build 4714 on iPad | Debug 4711: game selection, startup, and title rendering. Release 4714: loading an existing save, consecutive menu NEXT navigation to choices, and NEXT confirmation-dialog layering at a choice | Flow verified (release 4714) | [@MadCcc](https://github.com/MadCcc) | Uses the SoftPal runtime. NEXT was checked with unread skipping enabled. The acknowledgement voice after YES is still missing; BACK and QUICK SAVE/QUICK LOAD need separate retesting. Local game files are not committed. |
 
 ## How To Add A Game
 

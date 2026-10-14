@@ -294,6 +294,24 @@ EOF
     libtool -static -o "$output" "$object"
 }
 
+isolate_ios_runtime_sdl() {
+    local destination="$1"
+    # Godot 4.7 embeds SDL3, whose SDL_InitSubSystem has a different return
+    # contract from SDL2. Static linking must not merge the two implementations.
+    if ! command -v llvm-objcopy >/dev/null 2>&1 && \
+       [[ ! -x /opt/homebrew/opt/llvm/bin/llvm-objcopy ]] && \
+       [[ ! -x /usr/local/opt/llvm/bin/llvm-objcopy ]]; then
+        if ! command -v brew >/dev/null 2>&1; then
+            echo "Error: SDL2 isolation requires LLVM (llvm-objcopy and llvm-nm)." >&2
+            exit 1
+        fi
+        brew install llvm
+    fi
+    python3 "$PROJECT_ROOT/tools/isolate_ios_sdl.py" \
+        --sdl-archive "$CMAKE_BUILD_DIR/vcpkg_installed/$VCPKG_TRIPLET_DIR/lib/libSDL2.a" \
+        --directory "$destination"
+}
+
 combine_ios_static_extension() {
     local output="$1"
     local triplet="$2"
@@ -494,7 +512,7 @@ patch_ios_export_project() {
     for archive in "${FORCE_LOAD_PLUGIN_ARCHIVES[@]}"; do
         flags+=" -Wl,-force_load,Aether/bin/ios/$export_build_type/$archive"
     done
-    flags+=' -liconv -framework Accelerate -framework AudioToolbox -framework AVFoundation -framework CoreAudio -framework CoreBluetooth -framework CoreHaptics -framework CoreMedia -framework CoreMotion -framework CoreVideo -framework GameController -framework VideoToolbox -framework CoreGraphics -framework QuartzCore -framework Metal -framework MetalKit -framework OpenGLES -framework Security -framework StoreKit -framework SystemConfiguration -framework MobileCoreServices'
+    flags+=' -liconv -framework Accelerate -framework AudioToolbox -framework AVFoundation -framework CoreAudio -framework CoreBluetooth -framework CoreHaptics -framework CoreMedia -framework CoreMotion -framework CoreVideo -framework GameController -framework VideoToolbox -framework CoreGraphics -framework QuartzCore -framework Metal -framework MetalKit -framework WebKit -framework OpenGLES -framework Security -framework StoreKit -framework SystemConfiguration -framework MobileCoreServices'
 
     if [[ -f "$project_file" ]]; then
         FLAGS="$flags" perl -0pi -e 's/OTHER_LDFLAGS = "[^"]*";/"OTHER_LDFLAGS = \"" . $ENV{FLAGS} . "\";"/eg' "$project_file"
@@ -680,6 +698,7 @@ stage_force_load_plugin_archives "$GODOT_BIN_DIR"
 if [[ -f "$CMAKE_BUILD_DIR/bridge/godot_extension/libaether_kiri_godot.a" ]]; then
     combine_ios_static_extension "$GODOT_BIN_DIR/libaether_kiri_godot.a" "$VCPKG_TRIPLET_DIR"
 fi
+isolate_ios_runtime_sdl "$GODOT_BIN_DIR"
 if [[ "$SIMULATOR" == true ]]; then
     GODOT_EXPORT_BIN_DIR="$GODOT_APP_DIR/bin/ios/$BUILD_TYPE_LOWER"
     mkdir -p "$GODOT_EXPORT_BIN_DIR"
@@ -687,6 +706,7 @@ if [[ "$SIMULATOR" == true ]]; then
     cp -f "$GODOT_BIN_DIR/libaether_kiri_godot.a" "$GODOT_EXPORT_BIN_DIR/" 2>/dev/null || true
     cp -f "$GODOT_BIN_DIR/$IOS_SDK_COMPAT_ARCHIVE" "$GODOT_EXPORT_BIN_DIR/" 2>/dev/null || true
     stage_force_load_plugin_archives "$GODOT_EXPORT_BIN_DIR"
+    isolate_ios_runtime_sdl "$GODOT_EXPORT_BIN_DIR"
 fi
 
 if [[ ! -x "$GODOT_BIN" ]]; then
@@ -708,6 +728,7 @@ else
     fi
     stage_force_load_plugin_archives "$PROJECT_ROOT/out/godot/ios/$BUILD_TYPE_LOWER/Aether/bin/ios/$BUILD_TYPE_LOWER"
     cp -f "$GODOT_BIN_DIR/$IOS_SDK_COMPAT_ARCHIVE" "$PROJECT_ROOT/out/godot/ios/$BUILD_TYPE_LOWER/Aether/bin/ios/$BUILD_TYPE_LOWER/" 2>/dev/null || true
+    isolate_ios_runtime_sdl "$PROJECT_ROOT/out/godot/ios/$BUILD_TYPE_LOWER/Aether/bin/ios/$BUILD_TYPE_LOWER"
     PATCH_ARCH="arm64"
     if [[ "$SIMULATOR" == true ]]; then
         PATCH_ARCH="$SIMULATOR_ARCH"

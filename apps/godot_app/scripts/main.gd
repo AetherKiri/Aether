@@ -10273,6 +10273,7 @@ func _open_flash_player(entry: Dictionary) -> void:
     flash_view.setup(self)
     flash_view.closed.connect(func():
         flash_view = null
+        _set_game_runtime_orientation(false)
         shell_root.visible = true
         _refresh_file_library()
     )
@@ -10281,6 +10282,7 @@ func _open_flash_player(entry: Dictionary) -> void:
         flash_view.close()
         _show_message(error)
         return
+    _set_game_runtime_orientation(true)
     shell_root.visible = false
 
 func _refresh_videos() -> void:

@@ -88,6 +88,7 @@ config/features=PackedStringArray("4.7")
 window/size/viewport_width=1280
 window/size/viewport_height=720
 window/handheld/orientation=0
+window/per_pixel_transparency/allowed=true
 display_server/driver.linuxbsd="x11"
 [rendering]
 renderer/rendering_method="gl_compatibility"

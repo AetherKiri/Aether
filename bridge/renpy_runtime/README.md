@@ -105,12 +105,12 @@ macOS is tested with both Godot Metal and OpenGL presentation. The UIKit probe
 in `tests/renpy_mobile/ios_host_smoke.mm` exercises the actual iOS native host,
 touch input, save/load, pause/resume and same-interpreter reopening.
 
-The `Renpy Native` workflow builds an independent, public-dependency-only Godot
-app using the production native player and frontend. Linux runs in Xvfb/Mesa;
-Android runs in an accelerated emulator with the production SDL Activity and
-runtime installer. It checks Chinese choices, native saves, screenshots,
-controls, pause/resume, refresh and return/reopen. Failure logs and app data are
-uploaded for diagnosis. This workflow complements the normal product builds.
+`tools/renpy_native_probe.py` builds an independent Godot app using the production
+native player and frontend for local diagnostics. Linux can run in Xvfb/Mesa;
+Android can run in an emulator with the production SDL Activity and runtime
+installer. The probe checks Chinese choices, native saves, screenshots, controls,
+pause/resume, refresh and return/reopen. CI uses the existing product build
+workflow; these native-host probes are run manually when needed.
 
 ## Compatibility boundaries
 

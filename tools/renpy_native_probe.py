@@ -47,6 +47,8 @@ def main():
     if args.platform == "linux": shutil.copy2(native / "libaether_renpy_sdl_hook.so", binary)
     libraries = '''linux.debug.x86_64="res://bin/librenpy_probe.so"
 linux.release.x86_64="res://bin/librenpy_probe.so"
+linux.debug.arm64="res://bin/librenpy_probe.so"
+linux.release.arm64="res://bin/librenpy_probe.so"
 ''' if args.platform == "linux" else '''android.debug.x86_64="res://bin/librenpy_probe.so"
 android.debug.arm64="res://bin/librenpy_probe.so"
 android.release.x86_64="res://bin/librenpy_probe.so"

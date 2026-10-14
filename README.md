@@ -31,6 +31,7 @@ capabilities.
 Godot App Shell
   ├─ AetherFlashPlayer ─────── Ruffle (Flash)
   ├─ AetherTyranoPlayer ────── WebKit / Android WebView (TyranoScript)
+  ├─ AetherRenpyNativePlayer ─ Native Ren’Py SDK (embedded view / Surface)
   └─ AetherRuntimePlayer
        └─ Runtime Dispatcher
             ├─ KiriRuntime ──────── KiriKiri2 core / plugins
@@ -62,6 +63,9 @@ and **Debug CPU** is a diagnostic fallback only.
   library on macOS, iOS/iPadOS and Android, with isolated saves and virtual keys. See the
   [prototype scope and tests](bridge/tyrano_runtime/README.md).
 - Runtime-selectable render backend with persisted settings.
+- Native Ren’Py 8 playback on macOS, iOS/iPadOS, Android and Linux, inside the
+  existing Aether window, with isolated saves and optional virtual keys. See the
+  [native host and validation](bridge/renpy_runtime/README.md).
 - Bundled multilingual KAG3 demo, playable from the library and deletable by
   the player.
 - Smoke, render, interaction, performance, and manual-repro probe scripts.
@@ -171,6 +175,8 @@ The scripts build the native engine and Godot host library, stage them under
 `apps/godot_app/bin/`, and run the matching Godot export preset when Godot is
 available. Linux exports bundle the required vcpkg shared libraries beside the
 executable.
+The four native platform build scripts also prepare and bundle the pinned
+Ren’Py runtime; their first build requires downloading the upstream SDK inputs.
 
 ### Optional Components
 

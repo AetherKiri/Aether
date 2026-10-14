@@ -208,6 +208,9 @@ func _process(delta: float) -> void:
         title.text = String(entry.get("name", "Ren'Py"))
         game_ready.emit()
     _flush_command()
+    if commands.is_empty() and state.get("controls") is bool:
+        controls_visible = bool(state.controls)
+        keys_button.set_pressed_no_signal(controls_visible)
     if String(state.get("phase", "")) == "exited":
         _finish()
     elif closing and closing_elapsed > 5.0:
@@ -269,6 +272,9 @@ func _reopen() -> void:
 
 func _notification(what: int) -> void:
     super._notification(what)
+    if what in [NOTIFICATION_APPLICATION_PAUSED, NOTIFICATION_APPLICATION_FOCUS_OUT]:
+        active_touch = -1
+        mouse_buttons.clear()
     if what == NOTIFICATION_OS_IME_UPDATE and ime_active and native != null:
         var selection := DisplayServer.ime_get_selection()
         native.send_input({"type": "composition", "text": DisplayServer.ime_get_text(), "start": selection.x, "length": selection.y})

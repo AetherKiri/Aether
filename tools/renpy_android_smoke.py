@@ -12,8 +12,14 @@ def main():
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args()
     args.output.mkdir(parents=True, exist_ok=True)
+    apk = args.apk
+    if apk.is_dir():
+        candidates = list(apk.glob("*.apk"))
+        if len(candidates) != 1: parser.error("Expected exactly one APK in " + str(apk))
+        apk = candidates[0]
+    if not apk.is_file(): parser.error("APK not found: " + str(apk))
     package = "org.aether.tests.renpy"
-    subprocess.run(["adb", "install", "-r", str(args.apk)], check=True)
+    subprocess.run(["adb", "install", "-r", str(apk)], check=True)
     subprocess.run(["adb", "logcat", "-c"], check=True)
     subprocess.run(["adb", "shell", "am", "start", "-W", "-n", package + "/com.godot.game.GodotApp"], check=True)
     passed = False

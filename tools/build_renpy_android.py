@@ -75,6 +75,8 @@ def main():
                         raise RuntimeError("The SDK Activity destruction boundary changed")
                     content = content.replace(boundary, boundary + "\n        if (isChangingConfigurations()) { super.onDestroy(); return; }")
                     content = content.replace("new RelativeLayout(this)", "new RelativeLayout(getApplication())")
+                    content = content.replace("public static void setWindowStyle(boolean fullscreen) {",
+                        "public static void setWindowStyle(boolean fullscreen) {\n        if (mSingleton instanceof org.renpy.android.PythonSDLActivity) return; // Aether owns the top-level window.")
                 target = java_root / "org/aether/sdl" / Path(name).name
                 target.parent.mkdir(parents=True, exist_ok=True)
                 target.write_text(content)

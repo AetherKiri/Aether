@@ -11,6 +11,8 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--apk", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
+    parser.add_argument("--marker", default="RENPY_NATIVE_GODOT_OK")
+    parser.add_argument("--timeout", type=int, default=180)
     args = parser.parse_args()
     args.output.mkdir(parents=True, exist_ok=True)
     apk = args.apk
@@ -25,12 +27,12 @@ def main():
     subprocess.run(["adb", "shell", "am", "start", "-W", "-n", package + "/com.godot.game.GodotApp"], check=True)
     passed = False
     try:
-        for _ in range(150):
+        for _ in range(max(1, args.timeout // 2)):
             time.sleep(2)
             log = subprocess.check_output(["adb", "logcat", "-d"], text=True, errors="replace")
             (args.output / "logcat.txt").write_text(log)
             if "RENPY_NATIVE_GODOT_FAILED" in log or "FATAL EXCEPTION" in log or "Fatal signal" in log: break
-            if "RENPY_NATIVE_GODOT_OK" in log:
+            if args.marker in log:
                 passed = True
                 break
     finally:

@@ -31,6 +31,7 @@ def main():
     parser.add_argument("--ndk", type=Path)
     parser.add_argument("--abi", choices=("arm64-v8a", "x86_64"), default="x86_64")
     parser.add_argument("--android-renderer", choices=("mobile", "gl_compatibility"), default="mobile")
+    parser.add_argument("--host-only", action="store_true", help="Diagnose the Godot renderer without loading the Ren'Py SDK")
     args = parser.parse_args()
     output = args.output.resolve(); output.mkdir(parents=True, exist_ok=True)
     project = output / "project"; project.mkdir(exist_ok=True)
@@ -68,6 +69,20 @@ compatibility_minimum="4.6"
     shutil.copy2(args.sdk / "sdk-fonts/SourceHanSansLite.ttf", project / "fixture/game/probe.ttf")
     (project / "fixture/game/probe.ttf.import").write_text('[remap]\nimporter="keep"\n')
     shutil.copy2(REPO / "tests/renpy_mobile/godot_smoke.gd", project / "smoke.gd")
+    if args.host_only:
+        (project / "smoke.gd").write_text('''extends Control
+var frames := 0
+func _ready() -> void:
+    var background := ColorRect.new()
+    background.color = Color.DARK_BLUE
+    background.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+    add_child(background)
+func _process(_delta: float) -> void:
+    frames += 1
+    if frames == 60:
+        print("RENPY_VULKAN_HOST_OK")
+        get_tree().quit()
+''')
     (project / "main.tscn").write_text('''[gd_scene load_steps=2 format=3]
 [ext_resource type="Script" path="res://smoke.gd" id="1"]
 [node name="NativeRenpySmoke" type="Control"]
@@ -150,7 +165,8 @@ public class GodotApp extends GodotActivity {
 android:configChanges="orientation|keyboardHidden|screenSize|smallestScreenSize|density|keyboard|navigation|uiMode|screenLayout">
 <intent-filter><action android:name="android.intent.action.MAIN" /><category android:name="android.intent.category.LAUNCHER" /></intent-filter>
 </activity></application></manifest>'''.replace("ANDROID_RENDERER", args.android_renderer).replace("ANDROID_DRIVER", "vulkan" if args.android_renderer == "mobile" else "opengl3"))
-    run([sys.executable, REPO / "tools/stage_renpy_android.py", "--build-dir", gradle, "--runtime", args.runtime])
+    if not args.host_only:
+        run([sys.executable, REPO / "tools/stage_renpy_android.py", "--build-dir", gradle, "--runtime", args.runtime])
     # Loose imported resources are packaged into an ordinary PCK by Godot.
     (project / "export_presets.cfg").write_text('''[preset.0]
 name="Probe"

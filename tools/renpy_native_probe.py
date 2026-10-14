@@ -49,6 +49,8 @@ def main():
 linux.release.x86_64="res://bin/librenpy_probe.so"
 ''' if args.platform == "linux" else '''android.debug.x86_64="res://bin/librenpy_probe.so"
 android.debug.arm64="res://bin/librenpy_probe.so"
+android.release.x86_64="res://bin/librenpy_probe.so"
+android.release.arm64="res://bin/librenpy_probe.so"
 '''
     (project / "probe.gdextension").write_text('''[configuration]
 entry_symbol="renpy_probe_init"

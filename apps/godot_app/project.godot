@@ -32,6 +32,9 @@ config/icon="res://assets/icon.png"
 
 [display]
 
+; The native Ren'Py surface is an X11 child of Aether's window, including on XWayland.
+display_server/driver.linuxbsd="x11"
+
 window/size/viewport_width=1280
 window/size/viewport_height=720
 window/size/window_width_override=2240

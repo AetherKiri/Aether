@@ -29,6 +29,7 @@ Dispatcher 根据每个游戏的标记和能力选择对应引擎。
 Godot App Shell
   ├─ AetherFlashPlayer ─────── Ruffle（Flash）
   ├─ AetherTyranoPlayer ────── WebKit / Android WebView（TyranoScript）
+  ├─ AetherRenpyNativePlayer ─ Ren’Py 原生 SDK（嵌入视图 / Surface）
   └─ AetherRuntimePlayer
        └─ Runtime Dispatcher
             ├─ KiriRuntime ──────── KiriKiri2 Core / Plugins
@@ -56,6 +57,8 @@ Godot App Shell
 - macOS、iOS/iPadOS 和 Android 原型支持从视觉小说库运行 TyranoScript 网页项目，提供独立存档和虚拟按键。
   支持范围与验证方法见 [接入说明](bridge/tyrano_runtime/README.md)。
 - 渲染后端可运行时切换并持久化设置。
+- macOS、iOS/iPadOS、Android 与 Linux 支持 Ren’Py 8 原生播放，复用 Aether
+  窗口，存档独立保存，虚拟按键默认关闭。见 [原生宿主与验证说明](bridge/renpy_runtime/README.md)。
 - 内置多语言 KAG3 Demo，可从游戏库直接游玩，也可由玩家删除。
 - 提供 smoke、渲染、交互、性能与手动复现 probe 脚本。
 - 已验证游戏清单见 [`doc/verified_games.zh-CN.md`](doc/verified_games.zh-CN.md)。

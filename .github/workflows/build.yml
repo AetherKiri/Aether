@@ -1198,7 +1198,8 @@ jobs:
         env:
           LD_LIBRARY_PATH: ${{ github.workspace }}/apps/godot_app/bin/linux/debug
         run: |
-          for test in video_library_folders video_library_ui video_import_permissions flash_library tyrano_library; do
+          python3 -m unittest discover -s tests/python -p test_renpy_host.py
+          for test in video_library_folders video_library_ui video_import_permissions flash_library tyrano_library renpy_library; do
             timeout 60 "$GODOT_BIN" --headless --path apps/godot_app \
               --script "res://tests/${test}_test.gd" \
               2>&1 | tee "$RUNNER_TEMP/${test}.log"

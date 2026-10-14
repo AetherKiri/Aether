@@ -26,22 +26,28 @@ windows.release.x86_64 = {
   "res://bin/windows/release/engine_api.dll": ""
 }
 linux.debug.x86_64 = {
-  "res://bin/linux/debug/libengine_api.so": ""
+  "res://bin/linux/debug/libengine_api.so": "",
+  "res://bin/linux/debug/libaether_renpy_sdl_hook.so": ""
 }
 linux.release.x86_64 = {
-  "res://bin/linux/release/libengine_api.so": ""
+  "res://bin/linux/release/libengine_api.so": "",
+  "res://bin/linux/release/libaether_renpy_sdl_hook.so": ""
 }
 linux.debug.arm64 = {
-  "res://bin/linux/debug/libengine_api.so": ""
+  "res://bin/linux/debug/libengine_api.so": "",
+  "res://bin/linux/debug/libaether_renpy_sdl_hook.so": ""
 }
 linux.release.arm64 = {
-  "res://bin/linux/release/libengine_api.so": ""
+  "res://bin/linux/release/libengine_api.so": "",
+  "res://bin/linux/release/libaether_renpy_sdl_hook.so": ""
 }
 macos.debug = {
-  "res://bin/macos/debug/libengine_api.dylib": ""
+  "res://bin/macos/debug/libengine_api.dylib": "",
+  "res://bin/macos/debug/libaether_renpy_sdl_hook.dylib": ""
 }
 macos.release = {
-  "res://bin/macos/release/libengine_api.dylib": ""
+  "res://bin/macos/release/libengine_api.dylib": "",
+  "res://bin/macos/release/libaether_renpy_sdl_hook.dylib": ""
 }
 
 android.debug.arm64 = {

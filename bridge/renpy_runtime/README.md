@@ -14,7 +14,7 @@ screens, rollback, archives, saves, audio and model rendering.
 | macOS | Adopt the SDK’s Cocoa view below the Godot toolbar | Godot pointer/keyboard/IME forwarding; cooperative Python ticks on the UI thread; restore the host GL context between ticks |
 | iOS/iPadOS | Adopt the SDK’s UIKit view/controller in Aether’s window; MetalANGLE renders through Metal | Godot touch/keyboard forwarding; cooperative ticks on the UI thread; Aether owns the UIKit event loop |
 | Android | SDK SDL Surface in the existing Godot Activity | Private SDL Java package and JNI bindings; SDK native owner thread stays alive across games; ordinary native touch/keyboard/IME |
-| Linux | Reparent the SDK’s X11 window inside Godot’s X11 window | Native SDL input and cooperative ticks; preserve the host GL context |
+| Linux | Reparent the SDK’s X11 window inside Godot’s X11 window | Native SDL pointer input, Godot keyboard/IME forwarding when the parent has focus; preserve the host GL context |
 
 Linux defaults to X11, also usable through XWayland on a Wayland desktop.
 An explicit `--display-driver wayland` cannot host the X11 child. Android product

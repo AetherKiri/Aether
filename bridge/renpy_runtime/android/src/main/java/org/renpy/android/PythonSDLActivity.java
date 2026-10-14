@@ -17,6 +17,7 @@ public class PythonSDLActivity extends SDLActivity {
     @Override public void onCreate(Bundle state) {
         mActivity = this;
         super.onCreate(state);
+        if (!mBrokenLibraries) nativeSetenv("ANDROID_APK", getApplicationInfo().sourceDir);
     }
     @Override protected String[] getLibraries() { return new String[]{"renpython", "aether_renpy_android"}; }
     @Override protected String getMainSharedObject() {

@@ -107,7 +107,9 @@ func set_virtual_controls(value: bool) -> void:
     send_command("controls", {"visible": value})
 
 func _input(event: InputEvent) -> void:
-    if native == null or not ready_received or closing or lifecycle_paused or not OS.get_name() in ["macOS", "iOS"]:
+    if native == null or not ready_received or closing or lifecycle_paused:
+        return
+    if not OS.get_name() in ["macOS", "iOS"] and not (OS.get_name() == "Linux" and event is InputEventKey):
         return
     var value: Dictionary = {}
     if event is InputEventKey:
@@ -188,7 +190,7 @@ func _process(delta: float) -> void:
         var value = JSON.parse_string(FileAccess.get_file_as_string(path))
         if value is Dictionary:
             state = value
-    if OS.get_name() == "macOS":
+    if OS.get_name() in ["macOS", "Linux"]:
         var active := state.get("ime") is Array
         if active != ime_active:
             ime_active = active

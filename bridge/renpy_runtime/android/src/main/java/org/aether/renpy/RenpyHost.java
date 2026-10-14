@@ -124,11 +124,17 @@ public final class RenpyHost {
             size.leftMargin = origin[0]-parent[0]+(int)Math.round(source.getWidth()*rect[0]);
             size.topMargin = origin[1]-parent[1]+(int)Math.round(source.getHeight()*rect[1]);
         }
-        content.setLayoutParams(size);
+        android.view.ViewGroup.LayoutParams previous = content.getLayoutParams();
+        if (!(previous instanceof FrameLayout.LayoutParams) || previous.width != size.width || previous.height != size.height
+            || ((FrameLayout.LayoutParams)previous).leftMargin != size.leftMargin || ((FrameLayout.LayoutParams)previous).topMargin != size.topMargin)
+            content.setLayoutParams(size);
         embedded = content.isAttachedToWindow() && content.getRootView() == activity.getWindow().getDecorView().getRootView();
     }
     public void setRect(double x, double y, double w, double h) {
-        synchronized (rect) { rect[0]=x; rect[1]=y; rect[2]=w; rect[3]=h; }
+        synchronized (rect) {
+            if (rect[0]==x && rect[1]==y && rect[2]==w && rect[3]==h) return;
+            rect[0]=x; rect[1]=y; rect[2]=w; rect[3]=h;
+        }
         if (activity != null) activity.runOnUiThread(this::applyRect);
     }
     public String getError() { String engine = nativeError(); return error.isEmpty() ? engine : error; }

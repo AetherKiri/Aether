@@ -2,6 +2,8 @@ import importlib.util
 from pathlib import Path
 import tempfile
 import unittest
+from types import SimpleNamespace
+from unittest.mock import patch
 
 
 REPO = Path(__file__).resolve().parents[2]
@@ -11,6 +13,31 @@ SPEC.loader.exec_module(HOST)
 
 
 class RenpyHostTests(unittest.TestCase):
+    def test_text_input_preserves_modifiers_and_releases_held_keys_on_pause(self):
+        events = []
+        names = ["KEYDOWN", "KEYUP", "TEXTINPUT", "TEXTEDITING", "K_ESCAPE", "K_RETURN", "K_SPACE",
+                 "K_LCTRL", "K_UP", "K_DOWN", "K_LEFT", "K_RIGHT", "K_PAGEUP", "K_PAGEDOWN", "K_F5", "K_F9"]
+        pygame = SimpleNamespace(**{name:index + 1 for index,name in enumerate(names)},
+            KMOD_CTRL=192, KMOD_ALT=768, KMOD_GUI=3072,
+            event=SimpleNamespace(post=events.append, Event=lambda kind, **fields: {"type":kind, **fields}))
+        HOST._keys_down.clear(); HOST._raw_keys_down.clear()
+        with patch.object(HOST, "_pygame", return_value=pygame):
+            HOST.input_event({"type":"key", "key":"space", "pressed":True, "mod":3, "repeat":True, "text":" "})
+            self.assertEqual(events[0]["mod"], 3)
+            self.assertTrue(events[0]["repeat"])
+            self.assertEqual(events[1], {"type":pygame.TEXTINPUT, "text":" "})
+            events.clear()
+            HOST.input_event({"type":"key", "key":"a", "pressed":True, "mod":192, "text":"a"})
+            self.assertEqual(len(events), 1, "Ctrl shortcuts must not insert text")
+            HOST.release_keys()
+            self.assertTrue(any(event["type"] == pygame.KEYUP and event["key"] == ord("a") for event in events))
+            self.assertFalse(HOST._raw_keys_down)
+            events.clear()
+            HOST.input_event({"type":"key", "key":"", "pressed":True, "text":"汉"})
+            self.assertEqual(events, [{"type":pygame.TEXTINPUT, "text":"汉"}])
+            HOST.input_event({"type":"composition", "text":"汉字", "start":1, "length":1})
+            self.assertEqual(events[-1], {"type":pygame.TEXTEDITING, "text":"汉字", "start":1, "length":1})
+
     def test_writable_copy_does_not_modify_original_or_import_saves(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

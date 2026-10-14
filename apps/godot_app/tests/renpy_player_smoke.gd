@@ -81,6 +81,11 @@ func _run() -> void:
     root.gui_embed_subwindows = true
     app = RenpyApp.new()
     root.add_child(app)
+    app.selected_game = app._game_info_from_path(original)
+    app._start_selected_game_after_iap()
+    app._handle_go_back_request()
+    await process_frame
+    _expect(not app._is_renpy_active() and app.marked.is_empty(), "Closing before the first Python tick leaves the library and interpreter usable")
     if not await _launch():
         app.queue_free()
         quit(1)

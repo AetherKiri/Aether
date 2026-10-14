@@ -104,6 +104,7 @@ window/size/viewport_width=1280
 window/size/viewport_height=720
 window/handheld/orientation=0
 window/per_pixel_transparency/allowed=true
+window/frame_pacing/android/enable_frame_pacing=false
 display_server/driver.linuxbsd="x11"
 [rendering]
 renderer/rendering_method="gl_compatibility"

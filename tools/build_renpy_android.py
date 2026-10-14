@@ -62,6 +62,19 @@ def main():
                     content = content.replace("mSDLThread.join();", "mSDLThread.join(1500);")
                     content = content.replace("        setWindowStyle(false);", "        // Aether owns the Activity's window style.")
                     content = content.replace("        getWindow().getDecorView().setOnSystemUiVisibilityChangeListener(this);", "")
+                    content = content.replace("        super.onCreate(savedInstanceState);", """        super.onCreate(savedInstanceState);
+        if (!mBrokenLibraries && mSurface != null && mLayout != null) {
+            // Keep the Python owner thread and native Surface across an
+            // Activity configuration recreation, just like Godot's fragment.
+            mSingleton = this;
+            SDL.setContext(this);
+            return;
+        }""")
+                    boundary = "    public void onDestroy() {"
+                    if content.count(boundary) != 1:
+                        raise RuntimeError("The SDK Activity destruction boundary changed")
+                    content = content.replace(boundary, boundary + "\n        if (isChangingConfigurations()) { super.onDestroy(); return; }")
+                    content = content.replace("new RelativeLayout(this)", "new RelativeLayout(getApplication())")
                 target = java_root / "org/aether/sdl" / Path(name).name
                 target.parent.mkdir(parents=True, exist_ok=True)
                 target.write_text(content)

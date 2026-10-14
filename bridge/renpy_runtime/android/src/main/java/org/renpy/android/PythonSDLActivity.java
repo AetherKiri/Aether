@@ -21,9 +21,12 @@ public class PythonSDLActivity extends SDLActivity {
     private View sdlContent;
 
     @Override public void onCreate(Bundle state) {
+        PythonSDLActivity previous = mActivity;
         mActivity = this;
         super.onCreate(state);
+        if (mFrameLayout == null && previous != null) mFrameLayout = previous.mFrameLayout;
         if (!mBrokenLibraries) nativeSetenv("ANDROID_APK", getApplicationInfo().sourceDir);
+        RenpyHost.rebind(this);
     }
     @Override protected String[] getLibraries() { return new String[]{"renpython", "aether_renpy_android"}; }
     @Override protected String getMainSharedObject() {
@@ -33,7 +36,7 @@ public class PythonSDLActivity extends SDLActivity {
     @Override public void setContentView(View view) {
         if (view == mLayout) {
             sdlContent = view;
-            mFrameLayout = new FrameLayout(this);
+            mFrameLayout = new FrameLayout(getApplicationContext());
             mFrameLayout.addView(view, new FrameLayout.LayoutParams(-1, -1));
             if (mSurface != null) ((SurfaceView)mSurface).setZOrderMediaOverlay(true);
         } else super.setContentView(view);
@@ -88,8 +91,8 @@ public class PythonSDLActivity extends SDLActivity {
     }
     @Override public void setOrientationBis(int width, int height, boolean resizable, String hint) {}
     @Override public void onDestroy() {
-        if (!mBrokenLibraries) RenpyHost.nativeShutdown();
+        if (!mBrokenLibraries && !isChangingConfigurations()) RenpyHost.nativeShutdown();
         super.onDestroy();
-        if (mActivity == this) mActivity = null;
+        if (mActivity == this && !isChangingConfigurations()) mActivity = null;
     }
 }

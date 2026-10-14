@@ -19,7 +19,8 @@ import java.util.zip.ZipEntry;
 
 /** Native SDL Surface hosted below Aether's toolbar; no WebView or new Activity. */
 public final class RenpyHost {
-    private final PythonSDLActivity activity;
+    private volatile PythonSDLActivity activity;
+    private static RenpyHost active;
     private FrameLayout root;
     private View content, godot;
     private volatile boolean closed, embedded;
@@ -79,11 +80,21 @@ public final class RenpyHost {
         if (!file.delete()) throw new IOException("Cannot replace an incomplete runtime: " + file.getName());
     }
     public static RenpyHost create(Activity activity, String sdk, String manifest, String bootstrap) {
+        if (active != null) active.close();
         return new RenpyHost(activity, sdk, manifest, bootstrap);
+    }
+    public static void rebind(PythonSDLActivity activity) {
+        RenpyHost host = active;
+        if (host == null || host.closed || host.activity == activity) return;
+        if (host.root != null) host.root.removeOnLayoutChangeListener(host.layout);
+        if (host.godot != null) host.godot.removeOnLayoutChangeListener(host.layout);
+        host.activity = activity;
+        activity.runOnUiThread(host::attach);
     }
     private RenpyHost(Activity value, String sdk, String manifest, String bootstrap) {
         if (!(value instanceof PythonSDLActivity)) { activity = null; error = "The native Ren'Py Activity was not packaged"; return; }
         activity = (PythonSDLActivity)value;
+        active = this;
         error = nativeOpen(sdk, manifest, bootstrap);
         if (error.isEmpty()) activity.runOnUiThread(this::attach);
     }
@@ -144,6 +155,7 @@ public final class RenpyHost {
     public void close() {
         if (closed) return;
         closed = true; embedded = false; nativeClose();
+        if (active == this) active = null;
         if (activity != null) activity.runOnUiThread(() -> {
             if (root != null) root.removeOnLayoutChangeListener(layout);
             if (godot != null) godot.removeOnLayoutChangeListener(layout);

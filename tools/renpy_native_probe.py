@@ -90,7 +90,7 @@ window/handheld/orientation=0
 display_server/driver.linuxbsd="x11"
 [rendering]
 renderer/rendering_method="gl_compatibility"
-renderer/rendering_method.mobile="gl_compatibility"
+renderer/rendering_method.mobile="mobile"
 textures/default_filters/use_nearest_mipmap_filter=false
 ''')
     cache = project / ".godot"; cache.mkdir(exist_ok=True)
@@ -142,6 +142,8 @@ public class GodotApp extends GodotActivity {
     (gradle / "src/main/AndroidManifest.xml").write_text('''<manifest xmlns:android="http://schemas.android.com/apk/res/android">
 <uses-permission android:name="android.permission.INTERNET" />
 <application android:label="Renpy Native Probe" android:theme="@android:style/Theme.Material.Light.NoActionBar" android:hasCode="true">
+<meta-data android:name="org.godotengine.rendering.method" android:value="mobile" />
+<meta-data android:name="org.godotengine.rendering.driver" android:value="vulkan" />
 <activity android:name="com.godot.game.GodotApp" android:exported="true" android:screenOrientation="landscape"
 android:configChanges="orientation|keyboardHidden|screenSize|smallestScreenSize|density|keyboard|navigation|uiMode|screenLayout">
 <intent-filter><action android:name="android.intent.action.MAIN" /><category android:name="android.intent.category.LAUNCHER" /></intent-filter>

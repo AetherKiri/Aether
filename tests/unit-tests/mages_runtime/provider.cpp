@@ -16,23 +16,10 @@
 namespace fs = std::filesystem;
 
 namespace {
-    std::string MagesDataDir() {
-        if(const char* override_dir = std::getenv("AETHERKIRI_MAGES_DATA_DIR")) {
-            if(override_dir[0] != '\0') return std::string(override_dir);
-        }
-#ifdef AETHERKIRI_MAGES_TEST_DATA_DIR
-        return std::string(AETHERKIRI_MAGES_TEST_DATA_DIR);
-#else
-        return std::string();
-#endif
-    }
-
-    bool MagesPackageAvailable() {
-        const std::string dir = MagesDataDir();
-        return !dir.empty() &&
-               fs::exists(fs::path(dir) / "lib" / "libimpacto_host.so") &&
-               fs::exists(fs::path(dir) / "include" / "impacto_host.h");
-    }
+    // The provider, its embedded impacto host library and the staged engine
+    // data tree are built by the same build as this test binary, so the
+    // runtime is structurally available whenever the test runs.
+    bool MagesPackageAvailable() { return true; }
 
     fs::path MakeLauncherGameRoot() {
         const auto nonce =
@@ -273,4 +260,141 @@ TEST_CASE("MAGES. runtime opens and renders headless frames") {
     std::error_code error;
     fs::remove_all(game_root, error);
     fs::remove_all(writable, error);
+}
+
+namespace {
+std::string EnvOr(const char* name, const char* fallback) {
+    if(const char* v = std::getenv(name)) return std::string(v);
+    return std::string(fallback);
+}
+
+void WritePpm(const fs::path& path, uint32_t w, uint32_t h,
+              const uint8_t* rgba) {
+    std::FILE* f = std::fopen(path.c_str(), "wb");
+    if(!f) return;
+    std::fprintf(f, "P6\n%u %u\n255\n", w, h);
+    std::vector<uint8_t> rgb(static_cast<size_t>(w) * h * 3);
+    for(size_t i = 0; i < static_cast<size_t>(w) * h; ++i) {
+        rgb[i * 3] = rgba[i * 4];
+        rgb[i * 3 + 1] = rgba[i * 4 + 1];
+        rgb[i * 3 + 2] = rgba[i * 4 + 2];
+    }
+    std::fwrite(rgb.data(), 1, rgb.size(), f);
+    std::fclose(f);
+}
+}  // namespace
+
+// End-to-end verification against a real MAGES. PC install. Gated on the
+// AETHERKIRI_MAGES_GAME_ROOT env var (the game root directory); skipped
+// otherwise so CI never needs game data. Exercises provider detection,
+// rendering, audio and input through the engine_api surface.
+TEST_CASE("MAGES. runtime boots a real PC game end-to-end") {
+    const char* game_root_env = std::getenv("AETHERKIRI_MAGES_GAME_ROOT");
+    if(game_root_env == nullptr || game_root_env[0] == '\0') {
+        SUCCEED("AETHERKIRI_MAGES_GAME_ROOT unset; skipping real-data test");
+        return;
+    }
+    aetherkiri::mages::RegisterRuntimeProvider();
+
+    const fs::path game_root(game_root_env);
+    const fs::path writable = fs::temp_directory_path() / "aetherkiri-mages-e2e-wr";
+    fs::create_directories(writable);
+
+    // Probe must recognise the directory before we open it.
+    REQUIRE(engine_probe_runtime_provider("mages", game_root.u8string().c_str()) >
+            0);
+
+    engine_create_desc_t desc{};
+    desc.struct_size = sizeof(desc);
+    desc.api_version = ENGINE_API_VERSION;
+    const std::string writable_utf8 = writable.u8string();
+    desc.writable_path_utf8 = writable_utf8.c_str();
+    desc.cache_path_utf8 = writable_utf8.c_str();
+    engine_handle_t handle = nullptr;
+    REQUIRE(engine_create(&desc, &handle) == ENGINE_RESULT_OK);
+    REQUIRE(handle != nullptr);
+    engine_option_t runtime_option{};
+    runtime_option.key_utf8 = "runtime";
+    runtime_option.value_utf8 = "mages";
+    REQUIRE(engine_set_option(handle, &runtime_option) == ENGINE_RESULT_OK);
+
+    // Detection + open: the host bridge resolves the registered game from the
+    // PC flat layout (script.mpk/system.mpk at the root).
+    REQUIRE(engine_open_game(handle, game_root.u8string().c_str(), nullptr) ==
+            ENGINE_RESULT_OK);
+
+    const int max_ticks =
+        std::max(1, std::atoi(EnvOr("AETHERKIRI_MAGES_TICKS", "1200").c_str()));
+    const std::string dump_dir = EnvOr("AETHERKIRI_MAGES_FRAME_DUMP", "");
+    uint32_t width = 0, height = 0;
+    bool have_frame = false;
+    bool input_dispatched = false;
+    for(int i = 0; i < max_ticks; ++i) {
+        const engine_result_t tick = engine_tick(handle, 16);
+        if(tick == ENGINE_RESULT_INVALID_STATE) break;  // engine requested exit
+        REQUIRE(tick == ENGINE_RESULT_OK);
+
+        engine_frame_desc_t fd{};
+        fd.struct_size = sizeof(fd);
+        REQUIRE(engine_get_frame_desc(handle, &fd) == ENGINE_RESULT_OK);
+        if(fd.width > 0 && fd.height > 0) {
+            width = fd.width;
+            height = fd.height;
+            have_frame = true;
+        }
+
+        // Inject input midway: a RETURN key tap and a pointer move/tap, to
+        // confirm the input path is wired through the provider.
+        if(!input_dispatched && i == max_ticks / 3) {
+            engine_input_event_t ev{};
+            ev.struct_size = sizeof(ev);
+            ev.type = ENGINE_INPUT_EVENT_KEY_DOWN;
+            ev.key_code = 0x0D;  // VK_RETURN
+            REQUIRE(engine_send_input(handle, &ev) == ENGINE_RESULT_OK);
+            ev.type = ENGINE_INPUT_EVENT_KEY_UP;
+            REQUIRE(engine_send_input(handle, &ev) == ENGINE_RESULT_OK);
+            ev.type = ENGINE_INPUT_EVENT_POINTER_MOVE;
+            ev.x = 960.0;
+            ev.y = 540.0;
+            ev.button = 0;
+            REQUIRE(engine_send_input(handle, &ev) == ENGINE_RESULT_OK);
+            input_dispatched = true;
+        }
+
+        if(!dump_dir.empty() && i % 120 == 0 && have_frame) {
+            std::vector<uint8_t> px(static_cast<size_t>(width) * height * 4);
+            if(engine_read_frame_rgba(handle, px.data(), px.size()) ==
+               ENGINE_RESULT_OK) {
+                fs::create_directories(dump_dir);
+                char name[64];
+                std::snprintf(name, sizeof(name), "frame_%06d.ppm", i);
+                WritePpm(fs::path(dump_dir) / name, width, height, px.data());
+            }
+        }
+    }
+
+    // Rendering: the offscreen renderer produced design-resolution frames.
+    REQUIRE(have_frame);
+    CHECK(width == 1920);
+    CHECK(height == 1080);
+
+    // Input path was exercised.
+    CHECK(input_dispatched);
+
+    // Audio: the host mixer FIFO produced samples (engine-side production,
+    // independent of whether an OpenAL device opened in this environment).
+    char debug[512] = {};
+    REQUIRE(engine_get_plugin_debug_info(handle, debug, sizeof(debug),
+                                         nullptr) == ENGINE_RESULT_OK);
+    const std::string dbg(debug);
+    auto pos = dbg.find("audio_frames_written=");
+    REQUIRE(pos != std::string::npos);
+    uint64_t frames_written = 0;
+    std::sscanf(dbg.c_str() + pos, "audio_frames_written=%llu",
+                reinterpret_cast<unsigned long long*>(&frames_written));
+    CHECK(frames_written > 0);
+
+    REQUIRE(engine_destroy(handle) == ENGINE_RESULT_OK);
+    std::error_code ec;
+    fs::remove_all(writable, ec);
 }

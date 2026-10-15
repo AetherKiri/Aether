@@ -159,7 +159,7 @@ option(AETHERKIRI_ENABLE_MAGES
        "enable the embedded MAGES. (impacto host) runtime provider" ON)
 set(AETHERKIRI_MAGES_DIR
     "${CMAKE_CURRENT_SOURCE_DIR}/packages/AetherMAGES"
-    CACHE PATH "path to an AetherMAGES host package install (libimpacto_host)")
+    CACHE PATH "path to an AetherMAGES (impacto) runtime submodule checkout")
 
 include(cmake/AetherKiriBinaryProtection.cmake)
 # Unify the Rust toolchain resolution before any runtime subproject runs its
@@ -314,10 +314,13 @@ if(AETHERKIRI_ENABLE_SIGLUS AND BUILD_GODOT_EXTENSION AND
     # Web stays excluded until the wasm host path is designed (phase 5).
     add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/bridge/siglus_runtime)
 endif()
-if(AETHERKIRI_ENABLE_MAGES AND BUILD_GODOT_EXTENSION AND
+if(AETHERKIRI_ENABLE_MAGES AND BUILD_GODOT_EXTENSION AND LINUX AND
     NOT (WEB OR EMSCRIPTEN))
     # The MAGES. runtime renders offscreen inside the embedded impacto host
-    # library, so it needs no extra host-side graphics stack.
+    # library (compiled from the packages/AetherMAGES submodule), so it needs
+    # no extra host-side graphics stack. Currently desktop Linux only: the
+    # impacto host bridge targets desktop OpenGL offscreen rendering, and the
+    # other product platforms get the provider once that is validated there.
     add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/bridge/mages_runtime)
 endif()
 # The Rust provider has targets for Linux, Apple, Android, and Emscripten.

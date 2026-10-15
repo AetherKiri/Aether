@@ -1085,6 +1085,7 @@ jobs:
           git submodule update --init --depth 1 packages/OnscripterYuri
           git submodule update --init --recursive --depth 1 packages/psdfile
           git submodule update --init --depth 1 packages/AetherSiglus
+          git submodule update --init --depth 1 packages/AetherMAGES
           git submodule update --init --depth 1 packages/AetherMinori
           git submodule update --init --depth 1 packages/AetherKrkr
           git submodule update --init --depth 1 packages/ruffle

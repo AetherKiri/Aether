@@ -27,6 +27,63 @@
       "platform": "windows"
     },
     "ffmpeg",
+    {
+      "name": "ffmpeg",
+      "features": [
+        "bink2"
+      ],
+      "platform": "linux"
+    },
+    {
+      "name": "sdl3",
+      "default-features": false,
+      "platform": "linux"
+    },
+    {
+      "name": "avcpp",
+      "default-features": false,
+      "platform": "linux"
+    },
+    {
+      "name": "dav1d",
+      "platform": "linux"
+    },
+    {
+      "name": "libass",
+      "platform": "linux"
+    },
+    {
+      "name": "glm",
+      "platform": "linux"
+    },
+    {
+      "name": "pugixml",
+      "platform": "linux"
+    },
+    {
+      "name": "utfcpp",
+      "platform": "linux"
+    },
+    {
+      "name": "unordered-dense",
+      "platform": "linux"
+    },
+    {
+      "name": "concurrentqueue",
+      "platform": "linux"
+    },
+    {
+      "name": "readerwriterqueue",
+      "platform": "linux"
+    },
+    {
+      "name": "boost-circular-buffer",
+      "platform": "linux"
+    },
+    {
+      "name": "toml11",
+      "platform": "linux"
+    },
     "expat",
     "fmt",
     "freetype",

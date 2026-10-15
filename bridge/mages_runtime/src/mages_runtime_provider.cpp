@@ -388,15 +388,21 @@ namespace aetherkiri::mages {
 
             // A root carrying the MAGES. install layout is opened through
             // the host's "auto" mode, which resolves the registered game id
-            // from gamedefinitions.lua; any other root (including one with
-            // an unregistered or PC-layout game) falls back to the engine's
-            // data-free launcher loop, which still renders frames at the
-            // design resolution.
+            // from gamedefinitions.lua; the PC flat layout (script.mpk /
+            // system.mpk at the root) is also routed to "auto" because the
+            // host registry flags those games with PcFlatLayout. Any other
+            // root falls back to the engine's data-free launcher loop, which
+            // still renders frames at the design resolution.
             const std::filesystem::path gamedata(game_root_path_utf8);
             const std::optional<std::string> detected =
                 DetectMagesInstallLayout(gamedata);
-            const char* game_id = detected ? "auto" : "launcher";
-            if(!detected) {
+            std::error_code flatEc;
+            const bool flatPc =
+                !detected &&
+                std::filesystem::exists(gamedata / "script.mpk", flatEc) &&
+                std::filesystem::exists(gamedata / "system.mpk", flatEc);
+            const char* game_id = (detected || flatPc) ? "auto" : "launcher";
+            if (!detected && !flatPc) {
                 LogHost(instance, ENGINE_RUNTIME_LOG_WARNING,
                         "no MAGES. game data found; opening the data-free "
                         "launcher loop");

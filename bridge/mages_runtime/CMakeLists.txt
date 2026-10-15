@@ -79,6 +79,20 @@ target_link_libraries(aether_mages_runtime PUBLIC
 )
 add_dependencies(aether_mages_runtime aether_mages_stage_data)
 
+# On macOS, impacto is built as a separate SHARED library to isolate SDL3
+# symbols from the SDL2 the other runtimes link. Stage the .dylib into the
+# Godot export bin directory (same location as aether_kiri_godot.dylib) so
+# the extension can load it at runtime via @rpath.
+if(APPLE AND NOT IOS)
+    add_custom_command(TARGET aether_mages_runtime POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E make_directory
+            "${CMAKE_SOURCE_DIR}/apps/godot_app/bin/macos/$<LOWER_CASE:$<CONFIG>>"
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            "$<TARGET_FILE:impacto>"
+            "${CMAKE_SOURCE_DIR}/apps/godot_app/bin/macos/$<LOWER_CASE:$<CONFIG>>/$<TARGET_FILE_NAME:impacto>"
+        VERBATIM)
+endif()
+
 # Audio PCM consumer: drains the impacto host mixer FIFO into an OpenAL
 # stream, the same cross-platform output path the siglus runtime uses.
 target_link_libraries(aether_mages_runtime PRIVATE

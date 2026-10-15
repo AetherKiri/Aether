@@ -30,22 +30,18 @@ set(IMPACTO_BUILD_HOST ON)
 set(IMPACTO_EMBEDDED ON)
 add_subdirectory("${MAGES_HOST_SOURCE}" "${CMAKE_BINARY_DIR}/aethermages-impacto")
 
-# On Apple platforms SDL3 and ggml-metal weak-link Metal/GameController/
-# QuartzCore, while the Godot extension strong-links them; CMake refuses to
-# mix FRAMEWORK and WEAK_FRAMEWORK for the same framework. Promote every
-# weak-linked Apple framework to FRAMEWORK so the final Godot extension links
-# cleanly. impacto is the only consumer of SDL3 here; ggml is owned by the
-# host manifest.
+# On Apple platforms SDL3, ggml-metal and other vcpkg ports weak-link
+# Metal/GameController/QuartzCore (WEAK_FRAMEWORK), while the Godot extension
+# strong-links them (FRAMEWORK). CMake refuses to mix the two features for the
+# same framework. CMAKE_LINK_LIBRARY_OVERRIDE_<library> (CMake 3.27+) forces a
+# single feature on every consumer in this scope, so the final Godot extension
+# links cleanly regardless of which dependency introduced the weak link.
+# Propagate to the parent scope so aether_kiri_godot (created later in
+# bridge/godot_extension) inherits the override.
 if(APPLE)
-    foreach(_t SDL3::SDL3 ggml::ggml ggml::ggml-metal)
-        if(TARGET ${_t})
-            get_target_property(_iface ${_t} INTERFACE_LINK_LIBRARIES)
-            if(_iface)
-                string(REPLACE "WEAK_FRAMEWORK" "FRAMEWORK" _iface "${_iface}")
-                set_target_properties(${_t} PROPERTIES
-                    INTERFACE_LINK_LIBRARIES "${_iface}")
-            endif()
-        endif()
+    foreach(_fw Metal QuartzCore GameController AppKit CoreAudio AudioToolbox)
+        set(CMAKE_LINK_LIBRARY_OVERRIDE_${_fw} FRAMEWORK)
+        set(CMAKE_LINK_LIBRARY_OVERRIDE_${_fw} FRAMEWORK PARENT_SCOPE)
     endforeach()
 endif()
 

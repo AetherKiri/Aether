@@ -519,7 +519,7 @@ const UI_TEXT := {
         "message.android_storage_permission_required": "需要允许 Aether 访问文件系统后才能导入或启动外部游戏。请在系统弹窗或权限设置中授予文件访问权限，然后再试。",
         "message.android_video_storage_permission_required": "需要允许 Aether 访问文件系统后才能导入视频。请在系统弹窗或权限设置中授予文件访问权限，然后再试。",
         "message.path_missing": "游戏路径不存在",
-        "message.launch_file_unsupported": "启动文件只支持 EXE 或 XP3",
+        "message.launch_file_unsupported": "启动文件只支持 EXE、XP3 或 HCB",
         "message.launch_file_outside_game": "启动文件必须位于当前游戏目录内",
         "message.launch_file_missing": "启动文件不存在：%s",
         "message.cover_file_missing": "无法读取所选封面图片：%s",
@@ -882,7 +882,7 @@ const UI_TEXT := {
         "message.android_storage_permission_required": "需要允許 Aether 存取檔案系統後才能匯入或啟動外部遊戲。請在系統彈窗或權限設定中授予檔案存取權限，然後再試。",
         "message.android_video_storage_permission_required": "需要允許 Aether 存取檔案系統後才能匯入影片。請在系統彈窗或權限設定中授予檔案存取權限，然後再試。",
         "message.path_missing": "遊戲路徑不存在",
-        "message.launch_file_unsupported": "啟動檔案僅支援 EXE 或 XP3",
+        "message.launch_file_unsupported": "啟動檔案僅支援 EXE、XP3 或 HCB",
         "message.launch_file_outside_game": "啟動檔案必須位於目前遊戲目錄內",
         "message.launch_file_missing": "啟動檔案不存在：%s",
         "message.cover_file_missing": "無法讀取所選封面圖片：%s",
@@ -1289,7 +1289,7 @@ You can find it any time under Settings → QQ Group.",
         "message.android_storage_permission_required": "Allow Aether to access the file system before importing or launching external games. Grant file access in the system prompt or permission settings, then try again.",
         "message.android_video_storage_permission_required": "Allow Aether to access the file system before importing videos. Grant file access in the system prompt or permission settings, then try again.",
         "message.path_missing": "Game path does not exist",
-        "message.launch_file_unsupported": "The launch file must be an EXE or XP3 file",
+        "message.launch_file_unsupported": "The launch file must be an EXE, XP3 or HCB file",
         "message.launch_file_outside_game": "The launch file must be inside this game folder",
         "message.launch_file_missing": "Launch file does not exist: %s",
         "message.cover_file_missing": "Could not read the selected cover image: %s",
@@ -1652,7 +1652,7 @@ You can find it any time under Settings → QQ Group.",
         "message.android_storage_permission_required": "外部ゲームのインポートまたは起動には、Aether にファイルシステムへのアクセスを許可する必要があります。システムの権限ダイアログまたは設定でファイルアクセスを許可してから、もう一度お試しください。",
         "message.android_video_storage_permission_required": "動画をインポートするには、Aether にファイルシステムへのアクセスを許可する必要があります。システムの権限ダイアログまたは設定でファイルアクセスを許可してから、もう一度お試しください。",
         "message.path_missing": "ゲームパスが存在しません",
-        "message.launch_file_unsupported": "起動ファイルは EXE または XP3 のみ対応しています",
+        "message.launch_file_unsupported": "起動ファイルは EXE、XP3 または HCB のみ対応しています",
         "message.launch_file_outside_game": "起動ファイルは現在のゲームフォルダー内にある必要があります",
         "message.launch_file_missing": "起動ファイルが存在しません：%s",
         "message.cover_file_missing": "選択したカバー画像を読み込めません：%s",
@@ -2015,7 +2015,7 @@ You can find it any time under Settings → QQ Group.",
         "message.android_storage_permission_required": "외부 게임을 가져오거나 실행하려면 Aether의 파일 시스템 접근을 허용해야 합니다. 시스템 권한 창 또는 권한 설정에서 파일 접근 권한을 허용한 뒤 다시 시도하세요.",
         "message.android_video_storage_permission_required": "비디오를 가져오려면 Aether의 파일 시스템 접근을 허용해야 합니다. 시스템 권한 창 또는 권한 설정에서 파일 접근 권한을 허용한 뒤 다시 시도하세요.",
         "message.path_missing": "게임 경로가 존재하지 않습니다",
-        "message.launch_file_unsupported": "실행 파일은 EXE 또는 XP3만 지원합니다",
+        "message.launch_file_unsupported": "실행 파일은 EXE, XP3 또는 HCB만 지원합니다",
         "message.launch_file_outside_game": "실행 파일은 현재 게임 폴더 안에 있어야 합니다",
         "message.launch_file_missing": "실행 파일이 존재하지 않습니다: %s",
         "message.cover_file_missing": "선택한 표지 이미지를 읽을 수 없습니다: %s",
@@ -9599,6 +9599,11 @@ func _set_launch_file_for_selected() -> void:
     if library_path.is_empty() or not _can_configure_launch_file(selected_game):
         return
     _finish_hero_overlay()
+    if _game_runtime_kind(library_path) == "rfvp":
+        var candidates := GameMetadata.hcb_launch_files(library_path)
+        if not candidates.is_empty():
+            _show_rfvp_launch_file_dialog(library_path, candidates)
+            return
     if OS.get_name() in ["iOS", "macOS"] \
             and player != null \
             and player.has_method("native_launch_file_picker_open") \
@@ -9610,12 +9615,39 @@ func _set_launch_file_for_selected() -> void:
         return
     _show_launch_file_godot_dialog(library_path)
 
+func _show_rfvp_launch_file_dialog(library_path: String, candidates: PackedStringArray) -> void:
+    var dialog := _modal_dialog(Vector2(620, 420))
+    var box := _modal_stack(dialog, _t("dialog.choose_launch_file"), ICON_SETTINGS)
+    var scroll := ScrollContainer.new()
+    scroll.custom_minimum_size = Vector2(0, 220)
+    scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
+    box.add_child(scroll)
+    var options := VBoxContainer.new()
+    options.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+    scroll.add_child(options)
+    for entry in candidates:
+        var button := _secondary_dialog_button(entry)
+        button.pressed.connect(_select_rfvp_launch_file.bind(library_path, entry))
+        options.add_child(button)
+    var browse := _secondary_dialog_button(_t("detail.set_launch_file"))
+    browse.pressed.connect(func(): _dismiss_modal(func(): _show_launch_file_godot_dialog(library_path)))
+    box.add_child(browse)
+    var cancel := _secondary_dialog_button(_t("dialog.cancel"))
+    cancel.pressed.connect(func(): _dismiss_modal())
+    box.add_child(cancel)
+
+func _select_rfvp_launch_file(library_path: String, entry: String) -> void:
+    _dismiss_modal(func(): _apply_selected_launch_file(library_path, library_path.path_join(entry)))
+
 func _show_launch_file_godot_dialog(library_path: String) -> void:
     var dialog := _create_file_dialog(
         _t("dialog.choose_launch_file"),
         FileDialog.FILE_MODE_OPEN_FILE,
-        PackedStringArray(["*.exe,*.EXE,*.xp3,*.XP3;Visual novel launch file"])
+        PackedStringArray(["*.exe,*.EXE,*.xp3,*.XP3,*.hcb,*.HCB;Visual novel launch file"])
     )
+    dialog.show_hidden_files = true
+    if _game_runtime_kind(library_path) == "rfvp":
+        dialog.use_native_dialog = false
     if DirAccess.dir_exists_absolute(library_path):
         dialog.current_dir = library_path
     dialog.file_selected.connect(func(selected_path: String):
@@ -11089,7 +11121,7 @@ func _game_info_from_path(path: String) -> Dictionary:
     var metadata := GameMetadata.inspect(path)
     var detected_title := String(metadata.get("title", ""))
     var detected_engine := String(metadata.get("engine", RUNTIME_KIRIKIRI))
-    var game := {
+    return {
         "name": detected_title if not detected_title.is_empty() else name,
         "path": path,
         "type": "Archive" if path.to_lower().ends_with(".xp3") else "Directory",
@@ -11104,9 +11136,6 @@ func _game_info_from_path(path: String) -> Dictionary:
         "engine": detected_engine,
         "launchFile": metadata.get("launchFile", ""),
     }
-
-    GameLaunchEntry.backfill(game, metadata)
-    return game
 
 func _game_runtime_root(path: String) -> String:
     var resolved := _resolve_game_path(path)
@@ -11154,8 +11183,7 @@ func _backfill_game_metadata(games: Array[Dictionary]) -> bool:
         # directory on launch can block on a protected or unavailable folder.
         if not String(game.get("engine", "")).is_empty() \
                 and not String(game.get("title", "")).is_empty() \
-                and game.has("titleCandidates") and game.has("launchFile") \
-                and (String(game.get("engine", "")) != "rfvp" or game.has(GameLaunchEntry.RFVP_ENCODING_FIELD)):
+                and game.has("titleCandidates") and game.has("launchFile"):
             continue
         var configured_path := GameLaunchEntry.resolve(game)
         var metadata := GameMetadata.inspect(configured_path if FileAccess.file_exists(configured_path) else path)
@@ -11848,14 +11876,9 @@ func _start_selected_game_after_entitlements() -> void:
         return
     if not _switch_runtime_player(active_runtime_kind):
         return
-    var launch_game := selected_game
-    if active_runtime_kind == "rfvp" and String(launch_game.get(GameLaunchEntry.FIELD, "")).is_empty():
-        launch_game = selected_game.duplicate(true)
-        launch_game.erase(GameLaunchEntry.FIELD)
-        GameLaunchEntry.backfill(launch_game, GameMetadata.inspect(library_path))
     if active_runtime_kind == "rfvp":
         var rfvp_encoding := GameLaunchEntry.rfvp_encoding(
-            launch_game, OS.get_environment("AETHERKIRI_RFVP_ENCODING")
+            selected_game, OS.get_environment("AETHERKIRI_RFVP_ENCODING")
         )
         var option_result := int(player.set_engine_option("rfvp_encoding", rfvp_encoding))
         if option_result != ENGINE_RESULT_OK:
@@ -11864,7 +11887,7 @@ func _start_selected_game_after_entitlements() -> void:
     var launch_uses_directory := GameLaunchEntry.runtime_uses_directory(
         active_runtime_kind
     )
-    var raw_launch_file := String(launch_game.get(GameLaunchEntry.FIELD, "")).strip_edges()
+    var raw_launch_file := String(selected_game.get(GameLaunchEntry.FIELD, "")).strip_edges()
     if (
         not launch_uses_directory
         and not raw_launch_file.is_empty()
@@ -11875,7 +11898,7 @@ func _start_selected_game_after_entitlements() -> void:
             _t("alert.warning_title")
         )
         return
-    var relative_launch_file := GameLaunchEntry.configured_relative_path(launch_game)
+    var relative_launch_file := GameLaunchEntry.configured_relative_path(selected_game)
     if (
         not launch_uses_directory
         and not raw_launch_file.is_empty()
@@ -11887,7 +11910,7 @@ func _start_selected_game_after_entitlements() -> void:
         )
         return
     var launch_path := GameLaunchEntry.resolve_for_runtime(
-        launch_game,
+        selected_game,
         active_runtime_kind
     )
     if (

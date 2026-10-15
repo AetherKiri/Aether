@@ -98,28 +98,11 @@ func _init() -> void:
         "invalid HCB does not claim another runtime"
     )
 
-    var overlay_root := fixture_root.path_join("overlay")
-    DirAccess.make_dir_recursive_absolute(overlay_root)
-    var original := overlay_root.path_join("Story.hcb")
-    var translated := overlay_root.path_join(".Story.hcb")
-    _write_hcb(original, 7)
-    _write_hcb(translated, 7)
-    _append_strings(translated, PackedByteArray([0x82, 0xa0, 0x82, 0xa2]))
-    _expect_equal(String(GameMetadata.inspect(overlay_root).launchFile), "Story.hcb", "hidden Japanese patch does not imply GBK")
-    _write_hcb(translated, 7)
-    _append_strings(translated, PackedByteArray([0xb5, 0xc4, 0xca, 0xc7, 0xb2, 0xbb, 0xce, 0xd2]))
-    var overlay := GameMetadata.inspect(overlay_root)
-    _expect_equal(String(overlay.launchFile), ".Story.hcb", "hidden translation overlay selected")
-    _expect_equal(String(overlay.rfvpEncoding), "gbk", "translation overlay encoding")
-    var explicit_original := GameMetadata.inspect(original)
-    _expect_equal(String(explicit_original.launchFile), "Story.hcb", "explicit original retained")
-    _expect_equal(String(explicit_original.rfvpEncoding), "sjis", "original encoding retained")
-    _expect_equal(String(GameMetadata.inspect(translated).rfvpEncoding), "gbk", "explicit translation encoding")
-    _write_hcb(translated, 8)
-    _append_strings(translated, PackedByteArray([0xb5, 0xc4, 0xca, 0xc7, 0xb2, 0xbb, 0xce, 0xd2]))
-    _expect_equal(String(GameMetadata.inspect(overlay_root).launchFile), "Story.hcb", "unrelated descriptor is not a companion patch")
-    _write(translated, "invalid patch")
-    _expect_equal(String(GameMetadata.inspect(overlay_root).launchFile), "Story.hcb", "invalid hidden patch ignored")
+    _write_hcb(rfvp_root.path_join("Visible.hcb"), 7)
+    _write_hcb(rfvp_root.path_join(".Hidden.hcb"), 7)
+    _expect_true(GameMetadata.hcb_launch_files(rfvp_root).has(".Hidden.hcb"), "hidden HCB selectable")
+    _expect_equal(String(GameMetadata.inspect(rfvp_root).launchFile), "Visible.hcb", "ordinary default without language guessing")
+    _expect_equal(String(GameMetadata.inspect(rfvp_root.path_join(".Hidden.hcb")).launchFile), ".Hidden.hcb", "explicit hidden script retained")
 
     _remove_tree(fixture_root)
     if failures == 0:
@@ -155,19 +138,6 @@ func _write_hcb(path: String, mode: int) -> void:
     file.store_8(0) # empty title
     file.store_16(0) # syscalls
     file.store_16(0) # custom syscalls
-
-
-func _append_strings(path: String, characters: PackedByteArray) -> void:
-    var file := FileAccess.open(path, FileAccess.READ_WRITE)
-    file.seek_end()
-    for _string in range(8):
-        var text := PackedByteArray()
-        for _repeat in range(8):
-            text.append_array(characters)
-        file.store_8(0x0e)
-        file.store_8(text.size() + 1)
-        file.store_buffer(text)
-        file.store_8(0)
 
 
 func _remove_tree(path: String) -> void:

@@ -3,6 +3,19 @@ extends SceneTree
 const Main = preload("res://scripts/main.gd")
 const Metadata = preload("res://scripts/game_metadata.gd")
 const Launch = preload("res://scripts/game_launch_entry.gd")
+class SelectionApp:
+    extends "res://scripts/main.gd"
+
+    func _update_game(_path: String, values: Dictionary) -> void:
+        selected_game.merge(values, true)
+
+    func _show_detail(_game: Dictionary, _source: Control = null) -> void:
+        pass
+
+    func _dismiss_modal(after: Callable = Callable()) -> void:
+        if after.is_valid():
+            after.call()
+
 var failures := 0
 
 func _expect(value: bool) -> void:
@@ -21,17 +34,14 @@ func _init() -> void:
         file.store_16(0)
         file.store_16(0)
         file.store_buffer(PackedByteArray([7, 0, 1, 0, 0, 0, 0, 0]))
-        if name.begins_with("."):
-            for _line in range(8):
-                file.store_buffer(PackedByteArray([0x0e, 17]))
-                for _character in range(8):
-                    file.store_buffer(PackedByteArray([0xb5, 0xc4]))
-                file.store_8(0)
         file.close()
-    var app = Main.new()
+    var app = SelectionApp.new()
     var imported: Dictionary = app._game_info_from_path(root)
-    _expect(imported.launchFile == ".Story.hcb")
-    _expect(imported.rfvpEncoding == "gbk")
+    _expect(imported.launchFile == "Story.hcb")
+    _expect(Launch.rfvp_encoding(imported) == "sjis")
+    _expect(Metadata.hcb_launch_files(root).has(".Story.hcb"))
+    imported.launchFile = ".Story.hcb"
+    imported.rfvpEncoding = "gbk"
     var persisted: Dictionary = JSON.parse_string(JSON.stringify(imported))
     var games: Array[Dictionary] = [persisted]
     app._backfill_game_metadata(games)
@@ -49,20 +59,16 @@ func _init() -> void:
     _expect(Launch.rfvp_encoding(legacy_merged) == "sjis")
     games = [legacy]
     app._backfill_game_metadata(games)
-    _expect(legacy.launchFile == "Story.hcb" and legacy.rfvpEncoding == "sjis")
+    _expect(legacy.launchFile == "Story.hcb" and Launch.rfvp_encoding(legacy) == "sjis")
     var missing := {"path": root, "engine": "rfvp"}
     games = [missing]
     app._backfill_game_metadata(games)
-    _expect(missing.launchFile == ".Story.hcb" and missing.rfvpEncoding == "gbk")
-    # Explicit auto-detect remains stored as empty, but can resolve a fresh
-    # metadata profile at launch without changing the user's dictionary.
-    var automatic := {"path": root, "launchFile": ""}
-    var launch := automatic.duplicate(true)
-    launch.erase(Launch.FIELD)
-    Launch.backfill(launch, Metadata.inspect(root))
-    _expect(automatic.launchFile == "")
-    _expect(Launch.resolve(launch) == root.path_join(".Story.hcb"))
-    _expect(Launch.rfvp_encoding(launch) == "gbk")
+    _expect(missing.launchFile == "Story.hcb" and Launch.rfvp_encoding(missing) == "sjis")
+    app.selected_game = {"path": root}
+    app._select_rfvp_launch_file(root, ".Story.hcb")
+    app._set_rfvp_encoding_for_selected(root, "gbk")
+    _expect(app.selected_game.launchFile == ".Story.hcb")
+    _expect(app.selected_game.rfvpEncoding == "gbk")
     app.ui_motion.free()
     app.free()
     for name in ["Story.hcb", ".Story.hcb"]:

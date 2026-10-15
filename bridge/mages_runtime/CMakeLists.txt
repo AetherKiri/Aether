@@ -28,6 +28,10 @@ find_package(OpenAL CONFIG REQUIRED)
 # (this build stages the library and the data tree itself).
 set(IMPACTO_BUILD_HOST ON)
 set(IMPACTO_EMBEDDED ON)
+# Build the vendored LibAtrac9 decoder as a static archive so it links into
+# the impacto library (static or the macOS shared image) instead of shipping
+# a separate libatrac9.so/.dylib the host packaging would have to stage.
+set(LIBATRAC9_BUILD_SHARED OFF)
 add_subdirectory("${MAGES_HOST_SOURCE}" "${CMAKE_BINARY_DIR}/aethermages-impacto")
 
 # NOTE: Apple framework link-feature conflicts (SDL3 weak-links Metal/

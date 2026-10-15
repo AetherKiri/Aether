@@ -191,18 +191,26 @@ set(FFMPEG_PKGCONFIG_MODULES libavutil)
 # integration. The vcpkg.json feature declarations exist only so avcpp's
 # ffmpeg[avcodec,...] dependency resolves; they do not gate the build. avdevice
 # is enabled (with --disable-autodetect it ships an empty backend) so avcpp's
-# wrapper links.
+# wrapper links. The ENABLE_* variables are substituted into the generated
+# FindFFMPEG.cmake's component guards — without them every guard becomes an
+# empty if() and consumers like krkr2's movie module only find libavutil.
 set(OPTIONS "${OPTIONS} --enable-avcodec")
+set(ENABLE_AVCODEC ON)
 list(APPEND FFMPEG_PKGCONFIG_MODULES libavcodec)
 set(OPTIONS "${OPTIONS} --enable-avdevice")
+set(ENABLE_AVDEVICE ON)
 list(APPEND FFMPEG_PKGCONFIG_MODULES libavdevice)
 set(OPTIONS "${OPTIONS} --enable-avformat")
+set(ENABLE_AVFORMAT ON)
 list(APPEND FFMPEG_PKGCONFIG_MODULES libavformat)
 set(OPTIONS "${OPTIONS} --enable-avfilter")
+set(ENABLE_AVFILTER ON)
 list(APPEND FFMPEG_PKGCONFIG_MODULES libavfilter)
 set(OPTIONS "${OPTIONS} --enable-swresample")
+set(ENABLE_SWRESAMPLE ON)
 list(APPEND FFMPEG_PKGCONFIG_MODULES libswresample)
 set(OPTIONS "${OPTIONS} --enable-swscale")
+set(ENABLE_SWSCALE ON)
 list(APPEND FFMPEG_PKGCONFIG_MODULES libswscale)
 
 set(OPTIONS_CROSS "--enable-cross-compile")

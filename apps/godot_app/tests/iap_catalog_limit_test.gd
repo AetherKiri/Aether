@@ -95,6 +95,7 @@ func _initialize() -> void:
     # CatSystem2 is a released runtime and must not enter the coffee-only
     # entitlement path.  WA2 remains the explicitly provider-gated runtime.
     _expect(not app._runtime_requires_beta_access(app.RUNTIME_CATSYSTEM2))
+    _expect(not app._runtime_requires_beta_access("rfvp"))
     _expect(not app._beta_access_enforcement_enabled("Android"))
     _expect(not app._beta_access_enforcement_enabled("Linux"))
     _expect(app._beta_access_enforcement_enabled("iOS") == (not OS.is_debug_build()))

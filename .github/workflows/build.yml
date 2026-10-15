@@ -1119,7 +1119,7 @@ jobs:
         uses: actions/cache/restore@v6
         with:
           path: .ccache/linux
-          key: ${{ runner.os }}-linux-${{ matrix.arch }}-ccache-v1-${{ github.sha }}
+          key: ${{ runner.os }}-linux-${{ matrix.arch }}-ccache-v2
           restore-keys: |
             ${{ runner.os }}-linux-${{ matrix.arch }}-ccache-
 
@@ -1158,8 +1158,9 @@ jobs:
         uses: actions/cache/restore@v6
         with:
           path: .aetherkiri-cache/vcpkg-binaries
-          key: ${{ runner.os }}-linux-${{ matrix.arch }}-vcpkg-binaries-v1-${{ hashFiles('vcpkg-configuration.json', 'vcpkg.json', 'vcpkg/ports/**', 'vcpkg/triplets/**') }}-${{ github.sha }}
+          key: ${{ runner.os }}-linux-${{ matrix.arch }}-vcpkg-binaries-v2-${{ hashFiles('vcpkg-configuration.json', 'vcpkg.json', 'vcpkg/ports/**', 'vcpkg/triplets/**') }}
           restore-keys: |
+            ${{ runner.os }}-linux-${{ matrix.arch }}-vcpkg-binaries-v2-
             ${{ runner.os }}-linux-${{ matrix.arch }}-vcpkg-binaries-v1-${{ hashFiles('vcpkg-configuration.json', 'vcpkg.json', 'vcpkg/ports/**', 'vcpkg/triplets/**') }}-
             ${{ runner.os }}-linux-${{ matrix.arch }}-vcpkg-binaries-v1-
 
@@ -1260,23 +1261,25 @@ jobs:
           if-no-files-found: error
           retention-days: 7
 
+      # Seed reusable caches from successful main builds. PR-scoped copies
+      # cannot be reused by main or other PRs and consume the same quota.
       - name: Save vcpkg source cache
-        if: always() && env.AETHERKIRI_VCPKG_CACHE_WRITE == 'true' && steps.restore-vcpkg-downloads.outputs.cache-hit != 'true'
+        if: success() && github.ref == 'refs/heads/main' && env.AETHERKIRI_VCPKG_CACHE_WRITE == 'true' && steps.restore-vcpkg-downloads.outputs.cache-hit != 'true'
         uses: actions/cache/save@v6
         with:
           path: .aetherkiri-cache/vcpkg-downloads
           key: ${{ runner.os }}-linux-${{ matrix.arch }}-vcpkg-downloads-${{ hashFiles('vcpkg-configuration.json', 'vcpkg.json', 'vcpkg/ports/**', 'vcpkg/triplets/**') }}
 
       - name: Save ccache
-        if: always() && env.AETHERKIRI_VCPKG_CACHE_WRITE == 'true' && steps.restore-ccache.outputs.cache-hit != 'true'
+        if: success() && github.ref == 'refs/heads/main' && env.AETHERKIRI_VCPKG_CACHE_WRITE == 'true' && steps.restore-ccache.outputs.cache-hit != 'true'
         uses: actions/cache/save@v6
         with:
           path: .ccache/linux
-          key: ${{ runner.os }}-linux-${{ matrix.arch }}-ccache-v1-${{ github.sha }}
+          key: ${{ runner.os }}-linux-${{ matrix.arch }}-ccache-v2
 
       - name: Save vcpkg binary cache
-        if: always() && env.AETHERKIRI_VCPKG_CACHE_WRITE == 'true' && steps.restore-vcpkg-binaries.outputs.cache-hit != 'true'
+        if: success() && github.ref == 'refs/heads/main' && env.AETHERKIRI_VCPKG_CACHE_WRITE == 'true' && steps.restore-vcpkg-binaries.outputs.cache-hit != 'true'
         uses: actions/cache/save@v6
         with:
           path: .aetherkiri-cache/vcpkg-binaries
-          key: ${{ runner.os }}-linux-${{ matrix.arch }}-vcpkg-binaries-v1-${{ hashFiles('vcpkg-configuration.json', 'vcpkg.json', 'vcpkg/ports/**', 'vcpkg/triplets/**') }}-${{ github.sha }}
+          key: ${{ runner.os }}-linux-${{ matrix.arch }}-vcpkg-binaries-v2-${{ hashFiles('vcpkg-configuration.json', 'vcpkg.json', 'vcpkg/ports/**', 'vcpkg/triplets/**') }}

@@ -30,20 +30,11 @@ set(IMPACTO_BUILD_HOST ON)
 set(IMPACTO_EMBEDDED ON)
 add_subdirectory("${MAGES_HOST_SOURCE}" "${CMAKE_BINARY_DIR}/aethermages-impacto")
 
-# On Apple platforms SDL3, ggml-metal and other vcpkg ports weak-link
-# Metal/GameController/QuartzCore (WEAK_FRAMEWORK), while the Godot extension
-# strong-links them (FRAMEWORK). CMake refuses to mix the two features for the
-# same framework. CMAKE_LINK_LIBRARY_OVERRIDE_<library> (CMake 3.27+) forces a
-# single feature on every consumer in this scope, so the final Godot extension
-# links cleanly regardless of which dependency introduced the weak link.
-# Propagate to the parent scope so aether_kiri_godot (created later in
-# bridge/godot_extension) inherits the override.
-if(APPLE)
-    foreach(_fw Metal QuartzCore GameController AppKit CoreAudio AudioToolbox)
-        set(CMAKE_LINK_LIBRARY_OVERRIDE_${_fw} FRAMEWORK)
-        set(CMAKE_LINK_LIBRARY_OVERRIDE_${_fw} FRAMEWORK PARENT_SCOPE)
-    endforeach()
-endif()
+# NOTE: Apple framework link-feature conflicts (SDL3 weak-links Metal/
+# QuartzCore/GameController while the Godot extension strong-links them) are
+# resolved via the LINK_LIBRARY_OVERRIDE property set on aether_kiri_godot in
+# bridge/godot_extension/CMakeLists.txt. SDL3's imported targets are not
+# GLOBAL, so they cannot be safely rewritten from this parent scope.
 
 # Stage the engine data tree impacto boots from (the host bridge chdirs into
 # the data dir, so shaders/ must sit next to gamedefinitions.lua; in the

@@ -315,12 +315,11 @@ if(AETHERKIRI_ENABLE_SIGLUS AND BUILD_GODOT_EXTENSION AND
     add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/bridge/siglus_runtime)
 endif()
 if(AETHERKIRI_ENABLE_MAGES AND BUILD_GODOT_EXTENSION AND
-    (LINUX OR (APPLE AND NOT IOS)) AND NOT (WEB OR EMSCRIPTEN))
+    NOT (WEB OR EMSCRIPTEN))
     # The MAGES. runtime renders offscreen inside the embedded impacto host
-    # library (compiled from the packages/AetherMAGES submodule). impacto's
-    # renderer is desktop OpenGL, so the provider is built on the desktop
-    # platforms impacto supports (Linux, macOS); Android/iOS need a GLES/Metal
-    # impacto backend, which is upstream work.
+    # library (compiled from the packages/AetherMAGES submodule). Built on
+    # every product platform the Godot extension targets, like the other
+    # runtime submodules.
     add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/bridge/mages_runtime)
 endif()
 # The Rust provider has targets for Linux, Apple, Android, and Emscripten.

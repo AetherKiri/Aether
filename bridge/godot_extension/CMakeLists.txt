@@ -116,12 +116,14 @@ if(APPLE AND AETHERKIRI_ENABLE_MAGES)
     # GameController on Apple platforms (WEAK_FRAMEWORK), while this extension
     # strong-links the same frameworks via raw -framework flags (FRAMEWORK).
     # CMake refuses to mix both features for one item on the same target.
-    # LINK_LIBRARY_OVERRIDE (CMake 3.24+) forces the strong FRAMEWORK feature
-    # for these items regardless of which dependency introduced the weak link.
-    set_property(TARGET aether_kiri_godot PROPERTY LINK_LIBRARY_OVERRIDE
-        "FRAMEWORK,Metal;FRAMEWORK,QuartzCore;FRAMEWORK,GameController"
-        "FRAMEWORK,CoreHaptics;FRAMEWORK,CoreAudio;FRAMEWORK,CoreVideo"
-        "FRAMEWORK,AudioToolbox;FRAMEWORK,IOKit;FRAMEWORK,AppKit")
+    # The per-library LINK_LIBRARY_OVERRIDE_<ITEM> target properties (see
+    # cmComputeLinkDepends.cxx) force the strong FRAMEWORK feature for these
+    # items regardless of which dependency introduced the weak link.
+    foreach(_fw Metal QuartzCore GameController CoreHaptics CoreAudio
+                 CoreVideo AudioToolbox IOKit AppKit)
+        set_property(TARGET aether_kiri_godot
+            PROPERTY LINK_LIBRARY_OVERRIDE_${_fw} FRAMEWORK)
+    endforeach()
 endif()
 
 if(AETHERKIRI_ENABLE_FLASH AND NOT (WEB OR EMSCRIPTEN))

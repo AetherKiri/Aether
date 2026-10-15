@@ -401,13 +401,6 @@ jobs:
         with:
           targets: aarch64-apple-ios
 
-      - name: Install pinned Rust toolchain for RFVP
-        run: |
-          set -euo pipefail
-          rustup toolchain install nightly-2026-06-09 --profile minimal --target aarch64-apple-ios
-          echo "RFVP_CARGO=$(rustup which --toolchain nightly-2026-06-09 cargo)" >> "$GITHUB_ENV"
-          echo "RFVP_RUSTC=$(rustup which --toolchain nightly-2026-06-09 rustc)" >> "$GITHUB_ENV"
-
       - name: Resolve private runtime dependency cache
         id: private-runtime-cache-key
         if: env.AETHERKIRI_WITH_INTERNAL == 'true'
@@ -734,13 +727,6 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
         with:
           targets: aarch64-apple-darwin
-
-      - name: Install pinned Rust toolchain for RFVP
-        run: |
-          set -euo pipefail
-          rustup toolchain install nightly-2026-06-09 --profile minimal --target aarch64-apple-darwin
-          echo "RFVP_CARGO=$(rustup which --toolchain nightly-2026-06-09 cargo)" >> "$GITHUB_ENV"
-          echo "RFVP_RUSTC=$(rustup which --toolchain nightly-2026-06-09 rustc)" >> "$GITHUB_ENV"
 
       - name: Resolve private runtime dependency cache
         id: private-runtime-cache-key

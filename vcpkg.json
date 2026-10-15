@@ -37,52 +37,52 @@
     {
       "name": "sdl3",
       "default-features": false,
-      "platform": "linux"
+      "platform": "linux | osx"
     },
     {
       "name": "avcpp",
       "default-features": false,
-      "platform": "linux"
+      "platform": "linux | osx"
     },
     {
       "name": "dav1d",
-      "platform": "linux"
+      "platform": "linux | osx"
     },
     {
       "name": "libass",
-      "platform": "linux"
+      "platform": "linux | osx"
     },
     {
       "name": "glm",
-      "platform": "linux"
+      "platform": "linux | osx"
     },
     {
       "name": "pugixml",
-      "platform": "linux"
+      "platform": "linux | osx"
     },
     {
       "name": "utfcpp",
-      "platform": "linux"
+      "platform": "linux | osx"
     },
     {
       "name": "unordered-dense",
-      "platform": "linux"
+      "platform": "linux | osx"
     },
     {
       "name": "concurrentqueue",
-      "platform": "linux"
+      "platform": "linux | osx"
     },
     {
       "name": "readerwriterqueue",
-      "platform": "linux"
+      "platform": "linux | osx"
     },
     {
       "name": "boost-circular-buffer",
-      "platform": "linux"
+      "platform": "linux | osx"
     },
     {
       "name": "toml11",
-      "platform": "linux"
+      "platform": "linux | osx"
     },
     "expat",
     "fmt",

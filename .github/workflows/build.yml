@@ -377,6 +377,7 @@ jobs:
     runs-on: macos-latest
     env:
       FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: 'true'
+      AETHERKIRI_ENABLE_RFVP: 'ON'
       CCACHE_DIR: ${{ github.workspace }}/.ccache
       GODOT_RELEASE: 4.7.2-stable
       GODOT_TEMPLATE_VERSION: 4.7.2.stable
@@ -399,6 +400,13 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
         with:
           targets: aarch64-apple-ios
+
+      - name: Install pinned Rust toolchain for RFVP
+        run: |
+          set -euo pipefail
+          rustup toolchain install nightly-2026-06-09 --profile minimal --target aarch64-apple-ios
+          echo "RFVP_CARGO=$(rustup which --toolchain nightly-2026-06-09 cargo)" >> "$GITHUB_ENV"
+          echo "RFVP_RUSTC=$(rustup which --toolchain nightly-2026-06-09 rustc)" >> "$GITHUB_ENV"
 
       - name: Resolve private runtime dependency cache
         id: private-runtime-cache-key
@@ -557,6 +565,8 @@ jobs:
           export CMAKE_C_COMPILER_LAUNCHER=ccache
           export CMAKE_CXX_COMPILER_LAUNCHER=ccache
           ./build.sh ios release --jobs=4 --package-ipa 2>&1 | tee "${RUNNER_TEMP}/ios-release-build.log"
+          grep -Fx 'AETHERKIRI_ENABLE_RFVP:BOOL=ON' out/ios/release/CMakeCache.txt
+          test -s out/ios/release/bridge/rfvp_runtime/libaether_rfvp_runtime.a
           if [[ "$AETHERKIRI_WITH_INTERNAL" == "true" ]]; then
             grep -Fx 'AETHERKIRI_ENABLE_SOFTPAL_RUNTIME:BOOL=ON' \
               out/ios/release/CMakeCache.txt
@@ -637,6 +647,8 @@ jobs:
           export CMAKE_C_COMPILER_LAUNCHER=ccache
           export CMAKE_CXX_COMPILER_LAUNCHER=ccache
           ./build.sh ios debug --jobs=4 --package-ipa 2>&1 | tee "${RUNNER_TEMP}/ios-debug-build.log"
+          grep -Fx 'AETHERKIRI_ENABLE_RFVP:BOOL=ON' out/ios/debug/CMakeCache.txt
+          test -s out/ios/debug/bridge/rfvp_runtime/libaether_rfvp_runtime.a
           if grep -E "SCRIPT ERROR|Failed to load script|Can't open GDExtension|Can't open dynamic library" "${RUNNER_TEMP}/ios-debug-build.log"; then
             echo "Godot iOS debug export logged script or GDExtension load errors." >&2
             exit 1
@@ -689,6 +701,7 @@ jobs:
     runs-on: macos-15
     env:
       FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: 'true'
+      AETHERKIRI_ENABLE_RFVP: 'ON'
       CCACHE_DIR: ${{ github.workspace }}/.ccache
       GODOT_RELEASE: 4.7.2-stable
       GODOT_TEMPLATE_VERSION: 4.7.2.stable
@@ -721,6 +734,13 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
         with:
           targets: aarch64-apple-darwin
+
+      - name: Install pinned Rust toolchain for RFVP
+        run: |
+          set -euo pipefail
+          rustup toolchain install nightly-2026-06-09 --profile minimal --target aarch64-apple-darwin
+          echo "RFVP_CARGO=$(rustup which --toolchain nightly-2026-06-09 cargo)" >> "$GITHUB_ENV"
+          echo "RFVP_RUSTC=$(rustup which --toolchain nightly-2026-06-09 rustc)" >> "$GITHUB_ENV"
 
       - name: Resolve private runtime dependency cache
         id: private-runtime-cache-key
@@ -879,6 +899,8 @@ jobs:
           export CMAKE_C_COMPILER_LAUNCHER=ccache
           export CMAKE_CXX_COMPILER_LAUNCHER=ccache
           ./build.sh macos release --jobs=4
+          grep -Fx 'AETHERKIRI_ENABLE_RFVP:BOOL=ON' out/macos/release/CMakeCache.txt
+          test -s out/macos/release/bridge/rfvp_runtime/libaether_rfvp_runtime.a
           if [[ "$AETHERKIRI_WITH_INTERNAL" == "true" ]]; then
             grep -Fx 'AETHERKIRI_ENABLE_SOFTPAL_RUNTIME:BOOL=ON' \
               out/macos/release/CMakeCache.txt
@@ -900,6 +922,8 @@ jobs:
           export CMAKE_C_COMPILER_LAUNCHER=ccache
           export CMAKE_CXX_COMPILER_LAUNCHER=ccache
           ./build.sh macos debug --jobs=4
+          grep -Fx 'AETHERKIRI_ENABLE_RFVP:BOOL=ON' out/macos/debug/CMakeCache.txt
+          test -s out/macos/debug/bridge/rfvp_runtime/libaether_rfvp_runtime.a
 
       - name: Run OnscripterYuri Godot smoke test
         env:

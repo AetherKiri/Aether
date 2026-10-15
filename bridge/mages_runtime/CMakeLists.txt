@@ -30,6 +30,20 @@ set(IMPACTO_BUILD_HOST ON)
 set(IMPACTO_EMBEDDED ON)
 add_subdirectory("${MAGES_HOST_SOURCE}" "${CMAKE_BINARY_DIR}/aethermages-impacto")
 
+# On Apple platforms SDL3 weak-links Metal/GameController/QuartzCore, while the
+# Godot extension strong-links them; CMake refuses to mix FRAMEWORK and
+# WEAK_FRAMEWORK for the same framework. Promote SDL3's links to FRAMEWORK so
+# the final Godot extension links cleanly. impacto is the only consumer of
+# SDL3 in this build, so the change is scoped to the mages runtime.
+if(APPLE AND TARGET SDL3::SDL3)
+    get_target_property(_sdl_iface SDL3::SDL3 INTERFACE_LINK_LIBRARIES)
+    if(_sdl_iface)
+        string(REPLACE "WEAK_FRAMEWORK" "FRAMEWORK" _sdl_iface "${_sdl_iface}")
+        set_target_properties(SDL3::SDL3 PROPERTIES
+            INTERFACE_LINK_LIBRARIES "${_sdl_iface}")
+    endif()
+endif()
+
 # Stage the engine data tree impacto boots from (the host bridge chdirs into
 # the data dir, so shaders/ must sit next to gamedefinitions.lua; in the
 # impacto repository they live under src/shaders). copy_directory_if_different

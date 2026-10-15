@@ -139,8 +139,62 @@ func point(action: Dictionary) -> Vector2:
         return Vector2(-1, -1)
     return Vector2(float(action.get("x", -1)), float(action.get("y", -1)))
 
+func tap(action: Dictionary, label: String) -> bool:
+    if int(action.get("button_index", 0)) != 0 or int(action.get("touch_index", 0)) < 0:
+        record({"event": "failed", "label": label, "reason": "invalid touch button or index"})
+        return false
+    var source := point(action)
+    var frame: Vector2i = app.player.get_frame_source_size()
+    if source.x < 0 or source.y < 0 or source.x >= frame.x or source.y >= frame.y or app.viewport.texture == null:
+        record({"event": "failed", "label": label, "reason": "missing touch target", "state": state()})
+        return false
+    # Enter the same handler as real ScreenTouch events, including the
+    # viewport-to-game transform, gesture classification and delayed release.
+    # The probe owns ticking, so normal game_running GUI dispatch stays off.
+    var position: Vector2 = app._map_surface_point_to_viewport(source)
+    var mapped: Vector2 = app._map_viewport_point(position)
+    if mapped.distance_to(source) > 1.0:
+        record({"event": "failed", "label": label, "reason": "touch coordinate round trip", "source": [source.x, source.y], "mapped": [mapped.x, mapped.y]})
+        return false
+    var forwarded := int(app.input_trace_forwarded)
+    var failed := int(app.input_trace_send_failed)
+    var pointer_id := int(action.get("touch_index", 0))
+    var event := InputEventScreenTouch.new()
+    event.index = pointer_id
+    event.position = position
+    event.pressed = true
+    if not app._handle_game_pointer_event(event):
+        record({"event": "failed", "label": label, "reason": "touch press not handled"})
+        return false
+    if not await advance(int(action.get("hold_frames", 1))):
+        return false
+    event = InputEventScreenTouch.new()
+    event.index = pointer_id
+    event.position = position
+    event.pressed = false
+    if not app._handle_game_pointer_event(event):
+        record({"event": "failed", "label": label, "reason": "touch release not handled"})
+        return false
+    var deadline := Time.get_ticks_msec() + 1000
+    while app.pending_touch_index == pointer_id or app.delayed_touch_releases.has(pointer_id):
+        if Time.get_ticks_msec() >= deadline:
+            record({"event": "failed", "label": label, "reason": "touch release timeout"})
+            return false
+        if not await advance(1):
+            return false
+    var sent := int(app.input_trace_forwarded) - forwarded
+    if sent < 3 or int(app.input_trace_send_failed) != failed:
+        record({"event": "failed", "label": label, "reason": "touch not forwarded", "forwarded": sent, "state": state()})
+        return false
+    record({"event": "input", "label": label, "kind": "touch", "source": [source.x, source.y], "viewport": [position.x, position.y], "forwarded": sent})
+    return true
+
 func run(game_path: String) -> int:
-    record({"event": "start", "name": config.get("name", "regression"), "screenshots": false})
+    var pointer_input := String(config.get("pointer_input", "mouse"))
+    if pointer_input not in ["mouse", "touch"]:
+        record({"event": "failed", "reason": "invalid pointer_input"})
+        return 1
+    record({"event": "start", "name": config.get("name", "regression"), "screenshots": false, "pointer_input": pointer_input})
     if not app._probe_open_game(config, game_path, "AETHERKIRI_PROBE_BACKEND") or not await app._probe_wait_startup(config):
         record({"event": "failed", "reason": "startup", "error": app.player.get_last_error()})
         return 1
@@ -162,6 +216,9 @@ func run(game_path: String) -> int:
         elif kind == "snapshot":
             snapshots[label] = state().duplicate(true)
             record({"event": "snapshot", "label": label, "state": snapshots[label]})
+        elif kind == "tap" or (kind == "click" and pointer_input == "touch"):
+            if not await tap(action, label):
+                return 1
         elif kind == "move":
             var pos := point(action)
             app.player.send_pointer_event(app.POINTER_MOVE, 0, pos.x, pos.y, 0.0, 0.0, 0)

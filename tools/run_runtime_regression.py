@@ -24,6 +24,8 @@ def arguments():
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--seed", type=Path, help="Copy this writable-state tree into the isolated run")
     parser.add_argument("--game", help="Override the case's game_path on this host or device")
+    parser.add_argument("--pointer-input", choices=("mouse", "touch"),
+        help="Use the app's ScreenTouch handler for clicks instead of direct player pointer input")
     parser.add_argument("--timeout", type=int, default=180)
     parser.add_argument("--device")
     parser.add_argument("--bundle", help="Installed development app bundle ID")
@@ -55,6 +57,8 @@ def main():
     config["probe_script"] = PROBE
     if args.game:
         config["game_path"] = args.game
+    if args.pointer_input:
+        config["pointer_input"] = args.pointer_input
     (output / "case.json").write_text(json.dumps(config, ensure_ascii=False, indent=2))
     isolated = output / "seed"
     if args.seed:

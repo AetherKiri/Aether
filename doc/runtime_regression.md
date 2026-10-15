@@ -31,6 +31,7 @@ in its Documents directory, and the device unlocked:
 DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer \
 python3 tools/run_runtime_regression.py /path/to/case.json \
   --platform ios --device DEVICE_ID --bundle DEVELOPMENT_BUNDLE_ID \
+  --pointer-input touch \
   --game 'Documents/Games/Game' --seed /path/to/writable-state-copy \
   --output /path/to/regression-artifacts --timeout 240
 ```
@@ -78,10 +79,21 @@ Run directories are retained for investigation and can be removed afterwards.
 }
 ```
 
-Actions are `move`, `click`, `key`, `wait`, `snapshot`, and `assert`. Pointer
+Actions are `move`, `click`, `tap`, `key`, `wait`, `snapshot`, and `assert`. Pointer
 coordinates use the source frame's pixels. A click can select a visible, enabled
 button with a partial `button` dictionary instead of coordinates, or use
 `point_from` to find a saved rectangle (`x`, `y`, `w`, `h`).
+
+`tap` converts the target from source-frame pixels to viewport coordinates and
+passes a press and release through the app's normal ScreenTouch handler. This
+exercises coordinate mapping, gesture classification, suppression, and the
+mobile delayed-release path. The step fails if the coordinates do not round
+trip, input is suppressed or rejected, or the release does not finish.
+`--pointer-input touch` (or `"pointer_input": "touch"` in the case) makes every
+`click` use this path. Use it for iOS button regressions; ordinary `click`
+defaults to direct player pointer input. Touch supports only the primary
+button; `hold_frames` defaults to 1 and larger values also exercise stationary
+holds.
 
 Conditions use dot paths through dictionaries and arrays. Supported comparisons
 are `equals`, `not_equals`, `same_as` and `changed_from` (against a named
@@ -96,7 +108,8 @@ consecutive matches (default 3). Other actions support `after_frames`; click and
 key actions also support `hold_frames`. The host has a separate overall
 `--timeout` watchdog for stalls that prevent the probe from running.
 
-These checks cover engine input, runtime navigation, save restoration, and
-render-state metadata. They do not compare visual pixels or exercise physical
-touch gestures. Use precise target identities and cleared navigation flags as
+These checks cover engine input, touch handling after Godot dispatch, runtime
+navigation, save restoration, and render-state metadata. They do not compare
+visual pixels, exercise physical touch hardware, or test OS event dispatch.
+Use precise target identities and cleared navigation flags as
 the success criteria; absence of an error message alone is insufficient.

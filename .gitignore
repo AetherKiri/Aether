@@ -60,3 +60,4 @@ __pycache__/
 apps/godot_app/android/
 build-linux/
 .aetherkiri-cache
+build2/

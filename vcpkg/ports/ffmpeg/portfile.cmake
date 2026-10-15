@@ -186,24 +186,24 @@ file(REMOVE_RECURSE "${CURRENT_BUILDTREES_DIR}/${TARGET_TRIPLET}-dbg" "${CURRENT
 
 set(FFMPEG_PKGCONFIG_MODULES libavutil)
 
-# Component selection is feature-driven so consumers (e.g. avcpp) can resolve
-# the ffmpeg[avcodec,avformat,...] features they declare. Components absent
-# from the resolved feature set are explicitly disabled.
-macro(ffmpeg_feature COMPONENT)
-    if("${COMPONENT}" IN_LIST FEATURES)
-        string(APPEND OPTIONS " --enable-${COMPONENT}")
-        list(APPEND FFMPEG_PKGCONFIG_MODULES "lib${COMPONENT}")
-    else()
-        string(APPEND OPTIONS " --disable-${COMPONENT}")
-    endif()
-endmacro()
-
-ffmpeg_feature(avcodec)
-ffmpeg_feature(avdevice)
-ffmpeg_feature(avformat)
-ffmpeg_feature(avfilter)
-ffmpeg_feature(swresample)
-ffmpeg_feature(swscale)
+# Component selection is unconditional so every consumer (krkr2 KRMovie,
+# impacto, avcpp) links the same ffmpeg libraries as before the mages
+# integration. The vcpkg.json feature declarations exist only so avcpp's
+# ffmpeg[avcodec,...] dependency resolves; they do not gate the build. avdevice
+# is enabled (with --disable-autodetect it ships an empty backend) so avcpp's
+# wrapper links.
+set(OPTIONS "${OPTIONS} --enable-avcodec")
+list(APPEND FFMPEG_PKGCONFIG_MODULES libavcodec)
+set(OPTIONS "${OPTIONS} --enable-avdevice")
+list(APPEND FFMPEG_PKGCONFIG_MODULES libavdevice)
+set(OPTIONS "${OPTIONS} --enable-avformat")
+list(APPEND FFMPEG_PKGCONFIG_MODULES libavformat)
+set(OPTIONS "${OPTIONS} --enable-avfilter")
+list(APPEND FFMPEG_PKGCONFIG_MODULES libavfilter)
+set(OPTIONS "${OPTIONS} --enable-swresample")
+list(APPEND FFMPEG_PKGCONFIG_MODULES libswresample)
+set(OPTIONS "${OPTIONS} --enable-swscale")
+list(APPEND FFMPEG_PKGCONFIG_MODULES libswscale)
 
 set(OPTIONS_CROSS "--enable-cross-compile")
 

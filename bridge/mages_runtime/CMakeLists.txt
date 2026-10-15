@@ -34,6 +34,14 @@ set(IMPACTO_EMBEDDED ON)
 set(LIBATRAC9_BUILD_SHARED OFF)
 add_subdirectory("${MAGES_HOST_SOURCE}" "${CMAKE_BINARY_DIR}/aethermages-impacto")
 
+# LibAtrac9 enables IPO (LTO) when the toolchain supports it. Bitcode members
+# would survive into the merged iOS extension archive where llvm-objcopy (the
+# SDL symbol isolation pass) rejects them as invalid object files. The decoder
+# is small; disabling LTO has no measurable cost.
+if(TARGET atrac9)
+    set_property(TARGET atrac9 PROPERTY INTERPROCEDURAL_OPTIMIZATION FALSE)
+endif()
+
 # NOTE: Apple framework link-feature conflicts (SDL3 weak-links Metal/
 # QuartzCore/GameController while the Godot extension strong-links them) are
 # resolved via the LINK_LIBRARY_OVERRIDE property set on aether_kiri_godot in

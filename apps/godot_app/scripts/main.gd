@@ -10973,7 +10973,10 @@ func _on_vndb_cover_resolved(game_path: String, cover_path: String, vndb_id: Str
 
 func _merge_game_dictionary(existing: Dictionary, game: Dictionary) -> Dictionary:
     var merged := existing.duplicate(true)
+    GameLaunchEntry.backfill(merged, game)
     for key in game.keys():
+        if key in [GameLaunchEntry.FIELD, GameLaunchEntry.RFVP_ENCODING_FIELD]:
+            continue
         var value = game[key]
         if (key == "lastPlayed" or key == "playDurationSeconds") and int(value) == 0:
             continue
@@ -11086,7 +11089,7 @@ func _game_info_from_path(path: String) -> Dictionary:
     var metadata := GameMetadata.inspect(path)
     var detected_title := String(metadata.get("title", ""))
     var detected_engine := String(metadata.get("engine", RUNTIME_KIRIKIRI))
-    return {
+    var game := {
         "name": detected_title if not detected_title.is_empty() else name,
         "path": path,
         "type": "Archive" if path.to_lower().ends_with(".xp3") else "Directory",
@@ -11101,6 +11104,9 @@ func _game_info_from_path(path: String) -> Dictionary:
         "engine": detected_engine,
         "launchFile": metadata.get("launchFile", ""),
     }
+
+    GameLaunchEntry.backfill(game, metadata)
+    return game
 
 func _game_runtime_root(path: String) -> String:
     var resolved := _resolve_game_path(path)
@@ -11148,9 +11154,11 @@ func _backfill_game_metadata(games: Array[Dictionary]) -> bool:
         # directory on launch can block on a protected or unavailable folder.
         if not String(game.get("engine", "")).is_empty() \
                 and not String(game.get("title", "")).is_empty() \
-                and game.has("titleCandidates") and game.has("launchFile"):
+                and game.has("titleCandidates") and game.has("launchFile") \
+                and (String(game.get("engine", "")) != "rfvp" or game.has(GameLaunchEntry.RFVP_ENCODING_FIELD)):
             continue
-        var metadata := GameMetadata.inspect(path)
+        var configured_path := GameLaunchEntry.resolve(game)
+        var metadata := GameMetadata.inspect(configured_path if FileAccess.file_exists(configured_path) else path)
         var engine := String(metadata.get("engine", RUNTIME_KIRIKIRI))
         if String(game.get("engine", "")).is_empty() or String(game.get("engine", "")) == RUNTIME_KIRIKIRI:
             if String(game.get("engine", "")) != engine:
@@ -11163,8 +11171,10 @@ func _backfill_game_metadata(games: Array[Dictionary]) -> bool:
                 if String(game.get("name", "")).is_empty():
                     game["name"] = title
                 changed = true
-        for key in ["titleCandidates", "metadataSignals", "launchFile"]:
-            var value = metadata.get(key, null)
+        if GameLaunchEntry.backfill(game, metadata):
+            changed = true
+        for key in ["titleCandidates", "metadataSignals"]:
+            var value = metadata.get("signals" if key == "metadataSignals" else key, null)
             if value != null and JSON.stringify(game.get(key, null)) != JSON.stringify(value):
                 game[key] = value
                 changed = true
@@ -11838,9 +11848,14 @@ func _start_selected_game_after_entitlements() -> void:
         return
     if not _switch_runtime_player(active_runtime_kind):
         return
+    var launch_game := selected_game
+    if active_runtime_kind == "rfvp" and String(launch_game.get(GameLaunchEntry.FIELD, "")).is_empty():
+        launch_game = selected_game.duplicate(true)
+        launch_game.erase(GameLaunchEntry.FIELD)
+        GameLaunchEntry.backfill(launch_game, GameMetadata.inspect(library_path))
     if active_runtime_kind == "rfvp":
         var rfvp_encoding := GameLaunchEntry.rfvp_encoding(
-            selected_game, OS.get_environment("AETHERKIRI_RFVP_ENCODING")
+            launch_game, OS.get_environment("AETHERKIRI_RFVP_ENCODING")
         )
         var option_result := int(player.set_engine_option("rfvp_encoding", rfvp_encoding))
         if option_result != ENGINE_RESULT_OK:
@@ -11849,7 +11864,7 @@ func _start_selected_game_after_entitlements() -> void:
     var launch_uses_directory := GameLaunchEntry.runtime_uses_directory(
         active_runtime_kind
     )
-    var raw_launch_file := String(selected_game.get(GameLaunchEntry.FIELD, "")).strip_edges()
+    var raw_launch_file := String(launch_game.get(GameLaunchEntry.FIELD, "")).strip_edges()
     if (
         not launch_uses_directory
         and not raw_launch_file.is_empty()
@@ -11860,7 +11875,7 @@ func _start_selected_game_after_entitlements() -> void:
             _t("alert.warning_title")
         )
         return
-    var relative_launch_file := GameLaunchEntry.configured_relative_path(selected_game)
+    var relative_launch_file := GameLaunchEntry.configured_relative_path(launch_game)
     if (
         not launch_uses_directory
         and not raw_launch_file.is_empty()
@@ -11872,7 +11887,7 @@ func _start_selected_game_after_entitlements() -> void:
         )
         return
     var launch_path := GameLaunchEntry.resolve_for_runtime(
-        selected_game,
+        launch_game,
         active_runtime_kind
     )
     if (

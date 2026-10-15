@@ -1205,12 +1205,26 @@ jobs:
             2>&1 | tee "$RUNNER_TEMP/linux-access.log"
           grep -Fx 'IAP_CATALOG_LIMIT_OK' "$RUNNER_TEMP/linux-access.log"
 
+      - name: Run game import metadata tests
+        env:
+          LD_LIBRARY_PATH: ${{ github.workspace }}/apps/godot_app/bin/linux/debug
+        run: |
+          for test in game_metadata game_launch_entry; do
+            timeout 60 "$GODOT_BIN" --headless --path apps/godot_app \
+              --script "res://scripts/${test}_test.gd" \
+              2>&1 | tee "$RUNNER_TEMP/${test}.log"
+            grep -Fx "${test}_test: PASS" "$RUNNER_TEMP/${test}.log"
+            if grep -E 'SCRIPT ERROR:|^ERROR:' "$RUNNER_TEMP/${test}.log"; then
+              exit 1
+            fi
+          done
+
       - name: Run Linux media library tests
         env:
           LD_LIBRARY_PATH: ${{ github.workspace }}/apps/godot_app/bin/linux/debug
         run: |
           python3 -m unittest discover -s tests/python -p test_renpy_host.py
-          for test in video_library_folders video_library_ui video_import_permissions flash_library tyrano_library renpy_library; do
+          for test in video_library_folders video_library_ui video_import_permissions flash_library tyrano_library renpy_library rfvp_import; do
             timeout 60 "$GODOT_BIN" --headless --path apps/godot_app \
               --script "res://tests/${test}_test.gd" \
               2>&1 | tee "$RUNNER_TEMP/${test}.log"

@@ -9,6 +9,7 @@ const RUNTIME_SIGLUS := "siglus"
 const RUNTIME_CATSYSTEM2 := "catsystem2"
 const RUNTIME_TYRANO := "tyranoscript"
 const RUNTIME_RENPY := "renpy"
+const GBK_COMMON_PAIRS := [0xb5c4, 0xcac7, 0xb2bb, 0xced2, 0xc1cb, 0xd4da, 0xd3d0, 0xc8cb]
 
 static func inspect(path: String) -> Dictionary:
     var root := path
@@ -28,7 +29,7 @@ static func inspect(path: String) -> Dictionary:
     var files := _file_names(root)
     var tyrano_entry := tyrano_entry_file(root)
     var renpy_directory := renpy_game_directory(root)
-    var hcb := _hcb_launch_file(root, path)
+    var hcb := _hcb_launch_profile(root, path)
     if not tyrano_entry.is_empty():
         result.engine = RUNTIME_TYRANO
         result.launchFile = tyrano_entry
@@ -51,7 +52,7 @@ static func inspect(path: String) -> Dictionary:
     elif not hcb.is_empty():
         result.engine = RUNTIME_RFVP
         result.signals.append("fvp-hcb")
-        result.launchFile = hcb
+        result.merge(hcb, true)
     elif (
         files.has("0.txt")
         or files.has("00.txt")
@@ -164,54 +165,148 @@ static func _has_renpy_scripts(root: String, depth: int) -> bool:
                 return true
     return false
 
-static func _hcb_launch_file(root: String, requested: String) -> String:
+static func _hcb_launch_profile(root: String, requested: String) -> Dictionary:
     var dir := DirAccess.open(root)
     if dir == null:
-        return ""
+        return {}
+    dir.include_hidden = true
     var entries := dir.get_files()
     entries.sort()
-    var fallback := ""
+    var valid := {}
     for entry in entries:
-        if entry.get_extension().to_lower() != "hcb":
+        if entry.get_extension().to_lower() == "hcb":
+            var end := _hcb_descriptor_end(root.path_join(entry))
+            if end >= 0:
+                valid[entry] = end
+    if valid.is_empty():
+        return {}
+    # An explicitly selected file always wins over automatic patch selection.
+    if FileAccess.file_exists(requested) and valid.has(requested.get_file()):
+        return _hcb_profile(root, requested.get_file(), valid[requested.get_file()])
+    for entry in valid:
+        if entry.begins_with(".") or not valid.has("." + entry):
             continue
-        var file := FileAccess.open(root.path_join(entry), FileAccess.READ)
-        if file == null or file.get_length() < 17 or file.get_length() > 64 * 1024 * 1024:
+        var patch: String = "." + entry
+        var original_end: int = valid[entry]
+        if original_end != int(valid[patch]):
             continue
-        var descriptor := file.get_32()
-        if descriptor < 4 or descriptor > file.get_length() - 13:
+        var original := FileAccess.open(root.path_join(entry), FileAccess.READ)
+        var translated := FileAccess.open(root.path_join(patch), FileAccess.READ)
+        var descriptor := original.get_32()
+        if translated.get_32() != descriptor:
             continue
-        file.seek(descriptor)
-        var start := file.get_32()
-        if start < 4 or start >= descriptor:
+        original.seek(descriptor)
+        translated.seek(descriptor)
+        # Translation overlays retain the original descriptor and append VM
+        # strings. Neither a dot filename nor the folder language proves GBK.
+        if original.get_buffer(original_end - descriptor) != translated.get_buffer(original_end - descriptor):
             continue
-        file.get_16() # nonvolatile globals
-        file.get_16() # volatile globals
-        if file.get_8() > 15:
+        if _hcb_has_gbk_overlay(root.path_join(patch), original_end):
+            return {"launchFile": patch, "rfvpEncoding": "gbk"}
+    for entry in valid:
+        if not entry.begins_with("."):
+            return _hcb_profile(root, entry, valid[entry])
+    var fallback: String = valid.keys()[0]
+    return _hcb_profile(root, fallback, valid[fallback])
+
+
+static func _hcb_profile(root: String, entry: String, descriptor_end: int) -> Dictionary:
+    return {
+        "launchFile": entry,
+        "rfvpEncoding": "gbk" if _hcb_has_gbk_overlay(root.path_join(entry), descriptor_end) else "sjis",
+    }
+
+
+static func _hcb_has_gbk_overlay(path: String, descriptor_end: int) -> bool:
+    var file := FileAccess.open(path, FileAccess.READ)
+    if file == null or file.get_length() <= descriptor_end:
+        return false
+    file.seek(descriptor_end)
+    var bytes := file.get_buffer(mini(256 * 1024, file.get_length() - descriptor_end))
+    var common := 0
+    var kana := 0
+    var multibyte := 0
+    var strings := 0
+    var cursor := 0
+    while cursor + 3 < bytes.size():
+        if bytes[cursor] != 0x0e: # VM push_string: opcode, length, NUL-terminated bytes
+            cursor += 1
             continue
-        file.get_8() # reserved mode byte
-        var title_length := file.get_8()
-        if file.get_position() + title_length + 4 > file.get_length():
+        var length: int = bytes[cursor + 1]
+        var end := cursor + 2 + length
+        if length < 5 or end > bytes.size() or bytes[end - 1] != 0:
+            cursor += 1
             continue
-        file.seek(file.get_position() + title_length)
-        var syscall_count := file.get_16()
+        var text := bytes.slice(cursor + 2, end - 1)
+        var hits := 0
+        var pairs := 0
+        var hiragana := 0
+        var index := 0
         var valid := true
-        for _index in range(syscall_count):
-            if file.get_position() + 2 > file.get_length():
+        while index < text.size():
+            var lead: int = text[index]
+            if lead < 0x80:
+                index += 1
+                continue
+            if index + 1 >= text.size():
                 valid = false
                 break
-            file.get_8() # argument count
-            var name_length := file.get_8()
-            if file.get_position() + name_length + 2 > file.get_length():
+            var trail: int = text[index + 1]
+            if lead < 0x81 or lead > 0xfe or trail < 0x40 or trail > 0xfe or trail == 0x7f:
                 valid = false
                 break
-            file.seek(file.get_position() + name_length)
-        if not valid or file.get_position() + 2 > file.get_length():
-            continue
-        if requested.get_file() == entry:
-            return entry
-        if fallback.is_empty():
-            fallback = entry
-    return fallback
+            # Common simplified Chinese characters: 的 是 不 我 了 在 有 人.
+            if ((lead << 8) | trail) in GBK_COMMON_PAIRS:
+                hits += 1
+            if lead == 0x82 and trail >= 0x9f and trail <= 0xf1:
+                hiragana += 1
+            pairs += 1
+            index += 2
+        if valid:
+            common += hits
+            kana += hiragana
+            multibyte += pairs
+            strings += 1
+        cursor = end
+    return strings >= 4 and multibyte >= 32 and common >= 12 and kana * 4 < common
+
+
+static func _hcb_descriptor_end(path: String) -> int:
+    var file := FileAccess.open(path, FileAccess.READ)
+    if file == null or file.get_length() < 17 or file.get_length() > 64 * 1024 * 1024:
+        return -1
+    var descriptor := file.get_32()
+    if descriptor < 4 or descriptor > file.get_length() - 13:
+        return -1
+    file.seek(descriptor)
+    var start := file.get_32()
+    if start < 4 or start >= descriptor:
+        return -1
+    file.get_16() # nonvolatile globals
+    file.get_16() # volatile globals
+    if file.get_8() > 15:
+        return -1
+    file.get_8() # reserved mode byte
+    var title_length := file.get_8()
+    if file.get_position() + title_length + 4 > file.get_length():
+        return -1
+    file.seek(file.get_position() + title_length)
+    var syscall_count := file.get_16()
+    var valid := true
+    for _index in range(syscall_count):
+        if file.get_position() + 2 > file.get_length():
+            valid = false
+            break
+        file.get_8() # argument count
+        var name_length := file.get_8()
+        if file.get_position() + name_length + 2 > file.get_length():
+            valid = false
+            break
+        file.seek(file.get_position() + name_length)
+    if not valid or file.get_position() + 2 > file.get_length():
+        return -1
+    return file.get_position() + 2
+
 
 static func _file_names(root: String) -> PackedStringArray:
     var result: PackedStringArray = []

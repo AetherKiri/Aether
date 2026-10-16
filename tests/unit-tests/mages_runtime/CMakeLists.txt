@@ -1,7 +1,5 @@
-# Headless end-to-end test for the MAGES. provider: boots the embedded
-# impacto host library (compiled from the AetherMAGES submodule by this
-# build) against a marker game directory and asserts the rendered frames
-# carry the MO8 design resolution.
+# Provider detection, GPU ABI and host lifecycle coverage. Godot execution is
+# exercised separately by godot_gpu_smoke.gd with actual game resources.
 if(NOT TARGET aether_mages_runtime)
     return()
 endif()
@@ -9,6 +7,8 @@ endif()
 add_executable(mages-runtime-provider
     provider.cpp)
 target_compile_features(mages-runtime-provider PRIVATE cxx_std_17)
+target_compile_definitions(mages-runtime-provider PRIVATE
+    AETHERKIRI_MAGES_TEST_DATA_DIR="${CMAKE_BINARY_DIR}/bridge/mages_runtime/mages-data")
 target_include_directories(mages-runtime-provider PRIVATE
     ${CMAKE_SOURCE_DIR}/abi/include
     ${CMAKE_CURRENT_SOURCE_DIR})

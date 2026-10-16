@@ -1,400 +1,175 @@
 #include <catch2/catch_test_macros.hpp>
-
 #include "engine_runtime_provider.h"
 #include "mages_runtime.h"
-
-#include <algorithm>
+#include "impacto_host.h"
+#include "gameroot.h"
 #include <chrono>
-#include <cstdint>
-#include <cstdio>
-#include <cstdlib>
 #include <filesystem>
 #include <fstream>
-#include <string>
+#include <map>
 #include <vector>
 
 namespace fs = std::filesystem;
-
 namespace {
-    // The provider, its embedded impacto host library and the staged engine
-    // data tree are built by the same build as this test binary, so the
-    // runtime is structurally available whenever the test runs.
-    bool MagesPackageAvailable() { return true; }
-
-    fs::path MakeLauncherGameRoot() {
-        const auto nonce =
-            std::chrono::steady_clock::now().time_since_epoch().count();
-        const fs::path root = fs::temp_directory_path() /
-            ("aetherkiri-mages-provider-" + std::to_string(nonce));
-        // Empty root: no MAGES. install layout, so the provider opens the
-        // engine's data-free launcher loop, which renders full
-        // design-resolution frames headlessly. A real install follows the
-        // <game-id>/script.* layout instead.
-        fs::create_directories(root);
-        return root;
+struct TempDir {
+    fs::path path = fs::temp_directory_path() / ("mages-test-" + std::to_string(
+        std::chrono::steady_clock::now().time_since_epoch().count()));
+    TempDir() { fs::create_directories(path); }
+    ~TempDir() { std::error_code ec; fs::remove_all(path, ec); }
+    void touch(const fs::path& file) {
+        fs::create_directories((path / file).parent_path());
+        std::ofstream(path / file) << "marker";
     }
-}  // namespace
+};
+
+// Records the host ABI contract without substituting a CPU renderer. Actual
+// shader execution and presentation are covered by godot_gpu_smoke.gd.
+struct GpuRecorder {
+    inline static std::map<uint64_t, std::pair<uint32_t,uint32_t>> textures;
+    inline static uint64_t next = 1;
+    inline static uint32_t copies = 0, reads = 0, draws = 0;
+    static impacto_host_gpu_callbacks_t callbacks() {
+        impacto_host_gpu_callbacks_t gpu{};
+        gpu.struct_size = sizeof(gpu); gpu.api_version = IMPACTO_HOST_GPU_API_VERSION;
+        gpu.create_rgba = [](uint32_t w,uint32_t h,const void*,uint32_t) -> uint64_t {
+            auto id = next++; textures[id] = {w,h}; return id;
+        };
+        gpu.release_texture = [](uint64_t t) { REQUIRE(textures.erase(t) == 1); };
+        gpu.clear_rgba = [](uint64_t t,uint32_t) -> int32_t { return textures.count(t); };
+        gpu.update_rgba = [](uint64_t t,const void*,uint32_t) -> int32_t { return textures.count(t); };
+        gpu.copy_rgba = [](uint64_t d,uint64_t s,uint32_t w,uint32_t h) -> int32_t {
+            REQUIRE(textures.count(d)); REQUIRE(textures.count(s));
+            CHECK(textures[d].first == w); CHECK(textures[d].second == h);
+            ++copies; return 1;
+        };
+        gpu.read_rgba = [](uint64_t,void*,size_t,uint32_t) -> int32_t { ++reads; return 1; };
+        gpu.draw = [](const impacto_host_gpu_draw_t* d) -> int32_t {
+            REQUIRE(d->struct_size == sizeof(*d)); REQUIRE(textures.count(d->target));
+            REQUIRE(d->vertices); REQUIRE(d->uniforms);
+            CHECK(d->vertex_float_count == d->vertex_count * 10);
+            for(auto t : d->textures) REQUIRE(textures.count(t));
+            ++draws; return 1;
+        };
+        return gpu;
+    }
+};
+engine_handle_t create(const fs::path& writable) {
+    const auto utf8 = writable.u8string();
+    engine_create_desc_t desc{};
+    desc.struct_size = sizeof(desc); desc.api_version = ENGINE_API_VERSION;
+    desc.writable_path_utf8 = utf8.c_str(); desc.cache_path_utf8 = utf8.c_str();
+    engine_handle_t handle = nullptr;
+    REQUIRE(engine_create(&desc, &handle) == ENGINE_RESULT_OK);
+    engine_option_t option{"runtime", "mages"};
+    REQUIRE(engine_set_option(handle,&option) == ENGINE_RESULT_OK);
+    return handle;
+}
+}
 
 TEST_CASE("MAGES. registers as one shared runtime provider") {
     aetherkiri::mages::RegisterRuntimeProvider();
     aetherkiri::mages::RegisterRuntimeProvider();
+    uint32_t matches = 0;
+    for(uint32_t i = 0; i < engine_get_runtime_provider_count(); ++i) {
+        char id[64]{};
+        uint32_t written = 0;
+        REQUIRE(engine_get_runtime_provider_id(i,id,sizeof(id),&written) == ENGINE_RESULT_OK);
+        if(std::string(id) == "mages") ++matches;
+    }
+    CHECK(matches == 1);
+}
 
-    bool found = false;
-    for(uint32_t index = 0; index < engine_get_runtime_provider_count();
-        ++index) {
-        char id[64] = {};
-        uint32_t bytes_written = 0;
-        REQUIRE(engine_get_runtime_provider_id(
-                    index, id, sizeof(id), &bytes_written) == ENGINE_RESULT_OK);
-        if(std::string(id, bytes_written) == "mages") {
-            found = true;
+TEST_CASE("MAGES. probing and archive resolution share supported layouts") {
+    aetherkiri::mages::RegisterRuntimeProvider();
+    TempDir root;
+    auto check = [&](const fs::path& path, const char* id) {
+        auto result = Impacto::Host::DetectGameRoot(path);
+        REQUIRE(result); CHECK(result->Id == id);
+        CHECK(engine_probe_runtime_provider("mages",path.u8string().c_str()) > 0);
+    };
+    SECTION("MO8 real nested Steam directory and direct root") {
+        root.touch("MemoriesoffIF/SCRIPT.MPK"); root.touch("MemoriesoffIF/system.mpk");
+        root.touch("MemoriesoffIF/bg1.mpk");
+        check(root.path,"mo8"); check(root.path/"MemoriesoffIF","mo8");
+        Impacto::Host::ArchiveRoot = root.path/"MemoriesoffIF";
+        Impacto::Host::ProfileArchiveRoot = root.path;
+        CHECK(Impacto::Host::ResolveArchivePath((root.path/"script.mpk").string()) ==
+              (root.path/"MemoriesoffIF/SCRIPT.MPK").string());
+        Impacto::Host::ArchiveRoot.clear(); Impacto::Host::ProfileArchiveRoot.clear();
+    }
+    SECTION("all registered named layouts") {
+        for(const auto& id : {"chlcc","darling","rne","cclcc","dash","mo6tw","mo8"}) {
+            TempDir game;
+            game.touch(fs::path(id)/(std::string(id) == "mo8" ? "system.mpk" :
+                std::string(id) == "cclcc" ? "system.mpk" :
+                std::string(id) == "dash" ? "system.cls" : "system.cpk"));
+            check(game.path,id); check(game.path/id,id);
         }
     }
-    CHECK(found);
+    SECTION("unnamed RNE and DaSH archives") {
+        root.touch("script.cls"); root.touch("model.cpk"); root.touch("system.cpk");
+        check(root.path,"rne");
+    }
+    SECTION("unknown and ambiguous archives are rejected") {
+        root.touch("mo7/script.cls"); root.touch("script.mpk"); root.touch("system.mpk");
+        CHECK_FALSE(Impacto::Host::DetectGameRoot(root.path));
+        CHECK(engine_probe_runtime_provider("mages",root.path.u8string().c_str()) == 0);
+    }
 }
 
-TEST_CASE("MAGES. provider probes install-layout markers without creating "
-          "a runtime") {
+TEST_CASE("MAGES. requires a GPU host for opening") {
     aetherkiri::mages::RegisterRuntimeProvider();
-    const auto nonce =
-        std::chrono::steady_clock::now().time_since_epoch().count();
-    const fs::path root = fs::temp_directory_path() /
-        ("aetherkiri-mages-probe-" + std::to_string(nonce));
-    // Any <game-id>/ directory with a script/system archive marks a MAGES.
-    // install; the concrete game is resolved against the host registry on
-    // open. mo8 here is just a registered example.
-    REQUIRE(fs::create_directories(root / "mo8"));
-    {
-        std::ofstream marker(root / "mo8" / "script.cls", std::ios::binary);
-        REQUIRE(marker.good());
-        marker << "marker";
-    }
-
-    CHECK(engine_probe_runtime_provider("mages", root.u8string().c_str()) >
-          0);
-
-    // The provider probes the install layout, not a specific game: an
-    // unregistered game-id directory still matches.
-    const fs::path unregistered_root = fs::temp_directory_path() /
-        ("aetherkiri-mages-probe-unregistered-" + std::to_string(nonce));
-    REQUIRE(fs::create_directories(unregistered_root / "mo7"));
-    {
-        std::ofstream marker(unregistered_root / "mo7" / "script.cls",
-                             std::ios::binary);
-        REQUIRE(marker.good());
-        marker << "marker";
-    }
-    CHECK(engine_probe_runtime_provider(
-              "mages", unregistered_root.u8string().c_str()) > 0);
-
-    // A directory without MAGES. markers must not match.
-    const fs::path empty_root = fs::temp_directory_path() /
-        ("aetherkiri-mages-probe-empty-" + std::to_string(nonce));
-    REQUIRE(fs::create_directories(empty_root));
-    CHECK(engine_probe_runtime_provider(
-              "mages", empty_root.u8string().c_str()) == 0);
-
-    std::error_code error;
-    fs::remove_all(root, error);
-    fs::remove_all(unregistered_root, error);
-    fs::remove_all(empty_root, error);
-}
-
-namespace {
-engine_handle_t CreateMagesRuntime(const fs::path& writable) {
-    // Keep the UTF-8 copies alive for the engine_create call: binding
-    // desc pointers to u8string() temporaries would dangle.
-    const std::string writable_utf8 = writable.u8string();
-    engine_create_desc_t desc{};
-    desc.struct_size = sizeof(desc);
-    desc.api_version = ENGINE_API_VERSION;
-    desc.writable_path_utf8 = writable_utf8.c_str();
-    desc.cache_path_utf8 = writable_utf8.c_str();
-
-    engine_handle_t handle = nullptr;
-    REQUIRE(engine_create(&desc, &handle) == ENGINE_RESULT_OK);
-    REQUIRE(handle != nullptr);
-
-    engine_option_t runtime_option{};
-    runtime_option.key_utf8 = "runtime";
-    runtime_option.value_utf8 = "mages";
-    REQUIRE(engine_set_option(handle, &runtime_option) == ENGINE_RESULT_OK);
-    return handle;
-}
-}  // namespace
-
-TEST_CASE("MAGES. runtime rejects marker-only game roots cleanly") {
-    if(!MagesPackageAvailable()) {
-        SUCCEED("AetherMAGES host package unavailable; skipping");
-        return;
-    }
-    aetherkiri::mages::RegisterRuntimeProvider();
-
-    const auto nonce =
-        std::chrono::steady_clock::now().time_since_epoch().count();
-
-    // A marker-only mo8 root: the layout matches, the host resolves the
-    // registered mo8 id, and the engine then fails on the marker archives.
-    // The open must surface an error (not the launcher loop) and leave the
-    // runtime destroyable.
-    const fs::path game_root = fs::temp_directory_path() /
-        ("aetherkiri-mages-open-marker-" + std::to_string(nonce));
-    REQUIRE(fs::create_directories(game_root / "mo8"));
-    {
-        std::ofstream marker(game_root / "mo8" / "script.cls",
-                             std::ios::binary);
-        REQUIRE(marker.good());
-        marker << "marker";
-    }
-    const fs::path writable =
-        fs::temp_directory_path() / (game_root.filename().string() + "-wr");
-    fs::create_directories(writable);
-
-    {
-        engine_handle_t handle = CreateMagesRuntime(writable);
-        CHECK(engine_open_game(handle, game_root.u8string().c_str(),
-                               nullptr) != ENGINE_RESULT_OK);
-        REQUIRE(engine_destroy(handle) == ENGINE_RESULT_OK);
-    }
-
-    // An unregistered game-id directory: detected by the layout probe, but
-    // the host registry has no such game, so the open fails with an error
-    // naming the missing game data.
-    const fs::path unknown_root = fs::temp_directory_path() /
-        ("aetherkiri-mages-open-unknown-" + std::to_string(nonce));
-    REQUIRE(fs::create_directories(unknown_root / "mo7"));
-    {
-        std::ofstream marker(unknown_root / "mo7" / "script.cls",
-                             std::ios::binary);
-        REQUIRE(marker.good());
-        marker << "marker";
-    }
-    const fs::path unknown_writable =
-        fs::temp_directory_path() / (unknown_root.filename().string() + "-wr");
-    fs::create_directories(unknown_writable);
-
-    {
-        engine_handle_t handle = CreateMagesRuntime(unknown_writable);
-        CHECK(engine_open_game(handle, unknown_root.u8string().c_str(),
-                               nullptr) != ENGINE_RESULT_OK);
-        REQUIRE(engine_destroy(handle) == ENGINE_RESULT_OK);
-    }
-
-    std::error_code error;
-    fs::remove_all(game_root, error);
-    fs::remove_all(writable, error);
-    fs::remove_all(unknown_root, error);
-    fs::remove_all(unknown_writable, error);
-}
-
-TEST_CASE("MAGES. runtime opens and renders headless frames") {
-    if(!MagesPackageAvailable()) {
-        SUCCEED("AetherMAGES host package unavailable; skipping");
-        return;
-    }
-    aetherkiri::mages::RegisterRuntimeProvider();
-
-    const fs::path game_root = MakeLauncherGameRoot();
-    const fs::path writable = fs::temp_directory_path() /
-        (game_root.filename().string() + "-writable");
-    fs::create_directories(writable);
-
-    engine_create_desc_t desc{};
-    desc.struct_size = sizeof(desc);
-    desc.api_version = ENGINE_API_VERSION;
-    const std::string writable_utf8 = writable.u8string();
-    desc.writable_path_utf8 = writable_utf8.c_str();
-    desc.cache_path_utf8 = writable_utf8.c_str();
-
-    engine_handle_t handle = nullptr;
-    REQUIRE(engine_create(&desc, &handle) == ENGINE_RESULT_OK);
-    REQUIRE(handle != nullptr);
-
-    engine_option_t runtime_option{};
-    runtime_option.key_utf8 = "runtime";
-    runtime_option.value_utf8 = "mages";
-    REQUIRE(engine_set_option(handle, &runtime_option) == ENGINE_RESULT_OK);
-
-    REQUIRE(engine_open_game(handle, game_root.u8string().c_str(),
-                             nullptr) == ENGINE_RESULT_OK);
-
-    // Run two seconds of engine time: enough for the boot sequence to settle
-    // into a rendered 1920x1080 frame on the offscreen renderer.
-    uint32_t width = 0, height = 0, stride = 0;
-    bool have_frame = false;
-    for(int frame = 0; frame < 120; ++frame) {
-        const engine_result_t tick = engine_tick(handle, 16);
-        if(tick == ENGINE_RESULT_INVALID_STATE) {
-            // Engine requested termination; accept it.
-            break;
-        }
-        REQUIRE(tick == ENGINE_RESULT_OK);
-
-        engine_frame_desc_t frame_desc{};
-        frame_desc.struct_size = sizeof(frame_desc);
-        REQUIRE(engine_get_frame_desc(handle, &frame_desc) ==
-                ENGINE_RESULT_OK);
-        if(frame_desc.width > 0 && frame_desc.height > 0) {
-            width = frame_desc.width;
-            height = frame_desc.height;
-            stride = frame_desc.stride_bytes;
-            have_frame = true;
-        }
-    }
-
-    if(have_frame) {
-        // The launcher loop renders at the initial surface size, which the
-        // host pins to 1920x1080 (the MAGES. era design resolution).
-        CHECK(width == 1920);
-        CHECK(height == 1080);
-        CHECK(stride == width * 4u);
-
-        std::vector<uint8_t> pixels(
-            static_cast<size_t>(width) * height * 4u);
-        REQUIRE(engine_read_frame_rgba(handle, pixels.data(), pixels.size()) ==
-                ENGINE_RESULT_OK);
-    }
-
+    aetherkiri::mages::RegisterGpuBridge(nullptr);
+    TempDir root, writable;
+    root.touch("mo8/system.mpk");
+    auto handle = create(writable.path);
+    CHECK(engine_open_game(handle,root.path.u8string().c_str(),nullptr) != ENGINE_RESULT_OK);
     REQUIRE(engine_destroy(handle) == ENGINE_RESULT_OK);
-
-    std::error_code error;
-    fs::remove_all(game_root, error);
-    fs::remove_all(writable, error);
 }
 
-namespace {
-std::string EnvOr(const char* name, const char* fallback) {
-    if(const char* v = std::getenv(name)) return std::string(v);
-    return std::string(fallback);
-}
-
-void WritePpm(const fs::path& path, uint32_t w, uint32_t h,
-              const uint8_t* rgba) {
-    std::FILE* f = std::fopen(path.c_str(), "wb");
-    if(!f) return;
-    std::fprintf(f, "P6\n%u %u\n255\n", w, h);
-    std::vector<uint8_t> rgb(static_cast<size_t>(w) * h * 3);
-    for(size_t i = 0; i < static_cast<size_t>(w) * h; ++i) {
-        rgb[i * 3] = rgba[i * 4];
-        rgb[i * 3 + 1] = rgba[i * 4 + 1];
-        rgb[i * 3 + 2] = rgba[i * 4 + 2];
-    }
-    std::fwrite(rgb.data(), 1, rgb.size(), f);
-    std::fclose(f);
-}
-}  // namespace
-
-// End-to-end verification against a real MAGES. PC install. Gated on the
-// AETHERKIRI_MAGES_GAME_ROOT env var (the game root directory); skipped
-// otherwise so CI never needs game data. Exercises provider detection,
-// rendering, audio and input through the engine_api surface.
-TEST_CASE("MAGES. runtime boots a real PC game end-to-end") {
-    const char* game_root_env = std::getenv("AETHERKIRI_MAGES_GAME_ROOT");
-    if(game_root_env == nullptr || game_root_env[0] == '\0') {
-        SUCCEED("AETHERKIRI_MAGES_GAME_ROOT unset; skipping real-data test");
-        return;
-    }
+TEST_CASE("MAGES. rejects invalid archives and unsupported roots cleanly") {
     aetherkiri::mages::RegisterRuntimeProvider();
-
-    const fs::path game_root(game_root_env);
-    const fs::path writable = fs::temp_directory_path() / "aetherkiri-mages-e2e-wr";
-    fs::create_directories(writable);
-
-    // Probe must recognise the directory before we open it.
-    REQUIRE(engine_probe_runtime_provider("mages", game_root.u8string().c_str()) >
-            0);
-
-    engine_create_desc_t desc{};
-    desc.struct_size = sizeof(desc);
-    desc.api_version = ENGINE_API_VERSION;
-    const std::string writable_utf8 = writable.u8string();
-    desc.writable_path_utf8 = writable_utf8.c_str();
-    desc.cache_path_utf8 = writable_utf8.c_str();
-    engine_handle_t handle = nullptr;
-    REQUIRE(engine_create(&desc, &handle) == ENGINE_RESULT_OK);
-    REQUIRE(handle != nullptr);
-    engine_option_t runtime_option{};
-    runtime_option.key_utf8 = "runtime";
-    runtime_option.value_utf8 = "mages";
-    REQUIRE(engine_set_option(handle, &runtime_option) == ENGINE_RESULT_OK);
-
-    // Detection + open: the host bridge resolves the registered game from the
-    // PC flat layout (script.mpk/system.mpk at the root).
-    REQUIRE(engine_open_game(handle, game_root.u8string().c_str(), nullptr) ==
-            ENGINE_RESULT_OK);
-
-    const int max_ticks =
-        std::max(1, std::atoi(EnvOr("AETHERKIRI_MAGES_TICKS", "1200").c_str()));
-    const std::string dump_dir = EnvOr("AETHERKIRI_MAGES_FRAME_DUMP", "");
-    uint32_t width = 0, height = 0;
-    bool have_frame = false;
-    bool input_dispatched = false;
-    for(int i = 0; i < max_ticks; ++i) {
-        const engine_result_t tick = engine_tick(handle, 16);
-        if(tick == ENGINE_RESULT_INVALID_STATE) break;  // engine requested exit
-        REQUIRE(tick == ENGINE_RESULT_OK);
-
-        engine_frame_desc_t fd{};
-        fd.struct_size = sizeof(fd);
-        REQUIRE(engine_get_frame_desc(handle, &fd) == ENGINE_RESULT_OK);
-        if(fd.width > 0 && fd.height > 0) {
-            width = fd.width;
-            height = fd.height;
-            have_frame = true;
-        }
-
-        // Inject input midway: a RETURN key tap and a pointer move/tap, to
-        // confirm the input path is wired through the provider.
-        if(!input_dispatched && i == max_ticks / 3) {
-            engine_input_event_t ev{};
-            ev.struct_size = sizeof(ev);
-            ev.type = ENGINE_INPUT_EVENT_KEY_DOWN;
-            ev.key_code = 0x0D;  // VK_RETURN
-            REQUIRE(engine_send_input(handle, &ev) == ENGINE_RESULT_OK);
-            ev.type = ENGINE_INPUT_EVENT_KEY_UP;
-            REQUIRE(engine_send_input(handle, &ev) == ENGINE_RESULT_OK);
-            ev.type = ENGINE_INPUT_EVENT_POINTER_MOVE;
-            ev.x = 960.0;
-            ev.y = 540.0;
-            ev.button = 0;
-            REQUIRE(engine_send_input(handle, &ev) == ENGINE_RESULT_OK);
-            input_dispatched = true;
-        }
-
-        if(!dump_dir.empty() && i % 120 == 0 && have_frame) {
-            std::vector<uint8_t> px(static_cast<size_t>(width) * height * 4);
-            if(engine_read_frame_rgba(handle, px.data(), px.size()) ==
-               ENGINE_RESULT_OK) {
-                fs::create_directories(dump_dir);
-                char name[64];
-                std::snprintf(name, sizeof(name), "frame_%06d.ppm", i);
-                WritePpm(fs::path(dump_dir) / name, width, height, px.data());
-            }
-        }
-    }
-
-    // Rendering: the offscreen renderer produced design-resolution frames.
-    REQUIRE(have_frame);
-    CHECK(width == 1920);
-    CHECK(height == 1080);
-
-    // Input path was exercised.
-    CHECK(input_dispatched);
-
-    // Audio: the host mixer FIFO produced samples (engine-side production,
-    // independent of whether an OpenAL device opened in this environment).
-    char debug[512] = {};
-    REQUIRE(engine_get_plugin_debug_info(handle, debug, sizeof(debug),
-                                         nullptr) == ENGINE_RESULT_OK);
-    const std::string dbg(debug);
-    auto pos = dbg.find("audio_frames_written=");
-    REQUIRE(pos != std::string::npos);
-    uint64_t frames_written = 0;
-    std::sscanf(dbg.c_str() + pos, "audio_frames_written=%llu",
-                reinterpret_cast<unsigned long long*>(&frames_written));
-    CHECK(frames_written > 0);
-
+    auto gpu = GpuRecorder::callbacks();
+    aetherkiri::mages::RegisterGpuBridge(&gpu);
+    TempDir root, writable;
+    root.touch("mo8/system.mpk");
+    auto handle = create(writable.path);
+    CHECK(engine_open_game(handle,root.path.u8string().c_str(),nullptr) != ENGINE_RESULT_OK);
     REQUIRE(engine_destroy(handle) == ENGINE_RESULT_OK);
-    std::error_code ec;
-    fs::remove_all(writable, ec);
+    CHECK(GpuRecorder::textures.empty());
+    aetherkiri::mages::RegisterGpuBridge(nullptr);
+}
+
+TEST_CASE("MAGES. launcher publishes native textures without presentation readback") {
+    for (int session = 0; session < 3; ++session) {
+        TempDir root, writable;
+        impacto_host_desc_t desc{};
+        desc.struct_size = sizeof(desc); desc.api_version = IMPACTO_HOST_API_VERSION;
+        const auto wr = writable.path.string();
+        desc.data_dir_utf8 = AETHERKIRI_MAGES_TEST_DATA_DIR;
+        desc.writable_dir_utf8 = wr.c_str(); desc.initial_width = 640; desc.initial_height = 360;
+        void* host = nullptr;
+        REQUIRE(impacto_host_create(&desc,&host) == IMPACTO_HOST_OK);
+        auto gpu = GpuRecorder::callbacks();
+        auto invalid = gpu;
+        invalid.draw = nullptr;
+        CHECK(impacto_host_set_gpu_callbacks(host,&invalid) == IMPACTO_HOST_INVALID_ARGUMENT);
+        invalid = gpu; invalid.struct_size--;
+        CHECK(impacto_host_set_gpu_callbacks(host,&invalid) == IMPACTO_HOST_INVALID_ARGUMENT);
+        invalid = gpu; invalid.api_version++;
+        CHECK(impacto_host_set_gpu_callbacks(host,&invalid) == IMPACTO_HOST_INVALID_ARGUMENT);
+        REQUIRE(impacto_host_set_gpu_callbacks(host,&gpu) == IMPACTO_HOST_OK);
+        GpuRecorder::copies = GpuRecorder::reads = 0;
+        REQUIRE(impacto_host_open_game(host,root.path.string().c_str(),"launcher",nullptr) == IMPACTO_HOST_OK);
+        uint64_t texture = 0, serial = 0;
+        uint32_t w = 0, h = 0;
+        REQUIRE(impacto_host_get_gpu_frame(host,&texture,&w,&h,&serial) == IMPACTO_HOST_OK);
+        CHECK(texture != 0); CHECK(w == 640); CHECK(h == 360);
+        const auto first = serial;
+        REQUIRE(impacto_host_tick(host,16) == IMPACTO_HOST_OK);
+        REQUIRE(impacto_host_get_gpu_frame(host,&texture,&w,&h,&serial) == IMPACTO_HOST_OK);
+        CHECK(serial > first); CHECK(GpuRecorder::copies >= 2); CHECK(GpuRecorder::reads == 0);
+        impacto_host_destroy(host);
+        CHECK(GpuRecorder::textures.empty());
+    }
 }

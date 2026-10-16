@@ -48,6 +48,9 @@ void RegisterAetherInternalRuntimeProviders();
 #include <godot_cpp/classes/audio_stream_wav.hpp>
 #include <godot_cpp/classes/confirmation_dialog.hpp>
 #include <godot_cpp/classes/engine.hpp>
+#include <godot_cpp/classes/dir_access.hpp>
+#include <godot_cpp/classes/file_access.hpp>
+#include <godot_cpp/classes/zip_reader.hpp>
 #include <godot_cpp/classes/font.hpp>
 #include <godot_cpp/classes/image.hpp>
 #include <godot_cpp/classes/image_texture.hpp>
@@ -336,6 +339,19 @@ void ReleaseGpuTexturePool(RenderingDevice *rd) {
     }
 }
 
+#if defined(AETHERKIRI_WITH_MAGES)
+struct MagesGpuDraw {
+    std::string vertex_source, fragment_source;
+    PackedByteArray uniforms;
+    RID textures[4];
+    uint32_t width = 0, height = 0, vertex_count = 0, blend = 0;
+    int32_t clip[4]{};
+    bool repeat = false;
+    bool depth_test = false, depth_write = false, clear_depth = false;
+    uint32_t cull = 0;
+};
+#endif
+
 struct GodotGpuOp {
     enum class Type {
         Update,
@@ -352,6 +368,8 @@ struct GodotGpuOp {
         Blend2,
         Blend3,
         ArtemisShader,
+        MagesDraw,
+        MagesCreate,
         PrepareNativeWrite,
         PublishNativeWrite,
         ImportApplePixelBuffer,
@@ -365,6 +383,9 @@ struct GodotGpuOp {
     RID src2;
     RID src3;
     RID dst;
+#if defined(AETHERKIRI_WITH_MAGES)
+    std::shared_ptr<MagesGpuDraw> mages_draw;
+#endif
     PackedByteArray data;
     uint32_t profile_width = 0;
     uint32_t profile_height = 0;
@@ -425,6 +446,8 @@ const char *GodotGpuOpTypeName(GodotGpuOp::Type type) {
         case GodotGpuOp::Type::Blend2: return "blend2";
         case GodotGpuOp::Type::Blend3: return "blend3";
         case GodotGpuOp::Type::ArtemisShader: return "artemis_shader";
+        case GodotGpuOp::Type::MagesDraw: return "mages_draw";
+        case GodotGpuOp::Type::MagesCreate: return "mages_create";
         case GodotGpuOp::Type::PrepareNativeWrite: return "prepare_native_write";
         case GodotGpuOp::Type::PublishNativeWrite: return "publish_native_write";
         case GodotGpuOp::Type::ImportApplePixelBuffer: return "import_apple_pixel_buffer";
@@ -5646,6 +5669,9 @@ bool ExecuteGodotGpuMosaic(RenderingDevice *rd,
     return true;
 }
 
+uint64_t BridgeCreateRgba(uint32_t width, uint32_t height, const void* pixels, uint32_t stride);
+#include "mages_gpu.inc"
+
 bool ExecuteGodotGpuOp(RenderingDevice *rd, const std::shared_ptr<GodotGpuOp> &op) {
     if (rd == nullptr || op == nullptr) return false;
     GodotGpuOpExecutionProfile execution_profile(op);
@@ -5746,6 +5772,16 @@ bool ExecuteGodotGpuOp(RenderingDevice *rd, const std::shared_ptr<GodotGpuOp> &o
         }
         case GodotGpuOp::Type::ArtemisShader:
             return ExecuteArtemisGpuShader(rd, op);
+        case GodotGpuOp::Type::MagesDraw:
+#if defined(AETHERKIRI_WITH_MAGES)
+            return ExecuteMagesGpuDraw(rd, op);
+#else
+            return false;
+#endif
+        case GodotGpuOp::Type::MagesCreate:
+            op->imported_texture = BridgeCreateRgba(uint32_t(op->size.x), uint32_t(op->size.y),
+                op->data.is_empty() ? nullptr : op->data.ptr(), uint32_t(op->size.x)*4);
+            return op->imported_texture != 0;
         case GodotGpuOp::Type::PrepareNativeWrite:
             // submit()/sync() are only valid for a local RenderingDevice.
             // Poll a marker on Godot's Metal queue instead. A target remains
@@ -5909,6 +5945,15 @@ bool ExecuteGodotGpuOp(RenderingDevice *rd, const std::shared_ptr<GodotGpuOp> &o
 #endif
         }
         case GodotGpuOp::Type::Release:
+#if defined(AETHERKIRI_WITH_MAGES)
+            {
+                auto it = g_mages_depth.find(op->dst.get_id());
+                if(it != g_mages_depth.end()) {
+                    rd->free_rid(it->second);
+                    g_mages_depth.erase(it);
+                }
+            }
+#endif
             InvalidateLive2DFramebuffer(rd, op->dst);
             InvalidateGodotGpuUniformSetsForResource(rd, op->dst);
 #if defined(__APPLE__)
@@ -9108,6 +9153,15 @@ uint32_t BlendModeFromName(const String &mode_name) {
 
 void ReleaseGodotGpuPipeline() {
     RenderingDevice *rd = MainRenderingDevice();
+#if defined(AETHERKIRI_WITH_MAGES)
+    if(rd) {
+        for(const auto& [key, p] : g_mages_pipelines) {
+            rd->free_rid(p.pipeline); rd->free_rid(p.shader);
+        }
+        for(const auto& [key, depth] : g_mages_depth) if(depth.is_valid()) rd->free_rid(depth);
+    }
+    g_mages_pipelines.clear(); g_mages_depth.clear();
+#endif
     if (rd != nullptr) {
         for (const auto &entry : g_live2d_framebuffer_cache) {
             if (entry.second.is_valid()) rd->free_rid(entry.second);
@@ -9218,6 +9272,109 @@ void ReleaseGodotGpuPipeline() {
     g_gpu_pipeline_state = nullptr;
 }
 
+#if defined(AETHERKIRI_WITH_MAGES)
+bool PrepareMagesData(const String& cache_path) {
+    const String package = "res://mages_runtime/data.zip";
+    if(!FileAccess::file_exists(package)) return true;
+    const String digest = FileAccess::get_sha256(package);
+    if(digest.is_empty()) return false;
+    const String directory = ProjectSettings::get_singleton()->globalize_path(
+        cache_path.path_join("mages-data").path_join(digest));
+    const String marker = directory.path_join(".complete");
+    if(!FileAccess::file_exists(marker)) {
+        Ref<ZIPReader> archive; archive.instantiate();
+        if(archive->open(package) != OK) return false;
+        for(const String& name : archive->get_files()) {
+            if(name.is_absolute_path() || name.contains("..") || name.contains("\\")) return false;
+            const String destination = directory.path_join(name);
+            if(DirAccess::make_dir_recursive_absolute(destination.get_base_dir()) != OK) return false;
+            if(name.ends_with("/")) continue;
+            Ref<FileAccess> file = FileAccess::open(destination, FileAccess::WRITE);
+            if(file.is_null()) return false;
+            file->store_buffer(archive->read_file(name));
+            if(file->get_error() != OK) return false;
+        }
+        archive->close();
+        Ref<FileAccess> complete = FileAccess::open(marker, FileAccess::WRITE);
+        if(complete.is_null()) return false;
+        complete->store_string(digest);
+    }
+    aetherkiri::mages::SetDataDirectory(directory.utf8().get_data());
+    return true;
+}
+
+int32_t BridgeMagesDraw(const impacto_host_gpu_draw_t* request) {
+    if(!request || request->struct_size < sizeof(*request) || !request->vertex_source ||
+       !request->fragment_source || !request->vertices || !request->uniforms ||
+       !request->vertex_count || request->vertex_float_count > 16000000 ||
+       (uint64_t(request->vertex_count) * (request->depth_test || request->cull ? 16u : 10u)
+        != request->vertex_float_count) ||
+       (request->uniform_bytes != 320 && request->uniform_bytes != 2240) ||
+       request->blend > 4 || request->cull > 2) return 0;
+    auto op = std::make_shared<GodotGpuOp>();
+    op->type = GodotGpuOp::Type::MagesDraw;
+    auto draw = std::make_shared<MagesGpuDraw>();
+    {
+        std::lock_guard<std::mutex> lock(g_gpu_textures_mutex);
+        auto target = g_gpu_textures.find(request->target);
+        if(target == g_gpu_textures.end()) return 0;
+        op->dst = target->second.rid;
+        draw->width = target->second.width; draw->height = target->second.height;
+        for(int i=0;i<4;++i) {
+            auto texture = g_gpu_textures.find(request->textures[i]);
+            if(texture == g_gpu_textures.end()) return 0;
+            draw->textures[i] = texture->second.rid;
+        }
+    }
+    draw->vertex_source = request->vertex_source; draw->fragment_source = request->fragment_source;
+    draw->uniforms.resize(request->uniform_bytes);
+    std::memcpy(draw->uniforms.ptrw(),request->uniforms,request->uniform_bytes);
+    op->data.resize(int64_t(request->vertex_float_count)*sizeof(float));
+    std::memcpy(op->data.ptrw(),request->vertices,size_t(op->data.size()));
+    draw->vertex_count = request->vertex_count; draw->blend = request->blend;
+    draw->repeat = request->repeat != 0;
+    draw->depth_test = request->depth_test != 0; draw->depth_write = request->depth_write != 0;
+    draw->clear_depth = request->clear_depth != 0; draw->cull = request->cull;
+    std::copy(request->clip,request->clip+4,draw->clip);
+    op->mages_draw = std::move(draw);
+    return RunGodotGpuOpAsync(op) ? 1 : 0;
+}
+void RegisterMagesGpuBridge() {
+    impacto_host_gpu_callbacks_t gpu{};
+    gpu.struct_size = sizeof(gpu); gpu.api_version = IMPACTO_HOST_GPU_API_VERSION;
+    gpu.create_rgba = [](uint32_t w,uint32_t h,const void* pixels,uint32_t stride) -> uint64_t {
+        auto op = std::make_shared<GodotGpuOp>();
+        op->type = GodotGpuOp::Type::MagesCreate; op->size = Vector3(w,h,1);
+        if(pixels) op->data = PackRgbaBytes(pixels,w,h,stride);
+        return RunGodotGpuOpSync(op) ? op->imported_texture : 0;
+    };
+    gpu.release_texture = BridgeReleaseTexture;
+    gpu.update_rgba = [](uint64_t t,const void* p,uint32_t s) -> int32_t { return BridgeUpdateRgba(t,p,s,nullptr); };
+    gpu.clear_rgba = [](uint64_t t,uint32_t c) -> int32_t {
+        tTVPRect rect;
+        {
+            std::lock_guard<std::mutex> lock(g_gpu_textures_mutex);
+            auto it = g_gpu_textures.find(t);
+            if(it == g_gpu_textures.end()) return 0;
+            rect = tTVPRect(0,0,it->second.width,it->second.height);
+        }
+        return BridgeClearRgba(t,(c >> 8) | (c << 24),&rect);
+    };
+    gpu.copy_rgba = [](uint64_t d,uint64_t s,uint32_t w,uint32_t h) -> int32_t {
+        tTVPRect rect(0,0,w,h); return BridgeCopyRect(d,s,&rect,&rect);
+    };
+    gpu.read_rgba = [](uint64_t t,void* p,size_t n,uint32_t s) -> int32_t { return BridgeReadRgba(t,p,n,s); };
+    gpu.draw = BridgeMagesDraw;
+    gpu.begin_batch = BridgeBeginBatch;
+    gpu.end_batch = [](uint64_t t) -> int32_t { return BridgeEndBatch(t); };
+    gpu.pump = [] {
+        auto* server = RenderingServer::get_singleton();
+        if(server && server->is_on_render_thread()) ForceDrainGodotGpuOpsOnRenderThread(UINT64_MAX);
+    };
+    aetherkiri::mages::RegisterGpuBridge(&gpu);
+}
+#endif
+
 void ReleaseRemainingGodotGpuTextures() {
     ReleaseGpuTexturePool(MainRenderingDevice());
     {
@@ -9300,6 +9457,9 @@ public:
         batch_callbacks.begin_batch = BridgeBeginBatch;
         batch_callbacks.end_batch = BridgeEndBatch;
         engine_register_godot_gpu_batch_bridge(&batch_callbacks);
+#if defined(AETHERKIRI_WITH_MAGES)
+        RegisterMagesGpuBridge();
+#endif
 #if defined(AETHERKIRI_WITH_RFVP)
         aetherkiri::rfvp::RegisterGpuBridge(&callbacks, &batch_callbacks);
 #endif
@@ -9327,6 +9487,7 @@ public:
         desc.api_version = ENGINE_API_VERSION;
         desc.writable_path_utf8 = writable_utf8.get_data();
         desc.cache_path_utf8 = cache_utf8.get_data();
+        mages_cache_path_ = cache_path;
 
         const engine_result_t result = engine_create(&desc, &handle_);
         last_result_ = ResultToString(result);
@@ -9646,6 +9807,14 @@ public:
         }
 
         clear_runtime_audio();
+#if defined(AETHERKIRI_WITH_MAGES)
+        if((runtime_id_ == "mages" || runtime_id_ == "auto") &&
+           engine_probe_runtime_provider("mages", game_root_path.utf8().get_data()) > 0 &&
+           !PrepareMagesData(mages_cache_path_)) {
+            last_error_ = "Unable to unpack MAGES engine data";
+            return ENGINE_RESULT_IO_ERROR;
+        }
+#endif
         AndroidBridgeLog("event=open_game_begin path=%s async=%d runtime=%s",
                          game_root_path.utf8().get_data(), async ? 1 : 0,
                          runtime_id_.utf8().get_data());
@@ -12689,6 +12858,7 @@ private:
     double source_query_ms_ = 0.0;
     double present_copy_ms_ = 0.0;
     String runtime_id_ = "auto";
+    String mages_cache_path_ = "user://cache";
     aetherkiri::godot_host::ArtemisLogicalFramePacer
         artemis_logical_frame_pacer_;
     aetherkiri::godot_host::RuntimeTickMillisecondQuantizer

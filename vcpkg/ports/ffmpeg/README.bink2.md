@@ -19,3 +19,7 @@ The decoder sources are GPL-3.0-or-later, so the `bink2` feature enables
 libraries; the installed copyright file follows configure's license report.
 Without the feature the decoder is disabled (`--disable-decoder=bink2`) and
 the build stays LGPL. No game assets are included.
+
+Aether requests this software decoder on all native platforms so MO8 movies
+use the same decoder on Linux, macOS, iOS and Android. The Web build excludes
+the embedded MAGES runtime and does not request this feature.

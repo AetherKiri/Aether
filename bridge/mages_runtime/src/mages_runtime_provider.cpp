@@ -3,6 +3,7 @@
 #include "engine_runtime_provider.h"
 #include "mages_audio_output.h"
 #include "impacto_host.h"
+#include "gameroot.h"
 
 #include <algorithm>
 #include <cctype>
@@ -12,6 +13,7 @@
 #include <cstring>
 #include <filesystem>
 #include <memory>
+#include <mutex>
 #include <new>
 #include <optional>
 #include <string>
@@ -26,6 +28,9 @@ namespace aetherkiri::mages {
         constexpr int32_t kProviderPriority = 80;
         constexpr uint32_t kDefaultSurfaceWidth = 1920;
         constexpr uint32_t kDefaultSurfaceHeight = 1080;
+        std::mutex g_gpu_mutex;
+        impacto_host_gpu_callbacks_t g_gpu{};
+        std::string g_data_directory;
 
         // The impacto distribution (profiles/, resources/, shaders/,
         // gamedefinitions.lua) the bridge boots from. The build injects the
@@ -37,6 +42,10 @@ namespace aetherkiri::mages {
                     return std::string(override_dir);
                 }
             }
+            {
+                std::lock_guard<std::mutex> lock(g_gpu_mutex);
+                if(!g_data_directory.empty()) return g_data_directory;
+            }
 #ifdef AETHERKIRI_MAGES_DATA_DIR
             return std::string(AETHERKIRI_MAGES_DATA_DIR);
 #else
@@ -45,70 +54,12 @@ namespace aetherkiri::mages {
 #endif
         }
 
-        // The impacto profile system is game-generic: every game registered
-        // in the host package's gamedefinitions.lua (mo8, chlcc, cclcc,
-        // mo6tw, darling, dash, rne, ...) mounts its archives from
-        // <game-root>/<game-id>/ with a script.* or system.* archive in it.
-        // The provider only recognises that layout; the host's "auto" mode
-        // resolves the concrete registered game id.
-        std::optional<std::string> DetectMagesInstallLayout(
-            const std::filesystem::path& root) {
-            std::error_code ec;
-            if(!std::filesystem::is_directory(root, ec)) {
-                return std::nullopt;
-            }
-            for(const auto& entry :
-                std::filesystem::directory_iterator(root, ec)) {
-                std::error_code entryEc;
-                if(!entry.is_directory(entryEc) || entryEc) continue;
-                std::string name = entry.path().filename().string();
-                std::transform(name.begin(), name.end(), name.begin(),
-                               [](unsigned char c) {
-                                   return static_cast<char>(
-                                       std::tolower(c));
-                               });
-                const std::filesystem::path gameDir = entry.path();
-                for(const auto& file :
-                    std::filesystem::directory_iterator(gameDir, entryEc)) {
-                    std::error_code fileEc;
-                    if(!file.is_regular_file(fileEc) || fileEc) continue;
-                    std::string fileName = file.path().filename().string();
-                    std::transform(fileName.begin(), fileName.end(),
-                                   fileName.begin(), [](unsigned char c) {
-                                       return static_cast<char>(
-                                           std::tolower(c));
-                                   });
-                    if(fileName.rfind("script.", 0) == 0 ||
-                       fileName.rfind("system.", 0) == 0) {
-                        return name;
-                    }
-                }
-            }
-            return std::nullopt;
-        }
-
         int32_t Probe(void*, const char* game_root_path) {
             if(game_root_path == nullptr || game_root_path[0] == '\0') {
                 return 0;
             }
             try {
-                const std::filesystem::path root(game_root_path);
-                // MAGES. install layout: a <game-id>/ directory carrying
-                // the script/system archives. The game id itself is
-                // resolved against the host registry on open.
-                if(DetectMagesInstallLayout(root)) {
-                    return 85;
-                }
-                // PC layout: script.mpk/system.mpk at the game root. No
-                // shipped profile mounts that layout yet, so this only
-                // marks the directory as a MAGES. game; opening may be
-                // limited until a PC profile lands.
-                std::error_code ec;
-                if(std::filesystem::exists(root / "script.mpk", ec) &&
-                   std::filesystem::exists(root / "system.mpk", ec)) {
-                    return 70;
-                }
-                return 0;
+                return Impacto::Host::DetectGameRoot(game_root_path) ? 85 : 0;
             } catch(...) {
                 return 0;
             }
@@ -193,11 +144,11 @@ namespace aetherkiri::mages {
 
             // Latest frame served to the host. impacto renders at the design
             // resolution; the Aether presentation layer owns scaling.
-            std::vector<uint8_t> frame_rgba;
             uint32_t frame_width = 0;
             uint32_t frame_height = 0;
             uint32_t frame_stride = 0;
             uint64_t frame_serial = 0;
+            uint64_t frame_texture = 0;
             uint64_t delivered_frame_serial = 0;
             std::string error;
         };
@@ -233,35 +184,11 @@ namespace aetherkiri::mages {
 
         // Refreshes the frame cache after a tick.
         engine_result_t RefreshFrame(ProviderRuntime* runtime) {
-            uint32_t width = 0, height = 0, stride = 0;
-            const int32_t desc = impacto_host_get_frame_desc(
-                runtime->impact, &width, &height, &stride);
-            if(desc != IMPACTO_HOST_OK) {
-                runtime->error = "impacto_host_get_frame_desc: " +
-                                 std::to_string(desc);
-                return MapImpactoResult(desc);
-            }
-            if(width == 0 || height == 0) {
-                // No frame produced yet (e.g. first ticks of the boot
-                // sequence); keep the previous cache.
-                return ENGINE_RESULT_OK;
-            }
-            const size_t needed = static_cast<size_t>(width) * height * 4u;
-            if(runtime->frame_rgba.size() != needed) {
-                runtime->frame_rgba.resize(needed);
-            }
-            const int32_t read = impacto_host_read_frame_rgba(
-                runtime->impact, runtime->frame_rgba.data(), needed);
-            if(read != IMPACTO_HOST_OK) {
-                runtime->error = "impacto_host_read_frame_rgba: " +
-                                 std::to_string(read);
-                return MapImpactoResult(read);
-            }
-            runtime->frame_width = width;
-            runtime->frame_height = height;
-            runtime->frame_stride = stride != 0 ? stride : width * 4u;
-            runtime->frame_serial += 1;
-            return ENGINE_RESULT_OK;
+            const int32_t result = impacto_host_get_gpu_frame(runtime->impact,
+                &runtime->frame_texture, &runtime->frame_width,
+                &runtime->frame_height, &runtime->frame_serial);
+            runtime->frame_stride = runtime->frame_width * 4;
+            return MapImpactoResult(result);
         }
 
         engine_result_t Tick(void* opaque, uint32_t delta_ms) {
@@ -352,6 +279,17 @@ namespace aetherkiri::mages {
                 return MapImpactoResult(created);
             }
 
+            impacto_host_gpu_callbacks_t gpu{};
+            {
+                std::lock_guard<std::mutex> lock(g_gpu_mutex);
+                gpu = g_gpu;
+            }
+            if(!gpu.draw || impacto_host_set_gpu_callbacks(runtime->impact, &gpu) != IMPACTO_HOST_OK) {
+                impacto_host_destroy(runtime->impact);
+                runtime->impact = nullptr;
+                return ENGINE_RESULT_NOT_SUPPORTED;
+            }
+
             *out_runtime = runtime.release();
             return ENGINE_RESULT_OK;
         }
@@ -386,30 +324,14 @@ namespace aetherkiri::mages {
                 return ENGINE_RESULT_NOT_SUPPORTED;
             }
 
-            // A root carrying the MAGES. install layout is opened through
-            // the host's "auto" mode, which resolves the registered game id
-            // from gamedefinitions.lua; the PC flat layout (script.mpk /
-            // system.mpk at the root) is also routed to "auto" because the
-            // host registry flags those games with PcFlatLayout. Any other
-            // root falls back to the engine's data-free launcher loop, which
-            // still renders frames at the design resolution.
             const std::filesystem::path gamedata(game_root_path_utf8);
-            const std::optional<std::string> detected =
-                DetectMagesInstallLayout(gamedata);
-            std::error_code flatEc;
-            const bool flatPc =
-                !detected &&
-                std::filesystem::exists(gamedata / "script.mpk", flatEc) &&
-                std::filesystem::exists(gamedata / "system.mpk", flatEc);
-            const char* game_id = (detected || flatPc) ? "auto" : "launcher";
-            if (!detected && !flatPc) {
-                LogHost(instance, ENGINE_RUNTIME_LOG_WARNING,
-                        "no MAGES. game data found; opening the data-free "
-                        "launcher loop");
+            if(!Impacto::Host::DetectGameRoot(gamedata)) {
+                instance->error = "no supported MAGES. game layout found";
+                return ENGINE_RESULT_NOT_SUPPORTED;
             }
 
             const int32_t result = impacto_host_open_game(
-                instance->impact, game_root_path_utf8, game_id,
+                instance->impact, game_root_path_utf8, "auto",
                 gamedata.string().c_str());
             if(result != IMPACTO_HOST_OK) {
                 const char* detail =
@@ -511,19 +433,9 @@ namespace aetherkiri::mages {
             if(instance == nullptr || out_pixels == nullptr) {
                 return ENGINE_RESULT_INVALID_ARGUMENT;
             }
-            const size_t frame_bytes = instance->frame_rgba.size();
-            if(frame_bytes == 0) {
-                instance->error = "no frame rendered yet";
-                return ENGINE_RESULT_INVALID_STATE;
-            }
-            if(out_pixels_size < frame_bytes) {
-                instance->error = "RGBA frame output buffer is too small";
-                return ENGINE_RESULT_INVALID_ARGUMENT;
-            }
-            std::memcpy(out_pixels, instance->frame_rgba.data(), frame_bytes);
-            instance->delivered_frame_serial = instance->frame_serial;
-            instance->error.clear();
-            return ENGINE_RESULT_OK;
+            const auto read = impacto_host_read_frame_rgba(instance->impact, out_pixels, out_pixels_size);
+            if(read == IMPACTO_HOST_OK) instance->delivered_frame_serial = instance->frame_serial;
+            return MapImpactoResult(read);
         }
 
         engine_result_t SendInput(void* runtime,
@@ -637,7 +549,7 @@ namespace aetherkiri::mages {
             }
             std::string info =
                 "runtime=mages provider=engine_runtime_provider_v1 "
-                "render=opengl-offscreen-readback";
+                 "render=godot-gpu";
             if(instance->impact != nullptr) {
                 const char* impacto_info =
                     impacto_host_get_renderer_info(instance->impact);
@@ -707,8 +619,13 @@ namespace aetherkiri::mages {
             provider.get_frame_desc = GetFrameDesc;
             provider.read_frame_rgba = ReadFrame;
             provider.get_godot_native_frame_texture =
-                [](void*, uint64_t*, uint32_t*, uint32_t*, uint64_t*) {
-                    return ENGINE_RESULT_NOT_SUPPORTED;
+                [](void* runtime, uint64_t* texture, uint32_t* width, uint32_t* height, uint64_t* serial) {
+                    auto* instance = Cast(runtime);
+                    if(!instance || !texture || !width || !height || !serial)
+                        return ENGINE_RESULT_INVALID_ARGUMENT;
+                    auto result = impacto_host_get_gpu_frame(instance->impact, texture, width, height, serial);
+                    if(result == IMPACTO_HOST_OK) instance->delivered_frame_serial = *serial;
+                    return MapImpactoResult(result);
                 };
             provider.get_host_native_window =
                 [](void*, void**) { return ENGINE_RESULT_NOT_SUPPORTED; };
@@ -770,6 +687,18 @@ namespace aetherkiri::mages {
         // Registration failures must not crash the host; the runtime simply
         // stays unavailable and probe() reports no match.
         (void)RegisterOnce();
+    }
+
+    void SetDataDirectory(const std::string& directory) {
+        std::lock_guard<std::mutex> lock(g_gpu_mutex);
+        g_data_directory = directory;
+    }
+
+    void RegisterGpuBridge(const impacto_host_gpu_callbacks_t* callbacks) {
+        std::lock_guard<std::mutex> lock(g_gpu_mutex);
+        g_gpu = callbacks && callbacks->struct_size >= sizeof(*callbacks) &&
+                callbacks->api_version == IMPACTO_HOST_GPU_API_VERSION
+            ? *callbacks : impacto_host_gpu_callbacks_t{};
     }
 
 }  // namespace aetherkiri::mages

@@ -32,7 +32,7 @@
       "features": [
         "bink2"
       ],
-      "platform": "linux"
+      "platform": "!emscripten"
     },
     {
       "name": "sdl3",

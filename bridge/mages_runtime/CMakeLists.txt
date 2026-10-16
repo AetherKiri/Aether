@@ -4,7 +4,7 @@ project(aether_mages_runtime LANGUAGES C CXX)
 
 # The MAGES. runtime is embedded exactly like the other runtime packages:
 # the AetherMAGES submodule (the impacto engine plus its host bridge) is
-# compiled by this build into the libimpacto_host shared library, and the
+# compiled by this build into the platform's host library, and the
 # engine data tree is staged into the build tree for the provider to boot
 # from. There is no separately prebuilt host package.
 #
@@ -24,12 +24,12 @@ find_package(OpenAL CONFIG REQUIRED)
 
 # Build the embedded impacto host library from the submodule. The option
 # values are set before add_subdirectory so impacto's own CMakeLists picks
-# them up: host bridge mode (offscreen GL + FIFO audio) with no install rules
+# them up: host GPU commands + FIFO audio with no install rules
 # (this build stages the library and the data tree itself).
 set(IMPACTO_BUILD_HOST ON)
 set(IMPACTO_EMBEDDED ON)
 # Build the vendored LibAtrac9 decoder as a static archive so it links into
-# the impacto library (static or the macOS shared image) instead of shipping
+# the impacto library (static or a desktop shared image) instead of shipping
 # a separate libatrac9.so/.dylib the host packaging would have to stage.
 set(LIBATRAC9_BUILD_SHARED OFF)
 add_subdirectory("${MAGES_HOST_SOURCE}" "${CMAKE_BINARY_DIR}/aethermages-impacto")
@@ -53,7 +53,21 @@ endif()
 # impacto repository they live under src/shaders). copy_directory_if_different
 # keeps this incremental across builds and submodule bumps.
 set(MAGES_DATA_DIR "${CMAKE_CURRENT_BINARY_DIR}/mages-data")
+find_package(Python3 REQUIRED COMPONENTS Interpreter)
+file(GLOB_RECURSE MAGES_DATA_FILES CONFIGURE_DEPENDS
+    "${MAGES_HOST_SOURCE}/profiles/*"
+    "${MAGES_HOST_SOURCE}/resources/*"
+    "${MAGES_HOST_SOURCE}/src/shaders/*")
+set(MAGES_DATA_PACKAGE "${CMAKE_SOURCE_DIR}/apps/godot_app/mages_runtime/data.zip")
+add_custom_command(OUTPUT "${MAGES_DATA_PACKAGE}"
+    COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/tools/package_mages_data.py"
+        "${MAGES_HOST_SOURCE}" "${MAGES_DATA_PACKAGE}"
+    DEPENDS ${MAGES_DATA_FILES} "${MAGES_HOST_SOURCE}/gamedefinitions.lua"
+        "${CMAKE_SOURCE_DIR}/tools/package_mages_data.py"
+    COMMENT "Packing MAGES engine data for Godot exports"
+    VERBATIM)
 add_custom_target(aether_mages_stage_data ALL
+    DEPENDS "${MAGES_DATA_PACKAGE}"
     COMMAND "${CMAKE_COMMAND}" -E copy_if_different
         "${MAGES_HOST_SOURCE}/gamedefinitions.lua"
         "${MAGES_DATA_DIR}/gamedefinitions.lua"

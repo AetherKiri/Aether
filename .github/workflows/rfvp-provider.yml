@@ -40,20 +40,14 @@ jobs:
         run: cargo --version && cmake --version && ninja --version
       - name: Prepare isolated host overlay
         run: cmake -S bridge/rfvp_runtime -B out/rfvp-check -G Ninja -DCMAKE_BUILD_TYPE=Debug
-      # Temporary bootstrap: the generated public lockfile is collected from
-      # this run and committed before this PR can leave draft.
-      - name: Resolve updated workspace lockfile
-        run: |
-          cargo update --workspace --manifest-path out/rfvp-check/prepared/Cargo.toml
-          echo RFVP_LOCKFILE_BEGIN
-          base64 < out/rfvp-check/prepared/Cargo.lock | tr -d '\n'
-          echo
-          echo RFVP_LOCKFILE_END
       - name: Check locked Rust dependency graph
         run: cargo check --locked --manifest-path out/rfvp-check/prepared/Cargo.toml -p rfvp --lib --no-default-features --features soft-render-core,audio,native-video,random,image-formats,zlib-flate2
       - name: Build provider
         run: cmake --build out/rfvp-check
       - name: Run host and provider regressions
         run: ctest --test-dir out/rfvp-check --output-on-failure
-      - name: Verify upstream remains untouched
-        run: test -z "$(git -C packages/rfvp status --porcelain)"
+      - name: Verify pinned inputs remain untouched
+        if: always()
+        run: |
+          test -z "$(git -C packages/rfvp status --porcelain)"
+          cmp bridge/rfvp_runtime/Cargo.lock out/rfvp-check/prepared/Cargo.lock

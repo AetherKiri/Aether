@@ -160,11 +160,18 @@ mod host_snapshot_tests {
         // Vec<u8> is encoded as an eight-byte length and its contents.
         let bytes = [0u8; 9];
         assert!(host_bincode_opts().with_limit(8).serialize(&bytes.to_vec()).is_err());
-        let encoded = host_bincode_opts().serialize(&bytes.to_vec()).unwrap();
-        assert!(host_bincode_opts()
-            .with_limit(8)
-            .deserialize::<Vec<u8>>(&encoded)
-            .is_err());
+        let encoded = host_bincode_opts().with_limit(17).serialize(&bytes.to_vec()).unwrap();
+        assert_eq!(encoded.len(), 17);
+        assert_eq!(host_bincode_opts().deserialize::<Vec<u8>>(&encoded).unwrap(), bytes);
+
+        // Bincode's slice decoder does not enforce with_limit. The production
+        // entry point must reject an oversized slice before decoding either version.
+        let mut oversized = vec![0u8; MAX_STATE_PAYLOAD_BYTES + 1];
+        for version in [1u16, 2] {
+            oversized[..2].copy_from_slice(&version.to_le_bytes());
+            let error = decode_host_snapshot(&oversized).unwrap_err();
+            assert_eq!(error.to_string(), "rfvp save-state payload exceeds maximum size");
+        }
     }
 
     #[test]

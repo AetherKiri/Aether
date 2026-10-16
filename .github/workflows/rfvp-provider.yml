@@ -27,7 +27,7 @@ concurrency:
 
 jobs:
   standalone:
-    runs-on: ubuntu-latest
+    runs-on: macos-latest
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v7
@@ -37,7 +37,7 @@ jobs:
       - name: Initialize public RFVP sources
         run: git submodule update --init packages/rfvp
       - name: Verify runner build tools
-        run: cargo --version && cmake --version && ninja --version && pkg-config --modversion alsa
+        run: cargo --version && cmake --version && ninja --version
       - name: Prepare isolated host overlay
         run: cmake -S bridge/rfvp_runtime -B out/rfvp-check -G Ninja -DCMAKE_BUILD_TYPE=Debug
       # Temporary bootstrap: the generated public lockfile is collected from
@@ -46,7 +46,7 @@ jobs:
         run: |
           cargo update --workspace --manifest-path out/rfvp-check/prepared/Cargo.toml
           echo RFVP_LOCKFILE_BEGIN
-          base64 -w0 out/rfvp-check/prepared/Cargo.lock
+          base64 < out/rfvp-check/prepared/Cargo.lock | tr -d '\n'
           echo
           echo RFVP_LOCKFILE_END
       - name: Check locked Rust dependency graph

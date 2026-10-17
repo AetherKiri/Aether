@@ -87,10 +87,14 @@ def sign_nested(app, target_arch, identity, keychain):
     # compatible with the single entitlements plist codesign applies to them.
     code = list(code_files(frameworks, target_arch))
     helpers = {}
+    originals = {}
     for path, architectures, kind in code:
+        originals[path] = {
+            arch: read_entitlements(path, arch, allow_unsigned=True) for arch in architectures
+        }
         if kind != "EXECUTE":
             continue
-        existing = [read_entitlements(path, arch, allow_unsigned=True) for arch in architectures]
+        existing = list(originals[path].values())
         if any(entitlements != existing[0] for entitlements in existing[1:]):
             raise ValueError(f"Helper entitlements differ across architectures: {path}")
         entitlements = existing[0]
@@ -107,13 +111,25 @@ def sign_nested(app, target_arch, identity, keychain):
                 entitlement_file.write_bytes(plistlib.dumps(helpers[path]))
                 run(*signing_args, "--entitlements", entitlement_file, path)
             else:
-                run(*signing_args, "--preserve-metadata=entitlements", path)
+                # On macOS 15, preservation alone still drops library
+                # entitlements. Opt in only when there are existing keys.
+                library_args = ["--preserve-metadata=entitlements"]
+                if any(originals[path].values()):
+                    library_args.append("--force-library-entitlements")
+                run(*signing_args, *library_args, path)
         bundles = [
             Path(directory) for directory, _, _ in os.walk(frameworks, followlinks=False)
             if Path(directory).suffix == ".framework" and not Path(directory).is_symlink()
         ]
         for bundle in sorted(bundles, key=lambda path: len(path.parts), reverse=True):
-            run(*signing_args, "--preserve-metadata=entitlements", bundle)
+            # Sealing a framework re-signs its library again. This flag only
+            # retains existing metadata; no entitlements plist is supplied.
+            run(*signing_args, "--preserve-metadata=entitlements", "--force-library-entitlements", bundle)
+        for path, architectures, kind in code:
+            if kind != "EXECUTE":
+                for architecture in architectures:
+                    if read_entitlements(path, architecture) != originals[path][architecture]:
+                        raise ValueError(f"Library entitlements changed during signing: {path} ({architecture})")
 
 
 def verify(app, target_arch):

@@ -88,8 +88,13 @@ class AppleTools:
                 for architecture in self.code[path][1]:
                     if entitlements is not None:
                         self.signatures[path, architecture] = copy.deepcopy(entitlements)
-                    elif "--preserve-metadata=entitlements" not in args:
+                    elif ("--preserve-metadata=entitlements" not in args or
+                          (self.code[path][0] != "EXECUTE" and "--force-library-entitlements" not in args)):
+                        # macOS 15 drops library entitlements unless opted in,
+                        # even with --preserve-metadata=entitlements.
                         self.signatures[path, architecture] = {}
+                    else:
+                        self.signatures.setdefault((path, architecture), {})
         else:
             raise AssertionError(f"Unexpected Apple command: {args}")
         result = subprocess.CompletedProcess(args, status, stdout, stderr)
@@ -152,6 +157,7 @@ class MacAppStoreSigningTests(unittest.TestCase):
             args, entitlements = calls[path]
             self.assertIsNone(entitlements)
             self.assertIn("--preserve-metadata=entitlements", args)
+            self.assertEqual("--force-library-entitlements" in args, path == library)
         self.assertEqual(self.tools.signatures[library, "arm64"], {JIT: True})
         self.verify()
         for executable in [self.main, *helpers]:
@@ -184,6 +190,20 @@ class MacAppStoreSigningTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "missing arm64"):
             self.sign()
         self.assertFalse(self.tools.sign_calls)
+
+    def test_fails_if_signer_drops_existing_library_entitlements(self):
+        library = self.tools.add(self.frameworks / "library.dylib", "DYLIB", entitlements={JIT: True})
+        real_run = SIGNING.run
+
+        def dropping_signer(*args):
+            result = real_run(*args)
+            if "--sign" in args and Path(args[-1]) == library:
+                self.tools.signatures[library, "x86_64"] = {}
+            return result
+
+        with mock.patch.object(SIGNING, "run", side_effect=dropping_signer):
+            with self.assertRaisesRegex(ValueError, "Library entitlements changed.*x86_64"):
+                self.sign()
 
     def test_inconsistent_universal_file_types_fail_before_signing(self):
         self.tools.header_types[self.helper] = ["DYLIB", "EXECUTE"]
@@ -303,6 +323,18 @@ class MacAppStoreAdHocSigningTests(unittest.TestCase):
                          "--entitlements", existing, library)
             for architecture in ("x86_64", "arm64"):
                 self.assertEqual(SIGNING.read_entitlements(library, architecture), {JIT: True})
+            framework = frameworks / "Library.framework"
+            version = framework / "Versions/A"
+            (version / "Resources").mkdir(parents=True)
+            framework_library = version / "Library"
+            shutil.copy2(library, framework_library)
+            (version / "Resources/Info.plist").write_bytes(plistlib.dumps({
+                "CFBundleExecutable": "Library", "CFBundleIdentifier": "test.aether.signing.library",
+                "CFBundlePackageType": "FMWK", "CFBundleVersion": "1",
+            }))
+            (framework / "Versions/Current").symlink_to("A", target_is_directory=True)
+            (framework / "Library").symlink_to("Versions/Current/Library")
+            (framework / "Resources").symlink_to("Versions/Current/Resources", target_is_directory=True)
             (app / "Contents/Resources").mkdir()
             (app / "Contents/Resources/runtime").symlink_to("../Frameworks/renpy runtime", target_is_directory=True)
             (helper.parent / "python alias").symlink_to("python")
@@ -323,6 +355,9 @@ class MacAppStoreAdHocSigningTests(unittest.TestCase):
 
             with mock.patch.object(SIGNING, "run", side_effect=ad_hoc_run):
                 SIGNING.sign_nested(app, "arm64", "-", "unused")
+            for architecture in ("x86_64", "arm64"):
+                for binary in (library, framework_library):
+                    self.assertEqual(SIGNING.read_entitlements(binary, architecture), {JIT: True})
             main_entitlements = root / "main.plist"
             main_entitlements.write_bytes(plistlib.dumps({SANDBOX: True, FILE_ACCESS: True}))
             self.command("codesign", "--force", "--sign", "-", "--entitlements", main_entitlements, app)
@@ -332,6 +367,7 @@ class MacAppStoreAdHocSigningTests(unittest.TestCase):
                 self.assertEqual(SIGNING.read_entitlements(helper, architecture), {**HELPER_ENTITLEMENTS, JIT: True})
                 self.assertEqual(SIGNING.read_entitlements(main, architecture), {SANDBOX: True, FILE_ACCESS: True})
                 self.assertEqual(SIGNING.read_entitlements(library, architecture), {JIT: True})
+                self.assertEqual(SIGNING.read_entitlements(framework_library, architecture), {JIT: True})
             # A valid signature without sandbox in just one slice must fail
             # locally even though the target arm64 slice remains correct.
             x86_helper = root / "x86-helper"

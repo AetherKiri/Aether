@@ -135,8 +135,12 @@ and confirmed by the user.
 
 ### Upstream upgrade validation
 
-The upgrade to `af557db750c7833274f22a6d82b0dc33cdea2f85` is being validated
+The upgrade to `eb5490d9fc6d471d36554a84e052cf531afd48d4` is being validated
 independently by `.github/workflows/rfvp-provider.yml`. The earlier application
 and game smoke tests above describe the previous integration, not a re-test of
 this upstream revision. A standalone check does not certify Apple packaging or
 commercial-game playback.
+
+The increment from `af557db` to `eb5490d` only adds an upstream reverse-engineering
+database under `reverse/`. It is not copied into the prepared workspace or
+compiled into the provider; runtime sources and the embedded lockfile are unchanged.

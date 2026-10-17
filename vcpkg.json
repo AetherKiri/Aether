@@ -30,10 +30,17 @@
     "expat",
     "fmt",
     "freetype",
-    "cglm",
-    "libffi",
+    {
+      "name": "cglm",
+      "platform": "!emscripten"
+    },
+    {
+      "name": "libffi",
+      "platform": "!emscripten"
+    },
     {
       "name": "libsndfile",
+      "platform": "!emscripten",
       "default-features": false,
       "features": ["external-libs"]
     },

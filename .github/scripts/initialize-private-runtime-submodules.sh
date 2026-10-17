@@ -17,6 +17,7 @@ export GIT_SSH_COMMAND="ssh -i $key_dir/internal -o IdentitiesOnly=yes -o Strict
 git submodule update --init --recursive --depth 1 \
     packages/AetherInternal \
     packages/AetherKrkr \
+    packages/AetherMAGES \
     packages/AetherMinori \
     packages/AetherSiglus \
     packages/OnscripterYuri \

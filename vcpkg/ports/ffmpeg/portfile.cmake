@@ -4,6 +4,8 @@ vcpkg_from_github(
     REF "n${VERSION}"
     SHA512 c72f4062aecc16d8b2b1e8678d5efe3af4cfaa0cc7c0997052248f9e499e60c2463acf07877cf3b78b246ce3e8078cb043e8d97e90a6b50d06af32ff7369a788
     HEAD_REF master
+    PATCHES
+        bink2-decoder.patch
 )
 
 if(SOURCE_PATH MATCHES " ")
@@ -17,6 +19,17 @@ if (VCPKG_TARGET_ARCHITECTURE STREQUAL "x86" OR VCPKG_TARGET_ARCHITECTURE STREQU
 endif()
 
 set(OPTIONS "--enable-pic --disable-doc --enable-debug=3 --enable-runtime-cpudetect --disable-autodetect --enable-iconv")
+
+# Bink 2 software decoder (Librempeg backport, see bink2-decoder.patch).
+# The decoder sources are GPL-3.0-or-later, so enabling the feature switches
+# the whole FFmpeg build to --enable-gpl --enable-version3 (the installed
+# copyright file follows configure's license report). Without the feature the
+# decoder stays disabled and the build remains LGPL.
+if("bink2" IN_LIST FEATURES)
+    string(APPEND OPTIONS " --enable-gpl --enable-version3 --enable-decoder=bink2")
+else()
+    string(APPEND OPTIONS " --disable-decoder=bink2")
+endif()
 
 if(VCPKG_TARGET_IS_MINGW)
     if(VCPKG_TARGET_ARCHITECTURE STREQUAL "x86")
@@ -173,33 +186,36 @@ file(REMOVE_RECURSE "${CURRENT_BUILDTREES_DIR}/${TARGET_TRIPLET}-dbg" "${CURRENT
 
 set(FFMPEG_PKGCONFIG_MODULES libavutil)
 
+# Component selection is unconditional so every consumer (krkr2 KRMovie,
+# impacto, avcpp) links the same ffmpeg libraries as before the mages
+# integration. The vcpkg.json feature declarations exist only so avcpp's
+# ffmpeg[avcodec,...] dependency resolves; they do not gate the build. avdevice
+# is enabled (with --disable-autodetect it ships an empty backend) so avcpp's
+# wrapper links. The ENABLE_* variables are substituted into the generated
+# FindFFMPEG.cmake's component guards — without them every guard becomes an
+# empty if() and consumers like krkr2's movie module only find libavutil.
 set(OPTIONS "${OPTIONS} --enable-avcodec")
 set(ENABLE_AVCODEC ON)
 list(APPEND FFMPEG_PKGCONFIG_MODULES libavcodec)
-
-# set(OPTIONS "${OPTIONS} --enable-avdevice")
-# set(ENABLE_AVDEVICE ON)
-# list(APPEND FFMPEG_PKGCONFIG_MODULES libavdevice)
-set(ENABLE_AVDEVICE OFF)
-
+set(OPTIONS "${OPTIONS} --enable-avdevice")
+set(ENABLE_AVDEVICE ON)
+list(APPEND FFMPEG_PKGCONFIG_MODULES libavdevice)
 set(OPTIONS "${OPTIONS} --enable-avformat")
 set(ENABLE_AVFORMAT ON)
 list(APPEND FFMPEG_PKGCONFIG_MODULES libavformat)
-
 set(OPTIONS "${OPTIONS} --enable-avfilter")
 set(ENABLE_AVFILTER ON)
 list(APPEND FFMPEG_PKGCONFIG_MODULES libavfilter)
-
 set(OPTIONS "${OPTIONS} --enable-swresample")
 set(ENABLE_SWRESAMPLE ON)
 list(APPEND FFMPEG_PKGCONFIG_MODULES libswresample)
-
 set(OPTIONS "${OPTIONS} --enable-swscale")
 set(ENABLE_SWSCALE ON)
 list(APPEND FFMPEG_PKGCONFIG_MODULES libswscale)
+
 set(OPTIONS_CROSS "--enable-cross-compile")
 
-set(OPTIONS "${OPTIONS} --disable-ffmpeg --enable-small --disable-ffplay --disable-ffprobe --disable-avdevice --disable-programs")
+set(OPTIONS "${OPTIONS} --disable-ffmpeg --enable-small --disable-ffplay --disable-ffprobe --disable-programs")
 
 # ffmpeg needs --cross-prefix option to use appropriate tools for cross-compiling.
 if(VCPKG_DETECTED_CMAKE_C_COMPILER MATCHES "([^\/]*-)gcc$")

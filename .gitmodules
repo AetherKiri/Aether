@@ -38,3 +38,6 @@
 [submodule "packages/ruffle"]
 	path = packages/ruffle
 	url = https://github.com/ruffle-rs/ruffle.git
+[submodule "packages/AetherMAGES"]
+	path = packages/AetherMAGES
+	url = https://github.com/AetherKiri/AetherMAGES.git

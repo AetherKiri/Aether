@@ -61,6 +61,20 @@ func _init() -> void:
     _expect_equal(String(kirikiri.engine), "kirikiri", "KiriKiri remains default")
     _expect_equal(String(kirikiri.launchFile), "data.xp3", "KiriKiri archive preferred")
 
+    var mages_root := fixture_root.path_join("MemoriesoffIF")
+    DirAccess.make_dir_recursive_absolute(mages_root)
+    _write(mages_root.path_join("launcher.exe"), "launcher")
+    _write(mages_root.path_join("script.mpk"), "script")
+    _write(mages_root.path_join("system.mpk"), "system")
+    _write(mages_root.path_join("bg1.mpk"), "background")
+    var mages := GameMetadata.inspect(mages_root)
+    _expect_equal(String(mages.engine), "mages", "MAGES MPK detection")
+    _expect_equal(String(mages.launchFile), "", "MAGES keeps directory launch")
+    _expect_true(
+        Array(mages.signals).has("mages-mpk-marker"),
+        "MAGES structural signal"
+    )
+
     var exe_only_root := fixture_root.path_join("kirikiri_exe_only")
     DirAccess.make_dir_recursive_absolute(exe_only_root)
     _write(exe_only_root.path_join("game.exe"), "launcher")

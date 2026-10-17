@@ -7,6 +7,7 @@ if(APPLE)
 endif()
 
 find_package(unofficial-godot-cpp CONFIG REQUIRED)
+find_package(spdlog CONFIG REQUIRED)
 
 if(APPLE)
     # godot-cpp publishes Clang-specific debug flags without a language guard.
@@ -260,6 +261,7 @@ endif()
 if(TARGET engine_api)
     target_link_libraries(aether_kiri_godot PRIVATE engine_api)
 endif()
+target_link_libraries(aether_kiri_godot PRIVATE spdlog::spdlog)
 if(TARGET aether_krkr2_runtime)
     # Phase 2d link flip: the KiriKiri runtime glue is linked by the Godot
     # extension host (not engine_api). The extension installs the legacy
@@ -280,6 +282,12 @@ if(TARGET aether_siglus_runtime)
         aether_siglus_runtime)
     target_compile_definitions(aether_kiri_godot PRIVATE
         AETHERKIRI_WITH_SIGLUS=1)
+endif()
+if(TARGET aether_mages_runtime)
+    target_link_libraries(aether_kiri_godot PRIVATE
+        aether_mages_runtime)
+    target_compile_definitions(aether_kiri_godot PRIVATE
+        AETHERKIRI_WITH_MAGES=1)
 endif()
 if(TARGET aether_minori_runtime)
     target_link_libraries(aether_kiri_godot PRIVATE

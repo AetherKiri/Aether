@@ -155,6 +155,11 @@ set(AETHERKIRI_MINORI_DIR
 set(AETHERKIRI_RFVP_DIR
     "${CMAKE_CURRENT_SOURCE_DIR}/packages/rfvp"
     CACHE PATH "path to an rfvp runtime checkout")
+option(AETHERKIRI_ENABLE_MAGES
+       "enable the embedded MAGES. (impacto host) runtime provider" ON)
+set(AETHERKIRI_MAGES_DIR
+    "${CMAKE_CURRENT_SOURCE_DIR}/packages/AetherMAGES"
+    CACHE PATH "path to an AetherMAGES (impacto) runtime submodule checkout")
 
 include(cmake/AetherKiriBinaryProtection.cmake)
 # Unify the Rust toolchain resolution before any runtime subproject runs its
@@ -308,6 +313,14 @@ if(AETHERKIRI_ENABLE_SIGLUS AND BUILD_GODOT_EXTENSION AND
    NOT (WEB OR EMSCRIPTEN))
     # Web stays excluded until the wasm host path is designed (phase 5).
     add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/bridge/siglus_runtime)
+endif()
+if(AETHERKIRI_ENABLE_MAGES AND BUILD_GODOT_EXTENSION AND
+    NOT (WEB OR EMSCRIPTEN))
+    # The MAGES. runtime renders offscreen inside the embedded impacto host
+    # library (compiled from the packages/AetherMAGES submodule). Built on
+    # every product platform the Godot extension targets, like the other
+    # runtime submodules.
+    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/bridge/mages_runtime)
 endif()
 # The Rust provider has targets for Linux, Apple, Android, and Emscripten.
 # Keep it out of unsupported native targets, but do not make Linux the only

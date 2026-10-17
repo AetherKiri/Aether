@@ -27,6 +27,31 @@
       "platform": "windows"
     },
     "ffmpeg",
+    {
+      "name": "ffmpeg",
+      "features": [
+        "bink2"
+      ],
+      "platform": "!emscripten"
+    },
+    {
+      "name": "sdl3",
+      "default-features": false
+    },
+    {
+      "name": "avcpp",
+      "default-features": false
+    },
+    "dav1d",
+    "libass",
+    "glm",
+    "pugixml",
+    "utfcpp",
+    "unordered-dense",
+    "concurrentqueue",
+    "readerwriterqueue",
+    "boost-circular-buffer",
+    "toml11",
     "expat",
     "fmt",
     "freetype",

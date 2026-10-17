@@ -135,6 +135,7 @@ jobs:
           git submodule update --init --depth 1 packages/AetherSiglus
           git submodule update --init --depth 1 packages/AetherMinori
           git submodule update --init --depth 1 packages/AetherKrkr
+          git submodule update --init --depth 1 packages/AetherMAGES
           git submodule update --init --depth 1 packages/ruffle
 
       - name: Set application release version
@@ -433,6 +434,7 @@ jobs:
           git submodule update --init --depth 1 packages/AetherSiglus
           git submodule update --init --depth 1 packages/AetherMinori
           git submodule update --init --depth 1 packages/AetherKrkr
+          git submodule update --init --depth 1 packages/AetherMAGES
           git submodule update --init --depth 1 packages/ruffle
 
       - name: Set application release version
@@ -755,6 +757,7 @@ jobs:
           git submodule update --init --depth 1 packages/AetherSiglus
           git submodule update --init --depth 1 packages/AetherMinori
           git submodule update --init --depth 1 packages/AetherKrkr
+          git submodule update --init --depth 1 packages/AetherMAGES
           git submodule update --init --depth 1 packages/ruffle
 
       - name: Set application release version
@@ -1087,6 +1090,7 @@ jobs:
           git submodule update --init --depth 1 packages/AetherSiglus
           git submodule update --init --depth 1 packages/AetherMinori
           git submodule update --init --depth 1 packages/AetherKrkr
+          git submodule update --init --depth 1 packages/AetherMAGES
           git submodule update --init --depth 1 packages/ruffle
 
       - name: Verify private runtime packages

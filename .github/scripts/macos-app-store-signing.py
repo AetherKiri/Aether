@@ -88,43 +88,60 @@ def sign_nested(app, target_arch, identity, keychain):
     code = list(code_files(frameworks, target_arch))
     helpers = {}
     originals = {}
+    library_entitlements = {}
     for path, architectures, kind in code:
         originals[path] = {
             arch: read_entitlements(path, arch, allow_unsigned=True) for arch in architectures
         }
-        if kind != "EXECUTE":
-            continue
         existing = list(originals[path].values())
         if any(entitlements != existing[0] for entitlements in existing[1:]):
-            raise ValueError(f"Helper entitlements differ across architectures: {path}")
+            raise ValueError(f"Entitlements differ across architectures: {path}")
         entitlements = existing[0]
-        check_inheritance(entitlements, path)
-        helpers[path] = dict(entitlements, **{SANDBOX: True, INHERIT: True})
+        if kind == "EXECUTE":
+            check_inheritance(entitlements, path)
+            helpers[path] = dict(entitlements, **{SANDBOX: True, INHERIT: True})
+        else:
+            library_entitlements[path.resolve()] = entitlements
+
+    bundles = {}
+    for directory, _, _ in os.walk(frameworks, followlinks=False):
+        bundle = Path(directory)
+        if bundle.suffix != ".framework" or bundle.is_symlink():
+            continue
+        info = bundle / "Resources/Info.plist"
+        if not info.is_file():
+            info = bundle / "Info.plist"
+        with info.open("rb") as stream:
+            executable = plistlib.load(stream)["CFBundleExecutable"]
+        binary = (bundle / executable).resolve()
+        if binary not in library_entitlements:
+            raise ValueError(f"Framework executable is not an embedded Mach-O library: {bundle}")
+        bundles[bundle] = library_entitlements[binary]
 
     signing_args = ["codesign", "--force", "--sign", identity, "--keychain", keychain, "--timestamp"]
     with tempfile.TemporaryDirectory(prefix="aether-helper-entitlements-") as directory:
         entitlement_file = Path(directory) / "helper.plist"
+
+        def sign(path, entitlements, library=False):
+            extra = []
+            if entitlements:
+                entitlement_file.write_bytes(plistlib.dumps(entitlements))
+                extra = ["--entitlements", entitlement_file]
+                if library:
+                    extra.append("--force-library-entitlements")
+            run(*signing_args, *extra, path)
+
         # Seal leaves before their enclosing frameworks, then the caller signs
         # the main app. Never use --deep for signing.
         for path, _, _ in sorted(code, key=lambda item: len(item[0].parts), reverse=True):
             if path in helpers:
-                entitlement_file.write_bytes(plistlib.dumps(helpers[path]))
-                run(*signing_args, "--entitlements", entitlement_file, path)
+                sign(path, helpers[path])
             else:
-                # On macOS 15, preservation alone still drops library
-                # entitlements. Opt in only when there are existing keys.
-                library_args = ["--preserve-metadata=entitlements"]
-                if any(originals[path].values()):
-                    library_args.append("--force-library-entitlements")
-                run(*signing_args, *library_args, path)
-        bundles = [
-            Path(directory) for directory, _, _ in os.walk(frameworks, followlinks=False)
-            if Path(directory).suffix == ".framework" and not Path(directory).is_symlink()
-        ]
+                # macOS 15 can drop library entitlements even with metadata
+                # preservation. Reapply only the captured original keys.
+                sign(path, library_entitlements[path.resolve()], library=True)
         for bundle in sorted(bundles, key=lambda path: len(path.parts), reverse=True):
-            # Sealing a framework re-signs its library again. This flag only
-            # retains existing metadata; no entitlements plist is supplied.
-            run(*signing_args, "--preserve-metadata=entitlements", "--force-library-entitlements", bundle)
+            sign(bundle, bundles[bundle], library=True)
         for path, architectures, kind in code:
             if kind != "EXECUTE":
                 for architecture in architectures:

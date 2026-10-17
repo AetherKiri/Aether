@@ -155,8 +155,7 @@ class MacAppStoreSigningTests(unittest.TestCase):
             self.assertNotIn("--deep", args)
         for path in (library, extension):
             args, entitlements = calls[path]
-            self.assertIsNone(entitlements)
-            self.assertIn("--preserve-metadata=entitlements", args)
+            self.assertEqual(entitlements, {JIT: True} if path == library else None)
             self.assertEqual("--force-library-entitlements" in args, path == library)
         self.assertEqual(self.tools.signatures[library, "arm64"], {JIT: True})
         self.verify()
@@ -173,6 +172,9 @@ class MacAppStoreSigningTests(unittest.TestCase):
         ]
         (framework / "Versions/Current").symlink_to("A", target_is_directory=True)
         (framework / "Outer").symlink_to("Versions/Current/Outer")
+        for bundle, executable in [(framework, "Outer"), (inner, "Inner")]:
+            (bundle / "Resources").mkdir()
+            (bundle / "Resources/Info.plist").write_bytes(plistlib.dumps({"CFBundleExecutable": executable}))
         self.sign()
         signed = [path for path, _, _ in self.tools.sign_calls]
         self.assertLess(signed.index(inner), signed.index(framework))
@@ -214,6 +216,13 @@ class MacAppStoreSigningTests(unittest.TestCase):
     def test_architecture_specific_entitlements_are_not_silently_overwritten(self):
         self.tools.signatures[self.helper, "x86_64"] = {JIT: True}
         self.tools.signatures[self.helper, "arm64"] = {}
+        with self.assertRaisesRegex(ValueError, "differ across architectures"):
+            self.sign()
+        self.assertFalse(self.tools.sign_calls)
+
+    def test_architecture_specific_library_entitlements_fail_before_signing(self):
+        library = self.tools.add(self.frameworks / "library.dylib", "DYLIB", entitlements={})
+        self.tools.signatures[library, "arm64"] = {JIT: True}
         with self.assertRaisesRegex(ValueError, "differ across architectures"):
             self.sign()
         self.assertFalse(self.tools.sign_calls)

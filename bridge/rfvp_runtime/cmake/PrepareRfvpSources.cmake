@@ -26,6 +26,13 @@ function(aetherkiri_prepare_rfvp root rfvp_dir output)
     file(WRITE "${output}/Cargo.toml"
         "[workspace]\nresolver = \"3\"\nmembers = [\"crates/*\"]\n[profile.dev]\ndebug = 0\nopt-level = 1\nincremental = false\n[profile.dev.package.rfvp]\nopt-level = 3\n[profile.release]\ndebug = 0\nlto = \"thin\"\ncodegen-units = 1\n")
     configure_file("${CMAKE_CURRENT_FUNCTION_LIST_DIR}/../Cargo.lock" "${output}/Cargo.lock" COPYONLY)
+    # Siglus embeds another copy of this decoder. Keep RFVP's C exports distinct
+    # so both static Rust libraries can be linked into the same application.
+    foreach(symbol create destroy decode get_frame)
+        rfvp_replace("${output}/crates/na_wmv_player/src/ffi.rs"
+            "#[no_mangle]\npub extern \"C\" fn wmv2_decoder_${symbol}"
+            "#[export_name = \"aether_rfvp_wmv2_decoder_${symbol}\"]\npub extern \"C\" fn wmv2_decoder_${symbol}")
+    endforeach()
     set(src "${output}/crates/rfvp/src")
     rfvp_replace("${output}/crates/rfvp/Cargo.toml"
         "crate-type = [\"rlib\", \"cdylib\"]" "crate-type = [\"rlib\", \"staticlib\"]")

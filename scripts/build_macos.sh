@@ -161,9 +161,16 @@ cmake_config_args=(
     -D "CMAKE_MAKE_PROGRAM=$CMAKE_MAKE_PROGRAM"
     -D "AETHERKIRI_ENABLE_INTERNAL=${AETHERKIRI_ENABLE_INTERNAL:-ON}"
     -D "AETHERKIRI_ENABLE_FLASH=${AETHERKIRI_ENABLE_FLASH:-ON}"
+    -D "AETHERKIRI_ENABLE_RFVP=${AETHERKIRI_ENABLE_RFVP:-OFF}"
     -D "AETHERKIRI_ENABLE_SOFTPAL_RUNTIME=${AETHERKIRI_ENABLE_SOFTPAL_RUNTIME:-OFF}"
     -D "AETHERKIRI_SOFTPAL_DIR=${AETHERKIRI_SOFTPAL_DIR:-$PROJECT_ROOT/packages/AetherSoftPal}"
 )
+if [[ -n "${RFVP_CARGO:-}" ]]; then
+    cmake_config_args+=(-D "RFVP_CARGO=$RFVP_CARGO")
+fi
+if [[ -n "${RFVP_RUSTC:-}" ]]; then
+    cmake_config_args+=(-D "RFVP_RUSTC=$RFVP_RUSTC")
+fi
 if [[ "${SKIP_VCPKG_INSTALL:-}" == "1" ]]; then
     if [[ ! -d "$VCPKG_ROOT/installed/$VCPKG_TRIPLET" ]]; then
         echo "Error: SKIP_VCPKG_INSTALL=1 but prebuilt vcpkg triplet is missing: $VCPKG_ROOT/installed/$VCPKG_TRIPLET" >&2

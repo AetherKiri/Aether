@@ -27,12 +27,17 @@ static func rfvp_encoding(game: Dictionary, override_value: String = "") -> Stri
 
 
 static func backfill(game: Dictionary, metadata: Dictionary) -> bool:
-    # An existing value (including an explicit empty auto-detect choice) is
-    # user configuration. Refreshing metadata must never replace it.
-    if game.has(FIELD) or not metadata.has(FIELD):
-        return false
-    game[FIELD] = metadata[FIELD]
-    return true
+    var changed := false
+    if not game.has(FIELD) and metadata.has(FIELD):
+        game[FIELD] = metadata[FIELD]
+        changed = true
+    # Keep the encoding paired with the selected script. Existing keys,
+    # including an empty automatic choice, belong to the user.
+    if not game.has(RFVP_ENCODING_FIELD) and metadata.has(RFVP_ENCODING_FIELD):
+        if String(game.get(FIELD, "")).is_empty() or game.get(FIELD) == metadata.get(FIELD):
+            game[RFVP_ENCODING_FIELD] = metadata[RFVP_ENCODING_FIELD]
+            changed = true
+    return changed
 
 
 static func configured_relative_path(game: Dictionary) -> String:

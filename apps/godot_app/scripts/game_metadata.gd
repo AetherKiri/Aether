@@ -165,12 +165,23 @@ static func _has_renpy_scripts(root: String, depth: int) -> bool:
     return false
 
 static func _hcb_launch_file(root: String, requested: String) -> String:
+    var entries := hcb_launch_files(root)
+    if FileAccess.file_exists(requested) and entries.has(requested.get_file()):
+        return requested.get_file()
+    for entry in entries:
+        if not entry.begins_with("."):
+            return entry
+    return entries[0] if not entries.is_empty() else ""
+
+
+static func hcb_launch_files(root: String) -> PackedStringArray:
+    var result := PackedStringArray()
     var dir := DirAccess.open(root)
     if dir == null:
-        return ""
+        return result
+    dir.include_hidden = true
     var entries := dir.get_files()
     entries.sort()
-    var fallback := ""
     for entry in entries:
         if entry.get_extension().to_lower() != "hcb":
             continue
@@ -207,11 +218,9 @@ static func _hcb_launch_file(root: String, requested: String) -> String:
             file.seek(file.get_position() + name_length)
         if not valid or file.get_position() + 2 > file.get_length():
             continue
-        if requested.get_file() == entry:
-            return entry
-        if fallback.is_empty():
-            fallback = entry
-    return fallback
+        result.append(entry)
+    return result
+
 
 static func _file_names(root: String) -> PackedStringArray:
     var result: PackedStringArray = []

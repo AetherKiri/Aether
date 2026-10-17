@@ -2066,6 +2066,7 @@ const RUNTIME_SOFTPAL := "softpal"
 const RUNTIME_CATSYSTEM2 := "catsystem2"
 const RUNTIME_SIGLUS := "siglus"
 const RUNTIME_RENPY := "renpy"
+const RUNTIME_XSYSTEM4 := "xsystem4"
 const RUNTIME_WA2 := "wa2"
 const RUNTIME_BGI := "bgi"
 const RUNTIME_TYRANO := "tyranoscript"
@@ -9591,7 +9592,7 @@ func _game_launch_entry_label(game: Dictionary) -> String:
 func _can_configure_launch_file(game: Dictionary) -> bool:
     return OS.get_name() != "Web" \
         and not builtin_demo.is_game(game) \
-        and _game_runtime_kind(String(game.get("path", ""))) != RUNTIME_ONSCRIPTER \
+        and _game_runtime_kind(String(game.get("path", ""))) not in [RUNTIME_ONSCRIPTER, RUNTIME_XSYSTEM4] \
         and String(game.get("type", "Directory")).to_lower() == "directory"
 
 func _set_launch_file_for_selected() -> void:
@@ -12417,6 +12418,7 @@ func _switch_runtime_player(runtime_kind: String) -> bool:
         RUNTIME_CATSYSTEM2,
         RUNTIME_SIGLUS,
         RUNTIME_BGI,
+        RUNTIME_XSYSTEM4,
     ]:
         normalized = RUNTIME_KIRIKIRI
     if player != null and current_player_runtime_kind == normalized:
@@ -12445,6 +12447,9 @@ func _switch_runtime_player(runtime_kind: String) -> bool:
             diagnostic_session.finish()
         diagnostic_session.start(player, selected_backend)
     _append_log("Runtime selected: %s" % (
+        "AliceSoft System 4"
+        if normalized == RUNTIME_XSYSTEM4
+        else
         "OnscripterYuri"
         if normalized == RUNTIME_ONSCRIPTER
         else "MinoriRust"
@@ -13078,6 +13083,7 @@ func _ensure_player_initialized() -> bool:
         RUNTIME_CATSYSTEM2,
         RUNTIME_SIGLUS,
         RUNTIME_BGI,
+        RUNTIME_XSYSTEM4,
     ]:
         runtime_id = current_player_runtime_kind
     var runtime_result := int(player.set_engine_option("runtime", runtime_id))
@@ -13092,6 +13098,9 @@ func _ensure_player_initialized() -> bool:
         return false
 
     _append_log("%s engine initialized." % (
+        "AliceSoft System 4"
+        if current_player_runtime_kind == RUNTIME_XSYSTEM4
+        else
         "OnscripterYuri"
         if current_player_runtime_kind == RUNTIME_ONSCRIPTER
         else "MinoriRust"
@@ -15608,6 +15617,8 @@ func _renderer_summary(renderer: String) -> String:
     var summary := selected_backend
     if renderer.contains("backend=onscripter_yuri"):
         summary = "OnscripterYuri (Godot Texture)"
+    elif renderer.contains("backend=xsystem4"):
+        summary = "System 4 (Godot Texture)"
     elif renderer.contains("backend=godot_native"):
         summary = "Godot Native GPU"
     elif renderer.contains("backend=gpu_bridge"):

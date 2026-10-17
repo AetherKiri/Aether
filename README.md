@@ -37,6 +37,7 @@ Godot App Shell
             ├─ KiriRuntime ──────── KiriKiri2 core / plugins
             ├─ OnsRuntime ───────── OnscripterYuri
             ├─ SiglusRuntime ────── siglus_rs
+            ├─ System4 Runtime ──── xsystem4 (AliceSoft)
             ├─ Artemis Runtime ──── Artemis (private package)
             ├─ CatSystem2 Runtime ─ CatSystem2 (private package)
             ├─ BGI Runtime ──────── BGI / Ethornell (private package)
@@ -62,6 +63,9 @@ and **Debug CPU** is a diagnostic fallback only.
 - Experimental TyranoScript browser-project playback from the visual-novel
   library on macOS, iOS/iPadOS and Android, with isolated saves and virtual keys. See the
   [prototype scope and tests](bridge/tyrano_runtime/README.md).
+- Native AliceSoft System 4 playback via the bundled xsystem4 runtime, with
+  directory import, Chinese/Japanese text, audio, movies and optional virtual keys.
+  See the [native host and validation](bridge/xsystem4_runtime/README.md).
 - Runtime-selectable render backend with persisted settings.
 - Native Ren’Py 8 playback on macOS, iOS/iPadOS, Android and Linux, inside the
   existing Aether window, with isolated saves and optional virtual keys. See the

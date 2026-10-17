@@ -2,7 +2,7 @@
 
 [简体中文](verified_games.zh-CN.md)
 
-Last updated: 2026-10-13
+Last updated: 2026-10-18
 
 This document tracks games that have been manually smoke-tested with
 AetherKiri. It is a compatibility notebook, not a guarantee that every route,
@@ -20,6 +20,7 @@ movie, plugin path, or save state in a title has been exhaustively validated.
 
 | Game | Verified platforms / builds | Verified scope | Result | Verifier | Notes |
 | --- | --- | --- | --- | --- | --- |
+| 戦国ランス / Sengoku Rance v1.01 (Chinese) | macOS arm64 debug, Aether main window and native JSON probe | Native xsystem4 startup, 800×600 frames, opening movie/audio, title, new game, Chinese dialogue/characters, pointer advancement, in-game menu, pause/resume and repeated reopening | Flow verified | Local JSON probe | iOS, Android and Linux game playback still needs validation. Game assets are not included. |
 | リップリップルズ | Android release APK | Import, startup, initial title/UI and basic input | Smoke verified | [@KYoiRyi](https://github.com/KYoiRyi) | Local game files are not committed. |
 | Magical Charming! | macOS x64 debug app | Startup through the package's absent optional opening cut-ins, title/menu rendering, new-game button dispatch, first scenario/background/text rendering, and basic input | Flow verified | [@akitaSummer](https://github.com/akitaSummer) | The iOS package omits the stock `ab_*` opening cut-ins; AetherKiri skips only those missing opening waits. Local game files are not committed. |
 | 恋がさくころ桜どき | Linux x64 release app; macOS app; iOS/iPadOS app build on iPad | Import, startup, initial title/UI and text rendering, and basic input | Smoke verified | [@KYoiRyi](https://github.com/KYoiRyi), [@MadCcc](https://github.com/MadCcc) | Local game files are not committed. |

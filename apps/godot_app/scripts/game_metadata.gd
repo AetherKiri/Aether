@@ -9,6 +9,7 @@ const RUNTIME_SIGLUS := "siglus"
 const RUNTIME_CATSYSTEM2 := "catsystem2"
 const RUNTIME_TYRANO := "tyranoscript"
 const RUNTIME_RENPY := "renpy"
+const RUNTIME_XSYSTEM4 := "xsystem4"
 
 static func inspect(path: String) -> Dictionary:
     var root := path
@@ -48,6 +49,9 @@ static func inspect(path: String) -> Dictionary:
         var title_match := pattern.search(options)
         if title_match != null:
             candidates.append(title_match.get_string(1))
+    elif (files.has("system40.ini") or files.has("alicestart.ini")) and _has_extension(files, "ain"):
+        result.engine = RUNTIME_XSYSTEM4
+        result.signals.append("system4-ain-ini")
     elif not hcb.is_empty():
         result.engine = RUNTIME_RFVP
         result.signals.append("fvp-hcb")

@@ -266,6 +266,11 @@ class MacAppStoreSigningTests(unittest.TestCase):
 
 @unittest.skipUnless(sys.platform == "darwin" and shutil.which("clang"), "real Mach-O signing requires macOS/Xcode")
 class MacAppStoreAdHocSigningTests(unittest.TestCase):
+    def command(self, *args):
+        result = subprocess.run([str(arg) for arg in args], capture_output=True)
+        self.assertEqual(result.returncode, 0, f"{args}\n{result.stdout.decode(errors='replace')}\n{result.stderr.decode(errors='replace')}")
+        return result
+
     def test_real_universal_helpers_libraries_and_resource_symlinks(self):
         with tempfile.TemporaryDirectory(prefix="aether real signing ") as directory:
             root = Path(directory)
@@ -282,28 +287,28 @@ class MacAppStoreAdHocSigningTests(unittest.TestCase):
             source.write_text("int main(void) { return 0; }\n")
             helper = frameworks / "renpy runtime/python"
             helper.parent.mkdir()
-            subprocess.run(["clang", "-arch", "x86_64", "-arch", "arm64", "-mmacosx-version-min=11.0",
-                            str(source), "-o", str(helper)], check=True, capture_output=True)
+            self.command("clang", "-arch", "x86_64", "-arch", "arm64", "-mmacosx-version-min=11.0",
+                         source, "-o", helper)
             shutil.copy2(helper, main)
             for flag, filename in [("-dynamiclib", "library.dylib"), ("-bundle", "extension.so")]:
-                subprocess.run(["clang", "-arch", "x86_64", "-arch", "arm64", "-mmacosx-version-min=11.0",
-                                flag, str(source), "-o", str(frameworks / filename)], check=True, capture_output=True)
+                self.command("clang", "-arch", "x86_64", "-arch", "arm64", "-mmacosx-version-min=11.0",
+                             flag, source, "-o", frameworks / filename)
             existing = root / "existing.plist"
             existing.write_bytes(plistlib.dumps({JIT: True}))
-            subprocess.run(["codesign", "--force", "--sign", "-", "--entitlements", str(existing), str(helper)],
-                           check=True, capture_output=True)
+            self.command("codesign", "--force", "--sign", "-", "--entitlements", existing, helper)
             library = frameworks / "library.dylib"
             # macOS 15 requires this opt-in to embed initial library
             # entitlements. Re-signing must retain these existing keys too.
-            subprocess.run(["codesign", "--force", "--sign", "-", "--force-library-entitlements",
-                            "--entitlements", str(existing), str(library)], check=True, capture_output=True)
+            self.command("codesign", "--force", "--sign", "-", "--force-library-entitlements",
+                         "--entitlements", existing, library)
             for architecture in ("x86_64", "arm64"):
                 self.assertEqual(SIGNING.read_entitlements(library, architecture), {JIT: True})
             (app / "Contents/Resources").mkdir()
             (app / "Contents/Resources/runtime").symlink_to("../Frameworks/renpy runtime", target_is_directory=True)
             (helper.parent / "python alias").symlink_to("python")
-            (frameworks / "script").write_text("#!/bin/sh\nexit 0\n")
-            (frameworks / "script").chmod(0o755)
+            script = app / "Contents/Resources/script"
+            script.write_text("#!/bin/sh\nexit 0\n")
+            script.chmod(0o755)
             real_run = SIGNING.run
 
             def ad_hoc_run(*args):
@@ -320,9 +325,8 @@ class MacAppStoreAdHocSigningTests(unittest.TestCase):
                 SIGNING.sign_nested(app, "arm64", "-", "unused")
             main_entitlements = root / "main.plist"
             main_entitlements.write_bytes(plistlib.dumps({SANDBOX: True, FILE_ACCESS: True}))
-            subprocess.run(["codesign", "--force", "--sign", "-", "--entitlements", str(main_entitlements), str(app)],
-                           check=True, capture_output=True)
-            subprocess.run(["codesign", "--verify", "--deep", "--strict", str(app)], check=True, capture_output=True)
+            self.command("codesign", "--force", "--sign", "-", "--entitlements", main_entitlements, app)
+            self.command("codesign", "--verify", "--deep", "--strict", app)
             SIGNING.verify(app, "arm64")
             for architecture in ("x86_64", "arm64"):
                 self.assertEqual(SIGNING.read_entitlements(helper, architecture), {**HELPER_ENTITLEMENTS, JIT: True})
@@ -331,10 +335,9 @@ class MacAppStoreAdHocSigningTests(unittest.TestCase):
             # A valid signature without sandbox in just one slice must fail
             # locally even though the target arm64 slice remains correct.
             x86_helper = root / "x86-helper"
-            subprocess.run(["lipo", str(helper), "-thin", "x86_64", "-output", str(x86_helper)], check=True, capture_output=True)
-            subprocess.run(["codesign", "--force", "--sign", "-", str(x86_helper)], check=True, capture_output=True)
-            subprocess.run(["lipo", str(helper), "-replace", "x86_64", str(x86_helper), "-output", str(helper)],
-                           check=True, capture_output=True)
+            self.command("lipo", helper, "-thin", "x86_64", "-output", x86_helper)
+            self.command("codesign", "--force", "--sign", "-", x86_helper)
+            self.command("lipo", helper, "-replace", "x86_64", x86_helper, "-output", helper)
             with self.assertRaisesRegex(ValueError, "missing Boolean App Sandbox"):
                 SIGNING.verify(app, "arm64")
 

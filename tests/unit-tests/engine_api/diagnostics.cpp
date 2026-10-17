@@ -469,12 +469,10 @@ TEST_CASE("primary click queue gate preserves every secondary pointer edge") {
   gate.on_dequeued(queued_primary_release);
 }
 
-TEST_CASE("Beta runtime providers require active coffee access") {
+TEST_CASE("CatSystem2 and Artemis ignore beta access") {
   REQUIRE(engine_register_runtime_provider(&kArtemisGateProvider) ==
           ENGINE_RESULT_OK);
   REQUIRE(engine_register_runtime_provider(&kCatSystem2GateProvider) ==
-          ENGINE_RESULT_OK);
-  REQUIRE(engine_register_runtime_provider(&kRfvpGateProvider) ==
           ENGINE_RESULT_OK);
 
   // CatSystem2 is a released runtime.  A stale beta_runtime_allowed=0 must
@@ -494,51 +492,6 @@ TEST_CASE("Beta runtime providers require active coffee access") {
                              "first.iet") == ENGINE_RESULT_OK);
   }
 
-  // RFVP remains an explicitly gated provider until its compatibility work is
-  // released.
-  {
-    const std::array<const char*, 2> runtime{{
-        "rfvp", "RFVP runtime requires active beta access"}};
-    {
-      Handle default_handle;
-      engine_option_t default_runtime_option{};
-      default_runtime_option.key_utf8 = "runtime";
-      default_runtime_option.value_utf8 = runtime[0];
-      REQUIRE(engine_set_option(default_handle.value, &default_runtime_option) ==
-              ENGINE_RESULT_OK);
-#if defined(NDEBUG)
-      REQUIRE(engine_open_game(default_handle.value,
-                               ".artemis-debug-gate-test", "first.iet") ==
-              ENGINE_RESULT_NOT_SUPPORTED);
-      REQUIRE(std::string(engine_get_last_error(default_handle.value)) ==
-              runtime[1]);
-#else
-      REQUIRE(engine_open_game(default_handle.value,
-                               ".artemis-debug-gate-test", "first.iet") ==
-              ENGINE_RESULT_OK);
-#endif
-    }
-
-    Handle handle;
-    engine_option_t runtime_option{};
-    runtime_option.key_utf8 = "runtime";
-    runtime_option.value_utf8 = runtime[0];
-    REQUIRE(engine_set_option(handle.value, &runtime_option) == ENGINE_RESULT_OK);
-
-    engine_option_t beta_option{};
-    beta_option.key_utf8 = "beta_runtime_allowed";
-    beta_option.value_utf8 = "0";
-    REQUIRE(engine_set_option(handle.value, &beta_option) == ENGINE_RESULT_OK);
-    REQUIRE(engine_open_game(handle.value, ".artemis-debug-gate-test",
-                             "first.iet") == ENGINE_RESULT_NOT_SUPPORTED);
-    REQUIRE(std::string(engine_get_last_error(handle.value)) == runtime[1]);
-
-    beta_option.value_utf8 = "1";
-    REQUIRE(engine_set_option(handle.value, &beta_option) == ENGINE_RESULT_OK);
-    REQUIRE(engine_open_game(handle.value, ".artemis-debug-gate-test",
-                             "first.iet") == ENGINE_RESULT_OK);
-  }
-
   // Artemis is a released provider and must stay available in Release builds
   // without a coffee entitlement or beta_runtime_allowed override.
   Handle artemis_handle;
@@ -550,6 +503,38 @@ TEST_CASE("Beta runtime providers require active coffee access") {
   REQUIRE(engine_open_game(artemis_handle.value, ".artemis-debug-gate-test",
                            "first.iet") == ENGINE_RESULT_OK);
 
+}
+
+TEST_CASE("RFVP is available without beta access") {
+  REQUIRE(engine_register_runtime_provider(&kRfvpGateProvider) == ENGINE_RESULT_OK);
+  for (const char* access : std::array<const char*, 3>{{nullptr, "0", "1"}}) {
+    for (bool asynchronous : {false, true}) {
+      Handle handle;
+      engine_option_t option{};
+      option.key_utf8 = "runtime";
+      option.value_utf8 = "rfvp";
+      REQUIRE(engine_set_option(handle.value, &option) == ENGINE_RESULT_OK);
+      if (access != nullptr) {
+        option.key_utf8 = "beta_runtime_allowed";
+        option.value_utf8 = access;
+        REQUIRE(engine_set_option(handle.value, &option) == ENGINE_RESULT_OK);
+      }
+      if (asynchronous) {
+        REQUIRE(engine_open_game_async(handle.value, ".artemis-debug-gate-test",
+                                       "first.iet") == ENGINE_RESULT_OK);
+        uint32_t state = ENGINE_STARTUP_STATE_RUNNING;
+        for (int attempt = 0; attempt < 1000 && state == ENGINE_STARTUP_STATE_RUNNING;
+             ++attempt) {
+          REQUIRE(engine_get_startup_state(handle.value, &state) == ENGINE_RESULT_OK);
+          std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        }
+        REQUIRE(state == ENGINE_STARTUP_STATE_SUCCEEDED);
+      } else {
+        REQUIRE(engine_open_game(handle.value, ".artemis-debug-gate-test",
+                                 "first.iet") == ENGINE_RESULT_OK);
+      }
+    }
+  }
 }
 
 TEST_CASE("versioned runtime provider is selected and routed end to end") {

@@ -292,6 +292,13 @@ class MacAppStoreAdHocSigningTests(unittest.TestCase):
             existing.write_bytes(plistlib.dumps({JIT: True}))
             subprocess.run(["codesign", "--force", "--sign", "-", "--entitlements", str(existing), str(helper)],
                            check=True, capture_output=True)
+            library = frameworks / "library.dylib"
+            # macOS 15 requires this opt-in to embed initial library
+            # entitlements. Re-signing must retain these existing keys too.
+            subprocess.run(["codesign", "--force", "--sign", "-", "--force-library-entitlements",
+                            "--entitlements", str(existing), str(library)], check=True, capture_output=True)
+            for architecture in ("x86_64", "arm64"):
+                self.assertEqual(SIGNING.read_entitlements(library, architecture), {JIT: True})
             (app / "Contents/Resources").mkdir()
             (app / "Contents/Resources/runtime").symlink_to("../Frameworks/renpy runtime", target_is_directory=True)
             (helper.parent / "python alias").symlink_to("python")
@@ -320,7 +327,7 @@ class MacAppStoreAdHocSigningTests(unittest.TestCase):
             for architecture in ("x86_64", "arm64"):
                 self.assertEqual(SIGNING.read_entitlements(helper, architecture), {**HELPER_ENTITLEMENTS, JIT: True})
                 self.assertEqual(SIGNING.read_entitlements(main, architecture), {SANDBOX: True, FILE_ACCESS: True})
-                self.assertNotIn(SANDBOX, SIGNING.read_entitlements(frameworks / "library.dylib", architecture))
+                self.assertEqual(SIGNING.read_entitlements(library, architecture), {JIT: True})
             # A valid signature without sandbox in just one slice must fail
             # locally even though the target arm64 slice remains correct.
             x86_helper = root / "x86-helper"

@@ -94,6 +94,8 @@ void RegisterAetherInternalRuntimeProviders();
 #include <godot_cpp/variant/variant.hpp>
 #include <godot_cpp/variant/vector2i.hpp>
 
+#include <spdlog/spdlog.h>
+
 #include <algorithm>
 #include <atomic>
 #include <array>
@@ -658,6 +660,50 @@ void LogGodotGpuUpdateProfile(const char *phase, uint32_t width,
             << (result ? 1 : 0) << " render_thread="
             << (on_render_thread ? 1 : 0);
     UtilityFunctions::print(String(message.str().c_str()));
+}
+
+bool ShouldLogMagesGpu(const char *event) {
+#if defined(AETHERKIRI_WITH_MAGES)
+    static const bool verbose = [] {
+        const char *value = std::getenv("AETHERKIRI_MAGES_GPU_TRACE");
+        return value != nullptr && std::strcmp(value, "1") == 0;
+    }();
+    if (verbose) return true;
+    // Bound normal per-draw logging before formatting or hashing uploads.
+    // Keep error diagnostics available after the initial draw sample.
+    if (std::strstr(event, "failed") || std::strstr(event, "rejected")) return true;
+    static std::mutex mutex;
+    static std::unordered_map<std::string, uint64_t> counts;
+    std::lock_guard<std::mutex> lock(mutex);
+    const uint64_t count = ++counts[event];
+    return count <= 32 || count % 4096 == 0;
+#else
+    (void)event;
+    return false;
+#endif
+}
+
+void LogMagesGpu(const char *event, const std::string &details) {
+#if defined(AETHERKIRI_WITH_MAGES)
+    spdlog::info("mages_gpu event={} {}", event != nullptr ? event : "unknown",
+                 details);
+#else
+    (void)event;
+    (void)details;
+#endif
+}
+
+uint32_t MagesGpuByteChecksum(const void *data, size_t size) {
+    const auto *bytes = static_cast<const uint8_t *>(data);
+    uint32_t hash = 2166136261u;
+    // A font atlas is tens of megabytes. Sample across the upload rather than
+    // scanning every byte on the render thread during synchronous creation.
+    const size_t step = std::max<size_t>(1, size / 4096);
+    for (size_t i = 0; i < size; i += step) {
+        hash ^= bytes[i];
+        hash *= 16777619u;
+    }
+    return hash;
 }
 
 bool GodotGpuBarrierShadowEnabled() {
@@ -6620,12 +6666,16 @@ bool RunGodotGpuOp(const std::shared_ptr<GodotGpuOp> &op, bool wait) {
     }
     std::unique_lock<std::mutex> done_lock(op->done_mutex);
     const auto wait_timeout =
-        op->type == GodotGpuOp::Type::ArtemisShader
+        (op->type == GodotGpuOp::Type::ArtemisShader ||
+         op->type == GodotGpuOp::Type::MagesCreate)
             ? std::chrono::seconds(10)
             : kGodotGpuSyncWaitTimeout;
     if (!op->done_cv.wait_for(done_lock, wait_timeout,
                               [&]() { return op->done; })) {
         g_gpu_sync_timeouts.fetch_add(1, std::memory_order_relaxed);
+        if (op->type == GodotGpuOp::Type::MagesCreate) {
+            LogMagesGpu("texture_create_failed", "render-thread operation timed out");
+        }
         return false;
     }
     return op->result;
@@ -6720,6 +6770,10 @@ PackedByteArray PackRgbaBytes(const void *pixels, uint32_t width,
     }
     const auto *src = static_cast<const uint8_t *>(pixels);
     const uint32_t src_stride = stride_bytes != 0 ? stride_bytes : tight_stride;
+    if (src_stride < tight_stride) {
+        data.resize(0);
+        return data;
+    }
     for (uint32_t y = 0; y < height; ++y) {
         std::memcpy(dst + static_cast<size_t>(y) * tight_stride,
                     src + static_cast<size_t>(y) * src_stride,
@@ -6750,9 +6804,9 @@ Ref<RDTextureFormat> MakeRgbaTextureFormat(uint32_t width, uint32_t height) {
 }
 
 PackedByteArray PackRgbaRegionBytes(const void *pixels, uint32_t stride_bytes,
-                                    uint32_t image_width, uint32_t left,
-                                    uint32_t top, uint32_t width,
-                                    uint32_t height) {
+                                    uint32_t image_width, uint32_t image_height,
+                                    uint32_t left, uint32_t top,
+                                    uint32_t width, uint32_t height) {
     PackedByteArray data;
     const uint32_t tight_stride = width * 4u;
     data.resize(static_cast<int64_t>(tight_stride) * height);
@@ -6766,6 +6820,12 @@ PackedByteArray PackRgbaRegionBytes(const void *pixels, uint32_t stride_bytes,
     const auto *src = static_cast<const uint8_t *>(pixels);
     const uint32_t src_stride =
         stride_bytes != 0 ? stride_bytes : image_width * 4u;
+    if (src_stride < image_width * 4u ||
+        left > image_width || width > image_width - left ||
+        top > image_height || height > image_height - top) {
+        data.resize(0);
+        return data;
+    }
     for (uint32_t y = 0; y < height; ++y) {
         const uint8_t *row =
             src + static_cast<size_t>(top + y) * src_stride +
@@ -7548,12 +7608,20 @@ uint64_t BridgeCreateRgba(uint32_t width, uint32_t height, const void *pixels,
     PackedByteArray packed_data;
     if (!use_device_clear) {
         packed_data = PackRgbaBytes(pixels, width, height, stride_bytes);
+        if (packed_data.is_empty() && width != 0 && height != 0) {
+            std::ostringstream log;
+            log << "width=" << width << " height=" << height
+                << " stride=" << stride_bytes << " tight_stride=" << width * 4u;
+            LogMagesGpu("texture_create_rejected", log.str());
+            return 0;
+        }
         initial_data.push_back(packed_data);
     }
     // A surface retired at this exact size can be initialized in place instead
     // of asking the driver for a new allocation, which is what keeps the
     // per-frame layer resizes from inflating the process graphics footprint.
     RID rid = TakeGpuTextureFromPool(width, height);
+    const bool pooled = rid.is_valid();
     if (rid.is_valid()) {
         if (use_device_clear) {
             if (rd->texture_clear(rid, Color(0.0, 0.0, 0.0, 0.0), 0, 1, 0,
@@ -7592,7 +7660,10 @@ uint64_t BridgeCreateRgba(uint32_t width, uint32_t height, const void *pixels,
             : 0u,
         create_ms, 0.0, 0.0, rid.is_valid(),
         on_render_thread);
-    if (!rid.is_valid()) return 0;
+    if (!rid.is_valid()) {
+        LogMagesGpu("texture_create_failed", "texture allocation or initialization returned invalid RID");
+        return 0;
+    }
 
     GodotGpuTextureRecord record;
     record.rid = rid;
@@ -7608,6 +7679,17 @@ uint64_t BridgeCreateRgba(uint32_t width, uint32_t height, const void *pixels,
     g_gpu_texture_bytes_created.fetch_add(
         static_cast<uint64_t>(width) * height * 4u,
         std::memory_order_relaxed);
+    if (ShouldLogMagesGpu("texture_created")) {
+        std::ostringstream log;
+        log << "texture_id=" << id << " rid=" << rid.get_id()
+            << " size=" << width << "x" << height
+            << " stride=" << (stride_bytes != 0 ? stride_bytes : width * 4u)
+            << " bytes=" << (pixels != nullptr ? packed_data.size() : 0)
+            << " sample_checksum=" << (pixels != nullptr
+                ? MagesGpuByteChecksum(packed_data.ptr(), packed_data.size()) : 0u)
+            << " pooled=" << (pooled ? 1 : 0);
+        LogMagesGpu("texture_created", log.str());
+    }
     return id;
 }
 
@@ -7799,11 +7881,15 @@ bool BridgeUpdateRgba(uint64_t texture, const void *pixels,
         region_op->type = GodotGpuOp::Type::Update;
         region_op->dst = record.rid;
         region_op->data = PackRgbaRegionBytes(
-            pixels, stride_bytes, record.width,
+            pixels, stride_bytes, record.width, record.height,
             static_cast<uint32_t>(region_left),
             static_cast<uint32_t>(region_top),
             static_cast<uint32_t>(region_right - region_left),
             static_cast<uint32_t>(region_bottom - region_top));
+        if (region_op->data.is_empty()) {
+            LogMagesGpu("texture_update_rejected", "invalid region dimensions or source stride");
+            return false;
+        }
         region_op->region =
             tTVPRect(region_left, region_top, region_right, region_bottom);
         region_op->has_region = true;
@@ -7818,6 +7904,14 @@ bool BridgeUpdateRgba(uint64_t texture, const void *pixels,
     const auto bridge_started = std::chrono::steady_clock::now();
     PackedByteArray data =
         PackRgbaBytes(pixels, record.width, record.height, stride_bytes);
+    if (data.is_empty()) {
+        std::ostringstream log;
+        log << "texture_id=" << texture << " rid=" << record.rid.get_id()
+            << " size=" << record.width << "x" << record.height
+            << " stride=" << stride_bytes;
+        LogMagesGpu("texture_update_rejected", log.str());
+        return false;
+    }
     const auto packed_at = std::chrono::steady_clock::now();
     const double pack_ms = std::chrono::duration<double, std::milli>(
                                packed_at - bridge_started)
@@ -7913,6 +8007,15 @@ bool BridgeUpdateRgba(uint64_t texture, const void *pixels,
     op->profile_height = record.height;
     op->profile_pack_ms = pack_ms;
     op->profile_enqueued_at = packed_at;
+    if (ShouldLogMagesGpu("texture_update_queued")) {
+        std::ostringstream log;
+        log << "texture_id=" << texture << " rid=" << record.rid.get_id()
+            << " size=" << record.width << "x" << record.height
+            << " stride=" << (stride_bytes != 0 ? stride_bytes : record.width * 4u)
+            << " bytes=" << data.size()
+            << " sample_checksum=" << MagesGpuByteChecksum(data.ptr(), data.size());
+        LogMagesGpu("texture_update_queued", log.str());
+    }
     const bool result = RunGodotGpuOpAsync(op);
     const double bridge_ms = std::chrono::duration<double, std::milli>(
                                  std::chrono::steady_clock::now() -
@@ -9337,6 +9440,16 @@ int32_t BridgeMagesDraw(const impacto_host_gpu_draw_t* request) {
     draw->clear_depth = request->clear_depth != 0; draw->cull = request->cull;
     std::copy(request->clip,request->clip+4,draw->clip);
     op->mages_draw = std::move(draw);
+    if (ShouldLogMagesGpu("draw_queued")) {
+        std::ostringstream log;
+        log << "target_id=" << request->target << " target_rid=" << op->dst.get_id()
+            << " textures=" << request->textures[0] << "," << request->textures[1]
+            << "," << request->textures[2] << "," << request->textures[3]
+            << " vertex_count=" << request->vertex_count
+            << " floats=" << request->vertex_float_count
+            << " uniform_bytes=" << request->uniform_bytes;
+        LogMagesGpu("draw_queued", log.str());
+    }
     return RunGodotGpuOpAsync(op) ? 1 : 0;
 }
 void RegisterMagesGpuBridge() {
@@ -9345,7 +9458,13 @@ void RegisterMagesGpuBridge() {
     gpu.create_rgba = [](uint32_t w,uint32_t h,const void* pixels,uint32_t stride) -> uint64_t {
         auto op = std::make_shared<GodotGpuOp>();
         op->type = GodotGpuOp::Type::MagesCreate; op->size = Vector3(w,h,1);
-        if(pixels) op->data = PackRgbaBytes(pixels,w,h,stride);
+        if(pixels) {
+            op->data = PackRgbaBytes(pixels,w,h,stride);
+            if (op->data.is_empty()) {
+                LogMagesGpu("texture_create_rejected", "invalid dimensions or source stride");
+                return 0;
+            }
+        }
         return RunGodotGpuOpSync(op) ? op->imported_texture : 0;
     };
     gpu.release_texture = BridgeReleaseTexture;

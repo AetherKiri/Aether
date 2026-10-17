@@ -3,6 +3,7 @@
 // build-tree copy of rfvp so no private Rust layout crosses the C ABI.
 use crate::{
     font::Font,
+    host_api::std_fs::StdDir,
     script::{
         global::GLOBAL,
         parser::{Nls, Parser},
@@ -31,7 +32,7 @@ use std::{
     path::{Path, PathBuf},
     ptr,
     str::FromStr,
-    sync::Mutex,
+    sync::{Arc, Mutex},
     time::{Duration, Instant},
 };
 
@@ -279,7 +280,10 @@ impl Core {
             GameData::init_default_in_place(storage.as_mut_ptr());
             storage.assume_init()
         };
-        world.vfs = Vfs::new(nls)?;
+        world.vfs = Vfs::from_dir(nls, Arc::new(StdDir::new(root)))?;
+        world.save_manager.set_storage(Some(Arc::new(StdDir::new(
+            save_root().expect("rfvp save root not installed"),
+        ))));
         world.nls = nls;
         let size = parser.get_screen_size();
         world.set_window(Window::new(size, 1.0));
@@ -364,10 +368,12 @@ impl Core {
         self.scheduler.execute(gd);
         self.scene.apply_scene_action(SceneAction::LateUpdate, gd);
         self.scene.apply_scene_action(SceneAction::EndFrame, gd);
-        self.renderer.render_frame(&gd.motion_manager)?;
         gd.inputs_manager.frame_reset();
-        self.serial = self.serial.wrapping_add(1).max(1);
+        // Match upstream: SaveCreate captures the frame last shown, before a
+        // script's newly opened menu replaces the gameplay thumbnail.
         self.save_capture()?;
+        self.renderer.render_frame(&self.world.motion_manager)?;
+        self.serial = self.serial.wrapping_add(1).max(1);
         Ok(
             if self.world.get_lock_scripter() && self.world.get_main_thread_exited() {
                 1
@@ -396,6 +402,8 @@ impl Core {
             .unwrap();
             let thumbnail =
                 image::imageops::resize(&source, w, h, image::imageops::FilterType::Triangle);
+            gd.save_manager
+                .set_wall_time(Some(crate::utils::file::local_wall_time()));
             let state = SaveStateSnapshotV1::capture(gd);
             if slot == u32::MAX {
                 gd.save_manager.finalize_local_savedata_prepare(
@@ -434,8 +442,8 @@ impl Core {
                 .map_or(Duration::ZERO, |t| t.elapsed())
         };
         self.world.video_manager.pause_host(paused, elapsed);
-        self.world.bgm_player_mut().pause_host(paused);
-        self.world.se_player_mut().pause_host(paused);
+        // BGM, effects and movie soundtracks share the upstream audio backend.
+        self.world.audio_manager().backend().pause_host(paused);
         self.world.inputs_manager.cancel_host_input();
         self.paused = paused;
         Ok(0)

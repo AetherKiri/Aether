@@ -9,11 +9,25 @@ const DIRECTORY_RUNTIME_KINDS := [
     "catsystem2",
     "minori",
     "onscripter",
+    "yuris",
     "siglus",
     "softpal",
     "tyranoscript",
     "wa2",
     "xsystem4",
+]
+const YURIS_USER_STARTUP_CANDIDATES := [
+    # The stock YU-RIS package enters through this script. It owns the
+    # vendor logo/fade and title screen; start.txt is the fallback for older
+    # projects that expose only their feature menu.
+    "data/script/UserScript/SCENARIO_START.txt",
+    "data/script/UserScript/SCENARIO_START.yst",
+    "data/script/userscript/SCENARIO_START.txt",
+    "data/script/userscript/SCENARIO_START.yst",
+    "data/script/UserScript/start.txt",
+    "data/script/UserScript/start.yst",
+    "data/script/userscript/start.txt",
+    "data/script/userscript/start.yst",
 ]
 const RFVP_ENCODING_FIELD := "rfvpEncoding"
 const RFVP_ENCODINGS := ["sjis", "gbk", "utf8"]
@@ -77,6 +91,23 @@ static func resolve_for_runtime(
 
 static func runtime_uses_directory(runtime_kind: String) -> bool:
     return DIRECTORY_RUNTIME_KINDS.has(runtime_kind.to_lower())
+
+
+static func default_yuris_startup_script(game_root: String) -> String:
+    # YU-RIS projects conventionally expose their first interactive screen as
+    # data/script/UserScript/start.txt.  The native engine's SYSTEM_START
+    # bootstrap is useful for authored games, but the stock system demo is
+    # entered through this UserScript menu.  Keep this discovery here so the
+    # headful launcher and probes share the same path convention without
+    # hard-coding a particular package.
+    var root := _normalize_path(game_root)
+    if root.is_empty():
+        return ""
+    for relative_path in YURIS_USER_STARTUP_CANDIDATES:
+        var candidate := root.path_join(relative_path)
+        if FileAccess.file_exists(candidate):
+            return candidate
+    return ""
 
 
 static func is_supported_file(path: String) -> bool:

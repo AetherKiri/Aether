@@ -718,6 +718,9 @@ jobs:
           submodules: false
           persist-credentials: false
 
+      - name: Test Mac App Store nested signing
+        run: python3 -m unittest discover -s tests/python -p test_macos_app_store_signing.py -v
+
       - name: Initialize private runtime submodules
         if: env.AETHERKIRI_WITH_INTERNAL == 'true'
         env:

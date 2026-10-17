@@ -111,21 +111,6 @@ else()
     add_library(aether_kiri_godot SHARED ${AETHERKIRI_GODOT_SOURCES})
 endif()
 
-if(APPLE AND AETHERKIRI_ENABLE_MAGES)
-    # The MAGES. runtime pulls in SDL3, which weak-links Metal/QuartzCore/
-    # GameController on Apple platforms (WEAK_FRAMEWORK), while this extension
-    # strong-links the same frameworks via raw -framework flags (FRAMEWORK).
-    # CMake refuses to mix both features for one item on the same target.
-    # The per-library LINK_LIBRARY_OVERRIDE_<ITEM> target properties (see
-    # cmComputeLinkDepends.cxx) force the strong FRAMEWORK feature for these
-    # items regardless of which dependency introduced the weak link.
-    foreach(_fw Metal QuartzCore GameController CoreHaptics CoreAudio
-                 CoreVideo AudioToolbox IOKit AppKit)
-        set_property(TARGET aether_kiri_godot
-            PROPERTY LINK_LIBRARY_OVERRIDE_${_fw} FRAMEWORK)
-    endforeach()
-endif()
-
 if(AETHERKIRI_ENABLE_FLASH AND NOT (WEB OR EMSCRIPTEN))
     add_subdirectory("${CMAKE_SOURCE_DIR}/bridge/flash_runtime" "${CMAKE_BINARY_DIR}/bridge/flash_runtime")
     target_link_libraries(aether_kiri_godot PRIVATE aether_flash_native)

@@ -410,31 +410,17 @@ combine_ios_static_extension() {
         fi
     done < <(find "$vcpkg_lib_dir" -maxdepth 1 -name '*.framework' | sort)
 
-    # MAGES. runtime (impacto) archives. impacto links its own SDL3 while the
-    # rest of the extension links the renamed SDL2 (AetherSDL2_*) and Godot
-    # embeds yet another SDL3. Rename impacto's SDL3 symbols (AetherSDL3_*)
-    # so the three copies stay isolated; libSDL3.a is renamed alongside and
-    # therefore excluded from the vcpkg sweep above.
+    # Embedded MAGES uses Godot's platform services and has no SDL3 runtime.
+    # libSDL3.a stays excluded from the dependency sweep above.
     local mages_impacto_dir="$CMAKE_BUILD_DIR/aethermages-impacto"
+    if [[ -f "$CMAKE_BUILD_DIR/bridge/mages_runtime/libaether_mages_runtime.a" &&
+          ! -f "$mages_impacto_dir/libimpacto.a" ]]; then
+        echo "Error: MAGES provider was built but its libimpacto.a engine archive is missing." >&2
+        exit 1
+    fi
     if [[ -f "$mages_impacto_dir/libimpacto.a" ]]; then
-        if ! command -v llvm-objcopy >/dev/null 2>&1 && \
-           [[ ! -x /opt/homebrew/opt/llvm/bin/llvm-objcopy ]] && \
-           [[ ! -x /usr/local/opt/llvm/bin/llvm-objcopy ]]; then
-            if ! command -v brew >/dev/null 2>&1; then
-                echo "Error: MAGES SDL3 isolation requires LLVM (llvm-objcopy and llvm-nm)." >&2
-                exit 1
-            fi
-            brew install llvm
-        fi
-        local mages_sdl3_dir="$CMAKE_BUILD_DIR/mages-sdl3-renamed"
-        python3 "$PROJECT_ROOT/tools/isolate_ios_sdl.py" \
-            --rename-output "$mages_sdl3_dir" \
-            --rename-archive "$vcpkg_lib_dir/libSDL3.a" \
-            --rename-archive "$mages_impacto_dir/libimpacto.a" \
-            --rename-prefix AetherSDL3
         libs+=(
-            "$mages_sdl3_dir/libSDL3.a"
-            "$mages_sdl3_dir/libimpacto.a"
+            "$mages_impacto_dir/libimpacto.a"
             "$CMAKE_BUILD_DIR/bridge/mages_runtime/libaether_mages_runtime.a"
             "$mages_impacto_dir/libclHCA.a"
             "$mages_impacto_dir/libminilua.a"

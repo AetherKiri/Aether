@@ -1,7 +1,7 @@
 extends SceneTree
 
 # Run in a project that loads aether_kiri.gdextension using a RenderingDevice:
-# godot --path <project> --rendering-method mobile --script <this-file> -- <game-root> [frames] [output-dir]
+# godot --path <project> --rendering-method mobile --script <this-file> -- <game-root> [frames] [output-dir] [sessions]
 # A real resource directory is required; no game data is included in the test.
 func _initialize() -> void:
 	call_deferred("run")
@@ -12,9 +12,19 @@ func fail(message: String) -> void:
 
 func run() -> void:
 	var args := OS.get_cmdline_user_args()
+	var sessions := 1
+	if args.size() > 3:
+		sessions = maxi(1, int(args[3]))
+	for session in sessions:
+		if not await run_session(args, session):
+			quit(1)
+			return
+	quit(0)
+
+func run_session(args: PackedStringArray, session: int) -> bool:
 	if args.is_empty() or not ClassDB.class_exists("AetherRuntimePlayer"):
 		fail("MAGES smoke requires a game root and the Aether extension")
-		return
+		return false
 	var player = ClassDB.instantiate("AetherRuntimePlayer")
 	var writable := OS.get_cache_dir().path_join("aether-mages-gpu-smoke")
 	if args.size() > 2:
@@ -22,7 +32,7 @@ func run() -> void:
 	DirAccess.make_dir_recursive_absolute(writable)
 	if not player.initialize_engine(writable, writable):
 		fail(player.get_last_error())
-		return
+		return false
 	player.set_frame_enhancement_enabled(false)
 	player.set_frame_native_output_enabled(true)
 	player.set_render_backend("godot")
@@ -30,7 +40,7 @@ func run() -> void:
 	if player.open_game(args[0], false) != 0:
 		fail("open: " + player.get_last_error())
 		player.destroy_engine()
-		return
+		return false
 	var display := TextureRect.new()
 	display.size = Vector2(960,540)
 	root.add_child(display)
@@ -42,7 +52,7 @@ func run() -> void:
 		if player.tick(1.0 / 60.0) != 0:
 			fail("tick: " + player.get_last_error())
 			player.destroy_engine()
-			return
+			return false
 		display.texture = player.update_frame_texture()
 		if frame >= 180 and frame % 180 == 0:
 			player.send_key_event(true, 13, 0, 0)
@@ -54,21 +64,21 @@ func run() -> void:
 			if display.texture == null:
 				fail("no native frame texture")
 				player.destroy_engine()
-				return
+				return false
 			var image: Image = display.texture.get_image()
 			if image == null or image.is_empty():
 				fail("native texture readback is empty")
 				player.destroy_engine()
-				return
+				return false
 			var reference := image.get_pixel(0, 0)
 			for y in range(0, image.get_height(), 16):
 				for x in range(0, image.get_width(), 16):
 					var sample := image.get_pixel(x, y)
 					if absf(sample.r - reference.r) + absf(sample.g - reference.g) + absf(sample.b - reference.b) > 0.05:
 						has_content = true
-			image.save_png(writable + "/frame_%04d.png" % frame)
+			image.save_png(writable + "/session_%d_frame_%04d.png" % [session, frame])
 	var renderer: String = player.get_renderer_info()
-	print("MAGES_SMOKE backend=", player.get_frame_texture_backend(), " renderer=", renderer)
+	print("MAGES_SMOKE session=", session, " backend=", player.get_frame_texture_backend(), " renderer=", renderer)
 	print("MAGES_SMOKE debug=", player.get_plugin_debug_info())
 	var passed: bool = player.get_frame_texture_backend().begins_with("godot_native_gpu")
 	passed = passed and renderer.contains("bridge_failed=0 ")
@@ -76,4 +86,6 @@ func run() -> void:
 	display.texture = null
 	player.destroy_engine()
 	player.free()
-	quit(0 if passed else 1)
+	display.queue_free()
+	await process_frame
+	return passed

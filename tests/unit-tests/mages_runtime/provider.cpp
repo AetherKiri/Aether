@@ -173,3 +173,69 @@ TEST_CASE("MAGES. launcher publishes native textures without presentation readba
         CHECK(GpuRecorder::textures.empty());
     }
 }
+
+TEST_CASE("MAGES. profile errors return to the host and allow another open") {
+    TempDir data, root, writable;
+    const auto definitions = data.path / "gamedefinitions.lua";
+    const char* failedGame = "launcher";
+    SECTION("invalid Lua registry") {
+        std::ofstream(definitions) << "root.GameDefinitions = { broken syntax";
+    }
+    SECTION("profile fails before audio and video creation") {
+        fs::copy_file(fs::path(AETHERKIRI_MAGES_TEST_DATA_DIR) / "gamedefinitions.lua", definitions);
+        data.touch("profiles/mo8/game.lua");
+        std::ofstream(data.path / "profiles/mo8/game.lua") <<
+            "root.LayerCount = 1; root.GameFeatures = GameFeature.Audio | GameFeature.Video;";
+        failedGame = "mo8";
+    }
+    impacto_host_desc_t desc{};
+    desc.struct_size = sizeof(desc); desc.api_version = IMPACTO_HOST_API_VERSION;
+    const auto dataPath = data.path.string(), wr = writable.path.string();
+    desc.data_dir_utf8 = dataPath.c_str(); desc.writable_dir_utf8 = wr.c_str();
+    desc.initial_width = 640; desc.initial_height = 360;
+    void* host = nullptr;
+    REQUIRE(impacto_host_create(&desc, &host) == IMPACTO_HOST_OK);
+    auto gpu = GpuRecorder::callbacks();
+    REQUIRE(impacto_host_set_gpu_callbacks(host, &gpu) == IMPACTO_HOST_OK);
+    CHECK(impacto_host_open_game(host, root.path.string().c_str(), failedGame, nullptr) != IMPACTO_HOST_OK);
+    CHECK(GpuRecorder::textures.empty());
+    fs::copy_file(fs::path(AETHERKIRI_MAGES_TEST_DATA_DIR) / "gamedefinitions.lua",
+                  definitions, fs::copy_options::overwrite_existing);
+    REQUIRE(impacto_host_open_game(host, root.path.string().c_str(), "launcher", nullptr) == IMPACTO_HOST_OK);
+    REQUIRE(impacto_host_tick(host, 16) == IMPACTO_HOST_OK);
+    impacto_host_destroy(host);
+    CHECK(GpuRecorder::textures.empty());
+}
+
+TEST_CASE("MAGES. GPU startup failures release textures and permit reopening") {
+    TempDir root, writable;
+    impacto_host_desc_t desc{};
+    desc.struct_size = sizeof(desc); desc.api_version = IMPACTO_HOST_API_VERSION;
+    const auto wr = writable.path.string();
+    desc.data_dir_utf8 = AETHERKIRI_MAGES_TEST_DATA_DIR;
+    desc.writable_dir_utf8 = wr.c_str();
+    desc.initial_width = 640; desc.initial_height = 360;
+    void* host = nullptr;
+    REQUIRE(impacto_host_create(&desc, &host) == IMPACTO_HOST_OK);
+    auto gpu = GpuRecorder::callbacks();
+    SECTION("first frame publish failure") {
+        gpu.copy_rgba = [](uint64_t, uint64_t, uint32_t, uint32_t) -> int32_t { return 0; };
+    }
+    SECTION("partial renderer allocation failure") {
+        gpu.create_rgba = [](uint32_t w, uint32_t h, const void*, uint32_t) -> uint64_t {
+            if (!GpuRecorder::textures.empty()) return 0;
+            const auto id = GpuRecorder::next++;
+            GpuRecorder::textures[id] = {w, h};
+            return id;
+        };
+    }
+    REQUIRE(impacto_host_set_gpu_callbacks(host, &gpu) == IMPACTO_HOST_OK);
+    CHECK(impacto_host_open_game(host, root.path.string().c_str(), "launcher", nullptr) != IMPACTO_HOST_OK);
+    CHECK(GpuRecorder::textures.empty());
+    gpu = GpuRecorder::callbacks();
+    REQUIRE(impacto_host_set_gpu_callbacks(host, &gpu) == IMPACTO_HOST_OK);
+    REQUIRE(impacto_host_open_game(host, root.path.string().c_str(), "launcher", nullptr) == IMPACTO_HOST_OK);
+    REQUIRE(impacto_host_tick(host, 16) == IMPACTO_HOST_OK);
+    impacto_host_destroy(host);
+    CHECK(GpuRecorder::textures.empty());
+}

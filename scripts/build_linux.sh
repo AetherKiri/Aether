@@ -130,8 +130,8 @@ stage_all_vcpkg_runtime_libraries() {
     local current_count
     local library
 
-    # Include the in-tree SDL3 images before discovering their dependencies.
-    for library in libimpacto_host.so libAetherSDL3.so; do
+    # Include the embedded engine before discovering its dependencies.
+    for library in libimpacto_host.so; do
         if [[ -f "$CMAKE_BUILD_DIR/aethermages-impacto/$library" ]]; then
             cp -Lf "$CMAKE_BUILD_DIR/aethermages-impacto/$library" "$GODOT_BIN_DIR/"
         fi

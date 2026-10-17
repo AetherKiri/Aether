@@ -36,17 +36,11 @@ add_subdirectory("${MAGES_HOST_SOURCE}" "${CMAKE_BINARY_DIR}/aethermages-impacto
 
 # LibAtrac9 enables IPO (LTO) when the toolchain supports it. Bitcode members
 # would survive into the merged iOS extension archive where llvm-objcopy (the
-# SDL symbol isolation pass) rejects them as invalid object files. The decoder
+# host's SDL2 symbol isolation pass) rejects them as invalid object files. The decoder
 # is small; disabling LTO has no measurable cost.
 if(TARGET atrac9)
     set_property(TARGET atrac9 PROPERTY INTERPROCEDURAL_OPTIMIZATION FALSE)
 endif()
-
-# NOTE: Apple framework link-feature conflicts (SDL3 weak-links Metal/
-# QuartzCore/GameController while the Godot extension strong-links them) are
-# resolved via the LINK_LIBRARY_OVERRIDE property set on aether_kiri_godot in
-# bridge/godot_extension/CMakeLists.txt. SDL3's imported targets are not
-# GLOBAL, so they cannot be safely rewritten from this parent scope.
 
 # Stage the engine data tree impacto boots from (the host bridge chdirs into
 # the data dir, so shaders/ must sit next to gamedefinitions.lua; in the
@@ -105,8 +99,7 @@ target_link_libraries(aether_mages_runtime PUBLIC
 )
 add_dependencies(aether_mages_runtime aether_mages_stage_data)
 
-# On macOS, impacto is built as a separate SHARED library to isolate SDL3
-# symbols from the SDL2 the other runtimes link. Stage the .dylib into the
+# On macOS, impacto is built as a separate SHARED library. Stage it into the
 # Godot export bin directory (same location as aether_kiri_godot.dylib) so
 # the extension can load it at runtime via @rpath.
 if(APPLE AND NOT IOS)

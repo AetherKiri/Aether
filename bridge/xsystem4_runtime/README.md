@@ -1,8 +1,11 @@
 # AliceSoft System 4 native runtime
 
-`packages/xsystem4` is the public [AetherKiri fork](https://github.com/AetherKiri/xsystem4),
-with native embedding hooks. Its recursive `subprojects/libsys4` dependency is
-pinned by the fork. Initialize both with:
+`packages/xsystem4` uses the dedicated
+[`aether` branch](https://github.com/AetherKiri/xsystem4/tree/aether) of the public
+AetherKiri fork for native embedding hooks. The fork's default `master` branch
+is reserved for upstream synchronization. Aether pins an exact commit from
+`aether`, including its recursive `subprojects/libsys4` dependency. Initialize
+both with:
 
 ```sh
 git submodule update --init --recursive packages/xsystem4

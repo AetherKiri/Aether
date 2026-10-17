@@ -12,6 +12,7 @@ find_package(SndFile CONFIG REQUIRED)
 find_package(cglm CONFIG REQUIRED)
 find_package(unofficial-libffi CONFIG REQUIRED)
 find_package(uchardet CONFIG REQUIRED)
+find_package(libjpeg-turbo CONFIG REQUIRED)
 find_package(FFMPEG REQUIRED)
 if(APPLE)
     list(REMOVE_ITEM FFMPEG_LIBRARIES "-pthread")
@@ -21,6 +22,16 @@ find_package(FLEX REQUIRED)
 find_package(BISON REQUIRED)
 set(CMAKE_DISABLE_FIND_PACKAGE_libdeflate TRUE)
 add_subdirectory("${AETHERKIRI_XSYSTEM4_DIR}/subprojects/libsys4" "${CMAKE_CURRENT_BINARY_DIR}/libsys4")
+
+# libsys4 assumes a static TurboJPEG target, but Linux triplets export the
+# shared target. Adapt both the archive's direct and transitive dependencies.
+foreach(property LINK_LIBRARIES INTERFACE_LINK_LIBRARIES)
+    get_target_property(value sys4 ${property})
+    string(REPLACE "libjpeg-turbo::turbojpeg-static"
+        "$<IF:$<TARGET_EXISTS:libjpeg-turbo::turbojpeg>,libjpeg-turbo::turbojpeg,libjpeg-turbo::turbojpeg-static>"
+        value "${value}")
+    set_property(TARGET sys4 PROPERTY ${property} "${value}")
+endforeach()
 
 set(generated "${CMAKE_CURRENT_BINARY_DIR}/generated")
 file(MAKE_DIRECTORY "${generated}")

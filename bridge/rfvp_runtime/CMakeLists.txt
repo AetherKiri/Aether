@@ -61,7 +61,8 @@ list(APPEND rfvp_inputs "${CMAKE_CURRENT_SOURCE_DIR}/Cargo.lock"
     "${AETHERKIRI_RFVP_PROJECT_ROOT}/apps/godot_app/assets/fonts/aetherkiri-runtime-cjk.otf")
 set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS ${rfvp_inputs})
 add_custom_command(OUTPUT "${rfvp_library}"
-    COMMAND "${RFVP_CARGO}" build --locked --manifest-path "${rfvp_prepared}/Cargo.toml"
+    COMMAND "${CMAKE_COMMAND}" -E env "RUSTC=${RFVP_RUSTC}"
+        "${RFVP_CARGO}" build --locked --manifest-path "${rfvp_prepared}/Cargo.toml"
         -p rfvp --lib --no-default-features --features "${rfvp_features}"
         --target "${AETHERKIRI_RFVP_RUST_TARGET}" ${rfvp_profile_args}
     DEPENDS ${rfvp_inputs}
@@ -97,7 +98,8 @@ if(PROJECT_IS_TOP_LEVEL OR ENABLE_TESTS)
     add_test(NAME rfvp-provider COMMAND rfvp-provider-test)
     set_tests_properties(rfvp-provider PROPERTIES TIMEOUT 60)
     add_test(NAME rfvp-host-regressions
-        COMMAND "${RFVP_CARGO}" test --locked --manifest-path "${rfvp_prepared}/Cargo.toml"
+        COMMAND "${CMAKE_COMMAND}" -E env "RUSTC=${RFVP_RUSTC}"
+            "${RFVP_CARGO}" test --locked --manifest-path "${rfvp_prepared}/Cargo.toml"
             -p rfvp --lib --no-default-features --features "${rfvp_features}"
             --target "${AETHERKIRI_RFVP_RUST_TARGET}" ${rfvp_profile_args}
             host_ -- --test-threads=1)

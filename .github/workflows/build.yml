@@ -377,6 +377,7 @@ jobs:
     runs-on: macos-latest
     env:
       FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: 'true'
+      AETHERKIRI_ENABLE_RFVP: 'ON'
       CCACHE_DIR: ${{ github.workspace }}/.ccache
       GODOT_RELEASE: 4.7.2-stable
       GODOT_TEMPLATE_VERSION: 4.7.2.stable
@@ -557,6 +558,8 @@ jobs:
           export CMAKE_C_COMPILER_LAUNCHER=ccache
           export CMAKE_CXX_COMPILER_LAUNCHER=ccache
           ./build.sh ios release --jobs=4 --package-ipa 2>&1 | tee "${RUNNER_TEMP}/ios-release-build.log"
+          grep -Fx 'AETHERKIRI_ENABLE_RFVP:BOOL=ON' out/ios/release/CMakeCache.txt
+          test -s out/ios/release/bridge/rfvp_runtime/libaether_rfvp_runtime.a
           if [[ "$AETHERKIRI_WITH_INTERNAL" == "true" ]]; then
             grep -Fx 'AETHERKIRI_ENABLE_SOFTPAL_RUNTIME:BOOL=ON' \
               out/ios/release/CMakeCache.txt
@@ -637,6 +640,8 @@ jobs:
           export CMAKE_C_COMPILER_LAUNCHER=ccache
           export CMAKE_CXX_COMPILER_LAUNCHER=ccache
           ./build.sh ios debug --jobs=4 --package-ipa 2>&1 | tee "${RUNNER_TEMP}/ios-debug-build.log"
+          grep -Fx 'AETHERKIRI_ENABLE_RFVP:BOOL=ON' out/ios/debug/CMakeCache.txt
+          test -s out/ios/debug/bridge/rfvp_runtime/libaether_rfvp_runtime.a
           if grep -E "SCRIPT ERROR|Failed to load script|Can't open GDExtension|Can't open dynamic library" "${RUNNER_TEMP}/ios-debug-build.log"; then
             echo "Godot iOS debug export logged script or GDExtension load errors." >&2
             exit 1
@@ -689,6 +694,7 @@ jobs:
     runs-on: macos-15
     env:
       FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: 'true'
+      AETHERKIRI_ENABLE_RFVP: 'ON'
       CCACHE_DIR: ${{ github.workspace }}/.ccache
       GODOT_RELEASE: 4.7.2-stable
       GODOT_TEMPLATE_VERSION: 4.7.2.stable
@@ -879,6 +885,8 @@ jobs:
           export CMAKE_C_COMPILER_LAUNCHER=ccache
           export CMAKE_CXX_COMPILER_LAUNCHER=ccache
           ./build.sh macos release --jobs=4
+          grep -Fx 'AETHERKIRI_ENABLE_RFVP:BOOL=ON' out/macos/release/CMakeCache.txt
+          test -s out/macos/release/bridge/rfvp_runtime/libaether_rfvp_runtime.a
           if [[ "$AETHERKIRI_WITH_INTERNAL" == "true" ]]; then
             grep -Fx 'AETHERKIRI_ENABLE_SOFTPAL_RUNTIME:BOOL=ON' \
               out/macos/release/CMakeCache.txt
@@ -900,6 +908,8 @@ jobs:
           export CMAKE_C_COMPILER_LAUNCHER=ccache
           export CMAKE_CXX_COMPILER_LAUNCHER=ccache
           ./build.sh macos debug --jobs=4
+          grep -Fx 'AETHERKIRI_ENABLE_RFVP:BOOL=ON' out/macos/debug/CMakeCache.txt
+          test -s out/macos/debug/bridge/rfvp_runtime/libaether_rfvp_runtime.a
 
       - name: Run OnscripterYuri Godot smoke test
         env:
@@ -1195,12 +1205,26 @@ jobs:
             2>&1 | tee "$RUNNER_TEMP/linux-access.log"
           grep -Fx 'IAP_CATALOG_LIMIT_OK' "$RUNNER_TEMP/linux-access.log"
 
+      - name: Run game import metadata tests
+        env:
+          LD_LIBRARY_PATH: ${{ github.workspace }}/apps/godot_app/bin/linux/debug
+        run: |
+          for test in game_metadata game_launch_entry; do
+            timeout 60 "$GODOT_BIN" --headless --path apps/godot_app \
+              --script "res://scripts/${test}_test.gd" \
+              2>&1 | tee "$RUNNER_TEMP/${test}.log"
+            grep -Fx "${test}_test: PASS" "$RUNNER_TEMP/${test}.log"
+            if grep -E 'SCRIPT ERROR:|^ERROR:' "$RUNNER_TEMP/${test}.log"; then
+              exit 1
+            fi
+          done
+
       - name: Run Linux media library tests
         env:
           LD_LIBRARY_PATH: ${{ github.workspace }}/apps/godot_app/bin/linux/debug
         run: |
           python3 -m unittest discover -s tests/python -p test_renpy_host.py
-          for test in video_library_folders video_library_ui video_import_permissions flash_library tyrano_library renpy_library; do
+          for test in video_library_folders video_library_ui video_import_permissions flash_library tyrano_library renpy_library rfvp_import; do
             timeout 60 "$GODOT_BIN" --headless --path apps/godot_app \
               --script "res://tests/${test}_test.gd" \
               2>&1 | tee "$RUNNER_TEMP/${test}.log"

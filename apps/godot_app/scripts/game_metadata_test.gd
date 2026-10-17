@@ -98,6 +98,12 @@ func _init() -> void:
         "invalid HCB does not claim another runtime"
     )
 
+    _write_hcb(rfvp_root.path_join("Visible.hcb"), 7)
+    _write_hcb(rfvp_root.path_join(".Hidden.hcb"), 7)
+    _expect_true(GameMetadata.hcb_launch_files(rfvp_root).has(".Hidden.hcb"), "hidden HCB selectable")
+    _expect_equal(String(GameMetadata.inspect(rfvp_root).launchFile), "Visible.hcb", "ordinary default without language guessing")
+    _expect_equal(String(GameMetadata.inspect(rfvp_root.path_join(".Hidden.hcb")).launchFile), ".Hidden.hcb", "explicit hidden script retained")
+
     _remove_tree(fixture_root)
     if failures == 0:
         print("game_metadata_test: PASS")

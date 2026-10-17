@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Inspect submodules updated in a target commit (or latest commit on main),
+Inspect submodules updated in a commit range (or a single target commit),
 check if their remote tracking/main branches have newer commits than currently pinned,
 and optionally update git index and prepare branch/PR information.
 """
@@ -200,7 +200,7 @@ def get_remote_branch_and_head(url: str, configured_branch: Optional[str] = None
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Inspect and update submodules that changed in the target commit."
+        description="Inspect and update submodules that changed in a commit or commit range."
     )
     parser.add_argument("--commit", default="HEAD", help="Target commit SHA on main to inspect for changed submodules (default: HEAD)")
     parser.add_argument("--current-ref", default="HEAD", help="Git ref of current checked-out base to compare and update (default: HEAD)")
@@ -235,14 +235,16 @@ def main():
         candidate_paths = [args.submodule]
         print(f"Checking specified submodule: {args.submodule}")
     else:
-        # Only submodules updated in previous commit
+        # Push events supply their complete before/after range. Manual
+        # single-commit inspections default to the target's first parent.
         changed_paths = get_changed_submodules(args.commit, args.base)
+        inspection = f"{args.base}..{args.commit}" if args.base else args.commit
         candidate_paths = [p for p in changed_paths if p in submodules_cfg]
         if not candidate_paths:
-            print(f"No submodules had their commit hash modified in commit {args.commit}. Skipping.")
+            print(f"No submodules had their commit hash modified in {inspection}. Skipping.")
             write_github_outputs(args.github_output, {"has_updates": "false"})
             return 0
-        print(f"Submodule(s) modified in commit {args.commit}: {', '.join(candidate_paths)}")
+        print(f"Submodule(s) modified in {inspection}: {', '.join(candidate_paths)}")
 
     updates = []
     for path in candidate_paths:
@@ -339,6 +341,8 @@ def main():
 
     table_content = "\n".join(table_rows)
 
+    trigger = (f"commit range `{args.base[:8]}..{args.commit[:8]}`" if args.base
+               else f"commit `{args.commit[:8]}`")
     pr_body = f"""## Submodule Updates
 
 This automated pull request updates submodule commit pointers to the latest commit on their respective upstream tracking branches.
@@ -350,7 +354,7 @@ This automated pull request updates submodule commit pointers to the latest comm
 {table_content}
 
 ---
-*Triggered by commit `{args.commit[:8]}` on `main`.*
+*Triggered by {trigger} on `main`.*
 """
 
     commit_msg = f"{pr_title}\n\nUpdates:\n" + "\n".join(

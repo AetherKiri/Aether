@@ -136,6 +136,7 @@ jobs:
           git submodule update --init --depth 1 packages/AetherMinori
           git submodule update --init --depth 1 packages/AetherKrkr
           git submodule update --init --depth 1 packages/ruffle
+          git submodule update --init --recursive --depth 1 packages/xsystem4
 
       - name: Set application release version
         if: env.AETHERKIRI_RELEASE_VERSION != ''
@@ -435,6 +436,7 @@ jobs:
           git submodule update --init --depth 1 packages/AetherMinori
           git submodule update --init --depth 1 packages/AetherKrkr
           git submodule update --init --depth 1 packages/ruffle
+          git submodule update --init --recursive --depth 1 packages/xsystem4
 
       - name: Set application release version
         if: env.AETHERKIRI_RELEASE_VERSION != ''
@@ -762,6 +764,7 @@ jobs:
           git submodule update --init --depth 1 packages/AetherMinori
           git submodule update --init --depth 1 packages/AetherKrkr
           git submodule update --init --depth 1 packages/ruffle
+          git submodule update --init --recursive --depth 1 packages/xsystem4
 
       - name: Set application release version
         if: env.AETHERKIRI_RELEASE_VERSION != ''
@@ -1098,6 +1101,7 @@ jobs:
           git submodule update --init --depth 1 packages/AetherMinori
           git submodule update --init --depth 1 packages/AetherKrkr
           git submodule update --init --depth 1 packages/ruffle
+          git submodule update --init --recursive --depth 1 packages/xsystem4
 
       - name: Verify private runtime packages
         if: env.AETHERKIRI_WITH_INTERNAL == 'true'
@@ -1119,7 +1123,7 @@ jobs:
           sudo apt-get install -y \
             build-essential gobjc gobjc++ cmake ninja-build pkg-config autoconf autoconf-archive \
             automake libtool gettext bison flex curl unzip zip zstd nasm yasm patchelf \
-            ccache libclang-dev libgl1-mesa-dev libglu1-mesa-dev \
+            ccache libclang-dev libgl1-mesa-dev libglu1-mesa-dev libegl-dev libgles-dev \
             libx11-dev libxrandr-dev libxinerama-dev libxcursor-dev libxi-dev \
             libxext-dev libxfixes-dev libxrender-dev libwayland-dev libxkbcommon-dev \
             libasound2-dev libpulse-dev libudev-dev libdbus-1-dev
@@ -1224,7 +1228,7 @@ jobs:
           LD_LIBRARY_PATH: ${{ github.workspace }}/apps/godot_app/bin/linux/debug
         run: |
           python3 -m unittest discover -s tests/python -p test_renpy_host.py
-          for test in video_library_folders video_library_ui video_import_permissions flash_library tyrano_library renpy_library rfvp_import; do
+          for test in video_library_folders video_library_ui video_import_permissions flash_library tyrano_library renpy_library xsystem4_library rfvp_import; do
             timeout 60 "$GODOT_BIN" --headless --path apps/godot_app \
               --script "res://tests/${test}_test.gd" \
               2>&1 | tee "$RUNNER_TEMP/${test}.log"

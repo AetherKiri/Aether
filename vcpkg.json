@@ -30,6 +30,13 @@
     "expat",
     "fmt",
     "freetype",
+    "cglm",
+    "libffi",
+    {
+      "name": "libsndfile",
+      "default-features": false,
+      "features": ["external-libs"]
+    },
     "godot-cpp",
     "jxrlib",
     "libarchive",

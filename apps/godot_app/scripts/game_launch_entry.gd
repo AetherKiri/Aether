@@ -13,6 +13,7 @@ const DIRECTORY_RUNTIME_KINDS := [
     "softpal",
     "tyranoscript",
     "wa2",
+    "xsystem4",
 ]
 const RFVP_ENCODING_FIELD := "rfvpEncoding"
 const RFVP_ENCODINGS := ["sjis", "gbk", "utf8"]

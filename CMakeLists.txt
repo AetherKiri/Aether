@@ -115,6 +115,8 @@ option(AETHERKIRI_ENABLE_RFVP "build the experimental native FVP runtime (requir
 option(BUILD_GPU_BRIDGE "build legacy external GPU bridge renderer" OFF)
 option(AETHERKIRI_ENABLE_ONSCRIPTER
        "enable the bundled OnscripterYuri runtime" ON)
+option(AETHERKIRI_ENABLE_XSYSTEM4
+       "enable the native AliceSoft System 4 runtime" ON)
 option(AETHERKIRI_ENABLE_SIGLUS
        "enable the bundled siglus_rs runtime (requires a Rust toolchain)" ON)
 option(AETHERKIRI_ENABLE_MINORI
@@ -146,6 +148,9 @@ set(AETHERKIRI_INTERNAL_DIR
 set(AETHERKIRI_ONSCRIPTERYURI_DIR
     "${CMAKE_CURRENT_SOURCE_DIR}/packages/OnscripterYuri"
     CACHE PATH "path to an OnscripterYuri runtime checkout")
+set(AETHERKIRI_XSYSTEM4_DIR
+    "${CMAKE_CURRENT_SOURCE_DIR}/packages/xsystem4"
+    CACHE PATH "path to an xsystem4 runtime checkout")
 set(AETHERKIRI_SIGLUS_DIR
     "${CMAKE_CURRENT_SOURCE_DIR}/packages/AetherSiglus"
     CACHE PATH "path to a siglus_rs runtime checkout")
@@ -303,6 +308,10 @@ endif()
 if(AETHERKIRI_ENABLE_ONSCRIPTER AND
    (BUILD_GODOT_EXTENSION OR AETHERKIRI_BUILD_NATIVE_ONSCRIPTER_TESTS))
     add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/bridge/onscripter_runtime)
+endif()
+if(AETHERKIRI_ENABLE_XSYSTEM4 AND BUILD_GODOT_EXTENSION AND
+   (APPLE OR ANDROID OR UNIX) AND NOT (WEB OR EMSCRIPTEN))
+    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/bridge/xsystem4_runtime)
 endif()
 if(AETHERKIRI_ENABLE_SIGLUS AND BUILD_GODOT_EXTENSION AND
    NOT (WEB OR EMSCRIPTEN))

@@ -63,6 +63,7 @@ const RUNTIME_FONT_DIR := "user://runtime_fonts"
 const RUNTIME_DEFAULT_FONT_FILE := "default.otf"
 const RUNTIME_SYMBOL_FONT_FILE := "symbols.ttf"
 const ProbeConfig = preload("res://scripts/probe_config.gd")
+const RuntimeRegressionProbe = preload("res://scripts/runtime_regression_probe.gd")
 const GameMetadata = preload("res://scripts/game_metadata.gd")
 const CoverIndex = preload("res://scripts/cover_index.gd")
 const VNDBCoverResolver = preload("res://scripts/vndb_cover_resolver.gd")
@@ -2778,6 +2779,7 @@ func _normalize_cli_probe_script(path: String) -> String:
         "res://scripts/step_render_probe.gd",
         "res://scripts/gui_render_probe.gd",
         "res://scripts/perf_input_probe.gd",
+        "res://scripts/runtime_regression_probe.gd",
         "res://scripts/wa2_gui.gd",
     ]
     for item in known:
@@ -13060,6 +13062,11 @@ func _ensure_player_initialized() -> bool:
         return true
 
     var user_dir := OS.get_user_data_dir()
+    if cli_probe_script == "res://scripts/runtime_regression_probe.gd":
+        user_dir = RuntimeRegressionProbe.writable_root(ProbeConfig.load())
+        if user_dir.is_empty():
+            _append_log("Regression probe requires an isolated writable_root under user://regressions/")
+            return false
     var cache_dir := user_dir.path_join("cache")
     DirAccess.make_dir_recursive_absolute(cache_dir)
     if not player.initialize_engine(user_dir, cache_dir):
@@ -13712,6 +13719,10 @@ func _run_cli_script_probe() -> void:
         await _run_cli_gui_probe(config, target_game_path)
     elif cli_probe_script == "res://scripts/perf_input_probe.gd":
         await _run_cli_perf_input_probe(config, target_game_path)
+    elif cli_probe_script == "res://scripts/runtime_regression_probe.gd":
+        var probe = RuntimeRegressionProbe.new(self, config)
+        var result: int = await probe.run(target_game_path)
+        await _probe_cleanup_and_quit(result)
     else:
         _write_probe_marker("cli_probe unsupported script=%s" % cli_probe_script)
         printerr("unsupported probe script: %s" % cli_probe_script)

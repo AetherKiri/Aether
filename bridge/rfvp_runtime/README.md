@@ -135,17 +135,25 @@ and confirmed by the user.
 
 ### Upstream upgrade validation
 
-The pin `592a95768a70b2be0308825c80b59afd4a6941a9` advances from `eb5490d`
-by six commits. It preserves runtime-modified graph pixels and saved geometry,
-cancels stale text-completion requests when coroutines exit or restart, and uses
-bounded stack visitation buffers in the standalone GPU renderer. The latter
-renderer is not selected by the embedded host's feature set.
+The pin `7958dd3763a976ef6eb6ab384cf39d6a25efafb3` advances from `eb5490d`
+by seven commits. File-backed graphs save their path and last GraphRGB values;
+loading re-reads the asset and applies that tone once, with geometry from the
+asset. Parts-overlaid sources instead embed their pixels and saved geometry,
+including when saved again after a restore. These use the existing snapshot
+fields; no RFVS V1/V2 schema change is introduced. File-backed path-only saves
+still require their original resources. Older saves cannot recover edits they
+did not record.
+
+The update also cancels stale text-completion requests when coroutines exit or
+restart, and uses bounded stack visitation buffers in the standalone GPU
+renderer. That renderer is not selected by the embedded host's feature set.
 
 No Cargo manifests or dependency locks changed upstream; the committed embedded
 lockfile remains unchanged and is checked with `--locked`. The existing host
 overlay and RFVS V1/V2 layout adaptations remain in place. CTest additionally
-runs the upstream VM text-wait and graph-snapshot regressions against the prepared
-host workspace, alongside the provider, host and decoder-coexistence suites.
+runs upstream VM text-wait and graph-snapshot regressions against the prepared
+host workspace. Host regressions cover both graph representations through the
+V2 codec, alongside the provider and decoder-coexistence suites.
 
 The earlier application and game smoke tests above describe previous
 integrations, not a gameplay re-test of this pin. Current exact-head CI evidence

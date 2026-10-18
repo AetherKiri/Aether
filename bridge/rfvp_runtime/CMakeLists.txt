@@ -104,4 +104,19 @@ if(PROJECT_IS_TOP_LEVEL OR ENABLE_TESTS)
             --target "${AETHERKIRI_RFVP_RUST_TARGET}" ${rfvp_profile_args}
             host_ -- --test-threads=1)
     set_tests_properties(rfvp-host-regressions PROPERTIES TIMEOUT 180)
+    # Exercise the upstream regressions in the same prepared host workspace.
+    add_test(NAME rfvp-vm-text-regressions
+        COMMAND "${CMAKE_COMMAND}" -E env "RUSTC=${RFVP_RUSTC}"
+            "${RFVP_CARGO}" test --locked --manifest-path "${rfvp_prepared}/Cargo.toml"
+            -p rfvp --lib --no-default-features --features "${rfvp_features}"
+            --target "${AETHERKIRI_RFVP_RUST_TARGET}" ${rfvp_profile_args}
+            vm_runner::tests:: -- --test-threads=1)
+    add_test(NAME rfvp-graph-snapshot-regressions
+        COMMAND "${CMAKE_COMMAND}" -E env "RUSTC=${RFVP_RUSTC}"
+            "${RFVP_CARGO}" test --locked --manifest-path "${rfvp_prepared}/Cargo.toml"
+            -p rfvp --test graph_snapshot --no-default-features --features "${rfvp_features}"
+            --target "${AETHERKIRI_RFVP_RUST_TARGET}" ${rfvp_profile_args}
+            -- --test-threads=1)
+    set_tests_properties(rfvp-vm-text-regressions rfvp-graph-snapshot-regressions
+        PROPERTIES TIMEOUT 180)
 endif()

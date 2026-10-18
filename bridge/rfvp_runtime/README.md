@@ -135,12 +135,19 @@ and confirmed by the user.
 
 ### Upstream upgrade validation
 
-The upgrade to `eb5490d9fc6d471d36554a84e052cf531afd48d4` is being validated
-independently by `.github/workflows/rfvp-provider.yml`. The earlier application
-and game smoke tests above describe the previous integration, not a re-test of
-this upstream revision. A standalone check does not certify Apple packaging or
-commercial-game playback.
+The pin `592a95768a70b2be0308825c80b59afd4a6941a9` advances from `eb5490d`
+by six commits. It preserves runtime-modified graph pixels and saved geometry,
+cancels stale text-completion requests when coroutines exit or restart, and uses
+bounded stack visitation buffers in the standalone GPU renderer. The latter
+renderer is not selected by the embedded host's feature set.
 
-The increment from `af557db` to `eb5490d` only adds an upstream reverse-engineering
-database under `reverse/`. It is not copied into the prepared workspace or
-compiled into the provider; runtime sources and the embedded lockfile are unchanged.
+No Cargo manifests or dependency locks changed upstream; the committed embedded
+lockfile remains unchanged and is checked with `--locked`. The existing host
+overlay and RFVS V1/V2 layout adaptations remain in place. CTest additionally
+runs the upstream VM text-wait and graph-snapshot regressions against the prepared
+host workspace, alongside the provider, host and decoder-coexistence suites.
+
+The earlier application and game smoke tests above describe previous
+integrations, not a gameplay re-test of this pin. Current exact-head CI evidence
+belongs in the upgrade PR; standalone tests do not certify Apple packaging,
+commercial-game playback or audio/video synchronization.

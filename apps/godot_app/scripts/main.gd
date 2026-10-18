@@ -13825,7 +13825,7 @@ func _run_cli_script_probe() -> void:
     elif cli_probe_script == "res://scripts/runtime_regression_probe.gd":
         var probe = RuntimeRegressionProbe.new(self, config)
         var result: int = await probe.run(target_game_path)
-        await _probe_cleanup_and_quit(result)
+        await _probe_cleanup_and_quit(result, probe.record)
     else:
         _write_probe_marker("cli_probe unsupported script=%s" % cli_probe_script)
         printerr("unsupported probe script: %s" % cli_probe_script)
@@ -14873,7 +14873,7 @@ func _probe_image_diff_score(a: Image, b: Image) -> float:
             samples += 1
     return total / max(1.0, float(samples))
 
-func _probe_cleanup_and_quit(code: int) -> void:
+func _probe_cleanup_and_quit(code: int, record_cleanup: Callable = Callable()) -> void:
     _set_game_runtime_frame_pacing(false)
     if cli_probe_audio_capture != null:
         cli_probe_audio_capture.close()
@@ -14888,6 +14888,8 @@ func _probe_cleanup_and_quit(code: int) -> void:
         player.release_frame_texture()
         _cleanup_softpal_platform_ui()
         player.destroy_engine()
+    if record_cleanup.is_valid():
+        record_cleanup.call({"event": "cleanup_complete", "exit_code": code})
     get_tree().quit(code)
 
 func _apply_initial_window_size() -> void:

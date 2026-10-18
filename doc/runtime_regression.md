@@ -37,22 +37,27 @@ python3 tools/run_runtime_regression.py /path/to/case.json \
 ```
 
 `--game` overrides the case's `game_path`. The iOS path uses the same relative
-Documents convention as the existing game launch probes. The host tool starts
-the app with `devicectl --console`, pulls the result after it exits, and returns
-nonzero for a failed assertion, crash, launch failure, or timeout. A locked
+Documents convention as the existing game launch probes. The host tool launches
+the app, polls its persisted report, and requires a `cleanup_complete` event
+written after the engine is destroyed. A preceding `passed` event alone is
+insufficient. It then checks the launched process's identity and stops that
+process, without waiting for the iOS app to exit itself. Assertions, crashes,
+launch failures, incomplete teardown, and timeouts return nonzero. A locked
 device must be unlocked before a run can start.
 
 For a currently locked iPad, `--prepare-only` queues the case using the existing
 one-shot probe request file. The next normal launch consumes the request,
-executes the case, saves its result, and exits; subsequent launches are normal.
+executes the case, and saves its result and cleanup event. Stop and relaunch the
+app afterwards to return to normal use.
 The host summary records the device's `result_source`. Retrieve it afterwards
 with `devicectl device copy from` using the same app data-container domain.
 A prepared case is not a passed test. This option runs one case on one launch;
 it does not enable recurring background execution.
 
-Each artifact directory contains the effective case, console output,
-`regression-result.json`, and `summary.json`. The iOS run also saves SDK command
-results. Keep these artifacts and game-specific cases outside the public repo;
+Each artifact directory contains the effective case, `regression-result.json`,
+and `summary.json`. macOS saves console output; iOS saves the device probe log
+and SDK command results, including the engine cleanup status and process ID.
+Keep these artifacts and game-specific cases outside the public repo;
 private runtime packages own cases requiring private callback identifiers.
 Run directories are retained for investigation and can be removed afterwards.
 

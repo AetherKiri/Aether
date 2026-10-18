@@ -17,6 +17,30 @@ import uuid
 PROBE = "res://scripts/runtime_regression_probe.gd"
 
 
+def read_report(path):
+    report = json.loads(path.read_text())
+    if not isinstance(report, dict) or not isinstance(report.get("events", []), list):
+        raise ValueError("Invalid regression result")
+    return report
+
+
+def cleanup_result(report):
+    """Only an explicit event after engine destruction completes a device run."""
+    events = report.get("events", [])
+    if not events or not isinstance(events[-1], dict):
+        return None
+    final = events[-1]
+    if final.get("event") != "cleanup_complete":
+        return None
+    code = final.get("exit_code")
+    if type(code) is not int:
+        return None
+    if code == 0 and (len(events) < 2 or not isinstance(events[-2], dict)
+            or events[-2].get("event") != "passed"):
+        return None
+    return code
+
+
 def arguments():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("case", type=Path)
@@ -99,10 +123,14 @@ def main():
             print(json.dumps(summary, ensure_ascii=False), flush=True)
             return 0
         launch_env = {key: env[key] for key in ("AETHERKIRI_CLI_PROBE_SCRIPT", "AETHERKIRI_TEST_CONFIG_JSON", "AETHERKIRI_DIAGNOSTICS")}
-        command = ["xcrun", "devicectl", "device", "process", "launch", "--device", args.device,
-            "--terminate-existing", "--console", "--environment-variables", json.dumps(launch_env),
-            "--json-output", str(output / "launch.json"), args.bundle]
         result_path = output / "regression-result.json"
+        device("device", "process", "launch", "--device", args.device,
+            "--terminate-existing", "--environment-variables", json.dumps(launch_env),
+            args.bundle, name="launch")
+        launched = json.loads((output / "launch.json").read_text())["result"]["process"]
+        launch_pid = int(launched["processIdentifier"])
+        if launch_pid <= 0:
+            raise SystemExit("Launch did not return a valid process ID")
     else:
         writable = args.user_data_dir.resolve() / "regressions" / run_id
         shutil.copytree(isolated, writable)
@@ -111,20 +139,54 @@ def main():
 
     print(f"Running {config.get('name', args.case.stem)} on {args.platform}; artifacts: {output}", flush=True)
     timed_out = False
-    with (output / "console.log").open("w") as log:
-        process = subprocess.Popen(command, env=env, stdout=log, stderr=subprocess.STDOUT)
+    process_exit_code = None
+    device_cleanup_code = None
+    device_stopped = True
+    if args.platform == "ios":
         deadline = time.monotonic() + args.timeout
-        while process.poll() is None and time.monotonic() < deadline:
-            time.sleep(0.25)
-        if process.poll() is None:
-            timed_out = True
-            # devicectl --console forwards termination to the app it launched.
-            process.terminate()
+        while time.monotonic() < deadline:
+            device("device", "copy", "from", "--device", args.device,
+                "--domain-type", "appDataContainer", "--domain-identifier", args.bundle,
+                "--source", remote + "/regression-result.json", "--destination", str(result_path),
+                name="result-copy", check=False)
             try:
-                process.wait(timeout=10)
-            except subprocess.TimeoutExpired:
-                process.kill()
-                process.wait(timeout=10)
+                device_cleanup_code = cleanup_result(read_report(result_path))
+            except (OSError, ValueError):
+                pass
+            if device_cleanup_code is not None:
+                break
+            time.sleep(2)
+        timed_out = device_cleanup_code is None
+        # A successful engine teardown need not terminate the iOS app process.
+        # Stop only the PID returned by this launch, after checking its identity.
+        device("device", "info", "processes", "--device", args.device,
+            "--filter", f"processIdentifier == {launch_pid}", name="final-processes")
+        running = json.loads((output / "final-processes.json").read_text())["result"]["runningProcesses"]
+        for candidate in running:
+            if (candidate.get("processIdentifier") == launch_pid
+                    and candidate.get("executable") == launched.get("executable")):
+                stopped = device("device", "process", "terminate", "--device", args.device,
+                    "--pid", str(launch_pid), name="terminate", check=False)
+                device_stopped = stopped.returncode == 0
+        device("device", "copy", "from", "--device", args.device,
+            "--domain-type", "appDataContainer", "--domain-identifier", args.bundle,
+            "--source", "Documents/aetherkiri-device-probe.log",
+            "--destination", str(output / "device-probe.log"), name="probe-log", check=False)
+    else:
+        with (output / "console.log").open("w") as log:
+            process = subprocess.Popen(command, env=env, stdout=log, stderr=subprocess.STDOUT)
+            deadline = time.monotonic() + args.timeout
+            while process.poll() is None and time.monotonic() < deadline:
+                time.sleep(0.25)
+            if process.poll() is None:
+                timed_out = True
+                process.terminate()
+                try:
+                    process.wait(timeout=10)
+                except subprocess.TimeoutExpired:
+                    process.kill()
+                    process.wait(timeout=10)
+        process_exit_code = process.returncode
 
     if args.platform == "ios":
         device("device", "copy", "from", "--device", args.device,
@@ -136,20 +198,25 @@ def main():
 
     report_error = None
     try:
-        report = json.loads(result_path.read_text()) if result_path.exists() else {}
-        if not isinstance(report, dict) or not isinstance(report.get("events", []), list):
-            raise ValueError("Invalid regression result")
+        report = read_report(result_path) if result_path.exists() else {}
     except (OSError, ValueError) as error:
         report, report_error = {}, str(error)
     events = report.get("events", [])
-    passed = (not timed_out and process.returncode == 0 and bool(events)
-        and isinstance(events[-1], dict) and events[-1].get("event") == "passed")
+    completed = cleanup_result(report)
+    if args.platform == "ios":
+        passed = not timed_out and device_stopped and completed == 0
+    else:
+        passed = (not timed_out and process_exit_code == 0 and bool(events)
+            and isinstance(events[-1], dict)
+            and (events[-1].get("event") == "passed" or completed == 0))
     summary = {"passed": passed, "timed_out": timed_out,
-        "process_exit_code": process.returncode, "run_id": run_id,
+        "process_exit_code": process_exit_code, "run_id": run_id,
         "last_event": {key: value for key, value in events[-1].items() if key != "state"}
             if events and isinstance(events[-1], dict) else None,
         "artifacts": str(output),
         "report_error": report_error}
+    if args.platform == "ios":
+        summary.update(engine_cleanup_exit_code=completed, device_process_stopped=device_stopped)
     (output / "summary.json").write_text(json.dumps(summary, ensure_ascii=False, indent=2))
     print(json.dumps(summary, ensure_ascii=False), flush=True)
     return 0 if passed else 1

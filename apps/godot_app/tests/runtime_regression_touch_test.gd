@@ -11,18 +11,21 @@ class RecordingPlayer:
         return ""
     func get_plugin_debug_info() -> String:
         return "{}"
-    func send_pointer_event(kind: int, pointer: int, x: float, y: float, _dx: float, _dy: float, _button: int, _modifiers: int = 0) -> int:
-        events.append({"kind": kind, "pointer": pointer, "position": Vector2(x, y), "time": Time.get_ticks_msec()})
+    func send_pointer_event(kind: int, pointer: int, x: float, y: float, _dx: float, _dy: float, button: int, _modifiers: int = 0) -> int:
+        events.append({"kind": kind, "pointer": pointer, "position": Vector2(x, y), "button": button, "time": Time.get_ticks_msec()})
         return 0
 
 class TouchApp:
     extends "res://scripts/main.gd"
+    var force_busy := false
     func _ready() -> void:
         pass
     func _process(_delta: float) -> void:
         pass
     func _is_touch_platform() -> bool:
         return true
+    func _is_touch_input_busy() -> bool:
+        return force_busy
     func _write_probe_marker(_line: String) -> void:
         pass
     func _probe_advance(frames: int) -> bool:
@@ -74,12 +77,25 @@ func _run() -> void:
     assert(player.events[2].time - player.events[1].time > 0)
     assert(app.active_touch_points.is_empty())
 
+    player.events.clear()
+    assert(probe.two_finger_tap({"x": 1200, "y": 300}, "two-finger-return"))
+    _check_edges(player.events, app, app.TOUCH_SECONDARY_POINTER_ID)
+    assert(player.events[1].button == 1 and player.events[2].button == 1)
+    assert(app.active_touch_points.is_empty())
+    assert(app.suppressed_touch_points.is_empty())
+    assert(app.pending_touch_index == -1)
+
     # A consumed gesture cannot be reported as a successful button click.
     player.events.clear()
     app.touch_secondary_quarantine_until_msec = Time.get_ticks_msec() + 1000
     assert(not await probe.tap({"x": 1200, "y": 300}, "suppressed-touch"))
     assert(player.events.is_empty())
     assert(probe.report.back().reason == "touch not forwarded")
+    player.events.clear()
+    app.force_busy = true
+    assert(not probe.two_finger_tap({"x": 1200, "y": 300}, "suppressed-gesture"))
+    assert(player.events.is_empty())
+    assert(probe.report.back().reason == "gesture not forwarded")
 
     DirAccess.remove_absolute(ProjectSettings.globalize_path(directory.path_join("regression-result.json")))
     DirAccess.remove_absolute(ProjectSettings.globalize_path(directory))

@@ -1,0 +1,70 @@
+name: Bug 反馈 / Bug report
+description: 报告应用 Bug 或游戏兼容问题 / Report an app bug or game compatibility issue.
+title: "[Bug] "
+type: Bug
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: 问题描述 / Problem description
+      description: 请描述实际发生了什么。 / Describe what actually happened.
+    validations:
+      required: true
+  - type: input
+    id: app-version
+    attributes:
+      label: 应用版本 / App version
+      description: 请填写完整版本号；找不到时填写“不清楚 / Unknown”。 / Enter the full version number, or “不清楚 / Unknown” if you cannot find it.
+    validations:
+      required: true
+  - type: dropdown
+    id: platform
+    attributes:
+      label: 运行平台 / Platform
+      options:
+        - Android
+        - iOS/iPadOS
+        - macOS
+        - Linux
+        - Windows
+        - Web
+        - 其他 / Other
+    validations:
+      required: true
+  - type: textarea
+    id: environment
+    attributes:
+      label: 系统与设备 / System and device
+      description: 请填写系统版本和设备型号；Web 用户请补充浏览器及版本。 / Include your OS version and device model; for Web, also include the browser and its version.
+    validations:
+      required: true
+  - type: textarea
+    id: game
+    attributes:
+      label: 游戏信息 / Game details
+      description: 仅游戏问题填写。请提供游戏名、版本、补丁或汉化情况，以及引擎（如果知道）。 / For game issues only. Include the game name, version, patches or translation, and engine if known.
+    validations:
+      required: false
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: 复现步骤 / Steps to reproduce
+      description: 请说明操作经过；偶发问题可描述触发时的情况。 / Describe the steps you took; for intermittent issues, explain what was happening when the issue occurred.
+    validations:
+      required: false
+  - type: textarea
+    id: expected
+    attributes:
+      label: 预期行为 / Expected behavior
+      description: 你原本希望发生什么？ / What did you expect to happen?
+    validations:
+      required: false
+  - type: textarea
+    id: evidence
+    attributes:
+      label: 日志与附件 / Logs and attachments
+      description: |
+        可粘贴日志，或拖入诊断包、截图、录像。推荐在应用内开启诊断后，通过 DBG → 操作导出 ZIP。详见[中文诊断指南](https://github.com/AetherKiri/Aether/blob/main/doc/diagnostics.zh-CN.md)。
+        Paste logs or attach a diagnostic archive, screenshots, or a recording. To export a ZIP, enable diagnostics in the app, then open DBG → Actions. See the [English diagnostics guide](https://github.com/AetherKiri/Aether/blob/main/doc/diagnostics.md).
+    validations:
+      required: false

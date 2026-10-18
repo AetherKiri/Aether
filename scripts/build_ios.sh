@@ -325,6 +325,8 @@ combine_ios_static_extension() {
     local libs=(
         "$CMAKE_BUILD_DIR/bridge/godot_extension/libaether_kiri_godot.a"
         "$CMAKE_BUILD_DIR/bridge/onscripter_runtime/libaether_onscripter_runtime.a"
+        "$CMAKE_BUILD_DIR/bridge/xsystem4_runtime/libaether_xsystem4_runtime.a"
+        "$CMAKE_BUILD_DIR/bridge/xsystem4_runtime/libsys4/libsys4.a"
         "$CMAKE_BUILD_DIR/abi/libengine_api.a"
         "$CMAKE_BUILD_DIR/bridge/krkr2_runtime/libaether_krkr2_runtime.a"
         "$CMAKE_BUILD_DIR/packages/AetherKrkr/core/base/libcore_base_module.a"
@@ -734,6 +736,15 @@ else
         PATCH_ARCH="$SIMULATOR_ARCH"
     fi
     patch_ios_export_project "$PROJECT_ROOT/out/godot/ios/$BUILD_TYPE_LOWER/Aether.xcodeproj" "$PATCH_ARCH" "$BUILD_TYPE_LOWER"
+    RENPY_BUNDLE_DIR="${AETHER_RENPY_RUNTIME_DIR:-}"
+    if [[ -z "$RENPY_BUNDLE_DIR" ]]; then
+        echo "==> Preparing the native Ren'Py iOS runtime"
+        RENPY_PLATFORM="ios"
+        if [[ "$SIMULATOR" == true ]]; then RENPY_PLATFORM="ios-simulator"; fi
+        RENPY_BUNDLE_DIR="$(python3 "$PROJECT_ROOT/tools/prepare_renpy_runtime.py" "$RENPY_PLATFORM" --arch "$PATCH_ARCH" | tail -n 1)"
+    fi
+    python3 "$PROJECT_ROOT/tools/stage_renpy_ios.py" \
+        --project "$PROJECT_ROOT/out/godot/ios/$BUILD_TYPE_LOWER/Aether.xcodeproj" --runtime "$RENPY_BUNDLE_DIR"
     if [[ "$PACKAGE_IPA" == true && "$SIMULATOR" == false ]]; then
         package_ios_unsigned_ipa "$PROJECT_ROOT/out/godot/ios/$BUILD_TYPE_LOWER" "$BUILD_TYPE_LOWER"
     elif [[ "$PACKAGE_IPA" == true && "$SIMULATOR" == true ]]; then

@@ -30,6 +30,20 @@
     "expat",
     "fmt",
     "freetype",
+    {
+      "name": "cglm",
+      "platform": "!emscripten"
+    },
+    {
+      "name": "libffi",
+      "platform": "!emscripten"
+    },
+    {
+      "name": "libsndfile",
+      "platform": "!emscripten",
+      "default-features": false,
+      "features": ["external-libs"]
+    },
     "godot-cpp",
     "jxrlib",
     "libarchive",

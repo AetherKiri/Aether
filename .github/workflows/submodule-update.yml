@@ -44,13 +44,27 @@ jobs:
           fetch-depth: ${{ (inputs.target_commit != '' && inputs.target_commit != 'HEAD') && 0 || 2 }}
           persist-credentials: true
 
+      - name: Test submodule update detection
+        run: python3 -m unittest discover -s tests/python -p test_submodule_updates.py -v
+
       - name: Fetch target commit history
-        if: ${{ inputs.target_commit != '' && inputs.target_commit != 'HEAD' }}
         env:
           TARGET_COMMIT: ${{ inputs.target_commit }}
+          PUSH_BEFORE: ${{ github.event.before }}
         run: |
-          echo "Fetching target commit $TARGET_COMMIT..."
-          git fetch --depth=2 origin "$TARGET_COMMIT" || git fetch origin "$TARGET_COMMIT"
+          set -euo pipefail
+          # A multi-commit push can start outside the shallow checkout.
+          # Force pushes also need the exact old commit, not HEAD's parent.
+          if [[ "$GITHUB_EVENT_NAME" == "push" && -n "$PUSH_BEFORE" && ! "$PUSH_BEFORE" =~ ^0+$ ]]; then
+            if ! git cat-file -e "${PUSH_BEFORE}^{commit}" 2>/dev/null; then
+              echo "Fetching push start $PUSH_BEFORE..."
+              git fetch --no-tags --depth=1 origin "$PUSH_BEFORE"
+            fi
+          fi
+          if [[ -n "$TARGET_COMMIT" && "$TARGET_COMMIT" != "HEAD" ]]; then
+            echo "Fetching target commit $TARGET_COMMIT..."
+            git fetch --depth=2 origin "$TARGET_COMMIT" || git fetch origin "$TARGET_COMMIT"
+          fi
 
       - name: Configure SSH for private submodules
         if: env.HAS_AETHERSECRET == 'true' || env.HAS_SOFTPAL_DEPLOY_KEY == 'true'
@@ -102,10 +116,25 @@ jobs:
           INPUT_TARGET_COMMIT: ${{ inputs.target_commit }}
           INPUT_FORCE_ALL: ${{ inputs.force_all }}
           INPUT_SUBMODULE_PATH: ${{ inputs.submodule_path }}
+          PUSH_BEFORE: ${{ github.event.before }}
+          PUSH_AFTER: ${{ github.event.after }}
           GITHUB_RUN_NUMBER: ${{ github.run_number }}
         run: |
+          set -euo pipefail
           cmd=(python3 .github/scripts/check-submodule-updates.py)
-          if [ -n "$INPUT_TARGET_COMMIT" ]; then
+          if [[ "$GITHUB_EVENT_NAME" == "push" ]]; then
+            if [[ -z "$PUSH_BEFORE" || -z "$PUSH_AFTER" ]]; then
+              echo "Push event is missing its before/after commit range." >&2
+              exit 1
+            fi
+            cmd+=(--commit "$PUSH_AFTER")
+            if [[ "$PUSH_BEFORE" =~ ^0+$ ]]; then
+              # A newly created main branch has no previous commit to diff.
+              cmd+=(--all)
+            else
+              cmd+=(--base "$PUSH_BEFORE")
+            fi
+          elif [ -n "$INPUT_TARGET_COMMIT" ]; then
             cmd+=(--commit "$INPUT_TARGET_COMMIT")
           else
             cmd+=(--commit "HEAD")

@@ -36,7 +36,7 @@ installer_certificate_path="$work_dir/mac-installer-distribution.p12"
 profile_path="$work_dir/app-store.provisionprofile"
 profile_plist="$work_dir/profile.plist"
 entitlements_path="$work_dir/Aether.entitlements"
-signed_entitlements_path="$work_dir/signed-entitlements.plist"
+signing_script="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/macos-app-store-signing.py"
 app_store_app="$work_dir/Aether.app"
 keychain_password="$(openssl rand -hex 24)"
 original_keychains=()
@@ -208,20 +208,13 @@ plutil -create xml1 "$entitlements_path"
 /usr/libexec/PlistBuddy -c "Add :com.apple.application-identifier string $team_id.$bundle_id" "$entitlements_path"
 /usr/libexec/PlistBuddy -c "Add :com.apple.developer.team-identifier string $team_id" "$entitlements_path"
 
-while IFS= read -r -d '' runtime_binary; do
-    if file -b "$runtime_binary" | grep -q 'Mach-O'; then
-        runtime_architectures="$(lipo -archs "$runtime_binary")"
-        if [[ " $runtime_architectures " != *" $target_arch "* ]]; then
-            echo "Mac App Store runtime is missing $target_arch: $runtime_binary ($runtime_architectures)" >&2
-            exit 1
-        fi
-        codesign --force \
-            --sign "$application_identity" \
-            --keychain "$keychain_path" \
-            --timestamp \
-            "$runtime_binary"
-    fi
-done < <(find "$app_store_app/Contents/Frameworks" -type f -print0)
+# Embedded command-line tools need sandbox inheritance, not the main app's
+# file/bookmark permissions. Preserve existing compatible entitlements and
+# sign nested code before sealing the main application.
+python3 "$signing_script" sign-nested "$app_store_app" \
+    --target-arch "$target_arch" \
+    --identity "$application_identity" \
+    --keychain "$keychain_path"
 
 codesign --force \
     --sign "$application_identity" \
@@ -230,11 +223,7 @@ codesign --force \
     --entitlements "$entitlements_path" \
     "$app_store_app"
 codesign --verify --deep --strict --verbose=2 "$app_store_app"
-codesign -d --entitlements :- "$app_store_app" > "$signed_entitlements_path" 2>/dev/null
-if [[ "$(/usr/libexec/PlistBuddy -c 'Print :com.apple.security.app-sandbox' "$signed_entitlements_path")" != "true" ]]; then
-    echo "Signed macOS application is missing App Sandbox." >&2
-    exit 1
-fi
+python3 "$signing_script" verify "$app_store_app" --target-arch "$target_arch"
 
 mkdir -p "$output_dir"
 output_pkg="$output_dir/Aether-Mac-App-Store.pkg"

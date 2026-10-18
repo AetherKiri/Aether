@@ -79,7 +79,7 @@ Run directories are retained for investigation and can be removed afterwards.
 }
 ```
 
-Actions are `move`, `click`, `tap`, `key`, `wait`, `snapshot`, and `assert`. Pointer
+Actions are `move`, `click`, `tap`, `two_finger_tap`, `key`, `wait`, `snapshot`, and `assert`. Pointer
 coordinates use the source frame's pixels. A click can select a visible, enabled
 button with a partial `button` dictionary instead of coordinates, or use
 `point_from` to find a saved rectangle (`x`, `y`, `w`, `h`).
@@ -95,9 +95,14 @@ defaults to direct player pointer input. Touch supports only the primary
 button; `hold_frames` defaults to 1 and larger values also exercise stationary
 holds.
 
+`two_finger_tap` sends two simultaneous contacts through the same handler and
+requires a forwarded secondary gesture. It exercises two-finger return without
+bypassing gesture recognition by sending a native right-click directly.
+
 Conditions use dot paths through dictionaries and arrays. Supported comparisons
 are `equals`, `not_equals`, `same_as` and `changed_from` (against a named
-snapshot), and `contains` (a partial dictionary inside an array). Missing fields
+snapshot), `contains` (a partial dictionary inside an array), and `not_contains`
+(no matching array item). Missing fields
 or snapshot references fail the condition. `until_any` accepts alternative
 condition arrays, useful when a saved setting controls a confirmation dialog;
 `when` makes an action conditional. Finish such a flow with a destination

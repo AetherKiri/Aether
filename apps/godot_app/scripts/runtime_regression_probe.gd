@@ -48,7 +48,8 @@ static func conditions_match(state: Dictionary, conditions: Array, saved: Dictio
             return false
         var actual: Variant = field(state, String(raw["field"]))
         if actual == null or not (raw.has("equals") or raw.has("not_equals")
-                or raw.has("same_as") or raw.has("changed_from") or raw.has("contains")):
+                or raw.has("same_as") or raw.has("changed_from")
+                or raw.has("contains") or raw.has("not_contains")):
             return false
         if raw.has("equals") and actual != raw["equals"]:
             return false
@@ -62,15 +63,17 @@ static func conditions_match(state: Dictionary, conditions: Array, saved: Dictio
             var reference: Variant = field(saved, String(raw["changed_from"]))
             if actual == null or reference == null or actual == reference:
                 return false
-        if raw.has("contains"):
+        for comparison in ["contains", "not_contains"]:
+            if not raw.has(comparison):
+                continue
             if not actual is Array:
                 return false
             var found := false
             for candidate in actual:
-                if subset(candidate, raw["contains"]):
+                if subset(candidate, raw[comparison]):
                     found = true
                     break
-            if not found:
+            if found == (comparison == "not_contains"):
                 return false
     return true
 
@@ -189,6 +192,38 @@ func tap(action: Dictionary, label: String) -> bool:
     record({"event": "input", "label": label, "kind": "touch", "source": [source.x, source.y], "viewport": [position.x, position.y], "forwarded": sent})
     return true
 
+func two_finger_tap(action: Dictionary, label: String) -> bool:
+    var source := point(action)
+    var frame: Vector2i = app.player.get_frame_source_size()
+    if source.x < 0 or source.y < 0 or source.x >= frame.x or source.y >= frame.y or app.viewport.texture == null:
+        record({"event": "failed", "label": label, "reason": "missing gesture target"})
+        return false
+    var position: Vector2 = app._map_surface_point_to_viewport(source)
+    var mapped: Vector2 = app._map_viewport_point(position)
+    if mapped.distance_to(source) > 1.0:
+        record({"event": "failed", "label": label, "reason": "gesture coordinate round trip"})
+        return false
+    var forwarded := int(app.input_trace_forwarded)
+    var failed := int(app.input_trace_send_failed)
+    # Both contacts arrive before a frame can flush the pending primary tap.
+    # The real gesture handler chooses the secondary button and cancels the
+    # contacts; injecting a native right-click here would bypass that code.
+    for pressed in [true, false]:
+        for index in [0, 1]:
+            var event := InputEventScreenTouch.new()
+            event.index = index
+            event.position = position
+            event.pressed = pressed
+            if not app._handle_game_pointer_event(event):
+                record({"event": "failed", "label": label, "reason": "gesture not handled"})
+                return false
+    var sent := int(app.input_trace_forwarded) - forwarded
+    if sent < 3 or int(app.input_trace_send_failed) != failed:
+        record({"event": "failed", "label": label, "reason": "gesture not forwarded", "forwarded": sent})
+        return false
+    record({"event": "input", "label": label, "kind": "two_finger_tap", "source": [source.x, source.y], "forwarded": sent})
+    return true
+
 func run(game_path: String) -> int:
     var pointer_input := String(config.get("pointer_input", "mouse"))
     if pointer_input not in ["mouse", "touch"]:
@@ -218,6 +253,9 @@ func run(game_path: String) -> int:
             record({"event": "snapshot", "label": label, "state": snapshots[label]})
         elif kind == "tap" or (kind == "click" and pointer_input == "touch"):
             if not await tap(action, label):
+                return 1
+        elif kind == "two_finger_tap":
+            if not two_finger_tap(action, label):
                 return 1
         elif kind == "move":
             var pos := point(action)
@@ -251,7 +289,8 @@ func run(game_path: String) -> int:
             record({"event": "failed", "label": label, "reason": "unknown action"})
             return 1
         if not await advance(int(action.get("after_frames", 2))):
-            record({"event": "failed", "label": label, "reason": "runtime error", "error": app.player.get_last_error()})
+            var failure_error: String = app.player.get_last_error()
+            record({"event": "failed", "label": label, "reason": "runtime error", "error": failure_error, "state": state()})
             return 1
         record({"event": "step_pass", "label": label})
     record({"event": "passed", "name": config.get("name", "regression")})

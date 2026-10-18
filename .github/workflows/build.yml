@@ -136,6 +136,7 @@ jobs:
           git submodule update --init --depth 1 packages/AetherMinori
           git submodule update --init --depth 1 packages/AetherKrkr
           git submodule update --init --depth 1 packages/ruffle
+          git submodule update --init --recursive --depth 1 packages/xsystem4
 
       - name: Set application release version
         if: env.AETHERKIRI_RELEASE_VERSION != ''
@@ -377,6 +378,7 @@ jobs:
     runs-on: macos-latest
     env:
       FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: 'true'
+      AETHERKIRI_ENABLE_RFVP: 'ON'
       CCACHE_DIR: ${{ github.workspace }}/.ccache
       GODOT_RELEASE: 4.7.2-stable
       GODOT_TEMPLATE_VERSION: 4.7.2.stable
@@ -433,7 +435,9 @@ jobs:
           git submodule update --init --depth 1 packages/AetherSiglus
           git submodule update --init --depth 1 packages/AetherMinori
           git submodule update --init --depth 1 packages/AetherKrkr
+          git submodule update --init --depth 1 packages/rfvp
           git submodule update --init --depth 1 packages/ruffle
+          git submodule update --init --recursive --depth 1 packages/xsystem4
 
       - name: Set application release version
         if: env.AETHERKIRI_RELEASE_VERSION != ''
@@ -557,6 +561,8 @@ jobs:
           export CMAKE_C_COMPILER_LAUNCHER=ccache
           export CMAKE_CXX_COMPILER_LAUNCHER=ccache
           ./build.sh ios release --jobs=4 --package-ipa 2>&1 | tee "${RUNNER_TEMP}/ios-release-build.log"
+          grep -Fx 'AETHERKIRI_ENABLE_RFVP:BOOL=ON' out/ios/release/CMakeCache.txt
+          test -s out/ios/release/bridge/rfvp_runtime/libaether_rfvp_runtime.a
           if [[ "$AETHERKIRI_WITH_INTERNAL" == "true" ]]; then
             grep -Fx 'AETHERKIRI_ENABLE_SOFTPAL_RUNTIME:BOOL=ON' \
               out/ios/release/CMakeCache.txt
@@ -637,6 +643,8 @@ jobs:
           export CMAKE_C_COMPILER_LAUNCHER=ccache
           export CMAKE_CXX_COMPILER_LAUNCHER=ccache
           ./build.sh ios debug --jobs=4 --package-ipa 2>&1 | tee "${RUNNER_TEMP}/ios-debug-build.log"
+          grep -Fx 'AETHERKIRI_ENABLE_RFVP:BOOL=ON' out/ios/debug/CMakeCache.txt
+          test -s out/ios/debug/bridge/rfvp_runtime/libaether_rfvp_runtime.a
           if grep -E "SCRIPT ERROR|Failed to load script|Can't open GDExtension|Can't open dynamic library" "${RUNNER_TEMP}/ios-debug-build.log"; then
             echo "Godot iOS debug export logged script or GDExtension load errors." >&2
             exit 1
@@ -689,6 +697,7 @@ jobs:
     runs-on: macos-15
     env:
       FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: 'true'
+      AETHERKIRI_ENABLE_RFVP: 'ON'
       CCACHE_DIR: ${{ github.workspace }}/.ccache
       GODOT_RELEASE: 4.7.2-stable
       GODOT_TEMPLATE_VERSION: 4.7.2.stable
@@ -709,6 +718,9 @@ jobs:
         with:
           submodules: false
           persist-credentials: false
+
+      - name: Test Mac App Store nested signing
+        run: python3 -m unittest discover -s tests/python -p test_macos_app_store_signing.py -v
 
       - name: Initialize private runtime submodules
         if: env.AETHERKIRI_WITH_INTERNAL == 'true'
@@ -755,7 +767,9 @@ jobs:
           git submodule update --init --depth 1 packages/AetherSiglus
           git submodule update --init --depth 1 packages/AetherMinori
           git submodule update --init --depth 1 packages/AetherKrkr
+          git submodule update --init --depth 1 packages/rfvp
           git submodule update --init --depth 1 packages/ruffle
+          git submodule update --init --recursive --depth 1 packages/xsystem4
 
       - name: Set application release version
         if: env.AETHERKIRI_RELEASE_VERSION != ''
@@ -879,6 +893,8 @@ jobs:
           export CMAKE_C_COMPILER_LAUNCHER=ccache
           export CMAKE_CXX_COMPILER_LAUNCHER=ccache
           ./build.sh macos release --jobs=4
+          grep -Fx 'AETHERKIRI_ENABLE_RFVP:BOOL=ON' out/macos/release/CMakeCache.txt
+          test -s out/macos/release/bridge/rfvp_runtime/libaether_rfvp_runtime.a
           if [[ "$AETHERKIRI_WITH_INTERNAL" == "true" ]]; then
             grep -Fx 'AETHERKIRI_ENABLE_SOFTPAL_RUNTIME:BOOL=ON' \
               out/macos/release/CMakeCache.txt
@@ -900,6 +916,8 @@ jobs:
           export CMAKE_C_COMPILER_LAUNCHER=ccache
           export CMAKE_CXX_COMPILER_LAUNCHER=ccache
           ./build.sh macos debug --jobs=4
+          grep -Fx 'AETHERKIRI_ENABLE_RFVP:BOOL=ON' out/macos/debug/CMakeCache.txt
+          test -s out/macos/debug/bridge/rfvp_runtime/libaether_rfvp_runtime.a
 
       - name: Run OnscripterYuri Godot smoke test
         env:
@@ -1088,6 +1106,7 @@ jobs:
           git submodule update --init --depth 1 packages/AetherMinori
           git submodule update --init --depth 1 packages/AetherKrkr
           git submodule update --init --depth 1 packages/ruffle
+          git submodule update --init --recursive --depth 1 packages/xsystem4
 
       - name: Verify private runtime packages
         if: env.AETHERKIRI_WITH_INTERNAL == 'true'
@@ -1109,7 +1128,7 @@ jobs:
           sudo apt-get install -y \
             build-essential gobjc gobjc++ cmake ninja-build pkg-config autoconf autoconf-archive \
             automake libtool gettext bison flex curl unzip zip zstd nasm yasm patchelf \
-            ccache libclang-dev libgl1-mesa-dev libglu1-mesa-dev \
+            ccache libclang-dev libgl1-mesa-dev libglu1-mesa-dev libegl-dev libgles-dev \
             libx11-dev libxrandr-dev libxinerama-dev libxcursor-dev libxi-dev \
             libxext-dev libxfixes-dev libxrender-dev libwayland-dev libxkbcommon-dev \
             libasound2-dev libpulse-dev libudev-dev libdbus-1-dev
@@ -1119,7 +1138,7 @@ jobs:
         uses: actions/cache/restore@v6
         with:
           path: .ccache/linux
-          key: ${{ runner.os }}-linux-${{ matrix.arch }}-ccache-v1-${{ github.sha }}
+          key: ${{ runner.os }}-linux-${{ matrix.arch }}-ccache-v2
           restore-keys: |
             ${{ runner.os }}-linux-${{ matrix.arch }}-ccache-
 
@@ -1158,8 +1177,9 @@ jobs:
         uses: actions/cache/restore@v6
         with:
           path: .aetherkiri-cache/vcpkg-binaries
-          key: ${{ runner.os }}-linux-${{ matrix.arch }}-vcpkg-binaries-v1-${{ hashFiles('vcpkg-configuration.json', 'vcpkg.json', 'vcpkg/ports/**', 'vcpkg/triplets/**') }}-${{ github.sha }}
+          key: ${{ runner.os }}-linux-${{ matrix.arch }}-vcpkg-binaries-v2-${{ hashFiles('vcpkg-configuration.json', 'vcpkg.json', 'vcpkg/ports/**', 'vcpkg/triplets/**') }}
           restore-keys: |
+            ${{ runner.os }}-linux-${{ matrix.arch }}-vcpkg-binaries-v2-
             ${{ runner.os }}-linux-${{ matrix.arch }}-vcpkg-binaries-v1-${{ hashFiles('vcpkg-configuration.json', 'vcpkg.json', 'vcpkg/ports/**', 'vcpkg/triplets/**') }}-
             ${{ runner.os }}-linux-${{ matrix.arch }}-vcpkg-binaries-v1-
 
@@ -1194,11 +1214,26 @@ jobs:
             2>&1 | tee "$RUNNER_TEMP/linux-access.log"
           grep -Fx 'IAP_CATALOG_LIMIT_OK' "$RUNNER_TEMP/linux-access.log"
 
+      - name: Run game import metadata tests
+        env:
+          LD_LIBRARY_PATH: ${{ github.workspace }}/apps/godot_app/bin/linux/debug
+        run: |
+          for test in game_metadata game_launch_entry; do
+            timeout 60 "$GODOT_BIN" --headless --path apps/godot_app \
+              --script "res://scripts/${test}_test.gd" \
+              2>&1 | tee "$RUNNER_TEMP/${test}.log"
+            grep -Fx "${test}_test: PASS" "$RUNNER_TEMP/${test}.log"
+            if grep -E 'SCRIPT ERROR:|^ERROR:' "$RUNNER_TEMP/${test}.log"; then
+              exit 1
+            fi
+          done
+
       - name: Run Linux media library tests
         env:
           LD_LIBRARY_PATH: ${{ github.workspace }}/apps/godot_app/bin/linux/debug
         run: |
-          for test in video_library_folders video_library_ui video_import_permissions flash_library tyrano_library; do
+          python3 -m unittest discover -s tests/python -p test_renpy_host.py
+          for test in video_library_folders video_library_ui video_import_permissions flash_library tyrano_library renpy_library xsystem4_library rfvp_import; do
             timeout 60 "$GODOT_BIN" --headless --path apps/godot_app \
               --script "res://tests/${test}_test.gd" \
               2>&1 | tee "$RUNNER_TEMP/${test}.log"
@@ -1259,23 +1294,25 @@ jobs:
           if-no-files-found: error
           retention-days: 7
 
+      # Seed reusable caches from successful main builds. PR-scoped copies
+      # cannot be reused by main or other PRs and consume the same quota.
       - name: Save vcpkg source cache
-        if: always() && env.AETHERKIRI_VCPKG_CACHE_WRITE == 'true' && steps.restore-vcpkg-downloads.outputs.cache-hit != 'true'
+        if: success() && github.ref == 'refs/heads/main' && env.AETHERKIRI_VCPKG_CACHE_WRITE == 'true' && steps.restore-vcpkg-downloads.outputs.cache-hit != 'true'
         uses: actions/cache/save@v6
         with:
           path: .aetherkiri-cache/vcpkg-downloads
           key: ${{ runner.os }}-linux-${{ matrix.arch }}-vcpkg-downloads-${{ hashFiles('vcpkg-configuration.json', 'vcpkg.json', 'vcpkg/ports/**', 'vcpkg/triplets/**') }}
 
       - name: Save ccache
-        if: always() && env.AETHERKIRI_VCPKG_CACHE_WRITE == 'true' && steps.restore-ccache.outputs.cache-hit != 'true'
+        if: success() && github.ref == 'refs/heads/main' && env.AETHERKIRI_VCPKG_CACHE_WRITE == 'true' && steps.restore-ccache.outputs.cache-hit != 'true'
         uses: actions/cache/save@v6
         with:
           path: .ccache/linux
-          key: ${{ runner.os }}-linux-${{ matrix.arch }}-ccache-v1-${{ github.sha }}
+          key: ${{ runner.os }}-linux-${{ matrix.arch }}-ccache-v2
 
       - name: Save vcpkg binary cache
-        if: always() && env.AETHERKIRI_VCPKG_CACHE_WRITE == 'true' && steps.restore-vcpkg-binaries.outputs.cache-hit != 'true'
+        if: success() && github.ref == 'refs/heads/main' && env.AETHERKIRI_VCPKG_CACHE_WRITE == 'true' && steps.restore-vcpkg-binaries.outputs.cache-hit != 'true'
         uses: actions/cache/save@v6
         with:
           path: .aetherkiri-cache/vcpkg-binaries
-          key: ${{ runner.os }}-linux-${{ matrix.arch }}-vcpkg-binaries-v1-${{ hashFiles('vcpkg-configuration.json', 'vcpkg.json', 'vcpkg/ports/**', 'vcpkg/triplets/**') }}-${{ github.sha }}
+          key: ${{ runner.os }}-linux-${{ matrix.arch }}-vcpkg-binaries-v2-${{ hashFiles('vcpkg-configuration.json', 'vcpkg.json', 'vcpkg/ports/**', 'vcpkg/triplets/**') }}

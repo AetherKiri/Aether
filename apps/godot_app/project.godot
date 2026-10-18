@@ -15,7 +15,7 @@ game_path=""
 [application]
 
 config/name="Aether"
-config/version="1.0.8-alpha.1"
+config/version="1.0.8-alpha.3"
 config/use_custom_user_dir.macos=true
 config/custom_user_dir_name.macos="Godot/app_userdata/AetherKiri"
 config/use_custom_user_dir.windows=true
@@ -31,6 +31,9 @@ boot_splash/stretch_mode=0
 config/icon="res://assets/icon.png"
 
 [display]
+
+; The native Ren'Py surface is an X11 child of Aether's window, including on XWayland.
+display_server/driver.linuxbsd="x11"
 
 window/size/viewport_width=1280
 window/size/viewport_height=720

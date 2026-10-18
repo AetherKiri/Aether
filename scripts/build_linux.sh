@@ -267,4 +267,11 @@ if [[ "$BUILD_TYPE_LOWER" == "release" ]]; then
     strip_linux_runtime_libraries "$GODOT_EXPORT_DIR"
 fi
 verify_linux_libraries "$GODOT_EXPORT_DIR"
+RENPY_BUNDLE_DIR="${AETHER_RENPY_RUNTIME_DIR:-}"
+if [[ -z "$RENPY_BUNDLE_DIR" ]]; then
+    echo "==> Preparing the native Ren'Py runtime"
+    RENPY_BUNDLE_DIR="$(python3 "$PROJECT_ROOT/tools/prepare_renpy_runtime.py" linux --arch "$AETHERKIRI_LINUX_ARCH" | tail -n 1)"
+fi
+python3 "$PROJECT_ROOT/tools/stage_renpy_bundle.py" linux \
+    --runtime "$RENPY_BUNDLE_DIR" --destination "$GODOT_EXPORT_DIR"
 echo "Linux build output: $GODOT_EXPORT_APP"

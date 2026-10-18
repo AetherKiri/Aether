@@ -161,9 +161,16 @@ cmake_config_args=(
     -D "CMAKE_MAKE_PROGRAM=$CMAKE_MAKE_PROGRAM"
     -D "AETHERKIRI_ENABLE_INTERNAL=${AETHERKIRI_ENABLE_INTERNAL:-ON}"
     -D "AETHERKIRI_ENABLE_FLASH=${AETHERKIRI_ENABLE_FLASH:-ON}"
+    -D "AETHERKIRI_ENABLE_RFVP=${AETHERKIRI_ENABLE_RFVP:-OFF}"
     -D "AETHERKIRI_ENABLE_SOFTPAL_RUNTIME=${AETHERKIRI_ENABLE_SOFTPAL_RUNTIME:-OFF}"
     -D "AETHERKIRI_SOFTPAL_DIR=${AETHERKIRI_SOFTPAL_DIR:-$PROJECT_ROOT/packages/AetherSoftPal}"
 )
+if [[ -n "${RFVP_CARGO:-}" ]]; then
+    cmake_config_args+=(-D "RFVP_CARGO=$RFVP_CARGO")
+fi
+if [[ -n "${RFVP_RUSTC:-}" ]]; then
+    cmake_config_args+=(-D "RFVP_RUSTC=$RFVP_RUSTC")
+fi
 if [[ "${SKIP_VCPKG_INSTALL:-}" == "1" ]]; then
     if [[ ! -d "$VCPKG_ROOT/installed/$VCPKG_TRIPLET" ]]; then
         echo "Error: SKIP_VCPKG_INSTALL=1 but prebuilt vcpkg triplet is missing: $VCPKG_ROOT/installed/$VCPKG_TRIPLET" >&2
@@ -184,6 +191,7 @@ cmake --build --preset "$CMAKE_BUILD_PRESET" -- -j"$PARALLEL_JOBS"
 mkdir -p "$GODOT_BIN_DIR"
 cp -f "$CMAKE_BUILD_DIR/abi/libengine_api.dylib" "$GODOT_BIN_DIR/"
 cp -f "$CMAKE_BUILD_DIR/bridge/godot_extension/libaether_kiri_godot.dylib" "$GODOT_BIN_DIR/"
+cp -f "$CMAKE_BUILD_DIR/bridge/godot_extension/libaether_renpy_sdl_hook.dylib" "$GODOT_BIN_DIR/"
 if [[ "$BUILD_TYPE_LOWER" == "release" ]]; then
     echo "==> Removing non-runtime symbols from staged macOS Release libraries"
     strip_macos_runtime_symbols \
@@ -234,6 +242,13 @@ else
         fi
         cp -f "$GODOT_BIN_DIR/libengine_api.dylib" "$GODOT_EXPORT_APP/Contents/Frameworks/"
         cp -f "$GODOT_BIN_DIR/libaether_kiri_godot.dylib" "$GODOT_EXPORT_APP/Contents/Frameworks/"
+        RENPY_BUNDLE_DIR="${AETHER_RENPY_RUNTIME_DIR:-}"
+        if [[ -z "$RENPY_BUNDLE_DIR" ]]; then
+            echo "==> Preparing the native Ren'Py runtime"
+            RENPY_BUNDLE_DIR="$(python3 "$PROJECT_ROOT/tools/prepare_renpy_runtime.py" macos --arch "$MACOS_ARCH" | tail -n 1)"
+        fi
+        python3 "$PROJECT_ROOT/tools/stage_renpy_bundle.py" macos \
+            --runtime "$RENPY_BUNDLE_DIR" --destination "$GODOT_EXPORT_APP"
         echo "==> Thinning exported macOS executable to $MACOS_ARCH"
         thin_macos_executable_to_arch "$GODOT_EXPORT_APP/Contents/MacOS/Aether"
         if [[ "$BUILD_TYPE_LOWER" == "release" ]]; then
@@ -257,6 +272,11 @@ else
             "$GODOT_EXPORT_APP/Contents/Frameworks/libengine_api.dylib" \
             "$GODOT_EXPORT_APP/Contents/Frameworks/libaether_kiri_godot.dylib" \
             >/dev/null 2>&1 || true
+        while IFS= read -r -d '' renpy_binary; do
+            if file -b "$renpy_binary" | grep -q 'Mach-O'; then
+                codesign --force --sign - "$renpy_binary"
+            fi
+        done < <(find "$GODOT_EXPORT_APP/Contents/Frameworks/renpy-runtime" -type f -print0)
         codesign --force --deep --sign - "$GODOT_EXPORT_APP" >/dev/null 2>&1 || true
         codesign --verify --deep --strict --verbose=2 "$GODOT_EXPORT_APP"
     fi

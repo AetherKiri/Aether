@@ -233,6 +233,14 @@ fi
 # Stage the source host on every build so template updates cannot omit it.
 python3 "$PROJECT_ROOT/tools/stage_tyrano_android.py" \
     --build-dir "$GODOT_APP_DIR/android/build"
+RENPY_BUNDLE_DIR="${AETHER_RENPY_RUNTIME_DIR:-}"
+if [[ -z "$RENPY_BUNDLE_DIR" ]]; then
+    echo "==> Preparing the native Ren'Py Android runtime"
+    RENPY_BUNDLE_DIR="$(python3 "$PROJECT_ROOT/tools/prepare_renpy_runtime.py" android \
+        --arch arm64 --ndk "$ANDROID_NDK_HOME_RESOLVED" | tail -n 1)"
+fi
+python3 "$PROJECT_ROOT/tools/stage_renpy_android.py" \
+    --build-dir "$GODOT_APP_DIR/android/build" --runtime "$RENPY_BUNDLE_DIR"
 
 command -v cmake >/dev/null
 NINJA_BIN="${CMAKE_MAKE_PROGRAM:-$(command -v ninja || command -v ninja-build || true)}"

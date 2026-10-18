@@ -3,6 +3,10 @@
 #include "engine_runtime_provider.h"
 #include "flash_player.h"
 #include "tyrano_player.h"
+#include "renpy_native.h"
+#if defined(AETHERKIRI_WITH_XSYSTEM4)
+#include "xsystem4_runtime_provider.h"
+#endif
 #if defined(AETHERKIRI_WITH_RFVP)
 #include "rfvp_runtime_provider.h"
 #endif
@@ -12776,6 +12780,11 @@ void InitializeAetherRuntime(ModuleInitializationLevel level) {
 #if defined(AETHERKIRI_WITH_ONSCRIPTER)
     aetherkiri::onscripter::RegisterRuntimeProvider();
 #endif
+#if defined(AETHERKIRI_WITH_XSYSTEM4)
+    if(aetherkiri_xsystem4_register_runtime_provider() != ENGINE_RESULT_OK) {
+        UtilityFunctions::printerr("Failed to register System 4 runtime provider");
+    }
+#endif
 #if defined(AETHERKIRI_WITH_SIGLUS)
     aetherkiri::siglus::RegisterRuntimeProvider();
 #endif
@@ -12804,6 +12813,7 @@ void InitializeAetherRuntime(ModuleInitializationLevel level) {
     ClassDB::register_class<AetherRuntimePlayer>();
     RegisterAetherFlashPlayer();
     RegisterAetherTyranoPlayer();
+    RegisterAetherRenpyNativePlayer();
 }
 
 void DeinitializeAetherRuntime(ModuleInitializationLevel level) {

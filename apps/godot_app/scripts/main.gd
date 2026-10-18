@@ -10,6 +10,7 @@ const FLASH_LIST_FILE := "user://aether_flash.json"
 const FLASH_HIDDEN_FILE := "user://aether_flash_hidden.json"
 const FlashPlayerView = preload("res://scripts/flash_player_view.gd")
 const TyranoPlayerView = preload("res://scripts/tyrano_player_view.gd")
+const RenpyPlayerView = preload("res://scripts/renpy_player_view.gd")
 const VIDEO_LIST_FILE := "user://aetherkiri_videos.json"
 const VIDEO_PROGRESS_FILE := "user://aetherkiri_video_progress.json"
 const VIDEO_HIDDEN_FILE := "user://aetherkiri_hidden_videos.json"
@@ -127,6 +128,16 @@ const STYLE_MODES := [STYLE_DARK, STYLE_CLASSIC, STYLE_WARM_DARK, STYLE_WARM_LIG
 const IOS_UI_SCALE_MODES := ["compact", "comfortable", "standard"]
 const UI_TEXT := {
     LANG_ZH_HANS: {
+        "renpy.menu": "菜单",
+        "renpy.keys": "虚拟按键",
+        "renpy.loading": "正在启动 Ren’Py…",
+        "renpy.window_hint": "游戏在 Aether 窗口内运行。点击返回即可回到游戏库。",
+        "renpy.unavailable": "此构建未包含当前平台的 Ren’Py 原生宿主。Linux 请使用 X11 或 XWayland。",
+        "renpy.invalid_project": "未找到有效的 Ren’Py 游戏目录。",
+        "renpy.runtime_missing": "当前构建未配置 Ren’Py 8 运行时。",
+        "renpy.session_failed": "无法创建 Ren’Py 游戏会话。",
+        "renpy.startup_timeout": "Ren’Py 启动超时。",
+        "renpy.failed": "Ren’Py 启动失败：%s\n日志：%s",
         "nav.flash": "Flash",
         "flash.search_placeholder": "搜索 Flash",
         "flash.empty_title": "还没有 Flash 文件",
@@ -509,7 +520,7 @@ const UI_TEXT := {
         "message.android_storage_permission_required": "需要允许 Aether 访问文件系统后才能导入或启动外部游戏。请在系统弹窗或权限设置中授予文件访问权限，然后再试。",
         "message.android_video_storage_permission_required": "需要允许 Aether 访问文件系统后才能导入视频。请在系统弹窗或权限设置中授予文件访问权限，然后再试。",
         "message.path_missing": "游戏路径不存在",
-        "message.launch_file_unsupported": "启动文件只支持 EXE 或 XP3",
+        "message.launch_file_unsupported": "启动文件只支持 EXE、XP3 或 HCB",
         "message.launch_file_outside_game": "启动文件必须位于当前游戏目录内",
         "message.launch_file_missing": "启动文件不存在：%s",
         "message.cover_file_missing": "无法读取所选封面图片：%s",
@@ -524,6 +535,16 @@ const UI_TEXT := {
         "loading.translation_model_detail": "首次加载可能出现短暂卡顿，请耐心等待。"
     },
     LANG_ZH_HANT: {
+        "renpy.menu": "選單",
+        "renpy.keys": "虛擬按鍵",
+        "renpy.loading": "正在啟動 Ren’Py…",
+        "renpy.window_hint": "遊戲在 Aether 視窗內執行。點擊返回即可回到遊戲庫。",
+        "renpy.unavailable": "此組建未包含目前平台的 Ren’Py 原生宿主。Linux 請使用 X11 或 XWayland。",
+        "renpy.invalid_project": "找不到有效的 Ren’Py 遊戲目錄。",
+        "renpy.runtime_missing": "目前版本未設定 Ren’Py 8 執行環境。",
+        "renpy.session_failed": "無法建立 Ren’Py 遊戲工作階段。",
+        "renpy.startup_timeout": "Ren’Py 啟動逾時。",
+        "renpy.failed": "Ren’Py 啟動失敗：%s\n日誌：%s",
         "nav.flash": "Flash",
         "flash.search_placeholder": "搜尋 Flash",
         "flash.empty_title": "還沒有 Flash 檔案",
@@ -862,7 +883,7 @@ const UI_TEXT := {
         "message.android_storage_permission_required": "需要允許 Aether 存取檔案系統後才能匯入或啟動外部遊戲。請在系統彈窗或權限設定中授予檔案存取權限，然後再試。",
         "message.android_video_storage_permission_required": "需要允許 Aether 存取檔案系統後才能匯入影片。請在系統彈窗或權限設定中授予檔案存取權限，然後再試。",
         "message.path_missing": "遊戲路徑不存在",
-        "message.launch_file_unsupported": "啟動檔案僅支援 EXE 或 XP3",
+        "message.launch_file_unsupported": "啟動檔案僅支援 EXE、XP3 或 HCB",
         "message.launch_file_outside_game": "啟動檔案必須位於目前遊戲目錄內",
         "message.launch_file_missing": "啟動檔案不存在：%s",
         "message.cover_file_missing": "無法讀取所選封面圖片：%s",
@@ -877,6 +898,16 @@ const UI_TEXT := {
         "loading.translation_model_detail": "首次載入可能會短暫停頓，請耐心等候。"
     },
     LANG_EN: {
+        "renpy.menu": "Menu",
+        "renpy.keys": "Virtual keys",
+        "renpy.loading": "Starting Ren’Py…",
+        "renpy.window_hint": "The game runs inside Aether. Use Back to return to the library.",
+        "renpy.unavailable": "This build has no native Ren’Py host for this platform. On Linux, use X11 or XWayland.",
+        "renpy.invalid_project": "No valid Ren’Py game directory was found.",
+        "renpy.runtime_missing": "This build has no configured Ren’Py 8 runtime.",
+        "renpy.session_failed": "Could not create a Ren’Py game session.",
+        "renpy.startup_timeout": "Ren’Py startup timed out.",
+        "renpy.failed": "Ren’Py could not start: %s\nLog: %s",
         "nav.flash": "Flash",
         "flash.search_placeholder": "Search Flash",
         "flash.empty_title": "No Flash files yet",
@@ -1259,7 +1290,7 @@ You can find it any time under Settings → QQ Group.",
         "message.android_storage_permission_required": "Allow Aether to access the file system before importing or launching external games. Grant file access in the system prompt or permission settings, then try again.",
         "message.android_video_storage_permission_required": "Allow Aether to access the file system before importing videos. Grant file access in the system prompt or permission settings, then try again.",
         "message.path_missing": "Game path does not exist",
-        "message.launch_file_unsupported": "The launch file must be an EXE or XP3 file",
+        "message.launch_file_unsupported": "The launch file must be an EXE, XP3 or HCB file",
         "message.launch_file_outside_game": "The launch file must be inside this game folder",
         "message.launch_file_missing": "Launch file does not exist: %s",
         "message.cover_file_missing": "Could not read the selected cover image: %s",
@@ -1274,6 +1305,16 @@ You can find it any time under Settings → QQ Group.",
         "loading.translation_model_detail": "The first load may pause briefly. Please wait."
     },
     LANG_JA: {
+        "renpy.menu": "メニュー",
+        "renpy.keys": "仮想キー",
+        "renpy.loading": "Ren’Py を起動中…",
+        "renpy.window_hint": "ゲームは Aether 内で実行されます。戻るボタンでライブラリに戻ります。",
+        "renpy.unavailable": "このビルドには現在のプラットフォーム用の Ren’Py 原生ホストがありません。Linux では X11 または XWayland を使用してください。",
+        "renpy.invalid_project": "有効な Ren’Py ゲームフォルダーが見つかりません。",
+        "renpy.runtime_missing": "このビルドには Ren’Py 8 ランタイムが設定されていません。",
+        "renpy.session_failed": "Ren’Py のゲームセッションを作成できませんでした。",
+        "renpy.startup_timeout": "Ren’Py の起動がタイムアウトしました。",
+        "renpy.failed": "Ren’Py を起動できませんでした：%s\nログ：%s",
         "nav.flash": "Flash",
         "flash.search_placeholder": "Flash を検索",
         "flash.empty_title": "Flash ファイルがありません",
@@ -1612,7 +1653,7 @@ You can find it any time under Settings → QQ Group.",
         "message.android_storage_permission_required": "外部ゲームのインポートまたは起動には、Aether にファイルシステムへのアクセスを許可する必要があります。システムの権限ダイアログまたは設定でファイルアクセスを許可してから、もう一度お試しください。",
         "message.android_video_storage_permission_required": "動画をインポートするには、Aether にファイルシステムへのアクセスを許可する必要があります。システムの権限ダイアログまたは設定でファイルアクセスを許可してから、もう一度お試しください。",
         "message.path_missing": "ゲームパスが存在しません",
-        "message.launch_file_unsupported": "起動ファイルは EXE または XP3 のみ対応しています",
+        "message.launch_file_unsupported": "起動ファイルは EXE、XP3 または HCB のみ対応しています",
         "message.launch_file_outside_game": "起動ファイルは現在のゲームフォルダー内にある必要があります",
         "message.launch_file_missing": "起動ファイルが存在しません：%s",
         "message.cover_file_missing": "選択したカバー画像を読み込めません：%s",
@@ -1627,6 +1668,16 @@ You can find it any time under Settings → QQ Group.",
         "loading.translation_model_detail": "初回の読み込みは一時的に停止することがあります。しばらくお待ちください。"
     },
     LANG_KO: {
+        "renpy.menu": "메뉴",
+        "renpy.keys": "가상 키",
+        "renpy.loading": "Ren’Py 시작 중…",
+        "renpy.window_hint": "게임은 Aether 창 안에서 실행됩니다. 뒤로 가기를 눌러 라이브러리로 돌아갑니다.",
+        "renpy.unavailable": "이 빌드에는 현재 플랫폼의 Ren’Py 네이티브 호스트가 없습니다. Linux에서는 X11 또는 XWayland를 사용하세요.",
+        "renpy.invalid_project": "유효한 Ren’Py 게임 폴더를 찾을 수 없습니다.",
+        "renpy.runtime_missing": "이 빌드에는 Ren’Py 8 런타임이 설정되어 있지 않습니다.",
+        "renpy.session_failed": "Ren’Py 게임 세션을 만들 수 없습니다.",
+        "renpy.startup_timeout": "Ren’Py 시작 시간이 초과되었습니다.",
+        "renpy.failed": "Ren’Py를 시작할 수 없습니다: %s\n로그: %s",
         "nav.flash": "Flash",
         "flash.search_placeholder": "Flash 검색",
         "flash.empty_title": "Flash 파일이 없습니다",
@@ -1965,7 +2016,7 @@ You can find it any time under Settings → QQ Group.",
         "message.android_storage_permission_required": "외부 게임을 가져오거나 실행하려면 Aether의 파일 시스템 접근을 허용해야 합니다. 시스템 권한 창 또는 권한 설정에서 파일 접근 권한을 허용한 뒤 다시 시도하세요.",
         "message.android_video_storage_permission_required": "비디오를 가져오려면 Aether의 파일 시스템 접근을 허용해야 합니다. 시스템 권한 창 또는 권한 설정에서 파일 접근 권한을 허용한 뒤 다시 시도하세요.",
         "message.path_missing": "게임 경로가 존재하지 않습니다",
-        "message.launch_file_unsupported": "실행 파일은 EXE 또는 XP3만 지원합니다",
+        "message.launch_file_unsupported": "실행 파일은 EXE, XP3 또는 HCB만 지원합니다",
         "message.launch_file_outside_game": "실행 파일은 현재 게임 폴더 안에 있어야 합니다",
         "message.launch_file_missing": "실행 파일이 존재하지 않습니다: %s",
         "message.cover_file_missing": "선택한 표지 이미지를 읽을 수 없습니다: %s",
@@ -2015,6 +2066,8 @@ const RUNTIME_MINORI := "minori"
 const RUNTIME_SOFTPAL := "softpal"
 const RUNTIME_CATSYSTEM2 := "catsystem2"
 const RUNTIME_SIGLUS := "siglus"
+const RUNTIME_RENPY := "renpy"
+const RUNTIME_XSYSTEM4 := "xsystem4"
 const RUNTIME_WA2 := "wa2"
 const RUNTIME_BGI := "bgi"
 const RUNTIME_TYRANO := "tyranoscript"
@@ -2196,6 +2249,7 @@ var video_library := VideoLibrary.new(VIDEO_LIST_FILE, VIDEO_HIDDEN_FILE)
 var flash_library := VideoLibrary.new(FLASH_LIST_FILE, FLASH_HIDDEN_FILE, ["swf"])
 var flash_view
 var tyrano_view
+var renpy_view
 var home_library_mode := "game"
 var home_search_queries := {"game": "", "video": "", "flash": ""}
 var home_search_syncing := false
@@ -9540,7 +9594,7 @@ func _game_launch_entry_label(game: Dictionary) -> String:
 func _can_configure_launch_file(game: Dictionary) -> bool:
     return OS.get_name() != "Web" \
         and not builtin_demo.is_game(game) \
-        and _game_runtime_kind(String(game.get("path", ""))) != RUNTIME_ONSCRIPTER \
+        and _game_runtime_kind(String(game.get("path", ""))) not in [RUNTIME_ONSCRIPTER, RUNTIME_XSYSTEM4] \
         and String(game.get("type", "Directory")).to_lower() == "directory"
 
 func _set_launch_file_for_selected() -> void:
@@ -9548,6 +9602,11 @@ func _set_launch_file_for_selected() -> void:
     if library_path.is_empty() or not _can_configure_launch_file(selected_game):
         return
     _finish_hero_overlay()
+    if _game_runtime_kind(library_path) == "rfvp":
+        var candidates := GameMetadata.hcb_launch_files(library_path)
+        if not candidates.is_empty():
+            _show_rfvp_launch_file_dialog(library_path, candidates)
+            return
     if OS.get_name() in ["iOS", "macOS"] \
             and player != null \
             and player.has_method("native_launch_file_picker_open") \
@@ -9559,12 +9618,39 @@ func _set_launch_file_for_selected() -> void:
         return
     _show_launch_file_godot_dialog(library_path)
 
+func _show_rfvp_launch_file_dialog(library_path: String, candidates: PackedStringArray) -> void:
+    var dialog := _modal_dialog(Vector2(620, 420))
+    var box := _modal_stack(dialog, _t("dialog.choose_launch_file"), ICON_SETTINGS)
+    var scroll := ScrollContainer.new()
+    scroll.custom_minimum_size = Vector2(0, 220)
+    scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
+    box.add_child(scroll)
+    var options := VBoxContainer.new()
+    options.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+    scroll.add_child(options)
+    for entry in candidates:
+        var button := _secondary_dialog_button(entry)
+        button.pressed.connect(_select_rfvp_launch_file.bind(library_path, entry))
+        options.add_child(button)
+    var browse := _secondary_dialog_button(_t("detail.set_launch_file"))
+    browse.pressed.connect(func(): _dismiss_modal(func(): _show_launch_file_godot_dialog(library_path)))
+    box.add_child(browse)
+    var cancel := _secondary_dialog_button(_t("dialog.cancel"))
+    cancel.pressed.connect(func(): _dismiss_modal())
+    box.add_child(cancel)
+
+func _select_rfvp_launch_file(library_path: String, entry: String) -> void:
+    _dismiss_modal(func(): _apply_selected_launch_file(library_path, library_path.path_join(entry)))
+
 func _show_launch_file_godot_dialog(library_path: String) -> void:
     var dialog := _create_file_dialog(
         _t("dialog.choose_launch_file"),
         FileDialog.FILE_MODE_OPEN_FILE,
-        PackedStringArray(["*.exe,*.EXE,*.xp3,*.XP3;Visual novel launch file"])
+        PackedStringArray(["*.exe,*.EXE,*.xp3,*.XP3,*.hcb,*.HCB;Visual novel launch file"])
     )
+    dialog.show_hidden_files = true
+    if _game_runtime_kind(library_path) == "rfvp":
+        dialog.use_native_dialog = false
     if DirAccess.dir_exists_absolute(library_path):
         dialog.current_dir = library_path
     dialog.file_selected.connect(func(selected_path: String):
@@ -10180,6 +10266,39 @@ func _open_tyrano_game(game: Dictionary) -> void:
     _set_game_runtime_orientation(true)
     shell_root.visible = false
 
+func _is_renpy_active() -> bool:
+    return is_instance_valid(renpy_view) and renpy_view.visible
+
+func _open_renpy_player(entry: Dictionary) -> void:
+    if _is_renpy_active():
+        return
+    _reset_shell_scroll_drag()
+    renpy_view = RenpyPlayerView.new()
+    add_child(renpy_view)
+    renpy_view.setup(self)
+    renpy_view.game_ready.connect(func():
+        var library_path := String(entry.get("path", ""))
+        if active_game_path == library_path and active_game_started_msec > 0:
+            return
+        var played_game := _mark_game_played(library_path)
+        if not played_game.is_empty():
+            selected_game = played_game
+        active_game_path = library_path
+        active_game_started_msec = Time.get_ticks_msec()
+    )
+    renpy_view.closed.connect(func():
+        _finalize_active_game_session()
+        renpy_view = null
+        shell_root.visible = true
+        _refresh_games()
+    )
+    var error: String = renpy_view.open_entry(entry)
+    if not error.is_empty():
+        renpy_view.close()
+        _show_message(error)
+        return
+    shell_root.visible = false
+
 func _open_flash_player(entry: Dictionary) -> void:
     if _is_flash_active() or not _require_legal_documents_for_media():
         return
@@ -10189,6 +10308,7 @@ func _open_flash_player(entry: Dictionary) -> void:
     flash_view.setup(self)
     flash_view.closed.connect(func():
         flash_view = null
+        _set_game_runtime_orientation(false)
         shell_root.visible = true
         _refresh_file_library()
     )
@@ -10197,6 +10317,7 @@ func _open_flash_player(entry: Dictionary) -> void:
         flash_view.close()
         _show_message(error)
         return
+    _set_game_runtime_orientation(true)
     shell_root.visible = false
 
 func _refresh_videos() -> void:
@@ -10887,7 +11008,10 @@ func _on_vndb_cover_resolved(game_path: String, cover_path: String, vndb_id: Str
 
 func _merge_game_dictionary(existing: Dictionary, game: Dictionary) -> Dictionary:
     var merged := existing.duplicate(true)
+    GameLaunchEntry.backfill(merged, game)
     for key in game.keys():
+        if key in [GameLaunchEntry.FIELD, GameLaunchEntry.RFVP_ENCODING_FIELD]:
+            continue
         var value = game[key]
         if (key == "lastPlayed" or key == "playDurationSeconds") and int(value) == 0:
             continue
@@ -11064,7 +11188,8 @@ func _backfill_game_metadata(games: Array[Dictionary]) -> bool:
                 and not String(game.get("title", "")).is_empty() \
                 and game.has("titleCandidates") and game.has("launchFile"):
             continue
-        var metadata := GameMetadata.inspect(path)
+        var configured_path := GameLaunchEntry.resolve(game)
+        var metadata := GameMetadata.inspect(configured_path if FileAccess.file_exists(configured_path) else path)
         var engine := String(metadata.get("engine", RUNTIME_KIRIKIRI))
         if String(game.get("engine", "")).is_empty() or String(game.get("engine", "")) == RUNTIME_KIRIKIRI:
             if String(game.get("engine", "")) != engine:
@@ -11077,8 +11202,10 @@ func _backfill_game_metadata(games: Array[Dictionary]) -> bool:
                 if String(game.get("name", "")).is_empty():
                     game["name"] = title
                 changed = true
-        for key in ["titleCandidates", "metadataSignals", "launchFile"]:
-            var value = metadata.get(key, null)
+        if GameLaunchEntry.backfill(game, metadata):
+            changed = true
+        for key in ["titleCandidates", "metadataSignals"]:
+            var value = metadata.get("signals" if key == "metadataSignals" else key, null)
             if value != null and JSON.stringify(game.get(key, null)) != JSON.stringify(value):
                 game[key] = value
                 changed = true
@@ -11649,12 +11776,15 @@ func _finish_launch_transition() -> void:
     shell_root.pivot_offset = Vector2.ZERO
 
 func _start_selected_game_after_iap() -> void:
-    if player == null:
-        return
     var library_path := String(selected_game.get("path", "")).strip_edges()
     if library_path.is_empty():
         return
     var selected_runtime_kind := _game_runtime_kind(library_path)
+    if selected_runtime_kind == RUNTIME_RENPY:
+        _start_selected_game_after_entitlements()
+        return
+    if player == null:
+        return
     # Development artifacts and Android/Linux releases do not use the Apple-only
     # beta entitlement flow.
     if not _beta_access_enforcement_enabled():
@@ -11743,6 +11873,9 @@ func _start_selected_game_after_entitlements() -> void:
     active_runtime_kind = _game_runtime_kind(library_path)
     if active_runtime_kind == RUNTIME_TYRANO:
         _open_tyrano_game(selected_game)
+        return
+    if active_runtime_kind == RUNTIME_RENPY:
+        _open_renpy_player(selected_game)
         return
     if not _switch_runtime_player(active_runtime_kind):
         return
@@ -12287,6 +12420,7 @@ func _switch_runtime_player(runtime_kind: String) -> bool:
         RUNTIME_CATSYSTEM2,
         RUNTIME_SIGLUS,
         RUNTIME_BGI,
+        RUNTIME_XSYSTEM4,
     ]:
         normalized = RUNTIME_KIRIKIRI
     if player != null and current_player_runtime_kind == normalized:
@@ -12315,6 +12449,9 @@ func _switch_runtime_player(runtime_kind: String) -> bool:
             diagnostic_session.finish()
         diagnostic_session.start(player, selected_backend)
     _append_log("Runtime selected: %s" % (
+        "AliceSoft System 4"
+        if normalized == RUNTIME_XSYSTEM4
+        else
         "OnscripterYuri"
         if normalized == RUNTIME_ONSCRIPTER
         else "MinoriRust"
@@ -12953,6 +13090,7 @@ func _ensure_player_initialized() -> bool:
         RUNTIME_CATSYSTEM2,
         RUNTIME_SIGLUS,
         RUNTIME_BGI,
+        RUNTIME_XSYSTEM4,
     ]:
         runtime_id = current_player_runtime_kind
     var runtime_result := int(player.set_engine_option("runtime", runtime_id))
@@ -12967,6 +13105,9 @@ func _ensure_player_initialized() -> bool:
         return false
 
     _append_log("%s engine initialized." % (
+        "AliceSoft System 4"
+        if current_player_runtime_kind == RUNTIME_XSYSTEM4
+        else
         "OnscripterYuri"
         if current_player_runtime_kind == RUNTIME_ONSCRIPTER
         else "MinoriRust"
@@ -15245,6 +15386,8 @@ func _notification(what: int) -> void:
     if what == NOTIFICATION_WM_GO_BACK_REQUEST:
         _handle_go_back_request()
         return
+    if what == NOTIFICATION_WM_CLOSE_REQUEST and _is_renpy_active():
+        renpy_view.close()
     if what == NOTIFICATION_WM_CLOSE_REQUEST and _is_flash_active():
         flash_view.close()
     if what == NOTIFICATION_WM_CLOSE_REQUEST and _is_tyrano_active():
@@ -15294,6 +15437,9 @@ func _handle_go_back_request() -> void:
     # explicitly through the graceful exit paths instead.
     if modal_layer != null and modal_layer.visible:
         _dismiss_modal()
+        return
+    if _is_renpy_active():
+        renpy_view.close()
         return
     if _is_flash_active():
         flash_view.close()
@@ -15482,6 +15628,8 @@ func _renderer_summary(renderer: String) -> String:
     var summary := selected_backend
     if renderer.contains("backend=onscripter_yuri"):
         summary = "OnscripterYuri (Godot Texture)"
+    elif renderer.contains("backend=xsystem4"):
+        summary = "System 4 (Godot Texture)"
     elif renderer.contains("backend=godot_native"):
         summary = "Godot Native GPU"
     elif renderer.contains("backend=gpu_bridge"):
@@ -16545,7 +16693,7 @@ func _reset_mobile_edge_back_gesture() -> void:
     mobile_edge_back_cancelled = false
 
 func _mobile_edge_back_available() -> bool:
-    if not _mobile_runtime() or game_running or video_playing or _is_flash_active() or _is_tyrano_active():
+    if not _mobile_runtime() or game_running or video_playing or _is_flash_active() or _is_tyrano_active() or _is_renpy_active():
         return false
     if shell_root == null or not shell_root.visible:
         return false
@@ -16679,7 +16827,7 @@ func _trace_ios_raw_pointer_event(event: InputEvent) -> void:
         perf_log_file.flush()
 
 func _input(event: InputEvent) -> void:
-    if _is_flash_active() or _is_tyrano_active():
+    if _is_flash_active() or _is_tyrano_active() or _is_renpy_active():
         return
     _trace_ios_raw_pointer_event(event)
     _note_backdrop_touch(event)

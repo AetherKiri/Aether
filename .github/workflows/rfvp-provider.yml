@@ -1,0 +1,53 @@
+name: RFVP provider
+
+on:
+  pull_request:
+    paths:
+      - 'packages/rfvp'
+      - 'bridge/rfvp_runtime/**'
+      - 'abi/include/**'
+      - 'apps/godot_app/assets/fonts/**'
+      - '.github/workflows/rfvp-provider.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'packages/rfvp'
+      - 'bridge/rfvp_runtime/**'
+      - 'abi/include/**'
+      - 'apps/godot_app/assets/fonts/**'
+      - '.github/workflows/rfvp-provider.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: rfvp-provider-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  standalone:
+    runs-on: macos-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          submodules: false
+          persist-credentials: false
+      - name: Initialize public RFVP sources
+        run: git submodule update --init packages/rfvp
+      - name: Verify runner build tools
+        run: cargo --version && cmake --version && ninja --version
+      - name: Prepare isolated host overlay
+        run: cmake -S bridge/rfvp_runtime -B out/rfvp-check -G Ninja -DCMAKE_BUILD_TYPE=Debug
+      - name: Check locked Rust dependency graph
+        run: cargo check --locked --manifest-path out/rfvp-check/prepared/Cargo.toml -p rfvp --lib --no-default-features --features soft-render-core,audio,native-video,random,image-formats,zlib-flate2
+      - name: Build provider
+        run: cmake --build out/rfvp-check
+      - name: Run host and provider regressions
+        run: ctest --test-dir out/rfvp-check --output-on-failure
+      - name: Verify pinned inputs remain untouched
+        if: always()
+        run: |
+          test -z "$(git -C packages/rfvp status --porcelain)"
+          cmp bridge/rfvp_runtime/Cargo.lock out/rfvp-check/prepared/Cargo.lock

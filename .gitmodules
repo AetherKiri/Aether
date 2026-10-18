@@ -41,3 +41,7 @@
 [submodule "packages/AetherMAGES"]
 	path = packages/AetherMAGES
 	url = https://github.com/AetherKiri/AetherMAGES.git
+[submodule "packages/xsystem4"]
+	path = packages/xsystem4
+	url = https://github.com/AetherKiri/xsystem4.git
+	branch = aether

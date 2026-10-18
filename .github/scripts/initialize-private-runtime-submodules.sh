@@ -23,6 +23,7 @@ git submodule update --init --recursive --depth 1 \
     packages/OnscripterYuri \
     packages/psdfile \
     packages/ruffle \
+    packages/xsystem4 \
     packages/rfvp \
     packages/tjs2Decompiler
 

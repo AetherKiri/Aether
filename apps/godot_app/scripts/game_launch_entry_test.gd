@@ -28,6 +28,19 @@ func _init() -> void:
     GameLaunchEntry.backfill(configured, detected)
     _expect_equal(configured[GameLaunchEntry.FIELD], "Other.hcb", "legacy metadata backfill")
 
+    var translated_metadata := {GameLaunchEntry.FIELD: ".Story.hcb", GameLaunchEntry.RFVP_ENCODING_FIELD: "gbk"}
+    var fresh := {}
+    GameLaunchEntry.backfill(fresh, translated_metadata)
+    _expect_equal(fresh[GameLaunchEntry.FIELD], ".Story.hcb", "fresh translated entry")
+    _expect_equal(fresh[GameLaunchEntry.RFVP_ENCODING_FIELD], "gbk", "fresh translated encoding")
+    var manual := {GameLaunchEntry.FIELD: "Story.hcb", GameLaunchEntry.RFVP_ENCODING_FIELD: "utf8"}
+    GameLaunchEntry.backfill(manual, translated_metadata)
+    _expect_equal(manual[GameLaunchEntry.FIELD], "Story.hcb", "manual script retained")
+    _expect_equal(manual[GameLaunchEntry.RFVP_ENCODING_FIELD], "utf8", "manual encoding retained")
+    var original_without_encoding := {GameLaunchEntry.FIELD: "Story.hcb"}
+    GameLaunchEntry.backfill(original_without_encoding, translated_metadata)
+    _expect_equal(GameLaunchEntry.rfvp_encoding(original_without_encoding), "sjis", "no unrelated script encoding copied")
+
     _expect_equal(GameLaunchEntry.resolve({"path": root}), root, "default directory entry")
     _expect_equal(
         GameLaunchEntry.resolve({"path": root, GameLaunchEntry.FIELD: "Script.HCB"}),

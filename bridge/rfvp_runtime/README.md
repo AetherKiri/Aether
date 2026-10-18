@@ -57,8 +57,10 @@ the small generated workspace, not all upstream console and tool packages.
   default, `gpu` requires the Godot GPU Bridge, and `cpu` is useful for visual
   comparison. The app-level developer override is
   `AETHERKIRI_RFVP_RENDERER`. Normal GPU presentation stays on-device; a
-  readback occurs only when the host explicitly requests RGBA pixels, such as
-  for save thumbnails or screenshots.
+  readback occurs for host RGBA requests (save thumbnails or screenshots) and
+  when a mask dissolve needs the previously presented frame. Mask dissolves
+  temporarily composite the whole frame on the CPU, then resume GPU rendering;
+  additive primitives use the bridge's SRCALPHA/ONE blend mode.
 - New RFVS payloads use a version-2 envelope to preserve active motions, sprite
   and snow animations, and text-reveal coroutine linkage. Version-1 snapshots
   remain readable, but missing playback state in old files cannot be recovered
@@ -70,8 +72,9 @@ the small generated workspace, not all upstream console and tool packages.
 overlay without modifying the pinned submodule. The overlay redirects game,
 save and cache roots, resets per-session globals, adds pause/cancel hooks, and
 replaces the upstream embedded Microsoft fonts with AetherKiri's OFL runtime
-font. Large sound-effect slot buffers are heap-backed so initialization also
-fits the host's smaller asynchronous-startup thread stack. The compiled rfvp
+font. Large audio channel slot buffers are heap-backed so initialization also
+fits the host's smaller asynchronous-startup thread stack. Audio streams share
+one pauseable mixer track, including movie audio and retiring fade-outs. The compiled rfvp
 crate is a Rust static library behind a private C ABI;
 no Rust layout crosses the engine-provider ABI.
 
@@ -129,3 +132,15 @@ These tests are not a full AetherKiri application or commercial-game
 compatibility certification. Do not add a game to the verified-games list
 until the normal application import/launch and the claimed flows are exercised
 and confirmed by the user.
+
+### Upstream upgrade validation
+
+The upgrade to `eb5490d9fc6d471d36554a84e052cf531afd48d4` is being validated
+independently by `.github/workflows/rfvp-provider.yml`. The earlier application
+and game smoke tests above describe the previous integration, not a re-test of
+this upstream revision. A standalone check does not certify Apple packaging or
+commercial-game playback.
+
+The increment from `af557db` to `eb5490d` only adds an upstream reverse-engineering
+database under `reverse/`. It is not copied into the prepared workspace or
+compiled into the provider; runtime sources and the embedded lockfile are unchanged.

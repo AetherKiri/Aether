@@ -152,7 +152,23 @@ extern JNIEnv* krkr_GetJNIEnv();
 extern jobject krkr_GetApplicationContext();
 #endif
 
+// Trivial min/max to avoid std::min/std::max template instantiation
+// chains that exceed MSVC's string-literal limit (C2026) in this TU.
+template <class T> static inline T aetherkiri_min(T a, T b) { return a < b ? a : b; }
+template <class T> static inline T aetherkiri_max(T a, T b) { return a > b ? a : b; }
+template <class T> static inline T aetherkiri_min(std::initializer_list<T> il) {
+    auto it = il.begin(); T r = *it; ++it;
+    for (; it != il.end(); ++it) if (*it < r) r = *it;
+    return r;
+}
+template <class T> static inline T aetherkiri_max(std::initializer_list<T> il) {
+    auto it = il.begin(); T r = *it; ++it;
+    for (; it != il.end(); ++it) if (*it > r) r = *it;
+    return r;
+}
+
 namespace godot {
+
 
 #if defined(AETHERKIRI_INTERNAL_FRAME_EFFECTS)
 void RegisterAetherInternalFrameEffects();
@@ -491,10 +507,10 @@ void LogGodotGpuOpProfile(const char *phase,
     }
     const uint32_t width = op->profile_width != 0
         ? op->profile_width
-        : static_cast<uint32_t>(std::max(0.0f, op->size.x));
+        : static_cast<uint32_t>(aetherkiri_max(0.0f, op->size.x));
     const uint32_t height = op->profile_height != 0
         ? op->profile_height
-        : static_cast<uint32_t>(std::max(0.0f, op->size.y));
+        : static_cast<uint32_t>(aetherkiri_max(0.0f, op->size.y));
     double queue_ms = 0.0;
     if (op->profile_submitted_at.time_since_epoch().count() != 0) {
         queue_ms = std::chrono::duration<double, std::milli>(
@@ -2080,7 +2096,37 @@ bool EnsureBlendPipeline(RenderingDevice *rd) {
     source->set_language(RenderingDevice::SHADER_LANGUAGE_GLSL);
     source->set_stage_source(
         RenderingDevice::SHADER_STAGE_COMPUTE,
-        R"GLSL(#version 450
+        R"GLSL(#version 450)GLSL" R"GLSL(
+// aetherkiri_min/max overloads. The shader bodies call these for scalar,
+// vector and integer types; GLSL has no templates, so the full overload set
+// must be declared explicitly. Missing definitions fail the pipeline with
+// "'aetherkiri_max' : no matching overloaded function found" (observed on the
+// blend pipeline, which is created at boot).
+int aetherkiri_min(int a, int b) { return min(a, b); }
+int aetherkiri_max(int a, int b) { return max(a, b); }
+uint aetherkiri_min(uint a, uint b) { return min(a, b); }
+uint aetherkiri_max(uint a, uint b) { return max(a, b); }
+float aetherkiri_min(float a, float b) { return min(a, b); }
+float aetherkiri_max(float a, float b) { return max(a, b); }
+vec2 aetherkiri_min(vec2 a, vec2 b) { return min(a, b); }
+vec2 aetherkiri_max(vec2 a, vec2 b) { return max(a, b); }
+vec3 aetherkiri_min(vec3 a, vec3 b) { return min(a, b); }
+vec3 aetherkiri_max(vec3 a, vec3 b) { return max(a, b); }
+vec4 aetherkiri_min(vec4 a, vec4 b) { return min(a, b); }
+vec4 aetherkiri_max(vec4 a, vec4 b) { return max(a, b); }
+ivec2 aetherkiri_min(ivec2 a, ivec2 b) { return min(a, b); }
+ivec2 aetherkiri_max(ivec2 a, ivec2 b) { return max(a, b); }
+ivec3 aetherkiri_min(ivec3 a, ivec3 b) { return min(a, b); }
+ivec3 aetherkiri_max(ivec3 a, ivec3 b) { return max(a, b); }
+ivec4 aetherkiri_min(ivec4 a, ivec4 b) { return min(a, b); }
+ivec4 aetherkiri_max(ivec4 a, ivec4 b) { return max(a, b); }
+uvec2 aetherkiri_min(uvec2 a, uvec2 b) { return min(a, b); }
+uvec2 aetherkiri_max(uvec2 a, uvec2 b) { return max(a, b); }
+uvec3 aetherkiri_min(uvec3 a, uvec3 b) { return min(a, b); }
+uvec3 aetherkiri_max(uvec3 a, uvec3 b) { return max(a, b); }
+uvec4 aetherkiri_min(uvec4 a, uvec4 b) { return min(a, b); }
+uvec4 aetherkiri_max(uvec4 a, uvec4 b) { return max(a, b); }
+)GLSL" R"GLSL(
 layout(local_size_x = 8, local_size_y = 8, local_size_z = 1) in;
 layout(rgba8, set = 0, binding = 0) uniform readonly image2D src_img;
 layout(rgba8, set = 0, binding = 1) uniform image2D dst_img;
@@ -2127,15 +2173,15 @@ vec4 load_src(ivec2 local) {
     if (pc.color0.z != 1) {
         return imageLoad(src_img, pc.rect0.zw + local);
     }
-    ivec2 src_extent = max(pc.color0.xy, ivec2(1));
+    ivec2 src_extent = aetherkiri_max(pc.color0.xy, ivec2(1));
     vec2 source_step = vec2(src_extent) /
-        vec2(max(pc.rect1.xy, ivec2(1)));
+        vec2(aetherkiri_max(pc.rect1.xy, ivec2(1)));
     vec2 src_coord = vec2(pc.rect0.zw) +
         (vec2(local) + vec2(0.5)) * source_step - vec2(0.5);
     ivec2 src_min = pc.rect0.zw;
     ivec2 src_max = src_min + src_extent - ivec2(1);
     vec4 premul;
-    if (max(source_step.x, source_step.y) <= 1.0001) {
+    if (aetherkiri_max(source_step.x, source_step.y) <= 1.0001) {
         premul = sample_src_premul(src_coord, src_min, src_max);
     } else {
         vec2 dx = vec2(source_step.x > 1.0001
@@ -2178,7 +2224,7 @@ uint opacity_on_opacity(uint dest_alpha, uint src_alpha) {
     if (denom == 0u) {
         return 255u;
     }
-    return min((255u * 255u * src_alpha) / denom, 255u);
+    return aetherkiri_min((255u * 255u * src_alpha) / denom, 255u);
 }
 
 uint negative_mul_alpha(uint dest_alpha, uint src_alpha) {
@@ -2255,9 +2301,9 @@ uint ps_screen_blend(uint d, uint s, uint opa) {
     uint sr = s & 0xffu;
     uint sg = (s >> 8) & 0xffu;
     uint sb = (s >> 16) & 0xffu;
-    uint r = min(dr + (((sr - ((sr * dr) >> 8)) * a) >> 8), 255u);
-    uint g = min(dg + (((sg - ((sg * dg) >> 8)) * a) >> 8), 255u);
-    uint b = min(db + (((sb - ((sb * db) >> 8)) * a) >> 8), 255u);
+    uint _r = dr + (((sr - ((sr * dr) >> 8)) * a) >> 8); uint r = _r < 255u ? _r : 255u;
+    uint _g = dg + (((sg - ((sg * dg) >> 8)) * a) >> 8); uint g = _g < 255u ? _g : 255u;
+    uint _b = db + (((sb - ((sb * db) >> 8)) * a) >> 8); uint b = _b < 255u ? _b : 255u;
     return (d & 0xff000000u) | r | (g << 8) | (b << 16);
 }
 
@@ -2286,9 +2332,9 @@ uint ps_add_blend(uint d, uint s, uint opa) {
     int dr = int(d & 0xffu);
     int dg = int((d >> 8) & 0xffu);
     int db = int((d >> 16) & 0xffu);
-    int br = min(dr + int(s & 0xffu), 255);
-    int bg = min(dg + int((s >> 8) & 0xffu), 255);
-    int bb = min(db + int((s >> 16) & 0xffu), 255);
+    int br = aetherkiri_min(dr + int(s & 0xffu), 255);
+    int bg = aetherkiri_min(dg + int((s >> 8) & 0xffu), 255);
+    int bb = aetherkiri_min(db + int((s >> 16) & 0xffu), 255);
     uint r = uint(clamp(dr + (((br - dr) * int(a)) >> 8), 0, 255));
     uint g = uint(clamp(dg + (((bg - dg) * int(a)) >> 8), 0, 255));
     uint b = uint(clamp(db + (((bb - db) * int(a)) >> 8), 0, 255));
@@ -2303,9 +2349,9 @@ uint ps_sub_blend(uint d, uint s, uint opa) {
     int dr = int(d & 0xffu);
     int dg = int((d >> 8) & 0xffu);
     int db = int((d >> 16) & 0xffu);
-    int br = max(dr + int(s & 0xffu) - 255, 0);
-    int bg = max(dg + int((s >> 8) & 0xffu) - 255, 0);
-    int bb = max(db + int((s >> 16) & 0xffu) - 255, 0);
+    int br = aetherkiri_max(dr + int(s & 0xffu) - 255, 0);
+    int bg = aetherkiri_max(dg + int((s >> 8) & 0xffu) - 255, 0);
+    int bb = aetherkiri_max(db + int((s >> 16) & 0xffu) - 255, 0);
     uint r = uint(clamp(dr + (((br - dr) * int(a)) >> 8), 0, 255));
     uint g = uint(clamp(dg + (((bg - dg) * int(a)) >> 8), 0, 255));
     uint b = uint(clamp(db + (((bb - db) * int(a)) >> 8), 0, 255));
@@ -2316,11 +2362,11 @@ uint soft_light_channel(uint source, uint destination) {
     float s = float(source) / 255.0;
     float d = float(destination) / 255.0;
     float exponent = source >= 128u
-        ? 128.0 / max(float(source), 1.0)
+        ? 128.0 / aetherkiri_max(float(source), 1.0)
         : (1.0 - s) / 0.5;
     // TVP's table stores an unsigned char, so conversion intentionally
     // truncates instead of rounding.
-    return uint(clamp(pow(max(d, 0.0), exponent) * 255.0, 0.0, 255.0));
+    return uint(clamp(pow(aetherkiri_max(d, 0.0), exponent) * 255.0, 0.0, 255.0));
 }
 
 uint ps_soft_light_blend(uint d, uint s, uint opa) {
@@ -2349,10 +2395,10 @@ uint additive_alpha_blend_hda(uint d, uint s, uint opa) {
         s = sr | (sg << 8) | (sb << 16) | (sa << 24);
     }
     uint inverse_alpha = ((~s) >> 24) & 0xffu;
-    uint r = min((((d & 0xffu) * inverse_alpha) >> 8) + (s & 0xffu), 255u);
-    uint g = min(((((d >> 8) & 0xffu) * inverse_alpha) >> 8) +
+    uint r = aetherkiri_min((((d & 0xffu) * inverse_alpha) >> 8) + (s & 0xffu), 255u);
+    uint g = aetherkiri_min(((((d >> 8) & 0xffu) * inverse_alpha) >> 8) +
                  ((s >> 8) & 0xffu), 255u);
-    uint b = min(((((d >> 16) & 0xffu) * inverse_alpha) >> 8) +
+    uint b = aetherkiri_min(((((d >> 16) & 0xffu) * inverse_alpha) >> 8) +
                  ((s >> 16) & 0xffu), 255u);
     return (d & 0xff000000u) | r | (g << 8) | (b << 16);
 }
@@ -2381,11 +2427,11 @@ uint apply_color_map_a(uint d, uint mask, uint opa, uvec3 color) {
     uint out_alpha = dest_alpha + source_alpha -
                      ((dest_alpha * source_alpha) >> 8);
     out_alpha -= out_alpha >> 8;
-    uint r = min((((d & 0xffu) * inverse_alpha) >> 8) +
+    uint r = aetherkiri_min((((d & 0xffu) * inverse_alpha) >> 8) +
                  ((source_alpha * color.r) >> 8), 255u);
-    uint g = min(((((d >> 8) & 0xffu) * inverse_alpha) >> 8) +
+    uint g = aetherkiri_min(((((d >> 8) & 0xffu) * inverse_alpha) >> 8) +
                  ((source_alpha * color.g) >> 8), 255u);
-    uint b = min(((((d >> 16) & 0xffu) * inverse_alpha) >> 8) +
+    uint b = aetherkiri_min(((((d >> 16) & 0xffu) * inverse_alpha) >> 8) +
                  ((source_alpha * color.b) >> 8), 255u);
     return (out_alpha << 24) | r | (g << 8) | (b << 16);
 }
@@ -2417,7 +2463,7 @@ void main() {
     if (pc.rect1.z == 26) {
         int radius_x = clamp(pc.rect1.w, 0, 64);
         int radius_y = clamp(pc.color0.x, 0, 64);
-        ivec2 extent = max(pc.rect1.xy, ivec2(1));
+        ivec2 extent = aetherkiri_max(pc.rect1.xy, ivec2(1));
         vec4 sum = vec4(0.0);
         int samples = 0;
         for (int oy = -radius_y; oy <= radius_y; ++oy) {
@@ -2428,7 +2474,7 @@ void main() {
                 ++samples;
             }
         }
-        out_color = pack_u8(vec4_to_u8(sum / float(max(samples, 1))));
+        out_color = pack_u8(vec4_to_u8(sum / float(aetherkiri_max(samples, 1))));
     } else if (pc.rect1.z == 5) {
         out_color = (uint(pc.color0.x) & 0xffu) |
                     ((uint(pc.color0.y) & 0xffu) << 8) |
@@ -2465,7 +2511,7 @@ void main() {
                 : (sa + ((255u - sa) * da) / 255u);
         }
         out_color = (d & 0x00ffffffu) |
-                    (min(out_alpha, 255u) << 24);
+                    (aetherkiri_min(out_alpha, 255u) << 24);
         } else if (pc.rect1.z == 1) {
         out_color = alpha_blend_hda_o(d, s, opa);
         } else if (pc.rect1.z == 2) {
@@ -2480,7 +2526,7 @@ void main() {
         out_color = ps_screen_blend(d, s, opa);
         } else if (pc.rect1.z == 15) {
         out_color = ps_mul_blend(d, s, opa);
-        } else if (pc.rect1.z == 16) {
+)GLSL" R"GLSL(        } else if (pc.rect1.z == 16) {
         out_color = ps_add_blend(d, s, opa);
         } else if (pc.rect1.z == 17) {
         out_color = ps_sub_blend(d, s, opa);
@@ -2533,7 +2579,37 @@ bool EnsureAlphaConvertPipeline(RenderingDevice *rd) {
     source->set_language(RenderingDevice::SHADER_LANGUAGE_GLSL);
     source->set_stage_source(
         RenderingDevice::SHADER_STAGE_COMPUTE,
-        R"GLSL(#version 450
+        R"GLSL(#version 450)GLSL" R"GLSL(
+// aetherkiri_min/max overloads. The shader bodies call these for scalar,
+// vector and integer types; GLSL has no templates, so the full overload set
+// must be declared explicitly. Missing definitions fail the pipeline with
+// "'aetherkiri_max' : no matching overloaded function found" (observed on the
+// blend pipeline, which is created at boot).
+int aetherkiri_min(int a, int b) { return min(a, b); }
+int aetherkiri_max(int a, int b) { return max(a, b); }
+uint aetherkiri_min(uint a, uint b) { return min(a, b); }
+uint aetherkiri_max(uint a, uint b) { return max(a, b); }
+float aetherkiri_min(float a, float b) { return min(a, b); }
+float aetherkiri_max(float a, float b) { return max(a, b); }
+vec2 aetherkiri_min(vec2 a, vec2 b) { return min(a, b); }
+vec2 aetherkiri_max(vec2 a, vec2 b) { return max(a, b); }
+vec3 aetherkiri_min(vec3 a, vec3 b) { return min(a, b); }
+vec3 aetherkiri_max(vec3 a, vec3 b) { return max(a, b); }
+vec4 aetherkiri_min(vec4 a, vec4 b) { return min(a, b); }
+vec4 aetherkiri_max(vec4 a, vec4 b) { return max(a, b); }
+ivec2 aetherkiri_min(ivec2 a, ivec2 b) { return min(a, b); }
+ivec2 aetherkiri_max(ivec2 a, ivec2 b) { return max(a, b); }
+ivec3 aetherkiri_min(ivec3 a, ivec3 b) { return min(a, b); }
+ivec3 aetherkiri_max(ivec3 a, ivec3 b) { return max(a, b); }
+ivec4 aetherkiri_min(ivec4 a, ivec4 b) { return min(a, b); }
+ivec4 aetherkiri_max(ivec4 a, ivec4 b) { return max(a, b); }
+uvec2 aetherkiri_min(uvec2 a, uvec2 b) { return min(a, b); }
+uvec2 aetherkiri_max(uvec2 a, uvec2 b) { return max(a, b); }
+uvec3 aetherkiri_min(uvec3 a, uvec3 b) { return min(a, b); }
+uvec3 aetherkiri_max(uvec3 a, uvec3 b) { return max(a, b); }
+uvec4 aetherkiri_min(uvec4 a, uvec4 b) { return min(a, b); }
+uvec4 aetherkiri_max(uvec4 a, uvec4 b) { return max(a, b); }
+)GLSL" R"GLSL(
 layout(local_size_x = 8, local_size_y = 8, local_size_z = 1) in;
 layout(rgba8, set = 0, binding = 0) uniform image2D target_img;
 layout(push_constant, std430) uniform Params {
@@ -2571,9 +2647,9 @@ uint alpha_to_additive_alpha(uint c) {
 uint additive_alpha_to_alpha(uint c) {
     uint alpha = (c >> 24) & 0xffu;
     if (alpha == 0u) return c & 0xff000000u;
-    uint r = min((c & 0xffu) * 255u / alpha, 255u);
-    uint g = min(((c >> 8) & 0xffu) * 255u / alpha, 255u);
-    uint b = min(((c >> 16) & 0xffu) * 255u / alpha, 255u);
+    uint r = aetherkiri_min((c & 0xffu) * 255u / alpha, 255u);
+    uint g = aetherkiri_min(((c >> 8) & 0xffu) * 255u / alpha, 255u);
+    uint b = aetherkiri_min(((c >> 16) & 0xffu) * 255u / alpha, 255u);
     return (c & 0xff000000u) | r | (g << 8) | (b << 16);
 }
 
@@ -2667,7 +2743,37 @@ bool EnsureAlphaBlendAPipeline(RenderingDevice *rd) {
     source->set_language(RenderingDevice::SHADER_LANGUAGE_GLSL);
     source->set_stage_source(
         RenderingDevice::SHADER_STAGE_COMPUTE,
-        R"GLSL(#version 450
+        R"GLSL(#version 450)GLSL" R"GLSL(
+// aetherkiri_min/max overloads. The shader bodies call these for scalar,
+// vector and integer types; GLSL has no templates, so the full overload set
+// must be declared explicitly. Missing definitions fail the pipeline with
+// "'aetherkiri_max' : no matching overloaded function found" (observed on the
+// blend pipeline, which is created at boot).
+int aetherkiri_min(int a, int b) { return min(a, b); }
+int aetherkiri_max(int a, int b) { return max(a, b); }
+uint aetherkiri_min(uint a, uint b) { return min(a, b); }
+uint aetherkiri_max(uint a, uint b) { return max(a, b); }
+float aetherkiri_min(float a, float b) { return min(a, b); }
+float aetherkiri_max(float a, float b) { return max(a, b); }
+vec2 aetherkiri_min(vec2 a, vec2 b) { return min(a, b); }
+vec2 aetherkiri_max(vec2 a, vec2 b) { return max(a, b); }
+vec3 aetherkiri_min(vec3 a, vec3 b) { return min(a, b); }
+vec3 aetherkiri_max(vec3 a, vec3 b) { return max(a, b); }
+vec4 aetherkiri_min(vec4 a, vec4 b) { return min(a, b); }
+vec4 aetherkiri_max(vec4 a, vec4 b) { return max(a, b); }
+ivec2 aetherkiri_min(ivec2 a, ivec2 b) { return min(a, b); }
+ivec2 aetherkiri_max(ivec2 a, ivec2 b) { return max(a, b); }
+ivec3 aetherkiri_min(ivec3 a, ivec3 b) { return min(a, b); }
+ivec3 aetherkiri_max(ivec3 a, ivec3 b) { return max(a, b); }
+ivec4 aetherkiri_min(ivec4 a, ivec4 b) { return min(a, b); }
+ivec4 aetherkiri_max(ivec4 a, ivec4 b) { return max(a, b); }
+uvec2 aetherkiri_min(uvec2 a, uvec2 b) { return min(a, b); }
+uvec2 aetherkiri_max(uvec2 a, uvec2 b) { return max(a, b); }
+uvec3 aetherkiri_min(uvec3 a, uvec3 b) { return min(a, b); }
+uvec3 aetherkiri_max(uvec3 a, uvec3 b) { return max(a, b); }
+uvec4 aetherkiri_min(uvec4 a, uvec4 b) { return min(a, b); }
+uvec4 aetherkiri_max(uvec4 a, uvec4 b) { return max(a, b); }
+)GLSL" R"GLSL(
 layout(local_size_x = 8, local_size_y = 8, local_size_z = 1) in;
 layout(rgba8, set = 0, binding = 0) uniform readonly image2D src_img;
 layout(rgba8, set = 0, binding = 1) uniform image2D dst_img;
@@ -2714,15 +2820,15 @@ vec4 load_src(ivec2 local) {
     if (pc.color0.z != 1) {
         return imageLoad(src_img, pc.rect0.zw + local);
     }
-    ivec2 src_extent = max(pc.color0.xy, ivec2(1));
+    ivec2 src_extent = aetherkiri_max(pc.color0.xy, ivec2(1));
     vec2 source_step = vec2(src_extent) /
-        vec2(max(pc.rect1.xy, ivec2(1)));
+        vec2(aetherkiri_max(pc.rect1.xy, ivec2(1)));
     vec2 src_coord = vec2(pc.rect0.zw) +
         (vec2(local) + vec2(0.5)) * source_step - vec2(0.5);
     ivec2 src_min = pc.rect0.zw;
     ivec2 src_max = src_min + src_extent - ivec2(1);
     vec4 premul;
-    if (max(source_step.x, source_step.y) <= 1.0001) {
+    if (aetherkiri_max(source_step.x, source_step.y) <= 1.0001) {
         premul = sample_src_premul(src_coord, src_min, src_max);
     } else {
         vec2 dx = vec2(source_step.x > 1.0001
@@ -2821,7 +2927,37 @@ bool EnsureBlend2Pipeline(RenderingDevice *rd) {
     source->set_language(RenderingDevice::SHADER_LANGUAGE_GLSL);
     source->set_stage_source(
         RenderingDevice::SHADER_STAGE_COMPUTE,
-        R"GLSL(#version 450
+        R"GLSL(#version 450)GLSL" R"GLSL(
+// aetherkiri_min/max overloads. The shader bodies call these for scalar,
+// vector and integer types; GLSL has no templates, so the full overload set
+// must be declared explicitly. Missing definitions fail the pipeline with
+// "'aetherkiri_max' : no matching overloaded function found" (observed on the
+// blend pipeline, which is created at boot).
+int aetherkiri_min(int a, int b) { return min(a, b); }
+int aetherkiri_max(int a, int b) { return max(a, b); }
+uint aetherkiri_min(uint a, uint b) { return min(a, b); }
+uint aetherkiri_max(uint a, uint b) { return max(a, b); }
+float aetherkiri_min(float a, float b) { return min(a, b); }
+float aetherkiri_max(float a, float b) { return max(a, b); }
+vec2 aetherkiri_min(vec2 a, vec2 b) { return min(a, b); }
+vec2 aetherkiri_max(vec2 a, vec2 b) { return max(a, b); }
+vec3 aetherkiri_min(vec3 a, vec3 b) { return min(a, b); }
+vec3 aetherkiri_max(vec3 a, vec3 b) { return max(a, b); }
+vec4 aetherkiri_min(vec4 a, vec4 b) { return min(a, b); }
+vec4 aetherkiri_max(vec4 a, vec4 b) { return max(a, b); }
+ivec2 aetherkiri_min(ivec2 a, ivec2 b) { return min(a, b); }
+ivec2 aetherkiri_max(ivec2 a, ivec2 b) { return max(a, b); }
+ivec3 aetherkiri_min(ivec3 a, ivec3 b) { return min(a, b); }
+ivec3 aetherkiri_max(ivec3 a, ivec3 b) { return max(a, b); }
+ivec4 aetherkiri_min(ivec4 a, ivec4 b) { return min(a, b); }
+ivec4 aetherkiri_max(ivec4 a, ivec4 b) { return max(a, b); }
+uvec2 aetherkiri_min(uvec2 a, uvec2 b) { return min(a, b); }
+uvec2 aetherkiri_max(uvec2 a, uvec2 b) { return max(a, b); }
+uvec3 aetherkiri_min(uvec3 a, uvec3 b) { return min(a, b); }
+uvec3 aetherkiri_max(uvec3 a, uvec3 b) { return max(a, b); }
+uvec4 aetherkiri_min(uvec4 a, uvec4 b) { return min(a, b); }
+uvec4 aetherkiri_max(uvec4 a, uvec4 b) { return max(a, b); }
+)GLSL" R"GLSL(
 layout(local_size_x = 8, local_size_y = 8, local_size_z = 1) in;
 layout(rgba8, set = 0, binding = 0) uniform readonly image2D src1_img;
 layout(rgba8, set = 0, binding = 1) uniform readonly image2D src2_img;
@@ -2858,7 +2994,7 @@ uint opacity_on_opacity(uint dest_alpha, uint src_alpha) {
     if (denom == 0u) {
         return 255u;
     }
-    return min((255u * 255u * src_alpha) / denom, 255u);
+    return aetherkiri_min((255u * 255u * src_alpha) / denom, 255u);
 }
 
 uint const_alpha_blend_sd(uint s1, uint s2, uint opa) {
@@ -2983,7 +3119,37 @@ bool EnsureBlend3Pipeline(RenderingDevice *rd) {
     source->set_language(RenderingDevice::SHADER_LANGUAGE_GLSL);
     source->set_stage_source(
         RenderingDevice::SHADER_STAGE_COMPUTE,
-        R"GLSL(#version 450
+        R"GLSL(#version 450)GLSL" R"GLSL(
+// aetherkiri_min/max overloads. The shader bodies call these for scalar,
+// vector and integer types; GLSL has no templates, so the full overload set
+// must be declared explicitly. Missing definitions fail the pipeline with
+// "'aetherkiri_max' : no matching overloaded function found" (observed on the
+// blend pipeline, which is created at boot).
+int aetherkiri_min(int a, int b) { return min(a, b); }
+int aetherkiri_max(int a, int b) { return max(a, b); }
+uint aetherkiri_min(uint a, uint b) { return min(a, b); }
+uint aetherkiri_max(uint a, uint b) { return max(a, b); }
+float aetherkiri_min(float a, float b) { return min(a, b); }
+float aetherkiri_max(float a, float b) { return max(a, b); }
+vec2 aetherkiri_min(vec2 a, vec2 b) { return min(a, b); }
+vec2 aetherkiri_max(vec2 a, vec2 b) { return max(a, b); }
+vec3 aetherkiri_min(vec3 a, vec3 b) { return min(a, b); }
+vec3 aetherkiri_max(vec3 a, vec3 b) { return max(a, b); }
+vec4 aetherkiri_min(vec4 a, vec4 b) { return min(a, b); }
+vec4 aetherkiri_max(vec4 a, vec4 b) { return max(a, b); }
+ivec2 aetherkiri_min(ivec2 a, ivec2 b) { return min(a, b); }
+ivec2 aetherkiri_max(ivec2 a, ivec2 b) { return max(a, b); }
+ivec3 aetherkiri_min(ivec3 a, ivec3 b) { return min(a, b); }
+ivec3 aetherkiri_max(ivec3 a, ivec3 b) { return max(a, b); }
+ivec4 aetherkiri_min(ivec4 a, ivec4 b) { return min(a, b); }
+ivec4 aetherkiri_max(ivec4 a, ivec4 b) { return max(a, b); }
+uvec2 aetherkiri_min(uvec2 a, uvec2 b) { return min(a, b); }
+uvec2 aetherkiri_max(uvec2 a, uvec2 b) { return max(a, b); }
+uvec3 aetherkiri_min(uvec3 a, uvec3 b) { return min(a, b); }
+uvec3 aetherkiri_max(uvec3 a, uvec3 b) { return max(a, b); }
+uvec4 aetherkiri_min(uvec4 a, uvec4 b) { return min(a, b); }
+uvec4 aetherkiri_max(uvec4 a, uvec4 b) { return max(a, b); }
+)GLSL" R"GLSL(
 layout(local_size_x = 8, local_size_y = 8, local_size_z = 1) in;
 layout(rgba8, set = 0, binding = 0) uniform readonly image2D src1_img;
 layout(rgba8, set = 0, binding = 1) uniform readonly image2D src2_img;
@@ -3023,7 +3189,7 @@ void main() {
                                      0.0, 1.0) * 255.0));
     int packed_mode = pc.rect1.z;
     int mode = packed_mode & 0xffff;
-    int vague = max((packed_mode >> 16) & 0xffff, 1);
+    int vague = aetherkiri_max((packed_mode >> 16) & 0xffff, 1);
     int phase = pc.rect1.w;
 
     vec4 result;
@@ -3080,7 +3246,37 @@ bool EnsureCopyTrianglesPipeline(RenderingDevice *rd) {
     source->set_language(RenderingDevice::SHADER_LANGUAGE_GLSL);
     source->set_stage_source(
         RenderingDevice::SHADER_STAGE_COMPUTE,
-        R"GLSL(#version 450
+        R"GLSL(#version 450)GLSL" R"GLSL(
+// aetherkiri_min/max overloads. The shader bodies call these for scalar,
+// vector and integer types; GLSL has no templates, so the full overload set
+// must be declared explicitly. Missing definitions fail the pipeline with
+// "'aetherkiri_max' : no matching overloaded function found" (observed on the
+// blend pipeline, which is created at boot).
+int aetherkiri_min(int a, int b) { return min(a, b); }
+int aetherkiri_max(int a, int b) { return max(a, b); }
+uint aetherkiri_min(uint a, uint b) { return min(a, b); }
+uint aetherkiri_max(uint a, uint b) { return max(a, b); }
+float aetherkiri_min(float a, float b) { return min(a, b); }
+float aetherkiri_max(float a, float b) { return max(a, b); }
+vec2 aetherkiri_min(vec2 a, vec2 b) { return min(a, b); }
+vec2 aetherkiri_max(vec2 a, vec2 b) { return max(a, b); }
+vec3 aetherkiri_min(vec3 a, vec3 b) { return min(a, b); }
+vec3 aetherkiri_max(vec3 a, vec3 b) { return max(a, b); }
+vec4 aetherkiri_min(vec4 a, vec4 b) { return min(a, b); }
+vec4 aetherkiri_max(vec4 a, vec4 b) { return max(a, b); }
+ivec2 aetherkiri_min(ivec2 a, ivec2 b) { return min(a, b); }
+ivec2 aetherkiri_max(ivec2 a, ivec2 b) { return max(a, b); }
+ivec3 aetherkiri_min(ivec3 a, ivec3 b) { return min(a, b); }
+ivec3 aetherkiri_max(ivec3 a, ivec3 b) { return max(a, b); }
+ivec4 aetherkiri_min(ivec4 a, ivec4 b) { return min(a, b); }
+ivec4 aetherkiri_max(ivec4 a, ivec4 b) { return max(a, b); }
+uvec2 aetherkiri_min(uvec2 a, uvec2 b) { return min(a, b); }
+uvec2 aetherkiri_max(uvec2 a, uvec2 b) { return max(a, b); }
+uvec3 aetherkiri_min(uvec3 a, uvec3 b) { return min(a, b); }
+uvec3 aetherkiri_max(uvec3 a, uvec3 b) { return max(a, b); }
+uvec4 aetherkiri_min(uvec4 a, uvec4 b) { return min(a, b); }
+uvec4 aetherkiri_max(uvec4 a, uvec4 b) { return max(a, b); }
+)GLSL" R"GLSL(
 layout(local_size_x = 8, local_size_y = 8, local_size_z = 1) in;
 layout(std430, set = 0, binding = 0) readonly buffer Vertices {
     vec4 vertex[];
@@ -3131,7 +3327,7 @@ vec4 load_minified(ivec2 limit, vec2 edge_coord,
     // Approximate the source footprint with destination-pixel subsamples. Keep the
     // fast single lookup at 1:1/upscale, and average premultiplied samples so
     // transparent texels cannot introduce dark colour fringes.
-    float footprint = max(length(source_dx), length(source_dy));
+    float footprint = aetherkiri_max(length(source_dx), length(source_dy));
     if (footprint <= 1.0001) {
         return straight_from_premul(
             load_bilinear_premul(limit, edge_coord));
@@ -3176,7 +3372,7 @@ void main() {
     ivec2 dst_pos = pc.rect0.xy + local;
     vec2 p = vec2(dst_pos) + vec2(0.5);
     int tri_count = pc.rect1.z;
-    ivec2 src_limit = max(pc.color0.xy - ivec2(1), ivec2(0));
+    ivec2 src_limit = aetherkiri_max(pc.color0.xy - ivec2(1), ivec2(0));
     bool preserve_detail =
         (uint(pc.color0.z) & 0x40000000u) != 0u;
     vec4 out_color = imageLoad(dst_img, dst_pos);
@@ -3257,7 +3453,37 @@ bool EnsureDrawTrianglesPipeline(RenderingDevice *rd) {
     source->set_language(RenderingDevice::SHADER_LANGUAGE_GLSL);
     source->set_stage_source(
         RenderingDevice::SHADER_STAGE_COMPUTE,
-        R"GLSL(#version 450
+        R"GLSL(#version 450)GLSL" R"GLSL(
+// aetherkiri_min/max overloads. The shader bodies call these for scalar,
+// vector and integer types; GLSL has no templates, so the full overload set
+// must be declared explicitly. Missing definitions fail the pipeline with
+// "'aetherkiri_max' : no matching overloaded function found" (observed on the
+// blend pipeline, which is created at boot).
+int aetherkiri_min(int a, int b) { return min(a, b); }
+int aetherkiri_max(int a, int b) { return max(a, b); }
+uint aetherkiri_min(uint a, uint b) { return min(a, b); }
+uint aetherkiri_max(uint a, uint b) { return max(a, b); }
+float aetherkiri_min(float a, float b) { return min(a, b); }
+float aetherkiri_max(float a, float b) { return max(a, b); }
+vec2 aetherkiri_min(vec2 a, vec2 b) { return min(a, b); }
+vec2 aetherkiri_max(vec2 a, vec2 b) { return max(a, b); }
+vec3 aetherkiri_min(vec3 a, vec3 b) { return min(a, b); }
+vec3 aetherkiri_max(vec3 a, vec3 b) { return max(a, b); }
+vec4 aetherkiri_min(vec4 a, vec4 b) { return min(a, b); }
+vec4 aetherkiri_max(vec4 a, vec4 b) { return max(a, b); }
+ivec2 aetherkiri_min(ivec2 a, ivec2 b) { return min(a, b); }
+ivec2 aetherkiri_max(ivec2 a, ivec2 b) { return max(a, b); }
+ivec3 aetherkiri_min(ivec3 a, ivec3 b) { return min(a, b); }
+ivec3 aetherkiri_max(ivec3 a, ivec3 b) { return max(a, b); }
+ivec4 aetherkiri_min(ivec4 a, ivec4 b) { return min(a, b); }
+ivec4 aetherkiri_max(ivec4 a, ivec4 b) { return max(a, b); }
+uvec2 aetherkiri_min(uvec2 a, uvec2 b) { return min(a, b); }
+uvec2 aetherkiri_max(uvec2 a, uvec2 b) { return max(a, b); }
+uvec3 aetherkiri_min(uvec3 a, uvec3 b) { return min(a, b); }
+uvec3 aetherkiri_max(uvec3 a, uvec3 b) { return max(a, b); }
+uvec4 aetherkiri_min(uvec4 a, uvec4 b) { return min(a, b); }
+uvec4 aetherkiri_max(uvec4 a, uvec4 b) { return max(a, b); }
+)GLSL" R"GLSL(
 layout(local_size_x = 8, local_size_y = 8, local_size_z = 1) in;
 layout(std430, set = 0, binding = 0) readonly buffer Vertices {
     vec4 vertex[];
@@ -3341,25 +3567,25 @@ vec4 load_native_character_antialiased(
     float l_ne = premul_luma(ne);
     float l_sw = premul_luma(sw);
     float l_se = premul_luma(se);
-    float range_min = min(
-        l_center, min(min(l_nw, l_ne), min(l_sw, l_se)));
-    float range_max = max(
-        l_center, max(max(l_nw, l_ne), max(l_sw, l_se)));
+    float range_min = aetherkiri_min(
+        l_center, aetherkiri_min(aetherkiri_min(l_nw, l_ne), aetherkiri_min(l_sw, l_se)));
+    float range_max = aetherkiri_max(
+        l_center, aetherkiri_max(aetherkiri_max(l_nw, l_ne), aetherkiri_max(l_sw, l_se)));
     if (range_max - range_min <
-            max(1.0 / 24.0, range_max * (1.0 / 8.0))) {
+            aetherkiri_max(1.0 / 24.0, range_max * (1.0 / 8.0))) {
         return center;
     }
 
     vec2 direction = vec2(
         -((l_nw + l_ne) - (l_sw + l_se)),
          ((l_nw + l_sw) - (l_ne + l_se)));
-    float reduce = max(
+    float reduce = aetherkiri_max(
         (l_nw + l_ne + l_sw + l_se) * (0.25 / 8.0),
         1.0 / 128.0);
     // Two pixels is enough to join the one-pixel E-mote diagonals without
     // softening broad painted regions or the independently composited text.
     direction = clamp(
-        direction / (min(abs(direction.x), abs(direction.y)) + reduce),
+        direction / (aetherkiri_min(abs(direction.x), abs(direction.y)) + reduce),
         vec2(-2.0), vec2(2.0));
     vec2 source_direction =
         source_dx * direction.x + source_dy * direction.y;
@@ -3382,7 +3608,7 @@ vec4 load_native_character_antialiased(
 vec4 load_minified(ivec2 limit, vec2 edge_coord,
                     vec2 source_dx, vec2 source_dy,
                     bool preserve_detail, bool source_premultiplied) {
-    float footprint = max(length(source_dx), length(source_dy));
+    float footprint = aetherkiri_max(length(source_dx), length(source_dy));
     vec4 premul;
     if (footprint <= 1.0001) {
         premul = source_premultiplied
@@ -3457,7 +3683,7 @@ float color_burn(float src, float dst) {
     if (abs(src) < 0.000001) {
         return 0.0;
     }
-    return 1.0 - min(1.0, (1.0 - dst) / src);
+    return 1.0 - aetherkiri_min(1.0, (1.0 - dst) / src);
 }
 
 float color_dodge(float src, float dst) {
@@ -3467,7 +3693,7 @@ float color_dodge(float src, float dst) {
     if (abs(src - 1.0) < 0.000001) {
         return 1.0;
     }
-    return min(1.0, dst / (1.0 - src));
+    return aetherkiri_min(1.0, dst / (1.0 - src));
 }
 
 float overlay(float src, float dst) {
@@ -3497,20 +3723,20 @@ float hard_light(float src, float dst) {
 }
 
 float linear_light(float src, float dst) {
-    float burn = max(0.0, 2.0 * src + dst - 1.0);
-    float dodge = min(1.0, 2.0 * (src - 0.5) + dst);
+    float burn = aetherkiri_max(0.0, 2.0 * src + dst - 1.0);
+    float dodge = aetherkiri_min(1.0, 2.0 * (src - 0.5) + dst);
     return src < 0.5 ? burn : dodge;
 }
 
 vec3 color_blend(int mode, vec3 src, vec3 dst) {
     if (mode == 3) {
-        return min(src + dst, vec3(1.0));
+        return aetherkiri_min(src + dst, vec3(1.0));
     }
     if (mode == 4) {
         return src + dst;
     }
     if (mode == 5) {
-        return min(src, dst);
+        return aetherkiri_min(src, dst);
     }
     if (mode == 6) {
         return src * dst;
@@ -3520,10 +3746,10 @@ vec3 color_blend(int mode, vec3 src, vec3 dst) {
                     color_burn(src.b, dst.b));
     }
     if (mode == 8) {
-        return max(vec3(0.0), src + dst - vec3(1.0));
+        return aetherkiri_max(vec3(0.0), src + dst - vec3(1.0));
     }
     if (mode == 9) {
-        return max(src, dst);
+        return aetherkiri_max(src, dst);
     }
     if (mode == 10) {
         return src + dst - src * dst;
@@ -3570,12 +3796,12 @@ vec4 blend_cubism(vec4 dst, vec4 src, int flags) {
     } else if (alpha_mode == 2) {
         parameter = vec3(0.0, 0.0, dst.a * (1.0 - src.a));
     } else if (alpha_mode == 3) {
-        parameter = vec3(min(src.a, dst.a), max(src.a - dst.a, 0.0),
-                         max(dst.a - src.a, 0.0));
+        parameter = vec3(aetherkiri_min(src.a, dst.a), aetherkiri_max(src.a - dst.a, 0.0),
+                         aetherkiri_max(dst.a - src.a, 0.0));
     } else if (alpha_mode == 4) {
-        parameter = vec3(max(src.a + dst.a - 1.0, 0.0),
-                         min(src.a, 1.0 - dst.a),
-                         min(dst.a, 1.0 - src.a));
+        parameter = vec3(aetherkiri_max(src.a + dst.a - 1.0, 0.0),
+                         aetherkiri_min(src.a, 1.0 - dst.a),
+                         aetherkiri_min(dst.a, 1.0 - src.a));
     } else {
         parameter = vec3(src.a * dst.a, src.a * (1.0 - dst.a),
                          dst.a * (1.0 - src.a));
@@ -3626,7 +3852,7 @@ uint opacity_on_opacity(uint dest_alpha, uint src_alpha) {
     if (denom == 0u) {
         return 255u;
     }
-    return min((255u * 255u * src_alpha) / denom, 255u);
+    return aetherkiri_min((255u * 255u * src_alpha) / denom, 255u);
 }
 
 uint negative_mul_alpha(uint dest_alpha, uint src_alpha) {
@@ -3701,7 +3927,7 @@ uint alpha_blend_a_d_o(uint d, uint s, uint opa) {
 
 uint const_alpha_blend_d(uint d, uint s, uint opa) {
     uint dest_alpha = (d >> 24) & 0xffu;
-    uint blend_alpha = opacity_on_opacity(dest_alpha, opa);
+)GLSL" R"GLSL(    uint blend_alpha = opacity_on_opacity(dest_alpha, opa);
     uint out_alpha = negative_mul_alpha(dest_alpha, opa);
     int dr = int(d & 0xffu);
     int dg = int((d >> 8) & 0xffu);
@@ -3724,9 +3950,9 @@ uint ps_screen_blend(uint d, uint s, uint opa) {
     uint sr = s & 0xffu;
     uint sg = (s >> 8) & 0xffu;
     uint sb = (s >> 16) & 0xffu;
-    uint r = min(dr + (((sr - ((sr * dr) >> 8)) * a) >> 8), 255u);
-    uint g = min(dg + (((sg - ((sg * dg) >> 8)) * a) >> 8), 255u);
-    uint b = min(db + (((sb - ((sb * db) >> 8)) * a) >> 8), 255u);
+    uint _r = dr + (((sr - ((sr * dr) >> 8)) * a) >> 8); uint r = _r < 255u ? _r : 255u;
+    uint _g = dg + (((sg - ((sg * dg) >> 8)) * a) >> 8); uint g = _g < 255u ? _g : 255u;
+    uint _b = db + (((sb - ((sb * db) >> 8)) * a) >> 8); uint b = _b < 255u ? _b : 255u;
     return (d & 0xff000000u) | r | (g << 8) | (b << 16);
 }
 
@@ -3755,9 +3981,9 @@ uint ps_add_blend(uint d, uint s, uint opa) {
     int dr = int(d & 0xffu);
     int dg = int((d >> 8) & 0xffu);
     int db = int((d >> 16) & 0xffu);
-    int br = min(dr + int(s & 0xffu), 255);
-    int bg = min(dg + int((s >> 8) & 0xffu), 255);
-    int bb = min(db + int((s >> 16) & 0xffu), 255);
+    int br = aetherkiri_min(dr + int(s & 0xffu), 255);
+    int bg = aetherkiri_min(dg + int((s >> 8) & 0xffu), 255);
+    int bb = aetherkiri_min(db + int((s >> 16) & 0xffu), 255);
     uint r = uint(clamp(dr + (((br - dr) * int(a)) >> 8), 0, 255));
     uint g = uint(clamp(dg + (((bg - dg) * int(a)) >> 8), 0, 255));
     uint b = uint(clamp(db + (((bb - db) * int(a)) >> 8), 0, 255));
@@ -3772,9 +3998,9 @@ uint ps_sub_blend(uint d, uint s, uint opa) {
     int dr = int(d & 0xffu);
     int dg = int((d >> 8) & 0xffu);
     int db = int((d >> 16) & 0xffu);
-    int br = max(dr + int(s & 0xffu) - 255, 0);
-    int bg = max(dg + int((s >> 8) & 0xffu) - 255, 0);
-    int bb = max(db + int((s >> 16) & 0xffu) - 255, 0);
+    int br = aetherkiri_max(dr + int(s & 0xffu) - 255, 0);
+    int bg = aetherkiri_max(dg + int((s >> 8) & 0xffu) - 255, 0);
+    int bb = aetherkiri_max(db + int((s >> 16) & 0xffu) - 255, 0);
     uint r = uint(clamp(dr + (((br - dr) * int(a)) >> 8), 0, 255));
     uint g = uint(clamp(dg + (((bg - dg) * int(a)) >> 8), 0, 255));
     uint b = uint(clamp(db + (((bb - db) * int(a)) >> 8), 0, 255));
@@ -3821,7 +4047,7 @@ void main() {
     ivec2 dst_pos = pc.rect0.xy + local;
     vec2 p = vec2(dst_pos) + vec2(0.5);
     int tri_count = pc.rect1.z;
-    ivec2 src_limit = max(pc.color0.xy - ivec2(1), ivec2(0));
+    ivec2 src_limit = aetherkiri_max(pc.color0.xy - ivec2(1), ivec2(0));
     float opacity = clamp(float(pc.rect1.w) / 255.0, 0.0, 1.0);
     bool preserve_detail =
         (uint(pc.color0.z) & 0x40000000u) != 0u;
@@ -3946,7 +4172,37 @@ bool EnsureDrawMaskedTrianglesPipeline(RenderingDevice *rd) {
     source->set_language(RenderingDevice::SHADER_LANGUAGE_GLSL);
     source->set_stage_source(
         RenderingDevice::SHADER_STAGE_COMPUTE,
-        R"GLSL(#version 450
+        R"GLSL(#version 450)GLSL" R"GLSL(
+// aetherkiri_min/max overloads. The shader bodies call these for scalar,
+// vector and integer types; GLSL has no templates, so the full overload set
+// must be declared explicitly. Missing definitions fail the pipeline with
+// "'aetherkiri_max' : no matching overloaded function found" (observed on the
+// blend pipeline, which is created at boot).
+int aetherkiri_min(int a, int b) { return min(a, b); }
+int aetherkiri_max(int a, int b) { return max(a, b); }
+uint aetherkiri_min(uint a, uint b) { return min(a, b); }
+uint aetherkiri_max(uint a, uint b) { return max(a, b); }
+float aetherkiri_min(float a, float b) { return min(a, b); }
+float aetherkiri_max(float a, float b) { return max(a, b); }
+vec2 aetherkiri_min(vec2 a, vec2 b) { return min(a, b); }
+vec2 aetherkiri_max(vec2 a, vec2 b) { return max(a, b); }
+vec3 aetherkiri_min(vec3 a, vec3 b) { return min(a, b); }
+vec3 aetherkiri_max(vec3 a, vec3 b) { return max(a, b); }
+vec4 aetherkiri_min(vec4 a, vec4 b) { return min(a, b); }
+vec4 aetherkiri_max(vec4 a, vec4 b) { return max(a, b); }
+ivec2 aetherkiri_min(ivec2 a, ivec2 b) { return min(a, b); }
+ivec2 aetherkiri_max(ivec2 a, ivec2 b) { return max(a, b); }
+ivec3 aetherkiri_min(ivec3 a, ivec3 b) { return min(a, b); }
+ivec3 aetherkiri_max(ivec3 a, ivec3 b) { return max(a, b); }
+ivec4 aetherkiri_min(ivec4 a, ivec4 b) { return min(a, b); }
+ivec4 aetherkiri_max(ivec4 a, ivec4 b) { return max(a, b); }
+uvec2 aetherkiri_min(uvec2 a, uvec2 b) { return min(a, b); }
+uvec2 aetherkiri_max(uvec2 a, uvec2 b) { return max(a, b); }
+uvec3 aetherkiri_min(uvec3 a, uvec3 b) { return min(a, b); }
+uvec3 aetherkiri_max(uvec3 a, uvec3 b) { return max(a, b); }
+uvec4 aetherkiri_min(uvec4 a, uvec4 b) { return min(a, b); }
+uvec4 aetherkiri_max(uvec4 a, uvec4 b) { return max(a, b); }
+)GLSL" R"GLSL(
 layout(local_size_x = 8, local_size_y = 8, local_size_z = 1) in;
 layout(std430, set = 0, binding = 0) readonly buffer Vertices {
     float value[];
@@ -3984,7 +4240,7 @@ vec4 load_bilinear_premul(ivec2 limit, vec2 edge_coord) {
 vec4 load_minified(ivec2 limit, vec2 edge_coord,
                     vec2 source_dx, vec2 source_dy,
                     bool preserve_detail) {
-    float footprint = max(length(source_dx), length(source_dy));
+    float footprint = aetherkiri_max(length(source_dx), length(source_dy));
     vec4 premul;
     if (footprint <= 1.0001) {
         premul = load_bilinear_premul(limit, edge_coord);
@@ -4030,7 +4286,7 @@ float load_mask_bilinear(vec2 edge_coord) {
 
 float load_mask_minified(vec2 edge_coord,
                           vec2 mask_dx, vec2 mask_dy) {
-    float footprint = max(length(mask_dx), length(mask_dy));
+    float footprint = aetherkiri_max(length(mask_dx), length(mask_dy));
     if (footprint <= 1.0001) {
         return load_mask_bilinear(edge_coord);
     }
@@ -4074,7 +4330,7 @@ float color_burn(float src, float dst) {
     if (abs(src) < 0.000001) {
         return 0.0;
     }
-    return 1.0 - min(1.0, (1.0 - dst) / src);
+    return 1.0 - aetherkiri_min(1.0, (1.0 - dst) / src);
 }
 
 float color_dodge(float src, float dst) {
@@ -4084,7 +4340,7 @@ float color_dodge(float src, float dst) {
     if (abs(src - 1.0) < 0.000001) {
         return 1.0;
     }
-    return min(1.0, dst / (1.0 - src));
+    return aetherkiri_min(1.0, dst / (1.0 - src));
 }
 
 float overlay(float src, float dst) {
@@ -4114,20 +4370,20 @@ float hard_light(float src, float dst) {
 }
 
 float linear_light(float src, float dst) {
-    float burn = max(0.0, 2.0 * src + dst - 1.0);
-    float dodge = min(1.0, 2.0 * (src - 0.5) + dst);
+    float burn = aetherkiri_max(0.0, 2.0 * src + dst - 1.0);
+    float dodge = aetherkiri_min(1.0, 2.0 * (src - 0.5) + dst);
     return src < 0.5 ? burn : dodge;
 }
 
 vec3 color_blend(int mode, vec3 src, vec3 dst) {
     if (mode == 3) {
-        return min(src + dst, vec3(1.0));
+        return aetherkiri_min(src + dst, vec3(1.0));
     }
     if (mode == 4) {
         return src + dst;
     }
     if (mode == 5) {
-        return min(src, dst);
+        return aetherkiri_min(src, dst);
     }
     if (mode == 6) {
         return src * dst;
@@ -4137,10 +4393,10 @@ vec3 color_blend(int mode, vec3 src, vec3 dst) {
                     color_burn(src.b, dst.b));
     }
     if (mode == 8) {
-        return max(vec3(0.0), src + dst - vec3(1.0));
+        return aetherkiri_max(vec3(0.0), src + dst - vec3(1.0));
     }
     if (mode == 9) {
-        return max(src, dst);
+        return aetherkiri_max(src, dst);
     }
     if (mode == 10) {
         return src + dst - src * dst;
@@ -4187,12 +4443,12 @@ vec4 blend_cubism(vec4 dst, vec4 src, int flags) {
     } else if (alpha_mode == 2) {
         parameter = vec3(0.0, 0.0, dst.a * (1.0 - src.a));
     } else if (alpha_mode == 3) {
-        parameter = vec3(min(src.a, dst.a), max(src.a - dst.a, 0.0),
-                         max(dst.a - src.a, 0.0));
+        parameter = vec3(aetherkiri_min(src.a, dst.a), aetherkiri_max(src.a - dst.a, 0.0),
+                         aetherkiri_max(dst.a - src.a, 0.0));
     } else if (alpha_mode == 4) {
-        parameter = vec3(max(src.a + dst.a - 1.0, 0.0),
-                         min(src.a, 1.0 - dst.a),
-                         min(dst.a, 1.0 - src.a));
+        parameter = vec3(aetherkiri_max(src.a + dst.a - 1.0, 0.0),
+                         aetherkiri_min(src.a, 1.0 - dst.a),
+                         aetherkiri_min(dst.a, 1.0 - src.a));
     } else {
         parameter = vec3(src.a * dst.a, src.a * (1.0 - dst.a),
                          dst.a * (1.0 - src.a));
@@ -4227,7 +4483,7 @@ void main() {
     ivec2 dst_pos = pc.rect0.xy + local;
     vec2 p = vec2(dst_pos) + vec2(0.5);
     int tri_count = pc.rect1.z;
-    ivec2 src_limit = max(pc.color0.xy - ivec2(1), ivec2(0));
+    ivec2 src_limit = aetherkiri_max(pc.color0.xy - ivec2(1), ivec2(0));
     float opacity = clamp(float(pc.rect1.w) / 255.0, 0.0, 1.0);
     bool preserve_detail =
         (uint(pc.color0.z) & 0x40000000u) != 0u;
@@ -4403,7 +4659,37 @@ bool EnsureLive2DRasterShader(RenderingDevice *rd) {
     source->set_language(RenderingDevice::SHADER_LANGUAGE_GLSL);
     source->set_stage_source(
         RenderingDevice::SHADER_STAGE_VERTEX,
-        R"GLSL(#version 450
+        R"GLSL(#version 450)GLSL" R"GLSL(
+// aetherkiri_min/max overloads. The shader bodies call these for scalar,
+// vector and integer types; GLSL has no templates, so the full overload set
+// must be declared explicitly. Missing definitions fail the pipeline with
+// "'aetherkiri_max' : no matching overloaded function found" (observed on the
+// blend pipeline, which is created at boot).
+int aetherkiri_min(int a, int b) { return min(a, b); }
+int aetherkiri_max(int a, int b) { return max(a, b); }
+uint aetherkiri_min(uint a, uint b) { return min(a, b); }
+uint aetherkiri_max(uint a, uint b) { return max(a, b); }
+float aetherkiri_min(float a, float b) { return min(a, b); }
+float aetherkiri_max(float a, float b) { return max(a, b); }
+vec2 aetherkiri_min(vec2 a, vec2 b) { return min(a, b); }
+vec2 aetherkiri_max(vec2 a, vec2 b) { return max(a, b); }
+vec3 aetherkiri_min(vec3 a, vec3 b) { return min(a, b); }
+vec3 aetherkiri_max(vec3 a, vec3 b) { return max(a, b); }
+vec4 aetherkiri_min(vec4 a, vec4 b) { return min(a, b); }
+vec4 aetherkiri_max(vec4 a, vec4 b) { return max(a, b); }
+ivec2 aetherkiri_min(ivec2 a, ivec2 b) { return min(a, b); }
+ivec2 aetherkiri_max(ivec2 a, ivec2 b) { return max(a, b); }
+ivec3 aetherkiri_min(ivec3 a, ivec3 b) { return min(a, b); }
+ivec3 aetherkiri_max(ivec3 a, ivec3 b) { return max(a, b); }
+ivec4 aetherkiri_min(ivec4 a, ivec4 b) { return min(a, b); }
+ivec4 aetherkiri_max(ivec4 a, ivec4 b) { return max(a, b); }
+uvec2 aetherkiri_min(uvec2 a, uvec2 b) { return min(a, b); }
+uvec2 aetherkiri_max(uvec2 a, uvec2 b) { return max(a, b); }
+uvec3 aetherkiri_min(uvec3 a, uvec3 b) { return min(a, b); }
+uvec3 aetherkiri_max(uvec3 a, uvec3 b) { return max(a, b); }
+uvec4 aetherkiri_min(uvec4 a, uvec4 b) { return min(a, b); }
+uvec4 aetherkiri_max(uvec4 a, uvec4 b) { return max(a, b); }
+)GLSL" R"GLSL(
 layout(std430, set = 0, binding = 0) readonly buffer Vertices {
     float value[];
 } vertices;
@@ -4429,7 +4715,7 @@ void main() {
     mask_coord = masked
         ? vec2(vertices.value[base + 4], vertices.value[base + 5])
         : vec2(0.0);
-    vec2 target_size = max(vec2(pc.rect0.zw), vec2(1.0));
+    vec2 target_size = aetherkiri_max(vec2(pc.rect0.zw), vec2(1.0));
     vec2 position = vec2(destination.x / target_size.x * 2.0 - 1.0,
                          destination.y / target_size.y * 2.0 - 1.0);
     gl_Position = vec4(position, 0.0, 1.0);
@@ -4437,7 +4723,37 @@ void main() {
 )GLSL");
     source->set_stage_source(
         RenderingDevice::SHADER_STAGE_FRAGMENT,
-        R"GLSL(#version 450
+        R"GLSL(#version 450)GLSL" R"GLSL(
+// aetherkiri_min/max overloads. The shader bodies call these for scalar,
+// vector and integer types; GLSL has no templates, so the full overload set
+// must be declared explicitly. Missing definitions fail the pipeline with
+// "'aetherkiri_max' : no matching overloaded function found" (observed on the
+// blend pipeline, which is created at boot).
+int aetherkiri_min(int a, int b) { return min(a, b); }
+int aetherkiri_max(int a, int b) { return max(a, b); }
+uint aetherkiri_min(uint a, uint b) { return min(a, b); }
+uint aetherkiri_max(uint a, uint b) { return max(a, b); }
+float aetherkiri_min(float a, float b) { return min(a, b); }
+float aetherkiri_max(float a, float b) { return max(a, b); }
+vec2 aetherkiri_min(vec2 a, vec2 b) { return min(a, b); }
+vec2 aetherkiri_max(vec2 a, vec2 b) { return max(a, b); }
+vec3 aetherkiri_min(vec3 a, vec3 b) { return min(a, b); }
+vec3 aetherkiri_max(vec3 a, vec3 b) { return max(a, b); }
+vec4 aetherkiri_min(vec4 a, vec4 b) { return min(a, b); }
+vec4 aetherkiri_max(vec4 a, vec4 b) { return max(a, b); }
+ivec2 aetherkiri_min(ivec2 a, ivec2 b) { return min(a, b); }
+ivec2 aetherkiri_max(ivec2 a, ivec2 b) { return max(a, b); }
+ivec3 aetherkiri_min(ivec3 a, ivec3 b) { return min(a, b); }
+ivec3 aetherkiri_max(ivec3 a, ivec3 b) { return max(a, b); }
+ivec4 aetherkiri_min(ivec4 a, ivec4 b) { return min(a, b); }
+ivec4 aetherkiri_max(ivec4 a, ivec4 b) { return max(a, b); }
+uvec2 aetherkiri_min(uvec2 a, uvec2 b) { return min(a, b); }
+uvec2 aetherkiri_max(uvec2 a, uvec2 b) { return max(a, b); }
+uvec3 aetherkiri_min(uvec3 a, uvec3 b) { return min(a, b); }
+uvec3 aetherkiri_max(uvec3 a, uvec3 b) { return max(a, b); }
+uvec4 aetherkiri_min(uvec4 a, uvec4 b) { return min(a, b); }
+uvec4 aetherkiri_max(uvec4 a, uvec4 b) { return max(a, b); }
+)GLSL" R"GLSL(
 layout(set = 0, binding = 1) uniform sampler2D source_texture;
 layout(set = 0, binding = 2) uniform sampler2D mask_texture;
 layout(push_constant, std430) uniform Params {
@@ -4628,7 +4944,37 @@ bool EnsureLive2DUnpremultiplyPipeline(RenderingDevice *rd) {
     source->set_language(RenderingDevice::SHADER_LANGUAGE_GLSL);
     source->set_stage_source(
         RenderingDevice::SHADER_STAGE_COMPUTE,
-        R"GLSL(#version 450
+        R"GLSL(#version 450)GLSL" R"GLSL(
+// aetherkiri_min/max overloads. The shader bodies call these for scalar,
+// vector and integer types; GLSL has no templates, so the full overload set
+// must be declared explicitly. Missing definitions fail the pipeline with
+// "'aetherkiri_max' : no matching overloaded function found" (observed on the
+// blend pipeline, which is created at boot).
+int aetherkiri_min(int a, int b) { return min(a, b); }
+int aetherkiri_max(int a, int b) { return max(a, b); }
+uint aetherkiri_min(uint a, uint b) { return min(a, b); }
+uint aetherkiri_max(uint a, uint b) { return max(a, b); }
+float aetherkiri_min(float a, float b) { return min(a, b); }
+float aetherkiri_max(float a, float b) { return max(a, b); }
+vec2 aetherkiri_min(vec2 a, vec2 b) { return min(a, b); }
+vec2 aetherkiri_max(vec2 a, vec2 b) { return max(a, b); }
+vec3 aetherkiri_min(vec3 a, vec3 b) { return min(a, b); }
+vec3 aetherkiri_max(vec3 a, vec3 b) { return max(a, b); }
+vec4 aetherkiri_min(vec4 a, vec4 b) { return min(a, b); }
+vec4 aetherkiri_max(vec4 a, vec4 b) { return max(a, b); }
+ivec2 aetherkiri_min(ivec2 a, ivec2 b) { return min(a, b); }
+ivec2 aetherkiri_max(ivec2 a, ivec2 b) { return max(a, b); }
+ivec3 aetherkiri_min(ivec3 a, ivec3 b) { return min(a, b); }
+ivec3 aetherkiri_max(ivec3 a, ivec3 b) { return max(a, b); }
+ivec4 aetherkiri_min(ivec4 a, ivec4 b) { return min(a, b); }
+ivec4 aetherkiri_max(ivec4 a, ivec4 b) { return max(a, b); }
+uvec2 aetherkiri_min(uvec2 a, uvec2 b) { return min(a, b); }
+uvec2 aetherkiri_max(uvec2 a, uvec2 b) { return max(a, b); }
+uvec3 aetherkiri_min(uvec3 a, uvec3 b) { return min(a, b); }
+uvec3 aetherkiri_max(uvec3 a, uvec3 b) { return max(a, b); }
+uvec4 aetherkiri_min(uvec4 a, uvec4 b) { return min(a, b); }
+uvec4 aetherkiri_max(uvec4 a, uvec4 b) { return max(a, b); }
+)GLSL" R"GLSL(
 layout(local_size_x = 8, local_size_y = 8, local_size_z = 1) in;
 layout(rgba8, set = 0, binding = 0) uniform image2D target_image;
 layout(push_constant, std430) uniform Params {
@@ -4676,7 +5022,37 @@ bool EnsureMosaicPipeline(RenderingDevice *rd) {
     source->set_language(RenderingDevice::SHADER_LANGUAGE_GLSL);
     source->set_stage_source(
         RenderingDevice::SHADER_STAGE_COMPUTE,
-        R"GLSL(#version 450
+        R"GLSL(#version 450)GLSL" R"GLSL(
+// aetherkiri_min/max overloads. The shader bodies call these for scalar,
+// vector and integer types; GLSL has no templates, so the full overload set
+// must be declared explicitly. Missing definitions fail the pipeline with
+// "'aetherkiri_max' : no matching overloaded function found" (observed on the
+// blend pipeline, which is created at boot).
+int aetherkiri_min(int a, int b) { return min(a, b); }
+int aetherkiri_max(int a, int b) { return max(a, b); }
+uint aetherkiri_min(uint a, uint b) { return min(a, b); }
+uint aetherkiri_max(uint a, uint b) { return max(a, b); }
+float aetherkiri_min(float a, float b) { return min(a, b); }
+float aetherkiri_max(float a, float b) { return max(a, b); }
+vec2 aetherkiri_min(vec2 a, vec2 b) { return min(a, b); }
+vec2 aetherkiri_max(vec2 a, vec2 b) { return max(a, b); }
+vec3 aetherkiri_min(vec3 a, vec3 b) { return min(a, b); }
+vec3 aetherkiri_max(vec3 a, vec3 b) { return max(a, b); }
+vec4 aetherkiri_min(vec4 a, vec4 b) { return min(a, b); }
+vec4 aetherkiri_max(vec4 a, vec4 b) { return max(a, b); }
+ivec2 aetherkiri_min(ivec2 a, ivec2 b) { return min(a, b); }
+ivec2 aetherkiri_max(ivec2 a, ivec2 b) { return max(a, b); }
+ivec3 aetherkiri_min(ivec3 a, ivec3 b) { return min(a, b); }
+ivec3 aetherkiri_max(ivec3 a, ivec3 b) { return max(a, b); }
+ivec4 aetherkiri_min(ivec4 a, ivec4 b) { return min(a, b); }
+ivec4 aetherkiri_max(ivec4 a, ivec4 b) { return max(a, b); }
+uvec2 aetherkiri_min(uvec2 a, uvec2 b) { return min(a, b); }
+uvec2 aetherkiri_max(uvec2 a, uvec2 b) { return max(a, b); }
+uvec3 aetherkiri_min(uvec3 a, uvec3 b) { return min(a, b); }
+uvec3 aetherkiri_max(uvec3 a, uvec3 b) { return max(a, b); }
+uvec4 aetherkiri_min(uvec4 a, uvec4 b) { return min(a, b); }
+uvec4 aetherkiri_max(uvec4 a, uvec4 b) { return max(a, b); }
+)GLSL" R"GLSL(
 layout(local_size_x = 8, local_size_y = 8, local_size_z = 1) in;
 layout(std430, set = 0, binding = 0) readonly buffer Rects {
     float value[];
@@ -4691,13 +5067,13 @@ layout(push_constant, std430) uniform Params {
 
 void main() {
     ivec2 pos = ivec2(gl_GlobalInvocationID.xy);
-    ivec2 limit = max(pc.rect1.xy, ivec2(0));
+    ivec2 limit = aetherkiri_max(pc.rect1.xy, ivec2(0));
     if (pos.x >= limit.x || pos.y >= limit.y) {
         return;
     }
 
-    ivec2 block = max(pc.color0.xy, ivec2(1));
-    int rect_count = max(pc.rect1.z, 0);
+    ivec2 block = aetherkiri_max(pc.color0.xy, ivec2(1));
+    int rect_count = aetherkiri_max(pc.rect1.z, 0);
     for (int i = 0; i < rect_count; ++i) {
         int base = i * 4;
         ivec4 rect = ivec4(round(vec4(rects.value[base + 0],
@@ -5217,14 +5593,14 @@ void ExecuteGodotGpuLive2DRasterBatch(
             results[index] = true;
             drew = true;
             if (!mask_write) {
-                union_left = std::min(
+                union_left = aetherkiri_min(
                     union_left, static_cast<int>(op->dst_pos.x));
-                union_top = std::min(
+                union_top = aetherkiri_min(
                     union_top, static_cast<int>(op->dst_pos.y));
-                union_right = std::max(
+                union_right = aetherkiri_max(
                     union_right,
                     static_cast<int>(op->dst_pos.x + op->size.x));
-                union_bottom = std::max(
+                union_bottom = aetherkiri_max(
                     union_bottom,
                     static_cast<int>(op->dst_pos.y + op->size.y));
             }
@@ -7005,7 +7381,37 @@ struct ArtemisTranslatedShader {
 ArtemisTranslatedShader TranslateArtemisFragmentShader(
     const ArtemisGpuShaderRequest &request) {
     ArtemisTranslatedShader translated;
-    translated.vertex_source = R"GLSL(#version 450
+    translated.vertex_source = R"GLSL(#version 450)GLSL" R"GLSL(
+// aetherkiri_min/max overloads. The shader bodies call these for scalar,
+// vector and integer types; GLSL has no templates, so the full overload set
+// must be declared explicitly. Missing definitions fail the pipeline with
+// "'aetherkiri_max' : no matching overloaded function found" (observed on the
+// blend pipeline, which is created at boot).
+int aetherkiri_min(int a, int b) { return min(a, b); }
+int aetherkiri_max(int a, int b) { return max(a, b); }
+uint aetherkiri_min(uint a, uint b) { return min(a, b); }
+uint aetherkiri_max(uint a, uint b) { return max(a, b); }
+float aetherkiri_min(float a, float b) { return min(a, b); }
+float aetherkiri_max(float a, float b) { return max(a, b); }
+vec2 aetherkiri_min(vec2 a, vec2 b) { return min(a, b); }
+vec2 aetherkiri_max(vec2 a, vec2 b) { return max(a, b); }
+vec3 aetherkiri_min(vec3 a, vec3 b) { return min(a, b); }
+vec3 aetherkiri_max(vec3 a, vec3 b) { return max(a, b); }
+vec4 aetherkiri_min(vec4 a, vec4 b) { return min(a, b); }
+vec4 aetherkiri_max(vec4 a, vec4 b) { return max(a, b); }
+ivec2 aetherkiri_min(ivec2 a, ivec2 b) { return min(a, b); }
+ivec2 aetherkiri_max(ivec2 a, ivec2 b) { return max(a, b); }
+ivec3 aetherkiri_min(ivec3 a, ivec3 b) { return min(a, b); }
+ivec3 aetherkiri_max(ivec3 a, ivec3 b) { return max(a, b); }
+ivec4 aetherkiri_min(ivec4 a, ivec4 b) { return min(a, b); }
+ivec4 aetherkiri_max(ivec4 a, ivec4 b) { return max(a, b); }
+uvec2 aetherkiri_min(uvec2 a, uvec2 b) { return min(a, b); }
+uvec2 aetherkiri_max(uvec2 a, uvec2 b) { return max(a, b); }
+uvec3 aetherkiri_min(uvec3 a, uvec3 b) { return min(a, b); }
+uvec3 aetherkiri_max(uvec3 a, uvec3 b) { return max(a, b); }
+uvec4 aetherkiri_min(uvec4 a, uvec4 b) { return min(a, b); }
+uvec4 aetherkiri_max(uvec4 a, uvec4 b) { return max(a, b); }
+)GLSL" R"GLSL(
 layout(location = 0) out vec2 resultCoord0;
 layout(location = 1) out vec2 resultCoord1;
 void main() {
@@ -7075,7 +7481,7 @@ void main() {
             const uint32_t array_count =
                 match[3].matched
                     ? static_cast<uint32_t>(
-                          std::max(1, std::stoi(match[3].str())))
+                          aetherkiri_max(1, std::stoi(match[3].str())))
                     : 0u;
             ArtemisTranslatedShader::Uniform uniform;
             uniform.type = type;
@@ -7426,7 +7832,7 @@ void WriteArtemisShaderError(const std::string &message, char *error_utf8,
                              uint32_t error_size) {
     if (error_utf8 == nullptr || error_size == 0) return;
     const size_t copy_size =
-        std::min(message.size(), static_cast<size_t>(error_size - 1u));
+        aetherkiri_min(message.size(), static_cast<size_t>(error_size - 1u));
     if (copy_size != 0) {
         std::memcpy(error_utf8, message.data(), copy_size);
     }
@@ -8169,13 +8575,13 @@ bool BridgeCopyRect(uint64_t dst, uint64_t src, const tTVPRect *dst_rect,
 void AppendGodotGpuTriangleBounds(std::vector<float> &vertices,
                                   const tTVPPointD *points) {
     const float min_x = static_cast<float>(
-        std::min({points[0].x, points[1].x, points[2].x}) - 0.25);
+        aetherkiri_min({points[0].x, points[1].x, points[2].x}) - 0.25);
     const float min_y = static_cast<float>(
-        std::min({points[0].y, points[1].y, points[2].y}) - 0.25);
+        aetherkiri_min({points[0].y, points[1].y, points[2].y}) - 0.25);
     const float max_x = static_cast<float>(
-        std::max({points[0].x, points[1].x, points[2].x}) + 0.25);
+        aetherkiri_max({points[0].x, points[1].x, points[2].x}) + 0.25);
     const float max_y = static_cast<float>(
-        std::max({points[0].y, points[1].y, points[2].y}) + 0.25);
+        aetherkiri_max({points[0].y, points[1].y, points[2].y}) + 0.25);
     vertices.push_back(min_x);
     vertices.push_back(min_y);
     vertices.push_back(max_x);
@@ -8918,11 +9324,11 @@ uint32_t CpuPsScreenBlend(uint32_t d, uint32_t s, int opacity) {
     const uint32_t sg = (s >> 8) & 0xffu;
     const uint32_t sb = (s >> 16) & 0xffu;
     const uint32_t r =
-        std::min(dr + (((sr - ((sr * dr) >> 8)) * a) >> 8), 255u);
+        aetherkiri_min(dr + (((sr - ((sr * dr) >> 8)) * a) >> 8), 255u);
     const uint32_t g =
-        std::min(dg + (((sg - ((sg * dg) >> 8)) * a) >> 8), 255u);
+        aetherkiri_min(dg + (((sg - ((sg * dg) >> 8)) * a) >> 8), 255u);
     const uint32_t b =
-        std::min(db + (((sb - ((sb * db) >> 8)) * a) >> 8), 255u);
+        aetherkiri_min(db + (((sb - ((sb * db) >> 8)) * a) >> 8), 255u);
     return (d & 0xff000000u) | r | (g << 8) | (b << 16);
 }
 
@@ -8956,11 +9362,11 @@ uint32_t CpuPsAddBlend(uint32_t d, uint32_t s, int opacity) {
     const int dr = static_cast<int>(d & 0xffu);
     const int dg = static_cast<int>((d >> 8) & 0xffu);
     const int db = static_cast<int>((d >> 16) & 0xffu);
-    const int br = std::min(dr + static_cast<int>(s & 0xffu), 255);
+    const int br = aetherkiri_min(dr + static_cast<int>(s & 0xffu), 255);
     const int bg =
-        std::min(dg + static_cast<int>((s >> 8) & 0xffu), 255);
+        aetherkiri_min(dg + static_cast<int>((s >> 8) & 0xffu), 255);
     const int bb =
-        std::min(db + static_cast<int>((s >> 16) & 0xffu), 255);
+        aetherkiri_min(db + static_cast<int>((s >> 16) & 0xffu), 255);
     const uint32_t r = static_cast<uint32_t>(
         std::clamp(dr + (((br - dr) * static_cast<int>(a)) >> 8), 0, 255));
     const uint32_t g = static_cast<uint32_t>(
@@ -8980,11 +9386,11 @@ uint32_t CpuPsSubBlend(uint32_t d, uint32_t s, int opacity) {
     const int dg = static_cast<int>((d >> 8) & 0xffu);
     const int db = static_cast<int>((d >> 16) & 0xffu);
     const int br =
-        std::max(dr + static_cast<int>(s & 0xffu) - 255, 0);
+        aetherkiri_max(dr + static_cast<int>(s & 0xffu) - 255, 0);
     const int bg =
-        std::max(dg + static_cast<int>((s >> 8) & 0xffu) - 255, 0);
+        aetherkiri_max(dg + static_cast<int>((s >> 8) & 0xffu) - 255, 0);
     const int bb =
-        std::max(db + static_cast<int>((s >> 16) & 0xffu) - 255, 0);
+        aetherkiri_max(db + static_cast<int>((s >> 16) & 0xffu) - 255, 0);
     const uint32_t r = static_cast<uint32_t>(
         std::clamp(dr + (((br - dr) * static_cast<int>(a)) >> 8), 0, 255));
     const uint32_t g = static_cast<uint32_t>(
@@ -8999,10 +9405,10 @@ uint32_t CpuPsSoftLightBlend(uint32_t d, uint32_t s, int opacity) {
         const double sf = static_cast<double>(source) / 255.0;
         const double df = static_cast<double>(destination) / 255.0;
         const double exponent = source >= 128u
-            ? 128.0 / static_cast<double>(std::max(source, 1u))
+            ? 128.0 / static_cast<double>(aetherkiri_max(source, 1u))
             : (1.0 - sf) / 0.5;
         return static_cast<uint32_t>(std::clamp(
-            static_cast<int>(std::pow(std::max(df, 0.0), exponent) * 255.0),
+            static_cast<int>(std::pow(aetherkiri_max(df, 0.0), exponent) * 255.0),
             0, 255));
     };
     uint32_t a = (s >> 24) & 0xffu;
@@ -9033,13 +9439,13 @@ uint32_t CpuAdditiveAlphaBlendHda(uint32_t d, uint32_t s, int opacity) {
         s = rb | ga;
     }
     const uint32_t inverse_alpha = (~s) >> 24;
-    const uint32_t r = std::min(
+    const uint32_t r = aetherkiri_min(
         (((d & 0xffu) * inverse_alpha) >> 8) + (s & 0xffu), 255u);
-    const uint32_t g = std::min(
+    const uint32_t g = aetherkiri_min(
         (((d >> 8 & 0xffu) * inverse_alpha) >> 8) +
             (s >> 8 & 0xffu),
         255u);
-    const uint32_t b = std::min(
+    const uint32_t b = aetherkiri_min(
         (((d >> 16 & 0xffu) * inverse_alpha) >> 8) +
             (s >> 16 & 0xffu),
         255u);
@@ -9055,15 +9461,15 @@ uint32_t CpuApplyColorMapA(uint32_t d, uint32_t mask, int opacity,
     uint32_t out_alpha = ((d >> 24) & 0xffu) + source_alpha -
                          ((((d >> 24) & 0xffu) * source_alpha) >> 8);
     out_alpha -= out_alpha >> 8;
-    const uint32_t r = std::min(
+    const uint32_t r = aetherkiri_min(
         (((d & 0xffu) * inverse_alpha) >> 8) +
             ((source_alpha * (color & 0xffu)) >> 8),
         255u);
-    const uint32_t g = std::min(
+    const uint32_t g = aetherkiri_min(
         (((d >> 8 & 0xffu) * inverse_alpha) >> 8) +
             ((source_alpha * (color >> 8 & 0xffu)) >> 8),
         255u);
-    const uint32_t b = std::min(
+    const uint32_t b = aetherkiri_min(
         (((d >> 16 & 0xffu) * inverse_alpha) >> 8) +
             ((source_alpha * (color >> 16 & 0xffu)) >> 8),
         255u);
@@ -9073,9 +9479,9 @@ uint32_t CpuApplyColorMapA(uint32_t d, uint32_t mask, int opacity,
 uint32_t CpuAdditiveAlphaToAlpha(uint32_t color) {
     const uint32_t alpha = color >> 24;
     if (alpha == 0u) return color & 0xff000000u;
-    const uint32_t r = std::min((color & 0xffu) * 255u / alpha, 255u);
-    const uint32_t g = std::min(((color >> 8) & 0xffu) * 255u / alpha, 255u);
-    const uint32_t b = std::min(((color >> 16) & 0xffu) * 255u / alpha, 255u);
+    const uint32_t r = aetherkiri_min((color & 0xffu) * 255u / alpha, 255u);
+    const uint32_t g = aetherkiri_min(((color >> 8) & 0xffu) * 255u / alpha, 255u);
+    const uint32_t b = aetherkiri_min(((color >> 16) & 0xffu) * 255u / alpha, 255u);
     return (color & 0xff000000u) | r | (g << 8) | (b << 16);
 }
 
@@ -9781,8 +10187,8 @@ public:
     }
 
     void set_frame_enhancement_target_size(int width, int height) {
-        frame_effect_target_width_ = static_cast<uint32_t>(std::max(0, width));
-        frame_effect_target_height_ = static_cast<uint32_t>(std::max(0, height));
+        frame_effect_target_width_ = static_cast<uint32_t>(aetherkiri_max(0, width));
+        frame_effect_target_height_ = static_cast<uint32_t>(aetherkiri_max(0, height));
     }
 
     Vector2i get_frame_source_size() const {
@@ -9912,8 +10318,8 @@ public:
             return ENGINE_RESULT_INVALID_STATE;
         }
         const engine_result_t result = engine_set_surface_size(
-            handle_, static_cast<uint32_t>(std::max(1, width)),
-            static_cast<uint32_t>(std::max(1, height)));
+            handle_, static_cast<uint32_t>(aetherkiri_max(1, width)),
+            static_cast<uint32_t>(aetherkiri_max(1, height)));
         update_last_error(result);
         return result;
     }
@@ -9964,7 +10370,7 @@ public:
         if (handle_ == nullptr) {
             return ENGINE_RESULT_INVALID_STATE;
         }
-        double runtime_delta_seconds = std::max(0.0, delta_seconds);
+        double runtime_delta_seconds = aetherkiri_max(0.0, delta_seconds);
         if (artemis_logical_frame_pacing_) {
             const auto step = artemis_logical_frame_pacer_.Advance(
                 runtime_delta_seconds);
@@ -10068,7 +10474,7 @@ public:
             return ENGINE_RESULT_INVALID_ARGUMENT;
         }
         const auto position_ms = static_cast<int64_t>(
-            std::max(0.0, position_seconds) * 1000.0);
+            aetherkiri_max(0.0, position_seconds) * 1000.0);
         const engine_result_t result = engine_media_seek(media_, position_ms);
         update_last_error(result);
         return result;
@@ -10221,7 +10627,7 @@ public:
         event.key_code = key_code;
         event.modifiers = modifiers;
         event.unicode_codepoint = static_cast<uint32_t>(
-            std::max(0, unicode_codepoint));
+            aetherkiri_max(0, unicode_codepoint));
         engine_result_t result = engine_send_input(handle_, &event);
         // KAG edit controls receive printable characters through a distinct
         // text-input event; a key-down alone only handles navigation and
@@ -10365,7 +10771,7 @@ public:
         config.category_mask = static_cast<uint64_t>(
             std::max<int64_t>(0, category_mask));
         config.slow_frame_threshold_us = static_cast<uint32_t>(
-            std::max(0, slow_frame_threshold_ms) * 1000);
+            aetherkiri_max(0, slow_frame_threshold_ms) * 1000);
         config.max_events = static_cast<uint32_t>(
             std::clamp(max_events, 64, 10000));
         config.host_monotonic_origin_us =
@@ -10547,8 +10953,8 @@ public:
             return source;
         }
 
-        frame_source_width_ = static_cast<uint32_t>(std::max(0, source->get_width()));
-        frame_source_height_ = static_cast<uint32_t>(std::max(0, source->get_height()));
+        frame_source_width_ = static_cast<uint32_t>(aetherkiri_max(0, source->get_width()));
+        frame_source_height_ = static_cast<uint32_t>(aetherkiri_max(0, source->get_height()));
         frame_effect_active_ = false;
         if (!frame_effect_enabled_ || frame_effect_provider_ == nullptr ||
             frame_source_width_ == 0 || frame_source_height_ == 0) {
@@ -12105,14 +12511,14 @@ private:
         constexpr double kLogicalWidth = 1280.0;
         constexpr double kLogicalHeight = 720.0;
         const Vector2 viewport_size = get_viewport()->get_visible_rect().size;
-        const double scale = std::min(
+        const double scale = aetherkiri_min(
             static_cast<double>(viewport_size.x) / kLogicalWidth,
             static_cast<double>(viewport_size.y) / kLogicalHeight);
         const Vector2 offset(
             (viewport_size.x - kLogicalWidth * scale) * 0.5,
             (viewport_size.y - kLogicalHeight * scale) * 0.5);
         const int32_t font_size =
-            std::max(1, static_cast<int32_t>(std::lround(18.0 * scale)));
+            aetherkiri_max(1, static_cast<int32_t>(std::lround(18.0 * scale)));
         for (int32_t slot = 0; slot < 10; ++slot) {
             Label *label = runtime_save_slot_labels_[slot];
             if (label == nullptr) continue;
@@ -12181,7 +12587,7 @@ private:
             runtime_message_reveal_schedule_.push_back(static_cast<int32_t>(
                 std::max<int64_t>(0, schedule_fields[index].to_int())));
         }
-        runtime_message_reveal_total_steps_ = std::max(0, total_steps);
+        runtime_message_reveal_total_steps_ = aetherkiri_max(0, total_steps);
         runtime_message_reveal_step_ = 0;
         runtime_message_reveal_elapsed_ms_ = 0.0;
         runtime_message_reveal_started_ = false;
@@ -12221,7 +12627,7 @@ private:
             runtime_message_reveal_step_ = 1;
         } else {
             runtime_message_reveal_elapsed_ms_ +=
-                std::max(0.0, delta_seconds) * 1000.0;
+                aetherkiri_max(0.0, delta_seconds) * 1000.0;
             while (runtime_message_reveal_elapsed_ms_ >= 100.0 &&
                    runtime_message_reveal_step_ < runtime_message_reveal_total_steps_) {
                 runtime_message_reveal_elapsed_ms_ -= 100.0;
@@ -12247,14 +12653,14 @@ private:
         constexpr double kLogicalWidth = 1280.0;
         constexpr double kLogicalHeight = 720.0;
         const Vector2 viewport_size = get_viewport()->get_visible_rect().size;
-        const double scale = std::min(
+        const double scale = aetherkiri_min(
             static_cast<double>(viewport_size.x) / kLogicalWidth,
             static_cast<double>(viewport_size.y) / kLogicalHeight);
         const Vector2 offset(
             (viewport_size.x - kLogicalWidth * scale) * 0.5,
             (viewport_size.y - kLogicalHeight * scale) * 0.5);
         const int32_t font_size =
-            std::max(1, static_cast<int32_t>(std::lround(26.0 * scale)));
+            aetherkiri_max(1, static_cast<int32_t>(std::lround(26.0 * scale)));
         const bool has_speaker = runtime_message_speaker_label_ != nullptr;
         runtime_message_label_->set_position(
             offset + Vector2(120.0 * scale, (has_speaker ? 590.0 : 552.0) * scale));

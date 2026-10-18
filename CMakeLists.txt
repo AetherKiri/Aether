@@ -251,6 +251,11 @@ if(MSVC)
         "$<$<CONFIG:Release>:/OPT:ICF>"
     )
     # set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
+    # windows.h (pulled in transitively by the KiriKiri engine, the psdfile
+    # adapter, and the impacto host) exports min/max macros that mangle
+    # std::min and std::numeric_limits<...>::max(). Define NOMINMAX globally
+    # for the MSVC build so every target is protected.
+    add_compile_definitions(NOMINMAX)
 endif()
 
 # Godot is the product app shell on the wired platforms. This native build

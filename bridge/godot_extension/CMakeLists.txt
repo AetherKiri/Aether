@@ -363,6 +363,19 @@ target_link_libraries(aether_kiri_godot PRIVATE
     "$<LINK_LIBRARY:WHOLE_ARCHIVE,unofficial::godot::cpp>"
 )
 
+# impacto's texture loaders (DDS, STBI/PNG, GXT, BNTX, WebP) and audio stream
+# decoders self-register through file-local statics
+# (`static bool _registered = ...`). As a plain static archive those objects
+# carry no externally referenced symbols, so the linker drops them, the
+# registries stay empty, and every game texture fails with
+# "No loader for texture" / "using fallback" (red placeholder stripes on the
+# MO8 PC layout). Force-link the whole archive so the registrations run.
+# macOS builds impacto as a shared library, where the problem cannot occur.
+if(NOT APPLE)
+    set_property(TARGET aether_kiri_godot
+        PROPERTY LINK_LIBRARY_OVERRIDE_impacto WHOLE_ARCHIVE)
+endif()
+
 set(AETHERKIRI_EXTENSION_RPATH "@loader_path")
 if(UNIX AND NOT APPLE AND NOT EMSCRIPTEN)
     # The staged Linux extension and engine API live next to each other.

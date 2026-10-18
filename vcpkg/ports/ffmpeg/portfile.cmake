@@ -8,6 +8,20 @@ vcpkg_from_github(
         bink2-decoder.patch
 )
 
+# MSVC 19.50 (Visual Studio 2026) deprecated the `-nologo-` switch, and on a
+# non-English host the compiler banner is localized. Both make ffmpeg 8.1.2's
+# msvc probe (`cl -nologo- | grep ^Microsoft`) fail to classify cl, so it falls
+# back to the default `-o` object-output flag which MSVC 19.50 ignores (it
+# writes basename.obj), breaking the configure link test (LNK1136/LNK1181).
+# Drop `-nologo-` so the VSLANG=1033 banner is emitted and cl is detected as
+# msvc, which makes ffmpeg use `-Fo` for object output.
+vcpkg_replace_string("${SOURCE_PATH}/configure" "$_cc -nologo- 2>&1 | grep -q ^Microsoft" "$_cc 2>&1 | grep -q ^Microsoft")
+vcpkg_replace_string("${SOURCE_PATH}/configure" "$_cc -nologo- 2>&1 | grep -q Linker" "VSLANG=1033 $_cc 2>&1 | grep -q Linker")
+# This VS install has no English language pack, so VSLANG=1033 is ignored and
+# the banner is localized (e.g. "... Microsoft (R) C/C++ ..."). Drop the
+# line-start anchor so the probe matches "Microsoft" anywhere in the banner.
+vcpkg_replace_string("${SOURCE_PATH}/configure" "grep -q ^Microsoft" "grep -q Microsoft")
+
 if(SOURCE_PATH MATCHES " ")
     message(FATAL_ERROR "Error: ffmpeg will not build with spaces in the path. Please use a directory with no spaces")
 endif()
@@ -18,7 +32,7 @@ if (VCPKG_TARGET_ARCHITECTURE STREQUAL "x86" OR VCPKG_TARGET_ARCHITECTURE STREQU
     vcpkg_add_to_path("${NASM_EXE_PATH}")
 endif()
 
-set(OPTIONS "--enable-pic --disable-doc --enable-debug=3 --enable-runtime-cpudetect --disable-autodetect --enable-iconv")
+set(OPTIONS "--enable-pic --disable-doc --enable-runtime-cpudetect --disable-autodetect --enable-iconv")
 
 # Bink 2 software decoder (Librempeg backport, see bink2-decoder.patch).
 # The decoder sources are GPL-3.0-or-later, so enabling the feature switches
@@ -346,10 +360,21 @@ if (NOT DEFINED VCPKG_BUILD_TYPE OR VCPKG_BUILD_TYPE STREQUAL "release")
     set(crsp "${CURRENT_BUILDTREES_DIR}/${TARGET_TRIPLET}-rel/cflags.rsp")
     string(REGEX REPLACE "-arch [A-Za-z0-9_]+" "" VCPKG_COMBINED_C_FLAGS_RELEASE_SANITIZED "${VCPKG_COMBINED_C_FLAGS_RELEASE}")
     file(WRITE "${crsp}" "${VCPKG_COMBINED_C_FLAGS_RELEASE_SANITIZED}")
+    # Forward CXX flags symmetrically. Without this, ffmpeg's configure leaves
+    # CXXFLAGS without the vcpkg runtime flag (/MD), so MSVC's default /MT is
+    # used for every C++ source. The C++/WinRT graphics-capture source
+    # (vsrc_gfxcapture_winrt.cpp) then pulls in libcpmt.lib (MT_StaticRelease),
+    # which triggers LNK2038/LNK2005 against a /MD consumer such as the
+    # AetherKiri Godot extension. The response file mirrors the C one so the
+    # triplet's /MD propagates to C++ objects too.
+    set(cxxrsp "${CURRENT_BUILDTREES_DIR}/${TARGET_TRIPLET}-rel/cxxflags.rsp")
+    string(REGEX REPLACE "-arch [A-Za-z0-9_]+" "" VCPKG_COMBINED_CXX_FLAGS_RELEASE_SANITIZED "${VCPKG_COMBINED_CXX_FLAGS_RELEASE}")
+    file(WRITE "${cxxrsp}" "${VCPKG_COMBINED_CXX_FLAGS_RELEASE_SANITIZED}")
     set(ldrsp "${CURRENT_BUILDTREES_DIR}/${TARGET_TRIPLET}-rel/ldflags.rsp")
     string(REGEX REPLACE "-arch [A-Za-z0-9_]+" "" VCPKG_COMBINED_SHARED_LINKER_FLAGS_RELEASE_SANITIZED "${VCPKG_COMBINED_SHARED_LINKER_FLAGS_RELEASE}")
     file(WRITE "${ldrsp}" "${VCPKG_COMBINED_SHARED_LINKER_FLAGS_RELEASE_SANITIZED}")
     set(ENV{CFLAGS} "@${crsp}")
+    set(ENV{CXXFLAGS} "@${cxxrsp}")
     # All tools except the msvc arm{,64} assembler accept @... as response file syntax.
     # For that assembler, there is no known way to pass in flags. We must hope that not passing flags will work acceptably.
     if(NOT VCPKG_DETECTED_MSVC OR NOT VCPKG_TARGET_ARCHITECTURE MATCHES "^arm")
@@ -389,10 +414,16 @@ if (NOT DEFINED VCPKG_BUILD_TYPE OR VCPKG_BUILD_TYPE STREQUAL "debug")
     set(crsp "${CURRENT_BUILDTREES_DIR}/${TARGET_TRIPLET}-dbg/cflags.rsp")
     string(REGEX REPLACE "-arch [A-Za-z0-9_]+" "" VCPKG_COMBINED_C_FLAGS_DEBUG_SANITIZED "${VCPKG_COMBINED_C_FLAGS_DEBUG}")
     file(WRITE "${crsp}" "${VCPKG_COMBINED_C_FLAGS_DEBUG_SANITIZED}")
+    # Mirror the release block: forward CXX flags so C++ sources use the
+    # triplet's /MD instead of MSVC's default /MT (see release block note).
+    set(cxxrsp "${CURRENT_BUILDTREES_DIR}/${TARGET_TRIPLET}-dbg/cxxflags.rsp")
+    string(REGEX REPLACE "-arch [A-Za-z0-9_]+" "" VCPKG_COMBINED_CXX_FLAGS_DEBUG_SANITIZED "${VCPKG_COMBINED_CXX_FLAGS_DEBUG}")
+    file(WRITE "${cxxrsp}" "${VCPKG_COMBINED_CXX_FLAGS_DEBUG_SANITIZED}")
     set(ldrsp "${CURRENT_BUILDTREES_DIR}/${TARGET_TRIPLET}-dbg/ldflags.rsp")
     string(REGEX REPLACE "-arch [A-Za-z0-9_]+" "" VCPKG_COMBINED_SHARED_LINKER_FLAGS_DEBUG_SANITIZED "${VCPKG_COMBINED_SHARED_LINKER_FLAGS_DEBUG}")
     file(WRITE "${ldrsp}" "${VCPKG_COMBINED_SHARED_LINKER_FLAGS_DEBUG_SANITIZED}")
     set(ENV{CFLAGS} "@${crsp}")
+    set(ENV{CXXFLAGS} "@${cxxrsp}")
     if(NOT VCPKG_DETECTED_MSVC OR NOT VCPKG_TARGET_ARCHITECTURE MATCHES "^arm")
         set(ENV{ASFLAGS} "@${crsp}")
     endif()

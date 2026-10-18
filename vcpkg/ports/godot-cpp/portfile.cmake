@@ -12,12 +12,24 @@ vcpkg_from_github(
 
 vcpkg_find_acquire_program(PYTHON3)
 
+if(NOT DEFINED VCPKG_BUILD_TYPE OR VCPKG_BUILD_TYPE STREQUAL "release")
+    set(_godotcpp_target "template_release")
+else()
+    set(_godotcpp_target "template_debug")
+endif()
+
 vcpkg_cmake_configure(
     SOURCE_PATH "${SOURCE_PATH}"
     OPTIONS
         "-DPython3_EXECUTABLE=${PYTHON3}"
         "-DGODOTCPP_DISABLE_EXCEPTIONS=OFF"
         "-DGODOTCPP_API_VERSION=4.7"
+        "-DGODOTCPP_TARGET=${_godotcpp_target}"
+        # godot-cpp's windows.cmake defaults to the static CRT (/MT) and the
+        # template_debug target. The x64-windows-static-md triplet uses the
+        # dynamic CRT (/MD), so disable static CPP to match, and build the
+        # release template for release installs.
+        "-DGODOTCPP_USE_STATIC_CPP=OFF"
 )
 
 vcpkg_cmake_install()

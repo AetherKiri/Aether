@@ -37,7 +37,10 @@ func _initialize() -> void:
     var surface_size: Vector2i = ProbeConfig.surface_size(config)
     player.set_surface_size(surface_size.x, surface_size.y)
 
-    var result: int = player.open_game(game_path, true)
+    var startup_script := ProbeConfig.string_value(config, "startup_script", "").strip_edges()
+    if not startup_script.is_empty() and not startup_script.begins_with("/"):
+        startup_script = game_path.path_join(startup_script)
+    var result: int = player.open_game(game_path, true, startup_script)
     if result != 0:
         printerr("open_game failed: %s" % player.get_last_error())
         player.destroy_engine()

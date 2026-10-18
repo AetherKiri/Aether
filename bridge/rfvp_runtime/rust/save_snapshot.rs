@@ -136,6 +136,153 @@ mod host_snapshot_tests {
         assert!(decode_host_snapshot(&invalid_base).is_err());
     }
 
+    fn graph_source(compressed_pixels: &[u8]) -> Vec<u8> {
+        // Original 2x1 NVSG fixture with nonzero geometry and compressed BGRA pixels.
+        let mut bytes = b"hzc1".to_vec();
+        bytes.extend_from_slice(&8u32.to_le_bytes());
+        bytes.extend_from_slice(&32u32.to_le_bytes());
+        bytes.extend_from_slice(b"NVSG");
+        for field in [0u16, 1, 2, 1, 11, 13, 1, 0] {
+            bytes.extend_from_slice(&field.to_le_bytes());
+        }
+        bytes.extend_from_slice(&[0; 12]);
+        bytes.extend_from_slice(compressed_pixels);
+        bytes
+    }
+
+    fn roundtrip_named_graph_v2(
+        graph: &crate::subsystem::resources::graph_buff::GraphBuff,
+    ) -> SaveStateSnapshotV1 {
+        let motion = MotionManager::new();
+        let mut base_motion = motion.capture_snapshot_v1();
+        base_motion.textures.push(graph.capture_snapshot_with_id(7));
+        let snapshot = SaveStateSnapshotV1 {
+            host_playback: Some(HostPlaybackSnapshot {
+                motions: motion.capture_host_motions(),
+                text: motion.text_manager.capture_host_playback(),
+            }),
+            version: 1,
+            motion: base_motion,
+            audio: AudioSnapshotV1 {
+                bgm: BgmPlayerSnapshotV1 { version: 1, slots: vec![] },
+                se: SePlayerSnapshotV1 { version: 1, slots: vec![] },
+            },
+            globals_non_volatile: vec![],
+            vm: ThreadManager::new().capture_snapshot_v1(),
+        };
+        let encoded = encode_host_snapshot(&snapshot).unwrap();
+        assert_eq!(&encoded[..2], &[2, 0]);
+        let decoded = decode_host_snapshot(&encoded).unwrap();
+        assert!(decoded.host_playback.is_some());
+        assert_eq!(encode_host_snapshot(&decoded).unwrap(), encoded);
+        assert_eq!(decoded.motion.textures.len(), 1);
+        decoded
+    }
+
+    #[test]
+    fn version_two_preserves_overlaid_named_graph_pixels_and_geometry() {
+        use crate::subsystem::resources::{graph_buff::GraphBuff, vfs::Vfs};
+
+        let path = "host-snapshot/overlaid.nvsg";
+        let mut graph = GraphBuff::new();
+        // BGRA: [200, 160, 120, 255, 80, 40, 20, 255].
+        graph.load_texture(path, graph_source(&[
+            120, 156, 59, 177, 160, 226, 127, 128, 134, 200, 127, 0, 21, 82, 4, 107,
+        ])).unwrap();
+        assert!(graph.capture_snapshot_with_id(7).rgba.is_none());
+        graph.set_color_tone(50, 25, 75);
+        // Simulate the pixel write and dirty marker used by parts composition.
+        graph.texture.as_mut().unwrap().as_mut_rgba8().unwrap()
+            .put_pixel(0, 0, image::Rgba([9, 8, 7, 255]));
+        graph.mark_pixels_overlaid();
+        graph.offset_x = 3;
+        graph.offset_y = 5;
+        graph.u = 1;
+        graph.v = 1;
+        graph.display_width = 6;
+        graph.display_height = 3;
+        let pixels = vec![9, 8, 7, 255, 10, 10, 60, 255];
+        assert_eq!(graph.texture.as_ref().unwrap().to_rgba8().into_raw(), pixels);
+        assert_eq!(graph.capture_snapshot_with_id(7).rgba.as_ref(), Some(&pixels));
+        let decoded = roundtrip_named_graph_v2(&graph);
+        assert_eq!(decoded.motion.textures[0].rgba.as_ref(), Some(&pixels));
+
+        // Missing and valid-but-different assets must both restore the embedded
+        // edits. Replacement BGRA pixels: [10, 20, 30, 255, 40, 50, 60, 255].
+        let replacement = graph_source(&[
+            120, 156, 227, 18, 145, 251, 175, 97, 100, 243, 31, 0, 9, 64, 2, 209,
+        ]);
+        for replacement in [None, Some(replacement)] {
+            let mut vfs = Vfs::default();
+            if let Some(bytes) = replacement {
+                let mut different = GraphBuff::new();
+                different.load_texture(path, bytes.clone()).unwrap();
+                assert_ne!(different.texture.as_ref().unwrap().to_rgba8().into_raw(), pixels);
+                vfs.add_loose_file(path, bytes);
+            }
+            let mut restored = MotionManager::new();
+            restored.apply_snapshot_v1(&decoded.motion, &vfs).unwrap();
+            let graph = restored.get_texture(7);
+            assert_eq!(graph.texture.as_ref().unwrap().to_rgba8().into_raw(), pixels);
+            assert_eq!(graph.texture_path, path);
+            assert!(graph.texture_ready);
+            assert_eq!((graph.width, graph.height), (2, 1));
+            assert_eq!((graph.offset_x, graph.offset_y, graph.u, graph.v), (3, 5, 1, 1));
+            assert_eq!((graph.display_width, graph.display_height), (6, 3));
+            // Restored named overlays remain embedded through another V2 save.
+            let resaved = roundtrip_named_graph_v2(graph);
+            assert_eq!(resaved.motion.textures[0].rgba.as_ref(), Some(&pixels));
+        }
+    }
+
+    #[test]
+    fn version_two_replays_last_graph_rgb_once_with_source_geometry() {
+        use crate::subsystem::resources::{graph_buff::GraphBuff, vfs::Vfs};
+
+        let path = "host-snapshot/toned.nvsg";
+        let original = graph_source(&[
+            120, 156, 59, 177, 160, 226, 127, 128, 134, 200, 127, 0, 21, 82, 4, 107,
+        ]);
+        let mut graph = GraphBuff::new();
+        graph.load_texture(path, original.clone()).unwrap();
+        graph.set_color_tone(50, 50, 50);
+        graph.set_color_tone(50, 25, 75);
+        let compounded = graph.texture.as_ref().unwrap().to_rgba8().into_raw();
+        assert_eq!(compounded, vec![30, 20, 75, 255, 5, 5, 30, 255]);
+        graph.offset_x = 3;
+        graph.offset_y = 5;
+        graph.u = 0;
+        graph.v = 1;
+        graph.display_width = 6;
+        graph.display_height = 3;
+        let decoded = roundtrip_named_graph_v2(&graph);
+        let saved = &decoded.motion.textures[0];
+        assert!(saved.rgba.is_none());
+        assert_eq!(saved.texture_path, path);
+        assert_eq!((saved.r_value, saved.g_value, saved.b_value), (50, 25, 75));
+
+        let mut vfs = Vfs::default();
+        vfs.add_loose_file(path, original);
+        let mut restored = MotionManager::new();
+        restored.apply_snapshot_v1(&decoded.motion, &vfs).unwrap();
+        let graph = restored.get_texture(7);
+        let pixels = graph.texture.as_ref().unwrap().to_rgba8().into_raw();
+        assert_eq!(pixels, vec![60, 40, 150, 255, 10, 10, 60, 255]);
+        assert_ne!(pixels, compounded);
+        assert_eq!(graph.texture_path, path);
+        assert!(graph.texture_ready);
+        assert_eq!((graph.get_r_value(), graph.get_g_value(), graph.get_b_value()), (50, 25, 75));
+        assert_eq!((graph.width, graph.height), (2, 1));
+        assert_eq!((graph.offset_x, graph.offset_y, graph.u, graph.v), (11, 13, 1, 0));
+        assert_eq!((graph.display_width, graph.display_height), (2, 1));
+        assert!(roundtrip_named_graph_v2(graph).motion.textures[0].rgba.is_none());
+
+        let error = MotionManager::new()
+            .apply_snapshot_v1(&decoded.motion, &Vfs::default())
+            .unwrap_err();
+        assert!(error.to_string().contains(path));
+    }
+
     #[test]
     fn desktop_prim_snapshot_preserves_legacy_field_order() {
         use crate::subsystem::resources::prim::{Prim, PrimManagerSnapshotV1};

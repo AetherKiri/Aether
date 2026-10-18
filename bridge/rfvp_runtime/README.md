@@ -135,12 +135,28 @@ and confirmed by the user.
 
 ### Upstream upgrade validation
 
-The upgrade to `eb5490d9fc6d471d36554a84e052cf531afd48d4` is being validated
-independently by `.github/workflows/rfvp-provider.yml`. The earlier application
-and game smoke tests above describe the previous integration, not a re-test of
-this upstream revision. A standalone check does not certify Apple packaging or
-commercial-game playback.
+The pin `a10913931f621fc6f70e43b85091da641683aed5` advances from `eb5490d`
+by eight commits. File-backed graphs save their path and last GraphRGB values;
+loading re-reads the asset and applies that tone once, with geometry from the
+asset. Parts-overlaid sources instead embed their pixels and saved geometry,
+including when saved again after a restore. These use the existing snapshot
+fields; no RFVS V1/V2 schema change is introduced. File-backed path-only saves
+still require their original resources. Older saves cannot recover edits they
+did not record.
 
-The increment from `af557db` to `eb5490d` only adds an upstream reverse-engineering
-database under `reverse/`. It is not copied into the prepared workspace or
-compiled into the provider; runtime sources and the embedded lockfile are unchanged.
+The update also cancels stale text-completion requests when coroutines exit or
+restart, stops and clamps timers after they exceed their resolution, and uses
+bounded stack visitation buffers in the standalone GPU
+renderer. That renderer is not selected by the embedded host's feature set.
+
+No Cargo manifests or dependency locks changed upstream; the committed embedded
+lockfile remains unchanged and is checked with `--locked`. The existing host
+overlay and RFVS V1/V2 layout adaptations remain in place. CTest additionally
+runs upstream timer, VM text-wait and graph-snapshot regressions against the prepared
+host workspace. Host regressions cover both graph representations through the
+V2 codec, alongside the provider and decoder-coexistence suites.
+
+The earlier application and game smoke tests above describe previous
+integrations, not a gameplay re-test of this pin. Current exact-head CI evidence
+belongs in the upgrade PR; standalone tests do not certify Apple packaging,
+commercial-game playback or audio/video synchronization.

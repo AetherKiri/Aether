@@ -74,6 +74,8 @@ const DiagnosticLocalization = preload("res://scripts/diagnostic_localization.gd
 const DebugConsole = preload("res://scripts/debug_console.gd")
 const BuiltinDemo = preload("res://scripts/builtin_demo.gd")
 const GameLaunchEntry = preload("res://scripts/game_launch_entry.gd")
+const GameFramePacing = preload("res://scripts/game_frame_pacing.gd")
+var game_frame_pacing := GameFramePacing.new()
 const VideoSubtitles = preload("res://scripts/video_subtitles.gd")
 const VideoLibrary = preload("res://scripts/video_library.gd")
 const AetherDesignTokens = preload("res://scripts/ui/aether_design_tokens.gd")
@@ -470,6 +472,7 @@ const UI_TEXT := {
         "detail.launch_entry": "启动入口：%s",
         "detail.default_launch_entry": "游戏目录（自动检测）",
         "detail.set_launch_file": "切换启动文件",
+        "detail.script_encoding": "脚本编码",
         "detail.reset_launch_file": "恢复目录自动检测",
         "detail.rfvp_encoding": "RFVP 文本编码",
         "detail.rfvp_encoding_value": "文本编码：%s",
@@ -835,6 +838,7 @@ const UI_TEXT := {
         "detail.launch_entry": "啟動入口：%s",
         "detail.default_launch_entry": "遊戲目錄（自動偵測）",
         "detail.set_launch_file": "切換啟動檔案",
+        "detail.script_encoding": "腳本編碼",
         "detail.reset_launch_file": "恢復目錄自動偵測",
         "detail.rfvp_encoding": "RFVP 文字編碼",
         "detail.rfvp_encoding_value": "文字編碼：%s",
@@ -1240,6 +1244,7 @@ You can find it any time under Settings → QQ Group.",
         "detail.launch_entry": "Launch entry: %s",
         "detail.default_launch_entry": "Game folder (auto-detect)",
         "detail.set_launch_file": "Change Launch File",
+        "detail.script_encoding": "Script encoding",
         "detail.reset_launch_file": "Restore Folder Auto-detect",
         "detail.rfvp_encoding": "RFVP Text Encoding",
         "detail.rfvp_encoding_value": "Text encoding: %s",
@@ -1605,6 +1610,7 @@ You can find it any time under Settings → QQ Group.",
         "detail.launch_entry": "起動エントリ：%s",
         "detail.default_launch_entry": "ゲームフォルダー（自動検出）",
         "detail.set_launch_file": "起動ファイルを変更",
+        "detail.script_encoding": "スクリプトの文字コード",
         "detail.reset_launch_file": "フォルダーの自動検出に戻す",
         "detail.rfvp_encoding": "RFVP 文字エンコーディング",
         "detail.rfvp_encoding_value": "文字エンコーディング：%s",
@@ -1968,6 +1974,7 @@ You can find it any time under Settings → QQ Group.",
         "detail.launch_entry": "실행 진입점: %s",
         "detail.default_launch_entry": "게임 폴더(자동 감지)",
         "detail.set_launch_file": "실행 파일 변경",
+        "detail.script_encoding": "스크립트 인코딩",
         "detail.reset_launch_file": "폴더 자동 감지 복원",
         "detail.rfvp_encoding": "RFVP 텍스트 인코딩",
         "detail.rfvp_encoding_value": "텍스트 인코딩: %s",
@@ -2071,6 +2078,7 @@ const RUNTIME_XSYSTEM4 := "xsystem4"
 const RUNTIME_WA2 := "wa2"
 const RUNTIME_BGI := "bgi"
 const RUNTIME_TYRANO := "tyranoscript"
+const RUNTIME_YURIS := "yuris"
 const RUNTIME_PLAYER_CLASS := "AetherRuntimePlayer"
 const ONSCRIPTER_SCRIPT_MARKERS := [
     "0.txt",
@@ -2493,6 +2501,7 @@ var black_frame_consecutive := 0
 var black_frame_last_log_msec := 0
 var black_frame_guard_enabled := false
 var cli_probe_script := ""
+var cli_probe_audio_capture: RefCounted
 var cli_probe_runtime_debug := false
 var verbose_render_log := false
 var diagnostics_enabled := false
@@ -2504,6 +2513,8 @@ var last_tick_ms := 0.0
 var last_update_ms := 0.0
 var last_frame_ms := 0.0
 var last_probe_wait_ms := 0.0
+var last_shell_ms := 0.0
+var last_process_ms := 0.0
 var debug_last_input_event := ""
 var debug_last_input_target := ""
 var debug_last_input_position := Vector2.ZERO
@@ -4519,6 +4530,21 @@ func _apply_engine_options() -> void:
     player.set_engine_option("plugin_load_mode", effective_plugin_load_mode)
     player.set_engine_option("plugin_trace", "1" if effective_plugin_trace else "0")
     player.set_engine_option("mock_enabled", "1" if mock_enabled else "0")
+    # Preserve the VM's complete effect pass on normal GUI launches. An
+    # undersized host override breaks WA(1) ordering and animation cadence.
+    if current_player_runtime_kind == RUNTIME_YURIS:
+        var yuris_options = preload("res://scripts/yuris_engine_options.gd")
+        player.set_engine_option(
+            "YURIS_SCRIPT_ENCODING", yuris_options.script_encoding(
+                selected_game, _runtime_string("AETHERKIRI_YURIS_ENCODING", "")
+            )
+        )
+        var yuris_worker_budget_value: int = preload("res://scripts/yuris_engine_options.gd").worker_step_budget(
+            _runtime_string("AETHERKIRI_YURIS_WORKER_STEP_BUDGET", "")
+        )
+        player.set_engine_option(
+            "YURIS_WORKER_STEP_BUDGET", str(yuris_worker_budget_value)
+        )
     player.set_engine_option("console_log_file", "1" if console_log_file else "0")
     player.set_engine_option("trace_log", "1" if effective_trace_log else "0")
     player.set_engine_option("input_trace", "1" if effective_input_trace else "0")
@@ -4667,7 +4693,21 @@ func _game_runtime_restore_orientation(previous_screen_size: Vector2i, fallback:
         return DisplayServer.SCREEN_LANDSCAPE
     return fallback
 
+func _set_game_runtime_frame_pacing(active: bool) -> void:
+    var policy: Dictionary
+    if active:
+        policy = game_frame_pacing.enter(active_runtime_kind, OS.get_name(),
+            RenderingServer.get_current_rendering_driver_name(),
+            DisplayServer.window_get_vsync_mode(), Engine.max_fps,
+            DisplayServer.screen_get_refresh_rate())
+    else:
+        policy = game_frame_pacing.leave()
+    if not policy.is_empty():
+        DisplayServer.window_set_vsync_mode(policy.vsync)
+        Engine.max_fps = policy.max_fps
+
 func _set_game_runtime_orientation(active: bool) -> void:
+    _set_game_runtime_frame_pacing(active)
     if OS.get_name() != "iOS" and OS.get_name() != "Android":
         return
     if active:
@@ -5105,6 +5145,8 @@ func _apply_upscale_algorithm() -> void:
             viewport.material = _opaque_frame_material()
 
 func _set_game_background(active: bool) -> void:
+    if not active:
+        _set_game_runtime_frame_pacing(false)
     var color := color_game_bg if active else color_bg
     if bg_rect != null:
         bg_rect.color = color
@@ -8630,6 +8672,20 @@ func _detail_tools(game: Dictionary) -> FlowContainer:
     tools.add_theme_constant_override("h_separation", 8)
     tools.add_theme_constant_override("v_separation", 8)
     tools.add_child(_detail_launch_button())
+    if _game_runtime_kind(String(game.get("path", ""))) == RUNTIME_YURIS:
+        var yuris_options = preload("res://scripts/yuris_engine_options.gd")
+        var encoding := OptionButton.new()
+        encoding.custom_minimum_size = Vector2(190, 44)
+        encoding.tooltip_text = _t("detail.script_encoding")
+        for value: String in yuris_options.SCRIPT_ENCODINGS:
+            encoding.add_item(_t("detail.script_encoding") + ": " + value)
+        encoding.select(yuris_options.SCRIPT_ENCODINGS.find(yuris_options.script_encoding(game)))
+        encoding.item_selected.connect(func(index: int):
+            _update_game(String(game.get("path", "")), {
+                yuris_options.SCRIPT_ENCODING_FIELD: yuris_options.SCRIPT_ENCODINGS[index]
+            })
+        )
+        tools.add_child(encoding)
     if _can_configure_launch_file(game):
         var set_launch := _icon_action_button(ICON_PLAY, _t("detail.set_launch_file"), func(): _set_launch_file_for_selected())
         _reveal_icon_action_label_on_hover(set_launch, _t("detail.set_launch_file"))
@@ -11160,6 +11216,8 @@ func _game_runtime_kind(path: String) -> String:
         # Packed CatSystem2 titles may not expose the loose markers used by
         # GameMetadata. Let the registered provider inspect the game root
         # before falling back to the legacy KiriKiri host.
+        if int(player.probe_runtime(RUNTIME_YURIS, root)) > 0:
+            return RUNTIME_YURIS
         if int(player.probe_runtime(RUNTIME_CATSYSTEM2, root)) > 0:
             return RUNTIME_CATSYSTEM2
         if int(player.probe_runtime(RUNTIME_SOFTPAL, root)) > 0:
@@ -12421,6 +12479,7 @@ func _switch_runtime_player(runtime_kind: String) -> bool:
         RUNTIME_SIGLUS,
         RUNTIME_BGI,
         RUNTIME_XSYSTEM4,
+        RUNTIME_YURIS,
     ]:
         normalized = RUNTIME_KIRIKIRI
     if player != null and current_player_runtime_kind == normalized:
@@ -12451,8 +12510,9 @@ func _switch_runtime_player(runtime_kind: String) -> bool:
     _append_log("Runtime selected: %s" % (
         "AliceSoft System 4"
         if normalized == RUNTIME_XSYSTEM4
-        else
-        "OnscripterYuri"
+        else "YU-RIS"
+        if normalized == RUNTIME_YURIS
+        else "OnscripterYuri"
         if normalized == RUNTIME_ONSCRIPTER
         else "MinoriRust"
         if normalized == RUNTIME_MINORI
@@ -12476,8 +12536,27 @@ func _parse_platform_form(argument: String) -> Dictionary:
         values[key] = encoded_value.replace("+", " ").uri_decode()
     return values
 
+func _trace_runtime_platform_request(phase: String, operation: String, argument: String) -> void:
+    # Keep host request timing available for exported-app probes.
+    if perf_log_file == null:
+        return
+    var debug := ""
+    if player != null and player.has_method("get_plugin_debug_info"):
+        debug = String(player.get_plugin_debug_info()).replace("\n", "\\n")
+    perf_log_file.store_line("platform_trace phase=%s operation=%s argument=%s debug=%s" % [
+        phase,
+        operation,
+        argument.replace("\n", "\\n"),
+        debug,
+    ])
+    perf_log_file.flush()
+
 func _on_runtime_platform_request(operation: String, argument: String) -> void:
     if player == null:
+        return
+    _trace_runtime_platform_request("received", operation, argument)
+    if operation == "runtime_end":
+        call_deferred("_return_to_library_after_runtime_exit")
         return
     if operation == "softpal_window_size":
         if not _is_touch_platform() and get_window().mode == Window.MODE_WINDOWED:
@@ -13063,15 +13142,28 @@ func _complete_runtime_dialog(result: int, input: LineEdit) -> void:
 func _ensure_player_initialized() -> bool:
     if player == null:
         return false
-    if player.is_initialized():
-        return true
-
     var user_dir := OS.get_user_data_dir()
     if cli_probe_script == "res://scripts/runtime_regression_probe.gd":
         user_dir = RuntimeRegressionProbe.writable_root(ProbeConfig.load())
         if user_dir.is_empty():
             _append_log("Regression probe requires an isolated writable_root under user://regressions/")
             return false
+    elif not cli_probe_script.is_empty():
+        # Other probes may supply their own disposable replay directory.
+        user_dir = ProbeConfig.string_value(ProbeConfig.load(), "user_dir", user_dir)
+    elif current_player_runtime_kind == RUNTIME_YURIS:
+        var library_path := String(selected_game.get("path", ""))
+        if not library_path.is_empty():
+            user_dir = preload("res://scripts/yuris_engine_options.gd").user_directory(
+                user_dir, _game_runtime_root(library_path)
+            )
+    if player.is_initialized():
+        var requires_directory_match := current_player_runtime_kind == RUNTIME_YURIS \
+            or cli_probe_script == "res://scripts/runtime_regression_probe.gd"
+        if not requires_directory_match \
+            or String(player.get_meta("aether_user_directory", "")) == user_dir:
+            return true
+        player.destroy_engine()
     var cache_dir := user_dir.path_join("cache")
     DirAccess.make_dir_recursive_absolute(cache_dir)
     if not player.initialize_engine(user_dir, cache_dir):
@@ -13082,6 +13174,7 @@ func _ensure_player_initialized() -> bool:
         ]
         _append_log(init_error_message)
         return false
+    player.set_meta("aether_user_directory", user_dir)
 
     var runtime_id := "auto"
     if current_player_runtime_kind in [
@@ -13091,6 +13184,7 @@ func _ensure_player_initialized() -> bool:
         RUNTIME_SIGLUS,
         RUNTIME_BGI,
         RUNTIME_XSYSTEM4,
+        RUNTIME_YURIS,
     ]:
         runtime_id = current_player_runtime_kind
     var runtime_result := int(player.set_engine_option("runtime", runtime_id))
@@ -13107,8 +13201,8 @@ func _ensure_player_initialized() -> bool:
     _append_log("%s engine initialized." % (
         "AliceSoft System 4"
         if current_player_runtime_kind == RUNTIME_XSYSTEM4
-        else
-        "OnscripterYuri"
+        else "YU-RIS" if current_player_runtime_kind == RUNTIME_YURIS
+        else "OnscripterYuri"
         if current_player_runtime_kind == RUNTIME_ONSCRIPTER
         else "MinoriRust"
         if current_player_runtime_kind == RUNTIME_MINORI
@@ -13791,12 +13885,16 @@ func _probe_open_game(config: Dictionary, target_game_path: String, backend_env:
         return false
     current_surface_size = surface_size
     game_path.text = target_game_path
-    var result: int = int(player.open_game(target_game_path, true))
+    var startup_script := ProbeConfig.string_value(config, "startup_script", "").strip_edges()
+    if not startup_script.is_empty() and not startup_script.begins_with("/"):
+        startup_script = target_game_path.path_join(startup_script)
+    var result: int = int(player.open_game(target_game_path, true, startup_script))
     if result != ENGINE_RESULT_OK:
         _write_probe_marker("probe_open_game failed error=%s" % player.get_last_error())
         printerr("open_game failed: %s" % player.get_last_error())
         return false
     _write_probe_marker("probe_open_game opened")
+    _set_game_runtime_frame_pacing(true)
     return true
 
 func _probe_wait_startup(config: Dictionary, fallback_frames: int = 900) -> bool:
@@ -13821,8 +13919,21 @@ func _probe_tick_and_update() -> bool:
     _flush_pending_touch_press_if_ready()
     var result: int = int(player.tick(1.0 / 60.0))
     if result != ENGINE_RESULT_OK:
-        _write_probe_marker("probe_tick failed error=%s" % player.get_last_error())
-        printerr("tick failed: %s" % player.get_last_error())
+        _write_probe_marker("probe_tick failed result=%s last_result=%s error=%s" % [
+            result,
+            player.get_last_result(),
+            player.get_last_error(),
+        ])
+        var failed_last_result := String(player.get_last_result())
+        var failed_last_error := String(player.get_last_error())
+        var failed_debug := String(player.get_plugin_debug_info())
+        printerr("tick failed: result=%s last_result=%s error=%s debug_len=%d debug_head=%s" % [
+            result,
+            failed_last_result,
+            failed_last_error,
+            failed_debug.length(),
+            failed_debug.left(240),
+        ])
         return false
     if present_hold_frames > 0:
         present_hold_frames -= 1
@@ -13847,6 +13958,8 @@ func _probe_advance(frames: int) -> bool:
         if not _probe_tick_and_update():
             return false
         await get_tree().process_frame
+        if cli_probe_audio_capture != null:
+            cli_probe_audio_capture.poll(player)
     return true
 
 func _run_cli_smoke_probe(config: Dictionary, target_game_path: String) -> void:
@@ -13905,6 +14018,9 @@ func _run_cli_smoke_probe(config: Dictionary, target_game_path: String) -> void:
 
 func _run_cli_step_probe(config: Dictionary, target_game_path: String) -> void:
     cli_probe_runtime_debug = bool(config.get("runtime_debug", false))
+    if bool(config.get("audio_capture", false)):
+        cli_probe_audio_capture = load("res://scripts/probe_audio_capture.gd").new()
+        cli_probe_audio_capture.start()
     if not _probe_open_game(config, target_game_path, "AETHERKIRI_PROBE_BACKEND"):
         await _probe_cleanup_and_quit(1)
         return
@@ -14064,6 +14180,14 @@ func _probe_run_actions(config: Dictionary, step: int) -> int:
                     return -1
             if label.is_empty() or label == "scroll" or label == "repeat_scroll":
                 label = "scroll_%d_%d_%d" % [count, int(pos.x), int(pos.y)]
+        elif kind == "story_walk":
+            var walker = load("res://scripts/probe_story_walk.gd").new()
+            var click := func(pos: Vector2) -> void: _probe_send_mapped_click(pos, config)
+            step = await walker.run(get_tree(), player, _probe_tick_and_update, click,
+                _probe_capture_image, _default_output_path("story.json").get_base_dir(), step, label, action)
+            if step < 0:
+                return -1
+            continue
         elif kind == "click_stream":
             step = await _probe_run_click_stream(config, step, label, action)
             continue
@@ -14089,6 +14213,15 @@ func _probe_run_click_stream(config: Dictionary, step: int, label: String, actio
         return step
 
     var frames: int = max(1, int(action.get("frames", 180)))
+    var shell_input := bool(action.get("shell_input", false))
+    var shell_point := viewport.get_global_rect().position + pos * viewport.size / Vector2(ProbeConfig.coord_size(config, Vector2i(1280, 720)))
+    var presentation_samples: Array[Dictionary] = []
+    var deferred_capture_every: int = max(0, int(action.get("deferred_capture_every", 0)))
+    var deferred_crop := Rect2i()
+    var deferred_captures: Array[Dictionary] = []
+    var crop_values: Array = action.get("deferred_capture_crop", [])
+    if crop_values.size() >= 4:
+        deferred_crop = Rect2i(int(crop_values[0]), int(crop_values[1]), int(crop_values[2]), int(crop_values[3]))
     var clicks_per_frame: int = max(0, int(action.get("clicks_per_frame", 1)))
     var click_every_frames: int = max(1, int(action.get("click_every_frames", 1)))
     var max_clicks: int = max(0, int(action.get("max_clicks", 0)))
@@ -14137,8 +14270,16 @@ func _probe_run_click_stream(config: Dictionary, step: int, label: String, actio
             if max_clicks > 0:
                 click_batch = mini(click_batch, max_clicks - clicks_sent)
         for i in range(max(0, click_batch)):
-            player.send_pointer_event(POINTER_DOWN, pointer_id, mapped.x, mapped.y, 0.0, 0.0, 0)
-            player.send_pointer_event(POINTER_UP, pointer_id, mapped.x, mapped.y, 0.0, 0.0, 0)
+            if shell_input:
+                for pressed in [true, false]:
+                    var mouse := InputEventMouseButton.new()
+                    mouse.position = shell_point
+                    mouse.button_index = MOUSE_BUTTON_LEFT
+                    mouse.pressed = pressed
+                    _handle_game_pointer_event(mouse)
+            else:
+                player.send_pointer_event(POINTER_DOWN, pointer_id, mapped.x, mapped.y, 0.0, 0.0, 0)
+                player.send_pointer_event(POINTER_UP, pointer_id, mapped.x, mapped.y, 0.0, 0.0, 0)
             input_events += 2
             clicks_sent += 1
 
@@ -14147,9 +14288,19 @@ func _probe_run_click_stream(config: Dictionary, step: int, label: String, actio
         var tick_result: int = int(player.tick(1.0 / 60.0))
         var after_tick := Time.get_ticks_usec()
         if tick_result != ENGINE_RESULT_OK:
-            printerr("click_stream tick failed: %s" % player.get_last_error())
+            printerr("click_stream tick failed: result=%s last_result=%s error=%s" % [
+                tick_result,
+                player.get_last_result(),
+                player.get_last_error(),
+            ])
             return -1
-        var texture: Texture2D = player.update_frame_texture()
+        var texture: Texture2D
+        if shell_input:
+            presentation_samples.append({"frame": frame_index, "clicks": clicks_sent, "hold_frames": present_hold_frames})
+            _update_frame()
+            texture = viewport.texture
+        else:
+            texture = player.update_frame_texture()
         if texture != null:
             viewport.texture = texture
             last_texture_size = Vector2i(texture.get_width(), texture.get_height())
@@ -14194,6 +14345,24 @@ func _probe_run_click_stream(config: Dictionary, step: int, label: String, actio
                 int(action.get("capture_wait_frames", 2))
             )
             step += 1
+        if deferred_capture_every > 0 and frame_index % deferred_capture_every == 0:
+            # Keep all presented frames, including black ones. Avoid the
+            # generic screenshot visibility scan during latency captures.
+            var sampled: Image = viewport.texture.get_image() if viewport.texture != null else null
+            if sampled == null or sampled.is_empty():
+                sampled = _probe_capture_image()
+            if deferred_crop.has_area():
+                sampled = sampled.get_region(deferred_crop.intersection(Rect2i(Vector2i.ZERO, sampled.get_size())))
+            var dark_samples := 0
+            for py in range(0, sampled.get_height(), 8):
+                for px in range(0, sampled.get_width(), 8):
+                    var pixel := sampled.get_pixel(px, py)
+                    if pixel.r < 0.02 and pixel.g < 0.02 and pixel.b < 0.02:
+                        dark_samples += 1
+            var record := {"frame": frame_index, "image": sampled, "dark_samples": dark_samples}
+            if dark_samples > int(action.get("deferred_debug_dark_samples", 1000000)):
+                record["debug"] = String(player.get_plugin_debug_info())
+            deferred_captures.append(record)
         await get_tree().process_frame
         var sample_end_ticks := Time.get_ticks_usec()
         var sample_elapsed_ms := float(sample_end_ticks - sample_start_ticks) / 1000.0
@@ -14247,8 +14416,23 @@ func _probe_run_click_stream(config: Dictionary, step: int, label: String, actio
             sample_frame_max = 0.0
             sample_spikes = 0
 
-    var divisor := float(max(1, measured_frames))
+    # Disk encoding is intentionally deferred until after the measured run.
+    # Do not charge that offline work to the presented frame rate.
     var elapsed_sec: float = maxf(0.0001, float(Time.get_ticks_usec() - stream_start_ticks) / 1000000.0)
+    var capture_index: Array[Dictionary] = []
+    for record in deferred_captures:
+        var capture_path := _default_output_path("%s-f%04d.png" % [label, record["frame"]])
+        record["image"].save_png(capture_path)
+        if record.has("debug"):
+            var debug_file := FileAccess.open(capture_path.get_basename() + ".json", FileAccess.WRITE)
+            if debug_file != null:
+                debug_file.store_string(record["debug"])
+        capture_index.append({"frame": record["frame"], "dark_samples": record["dark_samples"]})
+    if not capture_index.is_empty():
+        var capture_index_file := FileAccess.open(_default_output_path("%s-captures.json" % label), FileAccess.WRITE)
+        if capture_index_file != null:
+            capture_index_file.store_string(JSON.stringify(capture_index))
+    var divisor := float(max(1, measured_frames))
     var line := "click_stream label=%s frames=%d measured_frames=%d clicks_per_frame=%d click_every_frames=%d max_clicks=%d clicks_sent=%d input_events=%d fps=%.2f avg_input_ms=%.2f max_input_ms=%.2f avg_tick_ms=%.2f max_tick_ms=%.2f avg_update_ms=%.2f max_update_ms=%.2f avg_frame_ms=%.2f max_frame_ms=%.2f spikes=%d spike_ms=%.2f texture_backend=%s renderer=\"%s\"" % [
         label,
         frames,
@@ -14275,6 +14459,13 @@ func _probe_run_click_stream(config: Dictionary, step: int, label: String, actio
     print(line)
     _write_probe_marker(line)
 
+    if shell_input:
+        var presentation_file := FileAccess.open(_default_output_path("%s-presentation.json" % label), FileAccess.WRITE)
+        if presentation_file != null:
+            presentation_file.store_string(JSON.stringify({"runtime": active_runtime_kind, "frames": frames, "samples": presentation_samples,
+                "average_tick_ms": tick_total / divisor, "max_tick_ms": tick_max,
+                "average_update_ms": update_total / divisor, "max_update_ms": update_max}))
+
     if bool(action.get("capture_final", true)):
         await _probe_save_step(step, "%s_final" % label)
         step += 1
@@ -14296,8 +14487,17 @@ func _probe_save_step(index: int, label: String, wait_frames: int = 2) -> void:
     ]
     print(line)
     _write_probe_marker(line)
+    if cli_probe_audio_capture != null:
+        var audio: Dictionary = cli_probe_audio_capture.snapshot(player)
+        var audio_file := FileAccess.open(path.get_basename() + ".audio.json", FileAccess.WRITE)
+        if audio_file != null:
+            audio_file.store_string(JSON.stringify(audio))
+        print("step %02d audio=%s" % [index, JSON.stringify(audio)])
     if cli_probe_runtime_debug:
         var runtime_debug := String(player.get_plugin_debug_info())
+        var debug_file := FileAccess.open(path.get_basename() + ".json", FileAccess.WRITE)
+        if debug_file != null:
+            debug_file.store_string(runtime_debug)
         print("step %02d runtime_debug=%s" % [index, runtime_debug])
         var parsed = JSON.parse_string(runtime_debug) if runtime_debug.strip_edges().begins_with("{") else null
         if parsed is Dictionary:
@@ -14340,13 +14540,17 @@ func _probe_send_mapped_click(window_pos: Vector2, config: Dictionary, button: i
     if mapped.x < 0.0 or mapped.y < 0.0:
         print("skip click outside texture window=%s mapped=%s" % [window_pos, mapped])
         return
-    player.send_pointer_event(POINTER_MOVE, 0, mapped.x, mapped.y, 0.0, 0.0, 0)
-    player.tick(1.0 / 60.0)
-    player.send_pointer_event(POINTER_DOWN, 0, mapped.x, mapped.y, 0.0, 0.0, button)
+    var move_result := int(player.send_pointer_event(POINTER_MOVE, 0, mapped.x, mapped.y, 0.0, 0.0, 0))
+    var move_tick := int(player.tick(1.0 / 60.0))
+    var down_result := int(player.send_pointer_event(POINTER_DOWN, 0, mapped.x, mapped.y, 0.0, 0.0, button))
     _hold_next_present_after_input()
-    player.tick(1.0 / 60.0)
-    player.send_pointer_event(POINTER_UP, 0, mapped.x, mapped.y, 0.0, 0.0, button)
+    var down_tick := int(player.tick(1.0 / 60.0))
+    var up_result := int(player.send_pointer_event(POINTER_UP, 0, mapped.x, mapped.y, 0.0, 0.0, button))
     _hold_next_present_after_input(POST_CLICK_PRESENT_HOLD_FRAMES, true)
+    print("probe click window=%s mapped=%s send=%d,%d,%d ticks=%d,%d last=%s error=%s" % [
+        window_pos, mapped, move_result, down_result, up_result, move_tick, down_tick,
+        player.get_last_result(), player.get_last_error(),
+    ])
 
 func _probe_send_mapped_touch_click(window_pos: Vector2, config: Dictionary, touch_index: int = 0) -> void:
     var mapped := _probe_map_window_point(window_pos, config)
@@ -14529,6 +14733,29 @@ func _run_cli_gui_probe(config: Dictionary, target_game_path: String) -> void:
         output_path,
         JSON.stringify(screenshot_stats),
     ])
+
+    # A JSON probe normally exits after the screenshot so CI can assert its
+    # result.  Manual acceptance needs the same probe path to hand control
+    # back to the regular Aether frame/input loop, so keep_open explicitly
+    # promotes the opened runtime to a normal active game session.
+    if ProbeConfig.bool_value(config, "keep_open", false):
+        game_running = true
+        cached_startup_state = STARTUP_SUCCEEDED
+        startup_poll_accum = 0.0
+        shell_root.visible = false
+        game_view.visible = true
+        viewport.visible = true
+        _set_game_background(true)
+        _sync_game_virtual_controls()
+        _sync_debug_console_state()
+        _write_probe_marker("probe_keep_open renderer=%s texture_backend=%s" % [
+            player.get_renderer_info(),
+            player.get_frame_texture_backend(),
+        ])
+        print("gui probe keep_open=true; Aether window is ready for manual input")
+        while is_inside_tree():
+            await get_tree().process_frame
+        return
     await _probe_cleanup_and_quit(0 if int(screenshot_stats.get("visible", 0)) > 0 else 2)
 
 func _run_cli_perf_input_probe(config: Dictionary, target_game_path: String) -> void:
@@ -14647,6 +14874,10 @@ func _probe_image_diff_score(a: Image, b: Image) -> float:
     return total / max(1.0, float(samples))
 
 func _probe_cleanup_and_quit(code: int) -> void:
+    _set_game_runtime_frame_pacing(false)
+    if cli_probe_audio_capture != null:
+        cli_probe_audio_capture.close()
+        cli_probe_audio_capture = null
     _write_probe_marker("probe_cleanup code=%d" % code)
     if FileAccess.file_exists(ProbeConfig.debug_request_path()):
         DirAccess.remove_absolute(ProjectSettings.globalize_path(ProbeConfig.debug_request_path()))
@@ -14752,6 +14983,7 @@ func _apply_pending_video_resume(state: Dictionary) -> bool:
     return true
 
 func _process(delta: float) -> void:
+    var process_started := Time.get_ticks_usec()
     _poll_android_storage_permission_request()
     _poll_native_launch_file_picker()
     _poll_native_cover_file_picker()
@@ -14769,6 +15001,7 @@ func _process(delta: float) -> void:
     _flush_log_view_if_needed(delta)
     if video_playing:
         _process_video_playback(delta)
+    last_shell_ms = float(Time.get_ticks_usec() - process_started) / 1000.0
     var startup_state := cached_startup_state
     if game_running:
         _sync_player_surface_size(false)
@@ -14865,6 +15098,7 @@ func _process(delta: float) -> void:
                     perf_log_file.store_line(tick_error_line)
                     perf_log_file.flush()
                 game_running = false
+                _set_game_runtime_frame_pacing(false)
                 _sync_game_virtual_controls()
                 _deactivate_game_text_input()
                 _sync_debug_console_state()
@@ -14905,6 +15139,7 @@ func _process(delta: float) -> void:
                         player.get_renderer_info(),
                         player.get_frame_texture_backend()
                     )
+                last_process_ms = float(Time.get_ticks_usec() - process_started) / 1000.0
                 _log_live_perf(delta, tick_ms, update_ms)
                 _log_frame_spike(delta, tick_ms, update_ms)
                 _log_frame_probe(delta)
@@ -15111,11 +15346,18 @@ func _log_live_perf(delta: float, tick_ms: float, update_ms: float) -> void:
         return
     perf_log_accum = 0.0
     var memory := _runtime_memory_snapshot()
-    var line := "live_perf fps=%d frame_ms=%.2f tick_ms=%.2f update_ms=%.2f texture=%s size=%dx%d renderer=\"%s\" errors=%d app_mb=%d resident_mb=%d gpu_mb=%d gpu_tex_mb=%d cache_mb=%d graphic_cache_mb=%d xp3_cache_mb=%d psb_cache_mb=%d psb_entries=%d" % [
+    var line := "live_perf fps=%d frame_ms=%.2f tick_ms=%.2f update_ms=%.2f shell_ms=%.2f process_ms=%.2f host_process_ms=%.2f draw_calls=%d vsync=%d host_max_fps=%d window=%s texture=%s size=%dx%d renderer=\"%s\" errors=%d app_mb=%d resident_mb=%d gpu_mb=%d gpu_tex_mb=%d cache_mb=%d graphic_cache_mb=%d xp3_cache_mb=%d psb_cache_mb=%d psb_entries=%d" % [
         Engine.get_frames_per_second(),
         delta * 1000.0,
         tick_ms,
         update_ms,
+        last_shell_ms,
+        last_process_ms,
+        Performance.get_monitor(Performance.TIME_PROCESS) * 1000.0,
+        Performance.get_monitor(Performance.RENDER_TOTAL_DRAW_CALLS_IN_FRAME),
+        DisplayServer.window_get_vsync_mode(),
+        Engine.max_fps,
+        str(DisplayServer.window_get_size()),
         player.get_frame_texture_backend(),
         last_texture_size.x,
         last_texture_size.y,
@@ -15693,7 +15935,14 @@ func _on_open_game() -> void:
     startup_poll_accum = STARTUP_POLL_INTERVAL
 
     var async_open := OS.get_environment("AETHERKIRI_SYNC_OPEN") != "1"
-    var result: int = int(player.open_game(path, async_open))
+    var startup_script := String(selected_game.get("startupScript", "")).strip_edges()
+    if not startup_script.is_empty() and not startup_script.begins_with("/"):
+        startup_script = path.path_join(startup_script)
+    if startup_script.is_empty() and detected_runtime == RUNTIME_YURIS:
+        startup_script = GameLaunchEntry.default_yuris_startup_script(path)
+        if not startup_script.is_empty():
+            _append_log("YU-RIS startup entry: %s" % startup_script)
+    var result: int = int(player.open_game(path, async_open, startup_script))
     if result != ENGINE_RESULT_OK:
         render_errors += 1
         cached_startup_state = STARTUP_FAILED
@@ -15709,6 +15958,7 @@ func _on_open_game() -> void:
         return
 
     game_running = true
+    _set_game_runtime_frame_pacing(true)
     if diagnostic_session != null:
         diagnostic_session.set_game_active(true)
         diagnostic_session.record("godot", "lifecycle", "info", "game_open_requested", 0, {
@@ -16281,15 +16531,34 @@ func _send_probe_click(window_pos: Vector2) -> void:
     var mapped := _map_probe_window_point(window_pos)
     if mapped.x < 0.0 or mapped.y < 0.0:
         _write_probe_marker("auto_click_skipped window=%s mapped=%s" % [window_pos, mapped])
+        if input_trace_enabled:
+            print("auto_click_skipped window=%s mapped=%s content=%s surface=%s viewport=%s" % [
+                window_pos,
+                mapped,
+                _game_input_content_size(),
+                _game_input_surface_size(),
+                viewport.get_global_rect() if viewport != null else Rect2(),
+            ])
         return
-    player.send_pointer_event(POINTER_MOVE, 0, mapped.x, mapped.y, 0.0, 0.0, 0)
+    var move_result := int(player.send_pointer_event(POINTER_MOVE, 0, mapped.x, mapped.y, 0.0, 0.0, 0))
     player.tick(1.0 / 60.0)
-    player.send_pointer_event(POINTER_DOWN, 0, mapped.x, mapped.y, 0.0, 0.0, 0)
+    var down_result := int(player.send_pointer_event(POINTER_DOWN, 0, mapped.x, mapped.y, 0.0, 0.0, 0))
     _hold_next_present_after_input()
     player.tick(1.0 / 60.0)
-    player.send_pointer_event(POINTER_UP, 0, mapped.x, mapped.y, 0.0, 0.0, 0)
+    var up_result := int(player.send_pointer_event(POINTER_UP, 0, mapped.x, mapped.y, 0.0, 0.0, 0))
     _hold_next_present_after_input(POST_CLICK_PRESENT_HOLD_FRAMES, true)
     _write_probe_marker("auto_click window=%s mapped=%s" % [window_pos, mapped])
+    if input_trace_enabled:
+        print("auto_click window=%s mapped=%s results=%d,%d,%d content=%s surface=%s viewport=%s" % [
+            window_pos,
+            mapped,
+            move_result,
+            down_result,
+            up_result,
+            _game_input_content_size(),
+            _game_input_surface_size(),
+            viewport.get_global_rect() if viewport != null else Rect2(),
+        ])
 
 func _map_probe_window_point(pos: Vector2) -> Vector2:
     var panel_size := Vector2(
@@ -16405,6 +16674,10 @@ func _default_game_path() -> String:
 func _default_output_path(file_name: String) -> String:
     if OS.get_name() == "iOS":
         return "user://".path_join(file_name)
+    if not cli_probe_script.is_empty():
+        var probe_output_dir := ProbeConfig.string_value(ProbeConfig.load(), "output_dir", "/tmp")
+        DirAccess.make_dir_recursive_absolute(probe_output_dir)
+        return probe_output_dir.path_join(file_name)
     return "/tmp".path_join(file_name)
 
 func _parse_click_points(spec: String) -> Array[Vector2]:
@@ -17856,6 +18129,12 @@ func _should_suppress_touch_drag(pointer_id: int) -> bool:
     return false
 
 func _hold_next_present_after_input(frames: int = POST_INPUT_PRESENT_HOLD_FRAMES, force: bool = false) -> void:
+    # YU-RIS publishes an atomic frame after its script workers finish.
+    # Holding that completed frame on every mouse release starves screen
+    # updates during rapid clicks even while the VM advances the dialogue.
+    if active_runtime_kind == RUNTIME_YURIS:
+        present_hold_frames = 0
+        return
     if frames <= 0:
         return
     # Artemis E-mote updates are published by the same tick that handles the

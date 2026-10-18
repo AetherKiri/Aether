@@ -1248,6 +1248,13 @@ engine_result_t engine_open_game_async(engine_handle_t public_handle,
   try {
     handle->startup_thread = StartupThread([handle, root, startup]() {
       const char* startup_value = startup.empty() ? nullptr : startup.c_str();
+      // Provider startup mutates the runtime-owned VM, frame and media state.
+      // Keep it under the same per-handle lock used by engine_tick and the
+      // other provider routes.  Without this guard a host that drives frames
+      // while async startup is still running can enter the provider at the
+      // same time as OpenGame, corrupting containers during static-variable
+      // initialization.
+      std::lock_guard<std::recursive_mutex> startup_guard(handle->mutex);
       AETHER_DISPATCH_DIAG_LOG("engine_open_game_async before provider open_game");
       const auto open_result = RunProviderOpen(handle, root.c_str(),
                                                startup_value);

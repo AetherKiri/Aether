@@ -1,4 +1,5 @@
 #include "engine_api.h"
+#include "runtime_host_extension.h"
 #include "engine_options.h"
 #include "engine_runtime_provider.h"
 #include "flash_player.h"
@@ -10021,6 +10022,24 @@ public:
         last_result_ = ResultToString(result);
         last_error_ = LastError(handle_);
         if (result == ENGINE_RESULT_OK) {
+#if defined(AETHERKIRI_INTERNAL_RUNTIME_HOST)
+            RuntimeHostServices services;
+            services.owner = this;
+            services.storage_path = cache_path;
+            services.game_root = [this]() { return game_root_path_; };
+            services.respond = [this](const String &op, const String &arg) {
+                return submit_platform_response(op, arg);
+            };
+            services.emit = [this](const String &op, const String &arg) {
+                emit_signal("platform_request", op, arg);
+            };
+            services.media_open = [this](const String &path) { return media_open(path); };
+            services.media_play = [this]() { return media_play(); };
+            services.media_close = [this]() { media_close(); };
+            services.media_state = [this]() { return media_get_state(); };
+            services.media_texture = [this]() { return media_update_texture(); };
+            runtime_host_ = CreateAetherInternalRuntimeHost(services);
+#endif
             sync_frame_effect_source_mode(true);
         }
         AndroidBridgeLog("event=initialize_engine_result result=%s error=%s",
@@ -10030,6 +10049,10 @@ public:
     }
 
     void destroy_engine() {
+        if (runtime_host_) {
+            runtime_host_->Reset(is_inside_tree());
+            runtime_host_.reset();
+        }
         clear_runtime_audio();
         media_close();
         clear_runtime_message();
@@ -10048,6 +10071,7 @@ public:
             last_error_ = LastError(handle_);
         }
         handle_ = nullptr;
+        runtime_response_tick_pending_ = false;
         game_open_ = false;
         runtime_id_ = "auto";
     }
@@ -10313,6 +10337,10 @@ public:
         const engine_result_t result = engine_submit_platform_response(
             handle_, operation_utf8.get_data(), argument_utf8.get_data());
         update_last_error(result);
+        if (result == ENGINE_RESULT_OK && runtime_host_ &&
+            runtime_host_->ResponseNeedsTick(operation)) {
+            runtime_response_tick_pending_ = true;
+        }
         return result;
     }
 
@@ -10327,13 +10355,16 @@ public:
         return result;
     }
 
-    int open_game(const String &game_root_path, bool async) {
+    int open_game(const String &game_root_path, bool async, const String &startup_script = String()) {
         if (handle_ == nullptr) {
             last_result_ = "INVALID_STATE";
             last_error_ = "engine is not initialized";
             return ENGINE_RESULT_INVALID_STATE;
         }
 
+        if (runtime_host_) runtime_host_->Reset(is_inside_tree());
+        runtime_response_tick_pending_ = false;
+        game_root_path_ = game_root_path;
         clear_runtime_audio();
 #if defined(AETHERKIRI_WITH_MAGES)
         if((runtime_id_ == "mages" || runtime_id_ == "auto") &&
@@ -10348,14 +10379,16 @@ public:
                          runtime_id_.utf8().get_data());
 
         CharString path_utf8 = game_root_path.utf8();
+        const CharString startup_utf8 = startup_script.utf8();
+        const char *startup = startup_script.is_empty() ? nullptr : startup_utf8.get_data();
         const String normalized_runtime = runtime_id_.strip_edges().to_lower();
         artemis_logical_frame_pacing_ = normalized_runtime == "artemis" ||
             (normalized_runtime == "auto" &&
              engine_probe_runtime_provider("artemis", path_utf8.get_data()) > 0);
         reset_runtime_tick_timing(false);
         const engine_result_t result = async
-            ? engine_open_game_async(handle_, path_utf8.get_data(), nullptr)
-            : engine_open_game(handle_, path_utf8.get_data(), nullptr);
+            ? engine_open_game_async(handle_, path_utf8.get_data(), startup)
+            : engine_open_game(handle_, path_utf8.get_data(), startup);
         game_open_ = result == ENGINE_RESULT_OK;
         frame_rendered_this_tick_ = false;
         if (!game_open_) {
@@ -10387,7 +10420,7 @@ public:
         }
         const uint32_t delta_ms =
             runtime_tick_quantizer_.Quantize(runtime_delta_seconds);
-        const engine_result_t result = engine_tick(handle_, delta_ms);
+        engine_result_t result = engine_tick(handle_, delta_ms);
         if (result == ENGINE_RESULT_OK) {
             // Keep the old always-present behavior for providers that do not
             // implement the optional flag. The KiriKiri/Godot provider does,
@@ -10402,6 +10435,13 @@ public:
         }
         update_runtime_message_reveal(runtime_delta_seconds);
         drain_platform_requests();
+        if (runtime_response_tick_pending_ && result == ENGINE_RESULT_OK) {
+            runtime_response_tick_pending_ = false;
+            result = engine_tick(handle_, 0);
+            if (result == ENGINE_RESULT_OK) frame_rendered_this_tick_ = true;
+            drain_platform_requests();
+        }
+        if (runtime_host_) runtime_host_->Tick(runtime_delta_seconds);
         update_runtime_message_layout();
         runtime_presentation_sprite_.Tick(get_viewport(), runtime_delta_seconds);
         update_runtime_save_slot_layout();
@@ -10599,6 +10639,8 @@ public:
         if (handle_ == nullptr) {
             return ENGINE_RESULT_INVALID_STATE;
         }
+        if (type == ENGINE_INPUT_EVENT_POINTER_DOWN && runtime_host_ &&
+            runtime_host_->SkipMedia()) return ENGINE_RESULT_OK;
         if (runtime_movie_active_ && runtime_movie_skippable_ &&
             type == ENGINE_INPUT_EVENT_POINTER_DOWN) {
             finish_runtime_movie("result=skipped");
@@ -10895,16 +10937,34 @@ public:
         if (handle_ == nullptr) {
             return String();
         }
-        std::vector<char> buffer(64 * 1024);
-        uint32_t bytes_written = 0;
-        const engine_result_t result = engine_get_plugin_debug_info(
-            handle_, buffer.data(), static_cast<uint32_t>(buffer.size()),
-            &bytes_written);
-        update_last_error(result);
-        if (result != ENGINE_RESULT_OK || bytes_written == 0) {
-            return String();
+        // Plugin diagnostics are provider-owned JSON.  A long-running script
+        // can legitimately accumulate more than the old fixed 64 KiB buffer
+        // (for example, while retaining render/script traces).  The provider
+        // reports INVALID_ARGUMENT when the destination is too small, so
+        // retry with bounded growth instead of exposing an empty state to the
+        // Godot probe.
+        // Keep complete layer/selection diagnostics available for long sessions.
+        constexpr std::size_t kMaxBytes = 32u * 1024u * 1024u;
+        std::size_t capacity = plugin_debug_buffer_capacity_;
+        while (capacity <= kMaxBytes) {
+            std::vector<char> buffer(capacity);
+            uint32_t bytes_written = 0;
+            const engine_result_t result = engine_get_plugin_debug_info(
+                handle_, buffer.data(), static_cast<uint32_t>(buffer.size()),
+                &bytes_written);
+            update_last_error(result);
+            if (result == ENGINE_RESULT_OK && bytes_written != 0 &&
+                bytes_written <= buffer.size()) {
+                plugin_debug_buffer_capacity_ = capacity;
+                return String::utf8(buffer.data(), bytes_written);
+            }
+            if (result != ENGINE_RESULT_INVALID_ARGUMENT) {
+                return String();
+            }
+            capacity *= 2u;
         }
-        return String::utf8(buffer.data(), bytes_written);
+        update_last_error(ENGINE_RESULT_INVALID_ARGUMENT);
+        return String();
     }
 
     String get_frame_texture_backend() const { return frame_texture_backend_; }
@@ -11030,6 +11090,13 @@ public:
         if (handle_ == nullptr) {
             return Ref<Texture2D>();
         }
+        if (runtime_host_) {
+            Ref<Texture2D> texture = runtime_host_->FrameOverride();
+            if (texture.is_valid()) {
+                frame_texture_backend_ = "runtime_media";
+                return texture;
+            }
+        }
         if (runtime_movie_active_) {
             Ref<Texture2D> texture = media_update_texture();
             if (texture.is_valid()) {
@@ -11040,8 +11107,9 @@ public:
         source_query_ms_ = 0.0;
         present_copy_ms_ = 0.0;
         const std::string normalized_backend = NormalizeBackend(backend_);
-        if (normalized_backend == ENGINE_RENDERER_GODOT_NATIVE ||
-            normalized_backend == ENGINE_RENDERER_GPU_BRIDGE) {
+        if ((!runtime_host_ || !runtime_host_->HasComposite()) &&
+            (normalized_backend == ENGINE_RENDERER_GODOT_NATIVE ||
+             normalized_backend == ENGINE_RENDERER_GPU_BRIDGE)) {
             uint64_t texture_id = 0;
             uint32_t width = 0;
             uint32_t height = 0;
@@ -11185,7 +11253,8 @@ public:
             return Ref<Texture2D>();
         }
 
-        if (frame_texture_.is_valid() && desc.frame_serial == frame_texture_serial_) {
+        if ((!runtime_host_ || !runtime_host_->HasComposite()) &&
+            frame_texture_.is_valid() && desc.frame_serial == frame_texture_serial_) {
             if (frame_texture_backend_ == "minori_movie") {
                 frame_texture_backend_ = "image_texture";
             }
@@ -11207,6 +11276,7 @@ public:
         if (result != ENGINE_RESULT_OK) {
             return Ref<Texture2D>();
         }
+        if (runtime_host_) runtime_host_->Composite(frame_rgba_buffer_, desc);
         ForceOpaqueAlpha(frame_rgba_buffer_, desc.stride_bytes, desc.width,
                          desc.height);
 
@@ -12189,8 +12259,8 @@ protected:
             &AetherRuntimePlayer::submit_platform_response);
         ClassDB::bind_method(D_METHOD("set_surface_size", "width", "height"),
                              &AetherRuntimePlayer::set_surface_size);
-        ClassDB::bind_method(D_METHOD("open_game", "game_root_path", "async"),
-                             &AetherRuntimePlayer::open_game, DEFVAL(true));
+        ClassDB::bind_method(D_METHOD("open_game", "game_root_path", "async", "startup_script"),
+                             &AetherRuntimePlayer::open_game, DEFVAL(true), DEFVAL(String()));
         ClassDB::bind_method(D_METHOD("tick", "delta_seconds"),
                              &AetherRuntimePlayer::tick);
         ClassDB::bind_method(D_METHOD("frame_rendered_this_tick"),
@@ -12377,6 +12447,8 @@ private:
                 runtime_presentation_sprite_.Update(this, get_viewport(), value);
             } else if (name == "minori_save_slots") {
                 update_runtime_save_slots(value);
+            } else if (runtime_host_ && runtime_host_->Request(name, value)) {
+                continue;
             } else if (name == "minori_message" || name == "runtime_message") {
                 if (value.is_empty()) {
                     clear_runtime_message();
@@ -13377,6 +13449,10 @@ private:
 
     engine_handle_t handle_ = nullptr;
     engine_media_handle_t media_ = nullptr;
+    std::size_t plugin_debug_buffer_capacity_ = 64u * 1024u;
+    String game_root_path_;
+    RuntimeHostExtensionPtr runtime_host_;
+    bool runtime_response_tick_pending_ = false;
     bool game_open_ = false;
     bool frame_rendered_this_tick_ = false;
     String backend_ = "Godot Native";

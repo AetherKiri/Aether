@@ -11,6 +11,7 @@ const RUNTIME_TYRANO := "tyranoscript"
 const RUNTIME_RENPY := "renpy"
 const RUNTIME_MAGES := "mages"
 const RUNTIME_XSYSTEM4 := "xsystem4"
+const RUNTIME_YURIS := "yuris"
 
 static func inspect(path: String) -> Dictionary:
     var root := path
@@ -74,6 +75,16 @@ static func inspect(path: String) -> Dictionary:
         # the legacy KiriKiri storage layer.
         result.engine = RUNTIME_CATSYSTEM2
         result.signals.append("catsystem2-marker")
+    elif files.has("yu-ris.exe") \
+        or FileAccess.file_exists(root.path_join("data/script/system_start.yst")) \
+        or FileAccess.file_exists(root.path_join("data/script/system_start.txt")) \
+        or _is_compiled_yuris_package(root, files):
+        # YU-RIS projects keep the Windows launcher beside the project data;
+        # the portable provider consumes the project directory, not the PE
+        # file itself.
+        result.engine = RUNTIME_YURIS
+        result.signals.append("yuris-marker")
+        result.launchFile = "yu-ris.exe" if files.has("yu-ris.exe") else ""
     elif files.has("system.ini") and _is_artemis_package(
         files,
         _read_text(root.path_join("system.ini"))
@@ -172,6 +183,29 @@ static func _has_renpy_scripts(root: String, depth: int) -> bool:
             if name in ["cache", "saves", "savedata", "renpy", "lib", ".git"] or directory.is_link(name):
                 continue
             if _has_renpy_scripts(root.path_join(name), depth - 1):
+                return true
+    return false
+
+static func _is_compiled_yuris_package(root: String, files: PackedStringArray) -> bool:
+    # Retail launchers are named after the game. Recognize the compiler's
+    # file signatures instead of requiring the SDK's yu-ris.exe filename.
+    for relative_path in ["ysbin/yscfg.ybn", "ysbin/ysc.ybn", "yscfg.ybn", "ysc.ybn"]:
+        var file := FileAccess.open(root.path_join(relative_path), FileAccess.READ)
+        if file == null or file.get_length() < 16:
+            continue
+        var magic := file.get_buffer(4).get_string_from_ascii()
+        if magic == "YSCF" or magic == "YSCM":
+            return true
+    # Native compiled distributions can place their archives in pac/. Limit
+    # discovery to these two roots so a parent never adopts a sibling game.
+    for pack_root in [root, root.path_join("pac")]:
+        var entries := files if pack_root == root else _file_names(pack_root)
+        for entry in entries:
+            if entry.get_extension().to_lower() != "ypf":
+                continue
+            var file := FileAccess.open(pack_root.path_join(entry), FileAccess.READ)
+            if file != null and file.get_length() >= 32 \
+                and file.get_buffer(4) == PackedByteArray([89, 80, 70, 0]):
                 return true
     return false
 

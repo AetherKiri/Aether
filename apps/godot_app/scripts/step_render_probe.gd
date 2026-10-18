@@ -74,7 +74,10 @@ func _initialize() -> void:
     if game_path.is_empty():
         quit(2)
         return
-    var result: int = player.open_game(game_path, true)
+    var startup_script := ProbeConfig.string_value(test_config, "startup_script", "").strip_edges()
+    if not startup_script.is_empty() and not startup_script.begins_with("/"):
+        startup_script = game_path.path_join(startup_script)
+    var result: int = player.open_game(game_path, true, startup_script)
     if result != 0:
         printerr("open_game failed: %s" % player.get_last_error())
         quit(1)
@@ -92,6 +95,11 @@ func _initialize() -> void:
         step = await _run_actions(step)
     else:
         step = await _run_legacy_steps(step)
+
+    if step < 0:
+        await _destroy_player()
+        quit(1)
+        return
 
     var measured_frames: int = ProbeConfig.int_value(test_config, "measure_frames", _env_int("AETHERKIRI_PROBE_MEASURE_FRAMES", 120))
     var start_ticks: int = Time.get_ticks_usec()
@@ -128,11 +136,20 @@ func _wait_startup() -> bool:
 
 func _advance(frames: int) -> void:
     for i in range(frames):
-        if player.tick(1.0 / 60.0) == 0:
+        var tick_result: int = int(player.tick(1.0 / 60.0))
+        if tick_result == 0:
             var texture: Texture2D = player.update_frame_texture()
             if texture != null:
                 rect.texture = texture
                 rect.queue_redraw()
+        else:
+            printerr("tick failed: result=%s error=%s last_result=%s debug=%s" % [
+                tick_result,
+                player.get_last_error(),
+                player.get_last_result(),
+                player.get_plugin_debug_info(),
+            ])
+            return
         await process_frame
 
 func _save_step(index: int, label: String) -> void:
@@ -345,6 +362,11 @@ func _run_actions(step: int) -> int:
                     await _advance(per_scroll_frames)
             if label.is_empty() or label == "scroll" or label == "repeat_scroll":
                 label = "scroll_%d_%d_%d" % [count, int(pos.x), int(pos.y)]
+        elif kind == "story_walk":
+            step = await _run_story_walk(step, label, action)
+            if step < 0:
+                return -1
+            continue
         elif kind == "click_stream":
             step = await _run_click_stream(step, label, action)
             continue
@@ -369,6 +391,22 @@ func _run_actions(step: int) -> int:
             await _save_step(step, label)
             step += 1
     return step
+
+# Walk real dialogue waits without guessing a click count. Captures include
+# intermediate animation frames, the complete line, and the returned menu.
+func _run_story_walk(step: int, label: String, action: Dictionary) -> int:
+    var walker = load("res://scripts/probe_story_walk.gd").new()
+    return await walker.run(self, player, _story_tick, _send_window_click,
+        _capture_frame_image, output_dir, step, label, action)
+
+func _story_tick() -> bool:
+    if int(player.tick(1.0 / 60.0)) != 0:
+        return false
+    var texture: Texture2D = player.update_frame_texture()
+    if texture != null:
+        rect.texture = texture
+        rect.queue_redraw()
+    return true
 
 func _print_memory_sample(label: String, frame: int) -> void:
     var memory: Dictionary = {}
@@ -476,7 +514,11 @@ func _run_click_stream(step: int, label: String, action: Dictionary) -> int:
         var tick_result: int = int(player.tick(1.0 / 60.0))
         var after_tick := Time.get_ticks_usec()
         if tick_result != 0:
-            printerr("click_stream tick failed: %s" % player.get_last_error())
+            printerr("click_stream tick failed: result=%s error=%s last_result=%s" % [
+                tick_result,
+                player.get_last_error(),
+                player.get_last_result(),
+            ])
             break
         var texture: Texture2D = player.update_frame_texture()
         if texture != null:

@@ -126,6 +126,39 @@ func _init() -> void:
         "",
         "unsupported selection"
     )
+
+    var yuris_root := ProjectSettings.globalize_path(
+        "user://game_launch_entry_yuris_%d" % Time.get_ticks_usec()
+    )
+    DirAccess.make_dir_recursive_absolute(yuris_root.path_join("data/script/UserScript"))
+    _expect_equal(
+        GameLaunchEntry.default_yuris_startup_script(yuris_root),
+        "",
+        "YU-RIS startup absent"
+    )
+    var yuris_start := yuris_root.path_join("data/script/UserScript/start.txt")
+    var yuris_file := FileAccess.open(yuris_start, FileAccess.WRITE)
+    if yuris_file != null:
+        yuris_file.store_string("#START\n")
+    yuris_file = null
+    _expect_equal(
+        GameLaunchEntry.default_yuris_startup_script(yuris_root),
+        yuris_start,
+        "YU-RIS UserScript startup"
+    )
+    var yuris_scenario_start := yuris_root.path_join(
+        "data/script/UserScript/SCENARIO_START.txt"
+    )
+    yuris_file = FileAccess.open(yuris_scenario_start, FileAccess.WRITE)
+    if yuris_file != null:
+        yuris_file.store_string("#SCENARIO_START\n")
+    yuris_file = null
+    _expect_equal(
+        GameLaunchEntry.default_yuris_startup_script(yuris_root),
+        yuris_scenario_start,
+        "YU-RIS official scenario startup"
+    )
+    _remove_tree(yuris_root)
     _expect_equal(
         GameLaunchEntry.configured_relative_path({
             "path": root,
@@ -186,3 +219,20 @@ func _expect_equal(actual: String, expected: String, label: String) -> void:
         "game_launch_entry_test: %s: expected %s, got %s" % [label, expected, actual]
     )
     failures += 1
+
+
+func _remove_tree(path: String) -> void:
+    var dir := DirAccess.open(path)
+    if dir == null:
+        return
+    dir.list_dir_begin()
+    var entry := dir.get_next()
+    while not entry.is_empty():
+        var child := path.path_join(entry)
+        if dir.current_is_dir():
+            _remove_tree(child)
+        else:
+            DirAccess.remove_absolute(child)
+        entry = dir.get_next()
+    dir.list_dir_end()
+    DirAccess.remove_absolute(path)

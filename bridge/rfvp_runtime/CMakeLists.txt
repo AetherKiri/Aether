@@ -55,6 +55,7 @@ endif()
 file(GLOB_RECURSE rfvp_inputs CONFIGURE_DEPENDS
     "${CMAKE_CURRENT_SOURCE_DIR}/rust/*.rs"
     "${AETHERKIRI_RFVP_DIR}/crates/*/src/*.rs"
+    "${AETHERKIRI_RFVP_DIR}/crates/rfvp/tests/*.rs"
     "${AETHERKIRI_RFVP_DIR}/crates/*/Cargo.toml")
 list(APPEND rfvp_inputs "${CMAKE_CURRENT_SOURCE_DIR}/Cargo.lock"
     "${CMAKE_CURRENT_SOURCE_DIR}/cmake/PrepareRfvpSources.cmake"

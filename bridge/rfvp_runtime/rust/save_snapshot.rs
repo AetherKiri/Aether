@@ -137,6 +137,95 @@ mod host_snapshot_tests {
     }
 
     #[test]
+    fn version_two_preserves_modified_named_graph_pixels_and_geometry() {
+        use crate::subsystem::resources::{graph_buff::GraphBuff, vfs::Vfs};
+
+        fn source(compressed_pixels: &[u8]) -> Vec<u8> {
+            // Original 2x1, 32-bit NVSG fixture; its pixels are zlib-compressed BGRA.
+            let mut bytes = b"hzc1".to_vec();
+            bytes.extend_from_slice(&8u32.to_le_bytes());
+            bytes.extend_from_slice(&32u32.to_le_bytes());
+            bytes.extend_from_slice(b"NVSG");
+            for field in [0u16, 1, 2, 1, 0, 0, 0, 0] {
+                bytes.extend_from_slice(&field.to_le_bytes());
+            }
+            bytes.extend_from_slice(&[0; 12]);
+            bytes.extend_from_slice(compressed_pixels);
+            bytes
+        }
+
+        let path = "host-snapshot/modified.nvsg";
+        let mut graph = GraphBuff::new();
+        // BGRA: [200, 160, 120, 255, 80, 40, 20, 255].
+        graph.load_texture(path, source(&[
+            120, 156, 59, 177, 160, 226, 127, 128, 134, 200, 127, 0, 21, 82, 4, 107,
+        ])).unwrap();
+        assert!(graph.capture_snapshot_with_id(7).rgba.is_none());
+        graph.set_color_tone(50, 25, 75);
+        graph.offset_x = 3;
+        graph.offset_y = 5;
+        graph.u = 1;
+        graph.v = 1;
+        graph.display_width = 6;
+        graph.display_height = 3;
+        let pixels = vec![60, 40, 150, 255, 10, 10, 60, 255];
+        assert_eq!(graph.texture.as_ref().unwrap().to_rgba8().into_raw(), pixels);
+        let graph_snapshot = graph.capture_snapshot_with_id(7);
+        assert_eq!(graph_snapshot.rgba.as_ref(), Some(&pixels));
+
+        let motion = MotionManager::new();
+        let mut base_motion = motion.capture_snapshot_v1();
+        base_motion.textures.push(graph_snapshot);
+        let snapshot = SaveStateSnapshotV1 {
+            host_playback: Some(HostPlaybackSnapshot {
+                motions: motion.capture_host_motions(),
+                text: motion.text_manager.capture_host_playback(),
+            }),
+            version: 1,
+            motion: base_motion,
+            audio: AudioSnapshotV1 {
+                bgm: BgmPlayerSnapshotV1 { version: 1, slots: vec![] },
+                se: SePlayerSnapshotV1 { version: 1, slots: vec![] },
+            },
+            globals_non_volatile: vec![],
+            vm: ThreadManager::new().capture_snapshot_v1(),
+        };
+        let encoded = encode_host_snapshot(&snapshot).unwrap();
+        assert_eq!(&encoded[..2], &[2, 0]);
+        let decoded = decode_host_snapshot(&encoded).unwrap();
+        assert!(decoded.host_playback.is_some());
+        assert_eq!(encode_host_snapshot(&decoded).unwrap(), encoded);
+        assert_eq!(decoded.motion.textures.len(), 1);
+        assert_eq!(decoded.motion.textures[0].rgba.as_ref(), Some(&pixels));
+
+        // A missing asset and a valid but different asset must both restore the
+        // embedded edits. The replacement's BGRA pixels are [10,20,30,255,40,50,60,255].
+        let replacement = source(&[
+            120, 156, 227, 18, 145, 251, 175, 97, 100, 243, 31, 0, 9, 64, 2, 209,
+        ]);
+        for replacement in [None, Some(replacement)] {
+            let mut vfs = Vfs::default();
+            if let Some(bytes) = replacement {
+                let mut different = GraphBuff::new();
+                different.load_texture(path, bytes.clone()).unwrap();
+                assert_ne!(different.texture.as_ref().unwrap().to_rgba8().into_raw(), pixels);
+                vfs.add_loose_file(path, bytes);
+            }
+            let mut restored = MotionManager::new();
+            restored.apply_snapshot_v1(&decoded.motion, &vfs).unwrap();
+            let graph = restored.get_texture(7);
+            assert_eq!(graph.texture.as_ref().unwrap().to_rgba8().into_raw(), pixels);
+            assert_eq!(graph.texture_path, path);
+            assert!(graph.texture_ready);
+            assert_eq!((graph.width, graph.height), (2, 1));
+            assert_eq!((graph.offset_x, graph.offset_y, graph.u, graph.v), (3, 5, 1, 1));
+            assert_eq!((graph.display_width, graph.display_height), (6, 3));
+            // Restored named edits must remain embedded in a subsequent save.
+            assert_eq!(graph.capture_snapshot_with_id(7).rgba.as_ref(), Some(&pixels));
+        }
+    }
+
+    #[test]
     fn desktop_prim_snapshot_preserves_legacy_field_order() {
         use crate::subsystem::resources::prim::{Prim, PrimManagerSnapshotV1};
         let prim = Prim::new().capture_snapshot_v1();

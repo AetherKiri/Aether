@@ -26,12 +26,12 @@ function(aetherkiri_prepare_rfvp root rfvp_dir output)
     file(WRITE "${output}/Cargo.toml"
         "[workspace]\nresolver = \"3\"\nmembers = [\"crates/*\"]\n[profile.dev]\ndebug = 0\nopt-level = 1\nincremental = false\n[profile.dev.package.rfvp]\nopt-level = 3\n[profile.release]\ndebug = 0\nlto = \"thin\"\ncodegen-units = 1\n")
     configure_file("${CMAKE_CURRENT_FUNCTION_LIST_DIR}/../Cargo.lock" "${output}/Cargo.lock" COPYONLY)
-    # Siglus embeds another copy of this decoder. Keep RFVP's C exports distinct
-    # so both static Rust libraries can be linked into the same application.
+    # Keep the decoder exports compatible with the coexistence contract in #334.
+    # Upstream now uses Rust 2024's unsafe attribute spelling.
     foreach(symbol create destroy decode get_frame)
         rfvp_replace("${output}/crates/na_wmv_player/src/ffi.rs"
-            "#[no_mangle]\npub extern \"C\" fn wmv2_decoder_${symbol}"
-            "#[export_name = \"aether_rfvp_wmv2_decoder_${symbol}\"]\npub extern \"C\" fn wmv2_decoder_${symbol}")
+            "#[unsafe(no_mangle)]\npub unsafe extern \"C\" fn wmv2_decoder_${symbol}"
+            "#[unsafe(export_name = \"aether_rfvp_wmv2_decoder_${symbol}\")]\npub unsafe extern \"C\" fn wmv2_decoder_${symbol}")
     endforeach()
     set(src "${output}/crates/rfvp/src")
     rfvp_replace("${output}/crates/rfvp/Cargo.toml"
@@ -46,9 +46,8 @@ function(aetherkiri_prepare_rfvp root rfvp_dir output)
     rfvp_replace("${src}/utils/file.rs" "pub fn app_base_path() -> PathBuilder {"
         "pub fn app_base_path() -> PathBuilder {\n    if let Some(root) = crate::aetherkiri_host::game_root() { return PathBuilder { path_buff: root }; }")
     file(APPEND "${src}/utils/file.rs" "\npub fn save_base_path() -> PathBuilder {\n    PathBuilder { path_buff: crate::aetherkiri_host::save_root().expect(\"rfvp save root not installed\") }\n}\n")
-    foreach(file subsystem/resources/save_manager.rs subsystem/global_savedata.rs)
-        rfvp_replace("${src}/${file}" "app_base_path" "save_base_path")
-    endforeach()
+    # Core installs an isolated RfvpStorage on SaveManager. Upstream now routes
+    # both slot and global saves through that storage instead of app_base_path.
     # V1 drops active motions and text/VM wait linkage on load. Extend new RFVS
     # payloads with a V2 envelope without changing the original V1 wire layout.
     set(motion_src "${src}/subsystem/resources/motion_manager")
@@ -65,6 +64,18 @@ function(aetherkiri_prepare_rfvp root rfvp_dir output)
         list(GET pair 1 type)
         rfvp_replace("${motion_src}/${file}.rs" "pub struct ${type} {"
             "#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]\npub struct ${type} {")
+    endforeach()
+    # live_end is only a new scan optimization, never part of the saved V2
+    # wire format. Rebuild a conservative bound after loading older snapshots.
+    foreach(pair "alpha;AlphaMotionContainer" "normal_move;MoveMotionContainer"
+            "rotation_move;RotationMotionContainer" "s2_move;ScaleMotionContainer"
+            "z_move;ZMotionContainer")
+        list(GET pair 0 file)
+        list(GET pair 1 type)
+        rfvp_replace("${motion_src}/${file}.rs" "    live_end: usize,"
+            "    #[serde(skip)]\n    live_end: usize,")
+        file(APPEND "${motion_src}/${file}.rs"
+            "\nimpl ${type} {\n    pub(crate) fn rebuild_host_motion_bounds(&mut self) {\n        self.live_end = self.motions.len();\n    }\n}\n")
     endforeach()
     rfvp_replace("${motion_src}/anim.rs" "#[derive(Debug, Default,"
         "#[derive(Debug, Default, Clone,")
@@ -85,11 +96,14 @@ function(aetherkiri_prepare_rfvp root rfvp_dir output)
         "    framebuffer: SoftFramebuffer,\n    stats: SoftRendererStats,"
         "    framebuffer: SoftFramebuffer,\n    stats: SoftRendererStats,\n    host_gpu: Option<HostGpuRenderer>,")
     rfvp_replace("${src}/soft_render/renderer.rs"
-        "            stats: SoftRendererStats::default(),\n        })"
-        "            stats: SoftRendererStats::default(),\n            host_gpu: None,\n        })")
+        "            stats: SoftRendererStats::default(),\n            additive: false,"
+        "            stats: SoftRendererStats::default(),\n            host_gpu: None,\n            additive: false,")
     rfvp_replace("${src}/soft_render/renderer.rs"
-        "        self.stats = SoftRendererStats::default();\n        self.framebuffer.clear_rgba(0, 0, 0, 255);"
-        "        self.stats = SoftRendererStats::default();\n        if !self.begin_host_gpu_frame() {\n            self.framebuffer.clear_rgba(0, 0, 0, 255);\n        }")
+        "if self.mask_frame.wants_snapshot(motion) {"
+        "if self.mask_frame.wants_snapshot(motion) && self.sync_host_gpu_snapshot() {")
+    rfvp_replace("${src}/soft_render/renderer.rs"
+        "        self.framebuffer.clear_rgba(0, 0, 0, 255);"
+        "        if !self.begin_host_gpu_motion_frame(motion) {\n            self.framebuffer.clear_rgba(0, 0, 0, 255);\n        }")
     rfvp_replace("${src}/soft_render/renderer.rs"
         "        let graphs = motion.graphs();\n        let snow_motions = motion.snow_motions();"
         "        let graphs = motion.graphs();\n        self.prune_host_gpu_graphs(graphs);\n        let snow_motions = motion.snow_motions();")
@@ -106,6 +120,11 @@ function(aetherkiri_prepare_rfvp root rfvp_dir output)
         "        if color.w <= 0.0 { return Ok(()); }\n        let p0 = model.transform_point3(vec3(0.0, dst_h, 0.0)).truncate();")
     rfvp_replace("${src}/soft_render/renderer.rs" "        let v0 = Vertex {"
         "        if self.try_host_axis_quad(p1, p3, p0, uv0, uv1, color, texture) {\n            self.stats.quad_count += 1;\n            self.stats.draw_calls += 1;\n            return Ok(());\n        }\n        let v0 = Vertex {")
+    # Console sparse IDs are absent from the historical desktop bincode layout.
+    # serde(default) alone still consumes a positional field, so skip them here.
+    rfvp_replace("${src}/subsystem/resources/prim.rs"
+        "    #[serde(default)]\n    pub ids: Vec<u16>,"
+        "    #[serde(skip)]\n    pub ids: Vec<u16>,")
     set(save_state "${src}/subsystem/save_state.rs")
     rfvp_replace("${save_state}" "pub struct SaveStateSnapshotV1 {"
         "pub struct SaveStateSnapshotV1 {\n    #[serde(skip)]\n    pub(crate) host_playback: Option<HostPlaybackSnapshot>,")
@@ -113,17 +132,15 @@ function(aetherkiri_prepare_rfvp root rfvp_dir output)
         "        SaveStateSnapshotV1 {\n            host_playback: Some(HostPlaybackSnapshot::capture(game_data)),\n            version: 1,")
     rfvp_replace("${save_state}" "        tm.apply_snapshot_v1(&self.vm);"
         "        tm.apply_snapshot_v1(&self.vm);\n        if let Some(playback) = &self.host_playback { playback.apply(game_data); }")
-    rfvp_replace("${save_state}" "        .reject_trailing_bytes()"
-        "        .reject_trailing_bytes()\n        .with_limit(MAX_STATE_PAYLOAD_BYTES as u64)")
-    rfvp_replace("${save_state}" "let payload = bincode_opts()\n            .serialize(snap)"
-        "let payload = encode_host_snapshot(snap)")
-    rfvp_replace("${save_state}" "let snap: SaveStateSnapshotV1 = bincode_opts()\n            .deserialize(payload)"
-        "let snap: SaveStateSnapshotV1 = decode_host_snapshot(payload)")
+    # Preserve Aether's RFVS V1/V2 envelope while upstream shares its codec
+    # with no_std builds. The helper retains the bounded desktop bincode layout.
+    rfvp_replace("${save_state}" "snapshot_codec::encode(snap)" "encode_host_snapshot(snap)")
+    rfvp_replace("${save_state}" "snapshot_codec::decode(payload)" "decode_host_snapshot(payload)")
     # Video extraction is host-owned too; never create caches in the game tree
     # or fall back to the process working directory.
-    rfvp_replace("${src}/subsystem/components/syscalls/movie.rs"
+    rfvp_replace("${src}/subsystem/resources/videoplayer/threaded.rs"
         "let preferred = app_base_path()" "let preferred = crate::utils::file::save_base_path()")
-    rfvp_replace("${src}/subsystem/components/syscalls/movie.rs"
+    rfvp_replace("${src}/subsystem/resources/videoplayer/threaded.rs"
         "std::env::current_dir()\n        .unwrap_or_else(|_| PathBuf::from(\".\"))"
         "crate::utils::file::save_base_path().get_path().clone()")
     file(APPEND "${src}/subsystem/components/syscalls/legacy.rs" [=[
@@ -149,29 +166,59 @@ pub fn reset_host_state() {
     rfvp_replace("${src}/subsystem/resources/input_manager.rs"
         "impl InputManager {\n    pub fn new() -> Self {"
         "impl InputManager {\n    pub fn cancel_host_input(&mut self) {\n        let (mask, x, y, inside) = (self.control_is_masked, self.get_cursor_x(), self.get_cursor_y(), self.get_cursor_in());\n        *self = Self::new(); self.control_is_masked = mask; self.notify_mouse_move(x, y); self.set_mouse_in(inside);\n    }\n    pub fn new() -> Self {")
+    set(video_src "${src}/subsystem/resources/videoplayer")
     file(COPY "${CMAKE_CURRENT_FUNCTION_LIST_DIR}/../rust/video_host.rs"
-        DESTINATION "${src}/subsystem/resources")
-    file(APPEND "${src}/subsystem/resources/videoplayer.rs" "\ninclude!(\"video_host.rs\");\n")
-    # SePlayer::new materializes several 256-element arrays even when GameData
-    # itself is initialized in place. Those temporaries overflow the macOS
-    # async-startup thread's stack. Collect the large slot buffers directly on
-    # the heap; boxed slices retain fixed lengths and the existing slot indices.
-    set(se_player "${src}/audio_player/se_player.rs")
-    foreach(type TrackHandle "Option<StaticSoundHandle>" "Option<StaticSoundData>" "Option<String>")
-        rfvp_replace("${se_player}" "[${type}; SE_SLOT_COUNT]" "Box<[${type}]>")
+        DESTINATION "${video_src}")
+    file(APPEND "${video_src}/mod.rs" "\ninclude!(\"video_host.rs\");\n")
+    rfvp_replace("${video_src}/mod.rs" "pub trait MovieSource: Send + Sync {"
+        "pub trait MovieSource: Send + Sync {\n    fn pause_host(&mut self, paused: bool, elapsed: std::time::Duration);")
+    foreach(backend threaded inline)
+        set(playbacks Wmv Mpeg)
+        if(backend STREQUAL "threaded")
+            list(APPEND playbacks Mp4)
+        endif()
+        foreach(playback IN LISTS playbacks)
+            rfvp_replace("${video_src}/${backend}.rs" "impl MovieSource for ${playback}Playback {"
+                "impl MovieSource for ${playback}Playback {\n    fn pause_host(&mut self, paused: bool, elapsed: std::time::Duration) {\n        super::resume_host_clock(&mut self.started_at, paused, elapsed);\n    }")
+        endforeach()
     endforeach()
-    rfvp_replace("${se_player}" "let se_tracks = [(); SE_SLOT_COUNT].map(|_| {"
-        "let se_tracks = (0..SE_SLOT_COUNT).map(|_| {")
-    rfvp_replace("${se_player}" ".expect(\"Failed to create se track\")\n        });"
-        ".expect(\"Failed to create se track\")\n        }).collect::<Vec<_>>().into_boxed_slice();")
-    foreach(field se_slots se_datas se_names)
-        rfvp_replace("${se_player}" "${field}: [(); SE_SLOT_COUNT].map(|_| None),"
-            "${field}: (0..SE_SLOT_COUNT).map(|_| None).collect::<Vec<_>>().into_boxed_slice(),")
+    # Keep one mixer track for host pause/resume, including retiring fade-outs
+    # whose handles are no longer in the live channel map. Upstream's one-track
+    # capacity is sufficient; streamed sounds and its memory savings stay intact.
+    rfvp_replace("${src}/rfvp_audio/mod.rs" "pub trait AudioBackend: Send + Sync {"
+        "pub trait AudioBackend: Send + Sync {\n    fn pause_host(&self, _paused: bool) {}")
+    set(kira_src "${src}/rfvp_audio/kira.rs")
+    rfvp_replace("${kira_src}" "    manager: Mutex<KiraAudioManager>,"
+        "    manager: Mutex<KiraAudioManager>,\n    host_track: Mutex<kira::track::TrackHandle>,")
+    rfvp_replace("${kira_src}" "        let manager = KiraAudioManager::new(settings).expect(\"failed to create Kira AudioManager\");"
+        "        let mut manager = KiraAudioManager::new(settings).expect(\"failed to create Kira AudioManager\");\n        let host_track = manager.add_sub_track(kira::track::TrackBuilder::new())\n            .expect(\"failed to create host audio track\");")
+    rfvp_replace("${kira_src}" "            manager: Mutex::new(manager),"
+        "            manager: Mutex::new(manager),\n            host_track: Mutex::new(host_track),")
+    rfvp_replace("${kira_src}" "            self.manager\n                .lock()"
+        "            self.host_track\n                .lock()")
+    rfvp_replace("${kira_src}" "impl AudioBackend for KiraBackend {" [=[
+impl AudioBackend for KiraBackend {
+    fn pause_host(&self, paused: bool) {
+        let mut track = self.host_track.lock().unwrap_or_else(|poison| poison.into_inner());
+        if paused { track.pause(kira::Tween::default()); }
+        else { track.resume(kira::Tween::default()); }
+    }
+]=])
+
+# Keep slot banks heap-backed as in the previous overlay. Although the new
+# Channels arrays are smaller than the deleted Kira handle arrays, their large
+# temporary copies need not consume the host's small async-startup stack.
+    set(channels_src "${src}/audio_player/channels.rs")
+    rfvp_replace("${channels_src}" "use alloc::string::String;"
+        "use alloc::boxed::Box;\nuse alloc::string::String;")
+    foreach(type "Option<SoundSource>" "Option<String>" "Option<i32>" bool f32 f64)
+        rfvp_replace("${channels_src}" "[${type}; N]" "Box<[${type}]>")
     endforeach()
-    foreach(player Bgm Se)
-        string(TOLOWER "${player}" lower)
-        rfvp_replace("${src}/audio_player/${lower}_player.rs"
-            "impl ${player}Player {"
-            "impl ${player}Player {\n    pub fn pause_host(&mut self, paused: bool) {\n        for track in self.${lower}_tracks.iter_mut() {\n            if paused { track.pause(Tween::default()); } else { track.resume(Tween::default()); }\n        }\n    }")
+    rfvp_replace("${channels_src}" "[(); N].map(|_| None)"
+        "(0..N).map(|_| None).collect::<Vec<_>>().into_boxed_slice()")
+    foreach(value None false 1.0 0.5)
+        rfvp_replace("${channels_src}" "[${value}; N]"
+            "alloc::vec![${value}; N].into_boxed_slice()")
     endforeach()
+
 endfunction()

@@ -41,7 +41,8 @@ Godot App Shell
             ├─ Artemis Runtime ──── Artemis (private package)
             ├─ CatSystem2 Runtime ─ CatSystem2 (private package)
             ├─ BGI Runtime ──────── BGI / Ethornell (private package)
-            └─ SoftPal Runtime ──── SoftPal (private package)
+            ├─ SoftPal Runtime ──── SoftPal (private package)
+            └─ YU-RIS Runtime ───── YU-RIS (private package)
 ```
 
 The default product renderer is **Godot Native**: engine frames are rendered
@@ -57,6 +58,8 @@ and **Debug CPU** is a diagnostic fallback only.
   [`AetherKrkr`](https://github.com/AetherKiri/AetherKrkr) submodule.
 - OnscripterYuri integration with Godot pointer/touch/keyboard input mapped
   back to ONS events.
+- Independent C++17 YU-RIS runtime in the private package, supporting source
+  projects and compiled YBN games.
 - Export presets for macOS, iOS/iPadOS, Android, Web, and Linux.
 - A separate Flash library powered by native Ruffle, with sound, keyboard,
   mouse, touch, and the visual-novel virtual controls.

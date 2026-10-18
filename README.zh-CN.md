@@ -39,7 +39,8 @@ Godot App Shell
             ├─ Artemis Runtime ──── Artemis（私有 package）
             ├─ CatSystem2 Runtime ─ CatSystem2（私有 package）
             ├─ BGI Runtime ──────── BGI / Ethornell（私有 package）
-            └─ SoftPal Runtime ──── SoftPal（私有 package）
+            ├─ SoftPal Runtime ──── SoftPal（私有 package）
+            └─ YU-RIS Runtime ───── YU-RIS（私有 package）
 ```
 
 默认产品渲染链路是 **Godot Native**：引擎帧通过 Godot 持有的
@@ -53,6 +54,7 @@ Godot App Shell
 - C++17 KiriKiri2 引擎核心（视觉、音频、存储、VM、插件），以
   [`AetherKrkr`](https://github.com/AetherKiri/AetherKrkr) submodule 接入。
 - 集成 OnscripterYuri，Godot 的鼠标/触摸/键盘输入会映射回 ONS 事件。
+- 独立的 C++17 YU-RIS Runtime，通过私有 package 接入，支持源码项目和编译后的 YBN 游戏。
 - 覆盖 macOS、iOS/iPadOS、Android、Web 与 Linux 的导出配置。
 - 独立的 Flash 分类，使用原生 Ruffle 播放，支持声音、键鼠、触摸以及视觉小说的虚拟按钮。
 - 通过内置 xsystem4 原生运行 AliceSoft System 4 游戏，支持目录导入、中日文字体、音频、视频和可选虚拟按键。参见[原生宿主与验证范围](bridge/xsystem4_runtime/README.md)。

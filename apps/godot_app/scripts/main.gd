@@ -11879,10 +11879,10 @@ func _start_selected_game_after_iap() -> void:
         _deny_runtime_beta_launch()
 
 func _runtime_requires_beta_access(runtime_kind: String) -> bool:
-    # ONS, Artemis and YU-RIS are generally available. Minori and SoftPal
+    # ONS and Artemis are generally available. Minori, SoftPal and YU-RIS
     # require active coffee access in iOS and macOS distribution builds.
     # Provider-backed runtimes such as WA2 are checked separately.
-    return runtime_kind in [RUNTIME_MINORI, RUNTIME_SOFTPAL]
+    return runtime_kind in [RUNTIME_MINORI, RUNTIME_SOFTPAL, RUNTIME_YURIS]
 
 func _beta_access_enforcement_enabled(platform_name: String = "") -> bool:
     var effective_platform := platform_name if not platform_name.is_empty() else OS.get_name()
@@ -13141,22 +13141,24 @@ func _ensure_player_initialized() -> bool:
     if player == null:
         return false
     var user_dir := OS.get_user_data_dir()
+    var cache_dir := user_dir.path_join("cache")
     if not cli_probe_script.is_empty():
         # Exercise the exported application's normal player while keeping
         # replayed SAVE/LOAD actions away from the user's live save files.
         user_dir = ProbeConfig.string_value(ProbeConfig.load(), "user_dir", user_dir)
+        cache_dir = user_dir.path_join("cache")
     elif current_player_runtime_kind == RUNTIME_YURIS:
         var library_path := String(selected_game.get("path", ""))
         if not library_path.is_empty():
-            user_dir = preload("res://scripts/yuris_engine_options.gd").user_directory(
-                user_dir, _game_runtime_root(library_path)
-            )
+            var options = preload("res://scripts/yuris_engine_options.gd")
+            var game_root := _game_runtime_root(library_path)
+            cache_dir = options.cache_directory(user_dir, game_root)
+            user_dir = options.user_directory(user_dir, game_root)
     if player.is_initialized():
-        if current_player_runtime_kind != RUNTIME_YURIS \
-            or String(player.get_meta("aether_user_directory", "")) == user_dir:
+        if String(player.get_meta("aether_user_directory", "")) == user_dir \
+            and String(player.get_meta("aether_cache_directory", "")) == cache_dir:
             return true
         player.destroy_engine()
-    var cache_dir := user_dir.path_join("cache")
     DirAccess.make_dir_recursive_absolute(cache_dir)
     if not player.initialize_engine(user_dir, cache_dir):
         render_errors += 1
@@ -13167,6 +13169,7 @@ func _ensure_player_initialized() -> bool:
         _append_log(init_error_message)
         return false
     player.set_meta("aether_user_directory", user_dir)
+    player.set_meta("aether_cache_directory", cache_dir)
 
     var runtime_id := "auto"
     if current_player_runtime_kind in [

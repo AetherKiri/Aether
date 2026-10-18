@@ -92,7 +92,7 @@ func _initialize() -> void:
     _expect(not app._runtime_requires_beta_access(app.RUNTIME_ONSCRIPTER))
     _expect(app._runtime_requires_beta_access(app.RUNTIME_MINORI))
     _expect(app._runtime_requires_beta_access(app.RUNTIME_SOFTPAL))
-    _expect(not app._runtime_requires_beta_access(app.RUNTIME_YURIS))
+    _expect(app._runtime_requires_beta_access(app.RUNTIME_YURIS))
     _expect(not app._runtime_requires_beta_access(app.RUNTIME_KIRIKIRI))
     # CatSystem2 is a released runtime and must not enter the coffee-only
     # entitlement path.  WA2 remains the explicitly provider-gated runtime.
@@ -147,7 +147,7 @@ func _check_runtime_launch_access() -> void:
                 app.enforce_beta_access = enforce
                 app.iap_coffee_state = {"entitled": entitled}
                 app._start_selected_game_after_iap()
-                if enforce and runtime_kind == "softpal":
+                if enforce:
                     _expect(coffee_player.requested_products == ["com.aether.coffee"])
                     _expect(not app.launched)
                     _expect(app.iap_pending_beta_check_id > 0)
@@ -157,8 +157,7 @@ func _check_runtime_launch_access() -> void:
                     _expect(app.denied == (not entitled))
                     _expect(app.iap_pending_beta_game.is_empty())
                 else:
-                    # Released YU-RIS games must launch without refreshing
-                    # coffee access even when Apple Release gating is active.
+                    # Debug, Android and Linux launches bypass coffee gating.
                     _expect(coffee_player.requested_products.is_empty())
                     _expect(app.launched)
                     _expect(not app.denied)

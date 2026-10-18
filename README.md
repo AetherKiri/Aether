@@ -59,7 +59,9 @@ and **Debug CPU** is a diagnostic fallback only.
 - OnscripterYuri integration with Godot pointer/touch/keyboard input mapped
   back to ONS events.
 - Independent C++17 YU-RIS runtime in the private package, supporting source
-  projects and compiled YBN games.
+  projects and compiled YBN games. Saves live in each game's `savedata/`
+  directory; older per-game application saves are imported without overwriting
+  local saves. Read-only game directories use isolated application storage.
 - Export presets for macOS, iOS/iPadOS, Android, Web, and Linux.
 - A separate Flash library powered by native Ruffle, with sound, keyboard,
   mouse, touch, and the visual-novel virtual controls.
@@ -79,9 +81,9 @@ and **Debug CPU** is a diagnostic fallback only.
 - Manual compatibility notes for tested titles in
   [`doc/verified_games.md`](doc/verified_games.md).
 
-In iOS and macOS Release distribution builds, Minori, SoftPal, and the
+In iOS and macOS Release distribution builds, Minori, SoftPal, YU-RIS, and the
 WHITE ALBUM2 (Leaf TtT / WA2) runtime require an active 30-day coffee
-entitlement. ONScripterYuri, Artemis, CatSystem2, and YU-RIS are generally available.
+entitlement. ONScripterYuri, Artemis, and CatSystem2 are generally available.
 Debug builds and Android/Linux releases do not enforce this coffee requirement.
 
 ## Flash Library

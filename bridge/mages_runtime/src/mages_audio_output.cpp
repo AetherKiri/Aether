@@ -5,6 +5,7 @@
 
 #include <atomic>
 #include <chrono>
+#include <cmath>
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
@@ -19,8 +20,6 @@ namespace aetherkiri::mages::audio {
         // 85 ms queued so scheduling jitter never reaches the listener.
         constexpr ALsizei kBufferFrames = 1024;
         constexpr size_t kBufferCount = 4;
-        // The pump wakes ~every 8 ms; report stats about twice per second.
-        constexpr uint64_t kHeartbeatPumps = 250;
 
         std::mutex g_mutex;
 
@@ -37,17 +36,6 @@ namespace aetherkiri::mages::audio {
         std::atomic<bool> g_stop{false};
         std::atomic<bool> g_paused{false};
         uint32_t g_rate = 0;
-
-        void PrintStats(const char* tag) {
-            uint64_t written = 0;
-            uint64_t dropped = 0;
-            impacto_host_get_audio_stats(g_host, &written, &dropped);
-            std::fprintf(stderr,
-                         "[mages-audio] %s written_frames=%llu dropped=%llu\n",
-                         tag,
-                         static_cast<unsigned long long>(written),
-                         static_cast<unsigned long long>(dropped));
-        }
 
         // The impacto host bridge produces interleaved stereo f32; OpenAL
         // Soft accepts that directly through AL_EXT_FLOAT32, but the plain

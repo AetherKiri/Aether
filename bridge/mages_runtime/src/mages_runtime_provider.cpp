@@ -270,7 +270,15 @@ namespace aetherkiri::mages {
             impacto_desc.writable_dir_utf8 = writable_path;
             impacto_desc.initial_width = runtime->pending_width;
             impacto_desc.initial_height = runtime->pending_height;
-            impacto_desc.log_level = 3;  // Warning and up to stderr.
+            // Warning and up to stderr by default. AETHERKIRI_MAGES_LOG_LEVEL
+            // overrides for diagnostics (impacto levels: 0=Off 1=Fatal
+            // 2=Error 3=Warning 4=Info 5=Debug 6=Trace).
+            int32_t mages_log_level = 3;
+            if(const char* env_level = std::getenv("AETHERKIRI_MAGES_LOG_LEVEL")) {
+                const int parsed = std::atoi(env_level);
+                mages_log_level = (parsed >= 0 && parsed <= 6) ? parsed : 3;
+            }
+            impacto_desc.log_level = mages_log_level;
             const int32_t created =
                 impacto_host_create(&impacto_desc, &runtime->impact);
             if(created != IMPACTO_HOST_OK) {

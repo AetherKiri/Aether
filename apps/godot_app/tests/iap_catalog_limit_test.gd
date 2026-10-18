@@ -12,15 +12,16 @@ class CoffeePlayer:
         requested_products.append(product_id)
         return 1
 
-class SoftPalAccessApp:
+class RuntimeAccessApp:
     extends "res://scripts/main.gd"
 
     var enforce_beta_access := true
+    var runtime_kind := "softpal"
     var launched := false
     var denied := false
 
     func _game_runtime_kind(_path: String) -> String:
-        return RUNTIME_SOFTPAL
+        return runtime_kind
 
     func _beta_access_enforcement_enabled(_platform_name: String = "") -> bool:
         return enforce_beta_access
@@ -91,6 +92,7 @@ func _initialize() -> void:
     _expect(not app._runtime_requires_beta_access(app.RUNTIME_ONSCRIPTER))
     _expect(app._runtime_requires_beta_access(app.RUNTIME_MINORI))
     _expect(app._runtime_requires_beta_access(app.RUNTIME_SOFTPAL))
+    _expect(not app._runtime_requires_beta_access(app.RUNTIME_YURIS))
     _expect(not app._runtime_requires_beta_access(app.RUNTIME_KIRIKIRI))
     # CatSystem2 is a released runtime and must not enter the coffee-only
     # entitlement path.  WA2 remains the explicitly provider-gated runtime.
@@ -126,36 +128,42 @@ func _initialize() -> void:
     app.modal_layer.free()
     app.ui_motion.free()
     app.free()
-    _check_softpal_launch_access()
+    _check_runtime_launch_access()
     if failures == 0:
         print("IAP_CATALOG_LIMIT_OK")
     quit(1 if failures else 0)
 
-func _check_softpal_launch_access() -> void:
+func _check_runtime_launch_access() -> void:
     # Exercise the launch/entitlement round trip without StoreKit or a game.
     # The platform matrix above verifies which builds enforce this flow.
-    for enforce in [true, false]:
-        for entitled in [true, false]:
-            var app = SoftPalAccessApp.new()
-            var coffee_player = CoffeePlayer.new()
-            app.player = coffee_player
-            app.selected_game = {"path": "/games/softpal"}
-            app.enforce_beta_access = enforce
-            app.iap_coffee_state = {"entitled": entitled}
-            app._start_selected_game_after_iap()
-            if enforce:
-                _expect(coffee_player.requested_products == ["com.aether.coffee"])
-                _expect(not app.launched)
-                _expect(app.iap_pending_beta_check_id > 0)
-                _expect(not app.iap_pending_beta_game.is_empty())
-                app._complete_runtime_beta_check()
-                _expect(app.launched == entitled)
-                _expect(app.denied == (not entitled))
+    for runtime_kind in ["softpal", "yuris"]:
+        for enforce in [true, false]:
+            for entitled in [true, false]:
+                var app = RuntimeAccessApp.new()
+                var coffee_player = CoffeePlayer.new()
+                app.player = coffee_player
+                app.runtime_kind = runtime_kind
+                app.selected_game = {"path": "/games/" + runtime_kind}
+                app.enforce_beta_access = enforce
+                app.iap_coffee_state = {"entitled": entitled}
+                app._start_selected_game_after_iap()
+                if enforce and runtime_kind == "softpal":
+                    _expect(coffee_player.requested_products == ["com.aether.coffee"])
+                    _expect(not app.launched)
+                    _expect(app.iap_pending_beta_check_id > 0)
+                    _expect(not app.iap_pending_beta_game.is_empty())
+                    app._complete_runtime_beta_check()
+                    _expect(app.launched == entitled)
+                    _expect(app.denied == (not entitled))
+                    _expect(app.iap_pending_beta_game.is_empty())
+                else:
+                    # Released YU-RIS games must launch without refreshing
+                    # coffee access even when Apple Release gating is active.
+                    _expect(coffee_player.requested_products.is_empty())
+                    _expect(app.launched)
+                    _expect(not app.denied)
+                _expect(app.iap_pending_beta_check_id == 0)
                 _expect(app.iap_pending_beta_game.is_empty())
-            else:
-                _expect(coffee_player.requested_products.is_empty())
-                _expect(app.launched)
-                _expect(not app.denied)
-            app.player = null
-            app.ui_motion.free()
-            app.free()
+                app.player = null
+                app.ui_motion.free()
+                app.free()

@@ -118,6 +118,12 @@ if(PROJECT_IS_TOP_LEVEL OR ENABLE_TESTS)
             -p rfvp --test graph_snapshot --no-default-features --features "${rfvp_features}"
             --target "${AETHERKIRI_RFVP_RUST_TARGET}" ${rfvp_profile_args}
             -- --test-threads=1)
+    add_test(NAME rfvp-timer-regressions
+        COMMAND "${CMAKE_COMMAND}" -E env "RUSTC=${RFVP_RUSTC}"
+            "${RFVP_CARGO}" test --locked --manifest-path "${rfvp_prepared}/Cargo.toml"
+            -p rfvp --lib --no-default-features --features "${rfvp_features}"
+            --target "${AETHERKIRI_RFVP_RUST_TARGET}" ${rfvp_profile_args}
+            subsystem::resources::timer_manager::tests:: -- --test-threads=1)
     set_tests_properties(rfvp-vm-text-regressions rfvp-graph-snapshot-regressions
-        PROPERTIES TIMEOUT 180)
+        rfvp-timer-regressions PROPERTIES TIMEOUT 180)
 endif()

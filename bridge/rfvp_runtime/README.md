@@ -135,8 +135,8 @@ and confirmed by the user.
 
 ### Upstream upgrade validation
 
-The pin `7958dd3763a976ef6eb6ab384cf39d6a25efafb3` advances from `eb5490d`
-by seven commits. File-backed graphs save their path and last GraphRGB values;
+The pin `a10913931f621fc6f70e43b85091da641683aed5` advances from `eb5490d`
+by eight commits. File-backed graphs save their path and last GraphRGB values;
 loading re-reads the asset and applies that tone once, with geometry from the
 asset. Parts-overlaid sources instead embed their pixels and saved geometry,
 including when saved again after a restore. These use the existing snapshot
@@ -145,13 +145,14 @@ still require their original resources. Older saves cannot recover edits they
 did not record.
 
 The update also cancels stale text-completion requests when coroutines exit or
-restart, and uses bounded stack visitation buffers in the standalone GPU
+restart, stops and clamps timers after they exceed their resolution, and uses
+bounded stack visitation buffers in the standalone GPU
 renderer. That renderer is not selected by the embedded host's feature set.
 
 No Cargo manifests or dependency locks changed upstream; the committed embedded
 lockfile remains unchanged and is checked with `--locked`. The existing host
 overlay and RFVS V1/V2 layout adaptations remain in place. CTest additionally
-runs upstream VM text-wait and graph-snapshot regressions against the prepared
+runs upstream timer, VM text-wait and graph-snapshot regressions against the prepared
 host workspace. Host regressions cover both graph representations through the
 V2 codec, alongside the provider and decoder-coexistence suites.
 

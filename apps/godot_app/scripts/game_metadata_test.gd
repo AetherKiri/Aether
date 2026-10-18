@@ -67,6 +67,44 @@ func _init() -> void:
     var exe_only := GameMetadata.inspect(exe_only_root)
     _expect_equal(String(exe_only.launchFile), "game.exe", "KiriKiri executable fallback")
 
+    var compiled_yuris_root := fixture_root.path_join("compiled_yuris")
+    DirAccess.make_dir_recursive_absolute(compiled_yuris_root.path_join("ysbin"))
+    _write(compiled_yuris_root.path_join("retail_chs.exe"), "launcher")
+    _write(compiled_yuris_root.path_join("ysbin/yscfg.ybn"), "YSCF" + "0".repeat(12))
+    var compiled_yuris := GameMetadata.inspect(compiled_yuris_root)
+    _expect_equal(String(compiled_yuris.engine), "yuris", "retail YSCF detection")
+    _expect_equal(String(compiled_yuris.launchFile), "", "retail YU-RIS directory launch")
+    _expect_equal(
+        String(GameMetadata.inspect(compiled_yuris_root.path_join("retail_chs.exe")).engine),
+        "yuris", "retail YU-RIS explicit executable"
+    )
+    var packed_yuris_root := fixture_root.path_join("packed_yuris")
+    DirAccess.make_dir_recursive_absolute(packed_yuris_root)
+    var ypf_fixture := FileAccess.open(packed_yuris_root.path_join("ysbin.ypf"), FileAccess.WRITE)
+    ypf_fixture.store_buffer(PackedByteArray([89, 80, 70, 0]))
+    ypf_fixture.store_buffer("0".repeat(28).to_ascii_buffer())
+    ypf_fixture.close()
+    _expect_equal(String(GameMetadata.inspect(packed_yuris_root).engine), "yuris", "YPF signature detection")
+    var nested_yuris_root := fixture_root.path_join("nested_yuris")
+    DirAccess.make_dir_recursive_absolute(nested_yuris_root.path_join("pac"))
+    _write(nested_yuris_root.path_join("renamed_launcher.exe"), "launcher")
+    var nested_ypf := FileAccess.open(nested_yuris_root.path_join("pac/ysbin.ypf"), FileAccess.WRITE)
+    nested_ypf.store_buffer(PackedByteArray([89, 80, 70, 0]))
+    nested_ypf.store_buffer("0".repeat(28).to_ascii_buffer())
+    nested_ypf.close()
+    _expect_equal(String(GameMetadata.inspect(nested_yuris_root).engine), "yuris", "native pac YPF detection")
+    _expect_equal(
+        String(GameMetadata.inspect(nested_yuris_root.path_join("renamed_launcher.exe")).engine),
+        "yuris", "native pac explicit executable detection"
+    )
+    _expect_equal(String(GameMetadata.inspect(fixture_root).engine), "kirikiri", "sibling packs are not adopted")
+    _write(nested_yuris_root.path_join("pac/ysbin.ypf"), "not YPF" + "0".repeat(32))
+    _expect_equal(String(GameMetadata.inspect(nested_yuris_root).engine), "kirikiri", "native pac still requires signature")
+    _write(packed_yuris_root.path_join("ysbin.ypf"), "unrelated file" + "0".repeat(32))
+    _expect_equal(String(GameMetadata.inspect(packed_yuris_root).engine), "kirikiri", "YPF extension alone is insufficient")
+    _write(compiled_yuris_root.path_join("ysbin/yscfg.ybn"), "YSCF")
+    _expect_equal(String(GameMetadata.inspect(compiled_yuris_root).engine), "kirikiri", "truncated YSCF rejected")
+
     for marker in ["Gameexe.ini", "Gameexe.dat", "Scene.pck"]:
         var siglus_root := fixture_root.path_join("siglus_" + marker.replace(".", "_"))
         DirAccess.make_dir_recursive_absolute(siglus_root)

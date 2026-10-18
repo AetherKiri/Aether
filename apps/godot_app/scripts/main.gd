@@ -11879,8 +11879,8 @@ func _start_selected_game_after_iap() -> void:
         _deny_runtime_beta_launch()
 
 func _runtime_requires_beta_access(runtime_kind: String) -> bool:
-    # ONS and Artemis are generally available. Minori and SoftPal require an
-    # active coffee entitlement in iOS and macOS distribution builds.
+    # ONS, Artemis and YU-RIS are generally available. Minori and SoftPal
+    # require active coffee access in iOS and macOS distribution builds.
     # Provider-backed runtimes such as WA2 are checked separately.
     return runtime_kind in [RUNTIME_MINORI, RUNTIME_SOFTPAL]
 

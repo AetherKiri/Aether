@@ -78,7 +78,7 @@ and **Debug CPU** is a diagnostic fallback only.
 
 In iOS and macOS Release distribution builds, Minori, SoftPal, and the
 WHITE ALBUM2 (Leaf TtT / WA2) runtime require an active 30-day coffee
-entitlement. ONScripterYuri, Artemis, and CatSystem2 are generally available.
+entitlement. ONScripterYuri, Artemis, CatSystem2, and YU-RIS are generally available.
 Debug builds and Android/Linux releases do not enforce this coffee requirement.
 
 ## Flash Library

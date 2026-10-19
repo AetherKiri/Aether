@@ -173,6 +173,20 @@ class SubmoduleUpdateTests(unittest.TestCase):
         with self.assertRaises(subprocess.CalledProcessError):
             self.run_check(PUSH_BEFORE="a" * 40)
 
+    def test_explicit_exclusion_wins_over_all_or_explicit_selection(self):
+        for selection in (["--all"], ["--submodule", "packages/A"]):
+            result = subprocess.run(
+                ["python3", str(CHECKER), *selection, "--exclude-submodule", "packages/A",
+                 "--github-output", str(self.root / "excluded-output")],
+                cwd=self.repo, env=self.env, text=True, capture_output=True)
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+            output = (self.root / "excluded-output").read_text()
+            if selection == ["--all"]:
+                self.assertIn("updated_submodules=packages/B", output)
+                self.assertNotIn("updated_submodules=packages/A", output)
+            else:
+                self.assertTrue(output.endswith("has_updates=false\n"))
+
     def test_missing_push_range_is_rejected(self):
         env = dict(self.env, GITHUB_EVENT_NAME="push", PUSH_BEFORE="", PUSH_AFTER=self.after)
         result = subprocess.run(["bash", "-euo", "pipefail", "-c",

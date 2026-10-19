@@ -1,0 +1,126 @@
+name: RFVP daily update
+
+on:
+  schedule:
+    - cron: '23 1 * * *'
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - '.github/workflows/rfvp-update.yml'
+      - '.github/workflows/build.yml'
+      - '.github/workflows/submodule-update.yml'
+      - '.github/scripts/rfvp-update.py'
+      - '.github/scripts/check-submodule-updates.py'
+      - 'tests/python/test_rfvp_update.py'
+      - 'tests/python/test_submodule_updates.py'
+
+permissions:
+  contents: read
+
+# Scheduled candidate builds must not write main-scoped caches.
+cache-mode: none
+
+concurrency:
+  group: rfvp-update-${{ github.event_name == 'pull_request' && github.event.pull_request.number || 'daily' }}
+  cancel-in-progress: false
+
+jobs:
+  tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          submodules: false
+          persist-credentials: false
+      - run: python3 -m unittest discover -s tests/python -p 'test*submodule_updates.py' -v
+      - run: python3 -m unittest discover -s tests/python -p test_rfvp_update.py -v
+
+  discover:
+    needs: tests
+    # PR CI tests configuration only. Publication always uses trusted main code.
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      pull-requests: read
+    outputs:
+      plan: ${{ steps.plan.outputs.plan }}
+      action: ${{ steps.plan.outputs.action }}
+      base: ${{ steps.plan.outputs.base }}
+      head: ${{ steps.plan.outputs.head }}
+      target: ${{ steps.plan.outputs.target }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          submodules: false
+          persist-credentials: false
+      - id: plan
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 .github/scripts/rfvp-update.py plan
+
+  verify:
+    needs: discover
+    if: needs.discover.outputs.action != 'skip'
+    runs-on: macos-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    cache-mode: none
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.discover.outputs.head }}
+          submodules: false
+          persist-credentials: false
+      - name: Prepare exact public candidate
+        env:
+          TARGET_SHA: ${{ needs.discover.outputs.target }}
+        run: |
+          set -euo pipefail
+          [[ "$TARGET_SHA" =~ ^[0-9a-f]{40}$ ]]
+          git submodule update --init packages/rfvp
+          git -C packages/rfvp fetch --no-tags origin "$TARGET_SHA"
+          git -C packages/rfvp checkout --detach "$TARGET_SHA"
+          test "$(git -C packages/rfvp rev-parse HEAD)" = "$TARGET_SHA"
+      - name: Prepare isolated host overlay
+        run: cmake -S bridge/rfvp_runtime -B out/rfvp-check -G Ninja -DCMAKE_BUILD_TYPE=Debug
+      - name: Check locked Rust dependency graph
+        run: cargo check --locked --manifest-path out/rfvp-check/prepared/Cargo.toml -p rfvp --lib --no-default-features --features soft-render-core,audio,native-video,random,image-formats,zlib-flate2
+      - name: Build provider
+        run: cmake --build out/rfvp-check
+      - name: Run host and provider regressions
+        run: ctest --test-dir out/rfvp-check --output-on-failure
+      - name: Verify pinned inputs remain untouched
+        if: always()
+        run: |
+          test -z "$(git -C packages/rfvp status --porcelain)"
+          git diff --exit-code -- bridge/rfvp_runtime
+          cmp bridge/rfvp_runtime/Cargo.lock out/rfvp-check/prepared/Cargo.lock
+
+  publish:
+    needs: [discover, verify]
+    if: >-
+      ${{ always() && !cancelled() && github.ref == 'refs/heads/main' && needs.discover.result == 'success' &&
+          needs.discover.outputs.action != 'skip' &&
+          (needs.verify.result == 'success' || needs.verify.result == 'failure') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          # Never run candidate scripts or consume candidate artifacts here.
+          ref: ${{ needs.discover.outputs.base }}
+          submodules: false
+          persist-credentials: false
+      - name: Recheck live state and publish draft
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EXPECTED_PLAN: ${{ needs.discover.outputs.plan }}
+          VERIFICATION_RESULT: ${{ needs.verify.result }}
+        run: python3 .github/scripts/rfvp-update.py publish

@@ -73,6 +73,11 @@ env:
 
 jobs:
   android:
+    # Upstream bot candidates run only the secretless RFVP provider checks.
+    if: >-
+      ${{ !startsWith(github.head_ref, 'rfvp-update/') &&
+          !startsWith(github.ref_name, 'rfvp-update/') &&
+          github.event.pull_request.user.login != 'github-actions[bot]' }}
     name: Build Android App
     runs-on: ubuntu-latest
     env:
@@ -375,6 +380,11 @@ jobs:
           key: ${{ runner.os }}-android-ccache-v2
 
   ios:
+    # Upstream bot candidates run only the secretless RFVP provider checks.
+    if: >-
+      ${{ !startsWith(github.head_ref, 'rfvp-update/') &&
+          !startsWith(github.ref_name, 'rfvp-update/') &&
+          github.event.pull_request.user.login != 'github-actions[bot]' }}
     name: Build iOS App
     runs-on: macos-latest
     env:
@@ -695,6 +705,11 @@ jobs:
           key: ${{ runner.os }}-ios-ccache-v2
 
   macos:
+    # Upstream bot candidates run only the secretless RFVP provider checks.
+    if: >-
+      ${{ !startsWith(github.head_ref, 'rfvp-update/') &&
+          !startsWith(github.ref_name, 'rfvp-update/') &&
+          github.event.pull_request.user.login != 'github-actions[bot]' }}
     name: Build macOS App
     runs-on: macos-15
     env:
@@ -1052,6 +1067,11 @@ jobs:
           key: ${{ runner.os }}-macos-ccache-v2
 
   linux:
+    # Upstream bot candidates run only the secretless RFVP provider checks.
+    if: >-
+      ${{ !startsWith(github.head_ref, 'rfvp-update/') &&
+          !startsWith(github.ref_name, 'rfvp-update/') &&
+          github.event.pull_request.user.login != 'github-actions[bot]' }}
     name: Build Linux App (${{ matrix.arch }})
     runs-on: ${{ matrix.runner }}
     strategy:

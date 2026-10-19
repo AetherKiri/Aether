@@ -90,17 +90,38 @@ func record(event: Dictionary) -> void:
     else:
         push_error("Cannot persist regression result: %s" % path)
 
+func host_state() -> Dictionary:
+    return {
+        "library_visible": app.shell_root.visible and app.home_view.visible
+            and not app.game_view.visible and not app.viewport.visible,
+        "route": app.shell_route,
+        "library_mode": app.home_library_mode,
+        "game_running": app.game_running,
+        "frame_texture_cleared": app.viewport.texture == null,
+    }
+
 func state() -> Dictionary:
-    var parsed: Variant = JSON.parse_string(String(app.player.get_plugin_debug_info()))
-    if parsed is Dictionary:
+    var shell := host_state()
+    var parsed: Variant = {} if shell.library_visible else JSON.parse_string(
+        String(app.player.get_plugin_debug_info()))
+    if not parsed is Dictionary:
+        parsed = {}
+    if not shell.library_visible:
         var frame_size: Vector2i = app.player.get_frame_source_size()
         parsed["probe_frame"] = {"width": frame_size.x, "height": frame_size.y}
-        last_state = parsed
-        return parsed
-    return {}
+    parsed["host"] = shell
+    last_state = parsed
+    return parsed
 
 func advance(frames: int) -> bool:
-    return await app._probe_advance(maxi(1, frames))
+    for i in range(maxi(1, frames)):
+        # Once a natural exit has returned to the shell, the engine handle is
+        # destroyed. Keep observing the UI without ticking that closed handle.
+        if bool(host_state().library_visible) or app.game_running:
+            await app.get_tree().process_frame
+        elif not await app._probe_advance(1):
+            return false
+    return true
 
 func wait_for(conditions: Array, timeout_ms: int, stable_frames: int = 1, alternatives: Array = []) -> bool:
     var deadline := Time.get_ticks_msec() + maxi(1, timeout_ms)
@@ -244,7 +265,15 @@ func run(game_path: String) -> int:
             record({"event": "step_skipped", "label": label})
             continue
         record({"event": "step_start", "label": label})
-        if kind == "wait":
+        if kind == "reopen":
+            if not bool(host_state().library_visible):
+                record({"event": "failed", "label": label, "reason": "library is not visible", "state": state()})
+                return 1
+            app._prepare_cli_probe_view(config)
+            if not app._ensure_player_initialized() or not app._probe_open_game(config, game_path, "AETHERKIRI_PROBE_BACKEND") or not await app._probe_wait_startup(config):
+                record({"event": "failed", "label": label, "reason": "reopen", "error": app.player.get_last_error()})
+                return 1
+        elif kind == "wait":
             if not await wait_for(action.get("until", []), int(action.get("timeout_ms", 15000)), int(action.get("stable_frames", 3)), action.get("until_any", [])):
                 record({"event": "failed", "label": label, "reason": "timeout", "state": last_state, "error": app.player.get_last_error()})
                 return 2

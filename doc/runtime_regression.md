@@ -84,7 +84,7 @@ Run directories are retained for investigation and can be removed afterwards.
 }
 ```
 
-Actions are `move`, `click`, `tap`, `two_finger_tap`, `key`, `wait`, `snapshot`, and `assert`. Pointer
+Actions are `move`, `click`, `tap`, `two_finger_tap`, `key`, `wait`, `snapshot`, `assert`, and `reopen`. Pointer
 coordinates use the source frame's pixels. A click can select a visible, enabled
 button with a partial `button` dictionary instead of coordinates, or use
 `point_from` to find a saved rectangle (`x`, `y`, `w`, `h`).
@@ -112,6 +112,19 @@ or snapshot references fail the condition. `until_any` accepts alternative
 condition arrays, useful when a saved setting controls a confirmation dialog;
 `when` makes an action conditional. Finish such a flow with a destination
 assertion so either branch must reach the intended state.
+
+State snapshots include a generic `host` dictionary with `library_visible`,
+`route`, `library_mode`, `game_running`, and `frame_texture_cleared`. An exit
+case should wait for `host.library_visible == true`, `host.library_mode ==
+"game"`, and the cleared frame texture. A stopped interpreter alone does not
+prove that the application returned to the library. Once the library is
+visible, the probe observes UI frames without querying or ticking the destroyed
+engine handle.
+
+`reopen` requires the library to be visible, recreates the player handle, and
+opens the same game using the probe configuration and isolated writable root.
+Follow it with runtime-specific startup assertions and another exit to test
+repeated sessions in one app process.
 
 Waits have a wall-clock `timeout_ms` (default 15000) and require `stable_frames`
 consecutive matches (default 3). Other actions support `after_frames`; click and

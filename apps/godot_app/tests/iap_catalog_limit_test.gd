@@ -12,15 +12,20 @@ class CoffeePlayer:
         requested_products.append(product_id)
         return 1
 
-class SoftPalAccessApp:
+class RuntimeAccessApp:
     extends "res://scripts/main.gd"
 
+    var runtime_kind := RUNTIME_SOFTPAL
+    var uses_wa2 := false
     var enforce_beta_access := true
     var launched := false
     var denied := false
 
     func _game_runtime_kind(_path: String) -> String:
-        return RUNTIME_SOFTPAL
+        return runtime_kind
+
+    func _selected_game_uses_wa2() -> bool:
+        return uses_wa2
 
     func _beta_access_enforcement_enabled(_platform_name: String = "") -> bool:
         return enforce_beta_access
@@ -90,7 +95,7 @@ func _initialize() -> void:
     _expect(not app.modal_layer.visible)
     _expect(not app._runtime_requires_beta_access(app.RUNTIME_ONSCRIPTER))
     _expect(app._runtime_requires_beta_access(app.RUNTIME_MINORI))
-    _expect(app._runtime_requires_beta_access(app.RUNTIME_SOFTPAL))
+    _expect(not app._runtime_requires_beta_access(app.RUNTIME_SOFTPAL))
     _expect(not app._runtime_requires_beta_access(app.RUNTIME_KIRIKIRI))
     # CatSystem2 is a released runtime and must not enter the coffee-only
     # entitlement path.  WA2 remains the explicitly provider-gated runtime.
@@ -126,36 +131,54 @@ func _initialize() -> void:
     app.modal_layer.free()
     app.ui_motion.free()
     app.free()
-    _check_softpal_launch_access()
+    _check_runtime_launch_access()
     if failures == 0:
         print("IAP_CATALOG_LIMIT_OK")
     quit(1 if failures else 0)
 
-func _check_softpal_launch_access() -> void:
-    # Exercise the launch/entitlement round trip without StoreKit or a game.
-    # The platform matrix above verifies which builds enforce this flow.
-    for enforce in [true, false]:
-        for entitled in [true, false]:
-            var app = SoftPalAccessApp.new()
-            var coffee_player = CoffeePlayer.new()
-            app.player = coffee_player
-            app.selected_game = {"path": "/games/softpal"}
-            app.enforce_beta_access = enforce
-            app.iap_coffee_state = {"entitled": entitled}
-            app._start_selected_game_after_iap()
-            if enforce:
-                _expect(coffee_player.requested_products == ["com.aether.coffee"])
-                _expect(not app.launched)
-                _expect(app.iap_pending_beta_check_id > 0)
-                _expect(not app.iap_pending_beta_game.is_empty())
-                app._complete_runtime_beta_check()
-                _expect(app.launched == entitled)
-                _expect(app.denied == (not entitled))
-                _expect(app.iap_pending_beta_game.is_empty())
-            else:
-                _expect(coffee_player.requested_products.is_empty())
-                _expect(app.launched)
-                _expect(not app.denied)
-            app.player = null
-            app.ui_motion.free()
-            app.free()
+func _check_runtime_launch_access() -> void:
+    # Force the Apple Release policy even when running with the debug editor.
+    # SoftPal launches immediately without a coffee transaction; Minori and
+    # WA2 still perform their existing entitlement round trip.
+    for runtime_kind in ["softpal", "minori", "kirikiri"]:
+        for enforce in [true, false]:
+            for entitled in [true, false]:
+                var app = RuntimeAccessApp.new()
+                var coffee_player = CoffeePlayer.new()
+                app.player = coffee_player
+                app.runtime_kind = runtime_kind
+                app.uses_wa2 = runtime_kind == "kirikiri"
+                app.selected_game = {"path": "/games/runtime-access"}
+                app.enforce_beta_access = enforce
+                app.iap_coffee_state = {"entitled": entitled}
+                app._start_selected_game_after_iap()
+                if enforce and runtime_kind != "softpal":
+                    _expect(coffee_player.requested_products == ["com.aether.coffee"])
+                    _expect(not app.launched)
+                    _expect(app.iap_pending_beta_check_id > 0)
+                    _expect(not app.iap_pending_beta_game.is_empty())
+                    app._complete_runtime_beta_check()
+                    _expect(app.launched == entitled)
+                    _expect(app.denied == (not entitled))
+                    _expect(app.iap_pending_beta_game.is_empty())
+                else:
+                    _expect(coffee_player.requested_products.is_empty())
+                    _expect(app.launched)
+                    _expect(not app.denied)
+                    _expect(app.iap_pending_beta_check_id == 0)
+                    _expect(app.iap_pending_beta_game.is_empty())
+                app.player = null
+                app.ui_motion.free()
+                app.free()
+
+    # A missing StoreKit bridge must not block a released runtime either.
+    var app = RuntimeAccessApp.new()
+    app.player = RefCounted.new()
+    app.selected_game = {"path": "/games/softpal"}
+    app._start_selected_game_after_iap()
+    _expect(app.launched)
+    _expect(not app.denied)
+    _expect(app.iap_pending_beta_game.is_empty())
+    app.player = null
+    app.ui_motion.free()
+    app.free()

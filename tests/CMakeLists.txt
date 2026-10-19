@@ -28,6 +28,10 @@ add_subdirectory("${AETHERKIRI_KRKR_DIR}/tests/plugins"
     "${CMAKE_BINARY_DIR}/packages/AetherKrkr/tests/plugins")
 add_subdirectory("${AETHERKIRI_KRKR_DIR}/tests/tjs2"
     "${CMAKE_BINARY_DIR}/packages/AetherKrkr/tests/tjs2")
+# PluginCallTracer is compiled directly into the standalone TJS2 suite and now
+# uses the compatibility receipt declarations in DebugIntf.h.
+target_include_directories(tjs2-missing PRIVATE
+    "${AETHERKIRI_KRKR_DIR}/core/utils")
 add_subdirectory(unit-tests/engine_api)
 if(AETHERKIRI_INTERNAL_ENABLED)
     aetherinternal_add_runtime_tests("${CMAKE_SOURCE_DIR}")

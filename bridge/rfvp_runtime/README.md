@@ -135,26 +135,35 @@ and confirmed by the user.
 
 ### Upstream upgrade validation
 
-The pin `a10913931f621fc6f70e43b85091da641683aed5` advances from `eb5490d`
-by eight commits. File-backed graphs save their path and last GraphRGB values;
-loading re-reads the asset and applies that tone once, with geometry from the
-asset. Parts-overlaid sources instead embed their pixels and saved geometry,
-including when saved again after a restore. These use the existing snapshot
-fields; no RFVS V1/V2 schema change is introduced. File-backed path-only saves
-still require their original resources. Older saves cannot recover edits they
-did not record.
+The pin `062fec82033b554b9eb3b5da069518c0c96a354e` advances from `a109139`
+by five commits and updates the crate to 0.7.0. The first commit, despite its
+"add ADRs" title, changes rendering and script
+semantics: Sprt texture -1 draws the previous frame; Tile color -1 reads the
+window color from volatile globals instead of palette slot 255; ColorSet checks
+signed IDs; integer scales clamp to [100, 10000]; PrimSetZ and TimerSuspend
+distinguish the script True tag from floats and integers.
 
-The update also cancels stale text-completion requests when coroutines exit or
-restart, stops and clamps timers after they exceed their resolution, and uses
-bounded stack visitation buffers in the standalone GPU
-renderer. That renderer is not selected by the embedded host's feature set.
+The host overlay adapts the new previous-frame texture to the Godot GPU bridge,
+with explicit ownership and readback before the next frame clears the target.
+Previous-frame sprites retain upstream's software-renderer one-frame activation
+delay. GPU snapshot failures must not reuse stale CPU pixels. The existing
+mask-dissolve whole-frame CPU fallback and RGBA/BGRA conversion remain covered.
 
-No Cargo manifests or dependency locks changed upstream; the committed embedded
-lockfile remains unchanged and is checked with `--locked`. The existing host
-overlay and RFVS V1/V2 layout adaptations remain in place. CTest additionally
-runs upstream timer, VM text-wait and graph-snapshot regressions against the prepared
-host workspace. Host regressions cover both graph representations through the
-V2 codec, alongside the provider and decoder-coexistence suites.
+The subsequent PSV update adds bounded diagnostics and shared resource timing,
+uses font metrics instead of rasterizing discarded glyph bitmaps, and reuses
+text advances. Vita-specific texture/thumbnail changes and the new no_std-only
+`config.toml` boot path are outside this host feature set. Aether keeps its
+explicit script/encoding selection and isolated save roots; a game-directory
+`config.toml` does not override the launcher's selection.
+
+Only the rfvp package version changes in the Cargo manifest and embedded lock;
+no dependency versions or serialized snapshot fields change. The lockfile is
+checked with `--locked`; RFVS V1/V2
+layout adapters and the prior graph restore semantics remain in place. The
+six CTest suites retain provider, decoder coexistence, host, VM text, graph save
+and timer coverage. New host regressions cover the script type/range contracts
+and previous-frame rendering integration. Upstream's no_std command renderer and
+standalone wgpu renderer are not selected by the embedded host feature set.
 
 The earlier application and game smoke tests above describe previous
 integrations, not a gameplay re-test of this pin. Current exact-head CI evidence

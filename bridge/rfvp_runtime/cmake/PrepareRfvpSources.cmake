@@ -98,9 +98,17 @@ function(aetherkiri_prepare_rfvp root rfvp_dir output)
     rfvp_replace("${src}/soft_render/renderer.rs"
         "            stats: SoftRendererStats::default(),\n            additive: false,"
         "            stats: SoftRendererStats::default(),\n            host_gpu: None,\n            additive: false,")
+    # Both consumers snapshot the previously displayed frame before the next
+    # clear. Read GPU pixels once, and suppress both snapshots on read failure.
+    rfvp_replace("${src}/soft_render/renderer.rs"
+        "        self.stats = SoftRendererStats::default();"
+        "        self.stats = SoftRendererStats::default();\n        let host_snapshot_ready = !(self.wants_prev_frame || self.mask_frame.wants_snapshot(motion))\n            || self.sync_host_gpu_snapshot();")
     rfvp_replace("${src}/soft_render/renderer.rs"
         "if self.mask_frame.wants_snapshot(motion) {"
-        "if self.mask_frame.wants_snapshot(motion) && self.sync_host_gpu_snapshot() {")
+        "if self.mask_frame.wants_snapshot(motion) && host_snapshot_ready {")
+    rfvp_replace("${src}/soft_render/renderer.rs"
+        "self.prev_frame = if self.wants_prev_frame {"
+        "self.prev_frame = if self.wants_prev_frame && host_snapshot_ready {")
     rfvp_replace("${src}/soft_render/renderer.rs"
         "        self.framebuffer.clear_rgba(0, 0, 0, 255);"
         "        if !self.begin_host_gpu_motion_frame(motion) {\n            self.framebuffer.clear_rgba(0, 0, 0, 255);\n        }")

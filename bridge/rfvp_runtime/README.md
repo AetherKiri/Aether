@@ -135,8 +135,9 @@ and confirmed by the user.
 
 ### Upstream upgrade validation
 
-The pin `cc8ac7779c85d3fc11c0f6e7ddb7cf6d0b6674f7` advances from `a109139`
-by one commit. Despite its "add ADRs" title, it changes rendering and script
+The pin `99435f22e94eaec27c0c1b9f22cc2a6b1910d7d1` advances from `a109139`
+by two commits and updates the crate to 0.7.0. The first commit, despite its
+"add ADRs" title, changes rendering and script
 semantics: Sprt texture -1 draws the previous frame; Tile color -1 reads the
 window color from volatile globals instead of palette slot 255; ColorSet checks
 signed IDs; integer scales clamp to [100, 10000]; PrimSetZ and TimerSuspend
@@ -148,8 +149,9 @@ Previous-frame sprites retain upstream's software-renderer one-frame activation
 delay. GPU snapshot failures must not reuse stale CPU pixels. The existing
 mask-dissolve whole-frame CPU fallback and RGBA/BGRA conversion remain covered.
 
-No Cargo manifests, dependency locks or serialized snapshot fields changed.
-The embedded lockfile stays unchanged and is checked with `--locked`; RFVS V1/V2
+Only the rfvp package version changes in the Cargo manifest and embedded lock;
+no dependency versions or serialized snapshot fields change. The lockfile is
+checked with `--locked`; RFVS V1/V2
 layout adapters and the prior graph restore semantics remain in place. The
 six CTest suites retain provider, decoder coexistence, host, VM text, graph save
 and timer coverage. New host regressions cover the script type/range contracts

@@ -135,26 +135,26 @@ and confirmed by the user.
 
 ### Upstream upgrade validation
 
-The pin `a10913931f621fc6f70e43b85091da641683aed5` advances from `eb5490d`
-by eight commits. File-backed graphs save their path and last GraphRGB values;
-loading re-reads the asset and applies that tone once, with geometry from the
-asset. Parts-overlaid sources instead embed their pixels and saved geometry,
-including when saved again after a restore. These use the existing snapshot
-fields; no RFVS V1/V2 schema change is introduced. File-backed path-only saves
-still require their original resources. Older saves cannot recover edits they
-did not record.
+The pin `cc8ac7779c85d3fc11c0f6e7ddb7cf6d0b6674f7` advances from `a109139`
+by one commit. Despite its "add ADRs" title, it changes rendering and script
+semantics: Sprt texture -1 draws the previous frame; Tile color -1 reads the
+window color from volatile globals instead of palette slot 255; ColorSet checks
+signed IDs; integer scales clamp to [100, 10000]; PrimSetZ and TimerSuspend
+distinguish the script True tag from floats and integers.
 
-The update also cancels stale text-completion requests when coroutines exit or
-restart, stops and clamps timers after they exceed their resolution, and uses
-bounded stack visitation buffers in the standalone GPU
-renderer. That renderer is not selected by the embedded host's feature set.
+The host overlay adapts the new previous-frame texture to the Godot GPU bridge,
+with explicit ownership and readback before the next frame clears the target.
+Previous-frame sprites retain upstream's software-renderer one-frame activation
+delay. GPU snapshot failures must not reuse stale CPU pixels. The existing
+mask-dissolve whole-frame CPU fallback and RGBA/BGRA conversion remain covered.
 
-No Cargo manifests or dependency locks changed upstream; the committed embedded
-lockfile remains unchanged and is checked with `--locked`. The existing host
-overlay and RFVS V1/V2 layout adaptations remain in place. CTest additionally
-runs upstream timer, VM text-wait and graph-snapshot regressions against the prepared
-host workspace. Host regressions cover both graph representations through the
-V2 codec, alongside the provider and decoder-coexistence suites.
+No Cargo manifests, dependency locks or serialized snapshot fields changed.
+The embedded lockfile stays unchanged and is checked with `--locked`; RFVS V1/V2
+layout adapters and the prior graph restore semantics remain in place. The
+six CTest suites retain provider, decoder coexistence, host, VM text, graph save
+and timer coverage. New host regressions cover the script type/range contracts
+and previous-frame rendering integration. Upstream's no_std command renderer and
+standalone wgpu renderer are not selected by the embedded host feature set.
 
 The earlier application and game smoke tests above describe previous
 integrations, not a gameplay re-test of this pin. Current exact-head CI evidence

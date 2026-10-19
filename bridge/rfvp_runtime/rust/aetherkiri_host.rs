@@ -736,3 +736,151 @@ pub unsafe extern "C" fn aether_rfvp_log(output: *mut c_char, size: usize) -> u3
     *output = 0;
     0
 }
+
+#[cfg(test)]
+mod host_syscall_contract_tests {
+    use crate::script::{global::{Global, GLOBAL}, Variant};
+    use crate::subsystem::{
+        components::syscalls::{color, graph, timer},
+        resources::color_manager::ColorItem,
+        world::GameData,
+    };
+
+    fn game() -> Box<GameData> {
+        // Match host startup without placing the large GameData on the test stack.
+        let mut storage = Box::<GameData>::new_uninit();
+        unsafe {
+            // The allocation is aligned and writable; this initializes every field.
+            GameData::init_default_in_place(storage.as_mut_ptr());
+            storage.assume_init()
+        }
+    }
+
+    fn rgba(color: &ColorItem) -> [u8; 4] {
+        [color.get_r(), color.get_g(), color.get_b(), color.get_a()]
+    }
+
+    struct RestoreGlobals(Option<Global>);
+    impl Drop for RestoreGlobals {
+        fn drop(&mut self) {
+            *GLOBAL.lock().unwrap_or_else(|error| error.into_inner()) = self.0.take().unwrap();
+        }
+    }
+
+    #[test]
+    fn tile_minus_one_uses_volatile_color_and_color_set_rejects_signed_ids() {
+        let mut game = game();
+        // The host suite runs serially; restore global state even if an assertion fails.
+        let _restore = RestoreGlobals(Some(std::mem::replace(
+            &mut *GLOBAL.lock().unwrap(), Global::new(),
+        )));
+        {
+            let mut globals = GLOBAL.lock().unwrap();
+            globals.init_with(20, 16);
+            for (index, value) in [257, -1, 258, 384].into_iter().enumerate() {
+                globals.set(25 + index as u16, Variant::Int(value));
+                globals.set(5 + index as u16, Variant::Int(99));
+            }
+        }
+        color::color_set(&mut game, &Variant::Int(255), &Variant::Int(12),
+            &Variant::Int(34), &Variant::Int(56), &Variant::Int(78)).unwrap();
+        graph::prim_set_tile(&mut game, &Variant::Int(1), &Variant::Int(-1),
+            &Variant::Nil, &Variant::Nil, &Variant::Int(4), &Variant::Int(4)).unwrap();
+        let tile = game.motion_manager.prim_manager.get_prim_immutable(1).get_tile();
+        assert_eq!(tile, -1);
+        assert_eq!(rgba(&game.motion_manager.color_manager.tile_color(tile)), [1, 255, 2, 128]);
+        assert_eq!(rgba(&game.motion_manager.color_manager.tile_color(255)), [12, 34, 56, 78]);
+        let zero = rgba(game.motion_manager.color_manager.get_entry(0));
+        for id in [-1, -257, 256, 511, i32::MIN, i32::MAX] {
+            let result = color::color_set(&mut game, &Variant::Int(id), &Variant::Int(9),
+                &Variant::Int(9), &Variant::Int(9), &Variant::Int(9)).unwrap();
+            assert!(matches!(result, Variant::Nil));
+            assert_eq!(rgba(game.motion_manager.color_manager.get_entry(255)), [12, 34, 56, 78]);
+            assert_eq!(rgba(game.motion_manager.color_manager.get_entry(0)), zero);
+        }
+        assert_eq!(rgba(&game.motion_manager.color_manager.tile_color(-1)), [1, 255, 2, 128]);
+        // The sentinel is resolved again each frame, not copied from palette entry 255.
+        GLOBAL.lock().unwrap().set(25, Variant::Int(42));
+        assert_eq!(rgba(&game.motion_manager.color_manager.tile_color(-1)), [42, 255, 2, 128]);
+        assert_eq!(rgba(&game.motion_manager.color_manager.tile_color(255)), [12, 34, 56, 78]);
+    }
+
+    #[test]
+    fn primitive_scales_clamp_ints_and_preserve_non_int_values() {
+        let mut game = game();
+        let id = Variant::Int(1);
+        for (input, expected) in [(i32::MIN, 100), (0, 100), (99, 100), (100, 100),
+            (1000, 1000), (10000, 10000), (10001, 10000), (i32::MAX, 10000)] {
+            graph::prim_set_rs(&mut game, &id, &Variant::Int(-1), &Variant::Int(input)).unwrap();
+            {
+                let prim = game.motion_manager.prim_manager.get_prim_immutable(1);
+                assert_eq!((prim.get_factor_x(), prim.get_factor_y()), (expected, expected));
+                assert_eq!(prim.get_rotation(), 3599);
+                assert_ne!(prim.get_attr() & 0x40, 0);
+            }
+            graph::prim_set_rs2(&mut game, &id, &Variant::Nil,
+                &Variant::Int(input), &Variant::Int(500)).unwrap();
+            {
+                let prim = game.motion_manager.prim_manager.get_prim_immutable(1);
+                assert_eq!((prim.get_factor_x(), prim.get_factor_y()), (expected, 500));
+            }
+            graph::prim_set_rs2(&mut game, &id, &Variant::Nil,
+                &Variant::Int(700), &Variant::Int(input)).unwrap();
+            let prim = game.motion_manager.prim_manager.get_prim_immutable(1);
+            assert_eq!((prim.get_factor_x(), prim.get_factor_y()), (700, expected));
+        }
+        for value in [Variant::Nil, Variant::True, Variant::Float(0.0)] {
+            game.motion_manager.prim_manager.prim_set_scale(1, 50, 50);
+            game.motion_manager.prim_manager.prim_set_rotation(1, 123);
+            graph::prim_set_rs(&mut game, &id, &value, &value).unwrap();
+            {
+                let prim = game.motion_manager.prim_manager.get_prim_immutable(1);
+                assert_eq!((prim.get_factor_x(), prim.get_factor_y(), prim.get_rotation()), (50, 50, 123));
+            }
+            // Non-Int arguments retain each current axis even outside the Int clamp range.
+            game.motion_manager.prim_manager.prim_set_scale(1, 50, 15000);
+            graph::prim_set_rs2(&mut game, &id, &value, &value, &value).unwrap();
+            let prim = game.motion_manager.prim_manager.get_prim_immutable(1);
+            assert_eq!((prim.get_factor_x(), prim.get_factor_y(), prim.get_rotation()), (50, 15000, 123));
+        }
+    }
+
+    #[test]
+    fn primitive_z_distinguishes_true_float_and_int() {
+        let mut game = game();
+        for (value, expected_z, enabled) in [
+            (Variant::Int(-1), 100, true),
+            (Variant::Int(500), 500, true),
+            (Variant::Int(10001), 10000, true),
+            (Variant::True, 777, true),
+            (Variant::Float(1.0), 777, false),
+            (Variant::Nil, 777, false),
+        ] {
+            game.motion_manager.prim_manager.prim_set_z(1, 777);
+            game.motion_manager.prim_manager.prim_set_attr(1, 0x204);
+            graph::prim_set_z(&mut game, &Variant::Int(1), &value).unwrap();
+            let prim = game.motion_manager.prim_manager.get_prim_immutable(1);
+            assert_eq!(prim.get_z(), expected_z);
+            assert_eq!(prim.get_attr(), 0x240 | if enabled { 0x04 } else { 0 });
+        }
+    }
+
+    #[test]
+    fn timer_suspend_resumes_only_for_true() {
+        let mut game = game();
+        timer::timer_set(&mut game, &Variant::Int(1), &Variant::Int(1000)).unwrap();
+        for value in [Variant::Nil, Variant::Int(0), Variant::Int(1),
+            Variant::Float(1.0), Variant::String("true".to_string())] {
+            timer::timer_suspend(&mut game, &value).unwrap();
+            assert!(game.timer_manager.get_suspend());
+            let elapsed = game.timer_manager.get_elapsed(1);
+            game.timer_manager.tick(10);
+            assert_eq!(game.timer_manager.get_elapsed(1), elapsed);
+            timer::timer_suspend(&mut game, &Variant::True).unwrap();
+            assert!(!game.timer_manager.get_suspend());
+            game.timer_manager.tick(10);
+            assert_eq!(game.timer_manager.get_elapsed(1), elapsed + 10);
+            assert!(game.timer_manager.get_enabled(1));
+        }
+    }
+}

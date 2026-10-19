@@ -130,6 +130,13 @@ stage_all_vcpkg_runtime_libraries() {
     local current_count
     local library
 
+    # Include the embedded engine before discovering its dependencies.
+    for library in libimpacto_host.so; do
+        if [[ -f "$CMAKE_BUILD_DIR/aethermages-impacto/$library" ]]; then
+            cp -Lf "$CMAKE_BUILD_DIR/aethermages-impacto/$library" "$GODOT_BIN_DIR/"
+        fi
+    done
+
     while true; do
         current_count="$(find "$GODOT_BIN_DIR" -maxdepth 1 -type f -name 'lib*.so*' | wc -l)"
         if [[ "$current_count" == "$previous_count" ]]; then

@@ -135,6 +135,7 @@ jobs:
           git submodule update --init --depth 1 packages/AetherSiglus
           git submodule update --init --depth 1 packages/AetherMinori
           git submodule update --init --depth 1 packages/AetherKrkr
+          git submodule update --init --depth 1 packages/AetherMAGES
           git submodule update --init --depth 1 packages/ruffle
           git submodule update --init --recursive --depth 1 packages/xsystem4
 
@@ -435,6 +436,7 @@ jobs:
           git submodule update --init --depth 1 packages/AetherSiglus
           git submodule update --init --depth 1 packages/AetherMinori
           git submodule update --init --depth 1 packages/AetherKrkr
+          git submodule update --init --depth 1 packages/AetherMAGES
           git submodule update --init --depth 1 packages/rfvp
           git submodule update --init --depth 1 packages/ruffle
           git submodule update --init --recursive --depth 1 packages/xsystem4
@@ -767,6 +769,7 @@ jobs:
           git submodule update --init --depth 1 packages/AetherSiglus
           git submodule update --init --depth 1 packages/AetherMinori
           git submodule update --init --depth 1 packages/AetherKrkr
+          git submodule update --init --depth 1 packages/AetherMAGES
           git submodule update --init --depth 1 packages/rfvp
           git submodule update --init --depth 1 packages/ruffle
           git submodule update --init --recursive --depth 1 packages/xsystem4
@@ -1105,6 +1108,7 @@ jobs:
           git submodule update --init --depth 1 packages/AetherSiglus
           git submodule update --init --depth 1 packages/AetherMinori
           git submodule update --init --depth 1 packages/AetherKrkr
+          git submodule update --init --depth 1 packages/AetherMAGES
           git submodule update --init --depth 1 packages/ruffle
           git submodule update --init --recursive --depth 1 packages/xsystem4
 

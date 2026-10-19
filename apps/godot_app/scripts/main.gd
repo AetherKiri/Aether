@@ -2078,6 +2078,7 @@ const RUNTIME_XSYSTEM4 := "xsystem4"
 const RUNTIME_WA2 := "wa2"
 const RUNTIME_BGI := "bgi"
 const RUNTIME_TYRANO := "tyranoscript"
+const RUNTIME_MAGES := "mages"
 const RUNTIME_YURIS := "yuris"
 const RUNTIME_PLAYER_CLASS := "AetherRuntimePlayer"
 const ONSCRIPTER_SCRIPT_MARKERS := [
@@ -11232,6 +11233,8 @@ func _game_runtime_kind(path: String) -> String:
         # KiriKiri host.
         if int(player.probe_runtime(RUNTIME_WA2, root)) > 0:
             return RUNTIME_WA2
+        if int(player.probe_runtime(RUNTIME_MAGES, root)) > 0:
+            return RUNTIME_MAGES
     return runtime_kind
 
 func _backfill_game_metadata(games: Array[Dictionary]) -> bool:
@@ -12478,6 +12481,7 @@ func _switch_runtime_player(runtime_kind: String) -> bool:
         RUNTIME_CATSYSTEM2,
         RUNTIME_SIGLUS,
         RUNTIME_BGI,
+        RUNTIME_MAGES,
         RUNTIME_XSYSTEM4,
         RUNTIME_YURIS,
     ]:
@@ -12522,6 +12526,8 @@ func _switch_runtime_player(runtime_kind: String) -> bool:
         if normalized == RUNTIME_SIGLUS
         else "BGI/Ethornell"
         if normalized == RUNTIME_BGI
+        else "MAGES."
+        if normalized == RUNTIME_MAGES
         else "KiriKiri"
     ))
     return true
@@ -13183,6 +13189,7 @@ func _ensure_player_initialized() -> bool:
         RUNTIME_CATSYSTEM2,
         RUNTIME_SIGLUS,
         RUNTIME_BGI,
+        RUNTIME_MAGES,
         RUNTIME_XSYSTEM4,
         RUNTIME_YURIS,
     ]:

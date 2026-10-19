@@ -43,6 +43,46 @@ def sdl_symbols(nm: str, archive: Path, defined: bool = False) -> set[str]:
     return symbols
 
 
+def collect_rename_symbols(nm: str, archives: list[Path]) -> set[str]:
+    """Union of SDL-matching symbols (defined or referenced) across archives."""
+    symbols: set[str] = set()
+    for archive in archives:
+        symbols |= sdl_symbols(nm, archive)
+    return symbols
+
+
+def rename_sdl_prefix(nm: str, objcopy: str, archives: list[Path],
+                      output_dir: Path, prefix: str) -> list[Path]:
+    """Copy archives to output_dir with every SDL symbol renamed to <prefix>_<name>.
+
+    Used for the MAGES. runtime, which links its own SDL3 while the iOS
+    extension already renames SDL2 (AetherSDL2_*) and Godot embeds another
+    SDL3. Renaming impacto's SDL3 (AetherSDL3_*) keeps all three isolated.
+    """
+    definitions = collect_rename_symbols(nm, archives)
+    if not definitions:
+        # Nothing to rename; still copy so consumers find the archives.
+        outputs = []
+        for archive in archives:
+            output = output_dir / archive.name
+            shutil.copy2(archive, output)
+            outputs.append(output)
+        return outputs
+    output_dir.mkdir(parents=True, exist_ok=True)
+    with tempfile.TemporaryDirectory(prefix="aether-sdl3-") as tmp:
+        mapping = Path(tmp) / "symbols.txt"
+        mapping.write_text("".join(
+            f"{name} {'_' if name.startswith('_') else ''}{prefix}_{name.lstrip('_')}\n"
+            for name in sorted(definitions)))
+        outputs = []
+        for archive in archives:
+            output = output_dir / archive.name
+            subprocess.run([objcopy, "--redefine-syms", str(mapping),
+                            str(archive), str(output)], check=True)
+            outputs.append(output)
+    return outputs
+
+
 def isolate(sdl_archive: Path, directory: Path,
             llvm_bin: Optional[Path] = None) -> int:
     nm = find_tool("llvm-nm", llvm_bin)
@@ -86,15 +126,36 @@ def isolate(sdl_archive: Path, directory: Path,
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--sdl-archive", type=Path, required=True)
-    parser.add_argument("--directory", type=Path, required=True)
+    parser.add_argument("--sdl-archive", type=Path,
+                        help="SDL2 archive defining the rename set (isolate mode)")
+    parser.add_argument("--directory", type=Path,
+                        help="directory of archives to isolate (isolate mode)")
+    parser.add_argument("--rename-output", type=Path,
+                        help="enable rename mode: write renamed copies here")
+    parser.add_argument("--rename-archive", action="append", type=Path,
+                        default=[], dest="rename_archives",
+                        help="input archive for rename mode (repeatable)")
+    parser.add_argument("--rename-prefix", default="AetherSDL3",
+                        help="symbol prefix for rename mode")
     parser.add_argument("--llvm-bin", type=Path)
     args = parser.parse_args()
     try:
-        count = isolate(args.sdl_archive, args.directory, args.llvm_bin)
+        if args.rename_output is not None:
+            if not args.rename_archives:
+                parser.error("--rename-output requires at least one --rename-archive")
+            nm = find_tool("llvm-nm", args.llvm_bin)
+            objcopy = find_tool("llvm-objcopy", args.llvm_bin)
+            rename_sdl_prefix(nm, objcopy, args.rename_archives,
+                              args.rename_output, args.rename_prefix)
+            print(f"Renamed SDL symbols in {len(args.rename_archives)} "
+                  f"archives to {args.rename_prefix}_*")
+        else:
+            if args.sdl_archive is None or args.directory is None:
+                parser.error("isolate mode requires --sdl-archive and --directory")
+            count = isolate(args.sdl_archive, args.directory, args.llvm_bin)
+            print(f"Isolated SDL2 symbols in {count} iOS runtime archives")
     except (OSError, RuntimeError, subprocess.CalledProcessError) as error:
-        parser.exit(1, f"SDL2 isolation failed: {error}\n")
-    print(f"Isolated SDL2 symbols in {count} iOS runtime archives")
+        parser.exit(1, f"SDL isolation failed: {error}\n")
 
 
 if __name__ == "__main__":

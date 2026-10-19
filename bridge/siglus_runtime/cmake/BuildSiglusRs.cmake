@@ -167,8 +167,16 @@ function(aetherkiri_add_siglus_rs imported_target)
         "${SIGLUS_RS_WORKSPACE}/crates/siglus_scene_vm/Cargo.toml")
 
     set(SIGLUS_CARGO_TARGET_DIR "${CMAKE_BINARY_DIR}/siglus-rs-target")
-    set(SIGLUS_STATIC_LIB
-        "${SIGLUS_CARGO_TARGET_DIR}/${rust_triple}/${rust_profile}/libsiglus_scene_vm.a")
+    # Rust names the staticlib `lib<crate>.a` on Unix/macOS but `<crate>.lib`
+    # (no `lib` prefix) under the MSVC toolchain. Pick the right name so the
+    # imported target resolves and the Godot extension can link it.
+    if(WIN32 AND NOT MINGW)
+        set(SIGLUS_STATIC_LIB
+            "${SIGLUS_CARGO_TARGET_DIR}/${rust_triple}/${rust_profile}/siglus_scene_vm.lib")
+    else()
+        set(SIGLUS_STATIC_LIB
+            "${SIGLUS_CARGO_TARGET_DIR}/${rust_triple}/${rust_profile}/libsiglus_scene_vm.a")
+    endif()
 
     # Directories prepended to PATH for the cargo invocation. Kept as a single
     # combined PATH assignment because repeated PATH entries passed to
@@ -239,17 +247,28 @@ function(aetherkiri_add_siglus_rs imported_target)
         endif()
     endif()
 
+    if(CMAKE_HOST_UNIX)
+        set(siglus_path_sep ":")
+    else()
+        set(siglus_path_sep ";")
+    endif()
     if(NOT "${siglus_ndk_home}" STREQUAL "")
-        string(APPEND siglus_path_leading "${siglus_ndk_bin}:")
+        string(APPEND siglus_path_leading "${siglus_ndk_bin}${siglus_path_sep}")
     endif()
     if(SIGLUS_TOOLCHAIN_BIN_DIR)
-        string(APPEND siglus_path_leading "${SIGLUS_TOOLCHAIN_BIN_DIR}:")
+        string(APPEND siglus_path_leading "${SIGLUS_TOOLCHAIN_BIN_DIR}${siglus_path_sep}")
     endif()
-    if(CMAKE_HOST_UNIX)
-        list(PREPEND SIGLUS_PATH_PREFIX "PATH=${siglus_path_leading}$ENV{PATH}")
-    else()
-        list(PREPEND SIGLUS_PATH_PREFIX "PATH=${siglus_path_leading}\;$ENV{PATH}")
+    # The PATH assignment rides in a CMake list that is expanded *unquoted* into
+    # `cmake -E env` arguments (see the add_custom_target below). On Windows the
+    # PATH separator is ';', which is also CMake's list separator, so every ';'
+    # in $ENV{PATH} would split the value into bogus env-var args and break the
+    # cargo invocation ("no such file or directory"). Escape every ';' on
+    # Windows so the value survives the unquoted expansion as a single arg.
+    set(siglus_full_path "${siglus_path_leading}$ENV{PATH}")
+    if(NOT CMAKE_HOST_UNIX)
+        string(REPLACE ";" "\;" siglus_full_path "${siglus_full_path}")
     endif()
+    list(PREPEND SIGLUS_PATH_PREFIX "PATH=${siglus_full_path}")
 
     # Rust and cc-rs native dependencies must use the same macOS minimum as
     # the embedding application, including x86_64 builds made on Apple Silicon.
@@ -321,9 +340,17 @@ function(aetherkiri_add_siglus_rs imported_target)
         set_property(TARGET ${imported_target} APPEND PROPERTY
             INTERFACE_LINK_LIBRARIES "${siglus_framework_flags}")
     elseif(WIN32)
+        # wgpu's GLES/WGL backend (wgpu_hal::gles::wgl) references wgl* entry
+        # points from opengl32; winit's windows event loop uses Dwm* from
+        # dwmapi and SetWindowTheme from uxtheme for dark-mode theming; and
+        # wgpu's dx12 backend loads shaders via D3DCompile from d3dcompiler.
+        # Cargo cannot propagate system link flags through a staticlib
+        # consumer, so link them here to give every consumer the right
+        # /DEFAULTLIB resolution.
         set_property(TARGET ${imported_target} APPEND PROPERTY
             INTERFACE_LINK_LIBRARIES
-            ntdll user32 gdi32 shell32 ws2_2 bcrypt advapi32 ole32 oleaut32)
+            ntdll user32 gdi32 shell32 ws2_32 bcrypt advapi32 ole32 oleaut32
+            opengl32 dwmapi uxtheme d3dcompiler)
     elseif(UNIX AND NOT ANDROID)
         # Rodio's ALSA backend (siglus_rs movie/media audio) references
         # libasound directly from the static archive. Cargo cannot propagate

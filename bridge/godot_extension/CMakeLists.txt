@@ -7,6 +7,7 @@ if(APPLE)
 endif()
 
 find_package(unofficial-godot-cpp CONFIG REQUIRED)
+find_package(spdlog CONFIG REQUIRED)
 
 if(APPLE)
     # godot-cpp publishes Clang-specific debug flags without a language guard.
@@ -260,6 +261,7 @@ endif()
 if(TARGET engine_api)
     target_link_libraries(aether_kiri_godot PRIVATE engine_api)
 endif()
+target_link_libraries(aether_kiri_godot PRIVATE spdlog::spdlog)
 if(TARGET aether_krkr2_runtime)
     # Phase 2d link flip: the KiriKiri runtime glue is linked by the Godot
     # extension host (not engine_api). The extension installs the legacy
@@ -284,6 +286,12 @@ if(TARGET aether_siglus_runtime)
         aether_siglus_runtime)
     target_compile_definitions(aether_kiri_godot PRIVATE
         AETHERKIRI_WITH_SIGLUS=1)
+endif()
+if(TARGET aether_mages_runtime)
+    target_link_libraries(aether_kiri_godot PRIVATE
+        aether_mages_runtime)
+    target_compile_definitions(aether_kiri_godot PRIVATE
+        AETHERKIRI_WITH_MAGES=1)
 endif()
 if(TARGET aether_minori_runtime)
     target_link_libraries(aether_kiri_godot PRIVATE
@@ -358,6 +366,19 @@ endif()
 target_link_libraries(aether_kiri_godot PRIVATE
     "$<LINK_LIBRARY:WHOLE_ARCHIVE,unofficial::godot::cpp>"
 )
+
+# impacto's texture loaders (DDS, STBI/PNG, GXT, BNTX, WebP) and audio stream
+# decoders self-register through file-local statics
+# (`static bool _registered = ...`). As a plain static archive those objects
+# carry no externally referenced symbols, so the linker drops them, the
+# registries stay empty, and every game texture fails with
+# "No loader for texture" / "using fallback" (red placeholder stripes on the
+# MO8 PC layout). Force-link the whole archive so the registrations run.
+# macOS builds impacto as a shared library, where the problem cannot occur.
+if(NOT APPLE)
+    set_property(TARGET aether_kiri_godot
+        PROPERTY LINK_LIBRARY_OVERRIDE_impacto WHOLE_ARCHIVE)
+endif()
 
 set(AETHERKIRI_EXTENSION_RPATH "@loader_path")
 if(UNIX AND NOT APPLE AND NOT EMSCRIPTEN)

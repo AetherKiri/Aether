@@ -121,7 +121,9 @@ jobs:
           GITHUB_RUN_NUMBER: ${{ github.run_number }}
         run: |
           set -euo pipefail
-          cmd=(python3 .github/scripts/check-submodule-updates.py)
+          # RFVP needs secretless compatibility checks and cross-PR deduplication.
+          # Its dedicated daily workflow also handles manual requests.
+          cmd=(python3 .github/scripts/check-submodule-updates.py --exclude-submodule packages/rfvp)
           if [[ "$GITHUB_EVENT_NAME" == "push" ]]; then
             if [[ -z "$PUSH_BEFORE" || -z "$PUSH_AFTER" ]]; then
               echo "Push event is missing its before/after commit range." >&2

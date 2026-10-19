@@ -135,8 +135,8 @@ and confirmed by the user.
 
 ### Upstream upgrade validation
 
-The pin `99435f22e94eaec27c0c1b9f22cc2a6b1910d7d1` advances from `a109139`
-by two commits and updates the crate to 0.7.0. The first commit, despite its
+The pin `062fec82033b554b9eb3b5da069518c0c96a354e` advances from `a109139`
+by five commits and updates the crate to 0.7.0. The first commit, despite its
 "add ADRs" title, changes rendering and script
 semantics: Sprt texture -1 draws the previous frame; Tile color -1 reads the
 window color from volatile globals instead of palette slot 255; ColorSet checks
@@ -148,6 +148,13 @@ with explicit ownership and readback before the next frame clears the target.
 Previous-frame sprites retain upstream's software-renderer one-frame activation
 delay. GPU snapshot failures must not reuse stale CPU pixels. The existing
 mask-dissolve whole-frame CPU fallback and RGBA/BGRA conversion remain covered.
+
+The subsequent PSV update adds bounded diagnostics and shared resource timing,
+uses font metrics instead of rasterizing discarded glyph bitmaps, and reuses
+text advances. Vita-specific texture/thumbnail changes and the new no_std-only
+`config.toml` boot path are outside this host feature set. Aether keeps its
+explicit script/encoding selection and isolated save roots; a game-directory
+`config.toml` does not override the launcher's selection.
 
 Only the rfvp package version changes in the Cargo manifest and embedded lock;
 no dependency versions or serialized snapshot fields change. The lockfile is

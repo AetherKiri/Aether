@@ -884,3 +884,131 @@ mod host_syscall_contract_tests {
         }
     }
 }
+
+#[cfg(test)]
+mod host_text_metrics_tests {
+    use crate::subsystem::resources::{
+        color_manager::ColorItem,
+        gaiji_manager::GaijiManager,
+        text_manager::{FontEnumerator, TextManager, TextSlotSurfaceUpdate, FONTFACE_MS_GOTHIC},
+    };
+
+    #[test]
+    fn metrics_only_matches_rasterized_bounds_and_advances() {
+        // The prepared workspace replaces every built-in face with the OFL host font.
+        let font = FontEnumerator::new().get_font(FONTFACE_MS_GOTHIC);
+        let mut saw_coverage = false;
+        for ch in ['A', 'g', 'é', 'あ', '漢', ' ', '\u{3000}', '\u{301}', '\0', '\u{10ffff}'] {
+            for size in [1.0f32, 8.0, 15.25, 23.0, 37.5] {
+                for (outline, shadow) in [(0.0f32, 0.0f32), (4.0, 7.0)] {
+                    let effective = (0.95 * (size - outline * 0.5 - shadow * 0.25)).max(1.0);
+                    let measured = font.metrics(ch, effective);
+                    let (rasterized, bitmap) = font.rasterize(ch, effective);
+                    assert_eq!(
+                        (measured.xmin, measured.ymin, measured.width, measured.height),
+                        (rasterized.xmin, rasterized.ymin, rasterized.width, rasterized.height),
+                        "glyph {ch:?} at {effective}"
+                    );
+                    assert_eq!(measured.advance_width.to_bits(), rasterized.advance_width.to_bits());
+                    assert_eq!(measured.advance_height.to_bits(), rasterized.advance_height.to_bits());
+                    assert_eq!(bitmap.len(), rasterized.width * rasterized.height);
+                    saw_coverage |= bitmap.iter().any(|alpha| *alpha != 0);
+                }
+            }
+        }
+        assert!(saw_coverage, "the fixture must exercise visible glyphs");
+    }
+
+    fn render_text(
+        fonts: &FontEnumerator, content: &str, x: u16,
+        outline: u8, shadow: u8, gap: i16, scale: f32,
+    ) -> Vec<u8> {
+        let mut text = TextManager::new();
+        text.set_render_scale(scale);
+        text.set_text_buff(0, 128, 64);
+        text.set_text_size1(0, 23);
+        text.set_text_font_idx1(0, FONTFACE_MS_GOTHIC);
+        text.set_text_color1(0, &ColorItem::white());
+        text.set_text_color2(0, &ColorItem::white());
+        text.set_text_color3(0, &ColorItem::white());
+        text.set_text_outline1(0, outline);
+        text.set_text_shadow_dist(0, shadow);
+        text.set_text_main_gap_x(0, gap);
+        text.set_text_pos_x(0, x);
+        text.set_text_pos_y(0, 8);
+        text.set_text_content(0, content);
+        let update = text.rasterize_slot_if_needed(0, fonts, &GaijiManager::new(), false).unwrap();
+        let Some(TextSlotSurfaceUpdate::Pixels(info)) = update else {
+            panic!("expected a visible text surface");
+        };
+        let width = (128.0 * scale) as usize;
+        let height = (64.0 * scale) as usize;
+        let mut canvas = vec![0u8; width * height * 4];
+        let pixels = text.slot_rgba_bytes(0).unwrap();
+        for row in 0..info.height as usize {
+            let start = ((info.origin_y_px as usize + row) * width + info.origin_x_px as usize) * 4;
+            let source = row * info.width as usize * 4;
+            canvas[start..start + info.width as usize * 4]
+                .copy_from_slice(&pixels[source..source + info.width as usize * 4]);
+        }
+        canvas
+    }
+
+    #[test]
+    fn layout_reuses_raster_advance_without_duplicating_gap() {
+        let fonts = FontEnumerator::new();
+        let font = fonts.get_font(FONTFACE_MS_GOTHIC);
+        for scale in [1.0f32, 2.0] {
+            for (outline, shadow) in [(0u8, 0u8), (4, 4)] {
+                let gap = 12;
+                let effective = (0.95 * (23.0 - outline as f32 * 0.5 - shadow as f32 * 0.25)).max(1.0);
+                // Independent reference: use the old rasterize-based measurement.
+                let (metrics, _) = font.rasterize('M', effective);
+                let extra = (2 * outline as i32 + shadow as i32 + 3) / 4;
+                let advance = metrics.advance_width.ceil() as i32 + extra + gap;
+                let actual = render_text(&fonts, "MM", 8, outline, shadow, gap as i16, scale);
+                let mut expected = render_text(&fonts, "M", 8, outline, shadow, gap as i16, scale);
+                let second = render_text(&fonts, "M", (8 + advance) as u16,
+                    outline, shadow, gap as i16, scale);
+                for (destination, source) in expected.chunks_exact_mut(4).zip(second.chunks_exact(4)) {
+                    if source[3] != 0 {
+                        assert_eq!(destination[3], 0, "reference glyphs must not overlap");
+                        destination.copy_from_slice(source);
+                    }
+                }
+                assert_eq!(actual, expected, "scale={scale}, outline={outline}, shadow={shadow}");
+            }
+        }
+    }
+}
+
+#[cfg(test)]
+mod host_startup_selection_tests {
+    use super::script_path;
+    use std::{fs, path::PathBuf, time::{SystemTime, UNIX_EPOCH}};
+
+    struct TempGame(PathBuf);
+    impl Drop for TempGame {
+        fn drop(&mut self) {
+            let _ = fs::remove_dir_all(&self.0);
+        }
+    }
+
+    #[test]
+    fn explicit_startup_ignores_conflicting_or_invalid_config() {
+        let unique = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos();
+        let directory = std::env::temp_dir().join(format!("aether-rfvp-startup-{}-{unique}", std::process::id()));
+        fs::create_dir(&directory).unwrap();
+        let game = TempGame(directory);
+        // This checks path selection only; synthetic empty files are not parsed as HCBs.
+        fs::write(game.0.join("selected.hcb"), b"").unwrap();
+        fs::write(game.0.join("other.hcb"), b"").unwrap();
+        for config in ["[game]\nhcb = \"other.hcb\"\nnls = \"gbk\"\n", "this is [not valid TOML"] {
+            fs::write(game.0.join("config.toml"), config).unwrap();
+            let (root, script) = script_path(&game.0, "selected.hcb").unwrap();
+            assert_eq!(root, fs::canonicalize(&game.0).unwrap());
+            assert_eq!(script, root.join("selected.hcb"));
+            assert!(script_path(&game.0, "").is_err(), "config must not resolve an ambiguous directory");
+        }
+    }
+}

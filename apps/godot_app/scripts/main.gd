@@ -63,6 +63,7 @@ const RUNTIME_FONT_DIR := "user://runtime_fonts"
 const RUNTIME_DEFAULT_FONT_FILE := "default.otf"
 const RUNTIME_SYMBOL_FONT_FILE := "symbols.ttf"
 const ProbeConfig = preload("res://scripts/probe_config.gd")
+const RuntimeRegressionProbe = preload("res://scripts/runtime_regression_probe.gd")
 const GameMetadata = preload("res://scripts/game_metadata.gd")
 const CoverIndex = preload("res://scripts/cover_index.gd")
 const VNDBCoverResolver = preload("res://scripts/vndb_cover_resolver.gd")
@@ -2790,6 +2791,7 @@ func _normalize_cli_probe_script(path: String) -> String:
         "res://scripts/step_render_probe.gd",
         "res://scripts/gui_render_probe.gd",
         "res://scripts/perf_input_probe.gd",
+        "res://scripts/runtime_regression_probe.gd",
         "res://scripts/wa2_gui.gd",
     ]
     for item in known:
@@ -13141,9 +13143,13 @@ func _ensure_player_initialized() -> bool:
     if player == null:
         return false
     var user_dir := OS.get_user_data_dir()
-    if not cli_probe_script.is_empty():
-        # Exercise the exported application's normal player while keeping
-        # replayed SAVE/LOAD actions away from the user's live save files.
+    if cli_probe_script == "res://scripts/runtime_regression_probe.gd":
+        user_dir = RuntimeRegressionProbe.writable_root(ProbeConfig.load())
+        if user_dir.is_empty():
+            _append_log("Regression probe requires an isolated writable_root under user://regressions/")
+            return false
+    elif not cli_probe_script.is_empty():
+        # Other probes may supply their own disposable replay directory.
         user_dir = ProbeConfig.string_value(ProbeConfig.load(), "user_dir", user_dir)
     elif current_player_runtime_kind == RUNTIME_YURIS:
         var library_path := String(selected_game.get("path", ""))
@@ -13152,7 +13158,9 @@ func _ensure_player_initialized() -> bool:
                 user_dir, _game_runtime_root(library_path)
             )
     if player.is_initialized():
-        if current_player_runtime_kind != RUNTIME_YURIS \
+        var requires_directory_match := current_player_runtime_kind == RUNTIME_YURIS \
+            or cli_probe_script == "res://scripts/runtime_regression_probe.gd"
+        if not requires_directory_match \
             or String(player.get_meta("aether_user_directory", "")) == user_dir:
             return true
         player.destroy_engine()
@@ -13814,6 +13822,10 @@ func _run_cli_script_probe() -> void:
         await _run_cli_gui_probe(config, target_game_path)
     elif cli_probe_script == "res://scripts/perf_input_probe.gd":
         await _run_cli_perf_input_probe(config, target_game_path)
+    elif cli_probe_script == "res://scripts/runtime_regression_probe.gd":
+        var probe = RuntimeRegressionProbe.new(self, config)
+        var result: int = await probe.run(target_game_path)
+        await _probe_cleanup_and_quit(result, probe.record)
     else:
         _write_probe_marker("cli_probe unsupported script=%s" % cli_probe_script)
         printerr("unsupported probe script: %s" % cli_probe_script)
@@ -14861,7 +14873,7 @@ func _probe_image_diff_score(a: Image, b: Image) -> float:
             samples += 1
     return total / max(1.0, float(samples))
 
-func _probe_cleanup_and_quit(code: int) -> void:
+func _probe_cleanup_and_quit(code: int, record_cleanup: Callable = Callable()) -> void:
     _set_game_runtime_frame_pacing(false)
     if cli_probe_audio_capture != null:
         cli_probe_audio_capture.close()
@@ -14876,6 +14888,8 @@ func _probe_cleanup_and_quit(code: int) -> void:
         player.release_frame_texture()
         _cleanup_softpal_platform_ui()
         player.destroy_engine()
+    if record_cleanup.is_valid():
+        record_cleanup.call({"event": "cleanup_complete", "exit_code": code})
     get_tree().quit(code)
 
 func _apply_initial_window_size() -> void:

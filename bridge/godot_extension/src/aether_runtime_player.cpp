@@ -34,6 +34,9 @@ extern "C" void AetherSoftPalRegisterRuntime(void);
 #if defined(AETHERKIRI_INTERNAL_RUNTIME_PROVIDERS)
 void RegisterAetherInternalRuntimeProviders();
 #endif
+#if defined(AETHERKIRI_INTERNAL_QLIE)
+extern "C" void AetherInternalRegisterQlieRuntime(void);
+#endif
 #if defined(__APPLE__)
 #include "apple_external_texture.h"
 #if !defined(IOS_ENABLED)
@@ -13572,6 +13575,9 @@ void InitializeAetherRuntime(ModuleInitializationLevel level) {
 #endif
 #if defined(AETHERKIRI_INTERNAL_RUNTIME_PROVIDERS)
     RegisterAetherInternalRuntimeProviders();
+#endif
+#if defined(AETHERKIRI_INTERNAL_QLIE)
+    AetherInternalRegisterQlieRuntime();
 #endif
 #if defined(AETHERKIRI_WITH_RFVP)
     aetherkiri::rfvp::RegisterRuntimeProvider();

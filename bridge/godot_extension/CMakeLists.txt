@@ -250,6 +250,12 @@ if(AETHERKIRI_INTERNAL_ENABLED AND
         "${CMAKE_CURRENT_SOURCE_DIR}/src")
 endif()
 
+if(AETHERKIRI_INTERNAL_ENABLED AND COMMAND aetherinternal_extend_qlie)
+    aetherinternal_extend_qlie(
+        aether_kiri_godot
+        "${CMAKE_SOURCE_DIR}")
+endif()
+
 if(AETHERKIRI_ENABLE_SOFTPAL_RUNTIME)
     # The provider registers alongside the other independent runtimes in the
     # Godot host. Its private sources stay in the AetherSoftPal submodule.

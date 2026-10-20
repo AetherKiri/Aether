@@ -62,10 +62,23 @@ else()
 
     if(LINUX)
         # The runtime modules have circular static-library dependencies.
-        # Re-scan them after all consumers have been seen so platform
-        # implementations from core_environ_module are retained.
+        # CMake's cyclic link-item repetition re-scans them after all
+        # consumers have been seen so platform implementations from
+        # core_environ_module are retained.  Do NOT wrap these in
+        # $<LINK_GROUP:RESCAN,...>: the link-group feature owns its members
+        # and suppresses their PUBLIC shared-library dependencies
+        # (opencv/libarchive/ffmpeg/...) from the final link line.
         target_link_libraries(aether_krkr2_runtime PRIVATE
-            "$<LINK_GROUP:RESCAN,core_base_module,core_environ_module,core_extension_module,core_plugin_module,core_movie_module,core_sound_module,core_visual_module,core_utils_module,tvpgl_simd,tjs2>"
+            core_base_module
+            core_environ_module
+            core_extension_module
+            core_plugin_module
+            core_movie_module
+            core_sound_module
+            core_visual_module
+            core_utils_module
+            tvpgl_simd
+            tjs2
         )
     endif()
     set_property(TARGET aether_krkr2_runtime

@@ -6,10 +6,12 @@ compatibility_minimum = "4.6"
 windows.debug.x86_64 = "res://bin/windows/release/aether_kiri_godot.dll"
 windows.release.x86_64 = "res://bin/windows/release/aether_kiri_godot.dll"
 windows.editor.x86_64 = "res://bin/windows/release/aether_kiri_godot.dll"
-linux.debug.x86_64 = "res://bin/linux/debug/libaether_kiri_godot.so"
+linux.debug.x86_64 = "res://bin/linux/release/libaether_kiri_godot.so"
 linux.release.x86_64 = "res://bin/linux/release/libaether_kiri_godot.so"
+linux.editor.x86_64 = "res://bin/linux/release/libaether_kiri_godot.so"
 linux.debug.arm64 = "res://bin/linux/debug/libaether_kiri_godot.so"
 linux.release.arm64 = "res://bin/linux/release/libaether_kiri_godot.so"
+linux.editor.arm64 = "res://bin/linux/release/libaether_kiri_godot.so"
 macos.debug = "res://bin/macos/debug/libaether_kiri_godot.dylib"
 macos.release = "res://bin/macos/release/libaether_kiri_godot.dylib"
 ios.debug = "res://bin/ios/debug/libaether_kiri_godot.a"
@@ -27,10 +29,14 @@ windows.release.x86_64 = {
   "res://bin/windows/release/engine_api.dll": ""
 }
 linux.debug.x86_64 = {
-  "res://bin/linux/debug/libengine_api.so": "",
-  "res://bin/linux/debug/libaether_renpy_sdl_hook.so": ""
+  "res://bin/linux/release/libengine_api.so": "",
+  "res://bin/linux/release/libaether_renpy_sdl_hook.so": ""
 }
 linux.release.x86_64 = {
+  "res://bin/linux/release/libengine_api.so": "",
+  "res://bin/linux/release/libaether_renpy_sdl_hook.so": ""
+}
+linux.editor.x86_64 = {
   "res://bin/linux/release/libengine_api.so": "",
   "res://bin/linux/release/libaether_renpy_sdl_hook.so": ""
 }
@@ -39,6 +45,10 @@ linux.debug.arm64 = {
   "res://bin/linux/debug/libaether_renpy_sdl_hook.so": ""
 }
 linux.release.arm64 = {
+  "res://bin/linux/release/libengine_api.so": "",
+  "res://bin/linux/release/libaether_renpy_sdl_hook.so": ""
+}
+linux.editor.arm64 = {
   "res://bin/linux/release/libengine_api.so": "",
   "res://bin/linux/release/libaether_renpy_sdl_hook.so": ""
 }

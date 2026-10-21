@@ -41,6 +41,7 @@ Godot App Shell
             ├─ Artemis Runtime ──── Artemis (private package)
             ├─ CatSystem2 Runtime ─ CatSystem2 (private package)
             ├─ BGI Runtime ──────── BGI / Ethornell (private package)
+            ├─ ADVHD Runtime ────── ADV Player HD / WillPlus (private package)
             └─ SoftPal Runtime ──── SoftPal (private package)
 ```
 
@@ -57,6 +58,10 @@ and **Debug CPU** is a diagnostic fallback only.
   [`AetherKrkr`](https://github.com/AetherKiri/AetherKrkr) submodule.
 - OnscripterYuri integration with Godot pointer/touch/keyboard input mapped
   back to ONS events.
+- Native ADV Player HD (AdvHD / WillPlus) support through the optional private
+  package, with story playback, save/load, backlog, settings, EXTRA, CG viewing
+  and scene replay for supported games. Available as a coffee beta in iOS/macOS
+  Release builds.
 - Export presets for macOS, iOS/iPadOS, Android, Web, and Linux.
 - A separate Flash library powered by native Ruffle, with sound, keyboard,
   mouse, touch, and the visual-novel virtual controls.

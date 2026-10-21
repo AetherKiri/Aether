@@ -701,6 +701,16 @@ engine_result_t SelectBackendLocked(DispatchHandle* handle,
   return ENGINE_RESULT_OK;
 }
 
+bool ProviderStarting(const DispatchHandle* handle) {
+  return handle->backend == BackendKind::kProvider &&
+         handle->startup_state == ENGINE_STARTUP_STATE_RUNNING;
+}
+
+engine_result_t ProviderStartupPending() {
+  return ThreadError(ENGINE_RESULT_INVALID_STATE,
+                     "runtime provider is still starting");
+}
+
 template <typename LegacyCall, typename ProviderCall>
 engine_result_t Route(engine_handle_t public_handle, const char* operation,
                       LegacyCall&& legacy_call, ProviderCall&& provider_call) {
@@ -713,6 +723,13 @@ engine_result_t Route(engine_handle_t public_handle, const char* operation,
     result = EnsureLegacyLocked(handle);
     if (result != ENGINE_RESULT_OK) return result;
     return legacy_call(handle->legacy);
+  }
+  if (ProviderStarting(handle)) {
+    // Startup may wait for work on the host's render thread. Keep metadata
+    // polling available, but never enter the provider's VM concurrently.
+    if (std::strcmp(operation, "drain_startup_logs") == 0)
+      return provider_call(handle);
+    return ProviderStartupPending();
   }
   result = provider_call(handle);
   if (result == ENGINE_RESULT_NOT_SUPPORTED) {
@@ -953,6 +970,7 @@ engine_result_t engine_submit_platform_response(
   if (!PROVIDER_HAS(handle->provider, submit_platform_response)) {
     return Unsupported(handle, "platform responses");
   }
+  if (ProviderStarting(handle)) return ProviderStartupPending();
   const engine_result_t result =
       handle->provider->submit_platform_response(
           handle->runtime, operation_utf8,
@@ -1248,13 +1266,8 @@ engine_result_t engine_open_game_async(engine_handle_t public_handle,
   try {
     handle->startup_thread = StartupThread([handle, root, startup]() {
       const char* startup_value = startup.empty() ? nullptr : startup.c_str();
-      // Provider startup mutates the runtime-owned VM, frame and media state.
-      // Keep it under the same per-handle lock used by engine_tick and the
-      // other provider routes.  Without this guard a host that drives frames
-      // while async startup is still running can enter the provider at the
-      // same time as OpenGame, corrupting containers during static-variable
-      // initialization.
-      std::lock_guard<std::recursive_mutex> startup_guard(handle->mutex);
+      // RUNNING excludes other provider calls without holding the metadata
+      // mutex while OpenGame waits for GPU or other host-thread work.
       AETHER_DISPATCH_DIAG_LOG("engine_open_game_async before provider open_game");
       const auto open_result = RunProviderOpen(handle, root.c_str(),
                                                startup_value);
@@ -1405,6 +1418,7 @@ engine_result_t engine_set_option(engine_handle_t public_handle,
   if (result != ENGINE_RESULT_OK) return result;
   std::lock_guard<std::recursive_mutex> guard(handle->mutex);
   const std::string key = Normalize(option->key_utf8);
+  if (ProviderStarting(handle)) return ProviderStartupPending();
   if (key == "artemis_beta_allowed" || key == "beta_runtime_allowed") {
     // Released providers, including RFVP, no longer require beta access.
     // Accept options sent by older hosts without restricting game startup.
@@ -1555,6 +1569,7 @@ engine_result_t engine_set_surface_size(engine_handle_t public_handle,
   if (result != ENGINE_RESULT_OK) return result;
   std::lock_guard<std::recursive_mutex> guard(handle->mutex);
 
+  if (ProviderStarting(handle)) return ProviderStartupPending();
   if (handle->backend == BackendKind::kProvider) {
     if (!PROVIDER_HAS(handle->provider, set_surface_size)) {
       return Unsupported(handle, "set_surface_size");

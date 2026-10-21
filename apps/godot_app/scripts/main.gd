@@ -11,6 +11,7 @@ const FLASH_HIDDEN_FILE := "user://aether_flash_hidden.json"
 const FlashPlayerView = preload("res://scripts/flash_player_view.gd")
 const TyranoPlayerView = preload("res://scripts/tyrano_player_view.gd")
 const RenpyPlayerView = preload("res://scripts/renpy_player_view.gd")
+const RuntimeDisplayState = preload("res://scripts/runtime_display_state.gd")
 const VIDEO_LIST_FILE := "user://aetherkiri_videos.json"
 const VIDEO_PROGRESS_FILE := "user://aetherkiri_video_progress.json"
 const VIDEO_HIDDEN_FILE := "user://aetherkiri_hidden_videos.json"
@@ -2077,6 +2078,7 @@ const RUNTIME_RENPY := "renpy"
 const RUNTIME_XSYSTEM4 := "xsystem4"
 const RUNTIME_WA2 := "wa2"
 const RUNTIME_BGI := "bgi"
+const RUNTIME_ADVHD := "advhd"
 const RUNTIME_TYRANO := "tyranoscript"
 const RUNTIME_MAGES := "mages"
 const RUNTIME_YURIS := "yuris"
@@ -2151,6 +2153,7 @@ var game_path: LineEdit
 var restart_notice: Label
 var viewport: TextureRect
 var softpal_aspect_mode := 1
+var runtime_display_state = RuntimeDisplayState.new()
 var perf: Label
 var perf_layer: CanvasLayer
 var perf_panel: PanelContainer
@@ -11212,6 +11215,8 @@ func _game_runtime_kind(path: String) -> String:
         return runtime_kind
     if player != null and player.has_method("probe_runtime"):
         # Format detection stays in the optional private provider.
+        if int(player.probe_runtime(RUNTIME_ADVHD, root)) >= 90:
+            return RUNTIME_ADVHD
         if int(player.probe_runtime(RUNTIME_BGI, root)) >= 90:
             return RUNTIME_BGI
         # Packed CatSystem2 titles may not expose the loose markers used by
@@ -11884,10 +11889,10 @@ func _start_selected_game_after_iap() -> void:
         _deny_runtime_beta_launch()
 
 func _runtime_requires_beta_access(runtime_kind: String) -> bool:
-    # SoftPal is generally available. Minori still requires an active coffee
-    # entitlement in iOS and macOS distribution builds.
+    # Minori and ADV Player HD require an active coffee entitlement
+    # in iOS and macOS distribution builds.
     # Provider-backed runtimes such as WA2 are checked separately.
-    return runtime_kind == RUNTIME_MINORI
+    return runtime_kind in [RUNTIME_MINORI, RUNTIME_ADVHD]
 
 func _beta_access_enforcement_enabled(platform_name: String = "") -> bool:
     var effective_platform := platform_name if not platform_name.is_empty() else OS.get_name()
@@ -12036,6 +12041,7 @@ func _return_to_library_after_runtime_exit() -> void:
     _clear_game_input_capture()
     _finalize_active_game_session()
     game_running = false
+    runtime_display_state.reset(get_window())
     softpal_aspect_mode = 1
     _sync_debug_console_state()
     app_lifecycle_paused = false
@@ -12484,6 +12490,7 @@ func _switch_runtime_player(runtime_kind: String) -> bool:
         RUNTIME_MAGES,
         RUNTIME_XSYSTEM4,
         RUNTIME_YURIS,
+        RUNTIME_ADVHD,
     ]:
         normalized = RUNTIME_KIRIKIRI
     if player != null and current_player_runtime_kind == normalized:
@@ -12528,6 +12535,8 @@ func _switch_runtime_player(runtime_kind: String) -> bool:
         if normalized == RUNTIME_BGI
         else "MAGES."
         if normalized == RUNTIME_MAGES
+        else "ADV Player HD"
+        if normalized == RUNTIME_ADVHD
         else "KiriKiri"
     ))
     return true
@@ -12563,6 +12572,10 @@ func _on_runtime_platform_request(operation: String, argument: String) -> void:
     _trace_runtime_platform_request("received", operation, argument)
     if operation == "runtime_end":
         call_deferred("_return_to_library_after_runtime_exit")
+        return
+    if runtime_display_state.apply(operation, argument, get_window(), not _is_touch_platform()):
+        softpal_aspect_mode = runtime_display_state.aspect_mode
+        _layout_game_viewport(get_viewport_rect().size)
         return
     if operation == "softpal_window_size":
         if not _is_touch_platform() and get_window().mode == Window.MODE_WINDOWED:
@@ -13192,6 +13205,7 @@ func _ensure_player_initialized() -> bool:
         RUNTIME_MAGES,
         RUNTIME_XSYSTEM4,
         RUNTIME_YURIS,
+        RUNTIME_ADVHD,
     ]:
         runtime_id = current_player_runtime_kind
     var runtime_result := int(player.set_engine_option("runtime", runtime_id))
@@ -13219,6 +13233,8 @@ func _ensure_player_initialized() -> bool:
         if current_player_runtime_kind == RUNTIME_SIGLUS
         else "BGI/Ethornell"
         if current_player_runtime_kind == RUNTIME_BGI
+        else "ADV Player HD"
+        if current_player_runtime_kind == RUNTIME_ADVHD
         else "AetherKiri"
     ))
     return true
@@ -15108,6 +15124,8 @@ func _process(delta: float) -> void:
                     perf_log_file.flush()
                 game_running = false
                 _set_game_runtime_frame_pacing(false)
+                runtime_display_state.reset(get_window())
+                softpal_aspect_mode = 1
                 _sync_game_virtual_controls()
                 _deactivate_game_text_input()
                 _sync_debug_console_state()
@@ -15167,6 +15185,8 @@ func _process(delta: float) -> void:
             viewport.visible = false
             game_view.visible = false
             game_running = false
+            runtime_display_state.reset(get_window())
+            softpal_aspect_mode = 1
             _sync_game_virtual_controls()
             _deactivate_game_text_input()
             _sync_debug_console_state()

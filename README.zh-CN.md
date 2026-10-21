@@ -39,6 +39,7 @@ Godot App Shell
             ├─ Artemis Runtime ──── Artemis（私有 package）
             ├─ CatSystem2 Runtime ─ CatSystem2（私有 package）
             ├─ BGI Runtime ──────── BGI / Ethornell（私有 package）
+            ├─ ADVHD Runtime ────── ADV Player HD / WillPlus（私有 package）
             └─ SoftPal Runtime ──── SoftPal（私有 package）
 ```
 
@@ -53,6 +54,9 @@ Godot App Shell
 - C++17 KiriKiri2 引擎核心（视觉、音频、存储、VM、插件），以
   [`AetherKrkr`](https://github.com/AetherKiri/AetherKrkr) submodule 接入。
 - 集成 OnscripterYuri，Godot 的鼠标/触摸/键盘输入会映射回 ONS 事件。
+- 通过可选私包原生支持 ADV Player HD（AdvHD / WillPlus），为兼容游戏提供
+  剧情推进、存读档、历史记录、设置、EXTRA、CG 鉴赏与场景回想。
+  iOS/macOS Release 构建中以咖啡内测方式开放。
 - 覆盖 macOS、iOS/iPadOS、Android、Web 与 Linux 的导出配置。
 - 独立的 Flash 分类，使用原生 Ruffle 播放，支持声音、键鼠、触摸以及视觉小说的虚拟按钮。
 - 通过内置 xsystem4 原生运行 AliceSoft System 4 游戏，支持目录导入、中日文字体、音频、视频和可选虚拟按键。参见[原生宿主与验证范围](bridge/xsystem4_runtime/README.md)。
@@ -65,7 +69,7 @@ Godot App Shell
 - 提供 smoke、渲染、交互、性能与手动复现 probe 脚本。
 - 已验证游戏清单见 [`doc/verified_games.zh-CN.md`](doc/verified_games.zh-CN.md)。
 
-iOS 和 macOS 的 Release 分发构建中，Minori 与 WHITE ALBUM2
+iOS 和 macOS 的 Release 分发构建中，ADV Player HD、Minori 与 WHITE ALBUM2
 （Leaf TtT / WA2）运行时需要有效的 30 天咖啡权益。ONScripterYuri、Artemis、
 CatSystem2 和 SoftPal 已普遍开放。Debug 构建及 Android/Linux 发布构建不执行该咖啡限制。
 

@@ -85,6 +85,21 @@ struct FakeRuntime {
   engine_runtime_host_v1_t host{};
 };
 
+std::atomic<bool> startup_entered{false}, startup_released{false};
+std::atomic<int> startup_tick_entries{0};
+engine_result_t HostDependentOpen(void* runtime, const char*, const char*) {
+  auto* fake = static_cast<FakeRuntime*>(runtime);
+  fake->host.platform_request(fake->host.user_data, "startup_ready", "ready");
+  startup_entered.store(true);
+  const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(1);
+  while (!startup_released.load()) {
+    if (std::chrono::steady_clock::now() >= deadline) return ENGINE_RESULT_IO_ERROR;
+    std::this_thread::sleep_for(std::chrono::milliseconds(1));
+  }
+  fake->opened = true;
+  return ENGINE_RESULT_OK;
+}
+
 int32_t FakeProbe(void*, const char* root) {
   return root != nullptr && std::strstr(root, ".artemis-test") != nullptr ? 100 : 0;
 }
@@ -320,6 +335,54 @@ TEST_CASE("runtime provider startup failure retains its diagnostic after polling
   REQUIRE(state == ENGINE_STARTUP_STATE_FAILED);
   CHECK(std::string(engine_get_last_error(handle.value)) ==
         "PF entry payload range is outside the archive");
+}
+
+TEST_CASE("provider startup lets the host poll while excluding concurrent runtime access", "[startup][regression]") {
+  static const auto provider = [] {
+    auto value = kFakeProvider;
+    value.runtime_id_utf8 = "host-dependent-startup";
+    value.open_game = HostDependentOpen;
+    value.tick = [](void*, uint32_t) -> engine_result_t {
+      ++startup_tick_entries;
+      return ENGINE_RESULT_OK;
+    };
+    return value;
+  }();
+  REQUIRE(engine_register_runtime_provider(&provider) == ENGINE_RESULT_OK);
+  Handle handle;
+  engine_option_t option{"runtime", "host-dependent-startup"};
+  REQUIRE(engine_set_option(handle.value, &option) == ENGINE_RESULT_OK);
+  startup_entered.store(false);startup_released.store(false);startup_tick_entries.store(0);
+  REQUIRE(engine_open_game_async(handle.value, ".artemis-test", nullptr) == ENGINE_RESULT_OK);
+  const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(2);
+  while (!startup_entered.load() && std::chrono::steady_clock::now() < deadline)
+    std::this_thread::yield();
+  REQUIRE(startup_entered.load());
+  const auto poll_started = std::chrono::steady_clock::now();
+  uint32_t state = ENGINE_STARTUP_STATE_IDLE;
+  REQUIRE(engine_get_startup_state(handle.value, &state) == ENGINE_RESULT_OK);
+  CHECK(std::chrono::steady_clock::now() - poll_started < std::chrono::milliseconds(250));
+  REQUIRE(state == ENGINE_STARTUP_STATE_RUNNING);
+  CHECK(std::string(engine_get_last_error(handle.value)).empty());
+  char operation[64]{},argument[64]{},logs[1024]{};
+  uint32_t available=0,written=0;
+  REQUIRE(engine_poll_platform_request(handle.value,operation,sizeof(operation),argument,sizeof(argument),&available)==ENGINE_RESULT_OK);
+  CHECK(available==1);CHECK(std::string(operation)=="startup_ready");
+  CHECK(engine_drain_startup_logs(handle.value,logs,sizeof(logs),&written)==ENGINE_RESULT_OK);
+  CHECK(engine_tick(handle.value,16)==ENGINE_RESULT_INVALID_STATE);
+  CHECK(startup_tick_entries.load()==0);
+  option={"test_option","value"};
+  CHECK(engine_set_option(handle.value,&option)==ENGINE_RESULT_INVALID_STATE);
+  CHECK(engine_set_surface_size(handle.value,64,32)==ENGINE_RESULT_INVALID_STATE);
+  CHECK(engine_submit_platform_response(handle.value,"startup_ready","ready")==ENGINE_RESULT_INVALID_STATE);
+  startup_released.store(true);
+  for(int attempt=0;attempt<1000 && state==ENGINE_STARTUP_STATE_RUNNING;++attempt) {
+    REQUIRE(engine_get_startup_state(handle.value,&state)==ENGINE_RESULT_OK);
+    std::this_thread::sleep_for(std::chrono::milliseconds(1));
+  }
+  REQUIRE(state==ENGINE_STARTUP_STATE_SUCCEEDED);
+  CHECK(engine_tick(handle.value,16)==ENGINE_RESULT_OK);
+  CHECK(startup_tick_entries.load()==1);
 }
 
 TEST_CASE("primary click queue gate bounds rapid primary gestures") {

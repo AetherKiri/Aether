@@ -95,6 +95,7 @@ func _initialize() -> void:
     _expect(not app.modal_layer.visible)
     _expect(not app._runtime_requires_beta_access(app.RUNTIME_ONSCRIPTER))
     _expect(app._runtime_requires_beta_access(app.RUNTIME_MINORI))
+    _expect(app._runtime_requires_beta_access(app.RUNTIME_ADVHD))
     _expect(not app._runtime_requires_beta_access(app.RUNTIME_SOFTPAL))
     _expect(not app._runtime_requires_beta_access(app.RUNTIME_KIRIKIRI))
     # CatSystem2 is a released runtime and must not enter the coffee-only
@@ -139,8 +140,8 @@ func _initialize() -> void:
 func _check_runtime_launch_access() -> void:
     # Force the Apple Release policy even when running with the debug editor.
     # SoftPal launches immediately without a coffee transaction; Minori and
-    # WA2 still perform their existing entitlement round trip.
-    for runtime_kind in ["softpal", "minori", "kirikiri"]:
+    # WA2 and ADV Player HD perform their entitlement round trip.
+    for runtime_kind in ["softpal", "minori", "kirikiri", "advhd"]:
         for enforce in [true, false]:
             for entitled in [true, false]:
                 var app = RuntimeAccessApp.new()

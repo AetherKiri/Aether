@@ -34,6 +34,11 @@ extern "C" void AetherSoftPalRegisterRuntime(void);
 #if defined(AETHERKIRI_INTERNAL_RUNTIME_PROVIDERS)
 void RegisterAetherInternalRuntimeProviders();
 #endif
+#if defined(AETHERKIRI_INTERNAL_RUNTIME_GPU_BRIDGE)
+void RegisterAetherInternalRuntimeGpuBridge(const TVPGodotGpuBridgeCallbacks *,
+                                           const TVPGodotGpuBatchCallbacks *,
+                                           const TVPGodotGpuFilterCallbacks *);
+#endif
 #if defined(__APPLE__)
 #include "apple_external_texture.h"
 #if !defined(IOS_ENABLED)
@@ -45,6 +50,7 @@ void RegisterAetherInternalRuntimeProviders();
 #endif
 
 #include <godot_cpp/classes/audio_effect_panner.hpp>
+#include <godot_cpp/classes/audio_effect_pitch_shift.hpp>
 #include <godot_cpp/classes/audio_server.hpp>
 #include <godot_cpp/classes/audio_stream_ogg_vorbis.hpp>
 #include <godot_cpp/classes/audio_stream_mp3.hpp>
@@ -221,6 +227,7 @@ struct ArtemisGpuShaderImage {
     uint32_t width = 0;
     uint32_t height = 0;
     std::vector<uint8_t> pixels;
+    RID resident_texture;
 };
 
 struct ArtemisGpuShaderTexture {
@@ -244,6 +251,7 @@ struct ArtemisGpuShaderRequest {
     std::vector<ArtemisGpuShaderTexture> textures;
     std::vector<ArtemisGpuShaderConstant> constants;
     std::string error;
+    RID resident_output;
 };
 
 std::mutex g_gpu_textures_mutex;
@@ -2015,13 +2023,18 @@ bool BlendOpNeedsBarrierBeforeDispatch(
         PendingWriteForRect(op.dst, op.dst_pos, op.size);
     const Vector3 src_extent =
         op.src_size.x > 0.0 && op.src_size.y > 0.0 ? op.src_size : op.size;
+    const bool convolution = op.type == GodotGpuOp::Type::Blend2 &&
+        op.mode == TVP_GODOT_GPU_BLEND_CONVOLVE_RGBA;
+    const bool color_matrix = op.type == GodotGpuOp::Type::Blend2 &&
+        op.mode == TVP_GODOT_GPU_BLEND_COLOR_MATRIX_RGBA;
     const GodotGpuPendingWrite src_rect =
-        PendingWriteForRect(op.src, op.src_pos, src_extent);
+        PendingWriteForRect(op.src, convolution ? Vector3() : op.src_pos, src_extent);
     const bool dual_source = op.type == GodotGpuOp::Type::Blend2 ||
         op.type == GodotGpuOp::Type::Blend3;
     const bool triple_source = op.type == GodotGpuOp::Type::Blend3;
     const GodotGpuPendingWrite src2_rect =
-        dual_source ? PendingWriteForRect(op.src2, op.src2_pos, op.size)
+        dual_source ? PendingWriteForRect(op.src2, op.src2_pos,
+                                         convolution ? Vector3(op.opacity,3,1) : color_matrix ? Vector3(5,4,1) : op.size)
                     : GodotGpuPendingWrite{};
     const GodotGpuPendingWrite src3_rect =
         triple_source ? PendingWriteForRect(op.src3, op.src3_pos, op.size)
@@ -3070,6 +3083,34 @@ void main() {
     ivec2 dst_pos = pc.rect0.xy + local;
     ivec2 src1_pos = pc.rect0.zw + local;
     ivec2 src2_pos = pc.src2_rect.xy + local;
+    if (pc.rect1.z == 33) {
+        vec4 source_color = imageLoad(src1_img, src1_pos);
+        vec4 filtered = vec4(0.0);
+        for (int row = 0; row < 4; ++row) {
+            for (int column = 0; column < 5; ++column) {
+                float coefficient = uintBitsToFloat(pack_u8(vec4_to_u8(imageLoad(src2_img, pc.src2_rect.xy + ivec2(column, row)))));
+                if (!isnan(coefficient) && !isinf(coefficient))
+                    filtered[row] += coefficient * (column == 4 ? 1.0 : source_color[column]);
+            }
+        }
+        imageStore(dst_img, dst_pos, clamp(filtered, vec4(0.0), vec4(1.0)));
+        return;
+    }
+    if (pc.rect1.z == 32) {
+        vec4 filtered = vec4(0.0);
+        ivec2 source_limit = imageSize(src1_img) - ivec2(1);
+        for (int tap = 0; tap < min(pc.rect1.w, 64); ++tap) {
+            ivec2 kernel_pos = pc.src2_rect.xy + ivec2(tap, 0);
+            float dx = uintBitsToFloat(pack_u8(vec4_to_u8(imageLoad(src2_img, kernel_pos))));
+            float dy = uintBitsToFloat(pack_u8(vec4_to_u8(imageLoad(src2_img, kernel_pos + ivec2(0, 1)))));
+            float weight = uintBitsToFloat(pack_u8(vec4_to_u8(imageLoad(src2_img, kernel_pos + ivec2(0, 2)))));
+            if (isnan(dx) || isinf(dx) || isnan(dy) || isinf(dy) || isnan(weight) || isinf(weight)) continue;
+            ivec2 offset = ivec2(round(clamp(vec2(dx, dy), vec2(-16384.0), vec2(16384.0))));
+            filtered += imageLoad(src1_img, clamp(src1_pos + offset, ivec2(0), source_limit)) * weight;
+        }
+        imageStore(dst_img, dst_pos, clamp(filtered, vec4(0.0), vec4(1.0)));
+        return;
+    }
     uint s1 = pack_u8(vec4_to_u8(imageLoad(src1_img, src1_pos)));
     uint s2 = pack_u8(vec4_to_u8(imageLoad(src2_img, src2_pos)));
     uint opa = uint(clamp(pc.rect1.w, 0, 255));
@@ -3784,6 +3825,11 @@ vec3 color_blend(int mode, vec3 src, vec3 dst) {
 vec4 blend_cubism(vec4 dst, vec4 src, int flags) {
     int color_mode = flags & 255;
     int alpha_mode = (flags >> 8) & 255;
+    if (color_mode == 16 && alpha_mode == 0) {
+        vec3 destination = dst.rgb * dst.a;
+        vec3 color = destination + src.rgb * src.a * (vec3(1.0) - destination);
+        return straight_from_premul(color, min(dst.a + src.a, 1.0));
+    }
     if (color_mode == 0 && alpha_mode == 0) {
         return blend_over(dst, src);
     }
@@ -4431,6 +4477,11 @@ vec3 color_blend(int mode, vec3 src, vec3 dst) {
 vec4 blend_cubism(vec4 dst, vec4 src, int flags) {
     int color_mode = flags & 255;
     int alpha_mode = (flags >> 8) & 255;
+    if (color_mode == 16 && alpha_mode == 0) {
+        vec3 destination = dst.rgb * dst.a;
+        vec3 color = destination + src.rgb * src.a * (vec3(1.0) - destination);
+        return straight_from_premul(color, min(dst.a + src.a, 1.0));
+    }
     if (color_mode == 0 && alpha_mode == 0) {
         return blend_over(dst, src);
     }
@@ -7627,10 +7678,11 @@ bool ExecuteArtemisGpuShader(
     Ref<RDTextureView> texture_view;
     texture_view.instantiate();
     TypedArray<PackedByteArray> no_data;
-    RID output_texture = own(rd->texture_create(
-        MakeRgbaTextureFormat(request.foreground.width,
-                              request.foreground.height),
-        texture_view, no_data));
+    RID output_texture = request.resident_output.is_valid()
+        ? request.resident_output : own(rd->texture_create(
+            MakeRgbaTextureFormat(request.foreground.width,
+                                  request.foreground.height),
+            texture_view, no_data));
     if (!output_texture.is_valid()) {
         request.error = "Godot failed to allocate Artemis shader output";
         cleanup();
@@ -7756,15 +7808,16 @@ bool ExecuteArtemisGpuShader(
         const ArtemisGpuShaderImage *image =
             FindArtemisShaderImage(request, translated.samplers[index]);
         if (image == nullptr || image->width == 0 || image->height == 0 ||
-            image->pixels.size() !=
-                static_cast<size_t>(image->width) * image->height * 4u) {
+            (!image->resident_texture.is_valid() && image->pixels.size() !=
+                static_cast<size_t>(image->width) * image->height * 4u)) {
             image = &missing_image;
         }
         TypedArray<PackedByteArray> initial_data;
         initial_data.push_back(PackArtemisShaderImage(*image));
-        RID texture = own(rd->texture_create(
-            MakeRgbaTextureFormat(image->width, image->height), texture_view,
-            initial_data));
+        RID texture = image->resident_texture.is_valid()
+            ? image->resident_texture : own(rd->texture_create(
+                MakeRgbaTextureFormat(image->width, image->height), texture_view,
+                initial_data));
         if (!texture.is_valid()) {
             request.error = "Godot failed to upload Artemis shader texture " +
                 translated.samplers[index];
@@ -7819,6 +7872,10 @@ bool ExecuteArtemisGpuShader(
     rd->draw_list_draw(draw_list, false, 1, 3);
     rd->draw_list_end();
     ApplyGodotGpuBarrier(rd);
+    if (request.resident_output.is_valid()) {
+        cleanup();
+        return true;
+    }
     op->data = rd->texture_get_data(output_texture, 0);
     const size_t expected_size =
         static_cast<size_t>(request.foreground.width) *
@@ -7830,6 +7887,48 @@ bool ExecuteArtemisGpuShader(
     }
     cleanup();
     return success;
+}
+
+bool BridgeApplyFragment(uint64_t dst, const uint64_t *sources,
+                         uint32_t source_count, const char *fragment_utf8,
+                         const float *constants, uint32_t constant_count) {
+    if (!sources || source_count < 1 || source_count > 8 ||
+        !fragment_utf8 || !*fragment_utf8 || std::strlen(fragment_utf8) > 256*1024 ||
+        constant_count > 32 || (constant_count && !constants)) return false;
+    for (uint32_t i = 0; i < constant_count; ++i)
+        if (!std::isfinite(constants[i])) return false;
+    auto request = std::make_shared<ArtemisGpuShaderRequest>();
+    request->shader_id = "RuntimeFragment";
+    request->fragment_source = fragment_utf8;
+    {
+        std::lock_guard<std::mutex> lock(g_gpu_textures_mutex);
+        const auto target = g_gpu_textures.find(dst);
+        if (target == g_gpu_textures.end()) return false;
+        request->resident_output = target->second.rid;
+        request->foreground.width = target->second.width;
+        request->foreground.height = target->second.height;
+        for (uint32_t i = 0; i < source_count; ++i) {
+            const auto input = g_gpu_textures.find(sources[i]);
+            if (input == g_gpu_textures.end() || sources[i] == dst ||
+                input->second.rid == target->second.rid) return false;
+            ArtemisGpuShaderTexture texture;
+            texture.name = "texture" + std::to_string(i);
+            texture.image.width = input->second.width;
+            texture.image.height = input->second.height;
+            texture.image.resident_texture = input->second.rid;
+            request->textures.push_back(std::move(texture));
+        }
+    }
+    ArtemisGpuShaderConstant values;
+    values.name = "parameters";
+    if (constant_count) values.values.assign(constants, constants + constant_count);
+    request->constants.push_back(std::move(values));
+    auto op = std::make_shared<GodotGpuOp>();
+    op->type = GodotGpuOp::Type::ArtemisShader;
+    op->src = request->textures.front().image.resident_texture;
+    op->dst = request->resident_output;
+    op->artemis_shader = std::move(request);
+    return RunGodotGpuOpAsync(op);
 }
 
 void WriteArtemisShaderError(const std::string &message, char *error_utf8,
@@ -8033,17 +8132,23 @@ uint64_t BridgeCreateRgba(uint32_t width, uint32_t height, const void *pixels,
     RID rid = TakeGpuTextureFromPool(width, height);
     const bool pooled = rid.is_valid();
     if (rid.is_valid()) {
-        if (use_device_clear) {
-            if (rd->texture_clear(rid, Color(0.0, 0.0, 0.0, 0.0), 0, 1, 0,
-                                  1) != OK) {
-                rd->free_rid(rid);
-                rid = RID();
-            }
-        } else if (rd->texture_update(rid, 0, packed_data) != OK) {
-            rd->free_rid(rid);
+        // Startup can allocate on a provider worker. Fresh texture creation is
+        // thread-safe, but updating a recycled RID requires the render thread.
+        auto initialize = std::make_shared<GodotGpuOp>();
+        initialize->dst = rid;
+        initialize->type = pixels == nullptr ? GodotGpuOp::Type::Clear
+                                            : GodotGpuOp::Type::Update;
+        initialize->clear_color = Color(0.0, 0.0, 0.0, 0.0);
+        initialize->data = packed_data;
+        if (!RunGodotGpuOpSync(initialize)) {
+            auto release = std::make_shared<GodotGpuOp>();
+            release->type = GodotGpuOp::Type::Release;
+            release->dst = rid;
+            RunGodotGpuOpSync(release);
             rid = RID();
         }
-    } else {
+    }
+    if (!rid.is_valid()) {
         rid = rd->texture_create(MakeRgbaTextureFormat(width, height), view,
                                  initial_data);
         // RenderingDevice accepts an empty initial-data array, but its
@@ -8942,11 +9047,24 @@ bool BridgeBlendRect2(uint64_t dst, uint64_t src1, uint64_t src2,
     }
     const int width = dst_rect->right - dst_rect->left;
     const int height = dst_rect->bottom - dst_rect->top;
+    const bool convolution = mode == TVP_GODOT_GPU_BLEND_CONVOLVE_RGBA;
+    const bool color_matrix = mode == TVP_GODOT_GPU_BLEND_COLOR_MATRIX_RGBA;
     if (width <= 0 || height <= 0 ||
         width != src1_rect->right - src1_rect->left ||
         height != src1_rect->bottom - src1_rect->top ||
-        width != src2_rect->right - src2_rect->left ||
-        height != src2_rect->bottom - src2_rect->top) {
+        (!convolution && !color_matrix && (width != src2_rect->right - src2_rect->left ||
+                         height != src2_rect->bottom - src2_rect->top))) {
+        return false;
+    }
+    if ((convolution || color_matrix) && (
+        (convolution ? opacity < 1 || opacity > 64 : opacity != 0) || dst == src1 || dst == src2 ||
+        src2_rect->left < 0 || src2_rect->top < 0 ||
+        src2_rect->right > int(src2_record.width) || src2_rect->bottom > int(src2_record.height) ||
+        src2_rect->right - src2_rect->left != (convolution ? opacity : 5) || src2_rect->bottom - src2_rect->top != (convolution ? 3 : 4) ||
+        dst_rect->left < 0 || dst_rect->top < 0 ||
+        dst_rect->right > int(dst_record.width) || dst_rect->bottom > int(dst_record.height) ||
+        src1_rect->left < 0 || src1_rect->top < 0 ||
+        src1_rect->right > int(src1_record.width) || src1_rect->bottom > int(src1_record.height))) {
         return false;
     }
 
@@ -8959,6 +9077,7 @@ bool BridgeBlendRect2(uint64_t dst, uint64_t src1, uint64_t src2,
     op->src2_pos = Vector3(src2_rect->left, src2_rect->top, 0);
     op->dst_pos = Vector3(dst_rect->left, dst_rect->top, 0);
     op->size = Vector3(width, height, 1);
+    if (convolution) op->src_size = Vector3(src1_record.width, src1_record.height, 1);
     op->mode = mode;
     op->opacity = opacity;
     op->color = color;
@@ -9988,6 +10107,13 @@ public:
         engine_register_godot_gpu_batch_bridge(&batch_callbacks);
 #if defined(AETHERKIRI_WITH_MAGES)
         RegisterMagesGpuBridge();
+#endif
+#if defined(AETHERKIRI_INTERNAL_RUNTIME_GPU_BRIDGE)
+        const TVPGodotGpuFilterCallbacks filter_callbacks{
+            sizeof(TVPGodotGpuFilterCallbacks),
+            TVP_GODOT_GPU_FILTER_CALLBACKS_ABI_VERSION, BridgeApplyFragment};
+        RegisterAetherInternalRuntimeGpuBridge(&callbacks, &batch_callbacks,
+                                              &filter_callbacks);
 #endif
 #if defined(AETHERKIRI_WITH_RFVP)
         aetherkiri::rfvp::RegisterGpuBridge(&callbacks, &batch_callbacks);
@@ -11808,13 +11934,17 @@ public:
             }
         }
 
+        const bool in_place =
+            mode == TVP_GODOT_GPU_BLEND_ALPHA_TO_ADDITIVE_ALPHA ||
+            mode == TVP_GODOT_GPU_BLEND_ADDITIVE_ALPHA_TO_ALPHA;
         const uint64_t src_texture = BridgeCreateRgba(
             kWidth, kHeight, src.data(), kWidth * sizeof(uint32_t));
-        const uint64_t dst_texture = BridgeCreateRgba(
+        // Alpha-representation conversion is an in-place bridge operation.
+        const uint64_t dst_texture = in_place ? src_texture : BridgeCreateRgba(
             kWidth, kHeight, dst.data(), kWidth * sizeof(uint32_t));
         if (src_texture == 0 || dst_texture == 0) {
             if (src_texture != 0) BridgeReleaseTexture(src_texture);
-            if (dst_texture != 0) BridgeReleaseTexture(dst_texture);
+            if (dst_texture != 0 && dst_texture != src_texture) BridgeReleaseTexture(dst_texture);
             result["ok"] = false;
             result["error"] = "failed to create debug textures";
             return result;
@@ -11842,7 +11972,7 @@ public:
                             [](uint32_t pixel) { return pixel == 0; });
         }
         BridgeReleaseTexture(src_texture);
-        BridgeReleaseTexture(dst_texture);
+        if (dst_texture != src_texture) BridgeReleaseTexture(dst_texture);
 
         int mismatches = 0;
         int first_index = -1;
@@ -11971,6 +12101,176 @@ public:
         result["first_expected"] = static_cast<int64_t>(first_expected);
         result["first_actual"] = static_cast<int64_t>(first_actual);
         return result;
+    }
+
+    Dictionary debug_gpu_convolution_self_test() {
+        Dictionary result;
+        bool okay = true;
+        for (bool vertical : {false, true}) {
+            const uint32_t width = vertical ? 1u : 4u, height = vertical ? 4u : 1u;
+            const std::array<uint32_t, 4> source{{0xff000050u, 0u, 0x80000000u, 0x000000a0u}};
+            const std::array<uint32_t, 4> expected{{0xbf00003cu, 0x60000014u, 0x40000028u, 0x20000078u}};
+            std::array<uint32_t, 9> kernel{};
+            for (size_t tap = 0; tap < 3; ++tap) {
+                const float dx = vertical ? 0.0f : float(int(tap)-1);
+                const float dy = vertical ? float(int(tap)-1) : 0.0f;
+                const float weight = tap == 1 ? 0.5f : 0.25f;
+                std::memcpy(&kernel[tap], &dx, sizeof(float));
+                std::memcpy(&kernel[3+tap], &dy, sizeof(float));
+                std::memcpy(&kernel[6+tap], &weight, sizeof(float));
+            }
+            const auto src = BridgeCreateRgba(width, height, source.data(), width*4);
+            const auto taps = BridgeCreateRgba(3, 3, kernel.data(), 12);
+            const auto dst = BridgeCreateRgba(width, height, nullptr, width*4);
+            const tTVPRect rect(0,0,width,height), kernel_rect(0,0,3,3);
+            std::array<uint32_t,4> actual{};
+            const bool valid = src && taps && dst &&
+                BridgeBlendRect2(dst,src,taps,&rect,&rect,&kernel_rect,TVP_GODOT_GPU_BLEND_CONVOLVE_RGBA,3,0) &&
+                BridgeReadRgba(dst,actual.data(),sizeof(actual),width*4);
+            const bool rejected = !BridgeBlendRect2(src,src,taps,&rect,&rect,&kernel_rect,TVP_GODOT_GPU_BLEND_CONVOLVE_RGBA,3,0) &&
+                !BridgeBlendRect2(dst,src,taps,&rect,&rect,&kernel_rect,TVP_GODOT_GPU_BLEND_CONVOLVE_RGBA,0,0) &&
+                !BridgeBlendRect2(dst,src,taps,&rect,&rect,&kernel_rect,TVP_GODOT_GPU_BLEND_CONVOLVE_RGBA,65,0);
+            okay = okay && valid && rejected && actual == expected;
+            result[vertical ? "vertical" : "horizontal"] = valid && actual == expected;
+            if(src) BridgeReleaseTexture(src);
+            if(taps) BridgeReleaseTexture(taps);
+            if(dst) BridgeReleaseTexture(dst);
+        }
+        {
+            const std::array<uint32_t,2> pixels{{0xa0785028u,0x00c87864u}}, expected{{0x903cd778u,0x406e9bc8u}};
+            const std::array<float,20> matrix{{0,0,1,0,0, -1,0,0,0,1, 0.5f,0.5f,0,0,0, 0,0,0,0.5f,0.25f}};
+            const auto src=BridgeCreateRgba(2,1,pixels.data(),8);
+            const auto coefficients=BridgeCreateRgba(5,4,matrix.data(),20);
+            const auto dst=BridgeCreateRgba(2,1,nullptr,8);
+            const tTVPRect rect(0,0,2,1), kernel(0,0,5,4), invalid(0,0,4,4);
+            std::array<uint32_t,2> actual{};
+            const bool valid=src && coefficients && dst &&
+                BridgeBlendRect2(dst,src,coefficients,&rect,&rect,&kernel,TVP_GODOT_GPU_BLEND_COLOR_MATRIX_RGBA,0,0) &&
+                BridgeReadRgba(dst,actual.data(),sizeof(actual),8) && actual==expected;
+            const bool rejected=!BridgeBlendRect2(src,src,coefficients,&rect,&rect,&kernel,TVP_GODOT_GPU_BLEND_COLOR_MATRIX_RGBA,0,0) &&
+                !BridgeBlendRect2(dst,src,coefficients,&rect,&rect,&invalid,TVP_GODOT_GPU_BLEND_COLOR_MATRIX_RGBA,0,0);
+            result["color_matrix"]=valid && rejected; okay=okay && valid && rejected;
+            if(src) BridgeReleaseTexture(src);
+            if(coefficients) BridgeReleaseTexture(coefficients);
+            if(dst) BridgeReleaseTexture(dst);
+        }
+        {
+            const std::array<uint8_t,8> pixels{{64,32,16,128,20,40,60,200}},
+                auxiliary{{8,16,24,255,40,32,16,255}},
+                expected{{34,20,14,128,20,28,34,200}};
+            const auto src=BridgeCreateRgba(2,1,pixels.data(),8);
+            const auto aux=BridgeCreateRgba(2,1,auxiliary.data(),8);
+            const auto dst=BridgeCreateRgba(2,1,nullptr,8);
+            const uint64_t inputs[]{src,aux};
+            const char *fragment=R"(
+                varying vec2 resultCoord0;
+                uniform sampler2D texture0;
+                uniform sampler2D texture1;
+                uniform vec4 parameters[8];
+                void main(){
+                    vec4 a=texture2D(texture0,resultCoord0);
+                    vec4 b=texture2D(texture1,resultCoord0);
+                    gl_FragColor=vec4(a.rgb*parameters[0].x+b.rgb*parameters[1].x,a.a);
+                })";
+            float constants[8]{0.5f,0,0,0,0.25f,0,0,0};
+            std::array<uint8_t,8> actual{};
+            const bool submitted=BridgeApplyFragment(dst,inputs,2,fragment,constants,8);
+            constants[0]=1; constants[4]=0; // Submission must own its constants.
+            const bool first=submitted && BridgeReadRgba(dst,actual.data(),actual.size(),8) && actual==expected;
+            const bool second=BridgeApplyFragment(dst,inputs,2,fragment,constants,8) &&
+                BridgeReadRgba(dst,actual.data(),actual.size(),8) && actual==pixels;
+            const bool rejected=!BridgeApplyFragment(src,inputs,2,fragment,constants,8) &&
+                !BridgeApplyFragment(dst,nullptr,1,fragment,constants,8) &&
+                !BridgeApplyFragment(dst,inputs,0,fragment,constants,8) &&
+                !BridgeApplyFragment(dst,inputs,9,fragment,constants,8) &&
+                !BridgeApplyFragment(dst,inputs,2,"",constants,8) &&
+                !BridgeApplyFragment(dst,inputs,2,fragment,nullptr,8) &&
+                !BridgeApplyFragment(dst,inputs,2,fragment,constants,33);
+            result["resident_fragment"]=first && second && rejected;
+            okay=okay && first && second && rejected;
+            if(src) BridgeReleaseTexture(src);
+            if(aux) BridgeReleaseTexture(aux);
+            if(dst) BridgeReleaseTexture(dst);
+        }
+        {
+            const std::array<uint8_t,4> source{{200,120,40,128}}, background{{60,100,120,128}};
+            const auto src=BridgeCreateRgba(1,1,source.data(),4);
+            const auto dst=BridgeCreateRgba(1,1,background.data(),4);
+            const tTVPRect clip(0,0,1,1);
+            const tTVPPointD points[6]{{0,0},{1,0},{1,1},{0,0},{1,1},{0,1}};
+            std::array<uint8_t,4> actual{};
+            bool valid=src && dst && BridgeDrawTriangles(dst,src,2,&clip,points,points,1,
+                TVP_GODOT_GPU_TRIANGLE_SCREEN_ADD_ALPHA) && BridgeReadRgba(dst,actual.data(),actual.size(),4);
+            for(size_t c=0;c<3;++c) {
+                const double d=background[c]*background[3]/255.0;
+                const double expected=d+source[c]*source[3]/255.0*(1-d/255.0);
+                valid=valid && std::abs(actual[c]-expected)<=1;
+            }
+            valid=valid && actual[3]==255;
+            const std::array<uint8_t,4> coverage{{0,0,0,255}};
+            const auto mask=BridgeCreateRgba(1,1,coverage.data(),4);
+            const auto masked=BridgeCreateRgba(1,1,background.data(),4);
+            std::array<uint8_t,4> masked_actual{};
+            valid=valid && mask && masked && BridgeDrawMaskedTriangles(masked,src,mask,2,&clip,points,points,points,1,
+                TVP_GODOT_GPU_TRIANGLE_SCREEN_ADD_ALPHA,true) &&
+                BridgeReadRgba(masked,masked_actual.data(),masked_actual.size(),4) && masked_actual==actual;
+            result["screen_add_alpha"]=valid;okay=okay && valid;
+            if(src) BridgeReleaseTexture(src);
+            if(dst) BridgeReleaseTexture(dst);
+            if(mask) BridgeReleaseTexture(mask);
+            if(masked) BridgeReleaseTexture(masked);
+        }
+        result["ok"] = okay;
+        return result;
+    }
+
+    Dictionary debug_gpu_texture_reuse_self_test() {
+        Dictionary result;
+        const uint8_t first[16] = {255,0,0,255,255,0,0,255,255,0,0,255,255,0,0,255};
+        const uint8_t second[16] = {0,0,255,255,0,0,255,255,0,0,255,255,0,0,255,255};
+        uint8_t read[16]{};
+        const auto a = BridgeCreateRgba(2,2,first,8);
+        if (!a) {result["ok"]=false;return result;}
+        RID original;
+        {std::lock_guard<std::mutex> lock(g_gpu_textures_mutex);original=g_gpu_textures.at(a).rid;}
+        BridgeReleaseTexture(a);BridgeFlush();
+        const auto b = BridgeCreateRgba(2,2,second,8);
+        bool pooled=false;
+        if(b) {std::lock_guard<std::mutex> lock(g_gpu_textures_mutex);pooled=g_gpu_textures.at(b).rid==original;}
+        const bool uploaded=b&&BridgeReadRgba(b,read,sizeof(read),8)&&std::memcmp(read,second,sizeof(read))==0;
+        if(b)BridgeReleaseTexture(b);BridgeFlush();
+        const auto c = BridgeCreateRgba(2,2,nullptr,8);
+        const uint8_t zero[16]{};
+        const bool cleared=c&&BridgeReadRgba(c,read,sizeof(read),8)&&std::memcmp(read,zero,sizeof(read))==0;
+        if(c)BridgeReleaseTexture(c);BridgeFlush();
+        result["ok"]=uploaded&&cleared;
+        result["reused_texture"]=pooled;
+        result["uploaded_pixels"]=uploaded;
+        result["cleared_pixels"]=cleared;
+        return result;
+    }
+
+    Dictionary debug_runtime_audio_speed_self_test() {
+        Dictionary result;
+        constexpr size_t slot=4;
+        AudioServer *server=AudioServer::get_singleton();
+        if(!server || runtime_audio_players_.size()<=slot || runtime_audio_players_[slot] ||
+            !runtime_audio_buses_[slot].is_empty()){result["ok"]=false;return result;}
+        server->add_bus();const int32_t bus=server->get_bus_count()-1;
+        const String name="AudioSpeedTest"+String::num_uint64(get_instance_id());server->set_bus_name(bus,name);
+        Ref<AudioEffectPanner> panner;panner.instantiate();panner->set_pan(0.25f);server->add_bus_effect(bus,panner);
+        auto *player=memnew(AudioStreamPlayer);add_child(player);player->set_bus(name);
+        runtime_audio_players_[slot]=player;runtime_audio_buses_[slot]=StringName(name);
+        bool okay=update_runtime_audio_speed(slot,0.5);
+        Ref<AudioEffectPitchShift> shift=server->get_bus_effect_count(bus)>1 ? server->get_bus_effect(bus,1) : Ref<AudioEffect>();
+        okay=okay && player->get_pitch_scale()==0.5f && shift.is_valid() && shift->get_pitch_scale()==2.0f &&
+            panner->get_pan()==0.25f && server->is_bus_effect_enabled(bus,1);
+        okay=okay && update_runtime_audio_speed(slot,1) && player->get_pitch_scale()==1 && !server->is_bus_effect_enabled(bus,1);
+        okay=okay && !update_runtime_audio_speed(slot,0) && !update_runtime_audio_speed(-1,1) &&
+            !update_runtime_audio_speed(999,1) && !update_runtime_audio_speed(slot,5);
+        result["ok"]=okay;result["panner_preserved"]=panner->get_pan()==0.25f;
+        runtime_audio_players_[slot]=nullptr;runtime_audio_buses_[slot]=StringName();
+        player->queue_free();server->remove_bus(bus);return result;
     }
 
     Dictionary debug_artemis_shader_self_test() {
@@ -12358,6 +12658,12 @@ protected:
         ClassDB::bind_method(D_METHOD("debug_gpu_blend_self_test", "mode", "opacity"),
                              &AetherRuntimePlayer::debug_gpu_blend_self_test,
                              DEFVAL(255));
+        ClassDB::bind_method(D_METHOD("debug_gpu_convolution_self_test"),
+                             &AetherRuntimePlayer::debug_gpu_convolution_self_test);
+        ClassDB::bind_method(D_METHOD("debug_runtime_audio_speed_self_test"),
+                             &AetherRuntimePlayer::debug_runtime_audio_speed_self_test);
+        ClassDB::bind_method(D_METHOD("debug_gpu_texture_reuse_self_test"),
+                             &AetherRuntimePlayer::debug_gpu_texture_reuse_self_test);
         ClassDB::bind_method(D_METHOD("debug_gpu_blend2_self_test", "mode", "opacity"),
                              &AetherRuntimePlayer::debug_gpu_blend2_self_test,
                              DEFVAL(255));
@@ -12464,6 +12770,12 @@ private:
                 }
             } else if (name == "minori_message_reveal" || name == "runtime_message_reveal") {
                 reveal_runtime_message();
+            } else if (name == "runtime_audio_speed") {
+                const PackedStringArray fields=value.split("\t");
+                if(fields.size()!=2 || !update_runtime_audio_speed(fields[0].to_int(),fields[1].to_float())) {
+                    submit_platform_response("runtime_audio","result=error&slot="+
+                        (fields.is_empty() ? String("-1") : fields[0])+"&message=invalid_audio_speed");
+                }
             } else if (name == "runtime_audio_pause") {
                 const PackedStringArray fields = value.split("\t");
                 if (fields.size() == 2) {
@@ -12888,6 +13200,26 @@ private:
         }
     }
 
+    bool update_runtime_audio_speed(int64_t slot,double speed) {
+        if(!std::isfinite(speed) || speed<0.25 || speed>4 || slot<0 ||
+            slot>=static_cast<int64_t>(runtime_audio_players_.size()) || !runtime_audio_players_[slot])return false;
+        AudioServer *server=AudioServer::get_singleton();if(!server)return false;
+        const int32_t bus=server->get_bus_index(runtime_audio_buses_[slot]);if(bus<0)return false;
+        Ref<AudioEffectPitchShift> shift;
+        if(server->get_bus_effect_count(bus)>1)shift=server->get_bus_effect(bus,1);
+        if(speed!=1 && shift.is_null()) {
+            shift.instantiate();server->add_bus_effect(bus,shift);
+        }
+        // Playback-rate changes stretch time. Compensate their pitch change
+        // on this isolated channel, preserving the existing panner and gain.
+        if(shift.is_valid()) {
+            shift->set_pitch_scale(static_cast<float>(1/speed));
+            server->set_bus_effect_enabled(bus,1,speed!=1);
+        }
+        runtime_audio_players_[slot]->set_pitch_scale(static_cast<float>(speed));
+        return true;
+    }
+
     bool update_runtime_audio(const PackedStringArray &fields, bool gain_only = false, bool multi_slot_audio = false) {
         if (fields.size() != 8) return false;
         const int32_t slot = fields[0].to_int();
@@ -12974,6 +13306,7 @@ private:
             add_child(player);
             player->set_bus(runtime_audio_buses_[slot]);
         }
+        update_runtime_audio_speed(slot,1);
         player->stop();
         if (fields[1].is_empty()) return true;
         Ref<AudioStream> stream;
@@ -13604,6 +13937,9 @@ void DeinitializeAetherRuntime(ModuleInitializationLevel level) {
     engine_register_godot_gpu_batch_bridge(nullptr);
     engine_register_godot_gpu_external_texture_bridge(nullptr);
     engine_register_godot_gpu_bridge(nullptr);
+#if defined(AETHERKIRI_INTERNAL_RUNTIME_GPU_BRIDGE)
+    RegisterAetherInternalRuntimeGpuBridge(nullptr, nullptr, nullptr);
+#endif
 #if defined(AETHERKIRI_WITH_RFVP)
     aetherkiri::rfvp::RegisterGpuBridge(nullptr, nullptr);
 #endif

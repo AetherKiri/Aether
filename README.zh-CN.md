@@ -65,7 +65,7 @@ Godot App Shell
 - 提供 smoke、渲染、交互、性能与手动复现 probe 脚本。
 - 已验证游戏清单见 [`doc/verified_games.zh-CN.md`](doc/verified_games.zh-CN.md)。
 
-iOS 和 macOS 的 Release 分发构建中，Minori 与 WHITE ALBUM2
+iOS 和 macOS 的 Release 分发构建中，ADV Player HD、Minori 与 WHITE ALBUM2
 （Leaf TtT / WA2）运行时需要有效的 30 天咖啡权益。ONScripterYuri、Artemis、
 CatSystem2 和 SoftPal 已普遍开放。Debug 构建及 Android/Linux 发布构建不执行该咖啡限制。
 

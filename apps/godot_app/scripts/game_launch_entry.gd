@@ -3,6 +3,7 @@ extends RefCounted
 const FIELD := "launchFile"
 const SUPPORTED_EXTENSIONS := ["exe", "xp3", "hcb"]
 const DIRECTORY_RUNTIME_KINDS := [
+    "advhd",
     "renpy",
     "artemis",
     "bgi",

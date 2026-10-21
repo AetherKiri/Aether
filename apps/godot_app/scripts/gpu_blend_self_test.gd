@@ -37,5 +37,10 @@ func _initialize() -> void:
             if not bool(result.get("ok", false)):
                 failed = true
 
+    var convolution: Dictionary = player.debug_gpu_convolution_self_test()
+    print("gpu convolution self-test result=%s" % JSON.stringify(convolution))
+    if not bool(convolution.get("ok", false)):
+        failed = true
+
     player.queue_free()
     quit(1 if failed else 0)

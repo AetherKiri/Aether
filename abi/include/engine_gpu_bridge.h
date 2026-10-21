@@ -255,6 +255,20 @@ struct TVPGodotGpuBatchCallbacks {
 
 constexpr uint32_t TVP_GODOT_GPU_BATCH_CALLBACKS_ABI_VERSION = 1;
 
+// Optional GPU-resident fragment filters. Inputs and output are bridge texture
+// handles; output must not alias an input. The fragment uses the same portable
+// GLSL subset as the host fragment renderer: texture0..texture7, resultCoord0,
+// and parameters[8] (vec4). Constants are copied before this call returns.
+// Keep this separate from the original, unversioned callback table.
+struct TVPGodotGpuFilterCallbacks {
+    uint32_t struct_size;
+    uint32_t abi_version;
+    bool (*apply_fragment)(uint64_t dst, const uint64_t *sources,
+                           uint32_t source_count, const char *fragment_utf8,
+                           const float *constants, uint32_t constant_count);
+};
+constexpr uint32_t TVP_GODOT_GPU_FILTER_CALLBACKS_ABI_VERSION = 1;
+
 // Optional cross-API texture import used by native runtimes which render in
 // their own graphics context. Keep this separate from the original callback
 // table: the latter predates size/version fields and cannot be extended
@@ -334,6 +348,17 @@ enum TVPGodotGpuBlendMode : uint32_t {
     // Blend source RGB into destination RGB with a constant opacity while
     // preserving the destination alpha channel.
     TVP_GODOT_GPU_BLEND_CONST_ALPHA = 31,
+    // blend_rect2: src1 is the image; src2_rect identifies a tap_count x 3
+    // kernel. Each RGBA8 texel stores a little-endian IEEE float bit pattern:
+    // rows 0/1 contain integer x/y offsets, row 2 contains weights. opacity
+    // is the tap count (1..64). Samples clamp to src1's texture edges; all
+    // four channels are filtered independently. dst must not alias a source.
+    TVP_GODOT_GPU_BLEND_CONVOLVE_RGBA = 32,
+    // blend_rect2: transform normalized src1 RGBA with a 5 x 4 matrix in
+    // src2_rect, encoded as little-endian IEEE float bits per RGBA8 texel.
+    // Each row supplies four channel coefficients and a constant bias.
+    // Clamp the result to [0,1]. opacity must be 0; sources cannot alias dst.
+    TVP_GODOT_GPU_BLEND_COLOR_MATRIX_RGBA = 33,
     // draw_triangles is shared by Cubism (whose low bits describe Cubism
     // colour/alpha modes) and KiriKiri (whose low bits are the modes above).
     // Tag the latter so AlphaBlend/AlphaBlend_d are not mistaken for Cubism
@@ -350,6 +375,9 @@ enum TVPGodotGpuBlendMode : uint32_t {
 // bridge shader can preserve both interpretations without an ABI expansion.
 constexpr uint32_t TVP_GODOT_GPU_TRIANGLE_TVP_BLEND =
     TVP_GODOT_GPU_BLEND_TVP_OPERATION;
+// Screen RGB with saturated additive alpha, in premultiplied color space.
+// This extends the generic triangle modes beyond Cubism's color modes 0..15.
+constexpr uint32_t TVP_GODOT_GPU_TRIANGLE_SCREEN_ADD_ALPHA = 16;
 // The source stores premultiplied RGB (native E-mote/OpenGL output). The
 // triangle sampler must not multiply RGB by alpha a second time.
 constexpr uint32_t TVP_GODOT_GPU_TRIANGLE_SOURCE_PREMULTIPLIED = 0x20000000u;

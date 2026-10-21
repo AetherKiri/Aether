@@ -76,7 +76,7 @@ and **Debug CPU** is a diagnostic fallback only.
 - Manual compatibility notes for tested titles in
   [`doc/verified_games.md`](doc/verified_games.md).
 
-In iOS and macOS Release distribution builds, Minori and the
+In iOS and macOS Release distribution builds, ADV Player HD, Minori, and the
 WHITE ALBUM2 (Leaf TtT / WA2) runtime require an active 30-day coffee
 entitlement. ONScripterYuri, Artemis, CatSystem2, and SoftPal are generally available.
 Debug builds and Android/Linux releases do not enforce this coffee requirement.

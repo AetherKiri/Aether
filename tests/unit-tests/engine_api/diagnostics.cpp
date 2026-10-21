@@ -86,6 +86,7 @@ struct FakeRuntime {
 };
 
 std::atomic<bool> startup_entered{false}, startup_released{false};
+std::atomic<int> startup_tick_entries{0};
 engine_result_t HostDependentOpen(void* runtime, const char*, const char*) {
   auto* fake = static_cast<FakeRuntime*>(runtime);
   fake->host.platform_request(fake->host.user_data, "startup_ready", "ready");
@@ -341,13 +342,17 @@ TEST_CASE("provider startup lets the host poll while excluding concurrent runtim
     auto value = kFakeProvider;
     value.runtime_id_utf8 = "host-dependent-startup";
     value.open_game = HostDependentOpen;
+    value.tick = [](void*, uint32_t) -> engine_result_t {
+      ++startup_tick_entries;
+      return ENGINE_RESULT_OK;
+    };
     return value;
   }();
   REQUIRE(engine_register_runtime_provider(&provider) == ENGINE_RESULT_OK);
   Handle handle;
   engine_option_t option{"runtime", "host-dependent-startup"};
   REQUIRE(engine_set_option(handle.value, &option) == ENGINE_RESULT_OK);
-  startup_entered.store(false);startup_released.store(false);
+  startup_entered.store(false);startup_released.store(false);startup_tick_entries.store(0);
   REQUIRE(engine_open_game_async(handle.value, ".artemis-test", nullptr) == ENGINE_RESULT_OK);
   const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(2);
   while (!startup_entered.load() && std::chrono::steady_clock::now() < deadline)
@@ -365,6 +370,7 @@ TEST_CASE("provider startup lets the host poll while excluding concurrent runtim
   CHECK(available==1);CHECK(std::string(operation)=="startup_ready");
   CHECK(engine_drain_startup_logs(handle.value,logs,sizeof(logs),&written)==ENGINE_RESULT_OK);
   CHECK(engine_tick(handle.value,16)==ENGINE_RESULT_INVALID_STATE);
+  CHECK(startup_tick_entries.load()==0);
   option={"test_option","value"};
   CHECK(engine_set_option(handle.value,&option)==ENGINE_RESULT_INVALID_STATE);
   CHECK(engine_set_surface_size(handle.value,64,32)==ENGINE_RESULT_INVALID_STATE);
@@ -376,6 +382,7 @@ TEST_CASE("provider startup lets the host poll while excluding concurrent runtim
   }
   REQUIRE(state==ENGINE_STARTUP_STATE_SUCCEEDED);
   CHECK(engine_tick(handle.value,16)==ENGINE_RESULT_OK);
+  CHECK(startup_tick_entries.load()==1);
 }
 
 TEST_CASE("primary click queue gate bounds rapid primary gestures") {

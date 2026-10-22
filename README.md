@@ -61,7 +61,8 @@ and **Debug CPU** is a diagnostic fallback only.
 - Native ADV Player HD (AdvHD / WillPlus) support through the optional private
   package, with story playback, save/load, backlog, settings, EXTRA, CG viewing
   and scene replay for supported games. Available as a coffee beta in iOS/macOS
-  Release builds.
+  Release builds. Saves and settings live in the game's `savedata/` directory;
+  existing Aether saves are imported automatically on first launch.
 - Export presets for macOS, iOS/iPadOS, Android, Web, and Linux.
 - A separate Flash library powered by native Ruffle, with sound, keyboard,
   mouse, touch, and the visual-novel virtual controls.

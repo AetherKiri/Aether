@@ -57,6 +57,7 @@ Godot App Shell
 - 通过可选私包原生支持 ADV Player HD（AdvHD / WillPlus），为兼容游戏提供
   剧情推进、存读档、历史记录、设置、EXTRA、CG 鉴赏与场景回想。
   iOS/macOS Release 构建中以咖啡内测方式开放。
+  存档与设置保存在游戏目录下的 `savedata/`，首次启动自动迁移已有的 Aether 存档。
 - 覆盖 macOS、iOS/iPadOS、Android、Web 与 Linux 的导出配置。
 - 独立的 Flash 分类，使用原生 Ruffle 播放，支持声音、键鼠、触摸以及视觉小说的虚拟按钮。
 - 通过内置 xsystem4 原生运行 AliceSoft System 4 游戏，支持目录导入、中日文字体、音频、视频和可选虚拟按键。参见[原生宿主与验证范围](bridge/xsystem4_runtime/README.md)。

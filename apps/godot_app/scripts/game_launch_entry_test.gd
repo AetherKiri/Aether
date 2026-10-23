@@ -43,6 +43,11 @@ func _init() -> void:
 
     _expect_equal(GameLaunchEntry.resolve({"path": root}), root, "default directory entry")
     _expect_equal(
+        GameLaunchEntry.resolve_for_runtime({"path": root, GameLaunchEntry.FIELD: "AdvHD.exe"}, "advhd"),
+        root,
+        "AdvHD provider receives the game directory"
+    )
+    _expect_equal(
         GameLaunchEntry.resolve({"path": root, GameLaunchEntry.FIELD: "Script.HCB"}),
         root.path_join("Script.HCB"),
         "FVP script launch path"
@@ -80,6 +85,14 @@ func _init() -> void:
         ),
         root,
         "SoftPal directory launch path"
+    )
+    _expect_equal(
+        GameLaunchEntry.resolve_for_runtime(
+            {"path": root, GameLaunchEntry.FIELD: "开始游戏.exe"},
+            "mages"
+        ),
+        root,
+        "MAGES directory launch path"
     )
     _expect_equal(
         GameLaunchEntry.resolve_for_runtime(

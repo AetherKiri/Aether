@@ -52,6 +52,7 @@ latest_log_path.txt
 
 apps/godot_app/.godot/
 apps/godot_app/.godot
+apps/godot_app/mages_runtime/
 plugin_trace.log
 __pycache__/
 *.pyc
@@ -60,3 +61,4 @@ __pycache__/
 apps/godot_app/android/
 build-linux/
 .aetherkiri-cache
+build2/

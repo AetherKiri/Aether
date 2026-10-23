@@ -393,7 +393,8 @@ combine_ios_static_extension() {
         libs+=("$lib")
     done < <(find "$vcpkg_lib_dir" -maxdepth 1 -name 'lib*.a' \
         ! -name 'libgodot-cpp*.a' \
-        ! -name 'libSDL2main.a' | sort)
+        ! -name 'libSDL2main.a' \
+        ! -name 'libSDL3.a' | sort)
 
     # Some vcpkg ports (e.g. tiff on iOS) install static libraries as
     # <name>.framework bundles instead of lib<name>.a. Merge their archive
@@ -410,6 +411,30 @@ combine_ios_static_extension() {
             echo "warning: skipping non-static framework: $framework" >&2
         fi
     done < <(find "$vcpkg_lib_dir" -maxdepth 1 -name '*.framework' | sort)
+
+    # Embedded MAGES uses Godot's platform services and has no SDL3 runtime.
+    # libSDL3.a stays excluded from the dependency sweep above.
+    local mages_impacto_dir="$CMAKE_BUILD_DIR/aethermages-impacto"
+    if [[ -f "$CMAKE_BUILD_DIR/bridge/mages_runtime/libaether_mages_runtime.a" &&
+          ! -f "$mages_impacto_dir/libimpacto.a" ]]; then
+        echo "Error: MAGES provider was built but its libimpacto.a engine archive is missing." >&2
+        exit 1
+    fi
+    if [[ -f "$mages_impacto_dir/libimpacto.a" ]]; then
+        libs+=(
+            "$mages_impacto_dir/libimpacto.a"
+            "$CMAKE_BUILD_DIR/bridge/mages_runtime/libaether_mages_runtime.a"
+            "$mages_impacto_dir/libclHCA.a"
+            "$mages_impacto_dir/libminilua.a"
+            "$mages_impacto_dir/libpcg.a"
+            "$mages_impacto_dir/libsquish.a"
+            "$mages_impacto_dir/libmspack.a"
+        )
+        local atrac9_lib="$CMAKE_BUILD_DIR/_deps/libatrac9-build/libatrac9.a"
+        if [[ -f "$atrac9_lib" ]]; then
+            libs+=("$atrac9_lib")
+        fi
+    fi
 
     local existing_libs=()
     local lib

@@ -15,13 +15,17 @@ class CoffeePlayer:
 class RuntimeAccessApp:
     extends "res://scripts/main.gd"
 
+    var runtime_kind := RUNTIME_SOFTPAL
+    var uses_wa2 := false
     var enforce_beta_access := true
-    var runtime_kind := "softpal"
     var launched := false
     var denied := false
 
     func _game_runtime_kind(_path: String) -> String:
         return runtime_kind
+
+    func _selected_game_uses_wa2() -> bool:
+        return uses_wa2
 
     func _beta_access_enforcement_enabled(_platform_name: String = "") -> bool:
         return enforce_beta_access
@@ -91,8 +95,9 @@ func _initialize() -> void:
     _expect(not app.modal_layer.visible)
     _expect(not app._runtime_requires_beta_access(app.RUNTIME_ONSCRIPTER))
     _expect(app._runtime_requires_beta_access(app.RUNTIME_MINORI))
-    _expect(app._runtime_requires_beta_access(app.RUNTIME_SOFTPAL))
+    _expect(app._runtime_requires_beta_access(app.RUNTIME_ADVHD))
     _expect(app._runtime_requires_beta_access(app.RUNTIME_YURIS))
+    _expect(not app._runtime_requires_beta_access(app.RUNTIME_SOFTPAL))
     _expect(not app._runtime_requires_beta_access(app.RUNTIME_KIRIKIRI))
     # CatSystem2 is a released runtime and must not enter the coffee-only
     # entitlement path.  WA2 remains the explicitly provider-gated runtime.
@@ -134,20 +139,22 @@ func _initialize() -> void:
     quit(1 if failures else 0)
 
 func _check_runtime_launch_access() -> void:
-    # Exercise the launch/entitlement round trip without StoreKit or a game.
-    # The platform matrix above verifies which builds enforce this flow.
-    for runtime_kind in ["softpal", "yuris"]:
+    # Force the Apple Release policy even when running with the debug editor.
+    # SoftPal launches immediately without a coffee transaction; Minori and
+    # WA2, ADV Player HD and YU-RIS perform their entitlement round trip.
+    for runtime_kind in ["softpal", "minori", "kirikiri", "advhd", "yuris"]:
         for enforce in [true, false]:
             for entitled in [true, false]:
                 var app = RuntimeAccessApp.new()
                 var coffee_player = CoffeePlayer.new()
                 app.player = coffee_player
                 app.runtime_kind = runtime_kind
-                app.selected_game = {"path": "/games/" + runtime_kind}
+                app.uses_wa2 = runtime_kind == "kirikiri"
+                app.selected_game = {"path": "/games/runtime-access"}
                 app.enforce_beta_access = enforce
                 app.iap_coffee_state = {"entitled": entitled}
                 app._start_selected_game_after_iap()
-                if enforce:
+                if enforce and runtime_kind != "softpal":
                     _expect(coffee_player.requested_products == ["com.aether.coffee"])
                     _expect(not app.launched)
                     _expect(app.iap_pending_beta_check_id > 0)
@@ -157,12 +164,23 @@ func _check_runtime_launch_access() -> void:
                     _expect(app.denied == (not entitled))
                     _expect(app.iap_pending_beta_game.is_empty())
                 else:
-                    # Debug, Android and Linux launches bypass coffee gating.
                     _expect(coffee_player.requested_products.is_empty())
                     _expect(app.launched)
                     _expect(not app.denied)
-                _expect(app.iap_pending_beta_check_id == 0)
-                _expect(app.iap_pending_beta_game.is_empty())
+                    _expect(app.iap_pending_beta_check_id == 0)
+                    _expect(app.iap_pending_beta_game.is_empty())
                 app.player = null
                 app.ui_motion.free()
                 app.free()
+
+    # A missing StoreKit bridge must not block a released runtime either.
+    var app = RuntimeAccessApp.new()
+    app.player = RefCounted.new()
+    app.selected_game = {"path": "/games/softpal"}
+    app._start_selected_game_after_iap()
+    _expect(app.launched)
+    _expect(not app.denied)
+    _expect(app.iap_pending_beta_game.is_empty())
+    app.player = null
+    app.ui_motion.free()
+    app.free()

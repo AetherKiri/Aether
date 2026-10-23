@@ -10,6 +10,14 @@ const HOST_GPU_TRIANGLE_TVP_BLEND: u32 = 0x0001_0000;
 const HOST_GPU_TRIANGLE_SOURCE_NEAREST: u32 = 0x1000_0000;
 const HOST_GPU_TRIANGLE_SOURCE_STRAIGHT_LINEAR: u32 = 0x0400_0000;
 
+// Previous-frame images must never alias an authored graph slot (including
+// movie/text graphs). Keep both sources in explicitly separate cache namespaces.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+enum HostGpuTextureKey {
+    Graph(u16),
+    PrevFrame,
+}
+
 #[derive(Debug)]
 struct HostGpuTexture {
     handle: u64,
@@ -42,9 +50,10 @@ struct HostGpuRenderer {
     // A retained target can belong to an older frame while a mask dissolve is
     // rendered on the CPU. Only expose/read it when it owns the latest frame.
     frame_ready: bool,
+    frame_generation: u64,
     failed: bool,
     pending: Option<HostGpuDrawBatch>,
-    graph_cache: std::collections::HashMap<u16, HostGpuTexture>,
+    texture_cache: std::collections::HashMap<HostGpuTextureKey, HostGpuTexture>,
     color_cache: std::collections::HashMap<u32, u64>,
 }
 
@@ -61,9 +70,10 @@ impl HostGpuRenderer {
             batch_token: 0,
             frame_active: false,
             frame_ready: false,
+            frame_generation: 0,
             failed: false,
             pending: None,
-            graph_cache: std::collections::HashMap::new(),
+            texture_cache: std::collections::HashMap::new(),
             color_cache: std::collections::HashMap::new(),
         }
     }
@@ -73,6 +83,7 @@ impl HostGpuRenderer {
             return false;
         }
         self.frame_ready = false;
+        self.frame_generation = self.frame_generation.wrapping_add(1);
         if self.target == 0 {
             self.target = unsafe {
                 self.callbacks.create_rgba.unwrap()(
@@ -205,50 +216,48 @@ impl HostGpuRenderer {
         batch.src.extend_from_slice(src);
     }
 
-    fn prune_graphs(&mut self, graphs: &[GraphBuff]) {
-        let stale: Vec<u16> = self
-            .graph_cache
+    fn prune_graphs(&mut self, graphs: &[GraphBuff], has_prev_frame: bool) {
+        let stale: Vec<HostGpuTextureKey> = self
+            .texture_cache
             .keys()
             .copied()
-            .filter(|graph_id| {
-                graphs
+            .filter(|key| match key {
+                HostGpuTextureKey::Graph(graph_id) => graphs
                     .get(*graph_id as usize)
-                    .is_none_or(|graph| !graph.get_texture_ready() || graph.get_texture().is_none())
+                    .is_none_or(|graph| !graph.get_texture_ready() || graph.get_texture().is_none()),
+                HostGpuTextureKey::PrevFrame => !has_prev_frame,
             })
             .collect();
         for id in stale {
-            if let Some(texture) = self.graph_cache.remove(&id) {
+            if let Some(texture) = self.texture_cache.remove(&id) {
                 self.release(texture.handle);
             }
         }
     }
 
-    fn graph_texture(
+    fn image_texture(
         &mut self,
-        graph_id: u16,
-        graph: &GraphBuff,
+        key: HostGpuTextureKey,
+        generation: u64,
         image: &DynamicImage,
         color: Vec4,
-    ) -> Option<(u64, u32, u32, bool)> {
+    ) -> Option<(u64, u32, u32)> {
         let (width, height) = image.dimensions();
         if width == 0 || height == 0 {
             return None;
         }
-        let generation = graph.get_generation();
         let tint = [
             (color.x.clamp(0.0, 1.0) * 255.0).round() as u8,
             (color.y.clamp(0.0, 1.0) * 255.0).round() as u8,
             (color.z.clamp(0.0, 1.0) * 255.0).round() as u8,
         ];
-        if let Some(entry) = self.graph_cache.get(&graph_id) {
+        if let Some(entry) = self.texture_cache.get(&key) {
             if entry.generation == generation
                 && entry.width == width
                 && entry.height == height
                 && entry.tint == tint
             {
-                let nearest = (4064..=4095).contains(&graph_id)
-                    || graph.load_kind == GraphBuffLoadKind::GaijiGlyph;
-                return Some((entry.handle, width, height, nearest));
+                return Some((entry.handle, width, height));
             }
             // The queued draw stores this texture handle, so submit it before
             // changing the pixels for a new graph generation or tint.
@@ -277,7 +286,7 @@ impl HostGpuRenderer {
             right: width as i32,
             bottom: height as i32,
         };
-        let handle = if let Some(entry) = self.graph_cache.get_mut(&graph_id) {
+        let handle = if let Some(entry) = self.texture_cache.get_mut(&key) {
             if entry.width == width
                 && entry.height == height
                 && unsafe {
@@ -329,8 +338,8 @@ impl HostGpuRenderer {
                 self.failed = true;
                 return None;
             }
-            self.graph_cache.insert(
-                graph_id,
+            self.texture_cache.insert(
+                key,
                 HostGpuTexture {
                     handle,
                     generation,
@@ -341,9 +350,7 @@ impl HostGpuRenderer {
             );
             handle
         };
-        let nearest =
-            (4064..=4095).contains(&graph_id) || graph.load_kind == GraphBuffLoadKind::GaijiGlyph;
-        Some((handle, width, height, nearest))
+        Some((handle, width, height))
     }
 
     fn color_texture(&mut self, color: Vec4) -> Option<u64> {
@@ -382,10 +389,31 @@ impl HostGpuRenderer {
                 graph,
                 image,
             } => {
-                let Some(value) = self.graph_texture(graph_id, graph, image, color) else {
+                let Some((handle, width, height)) = self.image_texture(
+                    HostGpuTextureKey::Graph(graph_id),
+                    graph.get_generation(),
+                    image,
+                    color,
+                ) else {
                     return true;
                 };
-                value
+                let nearest = (4064..=4095).contains(&graph_id)
+                    || graph.load_kind == GraphBuffLoadKind::GaijiGlyph;
+                (handle, width, height, nearest)
+            }
+            TextureRef::PrevFrame(image) => {
+                // Every GPU frame receives a fresh immutable CPU snapshot.
+                // Reuse its upload for multiple sprites, but refresh it next
+                // frame even when the image dimensions and tint are unchanged.
+                let Some((handle, width, height)) = self.image_texture(
+                    HostGpuTextureKey::PrevFrame,
+                    self.frame_generation,
+                    image,
+                    color,
+                ) else {
+                    return true;
+                };
+                (handle, width, height, true)
             }
             TextureRef::White => {
                 let Some(handle) = self.color_texture(color) else {
@@ -493,7 +521,7 @@ impl Drop for HostGpuRenderer {
         if self.frame_active {
             self.end_frame();
         }
-        for texture in self.graph_cache.values() {
+        for texture in self.texture_cache.values() {
             self.release(texture.handle);
         }
         for handle in self.color_cache.values() {
@@ -521,7 +549,7 @@ impl SoftRenderer {
             return true;
         }
         log::warn!(
-            "rfvp GPU snapshot readback failed; skipping mask snapshot and reverting to CPU renderer"
+            "rfvp GPU snapshot readback failed; skipping frame snapshots and reverting to CPU renderer"
         );
         self.host_gpu.take();
         false
@@ -578,7 +606,7 @@ impl SoftRenderer {
 
     fn prune_host_gpu_graphs(&mut self, graphs: &[GraphBuff]) {
         if let Some(renderer) = self.host_gpu.as_mut() {
-            renderer.prune_graphs(graphs);
+            renderer.prune_graphs(graphs, self.prev_frame.is_some());
         }
     }
 
@@ -686,6 +714,8 @@ mod host_renderer_tests {
     #[derive(Debug, Default)]
     struct FakeGpuState {
         creates: Vec<(u32, u32, bool, [u8; 4])>,
+        updates: Vec<(u64, [u8; 4])>,
+        frame_events: Vec<&'static str>,
         releases: Vec<u64>,
         clears: Vec<(u64, u32, HostGpuRect)>,
         draws: Vec<(u64, u64, u32, HostGpuRect, f32, u32)>,
@@ -730,20 +760,19 @@ mod host_renderer_tests {
     }
 
     unsafe extern "C" fn fake_update(
-        _texture: u64,
-        _pixels: *const c_void,
+        texture: u64,
+        pixels: *const c_void,
         _stride: u32,
         _rect: *const HostGpuRect,
     ) -> bool {
+        fake_gpu().lock().unwrap().updates.push((texture, *pixels.cast::<[u8; 4]>()));
         true
     }
 
     unsafe extern "C" fn fake_clear(texture: u64, rgba: u32, rect: *const HostGpuRect) -> bool {
-        fake_gpu()
-            .lock()
-            .unwrap()
-            .clears
-            .push((texture, rgba, *rect));
+        let mut state = fake_gpu().lock().unwrap();
+        state.clears.push((texture, rgba, *rect));
+        state.frame_events.push("clear");
         true
     }
 
@@ -775,6 +804,7 @@ mod host_renderer_tests {
     ) -> bool {
         let mut state = fake_gpu().lock().unwrap();
         state.reads.push((texture, size, stride));
+        state.frame_events.push("read");
         if state.fail_read {
             return false;
         }
@@ -967,6 +997,122 @@ mod host_renderer_tests {
     }
 
     #[test]
+    fn host_gpu_prev_frame_snapshots_refresh_across_gpu_and_cpu_frames() {
+        let _guard = fake_gpu_test_lock();
+        for format in [PixelFormat::Rgba8, PixelFormat::Bgra8] {
+            *fake_gpu().lock().unwrap() = FakeGpuState {
+                read_pixel: Some([40, 80, 120, 255]),
+                ..Default::default()
+            };
+            let mut renderer = SoftRenderer::new(4, 4, format).unwrap();
+            renderer.install_host_gpu(fake_callbacks());
+            let mut motion = MotionManager::new();
+            {
+                let mut prim = motion.prim_manager().get_prim(0);
+                prim.set_type(PrimType::PrimTypeSprt);
+                prim.set_texture_id(-1);
+                prim.set_draw_flag(true);
+                prim.set_alpha(255);
+            }
+            // Match upstream: the first visible -1 sprite requests next frame's
+            // snapshot but has no previous-frame image to draw yet.
+            renderer.render_motion(&motion).unwrap();
+            assert!(renderer.wants_prev_frame);
+            assert!(renderer.prev_frame.is_none());
+            assert!(fake_gpu().lock().unwrap().reads.is_empty());
+            let target = renderer.host_gpu_texture().unwrap();
+            renderer.render_motion(&motion).unwrap();
+            assert_eq!(renderer.prev_frame.as_ref().unwrap().get_pixel(0, 0).0, [40, 80, 120, 255]);
+            {
+                let state = fake_gpu().lock().unwrap();
+                assert_eq!(state.frame_events, vec!["clear", "read", "clear"]);
+                assert_eq!(state.creates[1], (4, 4, true, [40, 80, 120, 255]));
+                assert_eq!(state.draws[0].1, 101);
+                assert_ne!(state.draws[0].0, state.draws[0].1);
+                assert_eq!(state.draws[0].5, 0x1001_0002);
+            }
+            fake_gpu().lock().unwrap().read_pixel = Some([80, 40, 200, 255]);
+            renderer.render_motion(&motion).unwrap();
+            assert_eq!(fake_gpu().lock().unwrap().updates, vec![(101, [80, 40, 200, 255])]);
+
+            // Both snapshot consumers share one read before a mask forces CPU
+            // rendering; subsequent CPU frames must not read the old target.
+            let mut mask = GraphBuff::new();
+            mask.load_from_buff([0, 0, 0, 128].repeat(4 * 4), 4, 4).unwrap();
+            motion.set_dissolve_mask_graph(mask);
+            motion.start_dissolve(100, DissolveType::MaskFadeIn);
+            fake_gpu().lock().unwrap().read_pixel = Some([12, 34, 56, 255]);
+            renderer.render_motion(&motion).unwrap();
+            assert_eq!(renderer.host_gpu_texture(), None);
+            assert_eq!(fake_gpu().lock().unwrap().reads.len(), 3);
+            let expected = match format {
+                PixelFormat::Rgba8 => [12, 34, 56, 255],
+                PixelFormat::Bgra8 => [56, 34, 12, 255],
+            };
+            for pixel in renderer.framebuffer.pixels().chunks_exact(4) {
+                assert_eq!(pixel, &expected);
+            }
+            motion.tick_dissolve(75);
+            renderer.render_motion(&motion).unwrap();
+            assert!(renderer.sync_host_gpu_framebuffer());
+            assert_eq!(fake_gpu().lock().unwrap().reads.len(), 3);
+            assert_eq!(renderer.prev_frame.as_ref().unwrap().get_pixel(0, 0).0, [12, 34, 56, 255]);
+            motion.tick_dissolve(25);
+            renderer.render_motion(&motion).unwrap();
+            assert_eq!(renderer.host_gpu_texture(), Some(target));
+            let state = fake_gpu().lock().unwrap();
+            assert_eq!(state.reads.len(), 3);
+            assert_eq!(state.updates.last(), Some(&(101, [12, 34, 56, 255])));
+            assert_eq!(state.creates.len(), 2);
+            assert_eq!(state.begins, 4);
+            assert_eq!(state.ends.len(), 4);
+        }
+    }
+
+    #[test]
+    fn host_gpu_prev_frame_cache_is_separate_from_graph_slots() {
+        let _guard = fake_gpu_test_lock();
+        *fake_gpu().lock().unwrap() = FakeGpuState::default();
+        let mut renderer = SoftRenderer::new(4, 4, PixelFormat::Rgba8).unwrap();
+        renderer.install_host_gpu(fake_callbacks());
+        assert!(renderer.begin_host_gpu_frame());
+        let graph = GraphBuff::new();
+        let graph_image = DynamicImage::ImageRgba8(image::RgbaImage::from_pixel(
+            2, 2, image::Rgba([10, 20, 30, 255]),
+        ));
+        let previous_image = DynamicImage::ImageRgba8(image::RgbaImage::from_pixel(
+            2, 2, image::Rgba([90, 80, 70, 255]),
+        ));
+        for texture in [
+            TextureRef::Graph { graph_id: 4095, graph: &graph, image: &graph_image },
+            TextureRef::PrevFrame(&previous_image),
+            TextureRef::PrevFrame(&previous_image),
+        ] {
+            renderer.draw_textured_quad(
+                Mat4::IDENTITY, 4.0, 4.0, Vec2::ZERO, Vec2::ONE, Vec4::ONE, texture,
+            ).unwrap();
+        }
+        renderer.finish_host_gpu_frame();
+        renderer.prev_frame = Some(previous_image);
+        renderer.prune_host_gpu_graphs(&[]);
+        let gpu = renderer.host_gpu.as_ref().unwrap();
+        assert_eq!(gpu.texture_cache.len(), 1);
+        assert!(gpu.texture_cache.contains_key(&HostGpuTextureKey::PrevFrame));
+        let state = fake_gpu().lock().unwrap();
+        assert_eq!(state.creates.len(), 3);
+        assert!(state.updates.is_empty());
+        assert_eq!(state.draws.iter().map(|draw| draw.1).collect::<Vec<_>>(), vec![101, 102, 102]);
+        assert_eq!(state.draws[0].5, 0x1001_0002);
+        assert_eq!(state.draws[1].5, 0x1001_0002);
+        assert_eq!(state.releases, vec![101]);
+        drop(state);
+        renderer.prev_frame = None;
+        renderer.prune_host_gpu_graphs(&[]);
+        assert!(renderer.host_gpu.as_ref().unwrap().texture_cache.is_empty());
+        assert_eq!(fake_gpu().lock().unwrap().releases, vec![101, 102]);
+    }
+
+    #[test]
     fn host_gpu_failed_snapshot_does_not_capture_stale_cpu_pixels() {
         let _guard = fake_gpu_test_lock();
         *fake_gpu().lock().unwrap() = FakeGpuState::default();
@@ -979,10 +1125,13 @@ mod host_renderer_tests {
         renderer.render_motion(&motion).unwrap();
         renderer.framebuffer.clear_rgba(200, 100, 50, 255);
         fake_gpu().lock().unwrap().fail_read = true;
+        renderer.wants_prev_frame = true;
         motion.start_dissolve(100, DissolveType::MaskFadeInOut);
         renderer.render_motion(&motion).unwrap();
         assert!(renderer.host_gpu.is_none());
         assert!(renderer.mask_frame.image.is_none());
+        assert!(renderer.prev_frame.is_none());
+        assert_eq!(fake_gpu().lock().unwrap().reads.len(), 1);
         assert_eq!(renderer.host_gpu_texture(), None);
         for pixel in renderer.framebuffer.pixels().chunks_exact(4) {
             assert_eq!(pixel, &[0, 0, 0, 255]);

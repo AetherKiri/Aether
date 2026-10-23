@@ -178,6 +178,24 @@ func _check_player_paths(base: String) -> void:
     _expect(app._ensure_player_initialized(), "Initialize isolated JSON probe")
     _expect(player.opens.back().user == probe_user and player.opens.back().cache == probe_user.path_join("cache"), "Honor explicit probe storage")
     _expect(not DirAccess.dir_exists_absolute(probe_game.path_join("savedata")), "Probe does not create real game saves")
+    # The regression probe has a stricter sandbox contract than step probes.
+    # Keep both engine directories inside it, even if user_dir is also set.
+    var regression_relative := "user://regressions/yuris-storage-%d" % Time.get_ticks_usec()
+    var regression_root := ProjectSettings.globalize_path(regression_relative)
+    var had_regressions := DirAccess.dir_exists_absolute(regression_root.get_base_dir())
+    _expect(not DirAccess.dir_exists_absolute(regression_root), "Unique regression sandbox")
+    OS.set_environment("AETHERKIRI_TEST_CONFIG_JSON", JSON.stringify({
+        "writable_root": regression_relative, "user_dir": probe_user,
+    }))
+    app.cli_probe_script = "res://scripts/runtime_regression_probe.gd"
+    _expect(app._ensure_player_initialized(), "Initialize isolated regression probe")
+    _expect(player.opens.back().user == regression_root, "Regression saves use the validated writable root")
+    _expect(player.opens.back().cache == regression_root.path_join("cache"), "Regression cache uses the same sandbox")
+    var opens_before := player.opens.size()
+    _expect(app._ensure_player_initialized() and player.opens.size() == opens_before, "Reuse an unchanged regression sandbox")
+    OS.set_environment("AETHERKIRI_TEST_CONFIG_JSON", JSON.stringify({"writable_root": "user://regressions/../../invalid"}))
+    _expect(not app._ensure_player_initialized(), "Reject a regression root outside its sandbox")
+    _expect(player.opens.size() == opens_before, "Invalid regression config never falls back to live saves")
     if had_inline:
         OS.set_environment("AETHERKIRI_TEST_CONFIG_JSON", old_inline)
     else:
@@ -192,6 +210,10 @@ func _check_player_paths(base: String) -> void:
     _expect(player.opens.back().user == host, "Other runtimes must not inherit YU-RIS storage")
     if not had_default_cache:
         DirAccess.remove_absolute(default_cache)
+    DirAccess.remove_absolute(regression_root.path_join("cache"))
+    DirAccess.remove_absolute(regression_root)
+    if not had_regressions:
+        DirAccess.remove_absolute(regression_root.get_base_dir())
     for directory in created:
         DirAccess.remove_absolute(directory.path_join("cache"))
         DirAccess.remove_absolute(directory)

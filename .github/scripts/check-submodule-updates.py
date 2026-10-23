@@ -206,6 +206,7 @@ def main():
     parser.add_argument("--current-ref", default="HEAD", help="Git ref of current checked-out base to compare and update (default: HEAD)")
     parser.add_argument("--base", default=None, help="Base commit to diff against (default: <commit>^1)")
     parser.add_argument("--submodule", default=None, help="Explicit submodule path to check")
+    parser.add_argument("--exclude-submodule", action="append", default=[], help="Path managed by a dedicated updater; never include it")
     parser.add_argument("--all", action="store_true", help="Inspect all submodules in repo")
     parser.add_argument("--apply", action="store_true", help="Stage the updated submodules into the git index")
     parser.add_argument("--github-output", default=None, help="Path to $GITHUB_OUTPUT")
@@ -245,6 +246,8 @@ def main():
             write_github_outputs(args.github_output, {"has_updates": "false"})
             return 0
         print(f"Submodule(s) modified in {inspection}: {', '.join(candidate_paths)}")
+
+    candidate_paths = [path for path in candidate_paths if path not in args.exclude_submodule]
 
     updates = []
     for path in candidate_paths:

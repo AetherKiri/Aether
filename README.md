@@ -41,6 +41,7 @@ Godot App Shell
             ├─ Artemis Runtime ──── Artemis (private package)
             ├─ CatSystem2 Runtime ─ CatSystem2 (private package)
             ├─ BGI Runtime ──────── BGI / Ethornell (private package)
+            ├─ ADVHD Runtime ────── ADV Player HD / WillPlus (private package)
             ├─ SoftPal Runtime ──── SoftPal (private package)
             └─ YU-RIS Runtime ───── YU-RIS (private package)
 ```
@@ -58,6 +59,11 @@ and **Debug CPU** is a diagnostic fallback only.
   [`AetherKrkr`](https://github.com/AetherKiri/AetherKrkr) submodule.
 - OnscripterYuri integration with Godot pointer/touch/keyboard input mapped
   back to ONS events.
+- Native ADV Player HD (AdvHD / WillPlus) support through the optional private
+  package, with story playback, save/load, backlog, settings, EXTRA, CG viewing
+  and scene replay for supported games. Available as a coffee beta in iOS/macOS
+  Release builds. Saves and settings live in the game's `savedata/` directory;
+  existing Aether saves are imported automatically on first launch.
 - Independent C++17 YU-RIS runtime in the private package, supporting source
   projects and compiled YBN games. Saves live in each game's `savedata/`
   directory; older per-game application saves are imported without overwriting
@@ -81,9 +87,9 @@ and **Debug CPU** is a diagnostic fallback only.
 - Manual compatibility notes for tested titles in
   [`doc/verified_games.md`](doc/verified_games.md).
 
-In iOS and macOS Release distribution builds, Minori, SoftPal, YU-RIS, and the
+In iOS and macOS Release distribution builds, ADV Player HD, Minori, YU-RIS, and the
 WHITE ALBUM2 (Leaf TtT / WA2) runtime require an active 30-day coffee
-entitlement. ONScripterYuri, Artemis, and CatSystem2 are generally available.
+entitlement. ONScripterYuri, Artemis, CatSystem2, and SoftPal are generally available.
 Debug builds and Android/Linux releases do not enforce this coffee requirement.
 
 ## Flash Library

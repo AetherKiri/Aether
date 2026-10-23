@@ -28,7 +28,7 @@ func _initialize() -> void:
     # rather than the presentation surface. Using the shell surface moves
     # clicks out of the logical frame and makes controls appear unresponsive.
     var native_frame := Vector2(1024, 640)
-    for runtime_kind in ["minori", "onscripter", "rfvp", "siglus", "softpal", "yuris"]:
+    for runtime_kind in ["advhd", "minori", "onscripter", "rfvp", "siglus", "softpal", "yuris"]:
         var input_surface := GameInputMapping.input_surface_size(
             runtime_kind, native_frame, requested_surface
         )
@@ -51,6 +51,17 @@ func _initialize() -> void:
         return
     if GameInputMapping.input_surface_size("kirikiri", native_frame, Vector2.ZERO) != native_frame:
         _fail("missing requested surface did not fall back to the frame")
+        return
+
+    var advhd_surface := GameInputMapping.input_surface_size(
+        "advhd", Vector2(1280, 720), requested_surface
+    )
+    var advhd_start := GameInputMapping.map_point_to_surface(
+        Vector2(435, 1020), Rect2(0, 0, 1920, 1080),
+        Vector2(1280, 720), advhd_surface
+    )
+    if not advhd_start.is_equal_approx(Vector2(290, 680)):
+        _fail("AdvHD Start button did not map to its logical hit region: %s" % advhd_start)
         return
 
     var letterboxed := GameInputMapping.map_point(

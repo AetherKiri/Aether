@@ -135,12 +135,37 @@ and confirmed by the user.
 
 ### Upstream upgrade validation
 
-The upgrade to `eb5490d9fc6d471d36554a84e052cf531afd48d4` is being validated
-independently by `.github/workflows/rfvp-provider.yml`. The earlier application
-and game smoke tests above describe the previous integration, not a re-test of
-this upstream revision. A standalone check does not certify Apple packaging or
-commercial-game playback.
+The pin `062fec82033b554b9eb3b5da069518c0c96a354e` advances from `a109139`
+by five commits and updates the crate to 0.7.0. The first commit, despite its
+"add ADRs" title, changes rendering and script
+semantics: Sprt texture -1 draws the previous frame; Tile color -1 reads the
+window color from volatile globals instead of palette slot 255; ColorSet checks
+signed IDs; integer scales clamp to [100, 10000]; PrimSetZ and TimerSuspend
+distinguish the script True tag from floats and integers.
 
-The increment from `af557db` to `eb5490d` only adds an upstream reverse-engineering
-database under `reverse/`. It is not copied into the prepared workspace or
-compiled into the provider; runtime sources and the embedded lockfile are unchanged.
+The host overlay adapts the new previous-frame texture to the Godot GPU bridge,
+with explicit ownership and readback before the next frame clears the target.
+Previous-frame sprites retain upstream's software-renderer one-frame activation
+delay. GPU snapshot failures must not reuse stale CPU pixels. The existing
+mask-dissolve whole-frame CPU fallback and RGBA/BGRA conversion remain covered.
+
+The subsequent PSV update adds bounded diagnostics and shared resource timing,
+uses font metrics instead of rasterizing discarded glyph bitmaps, and reuses
+text advances. Vita-specific texture/thumbnail changes and the new no_std-only
+`config.toml` boot path are outside this host feature set. Aether keeps its
+explicit script/encoding selection and isolated save roots; a game-directory
+`config.toml` does not override the launcher's selection.
+
+Only the rfvp package version changes in the Cargo manifest and embedded lock;
+no dependency versions or serialized snapshot fields change. The lockfile is
+checked with `--locked`; RFVS V1/V2
+layout adapters and the prior graph restore semantics remain in place. The
+six CTest suites retain provider, decoder coexistence, host, VM text, graph save
+and timer coverage. New host regressions cover the script type/range contracts
+and previous-frame rendering integration. Upstream's no_std command renderer and
+standalone wgpu renderer are not selected by the embedded host feature set.
+
+The earlier application and game smoke tests above describe previous
+integrations, not a gameplay re-test of this pin. Current exact-head CI evidence
+belongs in the upgrade PR; standalone tests do not certify Apple packaging,
+commercial-game playback or audio/video synchronization.

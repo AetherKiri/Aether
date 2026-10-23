@@ -11,6 +11,7 @@ const FLASH_HIDDEN_FILE := "user://aether_flash_hidden.json"
 const FlashPlayerView = preload("res://scripts/flash_player_view.gd")
 const TyranoPlayerView = preload("res://scripts/tyrano_player_view.gd")
 const RenpyPlayerView = preload("res://scripts/renpy_player_view.gd")
+const RuntimeDisplayState = preload("res://scripts/runtime_display_state.gd")
 const VIDEO_LIST_FILE := "user://aetherkiri_videos.json"
 const VIDEO_PROGRESS_FILE := "user://aetherkiri_video_progress.json"
 const VIDEO_HIDDEN_FILE := "user://aetherkiri_hidden_videos.json"
@@ -63,6 +64,7 @@ const RUNTIME_FONT_DIR := "user://runtime_fonts"
 const RUNTIME_DEFAULT_FONT_FILE := "default.otf"
 const RUNTIME_SYMBOL_FONT_FILE := "symbols.ttf"
 const ProbeConfig = preload("res://scripts/probe_config.gd")
+const RuntimeRegressionProbe = preload("res://scripts/runtime_regression_probe.gd")
 const GameMetadata = preload("res://scripts/game_metadata.gd")
 const CoverIndex = preload("res://scripts/cover_index.gd")
 const VNDBCoverResolver = preload("res://scripts/vndb_cover_resolver.gd")
@@ -163,7 +165,7 @@ const UI_TEXT := {
         "tyrano.unavailable": "TyranoScript 当前支持 macOS、iOS 和 Android，请使用包含原生网页宿主的构建。",
         "tyrano.open_failed": "无法启动 TyranoScript：%s",
         "tyrano.loading": "加载中",
-        "tyrano.startup_timeout": "TyranoScript 启动超时。请导入解包后的网页游戏目录；依赖桌面专用插件的游戏可能需要额外适配。",
+        "tyrano.startup_timeout": "TyranoScript 启动超时。依赖桌面专用功能或插件的游戏可能需要额外适配。",
         "flash.open_failed": "无法播放 Flash：%s",
         "flash.guide_title": "导入 Flash",
         "home.subtitle": "多功能媒体播放器",
@@ -571,7 +573,7 @@ const UI_TEXT := {
         "tyrano.unavailable": "TyranoScript 目前支援 macOS、iOS 和 Android，請使用包含原生網頁宿主的版本。",
         "tyrano.open_failed": "無法啟動 TyranoScript：%s",
         "tyrano.loading": "載入中",
-        "tyrano.startup_timeout": "TyranoScript 啟動逾時。請匯入解包後的網頁遊戲目錄；依賴桌面專用外掛的遊戲可能需要額外適配。",
+        "tyrano.startup_timeout": "TyranoScript 啟動逾時。依賴桌面專用功能或外掛的遊戲可能需要額外適配。",
         "flash.open_failed": "無法播放 Flash：%s",
         "flash.guide_title": "匯入 Flash",
         "home.subtitle": "多功能媒體播放器",
@@ -935,7 +937,7 @@ const UI_TEXT := {
         "tyrano.unavailable": "TyranoScript supports macOS, iOS and Android. Use a build containing the native web host.",
         "tyrano.open_failed": "Could not start TyranoScript: %s",
         "tyrano.loading": "Loading",
-        "tyrano.startup_timeout": "TyranoScript did not finish starting. Import an unpacked browser project; desktop-only plugins may need additional adaptation.",
+        "tyrano.startup_timeout": "TyranoScript did not finish starting. Games using desktop-only features or plugins may need additional adaptation.",
         "flash.open_failed": "Unable to play Flash: %s",
         "flash.guide_title": "Import Flash",
         "home.subtitle": "Multifunction Media Player",
@@ -1343,7 +1345,7 @@ You can find it any time under Settings → QQ Group.",
         "tyrano.unavailable": "TyranoScript は macOS・iOS・Android に対応しています。ネイティブ Web ホストを含むビルドを使用してください。",
         "tyrano.open_failed": "TyranoScript を起動できません：%s",
         "tyrano.loading": "読み込み中",
-        "tyrano.startup_timeout": "TyranoScript の起動がタイムアウトしました。展開済みのブラウザーゲームを読み込んでください。デスクトップ専用プラグインは追加対応が必要な場合があります。",
+        "tyrano.startup_timeout": "TyranoScript の起動がタイムアウトしました。デスクトップ専用の機能やプラグインは追加対応が必要な場合があります。",
         "flash.open_failed": "Flash を再生できません：%s",
         "flash.guide_title": "Flash を読み込む",
         "home.subtitle": "多機能メディアプレーヤー",
@@ -1707,7 +1709,7 @@ You can find it any time under Settings → QQ Group.",
         "tyrano.unavailable": "TyranoScript는 macOS, iOS, Android를 지원합니다. 네이티브 웹 호스트가 포함된 빌드를 사용하세요.",
         "tyrano.open_failed": "TyranoScript를 시작할 수 없습니다: %s",
         "tyrano.loading": "불러오는 중",
-        "tyrano.startup_timeout": "TyranoScript 시작 시간이 초과되었습니다. 압축을 푼 브라우저 게임을 가져오세요. 데스크톱 전용 플러그인은 추가 지원이 필요할 수 있습니다.",
+        "tyrano.startup_timeout": "TyranoScript 시작 시간이 초과되었습니다. 데스크톱 전용 기능이나 플러그인은 추가 지원이 필요할 수 있습니다.",
         "flash.open_failed": "Flash를 재생할 수 없습니다: %s",
         "flash.guide_title": "Flash 가져오기",
         "home.subtitle": "다기능 미디어 플레이어",
@@ -2076,7 +2078,9 @@ const RUNTIME_RENPY := "renpy"
 const RUNTIME_XSYSTEM4 := "xsystem4"
 const RUNTIME_WA2 := "wa2"
 const RUNTIME_BGI := "bgi"
+const RUNTIME_ADVHD := "advhd"
 const RUNTIME_TYRANO := "tyranoscript"
+const RUNTIME_MAGES := "mages"
 const RUNTIME_YURIS := "yuris"
 const RUNTIME_PLAYER_CLASS := "AetherRuntimePlayer"
 const ONSCRIPTER_SCRIPT_MARKERS := [
@@ -2149,6 +2153,7 @@ var game_path: LineEdit
 var restart_notice: Label
 var viewport: TextureRect
 var softpal_aspect_mode := 1
+var runtime_display_state = RuntimeDisplayState.new()
 var perf: Label
 var perf_layer: CanvasLayer
 var perf_panel: PanelContainer
@@ -2790,6 +2795,7 @@ func _normalize_cli_probe_script(path: String) -> String:
         "res://scripts/step_render_probe.gd",
         "res://scripts/gui_render_probe.gd",
         "res://scripts/perf_input_probe.gd",
+        "res://scripts/runtime_regression_probe.gd",
         "res://scripts/wa2_gui.gd",
     ]
     for item in known:
@@ -11209,6 +11215,8 @@ func _game_runtime_kind(path: String) -> String:
         return runtime_kind
     if player != null and player.has_method("probe_runtime"):
         # Format detection stays in the optional private provider.
+        if int(player.probe_runtime(RUNTIME_ADVHD, root)) >= 90:
+            return RUNTIME_ADVHD
         if int(player.probe_runtime(RUNTIME_BGI, root)) >= 90:
             return RUNTIME_BGI
         # Packed CatSystem2 titles may not expose the loose markers used by
@@ -11230,6 +11238,8 @@ func _game_runtime_kind(path: String) -> String:
         # KiriKiri host.
         if int(player.probe_runtime(RUNTIME_WA2, root)) > 0:
             return RUNTIME_WA2
+        if int(player.probe_runtime(RUNTIME_MAGES, root)) > 0:
+            return RUNTIME_MAGES
     return runtime_kind
 
 func _backfill_game_metadata(games: Array[Dictionary]) -> bool:
@@ -11879,10 +11889,10 @@ func _start_selected_game_after_iap() -> void:
         _deny_runtime_beta_launch()
 
 func _runtime_requires_beta_access(runtime_kind: String) -> bool:
-    # ONS and Artemis are generally available. Minori, SoftPal and YU-RIS
-    # require active coffee access in iOS and macOS distribution builds.
+    # Minori, ADV Player HD and YU-RIS require an active coffee entitlement
+    # in iOS and macOS distribution builds.
     # Provider-backed runtimes such as WA2 are checked separately.
-    return runtime_kind in [RUNTIME_MINORI, RUNTIME_SOFTPAL, RUNTIME_YURIS]
+    return runtime_kind in [RUNTIME_MINORI, RUNTIME_ADVHD, RUNTIME_YURIS]
 
 func _beta_access_enforcement_enabled(platform_name: String = "") -> bool:
     var effective_platform := platform_name if not platform_name.is_empty() else OS.get_name()
@@ -12031,6 +12041,7 @@ func _return_to_library_after_runtime_exit() -> void:
     _clear_game_input_capture()
     _finalize_active_game_session()
     game_running = false
+    runtime_display_state.reset(get_window())
     softpal_aspect_mode = 1
     _sync_debug_console_state()
     app_lifecycle_paused = false
@@ -12476,8 +12487,10 @@ func _switch_runtime_player(runtime_kind: String) -> bool:
         RUNTIME_CATSYSTEM2,
         RUNTIME_SIGLUS,
         RUNTIME_BGI,
+        RUNTIME_MAGES,
         RUNTIME_XSYSTEM4,
         RUNTIME_YURIS,
+        RUNTIME_ADVHD,
     ]:
         normalized = RUNTIME_KIRIKIRI
     if player != null and current_player_runtime_kind == normalized:
@@ -12520,6 +12533,10 @@ func _switch_runtime_player(runtime_kind: String) -> bool:
         if normalized == RUNTIME_SIGLUS
         else "BGI/Ethornell"
         if normalized == RUNTIME_BGI
+        else "MAGES."
+        if normalized == RUNTIME_MAGES
+        else "ADV Player HD"
+        if normalized == RUNTIME_ADVHD
         else "KiriKiri"
     ))
     return true
@@ -12555,6 +12572,10 @@ func _on_runtime_platform_request(operation: String, argument: String) -> void:
     _trace_runtime_platform_request("received", operation, argument)
     if operation == "runtime_end":
         call_deferred("_return_to_library_after_runtime_exit")
+        return
+    if runtime_display_state.apply(operation, argument, get_window(), not _is_touch_platform()):
+        softpal_aspect_mode = runtime_display_state.aspect_mode
+        _layout_game_viewport(get_viewport_rect().size)
         return
     if operation == "softpal_window_size":
         if not _is_touch_platform() and get_window().mode == Window.MODE_WINDOWED:
@@ -13142,9 +13163,14 @@ func _ensure_player_initialized() -> bool:
         return false
     var user_dir := OS.get_user_data_dir()
     var cache_dir := user_dir.path_join("cache")
-    if not cli_probe_script.is_empty():
-        # Exercise the exported application's normal player while keeping
-        # replayed SAVE/LOAD actions away from the user's live save files.
+    if cli_probe_script == "res://scripts/runtime_regression_probe.gd":
+        user_dir = RuntimeRegressionProbe.writable_root(ProbeConfig.load())
+        if user_dir.is_empty():
+            _append_log("Regression probe requires an isolated writable_root under user://regressions/")
+            return false
+        cache_dir = user_dir.path_join("cache")
+    elif not cli_probe_script.is_empty():
+        # Other probes may supply their own disposable replay directory.
         user_dir = ProbeConfig.string_value(ProbeConfig.load(), "user_dir", user_dir)
         cache_dir = user_dir.path_join("cache")
     elif current_player_runtime_kind == RUNTIME_YURIS:
@@ -13178,8 +13204,10 @@ func _ensure_player_initialized() -> bool:
         RUNTIME_CATSYSTEM2,
         RUNTIME_SIGLUS,
         RUNTIME_BGI,
+        RUNTIME_MAGES,
         RUNTIME_XSYSTEM4,
         RUNTIME_YURIS,
+        RUNTIME_ADVHD,
     ]:
         runtime_id = current_player_runtime_kind
     var runtime_result := int(player.set_engine_option("runtime", runtime_id))
@@ -13207,6 +13235,8 @@ func _ensure_player_initialized() -> bool:
         if current_player_runtime_kind == RUNTIME_SIGLUS
         else "BGI/Ethornell"
         if current_player_runtime_kind == RUNTIME_BGI
+        else "ADV Player HD"
+        if current_player_runtime_kind == RUNTIME_ADVHD
         else "AetherKiri"
     ))
     return true
@@ -13817,6 +13847,10 @@ func _run_cli_script_probe() -> void:
         await _run_cli_gui_probe(config, target_game_path)
     elif cli_probe_script == "res://scripts/perf_input_probe.gd":
         await _run_cli_perf_input_probe(config, target_game_path)
+    elif cli_probe_script == "res://scripts/runtime_regression_probe.gd":
+        var probe = RuntimeRegressionProbe.new(self, config)
+        var result: int = await probe.run(target_game_path)
+        await _probe_cleanup_and_quit(result, probe.record)
     else:
         _write_probe_marker("cli_probe unsupported script=%s" % cli_probe_script)
         printerr("unsupported probe script: %s" % cli_probe_script)
@@ -14038,6 +14072,31 @@ func _run_cli_step_probe(config: Dictionary, target_game_path: String) -> void:
     if step < 0:
         await _probe_cleanup_and_quit(1)
         return
+
+    if bool(config.get("live_actions", false)):
+        var live = load("res://scripts/probe_live_actions.gd").new()
+        var output_dir := _default_output_path("probe-actions.json").get_base_dir()
+        var idle_timeout_ms: int = live.idle_timeout_msec(config)
+        # A static menu can tick far faster than the display refresh rate.
+        # Give the external probe client real time to inspect a screenshot.
+        var idle_deadline := Time.get_ticks_msec() + idle_timeout_ms
+        while Time.get_ticks_msec() < idle_deadline:
+            var request: Dictionary = live.poll(output_dir)
+            if not request.is_empty():
+                var action_config := config.duplicate()
+                action_config["actions"] = request.actions
+                step = await _probe_run_actions(action_config, step)
+                live.acknowledge(output_dir, request.sequence, step)
+                if step < 0:
+                    await _probe_cleanup_and_quit(1)
+                    return
+                if request.stop:
+                    break
+                idle_deadline = Time.get_ticks_msec() + idle_timeout_ms
+            if not await _probe_advance(1):
+                live.acknowledge(output_dir, live.last_sequence, -1, "runtime-ended")
+                await _probe_cleanup_and_quit(1)
+                return
 
     var measured_frames: int = ProbeConfig.int_value(config, "measure_frames", _runtime_int("AETHERKIRI_PROBE_MEASURE_FRAMES", 120))
     var start_ticks: int = Time.get_ticks_usec()
@@ -14864,7 +14923,7 @@ func _probe_image_diff_score(a: Image, b: Image) -> float:
             samples += 1
     return total / max(1.0, float(samples))
 
-func _probe_cleanup_and_quit(code: int) -> void:
+func _probe_cleanup_and_quit(code: int, record_cleanup: Callable = Callable()) -> void:
     _set_game_runtime_frame_pacing(false)
     if cli_probe_audio_capture != null:
         cli_probe_audio_capture.close()
@@ -14879,6 +14938,8 @@ func _probe_cleanup_and_quit(code: int) -> void:
         player.release_frame_texture()
         _cleanup_softpal_platform_ui()
         player.destroy_engine()
+    if record_cleanup.is_valid():
+        record_cleanup.call({"event": "cleanup_complete", "exit_code": code})
     get_tree().quit(code)
 
 func _apply_initial_window_size() -> void:
@@ -15090,6 +15151,8 @@ func _process(delta: float) -> void:
                     perf_log_file.flush()
                 game_running = false
                 _set_game_runtime_frame_pacing(false)
+                runtime_display_state.reset(get_window())
+                softpal_aspect_mode = 1
                 _sync_game_virtual_controls()
                 _deactivate_game_text_input()
                 _sync_debug_console_state()
@@ -15149,6 +15212,8 @@ func _process(delta: float) -> void:
             viewport.visible = false
             game_view.visible = false
             game_running = false
+            runtime_display_state.reset(get_window())
+            softpal_aspect_mode = 1
             _sync_game_virtual_controls()
             _deactivate_game_text_input()
             _sync_debug_console_state()

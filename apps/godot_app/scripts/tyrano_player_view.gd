@@ -4,6 +4,7 @@ signal closed
 signal game_ready
 
 const Metadata = preload("res://scripts/game_metadata.gd")
+const TyranoAsar = preload("res://scripts/tyrano_asar.gd")
 var host
 var native
 var header: PanelContainer
@@ -15,6 +16,8 @@ var ready_received := false
 var startup_elapsed := 0.0
 var closing := false
 var lifecycle_paused := false
+var preparation: Thread
+var archive: RefCounted
 
 func setup(app) -> void:
     host = app
@@ -102,10 +105,32 @@ func open_entry(value: Dictionary) -> String:
     title.text = String(entry.get("name", "TyranoScript")) + " · " + host._t("tyrano.loading")
     ready_received = false
     startup_elapsed = 0.0
-    if not native.open(root.path_join(launch), storage_path(root)):
+    if launch.ends_with(".asar"):
+        archive = TyranoAsar.new()
+        if not archive.open(root.path_join(launch)):
+            return host._t("tyrano.open_failed", [archive.error])
+        preparation = Thread.new()
+        var cache := ProjectSettings.globalize_path("user://tyrano_cache")
+        if preparation.start(archive.prepare.bind(cache)) != OK:
+            preparation = null
+            archive = null
+            return host._t("tyrano.open_failed", ["Cannot start ASAR preparation"])
+        return ""
+    return _open_html(root.path_join(launch))
+
+func _open_html(path: String) -> String:
+    var root := ProjectSettings.globalize_path(host._game_runtime_root(String(entry.get("path", ""))))
+    if not native.open(path, storage_path(root)):
         return host._t("tyrano.open_failed", [native.get_error()])
     _layout()
     return ""
+
+func _stop_preparation() -> void:
+    if preparation != null:
+        archive.cancel()
+        preparation.wait_to_finish()
+        preparation = null
+        archive = null
 
 func _event(event: Dictionary) -> void:
     match String(event.get("type", "")):
@@ -127,6 +152,7 @@ func _event(event: Dictionary) -> void:
             host._append_log("TyranoScript: " + String(event.get("value", "")))
 
 func _restart() -> void:
+    _stop_preparation()
     if native != null:
         native.close()
         native.queue_free()
@@ -140,6 +166,7 @@ func close() -> void:
     if closing:
         return
     closing = true
+    _stop_preparation()
     if native != null:
         native.close()
         native.queue_free()
@@ -150,6 +177,17 @@ func close() -> void:
 
 func _process(delta: float) -> void:
     _layout()
+    if preparation != null:
+        if preparation.is_alive():
+            return
+        var result: Dictionary = preparation.wait_to_finish()
+        preparation = null
+        archive = null
+        var message: String = host._t("tyrano.open_failed", [result.error]) if result.has("error") else _open_html(result.entry)
+        if not message.is_empty():
+            close()
+            host._show_message(message)
+        return
     if native != null and not ready_received:
         startup_elapsed += delta
         if startup_elapsed > 30.0:
@@ -157,6 +195,8 @@ func _process(delta: float) -> void:
             host._show_message(host._t("tyrano.startup_timeout"))
 
 func _notification(what: int) -> void:
+    if what == NOTIFICATION_PREDELETE:
+        _stop_preparation()
     if not is_instance_valid(native):
         return
     if what in [NOTIFICATION_APPLICATION_PAUSED, NOTIFICATION_APPLICATION_FOCUS_OUT]:

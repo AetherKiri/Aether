@@ -57,6 +57,19 @@
     Object.defineProperty(window, "localStorage", {value: storage(true)});
     Object.defineProperty(window, "sessionStorage", {value: storage(false)});
 
+    // Electron exports select file saves in Config.tjs. Switch after config
+    // loading but before init_game reads the first system variables; waiting
+    // until the ready event is too late for desktop-only storage code.
+    document.addEventListener("DOMContentLoaded", () => {
+        const kag = window.tyrano?.plugin?.kag;
+        if (typeof kag?.init_game !== "function") return;
+        const initialize = kag.init_game;
+        kag.init_game = function (...args) {
+            this.config.configSave = "webstorage";
+            return initialize.apply(this, args);
+        };
+    }, {once: true});
+
     // Pause JS timers as well as media when the app leaves the foreground.
     const nativeTimeout = window.setTimeout.bind(window);
     const nativeClear = window.clearTimeout.bind(window);

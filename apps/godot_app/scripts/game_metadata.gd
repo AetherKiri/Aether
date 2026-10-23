@@ -1,6 +1,7 @@
 class_name GameMetadata
 extends RefCounted
 
+const TyranoAsar = preload("res://scripts/tyrano_asar.gd")
 const RUNTIME_KIRIKIRI := "kirikiri"
 const RUNTIME_ONSCRIPTER := "onscripter"
 const RUNTIME_RFVP := "rfvp"
@@ -35,8 +36,14 @@ static func inspect(path: String) -> Dictionary:
     if not tyrano_entry.is_empty():
         result.engine = RUNTIME_TYRANO
         result.launchFile = tyrano_entry
-        result.signals.append("tyranoscript-web-project")
-        var config := _read_text(root.path_join(tyrano_entry).get_base_dir().path_join("data/system/Config.tjs"))
+        result.signals.append("tyranoscript-asar-project" if tyrano_entry.ends_with(".asar") else "tyranoscript-web-project")
+        var config: String
+        if tyrano_entry.ends_with(".asar"):
+            var archive := TyranoAsar.new()
+            if archive.open(root.path_join(tyrano_entry)):
+                config = archive.read_text("data/system/Config.tjs")
+        else:
+            config = _read_text(root.path_join(tyrano_entry).get_base_dir().path_join("data/system/Config.tjs"))
         var title_pattern := RegEx.new()
         title_pattern.compile('(?m)^\\s*;?System\\.title\\s*=\\s*"([^"\\r\\n]+)"')
         var title_match := title_pattern.search(config)
@@ -152,6 +159,12 @@ static func tyrano_entry_file(root: String) -> String:
             and FileAccess.file_exists(directory.path_join("tyrano/plugins/kag/kag.js"))
             and FileAccess.file_exists(directory.path_join("data/system/Config.tjs"))
         ):
+            return relative
+    for relative in ["resources/app.asar", "app.asar"]:
+        if not FileAccess.file_exists(root.path_join(relative)):
+            continue
+        var archive := TyranoAsar.new()
+        if archive.open(root.path_join(relative)) and archive.is_tyrano_project():
             return relative
     return ""
 

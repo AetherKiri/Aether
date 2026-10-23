@@ -41,6 +41,15 @@ func _initialize() -> void:
 func _run() -> void:
     var app := TouchApp.new()
     root.add_child(app)
+    # Probe.advance observes the shell before deciding whether to tick the
+    # runtime. Populate the controls omitted by this fixture's empty _ready.
+    app.shell_root = Control.new()
+    app.home_view = Control.new()
+    app.game_view = Control.new()
+    app.add_child(app.shell_root)
+    app.add_child(app.home_view)
+    app.add_child(app.game_view)
+    app.shell_root.visible = false
     var player := RecordingPlayer.new()
     app.add_child(player)
     app.player = player

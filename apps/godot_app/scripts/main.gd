@@ -11889,10 +11889,10 @@ func _start_selected_game_after_iap() -> void:
         _deny_runtime_beta_launch()
 
 func _runtime_requires_beta_access(runtime_kind: String) -> bool:
-    # Minori and ADV Player HD require an active coffee entitlement
+    # Minori, ADV Player HD and YU-RIS require an active coffee entitlement
     # in iOS and macOS distribution builds.
     # Provider-backed runtimes such as WA2 are checked separately.
-    return runtime_kind in [RUNTIME_MINORI, RUNTIME_ADVHD]
+    return runtime_kind in [RUNTIME_MINORI, RUNTIME_ADVHD, RUNTIME_YURIS]
 
 func _beta_access_enforcement_enabled(platform_name: String = "") -> bool:
     var effective_platform := platform_name if not platform_name.is_empty() else OS.get_name()
@@ -13162,28 +13162,29 @@ func _ensure_player_initialized() -> bool:
     if player == null:
         return false
     var user_dir := OS.get_user_data_dir()
+    var cache_dir := user_dir.path_join("cache")
     if cli_probe_script == "res://scripts/runtime_regression_probe.gd":
         user_dir = RuntimeRegressionProbe.writable_root(ProbeConfig.load())
         if user_dir.is_empty():
             _append_log("Regression probe requires an isolated writable_root under user://regressions/")
             return false
+        cache_dir = user_dir.path_join("cache")
     elif not cli_probe_script.is_empty():
         # Other probes may supply their own disposable replay directory.
         user_dir = ProbeConfig.string_value(ProbeConfig.load(), "user_dir", user_dir)
+        cache_dir = user_dir.path_join("cache")
     elif current_player_runtime_kind == RUNTIME_YURIS:
         var library_path := String(selected_game.get("path", ""))
         if not library_path.is_empty():
-            user_dir = preload("res://scripts/yuris_engine_options.gd").user_directory(
-                user_dir, _game_runtime_root(library_path)
-            )
+            var options = preload("res://scripts/yuris_engine_options.gd")
+            var game_root := _game_runtime_root(library_path)
+            cache_dir = options.cache_directory(user_dir, game_root)
+            user_dir = options.user_directory(user_dir, game_root)
     if player.is_initialized():
-        var requires_directory_match := current_player_runtime_kind == RUNTIME_YURIS \
-            or cli_probe_script == "res://scripts/runtime_regression_probe.gd"
-        if not requires_directory_match \
-            or String(player.get_meta("aether_user_directory", "")) == user_dir:
+        if String(player.get_meta("aether_user_directory", "")) == user_dir \
+            and String(player.get_meta("aether_cache_directory", "")) == cache_dir:
             return true
         player.destroy_engine()
-    var cache_dir := user_dir.path_join("cache")
     DirAccess.make_dir_recursive_absolute(cache_dir)
     if not player.initialize_engine(user_dir, cache_dir):
         render_errors += 1
@@ -13194,6 +13195,7 @@ func _ensure_player_initialized() -> bool:
         _append_log(init_error_message)
         return false
     player.set_meta("aether_user_directory", user_dir)
+    player.set_meta("aether_cache_directory", cache_dir)
 
     var runtime_id := "auto"
     if current_player_runtime_kind in [
@@ -14070,6 +14072,31 @@ func _run_cli_step_probe(config: Dictionary, target_game_path: String) -> void:
     if step < 0:
         await _probe_cleanup_and_quit(1)
         return
+
+    if bool(config.get("live_actions", false)):
+        var live = load("res://scripts/probe_live_actions.gd").new()
+        var output_dir := _default_output_path("probe-actions.json").get_base_dir()
+        var idle_timeout_ms: int = live.idle_timeout_msec(config)
+        # A static menu can tick far faster than the display refresh rate.
+        # Give the external probe client real time to inspect a screenshot.
+        var idle_deadline := Time.get_ticks_msec() + idle_timeout_ms
+        while Time.get_ticks_msec() < idle_deadline:
+            var request: Dictionary = live.poll(output_dir)
+            if not request.is_empty():
+                var action_config := config.duplicate()
+                action_config["actions"] = request.actions
+                step = await _probe_run_actions(action_config, step)
+                live.acknowledge(output_dir, request.sequence, step)
+                if step < 0:
+                    await _probe_cleanup_and_quit(1)
+                    return
+                if request.stop:
+                    break
+                idle_deadline = Time.get_ticks_msec() + idle_timeout_ms
+            if not await _probe_advance(1):
+                live.acknowledge(output_dir, live.last_sequence, -1, "runtime-ended")
+                await _probe_cleanup_and_quit(1)
+                return
 
     var measured_frames: int = ProbeConfig.int_value(config, "measure_frames", _runtime_int("AETHERKIRI_PROBE_MEASURE_FRAMES", 120))
     var start_ticks: int = Time.get_ticks_usec()

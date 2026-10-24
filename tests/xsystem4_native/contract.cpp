@@ -151,6 +151,18 @@ int main() {
                        "encoding=sjis");
         check_encoding("ascii-title", "Contract", sjis_filename, "",
                        "encoding=sjis");
+        check_encoding("short-chinese-title",
+                       "\xd5\xbd\xb9\xfa\xc0\xbc\xcb\xb9", gbk_filename, "",
+                       "encoding=gbk");
+        check_encoding("short-chinese-rance", "\xc0\xbc\xcb\xb9\x30\x31",
+                       gbk_filename, "", "encoding=gbk");
+        check_encoding("short-japanese-kanji", "\x93\xfa\x96\x7b\x8c\xea",
+                       sjis_filename, "", "encoding=sjis");
+        check_encoding("short-japanese-halfwidth", "\xd7\xdd\xbd",
+                       sjis_filename, "", "encoding=sjis");
+        check_encoding("short-japanese-halfwidth-long",
+                       "\xc4\xde\xd7\xba\xde\xdd", sjis_filename, "",
+                       "encoding=sjis");
         std::string original_labels;
         for(int i = 0; i < 8; i++)
             original_labels += sjis_title;

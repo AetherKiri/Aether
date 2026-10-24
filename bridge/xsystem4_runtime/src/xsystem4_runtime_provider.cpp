@@ -90,7 +90,17 @@ namespace aetherkiri::xsystem4 {
             uchardet_t detector = uchardet_new();
             if(!detector)
                 return false;
-            uchardet_handle_data(detector, sample.data(), sample.size());
+            // A few GBK characters can be reported as UTF-8 with insufficient
+            // statistical evidence, even when their bytes are not valid UTF-8.
+            // Repeat short text at line boundaries to give the detector enough
+            // observations, without admitting comments into the sample.
+            std::string observations = sample;
+            while(observations.size() < 128) {
+                observations += '\n';
+                observations += sample;
+            }
+            uchardet_handle_data(detector, observations.data(),
+                                 observations.size());
             uchardet_data_end(detector);
             const std::string encoding = Lower(uchardet_get_charset(detector));
             uchardet_delete(detector);

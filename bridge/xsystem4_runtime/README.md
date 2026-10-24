@@ -50,7 +50,9 @@ Existing saves in the imported game's `SaveData` are not automatically copied.
 `xsystem4_encoding=auto` ignores INI comments and gives a GBK-family `GameName`
 priority over untranslated Japanese labels in other values. It then checks the
 remaining configuration and defaults to Shift-JIS when no GBK evidence is found,
-so original Japanese games keep their native encoding. Quoted `;` and `//`
+so original Japanese games keep their native encoding. Short samples are
+repeated at line boundaries before statistical detection, avoiding insufficient
+evidence for short GBK titles such as Sengoku Rance. Quoted `;` and `//`
 remain part of string values. `gbk` and `sjis` can be set explicitly before
 opening. The default font comes from Aether's staged CJK font; a game-supplied
 `.xsys4rc` can provide font paths.
@@ -89,7 +91,7 @@ Write an atomically replaced `OUTPUT_DIR/command.json` with increasing `seq`:
 {"seq":1,"action":"capture","name":"title"}
 ```
 
-Other actions are `click` (`x`, `y`, `button`: left=0/right=1/middle=2, `count`),
+Other actions are `move` (`x`, `y`), `click` (`x`, `y`, `button`: left=0/right=1/middle=2, `count`),
 `key` (`key`: Windows virtual key code, `count`), `pause`, `resume`, `reopen` and
 `quit`. `status.json` acknowledges each command and reports frame dimensions,
 serial, selected encoding, save directory and errors. Use a fresh output
@@ -120,3 +122,12 @@ dialogue clicks pass the scene-history boundary with original Shift-JIS
 structure names. These checks used
 isolated probe save directories; the packaged app and other platforms were not
 retested for this encoding change.
+
+On 2026-10-25, a regression with the short GBK GameName in **Sengoku Rance**
+was reproduced: Shift-JIS was incorrectly selected, corrupting the title text
+and stalling new-game initialization. After the fix, native and exported macOS
+Debug probes confirmed automatic GBK selection, Chinese title/menu, new-game
+startup and 20 dialogue advances with backgrounds and characters. The packaged
+app used its existing Metal presentation and existing Aether save namespace.
+Synthetic regressions cover short Chinese, Japanese kanji and halfwidth-kana
+titles, alongside the existing mixed-encoding fixtures and explicit overrides.

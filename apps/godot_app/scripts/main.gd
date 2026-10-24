@@ -526,7 +526,6 @@ const UI_TEXT := {
         "message.game_exists": "游戏已存在：%s",
         "message.builtin_delete_failed": "删除内置 Demo 时发生错误：%s",
         "alert.error_title": "Aether 错误",
-        "alert.system3_runtime_required": "此游戏使用旧 System3 DAT 格式，需要 system3-sdl2；xsystem35 支持的是 ALD 格式。",
         "alert.warning_title": "Aether 警告",
         "alert.runtime_class_missing": "运行时扩展加载失败：AetherRuntimePlayer 不可用",
         "alert.runtime_create_failed": "运行时扩展加载失败：无法创建 AetherRuntimePlayer",
@@ -890,7 +889,6 @@ const UI_TEXT := {
         "message.game_exists": "遊戲已存在：%s",
         "message.builtin_delete_failed": "刪除內建 Demo 時發生錯誤：%s",
         "alert.error_title": "Aether 錯誤",
-        "alert.system3_runtime_required": "此遊戲使用舊 System3 DAT 格式，需要 system3-sdl2；xsystem35 支援的是 ALD 格式。",
         "alert.warning_title": "Aether 警告",
         "alert.runtime_class_missing": "執行時擴充載入失敗：AetherRuntimePlayer 不可用",
         "alert.runtime_create_failed": "執行時擴充載入失敗：無法建立 AetherRuntimePlayer",
@@ -1298,7 +1296,6 @@ You can find it any time under Settings → QQ Group.",
         "message.game_exists": "Game already exists: %s",
         "message.builtin_delete_failed": "Could not completely delete the built-in demo: %s",
         "alert.error_title": "Aether Error",
-        "alert.system3_runtime_required": "This game uses the older System3 DAT format and requires system3-sdl2. xsystem35 supports ALD games.",
         "alert.warning_title": "Aether Warning",
         "alert.runtime_class_missing": "Runtime extension failed to load: AetherRuntimePlayer is unavailable",
         "alert.runtime_create_failed": "Runtime extension failed to load: could not create AetherRuntimePlayer",
@@ -1662,7 +1659,6 @@ You can find it any time under Settings → QQ Group.",
         "message.game_exists": "ゲームは既に存在します：%s",
         "message.builtin_delete_failed": "内蔵デモを完全に削除できませんでした：%s",
         "alert.error_title": "Aether エラー",
-        "alert.system3_runtime_required": "このゲームは旧 System3 の DAT 形式です。system3-sdl2 が必要です。xsystem35 は ALD 形式に対応しています。",
         "alert.warning_title": "Aether 警告",
         "alert.runtime_class_missing": "ランタイム拡張の読み込みに失敗しました：AetherRuntimePlayer は利用できません",
         "alert.runtime_create_failed": "ランタイム拡張の読み込みに失敗しました：AetherRuntimePlayer を作成できません",
@@ -2026,7 +2022,6 @@ You can find it any time under Settings → QQ Group.",
         "message.game_exists": "게임이 이미 있습니다: %s",
         "message.builtin_delete_failed": "내장 데모를 완전히 삭제하지 못했습니다: %s",
         "alert.error_title": "Aether 오류",
-        "alert.system3_runtime_required": "이 게임은 이전 System3 DAT 형식으로 system3-sdl2가 필요합니다. xsystem35는 ALD 형식을 지원합니다.",
         "alert.warning_title": "Aether 경고",
         "alert.runtime_class_missing": "런타임 확장 로드 실패: AetherRuntimePlayer를 사용할 수 없습니다",
         "alert.runtime_create_failed": "런타임 확장 로드 실패: AetherRuntimePlayer를 만들 수 없습니다",
@@ -2073,6 +2068,7 @@ const RUNTIME_SIGLUS := "siglus"
 const RUNTIME_RENPY := "renpy"
 const RUNTIME_XSYSTEM4 := "xsystem4"
 const RUNTIME_XSYSTEM35 := "xsystem35"
+const RUNTIME_SYSTEM3 := "system3"
 const RUNTIME_WA2 := "wa2"
 const RUNTIME_BGI := "bgi"
 const RUNTIME_TYRANO := "tyranoscript"
@@ -9598,7 +9594,7 @@ func _game_launch_entry_label(game: Dictionary) -> String:
 func _can_configure_launch_file(game: Dictionary) -> bool:
     return OS.get_name() != "Web" \
         and not builtin_demo.is_game(game) \
-        and _game_runtime_kind(String(game.get("path", ""))) not in [RUNTIME_ONSCRIPTER, RUNTIME_XSYSTEM4, RUNTIME_XSYSTEM35, "system3"] \
+        and _game_runtime_kind(String(game.get("path", ""))) not in [RUNTIME_ONSCRIPTER, RUNTIME_XSYSTEM4, RUNTIME_XSYSTEM35, RUNTIME_SYSTEM3] \
         and String(game.get("type", "Directory")).to_lower() == "directory"
 
 func _set_launch_file_for_selected() -> void:
@@ -11875,9 +11871,6 @@ func _start_selected_game_after_entitlements() -> void:
     if not _mount_web_game(selected_game):
         return
     active_runtime_kind = _game_runtime_kind(library_path)
-    if active_runtime_kind == "system3":
-        _show_system_alert(_t("alert.system3_runtime_required"), _t("alert.error_title"))
-        return
     if active_runtime_kind == RUNTIME_TYRANO:
         _open_tyrano_game(selected_game)
         return
@@ -12429,6 +12422,7 @@ func _switch_runtime_player(runtime_kind: String) -> bool:
         RUNTIME_BGI,
         RUNTIME_XSYSTEM4,
         RUNTIME_XSYSTEM35,
+        RUNTIME_SYSTEM3,
     ]:
         normalized = RUNTIME_KIRIKIRI
     if player != null and current_player_runtime_kind == normalized:
@@ -12457,7 +12451,9 @@ func _switch_runtime_player(runtime_kind: String) -> bool:
             diagnostic_session.finish()
         diagnostic_session.start(player, selected_backend)
     _append_log("Runtime selected: %s" % (
-        "AliceSoft System 3.5/3.9"
+        "AliceSoft System 1/2/3"
+        if normalized == RUNTIME_SYSTEM3
+        else "AliceSoft System 3.5/3.9"
         if normalized == RUNTIME_XSYSTEM35
         else "AliceSoft System 4"
         if normalized == RUNTIME_XSYSTEM4
@@ -13097,6 +13093,7 @@ func _ensure_player_initialized() -> bool:
         RUNTIME_BGI,
         RUNTIME_XSYSTEM4,
         RUNTIME_XSYSTEM35,
+        RUNTIME_SYSTEM3,
     ]:
         runtime_id = current_player_runtime_kind
     var runtime_result := int(player.set_engine_option("runtime", runtime_id))
@@ -13111,7 +13108,9 @@ func _ensure_player_initialized() -> bool:
         return false
 
     _append_log("%s engine initialized." % (
-        "AliceSoft System 3.5/3.9"
+        "AliceSoft System 1/2/3"
+        if current_player_runtime_kind == RUNTIME_SYSTEM3
+        else "AliceSoft System 3.5/3.9"
         if current_player_runtime_kind == RUNTIME_XSYSTEM35
         else "AliceSoft System 4"
         if current_player_runtime_kind == RUNTIME_XSYSTEM4
@@ -15632,6 +15631,8 @@ func _renderer_summary(renderer: String) -> String:
     var summary := selected_backend
     if renderer.contains("backend=onscripter_yuri"):
         summary = "OnscripterYuri (Godot Texture)"
+    elif renderer.contains("backend=system3"):
+        summary = "System 1/2/3 (Godot Texture)"
     elif renderer.contains("backend=xsystem35"):
         summary = "System 3.5/3.9 (Godot Texture)"
     elif renderer.contains("backend=xsystem4"):

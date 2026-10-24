@@ -57,7 +57,7 @@ static func inspect(path: String) -> Dictionary:
     elif _has_suffix(files, "sa.ald") or files.has("adisk.ald"):
         result.engine = RUNTIME_XSYSTEM35
         result.signals.append("system35-scenario-ald")
-    elif files.has("adisk.dat") and files.has("acg.dat"):
+    elif (files.has("adisk.dat") or files.has("gdisk.dat") or files.has("agame.dat") or files.has("adisk.pat")) and (files.has("acg.dat") or files.has("gcg.dat")):
         result.engine = RUNTIME_SYSTEM3
         result.signals.append("system3-dat")
     elif not hcb.is_empty():

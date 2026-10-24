@@ -39,6 +39,7 @@ Godot App Shell
             ├─ SiglusRuntime ────── siglus_rs
             ├─ System4 Runtime ──── xsystem4 (AliceSoft)
             ├─ System35 Runtime ─── xsystem35 (AliceSoft)
+            ├─ System3 Runtime ──── system3-sdl2 (AliceSoft System 1–3)
             ├─ Artemis Runtime ──── Artemis (private package)
             ├─ CatSystem2 Runtime ─ CatSystem2 (private package)
             ├─ BGI Runtime ──────── BGI / Ethornell (private package)
@@ -65,8 +66,10 @@ and **Debug CPU** is a diagnostic fallback only.
   library on macOS, iOS/iPadOS and Android, with isolated saves and virtual keys. See the
   [prototype scope and tests](bridge/tyrano_runtime/README.md).
 - Native AliceSoft System 3.5/3.9 playback via xsystem35, with ALD directory
-  import, Chinese/Japanese text and optional virtual keys. Older System3 DAT
-  editions are identified separately. See the [native host and tested games](bridge/xsystem35_runtime/README.md).
+  import, Chinese/Japanese text and optional virtual keys. See the [native host and tested games](bridge/xsystem35_runtime/README.md).
+- Native AliceSoft System 1–3 DAT playback via system3-sdl2, preserving translated
+  game IDs, UTF-8 and font configuration, with Shift-JIS for original Japanese games.
+  Virtual keys default off. See the [native host and validation](bridge/system3_runtime/README.md).
 - Native AliceSoft System 4 playback via the bundled xsystem4 runtime, with
   directory import, Chinese/Japanese text, audio, movies and optional virtual keys.
   See the [native host and validation](bridge/xsystem4_runtime/README.md).

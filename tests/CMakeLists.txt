@@ -93,3 +93,7 @@ if(TARGET aether_xsystem35_core)
         $<IF:$<TARGET_EXISTS:SDL2_mixer::SDL2_mixer>,SDL2_mixer::SDL2_mixer,SDL2_mixer::SDL2_mixer-static>)
     add_test(NAME xsystem35-audio-contract COMMAND aether_xsystem35_audio_contract)
 endif()
+
+if(TARGET aether_system3_runtime)
+    include("${CMAKE_CURRENT_SOURCE_DIR}/system3_native/contracts.cmake")
+endif()

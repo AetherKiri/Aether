@@ -4,6 +4,9 @@
 #include "flash_player.h"
 #include "tyrano_player.h"
 #include "renpy_native.h"
+#if defined(AETHERKIRI_WITH_SYSTEM3)
+#include "system3_runtime_provider.h"
+#endif
 #if defined(AETHERKIRI_WITH_XSYSTEM35)
 #include "xsystem35_runtime_provider.h"
 #endif
@@ -12782,6 +12785,11 @@ void InitializeAetherRuntime(ModuleInitializationLevel level) {
 #endif
 #if defined(AETHERKIRI_WITH_ONSCRIPTER)
     aetherkiri::onscripter::RegisterRuntimeProvider();
+#endif
+#if defined(AETHERKIRI_WITH_SYSTEM3)
+    if(aetherkiri_system3_register_runtime_provider() != ENGINE_RESULT_OK) {
+        UtilityFunctions::printerr("Failed to register System 1/2/3 runtime provider");
+    }
 #endif
 #if defined(AETHERKIRI_WITH_XSYSTEM35)
     if(aetherkiri_xsystem35_register_runtime_provider() != ENGINE_RESULT_OK) {

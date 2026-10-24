@@ -60,8 +60,7 @@ rectangles so the software renderer does not blit enormous negative rectangles.
 ## Older System3 DAT games
 
 `ADISK.DAT` plus `ACG.DAT` is classified separately as `system3`. Those games
-require [system3-sdl2](https://github.com/kichikuou/system3-sdl2) and cannot be
-run by xsystem35. Aether displays this requirement on launch. In particular,
+run through Aether’s separate [system3-sdl2 native runtime](../system3_runtime/README.md). In particular,
 the supplied Chinese Rance4.1 and Rance4.2 builds use DAT; upstream's supported
 Rance4.1/4.2 releases are the newer ALD editions. See the
 [upstream compatibility table](https://github.com/AetherKiri/xsystem35-sdl2/blob/master/game_compatibility.md).

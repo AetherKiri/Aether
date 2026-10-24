@@ -37,6 +37,7 @@ Godot App Shell
             ├─ SiglusRuntime ────── siglus_rs
             ├─ System4 Runtime ──── xsystem4（AliceSoft）
             ├─ System35 Runtime ─── xsystem35（AliceSoft）
+            ├─ System3 Runtime ──── system3-sdl2（AliceSoft System 1–3）
             ├─ Artemis Runtime ──── Artemis（私有 package）
             ├─ CatSystem2 Runtime ─ CatSystem2（私有 package）
             ├─ BGI Runtime ──────── BGI / Ethornell（私有 package）
@@ -56,7 +57,8 @@ Godot App Shell
 - 集成 OnscripterYuri，Godot 的鼠标/触摸/键盘输入会映射回 ONS 事件。
 - 覆盖 macOS、iOS/iPadOS、Android、Web 与 Linux 的导出配置。
 - 独立的 Flash 分类，使用原生 Ruffle 播放，支持声音、键鼠、触摸以及视觉小说的虚拟按钮。
-- 通过内置 xsystem35 原生运行 AliceSoft System 3.5/3.9 游戏，支持 ALD 目录导入、中日文和可选虚拟按键；旧 System3 DAT 版本会单独识别。参见[原生宿主与游戏测试范围](bridge/xsystem35_runtime/README.md)。
+- 通过内置 xsystem35 原生运行 AliceSoft System 3.5/3.9 游戏，支持 ALD 目录导入、中日文和可选虚拟按键。参见[原生宿主与游戏测试范围](bridge/xsystem35_runtime/README.md)。
+- 通过内置 system3-sdl2 原生运行 AliceSoft System 1–3 DAT 游戏，沿用汉化包游戏 ID、UTF-8 编码与字体配置，日文版默认 Shift-JIS，虚拟按键默认关闭。参见[原生宿主与验证范围](bridge/system3_runtime/README.md)。
 - 通过内置 xsystem4 原生运行 AliceSoft System 4 游戏，支持目录导入、中日文字体、音频、视频和可选虚拟按键。参见[原生宿主与验证范围](bridge/xsystem4_runtime/README.md)。
 - macOS、iOS/iPadOS 和 Android 原型支持从视觉小说库运行 TyranoScript 网页项目，提供独立存档和虚拟按键。
   支持范围与验证方法见 [接入说明](bridge/tyrano_runtime/README.md)。

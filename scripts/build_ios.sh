@@ -325,6 +325,8 @@ combine_ios_static_extension() {
     local libs=(
         "$CMAKE_BUILD_DIR/bridge/godot_extension/libaether_kiri_godot.a"
         "$CMAKE_BUILD_DIR/bridge/onscripter_runtime/libaether_onscripter_runtime.a"
+        "$CMAKE_BUILD_DIR/bridge/system3_runtime/libaether_system3_runtime.a"
+        "$CMAKE_BUILD_DIR/bridge/system3_runtime/libaether_system3_core.a"
         "$CMAKE_BUILD_DIR/bridge/xsystem35_runtime/libaether_xsystem35_runtime.a"
         "$CMAKE_BUILD_DIR/bridge/xsystem35_runtime/libaether_xsystem35_core.a"
         "$CMAKE_BUILD_DIR/bridge/xsystem4_runtime/libaether_xsystem4_runtime.a"

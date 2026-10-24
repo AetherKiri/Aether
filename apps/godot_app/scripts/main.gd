@@ -12493,7 +12493,13 @@ func _switch_runtime_player(runtime_kind: String) -> bool:
         RUNTIME_ADVHD,
     ]:
         normalized = RUNTIME_KIRIKIRI
-    if player != null and current_player_runtime_kind == normalized:
+    # Returning to the library keeps the player Node but destroys its engine.
+    # Recreate that handle before callers apply any pre-open runtime options.
+    if (
+        player != null
+        and current_player_runtime_kind == normalized
+        and player.is_initialized()
+    ):
         return true
     if game_running:
         _append_log("Cannot switch visual-novel runtimes while a game is running.")

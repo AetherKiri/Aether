@@ -4,7 +4,7 @@ extends RefCounted
 # break WA(1)'s queued-load ordering and publish camera motion intermittently.
 const DEFAULT_WORKER_STEP_BUDGET := 65536
 const SCRIPT_ENCODING_FIELD := "yurisScriptEncoding"
-const SCRIPT_ENCODINGS := ["CP932", "GBK", "UTF-8"]
+const SCRIPT_ENCODINGS := ["AUTO", "CP932", "GBK", "UTF-8"]
 const SAVE_DIRECTORY := "savedata"
 const MIGRATION_MARKER := ".aether-yuris-migrated"
 const NON_SAVE_FILES := [MIGRATION_MARKER, ".DS_Store", "Thumbs.db", "desktop.ini", "krkr.console.log"]
@@ -119,10 +119,12 @@ static func script_encoding(game: Dictionary, override: String = "") -> String:
     if not requested.is_empty():
         return requested
     var saved := normalize_encoding(String(game.get(SCRIPT_ENCODING_FIELD, "")))
-    return "CP932" if saved.is_empty() else saved
+    return "AUTO" if saved.is_empty() else saved
 
 static func normalize_encoding(value: String) -> String:
     match value.strip_edges().to_upper().replace("_", "-"):
+        "AUTO":
+            return "AUTO"
         "CP932", "SJIS", "SHIFT-JIS", "SHIFTJIS":
             return "CP932"
         "GBK", "CP936":

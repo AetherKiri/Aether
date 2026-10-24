@@ -41,6 +41,13 @@ if(TARGET aether_xsystem4_runtime)
     target_include_directories(aether_xsystem4_native_contract PRIVATE "${CMAKE_SOURCE_DIR}/abi/include")
     target_link_libraries(aether_xsystem4_native_contract PRIVATE aether_xsystem4_runtime)
     add_test(NAME xsystem4-native-contract COMMAND aether_xsystem4_native_contract)
+    add_executable(aether_xsystem4_scene_keeper_contract xsystem4_native/scene_keeper.c)
+    target_include_directories(aether_xsystem4_scene_keeper_contract PRIVATE
+        "${AETHERKIRI_XSYSTEM4_DIR}/include"
+        "${AETHERKIRI_XSYSTEM4_DIR}/src/hll"
+        "${AETHERKIRI_XSYSTEM4_DIR}/subprojects/libsys4/include")
+    target_link_libraries(aether_xsystem4_scene_keeper_contract PRIVATE aether_xsystem4_runtime)
+    add_test(NAME xsystem4-scene-keeper-contract COMMAND aether_xsystem4_scene_keeper_contract)
 endif()
 if(AETHERKIRI_ENABLE_ONSCRIPTER)
     add_subdirectory(unit-tests/onscripter_runtime)

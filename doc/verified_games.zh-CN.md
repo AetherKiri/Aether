@@ -2,7 +2,7 @@
 
 [English](verified_games.md)
 
-最后更新：2026-10-18
+最后更新：2026-10-24
 
 本文档记录已经用 AetherKiri 手动 smoke test 或 flow test 过的游戏。它是兼容性记录，
 不代表每条路线、每个视频、每个插件路径或每个存档状态都已经完整验证。
@@ -19,6 +19,8 @@
 
 | 游戏 | 已验证平台/构建 | 验证范围 | 结果 | 验证人 | 备注 |
 | --- | --- | --- | --- | --- | --- |
+| 兰斯01 / Rance01（中文） | macOS arm64 debug，原生 JSON probe | xsystem4 GBK 自动识别、1024×768 画面、标题/中文菜单、新游戏、中文对白与点击推进 | 流程验证通过 | 本地 JSON probe | 2026-10-24 验证；使用独立测试存档目录。此次未复测 App 整包及其他平台，不包含游戏资源。 |
+| 兰斯02 / Rance02（中文） | macOS arm64 debug，原生 JSON probe | xsystem4 GBK 自动识别、日文 AIN 文件名解析、800×600 画面、标题/中文菜单、新游戏、中文对白与点击推进 | 流程验证通过 | 本地 JSON probe | 2026-10-24 验证；使用独立测试存档目录。此次未复测 App 整包及其他平台，不包含游戏资源。 |
 | 战国兰斯 / Sengoku Rance v1.01（中文） | macOS arm64 debug，Aether 主窗口与原生 JSON probe | xsystem4 原生启动、800×600 画面、开场视频/音频、标题、新游戏、中文对白与立绘、点击推进、游戏菜单、暂停恢复与反复重开 | Flow verified | 本地 JSON probe | iOS、Android、Linux 的实际游戏流程待验证；不包含游戏资源。 |
 | リップリップルズ | Android release APK | 导入、启动、初始标题/UI 与基础输入 | 冒烟验证通过 | [@KYoiRyi](https://github.com/KYoiRyi) | 本地游戏文件不提交到仓库。 |
 | Magical Charming! | macOS x64 debug app | 启动时跳过包内缺失的可选开场切入图、标题/菜单渲染、开始游戏按钮分发、首个场景/背景/文字渲染，以及基础输入 | 流程验证通过 | [@akitaSummer](https://github.com/akitaSummer) | 该 iOS 资源包未包含标准 `ab_*` 开场切入图；AetherKiri 只跳过这些缺失开场图对应的等待。本地游戏文件不提交到仓库。 |

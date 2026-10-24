@@ -84,6 +84,19 @@ namespace aetherkiri::xsystem4 {
             result << std::hex << value;
             return result.str();
         }
+        bool LooksLikeGbk(const std::string &sample) {
+            if(sample.empty())
+                return false;
+            uchardet_t detector = uchardet_new();
+            if(!detector)
+                return false;
+            uchardet_handle_data(detector, sample.data(), sample.size());
+            uchardet_data_end(detector);
+            const std::string encoding = Lower(uchardet_get_charset(detector));
+            uchardet_delete(detector);
+            return encoding == "gb18030" || encoding == "gb2312" ||
+                encoding == "gbk" || encoding == "hz-gb-2312";
+        }
         std::string DetectEncoding(const std::string &root) {
             for(const auto &entry : fs::directory_iterator(fs::u8path(root))) {
                 const auto name = Lower(entry.path().filename().u8string());
@@ -93,14 +106,45 @@ namespace aetherkiri::xsystem4 {
                 std::string data(65536, '\0');
                 stream.read(data.data(), data.size());
                 data.resize(stream.gcount());
-                uchardet_t detector = uchardet_new();
-                uchardet_handle_data(detector, data.data(), data.size());
-                uchardet_data_end(detector);
-                const std::string encoding =
-                    Lower(uchardet_get_charset(detector));
-                uchardet_delete(detector);
-                if(encoding == "gb18030" || encoding == "gb2312" ||
-                   encoding == "gbk" || encoding == "hz-gb-2312")
+                // Translations often retain Shift-JIS comments while replacing
+                // the actual values with GBK. Comments must not determine the
+                // encoding used for script filenames and in-game text.
+                std::istringstream lines(data);
+                std::string sample, title, line;
+                while(std::getline(lines, line)) {
+                    bool quoted = false;
+                    for(size_t i = 0; i < line.size(); i++) {
+                        if(line[i] == '"')
+                            quoted = !quoted;
+                        if(!quoted &&
+                           (line[i] == ';' || line.compare(i, 2, "//") == 0)) {
+                            line.resize(i);
+                            break;
+                        }
+                    }
+                    const auto start = line.find_first_not_of(" \t\r");
+                    if(start == std::string::npos)
+                        continue;
+                    sample += line;
+                    sample += '\n';
+                    const auto key_end = line.find_first_of(" \t=", start);
+                    if(line.substr(start, key_end - start) != "GameName")
+                        continue;
+                    const auto equals = line.find('=', key_end);
+                    if(equals == std::string::npos)
+                        continue;
+                    const auto first =
+                        line.find_first_not_of(" \t", equals + 1);
+                    if(first == std::string::npos || line[first] != '"')
+                        continue;
+                    const auto last = line.find('"', first + 1);
+                    if(last != std::string::npos)
+                        title = line.substr(first + 1, last - first - 1);
+                }
+                // A translated title takes priority over original Japanese
+                // labels left in other values (e.g. mixer channel names).
+                // Without positive GBK evidence, keep the Japanese default.
+                if(LooksLikeGbk(title) || LooksLikeGbk(sample))
                     return "gbk";
             }
             return "sjis";

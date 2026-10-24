@@ -16,3 +16,10 @@ target_compile_features(aether_xsystem4_native_contract PRIVATE cxx_std_17)
 target_include_directories(aether_xsystem4_native_contract PRIVATE "${AETHER_ROOT}/abi/include")
 target_link_libraries(aether_xsystem4_native_contract PRIVATE aether_xsystem4_runtime)
 add_test(NAME xsystem4-native-contract COMMAND aether_xsystem4_native_contract)
+add_executable(aether_xsystem4_scene_keeper_contract scene_keeper.c)
+target_include_directories(aether_xsystem4_scene_keeper_contract PRIVATE
+    "${AETHER_ROOT}/packages/xsystem4/include"
+    "${AETHER_ROOT}/packages/xsystem4/src/hll"
+    "${AETHER_ROOT}/packages/xsystem4/subprojects/libsys4/include")
+target_link_libraries(aether_xsystem4_scene_keeper_contract PRIVATE aether_xsystem4_runtime)
+add_test(NAME xsystem4-scene-keeper-contract COMMAND aether_xsystem4_scene_keeper_contract)

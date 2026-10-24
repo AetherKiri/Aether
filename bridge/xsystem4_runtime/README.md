@@ -47,9 +47,13 @@ The identity uses the AIN filename, size and leading script data, so moving a
 game or updating an iOS app container does not create a new save namespace.
 Existing saves in the imported game's `SaveData` are not automatically copied.
 
-`xsystem4_encoding=auto` detects GBK-family INI files and otherwise uses Shift-JIS.
-`gbk` and `sjis` can be set explicitly before opening. The default font comes
-from Aether's staged CJK font; a game-supplied `.xsys4rc` can provide font paths.
+`xsystem4_encoding=auto` ignores INI comments and gives a GBK-family `GameName`
+priority over untranslated Japanese labels in other values. It then checks the
+remaining configuration and defaults to Shift-JIS when no GBK evidence is found,
+so original Japanese games keep their native encoding. Quoted `;` and `//`
+remain part of string values. `gbk` and `sjis` can be set explicitly before
+opening. The default font comes from Aether's staged CJK font; a game-supplied
+`.xsys4rc` can provide font paths.
 Shaders are embedded in the library and do not depend on the process directory.
 
 ## Building and validation
@@ -91,6 +95,15 @@ Other actions are `click` (`x`, `y`, `button`: left=0/right=1/middle=2, `count`)
 serial, selected encoding, save directory and errors. Use a fresh output
 directory, or remove an earlier command before starting a new probe.
 
+The native contract includes encoding regressions for Chinese and Japanese
+configurations, mixed-encoding comments, Chinese title priority, inline comments,
+quoted comment markers, ASCII titles and explicit encoding overrides. Each case
+also checks that a non-ASCII AIN filename is resolved before script parsing.
+The scene-keeper contract checks that Chinese dialogue can use original
+Shift-JIS VM structure names, GBK names take priority when both exist, and
+scene serialization follows the current script's structure indices after
+switching games. These tests use synthetic data without game assets.
+
 On 2026-10-18, the supplied **Sengoku Rance v1.01** Chinese build was tested on
 macOS arm64: 800×600 startup, opening movie/audio, title, new game, Chinese
 dialogue and character rendering, pointer advancement and the in-game menu.
@@ -98,3 +111,12 @@ The same flow was exercised through Aether's main window with its Metal Godot
 renderer. Native pause/resume, closing and repeated reopening during a movie
 were also checked. iOS and Android context/source compile checks passed; device
 playback and Linux playback still need validation. No game files are included.
+
+On 2026-10-24, the supplied Chinese builds of **Rance01** (1024×768) and
+**Rance02** (800×600) were tested with the macOS arm64 native JSON probe: startup,
+title/menu, new game, Chinese dialogue and pointer advancement. Rance02's
+GBK-encoded `CodeName` resolves its Japanese-named AIN file, and 20 consecutive
+dialogue clicks pass the scene-history boundary with original Shift-JIS
+structure names. These checks used
+isolated probe save directories; the packaged app and other platforms were not
+retested for this encoding change.

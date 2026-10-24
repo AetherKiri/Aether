@@ -115,6 +115,8 @@ option(AETHERKIRI_ENABLE_RFVP "build the experimental native FVP runtime (requir
 option(BUILD_GPU_BRIDGE "build legacy external GPU bridge renderer" OFF)
 option(AETHERKIRI_ENABLE_ONSCRIPTER
        "enable the bundled OnscripterYuri runtime" ON)
+option(AETHERKIRI_ENABLE_XSYSTEM35
+       "enable the native AliceSoft System 3.5/3.9 runtime" ON)
 option(AETHERKIRI_ENABLE_XSYSTEM4
        "enable the native AliceSoft System 4 runtime" ON)
 option(AETHERKIRI_ENABLE_SIGLUS
@@ -148,6 +150,9 @@ set(AETHERKIRI_INTERNAL_DIR
 set(AETHERKIRI_ONSCRIPTERYURI_DIR
     "${CMAKE_CURRENT_SOURCE_DIR}/packages/OnscripterYuri"
     CACHE PATH "path to an OnscripterYuri runtime checkout")
+set(AETHERKIRI_XSYSTEM35_DIR
+    "${CMAKE_CURRENT_SOURCE_DIR}/packages/xsystem35"
+    CACHE PATH "path to an xsystem35 runtime checkout")
 set(AETHERKIRI_XSYSTEM4_DIR
     "${CMAKE_CURRENT_SOURCE_DIR}/packages/xsystem4"
     CACHE PATH "path to an xsystem4 runtime checkout")
@@ -308,6 +313,10 @@ endif()
 if(AETHERKIRI_ENABLE_ONSCRIPTER AND
    (BUILD_GODOT_EXTENSION OR AETHERKIRI_BUILD_NATIVE_ONSCRIPTER_TESTS))
     add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/bridge/onscripter_runtime)
+endif()
+if(AETHERKIRI_ENABLE_XSYSTEM35 AND BUILD_GODOT_EXTENSION AND
+   (APPLE OR ANDROID OR UNIX) AND NOT (WEB OR EMSCRIPTEN))
+    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/bridge/xsystem35_runtime)
 endif()
 if(AETHERKIRI_ENABLE_XSYSTEM4 AND BUILD_GODOT_EXTENSION AND
    (APPLE OR ANDROID OR UNIX) AND NOT (WEB OR EMSCRIPTEN))

@@ -19,6 +19,8 @@
 
 | 游戏 | 已验证平台/构建 | 验证范围 | 结果 | 验证人 | 备注 |
 | --- | --- | --- | --- | --- | --- |
+| 兰斯IV －教团的遗产－（中文 ALD 版） | macOS arm64 debug，原生 JSON probe 与 Aether 窗口 | xsystem35 启动、640×480 渲染、进入游戏、中文界面与对话、地图移动、MP3 背景音乐、暂停/恢复和重新打开 | 流程验证通过 | 本地 JSON probe | 2026-10-24 验证，使用独立测试存档。其他平台和存读档流程未验证；不包含游戏资源。 |
+| 兰斯5D（中文 ALD 版） | macOS arm64 debug，原生 JSON probe 与 Aether 窗口 | xsystem35 GBK 文字、中文标题与对话、进入游戏、第一章马赛克转场、指针输入、暂停/恢复和重新打开 | 流程验证通过 | 本地 JSON probe | 2026-10-24 验证，使用独立测试存档。其他平台和存读档流程未验证；不包含游戏资源。 |
 | 兰斯01 / Rance01（中文） | macOS arm64 debug，原生 JSON probe | xsystem4 GBK 自动识别、1024×768 画面、标题/中文菜单、新游戏、中文对白与点击推进 | 流程验证通过 | 本地 JSON probe | 2026-10-24 验证；使用独立测试存档目录。此次未复测 App 整包及其他平台，不包含游戏资源。 |
 | 兰斯02 / Rance02（中文） | macOS arm64 debug，原生 JSON probe | xsystem4 GBK 自动识别、日文 AIN 文件名解析、800×600 画面、标题/中文菜单、新游戏、中文对白与点击推进 | 流程验证通过 | 本地 JSON probe | 2026-10-24 验证；使用独立测试存档目录。此次未复测 App 整包及其他平台，不包含游戏资源。 |
 | 战国兰斯 / Sengoku Rance v1.01（中文） | macOS arm64 debug，Aether 主窗口与原生 JSON probe | xsystem4 原生启动、800×600 画面、开场视频/音频、标题、新游戏、中文对白与立绘、点击推进、游戏菜单、暂停恢复与反复重开 | Flow verified | 本地 JSON probe | iOS、Android、Linux 的实际游戏流程待验证；不包含游戏资源。 |

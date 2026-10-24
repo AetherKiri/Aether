@@ -52,3 +52,44 @@ endif()
 if(AETHERKIRI_ENABLE_ONSCRIPTER)
     add_subdirectory(unit-tests/onscripter_runtime)
 endif()
+
+if(TARGET aether_xsystem35_runtime)
+    add_executable(aether_xsystem35_native_contract xsystem35_native/contract.cpp)
+    target_compile_features(aether_xsystem35_native_contract PRIVATE cxx_std_17)
+    target_include_directories(aether_xsystem35_native_contract PRIVATE "${CMAKE_SOURCE_DIR}/abi/include")
+    target_link_libraries(aether_xsystem35_native_contract PRIVATE aether_xsystem35_runtime)
+    add_test(NAME xsystem35-native-contract COMMAND aether_xsystem35_native_contract)
+    set_tests_properties(xsystem35-native-contract PROPERTIES TIMEOUT 30)
+endif()
+
+if(TARGET aether_xsystem35_core)
+    get_target_property(xsystem35_binary_dir aether_xsystem35_core BINARY_DIR)
+    add_executable(aether_xsystem35_encoding_contract xsystem35_native/encoding.c)
+    target_include_directories(aether_xsystem35_encoding_contract PRIVATE
+        "${AETHERKIRI_XSYSTEM35_DIR}/src" "${xsystem35_binary_dir}/generated")
+    target_link_libraries(aether_xsystem35_encoding_contract PRIVATE aether_xsystem35_core)
+    add_test(NAME xsystem35-encoding-contract COMMAND aether_xsystem35_encoding_contract)
+endif()
+
+if(TARGET aether_xsystem35_core)
+    find_package(SDL2 CONFIG REQUIRED)
+    add_executable(aether_xsystem35_mosaic_contract xsystem35_native/mosaic.c
+        "${AETHERKIRI_XSYSTEM35_DIR}/src/render_mosaic.c")
+    target_include_directories(aether_xsystem35_mosaic_contract PRIVATE
+        "${AETHERKIRI_XSYSTEM35_DIR}/src" "${xsystem35_binary_dir}/generated")
+    target_link_libraries(aether_xsystem35_mosaic_contract PRIVATE
+        $<IF:$<TARGET_EXISTS:SDL2::SDL2>,SDL2::SDL2,SDL2::SDL2-static>)
+    if(UNIX AND NOT APPLE)
+        target_link_libraries(aether_xsystem35_mosaic_contract PRIVATE m)
+    endif()
+    add_test(NAME xsystem35-mosaic-contract COMMAND aether_xsystem35_mosaic_contract)
+endif()
+
+if(TARGET aether_xsystem35_core)
+    find_package(SDL2_mixer CONFIG REQUIRED)
+    add_executable(aether_xsystem35_audio_contract xsystem35_native/audio.c)
+    target_link_libraries(aether_xsystem35_audio_contract PRIVATE
+        $<IF:$<TARGET_EXISTS:SDL2::SDL2>,SDL2::SDL2,SDL2::SDL2-static>
+        $<IF:$<TARGET_EXISTS:SDL2_mixer::SDL2_mixer>,SDL2_mixer::SDL2_mixer,SDL2_mixer::SDL2_mixer-static>)
+    add_test(NAME xsystem35-audio-contract COMMAND aether_xsystem35_audio_contract)
+endif()

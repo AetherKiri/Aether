@@ -14,6 +14,8 @@ const DIRECTORY_RUNTIME_KINDS := [
     "tyranoscript",
     "wa2",
     "xsystem4",
+    "xsystem35",
+    "system3",
 ]
 const RFVP_ENCODING_FIELD := "rfvpEncoding"
 const RFVP_ENCODINGS := ["sjis", "gbk", "utf8"]

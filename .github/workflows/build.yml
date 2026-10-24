@@ -136,7 +136,7 @@ jobs:
           git submodule update --init --depth 1 packages/AetherMinori
           git submodule update --init --depth 1 packages/AetherKrkr
           git submodule update --init --depth 1 packages/ruffle
-          git submodule update --init --recursive --depth 1 packages/xsystem4
+          git submodule update --init --recursive --depth 1 packages/xsystem4 packages/xsystem35
 
       - name: Set application release version
         if: env.AETHERKIRI_RELEASE_VERSION != ''
@@ -436,7 +436,7 @@ jobs:
           git submodule update --init --depth 1 packages/AetherMinori
           git submodule update --init --depth 1 packages/AetherKrkr
           git submodule update --init --depth 1 packages/ruffle
-          git submodule update --init --recursive --depth 1 packages/xsystem4
+          git submodule update --init --recursive --depth 1 packages/xsystem4 packages/xsystem35
 
       - name: Set application release version
         if: env.AETHERKIRI_RELEASE_VERSION != ''
@@ -764,7 +764,7 @@ jobs:
           git submodule update --init --depth 1 packages/AetherMinori
           git submodule update --init --depth 1 packages/AetherKrkr
           git submodule update --init --depth 1 packages/ruffle
-          git submodule update --init --recursive --depth 1 packages/xsystem4
+          git submodule update --init --recursive --depth 1 packages/xsystem4 packages/xsystem35
 
       - name: Set application release version
         if: env.AETHERKIRI_RELEASE_VERSION != ''
@@ -1101,7 +1101,7 @@ jobs:
           git submodule update --init --depth 1 packages/AetherMinori
           git submodule update --init --depth 1 packages/AetherKrkr
           git submodule update --init --depth 1 packages/ruffle
-          git submodule update --init --recursive --depth 1 packages/xsystem4
+          git submodule update --init --recursive --depth 1 packages/xsystem4 packages/xsystem35
 
       - name: Verify private runtime packages
         if: env.AETHERKIRI_WITH_INTERNAL == 'true'
@@ -1228,7 +1228,7 @@ jobs:
           LD_LIBRARY_PATH: ${{ github.workspace }}/apps/godot_app/bin/linux/debug
         run: |
           python3 -m unittest discover -s tests/python -p test_renpy_host.py
-          for test in video_library_folders video_library_ui video_import_permissions flash_library tyrano_library renpy_library xsystem4_library rfvp_import; do
+          for test in video_library_folders video_library_ui video_import_permissions flash_library tyrano_library renpy_library xsystem4_library xsystem35_library rfvp_import; do
             timeout 60 "$GODOT_BIN" --headless --path apps/godot_app \
               --script "res://tests/${test}_test.gd" \
               2>&1 | tee "$RUNNER_TEMP/${test}.log"

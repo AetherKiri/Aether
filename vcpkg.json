@@ -56,6 +56,10 @@
       "name": "libgdiplus",
       "platform": "!windows & !emscripten"
     },
+    {
+      "name": "libiconv",
+      "platform": "!emscripten"
+    },
     "libjpeg-turbo",
     "lua",
     {
@@ -116,7 +120,15 @@
         "libwebp"
       ]
     },
-    "sdl2-mixer",
+    {
+      "name": "sdl2-mixer",
+      "features": [
+        {
+          "name": "mpg123",
+          "platform": "!emscripten"
+        }
+      ]
+    },
     {
       "name": "sdl2-ttf",
       "features": [

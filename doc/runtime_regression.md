@@ -98,7 +98,8 @@ trip, input is suppressed or rejected, or the release does not finish.
 `click` use this path. Use it for iOS button regressions; ordinary `click`
 defaults to direct player pointer input. Touch supports only the primary
 button; `hold_frames` defaults to 1 and larger values also exercise stationary
-holds.
+holds. Set `hold_frames` to 0 for pointer actions to deliver press and release
+without advancing a frame between them, covering short taps and clicks.
 
 `two_finger_tap` sends two simultaneous contacts through the same handler and
 requires a forwarded secondary gesture. It exercises two-finger return without

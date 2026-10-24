@@ -240,8 +240,8 @@ func tap(action: Dictionary, label: String) -> bool:
     if mapped.distance_to(source) > 1.0:
         record({"event": "failed", "label": label, "reason": "touch coordinate round trip", "source": [source.x, source.y], "mapped": [mapped.x, mapped.y]})
         return false
-    var forwarded := int(app.input_trace_forwarded)
-    var failed := int(app.input_trace_send_failed)
+    var forwarded := int(app.input_total_forwarded)
+    var failed := int(app.input_total_send_failed)
     var pointer_id := int(action.get("touch_index", 0))
     var event := InputEventScreenTouch.new()
     event.index = pointer_id
@@ -250,7 +250,7 @@ func tap(action: Dictionary, label: String) -> bool:
     if not app._handle_game_pointer_event(event):
         record({"event": "failed", "label": label, "reason": "touch press not handled"})
         return false
-    if not await advance(int(action.get("hold_frames", 1))):
+    if int(action.get("hold_frames", 1)) > 0 and not await advance(int(action.get("hold_frames", 1))):
         return false
     event = InputEventScreenTouch.new()
     event.index = pointer_id
@@ -266,8 +266,8 @@ func tap(action: Dictionary, label: String) -> bool:
             return false
         if not await advance(1):
             return false
-    var sent := int(app.input_trace_forwarded) - forwarded
-    if sent < 3 or int(app.input_trace_send_failed) != failed:
+    var sent := int(app.input_total_forwarded) - forwarded
+    if sent < 3 or int(app.input_total_send_failed) != failed:
         record({"event": "failed", "label": label, "reason": "touch not forwarded", "forwarded": sent, "state": state()})
         return false
     record({"event": "input", "label": label, "kind": "touch", "source": [source.x, source.y], "viewport": [position.x, position.y], "forwarded": sent})
@@ -284,8 +284,8 @@ func two_finger_tap(action: Dictionary, label: String) -> bool:
     if mapped.distance_to(source) > 1.0:
         record({"event": "failed", "label": label, "reason": "gesture coordinate round trip"})
         return false
-    var forwarded := int(app.input_trace_forwarded)
-    var failed := int(app.input_trace_send_failed)
+    var forwarded := int(app.input_total_forwarded)
+    var failed := int(app.input_total_send_failed)
     # Both contacts arrive before a frame can flush the pending primary tap.
     # The real gesture handler chooses the secondary button and cancels the
     # contacts; injecting a native right-click here would bypass that code.
@@ -298,8 +298,8 @@ func two_finger_tap(action: Dictionary, label: String) -> bool:
             if not app._handle_game_pointer_event(event):
                 record({"event": "failed", "label": label, "reason": "gesture not handled"})
                 return false
-    var sent := int(app.input_trace_forwarded) - forwarded
-    if sent < 3 or int(app.input_trace_send_failed) != failed:
+    var sent := int(app.input_total_forwarded) - forwarded
+    if sent < 3 or int(app.input_total_send_failed) != failed:
         record({"event": "failed", "label": label, "reason": "gesture not forwarded", "forwarded": sent})
         return false
     record({"event": "input", "label": label, "kind": "two_finger_tap", "source": [source.x, source.y], "forwarded": sent})
@@ -379,7 +379,7 @@ func run(game_path: String) -> int:
             if result != app.ENGINE_RESULT_OK:
                 record({"event": "failed", "label": label, "reason": "input rejected", "error": app.player.get_last_error()})
                 return 1
-            if not await advance(int(action.get("hold_frames", 3))):
+            if int(action.get("hold_frames", 3)) > 0 and not await advance(int(action.get("hold_frames", 3))):
                 return 1
             app.player.send_pointer_event(app.POINTER_UP, 0, pos.x, pos.y, 0.0, 0.0, int(action.get("button_index", 0)))
         elif kind == "key":

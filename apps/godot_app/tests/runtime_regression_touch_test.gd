@@ -5,6 +5,8 @@ const Probe = preload("res://scripts/runtime_regression_probe.gd")
 class RecordingPlayer:
     extends Node
     var events: Array[Dictionary] = []
+    func is_initialized() -> bool:
+        return true
     func get_frame_source_size() -> Vector2i:
         return Vector2i(1280, 720)
     func get_renderer_info() -> String:
@@ -18,6 +20,7 @@ class RecordingPlayer:
 class TouchApp:
     extends "res://scripts/main.gd"
     var force_busy := false
+    var reset_trace_counters := false
     func _ready() -> void:
         pass
     func _process(_delta: float) -> void:
@@ -30,6 +33,9 @@ class TouchApp:
         pass
     func _probe_advance(frames: int) -> bool:
         for _frame in frames:
+            if reset_trace_counters:
+                input_trace_forwarded = 0
+                input_trace_send_failed = 0
             _flush_delayed_touch_releases()
             _flush_pending_touch_press_if_ready()
             await get_tree().process_frame
@@ -77,6 +83,13 @@ func _run() -> void:
     _check_edges(player.events, app, 100000)
     assert(player.events[2].time - player.events[1].time >= app.TOUCH_CLICK_HOLD_MS)
     assert(app.delayed_touch_releases.is_empty())
+
+    player.events.clear()
+    app.reset_trace_counters = true
+    assert(await probe.tap({"x": 1200, "y": 300, "hold_frames": 0}, "same-frame-touch"))
+    _check_edges(player.events, app, 100000)
+    assert(app.delayed_touch_releases.is_empty())
+    app.reset_trace_counters = false
 
     # A stationary hold is dispatched before release; it must not be turned
     # into a second tap or leave the native button held afterwards.

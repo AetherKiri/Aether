@@ -3,6 +3,9 @@
 #include <godot_cpp/classes/display_server.hpp>
 #ifdef __APPLE__
 #include <TargetConditionals.h>
+#define AETHER_TYRANO_NATIVE_WEBVIEW 1
+#elif defined(_WIN32)
+#define AETHER_TYRANO_NATIVE_WEBVIEW 1
 #endif
 #ifdef __ANDROID__
 #include <godot_cpp/classes/engine.hpp>
@@ -41,9 +44,11 @@ protected:
 public:
     ~AetherTyranoPlayer() override { close(); }
     bool is_supported() const {
-#ifdef __APPLE__
+#if defined(__APPLE__)
         const String display = DisplayServer::get_singleton()->get_name();
         return display == "macOS" || display == "iOS";
+#elif defined(_WIN32)
+        return true;
 #elif defined(__ANDROID__)
         return Engine::get_singleton()->has_singleton("AndroidRuntime") &&
             JavaClassWrapper::get_singleton() != nullptr;
@@ -53,11 +58,11 @@ public:
     }
     bool open(const String &entry, const String &storage) {
         close(); error_ = "";
-#ifdef __APPLE__
+#ifdef AETHER_TYRANO_NATIVE_WEBVIEW
         auto *window = get_window();
-        if (!is_supported() || !window) { error_ = "A native Apple window is required"; return false; }
+        if (!is_supported() || !window) { error_ = "A native application window is required"; return false; }
         const uint64_t native = DisplayServer::get_singleton()->window_get_native_handle(
-#if TARGET_OS_IPHONE
+#if defined(__APPLE__) && TARGET_OS_IPHONE
             DisplayServer::WINDOW_VIEW,
 #else
             DisplayServer::WINDOW_HANDLE,
@@ -82,13 +87,13 @@ public:
         set_process(true);
         return true;
 #else
-        error_ = "TyranoScript hosting requires macOS, iOS or Android";
+        error_ = "TyranoScript hosting requires Windows, macOS, iOS or Android";
         return false;
 #endif
     }
     void close() {
         set_process(false);
-#ifdef __APPLE__
+#ifdef AETHER_TYRANO_NATIVE_WEBVIEW
         if (handle_) { aether_tyrano_close(handle_); handle_ = nullptr; }
 #elif defined(__ANDROID__)
         if (android_.is_valid()) { android_->call("close"); android_.unref(); }
@@ -96,7 +101,7 @@ public:
     }
     String get_error() const { return error_; }
     void set_rect(const Rect2 &rect, const Vector2 &viewport_size) {
-#ifdef __APPLE__
+#ifdef AETHER_TYRANO_NATIVE_WEBVIEW
         if (handle_ && viewport_size.x > 0 && viewport_size.y > 0)
             aether_tyrano_rect(handle_, rect.position.x / viewport_size.x,
                 rect.position.y / viewport_size.y, rect.size.x / viewport_size.x, rect.size.y / viewport_size.y);
@@ -107,28 +112,28 @@ public:
 #endif
     }
     void set_paused(bool paused) {
-#ifdef __APPLE__
+#ifdef AETHER_TYRANO_NATIVE_WEBVIEW
         if (handle_) aether_tyrano_pause(handle_, paused);
 #elif defined(__ANDROID__)
         if (android_.is_valid()) android_->call("setPaused", paused);
 #endif
     }
     void set_virtual_controls(bool visible) {
-#ifdef __APPLE__
+#ifdef AETHER_TYRANO_NATIVE_WEBVIEW
         if (handle_) aether_tyrano_controls(handle_, visible);
 #elif defined(__ANDROID__)
         if (android_.is_valid()) android_->call("setControls", visible);
 #endif
     }
     void evaluate_script(const String &script) {
-#ifdef __APPLE__
+#ifdef AETHER_TYRANO_NATIVE_WEBVIEW
         if (handle_) aether_tyrano_evaluate(handle_, script.utf8().get_data());
 #elif defined(__ANDROID__)
         if (android_.is_valid()) android_->call("evaluate", script);
 #endif
     }
     void _process(double) override {
-#ifdef __APPLE__
+#ifdef AETHER_TYRANO_NATIVE_WEBVIEW
         for (int i = 0; handle_ && i < 64; ++i) {
             char *event = aether_tyrano_poll(handle_);
             if (!event) break;

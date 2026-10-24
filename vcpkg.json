@@ -157,6 +157,10 @@
       "platform": "osx"
     },
     {
+      "name": "webview2",
+      "platform": "windows & !uwp"
+    },
+    {
       "name": "vcpkg-cmake",
       "host": true
     },

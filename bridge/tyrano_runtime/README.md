@@ -1,7 +1,7 @@
 # TyranoScript browser-project host (prototype)
 
 TyranoScript projects are HTML/JavaScript applications. Aether runs the game's
-own engine in a system WKWebView (Apple) or Android WebView rather than
+own engine in WebView2 (Windows), WKWebView (Apple), or Android WebView rather than
 interpreting KS tags again or passing HTML to the KiriKiri provider. Upstream TyranoScript source and example
 assets are not bundled with Aether. This module contains only Aether's host
 adapter. See [upstream](https://github.com/ShikemokuMK/tyranoscript) for the engine
@@ -9,7 +9,7 @@ and its distribution terms.
 
 ## Current support
 
-The prototype is enabled on **macOS, iOS/iPadOS, and Android**. Linux, Windows,
+The prototype is enabled on **Windows, macOS, iOS/iPadOS, and Android**. Linux
 and Web builds recognize the project and report that this prototype is unavailable.
 The UIKit host has iPhone and iPad Simulator integration tests. Android has SDK/NDK
 compilation and resource/staging tests; physical mobile devices and arbitrary
@@ -46,6 +46,7 @@ automatically apply to the native WebView.
 
 ## Resources, persistence and lifecycle
 
+Windows uses the per-game synthetic HTTPS origin `https://game.aether-tyrano.invalid/`.
 Apple's `aether-tyrano://game/` and Android's per-game synthetic HTTPS origin
 resolve files only within the imported project. Resolved
 symlinks cannot escape that root. The resource handler provides MIME types,
@@ -59,7 +60,8 @@ Each game has a separate Storage adapter under
 `user://tyrano_saves/<game-identity>/local_storage.json`. Original game files
 are not changed. Storage writes cross a private native prompt boundary
 (WKUIDelegate or WebChromeClient) without showing UI, finish atomically before JavaScript returns, and propagate
-failures as exceptions. Document creation reads the latest snapshot, including
+failures as exceptions. WebView2 uses its synchronous per-origin Storage directly,
+with native JSON snapshots and no synchronous prompt dialog. Document creation reads the latest snapshot, including
 when the game calls `location.reload()`. Corrupt existing storage is preserved
 and reported. `sessionStorage` is per document; browser cookies and IndexedDB
 use an ephemeral WebKit data store on Apple. Android disables DOM storage and

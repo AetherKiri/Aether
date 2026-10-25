@@ -62,7 +62,7 @@ Shaders are embedded in the library and do not depend on the process directory.
 
 `AETHERKIRI_ENABLE_XSYSTEM4` defaults to `ON` for the native app. A local fork can
 be selected with `AETHERKIRI_XSYSTEM4_DIR`. Dependencies include SDL2, FFmpeg,
-FreeType, libsndfile, cglm, libffi, uchardet, Flex and Bison. Linux additionally
+FreeType, libsndfile, SDL2_image, cglm, libffi, uchardet, Flex and Bison. Linux additionally
 needs EGL and GLES development libraries. iOS packaging merges both the adapter
 archive and `libsys4.a` into the existing static extension and links OpenGLES.
 
@@ -114,6 +114,21 @@ out-of-bounds indexes are rejected. Both file I/O and memory-mapped entry
 loading are tested. The compatibility adapter is generated in the build
 directory; imported archives and the pinned libsys4 sources are unchanged.
 
+The CG adapter uses the existing SDL2_image dependency to decode 24/32-bit TGA
+resources, including RLE, image IDs, alpha and both axis origins. It validates
+pixel/packet bounds before decoding and supplies RGBA data and CG metrics to
+the existing renderer. Its synthetic contract checks channel order, alpha,
+orientation and malformed/truncated data without game assets.
+
+Rance Quest's numeric-string CG interface is recognized from its `TapirEngine`
+library when a translation changes the displayed title. MonsterInfo determines
+its own Shift-JIS/GBK grammar encoding independently of dialogue, preserves
+resource identifiers and restores the dialogue encoding after parsing. GBK
+dialogue that requests a Shift-JIS-only FNL face uses Aether's Unicode CJK font;
+Japanese games retain their original FNL face. Synthetic contracts cover
+renamed/Chinese/Japanese/English titles, metadata encoding combinations,
+malformed metadata and font selection across encoding changes.
+
 On 2026-10-18, the supplied **Sengoku Rance v1.01** Chinese build was tested on
 macOS arm64: 800×600 startup, opening movie/audio, title, new game, Chinese
 dialogue and character rendering, pointer advancement and the in-game menu.
@@ -149,3 +164,13 @@ also passed the movie, title, new game and 20 dialogue clicks, showing Chinese
 text, backgrounds and characters through Aether's Metal presentation. The
 three native CTests passed. Battle/3D flows, save/load, full-game completion
 and other platforms were not tested for this change. No game assets included.
+
+On 2026-10-25, the supplied Chinese **Rance08 / Rance Quest Magnum** build
+reproduced missing numeric CG bindings, a Japanese MonsterInfo parse failure,
+unsupported TGA title assets and empty Chinese FNL text. The native JSON probe
+confirmed startup, title/menu and Chinese help text after the fixes. The
+exported macOS arm64 Debug app passed title/menu, new game and 20 dialogue
+clicks with Chinese names/text, backgrounds and characters using Metal
+presentation. All six native CTests passed. Battle/3D flows, save/load,
+full-game completion and other platforms remain unverified. Imported game
+assets are unchanged and are not included in this repository.

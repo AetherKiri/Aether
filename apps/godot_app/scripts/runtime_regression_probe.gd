@@ -305,9 +305,110 @@ func two_finger_tap(action: Dictionary, label: String) -> bool:
     record({"event": "input", "label": label, "kind": "two_finger_tap", "source": [source.x, source.y], "forwarded": sent})
     return true
 
+func prepare_virtual_mouse() -> bool:
+    app._sync_game_virtual_controls()
+    var controls = app.game_virtual_controls
+    if controls == null or not controls.visible or not app._can_forward_virtual_controls_input():
+        return false
+    if not controls.is_panel_open():
+        if not controls.is_menu_open():
+            controls.menu_button.emit_signal("pressed")
+        controls.virtual_controls_button.emit_signal("pressed")
+    if controls.is_touch_mode():
+        controls.input_mode_button.emit_signal("pressed")
+    return controls.is_panel_open() and controls.input_mode_button.text == "Mode: Mouse"
+
+func virtual_mouse_click(action: Dictionary, label: String) -> bool:
+    if int(action.get("button_index", 0)) != 0 or not prepare_virtual_mouse():
+        record({"event": "failed", "label": label, "reason": "virtual mouse unavailable"})
+        return false
+    var controls = app.game_virtual_controls
+    var source := point(action)
+    var frame: Vector2i = app.player.get_frame_source_size()
+    var target: Vector2 = app._map_surface_point_to_viewport(source)
+    if source.x < 0 or source.y < 0 or source.x >= frame.x or source.y >= frame.y \
+            or app._map_viewport_point(target).distance_to(source) > 1.0:
+        record({"event": "failed", "label": label, "reason": "invalid virtual mouse target"})
+        return false
+    # Use the real Mouse-mode trackpad recognizer. A finger's position is
+    # separate from the cursor hotspot; no native click is injected here.
+    var safe: Rect2 = controls._safe_rect
+    var touchpad := Vector2(-1, -1)
+    for y in [0.28, 0.42, 0.58]:
+        for x in [0.55, 0.45, 0.65]:
+            var candidate := safe.position + safe.size * Vector2(x, y)
+            if not controls._visible_interactive_control_at(candidate) and not controls._dpad_contains_point(candidate):
+                touchpad = candidate
+                break
+        if touchpad.x >= 0:
+            break
+    if touchpad.x < 0:
+        record({"event": "failed", "label": label, "reason": "no virtual trackpad area"})
+        return false
+    var edges: Array[Dictionary] = []
+    var observe := func(pressed: bool, button: int, modifiers: int, position: Vector2):
+        edges.append({"pressed": pressed, "button": button, "modifiers": modifiers,
+            "position": [position.x, position.y], "frame": Engine.get_process_frames()})
+    controls.pointer_button_requested.connect(observe)
+    var forwarded := int(app.input_total_forwarded)
+    var failed := int(app.input_total_send_failed)
+    var drags := 0
+    while controls.cursor_screen_position().distance_to(target) > 1.0 and drags < 32:
+        var delta: Vector2 = target - controls.cursor_screen_position()
+        var room: Vector2 = Vector2(minf(touchpad.x - safe.position.x, safe.end.x - touchpad.x),
+            minf(touchpad.y - safe.position.y, safe.end.y - touchpad.y)) * 0.8
+        delta = delta.limit_length(minf(room.x, room.y))
+        var down := InputEventScreenTouch.new()
+        down.index = 40
+        down.position = touchpad
+        down.pressed = true
+        var handled: bool = controls.routes_pointer(down)
+        # Crossing the drag threshold also prevents a tiny final movement
+        # from being mistaken for another trackpad tap.
+        for movement in [delta.normalized() * maxf(delta.length(), 12.0), delta]:
+            var drag := InputEventScreenDrag.new()
+            drag.index = down.index
+            drag.position = touchpad + movement
+            handled = controls.routes_pointer(drag) and handled
+        var up := InputEventScreenTouch.new()
+        up.index = down.index
+        up.position = touchpad + delta
+        up.pressed = false
+        handled = controls.routes_pointer(up) and handled
+        drags += 1
+        if not handled or not edges.is_empty() or not await advance(1):
+            break
+    var positioned: bool = controls.cursor_screen_position().distance_to(target) <= 1.0
+    var handled := false
+    if positioned and edges.is_empty():
+        var down := InputEventScreenTouch.new()
+        down.index = 41
+        down.position = touchpad
+        down.pressed = true
+        handled = controls.routes_pointer(down)
+        if int(action.get("hold_frames", 3)) > 0:
+            handled = await advance(int(action.get("hold_frames", 3))) and handled
+        var up := InputEventScreenTouch.new()
+        up.index = down.index
+        up.position = touchpad
+        up.pressed = false
+        handled = controls.routes_pointer(up) and handled
+    controls.pointer_button_requested.disconnect(observe)
+    var sent := int(app.input_total_forwarded) - forwarded
+    var valid_edges: bool = edges.size() == 2 and edges[0].pressed and not edges[1].pressed \
+        and edges[0].button == 0 and edges[1].button == 0 and edges[0].frame == edges[1].frame
+    if not positioned or not handled or not valid_edges or sent < 2 or int(app.input_total_send_failed) != failed:
+        record({"event": "failed", "label": label, "reason": "virtual mouse gesture not forwarded",
+            "positioned": positioned, "edges": edges, "forwarded": sent, "state": state()})
+        return false
+    record({"event": "input", "label": label, "kind": "virtual_mouse", "mode": controls.input_mode_button.text,
+        "source": [source.x, source.y], "viewport": [target.x, target.y],
+        "touchpad": [touchpad.x, touchpad.y], "drags": drags, "edges": edges, "forwarded": sent})
+    return true
+
 func run(game_path: String) -> int:
     var pointer_input := String(config.get("pointer_input", "mouse"))
-    if pointer_input not in ["mouse", "touch"]:
+    if pointer_input not in ["mouse", "touch", "virtual_mouse"]:
         record({"event": "failed", "reason": "invalid pointer_input"})
         return 1
     var launch_mode := String(config.get("launch_mode", "probe"))
@@ -358,6 +459,23 @@ func run(game_path: String) -> int:
         elif kind == "snapshot":
             snapshots[label] = state().duplicate(true)
             record({"event": "snapshot", "label": label, "state": snapshots[label]})
+        elif kind == "virtual_mouse_click" or (kind == "click" and pointer_input == "virtual_mouse"):
+            if not await virtual_mouse_click(action, label):
+                return 1
+        elif kind == "virtual_key":
+            if not prepare_virtual_mouse():
+                record({"event": "failed", "label": label, "reason": "virtual controls unavailable"})
+                return 1
+            var control: Variant = app.game_virtual_controls.get(String(action.get("control", "escape_button")))
+            if not control is Button or not control.visible:
+                record({"event": "failed", "label": label, "reason": "missing virtual key"})
+                return 1
+            control.emit_signal("button_down")
+            if not await advance(int(action.get("hold_frames", 3))):
+                control.emit_signal("button_up")
+                return 1
+            control.emit_signal("button_up")
+            record({"event": "input", "label": label, "kind": "virtual_key", "control": control.name})
         elif kind == "tap" or (kind == "click" and pointer_input == "touch"):
             if not await tap(action, label):
                 return 1

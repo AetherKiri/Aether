@@ -1,6 +1,8 @@
 extends SceneTree
 
 const Probe = preload("res://scripts/runtime_regression_probe.gd")
+const VirtualControls = preload("res://scripts/game_virtual_controls.gd")
+const DesignTokens = preload("res://scripts/ui/aether_design_tokens.gd")
 
 class RecordingPlayer:
     extends Node
@@ -119,11 +121,42 @@ func _run() -> void:
     assert(player.events.is_empty())
     assert(probe.report.back().reason == "gesture not forwarded")
 
+    # Mouse mode uses relative touchpad motion and generates both native
+    # button edges on finger release, even when the finger is held for frames.
+    app.force_busy = false
+    app.game_running = true
+    app.cached_startup_state = app.STARTUP_SUCCEEDED
+    var controls := VirtualControls.new()
+    app.add_child(controls)
+    controls.setup(DesignTokens.new())
+    controls.layout(Vector2(1000, 750), Rect2(0, 0, 1000, 750))
+    app.game_virtual_controls = controls
+    controls.pointer_move_requested.connect(app._on_game_virtual_pointer_move)
+    controls.pointer_button_requested.connect(app._on_game_virtual_pointer_button)
+    player.events.clear()
+    assert(await probe.virtual_mouse_click({"x": 1200, "y": 300, "hold_frames": 3}, "mouse-mode-trackpad"))
+    var edges: Array[Dictionary] = []
+    for event in player.events:
+        assert(event.pointer == app.VIRTUAL_CONTROLS_POINTER_ID)
+        if event.kind != app.POINTER_MOVE:
+            edges.append(event)
+    assert(edges.size() == 2)
+    assert(edges[0].kind == app.POINTER_DOWN and edges[1].kind == app.POINTER_UP)
+    assert(edges[0].position.distance_to(Vector2(1200, 300)) <= 1.0)
+    assert(edges[1].position.distance_to(Vector2(1200, 300)) <= 1.0)
+    assert(probe.report.back().mode == "Mode: Mouse")
+    assert(probe.report.back().drags > 0)
+    assert(probe.report.back().edges[0].frame == probe.report.back().edges[1].frame)
+    player.events.clear()
+    app.app_lifecycle_paused = true
+    assert(not await probe.virtual_mouse_click({"x": 200, "y": 300}, "paused-mouse-mode"))
+    assert(player.events.is_empty())
+
     DirAccess.remove_absolute(ProjectSettings.globalize_path(directory.path_join("regression-result.json")))
     DirAccess.remove_absolute(ProjectSettings.globalize_path(directory))
     app.ui_motion.free()
     app.free()
-    print("Runtime regression touch mapping, mobile release and suppression checks passed")
+    print("Runtime regression touch, virtual Mouse-mode routing and suppression checks passed")
     quit(0)
 
 func _check_edges(events: Array[Dictionary], app: Node, pointer: int) -> void:

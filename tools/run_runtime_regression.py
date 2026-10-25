@@ -48,8 +48,8 @@ def arguments():
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--seed", type=Path, help="Copy this writable-state tree into the isolated run")
     parser.add_argument("--game", help="Override the case's game_path on this host or device")
-    parser.add_argument("--pointer-input", choices=("mouse", "touch"),
-        help="Use the app's ScreenTouch handler for clicks instead of direct player pointer input")
+    parser.add_argument("--pointer-input", choices=("mouse", "touch", "virtual_mouse"),
+        help="Click through direct player input, ScreenTouch, or the virtual Mouse-mode trackpad")
     parser.add_argument("--timeout", type=int, default=180)
     parser.add_argument("--device")
     parser.add_argument("--bundle", help="Installed development app bundle ID")

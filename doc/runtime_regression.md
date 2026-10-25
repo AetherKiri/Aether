@@ -84,7 +84,8 @@ Run directories are retained for investigation and can be removed afterwards.
 }
 ```
 
-Actions are `move`, `click`, `tap`, `two_finger_tap`, `key`, `wait`, `snapshot`, `assert`, and `reopen`. Pointer
+Actions are `move`, `click`, `tap`, `two_finger_tap`, `virtual_mouse_click`,
+`virtual_key`, `key`, `wait`, `snapshot`, `assert`, and `reopen`. Pointer
 coordinates use the source frame's pixels. A click can select a visible, enabled
 button with a partial `button` dictionary instead of coordinates, or use
 `point_from` to find a saved rectangle (`x`, `y`, `w`, `h`).
@@ -100,6 +101,17 @@ defaults to direct player pointer input. Touch supports only the primary
 button; `hold_frames` defaults to 1 and larger values also exercise stationary
 holds. Set `hold_frames` to 0 for pointer actions to deliver press and release
 without advancing a frame between them, covering short taps and clicks.
+
+`virtual_mouse_click` opens the production virtual-control panel in
+`Mode: Mouse`, moves its cursor using ScreenTouch/ScreenDrag trackpad gestures,
+then taps the trackpad at a separate finger position. The real gesture
+recognizer generates the click through its connected application handlers.
+It verifies the cursor mapping, emitted button order, same-frame button edges,
+and successful forwarding. The finger is held for 3 frames by default; Mouse
+mode still emits both native edges together on release.
+`--pointer-input virtual_mouse` makes every `click` use this path on either platform.
+`virtual_key` presses a visible virtual button selected by its `control`
+property (default `escape_button`) through its button-down/up signals.
 
 `two_finger_tap` sends two simultaneous contacts through the same handler and
 requires a forwarded secondary gesture. It exercises two-finger return without

@@ -69,6 +69,31 @@ func _init() -> void:
     app._set_rfvp_encoding_for_selected(root, "gbk")
     _expect(app.selected_game.launchFile == ".Story.hcb")
     _expect(app.selected_game.rfvpEncoding == "gbk")
+
+    # Resetting the launch file keeps an empty automatic choice in the
+    # library. Resolve it when opening instead of sending the directory to
+    # native auto-dispatch, where it falls back to KiriKiri.
+    var automatic := {"path": root, "launchFile": "", "rfvpEncoding": "gbk"}
+    _expect(Launch.resolve_for_runtime(automatic, "rfvp") == root.path_join("Story.hcb"))
+    _expect(automatic.launchFile == "" and automatic.rfvpEncoding == "gbk")
+    _expect(Launch.resolve_for_runtime({"path": root}, "rfvp") == root.path_join("Story.hcb"))
+    _expect(Launch.resolve_for_runtime(automatic, "kirikiri") == root)
+    _expect(Launch.resolve_for_runtime(automatic, "rfvp", true) == root)
+    _expect(Launch.resolve_for_runtime({"path": root.path_join("Story.hcb")}, "rfvp") == root.path_join("Story.hcb"))
+    _expect(Launch.resolve_for_runtime({"path": root, "launchFile": ".Story.hcb"}, "rfvp") == root.path_join(".Story.hcb"))
+    _expect(Launch.resolve_for_runtime({"path": root, "launchFile": "Missing.hcb"}, "rfvp") == root.path_join("Missing.hcb"))
+    var invalid := FileAccess.open(root.path_join("AA_Invalid.hcb"), FileAccess.WRITE)
+    invalid.store_string("not an HCB")
+    invalid.close()
+    DirAccess.copy_absolute(root.path_join("Story.hcb"), root.path_join("Alternate.HCB"))
+    _expect(Launch.resolve_for_runtime(automatic, "rfvp") == root.path_join("Alternate.HCB"))
+    _expect(Launch.resolve_for_runtime({"path": root, "launchFile": "Story.hcb"}, "rfvp") == root.path_join("Story.hcb"))
+    DirAccess.remove_absolute(root.path_join("Alternate.HCB"))
+    DirAccess.remove_absolute(root.path_join("Story.hcb"))
+    _expect(Launch.resolve_for_runtime(automatic, "rfvp") == root.path_join(".Story.hcb"))
+    DirAccess.remove_absolute(root.path_join(".Story.hcb"))
+    _expect(Launch.resolve_for_runtime(automatic, "rfvp") == root)
+    DirAccess.remove_absolute(root.path_join("AA_Invalid.hcb"))
     app.ui_motion.free()
     app.free()
     for name in ["Story.hcb", ".Story.hcb"]:

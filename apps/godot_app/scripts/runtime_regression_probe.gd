@@ -1,6 +1,8 @@
 extends RefCounted
 
-# Explicit opt-in device regression runner. It never captures screenshots and
+const ProbeConfig = preload("res://scripts/probe_config.gd")
+
+# Explicit opt-in device regression runner. It never saves screenshots and
 # writes engine saves only beneath a separate, seeded regression directory.
 var app: Node
 var config: Dictionary
@@ -98,20 +100,78 @@ func host_state() -> Dictionary:
         "library_mode": app.home_library_mode,
         "game_running": app.game_running,
         "frame_texture_cleared": app.viewport.texture == null,
+        "engine_initialized": app.player != null and app.player.is_initialized(),
+        "player_instance_id": app.player.get_instance_id() if app.player != null else 0,
+        "startup_state": app.cached_startup_state,
+        "runtime": app.active_runtime_kind,
+        "render_errors": app.render_errors,
     }
 
 func state() -> Dictionary:
     var shell := host_state()
-    var parsed: Variant = {} if shell.library_visible else JSON.parse_string(
-        String(app.player.get_plugin_debug_info()))
-    if not parsed is Dictionary:
-        parsed = {}
-    if not shell.library_visible:
+    var inactive: bool = shell.library_visible or not shell.engine_initialized
+    var parsed: Dictionary = {}
+    if not inactive:
+        var diagnostics := JSON.new()
+        if diagnostics.parse(String(app.player.get_plugin_debug_info())) == OK and diagnostics.data is Dictionary:
+            parsed = diagnostics.data
+    if not inactive:
         var frame_size: Vector2i = app.player.get_frame_source_size()
         parsed["probe_frame"] = {"width": frame_size.x, "height": frame_size.y}
     parsed["host"] = shell
     last_state = parsed
     return parsed
+
+func launch_from_library(game_path: String) -> bool:
+    # Exercise the production pre-open options and handle-reuse decision.
+    # Calling _ensure_player_initialized() here would hide reopen regressions.
+    app._prepare_cli_probe_view(config)
+    app.selected_backend = ProbeConfig.backend(config)
+    var game: Dictionary = app._game_info_from_path(game_path)
+    var overrides: Variant = config.get("library_game", {})
+    if overrides is Dictionary:
+        game.merge(overrides, true)
+    game["path"] = game_path
+    app.selected_game = game
+    app._start_selected_game_after_entitlements()
+    if not app.game_running:
+        return false
+    return await app._probe_wait_startup(config)
+
+func check_frame(action: Dictionary, label: String) -> bool:
+    if not app.game_running or not app.player.is_initialized() or app.viewport.texture == null:
+        record({"event": "failed", "label": label, "reason": "game frame unavailable", "state": state()})
+        return false
+    # Read the actual Godot output after presentation as well as the provider
+    # pixels. Only numerical evidence and hashes are saved, never images.
+    await RenderingServer.frame_post_draw
+    var frame: Dictionary = app.player.read_frame_rgba()
+    var image: Image = app.get_viewport().get_texture().get_image()
+    if image == null or image.is_empty():
+        record({"event": "failed", "label": label, "reason": "presentation unavailable"})
+        return false
+    var source_stats: Dictionary = app._frame_stats(frame)
+    var presented_stats: Dictionary = app._image_stats(image)
+    var minimum := float(action.get("min_visible_ratio", 0.1))
+    var source_ratio := float(source_stats.visible) / maxf(1.0, float(source_stats.sampled))
+    var presented_ratio := float(presented_stats.visible) / maxf(1.0, float(presented_stats.sampled))
+    var hash := HashingContext.new()
+    hash.start(HashingContext.HASH_SHA256)
+    hash.update(frame.get("rgba", PackedByteArray()))
+    var evidence := {
+        "event": "frame", "label": label,
+        "width": frame.get("width", 0), "height": frame.get("height", 0),
+        "serial": frame.get("frame_serial", 0),
+        "source": source_stats, "presented": presented_stats,
+        "source_visible_ratio": source_ratio, "presented_visible_ratio": presented_ratio,
+        "source_sha256": hash.finish().hex_encode(),
+        "renderer": app.player.get_renderer_info(), "state": state(),
+    }
+    record(evidence)
+    if int(frame.get("width", 0)) <= 0 or int(frame.get("height", 0)) <= 0 or source_ratio < minimum or presented_ratio < minimum:
+        record({"event": "failed", "label": label, "reason": "empty or black frame"})
+        return false
+    return true
 
 func advance(frames: int) -> bool:
     for i in range(maxi(1, frames)):
@@ -250,8 +310,17 @@ func run(game_path: String) -> int:
     if pointer_input not in ["mouse", "touch"]:
         record({"event": "failed", "reason": "invalid pointer_input"})
         return 1
-    record({"event": "start", "name": config.get("name", "regression"), "screenshots": false, "pointer_input": pointer_input})
-    if not app._probe_open_game(config, game_path, "AETHERKIRI_PROBE_BACKEND") or not await app._probe_wait_startup(config):
+    var launch_mode := String(config.get("launch_mode", "probe"))
+    if launch_mode not in ["probe", "library"]:
+        record({"event": "failed", "reason": "invalid launch_mode"})
+        return 1
+    record({"event": "start", "name": config.get("name", "regression"), "screenshots": false, "pointer_input": pointer_input, "launch_mode": launch_mode})
+    var opened := false
+    if launch_mode == "library":
+        opened = await launch_from_library(game_path)
+    else:
+        opened = app._probe_open_game(config, game_path, "AETHERKIRI_PROBE_BACKEND") and await app._probe_wait_startup(config)
+    if not opened:
         record({"event": "failed", "reason": "startup", "error": app.player.get_last_error()})
         return 1
     for raw in config.get("steps", []):
@@ -269,9 +338,18 @@ func run(game_path: String) -> int:
             if not bool(host_state().library_visible):
                 record({"event": "failed", "label": label, "reason": "library is not visible", "state": state()})
                 return 1
-            app._prepare_cli_probe_view(config)
-            if not app._ensure_player_initialized() or not app._probe_open_game(config, game_path, "AETHERKIRI_PROBE_BACKEND") or not await app._probe_wait_startup(config):
+            if launch_mode == "library":
+                opened = await launch_from_library(game_path)
+            else:
+                app._prepare_cli_probe_view(config)
+                opened = app._ensure_player_initialized() and app._probe_open_game(config, game_path, "AETHERKIRI_PROBE_BACKEND") and await app._probe_wait_startup(config)
+            if not opened:
                 record({"event": "failed", "label": label, "reason": "reopen", "error": app.player.get_last_error()})
+                return 1
+        elif kind == "exit_to_library":
+            app._exit_game_for_go_back()
+        elif kind == "frame":
+            if not await check_frame(action, label):
                 return 1
         elif kind == "wait":
             if not await wait_for(action.get("until", []), int(action.get("timeout_ms", 15000)), int(action.get("stable_frames", 3)), action.get("until_any", [])):

@@ -34,7 +34,7 @@ static func inspect(path: String) -> Dictionary:
     var files := _file_names(root)
     var tyrano_entry := tyrano_entry_file(root)
     var renpy_directory := renpy_game_directory(root)
-    var hcb := _hcb_launch_file(root, path)
+    var hcb := hcb_launch_file(root, path)
     if not tyrano_entry.is_empty():
         result.engine = RUNTIME_TYRANO
         result.launchFile = tyrano_entry
@@ -230,7 +230,7 @@ static func _is_compiled_yuris_package(root: String, files: PackedStringArray) -
                 return true
     return false
 
-static func _hcb_launch_file(root: String, requested: String) -> String:
+static func hcb_launch_file(root: String, requested: String = "") -> String:
     var entries := hcb_launch_files(root)
     if FileAccess.file_exists(requested) and entries.has(requested.get_file()):
         return requested.get_file()

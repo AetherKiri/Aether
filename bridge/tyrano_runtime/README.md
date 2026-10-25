@@ -21,6 +21,8 @@ Import the game directory into the visual-novel library. Detection requires
 `app/` directory is also detected. The game title comes from `System.title`.
 An ordinary HTML page is not claimed as a TyranoScript game.
 
+Packed Electron exports with `resources/app.asar` or `app.asar` are recognized by the same engine files inside the archive. On launch, Aether streams the archive and any declared `app.asar.unpacked` resources into its own cache on a worker thread, leaving the original game unchanged. The cache is reused when the archive and external resource contents match; incomplete caches are rebuilt. Returning to the library cancels preparation. Unsafe paths, archive links, invalid offsets, missing external resources, and archives exceeding the index or extraction limits are rejected. Saves retain the original game identity across cache rebuilds.
+
 On iOS, put the complete project in `Games/<game>/` in Aether's Documents folder;
 the normal visual-novel library scan discovers it. Android uses the existing
 folder importer and storage-permission flow. Build Android through
@@ -36,9 +38,9 @@ menus and save/load logic. The toolbar returns to the library, recreates the
 player, or toggles virtual keys, which start disabled on all platforms. The system
 browser owns the game surface; Godot owns the surrounding library and toolbar.
 
-Packed `app.asar`, encrypted resources, Node/Electron/NW.js APIs, native plugins,
+Encrypted resources, Node/Electron/NW.js APIs, native plugins,
 external page navigation, and games that require desktop file-based saves are
-not supported by this prototype. Import an unpacked browser export. Godot's
+not supported by this prototype. Import a browser-compatible export. Godot's
 frame-enhancement, runtime-translation, audio-bus and screenshot APIs do not
 automatically apply to the native WebView.
 
@@ -64,7 +66,7 @@ use an ephemeral WebKit data store on Apple. Android disables DOM storage and
 uses a separate origin per game. Cookies and IndexedDB are outside the save adapter.
 
 The normal TyranoScript browser save format is supported. Existing Windows
-file-based saves are not converted. Application focus loss pauses host-managed
+file-based saves are not converted. Desktop save configuration is switched to browser storage before the engine's first system-variable read. Application focus loss pauses host-managed
 JS timers, animation frames, CSS animations, HTML media and tracked Web Audio
 contexts, and releases virtual keys. Native application lifecycle callbacks also
 apply while Godot is suspended. Browser work stays on the OS UI thread; normalized
@@ -84,6 +86,8 @@ required. The isolated test runner takes a separate upstream checkout:
 ```sh
 python3 tools/tyrano_smoke.py --engine-root /path/to/tyranoscript
 ```
+
+Add `--asar` to run the same player checks through a generated Electron archive, including cancellation during preparation and reopening the cached project.
 
 The runner copies the external engine only into ignored local test output,
 installs Aether's original Chinese scenario, and creates a Godot project with

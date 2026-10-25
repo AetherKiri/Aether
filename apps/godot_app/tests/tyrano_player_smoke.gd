@@ -48,12 +48,12 @@ func _query(expression: String):
         if not replies.is_empty():
             var reply: Dictionary = replies.pop_front()
             if reply.type == "evaluation_error":
-                push_error("Tyrano evaluation failed: " + String(reply.value))
+                push_error("Tyrano evaluation failed: " + String(reply.value) + "\nExpression: " + expression)
                 failures += 1
                 return null
             return JSON.parse_string(String(reply.value))
         await create_timer(0.02).timeout
-    _expect(false, "Tyrano evaluation timed out")
+    _expect(false, "Tyrano evaluation timed out: " + expression)
     return null
 
 func _wait(expression: String, message: String) -> bool:
@@ -91,12 +91,19 @@ func _run() -> void:
     if not app._is_tyrano_active():
         quit(1)
         return
+    if String(app.selected_game.launchFile).ends_with(".asar"):
+        _expect(app.tyrano_view.preparation != null, "Packed games prepare on a worker thread")
+        app._handle_go_back_request()
+        _expect(not app._is_tyrano_active() and app.marked.is_empty(), "Leaving during ASAR preparation cancels without starting a play session")
+        await process_frame
+        app._start_selected_game_after_entitlements()
     app.tyrano_view.native.event_received.connect(_receive)
     if not await _ready_game():
         app.tyrano_view.close()
         quit(1)
         return
     _expect(app.marked == [path], "Last-played is updated only after a successful engine start")
+    _expect(await _query("TYRANO.kag.config.configSave === 'webstorage'") == true, "Desktop file saves switch to browser storage before game initialization")
     await _wait("TYRANO.kag.stat.f.probe_step === 1 && !TYRANO.kag.stat.is_adding_text", "The first Chinese line is rendered")
     _expect(await _query("document.body.innerText.includes('第一句')") == true, "Chinese text reaches the actual DOM")
     app.tyrano_view.native.set_virtual_controls(true)
@@ -148,7 +155,8 @@ func _run() -> void:
     await create_timer(0.1).timeout
     _expect(int(await _query("window.__aether_counter")) > int(frozen), "Resuming restarts JS timers")
     await _query("(window.__aether_sandbox=null, fetch('data/outside.txt').then(function(r){window.__aether_sandbox=r.status}), true)")
-    await _wait("window.__aether_sandbox === 403", "Symlinked resources cannot escape the game folder")
+    var outside_status := 404 if String(app.selected_game.launchFile).ends_with(".asar") else 403
+    await _wait("window.__aether_sandbox === %d" % outside_status, "External resources cannot escape the game folder")
     await _query("(window.__aether_range=null, fetch('data/scenario/first.ks',{headers:{Range:'bytes=0-2'}}).then(async function(r){window.__aether_range=[r.status,(await r.arrayBuffer()).byteLength]}), true)")
     await _wait("window.__aether_range && __aether_range[0] === 206 && __aether_range[1] === 3", "Browser resource requests support exact byte ranges")
     root.size = Vector2i(960, 540)

@@ -1,4 +1,5 @@
 #include "engine_api.h"
+#include "runtime_host_extension.h"
 #include "engine_options.h"
 #include "engine_runtime_provider.h"
 #include "flash_player.h"
@@ -27,6 +28,9 @@
 #if defined(AETHERKIRI_WITH_SIGLUS)
 #include "siglus_runtime.h"
 #endif
+#if defined(AETHERKIRI_WITH_MAGES)
+#include "mages_runtime.h"
+#endif
 #if defined(AETHERKIRI_WITH_MINORI)
 extern "C" engine_result_t aetherkiri_minori_register_runtime_provider();
 #endif
@@ -35,6 +39,11 @@ extern "C" void AetherSoftPalRegisterRuntime(void);
 #endif
 #if defined(AETHERKIRI_INTERNAL_RUNTIME_PROVIDERS)
 void RegisterAetherInternalRuntimeProviders();
+#endif
+#if defined(AETHERKIRI_INTERNAL_RUNTIME_GPU_BRIDGE)
+void RegisterAetherInternalRuntimeGpuBridge(const TVPGodotGpuBridgeCallbacks *,
+                                           const TVPGodotGpuBatchCallbacks *,
+                                           const TVPGodotGpuFilterCallbacks *);
 #endif
 #if defined(__APPLE__)
 #include "apple_external_texture.h"
@@ -47,6 +56,7 @@ void RegisterAetherInternalRuntimeProviders();
 #endif
 
 #include <godot_cpp/classes/audio_effect_panner.hpp>
+#include <godot_cpp/classes/audio_effect_pitch_shift.hpp>
 #include <godot_cpp/classes/audio_server.hpp>
 #include <godot_cpp/classes/audio_stream_ogg_vorbis.hpp>
 #include <godot_cpp/classes/audio_stream_mp3.hpp>
@@ -54,6 +64,9 @@ void RegisterAetherInternalRuntimeProviders();
 #include <godot_cpp/classes/audio_stream_wav.hpp>
 #include <godot_cpp/classes/confirmation_dialog.hpp>
 #include <godot_cpp/classes/engine.hpp>
+#include <godot_cpp/classes/dir_access.hpp>
+#include <godot_cpp/classes/file_access.hpp>
+#include <godot_cpp/classes/zip_reader.hpp>
 #include <godot_cpp/classes/font.hpp>
 #include <godot_cpp/classes/image.hpp>
 #include <godot_cpp/classes/image_texture.hpp>
@@ -96,6 +109,8 @@ void RegisterAetherInternalRuntimeProviders();
 #include <godot_cpp/variant/utility_functions.hpp>
 #include <godot_cpp/variant/variant.hpp>
 #include <godot_cpp/variant/vector2i.hpp>
+
+#include <spdlog/spdlog.h>
 
 #include <algorithm>
 #include <atomic>
@@ -153,7 +168,23 @@ extern JNIEnv* krkr_GetJNIEnv();
 extern jobject krkr_GetApplicationContext();
 #endif
 
+// Trivial min/max to avoid std::min/std::max template instantiation
+// chains that exceed MSVC's string-literal limit (C2026) in this TU.
+template <class T> static inline T aetherkiri_min(T a, T b) { return a < b ? a : b; }
+template <class T> static inline T aetherkiri_max(T a, T b) { return a > b ? a : b; }
+template <class T> static inline T aetherkiri_min(std::initializer_list<T> il) {
+    auto it = il.begin(); T r = *it; ++it;
+    for (; it != il.end(); ++it) if (*it < r) r = *it;
+    return r;
+}
+template <class T> static inline T aetherkiri_max(std::initializer_list<T> il) {
+    auto it = il.begin(); T r = *it; ++it;
+    for (; it != il.end(); ++it) if (*it > r) r = *it;
+    return r;
+}
+
 namespace godot {
+
 
 #if defined(AETHERKIRI_INTERNAL_FRAME_EFFECTS)
 void RegisterAetherInternalFrameEffects();
@@ -202,6 +233,7 @@ struct ArtemisGpuShaderImage {
     uint32_t width = 0;
     uint32_t height = 0;
     std::vector<uint8_t> pixels;
+    RID resident_texture;
 };
 
 struct ArtemisGpuShaderTexture {
@@ -225,6 +257,7 @@ struct ArtemisGpuShaderRequest {
     std::vector<ArtemisGpuShaderTexture> textures;
     std::vector<ArtemisGpuShaderConstant> constants;
     std::string error;
+    RID resident_output;
 };
 
 std::mutex g_gpu_textures_mutex;
@@ -342,6 +375,19 @@ void ReleaseGpuTexturePool(RenderingDevice *rd) {
     }
 }
 
+#if defined(AETHERKIRI_WITH_MAGES)
+struct MagesGpuDraw {
+    std::string vertex_source, fragment_source;
+    PackedByteArray uniforms;
+    RID textures[4];
+    uint32_t width = 0, height = 0, vertex_count = 0, blend = 0;
+    int32_t clip[4]{};
+    bool repeat = false;
+    bool depth_test = false, depth_write = false, clear_depth = false;
+    uint32_t cull = 0;
+};
+#endif
+
 struct GodotGpuOp {
     enum class Type {
         Update,
@@ -358,6 +404,8 @@ struct GodotGpuOp {
         Blend2,
         Blend3,
         ArtemisShader,
+        MagesDraw,
+        MagesCreate,
         PrepareNativeWrite,
         PublishNativeWrite,
         ImportApplePixelBuffer,
@@ -371,6 +419,9 @@ struct GodotGpuOp {
     RID src2;
     RID src3;
     RID dst;
+#if defined(AETHERKIRI_WITH_MAGES)
+    std::shared_ptr<MagesGpuDraw> mages_draw;
+#endif
     PackedByteArray data;
     uint32_t profile_width = 0;
     uint32_t profile_height = 0;
@@ -431,6 +482,8 @@ const char *GodotGpuOpTypeName(GodotGpuOp::Type type) {
         case GodotGpuOp::Type::Blend2: return "blend2";
         case GodotGpuOp::Type::Blend3: return "blend3";
         case GodotGpuOp::Type::ArtemisShader: return "artemis_shader";
+        case GodotGpuOp::Type::MagesDraw: return "mages_draw";
+        case GodotGpuOp::Type::MagesCreate: return "mages_create";
         case GodotGpuOp::Type::PrepareNativeWrite: return "prepare_native_write";
         case GodotGpuOp::Type::PublishNativeWrite: return "publish_native_write";
         case GodotGpuOp::Type::ImportApplePixelBuffer: return "import_apple_pixel_buffer";
@@ -472,10 +525,10 @@ void LogGodotGpuOpProfile(const char *phase,
     }
     const uint32_t width = op->profile_width != 0
         ? op->profile_width
-        : static_cast<uint32_t>(std::max(0.0f, op->size.x));
+        : static_cast<uint32_t>(aetherkiri_max(0.0f, op->size.x));
     const uint32_t height = op->profile_height != 0
         ? op->profile_height
-        : static_cast<uint32_t>(std::max(0.0f, op->size.y));
+        : static_cast<uint32_t>(aetherkiri_max(0.0f, op->size.y));
     double queue_ms = 0.0;
     if (op->profile_submitted_at.time_since_epoch().count() != 0) {
         queue_ms = std::chrono::duration<double, std::milli>(
@@ -641,6 +694,50 @@ void LogGodotGpuUpdateProfile(const char *phase, uint32_t width,
             << (result ? 1 : 0) << " render_thread="
             << (on_render_thread ? 1 : 0);
     UtilityFunctions::print(String(message.str().c_str()));
+}
+
+bool ShouldLogMagesGpu(const char *event) {
+#if defined(AETHERKIRI_WITH_MAGES)
+    static const bool verbose = [] {
+        const char *value = std::getenv("AETHERKIRI_MAGES_GPU_TRACE");
+        return value != nullptr && std::strcmp(value, "1") == 0;
+    }();
+    if (verbose) return true;
+    // Bound normal per-draw logging before formatting or hashing uploads.
+    // Keep error diagnostics available after the initial draw sample.
+    if (std::strstr(event, "failed") || std::strstr(event, "rejected")) return true;
+    static std::mutex mutex;
+    static std::unordered_map<std::string, uint64_t> counts;
+    std::lock_guard<std::mutex> lock(mutex);
+    const uint64_t count = ++counts[event];
+    return count <= 32 || count % 4096 == 0;
+#else
+    (void)event;
+    return false;
+#endif
+}
+
+void LogMagesGpu(const char *event, const std::string &details) {
+#if defined(AETHERKIRI_WITH_MAGES)
+    spdlog::info("mages_gpu event={} {}", event != nullptr ? event : "unknown",
+                 details);
+#else
+    (void)event;
+    (void)details;
+#endif
+}
+
+uint32_t MagesGpuByteChecksum(const void *data, size_t size) {
+    const auto *bytes = static_cast<const uint8_t *>(data);
+    uint32_t hash = 2166136261u;
+    // A font atlas is tens of megabytes. Sample across the upload rather than
+    // scanning every byte on the render thread during synchronous creation.
+    const size_t step = std::max<size_t>(1, size / 4096);
+    for (size_t i = 0; i < size; i += step) {
+        hash ^= bytes[i];
+        hash *= 16777619u;
+    }
+    return hash;
 }
 
 bool GodotGpuBarrierShadowEnabled() {
@@ -1932,13 +2029,18 @@ bool BlendOpNeedsBarrierBeforeDispatch(
         PendingWriteForRect(op.dst, op.dst_pos, op.size);
     const Vector3 src_extent =
         op.src_size.x > 0.0 && op.src_size.y > 0.0 ? op.src_size : op.size;
+    const bool convolution = op.type == GodotGpuOp::Type::Blend2 &&
+        op.mode == TVP_GODOT_GPU_BLEND_CONVOLVE_RGBA;
+    const bool color_matrix = op.type == GodotGpuOp::Type::Blend2 &&
+        op.mode == TVP_GODOT_GPU_BLEND_COLOR_MATRIX_RGBA;
     const GodotGpuPendingWrite src_rect =
-        PendingWriteForRect(op.src, op.src_pos, src_extent);
+        PendingWriteForRect(op.src, convolution ? Vector3() : op.src_pos, src_extent);
     const bool dual_source = op.type == GodotGpuOp::Type::Blend2 ||
         op.type == GodotGpuOp::Type::Blend3;
     const bool triple_source = op.type == GodotGpuOp::Type::Blend3;
     const GodotGpuPendingWrite src2_rect =
-        dual_source ? PendingWriteForRect(op.src2, op.src2_pos, op.size)
+        dual_source ? PendingWriteForRect(op.src2, op.src2_pos,
+                                         convolution ? Vector3(op.opacity,3,1) : color_matrix ? Vector3(5,4,1) : op.size)
                     : GodotGpuPendingWrite{};
     const GodotGpuPendingWrite src3_rect =
         triple_source ? PendingWriteForRect(op.src3, op.src3_pos, op.size)
@@ -2017,7 +2119,37 @@ bool EnsureBlendPipeline(RenderingDevice *rd) {
     source->set_language(RenderingDevice::SHADER_LANGUAGE_GLSL);
     source->set_stage_source(
         RenderingDevice::SHADER_STAGE_COMPUTE,
-        R"GLSL(#version 450
+        R"GLSL(#version 450)GLSL" R"GLSL(
+// aetherkiri_min/max overloads. The shader bodies call these for scalar,
+// vector and integer types; GLSL has no templates, so the full overload set
+// must be declared explicitly. Missing definitions fail the pipeline with
+// "'aetherkiri_max' : no matching overloaded function found" (observed on the
+// blend pipeline, which is created at boot).
+int aetherkiri_min(int a, int b) { return min(a, b); }
+int aetherkiri_max(int a, int b) { return max(a, b); }
+uint aetherkiri_min(uint a, uint b) { return min(a, b); }
+uint aetherkiri_max(uint a, uint b) { return max(a, b); }
+float aetherkiri_min(float a, float b) { return min(a, b); }
+float aetherkiri_max(float a, float b) { return max(a, b); }
+vec2 aetherkiri_min(vec2 a, vec2 b) { return min(a, b); }
+vec2 aetherkiri_max(vec2 a, vec2 b) { return max(a, b); }
+vec3 aetherkiri_min(vec3 a, vec3 b) { return min(a, b); }
+vec3 aetherkiri_max(vec3 a, vec3 b) { return max(a, b); }
+vec4 aetherkiri_min(vec4 a, vec4 b) { return min(a, b); }
+vec4 aetherkiri_max(vec4 a, vec4 b) { return max(a, b); }
+ivec2 aetherkiri_min(ivec2 a, ivec2 b) { return min(a, b); }
+ivec2 aetherkiri_max(ivec2 a, ivec2 b) { return max(a, b); }
+ivec3 aetherkiri_min(ivec3 a, ivec3 b) { return min(a, b); }
+ivec3 aetherkiri_max(ivec3 a, ivec3 b) { return max(a, b); }
+ivec4 aetherkiri_min(ivec4 a, ivec4 b) { return min(a, b); }
+ivec4 aetherkiri_max(ivec4 a, ivec4 b) { return max(a, b); }
+uvec2 aetherkiri_min(uvec2 a, uvec2 b) { return min(a, b); }
+uvec2 aetherkiri_max(uvec2 a, uvec2 b) { return max(a, b); }
+uvec3 aetherkiri_min(uvec3 a, uvec3 b) { return min(a, b); }
+uvec3 aetherkiri_max(uvec3 a, uvec3 b) { return max(a, b); }
+uvec4 aetherkiri_min(uvec4 a, uvec4 b) { return min(a, b); }
+uvec4 aetherkiri_max(uvec4 a, uvec4 b) { return max(a, b); }
+)GLSL" R"GLSL(
 layout(local_size_x = 8, local_size_y = 8, local_size_z = 1) in;
 layout(rgba8, set = 0, binding = 0) uniform readonly image2D src_img;
 layout(rgba8, set = 0, binding = 1) uniform image2D dst_img;
@@ -2064,15 +2196,15 @@ vec4 load_src(ivec2 local) {
     if (pc.color0.z != 1) {
         return imageLoad(src_img, pc.rect0.zw + local);
     }
-    ivec2 src_extent = max(pc.color0.xy, ivec2(1));
+    ivec2 src_extent = aetherkiri_max(pc.color0.xy, ivec2(1));
     vec2 source_step = vec2(src_extent) /
-        vec2(max(pc.rect1.xy, ivec2(1)));
+        vec2(aetherkiri_max(pc.rect1.xy, ivec2(1)));
     vec2 src_coord = vec2(pc.rect0.zw) +
         (vec2(local) + vec2(0.5)) * source_step - vec2(0.5);
     ivec2 src_min = pc.rect0.zw;
     ivec2 src_max = src_min + src_extent - ivec2(1);
     vec4 premul;
-    if (max(source_step.x, source_step.y) <= 1.0001) {
+    if (aetherkiri_max(source_step.x, source_step.y) <= 1.0001) {
         premul = sample_src_premul(src_coord, src_min, src_max);
     } else {
         vec2 dx = vec2(source_step.x > 1.0001
@@ -2115,7 +2247,7 @@ uint opacity_on_opacity(uint dest_alpha, uint src_alpha) {
     if (denom == 0u) {
         return 255u;
     }
-    return min((255u * 255u * src_alpha) / denom, 255u);
+    return aetherkiri_min((255u * 255u * src_alpha) / denom, 255u);
 }
 
 uint negative_mul_alpha(uint dest_alpha, uint src_alpha) {
@@ -2192,9 +2324,9 @@ uint ps_screen_blend(uint d, uint s, uint opa) {
     uint sr = s & 0xffu;
     uint sg = (s >> 8) & 0xffu;
     uint sb = (s >> 16) & 0xffu;
-    uint r = min(dr + (((sr - ((sr * dr) >> 8)) * a) >> 8), 255u);
-    uint g = min(dg + (((sg - ((sg * dg) >> 8)) * a) >> 8), 255u);
-    uint b = min(db + (((sb - ((sb * db) >> 8)) * a) >> 8), 255u);
+    uint _r = dr + (((sr - ((sr * dr) >> 8)) * a) >> 8); uint r = _r < 255u ? _r : 255u;
+    uint _g = dg + (((sg - ((sg * dg) >> 8)) * a) >> 8); uint g = _g < 255u ? _g : 255u;
+    uint _b = db + (((sb - ((sb * db) >> 8)) * a) >> 8); uint b = _b < 255u ? _b : 255u;
     return (d & 0xff000000u) | r | (g << 8) | (b << 16);
 }
 
@@ -2223,9 +2355,9 @@ uint ps_add_blend(uint d, uint s, uint opa) {
     int dr = int(d & 0xffu);
     int dg = int((d >> 8) & 0xffu);
     int db = int((d >> 16) & 0xffu);
-    int br = min(dr + int(s & 0xffu), 255);
-    int bg = min(dg + int((s >> 8) & 0xffu), 255);
-    int bb = min(db + int((s >> 16) & 0xffu), 255);
+    int br = aetherkiri_min(dr + int(s & 0xffu), 255);
+    int bg = aetherkiri_min(dg + int((s >> 8) & 0xffu), 255);
+    int bb = aetherkiri_min(db + int((s >> 16) & 0xffu), 255);
     uint r = uint(clamp(dr + (((br - dr) * int(a)) >> 8), 0, 255));
     uint g = uint(clamp(dg + (((bg - dg) * int(a)) >> 8), 0, 255));
     uint b = uint(clamp(db + (((bb - db) * int(a)) >> 8), 0, 255));
@@ -2240,9 +2372,9 @@ uint ps_sub_blend(uint d, uint s, uint opa) {
     int dr = int(d & 0xffu);
     int dg = int((d >> 8) & 0xffu);
     int db = int((d >> 16) & 0xffu);
-    int br = max(dr + int(s & 0xffu) - 255, 0);
-    int bg = max(dg + int((s >> 8) & 0xffu) - 255, 0);
-    int bb = max(db + int((s >> 16) & 0xffu) - 255, 0);
+    int br = aetherkiri_max(dr + int(s & 0xffu) - 255, 0);
+    int bg = aetherkiri_max(dg + int((s >> 8) & 0xffu) - 255, 0);
+    int bb = aetherkiri_max(db + int((s >> 16) & 0xffu) - 255, 0);
     uint r = uint(clamp(dr + (((br - dr) * int(a)) >> 8), 0, 255));
     uint g = uint(clamp(dg + (((bg - dg) * int(a)) >> 8), 0, 255));
     uint b = uint(clamp(db + (((bb - db) * int(a)) >> 8), 0, 255));
@@ -2253,11 +2385,11 @@ uint soft_light_channel(uint source, uint destination) {
     float s = float(source) / 255.0;
     float d = float(destination) / 255.0;
     float exponent = source >= 128u
-        ? 128.0 / max(float(source), 1.0)
+        ? 128.0 / aetherkiri_max(float(source), 1.0)
         : (1.0 - s) / 0.5;
     // TVP's table stores an unsigned char, so conversion intentionally
     // truncates instead of rounding.
-    return uint(clamp(pow(max(d, 0.0), exponent) * 255.0, 0.0, 255.0));
+    return uint(clamp(pow(aetherkiri_max(d, 0.0), exponent) * 255.0, 0.0, 255.0));
 }
 
 uint ps_soft_light_blend(uint d, uint s, uint opa) {
@@ -2286,10 +2418,10 @@ uint additive_alpha_blend_hda(uint d, uint s, uint opa) {
         s = sr | (sg << 8) | (sb << 16) | (sa << 24);
     }
     uint inverse_alpha = ((~s) >> 24) & 0xffu;
-    uint r = min((((d & 0xffu) * inverse_alpha) >> 8) + (s & 0xffu), 255u);
-    uint g = min(((((d >> 8) & 0xffu) * inverse_alpha) >> 8) +
+    uint r = aetherkiri_min((((d & 0xffu) * inverse_alpha) >> 8) + (s & 0xffu), 255u);
+    uint g = aetherkiri_min(((((d >> 8) & 0xffu) * inverse_alpha) >> 8) +
                  ((s >> 8) & 0xffu), 255u);
-    uint b = min(((((d >> 16) & 0xffu) * inverse_alpha) >> 8) +
+    uint b = aetherkiri_min(((((d >> 16) & 0xffu) * inverse_alpha) >> 8) +
                  ((s >> 16) & 0xffu), 255u);
     return (d & 0xff000000u) | r | (g << 8) | (b << 16);
 }
@@ -2318,11 +2450,11 @@ uint apply_color_map_a(uint d, uint mask, uint opa, uvec3 color) {
     uint out_alpha = dest_alpha + source_alpha -
                      ((dest_alpha * source_alpha) >> 8);
     out_alpha -= out_alpha >> 8;
-    uint r = min((((d & 0xffu) * inverse_alpha) >> 8) +
+    uint r = aetherkiri_min((((d & 0xffu) * inverse_alpha) >> 8) +
                  ((source_alpha * color.r) >> 8), 255u);
-    uint g = min(((((d >> 8) & 0xffu) * inverse_alpha) >> 8) +
+    uint g = aetherkiri_min(((((d >> 8) & 0xffu) * inverse_alpha) >> 8) +
                  ((source_alpha * color.g) >> 8), 255u);
-    uint b = min(((((d >> 16) & 0xffu) * inverse_alpha) >> 8) +
+    uint b = aetherkiri_min(((((d >> 16) & 0xffu) * inverse_alpha) >> 8) +
                  ((source_alpha * color.b) >> 8), 255u);
     return (out_alpha << 24) | r | (g << 8) | (b << 16);
 }
@@ -2354,7 +2486,7 @@ void main() {
     if (pc.rect1.z == 26) {
         int radius_x = clamp(pc.rect1.w, 0, 64);
         int radius_y = clamp(pc.color0.x, 0, 64);
-        ivec2 extent = max(pc.rect1.xy, ivec2(1));
+        ivec2 extent = aetherkiri_max(pc.rect1.xy, ivec2(1));
         vec4 sum = vec4(0.0);
         int samples = 0;
         for (int oy = -radius_y; oy <= radius_y; ++oy) {
@@ -2365,7 +2497,7 @@ void main() {
                 ++samples;
             }
         }
-        out_color = pack_u8(vec4_to_u8(sum / float(max(samples, 1))));
+        out_color = pack_u8(vec4_to_u8(sum / float(aetherkiri_max(samples, 1))));
     } else if (pc.rect1.z == 5) {
         out_color = (uint(pc.color0.x) & 0xffu) |
                     ((uint(pc.color0.y) & 0xffu) << 8) |
@@ -2402,7 +2534,7 @@ void main() {
                 : (sa + ((255u - sa) * da) / 255u);
         }
         out_color = (d & 0x00ffffffu) |
-                    (min(out_alpha, 255u) << 24);
+                    (aetherkiri_min(out_alpha, 255u) << 24);
         } else if (pc.rect1.z == 1) {
         out_color = alpha_blend_hda_o(d, s, opa);
         } else if (pc.rect1.z == 2) {
@@ -2417,7 +2549,7 @@ void main() {
         out_color = ps_screen_blend(d, s, opa);
         } else if (pc.rect1.z == 15) {
         out_color = ps_mul_blend(d, s, opa);
-        } else if (pc.rect1.z == 16) {
+)GLSL" R"GLSL(        } else if (pc.rect1.z == 16) {
         out_color = ps_add_blend(d, s, opa);
         } else if (pc.rect1.z == 17) {
         out_color = ps_sub_blend(d, s, opa);
@@ -2470,7 +2602,37 @@ bool EnsureAlphaConvertPipeline(RenderingDevice *rd) {
     source->set_language(RenderingDevice::SHADER_LANGUAGE_GLSL);
     source->set_stage_source(
         RenderingDevice::SHADER_STAGE_COMPUTE,
-        R"GLSL(#version 450
+        R"GLSL(#version 450)GLSL" R"GLSL(
+// aetherkiri_min/max overloads. The shader bodies call these for scalar,
+// vector and integer types; GLSL has no templates, so the full overload set
+// must be declared explicitly. Missing definitions fail the pipeline with
+// "'aetherkiri_max' : no matching overloaded function found" (observed on the
+// blend pipeline, which is created at boot).
+int aetherkiri_min(int a, int b) { return min(a, b); }
+int aetherkiri_max(int a, int b) { return max(a, b); }
+uint aetherkiri_min(uint a, uint b) { return min(a, b); }
+uint aetherkiri_max(uint a, uint b) { return max(a, b); }
+float aetherkiri_min(float a, float b) { return min(a, b); }
+float aetherkiri_max(float a, float b) { return max(a, b); }
+vec2 aetherkiri_min(vec2 a, vec2 b) { return min(a, b); }
+vec2 aetherkiri_max(vec2 a, vec2 b) { return max(a, b); }
+vec3 aetherkiri_min(vec3 a, vec3 b) { return min(a, b); }
+vec3 aetherkiri_max(vec3 a, vec3 b) { return max(a, b); }
+vec4 aetherkiri_min(vec4 a, vec4 b) { return min(a, b); }
+vec4 aetherkiri_max(vec4 a, vec4 b) { return max(a, b); }
+ivec2 aetherkiri_min(ivec2 a, ivec2 b) { return min(a, b); }
+ivec2 aetherkiri_max(ivec2 a, ivec2 b) { return max(a, b); }
+ivec3 aetherkiri_min(ivec3 a, ivec3 b) { return min(a, b); }
+ivec3 aetherkiri_max(ivec3 a, ivec3 b) { return max(a, b); }
+ivec4 aetherkiri_min(ivec4 a, ivec4 b) { return min(a, b); }
+ivec4 aetherkiri_max(ivec4 a, ivec4 b) { return max(a, b); }
+uvec2 aetherkiri_min(uvec2 a, uvec2 b) { return min(a, b); }
+uvec2 aetherkiri_max(uvec2 a, uvec2 b) { return max(a, b); }
+uvec3 aetherkiri_min(uvec3 a, uvec3 b) { return min(a, b); }
+uvec3 aetherkiri_max(uvec3 a, uvec3 b) { return max(a, b); }
+uvec4 aetherkiri_min(uvec4 a, uvec4 b) { return min(a, b); }
+uvec4 aetherkiri_max(uvec4 a, uvec4 b) { return max(a, b); }
+)GLSL" R"GLSL(
 layout(local_size_x = 8, local_size_y = 8, local_size_z = 1) in;
 layout(rgba8, set = 0, binding = 0) uniform image2D target_img;
 layout(push_constant, std430) uniform Params {
@@ -2508,9 +2670,9 @@ uint alpha_to_additive_alpha(uint c) {
 uint additive_alpha_to_alpha(uint c) {
     uint alpha = (c >> 24) & 0xffu;
     if (alpha == 0u) return c & 0xff000000u;
-    uint r = min((c & 0xffu) * 255u / alpha, 255u);
-    uint g = min(((c >> 8) & 0xffu) * 255u / alpha, 255u);
-    uint b = min(((c >> 16) & 0xffu) * 255u / alpha, 255u);
+    uint r = aetherkiri_min((c & 0xffu) * 255u / alpha, 255u);
+    uint g = aetherkiri_min(((c >> 8) & 0xffu) * 255u / alpha, 255u);
+    uint b = aetherkiri_min(((c >> 16) & 0xffu) * 255u / alpha, 255u);
     return (c & 0xff000000u) | r | (g << 8) | (b << 16);
 }
 
@@ -2604,7 +2766,37 @@ bool EnsureAlphaBlendAPipeline(RenderingDevice *rd) {
     source->set_language(RenderingDevice::SHADER_LANGUAGE_GLSL);
     source->set_stage_source(
         RenderingDevice::SHADER_STAGE_COMPUTE,
-        R"GLSL(#version 450
+        R"GLSL(#version 450)GLSL" R"GLSL(
+// aetherkiri_min/max overloads. The shader bodies call these for scalar,
+// vector and integer types; GLSL has no templates, so the full overload set
+// must be declared explicitly. Missing definitions fail the pipeline with
+// "'aetherkiri_max' : no matching overloaded function found" (observed on the
+// blend pipeline, which is created at boot).
+int aetherkiri_min(int a, int b) { return min(a, b); }
+int aetherkiri_max(int a, int b) { return max(a, b); }
+uint aetherkiri_min(uint a, uint b) { return min(a, b); }
+uint aetherkiri_max(uint a, uint b) { return max(a, b); }
+float aetherkiri_min(float a, float b) { return min(a, b); }
+float aetherkiri_max(float a, float b) { return max(a, b); }
+vec2 aetherkiri_min(vec2 a, vec2 b) { return min(a, b); }
+vec2 aetherkiri_max(vec2 a, vec2 b) { return max(a, b); }
+vec3 aetherkiri_min(vec3 a, vec3 b) { return min(a, b); }
+vec3 aetherkiri_max(vec3 a, vec3 b) { return max(a, b); }
+vec4 aetherkiri_min(vec4 a, vec4 b) { return min(a, b); }
+vec4 aetherkiri_max(vec4 a, vec4 b) { return max(a, b); }
+ivec2 aetherkiri_min(ivec2 a, ivec2 b) { return min(a, b); }
+ivec2 aetherkiri_max(ivec2 a, ivec2 b) { return max(a, b); }
+ivec3 aetherkiri_min(ivec3 a, ivec3 b) { return min(a, b); }
+ivec3 aetherkiri_max(ivec3 a, ivec3 b) { return max(a, b); }
+ivec4 aetherkiri_min(ivec4 a, ivec4 b) { return min(a, b); }
+ivec4 aetherkiri_max(ivec4 a, ivec4 b) { return max(a, b); }
+uvec2 aetherkiri_min(uvec2 a, uvec2 b) { return min(a, b); }
+uvec2 aetherkiri_max(uvec2 a, uvec2 b) { return max(a, b); }
+uvec3 aetherkiri_min(uvec3 a, uvec3 b) { return min(a, b); }
+uvec3 aetherkiri_max(uvec3 a, uvec3 b) { return max(a, b); }
+uvec4 aetherkiri_min(uvec4 a, uvec4 b) { return min(a, b); }
+uvec4 aetherkiri_max(uvec4 a, uvec4 b) { return max(a, b); }
+)GLSL" R"GLSL(
 layout(local_size_x = 8, local_size_y = 8, local_size_z = 1) in;
 layout(rgba8, set = 0, binding = 0) uniform readonly image2D src_img;
 layout(rgba8, set = 0, binding = 1) uniform image2D dst_img;
@@ -2651,15 +2843,15 @@ vec4 load_src(ivec2 local) {
     if (pc.color0.z != 1) {
         return imageLoad(src_img, pc.rect0.zw + local);
     }
-    ivec2 src_extent = max(pc.color0.xy, ivec2(1));
+    ivec2 src_extent = aetherkiri_max(pc.color0.xy, ivec2(1));
     vec2 source_step = vec2(src_extent) /
-        vec2(max(pc.rect1.xy, ivec2(1)));
+        vec2(aetherkiri_max(pc.rect1.xy, ivec2(1)));
     vec2 src_coord = vec2(pc.rect0.zw) +
         (vec2(local) + vec2(0.5)) * source_step - vec2(0.5);
     ivec2 src_min = pc.rect0.zw;
     ivec2 src_max = src_min + src_extent - ivec2(1);
     vec4 premul;
-    if (max(source_step.x, source_step.y) <= 1.0001) {
+    if (aetherkiri_max(source_step.x, source_step.y) <= 1.0001) {
         premul = sample_src_premul(src_coord, src_min, src_max);
     } else {
         vec2 dx = vec2(source_step.x > 1.0001
@@ -2758,7 +2950,37 @@ bool EnsureBlend2Pipeline(RenderingDevice *rd) {
     source->set_language(RenderingDevice::SHADER_LANGUAGE_GLSL);
     source->set_stage_source(
         RenderingDevice::SHADER_STAGE_COMPUTE,
-        R"GLSL(#version 450
+        R"GLSL(#version 450)GLSL" R"GLSL(
+// aetherkiri_min/max overloads. The shader bodies call these for scalar,
+// vector and integer types; GLSL has no templates, so the full overload set
+// must be declared explicitly. Missing definitions fail the pipeline with
+// "'aetherkiri_max' : no matching overloaded function found" (observed on the
+// blend pipeline, which is created at boot).
+int aetherkiri_min(int a, int b) { return min(a, b); }
+int aetherkiri_max(int a, int b) { return max(a, b); }
+uint aetherkiri_min(uint a, uint b) { return min(a, b); }
+uint aetherkiri_max(uint a, uint b) { return max(a, b); }
+float aetherkiri_min(float a, float b) { return min(a, b); }
+float aetherkiri_max(float a, float b) { return max(a, b); }
+vec2 aetherkiri_min(vec2 a, vec2 b) { return min(a, b); }
+vec2 aetherkiri_max(vec2 a, vec2 b) { return max(a, b); }
+vec3 aetherkiri_min(vec3 a, vec3 b) { return min(a, b); }
+vec3 aetherkiri_max(vec3 a, vec3 b) { return max(a, b); }
+vec4 aetherkiri_min(vec4 a, vec4 b) { return min(a, b); }
+vec4 aetherkiri_max(vec4 a, vec4 b) { return max(a, b); }
+ivec2 aetherkiri_min(ivec2 a, ivec2 b) { return min(a, b); }
+ivec2 aetherkiri_max(ivec2 a, ivec2 b) { return max(a, b); }
+ivec3 aetherkiri_min(ivec3 a, ivec3 b) { return min(a, b); }
+ivec3 aetherkiri_max(ivec3 a, ivec3 b) { return max(a, b); }
+ivec4 aetherkiri_min(ivec4 a, ivec4 b) { return min(a, b); }
+ivec4 aetherkiri_max(ivec4 a, ivec4 b) { return max(a, b); }
+uvec2 aetherkiri_min(uvec2 a, uvec2 b) { return min(a, b); }
+uvec2 aetherkiri_max(uvec2 a, uvec2 b) { return max(a, b); }
+uvec3 aetherkiri_min(uvec3 a, uvec3 b) { return min(a, b); }
+uvec3 aetherkiri_max(uvec3 a, uvec3 b) { return max(a, b); }
+uvec4 aetherkiri_min(uvec4 a, uvec4 b) { return min(a, b); }
+uvec4 aetherkiri_max(uvec4 a, uvec4 b) { return max(a, b); }
+)GLSL" R"GLSL(
 layout(local_size_x = 8, local_size_y = 8, local_size_z = 1) in;
 layout(rgba8, set = 0, binding = 0) uniform readonly image2D src1_img;
 layout(rgba8, set = 0, binding = 1) uniform readonly image2D src2_img;
@@ -2795,7 +3017,7 @@ uint opacity_on_opacity(uint dest_alpha, uint src_alpha) {
     if (denom == 0u) {
         return 255u;
     }
-    return min((255u * 255u * src_alpha) / denom, 255u);
+    return aetherkiri_min((255u * 255u * src_alpha) / denom, 255u);
 }
 
 uint const_alpha_blend_sd(uint s1, uint s2, uint opa) {
@@ -2867,6 +3089,34 @@ void main() {
     ivec2 dst_pos = pc.rect0.xy + local;
     ivec2 src1_pos = pc.rect0.zw + local;
     ivec2 src2_pos = pc.src2_rect.xy + local;
+    if (pc.rect1.z == 33) {
+        vec4 source_color = imageLoad(src1_img, src1_pos);
+        vec4 filtered = vec4(0.0);
+        for (int row = 0; row < 4; ++row) {
+            for (int column = 0; column < 5; ++column) {
+                float coefficient = uintBitsToFloat(pack_u8(vec4_to_u8(imageLoad(src2_img, pc.src2_rect.xy + ivec2(column, row)))));
+                if (!isnan(coefficient) && !isinf(coefficient))
+                    filtered[row] += coefficient * (column == 4 ? 1.0 : source_color[column]);
+            }
+        }
+        imageStore(dst_img, dst_pos, clamp(filtered, vec4(0.0), vec4(1.0)));
+        return;
+    }
+    if (pc.rect1.z == 32) {
+        vec4 filtered = vec4(0.0);
+        ivec2 source_limit = imageSize(src1_img) - ivec2(1);
+        for (int tap = 0; tap < min(pc.rect1.w, 64); ++tap) {
+            ivec2 kernel_pos = pc.src2_rect.xy + ivec2(tap, 0);
+            float dx = uintBitsToFloat(pack_u8(vec4_to_u8(imageLoad(src2_img, kernel_pos))));
+            float dy = uintBitsToFloat(pack_u8(vec4_to_u8(imageLoad(src2_img, kernel_pos + ivec2(0, 1)))));
+            float weight = uintBitsToFloat(pack_u8(vec4_to_u8(imageLoad(src2_img, kernel_pos + ivec2(0, 2)))));
+            if (isnan(dx) || isinf(dx) || isnan(dy) || isinf(dy) || isnan(weight) || isinf(weight)) continue;
+            ivec2 offset = ivec2(round(clamp(vec2(dx, dy), vec2(-16384.0), vec2(16384.0))));
+            filtered += imageLoad(src1_img, clamp(src1_pos + offset, ivec2(0), source_limit)) * weight;
+        }
+        imageStore(dst_img, dst_pos, clamp(filtered, vec4(0.0), vec4(1.0)));
+        return;
+    }
     uint s1 = pack_u8(vec4_to_u8(imageLoad(src1_img, src1_pos)));
     uint s2 = pack_u8(vec4_to_u8(imageLoad(src2_img, src2_pos)));
     uint opa = uint(clamp(pc.rect1.w, 0, 255));
@@ -2920,7 +3170,37 @@ bool EnsureBlend3Pipeline(RenderingDevice *rd) {
     source->set_language(RenderingDevice::SHADER_LANGUAGE_GLSL);
     source->set_stage_source(
         RenderingDevice::SHADER_STAGE_COMPUTE,
-        R"GLSL(#version 450
+        R"GLSL(#version 450)GLSL" R"GLSL(
+// aetherkiri_min/max overloads. The shader bodies call these for scalar,
+// vector and integer types; GLSL has no templates, so the full overload set
+// must be declared explicitly. Missing definitions fail the pipeline with
+// "'aetherkiri_max' : no matching overloaded function found" (observed on the
+// blend pipeline, which is created at boot).
+int aetherkiri_min(int a, int b) { return min(a, b); }
+int aetherkiri_max(int a, int b) { return max(a, b); }
+uint aetherkiri_min(uint a, uint b) { return min(a, b); }
+uint aetherkiri_max(uint a, uint b) { return max(a, b); }
+float aetherkiri_min(float a, float b) { return min(a, b); }
+float aetherkiri_max(float a, float b) { return max(a, b); }
+vec2 aetherkiri_min(vec2 a, vec2 b) { return min(a, b); }
+vec2 aetherkiri_max(vec2 a, vec2 b) { return max(a, b); }
+vec3 aetherkiri_min(vec3 a, vec3 b) { return min(a, b); }
+vec3 aetherkiri_max(vec3 a, vec3 b) { return max(a, b); }
+vec4 aetherkiri_min(vec4 a, vec4 b) { return min(a, b); }
+vec4 aetherkiri_max(vec4 a, vec4 b) { return max(a, b); }
+ivec2 aetherkiri_min(ivec2 a, ivec2 b) { return min(a, b); }
+ivec2 aetherkiri_max(ivec2 a, ivec2 b) { return max(a, b); }
+ivec3 aetherkiri_min(ivec3 a, ivec3 b) { return min(a, b); }
+ivec3 aetherkiri_max(ivec3 a, ivec3 b) { return max(a, b); }
+ivec4 aetherkiri_min(ivec4 a, ivec4 b) { return min(a, b); }
+ivec4 aetherkiri_max(ivec4 a, ivec4 b) { return max(a, b); }
+uvec2 aetherkiri_min(uvec2 a, uvec2 b) { return min(a, b); }
+uvec2 aetherkiri_max(uvec2 a, uvec2 b) { return max(a, b); }
+uvec3 aetherkiri_min(uvec3 a, uvec3 b) { return min(a, b); }
+uvec3 aetherkiri_max(uvec3 a, uvec3 b) { return max(a, b); }
+uvec4 aetherkiri_min(uvec4 a, uvec4 b) { return min(a, b); }
+uvec4 aetherkiri_max(uvec4 a, uvec4 b) { return max(a, b); }
+)GLSL" R"GLSL(
 layout(local_size_x = 8, local_size_y = 8, local_size_z = 1) in;
 layout(rgba8, set = 0, binding = 0) uniform readonly image2D src1_img;
 layout(rgba8, set = 0, binding = 1) uniform readonly image2D src2_img;
@@ -2960,7 +3240,7 @@ void main() {
                                      0.0, 1.0) * 255.0));
     int packed_mode = pc.rect1.z;
     int mode = packed_mode & 0xffff;
-    int vague = max((packed_mode >> 16) & 0xffff, 1);
+    int vague = aetherkiri_max((packed_mode >> 16) & 0xffff, 1);
     int phase = pc.rect1.w;
 
     vec4 result;
@@ -3017,7 +3297,37 @@ bool EnsureCopyTrianglesPipeline(RenderingDevice *rd) {
     source->set_language(RenderingDevice::SHADER_LANGUAGE_GLSL);
     source->set_stage_source(
         RenderingDevice::SHADER_STAGE_COMPUTE,
-        R"GLSL(#version 450
+        R"GLSL(#version 450)GLSL" R"GLSL(
+// aetherkiri_min/max overloads. The shader bodies call these for scalar,
+// vector and integer types; GLSL has no templates, so the full overload set
+// must be declared explicitly. Missing definitions fail the pipeline with
+// "'aetherkiri_max' : no matching overloaded function found" (observed on the
+// blend pipeline, which is created at boot).
+int aetherkiri_min(int a, int b) { return min(a, b); }
+int aetherkiri_max(int a, int b) { return max(a, b); }
+uint aetherkiri_min(uint a, uint b) { return min(a, b); }
+uint aetherkiri_max(uint a, uint b) { return max(a, b); }
+float aetherkiri_min(float a, float b) { return min(a, b); }
+float aetherkiri_max(float a, float b) { return max(a, b); }
+vec2 aetherkiri_min(vec2 a, vec2 b) { return min(a, b); }
+vec2 aetherkiri_max(vec2 a, vec2 b) { return max(a, b); }
+vec3 aetherkiri_min(vec3 a, vec3 b) { return min(a, b); }
+vec3 aetherkiri_max(vec3 a, vec3 b) { return max(a, b); }
+vec4 aetherkiri_min(vec4 a, vec4 b) { return min(a, b); }
+vec4 aetherkiri_max(vec4 a, vec4 b) { return max(a, b); }
+ivec2 aetherkiri_min(ivec2 a, ivec2 b) { return min(a, b); }
+ivec2 aetherkiri_max(ivec2 a, ivec2 b) { return max(a, b); }
+ivec3 aetherkiri_min(ivec3 a, ivec3 b) { return min(a, b); }
+ivec3 aetherkiri_max(ivec3 a, ivec3 b) { return max(a, b); }
+ivec4 aetherkiri_min(ivec4 a, ivec4 b) { return min(a, b); }
+ivec4 aetherkiri_max(ivec4 a, ivec4 b) { return max(a, b); }
+uvec2 aetherkiri_min(uvec2 a, uvec2 b) { return min(a, b); }
+uvec2 aetherkiri_max(uvec2 a, uvec2 b) { return max(a, b); }
+uvec3 aetherkiri_min(uvec3 a, uvec3 b) { return min(a, b); }
+uvec3 aetherkiri_max(uvec3 a, uvec3 b) { return max(a, b); }
+uvec4 aetherkiri_min(uvec4 a, uvec4 b) { return min(a, b); }
+uvec4 aetherkiri_max(uvec4 a, uvec4 b) { return max(a, b); }
+)GLSL" R"GLSL(
 layout(local_size_x = 8, local_size_y = 8, local_size_z = 1) in;
 layout(std430, set = 0, binding = 0) readonly buffer Vertices {
     vec4 vertex[];
@@ -3068,7 +3378,7 @@ vec4 load_minified(ivec2 limit, vec2 edge_coord,
     // Approximate the source footprint with destination-pixel subsamples. Keep the
     // fast single lookup at 1:1/upscale, and average premultiplied samples so
     // transparent texels cannot introduce dark colour fringes.
-    float footprint = max(length(source_dx), length(source_dy));
+    float footprint = aetherkiri_max(length(source_dx), length(source_dy));
     if (footprint <= 1.0001) {
         return straight_from_premul(
             load_bilinear_premul(limit, edge_coord));
@@ -3113,7 +3423,7 @@ void main() {
     ivec2 dst_pos = pc.rect0.xy + local;
     vec2 p = vec2(dst_pos) + vec2(0.5);
     int tri_count = pc.rect1.z;
-    ivec2 src_limit = max(pc.color0.xy - ivec2(1), ivec2(0));
+    ivec2 src_limit = aetherkiri_max(pc.color0.xy - ivec2(1), ivec2(0));
     bool preserve_detail =
         (uint(pc.color0.z) & 0x40000000u) != 0u;
     vec4 out_color = imageLoad(dst_img, dst_pos);
@@ -3194,7 +3504,37 @@ bool EnsureDrawTrianglesPipeline(RenderingDevice *rd) {
     source->set_language(RenderingDevice::SHADER_LANGUAGE_GLSL);
     source->set_stage_source(
         RenderingDevice::SHADER_STAGE_COMPUTE,
-        R"GLSL(#version 450
+        R"GLSL(#version 450)GLSL" R"GLSL(
+// aetherkiri_min/max overloads. The shader bodies call these for scalar,
+// vector and integer types; GLSL has no templates, so the full overload set
+// must be declared explicitly. Missing definitions fail the pipeline with
+// "'aetherkiri_max' : no matching overloaded function found" (observed on the
+// blend pipeline, which is created at boot).
+int aetherkiri_min(int a, int b) { return min(a, b); }
+int aetherkiri_max(int a, int b) { return max(a, b); }
+uint aetherkiri_min(uint a, uint b) { return min(a, b); }
+uint aetherkiri_max(uint a, uint b) { return max(a, b); }
+float aetherkiri_min(float a, float b) { return min(a, b); }
+float aetherkiri_max(float a, float b) { return max(a, b); }
+vec2 aetherkiri_min(vec2 a, vec2 b) { return min(a, b); }
+vec2 aetherkiri_max(vec2 a, vec2 b) { return max(a, b); }
+vec3 aetherkiri_min(vec3 a, vec3 b) { return min(a, b); }
+vec3 aetherkiri_max(vec3 a, vec3 b) { return max(a, b); }
+vec4 aetherkiri_min(vec4 a, vec4 b) { return min(a, b); }
+vec4 aetherkiri_max(vec4 a, vec4 b) { return max(a, b); }
+ivec2 aetherkiri_min(ivec2 a, ivec2 b) { return min(a, b); }
+ivec2 aetherkiri_max(ivec2 a, ivec2 b) { return max(a, b); }
+ivec3 aetherkiri_min(ivec3 a, ivec3 b) { return min(a, b); }
+ivec3 aetherkiri_max(ivec3 a, ivec3 b) { return max(a, b); }
+ivec4 aetherkiri_min(ivec4 a, ivec4 b) { return min(a, b); }
+ivec4 aetherkiri_max(ivec4 a, ivec4 b) { return max(a, b); }
+uvec2 aetherkiri_min(uvec2 a, uvec2 b) { return min(a, b); }
+uvec2 aetherkiri_max(uvec2 a, uvec2 b) { return max(a, b); }
+uvec3 aetherkiri_min(uvec3 a, uvec3 b) { return min(a, b); }
+uvec3 aetherkiri_max(uvec3 a, uvec3 b) { return max(a, b); }
+uvec4 aetherkiri_min(uvec4 a, uvec4 b) { return min(a, b); }
+uvec4 aetherkiri_max(uvec4 a, uvec4 b) { return max(a, b); }
+)GLSL" R"GLSL(
 layout(local_size_x = 8, local_size_y = 8, local_size_z = 1) in;
 layout(std430, set = 0, binding = 0) readonly buffer Vertices {
     vec4 vertex[];
@@ -3278,25 +3618,25 @@ vec4 load_native_character_antialiased(
     float l_ne = premul_luma(ne);
     float l_sw = premul_luma(sw);
     float l_se = premul_luma(se);
-    float range_min = min(
-        l_center, min(min(l_nw, l_ne), min(l_sw, l_se)));
-    float range_max = max(
-        l_center, max(max(l_nw, l_ne), max(l_sw, l_se)));
+    float range_min = aetherkiri_min(
+        l_center, aetherkiri_min(aetherkiri_min(l_nw, l_ne), aetherkiri_min(l_sw, l_se)));
+    float range_max = aetherkiri_max(
+        l_center, aetherkiri_max(aetherkiri_max(l_nw, l_ne), aetherkiri_max(l_sw, l_se)));
     if (range_max - range_min <
-            max(1.0 / 24.0, range_max * (1.0 / 8.0))) {
+            aetherkiri_max(1.0 / 24.0, range_max * (1.0 / 8.0))) {
         return center;
     }
 
     vec2 direction = vec2(
         -((l_nw + l_ne) - (l_sw + l_se)),
          ((l_nw + l_sw) - (l_ne + l_se)));
-    float reduce = max(
+    float reduce = aetherkiri_max(
         (l_nw + l_ne + l_sw + l_se) * (0.25 / 8.0),
         1.0 / 128.0);
     // Two pixels is enough to join the one-pixel E-mote diagonals without
     // softening broad painted regions or the independently composited text.
     direction = clamp(
-        direction / (min(abs(direction.x), abs(direction.y)) + reduce),
+        direction / (aetherkiri_min(abs(direction.x), abs(direction.y)) + reduce),
         vec2(-2.0), vec2(2.0));
     vec2 source_direction =
         source_dx * direction.x + source_dy * direction.y;
@@ -3319,7 +3659,7 @@ vec4 load_native_character_antialiased(
 vec4 load_minified(ivec2 limit, vec2 edge_coord,
                     vec2 source_dx, vec2 source_dy,
                     bool preserve_detail, bool source_premultiplied) {
-    float footprint = max(length(source_dx), length(source_dy));
+    float footprint = aetherkiri_max(length(source_dx), length(source_dy));
     vec4 premul;
     if (footprint <= 1.0001) {
         premul = source_premultiplied
@@ -3394,7 +3734,7 @@ float color_burn(float src, float dst) {
     if (abs(src) < 0.000001) {
         return 0.0;
     }
-    return 1.0 - min(1.0, (1.0 - dst) / src);
+    return 1.0 - aetherkiri_min(1.0, (1.0 - dst) / src);
 }
 
 float color_dodge(float src, float dst) {
@@ -3404,7 +3744,7 @@ float color_dodge(float src, float dst) {
     if (abs(src - 1.0) < 0.000001) {
         return 1.0;
     }
-    return min(1.0, dst / (1.0 - src));
+    return aetherkiri_min(1.0, dst / (1.0 - src));
 }
 
 float overlay(float src, float dst) {
@@ -3434,20 +3774,20 @@ float hard_light(float src, float dst) {
 }
 
 float linear_light(float src, float dst) {
-    float burn = max(0.0, 2.0 * src + dst - 1.0);
-    float dodge = min(1.0, 2.0 * (src - 0.5) + dst);
+    float burn = aetherkiri_max(0.0, 2.0 * src + dst - 1.0);
+    float dodge = aetherkiri_min(1.0, 2.0 * (src - 0.5) + dst);
     return src < 0.5 ? burn : dodge;
 }
 
 vec3 color_blend(int mode, vec3 src, vec3 dst) {
     if (mode == 3) {
-        return min(src + dst, vec3(1.0));
+        return aetherkiri_min(src + dst, vec3(1.0));
     }
     if (mode == 4) {
         return src + dst;
     }
     if (mode == 5) {
-        return min(src, dst);
+        return aetherkiri_min(src, dst);
     }
     if (mode == 6) {
         return src * dst;
@@ -3457,10 +3797,10 @@ vec3 color_blend(int mode, vec3 src, vec3 dst) {
                     color_burn(src.b, dst.b));
     }
     if (mode == 8) {
-        return max(vec3(0.0), src + dst - vec3(1.0));
+        return aetherkiri_max(vec3(0.0), src + dst - vec3(1.0));
     }
     if (mode == 9) {
-        return max(src, dst);
+        return aetherkiri_max(src, dst);
     }
     if (mode == 10) {
         return src + dst - src * dst;
@@ -3491,6 +3831,11 @@ vec3 color_blend(int mode, vec3 src, vec3 dst) {
 vec4 blend_cubism(vec4 dst, vec4 src, int flags) {
     int color_mode = flags & 255;
     int alpha_mode = (flags >> 8) & 255;
+    if (color_mode == 16 && alpha_mode == 0) {
+        vec3 destination = dst.rgb * dst.a;
+        vec3 color = destination + src.rgb * src.a * (vec3(1.0) - destination);
+        return straight_from_premul(color, min(dst.a + src.a, 1.0));
+    }
     if (color_mode == 0 && alpha_mode == 0) {
         return blend_over(dst, src);
     }
@@ -3507,12 +3852,12 @@ vec4 blend_cubism(vec4 dst, vec4 src, int flags) {
     } else if (alpha_mode == 2) {
         parameter = vec3(0.0, 0.0, dst.a * (1.0 - src.a));
     } else if (alpha_mode == 3) {
-        parameter = vec3(min(src.a, dst.a), max(src.a - dst.a, 0.0),
-                         max(dst.a - src.a, 0.0));
+        parameter = vec3(aetherkiri_min(src.a, dst.a), aetherkiri_max(src.a - dst.a, 0.0),
+                         aetherkiri_max(dst.a - src.a, 0.0));
     } else if (alpha_mode == 4) {
-        parameter = vec3(max(src.a + dst.a - 1.0, 0.0),
-                         min(src.a, 1.0 - dst.a),
-                         min(dst.a, 1.0 - src.a));
+        parameter = vec3(aetherkiri_max(src.a + dst.a - 1.0, 0.0),
+                         aetherkiri_min(src.a, 1.0 - dst.a),
+                         aetherkiri_min(dst.a, 1.0 - src.a));
     } else {
         parameter = vec3(src.a * dst.a, src.a * (1.0 - dst.a),
                          dst.a * (1.0 - src.a));
@@ -3563,7 +3908,7 @@ uint opacity_on_opacity(uint dest_alpha, uint src_alpha) {
     if (denom == 0u) {
         return 255u;
     }
-    return min((255u * 255u * src_alpha) / denom, 255u);
+    return aetherkiri_min((255u * 255u * src_alpha) / denom, 255u);
 }
 
 uint negative_mul_alpha(uint dest_alpha, uint src_alpha) {
@@ -3638,7 +3983,7 @@ uint alpha_blend_a_d_o(uint d, uint s, uint opa) {
 
 uint const_alpha_blend_d(uint d, uint s, uint opa) {
     uint dest_alpha = (d >> 24) & 0xffu;
-    uint blend_alpha = opacity_on_opacity(dest_alpha, opa);
+)GLSL" R"GLSL(    uint blend_alpha = opacity_on_opacity(dest_alpha, opa);
     uint out_alpha = negative_mul_alpha(dest_alpha, opa);
     int dr = int(d & 0xffu);
     int dg = int((d >> 8) & 0xffu);
@@ -3661,9 +4006,9 @@ uint ps_screen_blend(uint d, uint s, uint opa) {
     uint sr = s & 0xffu;
     uint sg = (s >> 8) & 0xffu;
     uint sb = (s >> 16) & 0xffu;
-    uint r = min(dr + (((sr - ((sr * dr) >> 8)) * a) >> 8), 255u);
-    uint g = min(dg + (((sg - ((sg * dg) >> 8)) * a) >> 8), 255u);
-    uint b = min(db + (((sb - ((sb * db) >> 8)) * a) >> 8), 255u);
+    uint _r = dr + (((sr - ((sr * dr) >> 8)) * a) >> 8); uint r = _r < 255u ? _r : 255u;
+    uint _g = dg + (((sg - ((sg * dg) >> 8)) * a) >> 8); uint g = _g < 255u ? _g : 255u;
+    uint _b = db + (((sb - ((sb * db) >> 8)) * a) >> 8); uint b = _b < 255u ? _b : 255u;
     return (d & 0xff000000u) | r | (g << 8) | (b << 16);
 }
 
@@ -3692,9 +4037,9 @@ uint ps_add_blend(uint d, uint s, uint opa) {
     int dr = int(d & 0xffu);
     int dg = int((d >> 8) & 0xffu);
     int db = int((d >> 16) & 0xffu);
-    int br = min(dr + int(s & 0xffu), 255);
-    int bg = min(dg + int((s >> 8) & 0xffu), 255);
-    int bb = min(db + int((s >> 16) & 0xffu), 255);
+    int br = aetherkiri_min(dr + int(s & 0xffu), 255);
+    int bg = aetherkiri_min(dg + int((s >> 8) & 0xffu), 255);
+    int bb = aetherkiri_min(db + int((s >> 16) & 0xffu), 255);
     uint r = uint(clamp(dr + (((br - dr) * int(a)) >> 8), 0, 255));
     uint g = uint(clamp(dg + (((bg - dg) * int(a)) >> 8), 0, 255));
     uint b = uint(clamp(db + (((bb - db) * int(a)) >> 8), 0, 255));
@@ -3709,9 +4054,9 @@ uint ps_sub_blend(uint d, uint s, uint opa) {
     int dr = int(d & 0xffu);
     int dg = int((d >> 8) & 0xffu);
     int db = int((d >> 16) & 0xffu);
-    int br = max(dr + int(s & 0xffu) - 255, 0);
-    int bg = max(dg + int((s >> 8) & 0xffu) - 255, 0);
-    int bb = max(db + int((s >> 16) & 0xffu) - 255, 0);
+    int br = aetherkiri_max(dr + int(s & 0xffu) - 255, 0);
+    int bg = aetherkiri_max(dg + int((s >> 8) & 0xffu) - 255, 0);
+    int bb = aetherkiri_max(db + int((s >> 16) & 0xffu) - 255, 0);
     uint r = uint(clamp(dr + (((br - dr) * int(a)) >> 8), 0, 255));
     uint g = uint(clamp(dg + (((bg - dg) * int(a)) >> 8), 0, 255));
     uint b = uint(clamp(db + (((bb - db) * int(a)) >> 8), 0, 255));
@@ -3758,7 +4103,7 @@ void main() {
     ivec2 dst_pos = pc.rect0.xy + local;
     vec2 p = vec2(dst_pos) + vec2(0.5);
     int tri_count = pc.rect1.z;
-    ivec2 src_limit = max(pc.color0.xy - ivec2(1), ivec2(0));
+    ivec2 src_limit = aetherkiri_max(pc.color0.xy - ivec2(1), ivec2(0));
     float opacity = clamp(float(pc.rect1.w) / 255.0, 0.0, 1.0);
     bool preserve_detail =
         (uint(pc.color0.z) & 0x40000000u) != 0u;
@@ -3883,7 +4228,37 @@ bool EnsureDrawMaskedTrianglesPipeline(RenderingDevice *rd) {
     source->set_language(RenderingDevice::SHADER_LANGUAGE_GLSL);
     source->set_stage_source(
         RenderingDevice::SHADER_STAGE_COMPUTE,
-        R"GLSL(#version 450
+        R"GLSL(#version 450)GLSL" R"GLSL(
+// aetherkiri_min/max overloads. The shader bodies call these for scalar,
+// vector and integer types; GLSL has no templates, so the full overload set
+// must be declared explicitly. Missing definitions fail the pipeline with
+// "'aetherkiri_max' : no matching overloaded function found" (observed on the
+// blend pipeline, which is created at boot).
+int aetherkiri_min(int a, int b) { return min(a, b); }
+int aetherkiri_max(int a, int b) { return max(a, b); }
+uint aetherkiri_min(uint a, uint b) { return min(a, b); }
+uint aetherkiri_max(uint a, uint b) { return max(a, b); }
+float aetherkiri_min(float a, float b) { return min(a, b); }
+float aetherkiri_max(float a, float b) { return max(a, b); }
+vec2 aetherkiri_min(vec2 a, vec2 b) { return min(a, b); }
+vec2 aetherkiri_max(vec2 a, vec2 b) { return max(a, b); }
+vec3 aetherkiri_min(vec3 a, vec3 b) { return min(a, b); }
+vec3 aetherkiri_max(vec3 a, vec3 b) { return max(a, b); }
+vec4 aetherkiri_min(vec4 a, vec4 b) { return min(a, b); }
+vec4 aetherkiri_max(vec4 a, vec4 b) { return max(a, b); }
+ivec2 aetherkiri_min(ivec2 a, ivec2 b) { return min(a, b); }
+ivec2 aetherkiri_max(ivec2 a, ivec2 b) { return max(a, b); }
+ivec3 aetherkiri_min(ivec3 a, ivec3 b) { return min(a, b); }
+ivec3 aetherkiri_max(ivec3 a, ivec3 b) { return max(a, b); }
+ivec4 aetherkiri_min(ivec4 a, ivec4 b) { return min(a, b); }
+ivec4 aetherkiri_max(ivec4 a, ivec4 b) { return max(a, b); }
+uvec2 aetherkiri_min(uvec2 a, uvec2 b) { return min(a, b); }
+uvec2 aetherkiri_max(uvec2 a, uvec2 b) { return max(a, b); }
+uvec3 aetherkiri_min(uvec3 a, uvec3 b) { return min(a, b); }
+uvec3 aetherkiri_max(uvec3 a, uvec3 b) { return max(a, b); }
+uvec4 aetherkiri_min(uvec4 a, uvec4 b) { return min(a, b); }
+uvec4 aetherkiri_max(uvec4 a, uvec4 b) { return max(a, b); }
+)GLSL" R"GLSL(
 layout(local_size_x = 8, local_size_y = 8, local_size_z = 1) in;
 layout(std430, set = 0, binding = 0) readonly buffer Vertices {
     float value[];
@@ -3921,7 +4296,7 @@ vec4 load_bilinear_premul(ivec2 limit, vec2 edge_coord) {
 vec4 load_minified(ivec2 limit, vec2 edge_coord,
                     vec2 source_dx, vec2 source_dy,
                     bool preserve_detail) {
-    float footprint = max(length(source_dx), length(source_dy));
+    float footprint = aetherkiri_max(length(source_dx), length(source_dy));
     vec4 premul;
     if (footprint <= 1.0001) {
         premul = load_bilinear_premul(limit, edge_coord);
@@ -3967,7 +4342,7 @@ float load_mask_bilinear(vec2 edge_coord) {
 
 float load_mask_minified(vec2 edge_coord,
                           vec2 mask_dx, vec2 mask_dy) {
-    float footprint = max(length(mask_dx), length(mask_dy));
+    float footprint = aetherkiri_max(length(mask_dx), length(mask_dy));
     if (footprint <= 1.0001) {
         return load_mask_bilinear(edge_coord);
     }
@@ -4011,7 +4386,7 @@ float color_burn(float src, float dst) {
     if (abs(src) < 0.000001) {
         return 0.0;
     }
-    return 1.0 - min(1.0, (1.0 - dst) / src);
+    return 1.0 - aetherkiri_min(1.0, (1.0 - dst) / src);
 }
 
 float color_dodge(float src, float dst) {
@@ -4021,7 +4396,7 @@ float color_dodge(float src, float dst) {
     if (abs(src - 1.0) < 0.000001) {
         return 1.0;
     }
-    return min(1.0, dst / (1.0 - src));
+    return aetherkiri_min(1.0, dst / (1.0 - src));
 }
 
 float overlay(float src, float dst) {
@@ -4051,20 +4426,20 @@ float hard_light(float src, float dst) {
 }
 
 float linear_light(float src, float dst) {
-    float burn = max(0.0, 2.0 * src + dst - 1.0);
-    float dodge = min(1.0, 2.0 * (src - 0.5) + dst);
+    float burn = aetherkiri_max(0.0, 2.0 * src + dst - 1.0);
+    float dodge = aetherkiri_min(1.0, 2.0 * (src - 0.5) + dst);
     return src < 0.5 ? burn : dodge;
 }
 
 vec3 color_blend(int mode, vec3 src, vec3 dst) {
     if (mode == 3) {
-        return min(src + dst, vec3(1.0));
+        return aetherkiri_min(src + dst, vec3(1.0));
     }
     if (mode == 4) {
         return src + dst;
     }
     if (mode == 5) {
-        return min(src, dst);
+        return aetherkiri_min(src, dst);
     }
     if (mode == 6) {
         return src * dst;
@@ -4074,10 +4449,10 @@ vec3 color_blend(int mode, vec3 src, vec3 dst) {
                     color_burn(src.b, dst.b));
     }
     if (mode == 8) {
-        return max(vec3(0.0), src + dst - vec3(1.0));
+        return aetherkiri_max(vec3(0.0), src + dst - vec3(1.0));
     }
     if (mode == 9) {
-        return max(src, dst);
+        return aetherkiri_max(src, dst);
     }
     if (mode == 10) {
         return src + dst - src * dst;
@@ -4108,6 +4483,11 @@ vec3 color_blend(int mode, vec3 src, vec3 dst) {
 vec4 blend_cubism(vec4 dst, vec4 src, int flags) {
     int color_mode = flags & 255;
     int alpha_mode = (flags >> 8) & 255;
+    if (color_mode == 16 && alpha_mode == 0) {
+        vec3 destination = dst.rgb * dst.a;
+        vec3 color = destination + src.rgb * src.a * (vec3(1.0) - destination);
+        return straight_from_premul(color, min(dst.a + src.a, 1.0));
+    }
     if (color_mode == 0 && alpha_mode == 0) {
         return blend_over(dst, src);
     }
@@ -4124,12 +4504,12 @@ vec4 blend_cubism(vec4 dst, vec4 src, int flags) {
     } else if (alpha_mode == 2) {
         parameter = vec3(0.0, 0.0, dst.a * (1.0 - src.a));
     } else if (alpha_mode == 3) {
-        parameter = vec3(min(src.a, dst.a), max(src.a - dst.a, 0.0),
-                         max(dst.a - src.a, 0.0));
+        parameter = vec3(aetherkiri_min(src.a, dst.a), aetherkiri_max(src.a - dst.a, 0.0),
+                         aetherkiri_max(dst.a - src.a, 0.0));
     } else if (alpha_mode == 4) {
-        parameter = vec3(max(src.a + dst.a - 1.0, 0.0),
-                         min(src.a, 1.0 - dst.a),
-                         min(dst.a, 1.0 - src.a));
+        parameter = vec3(aetherkiri_max(src.a + dst.a - 1.0, 0.0),
+                         aetherkiri_min(src.a, 1.0 - dst.a),
+                         aetherkiri_min(dst.a, 1.0 - src.a));
     } else {
         parameter = vec3(src.a * dst.a, src.a * (1.0 - dst.a),
                          dst.a * (1.0 - src.a));
@@ -4164,7 +4544,7 @@ void main() {
     ivec2 dst_pos = pc.rect0.xy + local;
     vec2 p = vec2(dst_pos) + vec2(0.5);
     int tri_count = pc.rect1.z;
-    ivec2 src_limit = max(pc.color0.xy - ivec2(1), ivec2(0));
+    ivec2 src_limit = aetherkiri_max(pc.color0.xy - ivec2(1), ivec2(0));
     float opacity = clamp(float(pc.rect1.w) / 255.0, 0.0, 1.0);
     bool preserve_detail =
         (uint(pc.color0.z) & 0x40000000u) != 0u;
@@ -4340,7 +4720,37 @@ bool EnsureLive2DRasterShader(RenderingDevice *rd) {
     source->set_language(RenderingDevice::SHADER_LANGUAGE_GLSL);
     source->set_stage_source(
         RenderingDevice::SHADER_STAGE_VERTEX,
-        R"GLSL(#version 450
+        R"GLSL(#version 450)GLSL" R"GLSL(
+// aetherkiri_min/max overloads. The shader bodies call these for scalar,
+// vector and integer types; GLSL has no templates, so the full overload set
+// must be declared explicitly. Missing definitions fail the pipeline with
+// "'aetherkiri_max' : no matching overloaded function found" (observed on the
+// blend pipeline, which is created at boot).
+int aetherkiri_min(int a, int b) { return min(a, b); }
+int aetherkiri_max(int a, int b) { return max(a, b); }
+uint aetherkiri_min(uint a, uint b) { return min(a, b); }
+uint aetherkiri_max(uint a, uint b) { return max(a, b); }
+float aetherkiri_min(float a, float b) { return min(a, b); }
+float aetherkiri_max(float a, float b) { return max(a, b); }
+vec2 aetherkiri_min(vec2 a, vec2 b) { return min(a, b); }
+vec2 aetherkiri_max(vec2 a, vec2 b) { return max(a, b); }
+vec3 aetherkiri_min(vec3 a, vec3 b) { return min(a, b); }
+vec3 aetherkiri_max(vec3 a, vec3 b) { return max(a, b); }
+vec4 aetherkiri_min(vec4 a, vec4 b) { return min(a, b); }
+vec4 aetherkiri_max(vec4 a, vec4 b) { return max(a, b); }
+ivec2 aetherkiri_min(ivec2 a, ivec2 b) { return min(a, b); }
+ivec2 aetherkiri_max(ivec2 a, ivec2 b) { return max(a, b); }
+ivec3 aetherkiri_min(ivec3 a, ivec3 b) { return min(a, b); }
+ivec3 aetherkiri_max(ivec3 a, ivec3 b) { return max(a, b); }
+ivec4 aetherkiri_min(ivec4 a, ivec4 b) { return min(a, b); }
+ivec4 aetherkiri_max(ivec4 a, ivec4 b) { return max(a, b); }
+uvec2 aetherkiri_min(uvec2 a, uvec2 b) { return min(a, b); }
+uvec2 aetherkiri_max(uvec2 a, uvec2 b) { return max(a, b); }
+uvec3 aetherkiri_min(uvec3 a, uvec3 b) { return min(a, b); }
+uvec3 aetherkiri_max(uvec3 a, uvec3 b) { return max(a, b); }
+uvec4 aetherkiri_min(uvec4 a, uvec4 b) { return min(a, b); }
+uvec4 aetherkiri_max(uvec4 a, uvec4 b) { return max(a, b); }
+)GLSL" R"GLSL(
 layout(std430, set = 0, binding = 0) readonly buffer Vertices {
     float value[];
 } vertices;
@@ -4366,7 +4776,7 @@ void main() {
     mask_coord = masked
         ? vec2(vertices.value[base + 4], vertices.value[base + 5])
         : vec2(0.0);
-    vec2 target_size = max(vec2(pc.rect0.zw), vec2(1.0));
+    vec2 target_size = aetherkiri_max(vec2(pc.rect0.zw), vec2(1.0));
     vec2 position = vec2(destination.x / target_size.x * 2.0 - 1.0,
                          destination.y / target_size.y * 2.0 - 1.0);
     gl_Position = vec4(position, 0.0, 1.0);
@@ -4374,7 +4784,37 @@ void main() {
 )GLSL");
     source->set_stage_source(
         RenderingDevice::SHADER_STAGE_FRAGMENT,
-        R"GLSL(#version 450
+        R"GLSL(#version 450)GLSL" R"GLSL(
+// aetherkiri_min/max overloads. The shader bodies call these for scalar,
+// vector and integer types; GLSL has no templates, so the full overload set
+// must be declared explicitly. Missing definitions fail the pipeline with
+// "'aetherkiri_max' : no matching overloaded function found" (observed on the
+// blend pipeline, which is created at boot).
+int aetherkiri_min(int a, int b) { return min(a, b); }
+int aetherkiri_max(int a, int b) { return max(a, b); }
+uint aetherkiri_min(uint a, uint b) { return min(a, b); }
+uint aetherkiri_max(uint a, uint b) { return max(a, b); }
+float aetherkiri_min(float a, float b) { return min(a, b); }
+float aetherkiri_max(float a, float b) { return max(a, b); }
+vec2 aetherkiri_min(vec2 a, vec2 b) { return min(a, b); }
+vec2 aetherkiri_max(vec2 a, vec2 b) { return max(a, b); }
+vec3 aetherkiri_min(vec3 a, vec3 b) { return min(a, b); }
+vec3 aetherkiri_max(vec3 a, vec3 b) { return max(a, b); }
+vec4 aetherkiri_min(vec4 a, vec4 b) { return min(a, b); }
+vec4 aetherkiri_max(vec4 a, vec4 b) { return max(a, b); }
+ivec2 aetherkiri_min(ivec2 a, ivec2 b) { return min(a, b); }
+ivec2 aetherkiri_max(ivec2 a, ivec2 b) { return max(a, b); }
+ivec3 aetherkiri_min(ivec3 a, ivec3 b) { return min(a, b); }
+ivec3 aetherkiri_max(ivec3 a, ivec3 b) { return max(a, b); }
+ivec4 aetherkiri_min(ivec4 a, ivec4 b) { return min(a, b); }
+ivec4 aetherkiri_max(ivec4 a, ivec4 b) { return max(a, b); }
+uvec2 aetherkiri_min(uvec2 a, uvec2 b) { return min(a, b); }
+uvec2 aetherkiri_max(uvec2 a, uvec2 b) { return max(a, b); }
+uvec3 aetherkiri_min(uvec3 a, uvec3 b) { return min(a, b); }
+uvec3 aetherkiri_max(uvec3 a, uvec3 b) { return max(a, b); }
+uvec4 aetherkiri_min(uvec4 a, uvec4 b) { return min(a, b); }
+uvec4 aetherkiri_max(uvec4 a, uvec4 b) { return max(a, b); }
+)GLSL" R"GLSL(
 layout(set = 0, binding = 1) uniform sampler2D source_texture;
 layout(set = 0, binding = 2) uniform sampler2D mask_texture;
 layout(push_constant, std430) uniform Params {
@@ -4565,7 +5005,37 @@ bool EnsureLive2DUnpremultiplyPipeline(RenderingDevice *rd) {
     source->set_language(RenderingDevice::SHADER_LANGUAGE_GLSL);
     source->set_stage_source(
         RenderingDevice::SHADER_STAGE_COMPUTE,
-        R"GLSL(#version 450
+        R"GLSL(#version 450)GLSL" R"GLSL(
+// aetherkiri_min/max overloads. The shader bodies call these for scalar,
+// vector and integer types; GLSL has no templates, so the full overload set
+// must be declared explicitly. Missing definitions fail the pipeline with
+// "'aetherkiri_max' : no matching overloaded function found" (observed on the
+// blend pipeline, which is created at boot).
+int aetherkiri_min(int a, int b) { return min(a, b); }
+int aetherkiri_max(int a, int b) { return max(a, b); }
+uint aetherkiri_min(uint a, uint b) { return min(a, b); }
+uint aetherkiri_max(uint a, uint b) { return max(a, b); }
+float aetherkiri_min(float a, float b) { return min(a, b); }
+float aetherkiri_max(float a, float b) { return max(a, b); }
+vec2 aetherkiri_min(vec2 a, vec2 b) { return min(a, b); }
+vec2 aetherkiri_max(vec2 a, vec2 b) { return max(a, b); }
+vec3 aetherkiri_min(vec3 a, vec3 b) { return min(a, b); }
+vec3 aetherkiri_max(vec3 a, vec3 b) { return max(a, b); }
+vec4 aetherkiri_min(vec4 a, vec4 b) { return min(a, b); }
+vec4 aetherkiri_max(vec4 a, vec4 b) { return max(a, b); }
+ivec2 aetherkiri_min(ivec2 a, ivec2 b) { return min(a, b); }
+ivec2 aetherkiri_max(ivec2 a, ivec2 b) { return max(a, b); }
+ivec3 aetherkiri_min(ivec3 a, ivec3 b) { return min(a, b); }
+ivec3 aetherkiri_max(ivec3 a, ivec3 b) { return max(a, b); }
+ivec4 aetherkiri_min(ivec4 a, ivec4 b) { return min(a, b); }
+ivec4 aetherkiri_max(ivec4 a, ivec4 b) { return max(a, b); }
+uvec2 aetherkiri_min(uvec2 a, uvec2 b) { return min(a, b); }
+uvec2 aetherkiri_max(uvec2 a, uvec2 b) { return max(a, b); }
+uvec3 aetherkiri_min(uvec3 a, uvec3 b) { return min(a, b); }
+uvec3 aetherkiri_max(uvec3 a, uvec3 b) { return max(a, b); }
+uvec4 aetherkiri_min(uvec4 a, uvec4 b) { return min(a, b); }
+uvec4 aetherkiri_max(uvec4 a, uvec4 b) { return max(a, b); }
+)GLSL" R"GLSL(
 layout(local_size_x = 8, local_size_y = 8, local_size_z = 1) in;
 layout(rgba8, set = 0, binding = 0) uniform image2D target_image;
 layout(push_constant, std430) uniform Params {
@@ -4613,7 +5083,37 @@ bool EnsureMosaicPipeline(RenderingDevice *rd) {
     source->set_language(RenderingDevice::SHADER_LANGUAGE_GLSL);
     source->set_stage_source(
         RenderingDevice::SHADER_STAGE_COMPUTE,
-        R"GLSL(#version 450
+        R"GLSL(#version 450)GLSL" R"GLSL(
+// aetherkiri_min/max overloads. The shader bodies call these for scalar,
+// vector and integer types; GLSL has no templates, so the full overload set
+// must be declared explicitly. Missing definitions fail the pipeline with
+// "'aetherkiri_max' : no matching overloaded function found" (observed on the
+// blend pipeline, which is created at boot).
+int aetherkiri_min(int a, int b) { return min(a, b); }
+int aetherkiri_max(int a, int b) { return max(a, b); }
+uint aetherkiri_min(uint a, uint b) { return min(a, b); }
+uint aetherkiri_max(uint a, uint b) { return max(a, b); }
+float aetherkiri_min(float a, float b) { return min(a, b); }
+float aetherkiri_max(float a, float b) { return max(a, b); }
+vec2 aetherkiri_min(vec2 a, vec2 b) { return min(a, b); }
+vec2 aetherkiri_max(vec2 a, vec2 b) { return max(a, b); }
+vec3 aetherkiri_min(vec3 a, vec3 b) { return min(a, b); }
+vec3 aetherkiri_max(vec3 a, vec3 b) { return max(a, b); }
+vec4 aetherkiri_min(vec4 a, vec4 b) { return min(a, b); }
+vec4 aetherkiri_max(vec4 a, vec4 b) { return max(a, b); }
+ivec2 aetherkiri_min(ivec2 a, ivec2 b) { return min(a, b); }
+ivec2 aetherkiri_max(ivec2 a, ivec2 b) { return max(a, b); }
+ivec3 aetherkiri_min(ivec3 a, ivec3 b) { return min(a, b); }
+ivec3 aetherkiri_max(ivec3 a, ivec3 b) { return max(a, b); }
+ivec4 aetherkiri_min(ivec4 a, ivec4 b) { return min(a, b); }
+ivec4 aetherkiri_max(ivec4 a, ivec4 b) { return max(a, b); }
+uvec2 aetherkiri_min(uvec2 a, uvec2 b) { return min(a, b); }
+uvec2 aetherkiri_max(uvec2 a, uvec2 b) { return max(a, b); }
+uvec3 aetherkiri_min(uvec3 a, uvec3 b) { return min(a, b); }
+uvec3 aetherkiri_max(uvec3 a, uvec3 b) { return max(a, b); }
+uvec4 aetherkiri_min(uvec4 a, uvec4 b) { return min(a, b); }
+uvec4 aetherkiri_max(uvec4 a, uvec4 b) { return max(a, b); }
+)GLSL" R"GLSL(
 layout(local_size_x = 8, local_size_y = 8, local_size_z = 1) in;
 layout(std430, set = 0, binding = 0) readonly buffer Rects {
     float value[];
@@ -4628,13 +5128,13 @@ layout(push_constant, std430) uniform Params {
 
 void main() {
     ivec2 pos = ivec2(gl_GlobalInvocationID.xy);
-    ivec2 limit = max(pc.rect1.xy, ivec2(0));
+    ivec2 limit = aetherkiri_max(pc.rect1.xy, ivec2(0));
     if (pos.x >= limit.x || pos.y >= limit.y) {
         return;
     }
 
-    ivec2 block = max(pc.color0.xy, ivec2(1));
-    int rect_count = max(pc.rect1.z, 0);
+    ivec2 block = aetherkiri_max(pc.color0.xy, ivec2(1));
+    int rect_count = aetherkiri_max(pc.rect1.z, 0);
     for (int i = 0; i < rect_count; ++i) {
         int base = i * 4;
         ivec4 rect = ivec4(round(vec4(rects.value[base + 0],
@@ -5154,14 +5654,14 @@ void ExecuteGodotGpuLive2DRasterBatch(
             results[index] = true;
             drew = true;
             if (!mask_write) {
-                union_left = std::min(
+                union_left = aetherkiri_min(
                     union_left, static_cast<int>(op->dst_pos.x));
-                union_top = std::min(
+                union_top = aetherkiri_min(
                     union_top, static_cast<int>(op->dst_pos.y));
-                union_right = std::max(
+                union_right = aetherkiri_max(
                     union_right,
                     static_cast<int>(op->dst_pos.x + op->size.x));
-                union_bottom = std::max(
+                union_bottom = aetherkiri_max(
                     union_bottom,
                     static_cast<int>(op->dst_pos.y + op->size.y));
             }
@@ -5652,6 +6152,9 @@ bool ExecuteGodotGpuMosaic(RenderingDevice *rd,
     return true;
 }
 
+uint64_t BridgeCreateRgba(uint32_t width, uint32_t height, const void* pixels, uint32_t stride);
+#include "mages_gpu.inc"
+
 bool ExecuteGodotGpuOp(RenderingDevice *rd, const std::shared_ptr<GodotGpuOp> &op) {
     if (rd == nullptr || op == nullptr) return false;
     GodotGpuOpExecutionProfile execution_profile(op);
@@ -5752,6 +6255,16 @@ bool ExecuteGodotGpuOp(RenderingDevice *rd, const std::shared_ptr<GodotGpuOp> &o
         }
         case GodotGpuOp::Type::ArtemisShader:
             return ExecuteArtemisGpuShader(rd, op);
+        case GodotGpuOp::Type::MagesDraw:
+#if defined(AETHERKIRI_WITH_MAGES)
+            return ExecuteMagesGpuDraw(rd, op);
+#else
+            return false;
+#endif
+        case GodotGpuOp::Type::MagesCreate:
+            op->imported_texture = BridgeCreateRgba(uint32_t(op->size.x), uint32_t(op->size.y),
+                op->data.is_empty() ? nullptr : op->data.ptr(), uint32_t(op->size.x)*4);
+            return op->imported_texture != 0;
         case GodotGpuOp::Type::PrepareNativeWrite:
             // submit()/sync() are only valid for a local RenderingDevice.
             // Poll a marker on Godot's Metal queue instead. A target remains
@@ -5915,6 +6428,15 @@ bool ExecuteGodotGpuOp(RenderingDevice *rd, const std::shared_ptr<GodotGpuOp> &o
 #endif
         }
         case GodotGpuOp::Type::Release:
+#if defined(AETHERKIRI_WITH_MAGES)
+            {
+                auto it = g_mages_depth.find(op->dst.get_id());
+                if(it != g_mages_depth.end()) {
+                    rd->free_rid(it->second);
+                    g_mages_depth.erase(it);
+                }
+            }
+#endif
             InvalidateLive2DFramebuffer(rd, op->dst);
             InvalidateGodotGpuUniformSetsForResource(rd, op->dst);
 #if defined(__APPLE__)
@@ -6581,12 +7103,16 @@ bool RunGodotGpuOp(const std::shared_ptr<GodotGpuOp> &op, bool wait) {
     }
     std::unique_lock<std::mutex> done_lock(op->done_mutex);
     const auto wait_timeout =
-        op->type == GodotGpuOp::Type::ArtemisShader
+        (op->type == GodotGpuOp::Type::ArtemisShader ||
+         op->type == GodotGpuOp::Type::MagesCreate)
             ? std::chrono::seconds(10)
             : kGodotGpuSyncWaitTimeout;
     if (!op->done_cv.wait_for(done_lock, wait_timeout,
                               [&]() { return op->done; })) {
         g_gpu_sync_timeouts.fetch_add(1, std::memory_order_relaxed);
+        if (op->type == GodotGpuOp::Type::MagesCreate) {
+            LogMagesGpu("texture_create_failed", "render-thread operation timed out");
+        }
         return false;
     }
     return op->result;
@@ -6681,6 +7207,10 @@ PackedByteArray PackRgbaBytes(const void *pixels, uint32_t width,
     }
     const auto *src = static_cast<const uint8_t *>(pixels);
     const uint32_t src_stride = stride_bytes != 0 ? stride_bytes : tight_stride;
+    if (src_stride < tight_stride) {
+        data.resize(0);
+        return data;
+    }
     for (uint32_t y = 0; y < height; ++y) {
         std::memcpy(dst + static_cast<size_t>(y) * tight_stride,
                     src + static_cast<size_t>(y) * src_stride,
@@ -6711,9 +7241,9 @@ Ref<RDTextureFormat> MakeRgbaTextureFormat(uint32_t width, uint32_t height) {
 }
 
 PackedByteArray PackRgbaRegionBytes(const void *pixels, uint32_t stride_bytes,
-                                    uint32_t image_width, uint32_t left,
-                                    uint32_t top, uint32_t width,
-                                    uint32_t height) {
+                                    uint32_t image_width, uint32_t image_height,
+                                    uint32_t left, uint32_t top,
+                                    uint32_t width, uint32_t height) {
     PackedByteArray data;
     const uint32_t tight_stride = width * 4u;
     data.resize(static_cast<int64_t>(tight_stride) * height);
@@ -6727,6 +7257,12 @@ PackedByteArray PackRgbaRegionBytes(const void *pixels, uint32_t stride_bytes,
     const auto *src = static_cast<const uint8_t *>(pixels);
     const uint32_t src_stride =
         stride_bytes != 0 ? stride_bytes : image_width * 4u;
+    if (src_stride < image_width * 4u ||
+        left > image_width || width > image_width - left ||
+        top > image_height || height > image_height - top) {
+        data.resize(0);
+        return data;
+    }
     for (uint32_t y = 0; y < height; ++y) {
         const uint8_t *row =
             src + static_cast<size_t>(top + y) * src_stride +
@@ -6906,7 +7442,37 @@ struct ArtemisTranslatedShader {
 ArtemisTranslatedShader TranslateArtemisFragmentShader(
     const ArtemisGpuShaderRequest &request) {
     ArtemisTranslatedShader translated;
-    translated.vertex_source = R"GLSL(#version 450
+    translated.vertex_source = R"GLSL(#version 450)GLSL" R"GLSL(
+// aetherkiri_min/max overloads. The shader bodies call these for scalar,
+// vector and integer types; GLSL has no templates, so the full overload set
+// must be declared explicitly. Missing definitions fail the pipeline with
+// "'aetherkiri_max' : no matching overloaded function found" (observed on the
+// blend pipeline, which is created at boot).
+int aetherkiri_min(int a, int b) { return min(a, b); }
+int aetherkiri_max(int a, int b) { return max(a, b); }
+uint aetherkiri_min(uint a, uint b) { return min(a, b); }
+uint aetherkiri_max(uint a, uint b) { return max(a, b); }
+float aetherkiri_min(float a, float b) { return min(a, b); }
+float aetherkiri_max(float a, float b) { return max(a, b); }
+vec2 aetherkiri_min(vec2 a, vec2 b) { return min(a, b); }
+vec2 aetherkiri_max(vec2 a, vec2 b) { return max(a, b); }
+vec3 aetherkiri_min(vec3 a, vec3 b) { return min(a, b); }
+vec3 aetherkiri_max(vec3 a, vec3 b) { return max(a, b); }
+vec4 aetherkiri_min(vec4 a, vec4 b) { return min(a, b); }
+vec4 aetherkiri_max(vec4 a, vec4 b) { return max(a, b); }
+ivec2 aetherkiri_min(ivec2 a, ivec2 b) { return min(a, b); }
+ivec2 aetherkiri_max(ivec2 a, ivec2 b) { return max(a, b); }
+ivec3 aetherkiri_min(ivec3 a, ivec3 b) { return min(a, b); }
+ivec3 aetherkiri_max(ivec3 a, ivec3 b) { return max(a, b); }
+ivec4 aetherkiri_min(ivec4 a, ivec4 b) { return min(a, b); }
+ivec4 aetherkiri_max(ivec4 a, ivec4 b) { return max(a, b); }
+uvec2 aetherkiri_min(uvec2 a, uvec2 b) { return min(a, b); }
+uvec2 aetherkiri_max(uvec2 a, uvec2 b) { return max(a, b); }
+uvec3 aetherkiri_min(uvec3 a, uvec3 b) { return min(a, b); }
+uvec3 aetherkiri_max(uvec3 a, uvec3 b) { return max(a, b); }
+uvec4 aetherkiri_min(uvec4 a, uvec4 b) { return min(a, b); }
+uvec4 aetherkiri_max(uvec4 a, uvec4 b) { return max(a, b); }
+)GLSL" R"GLSL(
 layout(location = 0) out vec2 resultCoord0;
 layout(location = 1) out vec2 resultCoord1;
 void main() {
@@ -6976,7 +7542,7 @@ void main() {
             const uint32_t array_count =
                 match[3].matched
                     ? static_cast<uint32_t>(
-                          std::max(1, std::stoi(match[3].str())))
+                          aetherkiri_max(1, std::stoi(match[3].str())))
                     : 0u;
             ArtemisTranslatedShader::Uniform uniform;
             uniform.type = type;
@@ -7118,10 +7684,11 @@ bool ExecuteArtemisGpuShader(
     Ref<RDTextureView> texture_view;
     texture_view.instantiate();
     TypedArray<PackedByteArray> no_data;
-    RID output_texture = own(rd->texture_create(
-        MakeRgbaTextureFormat(request.foreground.width,
-                              request.foreground.height),
-        texture_view, no_data));
+    RID output_texture = request.resident_output.is_valid()
+        ? request.resident_output : own(rd->texture_create(
+            MakeRgbaTextureFormat(request.foreground.width,
+                                  request.foreground.height),
+            texture_view, no_data));
     if (!output_texture.is_valid()) {
         request.error = "Godot failed to allocate Artemis shader output";
         cleanup();
@@ -7247,15 +7814,16 @@ bool ExecuteArtemisGpuShader(
         const ArtemisGpuShaderImage *image =
             FindArtemisShaderImage(request, translated.samplers[index]);
         if (image == nullptr || image->width == 0 || image->height == 0 ||
-            image->pixels.size() !=
-                static_cast<size_t>(image->width) * image->height * 4u) {
+            (!image->resident_texture.is_valid() && image->pixels.size() !=
+                static_cast<size_t>(image->width) * image->height * 4u)) {
             image = &missing_image;
         }
         TypedArray<PackedByteArray> initial_data;
         initial_data.push_back(PackArtemisShaderImage(*image));
-        RID texture = own(rd->texture_create(
-            MakeRgbaTextureFormat(image->width, image->height), texture_view,
-            initial_data));
+        RID texture = image->resident_texture.is_valid()
+            ? image->resident_texture : own(rd->texture_create(
+                MakeRgbaTextureFormat(image->width, image->height), texture_view,
+                initial_data));
         if (!texture.is_valid()) {
             request.error = "Godot failed to upload Artemis shader texture " +
                 translated.samplers[index];
@@ -7310,6 +7878,10 @@ bool ExecuteArtemisGpuShader(
     rd->draw_list_draw(draw_list, false, 1, 3);
     rd->draw_list_end();
     ApplyGodotGpuBarrier(rd);
+    if (request.resident_output.is_valid()) {
+        cleanup();
+        return true;
+    }
     op->data = rd->texture_get_data(output_texture, 0);
     const size_t expected_size =
         static_cast<size_t>(request.foreground.width) *
@@ -7323,11 +7895,53 @@ bool ExecuteArtemisGpuShader(
     return success;
 }
 
+bool BridgeApplyFragment(uint64_t dst, const uint64_t *sources,
+                         uint32_t source_count, const char *fragment_utf8,
+                         const float *constants, uint32_t constant_count) {
+    if (!sources || source_count < 1 || source_count > 8 ||
+        !fragment_utf8 || !*fragment_utf8 || std::strlen(fragment_utf8) > 256*1024 ||
+        constant_count > 32 || (constant_count && !constants)) return false;
+    for (uint32_t i = 0; i < constant_count; ++i)
+        if (!std::isfinite(constants[i])) return false;
+    auto request = std::make_shared<ArtemisGpuShaderRequest>();
+    request->shader_id = "RuntimeFragment";
+    request->fragment_source = fragment_utf8;
+    {
+        std::lock_guard<std::mutex> lock(g_gpu_textures_mutex);
+        const auto target = g_gpu_textures.find(dst);
+        if (target == g_gpu_textures.end()) return false;
+        request->resident_output = target->second.rid;
+        request->foreground.width = target->second.width;
+        request->foreground.height = target->second.height;
+        for (uint32_t i = 0; i < source_count; ++i) {
+            const auto input = g_gpu_textures.find(sources[i]);
+            if (input == g_gpu_textures.end() || sources[i] == dst ||
+                input->second.rid == target->second.rid) return false;
+            ArtemisGpuShaderTexture texture;
+            texture.name = "texture" + std::to_string(i);
+            texture.image.width = input->second.width;
+            texture.image.height = input->second.height;
+            texture.image.resident_texture = input->second.rid;
+            request->textures.push_back(std::move(texture));
+        }
+    }
+    ArtemisGpuShaderConstant values;
+    values.name = "parameters";
+    if (constant_count) values.values.assign(constants, constants + constant_count);
+    request->constants.push_back(std::move(values));
+    auto op = std::make_shared<GodotGpuOp>();
+    op->type = GodotGpuOp::Type::ArtemisShader;
+    op->src = request->textures.front().image.resident_texture;
+    op->dst = request->resident_output;
+    op->artemis_shader = std::move(request);
+    return RunGodotGpuOpAsync(op);
+}
+
 void WriteArtemisShaderError(const std::string &message, char *error_utf8,
                              uint32_t error_size) {
     if (error_utf8 == nullptr || error_size == 0) return;
     const size_t copy_size =
-        std::min(message.size(), static_cast<size_t>(error_size - 1u));
+        aetherkiri_min(message.size(), static_cast<size_t>(error_size - 1u));
     if (copy_size != 0) {
         std::memcpy(error_utf8, message.data(), copy_size);
     }
@@ -7509,24 +8123,38 @@ uint64_t BridgeCreateRgba(uint32_t width, uint32_t height, const void *pixels,
     PackedByteArray packed_data;
     if (!use_device_clear) {
         packed_data = PackRgbaBytes(pixels, width, height, stride_bytes);
+        if (packed_data.is_empty() && width != 0 && height != 0) {
+            std::ostringstream log;
+            log << "width=" << width << " height=" << height
+                << " stride=" << stride_bytes << " tight_stride=" << width * 4u;
+            LogMagesGpu("texture_create_rejected", log.str());
+            return 0;
+        }
         initial_data.push_back(packed_data);
     }
     // A surface retired at this exact size can be initialized in place instead
     // of asking the driver for a new allocation, which is what keeps the
     // per-frame layer resizes from inflating the process graphics footprint.
     RID rid = TakeGpuTextureFromPool(width, height);
+    const bool pooled = rid.is_valid();
     if (rid.is_valid()) {
-        if (use_device_clear) {
-            if (rd->texture_clear(rid, Color(0.0, 0.0, 0.0, 0.0), 0, 1, 0,
-                                  1) != OK) {
-                rd->free_rid(rid);
-                rid = RID();
-            }
-        } else if (rd->texture_update(rid, 0, packed_data) != OK) {
-            rd->free_rid(rid);
+        // Startup can allocate on a provider worker. Fresh texture creation is
+        // thread-safe, but updating a recycled RID requires the render thread.
+        auto initialize = std::make_shared<GodotGpuOp>();
+        initialize->dst = rid;
+        initialize->type = pixels == nullptr ? GodotGpuOp::Type::Clear
+                                            : GodotGpuOp::Type::Update;
+        initialize->clear_color = Color(0.0, 0.0, 0.0, 0.0);
+        initialize->data = packed_data;
+        if (!RunGodotGpuOpSync(initialize)) {
+            auto release = std::make_shared<GodotGpuOp>();
+            release->type = GodotGpuOp::Type::Release;
+            release->dst = rid;
+            RunGodotGpuOpSync(release);
             rid = RID();
         }
-    } else {
+    }
+    if (!rid.is_valid()) {
         rid = rd->texture_create(MakeRgbaTextureFormat(width, height), view,
                                  initial_data);
         // RenderingDevice accepts an empty initial-data array, but its
@@ -7553,7 +8181,10 @@ uint64_t BridgeCreateRgba(uint32_t width, uint32_t height, const void *pixels,
             : 0u,
         create_ms, 0.0, 0.0, rid.is_valid(),
         on_render_thread);
-    if (!rid.is_valid()) return 0;
+    if (!rid.is_valid()) {
+        LogMagesGpu("texture_create_failed", "texture allocation or initialization returned invalid RID");
+        return 0;
+    }
 
     GodotGpuTextureRecord record;
     record.rid = rid;
@@ -7569,6 +8200,17 @@ uint64_t BridgeCreateRgba(uint32_t width, uint32_t height, const void *pixels,
     g_gpu_texture_bytes_created.fetch_add(
         static_cast<uint64_t>(width) * height * 4u,
         std::memory_order_relaxed);
+    if (ShouldLogMagesGpu("texture_created")) {
+        std::ostringstream log;
+        log << "texture_id=" << id << " rid=" << rid.get_id()
+            << " size=" << width << "x" << height
+            << " stride=" << (stride_bytes != 0 ? stride_bytes : width * 4u)
+            << " bytes=" << (pixels != nullptr ? packed_data.size() : 0)
+            << " sample_checksum=" << (pixels != nullptr
+                ? MagesGpuByteChecksum(packed_data.ptr(), packed_data.size()) : 0u)
+            << " pooled=" << (pooled ? 1 : 0);
+        LogMagesGpu("texture_created", log.str());
+    }
     return id;
 }
 
@@ -7760,11 +8402,15 @@ bool BridgeUpdateRgba(uint64_t texture, const void *pixels,
         region_op->type = GodotGpuOp::Type::Update;
         region_op->dst = record.rid;
         region_op->data = PackRgbaRegionBytes(
-            pixels, stride_bytes, record.width,
+            pixels, stride_bytes, record.width, record.height,
             static_cast<uint32_t>(region_left),
             static_cast<uint32_t>(region_top),
             static_cast<uint32_t>(region_right - region_left),
             static_cast<uint32_t>(region_bottom - region_top));
+        if (region_op->data.is_empty()) {
+            LogMagesGpu("texture_update_rejected", "invalid region dimensions or source stride");
+            return false;
+        }
         region_op->region =
             tTVPRect(region_left, region_top, region_right, region_bottom);
         region_op->has_region = true;
@@ -7779,6 +8425,14 @@ bool BridgeUpdateRgba(uint64_t texture, const void *pixels,
     const auto bridge_started = std::chrono::steady_clock::now();
     PackedByteArray data =
         PackRgbaBytes(pixels, record.width, record.height, stride_bytes);
+    if (data.is_empty()) {
+        std::ostringstream log;
+        log << "texture_id=" << texture << " rid=" << record.rid.get_id()
+            << " size=" << record.width << "x" << record.height
+            << " stride=" << stride_bytes;
+        LogMagesGpu("texture_update_rejected", log.str());
+        return false;
+    }
     const auto packed_at = std::chrono::steady_clock::now();
     const double pack_ms = std::chrono::duration<double, std::milli>(
                                packed_at - bridge_started)
@@ -7874,6 +8528,15 @@ bool BridgeUpdateRgba(uint64_t texture, const void *pixels,
     op->profile_height = record.height;
     op->profile_pack_ms = pack_ms;
     op->profile_enqueued_at = packed_at;
+    if (ShouldLogMagesGpu("texture_update_queued")) {
+        std::ostringstream log;
+        log << "texture_id=" << texture << " rid=" << record.rid.get_id()
+            << " size=" << record.width << "x" << record.height
+            << " stride=" << (stride_bytes != 0 ? stride_bytes : record.width * 4u)
+            << " bytes=" << data.size()
+            << " sample_checksum=" << MagesGpuByteChecksum(data.ptr(), data.size());
+        LogMagesGpu("texture_update_queued", log.str());
+    }
     const bool result = RunGodotGpuOpAsync(op);
     const double bridge_ms = std::chrono::duration<double, std::milli>(
                                  std::chrono::steady_clock::now() -
@@ -8027,13 +8690,13 @@ bool BridgeCopyRect(uint64_t dst, uint64_t src, const tTVPRect *dst_rect,
 void AppendGodotGpuTriangleBounds(std::vector<float> &vertices,
                                   const tTVPPointD *points) {
     const float min_x = static_cast<float>(
-        std::min({points[0].x, points[1].x, points[2].x}) - 0.25);
+        aetherkiri_min({points[0].x, points[1].x, points[2].x}) - 0.25);
     const float min_y = static_cast<float>(
-        std::min({points[0].y, points[1].y, points[2].y}) - 0.25);
+        aetherkiri_min({points[0].y, points[1].y, points[2].y}) - 0.25);
     const float max_x = static_cast<float>(
-        std::max({points[0].x, points[1].x, points[2].x}) + 0.25);
+        aetherkiri_max({points[0].x, points[1].x, points[2].x}) + 0.25);
     const float max_y = static_cast<float>(
-        std::max({points[0].y, points[1].y, points[2].y}) + 0.25);
+        aetherkiri_max({points[0].y, points[1].y, points[2].y}) + 0.25);
     vertices.push_back(min_x);
     vertices.push_back(min_y);
     vertices.push_back(max_x);
@@ -8390,11 +9053,24 @@ bool BridgeBlendRect2(uint64_t dst, uint64_t src1, uint64_t src2,
     }
     const int width = dst_rect->right - dst_rect->left;
     const int height = dst_rect->bottom - dst_rect->top;
+    const bool convolution = mode == TVP_GODOT_GPU_BLEND_CONVOLVE_RGBA;
+    const bool color_matrix = mode == TVP_GODOT_GPU_BLEND_COLOR_MATRIX_RGBA;
     if (width <= 0 || height <= 0 ||
         width != src1_rect->right - src1_rect->left ||
         height != src1_rect->bottom - src1_rect->top ||
-        width != src2_rect->right - src2_rect->left ||
-        height != src2_rect->bottom - src2_rect->top) {
+        (!convolution && !color_matrix && (width != src2_rect->right - src2_rect->left ||
+                         height != src2_rect->bottom - src2_rect->top))) {
+        return false;
+    }
+    if ((convolution || color_matrix) && (
+        (convolution ? opacity < 1 || opacity > 64 : opacity != 0) || dst == src1 || dst == src2 ||
+        src2_rect->left < 0 || src2_rect->top < 0 ||
+        src2_rect->right > int(src2_record.width) || src2_rect->bottom > int(src2_record.height) ||
+        src2_rect->right - src2_rect->left != (convolution ? opacity : 5) || src2_rect->bottom - src2_rect->top != (convolution ? 3 : 4) ||
+        dst_rect->left < 0 || dst_rect->top < 0 ||
+        dst_rect->right > int(dst_record.width) || dst_rect->bottom > int(dst_record.height) ||
+        src1_rect->left < 0 || src1_rect->top < 0 ||
+        src1_rect->right > int(src1_record.width) || src1_rect->bottom > int(src1_record.height))) {
         return false;
     }
 
@@ -8407,6 +9083,7 @@ bool BridgeBlendRect2(uint64_t dst, uint64_t src1, uint64_t src2,
     op->src2_pos = Vector3(src2_rect->left, src2_rect->top, 0);
     op->dst_pos = Vector3(dst_rect->left, dst_rect->top, 0);
     op->size = Vector3(width, height, 1);
+    if (convolution) op->src_size = Vector3(src1_record.width, src1_record.height, 1);
     op->mode = mode;
     op->opacity = opacity;
     op->color = color;
@@ -8776,11 +9453,11 @@ uint32_t CpuPsScreenBlend(uint32_t d, uint32_t s, int opacity) {
     const uint32_t sg = (s >> 8) & 0xffu;
     const uint32_t sb = (s >> 16) & 0xffu;
     const uint32_t r =
-        std::min(dr + (((sr - ((sr * dr) >> 8)) * a) >> 8), 255u);
+        aetherkiri_min(dr + (((sr - ((sr * dr) >> 8)) * a) >> 8), 255u);
     const uint32_t g =
-        std::min(dg + (((sg - ((sg * dg) >> 8)) * a) >> 8), 255u);
+        aetherkiri_min(dg + (((sg - ((sg * dg) >> 8)) * a) >> 8), 255u);
     const uint32_t b =
-        std::min(db + (((sb - ((sb * db) >> 8)) * a) >> 8), 255u);
+        aetherkiri_min(db + (((sb - ((sb * db) >> 8)) * a) >> 8), 255u);
     return (d & 0xff000000u) | r | (g << 8) | (b << 16);
 }
 
@@ -8814,11 +9491,11 @@ uint32_t CpuPsAddBlend(uint32_t d, uint32_t s, int opacity) {
     const int dr = static_cast<int>(d & 0xffu);
     const int dg = static_cast<int>((d >> 8) & 0xffu);
     const int db = static_cast<int>((d >> 16) & 0xffu);
-    const int br = std::min(dr + static_cast<int>(s & 0xffu), 255);
+    const int br = aetherkiri_min(dr + static_cast<int>(s & 0xffu), 255);
     const int bg =
-        std::min(dg + static_cast<int>((s >> 8) & 0xffu), 255);
+        aetherkiri_min(dg + static_cast<int>((s >> 8) & 0xffu), 255);
     const int bb =
-        std::min(db + static_cast<int>((s >> 16) & 0xffu), 255);
+        aetherkiri_min(db + static_cast<int>((s >> 16) & 0xffu), 255);
     const uint32_t r = static_cast<uint32_t>(
         std::clamp(dr + (((br - dr) * static_cast<int>(a)) >> 8), 0, 255));
     const uint32_t g = static_cast<uint32_t>(
@@ -8838,11 +9515,11 @@ uint32_t CpuPsSubBlend(uint32_t d, uint32_t s, int opacity) {
     const int dg = static_cast<int>((d >> 8) & 0xffu);
     const int db = static_cast<int>((d >> 16) & 0xffu);
     const int br =
-        std::max(dr + static_cast<int>(s & 0xffu) - 255, 0);
+        aetherkiri_max(dr + static_cast<int>(s & 0xffu) - 255, 0);
     const int bg =
-        std::max(dg + static_cast<int>((s >> 8) & 0xffu) - 255, 0);
+        aetherkiri_max(dg + static_cast<int>((s >> 8) & 0xffu) - 255, 0);
     const int bb =
-        std::max(db + static_cast<int>((s >> 16) & 0xffu) - 255, 0);
+        aetherkiri_max(db + static_cast<int>((s >> 16) & 0xffu) - 255, 0);
     const uint32_t r = static_cast<uint32_t>(
         std::clamp(dr + (((br - dr) * static_cast<int>(a)) >> 8), 0, 255));
     const uint32_t g = static_cast<uint32_t>(
@@ -8857,10 +9534,10 @@ uint32_t CpuPsSoftLightBlend(uint32_t d, uint32_t s, int opacity) {
         const double sf = static_cast<double>(source) / 255.0;
         const double df = static_cast<double>(destination) / 255.0;
         const double exponent = source >= 128u
-            ? 128.0 / static_cast<double>(std::max(source, 1u))
+            ? 128.0 / static_cast<double>(aetherkiri_max(source, 1u))
             : (1.0 - sf) / 0.5;
         return static_cast<uint32_t>(std::clamp(
-            static_cast<int>(std::pow(std::max(df, 0.0), exponent) * 255.0),
+            static_cast<int>(std::pow(aetherkiri_max(df, 0.0), exponent) * 255.0),
             0, 255));
     };
     uint32_t a = (s >> 24) & 0xffu;
@@ -8891,13 +9568,13 @@ uint32_t CpuAdditiveAlphaBlendHda(uint32_t d, uint32_t s, int opacity) {
         s = rb | ga;
     }
     const uint32_t inverse_alpha = (~s) >> 24;
-    const uint32_t r = std::min(
+    const uint32_t r = aetherkiri_min(
         (((d & 0xffu) * inverse_alpha) >> 8) + (s & 0xffu), 255u);
-    const uint32_t g = std::min(
+    const uint32_t g = aetherkiri_min(
         (((d >> 8 & 0xffu) * inverse_alpha) >> 8) +
             (s >> 8 & 0xffu),
         255u);
-    const uint32_t b = std::min(
+    const uint32_t b = aetherkiri_min(
         (((d >> 16 & 0xffu) * inverse_alpha) >> 8) +
             (s >> 16 & 0xffu),
         255u);
@@ -8913,15 +9590,15 @@ uint32_t CpuApplyColorMapA(uint32_t d, uint32_t mask, int opacity,
     uint32_t out_alpha = ((d >> 24) & 0xffu) + source_alpha -
                          ((((d >> 24) & 0xffu) * source_alpha) >> 8);
     out_alpha -= out_alpha >> 8;
-    const uint32_t r = std::min(
+    const uint32_t r = aetherkiri_min(
         (((d & 0xffu) * inverse_alpha) >> 8) +
             ((source_alpha * (color & 0xffu)) >> 8),
         255u);
-    const uint32_t g = std::min(
+    const uint32_t g = aetherkiri_min(
         (((d >> 8 & 0xffu) * inverse_alpha) >> 8) +
             ((source_alpha * (color >> 8 & 0xffu)) >> 8),
         255u);
-    const uint32_t b = std::min(
+    const uint32_t b = aetherkiri_min(
         (((d >> 16 & 0xffu) * inverse_alpha) >> 8) +
             ((source_alpha * (color >> 16 & 0xffu)) >> 8),
         255u);
@@ -8931,9 +9608,9 @@ uint32_t CpuApplyColorMapA(uint32_t d, uint32_t mask, int opacity,
 uint32_t CpuAdditiveAlphaToAlpha(uint32_t color) {
     const uint32_t alpha = color >> 24;
     if (alpha == 0u) return color & 0xff000000u;
-    const uint32_t r = std::min((color & 0xffu) * 255u / alpha, 255u);
-    const uint32_t g = std::min(((color >> 8) & 0xffu) * 255u / alpha, 255u);
-    const uint32_t b = std::min(((color >> 16) & 0xffu) * 255u / alpha, 255u);
+    const uint32_t r = aetherkiri_min((color & 0xffu) * 255u / alpha, 255u);
+    const uint32_t g = aetherkiri_min(((color >> 8) & 0xffu) * 255u / alpha, 255u);
+    const uint32_t b = aetherkiri_min(((color >> 16) & 0xffu) * 255u / alpha, 255u);
     return (color & 0xff000000u) | r | (g << 8) | (b << 16);
 }
 
@@ -9114,6 +9791,15 @@ uint32_t BlendModeFromName(const String &mode_name) {
 
 void ReleaseGodotGpuPipeline() {
     RenderingDevice *rd = MainRenderingDevice();
+#if defined(AETHERKIRI_WITH_MAGES)
+    if(rd) {
+        for(const auto& [key, p] : g_mages_pipelines) {
+            rd->free_rid(p.pipeline); rd->free_rid(p.shader);
+        }
+        for(const auto& [key, depth] : g_mages_depth) if(depth.is_valid()) rd->free_rid(depth);
+    }
+    g_mages_pipelines.clear(); g_mages_depth.clear();
+#endif
     if (rd != nullptr) {
         for (const auto &entry : g_live2d_framebuffer_cache) {
             if (entry.second.is_valid()) rd->free_rid(entry.second);
@@ -9224,6 +9910,125 @@ void ReleaseGodotGpuPipeline() {
     g_gpu_pipeline_state = nullptr;
 }
 
+#if defined(AETHERKIRI_WITH_MAGES)
+bool PrepareMagesData(const String& cache_path) {
+    const String package = "res://mages_runtime/data.zip";
+    if(!FileAccess::file_exists(package)) return true;
+    const String digest = FileAccess::get_sha256(package);
+    if(digest.is_empty()) return false;
+    const String directory = ProjectSettings::get_singleton()->globalize_path(
+        cache_path.path_join("mages-data").path_join(digest));
+    const String marker = directory.path_join(".complete");
+    if(!FileAccess::file_exists(marker)) {
+        Ref<ZIPReader> archive; archive.instantiate();
+        if(archive->open(package) != OK) return false;
+        for(const String& name : archive->get_files()) {
+            if(name.is_absolute_path() || name.contains("..") || name.contains("\\")) return false;
+            const String destination = directory.path_join(name);
+            if(DirAccess::make_dir_recursive_absolute(destination.get_base_dir()) != OK) return false;
+            if(name.ends_with("/")) continue;
+            Ref<FileAccess> file = FileAccess::open(destination, FileAccess::WRITE);
+            if(file.is_null()) return false;
+            file->store_buffer(archive->read_file(name));
+            if(file->get_error() != OK) return false;
+        }
+        archive->close();
+        Ref<FileAccess> complete = FileAccess::open(marker, FileAccess::WRITE);
+        if(complete.is_null()) return false;
+        complete->store_string(digest);
+    }
+    aetherkiri::mages::SetDataDirectory(directory.utf8().get_data());
+    return true;
+}
+
+int32_t BridgeMagesDraw(const impacto_host_gpu_draw_t* request) {
+    if(!request || request->struct_size < sizeof(*request) || !request->vertex_source ||
+       !request->fragment_source || !request->vertices || !request->uniforms ||
+       !request->vertex_count || request->vertex_float_count > 16000000 ||
+       (uint64_t(request->vertex_count) * (request->depth_test || request->cull ? 16u : 10u)
+        != request->vertex_float_count) ||
+       (request->uniform_bytes != 320 && request->uniform_bytes != 2240) ||
+       request->blend > 4 || request->cull > 2) return 0;
+    auto op = std::make_shared<GodotGpuOp>();
+    op->type = GodotGpuOp::Type::MagesDraw;
+    auto draw = std::make_shared<MagesGpuDraw>();
+    {
+        std::lock_guard<std::mutex> lock(g_gpu_textures_mutex);
+        auto target = g_gpu_textures.find(request->target);
+        if(target == g_gpu_textures.end()) return 0;
+        op->dst = target->second.rid;
+        draw->width = target->second.width; draw->height = target->second.height;
+        for(int i=0;i<4;++i) {
+            auto texture = g_gpu_textures.find(request->textures[i]);
+            if(texture == g_gpu_textures.end()) return 0;
+            draw->textures[i] = texture->second.rid;
+        }
+    }
+    draw->vertex_source = request->vertex_source; draw->fragment_source = request->fragment_source;
+    draw->uniforms.resize(request->uniform_bytes);
+    std::memcpy(draw->uniforms.ptrw(),request->uniforms,request->uniform_bytes);
+    op->data.resize(int64_t(request->vertex_float_count)*sizeof(float));
+    std::memcpy(op->data.ptrw(),request->vertices,size_t(op->data.size()));
+    draw->vertex_count = request->vertex_count; draw->blend = request->blend;
+    draw->repeat = request->repeat != 0;
+    draw->depth_test = request->depth_test != 0; draw->depth_write = request->depth_write != 0;
+    draw->clear_depth = request->clear_depth != 0; draw->cull = request->cull;
+    std::copy(request->clip,request->clip+4,draw->clip);
+    op->mages_draw = std::move(draw);
+    if (ShouldLogMagesGpu("draw_queued")) {
+        std::ostringstream log;
+        log << "target_id=" << request->target << " target_rid=" << op->dst.get_id()
+            << " textures=" << request->textures[0] << "," << request->textures[1]
+            << "," << request->textures[2] << "," << request->textures[3]
+            << " vertex_count=" << request->vertex_count
+            << " floats=" << request->vertex_float_count
+            << " uniform_bytes=" << request->uniform_bytes;
+        LogMagesGpu("draw_queued", log.str());
+    }
+    return RunGodotGpuOpAsync(op) ? 1 : 0;
+}
+void RegisterMagesGpuBridge() {
+    impacto_host_gpu_callbacks_t gpu{};
+    gpu.struct_size = sizeof(gpu); gpu.api_version = IMPACTO_HOST_GPU_API_VERSION;
+    gpu.create_rgba = [](uint32_t w,uint32_t h,const void* pixels,uint32_t stride) -> uint64_t {
+        auto op = std::make_shared<GodotGpuOp>();
+        op->type = GodotGpuOp::Type::MagesCreate; op->size = Vector3(w,h,1);
+        if(pixels) {
+            op->data = PackRgbaBytes(pixels,w,h,stride);
+            if (op->data.is_empty()) {
+                LogMagesGpu("texture_create_rejected", "invalid dimensions or source stride");
+                return 0;
+            }
+        }
+        return RunGodotGpuOpSync(op) ? op->imported_texture : 0;
+    };
+    gpu.release_texture = BridgeReleaseTexture;
+    gpu.update_rgba = [](uint64_t t,const void* p,uint32_t s) -> int32_t { return BridgeUpdateRgba(t,p,s,nullptr); };
+    gpu.clear_rgba = [](uint64_t t,uint32_t c) -> int32_t {
+        tTVPRect rect;
+        {
+            std::lock_guard<std::mutex> lock(g_gpu_textures_mutex);
+            auto it = g_gpu_textures.find(t);
+            if(it == g_gpu_textures.end()) return 0;
+            rect = tTVPRect(0,0,it->second.width,it->second.height);
+        }
+        return BridgeClearRgba(t,(c >> 8) | (c << 24),&rect);
+    };
+    gpu.copy_rgba = [](uint64_t d,uint64_t s,uint32_t w,uint32_t h) -> int32_t {
+        tTVPRect rect(0,0,w,h); return BridgeCopyRect(d,s,&rect,&rect);
+    };
+    gpu.read_rgba = [](uint64_t t,void* p,size_t n,uint32_t s) -> int32_t { return BridgeReadRgba(t,p,n,s); };
+    gpu.draw = BridgeMagesDraw;
+    gpu.begin_batch = BridgeBeginBatch;
+    gpu.end_batch = [](uint64_t t) -> int32_t { return BridgeEndBatch(t); };
+    gpu.pump = [] {
+        auto* server = RenderingServer::get_singleton();
+        if(server && server->is_on_render_thread()) ForceDrainGodotGpuOpsOnRenderThread(UINT64_MAX);
+    };
+    aetherkiri::mages::RegisterGpuBridge(&gpu);
+}
+#endif
+
 void ReleaseRemainingGodotGpuTextures() {
     ReleaseGpuTexturePool(MainRenderingDevice());
     {
@@ -9306,6 +10111,16 @@ public:
         batch_callbacks.begin_batch = BridgeBeginBatch;
         batch_callbacks.end_batch = BridgeEndBatch;
         engine_register_godot_gpu_batch_bridge(&batch_callbacks);
+#if defined(AETHERKIRI_WITH_MAGES)
+        RegisterMagesGpuBridge();
+#endif
+#if defined(AETHERKIRI_INTERNAL_RUNTIME_GPU_BRIDGE)
+        const TVPGodotGpuFilterCallbacks filter_callbacks{
+            sizeof(TVPGodotGpuFilterCallbacks),
+            TVP_GODOT_GPU_FILTER_CALLBACKS_ABI_VERSION, BridgeApplyFragment};
+        RegisterAetherInternalRuntimeGpuBridge(&callbacks, &batch_callbacks,
+                                              &filter_callbacks);
+#endif
 #if defined(AETHERKIRI_WITH_RFVP)
         aetherkiri::rfvp::RegisterGpuBridge(&callbacks, &batch_callbacks);
 #endif
@@ -9333,11 +10148,30 @@ public:
         desc.api_version = ENGINE_API_VERSION;
         desc.writable_path_utf8 = writable_utf8.get_data();
         desc.cache_path_utf8 = cache_utf8.get_data();
+        mages_cache_path_ = cache_path;
 
         const engine_result_t result = engine_create(&desc, &handle_);
         last_result_ = ResultToString(result);
         last_error_ = LastError(handle_);
         if (result == ENGINE_RESULT_OK) {
+#if defined(AETHERKIRI_INTERNAL_RUNTIME_HOST)
+            RuntimeHostServices services;
+            services.owner = this;
+            services.storage_path = cache_path;
+            services.game_root = [this]() { return game_root_path_; };
+            services.respond = [this](const String &op, const String &arg) {
+                return submit_platform_response(op, arg);
+            };
+            services.emit = [this](const String &op, const String &arg) {
+                emit_signal("platform_request", op, arg);
+            };
+            services.media_open = [this](const String &path) { return media_open(path); };
+            services.media_play = [this]() { return media_play(); };
+            services.media_close = [this]() { media_close(); };
+            services.media_state = [this]() { return media_get_state(); };
+            services.media_texture = [this]() { return media_update_texture(); };
+            runtime_host_ = CreateAetherInternalRuntimeHost(services);
+#endif
             sync_frame_effect_source_mode(true);
         }
         AndroidBridgeLog("event=initialize_engine_result result=%s error=%s",
@@ -9347,6 +10181,10 @@ public:
     }
 
     void destroy_engine() {
+        if (runtime_host_) {
+            runtime_host_->Reset(is_inside_tree());
+            runtime_host_.reset();
+        }
         clear_runtime_audio();
         media_close();
         clear_runtime_message();
@@ -9365,6 +10203,7 @@ public:
             last_error_ = LastError(handle_);
         }
         handle_ = nullptr;
+        runtime_response_tick_pending_ = false;
         game_open_ = false;
         runtime_id_ = "auto";
     }
@@ -9507,8 +10346,8 @@ public:
     }
 
     void set_frame_enhancement_target_size(int width, int height) {
-        frame_effect_target_width_ = static_cast<uint32_t>(std::max(0, width));
-        frame_effect_target_height_ = static_cast<uint32_t>(std::max(0, height));
+        frame_effect_target_width_ = static_cast<uint32_t>(aetherkiri_max(0, width));
+        frame_effect_target_height_ = static_cast<uint32_t>(aetherkiri_max(0, height));
     }
 
     Vector2i get_frame_source_size() const {
@@ -9630,6 +10469,10 @@ public:
         const engine_result_t result = engine_submit_platform_response(
             handle_, operation_utf8.get_data(), argument_utf8.get_data());
         update_last_error(result);
+        if (result == ENGINE_RESULT_OK && runtime_host_ &&
+            runtime_host_->ResponseNeedsTick(operation)) {
+            runtime_response_tick_pending_ = true;
+        }
         return result;
     }
 
@@ -9638,33 +10481,46 @@ public:
             return ENGINE_RESULT_INVALID_STATE;
         }
         const engine_result_t result = engine_set_surface_size(
-            handle_, static_cast<uint32_t>(std::max(1, width)),
-            static_cast<uint32_t>(std::max(1, height)));
+            handle_, static_cast<uint32_t>(aetherkiri_max(1, width)),
+            static_cast<uint32_t>(aetherkiri_max(1, height)));
         update_last_error(result);
         return result;
     }
 
-    int open_game(const String &game_root_path, bool async) {
+    int open_game(const String &game_root_path, bool async, const String &startup_script = String()) {
         if (handle_ == nullptr) {
             last_result_ = "INVALID_STATE";
             last_error_ = "engine is not initialized";
             return ENGINE_RESULT_INVALID_STATE;
         }
 
+        if (runtime_host_) runtime_host_->Reset(is_inside_tree());
+        runtime_response_tick_pending_ = false;
+        game_root_path_ = game_root_path;
         clear_runtime_audio();
+#if defined(AETHERKIRI_WITH_MAGES)
+        if((runtime_id_ == "mages" || runtime_id_ == "auto") &&
+           engine_probe_runtime_provider("mages", game_root_path.utf8().get_data()) > 0 &&
+           !PrepareMagesData(mages_cache_path_)) {
+            last_error_ = "Unable to unpack MAGES engine data";
+            return ENGINE_RESULT_IO_ERROR;
+        }
+#endif
         AndroidBridgeLog("event=open_game_begin path=%s async=%d runtime=%s",
                          game_root_path.utf8().get_data(), async ? 1 : 0,
                          runtime_id_.utf8().get_data());
 
         CharString path_utf8 = game_root_path.utf8();
+        const CharString startup_utf8 = startup_script.utf8();
+        const char *startup = startup_script.is_empty() ? nullptr : startup_utf8.get_data();
         const String normalized_runtime = runtime_id_.strip_edges().to_lower();
         artemis_logical_frame_pacing_ = normalized_runtime == "artemis" ||
             (normalized_runtime == "auto" &&
              engine_probe_runtime_provider("artemis", path_utf8.get_data()) > 0);
         reset_runtime_tick_timing(false);
         const engine_result_t result = async
-            ? engine_open_game_async(handle_, path_utf8.get_data(), nullptr)
-            : engine_open_game(handle_, path_utf8.get_data(), nullptr);
+            ? engine_open_game_async(handle_, path_utf8.get_data(), startup)
+            : engine_open_game(handle_, path_utf8.get_data(), startup);
         game_open_ = result == ENGINE_RESULT_OK;
         frame_rendered_this_tick_ = false;
         if (!game_open_) {
@@ -9682,7 +10538,7 @@ public:
         if (handle_ == nullptr) {
             return ENGINE_RESULT_INVALID_STATE;
         }
-        double runtime_delta_seconds = std::max(0.0, delta_seconds);
+        double runtime_delta_seconds = aetherkiri_max(0.0, delta_seconds);
         if (artemis_logical_frame_pacing_) {
             const auto step = artemis_logical_frame_pacer_.Advance(
                 runtime_delta_seconds);
@@ -9696,7 +10552,7 @@ public:
         }
         const uint32_t delta_ms =
             runtime_tick_quantizer_.Quantize(runtime_delta_seconds);
-        const engine_result_t result = engine_tick(handle_, delta_ms);
+        engine_result_t result = engine_tick(handle_, delta_ms);
         if (result == ENGINE_RESULT_OK) {
             // Keep the old always-present behavior for providers that do not
             // implement the optional flag. The KiriKiri/Godot provider does,
@@ -9711,6 +10567,13 @@ public:
         }
         update_runtime_message_reveal(runtime_delta_seconds);
         drain_platform_requests();
+        if (runtime_response_tick_pending_ && result == ENGINE_RESULT_OK) {
+            runtime_response_tick_pending_ = false;
+            result = engine_tick(handle_, 0);
+            if (result == ENGINE_RESULT_OK) frame_rendered_this_tick_ = true;
+            drain_platform_requests();
+        }
+        if (runtime_host_) runtime_host_->Tick(runtime_delta_seconds);
         update_runtime_message_layout();
         runtime_presentation_sprite_.Tick(get_viewport(), runtime_delta_seconds);
         update_runtime_save_slot_layout();
@@ -9786,7 +10649,7 @@ public:
             return ENGINE_RESULT_INVALID_ARGUMENT;
         }
         const auto position_ms = static_cast<int64_t>(
-            std::max(0.0, position_seconds) * 1000.0);
+            aetherkiri_max(0.0, position_seconds) * 1000.0);
         const engine_result_t result = engine_media_seek(media_, position_ms);
         update_last_error(result);
         return result;
@@ -9908,6 +10771,8 @@ public:
         if (handle_ == nullptr) {
             return ENGINE_RESULT_INVALID_STATE;
         }
+        if (type == ENGINE_INPUT_EVENT_POINTER_DOWN && runtime_host_ &&
+            runtime_host_->SkipMedia()) return ENGINE_RESULT_OK;
         if (runtime_movie_active_ && runtime_movie_skippable_ &&
             type == ENGINE_INPUT_EVENT_POINTER_DOWN) {
             finish_runtime_movie("result=skipped");
@@ -9939,7 +10804,7 @@ public:
         event.key_code = key_code;
         event.modifiers = modifiers;
         event.unicode_codepoint = static_cast<uint32_t>(
-            std::max(0, unicode_codepoint));
+            aetherkiri_max(0, unicode_codepoint));
         engine_result_t result = engine_send_input(handle_, &event);
         // KAG edit controls receive printable characters through a distinct
         // text-input event; a key-down alone only handles navigation and
@@ -10083,7 +10948,7 @@ public:
         config.category_mask = static_cast<uint64_t>(
             std::max<int64_t>(0, category_mask));
         config.slow_frame_threshold_us = static_cast<uint32_t>(
-            std::max(0, slow_frame_threshold_ms) * 1000);
+            aetherkiri_max(0, slow_frame_threshold_ms) * 1000);
         config.max_events = static_cast<uint32_t>(
             std::clamp(max_events, 64, 10000));
         config.host_monotonic_origin_us =
@@ -10204,16 +11069,34 @@ public:
         if (handle_ == nullptr) {
             return String();
         }
-        std::vector<char> buffer(64 * 1024);
-        uint32_t bytes_written = 0;
-        const engine_result_t result = engine_get_plugin_debug_info(
-            handle_, buffer.data(), static_cast<uint32_t>(buffer.size()),
-            &bytes_written);
-        update_last_error(result);
-        if (result != ENGINE_RESULT_OK || bytes_written == 0) {
-            return String();
+        // Plugin diagnostics are provider-owned JSON.  A long-running script
+        // can legitimately accumulate more than the old fixed 64 KiB buffer
+        // (for example, while retaining render/script traces).  The provider
+        // reports INVALID_ARGUMENT when the destination is too small, so
+        // retry with bounded growth instead of exposing an empty state to the
+        // Godot probe.
+        // Keep complete layer/selection diagnostics available for long sessions.
+        constexpr std::size_t kMaxBytes = 32u * 1024u * 1024u;
+        std::size_t capacity = plugin_debug_buffer_capacity_;
+        while (capacity <= kMaxBytes) {
+            std::vector<char> buffer(capacity);
+            uint32_t bytes_written = 0;
+            const engine_result_t result = engine_get_plugin_debug_info(
+                handle_, buffer.data(), static_cast<uint32_t>(buffer.size()),
+                &bytes_written);
+            update_last_error(result);
+            if (result == ENGINE_RESULT_OK && bytes_written != 0 &&
+                bytes_written <= buffer.size()) {
+                plugin_debug_buffer_capacity_ = capacity;
+                return String::utf8(buffer.data(), bytes_written);
+            }
+            if (result != ENGINE_RESULT_INVALID_ARGUMENT) {
+                return String();
+            }
+            capacity *= 2u;
         }
-        return String::utf8(buffer.data(), bytes_written);
+        update_last_error(ENGINE_RESULT_INVALID_ARGUMENT);
+        return String();
     }
 
     String get_frame_texture_backend() const { return frame_texture_backend_; }
@@ -10265,8 +11148,8 @@ public:
             return source;
         }
 
-        frame_source_width_ = static_cast<uint32_t>(std::max(0, source->get_width()));
-        frame_source_height_ = static_cast<uint32_t>(std::max(0, source->get_height()));
+        frame_source_width_ = static_cast<uint32_t>(aetherkiri_max(0, source->get_width()));
+        frame_source_height_ = static_cast<uint32_t>(aetherkiri_max(0, source->get_height()));
         frame_effect_active_ = false;
         if (!frame_effect_enabled_ || frame_effect_provider_ == nullptr ||
             frame_source_width_ == 0 || frame_source_height_ == 0) {
@@ -10339,6 +11222,13 @@ public:
         if (handle_ == nullptr) {
             return Ref<Texture2D>();
         }
+        if (runtime_host_) {
+            Ref<Texture2D> texture = runtime_host_->FrameOverride();
+            if (texture.is_valid()) {
+                frame_texture_backend_ = "runtime_media";
+                return texture;
+            }
+        }
         if (runtime_movie_active_) {
             Ref<Texture2D> texture = media_update_texture();
             if (texture.is_valid()) {
@@ -10349,8 +11239,9 @@ public:
         source_query_ms_ = 0.0;
         present_copy_ms_ = 0.0;
         const std::string normalized_backend = NormalizeBackend(backend_);
-        if (normalized_backend == ENGINE_RENDERER_GODOT_NATIVE ||
-            normalized_backend == ENGINE_RENDERER_GPU_BRIDGE) {
+        if ((!runtime_host_ || !runtime_host_->HasComposite()) &&
+            (normalized_backend == ENGINE_RENDERER_GODOT_NATIVE ||
+             normalized_backend == ENGINE_RENDERER_GPU_BRIDGE)) {
             uint64_t texture_id = 0;
             uint32_t width = 0;
             uint32_t height = 0;
@@ -10494,7 +11385,8 @@ public:
             return Ref<Texture2D>();
         }
 
-        if (frame_texture_.is_valid() && desc.frame_serial == frame_texture_serial_) {
+        if ((!runtime_host_ || !runtime_host_->HasComposite()) &&
+            frame_texture_.is_valid() && desc.frame_serial == frame_texture_serial_) {
             if (frame_texture_backend_ == "minori_movie") {
                 frame_texture_backend_ = "image_texture";
             }
@@ -10516,6 +11408,7 @@ public:
         if (result != ENGINE_RESULT_OK) {
             return Ref<Texture2D>();
         }
+        if (runtime_host_) runtime_host_->Composite(frame_rgba_buffer_, desc);
         ForceOpaqueAlpha(frame_rgba_buffer_, desc.stride_bytes, desc.width,
                          desc.height);
 
@@ -11047,13 +11940,17 @@ public:
             }
         }
 
+        const bool in_place =
+            mode == TVP_GODOT_GPU_BLEND_ALPHA_TO_ADDITIVE_ALPHA ||
+            mode == TVP_GODOT_GPU_BLEND_ADDITIVE_ALPHA_TO_ALPHA;
         const uint64_t src_texture = BridgeCreateRgba(
             kWidth, kHeight, src.data(), kWidth * sizeof(uint32_t));
-        const uint64_t dst_texture = BridgeCreateRgba(
+        // Alpha-representation conversion is an in-place bridge operation.
+        const uint64_t dst_texture = in_place ? src_texture : BridgeCreateRgba(
             kWidth, kHeight, dst.data(), kWidth * sizeof(uint32_t));
         if (src_texture == 0 || dst_texture == 0) {
             if (src_texture != 0) BridgeReleaseTexture(src_texture);
-            if (dst_texture != 0) BridgeReleaseTexture(dst_texture);
+            if (dst_texture != 0 && dst_texture != src_texture) BridgeReleaseTexture(dst_texture);
             result["ok"] = false;
             result["error"] = "failed to create debug textures";
             return result;
@@ -11081,7 +11978,7 @@ public:
                             [](uint32_t pixel) { return pixel == 0; });
         }
         BridgeReleaseTexture(src_texture);
-        BridgeReleaseTexture(dst_texture);
+        if (dst_texture != src_texture) BridgeReleaseTexture(dst_texture);
 
         int mismatches = 0;
         int first_index = -1;
@@ -11210,6 +12107,176 @@ public:
         result["first_expected"] = static_cast<int64_t>(first_expected);
         result["first_actual"] = static_cast<int64_t>(first_actual);
         return result;
+    }
+
+    Dictionary debug_gpu_convolution_self_test() {
+        Dictionary result;
+        bool okay = true;
+        for (bool vertical : {false, true}) {
+            const uint32_t width = vertical ? 1u : 4u, height = vertical ? 4u : 1u;
+            const std::array<uint32_t, 4> source{{0xff000050u, 0u, 0x80000000u, 0x000000a0u}};
+            const std::array<uint32_t, 4> expected{{0xbf00003cu, 0x60000014u, 0x40000028u, 0x20000078u}};
+            std::array<uint32_t, 9> kernel{};
+            for (size_t tap = 0; tap < 3; ++tap) {
+                const float dx = vertical ? 0.0f : float(int(tap)-1);
+                const float dy = vertical ? float(int(tap)-1) : 0.0f;
+                const float weight = tap == 1 ? 0.5f : 0.25f;
+                std::memcpy(&kernel[tap], &dx, sizeof(float));
+                std::memcpy(&kernel[3+tap], &dy, sizeof(float));
+                std::memcpy(&kernel[6+tap], &weight, sizeof(float));
+            }
+            const auto src = BridgeCreateRgba(width, height, source.data(), width*4);
+            const auto taps = BridgeCreateRgba(3, 3, kernel.data(), 12);
+            const auto dst = BridgeCreateRgba(width, height, nullptr, width*4);
+            const tTVPRect rect(0,0,width,height), kernel_rect(0,0,3,3);
+            std::array<uint32_t,4> actual{};
+            const bool valid = src && taps && dst &&
+                BridgeBlendRect2(dst,src,taps,&rect,&rect,&kernel_rect,TVP_GODOT_GPU_BLEND_CONVOLVE_RGBA,3,0) &&
+                BridgeReadRgba(dst,actual.data(),sizeof(actual),width*4);
+            const bool rejected = !BridgeBlendRect2(src,src,taps,&rect,&rect,&kernel_rect,TVP_GODOT_GPU_BLEND_CONVOLVE_RGBA,3,0) &&
+                !BridgeBlendRect2(dst,src,taps,&rect,&rect,&kernel_rect,TVP_GODOT_GPU_BLEND_CONVOLVE_RGBA,0,0) &&
+                !BridgeBlendRect2(dst,src,taps,&rect,&rect,&kernel_rect,TVP_GODOT_GPU_BLEND_CONVOLVE_RGBA,65,0);
+            okay = okay && valid && rejected && actual == expected;
+            result[vertical ? "vertical" : "horizontal"] = valid && actual == expected;
+            if(src) BridgeReleaseTexture(src);
+            if(taps) BridgeReleaseTexture(taps);
+            if(dst) BridgeReleaseTexture(dst);
+        }
+        {
+            const std::array<uint32_t,2> pixels{{0xa0785028u,0x00c87864u}}, expected{{0x903cd778u,0x406e9bc8u}};
+            const std::array<float,20> matrix{{0,0,1,0,0, -1,0,0,0,1, 0.5f,0.5f,0,0,0, 0,0,0,0.5f,0.25f}};
+            const auto src=BridgeCreateRgba(2,1,pixels.data(),8);
+            const auto coefficients=BridgeCreateRgba(5,4,matrix.data(),20);
+            const auto dst=BridgeCreateRgba(2,1,nullptr,8);
+            const tTVPRect rect(0,0,2,1), kernel(0,0,5,4), invalid(0,0,4,4);
+            std::array<uint32_t,2> actual{};
+            const bool valid=src && coefficients && dst &&
+                BridgeBlendRect2(dst,src,coefficients,&rect,&rect,&kernel,TVP_GODOT_GPU_BLEND_COLOR_MATRIX_RGBA,0,0) &&
+                BridgeReadRgba(dst,actual.data(),sizeof(actual),8) && actual==expected;
+            const bool rejected=!BridgeBlendRect2(src,src,coefficients,&rect,&rect,&kernel,TVP_GODOT_GPU_BLEND_COLOR_MATRIX_RGBA,0,0) &&
+                !BridgeBlendRect2(dst,src,coefficients,&rect,&rect,&invalid,TVP_GODOT_GPU_BLEND_COLOR_MATRIX_RGBA,0,0);
+            result["color_matrix"]=valid && rejected; okay=okay && valid && rejected;
+            if(src) BridgeReleaseTexture(src);
+            if(coefficients) BridgeReleaseTexture(coefficients);
+            if(dst) BridgeReleaseTexture(dst);
+        }
+        {
+            const std::array<uint8_t,8> pixels{{64,32,16,128,20,40,60,200}},
+                auxiliary{{8,16,24,255,40,32,16,255}},
+                expected{{34,20,14,128,20,28,34,200}};
+            const auto src=BridgeCreateRgba(2,1,pixels.data(),8);
+            const auto aux=BridgeCreateRgba(2,1,auxiliary.data(),8);
+            const auto dst=BridgeCreateRgba(2,1,nullptr,8);
+            const uint64_t inputs[]{src,aux};
+            const char *fragment=R"(
+                varying vec2 resultCoord0;
+                uniform sampler2D texture0;
+                uniform sampler2D texture1;
+                uniform vec4 parameters[8];
+                void main(){
+                    vec4 a=texture2D(texture0,resultCoord0);
+                    vec4 b=texture2D(texture1,resultCoord0);
+                    gl_FragColor=vec4(a.rgb*parameters[0].x+b.rgb*parameters[1].x,a.a);
+                })";
+            float constants[8]{0.5f,0,0,0,0.25f,0,0,0};
+            std::array<uint8_t,8> actual{};
+            const bool submitted=BridgeApplyFragment(dst,inputs,2,fragment,constants,8);
+            constants[0]=1; constants[4]=0; // Submission must own its constants.
+            const bool first=submitted && BridgeReadRgba(dst,actual.data(),actual.size(),8) && actual==expected;
+            const bool second=BridgeApplyFragment(dst,inputs,2,fragment,constants,8) &&
+                BridgeReadRgba(dst,actual.data(),actual.size(),8) && actual==pixels;
+            const bool rejected=!BridgeApplyFragment(src,inputs,2,fragment,constants,8) &&
+                !BridgeApplyFragment(dst,nullptr,1,fragment,constants,8) &&
+                !BridgeApplyFragment(dst,inputs,0,fragment,constants,8) &&
+                !BridgeApplyFragment(dst,inputs,9,fragment,constants,8) &&
+                !BridgeApplyFragment(dst,inputs,2,"",constants,8) &&
+                !BridgeApplyFragment(dst,inputs,2,fragment,nullptr,8) &&
+                !BridgeApplyFragment(dst,inputs,2,fragment,constants,33);
+            result["resident_fragment"]=first && second && rejected;
+            okay=okay && first && second && rejected;
+            if(src) BridgeReleaseTexture(src);
+            if(aux) BridgeReleaseTexture(aux);
+            if(dst) BridgeReleaseTexture(dst);
+        }
+        {
+            const std::array<uint8_t,4> source{{200,120,40,128}}, background{{60,100,120,128}};
+            const auto src=BridgeCreateRgba(1,1,source.data(),4);
+            const auto dst=BridgeCreateRgba(1,1,background.data(),4);
+            const tTVPRect clip(0,0,1,1);
+            const tTVPPointD points[6]{{0,0},{1,0},{1,1},{0,0},{1,1},{0,1}};
+            std::array<uint8_t,4> actual{};
+            bool valid=src && dst && BridgeDrawTriangles(dst,src,2,&clip,points,points,1,
+                TVP_GODOT_GPU_TRIANGLE_SCREEN_ADD_ALPHA) && BridgeReadRgba(dst,actual.data(),actual.size(),4);
+            for(size_t c=0;c<3;++c) {
+                const double d=background[c]*background[3]/255.0;
+                const double expected=d+source[c]*source[3]/255.0*(1-d/255.0);
+                valid=valid && std::abs(actual[c]-expected)<=1;
+            }
+            valid=valid && actual[3]==255;
+            const std::array<uint8_t,4> coverage{{0,0,0,255}};
+            const auto mask=BridgeCreateRgba(1,1,coverage.data(),4);
+            const auto masked=BridgeCreateRgba(1,1,background.data(),4);
+            std::array<uint8_t,4> masked_actual{};
+            valid=valid && mask && masked && BridgeDrawMaskedTriangles(masked,src,mask,2,&clip,points,points,points,1,
+                TVP_GODOT_GPU_TRIANGLE_SCREEN_ADD_ALPHA,true) &&
+                BridgeReadRgba(masked,masked_actual.data(),masked_actual.size(),4) && masked_actual==actual;
+            result["screen_add_alpha"]=valid;okay=okay && valid;
+            if(src) BridgeReleaseTexture(src);
+            if(dst) BridgeReleaseTexture(dst);
+            if(mask) BridgeReleaseTexture(mask);
+            if(masked) BridgeReleaseTexture(masked);
+        }
+        result["ok"] = okay;
+        return result;
+    }
+
+    Dictionary debug_gpu_texture_reuse_self_test() {
+        Dictionary result;
+        const uint8_t first[16] = {255,0,0,255,255,0,0,255,255,0,0,255,255,0,0,255};
+        const uint8_t second[16] = {0,0,255,255,0,0,255,255,0,0,255,255,0,0,255,255};
+        uint8_t read[16]{};
+        const auto a = BridgeCreateRgba(2,2,first,8);
+        if (!a) {result["ok"]=false;return result;}
+        RID original;
+        {std::lock_guard<std::mutex> lock(g_gpu_textures_mutex);original=g_gpu_textures.at(a).rid;}
+        BridgeReleaseTexture(a);BridgeFlush();
+        const auto b = BridgeCreateRgba(2,2,second,8);
+        bool pooled=false;
+        if(b) {std::lock_guard<std::mutex> lock(g_gpu_textures_mutex);pooled=g_gpu_textures.at(b).rid==original;}
+        const bool uploaded=b&&BridgeReadRgba(b,read,sizeof(read),8)&&std::memcmp(read,second,sizeof(read))==0;
+        if(b)BridgeReleaseTexture(b);BridgeFlush();
+        const auto c = BridgeCreateRgba(2,2,nullptr,8);
+        const uint8_t zero[16]{};
+        const bool cleared=c&&BridgeReadRgba(c,read,sizeof(read),8)&&std::memcmp(read,zero,sizeof(read))==0;
+        if(c)BridgeReleaseTexture(c);BridgeFlush();
+        result["ok"]=uploaded&&cleared;
+        result["reused_texture"]=pooled;
+        result["uploaded_pixels"]=uploaded;
+        result["cleared_pixels"]=cleared;
+        return result;
+    }
+
+    Dictionary debug_runtime_audio_speed_self_test() {
+        Dictionary result;
+        constexpr size_t slot=4;
+        AudioServer *server=AudioServer::get_singleton();
+        if(!server || runtime_audio_players_.size()<=slot || runtime_audio_players_[slot] ||
+            !runtime_audio_buses_[slot].is_empty()){result["ok"]=false;return result;}
+        server->add_bus();const int32_t bus=server->get_bus_count()-1;
+        const String name="AudioSpeedTest"+String::num_uint64(get_instance_id());server->set_bus_name(bus,name);
+        Ref<AudioEffectPanner> panner;panner.instantiate();panner->set_pan(0.25f);server->add_bus_effect(bus,panner);
+        auto *player=memnew(AudioStreamPlayer);add_child(player);player->set_bus(name);
+        runtime_audio_players_[slot]=player;runtime_audio_buses_[slot]=StringName(name);
+        bool okay=update_runtime_audio_speed(slot,0.5);
+        Ref<AudioEffectPitchShift> shift=server->get_bus_effect_count(bus)>1 ? server->get_bus_effect(bus,1) : Ref<AudioEffect>();
+        okay=okay && player->get_pitch_scale()==0.5f && shift.is_valid() && shift->get_pitch_scale()==2.0f &&
+            panner->get_pan()==0.25f && server->is_bus_effect_enabled(bus,1);
+        okay=okay && update_runtime_audio_speed(slot,1) && player->get_pitch_scale()==1 && !server->is_bus_effect_enabled(bus,1);
+        okay=okay && !update_runtime_audio_speed(slot,0) && !update_runtime_audio_speed(-1,1) &&
+            !update_runtime_audio_speed(999,1) && !update_runtime_audio_speed(slot,5);
+        result["ok"]=okay;result["panner_preserved"]=panner->get_pan()==0.25f;
+        runtime_audio_players_[slot]=nullptr;runtime_audio_buses_[slot]=StringName();
+        player->queue_free();server->remove_bus(bus);return result;
     }
 
     Dictionary debug_artemis_shader_self_test() {
@@ -11498,8 +12565,8 @@ protected:
             &AetherRuntimePlayer::submit_platform_response);
         ClassDB::bind_method(D_METHOD("set_surface_size", "width", "height"),
                              &AetherRuntimePlayer::set_surface_size);
-        ClassDB::bind_method(D_METHOD("open_game", "game_root_path", "async"),
-                             &AetherRuntimePlayer::open_game, DEFVAL(true));
+        ClassDB::bind_method(D_METHOD("open_game", "game_root_path", "async", "startup_script"),
+                             &AetherRuntimePlayer::open_game, DEFVAL(true), DEFVAL(String()));
         ClassDB::bind_method(D_METHOD("tick", "delta_seconds"),
                              &AetherRuntimePlayer::tick);
         ClassDB::bind_method(D_METHOD("frame_rendered_this_tick"),
@@ -11597,6 +12664,12 @@ protected:
         ClassDB::bind_method(D_METHOD("debug_gpu_blend_self_test", "mode", "opacity"),
                              &AetherRuntimePlayer::debug_gpu_blend_self_test,
                              DEFVAL(255));
+        ClassDB::bind_method(D_METHOD("debug_gpu_convolution_self_test"),
+                             &AetherRuntimePlayer::debug_gpu_convolution_self_test);
+        ClassDB::bind_method(D_METHOD("debug_runtime_audio_speed_self_test"),
+                             &AetherRuntimePlayer::debug_runtime_audio_speed_self_test);
+        ClassDB::bind_method(D_METHOD("debug_gpu_texture_reuse_self_test"),
+                             &AetherRuntimePlayer::debug_gpu_texture_reuse_self_test);
         ClassDB::bind_method(D_METHOD("debug_gpu_blend2_self_test", "mode", "opacity"),
                              &AetherRuntimePlayer::debug_gpu_blend2_self_test,
                              DEFVAL(255));
@@ -11686,6 +12759,8 @@ private:
                 runtime_presentation_sprite_.Update(this, get_viewport(), value);
             } else if (name == "minori_save_slots") {
                 update_runtime_save_slots(value);
+            } else if (runtime_host_ && runtime_host_->Request(name, value)) {
+                continue;
             } else if (name == "minori_message" || name == "runtime_message") {
                 if (value.is_empty()) {
                     clear_runtime_message();
@@ -11701,6 +12776,12 @@ private:
                 }
             } else if (name == "minori_message_reveal" || name == "runtime_message_reveal") {
                 reveal_runtime_message();
+            } else if (name == "runtime_audio_speed") {
+                const PackedStringArray fields=value.split("\t");
+                if(fields.size()!=2 || !update_runtime_audio_speed(fields[0].to_int(),fields[1].to_float())) {
+                    submit_platform_response("runtime_audio","result=error&slot="+
+                        (fields.is_empty() ? String("-1") : fields[0])+"&message=invalid_audio_speed");
+                }
             } else if (name == "runtime_audio_pause") {
                 const PackedStringArray fields = value.split("\t");
                 if (fields.size() == 2) {
@@ -11823,14 +12904,14 @@ private:
         constexpr double kLogicalWidth = 1280.0;
         constexpr double kLogicalHeight = 720.0;
         const Vector2 viewport_size = get_viewport()->get_visible_rect().size;
-        const double scale = std::min(
+        const double scale = aetherkiri_min(
             static_cast<double>(viewport_size.x) / kLogicalWidth,
             static_cast<double>(viewport_size.y) / kLogicalHeight);
         const Vector2 offset(
             (viewport_size.x - kLogicalWidth * scale) * 0.5,
             (viewport_size.y - kLogicalHeight * scale) * 0.5);
         const int32_t font_size =
-            std::max(1, static_cast<int32_t>(std::lround(18.0 * scale)));
+            aetherkiri_max(1, static_cast<int32_t>(std::lround(18.0 * scale)));
         for (int32_t slot = 0; slot < 10; ++slot) {
             Label *label = runtime_save_slot_labels_[slot];
             if (label == nullptr) continue;
@@ -11899,7 +12980,7 @@ private:
             runtime_message_reveal_schedule_.push_back(static_cast<int32_t>(
                 std::max<int64_t>(0, schedule_fields[index].to_int())));
         }
-        runtime_message_reveal_total_steps_ = std::max(0, total_steps);
+        runtime_message_reveal_total_steps_ = aetherkiri_max(0, total_steps);
         runtime_message_reveal_step_ = 0;
         runtime_message_reveal_elapsed_ms_ = 0.0;
         runtime_message_reveal_started_ = false;
@@ -11939,7 +13020,7 @@ private:
             runtime_message_reveal_step_ = 1;
         } else {
             runtime_message_reveal_elapsed_ms_ +=
-                std::max(0.0, delta_seconds) * 1000.0;
+                aetherkiri_max(0.0, delta_seconds) * 1000.0;
             while (runtime_message_reveal_elapsed_ms_ >= 100.0 &&
                    runtime_message_reveal_step_ < runtime_message_reveal_total_steps_) {
                 runtime_message_reveal_elapsed_ms_ -= 100.0;
@@ -11965,14 +13046,14 @@ private:
         constexpr double kLogicalWidth = 1280.0;
         constexpr double kLogicalHeight = 720.0;
         const Vector2 viewport_size = get_viewport()->get_visible_rect().size;
-        const double scale = std::min(
+        const double scale = aetherkiri_min(
             static_cast<double>(viewport_size.x) / kLogicalWidth,
             static_cast<double>(viewport_size.y) / kLogicalHeight);
         const Vector2 offset(
             (viewport_size.x - kLogicalWidth * scale) * 0.5,
             (viewport_size.y - kLogicalHeight * scale) * 0.5);
         const int32_t font_size =
-            std::max(1, static_cast<int32_t>(std::lround(26.0 * scale)));
+            aetherkiri_max(1, static_cast<int32_t>(std::lround(26.0 * scale)));
         const bool has_speaker = runtime_message_speaker_label_ != nullptr;
         runtime_message_label_->set_position(
             offset + Vector2(120.0 * scale, (has_speaker ? 590.0 : 552.0) * scale));
@@ -12125,6 +13206,26 @@ private:
         }
     }
 
+    bool update_runtime_audio_speed(int64_t slot,double speed) {
+        if(!std::isfinite(speed) || speed<0.25 || speed>4 || slot<0 ||
+            slot>=static_cast<int64_t>(runtime_audio_players_.size()) || !runtime_audio_players_[slot])return false;
+        AudioServer *server=AudioServer::get_singleton();if(!server)return false;
+        const int32_t bus=server->get_bus_index(runtime_audio_buses_[slot]);if(bus<0)return false;
+        Ref<AudioEffectPitchShift> shift;
+        if(server->get_bus_effect_count(bus)>1)shift=server->get_bus_effect(bus,1);
+        if(speed!=1 && shift.is_null()) {
+            shift.instantiate();server->add_bus_effect(bus,shift);
+        }
+        // Playback-rate changes stretch time. Compensate their pitch change
+        // on this isolated channel, preserving the existing panner and gain.
+        if(shift.is_valid()) {
+            shift->set_pitch_scale(static_cast<float>(1/speed));
+            server->set_bus_effect_enabled(bus,1,speed!=1);
+        }
+        runtime_audio_players_[slot]->set_pitch_scale(static_cast<float>(speed));
+        return true;
+    }
+
     bool update_runtime_audio(const PackedStringArray &fields, bool gain_only = false, bool multi_slot_audio = false) {
         if (fields.size() != 8) return false;
         const int32_t slot = fields[0].to_int();
@@ -12211,6 +13312,7 @@ private:
             add_child(player);
             player->set_bus(runtime_audio_buses_[slot]);
         }
+        update_runtime_audio_speed(slot,1);
         player->stop();
         if (fields[1].is_empty()) return true;
         Ref<AudioStream> stream;
@@ -12686,6 +13788,10 @@ private:
 
     engine_handle_t handle_ = nullptr;
     engine_media_handle_t media_ = nullptr;
+    std::size_t plugin_debug_buffer_capacity_ = 64u * 1024u;
+    String game_root_path_;
+    RuntimeHostExtensionPtr runtime_host_;
+    bool runtime_response_tick_pending_ = false;
     bool game_open_ = false;
     bool frame_rendered_this_tick_ = false;
     String backend_ = "Godot Native";
@@ -12695,6 +13801,7 @@ private:
     double source_query_ms_ = 0.0;
     double present_copy_ms_ = 0.0;
     String runtime_id_ = "auto";
+    String mages_cache_path_ = "user://cache";
     aetherkiri::godot_host::ArtemisLogicalFramePacer
         artemis_logical_frame_pacer_;
     aetherkiri::godot_host::RuntimeTickMillisecondQuantizer
@@ -12804,6 +13911,9 @@ void InitializeAetherRuntime(ModuleInitializationLevel level) {
 #if defined(AETHERKIRI_WITH_SIGLUS)
     aetherkiri::siglus::RegisterRuntimeProvider();
 #endif
+#if defined(AETHERKIRI_WITH_MAGES)
+    aetherkiri::mages::RegisterRuntimeProvider();
+#endif
 #if defined(AETHERKIRI_WITH_MINORI)
     if (aetherkiri_minori_register_runtime_provider() != ENGINE_RESULT_OK) {
         UtilityFunctions::printerr("Failed to register Minori runtime provider");
@@ -12843,6 +13953,9 @@ void DeinitializeAetherRuntime(ModuleInitializationLevel level) {
     engine_register_godot_gpu_batch_bridge(nullptr);
     engine_register_godot_gpu_external_texture_bridge(nullptr);
     engine_register_godot_gpu_bridge(nullptr);
+#if defined(AETHERKIRI_INTERNAL_RUNTIME_GPU_BRIDGE)
+    RegisterAetherInternalRuntimeGpuBridge(nullptr, nullptr, nullptr);
+#endif
 #if defined(AETHERKIRI_WITH_RFVP)
     aetherkiri::rfvp::RegisterGpuBridge(nullptr, nullptr);
 #endif

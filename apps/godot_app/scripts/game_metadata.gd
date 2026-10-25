@@ -1,6 +1,7 @@
 class_name GameMetadata
 extends RefCounted
 
+const TyranoAsar = preload("res://scripts/tyrano_asar.gd")
 const RUNTIME_KIRIKIRI := "kirikiri"
 const RUNTIME_ONSCRIPTER := "onscripter"
 const RUNTIME_RFVP := "rfvp"
@@ -9,9 +10,11 @@ const RUNTIME_SIGLUS := "siglus"
 const RUNTIME_CATSYSTEM2 := "catsystem2"
 const RUNTIME_TYRANO := "tyranoscript"
 const RUNTIME_RENPY := "renpy"
+const RUNTIME_MAGES := "mages"
 const RUNTIME_XSYSTEM4 := "xsystem4"
 const RUNTIME_XSYSTEM35 := "xsystem35"
 const RUNTIME_SYSTEM3 := "system3"
+const RUNTIME_YURIS := "yuris"
 
 static func inspect(path: String) -> Dictionary:
     var root := path
@@ -35,8 +38,14 @@ static func inspect(path: String) -> Dictionary:
     if not tyrano_entry.is_empty():
         result.engine = RUNTIME_TYRANO
         result.launchFile = tyrano_entry
-        result.signals.append("tyranoscript-web-project")
-        var config := _read_text(root.path_join(tyrano_entry).get_base_dir().path_join("data/system/Config.tjs"))
+        result.signals.append("tyranoscript-asar-project" if tyrano_entry.ends_with(".asar") else "tyranoscript-web-project")
+        var config: String
+        if tyrano_entry.ends_with(".asar"):
+            var archive := TyranoAsar.new()
+            if archive.open(root.path_join(tyrano_entry)):
+                config = archive.read_text("data/system/Config.tjs")
+        else:
+            config = _read_text(root.path_join(tyrano_entry).get_base_dir().path_join("data/system/Config.tjs"))
         var title_pattern := RegEx.new()
         title_pattern.compile('(?m)^\\s*;?System\\.title\\s*=\\s*"([^"\\r\\n]+)"')
         var title_match := title_pattern.search(config)
@@ -81,6 +90,16 @@ static func inspect(path: String) -> Dictionary:
         # the legacy KiriKiri storage layer.
         result.engine = RUNTIME_CATSYSTEM2
         result.signals.append("catsystem2-marker")
+    elif files.has("yu-ris.exe") \
+        or FileAccess.file_exists(root.path_join("data/script/system_start.yst")) \
+        or FileAccess.file_exists(root.path_join("data/script/system_start.txt")) \
+        or _is_compiled_yuris_package(root, files):
+        # YU-RIS projects keep the Windows launcher beside the project data;
+        # the portable provider consumes the project directory, not the PE
+        # file itself.
+        result.engine = RUNTIME_YURIS
+        result.signals.append("yuris-marker")
+        result.launchFile = "yu-ris.exe" if files.has("yu-ris.exe") else ""
     elif files.has("system.ini") and _is_artemis_package(
         files,
         _read_text(root.path_join("system.ini"))
@@ -111,6 +130,12 @@ static func inspect(path: String) -> Dictionary:
     ):
         result.engine = RUNTIME_SIGLUS
         result.signals.append("siglus-marker")
+    elif _is_mages_package(files):
+        # MAGES PC releases carry MPK archives and a Windows launcher. The
+        # launcher is not a readable storage file on iOS/macOS; pass the
+        # directory to the embedded MAGES provider instead.
+        result.engine = RUNTIME_MAGES
+        result.signals.append("mages-mpk-marker")
     else:
         result.signals.append("kirikiri-xp3-or-default")
 
@@ -143,6 +168,12 @@ static func tyrano_entry_file(root: String) -> String:
             and FileAccess.file_exists(directory.path_join("data/system/Config.tjs"))
         ):
             return relative
+    for relative in ["resources/app.asar", "app.asar"]:
+        if not FileAccess.file_exists(root.path_join(relative)):
+            continue
+        var archive := TyranoAsar.new()
+        if archive.open(root.path_join(relative)) and archive.is_tyrano_project():
+            return relative
     return ""
 
 static func renpy_game_directory(root: String) -> String:
@@ -173,6 +204,29 @@ static func _has_renpy_scripts(root: String, depth: int) -> bool:
             if name in ["cache", "saves", "savedata", "renpy", "lib", ".git"] or directory.is_link(name):
                 continue
             if _has_renpy_scripts(root.path_join(name), depth - 1):
+                return true
+    return false
+
+static func _is_compiled_yuris_package(root: String, files: PackedStringArray) -> bool:
+    # Retail launchers are named after the game. Recognize the compiler's
+    # file signatures instead of requiring the SDK's yu-ris.exe filename.
+    for relative_path in ["ysbin/yscfg.ybn", "ysbin/ysc.ybn", "yscfg.ybn", "ysc.ybn"]:
+        var file := FileAccess.open(root.path_join(relative_path), FileAccess.READ)
+        if file == null or file.get_length() < 16:
+            continue
+        var magic := file.get_buffer(4).get_string_from_ascii()
+        if magic == "YSCF" or magic == "YSCM":
+            return true
+    # Native compiled distributions can place their archives in pac/. Limit
+    # discovery to these two roots so a parent never adopts a sibling game.
+    for pack_root in [root, root.path_join("pac")]:
+        var entries := files if pack_root == root else _file_names(pack_root)
+        for entry in entries:
+            if entry.get_extension().to_lower() != "ypf":
+                continue
+            var file := FileAccess.open(pack_root.path_join(entry), FileAccess.READ)
+            if file != null and file.get_length() >= 32 \
+                and file.get_buffer(4) == PackedByteArray([89, 80, 70, 0]):
                 return true
     return false
 
@@ -307,6 +361,16 @@ static func _is_catsystem2_package(files: PackedStringArray) -> bool:
     if has_cs2_config and has_boot_descriptor and has_kcs_script:
         return true
     return has_boot_descriptor and has_kcs_script and has_int
+
+
+static func _is_mages_package(files: PackedStringArray) -> bool:
+    # Require a distinguishing content archive so unrelated MPK-only
+    # directories are not sent to the MAGES VM.
+    return files.has("script.mpk") and files.has("system.mpk") and (
+        files.has("bg1.mpk")
+        or files.has("chara.mpk")
+        or files.has("model.mpk")
+    )
 
 static func _read_text(path: String) -> String:
     var file := FileAccess.open(path, FileAccess.READ)

@@ -1,9 +1,15 @@
 extends SceneTree
 
-const MAIN_SCRIPT := preload("res://scripts/main.gd")
+class SecretUnlockApp:
+    extends "res://scripts/main.gd"
+
+    var persisted := false
+
+    func _persist_secret_unlock_state() -> void:
+        persisted = true
 
 func _initialize() -> void:
-    var app = MAIN_SCRIPT.new()
+    var app = SecretUnlockApp.new()
     app.modal_layer = Control.new()
     app.modal_layer.visible = false
 
@@ -40,6 +46,7 @@ func _initialize() -> void:
     # Granting the unlock keeps one month of beta access and removes the
     # catalog limit for this installation.
     app._apply_secret_unlock()
+    assert(app.persisted)
     assert(app.secret_iap_unlocked)
     assert(app._secret_iap_unlock_active())
     assert(app.secret_coffee_until_unix >= now + app.SECRET_UNLOCK_COFFEE_SEC)
@@ -58,6 +65,7 @@ func _initialize() -> void:
         assert(not String(app._t("secret.unlock.success", ["2030-01-01 00:00"])).is_empty())
 
     app.modal_layer.free()
+    app.ui_motion.free()
     app.free()
     print("SECRET_UNLOCK_OK")
     quit(0)

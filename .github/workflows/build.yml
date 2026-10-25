@@ -73,6 +73,11 @@ env:
 
 jobs:
   android:
+    # Upstream bot candidates run only the secretless RFVP provider checks.
+    if: >-
+      ${{ !startsWith(github.head_ref, 'rfvp-update/') &&
+          !startsWith(github.ref_name, 'rfvp-update/') &&
+          github.event.pull_request.user.login != 'github-actions[bot]' }}
     name: Build Android App
     runs-on: ubuntu-latest
     env:
@@ -135,6 +140,7 @@ jobs:
           git submodule update --init --depth 1 packages/AetherSiglus
           git submodule update --init --depth 1 packages/AetherMinori
           git submodule update --init --depth 1 packages/AetherKrkr
+          git submodule update --init --depth 1 packages/AetherMAGES
           git submodule update --init --depth 1 packages/ruffle
           git submodule update --init --recursive --depth 1 packages/xsystem4 packages/xsystem35 packages/system3
 
@@ -374,6 +380,11 @@ jobs:
           key: ${{ runner.os }}-android-ccache-v2
 
   ios:
+    # Upstream bot candidates run only the secretless RFVP provider checks.
+    if: >-
+      ${{ !startsWith(github.head_ref, 'rfvp-update/') &&
+          !startsWith(github.ref_name, 'rfvp-update/') &&
+          github.event.pull_request.user.login != 'github-actions[bot]' }}
     name: Build iOS App
     runs-on: macos-latest
     env:
@@ -435,6 +446,8 @@ jobs:
           git submodule update --init --depth 1 packages/AetherSiglus
           git submodule update --init --depth 1 packages/AetherMinori
           git submodule update --init --depth 1 packages/AetherKrkr
+          git submodule update --init --depth 1 packages/AetherMAGES
+          git submodule update --init --depth 1 packages/rfvp
           git submodule update --init --depth 1 packages/ruffle
           git submodule update --init --recursive --depth 1 packages/xsystem4 packages/xsystem35 packages/system3
 
@@ -692,6 +705,11 @@ jobs:
           key: ${{ runner.os }}-ios-ccache-v2
 
   macos:
+    # Upstream bot candidates run only the secretless RFVP provider checks.
+    if: >-
+      ${{ !startsWith(github.head_ref, 'rfvp-update/') &&
+          !startsWith(github.ref_name, 'rfvp-update/') &&
+          github.event.pull_request.user.login != 'github-actions[bot]' }}
     name: Build macOS App
     runs-on: macos-15
     env:
@@ -717,6 +735,9 @@ jobs:
         with:
           submodules: false
           persist-credentials: false
+
+      - name: Test Mac App Store nested signing
+        run: python3 -m unittest discover -s tests/python -p test_macos_app_store_signing.py -v
 
       - name: Initialize private runtime submodules
         if: env.AETHERKIRI_WITH_INTERNAL == 'true'
@@ -763,6 +784,8 @@ jobs:
           git submodule update --init --depth 1 packages/AetherSiglus
           git submodule update --init --depth 1 packages/AetherMinori
           git submodule update --init --depth 1 packages/AetherKrkr
+          git submodule update --init --depth 1 packages/AetherMAGES
+          git submodule update --init --depth 1 packages/rfvp
           git submodule update --init --depth 1 packages/ruffle
           git submodule update --init --recursive --depth 1 packages/xsystem4 packages/xsystem35 packages/system3
 
@@ -1044,6 +1067,11 @@ jobs:
           key: ${{ runner.os }}-macos-ccache-v2
 
   linux:
+    # Upstream bot candidates run only the secretless RFVP provider checks.
+    if: >-
+      ${{ !startsWith(github.head_ref, 'rfvp-update/') &&
+          !startsWith(github.ref_name, 'rfvp-update/') &&
+          github.event.pull_request.user.login != 'github-actions[bot]' }}
     name: Build Linux App (${{ matrix.arch }})
     runs-on: ${{ matrix.runner }}
     strategy:
@@ -1100,6 +1128,7 @@ jobs:
           git submodule update --init --depth 1 packages/AetherSiglus
           git submodule update --init --depth 1 packages/AetherMinori
           git submodule update --init --depth 1 packages/AetherKrkr
+          git submodule update --init --depth 1 packages/AetherMAGES
           git submodule update --init --depth 1 packages/ruffle
           git submodule update --init --recursive --depth 1 packages/xsystem4 packages/xsystem35 packages/system3
 
@@ -1228,7 +1257,7 @@ jobs:
           LD_LIBRARY_PATH: ${{ github.workspace }}/apps/godot_app/bin/linux/debug
         run: |
           python3 -m unittest discover -s tests/python -p test_renpy_host.py
-          for test in video_library_folders video_library_ui video_import_permissions flash_library tyrano_library renpy_library xsystem4_library xsystem35_library system3_library rfvp_import; do
+          for test in video_library_folders video_library_ui video_import_permissions flash_library tyrano_library tyrano_asar renpy_library xsystem4_library xsystem35_library system3_library rfvp_import; do
             timeout 60 "$GODOT_BIN" --headless --path apps/godot_app \
               --script "res://tests/${test}_test.gd" \
               2>&1 | tee "$RUNNER_TEMP/${test}.log"

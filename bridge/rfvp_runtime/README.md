@@ -57,8 +57,10 @@ the small generated workspace, not all upstream console and tool packages.
   default, `gpu` requires the Godot GPU Bridge, and `cpu` is useful for visual
   comparison. The app-level developer override is
   `AETHERKIRI_RFVP_RENDERER`. Normal GPU presentation stays on-device; a
-  readback occurs only when the host explicitly requests RGBA pixels, such as
-  for save thumbnails or screenshots.
+  readback occurs for host RGBA requests (save thumbnails or screenshots) and
+  when a mask dissolve needs the previously presented frame. Mask dissolves
+  temporarily composite the whole frame on the CPU, then resume GPU rendering;
+  additive primitives use the bridge's SRCALPHA/ONE blend mode.
 - New RFVS payloads use a version-2 envelope to preserve active motions, sprite
   and snow animations, and text-reveal coroutine linkage. Version-1 snapshots
   remain readable, but missing playback state in old files cannot be recovered
@@ -70,8 +72,9 @@ the small generated workspace, not all upstream console and tool packages.
 overlay without modifying the pinned submodule. The overlay redirects game,
 save and cache roots, resets per-session globals, adds pause/cancel hooks, and
 replaces the upstream embedded Microsoft fonts with AetherKiri's OFL runtime
-font. Large sound-effect slot buffers are heap-backed so initialization also
-fits the host's smaller asynchronous-startup thread stack. The compiled rfvp
+font. Large audio channel slot buffers are heap-backed so initialization also
+fits the host's smaller asynchronous-startup thread stack. Audio streams share
+one pauseable mixer track, including movie audio and retiring fade-outs. The compiled rfvp
 crate is a Rust static library behind a private C ABI;
 no Rust layout crosses the engine-provider ABI.
 
@@ -129,3 +132,40 @@ These tests are not a full AetherKiri application or commercial-game
 compatibility certification. Do not add a game to the verified-games list
 until the normal application import/launch and the claimed flows are exercised
 and confirmed by the user.
+
+### Upstream upgrade validation
+
+The pin `062fec82033b554b9eb3b5da069518c0c96a354e` advances from `a109139`
+by five commits and updates the crate to 0.7.0. The first commit, despite its
+"add ADRs" title, changes rendering and script
+semantics: Sprt texture -1 draws the previous frame; Tile color -1 reads the
+window color from volatile globals instead of palette slot 255; ColorSet checks
+signed IDs; integer scales clamp to [100, 10000]; PrimSetZ and TimerSuspend
+distinguish the script True tag from floats and integers.
+
+The host overlay adapts the new previous-frame texture to the Godot GPU bridge,
+with explicit ownership and readback before the next frame clears the target.
+Previous-frame sprites retain upstream's software-renderer one-frame activation
+delay. GPU snapshot failures must not reuse stale CPU pixels. The existing
+mask-dissolve whole-frame CPU fallback and RGBA/BGRA conversion remain covered.
+
+The subsequent PSV update adds bounded diagnostics and shared resource timing,
+uses font metrics instead of rasterizing discarded glyph bitmaps, and reuses
+text advances. Vita-specific texture/thumbnail changes and the new no_std-only
+`config.toml` boot path are outside this host feature set. Aether keeps its
+explicit script/encoding selection and isolated save roots; a game-directory
+`config.toml` does not override the launcher's selection.
+
+Only the rfvp package version changes in the Cargo manifest and embedded lock;
+no dependency versions or serialized snapshot fields change. The lockfile is
+checked with `--locked`; RFVS V1/V2
+layout adapters and the prior graph restore semantics remain in place. The
+six CTest suites retain provider, decoder coexistence, host, VM text, graph save
+and timer coverage. New host regressions cover the script type/range contracts
+and previous-frame rendering integration. Upstream's no_std command renderer and
+standalone wgpu renderer are not selected by the embedded host feature set.
+
+The earlier application and game smoke tests above describe previous
+integrations, not a gameplay re-test of this pin. Current exact-head CI evidence
+belongs in the upgrade PR; standalone tests do not certify Apple packaging,
+commercial-game playback or audio/video synchronization.

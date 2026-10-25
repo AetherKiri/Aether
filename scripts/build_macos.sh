@@ -192,6 +192,10 @@ mkdir -p "$GODOT_BIN_DIR"
 cp -f "$CMAKE_BUILD_DIR/abi/libengine_api.dylib" "$GODOT_BIN_DIR/"
 cp -f "$CMAKE_BUILD_DIR/bridge/godot_extension/libaether_kiri_godot.dylib" "$GODOT_BIN_DIR/"
 cp -f "$CMAKE_BUILD_DIR/bridge/godot_extension/libaether_renpy_sdl_hook.dylib" "$GODOT_BIN_DIR/"
+if [[ -f "$CMAKE_BUILD_DIR/aethermages-impacto/libImpacto.dylib" ]]; then
+    cp -f "$CMAKE_BUILD_DIR/aethermages-impacto/libImpacto.dylib" "$GODOT_BIN_DIR/"
+    codesign --force --sign - "$GODOT_BIN_DIR/libImpacto.dylib"
+fi
 if [[ "$BUILD_TYPE_LOWER" == "release" ]]; then
     echo "==> Removing non-runtime symbols from staged macOS Release libraries"
     strip_macos_runtime_symbols \
@@ -242,6 +246,10 @@ else
         fi
         cp -f "$GODOT_BIN_DIR/libengine_api.dylib" "$GODOT_EXPORT_APP/Contents/Frameworks/"
         cp -f "$GODOT_BIN_DIR/libaether_kiri_godot.dylib" "$GODOT_EXPORT_APP/Contents/Frameworks/"
+        if [[ -f "$GODOT_BIN_DIR/libImpacto.dylib" ]]; then
+            cp -f "$GODOT_BIN_DIR/libImpacto.dylib" "$GODOT_EXPORT_APP/Contents/Frameworks/"
+            codesign --force --sign - "$GODOT_EXPORT_APP/Contents/Frameworks/libImpacto.dylib"
+        fi
         RENPY_BUNDLE_DIR="${AETHER_RENPY_RUNTIME_DIR:-}"
         if [[ -z "$RENPY_BUNDLE_DIR" ]]; then
             echo "==> Preparing the native Ren'Py runtime"

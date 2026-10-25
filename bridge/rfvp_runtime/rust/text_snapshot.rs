@@ -12,6 +12,24 @@ pub(crate) struct HostTextPlayback {
 mod host_snapshot_tests {
     use super::*;
 
+    #[cfg(not(feature = "no_std"))]
+    #[test]
+    fn text_playback_keeps_legacy_wire_layout() {
+        let state = HostTextPlayback {
+            reveal_carry: 13,
+            sync_wait_thread: Some(7),
+            sync_wait_active: true,
+        };
+        // Frozen V2 order: i64 carry, Option<u32> thread, bool active.
+        let expected = [13, 0, 0, 0, 0, 0, 0, 0, 1, 7, 0, 0, 0, 1];
+        let bytes = crate::subsystem::snapshot_codec::encode(&state).unwrap();
+        assert_eq!(bytes, expected);
+        let restored: HostTextPlayback = crate::subsystem::snapshot_codec::decode(&expected).unwrap();
+        assert_eq!(restored.reveal_carry, 13);
+        assert_eq!(restored.sync_wait_thread, Some(7));
+        assert!(restored.sync_wait_active);
+    }
+
     #[test]
     fn text_reveal_restores_its_waiting_coroutine() {
         let mut manager = TextManager::new();
@@ -19,7 +37,8 @@ mod host_snapshot_tests {
         manager.items[0].sync_wait_thread = Some(7);
         manager.items[0].sync_wait_active = true;
         let base = manager.capture_snapshot_v1();
-        let playback = manager.capture_host_playback();
+        let bytes = crate::subsystem::snapshot_codec::encode(&manager.capture_host_playback()).unwrap();
+        let playback: Vec<HostTextPlayback> = crate::subsystem::snapshot_codec::decode(&bytes).unwrap();
         manager.items[0].sync_wait_thread = Some(9);
         manager.apply_snapshot_v1(&base);
         manager.apply_host_playback(&playback);

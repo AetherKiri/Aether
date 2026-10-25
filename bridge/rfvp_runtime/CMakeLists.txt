@@ -55,6 +55,7 @@ endif()
 file(GLOB_RECURSE rfvp_inputs CONFIGURE_DEPENDS
     "${CMAKE_CURRENT_SOURCE_DIR}/rust/*.rs"
     "${AETHERKIRI_RFVP_DIR}/crates/*/src/*.rs"
+    "${AETHERKIRI_RFVP_DIR}/crates/rfvp/tests/*.rs"
     "${AETHERKIRI_RFVP_DIR}/crates/*/Cargo.toml")
 list(APPEND rfvp_inputs "${CMAKE_CURRENT_SOURCE_DIR}/Cargo.lock"
     "${CMAKE_CURRENT_SOURCE_DIR}/cmake/PrepareRfvpSources.cmake"
@@ -104,4 +105,25 @@ if(PROJECT_IS_TOP_LEVEL OR ENABLE_TESTS)
             --target "${AETHERKIRI_RFVP_RUST_TARGET}" ${rfvp_profile_args}
             host_ -- --test-threads=1)
     set_tests_properties(rfvp-host-regressions PROPERTIES TIMEOUT 180)
+    # Exercise the upstream regressions in the same prepared host workspace.
+    add_test(NAME rfvp-vm-text-regressions
+        COMMAND "${CMAKE_COMMAND}" -E env "RUSTC=${RFVP_RUSTC}"
+            "${RFVP_CARGO}" test --locked --manifest-path "${rfvp_prepared}/Cargo.toml"
+            -p rfvp --lib --no-default-features --features "${rfvp_features}"
+            --target "${AETHERKIRI_RFVP_RUST_TARGET}" ${rfvp_profile_args}
+            vm_runner::tests:: -- --test-threads=1)
+    add_test(NAME rfvp-graph-snapshot-regressions
+        COMMAND "${CMAKE_COMMAND}" -E env "RUSTC=${RFVP_RUSTC}"
+            "${RFVP_CARGO}" test --locked --manifest-path "${rfvp_prepared}/Cargo.toml"
+            -p rfvp --test graph_snapshot --no-default-features --features "${rfvp_features}"
+            --target "${AETHERKIRI_RFVP_RUST_TARGET}" ${rfvp_profile_args}
+            -- --test-threads=1)
+    add_test(NAME rfvp-timer-regressions
+        COMMAND "${CMAKE_COMMAND}" -E env "RUSTC=${RFVP_RUSTC}"
+            "${RFVP_CARGO}" test --locked --manifest-path "${rfvp_prepared}/Cargo.toml"
+            -p rfvp --lib --no-default-features --features "${rfvp_features}"
+            --target "${AETHERKIRI_RFVP_RUST_TARGET}" ${rfvp_profile_args}
+            subsystem::resources::timer_manager::tests:: -- --test-threads=1)
+    set_tests_properties(rfvp-vm-text-regressions rfvp-graph-snapshot-regressions
+        rfvp-timer-regressions PROPERTIES TIMEOUT 180)
 endif()

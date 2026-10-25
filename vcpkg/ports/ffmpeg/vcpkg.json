@@ -8,6 +8,24 @@
   ],
   "homepage": "https://ffmpeg.org",
   "license": "LGPL-2.1-or-later",
+  "features": {
+    "avcodec": { "description": "Build the libavcodec library" },
+    "avdevice": { "description": "Build the libavdevice library" },
+    "avfilter": { "description": "Build the libavfilter library" },
+    "avformat": { "description": "Build the libavformat library" },
+    "swresample": { "description": "Build the libswresample library" },
+    "swscale": { "description": "Build the libswscale library" },
+    "bink2": {
+      "description": "Bink 2 software video decoder from Librempeg (GPL-3.0-or-later; turns this FFmpeg build into a GPL version 3 build)"
+    }
+  },
+  "default-features": [
+    "avcodec",
+    "avformat",
+    "avfilter",
+    "swresample",
+    "swscale"
+  ],
   "dependencies": [
     {
       "name": "vcpkg-cmake-get-vars",

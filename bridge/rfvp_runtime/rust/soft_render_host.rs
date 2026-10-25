@@ -3,9 +3,20 @@
 use crate::aetherkiri_host::{HostGpuCallbacks, HostGpuPoint, HostGpuRect};
 
 const HOST_GPU_BLEND_ALPHA_D: u32 = 2;
+// Untagged triangle mode 1 is SRCALPHA/ONE with destination alpha held.
+// RFVP always clears its render target opaque, so this matches PrimSetBlend.
+const HOST_GPU_BLEND_ADDITIVE: u32 = 1;
 const HOST_GPU_TRIANGLE_TVP_BLEND: u32 = 0x0001_0000;
 const HOST_GPU_TRIANGLE_SOURCE_NEAREST: u32 = 0x1000_0000;
 const HOST_GPU_TRIANGLE_SOURCE_STRAIGHT_LINEAR: u32 = 0x0400_0000;
+
+// Previous-frame images must never alias an authored graph slot (including
+// movie/text graphs). Keep both sources in explicitly separate cache namespaces.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+enum HostGpuTextureKey {
+    Graph(u16),
+    PrevFrame,
+}
 
 #[derive(Debug)]
 struct HostGpuTexture {
@@ -36,9 +47,13 @@ struct HostGpuRenderer {
     height: u32,
     batch_token: u64,
     frame_active: bool,
+    // A retained target can belong to an older frame while a mask dissolve is
+    // rendered on the CPU. Only expose/read it when it owns the latest frame.
+    frame_ready: bool,
+    frame_generation: u64,
     failed: bool,
     pending: Option<HostGpuDrawBatch>,
-    graph_cache: std::collections::HashMap<u16, HostGpuTexture>,
+    texture_cache: std::collections::HashMap<HostGpuTextureKey, HostGpuTexture>,
     color_cache: std::collections::HashMap<u32, u64>,
 }
 
@@ -54,9 +69,11 @@ impl HostGpuRenderer {
             height,
             batch_token: 0,
             frame_active: false,
+            frame_ready: false,
+            frame_generation: 0,
             failed: false,
             pending: None,
-            graph_cache: std::collections::HashMap::new(),
+            texture_cache: std::collections::HashMap::new(),
             color_cache: std::collections::HashMap::new(),
         }
     }
@@ -65,6 +82,8 @@ impl HostGpuRenderer {
         if self.frame_active {
             return false;
         }
+        self.frame_ready = false;
+        self.frame_generation = self.frame_generation.wrapping_add(1);
         if self.target == 0 {
             self.target = unsafe {
                 self.callbacks.create_rgba.unwrap()(
@@ -104,7 +123,8 @@ impl HostGpuRenderer {
         self.frame_active = false;
         let token = std::mem::take(&mut self.batch_token);
         let ended = unsafe { self.callbacks.end_batch.unwrap()(token) };
-        ended && !self.failed
+        self.frame_ready = ended && !self.failed;
+        self.frame_ready
     }
 
     fn release(&self, handle: u64) {
@@ -196,50 +216,48 @@ impl HostGpuRenderer {
         batch.src.extend_from_slice(src);
     }
 
-    fn prune_graphs(&mut self, graphs: &[GraphBuff]) {
-        let stale: Vec<u16> = self
-            .graph_cache
+    fn prune_graphs(&mut self, graphs: &[GraphBuff], has_prev_frame: bool) {
+        let stale: Vec<HostGpuTextureKey> = self
+            .texture_cache
             .keys()
             .copied()
-            .filter(|graph_id| {
-                graphs
+            .filter(|key| match key {
+                HostGpuTextureKey::Graph(graph_id) => graphs
                     .get(*graph_id as usize)
-                    .is_none_or(|graph| !graph.get_texture_ready() || graph.get_texture().is_none())
+                    .is_none_or(|graph| !graph.get_texture_ready() || graph.get_texture().is_none()),
+                HostGpuTextureKey::PrevFrame => !has_prev_frame,
             })
             .collect();
         for id in stale {
-            if let Some(texture) = self.graph_cache.remove(&id) {
+            if let Some(texture) = self.texture_cache.remove(&id) {
                 self.release(texture.handle);
             }
         }
     }
 
-    fn graph_texture(
+    fn image_texture(
         &mut self,
-        graph_id: u16,
-        graph: &GraphBuff,
+        key: HostGpuTextureKey,
+        generation: u64,
         image: &DynamicImage,
         color: Vec4,
-    ) -> Option<(u64, u32, u32, bool)> {
+    ) -> Option<(u64, u32, u32)> {
         let (width, height) = image.dimensions();
         if width == 0 || height == 0 {
             return None;
         }
-        let generation = graph.get_generation();
         let tint = [
             (color.x.clamp(0.0, 1.0) * 255.0).round() as u8,
             (color.y.clamp(0.0, 1.0) * 255.0).round() as u8,
             (color.z.clamp(0.0, 1.0) * 255.0).round() as u8,
         ];
-        if let Some(entry) = self.graph_cache.get(&graph_id) {
+        if let Some(entry) = self.texture_cache.get(&key) {
             if entry.generation == generation
                 && entry.width == width
                 && entry.height == height
                 && entry.tint == tint
             {
-                let nearest = (4064..=4095).contains(&graph_id)
-                    || graph.load_kind == GraphBuffLoadKind::GaijiGlyph;
-                return Some((entry.handle, width, height, nearest));
+                return Some((entry.handle, width, height));
             }
             // The queued draw stores this texture handle, so submit it before
             // changing the pixels for a new graph generation or tint.
@@ -268,7 +286,7 @@ impl HostGpuRenderer {
             right: width as i32,
             bottom: height as i32,
         };
-        let handle = if let Some(entry) = self.graph_cache.get_mut(&graph_id) {
+        let handle = if let Some(entry) = self.texture_cache.get_mut(&key) {
             if entry.width == width
                 && entry.height == height
                 && unsafe {
@@ -320,8 +338,8 @@ impl HostGpuRenderer {
                 self.failed = true;
                 return None;
             }
-            self.graph_cache.insert(
-                graph_id,
+            self.texture_cache.insert(
+                key,
                 HostGpuTexture {
                     handle,
                     generation,
@@ -332,9 +350,7 @@ impl HostGpuRenderer {
             );
             handle
         };
-        let nearest =
-            (4064..=4095).contains(&graph_id) || graph.load_kind == GraphBuffLoadKind::GaijiGlyph;
-        Some((handle, width, height, nearest))
+        Some((handle, width, height))
     }
 
     fn color_texture(&mut self, color: Vec4) -> Option<u64> {
@@ -357,7 +373,12 @@ impl HostGpuRenderer {
         Some(handle)
     }
 
-    fn draw_quad(&mut self, vertices: [Vertex; 4], texture: TextureRef<'_>) -> bool {
+    fn draw_quad(
+        &mut self,
+        vertices: [Vertex; 4],
+        texture: TextureRef<'_>,
+        additive: bool,
+    ) -> bool {
         if !self.frame_active {
             return false;
         }
@@ -368,10 +389,31 @@ impl HostGpuRenderer {
                 graph,
                 image,
             } => {
-                let Some(value) = self.graph_texture(graph_id, graph, image, color) else {
+                let Some((handle, width, height)) = self.image_texture(
+                    HostGpuTextureKey::Graph(graph_id),
+                    graph.get_generation(),
+                    image,
+                    color,
+                ) else {
                     return true;
                 };
-                value
+                let nearest = (4064..=4095).contains(&graph_id)
+                    || graph.load_kind == GraphBuffLoadKind::GaijiGlyph;
+                (handle, width, height, nearest)
+            }
+            TextureRef::PrevFrame(image) => {
+                // Every GPU frame receives a fresh immutable CPU snapshot.
+                // Reuse its upload for multiple sprites, but refresh it next
+                // frame even when the image dimensions and tint are unchanged.
+                let Some((handle, width, height)) = self.image_texture(
+                    HostGpuTextureKey::PrevFrame,
+                    self.frame_generation,
+                    image,
+                    color,
+                ) else {
+                    return true;
+                };
+                (handle, width, height, true)
             }
             TextureRef::White => {
                 let Some(handle) = self.color_texture(color) else {
@@ -445,7 +487,11 @@ impl HostGpuRenderer {
             right: max_x,
             bottom: max_y,
         };
-        let mut blend = HOST_GPU_TRIANGLE_TVP_BLEND | HOST_GPU_BLEND_ALPHA_D;
+        let mut blend = if additive {
+            HOST_GPU_BLEND_ADDITIVE
+        } else {
+            HOST_GPU_TRIANGLE_TVP_BLEND | HOST_GPU_BLEND_ALPHA_D
+        };
         if nearest {
             blend |= HOST_GPU_TRIANGLE_SOURCE_NEAREST;
         } else {
@@ -475,7 +521,7 @@ impl Drop for HostGpuRenderer {
         if self.frame_active {
             self.end_frame();
         }
-        for texture in self.graph_cache.values() {
+        for texture in self.texture_cache.values() {
             self.release(texture.handle);
         }
         for handle in self.color_cache.values() {
@@ -496,6 +542,35 @@ impl SoftRenderer {
         true
     }
 
+    fn sync_host_gpu_snapshot(&mut self) -> bool {
+        // Called before the upstream snapshot loop and before starting or
+        // clearing the next frame. CPU mask frames are already up to date.
+        if self.sync_host_gpu_framebuffer() {
+            return true;
+        }
+        log::warn!(
+            "rfvp GPU snapshot readback failed; skipping frame snapshots and reverting to CPU renderer"
+        );
+        self.host_gpu.take();
+        false
+    }
+
+    fn begin_host_gpu_motion_frame(&mut self, motion: &MotionManager) -> bool {
+        if matches!(
+            motion.get_dissolve_type(),
+            DissolveType::MaskFadeIn | DissolveType::MaskFadeInOut | DissolveType::MaskFadeOut
+        ) {
+            // Upstream composites the prepared mask directly into framebuffer
+            // pixels. Render the entire frame there, including scene and HUD,
+            // rather than mixing CPU mask pixels with a stale GPU surface.
+            if let Some(renderer) = self.host_gpu.as_mut() {
+                renderer.frame_ready = false;
+            }
+            return false;
+        }
+        self.begin_host_gpu_frame()
+    }
+
     fn begin_host_gpu_frame(&mut self) -> bool {
         let active = self
             .host_gpu
@@ -509,6 +584,10 @@ impl SoftRenderer {
     }
 
     fn finish_host_gpu_frame(&mut self) {
+        // A deliberate CPU frame must retain its GPU cache for later frames.
+        if !self.host_gpu_frame_active() {
+            return;
+        }
         let healthy = self
             .host_gpu
             .as_mut()
@@ -527,7 +606,7 @@ impl SoftRenderer {
 
     fn prune_host_gpu_graphs(&mut self, graphs: &[GraphBuff]) {
         if let Some(renderer) = self.host_gpu.as_mut() {
-            renderer.prune_graphs(graphs);
+            renderer.prune_graphs(graphs, self.prev_frame.is_some());
         }
     }
 
@@ -547,21 +626,36 @@ impl SoftRenderer {
     ) -> bool {
         self.host_gpu
             .as_mut()
-            .is_some_and(|renderer| renderer.draw_quad([v0, v1, v2, v3], texture))
+            .is_some_and(|renderer| renderer.draw_quad([v0, v1, v2, v3], texture, self.additive))
     }
 
     pub(crate) fn host_gpu_texture(&self) -> Option<u64> {
         self.host_gpu
             .as_ref()
+            .filter(|renderer| renderer.frame_ready && !renderer.frame_active)
             .map(|renderer| renderer.target)
             .filter(|target| *target != 0)
     }
 
     pub(crate) fn sync_host_gpu_framebuffer(&mut self) -> bool {
         let stride = self.framebuffer.stride() as u32;
+        let format = self.framebuffer.format();
         match self.host_gpu.as_mut() {
-            Some(renderer) => renderer.readback(self.framebuffer.pixels_mut(), stride),
-            None => true,
+            Some(renderer) if renderer.frame_active => false,
+            Some(renderer) if renderer.frame_ready => {
+                if !renderer.readback(self.framebuffer.pixels_mut(), stride) {
+                    return false;
+                }
+                // The host callback always returns RGBA, regardless of the
+                // software framebuffer's selected byte order.
+                if format == PixelFormat::Bgra8 {
+                    for pixel in self.framebuffer.pixels_mut().chunks_exact_mut(4) {
+                        pixel.swap(0, 2);
+                    }
+                }
+                true
+            }
+            _ => true,
         }
     }
 
@@ -620,6 +714,8 @@ mod host_renderer_tests {
     #[derive(Debug, Default)]
     struct FakeGpuState {
         creates: Vec<(u32, u32, bool, [u8; 4])>,
+        updates: Vec<(u64, [u8; 4])>,
+        frame_events: Vec<&'static str>,
         releases: Vec<u64>,
         clears: Vec<(u64, u32, HostGpuRect)>,
         draws: Vec<(u64, u64, u32, HostGpuRect, f32, u32)>,
@@ -627,11 +723,18 @@ mod host_renderer_tests {
         begins: usize,
         ends: Vec<u64>,
         reads: Vec<(u64, usize, u32)>,
+        read_pixel: Option<[u8; 4]>,
+        fail_read: bool,
     }
 
     fn fake_gpu() -> &'static Mutex<FakeGpuState> {
         static STATE: OnceLock<Mutex<FakeGpuState>> = OnceLock::new();
         STATE.get_or_init(|| Mutex::new(FakeGpuState::default()))
+    }
+
+    fn fake_gpu_test_lock() -> std::sync::MutexGuard<'static, ()> {
+        static LOCK: Mutex<()> = Mutex::new(());
+        LOCK.lock().unwrap()
     }
 
     unsafe extern "C" fn fake_create(
@@ -657,20 +760,19 @@ mod host_renderer_tests {
     }
 
     unsafe extern "C" fn fake_update(
-        _texture: u64,
-        _pixels: *const c_void,
+        texture: u64,
+        pixels: *const c_void,
         _stride: u32,
         _rect: *const HostGpuRect,
     ) -> bool {
+        fake_gpu().lock().unwrap().updates.push((texture, *pixels.cast::<[u8; 4]>()));
         true
     }
 
     unsafe extern "C" fn fake_clear(texture: u64, rgba: u32, rect: *const HostGpuRect) -> bool {
-        fake_gpu()
-            .lock()
-            .unwrap()
-            .clears
-            .push((texture, rgba, *rect));
+        let mut state = fake_gpu().lock().unwrap();
+        state.clears.push((texture, rgba, *rect));
+        state.frame_events.push("clear");
         true
     }
 
@@ -700,12 +802,16 @@ mod host_renderer_tests {
         size: usize,
         stride: u32,
     ) -> bool {
-        fake_gpu()
-            .lock()
-            .unwrap()
-            .reads
-            .push((texture, size, stride));
-        std::slice::from_raw_parts_mut(pixels.cast::<u8>(), size).fill(0x5a);
+        let mut state = fake_gpu().lock().unwrap();
+        state.reads.push((texture, size, stride));
+        state.frame_events.push("read");
+        if state.fail_read {
+            return false;
+        }
+        let value = state.read_pixel.unwrap_or([0x5a; 4]);
+        for pixel in std::slice::from_raw_parts_mut(pixels.cast::<u8>(), size).chunks_exact_mut(4) {
+            pixel.copy_from_slice(&value);
+        }
         true
     }
 
@@ -741,13 +847,14 @@ mod host_renderer_tests {
 
     #[test]
     fn host_gpu_is_lazy_batched_and_read_back_only_on_request() {
+        let _guard = fake_gpu_test_lock();
         *fake_gpu().lock().unwrap() = FakeGpuState::default();
         {
             let mut renderer = SoftRenderer::new(8, 6, PixelFormat::Rgba8).unwrap();
             assert!(renderer.install_host_gpu(fake_callbacks()));
             assert_eq!(renderer.host_gpu_texture(), None);
             assert!(renderer.begin_host_gpu_frame());
-            assert_eq!(renderer.host_gpu_texture(), Some(100));
+            assert_eq!(renderer.host_gpu_texture(), None);
             renderer.fill_rect(1.0, 2.0, 4.0, 3.0, vec4(1.0, 1.0, 1.0, 0.5));
             renderer.fill_rect(5.0, 2.0, 3.0, 3.0, vec4(1.0, 1.0, 1.0, 0.5));
             let graph = GraphBuff::new();
@@ -772,6 +879,7 @@ mod host_renderer_tests {
                 )
                 .unwrap();
             renderer.finish_host_gpu_frame();
+            assert_eq!(renderer.host_gpu_texture(), Some(100));
 
             let before_read = fake_gpu().lock().unwrap().reads.len();
             assert_eq!(before_read, 0);
@@ -806,6 +914,255 @@ mod host_renderer_tests {
         assert_eq!(state.first_source_points, vec![(0.5, 0.5), (0.5, 1.5)]);
         assert_eq!(state.reads, vec![(100, 8 * 6 * 4, 8 * 4)]);
         assert_eq!(state.releases, vec![102, 101, 100]);
+    }
+
+    #[test]
+    fn host_gpu_additive_quads_use_srcalpha_one_and_split_batches() {
+        let _guard = fake_gpu_test_lock();
+        *fake_gpu().lock().unwrap() = FakeGpuState::default();
+        let mut renderer = SoftRenderer::new(8, 6, PixelFormat::Rgba8).unwrap();
+        renderer.install_host_gpu(fake_callbacks());
+        assert!(renderer.begin_host_gpu_frame());
+        renderer.additive = true;
+        renderer
+            .draw_textured_quad(
+                Mat4::IDENTITY,
+                4.0,
+                6.0,
+                Vec2::ZERO,
+                Vec2::ONE,
+                vec4(1.0, 1.0, 1.0, 0.5),
+                TextureRef::White,
+            )
+            .unwrap();
+        // Same texture, opacity and disjoint bounds would otherwise batch.
+        renderer.fill_rect(4.0, 0.0, 4.0, 6.0, vec4(1.0, 1.0, 1.0, 0.5));
+        renderer.finish_host_gpu_frame();
+        let state = fake_gpu().lock().unwrap();
+        assert_eq!(state.draws.len(), 2);
+        assert_eq!(state.draws[0].5, 0x1000_0001);
+        assert_eq!(state.draws[1].5, 0x1001_0002);
+        assert_eq!(state.draws[0].4, 0.5);
+        assert_eq!(state.draws[0].2, 2);
+    }
+
+    #[test]
+    fn host_gpu_mask_dissolve_snapshots_then_presents_cpu_frames_and_resumes() {
+        let _guard = fake_gpu_test_lock();
+        *fake_gpu().lock().unwrap() = FakeGpuState {
+            read_pixel: Some([40, 80, 120, 255]),
+            ..Default::default()
+        };
+        for format in [PixelFormat::Rgba8, PixelFormat::Bgra8] {
+            let mut renderer = SoftRenderer::new(8, 6, format).unwrap();
+            renderer.install_host_gpu(fake_callbacks());
+            let mut motion = MotionManager::new();
+            let mut mask = GraphBuff::new();
+            mask.load_from_buff([0, 0, 0, 128].repeat(8 * 6), 8, 6)
+                .unwrap();
+            motion.set_dissolve_mask_graph(mask);
+            renderer.render_motion(&motion).unwrap();
+            let target = renderer.host_gpu_texture().unwrap();
+            let reads_before = fake_gpu().lock().unwrap().reads.len();
+            motion.start_dissolve(100, DissolveType::MaskFadeIn);
+            renderer.render_motion(&motion).unwrap();
+            assert_eq!(renderer.host_gpu_texture(), None);
+            assert!(renderer.host_gpu.is_some());
+            assert_eq!(fake_gpu().lock().unwrap().reads.len(), reads_before + 1);
+            let expected = match format {
+                PixelFormat::Rgba8 => [40, 80, 120, 255],
+                PixelFormat::Bgra8 => [120, 80, 40, 255],
+            };
+            for pixel in renderer.framebuffer.pixels().chunks_exact(4) {
+                assert_eq!(pixel, &expected);
+            }
+            // Reading a CPU-owned frame must not overwrite it with the old GPU
+            // texture. The next mask phase is fully transparent over black.
+            motion.tick_dissolve(75);
+            renderer.render_motion(&motion).unwrap();
+            assert!(renderer.sync_host_gpu_framebuffer());
+            for pixel in renderer.framebuffer.pixels().chunks_exact(4) {
+                assert_eq!(pixel, &[0, 0, 0, 255]);
+            }
+            assert_eq!(fake_gpu().lock().unwrap().reads.len(), reads_before + 1);
+            assert_eq!(renderer.host_gpu_texture(), None);
+            motion.tick_dissolve(25);
+            renderer.render_motion(&motion).unwrap();
+            assert_eq!(renderer.host_gpu_texture(), Some(target));
+        }
+        let state = fake_gpu().lock().unwrap();
+        assert_eq!(state.begins, 4);
+        assert_eq!(state.ends.len(), 4);
+        assert_eq!(state.reads.len(), 2);
+    }
+
+    #[test]
+    fn host_gpu_prev_frame_snapshots_refresh_across_gpu_and_cpu_frames() {
+        let _guard = fake_gpu_test_lock();
+        for format in [PixelFormat::Rgba8, PixelFormat::Bgra8] {
+            *fake_gpu().lock().unwrap() = FakeGpuState {
+                read_pixel: Some([40, 80, 120, 255]),
+                ..Default::default()
+            };
+            let mut renderer = SoftRenderer::new(4, 4, format).unwrap();
+            renderer.install_host_gpu(fake_callbacks());
+            let mut motion = MotionManager::new();
+            {
+                let mut prim = motion.prim_manager().get_prim(0);
+                prim.set_type(PrimType::PrimTypeSprt);
+                prim.set_texture_id(-1);
+                prim.set_draw_flag(true);
+                prim.set_alpha(255);
+            }
+            // Match upstream: the first visible -1 sprite requests next frame's
+            // snapshot but has no previous-frame image to draw yet.
+            renderer.render_motion(&motion).unwrap();
+            assert!(renderer.wants_prev_frame);
+            assert!(renderer.prev_frame.is_none());
+            assert!(fake_gpu().lock().unwrap().reads.is_empty());
+            let target = renderer.host_gpu_texture().unwrap();
+            renderer.render_motion(&motion).unwrap();
+            assert_eq!(renderer.prev_frame.as_ref().unwrap().get_pixel(0, 0).0, [40, 80, 120, 255]);
+            {
+                let state = fake_gpu().lock().unwrap();
+                assert_eq!(state.frame_events, vec!["clear", "read", "clear"]);
+                assert_eq!(state.creates[1], (4, 4, true, [40, 80, 120, 255]));
+                assert_eq!(state.draws[0].1, 101);
+                assert_ne!(state.draws[0].0, state.draws[0].1);
+                assert_eq!(state.draws[0].5, 0x1001_0002);
+            }
+            fake_gpu().lock().unwrap().read_pixel = Some([80, 40, 200, 255]);
+            renderer.render_motion(&motion).unwrap();
+            assert_eq!(fake_gpu().lock().unwrap().updates, vec![(101, [80, 40, 200, 255])]);
+
+            // Both snapshot consumers share one read before a mask forces CPU
+            // rendering; subsequent CPU frames must not read the old target.
+            let mut mask = GraphBuff::new();
+            mask.load_from_buff([0, 0, 0, 128].repeat(4 * 4), 4, 4).unwrap();
+            motion.set_dissolve_mask_graph(mask);
+            motion.start_dissolve(100, DissolveType::MaskFadeIn);
+            fake_gpu().lock().unwrap().read_pixel = Some([12, 34, 56, 255]);
+            renderer.render_motion(&motion).unwrap();
+            assert_eq!(renderer.host_gpu_texture(), None);
+            assert_eq!(fake_gpu().lock().unwrap().reads.len(), 3);
+            let expected = match format {
+                PixelFormat::Rgba8 => [12, 34, 56, 255],
+                PixelFormat::Bgra8 => [56, 34, 12, 255],
+            };
+            for pixel in renderer.framebuffer.pixels().chunks_exact(4) {
+                assert_eq!(pixel, &expected);
+            }
+            motion.tick_dissolve(75);
+            renderer.render_motion(&motion).unwrap();
+            assert!(renderer.sync_host_gpu_framebuffer());
+            assert_eq!(fake_gpu().lock().unwrap().reads.len(), 3);
+            assert_eq!(renderer.prev_frame.as_ref().unwrap().get_pixel(0, 0).0, [12, 34, 56, 255]);
+            motion.tick_dissolve(25);
+            renderer.render_motion(&motion).unwrap();
+            assert_eq!(renderer.host_gpu_texture(), Some(target));
+            let state = fake_gpu().lock().unwrap();
+            assert_eq!(state.reads.len(), 3);
+            assert_eq!(state.updates.last(), Some(&(101, [12, 34, 56, 255])));
+            assert_eq!(state.creates.len(), 2);
+            assert_eq!(state.begins, 4);
+            assert_eq!(state.ends.len(), 4);
+        }
+    }
+
+    #[test]
+    fn host_gpu_prev_frame_cache_is_separate_from_graph_slots() {
+        let _guard = fake_gpu_test_lock();
+        *fake_gpu().lock().unwrap() = FakeGpuState::default();
+        let mut renderer = SoftRenderer::new(4, 4, PixelFormat::Rgba8).unwrap();
+        renderer.install_host_gpu(fake_callbacks());
+        assert!(renderer.begin_host_gpu_frame());
+        let graph = GraphBuff::new();
+        let graph_image = DynamicImage::ImageRgba8(image::RgbaImage::from_pixel(
+            2, 2, image::Rgba([10, 20, 30, 255]),
+        ));
+        let previous_image = DynamicImage::ImageRgba8(image::RgbaImage::from_pixel(
+            2, 2, image::Rgba([90, 80, 70, 255]),
+        ));
+        for texture in [
+            TextureRef::Graph { graph_id: 4095, graph: &graph, image: &graph_image },
+            TextureRef::PrevFrame(&previous_image),
+            TextureRef::PrevFrame(&previous_image),
+        ] {
+            renderer.draw_textured_quad(
+                Mat4::IDENTITY, 4.0, 4.0, Vec2::ZERO, Vec2::ONE, Vec4::ONE, texture,
+            ).unwrap();
+        }
+        renderer.finish_host_gpu_frame();
+        renderer.prev_frame = Some(previous_image);
+        renderer.prune_host_gpu_graphs(&[]);
+        let gpu = renderer.host_gpu.as_ref().unwrap();
+        assert_eq!(gpu.texture_cache.len(), 1);
+        assert!(gpu.texture_cache.contains_key(&HostGpuTextureKey::PrevFrame));
+        let state = fake_gpu().lock().unwrap();
+        assert_eq!(state.creates.len(), 3);
+        assert!(state.updates.is_empty());
+        assert_eq!(state.draws.iter().map(|draw| draw.1).collect::<Vec<_>>(), vec![101, 102, 102]);
+        assert_eq!(state.draws[0].5, 0x1001_0002);
+        assert_eq!(state.draws[1].5, 0x1001_0002);
+        assert_eq!(state.releases, vec![101]);
+        drop(state);
+        renderer.prev_frame = None;
+        renderer.prune_host_gpu_graphs(&[]);
+        assert!(renderer.host_gpu.as_ref().unwrap().texture_cache.is_empty());
+        assert_eq!(fake_gpu().lock().unwrap().releases, vec![101, 102]);
+    }
+
+    #[test]
+    fn host_gpu_failed_snapshot_does_not_capture_stale_cpu_pixels() {
+        let _guard = fake_gpu_test_lock();
+        *fake_gpu().lock().unwrap() = FakeGpuState::default();
+        let mut renderer = SoftRenderer::new(4, 4, PixelFormat::Rgba8).unwrap();
+        renderer.install_host_gpu(fake_callbacks());
+        let mut motion = MotionManager::new();
+        let mut mask = GraphBuff::new();
+        mask.load_from_buff(vec![255; 4 * 4 * 4], 4, 4).unwrap();
+        motion.set_dissolve_mask_graph(mask);
+        renderer.render_motion(&motion).unwrap();
+        renderer.framebuffer.clear_rgba(200, 100, 50, 255);
+        fake_gpu().lock().unwrap().fail_read = true;
+        renderer.wants_prev_frame = true;
+        motion.start_dissolve(100, DissolveType::MaskFadeInOut);
+        renderer.render_motion(&motion).unwrap();
+        assert!(renderer.host_gpu.is_none());
+        assert!(renderer.mask_frame.image.is_none());
+        assert!(renderer.prev_frame.is_none());
+        assert_eq!(fake_gpu().lock().unwrap().reads.len(), 1);
+        assert_eq!(renderer.host_gpu_texture(), None);
+        for pixel in renderer.framebuffer.pixels().chunks_exact(4) {
+            assert_eq!(pixel, &[0, 0, 0, 255]);
+        }
+    }
+
+    #[test]
+    fn host_cpu_additive_axis_quad_preserves_destination_alpha() {
+        for format in [PixelFormat::Rgba8, PixelFormat::Bgra8] {
+            let mut renderer = SoftRenderer::new(4, 4, format).unwrap();
+            renderer.framebuffer.clear_rgba(200, 20, 30, 77);
+            renderer.additive = true;
+            renderer
+                .draw_textured_quad(
+                    Mat4::IDENTITY,
+                    4.0,
+                    4.0,
+                    Vec2::ZERO,
+                    Vec2::ONE,
+                    vec4(0.8, 0.4, 0.2, 0.5),
+                    TextureRef::White,
+                )
+                .unwrap();
+            let expected = match format {
+                PixelFormat::Rgba8 => [255, 71, 56, 77],
+                PixelFormat::Bgra8 => [56, 71, 255, 77],
+            };
+            for pixel in renderer.framebuffer.pixels().chunks_exact(4) {
+                assert_eq!(pixel, &expected);
+            }
+        }
     }
 
     #[test]

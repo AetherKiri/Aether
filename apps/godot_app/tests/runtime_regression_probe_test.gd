@@ -99,6 +99,9 @@ func _initialize() -> void:
     assert(host.eager_initializations == 0) # Never mask the production bug.
     assert(host.selected_game.path == "fixture-root")
     assert(host.selected_game.rfvpEncoding == "gbk")
+    assert(probe.host_state().configured_launch_file == "")
+    host.selected_game.launchFile = "Selected.hcb"
+    assert(probe.host_state().configured_launch_file == "Selected.hcb")
     host.shell_root.free()
     host.home_view.free()
     host.game_view.free()

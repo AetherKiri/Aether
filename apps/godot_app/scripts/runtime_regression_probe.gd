@@ -105,6 +105,7 @@ func host_state() -> Dictionary:
         "startup_state": app.cached_startup_state,
         "runtime": app.active_runtime_kind,
         "render_errors": app.render_errors,
+        "configured_launch_file": String(app.selected_game.get("launchFile", "")),
     }
 
 func state() -> Dictionary:

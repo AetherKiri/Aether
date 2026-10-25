@@ -13,13 +13,14 @@ func _init() -> void:
     assert(YurisEngineOptions.worker_step_budget("1000000") == 65536)
     # Translation patches can change YBN text encoding without changing the
     # executable format. Keep that choice per game and apply it before open.
-    assert(YurisEngineOptions.script_encoding({}) == "CP932")
+    assert(YurisEngineOptions.script_encoding({}) == "AUTO")
     var translated := {YurisEngineOptions.SCRIPT_ENCODING_FIELD: "GBK"}
     assert(YurisEngineOptions.script_encoding(translated) == "GBK")
     assert(YurisEngineOptions.script_encoding(translated, " utf8 ") == "UTF-8")
     assert(YurisEngineOptions.script_encoding(translated, "invalid") == "GBK")
-    assert(YurisEngineOptions.script_encoding({}) == "CP932")
-    assert(YurisEngineOptions.script_encoding({YurisEngineOptions.SCRIPT_ENCODING_FIELD: "invalid"}) == "CP932")
+    assert(YurisEngineOptions.script_encoding({}) == "AUTO")
+    assert(YurisEngineOptions.script_encoding({YurisEngineOptions.SCRIPT_ENCODING_FIELD: "invalid"}) == "AUTO")
+    assert(YurisEngineOptions.script_encoding({YurisEngineOptions.SCRIPT_ENCODING_FIELD: "CP932"}) == "CP932")
     assert(YurisEngineOptions.normalize_encoding("shift_jis") == "CP932")
     assert(YurisEngineOptions.normalize_encoding("cp936") == "GBK")
     var first := YurisEngineOptions.legacy_user_directory("/host", "/games/first")

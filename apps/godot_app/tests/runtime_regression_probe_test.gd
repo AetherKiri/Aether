@@ -5,6 +5,10 @@ const Probe = preload("res://scripts/runtime_regression_probe.gd")
 class FakePlayer:
     extends RefCounted
     var queries := 0
+    var initialized := true
+
+    func is_initialized() -> bool:
+        return initialized
 
     func get_plugin_debug_info() -> String:
         queries += 1
@@ -23,6 +27,31 @@ class FakeHost:
     var shell_route := "library"
     var home_library_mode := "game"
     var game_running := false
+    var cached_startup_state := 2
+    var active_runtime_kind := "rfvp"
+    var render_errors := 0
+    var selected_backend := ""
+    var selected_game: Dictionary = {}
+    var production_launches := 0
+    var eager_initializations := 0
+
+    func _prepare_cli_probe_view(_config: Dictionary) -> void:
+        game_running = false
+
+    func _game_info_from_path(path: String) -> Dictionary:
+        return {"path": path, "name": "fixture"}
+
+    func _start_selected_game_after_entitlements() -> void:
+        production_launches += 1
+        player.initialized = true
+        game_running = true
+
+    func _probe_wait_startup(_config: Dictionary) -> bool:
+        return true
+
+    func _ensure_player_initialized() -> bool:
+        eager_initializations += 1
+        return true
 
 func _initialize() -> void:
     var saved := {"before": {"dialogue_key": "original", "navigation": {"restore_pending": false}}}
@@ -54,13 +83,22 @@ func _initialize() -> void:
     host.shell_root.visible = true
     host.game_view.visible = false
     host.viewport.visible = false
+    host.player.initialized = false
     var exited: Dictionary = probe.state()
     assert(exited.host.library_visible)
     assert(exited.host.route == "library")
     assert(exited.host.library_mode == "game")
     assert(exited.host.frame_texture_cleared)
+    assert(not exited.host.engine_initialized)
+    assert(exited.host.player_instance_id == active.host.player_instance_id)
     assert(not exited.has("vm_status"))
     assert(host.player.queries == 1) # Never query the destroyed engine.
+    probe.config = {"library_game": {"rfvpEncoding": "gbk", "path": "wrong"}}
+    assert(await probe.launch_from_library("fixture-root"))
+    assert(host.production_launches == 1)
+    assert(host.eager_initializations == 0) # Never mask the production bug.
+    assert(host.selected_game.path == "fixture-root")
+    assert(host.selected_game.rfvpEncoding == "gbk")
     host.shell_root.free()
     host.home_view.free()
     host.game_view.free()

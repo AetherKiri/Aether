@@ -12,11 +12,24 @@
 namespace fs = std::filesystem;
 namespace {
 struct TempDir {
-    fs::path path = fs::temp_directory_path() / ("mages-test-" + std::to_string(
-        std::chrono::steady_clock::now().time_since_epoch().count()));
-    TempDir() { fs::create_directories(path); }
-    ~TempDir() { std::error_code ec; fs::remove_all(path, ec); }
-    void touch(const fs::path& file) {
+    fs::path path;
+    TempDir() {
+        const auto prefix = fs::temp_directory_path() /
+            ("mages-test-" +
+             std::to_string(
+                 std::chrono::steady_clock::now().time_since_epoch().count()));
+        for(unsigned attempt = 0;; ++attempt) {
+            path = prefix;
+            path += "-" + std::to_string(attempt);
+            if(fs::create_directory(path))
+                break;
+        }
+    }
+    ~TempDir() {
+        std::error_code ec;
+        fs::remove_all(path, ec);
+    }
+    void touch(const fs::path &file) {
         fs::create_directories((path / file).parent_path());
         std::ofstream(path / file) << "marker";
     }
@@ -93,8 +106,10 @@ TEST_CASE("MAGES. probing and archive resolution share supported layouts") {
         check(root.path,"mo8"); check(root.path/"MemoriesoffIF","mo8");
         Impacto::Host::ArchiveRoot = root.path/"MemoriesoffIF";
         Impacto::Host::ProfileArchiveRoot = root.path;
-        CHECK(Impacto::Host::ResolveArchivePath((root.path/"script.mpk").string()) ==
-              (root.path/"MemoriesoffIF/SCRIPT.MPK").string());
+        const auto resolved = Impacto::Host::ResolveArchivePath(
+            (root.path / "script.mpk").string());
+        REQUIRE(fs::is_regular_file(resolved));
+        CHECK(fs::equivalent(resolved, root.path / "MemoriesoffIF/SCRIPT.MPK"));
         Impacto::Host::ArchiveRoot.clear(); Impacto::Host::ProfileArchiveRoot.clear();
     }
     SECTION("all registered named layouts") {

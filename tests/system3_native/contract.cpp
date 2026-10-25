@@ -41,6 +41,16 @@ static engine_frame_desc_t Frame(void *runtime) {
             "describe frame");
     return frame;
 }
+static bool WaitForFrameAfter(void *runtime, uint64_t serial) {
+    const auto deadline =
+        std::chrono::steady_clock::now() + std::chrono::seconds(2);
+    do {
+        if(Frame(runtime).frame_serial > serial)
+            return true;
+        std::this_thread::sleep_for(std::chrono::milliseconds(5));
+    } while(std::chrono::steady_clock::now() < deadline);
+    return false;
+}
 static void Set(void *runtime, const char *key, const char *value) {
     engine_option_t option{};
     option.key_utf8 = key;
@@ -151,8 +161,7 @@ int main() {
             std::getline(imported, text);
             Require(text == "original save", "original overwritten");
             Require(provider->resume(runtime) == ENGINE_RESULT_OK, "resume");
-            std::this_thread::sleep_for(std::chrono::milliseconds(80));
-            Require(Frame(runtime).frame_serial > paused, "VM did not resume");
+            Require(WaitForFrameAfter(runtime, paused), "VM did not resume");
             engine_input_event_t input{};
             input.struct_size = sizeof(input);
             input.type = ENGINE_INPUT_EVENT_POINTER_DOWN;

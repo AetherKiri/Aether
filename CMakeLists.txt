@@ -307,6 +307,10 @@ if(IOS AND AETHERKIRI_INTERNAL_ENABLED AND AETHERKIRI_ENABLE_CODE_OBFUSCATION)
 endif()
 
 set(AETHERKIRI_BUILD_NATIVE_ONSCRIPTER_TESTS OFF)
+set(AETHERKIRI_BUILD_NATIVE_RUNTIME_TESTS OFF)
+if(ENABLE_TESTS AND NOT (IOS OR ANDROID OR WEB OR EMSCRIPTEN))
+    set(AETHERKIRI_BUILD_NATIVE_RUNTIME_TESTS ON)
+endif()
 if(ENABLE_TESTS AND AETHERKIRI_ENABLE_ONSCRIPTER AND
    NOT (IOS OR ANDROID OR WEB OR EMSCRIPTEN))
     # The provider contract links the real ONS runtime and runtime registry.
@@ -319,7 +323,7 @@ endif()
 # krkr2core/krkr2plugin linkage; the Godot extension host links the glue and
 # installs its engine_legacy_* surface into engine_api through the legacy
 # services table (Phase 2d link flip — engine_api itself never links it).
-if(BUILD_ENGINE_API OR AETHERKIRI_BUILD_NATIVE_ONSCRIPTER_TESTS OR AETHERKIRI_ENABLE_RFVP)
+if(BUILD_ENGINE_API OR AETHERKIRI_BUILD_NATIVE_RUNTIME_TESTS OR AETHERKIRI_ENABLE_RFVP)
     add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/bridge/krkr2_runtime)
     add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/abi)
 endif()
@@ -346,7 +350,8 @@ if(AETHERKIRI_ENABLE_SIGLUS AND BUILD_GODOT_EXTENSION AND
     # Web stays excluded until the wasm host path is designed (phase 5).
     add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/bridge/siglus_runtime)
 endif()
-if(AETHERKIRI_ENABLE_MAGES AND BUILD_GODOT_EXTENSION AND
+if(AETHERKIRI_ENABLE_MAGES AND
+    (BUILD_GODOT_EXTENSION OR AETHERKIRI_BUILD_NATIVE_RUNTIME_TESTS) AND
     NOT (WEB OR EMSCRIPTEN))
     # The MAGES. runtime renders offscreen inside the embedded impacto host
     # library (compiled from the packages/AetherMAGES submodule). Built on

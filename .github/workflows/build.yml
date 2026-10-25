@@ -740,6 +740,7 @@ jobs:
         run: |
           python3 -m unittest discover -s tests/python -p test_macos_app_store_signing.py -v
           python3 -m unittest discover -s tests/python -p test_runtime_submodule_initialization.py -v
+          python3 -m unittest discover -s tests/python -p test_ctest_inventory.py -v
 
       - name: Initialize private runtime submodules
         if: env.AETHERKIRI_WITH_INTERNAL == 'true'
@@ -960,6 +961,8 @@ jobs:
             -D BUILD_TOOLS=ON \
             -D BUILD_ENGINE_API=OFF \
             -D BUILD_GODOT_EXTENSION=OFF \
+            -D AETHERKIRI_BUILD_YURIS_CORE_TESTS=ON \
+            -D AETHERKIRI_BUILD_YURIS_PROVIDER_TESTS=ON \
             -D VCPKG_MANIFEST_INSTALL=OFF \
             -D VCPKG_INSTALLED_DIR="${GITHUB_WORKSPACE}/out/macos/debug/vcpkg_installed" \
             -D CMAKE_C_COMPILER_LAUNCHER=ccache \
@@ -974,6 +977,26 @@ jobs:
 
           cmake --build "$test_build_dir" --parallel 4
           ctest --test-dir "$test_build_dir" --show-only=human
+          inventory_file="${RUNNER_TEMP}/aetherkiri-test-inventory.json"
+          ctest --test-dir "$test_build_dir" --show-only=json-v1 > "$inventory_file"
+          required_suites=(
+            --require-executable siglus-runtime-jpeg
+            --require-executable mages-runtime-provider
+            --require-executable mages-host-events
+          )
+          if [[ "$AETHERKIRI_WITH_INTERNAL" == "true" ]]; then
+            required_suites+=(
+              --require-executable aetherinternal-artemis-storage-tests
+              --require-executable engine-api-diagnostics
+              --require-executable advhd-runtime-tests
+              --require-executable advhd-registration-tests
+              --require-executable aether_yuris_compiled_tests
+              --require-executable aether_yuris_provider_tests
+              --require-executable bgi-runtime-vm
+              --require-executable bgi-runtime-provider
+            )
+          fi
+          python3 tools/check_ctest_inventory.py "$inventory_file" "${required_suites[@]}"
           ctest \
             --test-dir "$test_build_dir" \
             --output-on-failure \

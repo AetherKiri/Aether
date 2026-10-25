@@ -56,6 +56,7 @@ evidence for short GBK titles such as Sengoku Rance. Quoted `;` and `//`
 remain part of string values. `gbk` and `sjis` can be set explicitly before
 opening. The default font comes from Aether's staged CJK font; a game-supplied
 `.xsys4rc` can provide font paths.
+Use `path/to/font.ttc:1` to select a face from a TrueType font collection.
 Shaders are embedded in the library and do not depend on the process directory.
 
 ## Building and validation

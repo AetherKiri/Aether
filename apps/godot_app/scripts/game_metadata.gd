@@ -12,6 +12,8 @@ const RUNTIME_TYRANO := "tyranoscript"
 const RUNTIME_RENPY := "renpy"
 const RUNTIME_MAGES := "mages"
 const RUNTIME_XSYSTEM4 := "xsystem4"
+const RUNTIME_XSYSTEM35 := "xsystem35"
+const RUNTIME_SYSTEM3 := "system3"
 const RUNTIME_YURIS := "yuris"
 
 static func inspect(path: String) -> Dictionary:
@@ -61,6 +63,12 @@ static func inspect(path: String) -> Dictionary:
     elif (files.has("system40.ini") or files.has("alicestart.ini")) and _has_extension(files, "ain"):
         result.engine = RUNTIME_XSYSTEM4
         result.signals.append("system4-ain-ini")
+    elif _has_suffix(files, "sa.ald") or files.has("adisk.ald"):
+        result.engine = RUNTIME_XSYSTEM35
+        result.signals.append("system35-scenario-ald")
+    elif (files.has("adisk.dat") or files.has("gdisk.dat") or files.has("agame.dat") or files.has("adisk.pat")) and (files.has("acg.dat") or files.has("gcg.dat")):
+        result.engine = RUNTIME_SYSTEM3
+        result.signals.append("system3-dat")
     elif not hcb.is_empty():
         result.engine = RUNTIME_RFVP
         result.signals.append("fvp-hcb")
@@ -408,3 +416,9 @@ static func _unique_nonempty(values: PackedStringArray) -> PackedStringArray:
         seen[normalized] = true
         result.append(normalized)
     return result
+
+static func _has_suffix(files: PackedStringArray, suffix: String) -> bool:
+    for name in files:
+        if name.ends_with(suffix):
+            return true
+    return false

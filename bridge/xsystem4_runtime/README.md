@@ -47,16 +47,23 @@ The identity uses the AIN filename, size and leading script data, so moving a
 game or updating an iOS app container does not create a new save namespace.
 Existing saves in the imported game's `SaveData` are not automatically copied.
 
-`xsystem4_encoding=auto` detects GBK-family INI files and otherwise uses Shift-JIS.
-`gbk` and `sjis` can be set explicitly before opening. The default font comes
-from Aether's staged CJK font; a game-supplied `.xsys4rc` can provide font paths.
+`xsystem4_encoding=auto` ignores INI comments and gives a GBK-family `GameName`
+priority over untranslated Japanese labels in other values. It then checks the
+remaining configuration and defaults to Shift-JIS when no GBK evidence is found,
+so original Japanese games keep their native encoding. Short samples are
+repeated at line boundaries before statistical detection, avoiding insufficient
+evidence for short GBK titles such as Sengoku Rance. Quoted `;` and `//`
+remain part of string values. `gbk` and `sjis` can be set explicitly before
+opening. The default font comes from Aether's staged CJK font; a game-supplied
+`.xsys4rc` can provide font paths.
+Use `path/to/font.ttc:1` to select a face from a TrueType font collection.
 Shaders are embedded in the library and do not depend on the process directory.
 
 ## Building and validation
 
 `AETHERKIRI_ENABLE_XSYSTEM4` defaults to `ON` for the native app. A local fork can
 be selected with `AETHERKIRI_XSYSTEM4_DIR`. Dependencies include SDL2, FFmpeg,
-FreeType, libsndfile, cglm, libffi, uchardet, Flex and Bison. Linux additionally
+FreeType, libsndfile, SDL2_image, cglm, libffi, uchardet, Flex and Bison. Linux additionally
 needs EGL and GLES development libraries. iOS packaging merges both the adapter
 archive and `libsys4.a` into the existing static extension and links OpenGLES.
 
@@ -85,11 +92,43 @@ Write an atomically replaced `OUTPUT_DIR/command.json` with increasing `seq`:
 {"seq":1,"action":"capture","name":"title"}
 ```
 
-Other actions are `click` (`x`, `y`, `button`: left=0/right=1/middle=2, `count`),
+Other actions are `move` (`x`, `y`), `click` (`x`, `y`, `button`: left=0/right=1/middle=2, `count`),
 `key` (`key`: Windows virtual key code, `count`), `pause`, `resume`, `reopen` and
 `quit`. `status.json` acknowledges each command and reports frame dimensions,
 serial, selected encoding, save directory and errors. Use a fresh output
 directory, or remove an earlier command before starting a new probe.
+
+The native contract includes encoding regressions for Chinese and Japanese
+configurations, mixed-encoding comments, Chinese title priority, inline comments,
+quoted comment markers, ASCII titles and explicit encoding overrides. Each case
+also checks that a non-ASCII AIN filename is resolved before script parsing.
+The scene-keeper contract checks that Chinese dialogue can use original
+Shift-JIS VM structure names, GBK names take priority when both exist, and
+scene serialization follows the current script's structure indices after
+switching games. These tests use synthetic data without game assets.
+
+The AFA contract covers standard v1/v2 indexes and fan-repacked INFO chunks
+whose length excludes the 16-byte INFO header. The reader retries that length
+variant only after normal decompression fails, within the index region, with
+the original checksum and exact output-size checks. Corrupt, truncated and
+out-of-bounds indexes are rejected. Both file I/O and memory-mapped entry
+loading are tested. The compatibility adapter is generated in the build
+directory; imported archives and the pinned libsys4 sources are unchanged.
+
+The CG adapter uses the existing SDL2_image dependency to decode 24/32-bit TGA
+resources, including RLE, image IDs, alpha and both axis origins. It validates
+pixel/packet bounds before decoding and supplies RGBA data and CG metrics to
+the existing renderer. Its synthetic contract checks channel order, alpha,
+orientation and malformed/truncated data without game assets.
+
+Rance Quest's numeric-string CG interface is recognized from its `TapirEngine`
+library when a translation changes the displayed title. MonsterInfo determines
+its own Shift-JIS/GBK grammar encoding independently of dialogue, preserves
+resource identifiers and restores the dialogue encoding after parsing. GBK
+dialogue that requests a Shift-JIS-only FNL face uses Aether's Unicode CJK font;
+Japanese games retain their original FNL face. Synthetic contracts cover
+renamed/Chinese/Japanese/English titles, metadata encoding combinations,
+malformed metadata and font selection across encoding changes.
 
 On 2026-10-18, the supplied **Sengoku Rance v1.01** Chinese build was tested on
 macOS arm64: 800×600 startup, opening movie/audio, title, new game, Chinese
@@ -98,3 +137,41 @@ The same flow was exercised through Aether's main window with its Metal Godot
 renderer. Native pause/resume, closing and repeated reopening during a movie
 were also checked. iOS and Android context/source compile checks passed; device
 playback and Linux playback still need validation. No game files are included.
+
+On 2026-10-24, the supplied Chinese builds of **Rance01** (1024×768) and
+**Rance02** (800×600) were tested with the macOS arm64 native JSON probe: startup,
+title/menu, new game, Chinese dialogue and pointer advancement. Rance02's
+GBK-encoded `CodeName` resolves its Japanese-named AIN file, and 20 consecutive
+dialogue clicks pass the scene-history boundary with original Shift-JIS
+structure names. These checks used
+isolated probe save directories; the packaged app and other platforms were not
+retested for this encoding change.
+
+On 2026-10-25, a regression with the short GBK GameName in **Sengoku Rance**
+was reproduced: Shift-JIS was incorrectly selected, corrupting the title text
+and stalling new-game initialization. After the fix, native and exported macOS
+Debug probes confirmed automatic GBK selection, Chinese title/menu, new-game
+startup and 20 dialogue advances with backgrounds and characters. The packaged
+app used its existing Metal presentation and existing Aether save namespace.
+Synthetic regressions cover short Chinese, Japanese kanji and halfwidth-kana
+titles, alongside the existing mixed-encoding fixtures and explicit overrides.
+
+On 2026-10-25, the supplied Chinese **Rance IX / The Helmanian Revolution**
+build failed before its first frame because `Rance9CG.afa` and `Rance9CGEx.afa`
+store the compressed index payload length rather than the full INFO length.
+After the compatibility fix, the native JSON probe reached the opening movie,
+Chinese title/menu and new-game narration. The exported macOS arm64 Debug app
+also passed the movie, title, new game and 20 dialogue clicks, showing Chinese
+text, backgrounds and characters through Aether's Metal presentation. The
+three native CTests passed. Battle/3D flows, save/load, full-game completion
+and other platforms were not tested for this change. No game assets included.
+
+On 2026-10-25, the supplied Chinese **Rance08 / Rance Quest Magnum** build
+reproduced missing numeric CG bindings, a Japanese MonsterInfo parse failure,
+unsupported TGA title assets and empty Chinese FNL text. The native JSON probe
+confirmed startup, title/menu and Chinese help text after the fixes. The
+exported macOS arm64 Debug app passed title/menu, new game and 20 dialogue
+clicks with Chinese names/text, backgrounds and characters using Metal
+presentation. All six native CTests passed. Battle/3D flows, save/load,
+full-game completion and other platforms remain unverified. Imported game
+assets are unchanged and are not included in this repository.

@@ -115,6 +115,10 @@ option(AETHERKIRI_ENABLE_RFVP "build the experimental native FVP runtime (requir
 option(BUILD_GPU_BRIDGE "build legacy external GPU bridge renderer" OFF)
 option(AETHERKIRI_ENABLE_ONSCRIPTER
        "enable the bundled OnscripterYuri runtime" ON)
+option(AETHERKIRI_ENABLE_SYSTEM3
+       "enable the native AliceSoft System 1/2/3 runtime" ON)
+option(AETHERKIRI_ENABLE_XSYSTEM35
+       "enable the native AliceSoft System 3.5/3.9 runtime" ON)
 option(AETHERKIRI_ENABLE_XSYSTEM4
        "enable the native AliceSoft System 4 runtime" ON)
 option(AETHERKIRI_ENABLE_SIGLUS
@@ -148,6 +152,12 @@ set(AETHERKIRI_INTERNAL_DIR
 set(AETHERKIRI_ONSCRIPTERYURI_DIR
     "${CMAKE_CURRENT_SOURCE_DIR}/packages/OnscripterYuri"
     CACHE PATH "path to an OnscripterYuri runtime checkout")
+set(AETHERKIRI_SYSTEM3_DIR
+    "${CMAKE_CURRENT_SOURCE_DIR}/packages/system3"
+    CACHE PATH "path to a system3 runtime checkout")
+set(AETHERKIRI_XSYSTEM35_DIR
+    "${CMAKE_CURRENT_SOURCE_DIR}/packages/xsystem35"
+    CACHE PATH "path to an xsystem35 runtime checkout")
 set(AETHERKIRI_XSYSTEM4_DIR
     "${CMAKE_CURRENT_SOURCE_DIR}/packages/xsystem4"
     CACHE PATH "path to an xsystem4 runtime checkout")
@@ -297,6 +307,10 @@ if(IOS AND AETHERKIRI_INTERNAL_ENABLED AND AETHERKIRI_ENABLE_CODE_OBFUSCATION)
 endif()
 
 set(AETHERKIRI_BUILD_NATIVE_ONSCRIPTER_TESTS OFF)
+set(AETHERKIRI_BUILD_NATIVE_RUNTIME_TESTS OFF)
+if(ENABLE_TESTS AND NOT (IOS OR ANDROID OR WEB OR EMSCRIPTEN))
+    set(AETHERKIRI_BUILD_NATIVE_RUNTIME_TESTS ON)
+endif()
 if(ENABLE_TESTS AND AETHERKIRI_ENABLE_ONSCRIPTER AND
    NOT (IOS OR ANDROID OR WEB OR EMSCRIPTEN))
     # The provider contract links the real ONS runtime and runtime registry.
@@ -309,7 +323,7 @@ endif()
 # krkr2core/krkr2plugin linkage; the Godot extension host links the glue and
 # installs its engine_legacy_* surface into engine_api through the legacy
 # services table (Phase 2d link flip — engine_api itself never links it).
-if(BUILD_ENGINE_API OR AETHERKIRI_BUILD_NATIVE_ONSCRIPTER_TESTS OR AETHERKIRI_ENABLE_RFVP)
+if(BUILD_ENGINE_API OR AETHERKIRI_BUILD_NATIVE_RUNTIME_TESTS OR AETHERKIRI_ENABLE_RFVP)
     add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/bridge/krkr2_runtime)
     add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/abi)
 endif()
@@ -319,7 +333,15 @@ if(AETHERKIRI_ENABLE_ONSCRIPTER AND
    (BUILD_GODOT_EXTENSION OR AETHERKIRI_BUILD_NATIVE_ONSCRIPTER_TESTS))
     add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/bridge/onscripter_runtime)
 endif()
-if(AETHERKIRI_ENABLE_XSYSTEM4 AND BUILD_GODOT_EXTENSION AND
+if(AETHERKIRI_ENABLE_SYSTEM3 AND (BUILD_GODOT_EXTENSION OR ENABLE_TESTS) AND
+   (APPLE OR ANDROID OR UNIX) AND NOT (WEB OR EMSCRIPTEN))
+    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/bridge/system3_runtime)
+endif()
+if(AETHERKIRI_ENABLE_XSYSTEM35 AND (BUILD_GODOT_EXTENSION OR ENABLE_TESTS) AND
+   (APPLE OR ANDROID OR UNIX) AND NOT (WEB OR EMSCRIPTEN))
+    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/bridge/xsystem35_runtime)
+endif()
+if(AETHERKIRI_ENABLE_XSYSTEM4 AND (BUILD_GODOT_EXTENSION OR ENABLE_TESTS) AND
    (APPLE OR ANDROID OR UNIX) AND NOT (WEB OR EMSCRIPTEN))
     add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/bridge/xsystem4_runtime)
 endif()
@@ -328,7 +350,8 @@ if(AETHERKIRI_ENABLE_SIGLUS AND BUILD_GODOT_EXTENSION AND
     # Web stays excluded until the wasm host path is designed (phase 5).
     add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/bridge/siglus_runtime)
 endif()
-if(AETHERKIRI_ENABLE_MAGES AND BUILD_GODOT_EXTENSION AND
+if(AETHERKIRI_ENABLE_MAGES AND
+    (BUILD_GODOT_EXTENSION OR AETHERKIRI_BUILD_NATIVE_RUNTIME_TESTS) AND
     NOT (WEB OR EMSCRIPTEN))
     # The MAGES. runtime renders offscreen inside the embedded impacto host
     # library (compiled from the packages/AetherMAGES submodule). Built on

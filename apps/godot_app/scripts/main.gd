@@ -2076,6 +2076,8 @@ const RUNTIME_CATSYSTEM2 := "catsystem2"
 const RUNTIME_SIGLUS := "siglus"
 const RUNTIME_RENPY := "renpy"
 const RUNTIME_XSYSTEM4 := "xsystem4"
+const RUNTIME_XSYSTEM35 := "xsystem35"
+const RUNTIME_SYSTEM3 := "system3"
 const RUNTIME_WA2 := "wa2"
 const RUNTIME_BGI := "bgi"
 const RUNTIME_ADVHD := "advhd"
@@ -9654,7 +9656,7 @@ func _game_launch_entry_label(game: Dictionary) -> String:
 func _can_configure_launch_file(game: Dictionary) -> bool:
     return OS.get_name() != "Web" \
         and not builtin_demo.is_game(game) \
-        and _game_runtime_kind(String(game.get("path", ""))) not in [RUNTIME_ONSCRIPTER, RUNTIME_XSYSTEM4] \
+        and _game_runtime_kind(String(game.get("path", ""))) not in [RUNTIME_ONSCRIPTER, RUNTIME_XSYSTEM4, RUNTIME_XSYSTEM35, RUNTIME_SYSTEM3] \
         and String(game.get("type", "Directory")).to_lower() == "directory"
 
 func _set_launch_file_for_selected() -> void:
@@ -12489,6 +12491,8 @@ func _switch_runtime_player(runtime_kind: String) -> bool:
         RUNTIME_BGI,
         RUNTIME_MAGES,
         RUNTIME_XSYSTEM4,
+        RUNTIME_XSYSTEM35,
+        RUNTIME_SYSTEM3,
         RUNTIME_YURIS,
         RUNTIME_ADVHD,
     ]:
@@ -12525,7 +12529,11 @@ func _switch_runtime_player(runtime_kind: String) -> bool:
             diagnostic_session.finish()
         diagnostic_session.start(player, selected_backend)
     _append_log("Runtime selected: %s" % (
-        "AliceSoft System 4"
+        "AliceSoft System 1/2/3"
+        if normalized == RUNTIME_SYSTEM3
+        else "AliceSoft System 3.5/3.9"
+        if normalized == RUNTIME_XSYSTEM35
+        else "AliceSoft System 4"
         if normalized == RUNTIME_XSYSTEM4
         else "YU-RIS"
         if normalized == RUNTIME_YURIS
@@ -13212,6 +13220,8 @@ func _ensure_player_initialized() -> bool:
         RUNTIME_BGI,
         RUNTIME_MAGES,
         RUNTIME_XSYSTEM4,
+        RUNTIME_XSYSTEM35,
+        RUNTIME_SYSTEM3,
         RUNTIME_YURIS,
         RUNTIME_ADVHD,
     ]:
@@ -13228,7 +13238,11 @@ func _ensure_player_initialized() -> bool:
         return false
 
     _append_log("%s engine initialized." % (
-        "AliceSoft System 4"
+        "AliceSoft System 1/2/3"
+        if current_player_runtime_kind == RUNTIME_SYSTEM3
+        else "AliceSoft System 3.5/3.9"
+        if current_player_runtime_kind == RUNTIME_XSYSTEM35
+        else "AliceSoft System 4"
         if current_player_runtime_kind == RUNTIME_XSYSTEM4
         else "YU-RIS" if current_player_runtime_kind == RUNTIME_YURIS
         else "OnscripterYuri"
@@ -15932,6 +15946,10 @@ func _renderer_summary(renderer: String) -> String:
     var summary := selected_backend
     if renderer.contains("backend=onscripter_yuri"):
         summary = "OnscripterYuri (Godot Texture)"
+    elif renderer.contains("backend=system3"):
+        summary = "System 1/2/3 (Godot Texture)"
+    elif renderer.contains("backend=xsystem35"):
+        summary = "System 3.5/3.9 (Godot Texture)"
     elif renderer.contains("backend=xsystem4"):
         summary = "System 4 (Godot Texture)"
     elif renderer.contains("backend=godot_native"):

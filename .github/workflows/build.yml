@@ -737,7 +737,9 @@ jobs:
           persist-credentials: false
 
       - name: Test Mac App Store nested signing
-        run: python3 -m unittest discover -s tests/python -p test_macos_app_store_signing.py -v
+        run: |
+          python3 -m unittest discover -s tests/python -p test_macos_app_store_signing.py -v
+          python3 -m unittest discover -s tests/python -p test_runtime_submodule_initialization.py -v
 
       - name: Initialize private runtime submodules
         if: env.AETHERKIRI_WITH_INTERNAL == 'true'
@@ -1257,6 +1259,7 @@ jobs:
           LD_LIBRARY_PATH: ${{ github.workspace }}/apps/godot_app/bin/linux/debug
         run: |
           python3 -m unittest discover -s tests/python -p test_renpy_host.py
+          python3 -m unittest discover -s tests/python -p test_runtime_submodule_initialization.py -v
           for test in video_library_folders video_library_ui video_import_permissions flash_library tyrano_library tyrano_asar renpy_library xsystem4_library xsystem35_library system3_library rfvp_import; do
             timeout 60 "$GODOT_BIN" --headless --path apps/godot_app \
               --script "res://tests/${test}_test.gd" \

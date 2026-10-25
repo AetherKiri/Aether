@@ -5,6 +5,8 @@ const Probe = preload("res://scripts/runtime_regression_probe.gd")
 class RecordingPlayer:
     extends Node
     var events: Array[Dictionary] = []
+    func is_initialized() -> bool:
+        return true
     func get_frame_source_size() -> Vector2i:
         return Vector2i(1280, 720)
     func get_renderer_info() -> String:

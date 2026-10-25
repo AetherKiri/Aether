@@ -95,8 +95,8 @@ func _initialize() -> void:
     _expect(not app.modal_layer.visible)
     _expect(not app._runtime_requires_beta_access(app.RUNTIME_ONSCRIPTER))
     _expect(app._runtime_requires_beta_access(app.RUNTIME_MINORI))
-    _expect(app._runtime_requires_beta_access(app.RUNTIME_ADVHD))
-    _expect(app._runtime_requires_beta_access(app.RUNTIME_YURIS))
+    _expect(not app._runtime_requires_beta_access(app.RUNTIME_ADVHD))
+    _expect(not app._runtime_requires_beta_access(app.RUNTIME_YURIS))
     _expect(not app._runtime_requires_beta_access(app.RUNTIME_SOFTPAL))
     _expect(not app._runtime_requires_beta_access(app.RUNTIME_KIRIKIRI))
     # CatSystem2 is a released runtime and must not enter the coffee-only
@@ -140,8 +140,8 @@ func _initialize() -> void:
 
 func _check_runtime_launch_access() -> void:
     # Force the Apple Release policy even when running with the debug editor.
-    # SoftPal launches immediately without a coffee transaction; Minori and
-    # WA2, ADV Player HD and YU-RIS perform their entitlement round trip.
+    # SoftPal, ADV Player HD and YU-RIS launch without a coffee transaction;
+    # Minori and WA2 still perform their entitlement round trip.
     for runtime_kind in ["softpal", "minori", "kirikiri", "advhd", "yuris"]:
         for enforce in [true, false]:
             for entitled in [true, false]:
@@ -154,7 +154,7 @@ func _check_runtime_launch_access() -> void:
                 app.enforce_beta_access = enforce
                 app.iap_coffee_state = {"entitled": entitled}
                 app._start_selected_game_after_iap()
-                if enforce and runtime_kind != "softpal":
+                if enforce and runtime_kind in ["minori", "kirikiri"]:
                     _expect(coffee_player.requested_products == ["com.aether.coffee"])
                     _expect(not app.launched)
                     _expect(app.iap_pending_beta_check_id > 0)
@@ -174,13 +174,15 @@ func _check_runtime_launch_access() -> void:
                 app.free()
 
     # A missing StoreKit bridge must not block a released runtime either.
-    var app = RuntimeAccessApp.new()
-    app.player = RefCounted.new()
-    app.selected_game = {"path": "/games/softpal"}
-    app._start_selected_game_after_iap()
-    _expect(app.launched)
-    _expect(not app.denied)
-    _expect(app.iap_pending_beta_game.is_empty())
-    app.player = null
-    app.ui_motion.free()
-    app.free()
+    for runtime_kind in ["softpal", "advhd", "yuris"]:
+        var app = RuntimeAccessApp.new()
+        app.player = RefCounted.new()
+        app.runtime_kind = runtime_kind
+        app.selected_game = {"path": "/games/" + runtime_kind}
+        app._start_selected_game_after_iap()
+        _expect(app.launched)
+        _expect(not app.denied)
+        _expect(app.iap_pending_beta_game.is_empty())
+        app.player = null
+        app.ui_motion.free()
+        app.free()

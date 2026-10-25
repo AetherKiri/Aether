@@ -11891,10 +11891,10 @@ func _start_selected_game_after_iap() -> void:
         _deny_runtime_beta_launch()
 
 func _runtime_requires_beta_access(runtime_kind: String) -> bool:
-    # Minori, ADV Player HD and YU-RIS require an active coffee entitlement
+    # Minori requires an active coffee entitlement
     # in iOS and macOS distribution builds.
     # Provider-backed runtimes such as WA2 are checked separately.
-    return runtime_kind in [RUNTIME_MINORI, RUNTIME_ADVHD, RUNTIME_YURIS]
+    return runtime_kind == RUNTIME_MINORI
 
 func _beta_access_enforcement_enabled(platform_name: String = "") -> bool:
     var effective_platform := platform_name if not platform_name.is_empty() else OS.get_name()

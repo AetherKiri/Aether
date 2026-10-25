@@ -97,6 +97,17 @@ if(TARGET aether_xsystem35_core)
         "${AETHERKIRI_XSYSTEM35_DIR}/src" "${xsystem35_binary_dir}/generated")
     target_link_libraries(aether_xsystem35_encoding_contract PRIVATE aether_xsystem35_core)
     add_test(NAME xsystem35-encoding-contract COMMAND aether_xsystem35_encoding_contract)
+
+    # Compile the real dispatcher with embedded Android selection even on a
+    # desktop host. Missing standalone JNI backends must fail at link time.
+    add_executable(aether_xsystem35_embedded_midi_contract xsystem35_native/midi.c
+        "${AETHERKIRI_XSYSTEM35_DIR}/src/midi.c")
+    target_compile_definitions(aether_xsystem35_embedded_midi_contract PRIVATE
+        XSYSTEM35_EMBEDDED __ANDROID__)
+    target_include_directories(aether_xsystem35_embedded_midi_contract PRIVATE
+        "${AETHERKIRI_XSYSTEM35_DIR}/src" "${xsystem35_binary_dir}/generated")
+    add_test(NAME xsystem35-embedded-midi-contract
+        COMMAND aether_xsystem35_embedded_midi_contract)
 endif()
 
 if(TARGET aether_xsystem35_core)

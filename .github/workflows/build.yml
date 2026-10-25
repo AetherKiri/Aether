@@ -983,6 +983,7 @@ jobs:
             --require-executable siglus-runtime-jpeg
             --require-executable mages-runtime-provider
             --require-executable mages-host-events
+            --require-executable aether_xsystem35_embedded_midi_contract
           )
           if [[ "$AETHERKIRI_WITH_INTERNAL" == "true" ]]; then
             required_suites+=(

@@ -7,25 +7,25 @@ class CoffeePlayer:
     extends RefCounted
 
     var requested_products: Array[String] = []
+    var uses_wa2 := false
 
     func iap_refresh_entitlement(product_id: String) -> int:
         requested_products.append(product_id)
         return 1
 
+    func probe_runtime(runtime_kind: String, _path: String) -> int:
+        return 100 if uses_wa2 and runtime_kind == "wa2" else 0
+
 class RuntimeAccessApp:
     extends "res://scripts/main.gd"
 
     var runtime_kind := RUNTIME_SOFTPAL
-    var uses_wa2 := false
     var enforce_beta_access := true
     var launched := false
     var denied := false
 
     func _game_runtime_kind(_path: String) -> String:
         return runtime_kind
-
-    func _selected_game_uses_wa2() -> bool:
-        return uses_wa2
 
     func _beta_access_enforcement_enabled(_platform_name: String = "") -> bool:
         return enforce_beta_access
@@ -100,7 +100,7 @@ func _initialize() -> void:
     _expect(not app._runtime_requires_beta_access(app.RUNTIME_SOFTPAL))
     _expect(not app._runtime_requires_beta_access(app.RUNTIME_KIRIKIRI))
     # CatSystem2 is a released runtime and must not enter the coffee-only
-    # entitlement path.  WA2 remains the explicitly provider-gated runtime.
+    # entitlement path.
     _expect(not app._runtime_requires_beta_access(app.RUNTIME_CATSYSTEM2))
     _expect(not app._runtime_requires_beta_access("rfvp"))
     _expect(not app._beta_access_enforcement_enabled("Android"))
@@ -140,21 +140,21 @@ func _initialize() -> void:
 
 func _check_runtime_launch_access() -> void:
     # Force the Apple Release policy even when running with the debug editor.
-    # SoftPal, ADV Player HD and YU-RIS launch without a coffee transaction;
-    # Minori and WA2 still perform their entitlement round trip.
-    for runtime_kind in ["softpal", "minori", "kirikiri", "advhd", "yuris"]:
+    # Only Minori performs the coffee entitlement round trip. KiriKiri and its
+    # WHITE ALBUM2 provider both launch without a coffee transaction.
+    for runtime_kind in ["softpal", "minori", "kirikiri", "wa2", "advhd", "yuris"]:
         for enforce in [true, false]:
             for entitled in [true, false]:
                 var app = RuntimeAccessApp.new()
                 var coffee_player = CoffeePlayer.new()
                 app.player = coffee_player
-                app.runtime_kind = runtime_kind
-                app.uses_wa2 = runtime_kind == "kirikiri"
+                app.runtime_kind = "kirikiri" if runtime_kind == "wa2" else runtime_kind
+                coffee_player.uses_wa2 = runtime_kind == "wa2"
                 app.selected_game = {"path": "/games/runtime-access"}
                 app.enforce_beta_access = enforce
                 app.iap_coffee_state = {"entitled": entitled}
                 app._start_selected_game_after_iap()
-                if enforce and runtime_kind in ["minori", "kirikiri"]:
+                if enforce and runtime_kind == "minori":
                     _expect(coffee_player.requested_products == ["com.aether.coffee"])
                     _expect(not app.launched)
                     _expect(app.iap_pending_beta_check_id > 0)
@@ -174,7 +174,7 @@ func _check_runtime_launch_access() -> void:
                 app.free()
 
     # A missing StoreKit bridge must not block a released runtime either.
-    for runtime_kind in ["softpal", "advhd", "yuris"]:
+    for runtime_kind in ["softpal", "kirikiri", "advhd", "yuris"]:
         var app = RuntimeAccessApp.new()
         app.player = RefCounted.new()
         app.runtime_kind = runtime_kind

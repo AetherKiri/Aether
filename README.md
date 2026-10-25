@@ -63,8 +63,8 @@ and **Debug CPU** is a diagnostic fallback only.
   back to ONS events.
 - Native ADV Player HD (AdvHD / WillPlus) support through the optional private
   package, with story playback, save/load, backlog, settings, EXTRA, CG viewing
-  and scene replay for supported games. Available as a coffee beta in iOS/macOS
-  Release builds. Saves and settings live in the game's `savedata/` directory;
+  and scene replay for supported games. Saves and settings live in the game's
+  `savedata/` directory;
   existing Aether saves are imported automatically on first launch.
 - Independent C++17 YU-RIS runtime in the private package, supporting source
   projects and compiled YBN games. Saves live in each game's `savedata/`
@@ -94,10 +94,9 @@ and **Debug CPU** is a diagnostic fallback only.
 - Manual compatibility notes for tested titles in
   [`doc/verified_games.md`](doc/verified_games.md).
 
-In iOS and macOS Release distribution builds, Minori and the
-WHITE ALBUM2 (Leaf TtT / WA2) runtime require an active 30-day coffee
-entitlement. ONScripterYuri, Artemis, CatSystem2, SoftPal, ADV Player HD, and YU-RIS
-are generally available.
+In iOS and macOS Release distribution builds, Minori requires an active 30-day
+coffee entitlement. KiriKiri, WHITE ALBUM2 (Leaf TtT / WA2), ONScripterYuri,
+Artemis, CatSystem2, SoftPal, ADV Player HD, and YU-RIS are generally available.
 Debug builds and Android/Linux releases do not enforce this coffee requirement.
 
 ## Flash Library

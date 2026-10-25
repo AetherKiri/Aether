@@ -11853,9 +11853,12 @@ func _start_selected_game_after_iap() -> void:
         return
     if player == null:
         return
-    # Development artifacts and Android/Linux releases do not use the Apple-only
-    # beta entitlement flow.
-    if not _beta_access_enforcement_enabled():
+    # Released runtimes, development artifacts and Android/Linux releases do not
+    # use the Apple-only beta entitlement flow.
+    if (
+        not _beta_access_enforcement_enabled()
+        or not _runtime_requires_beta_access(selected_runtime_kind)
+    ):
         if (
             selected_runtime_kind == RUNTIME_KIRIKIRI
             and current_player_runtime_kind != RUNTIME_KIRIKIRI
@@ -11866,20 +11869,12 @@ func _start_selected_game_after_iap() -> void:
         return
 
     # StoreKit lives on the KiriKiri host. Return to that host before probing
-    # a provider-backed beta runtime after another runtime exits.
+    # a beta runtime after another runtime exits.
     if (
         current_player_runtime_kind != RUNTIME_KIRIKIRI
         and not _switch_runtime_player(RUNTIME_KIRIKIRI)
     ):
         return
-    var requires_beta_access := (
-        _runtime_requires_beta_access(selected_runtime_kind)
-        or _selected_game_uses_wa2()
-    )
-    if not requires_beta_access:
-        _start_selected_game_after_entitlements()
-        return
-
     iap_pending_beta_game = selected_game.duplicate(true)
     if not _iap_supported_platform() or not player.has_method("iap_refresh_entitlement"):
         _deny_runtime_beta_launch()
@@ -11893,22 +11888,11 @@ func _start_selected_game_after_iap() -> void:
 func _runtime_requires_beta_access(runtime_kind: String) -> bool:
     # Minori requires an active coffee entitlement
     # in iOS and macOS distribution builds.
-    # Provider-backed runtimes such as WA2 are checked separately.
     return runtime_kind == RUNTIME_MINORI
 
 func _beta_access_enforcement_enabled(platform_name: String = "") -> bool:
     var effective_platform := platform_name if not platform_name.is_empty() else OS.get_name()
     return AppAccessPolicy.beta_access_enforced(effective_platform, OS.is_debug_build())
-
-func _selected_game_uses_wa2() -> bool:
-    # WHITE ALBUM2 runs on the KiriKiri host through the compiled Wa2
-    # provider and retains the provider beta-access policy.
-    if player == null or not player.has_method("probe_runtime"):
-        return false
-    var library_path := String(selected_game.get("path", "")).strip_edges()
-    if library_path.is_empty():
-        return false
-    return int(player.probe_runtime("wa2", library_path)) > 0
 
 func _complete_runtime_beta_check() -> void:
     iap_pending_beta_check_id = 0

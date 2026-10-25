@@ -106,6 +106,14 @@ Shift-JIS VM structure names, GBK names take priority when both exist, and
 scene serialization follows the current script's structure indices after
 switching games. These tests use synthetic data without game assets.
 
+The AFA contract covers standard v1/v2 indexes and fan-repacked INFO chunks
+whose length excludes the 16-byte INFO header. The reader retries that length
+variant only after normal decompression fails, within the index region, with
+the original checksum and exact output-size checks. Corrupt, truncated and
+out-of-bounds indexes are rejected. Both file I/O and memory-mapped entry
+loading are tested. The compatibility adapter is generated in the build
+directory; imported archives and the pinned libsys4 sources are unchanged.
+
 On 2026-10-18, the supplied **Sengoku Rance v1.01** Chinese build was tested on
 macOS arm64: 800×600 startup, opening movie/audio, title, new game, Chinese
 dialogue and character rendering, pointer advancement and the in-game menu.
@@ -131,3 +139,13 @@ startup and 20 dialogue advances with backgrounds and characters. The packaged
 app used its existing Metal presentation and existing Aether save namespace.
 Synthetic regressions cover short Chinese, Japanese kanji and halfwidth-kana
 titles, alongside the existing mixed-encoding fixtures and explicit overrides.
+
+On 2026-10-25, the supplied Chinese **Rance IX / The Helmanian Revolution**
+build failed before its first frame because `Rance9CG.afa` and `Rance9CGEx.afa`
+store the compressed index payload length rather than the full INFO length.
+After the compatibility fix, the native JSON probe reached the opening movie,
+Chinese title/menu and new-game narration. The exported macOS arm64 Debug app
+also passed the movie, title, new game and 20 dialogue clicks, showing Chinese
+text, backgrounds and characters through Aether's Metal presentation. The
+three native CTests passed. Battle/3D flows, save/load, full-game completion
+and other platforms were not tested for this change. No game assets included.

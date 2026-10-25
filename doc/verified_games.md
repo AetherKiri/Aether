@@ -2,7 +2,7 @@
 
 [简体中文](verified_games.zh-CN.md)
 
-Last updated: 2026-10-24
+Last updated: 2026-10-25
 
 This document tracks games that have been manually smoke-tested with
 AetherKiri. It is a compatibility notebook, not a guarantee that every route,
@@ -20,6 +20,7 @@ movie, plugin path, or save state in a title has been exhaustively validated.
 
 | Game | Verified platforms / builds | Verified scope | Result | Verifier | Notes |
 | --- | --- | --- | --- | --- | --- |
+| 兰斯9 赫尔曼革命 / Rance IX (Chinese) | macOS arm64 debug, native JSON probe and Aether window | Native xsystem4, fan-repacked AFA index loading, 1280×720 frames, opening movie, Chinese title/menu, new game, Chinese narration/dialogue and characters, 20 dialogue clicks | Flow verified | Local JSON probe | Checked on 2026-10-25. AFA INFO payload-length variant is handled without modifying game archives. Three native CTests passed. Battle/3D flows, save/load, other platforms and full-game completion remain unverified. No game assets included. |
 | 兰斯4.1 / Rance4.1 (Chinese, DAT) | macOS arm64 debug, native JSON probe and Aether window | Native system3, 640×400 frames, Chinese menu/dialogue, 20 dialogue advances, MP3 music, imported-save loading, an isolated save slot and loading it after reopening | Flow verified | Local JSON probe | Checked on 2026-10-24. Writes use an isolated test directory and preserve imported saves. Other platforms and full-game completion remain unverified. No game assets included. |
 | 兰斯4.2 / Rance4.2 (Chinese, DAT) | macOS arm64 debug, native JSON probe and Aether window | Native system3, 640×400 frames, Chinese menu/dialogue, backgrounds/characters, 20 dialogue advances, MP3 music, imported-save loading, pause/resume and reopening | Flow verified | Local JSON probe | Checked on 2026-10-24. Actual saving, other platforms and full-game completion remain unverified. No game assets included. |
 | 兰斯IV －教团的遗产－ / RanceIV (Chinese, ALD) | macOS arm64 debug, native JSON probe and Aether window | Native xsystem35, 640×480 startup, entering the game, Chinese UI/dialogue, map navigation, MP3 music, pause/resume and reopening | Flow verified | Local JSON probe | Checked on 2026-10-24 with isolated saves. Other platforms and save/load flows remain unverified. No game assets included. |

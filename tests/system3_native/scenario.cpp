@@ -3,17 +3,27 @@
 #include <filesystem>
 #include <fstream>
 #include <iostream>
+#include <string>
 
 int main(int argc, char **argv) {
     if(argc != 4)
         return 2;
     namespace fs = std::filesystem;
-    const auto root = fs::temp_directory_path() /
-        ("aether-system3-scenario-" +
+    const auto prefix = fs::temp_directory_path() /
+        ("aether-system3-scenario-" + std::string(argv[2]) + "-" +
          std::to_string(
              std::chrono::steady_clock::now().time_since_epoch().count()));
+    // Parallel processes can observe the same clock tick. Reserve the fixture
+    // directory atomically so they cannot overwrite each other's game files.
+    fs::path root;
+    for(unsigned attempt = 0;; ++attempt) {
+        root = prefix.string() + "-" + std::to_string(attempt);
+        if(fs::create_directory(root))
+            break;
+    }
     fs::create_directories(root / "game");
     fs::create_directories(root / "saves");
+    std::cerr << "Scenario fixture: " << root << '\n';
     for(const auto &file : fs::directory_iterator(argv[1]))
         if(file.path().extension() == ".DAT")
             fs::copy_file(file.path(), root / "game" / file.path().filename());

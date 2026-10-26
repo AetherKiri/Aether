@@ -238,6 +238,8 @@ fn parse(path: &Path, nls: Nls) -> Result<Parser> {
     Ok(parser)
 }
 
+include!("input_host.rs");
+
 struct Core {
     world: Box<GameData>,
     parser: Parser,
@@ -247,6 +249,7 @@ struct Core {
     renderer: SoftRenderer,
     size: (u32, u32),
     serial: u64,
+    pointer_input: HostPointerInput,
     paused: bool,
     paused_at: Option<Instant>,
     dissolve: DissolveType,
@@ -324,6 +327,7 @@ impl Core {
             renderer,
             size,
             serial: 0,
+            pointer_input: HostPointerInput::default(),
             paused: false,
             paused_at: None,
             dissolve: DissolveType::None,
@@ -336,6 +340,7 @@ impl Core {
             return Ok(0);
         }
         let gd = &mut *self.world;
+        self.pointer_input.apply_frame(&mut gd.inputs_manager, self.size);
         gd.motion_manager.text_manager.set_render_scale(1.0);
         gd.time_mut_ref()
             .set_external_delta(Duration::from_millis(delta as u64));
@@ -444,7 +449,7 @@ impl Core {
         self.world.video_manager.pause_host(paused, elapsed);
         // BGM, effects and movie soundtracks share the upstream audio backend.
         self.world.audio_manager().backend().pause_host(paused);
-        self.world.inputs_manager.cancel_host_input();
+        self.pointer_input.cancel(&mut self.world.inputs_manager);
         self.paused = paused;
         Ok(0)
     }
@@ -620,27 +625,19 @@ pub unsafe extern "C" fn aether_rfvp_input(
             x.is_finite() && y.is_finite() && wheel.is_finite(),
             "Invalid input coordinates"
         );
-        let input = &mut core.world.inputs_manager;
         if modifiers & (1 << 30) != 0 {
-            input.cancel_host_input();
+            core.pointer_input.cancel(&mut core.world.inputs_manager);
             return Ok(0);
         }
         if (1..=4).contains(&kind) {
-            input.notify_mouse_move(x as i32, y as i32);
-            input.set_mouse_in(
-                x >= 0.0 && y >= 0.0 && x < core.size.0 as f64 && y < core.size.1 as f64,
-            );
+            core.pointer_input.enqueue(PointerEvent {
+                kind, x: x as i32, y: y as i32, button,
+                wheel: wheel.round().clamp(-1200.0, 1200.0) as i32,
+            })?;
+            return Ok(0);
         }
-        let mouse = if button == 1 {
-            KeyCode::MouseRight
-        } else {
-            KeyCode::MouseLeft
-        };
+        let input = &mut core.world.inputs_manager;
         match kind {
-            1 => input.notify_mouse_down(mouse),
-            2 => (),
-            3 => input.notify_mouse_up(mouse),
-            4 => input.notify_mouse_wheel(wheel.round().clamp(-1200.0, 1200.0) as i32),
             5 => {
                 if let Some(key) = key(code) {
                     input.notify_keycode_down(key, false);
@@ -721,6 +718,30 @@ pub unsafe extern "C" fn aether_rfvp_error(p: *mut c_void) -> *const c_char {
         .as_ref()
         .map_or(ptr::null(), |s| s.error.as_ptr())
 }
+#[no_mangle]
+pub unsafe extern "C" fn aether_rfvp_debug(
+    p: *mut c_void, output: *mut c_char, size: u32, written: *mut u32,
+) -> i32 {
+    if !written.is_null() { *written = 0; }
+    if output.is_null() || written.is_null() { return -1; }
+    call(p, |session| {
+        let core = session.core()?;
+        let globals = GLOBAL.lock().unwrap();
+        let bytes = serde_json::to_vec(&serde_json::json!({
+            "runtime": "rfvp", "frame_serial": core.serial,
+            "global_base": globals.non_volatile_count(),
+            "game_globals": globals.snapshot_non_volatile(),
+            "system_globals": globals.snapshot_volatile_globals(),
+            "text": core.world.motion_manager.text_manager.host_text_diagnostics(),
+        }))?;
+        if bytes.len() >= size as usize { return Ok(-1); }
+        ptr::copy_nonoverlapping(bytes.as_ptr(), output.cast(), bytes.len());
+        *output.add(bytes.len()) = 0;
+        *written = bytes.len() as u32;
+        Ok(0)
+    })
+}
+
 #[no_mangle]
 pub unsafe extern "C" fn aether_rfvp_log(output: *mut c_char, size: usize) -> u32 {
     if output.is_null() || size < 4096 {

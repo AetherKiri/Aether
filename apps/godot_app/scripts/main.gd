@@ -2489,6 +2489,8 @@ var input_trace_enabled := false
 var input_trace_accum := 0.0
 var input_trace_received := 0
 var input_trace_forwarded := 0
+var input_total_forwarded := 0
+var input_total_send_failed := 0
 var input_trace_blocked := 0
 var input_trace_throttled := 0
 var input_trace_busy := 0
@@ -17451,8 +17453,10 @@ func _on_game_virtual_key_event(
         pressed, key_code, modifiers, unicode_codepoint
     ))
     input_trace_forwarded += 1
+    input_total_forwarded += 1
     if result != ENGINE_RESULT_OK:
         input_trace_send_failed += 1
+        input_total_send_failed += 1
     if input_trace_enabled:
         _write_probe_marker(
             "game_virtual_key pressed=%s key=0x%02X modifiers=0x%02X result=%d" % [
@@ -18078,8 +18082,10 @@ func _send_game_pointer_event(event_type: int, pointer_id: int, x: float, y: flo
             result,
         ])
     input_trace_forwarded += 1
+    input_total_forwarded += 1
     if result != ENGINE_RESULT_OK:
         input_trace_send_failed += 1
+        input_total_send_failed += 1
     if input_trace_enabled and event_type in [POINTER_DOWN, POINTER_UP]:
         var trace_line := "input_event type=%d pid=%d x=%.1f y=%.1f button=%d result=%d loading=%s runtime=%s" % [
             event_type,

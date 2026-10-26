@@ -106,6 +106,17 @@ Godot's input mapping regression covers rfvp
 at a mismatched presentation size while preserving KiriKiri's surface mapping.
 Games open on a native worker thread, matching the application's asynchronous
 startup, and then tick, handle input and close on the host thread.
+Pointer events retain their order across VM ticks. Each mouse button changes
+state at most once per tick, so a short tap cannot publish its press and release
+edges together and bypass a slider's setting callback. Consecutive moves are
+coalesced; cancellation and pause discard queued input and clear held buttons.
+Host pointer regressions cover short taps, repeated clicks and cancellation.
+
+The provider's on-demand JSON diagnostics expose the two global regions,
+their boundary, and loaded text slots' speed and reveal counts. Runtime probes
+can check both the script's option display and the value consumed by the text
+engine, including after a save-directory seed is loaded in a fresh process.
+
 The macOS arm64 Debug app has also been smoke-tested through the normal library
 import/launch flow, presenting the painter's 1024x640 frame via Godot/Metal.
 A local smoke test with the original Shift-JIS script of

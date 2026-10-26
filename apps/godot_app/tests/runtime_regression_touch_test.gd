@@ -1,6 +1,8 @@
 extends SceneTree
 
 const Probe = preload("res://scripts/runtime_regression_probe.gd")
+const VirtualControls = preload("res://scripts/game_virtual_controls.gd")
+const DesignTokens = preload("res://scripts/ui/aether_design_tokens.gd")
 
 class RecordingPlayer:
     extends Node
@@ -20,6 +22,7 @@ class RecordingPlayer:
 class TouchApp:
     extends "res://scripts/main.gd"
     var force_busy := false
+    var reset_trace_counters := false
     func _ready() -> void:
         pass
     func _process(_delta: float) -> void:
@@ -32,6 +35,9 @@ class TouchApp:
         pass
     func _probe_advance(frames: int) -> bool:
         for _frame in frames:
+            if reset_trace_counters:
+                input_trace_forwarded = 0
+                input_trace_send_failed = 0
             _flush_delayed_touch_releases()
             _flush_pending_touch_press_if_ready()
             await get_tree().process_frame
@@ -80,6 +86,13 @@ func _run() -> void:
     assert(player.events[2].time - player.events[1].time >= app.TOUCH_CLICK_HOLD_MS)
     assert(app.delayed_touch_releases.is_empty())
 
+    player.events.clear()
+    app.reset_trace_counters = true
+    assert(await probe.tap({"x": 1200, "y": 300, "hold_frames": 0}, "same-frame-touch"))
+    _check_edges(player.events, app, 100000)
+    assert(app.delayed_touch_releases.is_empty())
+    app.reset_trace_counters = false
+
     # A stationary hold is dispatched before release; it must not be turned
     # into a second tap or leave the native button held afterwards.
     player.events.clear()
@@ -108,11 +121,42 @@ func _run() -> void:
     assert(player.events.is_empty())
     assert(probe.report.back().reason == "gesture not forwarded")
 
+    # Mouse mode uses relative touchpad motion and generates both native
+    # button edges on finger release, even when the finger is held for frames.
+    app.force_busy = false
+    app.game_running = true
+    app.cached_startup_state = app.STARTUP_SUCCEEDED
+    var controls := VirtualControls.new()
+    app.add_child(controls)
+    controls.setup(DesignTokens.new())
+    controls.layout(Vector2(1000, 750), Rect2(0, 0, 1000, 750))
+    app.game_virtual_controls = controls
+    controls.pointer_move_requested.connect(app._on_game_virtual_pointer_move)
+    controls.pointer_button_requested.connect(app._on_game_virtual_pointer_button)
+    player.events.clear()
+    assert(await probe.virtual_mouse_click({"x": 1200, "y": 300, "hold_frames": 3}, "mouse-mode-trackpad"))
+    var edges: Array[Dictionary] = []
+    for event in player.events:
+        assert(event.pointer == app.VIRTUAL_CONTROLS_POINTER_ID)
+        if event.kind != app.POINTER_MOVE:
+            edges.append(event)
+    assert(edges.size() == 2)
+    assert(edges[0].kind == app.POINTER_DOWN and edges[1].kind == app.POINTER_UP)
+    assert(edges[0].position.distance_to(Vector2(1200, 300)) <= 1.0)
+    assert(edges[1].position.distance_to(Vector2(1200, 300)) <= 1.0)
+    assert(probe.report.back().mode == "Mode: Mouse")
+    assert(probe.report.back().drags > 0)
+    assert(probe.report.back().edges[0].frame == probe.report.back().edges[1].frame)
+    player.events.clear()
+    app.app_lifecycle_paused = true
+    assert(not await probe.virtual_mouse_click({"x": 200, "y": 300}, "paused-mouse-mode"))
+    assert(player.events.is_empty())
+
     DirAccess.remove_absolute(ProjectSettings.globalize_path(directory.path_join("regression-result.json")))
     DirAccess.remove_absolute(ProjectSettings.globalize_path(directory))
     app.ui_motion.free()
     app.free()
-    print("Runtime regression touch mapping, mobile release and suppression checks passed")
+    print("Runtime regression touch, virtual Mouse-mode routing and suppression checks passed")
     quit(0)
 
 func _check_edges(events: Array[Dictionary], app: Node, pointer: int) -> void:

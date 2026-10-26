@@ -237,6 +237,10 @@ engine_result_t TextInput(void*, uint32_t* flags) {
     if (!flags) return ENGINE_RESULT_INVALID_ARGUMENT;
     *flags = 0; return ENGINE_RESULT_OK;
 }
+engine_result_t Debug(void* p, char* output, uint32_t size, uint32_t* written) {
+    if (!p) return ENGINE_RESULT_INVALID_ARGUMENT;
+    return cast(p)->result(aether_rfvp_debug(cast(p)->core, output, size, written));
+}
 const char* Error(void* p) { return p ? cast(p)->error.c_str() : "Invalid rfvp runtime"; }
 const engine_runtime_provider_v1_t& Provider() {
     static const auto provider = [] {
@@ -249,6 +253,7 @@ const engine_runtime_provider_v1_t& Provider() {
         p.get_godot_native_frame_texture = NativeFrame;
         p.get_frame_rendered_flag = Rendered; p.get_renderer_info = Renderer;
         p.get_text_input_state = TextInput; p.get_last_error = Error;
+        p.get_plugin_debug_info = Debug;
         return p;
     }();
     return provider;

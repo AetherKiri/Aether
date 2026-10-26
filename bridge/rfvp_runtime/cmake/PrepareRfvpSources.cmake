@@ -37,6 +37,7 @@ function(aetherkiri_prepare_rfvp root rfvp_dir output)
     rfvp_replace("${output}/crates/rfvp/Cargo.toml"
         "crate-type = [\"rlib\", \"cdylib\"]" "crate-type = [\"rlib\", \"staticlib\"]")
     file(COPY "${CMAKE_CURRENT_FUNCTION_LIST_DIR}/../rust/aetherkiri_host.rs" DESTINATION "${src}")
+    file(COPY "${CMAKE_CURRENT_FUNCTION_LIST_DIR}/../rust/input_host.rs" DESTINATION "${src}")
     file(APPEND "${src}/lib.rs" "\npub mod aetherkiri_host;\n")
     foreach(os ios android)
         rfvp_replace("${src}/lib.rs"

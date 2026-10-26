@@ -15,6 +15,7 @@ const RUNTIME_XSYSTEM4 := "xsystem4"
 const RUNTIME_XSYSTEM35 := "xsystem35"
 const RUNTIME_SYSTEM3 := "system3"
 const RUNTIME_YURIS := "yuris"
+const RUNTIME_SYSTEMC := "systemc"
 
 static func inspect(path: String) -> Dictionary:
     var root := path

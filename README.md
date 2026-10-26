@@ -45,6 +45,7 @@ Godot App Shell
             ├─ BGI Runtime ──────── BGI / Ethornell (private package)
             ├─ ADVHD Runtime ────── ADV Player HD / WillPlus (private package)
             ├─ SoftPal Runtime ──── SoftPal (private package)
+            ├─ SystemC Runtime ──── CandySoft / Interheart (private package)
             └─ YU-RIS Runtime ───── YU-RIS (private package)
 ```
 
@@ -70,6 +71,9 @@ and **Debug CPU** is a diagnostic fallback only.
   projects and compiled YBN games. Saves live in each game's `savedata/`
   directory; older per-game application saves are imported without overwriting
   local saves. Read-only game directories use isolated application storage.
+- SystemC ACT/SPT runtime through the private package, with E-mote SDK rendering,
+  isolated saves, choices, backlog, movies, galleries and postgame replay.
+  See [scope and validation](doc/systemc_runtime.md).
 - Export presets for macOS, iOS/iPadOS, Android, Web, and Linux.
 - A separate Flash library powered by native Ruffle, with sound, keyboard,
   mouse, touch, and the visual-novel virtual controls.

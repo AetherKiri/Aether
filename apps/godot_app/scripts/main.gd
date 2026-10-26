@@ -2084,6 +2084,7 @@ const RUNTIME_ADVHD := "advhd"
 const RUNTIME_TYRANO := "tyranoscript"
 const RUNTIME_MAGES := "mages"
 const RUNTIME_YURIS := "yuris"
+const RUNTIME_SYSTEMC := "systemc"
 const RUNTIME_PLAYER_CLASS := "AetherRuntimePlayer"
 const ONSCRIPTER_SCRIPT_MARKERS := [
     "0.txt",
@@ -4540,6 +4541,10 @@ func _apply_engine_options() -> void:
     player.set_engine_option("mock_enabled", "1" if mock_enabled else "0")
     # Preserve the VM's complete effect pass on normal GUI launches. An
     # undersized host override breaks WA(1) ordering and animation cadence.
+    if current_player_runtime_kind == RUNTIME_SYSTEMC:
+        player.set_engine_option("SYSTEMC_SCRIPT_ENCODING",
+            preload("res://scripts/systemc_engine_options.gd").script_encoding(
+                selected_game, _runtime_string("AETHERKIRI_SYSTEMC_ENCODING", "")))
     if current_player_runtime_kind == RUNTIME_YURIS:
         var yuris_options = preload("res://scripts/yuris_engine_options.gd")
         player.set_engine_option(
@@ -8680,17 +8685,18 @@ func _detail_tools(game: Dictionary) -> FlowContainer:
     tools.add_theme_constant_override("h_separation", 8)
     tools.add_theme_constant_override("v_separation", 8)
     tools.add_child(_detail_launch_button())
-    if _game_runtime_kind(String(game.get("path", ""))) == RUNTIME_YURIS:
-        var yuris_options = preload("res://scripts/yuris_engine_options.gd")
+    var detail_runtime := _game_runtime_kind(String(game.get("path", "")))
+    if detail_runtime in [RUNTIME_YURIS, RUNTIME_SYSTEMC]:
+        var encoding_options = preload("res://scripts/systemc_engine_options.gd") if detail_runtime == RUNTIME_SYSTEMC else preload("res://scripts/yuris_engine_options.gd")
         var encoding := OptionButton.new()
         encoding.custom_minimum_size = Vector2(190, 44)
         encoding.tooltip_text = _t("detail.script_encoding")
-        for value: String in yuris_options.SCRIPT_ENCODINGS:
+        for value: String in encoding_options.SCRIPT_ENCODINGS:
             encoding.add_item(_t("detail.script_encoding") + ": " + value)
-        encoding.select(yuris_options.SCRIPT_ENCODINGS.find(yuris_options.script_encoding(game)))
+        encoding.select(encoding_options.SCRIPT_ENCODINGS.find(encoding_options.script_encoding(game)))
         encoding.item_selected.connect(func(index: int):
             _update_game(String(game.get("path", "")), {
-                yuris_options.SCRIPT_ENCODING_FIELD: yuris_options.SCRIPT_ENCODINGS[index]
+                encoding_options.SCRIPT_ENCODING_FIELD: encoding_options.SCRIPT_ENCODINGS[index]
             })
         )
         tools.add_child(encoding)
@@ -11219,6 +11225,8 @@ func _game_runtime_kind(path: String) -> String:
         return runtime_kind
     if player != null and player.has_method("probe_runtime"):
         # Format detection stays in the optional private provider.
+        if int(player.probe_runtime(RUNTIME_SYSTEMC, root)) > 0:
+            return RUNTIME_SYSTEMC
         if int(player.probe_runtime(RUNTIME_ADVHD, root)) >= 90:
             return RUNTIME_ADVHD
         if int(player.probe_runtime(RUNTIME_BGI, root)) >= 90:
@@ -12479,6 +12487,7 @@ func _switch_runtime_player(runtime_kind: String) -> bool:
         RUNTIME_XSYSTEM4,
         RUNTIME_XSYSTEM35,
         RUNTIME_SYSTEM3,
+        RUNTIME_SYSTEMC,
         RUNTIME_YURIS,
         RUNTIME_ADVHD,
     ]:
@@ -12521,6 +12530,8 @@ func _switch_runtime_player(runtime_kind: String) -> bool:
         if normalized == RUNTIME_XSYSTEM35
         else "AliceSoft System 4"
         if normalized == RUNTIME_XSYSTEM4
+        else "SystemC"
+        if normalized == RUNTIME_SYSTEMC
         else "YU-RIS"
         if normalized == RUNTIME_YURIS
         else "OnscripterYuri"
@@ -13173,6 +13184,13 @@ func _ensure_player_initialized() -> bool:
         # Other probes may supply their own disposable replay directory.
         user_dir = ProbeConfig.string_value(ProbeConfig.load(), "user_dir", user_dir)
         cache_dir = user_dir.path_join("cache")
+    elif current_player_runtime_kind == RUNTIME_SYSTEMC:
+        var library_path := String(selected_game.get("path", ""))
+        if not library_path.is_empty():
+            var options = preload("res://scripts/systemc_engine_options.gd")
+            var game_root := _game_runtime_root(library_path)
+            cache_dir = options.cache_directory(user_dir, game_root)
+            user_dir = options.user_directory(user_dir, game_root)
     elif current_player_runtime_kind == RUNTIME_YURIS:
         var library_path := String(selected_game.get("path", ""))
         if not library_path.is_empty():
@@ -13208,6 +13226,7 @@ func _ensure_player_initialized() -> bool:
         RUNTIME_XSYSTEM4,
         RUNTIME_XSYSTEM35,
         RUNTIME_SYSTEM3,
+        RUNTIME_SYSTEMC,
         RUNTIME_YURIS,
         RUNTIME_ADVHD,
     ]:
@@ -13230,6 +13249,7 @@ func _ensure_player_initialized() -> bool:
         if current_player_runtime_kind == RUNTIME_XSYSTEM35
         else "AliceSoft System 4"
         if current_player_runtime_kind == RUNTIME_XSYSTEM4
+        else "SystemC" if current_player_runtime_kind == RUNTIME_SYSTEMC
         else "YU-RIS" if current_player_runtime_kind == RUNTIME_YURIS
         else "OnscripterYuri"
         if current_player_runtime_kind == RUNTIME_ONSCRIPTER

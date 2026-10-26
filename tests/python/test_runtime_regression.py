@@ -1,8 +1,10 @@
 import importlib.util
 import json
+import plistlib
 from pathlib import Path
 import tempfile
 import unittest
+from types import SimpleNamespace
 
 
 SPEC = importlib.util.spec_from_file_location(
@@ -12,6 +14,23 @@ SPEC.loader.exec_module(RUNNER)
 
 
 class DeviceCompletionTests(unittest.TestCase):
+    def test_exported_macos_app_uses_its_own_pack_without_path_override(self):
+        with tempfile.TemporaryDirectory() as directory:
+            app = Path(directory) / "Example.app"
+            executable = app / "Contents/MacOS/Example"
+            executable.parent.mkdir(parents=True)
+            executable.write_bytes(b"fixture")
+            (app / "Contents/Info.plist").write_bytes(plistlib.dumps({"CFBundleExecutable": "Example"}))
+            args = SimpleNamespace(app=app, project=None, godot="unused")
+            self.assertEqual(RUNNER.macos_command(args), [str(executable.resolve())])
+            executable.unlink()
+            with self.assertRaises(ValueError):
+                RUNNER.macos_command(args)
+
+    def test_editor_launch_retains_project_path(self):
+        args = SimpleNamespace(app=None, project=Path("example"), godot="godot")
+        self.assertEqual(RUNNER.macos_command(args), ["godot", "--path", str(Path("example").resolve())])
+
     def test_pass_before_engine_teardown_is_not_completion(self):
         self.assertIsNone(RUNNER.cleanup_result({"events": [{"event": "passed"}]}))
 

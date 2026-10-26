@@ -21,6 +21,7 @@ const DIRECTORY_RUNTIME_KINDS := [
     "xsystem4",
     "xsystem35",
     "system3",
+    "systemc",
 ]
 const YURIS_USER_STARTUP_CANDIDATES := [
     # The stock YU-RIS package enters through this script. It owns the

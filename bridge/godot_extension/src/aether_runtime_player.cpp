@@ -12966,6 +12966,34 @@ private:
                         runtime_audio_players_[slot]->set_stream_paused(fields[1] == "1");
                     }
                 }
+            } else if (name == "runtime_audio_seek") {
+                const PackedStringArray fields = value.split("\t");
+                bool valid = fields.size() == 2;
+                const int64_t slot = valid ? fields[0].to_int() : -1;
+                const double seconds = valid ? fields[1].to_float() : -1.0;
+                valid = valid && std::isfinite(seconds) && seconds >= 0.0 &&
+                    slot >= 0 && slot < static_cast<int64_t>(runtime_audio_players_.size()) &&
+                    runtime_audio_players_[slot] != nullptr;
+                if (valid) {
+                    auto *audio_player = runtime_audio_players_[slot];
+                    const Ref<AudioStream> stream = audio_player->get_stream();
+                    const double duration = stream.is_valid() ? stream->get_length() : 0.0;
+                    const Ref<AudioStreamOggVorbis> ogg = stream;
+                    const Ref<AudioStreamMP3> mp3 = stream;
+                    const Ref<AudioStreamWAV> wav = stream;
+                    const bool loop = (ogg.is_valid() && ogg->has_loop()) ||
+                        (mp3.is_valid() && mp3->has_loop()) ||
+                        (wav.is_valid() && wav->get_loop_mode() != AudioStreamWAV::LOOP_DISABLED);
+                    if (duration > 0.0 && seconds >= duration && !loop) {
+                        audio_player->stop();
+                        // The regular completion poll emits the non-looping
+                        // channel's completion event on the next host frame.
+                    } else {
+                        audio_player->seek(duration > 0.0 && loop ? std::fmod(seconds, duration) : seconds);
+                    }
+                } else {
+                    submit_platform_response("runtime_audio", "result=error&message=invalid_audio_seek");
+                }
             } else if (name == "minori_audio" || name == "runtime_audio" || name == "runtime_audio_gain") {
                 const PackedStringArray fields = value.split("\t");
                 if (fields.size() != 8 || !update_runtime_audio(fields, name == "runtime_audio_gain", name != "minori_audio")) {
@@ -12976,13 +13004,15 @@ private:
                 }
             } else if (name == "minori_movie" || name == "runtime_movie") {
                 const PackedStringArray fields = value.split("\t");
-                if (fields.size() != 6 || !media_open(fields[0]) ||
+                if ((fields.size() != 6 && fields.size() != 7) || !media_open(fields[0]) ||
                     media_play() != ENGINE_RESULT_OK) {
                     const String message = last_error_.replace("\n", " ");
                     submit_platform_response(
                         name, "result=error&message=" + message);
                     media_close();
                 } else {
+                    runtime_movie_operation_ = name;
+                    runtime_movie_token_ = fields.size() == 7 ? fields[6] : String();
                     runtime_movie_active_ = true;
                     runtime_movie_skippable_ = fields[5] == "1";
                     update_runtime_movie();
@@ -13542,7 +13572,8 @@ private:
         runtime_movie_active_ = false;
         runtime_movie_skippable_ = false;
         media_close();
-        submit_platform_response("minori_movie", result);
+        submit_platform_response(runtime_movie_operation_, runtime_movie_token_.is_empty()
+            ? result : result + String("&token=") + runtime_movie_token_.uri_encode());
     }
 
     void update_runtime_movie() {
@@ -14034,6 +14065,8 @@ private:
     uint32_t media_width_ = 0;
     uint32_t media_height_ = 0;
     bool runtime_movie_active_ = false;
+    String runtime_movie_token_;
+    String runtime_movie_operation_ = "minori_movie";
     bool runtime_movie_skippable_ = false;
     Label *runtime_message_speaker_label_ = nullptr;
     Label *runtime_message_label_ = nullptr;

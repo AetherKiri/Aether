@@ -24,6 +24,18 @@ python3 tools/run_runtime_regression.py /path/to/case.json \
   --output /path/to/regression-artifacts
 ```
 
+For an exported macOS app, replace `--project` with `--app`:
+
+```sh
+python3 tools/run_runtime_regression.py /path/to/case.json \
+  --platform macos --app out/godot/macos/debug/Aether.app \
+  --user-data-dir '/path/to/the/app/user-data-directory' \
+  --game '/path/to/game' --output /path/to/regression-artifacts
+```
+
+This launches the bundle's executable and its packaged resources directly.
+It also works with export templates that disable `--path` overrides.
+
 iPad, with the development app already installed and trusted, the game already
 in its Documents directory, and the device unlocked:
 

@@ -54,6 +54,15 @@ mod host_snapshot_tests {
 }
 
 impl TextManager {
+    pub(crate) fn host_text_diagnostics(&self) -> serde_json::Value {
+        serde_json::Value::Array(self.items.iter().enumerate()
+            .filter(|(_, item)| item.loaded)
+            .map(|(id, item)| serde_json::json!({
+                "id": id, "speed": item.speed, "total_chars": item.total_chars,
+                "visible_chars": item.visible_chars, "suspended": item.is_suspended,
+            })).collect())
+    }
+
     pub(crate) fn capture_host_playback(&self) -> Vec<HostTextPlayback> {
         self.items
             .iter()

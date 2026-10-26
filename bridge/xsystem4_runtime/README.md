@@ -59,6 +59,13 @@ opening. The default font comes from Aether's staged CJK font; a game-supplied
 Use `path/to/font.ttc:1` to select a face from a TrueType font collection.
 Shaders are embedded in the library and do not depend on the process directory.
 
+Resource archives normally use the AIN script's basename. Some translations
+rename the script while retaining the original ALD/AFA names. If no archive
+matches the selected script, the runtime uses the sole archive family in the
+game directory. Exact script matches take priority; multiple fallback families
+are reported and left unselected. Matching ignores ASCII case, keeps ALD
+volumes together and does not mix similarly prefixed archive families.
+
 ## Building and validation
 
 `AETHERKIRI_ENABLE_XSYSTEM4` defaults to `ON` for the native app. A local fork can
@@ -129,6 +136,12 @@ dialogue that requests a Shift-JIS-only FNL face uses Aether's Unicode CJK font;
 Japanese games retain their original FNL face. Synthetic contracts cover
 renamed/Chinese/Japanese/English titles, metadata encoding combinations,
 malformed metadata and font selection across encoding changes.
+
+The asset-discovery contract loads synthetic ALD/AFA payloads through the real
+asset manager. It covers renamed scripts, multi-volume ALDs, BGM/sound and
+sidecar selection, exact-match priority, ambiguous families, overlapping
+prefixes, archive-looking directories, mixed ASCII case and original Japanese
+script names. No game assets are included.
 
 On 2026-10-18, the supplied **Sengoku Rance v1.01** Chinese build was tested on
 macOS arm64: 800×600 startup, opening movie/audio, title, new game, Chinese

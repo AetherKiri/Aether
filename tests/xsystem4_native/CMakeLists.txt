@@ -30,6 +30,13 @@ target_include_directories(aether_xsystem4_afa_contract PRIVATE
     "${AETHER_ROOT}/packages/xsystem4/subprojects/libsys4/include")
 target_link_libraries(aether_xsystem4_afa_contract PRIVATE aether_xsystem4_runtime)
 add_test(NAME xsystem4-afa-contract COMMAND aether_xsystem4_afa_contract)
+add_executable(aether_xsystem4_assets_contract assets.cpp)
+target_compile_features(aether_xsystem4_assets_contract PRIVATE cxx_std_17)
+target_include_directories(aether_xsystem4_assets_contract PRIVATE
+    "${AETHER_ROOT}/packages/xsystem4/include"
+    "${AETHER_ROOT}/packages/xsystem4/subprojects/libsys4/include")
+target_link_libraries(aether_xsystem4_assets_contract PRIVATE aether_xsystem4_runtime)
+add_test(NAME xsystem4-assets-contract COMMAND aether_xsystem4_assets_contract)
 add_executable(aether_xsystem4_rance_quest_contract rance_quest.cpp)
 target_compile_features(aether_xsystem4_rance_quest_contract PRIVATE cxx_std_17)
 target_include_directories(aether_xsystem4_rance_quest_contract PRIVATE

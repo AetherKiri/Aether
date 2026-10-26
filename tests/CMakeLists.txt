@@ -53,7 +53,7 @@ if(TARGET aether_xsystem4_runtime)
     add_test(NAME xsystem4-scene-keeper-contract COMMAND aether_xsystem4_scene_keeper_contract)
     find_package(SDL2 CONFIG REQUIRED)
     find_package(SDL2_image CONFIG REQUIRED)
-    foreach(contract afa rance_quest tga)
+    foreach(contract afa assets rance_quest tga)
         add_executable(aether_xsystem4_${contract}_contract xsystem4_native/${contract}.cpp)
         target_compile_features(aether_xsystem4_${contract}_contract PRIVATE cxx_std_17)
         target_include_directories(aether_xsystem4_${contract}_contract PRIVATE

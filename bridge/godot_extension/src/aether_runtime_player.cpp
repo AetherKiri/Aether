@@ -13004,7 +13004,9 @@ private:
                 }
             } else if (name == "minori_movie" || name == "runtime_movie") {
                 const PackedStringArray fields = value.split("\t");
-                if ((fields.size() != 6 && fields.size() != 7) || !media_open(fields[0]) ||
+                if ((fields.size() != 6 && fields.size() != 7 && fields.size() != 8) ||
+                    (fields.size() == 8 && (!fields[7].is_valid_int() || fields[7].to_int() < 0 || fields[7].to_int() > 100)) ||
+                    !media_open(fields[0]) ||
                     media_play() != ENGINE_RESULT_OK) {
                     const String message = last_error_.replace("\n", " ");
                     submit_platform_response(
@@ -13012,10 +13014,20 @@ private:
                     media_close();
                 } else {
                     runtime_movie_operation_ = name;
-                    runtime_movie_token_ = fields.size() == 7 ? fields[6] : String();
+                    runtime_movie_token_ = fields.size() >= 7 ? fields[6] : String();
+                    if (fields.size() == 8)
+                        engine_media_set_volume(media_, fields[7].to_int() / 100.0);
                     runtime_movie_active_ = true;
                     runtime_movie_skippable_ = fields[5] == "1";
                     update_runtime_movie();
+                }
+            } else if (name == "runtime_movie_gain") {
+                if (runtime_movie_active_ && media_ != nullptr && value.is_valid_int())
+                    engine_media_set_volume(media_, std::clamp(value.to_int(), int64_t(0), int64_t(100)) / 100.0);
+            } else if (name == "runtime_movie_pause") {
+                if (runtime_movie_active_ && media_ != nullptr) {
+                    if (value == "1") media_pause();
+                    else if (value == "0") media_play();
                 }
             } else if (name == "minori_movie_stop" || name == "runtime_movie_stop") {
                 if (runtime_movie_active_) {

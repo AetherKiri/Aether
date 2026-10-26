@@ -147,6 +147,24 @@ func check_frame(action: Dictionary, label: String) -> bool:
     # pixels. Only numerical evidence and hashes are saved, never images.
     await RenderingServer.frame_post_draw
     var frame: Dictionary = app.player.read_frame_rgba()
+    var frame_source := str(action.get("frame_source", "provider"))
+    var media: Dictionary = {}
+    if frame_source == "movie":
+        media = app.player.media_get_state()
+        var movie_texture: Texture2D = app.player.media_update_texture()
+        if not bool(media.get("has_video", false)) or int(media.get("frame_serial", 0)) <= 0 or movie_texture == null:
+            record({"event": "failed", "label": label, "reason": "decoded movie frame unavailable", "media": media})
+            return false
+        var movie_image: Image = movie_texture.get_image()
+        if movie_image == null or movie_image.is_empty():
+            record({"event": "failed", "label": label, "reason": "decoded movie pixels unavailable"})
+            return false
+        movie_image.convert(Image.FORMAT_RGBA8)
+        frame = {"width": movie_image.get_width(), "height": movie_image.get_height(),
+            "frame_serial": media.frame_serial, "rgba": movie_image.get_data()}
+    elif frame_source != "provider":
+        record({"event": "failed", "label": label, "reason": "unknown frame_source"})
+        return false
     var image: Image = app.get_viewport().get_texture().get_image()
     if image == null or image.is_empty():
         record({"event": "failed", "label": label, "reason": "presentation unavailable"})
@@ -166,6 +184,7 @@ func check_frame(action: Dictionary, label: String) -> bool:
         "source": source_stats, "presented": presented_stats,
         "source_visible_ratio": source_ratio, "presented_visible_ratio": presented_ratio,
         "source_sha256": hash.finish().hex_encode(),
+        "frame_source": frame_source, "media": media,
         "renderer": app.player.get_renderer_info(), "state": state(),
     }
     record(evidence)

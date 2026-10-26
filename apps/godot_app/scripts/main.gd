@@ -11989,9 +11989,14 @@ func _start_selected_game_after_entitlements() -> void:
         )
         return
     _set_game_runtime_orientation(true)
+    # A launch may supply an explicit script without changing the saved library
+    # record (for example a section regression). Updating play statistics must
+    # preserve that entry for this launch.
+    var requested_startup_script := String(selected_game.get("startupScript", ""))
     var played_game := _mark_game_played(library_path)
     if not played_game.is_empty():
         selected_game = played_game
+        selected_game["startupScript"] = requested_startup_script
     active_game_path = library_path
     active_game_started_msec = Time.get_ticks_msec()
     game_path.text = launch_path

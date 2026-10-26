@@ -48,6 +48,11 @@ func _init() -> void:
         "AdvHD provider receives the game directory"
     )
     _expect_equal(
+        GameLaunchEntry.resolve_for_runtime({"path": root, GameLaunchEntry.FIELD: "Config.exe"}, "escude"),
+        root,
+        "ACPX provider discovers its source entry instead of launching a Windows utility"
+    )
+    _expect_equal(
         GameLaunchEntry.resolve({"path": root, GameLaunchEntry.FIELD: "Script.HCB"}),
         root.path_join("Script.HCB"),
         "FVP script launch path"

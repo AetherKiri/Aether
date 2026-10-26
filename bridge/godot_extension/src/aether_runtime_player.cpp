@@ -10589,6 +10589,9 @@ public:
             return ENGINE_RESULT_INVALID_STATE;
         }
         const engine_result_t result = engine_pause(handle_);
+        // Provider audio commands must reach the mixer before the application
+        // stops ticking its paused player.
+        drain_platform_requests();
         if (result == ENGINE_RESULT_OK) reset_runtime_tick_timing(false);
         update_last_error(result);
         return result;
@@ -10599,6 +10602,7 @@ public:
             return ENGINE_RESULT_INVALID_STATE;
         }
         const engine_result_t result = engine_resume(handle_);
+        drain_platform_requests();
         if (result == ENGINE_RESULT_OK) reset_runtime_tick_timing(false);
         update_last_error(result);
         return result;

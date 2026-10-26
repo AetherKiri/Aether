@@ -196,7 +196,10 @@ func _capture_frame_image() -> Image:
     var height := int(frame.get("height", 0))
     if width > 0 and height > 0 and data.size() >= width * height * 4:
         var frame_image := Image.create_from_data(width, height, false, Image.FORMAT_RGBA8, data)
-        if int(_image_stats(frame_image).get("visible", 0)) > 0:
+        # A valid all-black engine frame can be a scripted scene transition.
+        # Explicit engine capture must preserve it instead of querying a dummy
+        # headless viewport and producing an empty 1x1 image.
+        if prefer_engine_frame or int(_image_stats(frame_image).get("visible", 0)) > 0:
             return frame_image
 
     var texture := root.get_viewport().get_texture()

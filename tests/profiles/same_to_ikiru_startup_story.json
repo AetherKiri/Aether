@@ -1,0 +1,44 @@
+{
+  "name": "same_to_ikiru_startup_story",
+  "game_path": "",
+  "backend": "Godot Native",
+  "surface_size": [1920, 1080],
+  "window_size": [1280, 720],
+  "coord_size": [1920, 1080],
+  "startup_timeout_frames": 900,
+  "warmup_frames": 60,
+  "measure_frames": 1,
+  "runtime_debug": true,
+  "actions": [
+    {
+      "type": "click",
+      "label": "choose_current_size",
+      "pos": [960, 326],
+      "after_frames": 1500
+    },
+    {
+      "type": "click",
+      "label": "skip_intro",
+      "pos": [960, 540],
+      "after_frames": 600
+    },
+    {
+      "type": "click",
+      "label": "start_story",
+      "pos": [1720, 500],
+      "after_frames": 900
+    },
+    {
+      "type": "key",
+      "label": "keyboard_dialogue",
+      "key_code": 13,
+      "after_frames": 120
+    },
+    {
+      "type": "click",
+      "label": "mouse_dialogue",
+      "pos": [960, 850],
+      "after_frames": 120
+    }
+  ]
+}

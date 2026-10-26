@@ -75,7 +75,7 @@ func _initialize() -> void:
         "user_dir": fixture.get_current_dir(),
     }))
     OS.unset_environment("AETHERKIRI_USER_DIR")
-    for runtime_kind in ["rfvp", "onscripter"]:
+    for runtime_kind in ["rfvp", "onscripter", "xsystem4"]:
         _check_reopen(runtime_kind)
     if had_config:
         OS.set_environment("AETHERKIRI_TEST_CONFIG_JSON", old_config)

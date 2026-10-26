@@ -66,6 +66,12 @@ game directory. Exact script matches take priority; multiple fallback families
 are reported and left unselected. Matching ignores ASCII case, keeps ALD
 volumes together and does not mix similarly prefixed archive families.
 
+`system.Exit(code)` and returning from the script's main function complete the
+session even when the game returns a nonzero process exit code. The host then
+returns to the visual-novel library and can reopen the game. VM errors and
+assertion failures remain errors; their diagnostics are preserved. Games that
+exit before their first frame use the same completion notification.
+
 ## Building and validation
 
 `AETHERKIRI_ENABLE_XSYSTEM4` defaults to `ON` for the native app. A local fork can
@@ -142,6 +148,12 @@ asset manager. It covers renamed scripts, multi-volume ALDs, BGM/sound and
 sidecar selection, exact-match priority, ambiguous families, overlapping
 prefixes, archive-looking directories, mixed ASCII case and original Japanese
 script names. No game assets are included.
+
+The lifecycle contract runs encrypted synthetic AIN scripts through the real
+provider: explicit exit and main return with zero, positive and negative codes,
+early completion before a frame, reopening the same runtime and genuine VM
+errors after clean exits. The shell's handle-recreation regression also covers
+System 4.
 
 On 2026-10-18, the supplied **Sengoku Rance v1.01** Chinese build was tested on
 macOS arm64: 800×600 startup, opening movie/audio, title, new game, Chinese

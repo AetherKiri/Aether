@@ -53,7 +53,7 @@ if(TARGET aether_xsystem4_runtime)
     add_test(NAME xsystem4-scene-keeper-contract COMMAND aether_xsystem4_scene_keeper_contract)
     find_package(SDL2 CONFIG REQUIRED)
     find_package(SDL2_image CONFIG REQUIRED)
-    foreach(contract afa assets rance_quest tga)
+    foreach(contract afa assets lifecycle rance_quest tga)
         add_executable(aether_xsystem4_${contract}_contract xsystem4_native/${contract}.cpp)
         target_compile_features(aether_xsystem4_${contract}_contract PRIVATE cxx_std_17)
         target_include_directories(aether_xsystem4_${contract}_contract PRIVATE
@@ -63,6 +63,9 @@ if(TARGET aether_xsystem4_runtime)
         string(REPLACE "_" "-" test_name "${contract}")
         add_test(NAME xsystem4-${test_name}-contract COMMAND aether_xsystem4_${contract}_contract)
     endforeach()
+    target_include_directories(aether_xsystem4_lifecycle_contract PRIVATE
+        "${CMAKE_SOURCE_DIR}/abi/include")
+    set_tests_properties(xsystem4-lifecycle-contract PROPERTIES TIMEOUT 30)
     target_link_libraries(aether_xsystem4_tga_contract PRIVATE
         $<IF:$<TARGET_EXISTS:SDL2_image::SDL2_image>,SDL2_image::SDL2_image,SDL2_image::SDL2_image-static>)
     add_executable(aether_xsystem4_font_fallback_contract xsystem4_native/font_fallback.c)

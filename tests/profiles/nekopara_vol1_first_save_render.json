@@ -1,0 +1,32 @@
+{
+  "name": "nekopara_vol1_first_save_render",
+  "game_path": "",
+  "backend": "Godot Native",
+  "surface_size": [1920, 1080],
+  "window_size": [1600, 900],
+  "coord_size": [1600, 900],
+  "startup_timeout_frames": 2400,
+  "warmup_frames": 780,
+  "measure_frames": 1,
+  "runtime_debug": true,
+  "export_scripts": false,
+  "actions": [
+    {
+      "type": "click",
+      "label": "data_load",
+      "pos": [1430, 400],
+      "after_frames": 180
+    },
+    {
+      "type": "click",
+      "label": "first_save",
+      "pos": [545, 282],
+      "after_frames": 360
+    },
+    {
+      "type": "wait",
+      "label": "first_save_idle",
+      "after_frames": 120
+    }
+  ]
+}

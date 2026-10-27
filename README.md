@@ -72,7 +72,7 @@ and **Debug CPU** is a diagnostic fallback only.
   directory; older per-game application saves are imported without overwriting
   local saves. Read-only game directories use isolated application storage.
 - SystemC ACT/SPT runtime through the private package, with E-mote SDK rendering,
-  isolated saves, choices, backlog, movies, galleries and postgame replay.
+  game-local `savedata/`, original UI, choices, backlog, movies, galleries and replay.
   See [scope and validation](doc/systemc_runtime.md).
 - Export presets for macOS, iOS/iPadOS, Android, Web, and Linux.
 - A separate Flash library powered by native Ruffle, with sound, keyboard,

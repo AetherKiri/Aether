@@ -13,8 +13,8 @@ select this engine.
 - Native backgrounds and character layers, including E-mote through the existing
   private SDK bridge; original transition masks and effect textures.
 - Dialogue, choices, auto, read-only/all-text skip, voice replay and backlog.
-- 100 normal slots, 10 automatic slots and 10 quick slots, with the original
-  save/load confirmation flow and persistent read/CG/replay progress.
+- Profile-defined manual, automatic and quick slots, with the original save/load
+  confirmations, protection/copy/move/delete controls and persistent progress.
 - The game's CG gallery and scene-replay categories, unlock rules and entry scripts.
 - Original settings controls for text/auto speed, window opacity, effects,
   E-mote animation, audio volume/mute and display mode.
@@ -25,43 +25,54 @@ UI descriptors are read as data from the game's executable; no Windows code is
 executed. Missing or ambiguous profiles fail with a diagnostic. The runtime does
 not substitute a generic title screen or add menus absent from the game.
 
-Saves and settings use an isolated application directory derived from the game
-root. Game packages are read in place. Saves are Aether runtime saves; original
-Windows saves are not imported. Scene replay preserves story flags and position
-while adding newly viewed CGs to global progress. Active transition captures are
-saved with their clocks so loading does not reconstruct a different outgoing frame.
+All writable game state, including saves, settings and global progress, lives in
+`<game>/savedata/`. Host caches remain separate. Matching Aether saves from the old
+application directory migrate once without replacing existing saves or deleting
+the originals. Game packages are read in place. Per-slot saves use Aether's format;
+supported configurable profiles can import original `system.dat` global CG/replay
+progress without rewriting the original file. Scene replay preserves story flags
+and position while adding newly viewed CGs to global progress. Active transition
+captures are saved with their clocks so loading retains the outgoing frame.
 
 ## Validation scope
 
 Development validation used 天気雨 (Tenkiame), including a translated data set,
-on macOS arm64 Debug. The provider has no game-title or executable-hash dispatch.
-Other SystemC releases still require corpus and real-flow validation; shared
-engine branding does not establish compatible script layouts or opcodes.
+WANNABE→CREATORS, and 神様のしっぽ ～干支神さまたちの恩返し～ on macOS arm64
+Debug. These exercise classic, configurable and expanded configurable native UI
+profiles. The provider has no game-title or executable-hash dispatch. Other
+SystemC releases still require corpus and real-flow validation; shared engine
+branding does not establish compatible script layouts or opcodes.
 
 The private package includes independent format/VM/provider, native-UI and
 rendering fixtures, read-only corpus tools, E-mote restoration checks and JSON
-regression cases.
-JSON cases cover the logo/title sequence through normal library entry, settings
-persistence, story/save/load/reopen, dynamic E-mote, choice branching, CG gallery,
-movie completion/skip/replay and the native extra-story entries. Each run uses
-disposable application storage. All eight cases passed in the exported Debug
-application, alongside 90 SystemC and 140 shared-text/provider test cases. These
-checks do not replace human full-game verification; the verified-games lists
-are unchanged.
+regression cases. The final development pass included 130 SystemC test cases,
+seven Python runner tests and 20 cases in the exported Debug application, with
+289 presented-frame assertions and no host rendering errors. JSON cases cover
+original startup/settings, saves and reopen, dynamic E-mote, choices, CG/replay,
+movies, music, character controls, backlog and novel-page restoration. Each run
+uses both a disposable game copy and isolated application storage, since saves
+are written inside the game directory.
+
+WANNABE's original full-progress file was imported and remained unchanged.
+No original `system.dat` was found in the supplied Kamishippo directory, so its
+gallery/replay checks used progress earned by route traversal; its original
+full-save import remains unverified. Independent fixtures cover both supported
+global-progress layouts. These checks do not replace human full-game verification;
+the verified-games lists are unchanged.
 
 Run a case from the public repository root:
 
 ```sh
 python3 tools/run_runtime_regression.py \
   packages/AetherInternal/src/systemc_runtime/tests/probes/story.json \
-  --platform macos --game "$GAME_ROOT" --project apps/godot_app \
-  --godot "$GODOT_BIN" --user-data-dir "$GODOT_USER_DATA" \
+  --platform macos --game "$DISPOSABLE_GAME_COPY" \
+  --app out/godot/macos/debug/Aether.app --user-data-dir "$GODOT_USER_DATA" \
   --output out/systemc/regressions --timeout 180
 ```
 
-`title.json` covers the supported native UI profile. `story.json` expects two
-early dialogue messages; `tenkiame-*.json` select documented sections of the
-development corpus. The
+`title.json` covers the classic native UI profile. `story.json` expects two
+early dialogue messages; `tenkiame-*.json`, `wannabe-*.json` and
+`kamishippo-*.json` cover their respective development corpora. The
 natural-movie case needs `--timeout 270`. Movie frame assertions use
 `"frame_source": "movie"` to inspect the decoded video pixels and presentation,
 since host video can advance independently of the script-rendered surface. The

@@ -532,7 +532,10 @@ func run(game_path: String) -> int:
                 return 1
             if int(action.get("hold_frames", 3)) > 0 and not await advance(int(action.get("hold_frames", 3))):
                 return 1
-            app.player.send_pointer_event(app.POINTER_UP, 0, pos.x, pos.y, 0.0, 0.0, int(action.get("button_index", 0)))
+            result = app.player.send_pointer_event(app.POINTER_UP, 0, pos.x, pos.y, 0.0, 0.0, int(action.get("button_index", 0)))
+            if result != app.ENGINE_RESULT_OK:
+                record({"event": "failed", "label": label, "reason": "pointer release rejected", "error": app.player.get_last_error()})
+                return 1
         elif kind == "key_state":
             app.player.send_key_event(bool(action.get("pressed", false)), int(action.get("key_code", 0)), 0, 0)
         elif kind == "drag":

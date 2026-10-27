@@ -65,6 +65,7 @@ const RUNTIME_DEFAULT_FONT_FILE := "default.otf"
 const RUNTIME_SYMBOL_FONT_FILE := "symbols.ttf"
 const ProbeConfig = preload("res://scripts/probe_config.gd")
 const RuntimeRegressionProbe = preload("res://scripts/runtime_regression_probe.gd")
+const RuntimeFormDialog = preload("res://scripts/runtime_form_dialog.gd")
 const GameMetadata = preload("res://scripts/game_metadata.gd")
 const CoverIndex = preload("res://scripts/cover_index.gd")
 const VNDBCoverResolver = preload("res://scripts/vndb_cover_resolver.gd")
@@ -2404,6 +2405,7 @@ var frame_enhancement_custom_chain := PackedStringArray([
 ])
 var game_running := false
 var runtime_dialog_input: LineEdit = null
+var runtime_form_dialog: RefCounted = null
 var softpal_name_input_layer: Control = null
 var softpal_name_input: LineEdit = null
 var softpal_original_window_title := ""
@@ -12038,6 +12040,14 @@ func _return_to_library_after_runtime_exit() -> void:
     if runtime_exit_cleanup_pending:
         return
     runtime_exit_cleanup_pending = true
+    if runtime_form_dialog != null:
+        runtime_form_dialog = null
+        modal_layer.set_meta("runtime_platform_dialog", false)
+        modal_layer.visible = false
+        active_modal_scrim = null
+        active_modal_dialog = null
+        for child in modal_layer.get_children():
+            child.queue_free()
     _deactivate_game_text_input()
     _clear_game_input_capture()
     _finalize_active_game_session()
@@ -12710,6 +12720,14 @@ func _on_runtime_platform_request(operation: String, argument: String) -> void:
     if operation == "dialog":
         _show_runtime_dialog(_parse_platform_form(argument))
         return
+    if operation == "runtime_form":
+        var specification: Variant = JSON.parse_string(argument)
+        if specification is Dictionary and RuntimeFormDialog.valid(specification):
+            _show_runtime_form(specification)
+        else:
+            _append_log("Invalid native dialog specification")
+            player.submit_platform_response("runtime_form", JSON.stringify({"result": "2", "values": {}}))
+        return
     if operation == "call_native":
         player.submit_platform_response("call_native", "result=")
         return
@@ -13011,6 +13029,40 @@ func _show_minori_select(argument: String) -> void:
     var first_button := box.get_child(0) as Button
     if first_button != null:
         first_button.grab_focus()
+
+func _show_runtime_form(specification: Dictionary) -> void:
+    if modal_layer == null or player == null:
+        return
+    _deactivate_game_text_input()
+    modal_layer.set_meta("runtime_platform_dialog", true)
+    modal_layer.visible = true
+    modal_layer.move_to_front()
+    for child in modal_layer.get_children():
+        child.queue_free()
+    var dim := _modal_scrim(0.68)
+    modal_layer.add_child(dim)
+    var dialog := PanelContainer.new()
+    dialog.name = "RuntimeNativeForm"
+    dialog.clip_contents = true
+    _mark_centered_safe_dialog(dialog, Vector2(900, 430))
+    _layout_safe_dialog(dialog, _ui_safe_rect(get_viewport_rect().size))
+    dialog.add_theme_stylebox_override("panel", _dialog_style(true))
+    modal_layer.add_child(dialog)
+    active_modal_scrim = dim
+    active_modal_dialog = dialog
+    runtime_form_dialog = RuntimeFormDialog.new()
+    runtime_form_dialog.build(dialog, specification, func(response: Dictionary) -> void:
+        modal_layer.set_meta("runtime_platform_dialog", false)
+        modal_layer.visible = false
+        runtime_form_dialog = null
+        active_modal_scrim = null
+        active_modal_dialog = null
+        for child in modal_layer.get_children():
+            child.queue_free()
+        if player != null:
+            player.submit_platform_response("runtime_form", JSON.stringify(response))
+    )
+    ui_motion.modal_in(dim, dialog, shell_root)
 
 func _show_runtime_dialog(values: Dictionary) -> void:
     if modal_layer == null or player == null:
@@ -14963,8 +15015,13 @@ func _probe_cleanup_and_quit(code: int, record_cleanup: Callable = Callable()) -
     if FileAccess.file_exists(ProbeConfig.debug_request_path()):
         DirAccess.remove_absolute(ProjectSettings.globalize_path(ProbeConfig.debug_request_path()))
     _deactivate_game_text_input()
+    # Stop _process from publishing another frame while cleanup yields before
+    # releasing the native texture referenced by the canvas.
+    game_running = false
+    cached_startup_state = STARTUP_IDLE
     if player != null:
         viewport.texture = null
+        viewport.visible = false
         await get_tree().process_frame
         player.release_frame_texture()
         _cleanup_softpal_platform_ui()
@@ -17198,7 +17255,10 @@ func _input(event: InputEvent) -> void:
     if event is InputEventKey:
         var shell_key := event as InputEventKey
         if shell_key.pressed and not shell_key.echo and shell_key.keycode == KEY_ESCAPE and modal_layer != null and modal_layer.visible:
-            _dismiss_modal()
+            if runtime_form_dialog != null:
+                runtime_form_dialog.cancel()
+            else:
+                _dismiss_modal()
             get_viewport().set_input_as_handled()
             return
         if shell_key.pressed and not shell_key.echo and shell_key.keycode == KEY_ESCAPE and not video_playing and not game_running and shell_route in ["videos", "flash"] and _active_file_library().can_go_up():

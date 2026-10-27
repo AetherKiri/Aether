@@ -469,6 +469,19 @@ func run(game_path: String) -> int:
                 return 1
         elif kind == "exit_to_library":
             app._exit_game_for_go_back()
+        elif kind == "native_dialog":
+            var dialog: RefCounted = app.runtime_form_dialog
+            var result_id := String(action.get("submit", "1"))
+            if dialog == null or not dialog.buttons.has(result_id) or not dialog.set_values(action.get("values", {})):
+                record({"event": "failed", "label": label, "reason": "native dialog controls unavailable"})
+                return 1
+            if bool(action.get("cancel_key", false)):
+                var cancel_event := InputEventKey.new()
+                cancel_event.keycode = KEY_ESCAPE
+                cancel_event.pressed = true
+                app._input(cancel_event)
+            else:
+                dialog.buttons[result_id].pressed.emit()
         elif kind == "frame":
             if not await check_frame(action, label):
                 return 1
@@ -520,6 +533,19 @@ func run(game_path: String) -> int:
             if int(action.get("hold_frames", 3)) > 0 and not await advance(int(action.get("hold_frames", 3))):
                 return 1
             app.player.send_pointer_event(app.POINTER_UP, 0, pos.x, pos.y, 0.0, 0.0, int(action.get("button_index", 0)))
+        elif kind == "key_state":
+            app.player.send_key_event(bool(action.get("pressed", false)), int(action.get("key_code", 0)), 0, 0)
+        elif kind == "drag":
+            var source := point(action)
+            var target := Vector2(float(action.get("to_x", source.x)), float(action.get("to_y", source.y)))
+            app.player.send_pointer_event(app.POINTER_MOVE, 0, source.x, source.y, 0.0, 0.0, 0)
+            app.player.send_pointer_event(app.POINTER_DOWN, 0, source.x, source.y, 0.0, 0.0, 0)
+            if not await advance(2):
+                return 1
+            app.player.send_pointer_event(app.POINTER_MOVE, 0, target.x, target.y, 0.0, 0.0, 0)
+            if not await advance(2):
+                return 1
+            app.player.send_pointer_event(app.POINTER_UP, 0, target.x, target.y, 0.0, 0.0, 0)
         elif kind == "key":
             var key := int(action.get("key_code", 13))
             app.player.send_key_event(true, key, 0, 0)

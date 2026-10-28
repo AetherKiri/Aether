@@ -23,6 +23,8 @@ func _init() -> void:
     assert(YurisEngineOptions.script_encoding({YurisEngineOptions.SCRIPT_ENCODING_FIELD: "CP932"}) == "CP932")
     assert(YurisEngineOptions.normalize_encoding("shift_jis") == "CP932")
     assert(YurisEngineOptions.normalize_encoding("cp936") == "GBK")
+    assert(YurisEngineOptions.normalize_encoding("cp950") == "BIG5")
+    assert(YurisEngineOptions.script_encoding({YurisEngineOptions.SCRIPT_ENCODING_FIELD: "Big5"}) == "BIG5")
     var first := YurisEngineOptions.legacy_user_directory("/host", "/games/first")
     assert(first.begins_with("/host/yuris/"))
     assert(first == YurisEngineOptions.legacy_user_directory("/host", "/games/first/"))

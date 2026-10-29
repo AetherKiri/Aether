@@ -300,6 +300,7 @@ endif()
 
 # The krkr2 engine repository defines the engine targets (external/, core/,
 # plugins/); its integration glue stays in bridge/krkr2_runtime.
+add_subdirectory(bridge/game_hooks)
 add_subdirectory(${AETHERKIRI_KRKR_DIR})
 
 # AetherInternal contributes sources to public targets but does not own the

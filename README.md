@@ -336,6 +336,27 @@ session, because render resources must be recreated.
   flow as an imported game. Deleting it removes the staged copy and its saves.
   Source: [`demos/aetherkiri-kag3/`](demos/aetherkiri-kag3/).
 
+## Game-local Lua Hooks
+
+BGI, YU-RIS, ADVHD, SoftPal and CatSystem2 share the same `aether` Lua API.
+Place a UTF-8 `aether.lua` in the game root to prepare resource overrides once
+per game launch. Supported translation packages load automatically; Lua is an
+optional fallback for custom patches. Explicit Lua resources take priority over
+native translation resources, followed by the original game resources.
+
+```lua
+assert(aether.api_version == 1)
+if aether.exists("translation") then
+    aether.mount_dir("translation")
+    aether.set_encoding("GBK")
+end
+```
+
+The mounted files must use the target engine's resource names and formats.
+See the [Lua API reference](bridge/game_hooks/README.md) or
+[中文接口文档](bridge/game_hooks/README.zh-CN.md) for file access, decompression,
+transcoding, fonts, engine differences, limits and examples.
+
 ## Testing & Probes
 
 ```bash
@@ -362,6 +383,7 @@ store packaging flow.
 
 | Document | Contents |
 | --- | --- |
+| [Game-local Lua API](bridge/game_hooks/README.md) · [简体中文](bridge/game_hooks/README.zh-CN.md) | Shared resource hooks, native translation precedence, encoding, fonts and examples. |
 | [`doc/development.md`](doc/development.md) | Developer guide: architecture, file roles, build, testing, probes, debugging. |
 | [`doc/diagnostics.md`](doc/diagnostics.md) | In-app debugger, one-command collection, evidence-first investigation. |
 | [`doc/krkr2_plugins.md`](doc/krkr2_plugins.md) | KiriKiri2 plugin notes. |

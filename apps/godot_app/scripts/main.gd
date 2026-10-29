@@ -2081,6 +2081,7 @@ const RUNTIME_SYSTEM3 := "system3"
 const RUNTIME_WA2 := "wa2"
 const RUNTIME_BGI := "bgi"
 const RUNTIME_ADVHD := "advhd"
+const RUNTIME_ESCUDE := "escude"
 const RUNTIME_TYRANO := "tyranoscript"
 const RUNTIME_MAGES := "mages"
 const RUNTIME_YURIS := "yuris"
@@ -11188,6 +11189,10 @@ func _game_info_from_path(path: String) -> Dictionary:
     var metadata := GameMetadata.inspect(path)
     var detected_title := String(metadata.get("title", ""))
     var detected_engine := String(metadata.get("engine", RUNTIME_KIRIKIRI))
+    # Optional providers own their format detection. Persist that result at
+    # import as well as launch so directory runtimes never display a guessed
+    # Windows configuration utility as their startup file.
+    detected_engine = _probe_game_runtime_kind(_game_runtime_root(path), detected_engine)
     return {
         "name": detected_title if not detected_title.is_empty() else name,
         "path": path,
@@ -11201,7 +11206,7 @@ func _game_info_from_path(path: String) -> Dictionary:
         "titleCandidates": metadata.get("titleCandidates", PackedStringArray()),
         "metadataSignals": metadata.get("signals", PackedStringArray()),
         "engine": detected_engine,
-        "launchFile": metadata.get("launchFile", ""),
+        "launchFile": "" if GameLaunchEntry.runtime_uses_directory(detected_engine) else metadata.get("launchFile", ""),
     }
 
 func _game_runtime_root(path: String) -> String:
@@ -11215,10 +11220,15 @@ func _game_runtime_kind(path: String) -> String:
     var runtime_kind := String(
         GameMetadata.inspect(root).get("engine", RUNTIME_KIRIKIRI)
     )
+    return _probe_game_runtime_kind(root, runtime_kind)
+
+func _probe_game_runtime_kind(root: String, runtime_kind: String) -> String:
     if runtime_kind != RUNTIME_KIRIKIRI:
         return runtime_kind
     if player != null and player.has_method("probe_runtime"):
         # Format detection stays in the optional private provider.
+        if int(player.probe_runtime(RUNTIME_ESCUDE, root)) >= 90:
+            return RUNTIME_ESCUDE
         if int(player.probe_runtime(RUNTIME_ADVHD, root)) >= 90:
             return RUNTIME_ADVHD
         if int(player.probe_runtime(RUNTIME_BGI, root)) >= 90:
@@ -12481,6 +12491,7 @@ func _switch_runtime_player(runtime_kind: String) -> bool:
         RUNTIME_SYSTEM3,
         RUNTIME_YURIS,
         RUNTIME_ADVHD,
+        RUNTIME_ESCUDE,
     ]:
         normalized = RUNTIME_KIRIKIRI
     # Returning to the library keeps the player Node but destroys its engine.
@@ -12537,6 +12548,8 @@ func _switch_runtime_player(runtime_kind: String) -> bool:
         if normalized == RUNTIME_MAGES
         else "ADV Player HD"
         if normalized == RUNTIME_ADVHD
+        else "Escu:de / ACPX"
+        if normalized == RUNTIME_ESCUDE
         else "KiriKiri"
     ))
     return true
@@ -13173,6 +13186,11 @@ func _ensure_player_initialized() -> bool:
         # Other probes may supply their own disposable replay directory.
         user_dir = ProbeConfig.string_value(ProbeConfig.load(), "user_dir", user_dir)
         cache_dir = user_dir.path_join("cache")
+    elif current_player_runtime_kind == RUNTIME_ESCUDE:
+        var game_root := _game_runtime_root(String(selected_game.get("path", "")))
+        if not game_root.is_empty():
+            cache_dir = cache_dir.path_join("escude").path_join(game_root.sha256_text())
+            user_dir = game_root.path_join("savedata")
     elif current_player_runtime_kind == RUNTIME_YURIS:
         var library_path := String(selected_game.get("path", ""))
         if not library_path.is_empty():
@@ -13210,6 +13228,7 @@ func _ensure_player_initialized() -> bool:
         RUNTIME_SYSTEM3,
         RUNTIME_YURIS,
         RUNTIME_ADVHD,
+        RUNTIME_ESCUDE,
     ]:
         runtime_id = current_player_runtime_kind
     var runtime_result := int(player.set_engine_option("runtime", runtime_id))
@@ -13243,6 +13262,8 @@ func _ensure_player_initialized() -> bool:
         if current_player_runtime_kind == RUNTIME_BGI
         else "ADV Player HD"
         if current_player_runtime_kind == RUNTIME_ADVHD
+        else "Escu:de / ACPX"
+        if current_player_runtime_kind == RUNTIME_ESCUDE
         else "AetherKiri"
     ))
     return true
@@ -14900,7 +14921,8 @@ func _probe_capture_image() -> Image:
     var height := int(frame.get("height", 0))
     if width > 0 and height > 0 and data.size() >= width * height * 4:
         var frame_image := Image.create_from_data(width, height, false, Image.FORMAT_RGBA8, data)
-        if int(_image_stats(frame_image).get("visible", 0)) > 0:
+        # Preserve intentional black transitions when engine capture is forced.
+        if prefer_engine_frame or int(_image_stats(frame_image).get("visible", 0)) > 0:
             return frame_image
 
     var texture := get_viewport().get_texture()

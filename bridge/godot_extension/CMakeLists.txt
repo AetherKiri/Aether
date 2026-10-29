@@ -301,6 +301,10 @@ if(TARGET aether_mages_runtime)
     target_compile_definitions(aether_kiri_godot PRIVATE
         AETHERKIRI_WITH_MAGES=1)
 endif()
+if(TARGET aether_entisgls_runtime)
+    target_link_libraries(aether_kiri_godot PRIVATE aether_entisgls_runtime)
+    target_compile_definitions(aether_kiri_godot PRIVATE AETHERKIRI_WITH_ENTISGLS=1)
+endif()
 if(TARGET aether_minori_runtime)
     target_link_libraries(aether_kiri_godot PRIVATE
         aether_minori_runtime)
@@ -356,11 +360,15 @@ get_property(_private_runtime_targets GLOBAL
 if(_private_runtime_targets)
     target_link_libraries(aether_kiri_godot PRIVATE ${_private_runtime_targets})
 endif()
-set(_private_runtime_libraries "")
-foreach(_runtime IN LISTS _private_runtime_targets)
+set(_runtime_targets ${_private_runtime_targets})
+if(TARGET aether_entisgls_runtime)
+    list(APPEND _runtime_targets aether_entisgls_runtime)
+endif()
+set(_runtime_libraries "")
+foreach(_runtime IN LISTS _runtime_targets)
     get_target_property(_runtime_type "${_runtime}" TYPE)
     if(_runtime_type STREQUAL "SHARED_LIBRARY")
-        string(APPEND _private_runtime_libraries "$<TARGET_FILE:${_runtime}>\n")
+        string(APPEND _runtime_libraries "$<TARGET_FILE:${_runtime}>\n")
         if(APPLE AND NOT IOS)
             set(_runtime_stage "macos")
         elseif(WIN32)
@@ -380,10 +388,10 @@ foreach(_runtime IN LISTS _private_runtime_targets)
         endif()
     endif()
 endforeach()
-# Export scripts consume the configured build's list, so disabled private
+# Export scripts consume the configured build's list, so disabled
 # providers cannot accidentally be packaged from stale editor staging files.
-file(GENERATE OUTPUT "${CMAKE_BINARY_DIR}/private-runtime-libraries-$<LOWER_CASE:$<CONFIG>>.txt"
-    CONTENT "${_private_runtime_libraries}")
+file(GENERATE OUTPUT "${CMAKE_BINARY_DIR}/runtime-libraries-$<LOWER_CASE:$<CONFIG>>.txt"
+    CONTENT "${_runtime_libraries}")
 if(TARGET aether_rfvp_runtime)
     target_link_libraries(aether_kiri_godot PRIVATE aether_rfvp_runtime)
     target_compile_definitions(aether_kiri_godot PRIVATE AETHERKIRI_WITH_RFVP=1)

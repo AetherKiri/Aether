@@ -53,3 +53,7 @@
 	path = packages/system3
 	url = https://github.com/AetherKiri/system3-sdl2.git
 	branch = aether
+[submodule "packages/EntisGLS-SDL3"]
+	path = packages/EntisGLS-SDL3
+	url = https://github.com/AetherKiri/EntisGLS-SDL3.git
+	branch = aether

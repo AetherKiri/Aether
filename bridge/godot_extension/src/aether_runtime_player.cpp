@@ -31,6 +31,9 @@
 #if defined(AETHERKIRI_WITH_MAGES)
 #include "mages_runtime.h"
 #endif
+#if defined(AETHERKIRI_WITH_ENTISGLS)
+#include "entisgls/provider.h"
+#endif
 #if defined(AETHERKIRI_WITH_MINORI)
 extern "C" engine_result_t aetherkiri_minori_register_runtime_provider();
 #endif
@@ -14098,6 +14101,11 @@ void InitializeAetherRuntime(ModuleInitializationLevel level) {
 #if defined(AETHERKIRI_WITH_MINORI)
     if (aetherkiri_minori_register_runtime_provider() != ENGINE_RESULT_OK) {
         UtilityFunctions::printerr("Failed to register Minori runtime provider");
+    }
+#endif
+#if defined(AETHERKIRI_WITH_ENTISGLS)
+    if (engine_register_runtime_provider(AetherEntisGLSProvider()) != ENGINE_RESULT_OK) {
+        UtilityFunctions::printerr("Failed to register EntisGLS runtime provider");
     }
 #endif
 #if defined(AETHERKIRI_INTERNAL_RUNTIME_PROVIDERS)

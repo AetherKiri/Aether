@@ -139,6 +139,7 @@ jobs:
           git submodule update --init --recursive --depth 1 packages/psdfile
           git submodule update --init --depth 1 packages/AetherSiglus
           git submodule update --init --depth 1 packages/AetherMinori
+          git submodule update --init --depth 1 packages/EntisGLS-SDL3
           git submodule update --init --depth 1 packages/AetherKrkr
           git submodule update --init --depth 1 packages/AetherMAGES
           git submodule update --init --depth 1 packages/ruffle
@@ -445,6 +446,7 @@ jobs:
           git submodule update --init --recursive --depth 1 packages/psdfile
           git submodule update --init --depth 1 packages/AetherSiglus
           git submodule update --init --depth 1 packages/AetherMinori
+          git submodule update --init --depth 1 packages/EntisGLS-SDL3
           git submodule update --init --depth 1 packages/AetherKrkr
           git submodule update --init --depth 1 packages/AetherMAGES
           git submodule update --init --depth 1 packages/rfvp
@@ -786,6 +788,7 @@ jobs:
           git submodule update --init --recursive --depth 1 packages/psdfile
           git submodule update --init --depth 1 packages/AetherSiglus
           git submodule update --init --depth 1 packages/AetherMinori
+          git submodule update --init --depth 1 packages/EntisGLS-SDL3
           git submodule update --init --depth 1 packages/AetherKrkr
           git submodule update --init --depth 1 packages/AetherMAGES
           git submodule update --init --depth 1 packages/rfvp
@@ -1153,6 +1156,7 @@ jobs:
           git submodule update --init --recursive --depth 1 packages/psdfile
           git submodule update --init --depth 1 packages/AetherSiglus
           git submodule update --init --depth 1 packages/AetherMinori
+          git submodule update --init --depth 1 packages/EntisGLS-SDL3
           git submodule update --init --depth 1 packages/AetherKrkr
           git submodule update --init --depth 1 packages/AetherMAGES
           git submodule update --init --depth 1 packages/ruffle
@@ -1180,7 +1184,8 @@ jobs:
             automake libtool gettext bison flex curl unzip zip zstd nasm yasm patchelf \
             ccache libclang-dev libgl1-mesa-dev libglu1-mesa-dev libegl-dev libgles-dev \
             libx11-dev libxrandr-dev libxinerama-dev libxcursor-dev libxi-dev \
-            libxext-dev libxfixes-dev libxrender-dev libwayland-dev libxkbcommon-dev \
+            libxext-dev libxfixes-dev libxrender-dev libxss-dev libxtst-dev \
+            libwayland-dev libxkbcommon-dev \
             libasound2-dev libpulse-dev libudev-dev libdbus-1-dev
 
       - name: Restore ccache

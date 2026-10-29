@@ -19,6 +19,7 @@ git submodule update --init --recursive --depth 1 \
     packages/AetherKrkr \
     packages/AetherMAGES \
     packages/AetherMinori \
+    packages/EntisGLS-SDL3 \
     packages/AetherSiglus \
     packages/OnscripterYuri \
     packages/psdfile \

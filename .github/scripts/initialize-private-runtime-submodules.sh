@@ -24,6 +24,8 @@ git submodule update --init --recursive --depth 1 \
     packages/psdfile \
     packages/ruffle \
     packages/xsystem4 \
+    packages/xsystem35 \
+    packages/system3 \
     packages/rfvp \
     packages/tjs2Decompiler
 

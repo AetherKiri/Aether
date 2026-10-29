@@ -2076,6 +2076,8 @@ const RUNTIME_CATSYSTEM2 := "catsystem2"
 const RUNTIME_SIGLUS := "siglus"
 const RUNTIME_RENPY := "renpy"
 const RUNTIME_XSYSTEM4 := "xsystem4"
+const RUNTIME_XSYSTEM35 := "xsystem35"
+const RUNTIME_SYSTEM3 := "system3"
 const RUNTIME_WA2 := "wa2"
 const RUNTIME_BGI := "bgi"
 const RUNTIME_ADVHD := "advhd"
@@ -2487,6 +2489,8 @@ var input_trace_enabled := false
 var input_trace_accum := 0.0
 var input_trace_received := 0
 var input_trace_forwarded := 0
+var input_total_forwarded := 0
+var input_total_send_failed := 0
 var input_trace_blocked := 0
 var input_trace_throttled := 0
 var input_trace_busy := 0
@@ -9654,7 +9658,7 @@ func _game_launch_entry_label(game: Dictionary) -> String:
 func _can_configure_launch_file(game: Dictionary) -> bool:
     return OS.get_name() != "Web" \
         and not builtin_demo.is_game(game) \
-        and _game_runtime_kind(String(game.get("path", ""))) not in [RUNTIME_ONSCRIPTER, RUNTIME_XSYSTEM4] \
+        and _game_runtime_kind(String(game.get("path", ""))) not in [RUNTIME_ONSCRIPTER, RUNTIME_XSYSTEM4, RUNTIME_XSYSTEM35, RUNTIME_SYSTEM3] \
         and String(game.get("type", "Directory")).to_lower() == "directory"
 
 func _set_launch_file_for_selected() -> void:
@@ -11851,9 +11855,12 @@ func _start_selected_game_after_iap() -> void:
         return
     if player == null:
         return
-    # Development artifacts and Android/Linux releases do not use the Apple-only
-    # beta entitlement flow.
-    if not _beta_access_enforcement_enabled():
+    # Released runtimes, development artifacts and Android/Linux releases do not
+    # use the Apple-only beta entitlement flow.
+    if (
+        not _beta_access_enforcement_enabled()
+        or not _runtime_requires_beta_access(selected_runtime_kind)
+    ):
         if (
             selected_runtime_kind == RUNTIME_KIRIKIRI
             and current_player_runtime_kind != RUNTIME_KIRIKIRI
@@ -11864,20 +11871,12 @@ func _start_selected_game_after_iap() -> void:
         return
 
     # StoreKit lives on the KiriKiri host. Return to that host before probing
-    # a provider-backed beta runtime after another runtime exits.
+    # a beta runtime after another runtime exits.
     if (
         current_player_runtime_kind != RUNTIME_KIRIKIRI
         and not _switch_runtime_player(RUNTIME_KIRIKIRI)
     ):
         return
-    var requires_beta_access := (
-        _runtime_requires_beta_access(selected_runtime_kind)
-        or _selected_game_uses_wa2()
-    )
-    if not requires_beta_access:
-        _start_selected_game_after_entitlements()
-        return
-
     iap_pending_beta_game = selected_game.duplicate(true)
     if not _iap_supported_platform() or not player.has_method("iap_refresh_entitlement"):
         _deny_runtime_beta_launch()
@@ -11889,24 +11888,13 @@ func _start_selected_game_after_iap() -> void:
         _deny_runtime_beta_launch()
 
 func _runtime_requires_beta_access(runtime_kind: String) -> bool:
-    # Minori, ADV Player HD and YU-RIS require an active coffee entitlement
+    # Minori requires an active coffee entitlement
     # in iOS and macOS distribution builds.
-    # Provider-backed runtimes such as WA2 are checked separately.
-    return runtime_kind in [RUNTIME_MINORI, RUNTIME_ADVHD, RUNTIME_YURIS]
+    return runtime_kind == RUNTIME_MINORI
 
 func _beta_access_enforcement_enabled(platform_name: String = "") -> bool:
     var effective_platform := platform_name if not platform_name.is_empty() else OS.get_name()
     return AppAccessPolicy.beta_access_enforced(effective_platform, OS.is_debug_build())
-
-func _selected_game_uses_wa2() -> bool:
-    # WHITE ALBUM2 runs on the KiriKiri host through the compiled Wa2
-    # provider and retains the provider beta-access policy.
-    if player == null or not player.has_method("probe_runtime"):
-        return false
-    var library_path := String(selected_game.get("path", "")).strip_edges()
-    if library_path.is_empty():
-        return false
-    return int(player.probe_runtime("wa2", library_path)) > 0
 
 func _complete_runtime_beta_check() -> void:
     iap_pending_beta_check_id = 0
@@ -12489,11 +12477,19 @@ func _switch_runtime_player(runtime_kind: String) -> bool:
         RUNTIME_BGI,
         RUNTIME_MAGES,
         RUNTIME_XSYSTEM4,
+        RUNTIME_XSYSTEM35,
+        RUNTIME_SYSTEM3,
         RUNTIME_YURIS,
         RUNTIME_ADVHD,
     ]:
         normalized = RUNTIME_KIRIKIRI
-    if player != null and current_player_runtime_kind == normalized:
+    # Returning to the library keeps the player Node but destroys its engine.
+    # Recreate that handle before callers apply any pre-open runtime options.
+    if (
+        player != null
+        and current_player_runtime_kind == normalized
+        and player.is_initialized()
+    ):
         return true
     if game_running:
         _append_log("Cannot switch visual-novel runtimes while a game is running.")
@@ -12519,7 +12515,11 @@ func _switch_runtime_player(runtime_kind: String) -> bool:
             diagnostic_session.finish()
         diagnostic_session.start(player, selected_backend)
     _append_log("Runtime selected: %s" % (
-        "AliceSoft System 4"
+        "AliceSoft System 1/2/3"
+        if normalized == RUNTIME_SYSTEM3
+        else "AliceSoft System 3.5/3.9"
+        if normalized == RUNTIME_XSYSTEM35
+        else "AliceSoft System 4"
         if normalized == RUNTIME_XSYSTEM4
         else "YU-RIS"
         if normalized == RUNTIME_YURIS
@@ -13206,6 +13206,8 @@ func _ensure_player_initialized() -> bool:
         RUNTIME_BGI,
         RUNTIME_MAGES,
         RUNTIME_XSYSTEM4,
+        RUNTIME_XSYSTEM35,
+        RUNTIME_SYSTEM3,
         RUNTIME_YURIS,
         RUNTIME_ADVHD,
     ]:
@@ -13222,7 +13224,11 @@ func _ensure_player_initialized() -> bool:
         return false
 
     _append_log("%s engine initialized." % (
-        "AliceSoft System 4"
+        "AliceSoft System 1/2/3"
+        if current_player_runtime_kind == RUNTIME_SYSTEM3
+        else "AliceSoft System 3.5/3.9"
+        if current_player_runtime_kind == RUNTIME_XSYSTEM35
+        else "AliceSoft System 4"
         if current_player_runtime_kind == RUNTIME_XSYSTEM4
         else "YU-RIS" if current_player_runtime_kind == RUNTIME_YURIS
         else "OnscripterYuri"
@@ -15926,6 +15932,10 @@ func _renderer_summary(renderer: String) -> String:
     var summary := selected_backend
     if renderer.contains("backend=onscripter_yuri"):
         summary = "OnscripterYuri (Godot Texture)"
+    elif renderer.contains("backend=system3"):
+        summary = "System 1/2/3 (Godot Texture)"
+    elif renderer.contains("backend=xsystem35"):
+        summary = "System 3.5/3.9 (Godot Texture)"
     elif renderer.contains("backend=xsystem4"):
         summary = "System 4 (Godot Texture)"
     elif renderer.contains("backend=godot_native"):
@@ -17443,8 +17453,10 @@ func _on_game_virtual_key_event(
         pressed, key_code, modifiers, unicode_codepoint
     ))
     input_trace_forwarded += 1
+    input_total_forwarded += 1
     if result != ENGINE_RESULT_OK:
         input_trace_send_failed += 1
+        input_total_send_failed += 1
     if input_trace_enabled:
         _write_probe_marker(
             "game_virtual_key pressed=%s key=0x%02X modifiers=0x%02X result=%d" % [
@@ -18070,8 +18082,10 @@ func _send_game_pointer_event(event_type: int, pointer_id: int, x: float, y: flo
             result,
         ])
     input_trace_forwarded += 1
+    input_total_forwarded += 1
     if result != ENGINE_RESULT_OK:
         input_trace_send_failed += 1
+        input_total_send_failed += 1
     if input_trace_enabled and event_type in [POINTER_DOWN, POINTER_UP]:
         var trace_line := "input_event type=%d pid=%d x=%.1f y=%.1f button=%d result=%d loading=%s runtime=%s" % [
             event_type,

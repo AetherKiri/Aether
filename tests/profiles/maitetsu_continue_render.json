@@ -1,0 +1,36 @@
+{
+  "name": "maitetsu_continue_render",
+  "game_path": "",
+  "backend": "Godot Native",
+  "surface_size": [1920, 1080],
+  "window_size": [1600, 900],
+  "coord_size": [1920, 1080],
+  "startup_timeout_frames": 2400,
+  "warmup_frames": 780,
+  "measure_frames": 60,
+  "actions": [
+    {
+      "type": "click",
+      "label": "skip_logo",
+      "pos": [900, 600],
+      "after_frames": 480
+    },
+    {
+      "type": "click",
+      "label": "start_menu",
+      "pos": [110, 75],
+      "after_frames": 120
+    },
+    {
+      "type": "click",
+      "label": "continue",
+      "pos": [410, 53],
+      "after_frames": 360
+    },
+    {
+      "type": "wait",
+      "label": "continue_idle",
+      "after_frames": 120
+    }
+  ]
+}

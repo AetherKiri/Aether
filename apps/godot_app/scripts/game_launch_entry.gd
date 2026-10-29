@@ -1,5 +1,7 @@
 extends RefCounted
 
+const Metadata = preload("res://scripts/game_metadata.gd")
+
 const FIELD := "launchFile"
 const SUPPORTED_EXTENSIONS := ["exe", "xp3", "hcb"]
 const DIRECTORY_RUNTIME_KINDS := [
@@ -17,6 +19,8 @@ const DIRECTORY_RUNTIME_KINDS := [
     "tyranoscript",
     "wa2",
     "xsystem4",
+    "xsystem35",
+    "system3",
 ]
 const YURIS_USER_STARTUP_CANDIDATES := [
     # The stock YU-RIS package enters through this script. It owns the
@@ -88,6 +92,14 @@ static func resolve_for_runtime(
     if requires_game_root or runtime_uses_directory(runtime_kind):
         # Preserve valid trailing spaces from native file-picker paths.
         return _normalize_path(String(game.get("path", "")))
+    if runtime_kind.to_lower() == "rfvp" and String(game.get(FIELD, "")).strip_edges().is_empty():
+        var root := _normalize_path(String(game.get("path", "")))
+        if DirAccess.dir_exists_absolute(root):
+            # An empty entry requests automatic HCB selection. The native
+            # provider probes files; a directory falls back to KiriKiri.
+            var hcb := Metadata.hcb_launch_file(root)
+            if not hcb.is_empty():
+                return root.path_join(hcb)
     return resolve(game)
 
 

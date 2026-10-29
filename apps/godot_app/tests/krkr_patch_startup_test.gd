@@ -4,7 +4,7 @@ extends SceneTree
 # Godot --headless --path apps/godot_app --script \
 #   res://tests/krkr_patch_startup_test.gd -- --case=encoding
 # Repeat with --plugin-mode=krkrsdl3 to exercise the default core mode.
-const CASES := ["order", "encoding", "helpers", "autopath", "error", "late", "explicit_late", "late_error", "partial_retry", "singleton_retry", "singleton_explicit_retry", "compiled"]
+const CASES := ["order", "encoding", "helpers", "autopath", "error", "late", "explicit_late", "late_error", "partial_retry", "singleton_retry", "singleton_explicit_retry", "compiled", "preprocessor", "preprocessor_retry", "preprocessor_explicit_retry"]
 const PREAMBLE := "if(typeof global.__patchTrace==\"undefined\") global.__patchTrace=[]; global.kag=%[]; global.KAGWindow=void;\n"
 const SAVE_TRACE := "global.__patchTrace.save(System.exePath+\"trace.txt\");\n"
 
@@ -51,6 +51,22 @@ func _run() -> void:
     var after := SAVE_TRACE
 
     match test_case:
+        "preprocessor", "preprocessor_retry", "preprocessor_explicit_retry":
+            patch = "@set (patch_config_runs = patch_config_runs + 1)\n" + PREAMBLE
+            if test_case != "preprocessor":
+                patch += "var dependency = Action;\n"
+                _write(game.path_join("system/Initialize.tjs"), "class Action {}\n")
+            patch += "@if (patch_config_runs == 1)\nglobal.__patchTrace.add(\"patch\");\n@endif\n@if (patch_config_runs == 2)\nglobal.__patchTrace.add(\"reload\");\n@endif\n"
+            startup += "@if (patch_config_runs != 1)\nthrow new Exception(\"PATCH_CONFIG_NOT_READY\");\n@endif\n"
+            if test_case != "preprocessor":
+                startup += "Scripts.execStorage(\"system/Initialize.tjs\");\n"
+            if test_case == "preprocessor_explicit_retry":
+                startup += "Scripts.execStorage(\"patch.tjs\");\n"
+            startup += "global.__patchTrace.add(\"startup\");\n"
+            expected.assign(["startup", "patch", "reload"] if test_case == "preprocessor_retry" else ["patch", "startup", "reload"])
+            # A retry completes the initial load without repeating @set;
+            # a later explicit reload must still execute the directive.
+            after = "@if (patch_config_runs != 1)\nglobal.__patchTrace.add(\"config-replayed\");\n@endif\nScripts.execStorage(\"patch.tjs\");\n" + SAVE_TRACE
         "order":
             patch = PREAMBLE + "if(typeof global.__patchCounter==\"undefined\") global.__patchCounter=0; ++global.__patchCounter; global.__patchTrace.add(\"patch:\"+global.__patchCounter);\n"
             startup += "global.__patchTrace.add(\"startup:\"+global.__patchCounter); Scripts.execStorage(\"patch.tjs\"); global.__patchTrace.add(\"explicit:\"+global.__patchCounter);\n"

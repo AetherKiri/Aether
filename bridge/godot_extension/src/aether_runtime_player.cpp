@@ -5,6 +5,12 @@
 #include "flash_player.h"
 #include "tyrano_player.h"
 #include "renpy_native.h"
+#if defined(AETHERKIRI_WITH_SYSTEM3)
+#include "system3_runtime_provider.h"
+#endif
+#if defined(AETHERKIRI_WITH_XSYSTEM35)
+#include "xsystem35_runtime_provider.h"
+#endif
 #if defined(AETHERKIRI_WITH_XSYSTEM4)
 #include "xsystem4_runtime_provider.h"
 #endif
@@ -1587,6 +1593,8 @@ bool AndroidRequestExternalStoragePermission() {
 struct GodotGpuPipelineState {
     RID blend_shader;
     RID blend_pipeline;
+    RID box_blur_shaders[2];
+    RID box_blur_pipelines[2];
     RID fill_source_texture;
     RID alpha_blend_a_shader;
     RID alpha_blend_a_pipeline;
@@ -1896,6 +1904,8 @@ void ApplyGodotGpuBarrier(RenderingDevice *rd) {
 bool IsBatchableBlendOp(const std::shared_ptr<GodotGpuOp> &op) {
     if (op == nullptr) return false;
     if (op->type == GodotGpuOp::Type::Blend) {
+        // Blur owns two ordered passes, including when its source is distinct.
+        if (op->mode == TVP_GODOT_GPU_BLEND_BOX_BLUR_ALPHA) return false;
         return op->src != op->dst ||
                op->mode == TVP_GODOT_GPU_BLEND_FILL_ARGB ||
                op->mode == TVP_GODOT_GPU_BLEND_REMOVE_CONST_OPACITY ||
@@ -2459,14 +2469,6 @@ uint remove_const_opacity(uint d, uint strength) {
     return (d & 0x00ffffffu) | (a << 24);
 }
 
-int reflect101_index(int value, int extent) {
-    if (extent <= 1) return 0;
-    int period = (extent - 1) * 2;
-    int wrapped = value % period;
-    if (wrapped < 0) wrapped += period;
-    return wrapped < extent ? wrapped : period - wrapped;
-}
-
 void main() {
     ivec2 local = ivec2(gl_GlobalInvocationID.xy);
     if (local.x >= pc.rect1.x || local.y >= pc.rect1.y) {
@@ -2477,22 +2479,7 @@ void main() {
     uint opa = uint(clamp(pc.rect1.w, 0, 255));
     uint out_color = 0u;
 
-    if (pc.rect1.z == 26) {
-        int radius_x = clamp(pc.rect1.w, 0, 64);
-        int radius_y = clamp(pc.color0.x, 0, 64);
-        ivec2 extent = aetherkiri_max(pc.rect1.xy, ivec2(1));
-        vec4 sum = vec4(0.0);
-        int samples = 0;
-        for (int oy = -radius_y; oy <= radius_y; ++oy) {
-            int sy = reflect101_index(local.y + oy, extent.y);
-            for (int ox = -radius_x; ox <= radius_x; ++ox) {
-                int sx = reflect101_index(local.x + ox, extent.x);
-                sum += imageLoad(src_img, pc.rect0.zw + ivec2(sx, sy));
-                ++samples;
-            }
-        }
-        out_color = pack_u8(vec4_to_u8(sum / float(aetherkiri_max(samples, 1))));
-    } else if (pc.rect1.z == 5) {
+    if (pc.rect1.z == 5) {
         out_color = (uint(pc.color0.x) & 0xffu) |
                     ((uint(pc.color0.y) & 0xffu) << 8) |
                     ((uint(pc.color0.z) & 0xffu) << 16) |
@@ -2582,6 +2569,91 @@ void main() {
     g_gpu_pipeline_state->blend_pipeline =
         rd->compute_pipeline_create(g_gpu_pipeline_state->blend_shader);
     return g_gpu_pipeline_state->blend_pipeline.is_valid();
+}
+
+bool EnsureBoxBlurPipelines(RenderingDevice *rd) {
+    if (rd == nullptr) return false;
+    if (g_gpu_pipeline_state == nullptr)
+        g_gpu_pipeline_state = new GodotGpuPipelineState();
+    // Accumulate bytes without rounding between the two passes. A horizontal
+    // sum fits in 16 bits at the existing maximum radius of 64; packing RG/BA
+    // uses eight scratch bytes per pixel and needs no optional image format.
+    static const char *shader_body = R"GLSL(
+layout(local_size_x = 8, local_size_y = 8, local_size_z = 1) in;
+#ifdef HORIZONTAL
+layout(rgba8, set = 0, binding = 0) uniform readonly image2D src_img;
+layout(std430, set = 0, binding = 1) writeonly buffer Sums { uvec2 sums[]; } scratch;
+#else
+layout(std430, set = 0, binding = 0) readonly buffer Sums { uvec2 sums[]; } scratch;
+layout(rgba8, set = 0, binding = 1) uniform writeonly image2D dst_img;
+#endif
+layout(push_constant, std430) uniform Params {
+    ivec4 rect0;
+    ivec4 rect1;
+    ivec4 color0;
+} pc;
+
+int reflect101_index(int value, int extent) {
+    if (extent <= 1) return 0;
+    int period = (extent - 1) * 2;
+    int wrapped = value % period;
+    if (wrapped < 0) wrapped += period;
+    return wrapped < extent ? wrapped : period - wrapped;
+}
+
+void main() {
+    ivec2 p = ivec2(gl_GlobalInvocationID.xy);
+    ivec2 extent = pc.rect1.xy;
+    if (any(greaterThanEqual(p, extent))) return;
+    int rx = clamp(pc.rect1.w, 0, 64);
+    int ry = clamp(pc.color0.x, 0, 64);
+    uvec4 total = uvec4(0);
+#ifdef HORIZONTAL
+    for (int x = -rx; x <= rx; ++x) {
+        ivec2 source = pc.rect0.zw + ivec2(reflect101_index(p.x + x, extent.x), p.y);
+        total += uvec4(round(imageLoad(src_img, source) * 255.0));
+    }
+    scratch.sums[p.y * extent.x + p.x] =
+        uvec2(total.r | (total.g << 16), total.b | (total.a << 16));
+#else
+    for (int y = -ry; y <= ry; ++y) {
+        uvec2 packed = scratch.sums[reflect101_index(p.y + y, extent.y) * extent.x + p.x];
+        total += uvec4(packed.x & 65535u, packed.x >> 16,
+                       packed.y & 65535u, packed.y >> 16);
+    }
+    uint count = uint((2 * rx + 1) * (2 * ry + 1));
+    uvec4 result = (total + count / 2u) / count;
+    imageStore(dst_img, pc.rect0.xy + p, vec4(result) / 255.0);
+#endif
+}
+)GLSL";
+    for (int pass = 0; pass < 2; ++pass) {
+        auto &shader = g_gpu_pipeline_state->box_blur_shaders[pass];
+        auto &pipeline = g_gpu_pipeline_state->box_blur_pipelines[pass];
+        if (pipeline.is_valid()) continue;
+        if (!shader.is_valid()) {
+            Ref<RDShaderSource> source;
+            source.instantiate();
+            source->set_language(RenderingDevice::SHADER_LANGUAGE_GLSL);
+            source->set_stage_source(RenderingDevice::SHADER_STAGE_COMPUTE,
+                String("#version 450\n") +
+                    (pass == 0 ? "#define HORIZONTAL\n" : "") + shader_body);
+            Ref<RDShaderSPIRV> spirv = rd->shader_compile_spirv_from_source(source);
+            if (spirv.is_null()) return false;
+            const String error = spirv->get_stage_compile_error(
+                RenderingDevice::SHADER_STAGE_COMPUTE);
+            if (!error.is_empty()) {
+                UtilityFunctions::printerr("Godot GPU box blur compile error: ", error);
+                return false;
+            }
+            shader = rd->shader_create_from_spirv(spirv,
+                pass == 0 ? "AetherBoxBlurHorizontal" : "AetherBoxBlurVertical");
+            if (!shader.is_valid()) return false;
+        }
+        pipeline = rd->compute_pipeline_create(shader);
+        if (!pipeline.is_valid()) return false;
+    }
+    return true;
 }
 
 bool EnsureAlphaConvertPipeline(RenderingDevice *rd) {
@@ -5683,8 +5755,7 @@ void ExecuteGodotGpuLive2DRasterBatch(
 bool DispatchGodotGpuBlend(RenderingDevice *rd,
                            const std::shared_ptr<GodotGpuOp> &op,
                            int64_t compute_list,
-                           std::vector<RID> &uniform_sets,
-                           const RID &source_override = RID()) {
+                           std::vector<RID> &uniform_sets) {
     const bool alpha_blend_a = op->mode == TVP_GODOT_GPU_BLEND_ALPHA_BLEND_A;
     if (alpha_blend_a) {
         if (!EnsureAlphaBlendAPipeline(rd)) return false;
@@ -5692,7 +5763,7 @@ bool DispatchGodotGpuBlend(RenderingDevice *rd,
         return false;
     }
 
-    RID source = source_override.is_valid() ? source_override : op->src;
+    RID source = op->src;
     if (op->mode == TVP_GODOT_GPU_BLEND_FILL_ARGB) {
         // FillARGB does not sample its source, but the shared blend shader
         // still declares one. Binding the destination RID as both the
@@ -5721,16 +5792,6 @@ bool DispatchGodotGpuBlend(RenderingDevice *rd,
     (void)uniform_sets;
 
     PackedByteArray push_constants = PackGpuPushConstants(*op);
-    if (source_override.is_valid() && op->mode == TVP_GODOT_GPU_BLEND_BOX_BLUR_ALPHA) {
-        // The alias scratch texture is tightly sized to the source rectangle.
-        // Its local origin replaces the original source texture coordinates.
-        int32_t zero = 0;
-        uint8_t *bytes = push_constants.ptrw();
-        if (bytes != nullptr) {
-            std::memcpy(bytes + 2 * sizeof(int32_t), &zero, sizeof(zero));
-            std::memcpy(bytes + 3 * sizeof(int32_t), &zero, sizeof(zero));
-        }
-    }
     rd->compute_list_bind_compute_pipeline(
         compute_list,
         alpha_blend_a ? g_gpu_pipeline_state->alpha_blend_a_pipeline
@@ -5788,6 +5849,57 @@ bool DispatchGodotGpuBlend3(RenderingDevice *rd,
     return true;
 }
 
+bool ExecuteGodotGpuBoxBlur(RenderingDevice *rd,
+                            const std::shared_ptr<GodotGpuOp> &op) {
+    if (!EnsureBoxBlurPipelines(rd) || op->size.x <= 0 || op->size.y <= 0)
+        return false;
+    const uint64_t bytes = static_cast<uint64_t>(op->size.x) *
+                           static_cast<uint64_t>(op->size.y) * 8u;
+    if (bytes > UINT32_MAX) return false;
+    RID scratch = rd->storage_buffer_create(static_cast<uint32_t>(bytes));
+    if (!scratch.is_valid()) return false;
+    RID sets[2];
+    for (int pass = 0; pass < 2; ++pass) {
+        TypedArray<RDUniform> uniforms;
+        for (int binding = 0; binding < 2; ++binding) {
+            Ref<RDUniform> uniform;
+            uniform.instantiate();
+            const bool is_image = binding == pass;
+            uniform->set_binding(binding);
+            uniform->set_uniform_type(is_image ? RenderingDevice::UNIFORM_TYPE_IMAGE
+                                               : RenderingDevice::UNIFORM_TYPE_STORAGE_BUFFER);
+            uniform->add_id(is_image ? (pass == 0 ? op->src : op->dst) : scratch);
+            uniforms.append(uniform);
+        }
+        sets[pass] = rd->uniform_set_create(
+            uniforms, g_gpu_pipeline_state->box_blur_shaders[pass], 0);
+        if (!sets[pass].is_valid()) {
+            if (sets[0].is_valid()) rd->free_rid(sets[0]);
+            rd->free_rid(scratch);
+            return false;
+        }
+    }
+    const PackedByteArray push = PackGpuPushConstants(*op);
+    // Complete the source-reading pass before writing any destination pixel.
+    // This also handles in-place blur without copying the source image.
+    for (int pass = 0; pass < 2; ++pass) {
+        int64_t list = rd->compute_list_begin();
+        rd->compute_list_bind_compute_pipeline(list,
+            g_gpu_pipeline_state->box_blur_pipelines[pass]);
+        rd->compute_list_bind_uniform_set(list, sets[pass], 0);
+        rd->compute_list_set_push_constant(list, push, 48);
+        rd->compute_list_dispatch(list, (static_cast<uint32_t>(op->size.x) + 7) / 8,
+                                  (static_cast<uint32_t>(op->size.y) + 7) / 8, 1);
+        rd->compute_list_add_barrier(list);
+        rd->compute_list_end();
+    }
+    rd->free_rid(sets[0]);
+    rd->free_rid(sets[1]);
+    rd->free_rid(scratch);
+    ApplyGodotGpuBarrier(rd);
+    return true;
+}
+
 bool ExecuteGodotGpuBlend(RenderingDevice *rd,
                           const std::shared_ptr<GodotGpuOp> &op) {
     if (rd == nullptr || op == nullptr) return false;
@@ -5800,10 +5912,10 @@ bool ExecuteGodotGpuBlend(RenderingDevice *rd,
         // destination is not portable across Metal (iOS/macOS) and Vulkan.
         return ExecuteGodotGpuAlphaConvert(rd, op);
     }
-    const bool alias_box_blur =
-        op->src == op->dst &&
-        op->mode == TVP_GODOT_GPU_BLEND_BOX_BLUR_ALPHA;
-    if (op->src == op->dst && !alias_box_blur &&
+    if (op->mode == TVP_GODOT_GPU_BLEND_BOX_BLUR_ALPHA) {
+        return ExecuteGodotGpuBoxBlur(rd, op);
+    }
+    if (op->src == op->dst &&
         op->mode != TVP_GODOT_GPU_BLEND_FILL_ARGB &&
         op->mode != TVP_GODOT_GPU_BLEND_REMOVE_CONST_OPACITY &&
         op->mode != TVP_GODOT_GPU_BLEND_FILL_MASK &&
@@ -5814,26 +5926,9 @@ bool ExecuteGodotGpuBlend(RenderingDevice *rd,
     }
 
     std::vector<RID> uniform_sets;
-    RID alias_source;
-    if (alias_box_blur) {
-        Ref<RDTextureView> view;
-        view.instantiate();
-        TypedArray<PackedByteArray> initial_data;
-        alias_source = rd->texture_create(
-            MakeRgbaTextureFormat(static_cast<uint32_t>(op->size.x),
-                                  static_cast<uint32_t>(op->size.y)),
-            view, initial_data);
-        if (!alias_source.is_valid()) return false;
-        if (rd->texture_copy(op->src, alias_source, op->src_pos, Vector3(),
-                             op->size, 0, 0, 0, 0) != OK) {
-            rd->free_rid(alias_source);
-            return false;
-        }
-        ApplyGodotGpuBarrier(rd);
-    }
     int64_t compute_list = rd->compute_list_begin();
     const bool ok = DispatchGodotGpuBlend(
-        rd, op, compute_list, uniform_sets, alias_source);
+        rd, op, compute_list, uniform_sets);
     if (ok) {
         rd->compute_list_add_barrier(compute_list);
     }
@@ -5843,10 +5938,6 @@ bool ExecuteGodotGpuBlend(RenderingDevice *rd,
     }
     for (const RID &uniform_set : uniform_sets) {
         rd->free_rid(uniform_set);
-    }
-    if (alias_source.is_valid()) {
-        InvalidateGodotGpuUniformSetsForResource(rd, alias_source);
-        rd->free_rid(alias_source);
     }
     return ok;
 }
@@ -9815,6 +9906,12 @@ void ReleaseGodotGpuPipeline() {
         if (g_gpu_pipeline_state->fill_source_texture.is_valid()) {
             rd->free_rid(g_gpu_pipeline_state->fill_source_texture);
         }
+        for (int pass = 0; pass < 2; ++pass) {
+            if (g_gpu_pipeline_state->box_blur_pipelines[pass].is_valid())
+                rd->free_rid(g_gpu_pipeline_state->box_blur_pipelines[pass]);
+            if (g_gpu_pipeline_state->box_blur_shaders[pass].is_valid())
+                rd->free_rid(g_gpu_pipeline_state->box_blur_shaders[pass]);
+        }
         if (g_gpu_pipeline_state->blend_pipeline.is_valid()) {
             rd->free_rid(g_gpu_pipeline_state->blend_pipeline);
         }
@@ -12106,6 +12203,90 @@ public:
     Dictionary debug_gpu_convolution_self_test() {
         Dictionary result;
         bool okay = true;
+        // Read back real GPU blur output and compare it with a direct 2D
+        // reference. Exercise aliases, shifted rectangles, degenerate axes,
+        // partial workgroups and kernels larger than the operated rectangle.
+        const std::array<std::array<int, 4>, 7> blur_cases{{
+            {{1, 1, 0, 0}}, {{1, 5, 0, 2}}, {{5, 1, 2, 0}},
+            {{7, 5, 2, 1}}, {{3, 2, 50, 50}}, {{19, 17, 10, 10}},
+            {{7, 5, 64, 64}},
+        }};
+        int blur_checked = 0, blur_pixels = 0, blur_mismatches = 0;
+        bool blur_okay = true;
+        const auto reflected = [](int position, int extent) {
+            if (extent == 1) return 0;
+            while (position < 0 || position >= extent) {
+                position = position < 0 ? -position : 2 * extent - 2 - position;
+            }
+            return position;
+        };
+        for (const auto &test : blur_cases) {
+            const int w = test[0], h = test[1], rx = test[2], ry = test[3];
+            const int width = w + 3, height = h + 3;
+            std::vector<uint32_t> source(width * height);
+            for (int y = 0; y < height; ++y) {
+                for (int x = 0; x < width; ++x) {
+                    source[y * width + x] =
+                        ((x * 37u + y * 13u + 1u) & 255u) |
+                        (((x * 11u + y * 53u + 127u) & 255u) << 8) |
+                        (((x * 73u + y * 3u + 251u) & 255u) << 16) |
+                        (((x * 17u + y * 29u + 64u) & 255u) << 24);
+                }
+            }
+            for (bool alias : {false, true}) {
+                for (bool shifted : {false, true}) {
+                    const int sx = shifted ? 2 : 0, sy = shifted ? 1 : 0;
+                    const int dx = shifted ? 1 : 0, dy = shifted ? 2 : 0;
+                    const tTVPRect src_rect(sx, sy, sx + w, sy + h);
+                    const tTVPRect dst_rect(dx, dy, dx + w, dy + h);
+                    const std::vector<uint32_t> initial = alias ? source :
+                        std::vector<uint32_t>(source.size(), 0xa55a3cc3u);
+                    auto expected = initial;
+                    for (int y = 0; y < h; ++y) {
+                        for (int x = 0; x < w; ++x) {
+                            std::array<uint32_t, 4> sum{};
+                            for (int oy = -ry; oy <= ry; ++oy) {
+                                for (int ox = -rx; ox <= rx; ++ox) {
+                                    const uint32_t pixel = source[
+                                        (sy + reflected(y + oy, h)) * width +
+                                        sx + reflected(x + ox, w)];
+                                    for (int c = 0; c < 4; ++c)
+                                        sum[c] += (pixel >> (c * 8)) & 255u;
+                                }
+                            }
+                            const uint32_t count = (2 * rx + 1) * (2 * ry + 1);
+                            uint32_t pixel = 0;
+                            for (int c = 0; c < 4; ++c)
+                                pixel |= ((sum[c] * 2 + count) / (2 * count)) << (c * 8);
+                            expected[(dy + y) * width + dx + x] = pixel;
+                        }
+                    }
+                    const auto src = BridgeCreateRgba(width, height, source.data(), width * 4);
+                    const auto dst = alias ? src :
+                        BridgeCreateRgba(width, height, initial.data(), width * 4);
+                    std::vector<uint32_t> actual(source.size());
+                    const bool valid = src && dst &&
+                        BridgeBlendRect(dst, src, &dst_rect, &src_rect,
+                            TVP_GODOT_GPU_BLEND_BOX_BLUR_ALPHA, rx, ry) &&
+                        BridgeReadRgba(dst, actual.data(), actual.size() * 4, width * 4);
+                    blur_okay = blur_okay && valid;
+                    if (valid) {
+                        for (size_t i = 0; i < expected.size(); ++i) {
+                            if (actual[i] != expected[i]) ++blur_mismatches;
+                            ++blur_pixels;
+                        }
+                    }
+                    ++blur_checked;
+                    if (src) BridgeReleaseTexture(src);
+                    if (dst && !alias) BridgeReleaseTexture(dst);
+                }
+            }
+        }
+        result["box_blur_cases"] = blur_checked;
+        result["box_blur_pixels"] = blur_pixels;
+        result["box_blur_mismatches"] = blur_mismatches;
+        result["box_blur"] = blur_okay && blur_mismatches == 0;
+        okay = okay && blur_okay && blur_mismatches == 0;
         for (bool vertical : {false, true}) {
             const uint32_t width = vertical ? 1u : 4u, height = vertical ? 4u : 1u;
             const std::array<uint32_t, 4> source{{0xff000050u, 0u, 0x80000000u, 0x000000a0u}};
@@ -13886,6 +14067,16 @@ void InitializeAetherRuntime(ModuleInitializationLevel level) {
 #endif
 #if defined(AETHERKIRI_WITH_ONSCRIPTER)
     aetherkiri::onscripter::RegisterRuntimeProvider();
+#endif
+#if defined(AETHERKIRI_WITH_SYSTEM3)
+    if(aetherkiri_system3_register_runtime_provider() != ENGINE_RESULT_OK) {
+        UtilityFunctions::printerr("Failed to register System 1/2/3 runtime provider");
+    }
+#endif
+#if defined(AETHERKIRI_WITH_XSYSTEM35)
+    if(aetherkiri_xsystem35_register_runtime_provider() != ENGINE_RESULT_OK) {
+        UtilityFunctions::printerr("Failed to register System 3.5/3.9 runtime provider");
+    }
 #endif
 #if defined(AETHERKIRI_WITH_XSYSTEM4)
     if(aetherkiri_xsystem4_register_runtime_provider() != ENGINE_RESULT_OK) {

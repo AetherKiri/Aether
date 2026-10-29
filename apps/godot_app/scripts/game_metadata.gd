@@ -12,6 +12,8 @@ const RUNTIME_TYRANO := "tyranoscript"
 const RUNTIME_RENPY := "renpy"
 const RUNTIME_MAGES := "mages"
 const RUNTIME_XSYSTEM4 := "xsystem4"
+const RUNTIME_XSYSTEM35 := "xsystem35"
+const RUNTIME_SYSTEM3 := "system3"
 const RUNTIME_YURIS := "yuris"
 
 static func inspect(path: String) -> Dictionary:
@@ -32,7 +34,7 @@ static func inspect(path: String) -> Dictionary:
     var files := _file_names(root)
     var tyrano_entry := tyrano_entry_file(root)
     var renpy_directory := renpy_game_directory(root)
-    var hcb := _hcb_launch_file(root, path)
+    var hcb := hcb_launch_file(root, path)
     if not tyrano_entry.is_empty():
         result.engine = RUNTIME_TYRANO
         result.launchFile = tyrano_entry
@@ -61,6 +63,12 @@ static func inspect(path: String) -> Dictionary:
     elif (files.has("system40.ini") or files.has("alicestart.ini")) and _has_extension(files, "ain"):
         result.engine = RUNTIME_XSYSTEM4
         result.signals.append("system4-ain-ini")
+    elif _has_suffix(files, "sa.ald") or files.has("adisk.ald"):
+        result.engine = RUNTIME_XSYSTEM35
+        result.signals.append("system35-scenario-ald")
+    elif (files.has("adisk.dat") or files.has("gdisk.dat") or files.has("agame.dat") or files.has("adisk.pat")) and (files.has("acg.dat") or files.has("gcg.dat")):
+        result.engine = RUNTIME_SYSTEM3
+        result.signals.append("system3-dat")
     elif not hcb.is_empty():
         result.engine = RUNTIME_RFVP
         result.signals.append("fvp-hcb")
@@ -222,7 +230,7 @@ static func _is_compiled_yuris_package(root: String, files: PackedStringArray) -
                 return true
     return false
 
-static func _hcb_launch_file(root: String, requested: String) -> String:
+static func hcb_launch_file(root: String, requested: String = "") -> String:
     var entries := hcb_launch_files(root)
     if FileAccess.file_exists(requested) and entries.has(requested.get_file()):
         return requested.get_file()
@@ -408,3 +416,9 @@ static func _unique_nonempty(values: PackedStringArray) -> PackedStringArray:
         seen[normalized] = true
         result.append(normalized)
     return result
+
+static func _has_suffix(files: PackedStringArray, suffix: String) -> bool:
+    for name in files:
+        if name.ends_with(suffix):
+            return true
+    return false

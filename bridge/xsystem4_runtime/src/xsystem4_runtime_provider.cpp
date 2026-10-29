@@ -84,6 +84,29 @@ namespace aetherkiri::xsystem4 {
             result << std::hex << value;
             return result.str();
         }
+        bool LooksLikeGbk(const std::string &sample) {
+            if(sample.empty())
+                return false;
+            uchardet_t detector = uchardet_new();
+            if(!detector)
+                return false;
+            // A few GBK characters can be reported as UTF-8 with insufficient
+            // statistical evidence, even when their bytes are not valid UTF-8.
+            // Repeat short text at line boundaries to give the detector enough
+            // observations, without admitting comments into the sample.
+            std::string observations = sample;
+            while(observations.size() < 128) {
+                observations += '\n';
+                observations += sample;
+            }
+            uchardet_handle_data(detector, observations.data(),
+                                 observations.size());
+            uchardet_data_end(detector);
+            const std::string encoding = Lower(uchardet_get_charset(detector));
+            uchardet_delete(detector);
+            return encoding == "gb18030" || encoding == "gb2312" ||
+                encoding == "gbk" || encoding == "hz-gb-2312";
+        }
         std::string DetectEncoding(const std::string &root) {
             for(const auto &entry : fs::directory_iterator(fs::u8path(root))) {
                 const auto name = Lower(entry.path().filename().u8string());
@@ -93,14 +116,45 @@ namespace aetherkiri::xsystem4 {
                 std::string data(65536, '\0');
                 stream.read(data.data(), data.size());
                 data.resize(stream.gcount());
-                uchardet_t detector = uchardet_new();
-                uchardet_handle_data(detector, data.data(), data.size());
-                uchardet_data_end(detector);
-                const std::string encoding =
-                    Lower(uchardet_get_charset(detector));
-                uchardet_delete(detector);
-                if(encoding == "gb18030" || encoding == "gb2312" ||
-                   encoding == "gbk" || encoding == "hz-gb-2312")
+                // Translations often retain Shift-JIS comments while replacing
+                // the actual values with GBK. Comments must not determine the
+                // encoding used for script filenames and in-game text.
+                std::istringstream lines(data);
+                std::string sample, title, line;
+                while(std::getline(lines, line)) {
+                    bool quoted = false;
+                    for(size_t i = 0; i < line.size(); i++) {
+                        if(line[i] == '"')
+                            quoted = !quoted;
+                        if(!quoted &&
+                           (line[i] == ';' || line.compare(i, 2, "//") == 0)) {
+                            line.resize(i);
+                            break;
+                        }
+                    }
+                    const auto start = line.find_first_not_of(" \t\r");
+                    if(start == std::string::npos)
+                        continue;
+                    sample += line;
+                    sample += '\n';
+                    const auto key_end = line.find_first_of(" \t=", start);
+                    if(line.substr(start, key_end - start) != "GameName")
+                        continue;
+                    const auto equals = line.find('=', key_end);
+                    if(equals == std::string::npos)
+                        continue;
+                    const auto first =
+                        line.find_first_not_of(" \t", equals + 1);
+                    if(first == std::string::npos || line[first] != '"')
+                        continue;
+                    const auto last = line.find('"', first + 1);
+                    if(last != std::string::npos)
+                        title = line.substr(first + 1, last - first - 1);
+                }
+                // A translated title takes priority over original Japanese
+                // labels left in other values (e.g. mixer channel names).
+                // Without positive GBK evidence, keep the Japanese default.
+                if(LooksLikeGbk(title) || LooksLikeGbk(sample))
                     return "gbk";
             }
             return "sjis";
@@ -120,7 +174,7 @@ namespace aetherkiri::xsystem4 {
             std::atomic<bool> stopping{ false }, paused{ false };
             std::atomic<bool> text_input{ false };
             std::atomic<uint32_t> fps{ 60 };
-            bool ended = false, ready = false;
+            bool ended = false, ready = false, requested_exit = false;
             std::shared_ptr<Frame> frame, snapshot;
             std::atomic<uint64_t> serial{ 0 };
             uint64_t delivered = 0;
@@ -290,6 +344,11 @@ namespace aetherkiri::xsystem4 {
                                       ENGINE_RUNTIME_LOG_ERROR, "xsystem4",
                                       message);
                 };
+                hooks.game_exit = [](void *p, int) {
+                    auto &self = *static_cast<Runtime *>(p);
+                    std::lock_guard<std::mutex> guard(self.mutex);
+                    self.requested_exit = true;
+                };
                 std::string session_font;
                 {
                     std::lock_guard<std::mutex> guard(mutex);
@@ -301,7 +360,7 @@ namespace aetherkiri::xsystem4 {
                 {
                     std::lock_guard<std::mutex> guard(mutex);
                     ended = true;
-                    if(result && error.empty())
+                    if(result && !requested_exit && error.empty())
                         error = "The System 4 VM exited with code " +
                             std::to_string(result);
                     condition.notify_all();
@@ -382,7 +441,7 @@ namespace aetherkiri::xsystem4 {
                 {
                     std::lock_guard<std::mutex> guard(self->mutex);
                     self->error.clear();
-                    self->ready = self->ended = false;
+                    self->ready = self->ended = self->requested_exit = false;
                     self->frame.reset();
                     self->snapshot.reset();
                     self->delivered = 0;
@@ -417,7 +476,13 @@ namespace aetherkiri::xsystem4 {
                     succeeded = self->ready && self->error.empty();
                 }
                 if(!succeeded) {
-                    self->fail("System 4 did not produce a startup frame");
+                    {
+                        std::lock_guard<std::mutex> guard(self->mutex);
+                        if(self->error.empty())
+                            self->error = self->ended
+                                ? "System 4 runtime requested termination"
+                                : "System 4 did not produce a startup frame";
+                    }
                     self->stop();
                     return ENGINE_RESULT_IO_ERROR;
                 }

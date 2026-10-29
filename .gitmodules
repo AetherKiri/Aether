@@ -45,3 +45,11 @@
 	path = packages/xsystem4
 	url = https://github.com/AetherKiri/xsystem4.git
 	branch = aether
+[submodule "packages/xsystem35"]
+	path = packages/xsystem35
+	url = https://github.com/AetherKiri/xsystem35-sdl2.git
+	branch = aether
+[submodule "packages/system3"]
+	path = packages/system3
+	url = https://github.com/AetherKiri/system3-sdl2.git
+	branch = aether

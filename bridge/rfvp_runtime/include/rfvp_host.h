@@ -59,6 +59,8 @@ int32_t aether_rfvp_frame(void* runtime, uint32_t* width, uint32_t* height, uint
 int32_t aether_rfvp_gpu_frame(void* runtime, uint64_t* texture,
     uint32_t* width, uint32_t* height, uint64_t* serial);
 int32_t aether_rfvp_read(void* runtime, void* pixels, size_t size);
+int32_t aether_rfvp_debug(void* runtime, char* output, uint32_t size,
+    uint32_t* written);
 const char* aether_rfvp_error(void* runtime);
 uint32_t aether_rfvp_log(char* output, size_t size);
 #ifdef __cplusplus

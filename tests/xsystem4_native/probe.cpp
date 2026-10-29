@@ -126,6 +126,13 @@ bool Command(cJSON *json) {
         provider->destroy(player);
         player = nullptr;
         Open();
+    } else if(action == "move") {
+        engine_input_event_t event{};
+        event.struct_size = sizeof(event);
+        event.type = ENGINE_INPUT_EVENT_POINTER_MOVE;
+        event.x = Number(json, "x");
+        event.y = Number(json, "y");
+        Check(provider->send_input(player, &event));
     } else if(action == "click" || action == "key") {
         engine_input_event_t event{};
         event.struct_size = sizeof(event);

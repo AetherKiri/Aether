@@ -38,6 +38,8 @@ Godot App Shell
             ├─ OnsRuntime ───────── OnscripterYuri
             ├─ SiglusRuntime ────── siglus_rs
             ├─ System4 Runtime ──── xsystem4 (AliceSoft)
+            ├─ System35 Runtime ─── xsystem35 (AliceSoft)
+            ├─ System3 Runtime ──── system3-sdl2 (AliceSoft System 1–3)
             ├─ Artemis Runtime ──── Artemis (private package)
             ├─ CatSystem2 Runtime ─ CatSystem2 (private package)
             ├─ BGI Runtime ──────── BGI / Ethornell (private package)
@@ -61,8 +63,8 @@ and **Debug CPU** is a diagnostic fallback only.
   back to ONS events.
 - Native ADV Player HD (AdvHD / WillPlus) support through the optional private
   package, with story playback, save/load, backlog, settings, EXTRA, CG viewing
-  and scene replay for supported games. Available as a coffee beta in iOS/macOS
-  Release builds. Saves and settings live in the game's `savedata/` directory;
+  and scene replay for supported games. Saves and settings live in the game's
+  `savedata/` directory;
   existing Aether saves are imported automatically on first launch.
 - Independent C++17 YU-RIS runtime in the private package, supporting source
   projects and compiled YBN games. Saves live in each game's `savedata/`
@@ -74,6 +76,11 @@ and **Debug CPU** is a diagnostic fallback only.
 - Experimental TyranoScript browser-project playback from the visual-novel
   library on macOS, iOS/iPadOS and Android, with isolated saves and virtual keys. See the
   [prototype scope and tests](bridge/tyrano_runtime/README.md).
+- Native AliceSoft System 3.5/3.9 playback via xsystem35, with ALD directory
+  import, Chinese/Japanese text and optional virtual keys. See the [native host and tested games](bridge/xsystem35_runtime/README.md).
+- Native AliceSoft System 1–3 DAT playback via system3-sdl2, preserving translated
+  game IDs, UTF-8 and font configuration, with Shift-JIS for original Japanese games.
+  Virtual keys default off. See the [native host and validation](bridge/system3_runtime/README.md).
 - Native AliceSoft System 4 playback via the bundled xsystem4 runtime, with
   directory import, Chinese/Japanese text, audio, movies and optional virtual keys.
   See the [native host and validation](bridge/xsystem4_runtime/README.md).
@@ -87,9 +94,9 @@ and **Debug CPU** is a diagnostic fallback only.
 - Manual compatibility notes for tested titles in
   [`doc/verified_games.md`](doc/verified_games.md).
 
-In iOS and macOS Release distribution builds, ADV Player HD, Minori, YU-RIS, and the
-WHITE ALBUM2 (Leaf TtT / WA2) runtime require an active 30-day coffee
-entitlement. ONScripterYuri, Artemis, CatSystem2, and SoftPal are generally available.
+In iOS and macOS Release distribution builds, Minori requires an active 30-day
+coffee entitlement. KiriKiri, WHITE ALBUM2 (Leaf TtT / WA2), ONScripterYuri,
+Artemis, CatSystem2, SoftPal, ADV Player HD, and YU-RIS are generally available.
 Debug builds and Android/Linux releases do not enforce this coffee requirement.
 
 ## Flash Library

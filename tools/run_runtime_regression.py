@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Run an opt-in runtime regression on macOS or a connected iOS device.
 
-Cases and writable-state seeds are local inputs. No images are captured.
+Cases and writable-state seeds are local inputs. No image files are saved.
 """
 import argparse
 import datetime as dt
@@ -48,8 +48,8 @@ def arguments():
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--seed", type=Path, help="Copy this writable-state tree into the isolated run")
     parser.add_argument("--game", help="Override the case's game_path on this host or device")
-    parser.add_argument("--pointer-input", choices=("mouse", "touch"),
-        help="Use the app's ScreenTouch handler for clicks instead of direct player pointer input")
+    parser.add_argument("--pointer-input", choices=("mouse", "touch", "virtual_mouse"),
+        help="Click through direct player input, ScreenTouch, or the virtual Mouse-mode trackpad")
     parser.add_argument("--timeout", type=int, default=180)
     parser.add_argument("--device")
     parser.add_argument("--bundle", help="Installed development app bundle ID")
@@ -104,9 +104,13 @@ def main():
 
     if args.platform == "ios":
         remote = "Documents/regressions/" + run_id
-        device("device", "copy", "to", "--device", args.device,
-            "--domain-type", "appDataContainer", "--domain-identifier", args.bundle,
-            "--source", str(isolated), "--destination", remote, name="seed-copy")
+        # The app creates its isolated writable root during initialization.
+        # devicectl cannot copy an empty directory to a path that does not yet
+        # exist, so only transfer a seed when it actually contains state.
+        if any(isolated.iterdir()):
+            device("device", "copy", "to", "--device", args.device,
+                "--domain-type", "appDataContainer", "--domain-identifier", args.bundle,
+                "--source", str(isolated), "--destination", remote, name="seed-copy")
         if args.prepare_only:
             device("device", "copy", "from", "--device", args.device,
                 "--domain-type", "appDataContainer", "--domain-identifier", args.bundle,

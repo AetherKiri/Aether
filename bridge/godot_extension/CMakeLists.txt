@@ -317,6 +317,10 @@ if(IOS)
     set(AETHERKIRI_IOS_ARCHIVES
         "$<TARGET_FILE:aether_kiri_godot>"
         "$<TARGET_FILE:aether_kiri_godot_swift>")
+    if(TARGET aether_game_hooks)
+        target_link_libraries(aether_kiri_godot PRIVATE aether_game_hooks)
+        list(APPEND AETHERKIRI_IOS_ARCHIVES "$<TARGET_FILE:aether_game_hooks>")
+    endif()
     if(TARGET aether_flash_native)
         list(APPEND AETHERKIRI_IOS_ARCHIVES "$<TARGET_FILE:aether_flash_native>")
     endif()

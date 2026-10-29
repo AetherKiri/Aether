@@ -10,6 +10,7 @@ const DIRECTORY_RUNTIME_KINDS := [
     "artemis",
     "bgi",
     "escude",
+    "entisgls",
     "catsystem2",
     "mages",
     "minori",

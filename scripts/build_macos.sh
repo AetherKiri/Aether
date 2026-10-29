@@ -192,6 +192,16 @@ mkdir -p "$GODOT_BIN_DIR"
 cp -f "$CMAKE_BUILD_DIR/abi/libengine_api.dylib" "$GODOT_BIN_DIR/"
 cp -f "$CMAKE_BUILD_DIR/bridge/godot_extension/libaether_kiri_godot.dylib" "$GODOT_BIN_DIR/"
 cp -f "$CMAKE_BUILD_DIR/bridge/godot_extension/libaether_renpy_sdl_hook.dylib" "$GODOT_BIN_DIR/"
+private_runtime_libraries=()
+private_runtime_manifest="$CMAKE_BUILD_DIR/private-runtime-libraries-$BUILD_TYPE_LOWER.txt"
+if [[ -f "$private_runtime_manifest" ]]; then
+    while IFS= read -r runtime_library; do
+        [[ -n "$runtime_library" ]] || continue
+        private_runtime_libraries+=("$runtime_library")
+        cp -f "$runtime_library" "$GODOT_BIN_DIR/"
+        codesign --force --sign - "$GODOT_BIN_DIR/$(basename "$runtime_library")"
+    done < "$private_runtime_manifest"
+fi
 if [[ -f "$CMAKE_BUILD_DIR/aethermages-impacto/libImpacto.dylib" ]]; then
     cp -f "$CMAKE_BUILD_DIR/aethermages-impacto/libImpacto.dylib" "$GODOT_BIN_DIR/"
     codesign --force --sign - "$GODOT_BIN_DIR/libImpacto.dylib"
@@ -246,6 +256,10 @@ else
         fi
         cp -f "$GODOT_BIN_DIR/libengine_api.dylib" "$GODOT_EXPORT_APP/Contents/Frameworks/"
         cp -f "$GODOT_BIN_DIR/libaether_kiri_godot.dylib" "$GODOT_EXPORT_APP/Contents/Frameworks/"
+        for runtime_library in "${private_runtime_libraries[@]}"; do
+            cp -f "$runtime_library" "$GODOT_EXPORT_APP/Contents/Frameworks/"
+            codesign --force --sign - "$GODOT_EXPORT_APP/Contents/Frameworks/$(basename "$runtime_library")"
+        done
         if [[ -f "$GODOT_BIN_DIR/libImpacto.dylib" ]]; then
             cp -f "$GODOT_BIN_DIR/libImpacto.dylib" "$GODOT_EXPORT_APP/Contents/Frameworks/"
             codesign --force --sign - "$GODOT_EXPORT_APP/Contents/Frameworks/libImpacto.dylib"

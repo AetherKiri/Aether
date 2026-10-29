@@ -13652,7 +13652,9 @@ private:
             frame_rd_texture_.is_null() || !frame_rd_rid_.is_valid() ||
             frame_rd_width_ != desc.width || frame_rd_height_ != desc.height;
         if (needs_recreate) {
-            release_rd_texture(false);
+            // This upload path owns the RD allocation. Texture2DRD only wraps
+            // its RID; dropping the wrapper leaks the old allocation on resize.
+            release_rd_texture(true);
 
             Ref<RDTextureFormat> format;
             format.instantiate();
@@ -13689,7 +13691,7 @@ private:
         } else {
             const Error error = rd->texture_update(frame_rd_rid_, 0, data);
             if (error != OK) {
-                release_rd_texture(false);
+                release_rd_texture(true);
                 return Ref<Texture2D>();
             }
         }

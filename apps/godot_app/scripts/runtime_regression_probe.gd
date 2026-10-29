@@ -147,6 +147,24 @@ func check_frame(action: Dictionary, label: String) -> bool:
     # pixels. Only numerical evidence and hashes are saved, never images.
     await RenderingServer.frame_post_draw
     var frame: Dictionary = app.player.read_frame_rgba()
+    var frame_source := str(action.get("frame_source", "provider"))
+    var media: Dictionary = {}
+    if frame_source == "movie":
+        media = app.player.media_get_state()
+        var movie_texture: Texture2D = app.player.media_update_texture()
+        if not bool(media.get("has_video", false)) or int(media.get("frame_serial", 0)) <= 0 or movie_texture == null:
+            record({"event": "failed", "label": label, "reason": "decoded movie frame unavailable", "media": media})
+            return false
+        var movie_image: Image = movie_texture.get_image()
+        if movie_image == null or movie_image.is_empty():
+            record({"event": "failed", "label": label, "reason": "decoded movie pixels unavailable"})
+            return false
+        movie_image.convert(Image.FORMAT_RGBA8)
+        frame = {"width": movie_image.get_width(), "height": movie_image.get_height(),
+            "frame_serial": media.frame_serial, "rgba": movie_image.get_data()}
+    elif frame_source != "provider":
+        record({"event": "failed", "label": label, "reason": "unknown frame_source"})
+        return false
     var image: Image = app.get_viewport().get_texture().get_image()
     if image == null or image.is_empty():
         record({"event": "failed", "label": label, "reason": "presentation unavailable"})
@@ -166,6 +184,7 @@ func check_frame(action: Dictionary, label: String) -> bool:
         "source": source_stats, "presented": presented_stats,
         "source_visible_ratio": source_ratio, "presented_visible_ratio": presented_ratio,
         "source_sha256": hash.finish().hex_encode(),
+        "frame_source": frame_source, "media": media,
         "renderer": app.player.get_renderer_info(), "state": state(),
     }
     record(evidence)
@@ -450,6 +469,19 @@ func run(game_path: String) -> int:
                 return 1
         elif kind == "exit_to_library":
             app._exit_game_for_go_back()
+        elif kind == "native_dialog":
+            var dialog: RefCounted = app.runtime_form_dialog
+            var result_id := String(action.get("submit", "1"))
+            if dialog == null or not dialog.buttons.has(result_id) or not dialog.set_values(action.get("values", {})):
+                record({"event": "failed", "label": label, "reason": "native dialog controls unavailable"})
+                return 1
+            if bool(action.get("cancel_key", false)):
+                var cancel_event := InputEventKey.new()
+                cancel_event.keycode = KEY_ESCAPE
+                cancel_event.pressed = true
+                app._input(cancel_event)
+            else:
+                dialog.buttons[result_id].pressed.emit()
         elif kind == "frame":
             if not await check_frame(action, label):
                 return 1
@@ -500,7 +532,23 @@ func run(game_path: String) -> int:
                 return 1
             if int(action.get("hold_frames", 3)) > 0 and not await advance(int(action.get("hold_frames", 3))):
                 return 1
-            app.player.send_pointer_event(app.POINTER_UP, 0, pos.x, pos.y, 0.0, 0.0, int(action.get("button_index", 0)))
+            result = app.player.send_pointer_event(app.POINTER_UP, 0, pos.x, pos.y, 0.0, 0.0, int(action.get("button_index", 0)))
+            if result != app.ENGINE_RESULT_OK:
+                record({"event": "failed", "label": label, "reason": "pointer release rejected", "error": app.player.get_last_error()})
+                return 1
+        elif kind == "key_state":
+            app.player.send_key_event(bool(action.get("pressed", false)), int(action.get("key_code", 0)), 0, 0)
+        elif kind == "drag":
+            var source := point(action)
+            var target := Vector2(float(action.get("to_x", source.x)), float(action.get("to_y", source.y)))
+            app.player.send_pointer_event(app.POINTER_MOVE, 0, source.x, source.y, 0.0, 0.0, 0)
+            app.player.send_pointer_event(app.POINTER_DOWN, 0, source.x, source.y, 0.0, 0.0, 0)
+            if not await advance(2):
+                return 1
+            app.player.send_pointer_event(app.POINTER_MOVE, 0, target.x, target.y, 0.0, 0.0, 0)
+            if not await advance(2):
+                return 1
+            app.player.send_pointer_event(app.POINTER_UP, 0, target.x, target.y, 0.0, 0.0, 0)
         elif kind == "key":
             var key := int(action.get("key_code", 13))
             app.player.send_key_event(true, key, 0, 0)

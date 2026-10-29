@@ -8,6 +8,7 @@ import datetime as dt
 import json
 import os
 from pathlib import Path
+import plistlib
 import shutil
 import subprocess
 import time
@@ -15,6 +16,21 @@ import uuid
 
 
 PROBE = "res://scripts/runtime_regression_probe.gd"
+
+
+def macos_command(args):
+    if args.app:
+        bundle = args.app.resolve()
+        info = plistlib.loads((bundle / "Contents/Info.plist").read_bytes())
+        name = info.get("CFBundleExecutable", "")
+        if not isinstance(name, str) or not name or Path(name).name != name:
+            raise ValueError("Invalid macOS bundle executable")
+        executable = bundle / "Contents/MacOS" / name
+        if not executable.is_file():
+            raise ValueError("Missing macOS bundle executable")
+        # Export templates may disable path overrides. Launch their own PCK.
+        return [str(executable)]
+    return [args.godot, "--path", str(args.project.resolve())]
 
 
 def read_report(path):
@@ -56,6 +72,7 @@ def arguments():
     parser.add_argument("--prepare-only", action="store_true",
         help="iOS: queue a one-shot case for the app's next normal launch")
     parser.add_argument("--project", type=Path, help="Godot project containing the probe")
+    parser.add_argument("--app", type=Path, help="macOS: launch an exported .app containing the probe")
     parser.add_argument("--godot", default="godot")
     parser.add_argument("--user-data-dir", type=Path, help="The project's macOS user:// directory")
     return parser.parse_args()
@@ -65,8 +82,10 @@ def main():
     args = arguments()
     if args.platform == "ios" and (not args.device or not args.bundle):
         raise SystemExit("iOS requires --device and --bundle")
-    if args.platform == "macos" and (not args.project or not args.user_data_dir):
-        raise SystemExit("macOS requires --project and --user-data-dir")
+    if args.platform == "macos" and (not (args.project or args.app) or not args.user_data_dir):
+        raise SystemExit("macOS requires --project or --app, and --user-data-dir")
+    if args.app and (args.platform != "macos" or args.project):
+        raise SystemExit("--app is macOS-only and cannot be combined with --project")
     if args.timeout <= 0:
         raise SystemExit("--timeout must be positive")
     if args.prepare_only and args.platform != "ios":
@@ -139,7 +158,7 @@ def main():
         writable = args.user_data_dir.resolve() / "regressions" / run_id
         shutil.copytree(isolated, writable)
         result_path = writable / "regression-result.json"
-        command = [args.godot, "--path", str(args.project.resolve())]
+        command = macos_command(args)
 
     print(f"Running {config.get('name', args.case.stem)} on {args.platform}; artifacts: {output}", flush=True)
     timed_out = False

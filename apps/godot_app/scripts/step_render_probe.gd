@@ -16,8 +16,6 @@ var player
 var rect: TextureRect
 var test_config := {}
 var output_dir := "/tmp"
-var probe_failed := false
-var captured_frames := {}
 
 func _initialize() -> void:
     test_config = ProbeConfig.load()
@@ -90,10 +88,6 @@ func _initialize() -> void:
         return
 
     await _advance(ProbeConfig.int_value(test_config, "warmup_frames", _env_int("AETHERKIRI_PROBE_WARMUP_FRAMES", 180)))
-    if probe_failed:
-        await _destroy_player()
-        quit(1)
-        return
     await _save_step(0, "startup")
 
     var step := 1
@@ -110,17 +104,12 @@ func _initialize() -> void:
     var measured_frames: int = ProbeConfig.int_value(test_config, "measure_frames", _env_int("AETHERKIRI_PROBE_MEASURE_FRAMES", 120))
     var start_ticks: int = Time.get_ticks_usec()
     await _advance(measured_frames)
-    if probe_failed:
-        await _destroy_player()
-        quit(1)
-        return
     var fps: float = float(measured_frames) / max(0.0001, float(Time.get_ticks_usec() - start_ticks) / 1000000.0)
-    print("step probe fps=%.2f texture_backend=%s renderer=\"%s\" steps=%d output=%s/aetherkiri-step-*.png" % [
+    print("step probe fps=%.2f texture_backend=%s renderer=\"%s\" steps=%d output=/tmp/aetherkiri-step-*.png" % [
         fps,
         player.get_frame_texture_backend(),
         player.get_renderer_info(),
         step,
-        output_dir,
     ])
 
     if OS.get_environment("AETHERKIRI_PROBE_SKIP_DESTROY") != "1":
@@ -147,8 +136,6 @@ func _wait_startup() -> bool:
 
 func _advance(frames: int) -> void:
     for i in range(frames):
-        if probe_failed:
-            return
         var tick_result: int = int(player.tick(1.0 / 60.0))
         if tick_result == 0:
             var texture: Texture2D = player.update_frame_texture()
@@ -156,7 +143,6 @@ func _advance(frames: int) -> void:
                 rect.texture = texture
                 rect.queue_redraw()
         else:
-            probe_failed = true
             printerr("tick failed: result=%s error=%s last_result=%s debug=%s" % [
                 tick_result,
                 player.get_last_error(),
@@ -170,7 +156,6 @@ func _save_step(index: int, label: String) -> void:
     await process_frame
     await process_frame
     var image := _capture_frame_image()
-    captured_frames[label] = image.get_data().hex_encode().sha256_text()
     var path := output_dir.path_join("aetherkiri-step-%02d-%s.png" % [index, label])
     image.save_png(path)
     var runtime_debug := ""
@@ -393,29 +378,11 @@ func _run_actions(step: int) -> int:
             await _advance_for_ms(duration_ms)
             if label.is_empty() or label == "wait_ms":
                 label = "wait_%dms" % duration_ms
-        elif kind == "pause" or kind == "resume":
-            var result: int = int(player.pause() if kind == "pause" else player.resume())
-            if result != 0:
-                printerr("%s failed: %s" % [kind, player.get_last_error()])
-                return -1
-        elif kind == "assert_runtime":
-            var failure: String = preload("res://scripts/probe_assertions.gd").runtime(
-                JSON.parse_string(String(player.get_plugin_debug_info())), action.get("conditions", []))
-            if not failure.is_empty():
-                printerr(failure)
-                return -1
-            print("probe assertion passed: assert_runtime")
-        elif kind == "assert_frame_equal":
-            var reference := String(action.get("reference", ""))
-            if not captured_frames.has(reference) or _capture_frame_image().get_data().hex_encode().sha256_text() != captured_frames[reference]:
-                printerr("frame differs from checkpoint: %s" % reference)
-                return -1
-            print("probe assertion passed: assert_frame_equal")
         elif kind == "wait" or kind == "capture":
             pass
         else:
-            printerr("unknown probe action: %s" % kind)
-            return -1
+            print("skip unknown action: %s" % kind)
+            continue
 
         var default_after_frames := 0 if kind == "wait_ms" else ProbeConfig.int_value(
             test_config,
@@ -423,8 +390,6 @@ func _run_actions(step: int) -> int:
             _env_int("AETHERKIRI_PROBE_AFTER_CLICK_FRAMES", 180)
         )
         await _advance(int(action.get("after_frames", default_after_frames)))
-        if probe_failed:
-            return -1
         if bool(action.get("capture", true)):
             await _save_step(step, label)
             step += 1

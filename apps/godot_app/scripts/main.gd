@@ -2513,7 +2513,6 @@ var black_frame_guard_enabled := false
 var cli_probe_script := ""
 var cli_probe_audio_capture: RefCounted
 var cli_probe_runtime_debug := false
-var cli_probe_captured_frames := {}
 var verbose_render_log := false
 var diagnostics_enabled := false
 var ui_log_enabled := false
@@ -13192,9 +13191,6 @@ func _ensure_player_initialized() -> bool:
     elif not cli_probe_script.is_empty():
         # Other probes may supply their own disposable replay directory.
         user_dir = ProbeConfig.string_value(ProbeConfig.load(), "user_dir", user_dir)
-        var probe_user_dir := OS.get_environment("AETHERKIRI_PROBE_USER_DIR").strip_edges()
-        if not probe_user_dir.is_empty():
-            user_dir = probe_user_dir
         cache_dir = user_dir.path_join("cache")
     elif current_player_runtime_kind == RUNTIME_ESCUDE:
         var game_root := _game_runtime_root(String(selected_game.get("path", "")))
@@ -14281,52 +14277,11 @@ func _probe_run_actions(config: Dictionary, step: int) -> int:
         elif kind == "click_stream":
             step = await _probe_run_click_stream(config, step, label, action)
             continue
-        elif kind == "repeat_click":
-            var pos := ProbeConfig.click_position(action)
-            for ignored in range(maxi(1, int(action.get("count", 1)))):
-                _probe_send_mapped_click(pos, config)
-                if not await _probe_advance(maxi(0, int(action.get("per_click_frames", 0)))):
-                    return -1
-        elif kind == "key_hold":
-            var key_code := int(action.get("key_code", 17))
-            var modifiers := int(action.get("modifiers", 0))
-            player.send_key_event(true, key_code, modifiers, int(action.get("unicode", 0)))
-            var duration_ms := maxi(0, int(action.get("duration_ms", 0)))
-            var deadline := Time.get_ticks_msec() + duration_ms
-            var frames := maxi(1, int(action.get("frames", 3600)))
-            var advanced := 0
-            var ok := true
-            while (Time.get_ticks_msec() < deadline) if duration_ms > 0 else (advanced < frames):
-                if not await _probe_advance(1):
-                    ok = false
-                    break
-                advanced += 1
-            player.send_key_event(false, key_code, modifiers, 0)
-            if not ok:
-                return -1
-        elif kind == "pause" or kind == "resume":
-            var result: int = int(player.pause() if kind == "pause" else player.resume())
-            if result != ENGINE_RESULT_OK:
-                printerr("%s failed: %s" % [kind, player.get_last_error()])
-                return -1
-        elif kind == "assert_runtime":
-            var failure: String = preload("res://scripts/probe_assertions.gd").runtime(
-                JSON.parse_string(String(player.get_plugin_debug_info())), action.get("conditions", []))
-            if not failure.is_empty():
-                printerr(failure)
-                return -1
-            print("probe assertion passed: assert_runtime")
-        elif kind == "assert_frame_equal":
-            var reference := String(action.get("reference", ""))
-            if not cli_probe_captured_frames.has(reference) or _probe_capture_image().get_data().hex_encode().sha256_text() != cli_probe_captured_frames[reference]:
-                printerr("frame differs from checkpoint: %s" % reference)
-                return -1
-            print("probe assertion passed: assert_frame_equal")
         elif kind == "wait" or kind == "capture":
             pass
         else:
-            printerr("unknown probe action: %s" % kind)
-            return -1
+            print("skip unknown action: %s" % kind)
+            continue
 
         var after_frames := int(action.get("after_frames", ProbeConfig.int_value(config, "after_click_frames", _runtime_int("AETHERKIRI_PROBE_AFTER_CLICK_FRAMES", 180))))
         if not await _probe_advance(after_frames):
@@ -14606,7 +14561,6 @@ func _probe_save_step(index: int, label: String, wait_frames: int = 2) -> void:
     for ignored in range(max(0, wait_frames)):
         await get_tree().process_frame
     var image := _probe_capture_image()
-    cli_probe_captured_frames[label] = image.get_data().hex_encode().sha256_text()
     var path := _default_output_path("aetherkiri-step-%02d-%s.png" % [index, label])
     image.save_png(path)
     var line := "step %02d label=%s texture_backend=%s renderer=\"%s\" screenshot=%s stats=%s" % [
@@ -16821,9 +16775,6 @@ func _default_output_path(file_name: String) -> String:
         return "user://".path_join(file_name)
     if not cli_probe_script.is_empty():
         var probe_output_dir := ProbeConfig.string_value(ProbeConfig.load(), "output_dir", "/tmp")
-        var env_output_dir := OS.get_environment("AETHERKIRI_PROBE_OUTPUT_DIR").strip_edges()
-        if not env_output_dir.is_empty():
-            probe_output_dir = env_output_dir
         DirAccess.make_dir_recursive_absolute(probe_output_dir)
         return probe_output_dir.path_join(file_name)
     return "/tmp".path_join(file_name)

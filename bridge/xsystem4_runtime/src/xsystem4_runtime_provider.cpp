@@ -174,7 +174,7 @@ namespace aetherkiri::xsystem4 {
             std::atomic<bool> stopping{ false }, paused{ false };
             std::atomic<bool> text_input{ false };
             std::atomic<uint32_t> fps{ 60 };
-            bool ended = false, ready = false;
+            bool ended = false, ready = false, requested_exit = false;
             std::shared_ptr<Frame> frame, snapshot;
             std::atomic<uint64_t> serial{ 0 };
             uint64_t delivered = 0;
@@ -344,6 +344,11 @@ namespace aetherkiri::xsystem4 {
                                       ENGINE_RUNTIME_LOG_ERROR, "xsystem4",
                                       message);
                 };
+                hooks.game_exit = [](void *p, int) {
+                    auto &self = *static_cast<Runtime *>(p);
+                    std::lock_guard<std::mutex> guard(self.mutex);
+                    self.requested_exit = true;
+                };
                 std::string session_font;
                 {
                     std::lock_guard<std::mutex> guard(mutex);
@@ -355,7 +360,7 @@ namespace aetherkiri::xsystem4 {
                 {
                     std::lock_guard<std::mutex> guard(mutex);
                     ended = true;
-                    if(result && error.empty())
+                    if(result && !requested_exit && error.empty())
                         error = "The System 4 VM exited with code " +
                             std::to_string(result);
                     condition.notify_all();
@@ -436,7 +441,7 @@ namespace aetherkiri::xsystem4 {
                 {
                     std::lock_guard<std::mutex> guard(self->mutex);
                     self->error.clear();
-                    self->ready = self->ended = false;
+                    self->ready = self->ended = self->requested_exit = false;
                     self->frame.reset();
                     self->snapshot.reset();
                     self->delivered = 0;
@@ -471,7 +476,13 @@ namespace aetherkiri::xsystem4 {
                     succeeded = self->ready && self->error.empty();
                 }
                 if(!succeeded) {
-                    self->fail("System 4 did not produce a startup frame");
+                    {
+                        std::lock_guard<std::mutex> guard(self->mutex);
+                        if(self->error.empty())
+                            self->error = self->ended
+                                ? "System 4 runtime requested termination"
+                                : "System 4 did not produce a startup frame";
+                    }
                     self->stop();
                     return ENGINE_RESULT_IO_ERROR;
                 }

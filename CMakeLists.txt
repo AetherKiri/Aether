@@ -1,5 +1,16 @@
 cmake_minimum_required(VERSION 3.28)
 
+# Let CMake de-duplicate archives when the target linker can rescan them.
+# Set policies before project() so vcpkg's add_library wrapper captures them,
+# and keep the defaults in subprojects with an older CMake minimum.
+foreach(_aetherkiri_link_policy CMP0156 CMP0179)
+    if(POLICY ${_aetherkiri_link_policy})
+        cmake_policy(SET ${_aetherkiri_link_policy} NEW)
+        set(CMAKE_POLICY_DEFAULT_${_aetherkiri_link_policy} NEW)
+    endif()
+endforeach()
+unset(_aetherkiri_link_policy)
+
 find_program(CCACHE_PROGRAM ccache)
 
 if (CCACHE_PROGRAM)
@@ -54,6 +65,17 @@ else()
 endif()
 
 project(AetherKiri)
+
+if(APPLE AND NOT IOS)
+    # Imported targets and pkg-config paths can name the same archive, which
+    # CMake cannot merge. Apple ld ignores those duplicate inputs safely.
+    include(CheckLinkerFlag)
+    check_linker_flag(CXX "LINKER:-no_warn_duplicate_libraries"
+        AETHERKIRI_LINKER_HAS_NO_WARN_DUPLICATE_LIBRARIES)
+    if(AETHERKIRI_LINKER_HAS_NO_WARN_DUPLICATE_LIBRARIES)
+        add_link_options("LINKER:-no_warn_duplicate_libraries")
+    endif()
+endif()
 
 # vcpkg's OpenAL target carries raw "-Wl,-framework,..." items in its
 # interface. Imported targets are directory-scoped: every scope that calls
@@ -278,6 +300,7 @@ endif()
 
 # The krkr2 engine repository defines the engine targets (external/, core/,
 # plugins/); its integration glue stays in bridge/krkr2_runtime.
+add_subdirectory(bridge/game_hooks)
 add_subdirectory(${AETHERKIRI_KRKR_DIR})
 
 # AetherInternal contributes sources to public targets but does not own the

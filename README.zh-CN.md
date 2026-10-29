@@ -302,6 +302,25 @@ npm install && npm run web:dev:debug   # 附带所需的 COOP/COEP 头
   自动加入游戏库，与导入游戏走完全相同的流程。删除时会一并清理可写副本与
   存档。源码：[`demos/aetherkiri-kag3/`](demos/aetherkiri-kag3/)。
 
+## 游戏目录 Lua 扩展
+
+BGI、YU-RIS、ADVHD、SoftPal 和 CatSystem2 共用同一套 `aether` Lua 接口。
+将 UTF-8 编码的 `aether.lua` 放在游戏根目录，每次启动游戏时执行一次，准备
+资源覆盖。已支持的汉化包会自动加载；Lua 用于自定义补丁的兜底。
+资源优先级为：**Lua 显式注册的资源 → 原生汉化资源 → 原游戏资源**。
+
+```lua
+assert(aether.api_version == 1)
+if aether.exists("translation") then
+    aether.mount_dir("translation")
+    aether.set_encoding("GBK")
+end
+```
+
+挂载文件必须符合目标引擎的资源名称和格式。文件读取、解压、转码、字体选择、
+各引擎差异、执行限制及完整示例见
+[中文 Lua 接口文档](bridge/game_hooks/README.zh-CN.md)（[English](bridge/game_hooks/README.md)）。
+
 ## 测试与 Probe
 
 ```bash
@@ -326,6 +345,7 @@ Connect 与 GitHub Release。所需仓库 secrets 与商店打包流程见
 
 | 文档 | 内容 |
 | --- | --- |
+| [游戏目录 Lua 接口](bridge/game_hooks/README.zh-CN.md) · [English](bridge/game_hooks/README.md) | 统一资源接口、原生汉化优先级、编码、字体与示例。 |
 | [`doc/development.zh-CN.md`](doc/development.zh-CN.md) | 开发指南：架构、文件作用、构建、测试、probe、调试。 |
 | [`doc/diagnostics.zh-CN.md`](doc/diagnostics.zh-CN.md) | 应用内调试、一条命令采集、证据优先调查。 |
 | [`doc/krkr2_plugins.md`](doc/krkr2_plugins.md) | KiriKiri2 插件说明。 |

@@ -65,6 +65,7 @@ const RUNTIME_DEFAULT_FONT_FILE := "default.otf"
 const RUNTIME_SYMBOL_FONT_FILE := "symbols.ttf"
 const ProbeConfig = preload("res://scripts/probe_config.gd")
 const RuntimeRegressionProbe = preload("res://scripts/runtime_regression_probe.gd")
+const RuntimeFormDialog = preload("res://scripts/runtime_form_dialog.gd")
 const GameMetadata = preload("res://scripts/game_metadata.gd")
 const CoverIndex = preload("res://scripts/cover_index.gd")
 const VNDBCoverResolver = preload("res://scripts/vndb_cover_resolver.gd")
@@ -2085,6 +2086,7 @@ const RUNTIME_ESCUDE := "escude"
 const RUNTIME_TYRANO := "tyranoscript"
 const RUNTIME_MAGES := "mages"
 const RUNTIME_YURIS := "yuris"
+const RUNTIME_SYSTEMC := "systemc"
 const RUNTIME_PLAYER_CLASS := "AetherRuntimePlayer"
 const ONSCRIPTER_SCRIPT_MARKERS := [
     "0.txt",
@@ -2404,6 +2406,7 @@ var frame_enhancement_custom_chain := PackedStringArray([
 ])
 var game_running := false
 var runtime_dialog_input: LineEdit = null
+var runtime_form_dialog: RefCounted = null
 var softpal_name_input_layer: Control = null
 var softpal_name_input: LineEdit = null
 var softpal_original_window_title := ""
@@ -4541,6 +4544,10 @@ func _apply_engine_options() -> void:
     player.set_engine_option("mock_enabled", "1" if mock_enabled else "0")
     # Preserve the VM's complete effect pass on normal GUI launches. An
     # undersized host override breaks WA(1) ordering and animation cadence.
+    if current_player_runtime_kind == RUNTIME_SYSTEMC:
+        player.set_engine_option("SYSTEMC_SCRIPT_ENCODING",
+            preload("res://scripts/systemc_engine_options.gd").script_encoding(
+                selected_game, _runtime_string("AETHERKIRI_SYSTEMC_ENCODING", "")))
     if current_player_runtime_kind == RUNTIME_YURIS:
         var yuris_options = preload("res://scripts/yuris_engine_options.gd")
         player.set_engine_option(
@@ -8681,17 +8688,18 @@ func _detail_tools(game: Dictionary) -> FlowContainer:
     tools.add_theme_constant_override("h_separation", 8)
     tools.add_theme_constant_override("v_separation", 8)
     tools.add_child(_detail_launch_button())
-    if _game_runtime_kind(String(game.get("path", ""))) == RUNTIME_YURIS:
-        var yuris_options = preload("res://scripts/yuris_engine_options.gd")
+    var detail_runtime := _game_runtime_kind(String(game.get("path", "")))
+    if detail_runtime in [RUNTIME_YURIS, RUNTIME_SYSTEMC]:
+        var encoding_options = preload("res://scripts/systemc_engine_options.gd") if detail_runtime == RUNTIME_SYSTEMC else preload("res://scripts/yuris_engine_options.gd")
         var encoding := OptionButton.new()
         encoding.custom_minimum_size = Vector2(190, 44)
         encoding.tooltip_text = _t("detail.script_encoding")
-        for value: String in yuris_options.SCRIPT_ENCODINGS:
+        for value: String in encoding_options.SCRIPT_ENCODINGS:
             encoding.add_item(_t("detail.script_encoding") + ": " + value)
-        encoding.select(yuris_options.SCRIPT_ENCODINGS.find(yuris_options.script_encoding(game)))
+        encoding.select(encoding_options.SCRIPT_ENCODINGS.find(encoding_options.script_encoding(game)))
         encoding.item_selected.connect(func(index: int):
             _update_game(String(game.get("path", "")), {
-                yuris_options.SCRIPT_ENCODING_FIELD: yuris_options.SCRIPT_ENCODINGS[index]
+                encoding_options.SCRIPT_ENCODING_FIELD: encoding_options.SCRIPT_ENCODINGS[index]
             })
         )
         tools.add_child(encoding)
@@ -11227,6 +11235,8 @@ func _probe_game_runtime_kind(root: String, runtime_kind: String) -> String:
         return runtime_kind
     if player != null and player.has_method("probe_runtime"):
         # Format detection stays in the optional private provider.
+        if int(player.probe_runtime(RUNTIME_SYSTEMC, root)) > 0:
+            return RUNTIME_SYSTEMC
         if int(player.probe_runtime(RUNTIME_ESCUDE, root)) >= 90:
             return RUNTIME_ESCUDE
         if int(player.probe_runtime(RUNTIME_ADVHD, root)) >= 90:
@@ -11991,9 +12001,14 @@ func _start_selected_game_after_entitlements() -> void:
         )
         return
     _set_game_runtime_orientation(true)
+    # A launch may supply an explicit script without changing the saved library
+    # record (for example a section regression). Updating play statistics must
+    # preserve that entry for this launch.
+    var requested_startup_script := String(selected_game.get("startupScript", ""))
     var played_game := _mark_game_played(library_path)
     if not played_game.is_empty():
         selected_game = played_game
+        selected_game["startupScript"] = requested_startup_script
     active_game_path = library_path
     active_game_started_msec = Time.get_ticks_msec()
     game_path.text = launch_path
@@ -12035,6 +12050,14 @@ func _return_to_library_after_runtime_exit() -> void:
     if runtime_exit_cleanup_pending:
         return
     runtime_exit_cleanup_pending = true
+    if runtime_form_dialog != null:
+        runtime_form_dialog = null
+        modal_layer.set_meta("runtime_platform_dialog", false)
+        modal_layer.visible = false
+        active_modal_scrim = null
+        active_modal_dialog = null
+        for child in modal_layer.get_children():
+            child.queue_free()
     _deactivate_game_text_input()
     _clear_game_input_capture()
     _finalize_active_game_session()
@@ -12489,6 +12512,7 @@ func _switch_runtime_player(runtime_kind: String) -> bool:
         RUNTIME_XSYSTEM4,
         RUNTIME_XSYSTEM35,
         RUNTIME_SYSTEM3,
+        RUNTIME_SYSTEMC,
         RUNTIME_YURIS,
         RUNTIME_ADVHD,
         RUNTIME_ESCUDE,
@@ -12532,6 +12556,8 @@ func _switch_runtime_player(runtime_kind: String) -> bool:
         if normalized == RUNTIME_XSYSTEM35
         else "AliceSoft System 4"
         if normalized == RUNTIME_XSYSTEM4
+        else "SystemC"
+        if normalized == RUNTIME_SYSTEMC
         else "YU-RIS"
         if normalized == RUNTIME_YURIS
         else "OnscripterYuri"
@@ -12706,6 +12732,14 @@ func _on_runtime_platform_request(operation: String, argument: String) -> void:
         return
     if operation == "dialog":
         _show_runtime_dialog(_parse_platform_form(argument))
+        return
+    if operation == "runtime_form":
+        var specification: Variant = JSON.parse_string(argument)
+        if specification is Dictionary and RuntimeFormDialog.valid(specification):
+            _show_runtime_form(specification)
+        else:
+            _append_log("Invalid native dialog specification")
+            player.submit_platform_response("runtime_form", JSON.stringify({"result": "2", "values": {}}))
         return
     if operation == "call_native":
         player.submit_platform_response("call_native", "result=")
@@ -13009,6 +13043,40 @@ func _show_minori_select(argument: String) -> void:
     if first_button != null:
         first_button.grab_focus()
 
+func _show_runtime_form(specification: Dictionary) -> void:
+    if modal_layer == null or player == null:
+        return
+    _deactivate_game_text_input()
+    modal_layer.set_meta("runtime_platform_dialog", true)
+    modal_layer.visible = true
+    modal_layer.move_to_front()
+    for child in modal_layer.get_children():
+        child.queue_free()
+    var dim := _modal_scrim(0.68)
+    modal_layer.add_child(dim)
+    var dialog := PanelContainer.new()
+    dialog.name = "RuntimeNativeForm"
+    dialog.clip_contents = true
+    _mark_centered_safe_dialog(dialog, Vector2(900, 430))
+    _layout_safe_dialog(dialog, _ui_safe_rect(get_viewport_rect().size))
+    dialog.add_theme_stylebox_override("panel", _dialog_style(true))
+    modal_layer.add_child(dialog)
+    active_modal_scrim = dim
+    active_modal_dialog = dialog
+    runtime_form_dialog = RuntimeFormDialog.new()
+    runtime_form_dialog.build(dialog, specification, func(response: Dictionary) -> void:
+        modal_layer.set_meta("runtime_platform_dialog", false)
+        modal_layer.visible = false
+        runtime_form_dialog = null
+        active_modal_scrim = null
+        active_modal_dialog = null
+        for child in modal_layer.get_children():
+            child.queue_free()
+        if player != null:
+            player.submit_platform_response("runtime_form", JSON.stringify(response))
+    )
+    ui_motion.modal_in(dim, dialog, shell_root)
+
 func _show_runtime_dialog(values: Dictionary) -> void:
     if modal_layer == null or player == null:
         return
@@ -13186,6 +13254,13 @@ func _ensure_player_initialized() -> bool:
         # Other probes may supply their own disposable replay directory.
         user_dir = ProbeConfig.string_value(ProbeConfig.load(), "user_dir", user_dir)
         cache_dir = user_dir.path_join("cache")
+    elif current_player_runtime_kind == RUNTIME_SYSTEMC:
+        var library_path := String(selected_game.get("path", ""))
+        if not library_path.is_empty():
+            var options = preload("res://scripts/systemc_engine_options.gd")
+            var game_root := _game_runtime_root(library_path)
+            cache_dir = options.cache_directory(user_dir, game_root)
+            user_dir = options.user_directory(user_dir, game_root)
     elif current_player_runtime_kind == RUNTIME_ESCUDE:
         var game_root := _game_runtime_root(String(selected_game.get("path", "")))
         if not game_root.is_empty():
@@ -13226,6 +13301,7 @@ func _ensure_player_initialized() -> bool:
         RUNTIME_XSYSTEM4,
         RUNTIME_XSYSTEM35,
         RUNTIME_SYSTEM3,
+        RUNTIME_SYSTEMC,
         RUNTIME_YURIS,
         RUNTIME_ADVHD,
         RUNTIME_ESCUDE,
@@ -13249,6 +13325,7 @@ func _ensure_player_initialized() -> bool:
         if current_player_runtime_kind == RUNTIME_XSYSTEM35
         else "AliceSoft System 4"
         if current_player_runtime_kind == RUNTIME_XSYSTEM4
+        else "SystemC" if current_player_runtime_kind == RUNTIME_SYSTEMC
         else "YU-RIS" if current_player_runtime_kind == RUNTIME_YURIS
         else "OnscripterYuri"
         if current_player_runtime_kind == RUNTIME_ONSCRIPTER
@@ -14960,8 +15037,13 @@ func _probe_cleanup_and_quit(code: int, record_cleanup: Callable = Callable()) -
     if FileAccess.file_exists(ProbeConfig.debug_request_path()):
         DirAccess.remove_absolute(ProjectSettings.globalize_path(ProbeConfig.debug_request_path()))
     _deactivate_game_text_input()
+    # Stop _process from publishing another frame while cleanup yields before
+    # releasing the native texture referenced by the canvas.
+    game_running = false
+    cached_startup_state = STARTUP_IDLE
     if player != null:
         viewport.texture = null
+        viewport.visible = false
         await get_tree().process_frame
         player.release_frame_texture()
         _cleanup_softpal_platform_ui()
@@ -17195,7 +17277,10 @@ func _input(event: InputEvent) -> void:
     if event is InputEventKey:
         var shell_key := event as InputEventKey
         if shell_key.pressed and not shell_key.echo and shell_key.keycode == KEY_ESCAPE and modal_layer != null and modal_layer.visible:
-            _dismiss_modal()
+            if runtime_form_dialog != null:
+                runtime_form_dialog.cancel()
+            else:
+                _dismiss_modal()
             get_viewport().set_input_as_handled()
             return
         if shell_key.pressed and not shell_key.echo and shell_key.keycode == KEY_ESCAPE and not video_playing and not game_running and shell_route in ["videos", "flash"] and _active_file_library().can_go_up():

@@ -43,6 +43,7 @@ Godot App Shell
             ├─ BGI Runtime ──────── BGI / Ethornell（私有 package）
             ├─ ADVHD Runtime ────── ADV Player HD / WillPlus（私有 package）
             ├─ SoftPal Runtime ──── SoftPal（私有 package）
+            ├─ SystemC Runtime ──── CandySoft / Interheart（私包）
             └─ YU-RIS Runtime ───── YU-RIS（私有 package）
 ```
 
@@ -63,6 +64,9 @@ Godot App Shell
 - 独立的 C++17 YU-RIS Runtime，通过私有 package 接入，支持源码项目和编译后的 YBN 游戏。
   存档保存在各游戏的 `savedata/` 目录；旧版应用目录中的独立存档会自动迁移，
   不覆盖已有本地存档。游戏目录只读时使用按游戏隔离的应用存储。
+- 通过私包支持 SystemC ACT/SPT，复用 E-mote SDK，保留原版 UI，存档写入游戏目录的
+  `savedata/`，支持选择肢、回看、
+  视频、鉴赏和通关后附加篇章。参见[支持范围与验证方法](doc/systemc_runtime.md)。
 - 覆盖 macOS、iOS/iPadOS、Android、Web 与 Linux 的导出配置。
 - 独立的 Flash 分类，使用原生 Ruffle 播放，支持声音、键鼠、触摸以及视觉小说的虚拟按钮。
 - 通过内置 xsystem35 原生运行 AliceSoft System 3.5/3.9 游戏，支持 ALD 目录导入、中日文和可选虚拟按键。参见[原生宿主与游戏测试范围](bridge/xsystem35_runtime/README.md)。

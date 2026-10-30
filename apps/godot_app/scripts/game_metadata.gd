@@ -140,7 +140,13 @@ static func inspect(path: String) -> Dictionary:
     else:
         result.signals.append("kirikiri-xp3-or-default")
 
-    if result.engine == RUNTIME_KIRIKIRI:
+    if result.engine == RUNTIME_KIRIKIRI and not (
+        files.has("startup.tjs")
+        or _file_names(root.path_join("data")).has("startup.tjs")
+    ):
+        # Loose KiriKiri projects may keep their scripts in data/ while
+        # sibling XP3s contain only images and audio. Let the native loader
+        # resolve the directory instead of selecting an arbitrary resource pack.
         var launch := _first_file(root, [".exe", ".xp3"])
         if not launch.is_empty():
             result.launchFile = launch

@@ -2150,6 +2150,15 @@ const SETTINGS_DRAFT_KEYS := [
 var scene_test_enabled := false
 var scene_test_scene := "home"
 var scene_test_state := ""
+var ui_test_mode := false
+var ui_test_loading := false
+var ui_test_game_active := false
+var ui_test_elapsed := 0.0
+var ui_test_event_count := 0
+var ui_test_game_overlay: Control
+var ui_test_status_label: Label
+var ui_test_event_label: Label
+const UI_TEST_LOADING_DURATION := 1.25
 const DIAGNOSTIC_PROFILES := ["off", "baseline", "input", "render", "storage", "script", "audio", "video", "plugin", "system", "full"]
 const DEBUG_OVERLAY_MODES := ["off", "summary", "detail"]
 const ADVANCED_TRACE_TIMEOUT_MS := 30000
@@ -3038,8 +3047,126 @@ func _build_ui() -> void:
     restart_notice.visible = false
     game_view.add_child(restart_notice)
 
+    _build_ui_test_game_overlay()
     _build_loading_panel()
     _fit_full_rects()
+
+func _build_ui_test_game_overlay() -> void:
+    ui_test_game_overlay = Control.new()
+    ui_test_game_overlay.name = "UiTestGameOverlay"
+    ui_test_game_overlay.set_anchors_preset(Control.PRESET_FULL_RECT)
+    ui_test_game_overlay.mouse_filter = Control.MOUSE_FILTER_STOP
+    ui_test_game_overlay.visible = false
+    game_view.add_child(ui_test_game_overlay)
+
+    var center := CenterContainer.new()
+    center.set_anchors_preset(Control.PRESET_FULL_RECT)
+    center.mouse_filter = Control.MOUSE_FILTER_IGNORE
+    ui_test_game_overlay.add_child(center)
+
+    var panel := PanelContainer.new()
+    panel.custom_minimum_size = Vector2(620, 420)
+    panel.add_theme_stylebox_override("panel", ui_tokens.raised(ui_tokens.RADIUS_LARGE, 2, ui_tokens.popover))
+    center.add_child(panel)
+    var margin := MarginContainer.new()
+    margin.add_theme_constant_override("margin_left", 28)
+    margin.add_theme_constant_override("margin_top", 26)
+    margin.add_theme_constant_override("margin_right", 28)
+    margin.add_theme_constant_override("margin_bottom", 26)
+    panel.add_child(margin)
+
+    var box := VBoxContainer.new()
+    box.add_theme_constant_override("separation", 14)
+    margin.add_child(box)
+    var eyebrow := Label.new()
+    eyebrow.text = "UI TEST MODE / ENGINE OFFLINE"
+    eyebrow.add_theme_font_size_override("font_size", 12)
+    eyebrow.add_theme_color_override("font_color", ui_tokens.accent_text)
+    box.add_child(eyebrow)
+    var title := Label.new()
+    title.text = "空游戏场景 / Empty Game Scene"
+    title.add_theme_font_override("font", TITLE_FONT)
+    title.add_theme_font_size_override("font_size", 26)
+    title.add_theme_color_override("font_color", ui_tokens.text_primary)
+    box.add_child(title)
+    var body := Label.new()
+    body.text = "这里没有引擎画面，仅用于测试游戏界面的 UI、输入和退出流程。"
+    body.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+    body.size_flags_vertical = Control.SIZE_EXPAND_FILL
+    body.add_theme_font_size_override("font_size", 15)
+    body.add_theme_color_override("font_color", ui_tokens.text_secondary)
+    box.add_child(body)
+
+    var controls := HBoxContainer.new()
+    controls.add_theme_constant_override("separation", 14)
+    box.add_child(controls)
+    var toggle := AetherSwitch.new()
+    toggle.name = "UiTestOverlayToggle"
+    toggle.setup(ui_tokens, ui_motion, true)
+    controls.add_child(toggle)
+    var toggle_label := Label.new()
+    toggle_label.text = "Overlay"
+    toggle_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+    toggle_label.add_theme_color_override("font_color", ui_tokens.text_primary)
+    controls.add_child(toggle_label)
+    var select = _apple_select(180.0)
+    select.name = "UiTestInputMode"
+    for label in ["Input mode", "Mouse", "Keyboard", "Touch"]:
+        select.add_item(label)
+    select.select(0)
+    select.item_selected.connect(func(index: int):
+        _record_ui_test_event("input=%s" % select.get_item_text(index))
+    )
+    controls.add_child(select)
+
+    var slider_row := HBoxContainer.new()
+    slider_row.add_theme_constant_override("separation", 12)
+    box.add_child(slider_row)
+    var slider_label := Label.new()
+    slider_label.text = "Opacity"
+    slider_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+    slider_label.add_theme_color_override("font_color", ui_tokens.text_secondary)
+    slider_row.add_child(slider_label)
+    var slider := AetherSlider.new()
+    slider.name = "UiTestOpacity"
+    slider.custom_minimum_size = Vector2(250, 42)
+    slider.min_value = 0.2
+    slider.max_value = 1.0
+    slider.step = 0.1
+    slider.setup(ui_tokens, 0.8)
+    slider.value_changed.connect(func(value: float):
+        _record_ui_test_event("opacity=%.1f" % value)
+    )
+    slider_row.add_child(slider)
+
+    ui_test_status_label = Label.new()
+    ui_test_status_label.text = "SCENE READY / LOADING COMPLETE"
+    ui_test_status_label.add_theme_font_size_override("font_size", 12)
+    ui_test_status_label.add_theme_color_override("font_color", ui_tokens.success)
+    box.add_child(ui_test_status_label)
+    ui_test_event_label = Label.new()
+    ui_test_event_label.text = "event: scene_ready"
+    ui_test_event_label.add_theme_font_size_override("font_size", 12)
+    ui_test_event_label.add_theme_color_override("font_color", ui_tokens.text_tertiary)
+    box.add_child(ui_test_event_label)
+
+    var actions := HBoxContainer.new()
+    actions.alignment = BoxContainer.ALIGNMENT_END
+    actions.add_theme_constant_override("separation", 10)
+    box.add_child(actions)
+    var back := _secondary_dialog_button("返回 UI", Vector2(132, 48))
+    back.name = "UiTestBackButton"
+    back.pressed.connect(_return_to_library_after_runtime_exit)
+    actions.add_child(back)
+    var reload := _pill_button("重新加载")
+    reload.name = "UiTestReloadButton"
+    reload.custom_minimum_size = Vector2(150, 48)
+    reload.pressed.connect(_start_ui_test_mode)
+    actions.add_child(reload)
+
+func _record_ui_test_event(message: String) -> void:
+    if ui_test_event_label != null and is_instance_valid(ui_test_event_label):
+        ui_test_event_label.text = "event: " + message
 
 func _build_video_view() -> void:
     video_view = Control.new()
@@ -12074,6 +12201,11 @@ func _return_to_library_after_runtime_exit() -> void:
     tick_trace_active_serial = 0
     if loading_panel != null:
         _hide_loading_overlay()
+    ui_test_loading = false
+    ui_test_game_active = false
+    ui_test_elapsed = 0.0
+    if ui_test_game_overlay != null:
+        ui_test_game_overlay.visible = false
     if restart_notice != null:
         restart_notice.text = ""
         restart_notice.visible = false
@@ -12185,6 +12317,12 @@ func _ready() -> void:
     _build_ui()
     _stage_runtime_fonts()
 
+    ui_test_mode = _runtime_flag("AETHERKIRI_UI_TEST_MODE")
+    if ui_test_mode:
+        _append_log("UI test mode enabled; native runtime initialization skipped.")
+        call_deferred("_start_ui_test_mode")
+        return
+
     # Scene-test preview: scheduled before the optional runtime player init
     # so developer scene inspection works even without the native extension.
     _restore_scene_test_state()
@@ -12247,6 +12385,51 @@ func _setup_debug_console() -> void:
             diagnostic_session.set_game_active(game_running and not open)
     )
     _sync_debug_console_state()
+
+func _start_ui_test_mode() -> void:
+    if not ui_test_mode:
+        ui_test_mode = true
+    ui_test_loading = true
+    ui_test_game_active = false
+    ui_test_elapsed = 0.0
+    ui_test_event_count += 1
+    game_running = false
+    cached_startup_state = STARTUP_IDLE
+    shell_root.visible = false
+    viewport.texture = null
+    viewport.visible = true
+    game_view.visible = true
+    if ui_test_game_overlay != null:
+        ui_test_game_overlay.visible = false
+    _set_game_background(true)
+    _set_perf_visible(false)
+    restart_notice.text = "UI test mode: loading empty game scene"
+    restart_notice.visible = true
+    loading_title_label.text = "正在加载 UI 测试场景..."
+    loading_detail_label.text = "不启动任何引擎，仅准备游戏界面"
+    loading_detail_label.visible = true
+    _show_loading_overlay(true)
+    _record_ui_test_event("launch #%d" % ui_test_event_count)
+
+func _process_ui_test_mode(delta: float) -> void:
+    if not ui_test_mode:
+        return
+    if ui_test_loading:
+        ui_test_elapsed += delta
+        if ui_test_elapsed < UI_TEST_LOADING_DURATION:
+            return
+        ui_test_loading = false
+        ui_test_game_active = true
+        if loading_panel != null and loading_panel.visible:
+            _hide_loading_overlay()
+        if ui_test_game_overlay != null:
+            ui_test_game_overlay.visible = true
+        restart_notice.visible = false
+        ui_test_status_label.text = "SCENE READY / ENGINE OFFLINE"
+        _record_ui_test_event("scene_ready")
+        return
+    if ui_test_game_active and ui_test_game_overlay != null:
+        ui_test_game_overlay.visible = true
 
 func _sync_debug_console_state() -> void:
     if debug_console == null:
@@ -13799,6 +13982,11 @@ func _scene_test_control() -> Control:
     enter.custom_minimum_size = Vector2(150.0, 44.0)
     enter.size_flags_vertical = Control.SIZE_SHRINK_CENTER
     action_row.add_child(enter)
+    var ui_only := _secondary_dialog_button("UI-only launch", Vector2(150.0, 44.0))
+    ui_only.name = "UiTestModeLaunch"
+    ui_only.tooltip_text = "Launch the existing game UI without a native engine"
+    ui_only.pressed.connect(_start_ui_test_mode)
+    action_row.add_child(ui_only)
     col.add_child(action_row)
 
     mode_toggle.toggled.connect(func(enabled: bool):
@@ -15172,6 +15360,9 @@ func _process(delta: float) -> void:
     _flush_log_view_if_needed(delta)
     if video_playing:
         _process_video_playback(delta)
+    if ui_test_mode:
+        _process_ui_test_mode(delta)
+        return
     last_shell_ms = float(Time.get_ticks_usec() - process_started) / 1000.0
     var startup_state := cached_startup_state
     if game_running:

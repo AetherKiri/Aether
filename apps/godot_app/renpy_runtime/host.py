@@ -4,7 +4,9 @@ The embedded loop and allowlisted JSON probe share the same interpreter.
 The command-line entry point also supports isolated SDK diagnostics.
 """
 import argparse
+import base64
 import ctypes
+from collections import deque
 import json
 import importlib.util
 import math
@@ -17,6 +19,7 @@ import sys
 import threading
 import time
 import traceback
+import types
 
 
 _manifest = {}
@@ -34,6 +37,13 @@ _compiled_cache = None
 _log = None
 controls_visible = False
 menu_visible = False
+restart_requested = False
+_controls_frame = {}
+_controls_image = None
+_controls_events = deque(maxlen=128)
+_controls_sequence = 0
+_controls_captured = False
+_controls_hovered = False
 
 
 class SessionLog:
@@ -113,6 +123,83 @@ def persist_compiled(game, cache):
         os.replace(temporary, target)
 
 
+def normalize_rpa3_index(infile, index):
+    """Recognize reversed (length, offset) records without changing the archive.
+
+    Both orders can be in bounds, so require every sampled resource signature
+    at the swapped offsets and none at the standard offsets. Ambiguous archives
+    keep the SDK's interpretation. Read only a bounded number of small headers.
+    """
+    signatures = {
+        ".rpyc": ((0, b"RENPY RPC2"),), ".rpymc": ((0, b"RENPY RPC2"),),
+        ".png": ((0, b"\x89PNG\r\n\x1a\n"),),
+        ".jpg": ((0, b"\xff\xd8\xff"),), ".jpeg": ((0, b"\xff\xd8\xff"),),
+        ".webp": ((0, b"RIFF"), (8, b"WEBP")),
+        ".ogg": ((0, b"OggS\x00"),), ".opus": ((0, b"OggS\x00"),),
+        ".wav": ((0, b"RIFF"), (8, b"WAVE")),
+        ".flac": ((0, b"fLaC"),),
+        ".ttf": ((0, b"\x00\x01\x00\x00"),), ".otf": ((0, b"OTTO"),),
+        ".ttc": ((0, b"ttcf"),),
+        ".webm": ((0, b"\x1aE\xdf\xa3"),), ".mkv": ((0, b"\x1aE\xdf\xa3"),),
+        ".mp4": ((4, b"ftyp"),),
+    }
+    position = infile.tell()
+    try:
+        infile.seek(0)
+        header = infile.read(34)
+        if not header.startswith(b"RPA-3.0 ") or not isinstance(index, dict):
+            return index
+        data_end = int(header[8:24], 16)
+        if not 34 <= data_end <= infile.seek(0, os.SEEK_END):
+            return index
+        # A format choice applies to the entire archive, including unknown
+        # resource types and continuation chunks, not just the sampled files.
+        for records in index.values():
+            if not isinstance(records, (list, tuple)) or not records:
+                return index
+            for record in records:
+                if not isinstance(record, (list, tuple)) or len(record) not in (2, 3):
+                    return index
+                length, offset = record[:2]
+                if type(offset) is not int or type(length) is not int:
+                    return index
+                if offset < 34 or length < 0 or offset + length > data_end:
+                    return index
+
+        matches = 0
+        probes = 0
+        for name, records in index.items():
+            expected = signatures.get(Path(name).suffix.lower()) if isinstance(name, str) else None
+            if expected is None:
+                continue
+            record = records[0]
+            # An inline prefix is shared by both interpretations and cannot
+            # establish which on-disk offset is correct.
+            if len(record) == 3 and record[2]:
+                continue
+            size = max(offset + len(magic) for offset, magic in expected)
+
+            def matches_at(offset, length):
+                if offset < 34 or length < size or offset + length > data_end:
+                    return False
+                infile.seek(offset)
+                data = infile.read(size)
+                return all(data[start:start + len(magic)] == magic for start, magic in expected)
+
+            if matches_at(record[0], record[1]):
+                return index
+            matches += matches_at(record[1], record[0])
+            probes += 1
+            if probes == 32:
+                break
+        if not matches or matches != probes:
+            return index
+        return {name: [(record[1], record[0], *record[2:]) for record in records]
+                for name, records in index.items()}
+    finally:
+        infile.seek(position)
+
+
 def inspect_value(value, depth=0):
     if value is None or isinstance(value, (bool, int)):
         return value
@@ -133,7 +220,7 @@ def _publish(phase="ready", **extra):
 
     value = {"phase": phase, "ack": _ack, "pid": os.getpid(),
              "version": getattr(renpy, "version_only", ""), "controls": controls_visible,
-             "command_error": _command_error}
+             "menu": menu_visible, "controls_events": list(_controls_events), "command_error": _command_error}
     if _ready and phase == "ready":
         value["renderer"] = dict(renpy.exports.get_renderer_info())
         value["size"] = list(renpy.exports.get_physical_size())
@@ -203,8 +290,11 @@ def release_pointer():
 def input_event(event):
     """Translate Aether input at a safe point in the native SDL event loop."""
     global _mouse_position
-    pygame = _pygame()
     kind = event.get("type")
+    if kind == "controls_frame":
+        set_controls_frame(event)
+        return
+    pygame = _pygame()
     if kind == "composition":
         pygame.event.post(pygame.event.Event(pygame.TEXTEDITING, text=event.get("text", ""),
             start=int(event.get("start", 0)), length=int(event.get("length", 0))))
@@ -242,7 +332,7 @@ def input_event(event):
     previous = _mouse_position
     _mouse_position = (int(float(event.get("x", 0)) * width), int(float(event.get("y", 0)) * height))
     pygame.event.post(pygame.event.Event(pygame.MOUSEMOTION, pos=_mouse_position,
-        rel=(_mouse_position[0] - previous[0], _mouse_position[1] - previous[1]), buttons=tuple(_mouse_buttons), touch=bool(event.get("touch"))))
+        rel=(_mouse_position[0] - previous[0], _mouse_position[1] - previous[1]), buttons=tuple(_mouse_buttons), touch=bool(event.get("touch")), aether_input=True))
     if kind == "button":
         button = int(event.get("button", 1))
         pressed = bool(event.get("pressed"))
@@ -250,27 +340,52 @@ def input_event(event):
             _mouse_buttons[button - 1] = pressed
         if 1 <= button <= 7:
             pygame.event.post(pygame.event.Event(pygame.MOUSEBUTTONDOWN if pressed else pygame.MOUSEBUTTONUP,
-                button=button, pos=_mouse_position, touch=bool(event.get("touch"))))
+                button=button, pos=_mouse_position, touch=bool(event.get("touch")), aether_input=True))
 
 
-def toggle_controls():
-    global controls_visible
+def set_controls_frame(frame):
+    """Present the original Godot controls; the engine owns no menu widgets."""
+    global _controls_frame, _controls_image, controls_visible, menu_visible
     import renpy
-    controls_visible = not controls_visible
-    if not controls_visible:
-        release_keys()
-    renpy.exports.restart_interaction()
+    _controls_frame = frame
+    controls_visible = bool(frame.get("controls"))
+    menu_visible = bool(frame.get("menu"))
+    if frame.get("image"):
+        _controls_image = renpy.display.im.Data(base64.b64decode(frame["image"]), "_aether_controls.png")
+        renpy.exports.restart_interaction()
+    _publish()
 
 
-def toggle_menu():
-    global menu_visible
-    import renpy
-    menu_visible = not menu_visible
-    renpy.exports.restart_interaction()
+def controls_pointer(ev, x, y, width, height):
+    """Return native pointer events to the shared Godot Control tree."""
+    global _controls_captured, _controls_hovered, _controls_sequence
+    pygame = _pygame()
+    if getattr(ev, "aether_input", False) or ev.type not in (pygame.MOUSEMOTION, pygame.MOUSEBUTTONDOWN, pygame.MOUSEBUTTONUP):
+        return False
+    x, y = x / max(1, width), y / max(1, height)
+    hit = any(rx <= x < rx + rw and ry <= y < ry + rh
+              for rx, ry, rw, rh in _controls_frame.get("regions", []))
+    routed = hit or _controls_captured
+    if ev.type == pygame.MOUSEBUTTONDOWN and hit:
+        _controls_captured = True
+    if routed or (ev.type == pygame.MOUSEMOTION and _controls_hovered):
+        _controls_sequence += 1
+        event = {"seq": _controls_sequence, "x": x, "y": y,
+                 "type": "move" if ev.type == pygame.MOUSEMOTION else "button"}
+        if ev.type != pygame.MOUSEMOTION:
+            event.update(button={2: 3, 3: 2}.get(ev.button, ev.button), pressed=ev.type == pygame.MOUSEBUTTONDOWN)
+        _controls_events.append(event)
+        _publish()
+    _controls_hovered = hit
+    if ev.type == pygame.MOUSEBUTTONUP:
+        _controls_captured = False
+    return routed
 
 
-def text(name):
-    return _manifest.get("labels", {}).get(name, name)
+def restart_game():
+    global restart_requested
+    restart_requested = True
+    quit_game()
 
 
 def quit_game():
@@ -281,7 +396,7 @@ def quit_game():
 
 
 def _dispatch(command):
-    global controls_visible, _inspect_names
+    global _inspect_names
     import renpy
 
     action = command.get("action", "")
@@ -291,11 +406,6 @@ def _dispatch(command):
         tap_key(command["key"])
     elif action == "key":
         key(command["key"], bool(command["pressed"]))
-    elif action == "controls":
-        controls_visible = bool(command["visible"])
-        if not controls_visible:
-            release_keys()
-        renpy.exports.restart_interaction()
     elif action == "inspect" and _manifest.get("debug"):
         names = command.get("names", [])
         if not isinstance(names, list) or len(names) > 16 or any(not isinstance(name, str) or not re.fullmatch(r"[A-Za-z_]\w*", name) for name in names):
@@ -355,13 +465,64 @@ def install():
         renpy.config.periodic_callbacks.append(_periodic)
     if _display_started not in renpy.config.display_start_callbacks:
         renpy.config.display_start_callbacks.append(_display_started)
-    if "_aether_renpy_overlay" not in renpy.config.overlay_screens:
-        renpy.config.overlay_screens.append("_aether_renpy_overlay")
+    if "_aether_renpy_overlay" not in renpy.config.always_shown_screens:
+        renpy.config.always_shown_screens.append("_aether_renpy_overlay")
     if _manifest.get("embedded"):
         renpy.config.quit_on_mobile_background = False
 
 
+def engine_bindings():
+    """Keep original callables by identity, before a game installs its hooks.
+
+    The SDK backup pickles functions by module/name, so unpickling a replaced
+    function resolves to the game's replacement. It also keeps classes by
+    identity and cannot undo their patched methods on its own.
+    """
+    bindings = []
+    seen = set()
+    for name, module in list(sys.modules.items()):
+        if not (name == "renpy" or name.startswith("renpy.")) or not isinstance(module, types.ModuleType):
+            continue
+        targets = [module] + [value for value in list(vars(module).values())
+                              if isinstance(value, type) and value.__module__.startswith("renpy.")]
+        for target in targets:
+            if id(target) in seen:
+                continue
+            seen.add(id(target))
+            for key, value in vars(target).copy().items():
+                if callable(value) or isinstance(value, (staticmethod, classmethod, property)):
+                    bindings.append((target, key, value))
+    return bindings
+
+
+def restore_engine_bindings(bindings):
+    for target, key, value in bindings:
+        if vars(target).get(key) is not value:
+            setattr(target, key, value)
+
+
+def unload_game_modules(game_root):
+    """Reload game Python, including archive modules, in the next session."""
+    import renpy
+    importer = getattr(getattr(renpy, "importer", None), "RenpyImporter", ())
+    root = str(Path(game_root).resolve()) + os.sep if game_root else ""
+    for name, module in reversed(list(sys.modules.items())):
+        if not isinstance(module, types.ModuleType) or name == "renpy" or name.startswith("renpy."):
+            continue
+        filename = str(vars(module).get("__file__") or "")
+        if not (isinstance(vars(module).get("__loader__"), importer) or filename.startswith("$game/")
+                or (root and filename.startswith(root))):
+            continue
+        sys.modules.pop(name, None)
+        parent, _, child = name.rpartition(".")
+        parent_module = sys.modules.get(parent)
+        if parent_module is not None and vars(parent_module).get(child) is module:
+            delattr(parent_module, child)
+
+
 def run_engine(sdk):
+    import renpy
+
     # These are distributor hooks in the original launcher. Mobile launchers
     # choose a shared Documents/private directory before processing --savedir;
     # supply Aether's per-game namespace before any persistent data is read.
@@ -373,9 +534,51 @@ def run_engine(sdk):
     previous_main = sys.modules.get("__main__")
     entry.__name__ = "__main__"
     sys.modules["__main__"] = entry
+    original_import = renpy.import_all
+    archive_handler = None
+    original_reader = None
+    added_config = []
+    bindings = []
+
+    def import_with_archive_compat():
+        nonlocal archive_handler, original_reader, bindings
+        # Keep the SDK's interpreter backup free of session-local closures.
+        # Embedded reopen supplies its own one-shot import hook; call it too.
+        renpy.import_all = original_import
+        original_import()
+        bindings = engine_bindings()
+        # Some ports declare preferences for a custom fixed-resolution FBO.
+        # Accept these advisory settings with the upstream renderer, which
+        # continues rendering at the native viewport size. Do not replace a
+        # future SDK's own implementation or relax validation of other names.
+        for name, default in (("fixed_resolution", None), ("fixed_resolution_filter", "linear")):
+            if not hasattr(renpy.config, name):
+                setattr(renpy.config, name, default)
+                added_config.append(name)
+        archive_handler = renpy.loader.RPAv3ArchiveHandler
+        original_reader = archive_handler.read_index
+
+        def read_index(infile):
+            index = original_reader(infile)
+            normalized = normalize_rpa3_index(infile, index)
+            if normalized is not index:
+                print("[Aether] Reversed RPA-3.0 index:", getattr(infile, "name", "<archive>"))
+            return normalized
+
+        archive_handler.read_index = staticmethod(read_index)
+
+    renpy.import_all = import_with_archive_compat
     try:
         entry.main()
     finally:
+        if renpy.import_all is import_with_archive_compat:
+            renpy.import_all = original_import
+        if archive_handler is not None:
+            archive_handler.read_index = staticmethod(original_reader)
+        for name in added_config:
+            vars(renpy.config).pop(name, None)
+        restore_engine_bindings(bindings)
+        unload_game_modules(getattr(renpy.config, "gamedir", None))
         sys.modules["__main__"] = previous_main
 
 
@@ -445,7 +648,7 @@ def main():
                     # scripts loaded after startup, outside the original game.
                     if _compiled_cache is not None and (project / "game").exists():
                         persist_compiled(project / "game", _compiled_cache)
-                    _publish("exited", exit_code=exit_code)
+                    _publish("exited", exit_code=exit_code, restart=restart_requested)
             except Exception as error:
                 exit_code = 1
                 traceback.print_exc()

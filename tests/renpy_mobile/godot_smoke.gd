@@ -1,17 +1,20 @@
 extends Control
 
-# Runs the production player, including its toolbar, input and refresh path.
+# Runs the production player, including its input and refresh path.
 const Player = preload("res://scripts/renpy_player_view.gd")
 class ProbePlayer:
     extends "res://scripts/renpy_player_view.gd"
     func _probe_enabled() -> bool:
         # Maven's engine AAR uses release export features, even in a debuggable APK.
         return true
-class Widgets:
-    func toolbar_button(_button: Button) -> void:
-        pass
-var ui_widgets := Widgets.new()
+var ui_tokens = preload("res://scripts/ui/aether_design_tokens.gd").new()
 var runtime_default_font_path := ""
+var game_virtual_input_mode := "mouse"
+var game_virtual_menu_enabled := true
+var game_virtual_keyboard_opacity := 0.6
+
+func _on_game_virtual_input_mode_changed(mode: String) -> void:
+    game_virtual_input_mode = mode
 var view
 var failure := ""
 var original := ""

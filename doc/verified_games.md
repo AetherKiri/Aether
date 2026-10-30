@@ -2,7 +2,7 @@
 
 [简体中文](verified_games.zh-CN.md)
 
-Last updated: 2026-10-27
+Last updated: 2026-10-30
 
 This document tracks games that have been manually smoke-tested with
 AetherKiri. It is a compatibility notebook, not a guarantee that every route,
@@ -20,6 +20,8 @@ movie, plugin path, or save state in a title has been exhaustively validated.
 
 | Game | Verified platforms / builds | Verified scope | Result | Verifier | Notes |
 | --- | --- | --- | --- | --- | --- |
+| 望却のエディシウス (TyranoScript / ASAR) | macOS arm64 Debug app, native WKWebView | Title animation, new game, initial dialogue advancement, shared KiriKiri/AR right-edge button and dragging, Keyboard / Control Pad, restart and return to library | Flow verified | Local manual UI | Checked on 2026-10-30. The game fills the safe viewport without a header; the actual GameVirtualControls component owns its button and inputs. Opening and closing the menu does not advance dialogue. The original app.asar and two save files retain their SHA-256. Save/load, other platforms and full routes remain unverified. No game assets included. |
+| 向日葵の教会と長い夏休み (Ren'Py Chinese port) | macOS arm64 Debug app, embedded Ren'Py 8.5.3 / GL2 | Chinese title, mouse Start after game-requested resize, 24 advance inputs across 10 Chinese dialogue states and background changes, save thumbnail, load, return and reopen/load in the same process, edge menu/virtual keys and four consecutive launches | Flow verified | Local manual UI and JSON probe | Checked on 2026-10-30. Handles reversed length/offset RPA-3.0 indexes and accepts the port's fixed-resolution preferences; renders at the native viewport without the fork's intermediate framebuffer. Game render hooks and imported Python modules are isolated between sessions, including their texture-cleanup callbacks. All 11 imported game files retain their original SHA-256. Other platforms, movies and full routes remain unverified. No game assets included. |
 | ROLEPLAYER：小粥姉妹の粘膜ポトレ ぐりぐちゃLIVE！ | macOS arm64 debug app, Godot Native / Metal | Title, new game, 100 dialogue clicks, opening alpha-mask and blur effects, character layers and expressions | Flow verified | [@JasmineLCY](https://github.com/JasmineLCY), local JSON probe | Checked on 2026-10-27; the user confirmed character rendering. Save/load, other platforms and full-game completion remain unverified. No game assets included. |
 | 兰斯8 / Rance Quest Magnum (Chinese) | macOS arm64 debug, native JSON probe and Aether window | Native xsystem4, translated-title CG interface detection, mixed-encoding MonsterInfo, TGA title/buttons, CJK font fallback, 1024×768 frames, new game and 20 dialogue clicks with Chinese names/text and characters | Flow verified | Local JSON probe | Checked on 2026-10-25. Six native CTests passed. Battle/3D flows, save/load, other platforms and full-game completion remain unverified. Imported game assets are unchanged and not included. |
 | 兰斯9 赫尔曼革命 / Rance IX (Chinese) | macOS arm64 debug, native JSON probe and Aether window | Native xsystem4, fan-repacked AFA index loading, 1280×720 frames, opening movie, Chinese title/menu, new game, Chinese narration/dialogue and characters, 20 dialogue clicks | Flow verified | Local JSON probe | Checked on 2026-10-25. AFA INFO payload-length variant is handled without modifying game archives. Three native CTests passed. Battle/3D flows, save/load, other platforms and full-game completion remain unverified. No game assets included. |

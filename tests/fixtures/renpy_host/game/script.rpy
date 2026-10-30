@@ -1,7 +1,15 @@
 default aether_probe_step = 0
 default aether_probe_route = ""
 
+init python:
+    import os
+    import probe_hooks
+    aether_probe_resize = bool(os.environ.get("AETHER_RENPY_TEST_RESIZE"))
+    aether_probe_hooks_fresh = probe_hooks.install()
+
 label main_menu:
+    if aether_probe_resize:
+        $ renpy.set_physical_size((1280, 720))
     call screen main_menu
     return
 

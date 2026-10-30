@@ -3,15 +3,15 @@ extends Control
 signal closed
 signal game_ready
 
+const NativeControls = preload("res://scripts/native_game_controls.gd")
 const Metadata = preload("res://scripts/game_metadata.gd")
 const TyranoAsar = preload("res://scripts/tyrano_asar.gd")
 var host
 var native
-var header: PanelContainer
-var title: Label
+var controls_viewport
+var controls
 var entry: Dictionary
 var controls_visible := false
-var keys_button: Button
 var ready_received := false
 var startup_elapsed := 0.0
 var closing := false
@@ -27,60 +27,86 @@ func setup(app) -> void:
     background.color = Color.BLACK
     background.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
     add_child(background)
-    header = PanelContainer.new()
-    var style := StyleBoxFlat.new()
-    style.bg_color = Color(0.025, 0.025, 0.03)
-    style.content_margin_left = 12
-    style.content_margin_right = 12
-    style.content_margin_top = 4
-    style.content_margin_bottom = 4
-    header.add_theme_stylebox_override("panel", style)
-    add_child(header)
-    var toolbar := HBoxContainer.new()
-    toolbar.add_theme_constant_override("separation", 12)
-    header.add_child(toolbar)
-    var back := _button(toolbar, "‹", host._t("flash.back"))
-    back.pressed.connect(close)
-    title = Label.new()
-    title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-    title.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
-    title.add_theme_color_override("font_color", Color.WHITE)
-    toolbar.add_child(title)
-    keys_button = _button(toolbar, "⌨", host._t("settings.virtual_control_menu"))
-    keys_button.toggle_mode = true
-    keys_button.button_pressed = controls_visible
-    keys_button.toggled.connect(set_virtual_controls)
-    var refresh := _button(toolbar, "↻", host._t("flash.refresh"))
-    refresh.pressed.connect(_restart)
+    controls_viewport = NativeControls.new()
+    add_child(controls_viewport)
+    controls_viewport.setup(host)
+    controls = controls_viewport.controls
+    controls_viewport.frame_ready.connect(_present_controls)
+    controls.key_event_requested.connect(_virtual_key)
+    controls.pointer_move_requested.connect(func(point: Vector2, _delta: Vector2):
+        _virtual_pointer("move", point))
+    controls.pointer_button_requested.connect(func(pressed: bool, button: int, _modifiers: int, point: Vector2):
+        _virtual_pointer("button", point, {"pressed": pressed, "button": MOUSE_BUTTON_LEFT if button == 0 else MOUSE_BUTTON_RIGHT}))
+    controls.pointer_scroll_requested.connect(func(delta: float, point: Vector2):
+        _virtual_pointer("scroll", point, {"delta": delta}))
+    controls.keyboard_requested.connect(func():
+        if DisplayServer.has_feature(DisplayServer.FEATURE_VIRTUAL_KEYBOARD):
+            DisplayServer.virtual_keyboard_show("")
+        elif DisplayServer.has_feature(DisplayServer.FEATURE_IME):
+            DisplayServer.window_set_ime_active(true))
     resized.connect(_layout)
     _layout()
 
 func set_virtual_controls(value: bool) -> void:
     controls_visible = value
-    keys_button.set_pressed_no_signal(value)
-    if native != null:
-        native.set_virtual_controls(value)
+    controls_viewport.set_virtual_controls(value)
 
-func _button(toolbar: HBoxContainer, text: String, tooltip: String) -> Button:
-    var button := Button.new()
-    button.text = text
-    button.tooltip_text = tooltip
-    button.accessibility_name = tooltip
-    button.custom_minimum_size = Vector2(44, 44)
-    host.ui_widgets.toolbar_button(button)
-    button.add_theme_color_override("font_color", Color.WHITE)
-    toolbar.add_child(button)
-    return button
+func _present_controls(frame: Dictionary) -> void:
+    controls_visible = controls.is_panel_open()
+    if native != null and ready_received and frame.has("image"):
+        native.set_controls_frame(frame)
+
+func _controls_ready() -> void:
+    controls_viewport.set_enabled(not lifecycle_paused)
+
+func _virtual_key(pressed: bool, code: int, modifiers: int) -> void:
+    _send_engine_input({"type": "key", "code": code, "pressed": pressed, "modifiers": modifiers})
+
+func _virtual_pointer(kind: String, point: Vector2, values: Dictionary = {}) -> void:
+    var normalized: Vector2 = point / controls_viewport.view_size
+    var value := {"type": kind, "x": normalized.x, "y": normalized.y}
+    value.merge(values)
+    _send_engine_input(value)
+
+func _send_engine_input(value: Dictionary) -> void:
+    if native != null and ready_received and not closing and not lifecycle_paused:
+        native.send_input(value)
+
+func _input(event: InputEvent) -> void:
+    if native == null or not ready_received or closing or lifecycle_paused:
+        return
+    var pointer := event is InputEventMouse or event is InputEventScreenTouch or event is InputEventScreenDrag
+    if pointer:
+        var local := event.duplicate() as InputEvent
+        local.position -= _content_rect().position
+        if controls_viewport.route_input(local):
+            get_viewport().set_input_as_handled()
+            return
+    _game_input(event)
+
+func _game_input(event: InputEvent) -> void:
+    if event is InputEventKey:
+        _virtual_key(event.pressed, host._kirikiri_virtual_key(event), 4 if event.ctrl_pressed else 0)
+    elif event is InputEventMouseMotion:
+        _virtual_pointer("move", event.position - _content_rect().position)
+    elif event is InputEventMouseButton:
+        if event.button_index in [MOUSE_BUTTON_WHEEL_UP, MOUSE_BUTTON_WHEEL_DOWN]:
+            if event.pressed:
+                _virtual_pointer("scroll", event.position - _content_rect().position,
+                    {"delta": 1 if event.button_index == MOUSE_BUTTON_WHEEL_UP else -1})
+        else:
+            _virtual_pointer("button", event.position - _content_rect().position,
+                {"button": event.button_index, "pressed": event.pressed})
+
+func _content_rect() -> Rect2:
+    var safe: Rect2 = host._ui_safe_rect(size)
+    return Rect2(global_position + safe.position, safe.size)
 
 func _layout() -> void:
-    if header == null:
-        return
-    var safe: Rect2 = host._ui_safe_rect(size)
-    header.position = safe.position
-    header.size = Vector2(safe.size.x, 56)
+    if controls_viewport != null:
+        controls_viewport.layout(_content_rect(), get_viewport_rect().size)
     if native != null:
-        var rect := Rect2(global_position + safe.position + Vector2(0, 56), Vector2(safe.size.x, maxf(0, safe.size.y - 56)))
-        native.set_rect(rect, get_viewport_rect().size)
+        native.set_rect(_content_rect(), get_viewport_rect().size)
 
 static func storage_path(root: String) -> String:
     var identity := root.simplify_path()
@@ -102,7 +128,6 @@ func open_entry(value: Dictionary) -> String:
     if not native.is_supported():
         return host._t("tyrano.unavailable")
     native.event_received.connect(_event)
-    title.text = String(entry.get("name", "TyranoScript")) + " · " + host._t("tyrano.loading")
     ready_received = false
     startup_elapsed = 0.0
     if launch.ends_with(".asar"):
@@ -135,13 +160,17 @@ func _stop_preparation() -> void:
 func _event(event: Dictionary) -> void:
     match String(event.get("type", "")):
         "ready":
-            native.set_virtual_controls(controls_visible)
             native.set_paused(lifecycle_paused)
             if ready_received:
                 return
             ready_received = true
-            title.text = String(entry.get("name", "TyranoScript"))
+            _controls_ready()
             game_ready.emit()
+        "controls_input":
+            var value = JSON.parse_string(String(event.get("value", "")))
+            if value is Dictionary:
+                controls_viewport.pointer_input(value)
+                controls_visible = controls.is_panel_open()
         "error":
             var message: String = host._t("tyrano.open_failed", [String(event.get("value", ""))])
             close()
@@ -152,6 +181,8 @@ func _event(event: Dictionary) -> void:
             host._append_log("TyranoScript: " + String(event.get("value", "")))
 
 func _restart() -> void:
+    controls_visible = false
+    controls_viewport.set_enabled(false)
     _stop_preparation()
     if native != null:
         native.close()
@@ -166,6 +197,7 @@ func close() -> void:
     if closing:
         return
     closing = true
+    controls_viewport.set_enabled(false)
     _stop_preparation()
     if native != null:
         native.close()
@@ -201,9 +233,12 @@ func _notification(what: int) -> void:
         return
     if what in [NOTIFICATION_APPLICATION_PAUSED, NOTIFICATION_APPLICATION_FOCUS_OUT]:
         lifecycle_paused = true
+        controls_viewport.set_enabled(false)
         native.set_paused(true)
     elif what in [NOTIFICATION_APPLICATION_RESUMED, NOTIFICATION_APPLICATION_FOCUS_IN]:
         lifecycle_paused = false
         native.set_paused(false)
+        if ready_received:
+            _controls_ready()
     elif what == NOTIFICATION_PREDELETE:
         native.close()

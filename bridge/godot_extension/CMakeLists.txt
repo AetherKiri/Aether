@@ -98,6 +98,7 @@ endif()
 set(AETHERKIRI_GODOT_SOURCES
     src/flash_player.cpp
     src/tyrano_player.cpp
+    src/native_controls_overlay.cpp
     src/renpy_native_player.cpp
     src/aether_runtime_player.cpp
     src/frame_effect_host.cpp
@@ -141,8 +142,8 @@ if(APPLE)
     configure_file("${CMAKE_SOURCE_DIR}/bridge/tyrano_runtime/host_script.h.in"
         "${CMAKE_CURRENT_BINARY_DIR}/tyrano_host_script.h" @ONLY)
     target_include_directories(aether_kiri_godot PRIVATE "${CMAKE_CURRENT_BINARY_DIR}")
-    target_sources(aether_kiri_godot PRIVATE src/tyrano_webview.mm)
-    set_source_files_properties(src/tyrano_webview.mm
+    target_sources(aether_kiri_godot PRIVATE src/tyrano_webview.mm src/native_controls_overlay.mm)
+    set_source_files_properties(src/tyrano_webview.mm src/native_controls_overlay.mm
         PROPERTIES LANGUAGE CXX COMPILE_FLAGS "-x objective-c++ -fobjc-arc")
     target_link_libraries(aether_kiri_godot PRIVATE "-framework WebKit" "-framework CoreGraphics")
     target_sources(aether_kiri_godot PRIVATE src/apple_external_texture.mm)

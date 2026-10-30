@@ -1,5 +1,7 @@
 import importlib.util
+import io
 from pathlib import Path
+import sys
 import tempfile
 import unittest
 from types import SimpleNamespace
@@ -10,6 +12,147 @@ REPO = Path(__file__).resolve().parents[2]
 SPEC = importlib.util.spec_from_file_location("renpy_host_tests", REPO / "apps/godot_app/renpy_runtime/host.py")
 HOST = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(HOST)
+
+
+def rpa_fixture(resources, reversed_index=False):
+    """Original payloads and an SDK-decoded index; no game assets or pickles."""
+    stream = io.BytesIO(b" " * 34)
+    stream.seek(34)
+    index = {}
+    for name, payload in resources.items():
+        offset = stream.tell()
+        stream.write(payload)
+        fields = (len(payload), offset) if reversed_index else (offset, len(payload))
+        index[name] = [(*fields, b"")]
+    end = stream.tell()
+    stream.write(b"index already decoded by the SDK")
+    stream.seek(0)
+    stream.write(f"RPA-3.0 {end:016x} 00000000\n".encode("ascii"))
+    stream.seek(0, 2)
+    return stream, index
+
+
+class RenpyArchiveTests(unittest.TestCase):
+    def setUp(self):
+        self.resources = {
+            "tl/None/common.rpymc": b"RENPY RPC2" + b"script data" * 20,
+            "images/背景.png": b"\x89PNG\r\n\x1a\n" + b"image data" * 30,
+            "audio/voice.ogg": b"OggS\x00" + b"audio data" * 40,
+        }
+
+    def test_standard_archive_keeps_its_index_and_file_position(self):
+        stream, index = rpa_fixture(self.resources)
+        position = stream.tell()
+        self.assertIs(HOST.normalize_rpa3_index(stream, index), index)
+        self.assertEqual(stream.tell(), position)
+
+    def test_reversed_archive_reads_the_original_resources(self):
+        stream, index = rpa_fixture(self.resources, reversed_index=True)
+        position = stream.tell()
+        normalized = HOST.normalize_rpa3_index(stream, index)
+        self.assertEqual(stream.tell(), position)
+        for name, payload in self.resources.items():
+            offset, length, prefix = normalized[name][0]
+            stream.seek(offset)
+            self.assertEqual(prefix + stream.read(length), payload)
+            self.assertEqual(index[name][0][:2], (length, offset), "Do not mutate the SDK index")
+
+    def test_resource_only_archives_are_detected_independently(self):
+        for name, magic in [("image.webp", b"RIFFxxxxWEBP"), ("sound.wav", b"RIFFxxxxWAVE"),
+                            ("font.ttf", b"\x00\x01\x00\x00"), ("font.otf", b"OTTO"),
+                            ("movie.webm", b"\x1aE\xdf\xa3")]:
+            for reversed_index in (True, False, True):
+                with self.subTest(name=name, reversed_index=reversed_index):
+                    payload = magic + b"original resource" * 20
+                    stream, index = rpa_fixture({name: payload}, reversed_index)
+                    normalized = HOST.normalize_rpa3_index(stream, index)
+                    offset, length, _ = normalized[name][0]
+                    stream.seek(offset)
+                    self.assertEqual(stream.read(length), payload)
+
+    def test_two_field_records_chunks_and_inline_prefixes_are_preserved(self):
+        resources = dict(self.resources, **{"unknown.bin": b"body" * 50})
+        stream, index = rpa_fixture(resources, reversed_index=True)
+        name = "tl/None/common.rpymc"
+        length, offset, _ = index[name][0]
+        index[name] = [(64, offset), (length - 64, offset + 64)]
+        index["unknown.bin"][0] = (*index["unknown.bin"][0][:2], b"inline prefix")
+        normalized = HOST.normalize_rpa3_index(stream, index)
+        body = b""
+        for offset, length in normalized[name]:
+            stream.seek(offset)
+            body += stream.read(length)
+        self.assertEqual(body, resources[name])
+        self.assertEqual(normalized["unknown.bin"][0][2], b"inline prefix")
+
+    def test_inline_magic_alone_cannot_identify_a_variant(self):
+        stream, index = rpa_fixture({"story.rpyc": b"body" * 50}, reversed_index=True)
+        index["story.rpyc"][0] = (*index["story.rpyc"][0][:2], b"RENPY RPC2")
+        self.assertIs(HOST.normalize_rpa3_index(stream, index), index)
+
+    def test_ambiguous_or_unknown_payloads_keep_standard_interpretation(self):
+        stream, index = rpa_fixture({"story.rpyc": b"RENPY RPC2" + b"." * 191}, reversed_index=True)
+        stream.seek(index["story.rpyc"][0][0])
+        stream.write(b"RENPY RPC2")
+        self.assertIs(HOST.normalize_rpa3_index(stream, index), index)
+        for name in ("unknown.bin", "story.rpyc"):
+            stream, index = rpa_fixture({name: b"unknown format" * 20}, reversed_index=True)
+            self.assertIs(HOST.normalize_rpa3_index(stream, index), index)
+
+    def test_invalid_unsampled_record_prevents_archive_wide_swap(self):
+        for record in [(10, 1), (100, 10**9), (-1, 34), ("bad", 34), (1,)]:
+            stream, index = rpa_fixture(self.resources, reversed_index=True)
+            index["unknown.bin"] = [record]
+            with self.subTest(record=record):
+                self.assertIs(HOST.normalize_rpa3_index(stream, index), index)
+
+    def test_partial_signature_evidence_is_not_enough_to_swap(self):
+        resources = dict(self.resources, **{"other.rpyc": b"unrecognized script format" * 20})
+        stream, index = rpa_fixture(resources, reversed_index=True)
+        self.assertIs(HOST.normalize_rpa3_index(stream, index), index)
+
+    def test_probe_reads_are_bounded(self):
+        stream, index = rpa_fixture({f"{i}.rpyc": b"RENPY RPC2" + b"." * 200 for i in range(100)}, True)
+        with patch.object(stream, "read", wraps=stream.read) as read:
+            normalized = HOST.normalize_rpa3_index(stream, index)
+            self.assertIsNot(normalized, index)
+            self.assertLessEqual(read.call_count, 65)
+            self.assertTrue(all(call.args[0] <= 34 for call in read.call_args_list))
+
+    def test_hook_runs_after_import_and_is_restored_on_exit_or_failure(self):
+        with tempfile.TemporaryDirectory() as directory:
+            sdk = Path(directory)
+            (sdk / "renpy.py").write_text('''def main():
+    import renpy
+    renpy.import_all()
+    renpy.seen = renpy.loader.RPAv3ArchiveHandler.read_index(renpy.archive)
+    renpy.config_seen = vars(renpy.config).copy()
+    if renpy.fail:
+        raise RuntimeError("game failed")
+''')
+            for fail in (False, True):
+                with self.subTest(fail=fail):
+                    stream, index = rpa_fixture(self.resources, True)
+                    original_reader = lambda _stream: index
+                    class Handler:
+                        read_index = staticmethod(original_reader)
+                    def imported():
+                        self.assertIs(renpy.import_all, imported, "The engine backup must see the original import function")
+                    renpy = SimpleNamespace(import_all=imported, loader=SimpleNamespace(RPAv3ArchiveHandler=Handler),
+                                            config=SimpleNamespace(), archive=stream, fail=fail)
+                    previous_main = sys.modules["__main__"]
+                    with patch.dict(sys.modules, {"renpy": renpy}), patch.object(HOST, "_manifest", {"saves": directory}):
+                        if fail:
+                            with self.assertRaisesRegex(RuntimeError, "game failed"):
+                                HOST.run_engine(sdk)
+                        else:
+                            HOST.run_engine(sdk)
+                    self.assertIsNot(renpy.seen, index)
+                    self.assertIs(Handler.read_index, original_reader)
+                    self.assertIs(renpy.import_all, imported)
+                    self.assertIs(sys.modules["__main__"], previous_main)
+                    self.assertEqual(renpy.config_seen, {"fixed_resolution": None, "fixed_resolution_filter": "linear"})
+                    self.assertEqual(vars(renpy.config), {}, "Compatibility settings must not leak into another game")
 
 
 class RenpyHostTests(unittest.TestCase):

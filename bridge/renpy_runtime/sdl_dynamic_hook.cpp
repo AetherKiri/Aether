@@ -72,6 +72,13 @@ static uint32_t flags(void *window) {
     return window == owned ? (value | 4 | 0x200 | 0x400) & ~8 : value;
 }
 static void *focus() { return owned ? owned : real_focus(); }
+static void set_size(void *window, int width, int height) {
+    // The adopted view follows Aether's viewport. A game-requested size must
+    // not resize only SDL's hidden helper window and desynchronize pointer
+    // coordinates from the drawable. Host layout changes use real_set_size.
+    real_set_size(window, window == owned ? viewport_width : width,
+                  window == owned ? viewport_height : height);
+}
 extern "C" __attribute__((visibility("default"))) void
 aether_renpy_sdl_bounds(int width, int height) {
     if(width <= 0 || height <= 0 ||
@@ -133,6 +140,7 @@ SDL_DYNAPI_entry(uint32_t version, void *table, uint32_t size) {
     real_destroy = reinterpret_cast<decltype(real_destroy)>(slots[505]);
     slots[505] = reinterpret_cast<void *>(destroy);
     real_set_size = reinterpret_cast<decltype(real_set_size)>(slots[482]);
+    slots[482] = reinterpret_cast<void *>(set_size);
     installed = true;
     return 0;
 }

@@ -62,12 +62,16 @@ compatibility_minimum="4.6"
 [libraries]
 ''' + libraries)
     scripts = project / "scripts"; scripts.mkdir(exist_ok=True)
-    for name in ("game_metadata.gd", "tyrano_player_view.gd", "renpy_player_view.gd"):
+    for name in ("game_metadata.gd", "tyrano_asar.gd", "tyrano_player_view.gd", "renpy_player_view.gd", "game_virtual_controls.gd", "native_game_controls.gd"):
         shutil.copy2(REPO / "apps/godot_app/scripts" / name, scripts)
+    (scripts / "ui").mkdir(exist_ok=True)
+    for name in ("aether_design_tokens.gd",):
+        shutil.copy2(REPO / "apps/godot_app/scripts/ui" / name, scripts / "ui")
     shutil.copytree(REPO / "apps/godot_app/renpy_runtime", project / "renpy_runtime", dirs_exist_ok=True)
     shutil.copytree(REPO / "tests/fixtures/renpy_host", project / "fixture", dirs_exist_ok=True)
     shutil.copy2(args.sdk / "sdk-fonts/SourceHanSansLite.ttf", project / "fixture/game/probe.ttf")
     (project / "fixture/game/probe.ttf.import").write_text('[remap]\nimporter="keep"\n')
+    (project / "fixture/game/probe.svg.import").write_text('[remap]\nimporter="keep"\n')
     shutil.copy2(REPO / "tests/renpy_mobile/godot_smoke.gd", project / "smoke.gd")
     if args.host_only:
         (project / "smoke.gd").write_text('''extends Control
@@ -173,7 +177,7 @@ android:configChanges="orientation|keyboardHidden|screenSize|smallestScreenSize|
 name="Probe"
 platform="Android"
 export_filter="all_resources"
-include_filter="*.py,*.rpy,*.ttf"
+include_filter="*.py,*.rpy,*.ttf,*.svg"
 export_path=""
 [preset.0.options]
 architectures/arm64-v8a=true

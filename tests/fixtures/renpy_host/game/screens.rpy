@@ -1,8 +1,9 @@
 screen main_menu():
     tag menu
-    add Solid("#19274e")
+    add "probe.svg"
     textbutton "开始验证":
-        align (0.5, 0.5)
+        pos ((0.75, 0.65) if aether_probe_resize else (0.5, 0.5))
+        anchor (0.5, 0.5)
         default_focus True
         action Start()
 

@@ -21,7 +21,7 @@ def run(command, log, env, marker=None, timeout=180):
     with log.open("w") as stream:
         result = subprocess.run(command, env=env, stdout=stream, stderr=subprocess.STDOUT, timeout=timeout)
     text = log.read_text(errors="replace")
-    if result.returncode or re.search(r"SCRIPT ERROR:|^ERROR:", text, re.MULTILINE) or (marker and marker not in text):
+    if result.returncode or re.search(r"SCRIPT ERROR:|^ERROR:|^Traceback \(most recent call last\):", text, re.MULTILINE) or (marker and marker not in text):
         raise RuntimeError(f"Check failed (exit {result.returncode}): {log}\n" + "\n".join(text.splitlines()[-50:]))
 
 
@@ -30,9 +30,9 @@ def tree_hash(root):
             for path in root.rglob("*") if path.is_file()}
 
 
-def pack_fixture(game):
-    """Write only this original fixture into the documented RPA-3.0 container."""
-    files = sorted(path for path in game.rglob("*") if path.is_file() and path.suffix in {".rpyc", ".ttf"})
+def pack_fixture(game, reversed_index=False):
+    """Pack only this original fixture, optionally reversing the index fields."""
+    files = sorted(path for path in game.rglob("*") if path.is_file() and path.suffix in {".rpyc", ".ttf", ".svg", ".py"})
     archive = game / "archive.rpa"
     index = {}
     key = 0xA37E2026
@@ -42,7 +42,8 @@ def pack_fixture(game):
             data = path.read_bytes()
             offset = stream.tell()
             stream.write(data)
-            index[path.relative_to(game).as_posix()] = [(offset ^ key, len(data) ^ key, b"")]
+            fields = (len(data), offset) if reversed_index else (offset, len(data))
+            index[path.relative_to(game).as_posix()] = [(fields[0] ^ key, fields[1] ^ key, b"")]
         index_offset = stream.tell()
         stream.write(zlib.compress(pickle.dumps(index, protocol=2)))
         stream.seek(0)
@@ -63,7 +64,10 @@ def main():
     parser.add_argument("--godot", type=Path)
     parser.add_argument("--output", type=Path)
     parser.add_argument("--packed", action="store_true", help="Compile then test a packed .rpa-only fixture")
+    parser.add_argument("--reversed-index", action="store_true", help="Use the length/offset RPA-3.0 variant with --packed")
     args = parser.parse_args()
+    if args.reversed_index and not args.packed:
+        parser.error("--reversed-index requires --packed")
     repo = Path(__file__).resolve().parents[1]
     sdk = args.sdk.resolve()
     runtime = (args.runtime or args.sdk).resolve()
@@ -82,10 +86,12 @@ def main():
     shutil.copy2(sdk / "sdk-fonts/SourceHanSansLite.ttf", game / "game/probe.ttf")
     env = dict(os.environ, AETHER_RENPY_SDK=str(runtime), AETHER_RENPY_TEST_GAME=str(game),
                AETHER_RENPY_TEST_RESULT=str(output / "player-result.json"))
+    if os.uname().sysname == "Darwin":
+        env["AETHER_RENPY_TEST_RESIZE"] = "1"
     if args.packed:
         compile_env = dict(env, RENPY_PATH_TO_SAVES=str(output / "compile-data"), RENPY_LOG_BASE=str(output))
         run([str(python), str(sdk / "renpy.py"), str(game), "compile"], output / "compile.log", compile_env)
-        pack_fixture(game / "game")
+        pack_fixture(game / "game", args.reversed_index)
     before = tree_hash(game)
     project = output / "project"
     project.mkdir()
@@ -118,7 +124,8 @@ renderer/rendering_method="mobile"
     assert saves, "No real Ren'Py save was written"
     with zipfile.ZipFile(saves[0]) as archive:
         assert "screenshot.png" in archive.namelist(), "The save has no thumbnail"
-    result.update({"packed": args.packed, "original_unchanged": True, "save_thumbnail": True, "game": str(game)})
+    result.update({"packed": args.packed, "reversed_index": args.reversed_index,
+                   "original_unchanged": True, "save_thumbnail": True, "game": str(game)})
     (output / "result.json").write_text(json.dumps(result, ensure_ascii=False, indent=2) + "\n")
     print(json.dumps(result, ensure_ascii=False, indent=2))
     print("RENPY_SMOKE_OK")

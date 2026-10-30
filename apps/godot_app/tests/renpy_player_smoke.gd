@@ -58,6 +58,66 @@ func _command(action: String, values: Dictionary = {}) -> void:
 func _key(name: String) -> void:
     await _command("key_tap", {"key": name})
 
+func _start_scenario() -> void:
+    if OS.get_environment("AETHER_RENPY_TEST_RESIZE").is_empty():
+        await _key("enter")
+        return
+    # The fixture requests 1280x720, then places Start away from the center.
+    # Click its visible position through the production frontend, accounting
+    # for the fixture's 16:9 letterbox in Aether's full viewport.
+    var content: Vector2 = app.renpy_view.size
+    var fitted := Vector2(960, 540) * minf(content.x / 960.0, content.y / 540.0)
+    var point: Vector2 = app.renpy_view.global_position + (content - fitted) / 2 + fitted * Vector2(0.75, 0.65)
+    await _click_at(point)
+
+func _click_at(point: Vector2) -> void:
+    var move := InputEventMouseMotion.new()
+    move.position = point
+    app.renpy_view._input(move)
+    for pressed in [true, false]:
+        var button := InputEventMouseButton.new()
+        button.position = point
+        button.button_index = MOUSE_BUTTON_LEFT
+        button.pressed = pressed
+        app.renpy_view._input(button)
+        await process_frame
+
+func _click_control(control: Control) -> void:
+    await _click_at(app.renpy_view._content_rect().position + control.get_global_rect().get_center())
+
+func _open_control_pad() -> void:
+    await _click_control(app.renpy_view.controls.menu_button)
+    await _wait(func(): return app.renpy_view.controls.is_menu_open(), "The original edge menu opens")
+    await _click_control(app.renpy_view.controls.virtual_controls_button)
+
+func _check_shared_button() -> void:
+    var view = app.renpy_view
+    _expect(view.controls.get_script() == load("res://scripts/game_virtual_controls.gd"), "The native player instantiates the original KiriKiri controls")
+    var point: Vector2 = view._content_rect().position + view.controls.menu_button.get_global_rect().get_center()
+    var down := InputEventMouseButton.new()
+    down.position = point
+    down.button_index = MOUSE_BUTTON_LEFT
+    down.pressed = true
+    view._input(down)
+    var drag := InputEventMouseMotion.new()
+    drag.position = point + Vector2(0, 120)
+    drag.button_mask = MOUSE_BUTTON_MASK_LEFT
+    view._input(drag)
+    down.position = drag.position
+    down.pressed = false
+    view._input(down)
+    await process_frame
+    _expect(view.controls.menu_button.position.y > 100 and not view.controls.is_menu_open(), "Dragging the original button moves it along the right edge without opening the menu")
+
+func _check_title_texture() -> void:
+    await _command("screenshot")
+    var picture := Image.load_from_file(app.renpy_view.session_directory.path_join("screenshot.png"))
+    var colors := [Color("cc3344"), Color("33bb66"), Color("3366cc")]
+    for index in range(colors.size()):
+        var pixel := picture.get_pixel(int((80 + 80 * index) * picture.get_width() / 960.0), int(80 * picture.get_height() / 540.0))
+        _expect(absf(pixel.r - colors[index].r) < 0.03 and absf(pixel.g - colors[index].g) < 0.03 and absf(pixel.b - colors[index].b) < 0.03,
+            "Title image textures survive renderer recreation (patch %d: %s)" % [index, str(pixel)])
+
 func _launch() -> bool:
     app.selected_game = app._game_info_from_path(original)
     _expect(app.selected_game.engine == "renpy", "The imported game is classified as Ren'Py")
@@ -68,8 +128,12 @@ func _launch() -> bool:
         return false
     _expect(not app.renpy_view.controls_visible and not bool(app.renpy_view.state.get("controls", true)), "Virtual keys start disabled")
     _expect(String(app.renpy_view.state.get("renderer", {}).get("renderer", "")) in ["gl2", "angle2"], "Ren'Py owns its native model renderer")
-    await _command("inspect", {"names": ["aether_probe_step", "aether_probe_route"]})
-    return await _wait(func(): return app._is_renpy_active() and bool(app.renpy_view.state.get("main_menu", false)), "The original main menu renders")
+    await _command("inspect", {"names": ["aether_probe_step", "aether_probe_route", "aether_probe_hooks_fresh"]})
+    _expect(bool(_variables().get("aether_probe_hooks_fresh", false)), "Every launch imports fresh game modules with the original engine hooks")
+    if not await _wait(func(): return app._is_renpy_active() and bool(app.renpy_view.state.get("main_menu", false)), "The original main menu renders"):
+        return false
+    await _check_title_texture()
+    return true
 
 func _run() -> void:
     original = OS.get_environment("AETHER_RENPY_TEST_GAME")
@@ -78,6 +142,7 @@ func _run() -> void:
         quit(2)
         return
     root.size = Vector2i(1280, 720)
+    root.content_scale_factor = 1.5
     root.gui_embed_subwindows = true
     app = RenpyApp.new()
     root.add_child(app)
@@ -94,12 +159,31 @@ func _run() -> void:
     var session: String = app.renpy_view.session_directory
     var first_process: int = int(app.renpy_view.state.get("pid", 0))
     _expect(first_process == OS.get_process_id(), "Ren’Py executes in Aether’s process")
-    await _key("enter")
+    if OS.get_name() == "macOS":
+        await _check_shared_button()
+        await _command("screenshot")
+        var title_image := Image.load_from_file(session.path_join("screenshot.png"))
+        await _open_control_pad()
+        await _wait(func(): return bool(app.renpy_view.state.get("controls", false)), "The title-screen edge menu toggles virtual keys")
+        _expect(bool(app.renpy_view.state.get("main_menu", false)), "The menu click does not start the game")
+        await _command("screenshot")
+        var controls_image := Image.load_from_file(session.path_join("screenshot.png"))
+        var sample := Vector2i(title_image.get_width() / 2, title_image.get_height() / 4)
+        _expect(title_image.get_pixelv(sample).is_equal_approx(controls_image.get_pixelv(sample)),
+            "Virtual-key panels leave the central game canvas uncovered")
+        app.renpy_view.set_virtual_controls(false)
+        await _wait(func(): return not bool(app.renpy_view.state.get("controls", true)), "Virtual keys can be hidden before starting")
+    await _start_scenario()
     await _wait(func(): return int(_variables().get("aether_probe_step", 0)) == 1 and _dialogue().contains("第一句"), "The Chinese scenario starts through native SDL input")
     app.renpy_view.set_virtual_controls(true)
     await _wait(func(): return bool(app.renpy_view.state.get("controls", false)), "Optional in-game virtual keys appear")
-    await _key("enter")
+    if OS.get_name() == "macOS":
+        await _click_control(app.renpy_view.controls.enter_button)
+    else:
+        await _key("enter")
     await _wait(func(): return int(_variables().get("aether_probe_step", 0)) == 2, "Virtual Enter reaches the Chinese choices")
+    # Shared controls consume their pointer events before SDL; the fixture
+    # keeps its default first-choice focus for the next keyboard activation.
     await _key("enter")
     await _wait(func(): return _variables().get("aether_probe_route", "") == "A" and _dialogue().contains("已选择 A"), "The actual choice executes its route")
     app.renpy_view.set_virtual_controls(false)
@@ -127,7 +211,10 @@ func _run() -> void:
     var before_refresh: String = app.renpy_view.session_directory
     app.renpy_view._restart()
     await _wait(func(): return app._is_renpy_active() and app.renpy_view.session_directory != before_refresh and app.renpy_view.ready_received and bool(app.renpy_view.state.get("main_menu", false)), "Refresh restarts inside the same window")
-    _expect(not app.renpy_view.controls_visible and not app.renpy_view.keys_button.button_pressed, "Refresh resets the virtual-keys menu")
+    await _command("inspect", {"names": ["aether_probe_hooks_fresh"]})
+    _expect(bool(_variables().get("aether_probe_hooks_fresh", false)), "Refresh restores module functions and class methods before reinstalling game hooks")
+    await _check_title_texture()
+    _expect(not app.renpy_view.controls_visible, "Refresh resets the virtual-keys menu")
     _expect(app.active_game_started_msec == played_since and app.marked.size() == 1, "Refresh retains the existing play session")
     app._handle_go_back_request()
     await _wait(func(): return not app._is_renpy_active(), "Back gracefully closes the embedded game")
@@ -138,7 +225,7 @@ func _run() -> void:
         quit(1)
         return
     _expect(int(app.renpy_view.state.get("pid", 0)) == first_process, "Reopening uses the embedded Python runtime")
-    await _key("enter")
+    await _start_scenario()
     await _wait(func(): return int(_variables().get("aether_probe_step", 0)) == 1, "The reopened game starts the scenario")
     await _key("f9")
     await _wait(func(): return int(_variables().get("aether_probe_step", 0)) == 3 and _dialogue().contains("已选择 A"), "The save survives complete game recreation")

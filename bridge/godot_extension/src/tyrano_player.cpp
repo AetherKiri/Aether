@@ -32,7 +32,8 @@ protected:
         ClassDB::bind_method(D_METHOD("get_error"), &AetherTyranoPlayer::get_error);
         ClassDB::bind_method(D_METHOD("set_rect", "rect", "viewport_size"), &AetherTyranoPlayer::set_rect);
         ClassDB::bind_method(D_METHOD("set_paused", "paused"), &AetherTyranoPlayer::set_paused);
-        ClassDB::bind_method(D_METHOD("set_virtual_controls", "visible"), &AetherTyranoPlayer::set_virtual_controls);
+        ClassDB::bind_method(D_METHOD("set_controls_frame", "frame"), &AetherTyranoPlayer::set_controls_frame);
+        ClassDB::bind_method(D_METHOD("send_input", "event"), &AetherTyranoPlayer::send_input);
 #ifdef DEBUG_ENABLED
         ClassDB::bind_method(D_METHOD("evaluate_script", "script"), &AetherTyranoPlayer::evaluate_script);
 #endif
@@ -113,11 +114,20 @@ public:
         if (android_.is_valid()) android_->call("setPaused", paused);
 #endif
     }
-    void set_virtual_controls(bool visible) {
+    void set_controls_frame(const Dictionary &frame) {
+        const String json = JSON::stringify(frame);
 #ifdef __APPLE__
-        if (handle_) aether_tyrano_controls(handle_, visible);
+        if (handle_) aether_tyrano_controls(handle_, json.utf8().get_data());
 #elif defined(__ANDROID__)
-        if (android_.is_valid()) android_->call("setControls", visible);
+        if (android_.is_valid()) android_->call("setControlsFrame", json);
+#endif
+    }
+    void send_input(const Dictionary &event) {
+        const String json = JSON::stringify(event);
+#ifdef __APPLE__
+        if (handle_) aether_tyrano_input(handle_, json.utf8().get_data());
+#elif defined(__ANDROID__)
+        if (android_.is_valid()) android_->call("sendInput", json);
 #endif
     }
     void evaluate_script(const String &script) {

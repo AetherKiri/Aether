@@ -34,9 +34,13 @@ the host cannot run TyranoScript.
 
 The host supports browser-compatible projects, their DOM/CSS rendering, direct
 mouse/keyboard input, on-screen keys, standard browser media, and Tyrano's own
-menus and save/load logic. The toolbar returns to the library, recreates the
-player, or toggles virtual keys, which start disabled on all platforms. The system
-browser owns the game surface; Godot owns the surrounding library and toolbar.
+menus and save/load logic. The game fills the safe viewport without a header.
+The right-edge button, dragging, Keyboard / Control Pad menu and virtual inputs
+reuse [`game_virtual_controls.gd`](../../apps/godot_app/scripts/game_virtual_controls.gd),
+the same component as KiriKiri. A transparent SubViewport renders the component;
+the shared Apple native compositor or Android image layer presents its pixels
+above the game and routes pointer input back to the original Godot controls.
+The browser does not implement its own buttons or menu actions.
 
 Encrypted resources, Node/Electron/NW.js APIs, native plugins,
 external page navigation, and games that require desktop file-based saves are

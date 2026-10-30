@@ -1311,7 +1311,28 @@ func _stop_pad_frame_pulse() -> void:
 func _spawn_touch_ripple(screen_position: Vector2) -> void:
     if _root == null or not is_inside_tree():
         return
-    preload("res://scripts/ui/aether_pointer_ripple.gd").spawn(_root, screen_position)
+    var ring := Panel.new()
+    ring.name = "TouchRipple"
+    ring.mouse_filter = Control.MOUSE_FILTER_IGNORE
+    var style := StyleBoxFlat.new()
+    style.bg_color = Color(1.0, 1.0, 1.0, 0.06)
+    style.border_color = Color(1.0, 1.0, 1.0, 0.50)
+    style.set_border_width_all(1)
+    style.set_corner_radius_all(999)
+    style.anti_aliasing = true
+    ring.add_theme_stylebox_override("panel", style)
+    ring.size = Vector2.ONE * 56.0
+    ring.pivot_offset = ring.size * 0.5
+    ring.position = screen_position - ring.size * 0.5
+    ring.scale = Vector2.ONE * 0.35
+    _root.add_child(ring)
+    var tween := ring.create_tween()
+    tween.set_parallel(true)
+    tween.tween_property(ring, "scale", Vector2.ONE, 0.45) \
+        .set_trans(Tween.TRANS_QUART).set_ease(Tween.EASE_OUT)
+    tween.tween_property(ring, "modulate:a", 0.0, 0.45) \
+        .set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
+    tween.chain().tween_callback(ring.queue_free)
 
 func _pulse_cursor() -> void:
     if cursor_handle == null or not is_inside_tree():

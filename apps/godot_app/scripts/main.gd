@@ -289,7 +289,7 @@ const UI_TEXT := {
         "settings.keyboard_control_opacity": "Keyboard 模式按键透明度",
         "settings.keyboard_control_opacity_desc": "调整屏幕虚拟按键的透明度；鼠标指针保持清晰",
         "settings.gamepad": "手柄",
-        "settings.gamepad_desc": "摇杆自由移动圆点鼠标，靠近界面控件时吸附；游戏内用右摇杆移动指针",
+        "settings.gamepad_desc": "跨平台控制器支持；左摇杆吸附界面组件，右摇杆驱动游戏指针",
         "settings.gamepad_enabled": "启用手柄",
         "settings.gamepad_enabled_desc": "连接手柄后自动接管界面焦点与游戏内指针",
         "settings.gamepad_dead_zone": "摇杆死区",
@@ -665,7 +665,7 @@ const UI_TEXT := {
         "settings.keyboard_control_opacity": "Keyboard 模式按鍵透明度",
         "settings.keyboard_control_opacity_desc": "調整螢幕虛擬按鍵的透明度；滑鼠指標保持清晰",
         "settings.gamepad": "手柄",
-        "settings.gamepad_desc": "搖桿自由移動圓點滑鼠，靠近介面元件時吸附；遊戲內用右搖桿移動指標",
+        "settings.gamepad_desc": "跨平台控制器支援；左搖桿吸附介面元件，右搖桿驅動遊戲指標",
         "settings.gamepad_enabled": "啟用手柄",
         "settings.gamepad_enabled_desc": "連接手柄後自動接管介面焦點與遊戲內指標",
         "settings.gamepad_dead_zone": "搖桿死區",
@@ -1081,7 +1081,7 @@ You can find it any time under Settings → QQ Group.",
         "settings.keyboard_control_opacity": "Keyboard Button Opacity",
         "settings.keyboard_control_opacity_desc": "Adjust on-screen virtual-key opacity while keeping the mouse pointer clear",
         "settings.gamepad": "Gamepad",
-        "settings.gamepad_desc": "Move a dot pointer freely with either stick; it snaps near UI controls. Use the right stick in games",
+        "settings.gamepad_desc": "Cross-platform controller support; snap UI focus with the left stick and move the in-game pointer with the right stick",
         "settings.gamepad_enabled": "Enable Gamepad",
         "settings.gamepad_enabled_desc": "Let a connected controller take over UI focus and the in-game pointer",
         "settings.gamepad_dead_zone": "Stick Dead Zone",
@@ -1457,7 +1457,7 @@ You can find it any time under Settings → QQ Group.",
         "settings.keyboard_control_opacity": "Keyboard モードのキー透明度",
         "settings.keyboard_control_opacity_desc": "画面上の仮想キーの透明度を調整します。マウスポインターは鮮明なままです",
         "settings.gamepad": "ゲームパッド",
-        "settings.gamepad_desc": "スティックで丸いポインターを自由に動かし、近くの UI に吸着します。ゲーム内は右スティックで操作します",
+        "settings.gamepad_desc": "クロスプラットフォーム対応。左スティックで UI にフォーカスし、右スティックでゲーム内ポインターを動かします",
         "settings.gamepad_enabled": "ゲームパッドを有効化",
         "settings.gamepad_enabled_desc": "接続したコントローラーで UI フォーカスとゲーム内ポインターを操作します",
         "settings.gamepad_dead_zone": "スティックのデッドゾーン",
@@ -1831,7 +1831,7 @@ You can find it any time under Settings → QQ Group.",
         "settings.keyboard_control_opacity": "Keyboard 모드 버튼 투명도",
         "settings.keyboard_control_opacity_desc": "화면 가상 키의 투명도를 조절하며 마우스 포인터는 선명하게 유지합니다",
         "settings.gamepad": "게임패드",
-        "settings.gamepad_desc": "스틱으로 원형 포인터를 자유롭게 움직이며 가까운 UI에 붙습니다. 게임에서는 오른쪽 스틱을 사용합니다",
+        "settings.gamepad_desc": "크로스 플랫폼 컨트롤러 지원. 왼쪽 스틱으로 UI 포커스를 이동하고 오른쪽 스틱으로 게임 포인터를 움직입니다",
         "settings.gamepad_enabled": "게임패드 사용",
         "settings.gamepad_enabled_desc": "연결된 컨트롤러로 UI 포커스와 게임 내 포인터를 조작합니다",
         "settings.gamepad_dead_zone": "스틱 데드존",
@@ -2279,11 +2279,7 @@ var gamepad_dead_zone := GamepadController.DEFAULT_DEAD_ZONE
 var gamepad_sensitivity := GamepadController.DEFAULT_SENSITIVITY
 var gamepad_cursor_speed := GamepadController.DEFAULT_CURSOR_SPEED
 var gamepad_cursor_screen_position := Vector2.ZERO
-var gamepad_cursor_free_screen_position := Vector2.ZERO
 var gamepad_cursor_initialized := false
-var gamepad_cursor_snap_target: Control
-var gamepad_ui_pointer_active := false
-var gamepad_pointer_context: Node
 var gamepad_skip_held := false
 var gamepad_skip_view: Control
 var gamepad_toolbar_mode := false
@@ -2725,8 +2721,6 @@ const GAMEPAD_SENSITIVITY_MIN := 0.25
 const GAMEPAD_SENSITIVITY_MAX := 2.5
 const GAMEPAD_CURSOR_SPEED_MIN := 120.0
 const GAMEPAD_CURSOR_SPEED_MAX := 2400.0
-const GAMEPAD_CURSOR_SNAP_RADIUS := 72.0
-const GAMEPAD_CURSOR_SNAP_RELEASE_RADIUS := 112.0
 const TOUCH_SECONDARY_TAP_WINDOW_MS := 180
 const TOUCH_SECONDARY_QUARANTINE_MS := 320
 const TOUCH_SINGLE_TAP_DELAY_MS := 90
@@ -3103,7 +3097,6 @@ func _build_ui() -> void:
     add_child(gamepad_controller)
     gamepad_controller.navigation_vector_changed.connect(_on_gamepad_navigation)
     gamepad_controller.pointer_vector_changed.connect(_on_gamepad_pointer_vector)
-    gamepad_controller.ui_pointer_vector_changed.connect(_on_gamepad_ui_pointer_vector)
     gamepad_controller.confirm_pressed.connect(_on_gamepad_confirm)
     gamepad_controller.cancel_pressed.connect(_on_gamepad_cancel)
     gamepad_controller.menu_pressed.connect(_on_gamepad_menu)
@@ -3152,7 +3145,7 @@ func _build_ui() -> void:
     gamepad_cursor.visible = false
     var gamepad_layer := CanvasLayer.new()
     gamepad_layer.name = "GamepadPointerLayer"
-    gamepad_layer.layer = 200
+    gamepad_layer.layer = 110
     add_child(gamepad_layer)
     gamepad_layer.add_child(gamepad_cursor)
 
@@ -17708,7 +17701,6 @@ func _trace_ios_raw_pointer_event(event: InputEvent) -> void:
 
 func _input(event: InputEvent) -> void:
     if event is InputEventMouse or event is InputEventScreenTouch:
-        gamepad_ui_pointer_active = false
         if gamepad_cursor != null:
             gamepad_cursor.hide()
     if _is_flash_active() or _is_tyrano_active() or _is_renpy_active():
@@ -18147,11 +18139,7 @@ func _sync_gamepad_state() -> void:
     var pointer_active: bool = gamepad_cursor != null and gamepad_cursor.visible
     if (gamepad_skip_held or pointer_active) and not _can_forward_gamepad_pointer():
         _release_gamepad_keys()
-        if gamepad_cursor != null and (_gamepad_loading_blocks_input() or app_lifecycle_paused):
-            gamepad_cursor.hide()
-        elif gamepad_ui_pointer_active:
-            _sync_gamepad_cursor_position()
-        elif gamepad_cursor != null:
+        if gamepad_cursor != null:
             gamepad_cursor.hide()
 
 func _send_gamepad_key(pressed: bool, code: int) -> void:
@@ -18231,8 +18219,6 @@ func _can_forward_gamepad_pointer() -> bool:
     return player != null and _can_forward_game_input()
 
 func _gamepad_pointer_bounds() -> Rect2:
-    if not _can_forward_gamepad_pointer():
-        return get_viewport_rect()
     var view = GamepadPlayerInput.active_view(self)
     if view != null:
         return GamepadPlayerInput.bounds(view)
@@ -18245,22 +18231,12 @@ func _gamepad_pointer_bounds() -> Rect2:
     return bounds
 
 func _sync_gamepad_cursor_position() -> void:
-    var context: Node = _gamepad_focus_root() if not _can_forward_gamepad_pointer() else viewport
-    var view = GamepadPlayerInput.active_view(self)
-    if _can_forward_gamepad_pointer() and view != null:
-        context = view
-    if gamepad_pointer_context != context:
-        gamepad_pointer_context = context
-        gamepad_cursor_snap_target = null
     var bounds := _gamepad_pointer_bounds()
     if bounds.size.x < 1.0 or bounds.size.y < 1.0:
         return
     if not gamepad_cursor_initialized:
         gamepad_cursor_screen_position = bounds.get_center()
-        gamepad_cursor_free_screen_position = gamepad_cursor_screen_position
         gamepad_cursor_initialized = true
-    gamepad_cursor_free_screen_position = gamepad_cursor_free_screen_position.clamp(bounds.position, bounds.end - Vector2.ONE)
-    gamepad_cursor_screen_position = _snap_gamepad_cursor_position(gamepad_cursor_free_screen_position, bounds)
     gamepad_cursor_screen_position = gamepad_cursor_screen_position.clamp(bounds.position, bounds.end - Vector2.ONE)
     if gamepad_cursor != null:
         var local_position := gamepad_cursor_screen_position
@@ -18268,64 +18244,7 @@ func _sync_gamepad_cursor_position() -> void:
         if cursor_parent != null:
             local_position = cursor_parent.get_global_transform().affine_inverse() * gamepad_cursor_screen_position
         gamepad_cursor.set_target(local_position - gamepad_cursor.size * 0.5)
-        gamepad_cursor.snapped = is_instance_valid(gamepad_cursor_snap_target)
         gamepad_cursor.visible = true
-
-func _gamepad_cursor_snap_candidates() -> Array:
-    var result: Array = []
-    if not _can_forward_gamepad_pointer():
-        for candidate in _gamepad_focus_candidates(_gamepad_focus_root()):
-            if _gamepad_visible_target_rect(candidate).has_area():
-                result.append(candidate)
-        return result
-    # Native frames expose pixels, not a tree of clickable game widgets.
-    return result
-
-func _distance_to_rect(point: Vector2, rect: Rect2) -> float:
-    var closest := Vector2(
-        clampf(point.x, rect.position.x, rect.end.x),
-        clampf(point.y, rect.position.y, rect.end.y)
-    )
-    return point.distance_to(closest)
-
-func _gamepad_visible_target_rect(control: Control) -> Rect2:
-    var rect := control.get_global_rect().intersection(get_viewport_rect())
-    var ancestor := control.get_parent()
-    while ancestor != null:
-        if ancestor is Control and (ancestor as Control).clip_contents:
-            rect = rect.intersection((ancestor as Control).get_global_rect())
-        ancestor = ancestor.get_parent()
-    return rect
-
-func _snap_gamepad_cursor_position(free_position: Vector2, bounds: Rect2) -> Vector2:
-    var candidates := _gamepad_cursor_snap_candidates()
-    if not is_instance_valid(gamepad_cursor_snap_target) or not candidates.has(gamepad_cursor_snap_target):
-        gamepad_cursor_snap_target = null
-    if gamepad_cursor_snap_target != null:
-        var current_rect := _gamepad_visible_target_rect(gamepad_cursor_snap_target)
-        if _distance_to_rect(free_position, current_rect) > GAMEPAD_CURSOR_SNAP_RELEASE_RADIUS:
-            gamepad_cursor_snap_target = null
-    if gamepad_cursor_snap_target == null:
-        var nearest: Control
-        var nearest_distance := GAMEPAD_CURSOR_SNAP_RADIUS
-        for candidate_variant in candidates:
-            var candidate := candidate_variant as Control
-            var rect := _gamepad_visible_target_rect(candidate)
-            if not rect.intersects(bounds):
-                continue
-            var distance := _distance_to_rect(free_position, rect)
-            if distance <= nearest_distance:
-                nearest_distance = distance
-                nearest = candidate
-        gamepad_cursor_snap_target = nearest
-    if gamepad_cursor_snap_target == null:
-        return free_position
-    var target_rect := _gamepad_visible_target_rect(gamepad_cursor_snap_target)
-    var attracted := target_rect.get_center()
-    gamepad_cursor_snap_target.grab_focus()
-    if gamepad_cursor_snap_target is Slider or gamepad_cursor_snap_target is AetherSegmentedControl:
-        attracted.x = clampf(free_position.x, target_rect.position.x, target_rect.end.x)
-    return attracted
 
 func _on_gamepad_activity() -> void:
     if gamepad_controller == null or not gamepad_controller.has_device():
@@ -18338,20 +18257,15 @@ func _on_gamepad_activity() -> void:
         _sync_gamepad_cursor_position()
     else:
         _release_gamepad_keys()
-        if gamepad_ui_pointer_active:
-            _sync_gamepad_cursor_position()
-        else:
-            _ensure_gamepad_focus()
+        if gamepad_cursor != null:
+            gamepad_cursor.hide()
+        _ensure_gamepad_focus()
 
 func _reset_gamepad_cursor() -> void:
     _release_gamepad_keys()
     gamepad_toolbar_mode = false
     gamepad_cursor_screen_position = Vector2.ZERO
-    gamepad_cursor_free_screen_position = Vector2.ZERO
     gamepad_cursor_initialized = false
-    gamepad_cursor_snap_target = null
-    gamepad_ui_pointer_active = false
-    gamepad_pointer_context = null
     if gamepad_cursor != null and is_instance_valid(gamepad_cursor):
         gamepad_cursor.visible = false
 
@@ -18360,9 +18274,6 @@ func _on_gamepad_navigation(direction: Vector2) -> void:
         return
     var popup := _gamepad_popup()
     if popup != null:
-        gamepad_ui_pointer_active = false
-        if gamepad_cursor != null:
-            gamepad_cursor.hide()
         var step := 1 if direction.y > 0 or direction.x > 0 else -1
         var index := popup.get_focused_item()
         for _item in range(popup.item_count):
@@ -18378,11 +18289,6 @@ func _on_gamepad_navigation(direction: Vector2) -> void:
         _send_gamepad_key(true, key)
         _send_gamepad_key(false, key)
         return
-    if gamepad_controller != null and gamepad_controller.navigation_is_analog:
-        return
-    gamepad_ui_pointer_active = false
-    if gamepad_cursor != null:
-        gamepad_cursor.hide()
     _ensure_gamepad_focus()
     var focus := get_viewport().gui_get_focus_owner()
     var focus_root := _gamepad_focus_root()
@@ -18506,16 +18412,13 @@ func _activate_gamepad_focus() -> void:
     button.emit_signal("pressed")
 
 func _on_gamepad_pointer_vector(delta: Vector2) -> void:
-    if gamepad_enabled and not app_lifecycle_paused and not _gamepad_loading_blocks_input() and not _can_forward_gamepad_pointer():
-        _move_gamepad_ui_pointer(delta)
-        return
     if not _can_forward_gamepad_pointer():
         return
     var bounds := _gamepad_pointer_bounds()
     if bounds.size.x <= 0.0 or bounds.size.y <= 0.0:
         return
     _sync_gamepad_cursor_position()
-    gamepad_cursor_free_screen_position += delta * gamepad_cursor_speed
+    gamepad_cursor_screen_position += delta * gamepad_cursor_speed
     _sync_gamepad_cursor_position()
     var view = GamepadPlayerInput.active_view(self)
     if view != null:
@@ -18523,45 +18426,6 @@ func _on_gamepad_pointer_vector(delta: Vector2) -> void:
         return
     var mapped := _map_viewport_point(gamepad_cursor_screen_position, true)
     _send_game_pointer_event(POINTER_MOVE, GAMEPAD_POINTER_ID, mapped.x, mapped.y, 0.0, 0.0, 0)
-
-func _on_gamepad_ui_pointer_vector(delta: Vector2) -> void:
-    if gamepad_enabled and not app_lifecycle_paused and not _gamepad_loading_blocks_input() and not _can_forward_gamepad_pointer():
-        _move_gamepad_ui_pointer(delta)
-
-func _move_gamepad_ui_pointer(delta: Vector2) -> void:
-    if _gamepad_popup() != null:
-        gamepad_ui_pointer_active = false
-        if gamepad_cursor != null:
-            gamepad_cursor.hide()
-        return
-    if video_playing:
-        _set_video_controls_visible(true, false)
-    gamepad_ui_pointer_active = true
-    _sync_gamepad_cursor_position()
-    gamepad_cursor_free_screen_position += delta * gamepad_cursor_speed
-    _sync_gamepad_cursor_position()
-
-func _confirm_gamepad_ui_pointer() -> bool:
-    if not gamepad_ui_pointer_active:
-        return false
-    _sync_gamepad_cursor_position()
-    if gamepad_cursor != null:
-        gamepad_cursor.click_pulse()
-    var target := gamepad_cursor_snap_target
-    if not is_instance_valid(target):
-        return true # Empty space never activates the previous focus owner.
-    target.grab_focus()
-    if target is Slider:
-        var slider := target as Slider
-        var local := slider.get_global_transform().affine_inverse() * gamepad_cursor_screen_position
-        var ratio := clampf(local.x / maxf(1.0, slider.size.x), 0.0, 1.0)
-        slider.value = lerpf(slider.min_value, slider.max_value, ratio)
-    elif target is AetherSegmentedControl:
-        var local := target.get_global_transform().affine_inverse() * gamepad_cursor_screen_position
-        target._select(target._index_at_x(local.x), true)
-    else:
-        _activate_gamepad_focus()
-    return true
 
 func _on_gamepad_confirm() -> void:
     if not gamepad_enabled or app_lifecycle_paused or _gamepad_loading_blocks_input():
@@ -18575,8 +18439,6 @@ func _on_gamepad_confirm() -> void:
             popup.hide()
         return
     if _gamepad_ui_active():
-        if _confirm_gamepad_ui_pointer():
-            return
         _activate_gamepad_focus()
         return
     if _can_forward_gamepad_pointer():
@@ -18594,8 +18456,7 @@ func _on_gamepad_confirm() -> void:
             gamepad_cursor.click_pulse()
         _hold_next_present_after_input(POST_CLICK_PRESENT_HOLD_FRAMES, true)
         return
-    if not _confirm_gamepad_ui_pointer():
-        _activate_gamepad_focus()
+    _activate_gamepad_focus()
 
 func _on_gamepad_cancel() -> void:
     if not gamepad_enabled or app_lifecycle_paused:

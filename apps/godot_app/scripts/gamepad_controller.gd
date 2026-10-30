@@ -7,7 +7,6 @@ extends Node
 signal device_changed(device_id: int, connected: bool, name: String)
 signal navigation_vector_changed(vector: Vector2)
 signal pointer_vector_changed(vector: Vector2)
-signal ui_pointer_vector_changed(vector: Vector2)
 signal confirm_pressed
 signal cancel_pressed
 signal menu_pressed
@@ -56,7 +55,6 @@ var _repeat_direction := Vector2.ZERO
 var _last_device_names: Dictionary = {}
 var _button_states: Dictionary = {}
 var suspended := false
-var navigation_is_analog := false
 
 func set_suspended(value: bool) -> void:
     suspended = value
@@ -148,12 +146,8 @@ func _process(delta: float) -> void:
     refresh_devices()
     var navigation := Vector2.ZERO
     var pointer := Vector2.ZERO
-    var left_stick := Vector2.ZERO
-    navigation_is_analog = false
     if active_device >= 0:
         navigation = _axis(Input.get_joy_axis(active_device, JOY_AXIS_LEFT_X), Input.get_joy_axis(active_device, JOY_AXIS_LEFT_Y))
-        left_stick = navigation
-        navigation_is_analog = left_stick != Vector2.ZERO
         pointer = _axis(Input.get_joy_axis(active_device, JOY_AXIS_RIGHT_X), Input.get_joy_axis(active_device, JOY_AXIS_RIGHT_Y))
         var dpad := Vector2(
             float(Input.is_joy_button_pressed(active_device, JOY_BUTTON_DPAD_RIGHT)) - float(Input.is_joy_button_pressed(active_device, JOY_BUTTON_DPAD_LEFT)),
@@ -161,12 +155,7 @@ func _process(delta: float) -> void:
         )
         if dpad != Vector2.ZERO:
             navigation = dpad
-            navigation_is_analog = false
         _poll_action_buttons(active_device)
-    # Analog motion is continuous in the shell; the D-pad retains focus steps.
-    if left_stick != Vector2.ZERO:
-        input_activity.emit()
-        ui_pointer_vector_changed.emit(left_stick * sensitivity * delta)
     _update_navigation(navigation, delta)
     if pointer.length_squared() > 0.0:
         input_activity.emit()

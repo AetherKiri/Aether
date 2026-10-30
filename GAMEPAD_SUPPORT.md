@@ -7,7 +7,6 @@
 - 派生点：当前 UI 测试分支 `codex/ui-only-test-mode` 的 `b02304e6`。
 - 没有更新或修改另一位开发者使用的 `AetherKiri-latest-internal-ui` 工作树。
 - 旧手柄提交 `e5e00cf5` 仅作为迁移来源，已适配当前 UI/runtime 与 UI-only 生命周期。
-- 已 cherry-pick UI 测试分支新增的 `c04aebb7`，本分支对应提交为 `9515e8ab`（液态玻璃虚拟控制）。
 
 **不是新做一套 UI。** 首页、库、设置、弹窗、加载页、游戏容器和空游戏测试场景仍然是
 `apps/godot_app/scripts/main.gd` 构建的现有 UI。共享 UI 控件的修改会同时影响普通场景和测试场景；
@@ -42,10 +41,9 @@ Remove-Item Env:AETHERKIRI_UI_TEST_MODE -ErrorAction SilentlyContinue
 
 | 操作 | 游戏外 / UI 弹层 | 普通游戏内 |
 | --- | --- | --- |
-| 左摇杆 | 自由移动圆点鼠标，靠近控件吸附 | 方向键（支持连发） |
-| 十字键 | 空间焦点导航；滑块左右调值；分段控件左右选择 | 方向键（支持连发） |
-| 右摇杆 | 同样可自由移动圆点鼠标 | 移动游戏指针，约束在实际画面内 |
-| A（下方按钮） | 点击圆点吸附的按钮/开关/下拉项；滑块按位置调值；焦点模式下激活当前控件 | 指针点击，发送成对按下/松开 |
+| 左摇杆 / 十字键 | 空间焦点导航；滑块左右调值；分段控件左右选择 | 方向键（支持连发） |
+| 右摇杆 | 不改变已有鼠标输入 | 移动游戏指针，约束在实际画面内 |
+| A（下方按钮） | 激活焦点按钮、开关、下拉项 | 指针点击，发送成对按下/松开 |
 | B（右侧按钮） | 先关下拉/弹窗/虚拟控制；详情或设置返回 | Escape；UI-only 场景则返回首页 |
 | X（左侧按钮） | 不发送游戏事件 | 按住 Control（常见快进键），松开即释放 |
 | Y（上方按钮） | 不发送游戏事件 | Space |
@@ -53,17 +51,10 @@ Remove-Item Env:AETHERKIRI_UI_TEST_MODE -ErrorAction SilentlyContinue
 | Start / Menu | 打开设置；视频中显示控制条 | 打开/收起现有虚拟控制面板 |
 | Back / Select | 返回 | 主 runtime 弹出退出确认；独立播放器走自己的关闭路径 |
 
-UI-only 空场景：摇杆移动圆点、十字键导航、A 操作控件、Start 打开虚拟控制，B 先关弹层再返回，
+UI-only 空场景：左摇杆导航、A 操作控件、Start 打开虚拟控制，B 先关弹层再返回，
 “重新加载”仍经过共享加载页。不向空场景发送 native 引擎事件。
 
 设置中新增“手柄”分组：启用、死区、灵敏度、指针速度。沿用原有设置草稿、应用/丢弃与持久化路径。
-
-圆点在控件可见区域外 72px 内吸附，持续推动摇杆超过 112px 后脱离；底层自由位置持续移动，
-不会被吸附锁住。弹窗、下拉和虚拟控制只使用当前前台层的目标；隐藏、禁用、已删除及被滚动容器
-完全裁剪的控件不会吸附。空白处 A 不会误触上一个焦点。滑块与分段选择保留横向定位。
-原生 PopupMenu 保留 Godot 窗口内的方向导航。原生游戏帧不提供按钮几何数据，保持自由鼠标。
-圆点点击和触摸轨迹共用 `ui/aether_pointer_ripple.gd`，复用 `c04aebb7` 的 56px 白色扩散圆圈及 0.45s 动画；
-减少动态效果开启时手柄不播放圆圈。圆点热点与发出的点击位置一致。
 
 ### 独立播放器
 
@@ -76,7 +67,7 @@ UI-only 空场景：摇杆移动圆点、十字键导航、A 操作控件、Star
 ## 修改入口
 
 - `apps/godot_app/scripts/gamepad_controller.gd`：设备热插拔、死区、摇杆曲线、方向连发、按钮边沿。
-- `apps/godot_app/scripts/gamepad_cursor.gd`：全局圆点指针；`ui/aether_pointer_ripple.gd`：共享点击圆圈。
+- `apps/godot_app/scripts/gamepad_cursor.gd`：游戏内手柄指针及点击动画。
 - `apps/godot_app/scripts/gamepad_player_input.gd`：独立播放器的现有输入协议适配。
 - `apps/godot_app/scripts/main.gd`：搜索 `_on_gamepad_`、`_gamepad_focus_root`、`_configure_gamepad`。
 - `apps/godot_app/scripts/game_virtual_controls.gd`：既有虚拟控件的可聚焦状态与收起接口。
@@ -101,7 +92,7 @@ foreach ($test in $tests) {
 ```
 
 - controller：死区/限值、方向连发、边沿去重、断连/失焦/禁用释放。
-- UI：焦点隔离、禁用项、开关、AetherSelect 与原生 OptionButton、滑块、指针坐标、按键/滚轮；圆点吸附/脱离、空白点击、删除目标、裁剪目标、弹窗隔离。
+- UI：焦点隔离、禁用项、开关、AetherSelect 与原生 OptionButton、滑块、指针坐标、按键/滚轮。
 - UI-only：真实 UI 构建 + 注入 Joypad 按钮，覆盖入口→加载→控件→虚拟控制→重载→返回；不读写用户库。
 - player adapter：假 native 传输端验证 Flash/Ren’Py/Tyrano 的协议与坐标，不启动真实引擎。
 
@@ -117,11 +108,6 @@ foreach ($test in $tests) {
 但这不表示扩展“成功加载”，也不能用来声明真实引擎已验证。
 
 ## 提交注意
-
-本次圆点指针交付：七项 headless 测试与窗口化 `gamepad_ui_only_test` 均打印 PASS。
-窗口截图保存于 `C:\Users\wolfp\AppData\Local\Temp\opencode\gamepad-dot-delivery`，
-包含 `gamepad-dot-snapped.png` 与 `gamepad-dot-click.png`。
-`virtual_control_settings_test` 退出时仍报告少量 ObjectDB/resource 清理警告；未将该警告视为通过依据。
 
 只提交手柄源码、对应 `.gd.uid`、测试及本文档；不提交 `.godot` 缓存、自动重写的 `.import` 或子模块变更。
 不要为了同步 UI 重置另一位开发者的分支、工作树或其未提交改动；后续由双方选择合适时机整合。

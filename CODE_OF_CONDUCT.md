@@ -1,75 +1,98 @@
-# Contributor Covenant Code of Conduct
+# Contributor Covenant 3.0 Code of Conduct
 
 ## Our Pledge
 
-We pledge to make the Aether community welcoming, safe, and equitable for all.
+We pledge to make our community welcoming, safe, and equitable for all.
 
-We are committed to fostering an environment that respects and promotes the dignity, rights, and contributions of all individuals, regardless of race, ethnicity, caste, color, age, physical characteristics, neurodiversity, disability, sex or gender, gender identity or expression, sexual orientation, language, philosophy or religion, national or social origin, socio-economic position, level of education, or other status. The same privileges of participation are extended to everyone who participates in good faith and in accordance with this Covenant.
+We are committed to fostering an environment that respects and promotes the dignity, rights, and contributions of all individuals, regardless of characteristics including race, ethnicity, caste, color, age, physical characteristics, neurodiversity, disability, sex or gender, gender identity or expression, sexual orientation, language, philosophy or religion, national or social origin, socio-economic position, level of education, or other status. The same privileges of participation are extended to everyone who participates in good faith and in accordance with this Covenant.
 
 ## Encouraged Behaviors
 
-We agree to behave mindfully toward each other and act in ways that center our shared values, including:
+While acknowledging differences in social norms, we all strive to meet our community's expectations for positive behavior. We also understand that our words and actions may be interpreted differently than we intend based on culture, background, or native language.
 
-1. Respecting the purpose of the project, its activities, and its ways of gathering.
-2. Engaging kindly and honestly with others.
-3. Respecting different viewpoints and experiences.
-4. Taking responsibility for our actions and contributions.
-5. Gracefully giving and accepting constructive feedback.
-6. Committing to repairing harm when it occurs.
-7. Behaving in other ways that promote and sustain the well-being of the community.
+With these considerations in mind, we agree to behave mindfully toward each other and act in ways that center our shared values, including:
+
+1. Respecting the **purpose of our community**, our activities, and our ways of gathering.
+2. Engaging **kindly and honestly** with others.
+3. Respecting **different viewpoints** and experiences.
+4. **Taking responsibility** for our actions and contributions.
+5. Gracefully giving and accepting **constructive feedback**.
+6. Committing to **repairing harm** when it occurs.
+7. Behaving in other ways that promote and sustain the **well-being of our community**.
 
 ## Restricted Behaviors
 
-Instances, threats, and promotion of the following behaviors are violations of this Code of Conduct:
+We agree to restrict the following behaviors in our community. Instances, threats, and promotion of these behaviors are violations of this Code of Conduct.
 
-1. **Harassment:** violating explicitly expressed boundaries or continuing unnecessary personal attention after a clear request to stop.
-2. **Character attacks:** insulting, demeaning, or pejorative comments directed at a community member or group.
-3. **Stereotyping or discrimination:** characterizing anyone's personality or behavior on the basis of immutable identities or traits.
-4. **Sexualization:** behavior that is inappropriately intimate for the context or purpose of the community.
-5. **Violating confidentiality:** sharing or acting on someone's personal or private information without permission.
-6. **Endangerment:** causing, encouraging, or threatening violence or other harm.
-7. Other behavior that threatens the well-being of the community.
+1. **Harassment.** Violating explicitly expressed boundaries or engaging in unnecessary personal attention after any clear request to stop.
+2. **Character attacks.** Making insulting, demeaning, or pejorative comments directed at a community member or group of people.
+3. **Stereotyping or discrimination.** Characterizing anyone's personality or behavior on the basis of immutable identities or traits.
+4. **Sexualization.** Behaving in a way that would generally be considered inappropriately intimate in the context or purpose of the community.
+5. **Violating confidentiality.** Sharing or acting on someone's personal or private information without their permission.
+6. **Endangerment.** Causing, encouraging, or threatening violence or other harm toward any person or group.
+7. Behaving in other ways that **threaten the well-being** of our community.
 
-The following additional restrictions apply to project spaces and the user QQ group:
+### Other Restrictions
 
-1. Do not impersonate another person or evade an enforcement action with a misleading identity.
-2. Credit the sources of content you contribute and do not distribute content that infringes others' rights.
-3. Do not post advertisements, promotional material, spam, malicious links, or unrelated commercial content outside the norms of the group.
-4. Do not flood the group, repeatedly derail discussions, or use bots and other automated tools to disrupt it.
-5. Do not publish chat logs, screenshots, contact details, or other personal information without the people involved agreeing to it.
-6. Keep discussion relevant to Aether and its community. Use appropriate channels or follow moderator directions when a topic belongs elsewhere.
-7. Do not use the QQ group or project spaces to organize harassment, illegal activity, fraud, malware distribution, or targeted attacks.
-8. Follow applicable law and QQ's platform rules. Content that is illegal or creates a credible safety risk may be removed and reported as appropriate.
-
-## Scope
-
-This Code of Conduct applies to all Aether community spaces, including the repository, issue trackers, discussions, the official user QQ group, project events, and online or offline gatherings organized by or representing Aether. It also applies when an individual is officially representing the project in public or other spaces, such as by using an official account or attending an event as an appointed representative.
+1. **Misleading identity.** Impersonating someone else for any reason, or pretending to be someone else to evade enforcement actions.
+2. **Failing to credit sources.** Not properly crediting the sources of content you contribute.
+3. **Promotional materials.** Sharing marketing or other commercial content in a way that is outside the norms of the community.
+4. **Irresponsible communication.** Failing to responsibly present content which includes, links or describes any other restricted behaviors.
 
 ## Reporting an Issue
 
-When an incident occurs, please report it promptly to the community leaders at **yangyork097@gmail.com**. Include, when safe to do so, what happened, when and where it happened, the people involved, and any relevant links or evidence.
+Tensions can occur between community members even when they are trying their best to collaborate. Not every conflict represents a code of conduct violation, and this Code of Conduct reinforces encouraged behaviors and norms that can help avoid conflicts and minimize harm.
 
-Community leaders will take reports seriously and make every effort to respond promptly. They will investigate reports fairly, keep information confidential as far as possible, and prioritize the safety of people involved. Enforcement actions are carried out privately; a communication to the wider community may be made when needed to protect members or explain a decision without exposing private details.
+When an incident does occur, it is important to report it promptly. To report a possible violation, contact the community leaders at **yangyork097@gmail.com**.
+
+Community Moderators take reports of violations seriously and will make every effort to respond in a timely manner. They will investigate all reports of code of conduct violations, reviewing messages, logs, and recordings, or interviewing witnesses and other participants. Community Moderators will keep investigation and enforcement actions as transparent as possible while prioritizing safety and confidentiality.
+
+In order to honor these values, enforcement actions are carried out in private with the involved parties, but communicating to the whole community may be part of a mutually agreed-upon resolution.
 
 ## Addressing and Repairing Harm
 
-Community leaders may use the following ladder, based on the impact on the people involved and the community. Lower steps may be skipped for serious violations:
+If an investigation by the Community Moderators finds that this Code of Conduct has been violated, the following enforcement ladder may be used to determine how best to repair harm, based on the incident's impact on the individuals involved and the community as a whole. Depending on the severity of a violation, lower rungs on the ladder may be skipped.
 
-1. **Warning:** a private written warning, clarification of expectations, and, where appropriate, an apology or other repair.
-2. **Temporarily limited activities:** a time-limited restriction on particular channels, topics, or interactions, with conditions for returning.
-3. **Temporary suspension:** a time-limited removal from project spaces, the QQ group, or events, with conditions for return.
-4. **Permanent ban:** removal from project spaces, the QQ group, and project events when repeated violations cannot be resolved or a violation is so serious that continued participation would be unsafe.
+1. **Warning**
+   1. **Event:** A violation involving a single incident or series of incidents.
+   2. **Consequence:** A private, written warning from the Community Moderators.
+   3. **Repair:** Examples of repair include a private written apology, acknowledgement of responsibility, and seeking clarification on expectations.
+2. **Temporarily Limited Activities**
+   1. **Event:** A repeated incidence of a violation that previously resulted in a warning, or the first incidence of a more serious violation.
+   2. **Consequence:** A private, written warning with a time-limited cooldown period designed to underscore the seriousness of the situation and give the community members involved time to process the incident. The cooldown period may be limited to particular communication channels or interactions with particular community members.
+   3. **Repair:** Examples of repair may include making an apology, using the cooldown period to reflect on actions and impact, and being thoughtful about re-entering community spaces after the period is over.
+3. **Temporary Suspension**
+   1. **Event:** A pattern of repeated violation which the Community Moderators have tried to address with warnings, or a single serious violation.
+   2. **Consequence:** A private written warning with conditions for return from suspension. In general, temporary suspensions give the person being suspended time to reflect upon their behavior and possible corrective actions.
+   3. **Repair:** Examples of repair include respecting the spirit of the suspension, meeting the specified conditions for return, and being thoughtful about how to reintegrate with the community when the suspension is lifted.
+4. **Permanent Ban**
+   1. **Event:** A pattern of repeated code of conduct violations that other steps on the ladder have failed to resolve, or a violation so serious that the Community Moderators determine there is no way to keep the community safe with this person as a member.
+   2. **Consequence:** Access to all community spaces, tools, and communication channels is removed. In general, permanent bans should be rarely used, should have strong reasoning behind them, and should only be resorted to if working through other remedies has failed to change the behavior.
+   3. **Repair:** There is no possible repair in cases of this severity.
 
-The ladder is a guideline and does not limit the judgment of community leaders. Moderators may remove messages, restrict accounts, mute or remove QQ group members, or reject contributions when necessary to protect the community.
+This enforcement ladder is intended as a guideline. It does not limit the ability of Community Managers to use their discretion and judgment, in keeping with the best interests of our community.
+
+## Scope
+
+This Code of Conduct applies within all community spaces, and also applies when an individual is officially representing the community in public or other spaces. Examples of representing our community include using an official email address, posting via an official social media account, or acting as an appointed representative at an online or offline event.
+
+## Aether QQ Group Rules
+
+These additional rules apply to the official Aether user QQ group:
+
+1. Keep discussion relevant to Aether and its community, and follow moderator directions about topics and channels.
+2. Do not flood the group, repeatedly derail discussions, or use bots and other automated tools to disrupt it.
+3. Do not post spam, malicious links, unsolicited advertising, or unrelated commercial promotions.
+4. Do not impersonate another person or evade an enforcement action with a misleading identity.
+5. Do not publish chat logs, screenshots, contact details, or other personal information without the people involved agreeing to it.
+6. Do not use the group to organize harassment, illegal activity, fraud, malware distribution, or targeted attacks.
+7. Credit the sources of content you share and do not distribute content that infringes others' rights.
+8. Follow applicable law and QQ's platform rules. Content that is illegal or creates a credible safety risk may be removed and reported as appropriate.
 
 ## Attribution
 
-This Code of Conduct is adapted from the [Contributor Covenant], version 3.0, permanently available at https://www.contributor-covenant.org/version/3/0/.
+This Code of Conduct is adapted from the Contributor Covenant, version 3.0, permanently available at https://www.contributor-covenant.org/version/3/0/.
 
-Contributor Covenant is stewarded by the Organization for Ethical Source and licensed under CC BY-SA 4.0. The enforcement ladder was inspired by the work of Mozilla's code of conduct team.
+Contributor Covenant is stewarded by the Organization for Ethical Source and licensed under CC BY-SA 4.0. To view a copy of this license, visit https://creativecommons.org/licenses/by-sa/4.0/.
 
-[Contributor Covenant]: https://www.contributor-covenant.org/version/3/0/
-
-For answers to common questions, see the [Contributor Covenant FAQ].
-
-[Contributor Covenant FAQ]: https://www.contributor-covenant.org/faq
+For answers to common questions about Contributor Covenant, see the FAQ at https://www.contributor-covenant.org/faq. Translations are provided at https://www.contributor-covenant.org/translations. Additional enforcement and community guideline resources can be found at https://www.contributor-covenant.org/resources. The enforcement ladder was inspired by the work of Mozilla's code of conduct team: https://github.com/mozilla/inclusion.

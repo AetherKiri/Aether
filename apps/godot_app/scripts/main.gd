@@ -935,7 +935,7 @@ const UI_TEXT := {
         "flash.refresh": "Refresh",
         "flash.unavailable": "Flash playback is not included in this build",
         "tyrano.invalid_project": "This is not a complete TyranoScript browser-game folder.",
-        "tyrano.unavailable": "TyranoScript supports macOS, iOS and Android. Use a build containing the native web host.",
+        "tyrano.unavailable": "TyranoScript supports Windows, macOS, iOS and Android. Use a build containing the native web host.",
         "tyrano.open_failed": "Could not start TyranoScript: %s",
         "tyrano.loading": "Loading",
         "tyrano.startup_timeout": "TyranoScript did not finish starting. Games using desktop-only features or plugins may need additional adaptation.",

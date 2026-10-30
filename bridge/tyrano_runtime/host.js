@@ -3,13 +3,34 @@
     const post = (type, value) => {
         if (window.webkit?.messageHandlers?.aetherTyrano) {
             window.webkit.messageHandlers.aetherTyrano.postMessage({type, value});
+        } else if (window.chrome?.webview) {
+            window.chrome.webview.postMessage({type, value});
         } else nativePrompt("__AETHER_TYRANO_EVENT__", JSON.stringify({type, value}));
     };
+    // WebView2 has a persistent HTTPS origin and a synchronous Storage API.
+    // Use it directly: synchronous prompt dialogs can stall page initialization.
+    // Native JSON snapshots below retain Aether's portable per-game save file.
+    if (window.chrome?.webview) {
+        const nativeStorage = window.localStorage;
+        const publish = () => window.chrome.webview.postMessage({
+            type: "storage_sync", value: JSON.stringify(nativeStorage),
+        });
+        for (const key of Object.keys(__AETHER_STORAGE__)) {
+            if (nativeStorage.getItem(key) === null) nativeStorage.setItem(key, __AETHER_STORAGE__[key]);
+        }
+        for (const name of ["setItem", "removeItem", "clear"]) {
+            const method = nativeStorage[name].bind(nativeStorage);
+            nativeStorage[name] = (...args) => { const result = method(...args); publish(); return result; };
+        }
+        window.addEventListener("pagehide", publish);
+        publish();
+    }
     // Custom-scheme pages do not have a portable Web Storage origin. Keep the
     // synchronous Storage contract, with native atomic persistence per game.
     const nativePrompt = window.prompt.bind(window);
-    const currentStorage = nativePrompt("__AETHER_TYRANO_STORAGE_READ__", "");
-    const values = Object.assign(Object.create(null), currentStorage === null ? __AETHER_STORAGE__ : JSON.parse(currentStorage));
+    const currentStorage = window.chrome?.webview ? null : nativePrompt("__AETHER_TYRANO_STORAGE_READ__", "");
+    const initialStorage = window.chrome?.webview ? {} : __AETHER_STORAGE__;
+    const values = Object.assign(Object.create(null), currentStorage === null ? initialStorage : JSON.parse(currentStorage));
     const storage = persistent => {
         const data = persistent ? values : Object.create(null);
         const publish = () => {
@@ -54,8 +75,10 @@
                 ? {value: data[key], enumerable: true, configurable: true} : undefined,
         });
     };
-    Object.defineProperty(window, "localStorage", {value: storage(true)});
-    Object.defineProperty(window, "sessionStorage", {value: storage(false)});
+    if (!window.chrome?.webview) {
+        Object.defineProperty(window, "localStorage", {value: storage(true)});
+        Object.defineProperty(window, "sessionStorage", {value: storage(false)});
+    }
 
     // Electron exports select file saves in Config.tjs. Switch after config
     // loading but before init_game reads the first system variables; waiting

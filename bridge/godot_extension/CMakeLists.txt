@@ -118,6 +118,15 @@ if(AETHERKIRI_ENABLE_FLASH AND NOT (WEB OR EMSCRIPTEN))
     target_compile_definitions(aether_kiri_godot PRIVATE AETHERKIRI_WITH_FLASH=1)
 endif()
 
+if(APPLE OR WIN32)
+    file(READ "${CMAKE_SOURCE_DIR}/bridge/tyrano_runtime/host.js" AETHER_TYRANO_HOST_JS)
+    set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
+        "${CMAKE_SOURCE_DIR}/bridge/tyrano_runtime/host.js")
+    configure_file("${CMAKE_SOURCE_DIR}/bridge/tyrano_runtime/host_script.h.in"
+        "${CMAKE_CURRENT_BINARY_DIR}/tyrano_host_script.h" @ONLY)
+    target_include_directories(aether_kiri_godot PRIVATE "${CMAKE_CURRENT_BINARY_DIR}")
+endif()
+
 if(APPLE)
     if(IOS)
         target_sources(aether_kiri_godot PRIVATE src/renpy_native_ios.mm)
@@ -135,12 +144,6 @@ if(APPLE)
         set_source_files_properties(src/renpy_native_macos.mm
             PROPERTIES LANGUAGE CXX COMPILE_FLAGS "-x objective-c++ -fobjc-arc")
     endif()
-    file(READ "${CMAKE_SOURCE_DIR}/bridge/tyrano_runtime/host.js" AETHER_TYRANO_HOST_JS)
-    set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
-        "${CMAKE_SOURCE_DIR}/bridge/tyrano_runtime/host.js")
-    configure_file("${CMAKE_SOURCE_DIR}/bridge/tyrano_runtime/host_script.h.in"
-        "${CMAKE_CURRENT_BINARY_DIR}/tyrano_host_script.h" @ONLY)
-    target_include_directories(aether_kiri_godot PRIVATE "${CMAKE_CURRENT_BINARY_DIR}")
     target_sources(aether_kiri_godot PRIVATE src/tyrano_webview.mm)
     set_source_files_properties(src/tyrano_webview.mm
         PROPERTIES LANGUAGE CXX COMPILE_FLAGS "-x objective-c++ -fobjc-arc")
@@ -185,6 +188,13 @@ if(APPLE)
         "-framework UniformTypeIdentifiers"
         "-framework Security"
         "-framework StoreKit")
+endif()
+
+if(WIN32)
+    find_package(unofficial-webview2 CONFIG REQUIRED)
+    target_sources(aether_kiri_godot PRIVATE src/tyrano_webview_windows.cpp)
+    target_link_libraries(aether_kiri_godot PRIVATE
+        unofficial::webview2::webview2 ole32 advapi32)
 endif()
 
 if(UNIX AND NOT APPLE AND NOT ANDROID AND NOT (WEB OR EMSCRIPTEN))

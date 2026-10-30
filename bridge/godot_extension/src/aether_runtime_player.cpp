@@ -6872,7 +6872,11 @@ void ExecuteGodotGpuComputeBatchLegacy(
     uint64_t nonlive_compute_ops = 0;
     uint64_t nonlive_compute_barriers = 0;
     std::vector<GodotGpuPendingWrite> live2d_pending_writes;
-    std::vector<GodotGpuPendingWrite> nonlive_pending_writes;
+    // Script scratch layers are read by one blend and then overwritten by
+    // the next glyph. Tracking only destination writes misses that WAR
+    // dependency and lets CopyColor/clear erase a mask still being sampled.
+    // Track both reads and writes; unrelated textures can still share a batch.
+    GodotGpuBarrierShadowPlanner nonlive_dependencies;
     const bool nonlive_hazard_tracking_safe =
         NonLiveGpuHazardTrackingSafe(ops);
     const bool shadow_enabled = GodotGpuBarrierShadowEnabled();
@@ -6894,9 +6898,9 @@ void ExecuteGodotGpuComputeBatchLegacy(
             // real command list.
             nonlive_shadow->finish();
         }
-        if (live2d_triangle && !nonlive_pending_writes.empty()) {
+        if (live2d_triangle && nonlive_dependencies.finish()) {
             rd->compute_list_add_barrier(compute_list);
-            nonlive_pending_writes.clear();
+            ++nonlive_compute_barriers;
         }
         if (live2d_triangle && TriangleOpNeedsBarrierBeforeDispatch(
                                    *ops[i], live2d_pending_writes)) {
@@ -6906,12 +6910,13 @@ void ExecuteGodotGpuComputeBatchLegacy(
             rd->compute_list_add_barrier(compute_list);
             live2d_pending_writes.clear();
         }
-        if (!live2d_triangle &&
-            (!nonlive_hazard_tracking_safe ||
-             BlendOpNeedsBarrierBeforeDispatch(*ops[i],
-                                                nonlive_pending_writes))) {
-            rd->compute_list_add_barrier(compute_list);
-            nonlive_pending_writes.clear();
+        if (!live2d_triangle) {
+            const auto dependency = RecordGodotGpuNonLiveShadowAccess(
+                nonlive_dependencies, *ops[i]);
+            if (!nonlive_hazard_tracking_safe || dependency.barrier) {
+                rd->compute_list_add_barrier(compute_list);
+                ++nonlive_compute_barriers;
+            }
         }
         const bool batchable_triangle = IsBatchableTriangleOp(ops[i]);
         if (batchable_triangle) {
@@ -6942,13 +6947,11 @@ void ExecuteGodotGpuComputeBatchLegacy(
                     ops[i]->dst, ops[i]->dst_pos, ops[i]->size));
             } else {
                 ++nonlive_compute_ops;
-                nonlive_pending_writes.push_back(PendingWriteForRect(
-                    ops[i]->dst, ops[i]->dst_pos, ops[i]->size));
                 if (!nonlive_hazard_tracking_safe) {
                     // Imported textures may alias storage outside this batch;
                     // preserve the historical barrier after each operation.
                     rd->compute_list_add_barrier(compute_list);
-                    nonlive_pending_writes.clear();
+                    nonlive_dependencies.reset();
                     ++nonlive_compute_barriers;
                 }
                 if (nonlive_shadow != nullptr) {
@@ -6972,6 +6975,10 @@ void ExecuteGodotGpuComputeBatchLegacy(
                 nonlive_shadow->counters());
         }
     }
+    if (nonlive_dependencies.finish()) {
+        rd->compute_list_add_barrier(compute_list);
+        ++nonlive_compute_barriers;
+    }
     if (nonlive_compute_barriers != 0) {
         g_gpu_nonlive_compute_barriers.fetch_add(
             nonlive_compute_barriers, std::memory_order_relaxed);
@@ -6981,9 +6988,6 @@ void ExecuteGodotGpuComputeBatchLegacy(
             nonlive_compute_ops, std::memory_order_relaxed);
     }
     if (!live2d_pending_writes.empty()) {
-        rd->compute_list_add_barrier(compute_list);
-    }
-    if (!nonlive_pending_writes.empty()) {
         rd->compute_list_add_barrier(compute_list);
     }
     rd->compute_list_end();

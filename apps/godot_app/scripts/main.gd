@@ -71,6 +71,9 @@ const CoverIndex = preload("res://scripts/cover_index.gd")
 const VNDBCoverResolver = preload("res://scripts/vndb_cover_resolver.gd")
 const GameInputMapping = preload("res://scripts/game_input_mapping.gd")
 const GameVirtualControls = preload("res://scripts/game_virtual_controls.gd")
+const GamepadController = preload("res://scripts/gamepad_controller.gd")
+const GamepadCursor = preload("res://scripts/gamepad_cursor.gd")
+const GamepadPlayerInput = preload("res://scripts/gamepad_player_input.gd")
 const DiagnosticSession = preload("res://scripts/diagnostic_session.gd")
 const DiagnosticLocalization = preload("res://scripts/diagnostic_localization.gd")
 const DebugConsole = preload("res://scripts/debug_console.gd")
@@ -285,6 +288,16 @@ const UI_TEXT := {
         "settings.virtual_control_menu_desc": "在游戏画面右上角显示虚拟控制菜单按钮",
         "settings.keyboard_control_opacity": "Keyboard 模式按键透明度",
         "settings.keyboard_control_opacity_desc": "调整屏幕虚拟按键的透明度；鼠标指针保持清晰",
+        "settings.gamepad": "手柄",
+        "settings.gamepad_desc": "跨平台控制器支持；左摇杆吸附界面组件，右摇杆驱动游戏指针",
+        "settings.gamepad_enabled": "启用手柄",
+        "settings.gamepad_enabled_desc": "连接手柄后自动接管界面焦点与游戏内指针",
+        "settings.gamepad_dead_zone": "摇杆死区",
+        "settings.gamepad_dead_zone_desc": "过滤摇杆中心轻微漂移；数值越大越稳定",
+        "settings.gamepad_sensitivity": "移动灵敏度",
+        "settings.gamepad_sensitivity_desc": "调整游戏内灵动指针对右摇杆的响应速度",
+        "settings.gamepad_cursor_speed": "指针速度",
+        "settings.gamepad_cursor_speed_desc": "调整游戏画面中手柄指针的移动速度",
         "ui_scale.compact": "较小",
         "ui_scale.comfortable": "合适",
         "ui_scale.standard": "标准",
@@ -651,6 +664,16 @@ const UI_TEXT := {
         "settings.virtual_control_menu_desc": "在遊戲畫面右上角顯示虛擬控制選單按鈕",
         "settings.keyboard_control_opacity": "Keyboard 模式按鍵透明度",
         "settings.keyboard_control_opacity_desc": "調整螢幕虛擬按鍵的透明度；滑鼠指標保持清晰",
+        "settings.gamepad": "手柄",
+        "settings.gamepad_desc": "跨平台控制器支援；左搖桿吸附介面元件，右搖桿驅動遊戲指標",
+        "settings.gamepad_enabled": "啟用手柄",
+        "settings.gamepad_enabled_desc": "連接手柄後自動接管介面焦點與遊戲內指標",
+        "settings.gamepad_dead_zone": "搖桿死區",
+        "settings.gamepad_dead_zone_desc": "過濾搖桿中心的輕微漂移；數值越大越穩定",
+        "settings.gamepad_sensitivity": "移動靈敏度",
+        "settings.gamepad_sensitivity_desc": "調整遊戲內靈動指標對右搖桿的反應速度",
+        "settings.gamepad_cursor_speed": "指標速度",
+        "settings.gamepad_cursor_speed_desc": "調整遊戲畫面中手柄指標的移動速度",
         "ui_scale.compact": "較小",
         "ui_scale.comfortable": "合適",
         "ui_scale.standard": "標準",
@@ -1057,6 +1080,16 @@ You can find it any time under Settings → QQ Group.",
         "settings.virtual_control_menu_desc": "Show the virtual-controls menu button at the top-right of the game view",
         "settings.keyboard_control_opacity": "Keyboard Button Opacity",
         "settings.keyboard_control_opacity_desc": "Adjust on-screen virtual-key opacity while keeping the mouse pointer clear",
+        "settings.gamepad": "Gamepad",
+        "settings.gamepad_desc": "Cross-platform controller support; snap UI focus with the left stick and move the in-game pointer with the right stick",
+        "settings.gamepad_enabled": "Enable Gamepad",
+        "settings.gamepad_enabled_desc": "Let a connected controller take over UI focus and the in-game pointer",
+        "settings.gamepad_dead_zone": "Stick Dead Zone",
+        "settings.gamepad_dead_zone_desc": "Filter small center drift; higher values feel steadier",
+        "settings.gamepad_sensitivity": "Movement Sensitivity",
+        "settings.gamepad_sensitivity_desc": "Adjust how quickly the jelly pointer responds to the right stick",
+        "settings.gamepad_cursor_speed": "Pointer Speed",
+        "settings.gamepad_cursor_speed_desc": "Adjust the controller pointer speed across the game frame",
         "ui_scale.compact": "Smaller",
         "ui_scale.comfortable": "Comfortable",
         "ui_scale.standard": "Standard",
@@ -1423,6 +1456,16 @@ You can find it any time under Settings → QQ Group.",
         "settings.virtual_control_menu_desc": "ゲーム画面の右上に仮想コントロールメニューボタンを表示します",
         "settings.keyboard_control_opacity": "Keyboard モードのキー透明度",
         "settings.keyboard_control_opacity_desc": "画面上の仮想キーの透明度を調整します。マウスポインターは鮮明なままです",
+        "settings.gamepad": "ゲームパッド",
+        "settings.gamepad_desc": "クロスプラットフォーム対応。左スティックで UI にフォーカスし、右スティックでゲーム内ポインターを動かします",
+        "settings.gamepad_enabled": "ゲームパッドを有効化",
+        "settings.gamepad_enabled_desc": "接続したコントローラーで UI フォーカスとゲーム内ポインターを操作します",
+        "settings.gamepad_dead_zone": "スティックのデッドゾーン",
+        "settings.gamepad_dead_zone_desc": "中心付近の微小なドリフトを除去します。大きいほど安定します",
+        "settings.gamepad_sensitivity": "移動感度",
+        "settings.gamepad_sensitivity_desc": "右スティックに対するジェリーポインターの反応速度を調整します",
+        "settings.gamepad_cursor_speed": "ポインター速度",
+        "settings.gamepad_cursor_speed_desc": "ゲーム画面内を移動するコントローラーポインターの速度を調整します",
         "ui_scale.compact": "小さめ",
         "ui_scale.comfortable": "快適",
         "ui_scale.standard": "標準",
@@ -1787,6 +1830,16 @@ You can find it any time under Settings → QQ Group.",
         "settings.virtual_control_menu_desc": "게임 화면 오른쪽 위에 가상 컨트롤 메뉴 버튼을 표시합니다",
         "settings.keyboard_control_opacity": "Keyboard 모드 버튼 투명도",
         "settings.keyboard_control_opacity_desc": "화면 가상 키의 투명도를 조절하며 마우스 포인터는 선명하게 유지합니다",
+        "settings.gamepad": "게임패드",
+        "settings.gamepad_desc": "크로스 플랫폼 컨트롤러 지원. 왼쪽 스틱으로 UI 포커스를 이동하고 오른쪽 스틱으로 게임 포인터를 움직입니다",
+        "settings.gamepad_enabled": "게임패드 사용",
+        "settings.gamepad_enabled_desc": "연결된 컨트롤러로 UI 포커스와 게임 내 포인터를 조작합니다",
+        "settings.gamepad_dead_zone": "스틱 데드존",
+        "settings.gamepad_dead_zone_desc": "스틱 중앙의 작은 드리프트를 걸러냅니다. 높을수록 안정적입니다",
+        "settings.gamepad_sensitivity": "이동 감도",
+        "settings.gamepad_sensitivity_desc": "오른쪽 스틱에 대한 젤리 포인터의 반응 속도를 조절합니다",
+        "settings.gamepad_cursor_speed": "포인터 속도",
+        "settings.gamepad_cursor_speed_desc": "게임 화면 안에서 움직이는 컨트롤러 포인터의 속도를 조절합니다",
         "ui_scale.compact": "작게",
         "ui_scale.comfortable": "적당히",
         "ui_scale.standard": "표준",
@@ -2146,6 +2199,10 @@ const SETTINGS_DRAFT_KEYS := [
     "mock_enabled",
     "error_dialog_logs",
     "text_translation_model_path",
+    "gamepad_enabled",
+    "gamepad_dead_zone",
+    "gamepad_sensitivity",
+    "gamepad_cursor_speed",
 ]
 var scene_test_enabled := false
 var scene_test_scene := "home"
@@ -2215,6 +2272,18 @@ var game_virtual_controls
 var game_virtual_input_mode := GameVirtualControls.INPUT_MODE_MOUSE
 var game_virtual_menu_enabled := true
 var game_virtual_keyboard_opacity := 1.0
+var gamepad_controller
+var gamepad_cursor
+var gamepad_enabled := true
+var gamepad_dead_zone := GamepadController.DEFAULT_DEAD_ZONE
+var gamepad_sensitivity := GamepadController.DEFAULT_SENSITIVITY
+var gamepad_cursor_speed := GamepadController.DEFAULT_CURSOR_SPEED
+var gamepad_cursor_screen_position := Vector2.ZERO
+var gamepad_cursor_initialized := false
+var gamepad_skip_held := false
+var gamepad_skip_view: Control
+var gamepad_toolbar_mode := false
+var gamepad_last_view: Control
 var modal_layer: Control
 var active_modal_scrim: ColorRect
 var active_modal_dialog: Control
@@ -2641,10 +2710,17 @@ const TOUCH_BUSY_SUPPRESS_MS := 0
 const VIRTUAL_KEYBOARD_REOPEN_DELAY_MS := 750
 const TOUCH_POINTER_ID_OFFSET := 100000
 const TOUCH_SECONDARY_POINTER_ID := 0
+const GAMEPAD_POINTER_ID := TOUCH_POINTER_ID_OFFSET + 65534
 const VIRTUAL_CONTROLS_POINTER_ID := TOUCH_POINTER_ID_OFFSET + 65535
 const GAME_VIRTUAL_KEYBOARD_OPACITY_MIN := 0.2
 const GAME_VIRTUAL_KEYBOARD_OPACITY_MAX := 1.0
 const GAME_VIRTUAL_KEYBOARD_OPACITY_STEP := 0.05
+const GAMEPAD_DEAD_ZONE_MIN := GamepadController.DEAD_ZONE_MIN
+const GAMEPAD_DEAD_ZONE_MAX := GamepadController.DEAD_ZONE_MAX
+const GAMEPAD_SENSITIVITY_MIN := 0.25
+const GAMEPAD_SENSITIVITY_MAX := 2.5
+const GAMEPAD_CURSOR_SPEED_MIN := 120.0
+const GAMEPAD_CURSOR_SPEED_MAX := 2400.0
 const TOUCH_SECONDARY_TAP_WINDOW_MS := 180
 const TOUCH_SECONDARY_QUARANTINE_MS := 320
 const TOUCH_SINGLE_TAP_DELAY_MS := 90
@@ -3016,6 +3092,21 @@ func _build_ui() -> void:
     _build_detail_view()
     _build_modal_layer()
 
+    gamepad_controller = GamepadController.new()
+    gamepad_controller.name = "GamepadController"
+    add_child(gamepad_controller)
+    gamepad_controller.navigation_vector_changed.connect(_on_gamepad_navigation)
+    gamepad_controller.pointer_vector_changed.connect(_on_gamepad_pointer_vector)
+    gamepad_controller.confirm_pressed.connect(_on_gamepad_confirm)
+    gamepad_controller.cancel_pressed.connect(_on_gamepad_cancel)
+    gamepad_controller.menu_pressed.connect(_on_gamepad_menu)
+    gamepad_controller.page_previous_pressed.connect(func(): _on_gamepad_page(-1))
+    gamepad_controller.page_next_pressed.connect(func(): _on_gamepad_page(1))
+    gamepad_controller.input_activity.connect(_on_gamepad_activity)
+    gamepad_controller.button_changed.connect(_on_gamepad_button_changed)
+    gamepad_controller.device_changed.connect(_on_gamepad_device_changed)
+    _configure_gamepad()
+
     # Keep diagnostics above the game CanvasItem stack. GameViewport moves to
     # the front while playing, which can otherwise hide a sibling Control.
     perf_layer = CanvasLayer.new()
@@ -3048,6 +3139,16 @@ func _build_ui() -> void:
     game_view.add_child(restart_notice)
 
     _build_ui_test_game_overlay()
+    gamepad_cursor = GamepadCursor.new()
+    gamepad_cursor.name = "GamepadCursor"
+    gamepad_cursor.setup(ui_tokens, ui_motion)
+    gamepad_cursor.visible = false
+    var gamepad_layer := CanvasLayer.new()
+    gamepad_layer.name = "GamepadPointerLayer"
+    gamepad_layer.layer = 110
+    add_child(gamepad_layer)
+    gamepad_layer.add_child(gamepad_cursor)
+
     _build_loading_panel()
     _fit_full_rects()
 
@@ -4266,6 +4367,11 @@ func _load_shell_settings() -> void:
             game_virtual_keyboard_opacity
         ))
     )
+    gamepad_enabled = bool(cfg.get_value("input", "gamepad_enabled", gamepad_enabled))
+    gamepad_dead_zone = clampf(float(cfg.get_value("input", "gamepad_dead_zone", gamepad_dead_zone)), GAMEPAD_DEAD_ZONE_MIN, GAMEPAD_DEAD_ZONE_MAX)
+    gamepad_sensitivity = clampf(float(cfg.get_value("input", "gamepad_sensitivity", gamepad_sensitivity)), GAMEPAD_SENSITIVITY_MIN, GAMEPAD_SENSITIVITY_MAX)
+    gamepad_cursor_speed = clampf(float(cfg.get_value("input", "gamepad_cursor_speed", gamepad_cursor_speed)), GAMEPAD_CURSOR_SPEED_MIN, GAMEPAD_CURSOR_SPEED_MAX)
+    _configure_gamepad()
     plugin_load_mode = String(cfg.get_value("developer", "plugin_load_mode", plugin_load_mode))
     if not plugin_load_mode in ["krkrsdl3", "aether_all"]:
         plugin_load_mode = "krkrsdl3"
@@ -4354,6 +4460,10 @@ func _save_shell_settings() -> void:
         "virtual_control_keyboard_opacity",
         game_virtual_keyboard_opacity
     )
+    cfg.set_value("input", "gamepad_enabled", gamepad_enabled)
+    cfg.set_value("input", "gamepad_dead_zone", gamepad_dead_zone)
+    cfg.set_value("input", "gamepad_sensitivity", gamepad_sensitivity)
+    cfg.set_value("input", "gamepad_cursor_speed", gamepad_cursor_speed)
     cfg.set_value("developer", "plugin_load_mode", plugin_load_mode)
     cfg.set_value("developer", "mock_enabled", mock_enabled)
     cfg.set_value("developer", "error_dialog_logs", error_dialog_logs)
@@ -4409,6 +4519,10 @@ func _current_settings_snapshot() -> Dictionary:
         "mock_enabled": mock_enabled,
         "error_dialog_logs": error_dialog_logs,
         "text_translation_model_path": text_translation_model_path,
+        "gamepad_enabled": gamepad_enabled,
+        "gamepad_dead_zone": gamepad_dead_zone,
+        "gamepad_sensitivity": gamepad_sensitivity,
+        "gamepad_cursor_speed": gamepad_cursor_speed,
     }
 
 func _settings_snapshots_equal(left: Dictionary, right: Dictionary) -> bool:
@@ -4551,6 +4665,11 @@ func _apply_settings_snapshot(snapshot: Dictionary) -> void:
         ))
     )
     _apply_game_virtual_control_preferences()
+    gamepad_enabled = bool(snapshot.get("gamepad_enabled", gamepad_enabled))
+    gamepad_dead_zone = clampf(float(snapshot.get("gamepad_dead_zone", gamepad_dead_zone)), GAMEPAD_DEAD_ZONE_MIN, GAMEPAD_DEAD_ZONE_MAX)
+    gamepad_sensitivity = clampf(float(snapshot.get("gamepad_sensitivity", gamepad_sensitivity)), GAMEPAD_SENSITIVITY_MIN, GAMEPAD_SENSITIVITY_MAX)
+    gamepad_cursor_speed = clampf(float(snapshot.get("gamepad_cursor_speed", gamepad_cursor_speed)), GAMEPAD_CURSOR_SPEED_MIN, GAMEPAD_CURSOR_SPEED_MAX)
+    _configure_gamepad()
 
     selected_backend = _normalize_backend_name(String(snapshot.get("backend", selected_backend)))
     if not selected_backend in BACKENDS:
@@ -5784,6 +5903,32 @@ func _rebuild_settings_view() -> void:
         stack_settings_controls
     ))
 
+    var gamepad_rows := _settings_section(flow, _t("settings.gamepad"), animate_page, 0.06, ICON_GAMEPAD)
+    _add_settings_row(gamepad_rows, _settings_toggle_row(
+        _t("settings.gamepad_enabled"),
+        _t("settings.gamepad_enabled_desc"),
+        _settings_draft_bool("gamepad_enabled", gamepad_enabled),
+        "gamepad_enabled"
+    ))
+    _add_settings_row(gamepad_rows, _settings_row(
+        _t("settings.gamepad_dead_zone"),
+        _t("settings.gamepad_dead_zone_desc"),
+        _gamepad_dead_zone_control(),
+        stack_settings_controls
+    ))
+    _add_settings_row(gamepad_rows, _settings_row(
+        _t("settings.gamepad_sensitivity"),
+        _t("settings.gamepad_sensitivity_desc"),
+        _gamepad_sensitivity_control(),
+        stack_settings_controls
+    ))
+    _add_settings_row(gamepad_rows, _settings_row(
+        _t("settings.gamepad_cursor_speed"),
+        _t("settings.gamepad_cursor_speed_desc"),
+        _gamepad_cursor_speed_control(),
+        stack_settings_controls
+    ))
+
     var render_rows := _settings_section(flow, _t("settings.section.render"), animate_page, 0.08, ICON_PERFORMANCE)
     _add_settings_row(render_rows, _settings_row(_t("settings.render_backend"), _t("settings.render_backend_desc"), _backend_segment(), stack_settings_controls))
     _add_settings_row(render_rows, _settings_row(_t("settings.surface_mode"), _t("settings.surface_mode_desc"), _surface_mode_select(), stack_settings_controls))
@@ -5850,7 +5995,7 @@ func _rebuild_settings_view() -> void:
             ui_motion.cascade_children(advanced_content, 0.03, 0.04, 12)
     )
 
-    var groups: Array = [interface_rows, render_rows, compatibility_rows, diagnostic_rows, advanced_rows]
+    var groups: Array = [interface_rows, gamepad_rows, render_rows, compatibility_rows, diagnostic_rows, advanced_rows]
     if _iap_supported_platform():
         var purchase_rows := _settings_section(flow, _t("settings.section.purchases"), animate_page, 0.20, ICON_ADD)
         _add_settings_row(purchase_rows, _settings_iap_product_row())
@@ -7742,6 +7887,76 @@ func _keyboard_controls_opacity_control() -> Control:
     )
     return row
 
+func _gamepad_slider_control(
+    control_name: String,
+    minimum: float,
+    maximum: float,
+    step: float,
+    initial: float,
+    formatter: Callable,
+    key: String
+) -> Control:
+    var row := HBoxContainer.new()
+    row.name = control_name
+    row.custom_minimum_size = Vector2(320.0, 40.0)
+    row.add_theme_constant_override("separation", 12)
+    var slider = AetherSlider.new()
+    slider.name = "%sSlider" % control_name
+    slider.min_value = minimum
+    slider.max_value = maximum
+    slider.step = step
+    slider.bubble_formatter = formatter
+    slider.setup(ui_tokens, initial)
+    row.add_child(slider)
+    var value_label := Label.new()
+    value_label.name = "%sValue" % control_name
+    value_label.custom_minimum_size = Vector2(64.0, 36.0)
+    value_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+    value_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+    value_label.add_theme_font_override("font", DISPLAY_FONT)
+    value_label.add_theme_font_size_override("font_size", 13)
+    value_label.add_theme_color_override("font_color", ui_tokens.accent_text)
+    value_label.text = String(formatter.call(initial))
+    row.add_child(value_label)
+    slider.value_changed.connect(func(value: float):
+        value_label.text = String(formatter.call(value))
+        _set_settings_draft_value(key, value)
+    )
+    return row
+
+func _gamepad_dead_zone_control() -> Control:
+    return _gamepad_slider_control(
+        "GamepadDeadZone",
+        GAMEPAD_DEAD_ZONE_MIN,
+        GAMEPAD_DEAD_ZONE_MAX,
+        0.01,
+        clampf(_settings_draft_float("gamepad_dead_zone", gamepad_dead_zone), GAMEPAD_DEAD_ZONE_MIN, GAMEPAD_DEAD_ZONE_MAX),
+        func(value: float) -> String: return "%d%%" % int(round(value * 100.0)),
+        "gamepad_dead_zone"
+    )
+
+func _gamepad_sensitivity_control() -> Control:
+    return _gamepad_slider_control(
+        "GamepadSensitivity",
+        GAMEPAD_SENSITIVITY_MIN,
+        GAMEPAD_SENSITIVITY_MAX,
+        0.05,
+        clampf(_settings_draft_float("gamepad_sensitivity", gamepad_sensitivity), GAMEPAD_SENSITIVITY_MIN, GAMEPAD_SENSITIVITY_MAX),
+        func(value: float) -> String: return "%.2fx" % value,
+        "gamepad_sensitivity"
+    )
+
+func _gamepad_cursor_speed_control() -> Control:
+    return _gamepad_slider_control(
+        "GamepadCursorSpeed",
+        GAMEPAD_CURSOR_SPEED_MIN,
+        GAMEPAD_CURSOR_SPEED_MAX,
+        20.0,
+        clampf(_settings_draft_float("gamepad_cursor_speed", gamepad_cursor_speed), GAMEPAD_CURSOR_SPEED_MIN, GAMEPAD_CURSOR_SPEED_MAX),
+        func(value: float) -> String: return "%d px/s" % int(round(value)),
+        "gamepad_cursor_speed"
+    )
+
 func _opacity_percentage_text(value: float) -> String:
     return "%d%%" % int(round(clampf(value, 0.0, 1.0) * 100.0))
 
@@ -8057,7 +8272,9 @@ func _backend_segment() -> Control:
     return segment
 
 func _on_setting_toggle(key: String, value: bool) -> void:
-    if key == "fps_limit":
+    if key == "gamepad_enabled":
+        _set_settings_draft_value("gamepad_enabled", value)
+    elif key == "fps_limit":
         _set_settings_draft_value("fps_limit_enabled", value)
     elif key == "game_virtual_menu":
         _set_settings_draft_value("game_virtual_menu_enabled", value)
@@ -12163,6 +12380,7 @@ func _start_selected_game_after_entitlements() -> void:
         _set_game_background(false)
         viewport.visible = false
         game_view.visible = false
+        _reset_gamepad_cursor()
 
 func _finalize_active_game_session() -> void:
     if active_game_path.is_empty() or active_game_started_msec <= 0:
@@ -12218,6 +12436,7 @@ func _return_to_library_after_runtime_exit() -> void:
         viewport.visible = false
     if game_view != null:
         game_view.visible = false
+    _reset_gamepad_cursor()
     if player != null:
         player.release_frame_texture()
         _cleanup_softpal_platform_ui()
@@ -12387,6 +12606,7 @@ func _setup_debug_console() -> void:
     _sync_debug_console_state()
 
 func _start_ui_test_mode() -> void:
+    _reset_gamepad_cursor()
     if not ui_test_mode:
         ui_test_mode = true
     ui_test_loading = true
@@ -14081,6 +14301,7 @@ func _apply_pending_scene_test() -> void:
     _add_scene_test_exit_chip()
 
 func _apply_scene_test_game(running: bool) -> void:
+    _reset_gamepad_cursor()
     if shell_root != null:
         shell_root.visible = false
     if game_view != null:
@@ -15343,6 +15564,7 @@ func _apply_pending_video_resume(state: Dictionary) -> bool:
 
 func _process(delta: float) -> void:
     var process_started := Time.get_ticks_usec()
+    _sync_gamepad_state()
     _poll_android_storage_permission_request()
     _poll_native_launch_file_picker()
     _poll_native_cover_file_picker()
@@ -15463,6 +15685,7 @@ func _process(delta: float) -> void:
                 _set_game_runtime_frame_pacing(false)
                 runtime_display_state.reset(get_window())
                 softpal_aspect_mode = 1
+                _reset_gamepad_cursor()
                 _sync_game_virtual_controls()
                 _deactivate_game_text_input()
                 _sync_debug_console_state()
@@ -15524,6 +15747,7 @@ func _process(delta: float) -> void:
             game_running = false
             runtime_display_state.reset(get_window())
             softpal_aspect_mode = 1
+            _reset_gamepad_cursor()
             _sync_game_virtual_controls()
             _deactivate_game_text_input()
             _sync_debug_console_state()
@@ -16012,6 +16236,9 @@ func _notification(what: int) -> void:
         _pause_game_for_lifecycle("notification_%d" % what)
         return
     if what == NOTIFICATION_APPLICATION_RESUMED or what == NOTIFICATION_APPLICATION_FOCUS_IN:
+        if gamepad_controller != null and is_instance_valid(gamepad_controller):
+            gamepad_controller.refresh_devices()
+            _configure_gamepad()
         if diagnostic_session != null:
             diagnostic_session.record("godot", "lifecycle", "info", "application_resumed", 0, {"notification": what})
         if video_playing and active_video_was_playing:
@@ -16675,6 +16902,7 @@ func _capture_main_view(frame_stats: Dictionary) -> void:
         get_tree().quit(0 if visible > 0 else 2)
 
 func _clear_game_input_capture() -> void:
+    _release_gamepad_keys()
     if game_virtual_controls != null:
         game_virtual_controls.set_enabled(false)
     _deactivate_game_text_input()
@@ -17472,6 +17700,9 @@ func _trace_ios_raw_pointer_event(event: InputEvent) -> void:
         perf_log_file.flush()
 
 func _input(event: InputEvent) -> void:
+    if event is InputEventMouse or event is InputEventScreenTouch:
+        if gamepad_cursor != null:
+            gamepad_cursor.hide()
     if _is_flash_active() or _is_tyrano_active() or _is_renpy_active():
         return
     _trace_ios_raw_pointer_event(event)
@@ -17715,6 +17946,7 @@ func _sync_game_virtual_controls() -> void:
     if game_virtual_controls == null:
         return
     _apply_game_virtual_control_preferences()
+    game_virtual_controls.set_gamepad_navigation_enabled(gamepad_enabled)
     game_virtual_controls.set_enabled(
         _should_enable_game_virtual_controls(
             _is_touch_platform(),
@@ -17878,6 +18110,469 @@ func _on_game_virtual_controls_requested() -> void:
 func _on_game_virtual_input_mode_changed(mode: String) -> void:
     game_virtual_input_mode = _normalize_game_virtual_input_mode(mode)
     _save_game_virtual_input_mode()
+
+func _configure_gamepad() -> void:
+    if gamepad_controller == null or not is_instance_valid(gamepad_controller):
+        return
+    gamepad_controller.enabled = gamepad_enabled
+    gamepad_controller.configure(gamepad_dead_zone, gamepad_sensitivity, gamepad_cursor_speed)
+    if game_virtual_controls != null:
+        game_virtual_controls.set_gamepad_navigation_enabled(gamepad_enabled)
+    if not gamepad_enabled:
+        _reset_gamepad_cursor()
+
+func _release_gamepad_keys() -> void:
+    if gamepad_skip_held:
+        if is_instance_valid(gamepad_skip_view):
+            GamepadPlayerInput.key(gamepad_skip_view, false, 0x11)
+        elif player != null:
+            _on_game_virtual_key_event(false, 0x11, 0)
+    gamepad_skip_held = false
+    gamepad_skip_view = null
+
+func _sync_gamepad_state() -> void:
+    var view = GamepadPlayerInput.active_view(self)
+    if view != gamepad_last_view:
+        _reset_gamepad_cursor()
+        gamepad_last_view = view
+    # Do not scan the UI for popups every frame when the controller is idle.
+    var pointer_active: bool = gamepad_cursor != null and gamepad_cursor.visible
+    if (gamepad_skip_held or pointer_active) and not _can_forward_gamepad_pointer():
+        _release_gamepad_keys()
+        if gamepad_cursor != null:
+            gamepad_cursor.hide()
+
+func _send_gamepad_key(pressed: bool, code: int) -> void:
+    var view = GamepadPlayerInput.active_view(self)
+    if view != null:
+        GamepadPlayerInput.key(view, pressed, code)
+    else:
+        _on_game_virtual_key_event(pressed, code, 0)
+
+func _gamepad_virtual_controls():
+    if _is_flash_active():
+        return flash_view.controls
+    return game_virtual_controls
+
+func _on_gamepad_device_changed(_device: int, connected: bool, _name: String) -> void:
+    if not connected:
+        _reset_gamepad_cursor()
+
+func _gamepad_loading_blocks_input() -> bool:
+    return ui_test_loading or (loading_panel != null and loading_panel.is_visible_in_tree())
+
+func _on_gamepad_button_changed(button: int, pressed: bool) -> void:
+    if button == JOY_BUTTON_X:
+        if not pressed:
+            _release_gamepad_keys()
+        elif _can_forward_gamepad_pointer():
+            gamepad_skip_held = true
+            gamepad_skip_view = GamepadPlayerInput.active_view(self)
+            _send_gamepad_key(true, 0x11)
+    elif pressed and gamepad_enabled and not app_lifecycle_paused:
+        if button == JOY_BUTTON_Y and _can_forward_gamepad_pointer():
+            _send_gamepad_key(true, 0x20)
+            _send_gamepad_key(false, 0x20)
+        elif button == JOY_BUTTON_BACK:
+            var view = GamepadPlayerInput.active_view(self)
+            if view != null:
+                _reset_gamepad_cursor()
+                view.close()
+            elif game_running and not _gamepad_ui_active() and not _gamepad_loading_blocks_input():
+                _release_gamepad_keys()
+                _confirm_exit_game_for_go_back()
+            else:
+                _on_gamepad_cancel()
+
+func _gamepad_select_overlay() -> Control:
+    for overlay in get_tree().get_nodes_in_group(AETHER_SELECT_OVERLAY_INPUT_GROUP):
+        if overlay is Control and overlay.is_visible_in_tree() and not overlay.is_queued_for_deletion():
+            return overlay as Control
+    return null
+
+func _gamepad_popup() -> PopupMenu:
+    for node in find_children("*", "PopupMenu", true, false):
+        if node.visible:
+            return node as PopupMenu
+    return null
+
+func _gamepad_ui_active() -> bool:
+    var controls = _gamepad_virtual_controls()
+    return (
+        _gamepad_select_overlay() != null
+        or _gamepad_popup() != null
+        or (modal_layer != null and modal_layer.is_visible_in_tree())
+        or (debug_console != null and debug_console.is_open())
+        or (gamepad_toolbar_mode and GamepadPlayerInput.active_view(self) != null)
+        or (ui_test_game_active and ui_test_game_overlay != null
+            and ui_test_game_overlay.is_visible_in_tree())
+        or (controls != null and controls.visible
+            and (controls.is_menu_open() or controls.is_panel_open()))
+    )
+
+func _can_forward_gamepad_pointer() -> bool:
+    if not gamepad_enabled or app_lifecycle_paused or _gamepad_loading_blocks_input() or _gamepad_ui_active():
+        return false
+    var view = GamepadPlayerInput.active_view(self)
+    if view != null:
+        return GamepadPlayerInput.ready(view)
+    return player != null and _can_forward_game_input()
+
+func _gamepad_pointer_bounds() -> Rect2:
+    var view = GamepadPlayerInput.active_view(self)
+    if view != null:
+        return GamepadPlayerInput.bounds(view)
+    var bounds := viewport.get_global_rect()
+    var content_size := _game_input_content_size()
+    if content_size.x > 0.0 and content_size.y > 0.0:
+        var frame_scale := minf(bounds.size.x / content_size.x, bounds.size.y / content_size.y)
+        var drawn_size := content_size * frame_scale
+        bounds = Rect2(bounds.position + (bounds.size - drawn_size) * 0.5, drawn_size)
+    return bounds
+
+func _sync_gamepad_cursor_position() -> void:
+    var bounds := _gamepad_pointer_bounds()
+    if bounds.size.x < 1.0 or bounds.size.y < 1.0:
+        return
+    if not gamepad_cursor_initialized:
+        gamepad_cursor_screen_position = bounds.get_center()
+        gamepad_cursor_initialized = true
+    gamepad_cursor_screen_position = gamepad_cursor_screen_position.clamp(bounds.position, bounds.end - Vector2.ONE)
+    if gamepad_cursor != null:
+        var local_position := gamepad_cursor_screen_position
+        var cursor_parent := gamepad_cursor.get_parent() as Control
+        if cursor_parent != null:
+            local_position = cursor_parent.get_global_transform().affine_inverse() * gamepad_cursor_screen_position
+        gamepad_cursor.set_target(local_position - gamepad_cursor.size * 0.5)
+        gamepad_cursor.visible = true
+
+func _on_gamepad_activity() -> void:
+    if gamepad_controller == null or not gamepad_controller.has_device():
+        return
+    if _gamepad_loading_blocks_input() or _gamepad_popup() != null:
+        return
+    if video_playing:
+        _set_video_controls_visible(true, false)
+    if _can_forward_gamepad_pointer():
+        _sync_gamepad_cursor_position()
+    else:
+        _release_gamepad_keys()
+        if gamepad_cursor != null:
+            gamepad_cursor.hide()
+        _ensure_gamepad_focus()
+
+func _reset_gamepad_cursor() -> void:
+    _release_gamepad_keys()
+    gamepad_toolbar_mode = false
+    gamepad_cursor_screen_position = Vector2.ZERO
+    gamepad_cursor_initialized = false
+    if gamepad_cursor != null and is_instance_valid(gamepad_cursor):
+        gamepad_cursor.visible = false
+
+func _on_gamepad_navigation(direction: Vector2) -> void:
+    if not gamepad_enabled or app_lifecycle_paused or _gamepad_loading_blocks_input():
+        return
+    var popup := _gamepad_popup()
+    if popup != null:
+        var step := 1 if direction.y > 0 or direction.x > 0 else -1
+        var index := popup.get_focused_item()
+        for _item in range(popup.item_count):
+            index = wrapi(index + step, 0, popup.item_count)
+            if not popup.is_item_disabled(index) and not popup.is_item_separator(index):
+                popup.set_focused_item(index)
+                break
+        return
+    if _can_forward_gamepad_pointer():
+        var key := 0x27 if direction.x > 0 else 0x25
+        if absf(direction.y) > absf(direction.x):
+            key = 0x28 if direction.y > 0 else 0x26
+        _send_gamepad_key(true, key)
+        _send_gamepad_key(false, key)
+        return
+    _ensure_gamepad_focus()
+    var focus := get_viewport().gui_get_focus_owner()
+    var focus_root := _gamepad_focus_root()
+    if focus != null and not focus_root.is_ancestor_of(focus):
+        focus = null
+    if focus is HSlider and absf(direction.x) > 0.5:
+        var slider := focus as HSlider
+        slider.value = clampf(slider.value + slider.step * signf(direction.x), slider.min_value, slider.max_value)
+        return
+    if focus is AetherSegmentedControl and absf(direction.x) > 0.5:
+        var action := InputEventAction.new()
+        action.action = "ui_right" if direction.x > 0.0 else "ui_left"
+        action.pressed = true
+        focus._gui_input(action)
+        return
+    var current := focus as Control
+    if current == null or not current.is_visible_in_tree():
+        _ensure_gamepad_focus()
+        current = get_viewport().gui_get_focus_owner() as Control
+    var next := _nearest_focus_control(current, direction)
+    if next != null:
+        next.grab_focus()
+        var parent := next.get_parent()
+        while parent != null:
+            if parent is ScrollContainer:
+                (parent as ScrollContainer).ensure_control_visible(next)
+            parent = parent.get_parent()
+        ui_motion.jelly(next, Vector2(1.035, 0.965), 0.24, 0.58)
+
+func _gamepad_focus_root() -> Node:
+    var select_overlay := _gamepad_select_overlay()
+    if select_overlay != null:
+        return select_overlay
+    if modal_layer != null and modal_layer.visible:
+        return modal_layer
+    if debug_console != null and debug_console.is_open():
+        return debug_console
+    if _gamepad_loading_blocks_input():
+        return loading_panel if loading_panel != null else self
+    if video_playing and video_view != null:
+        return video_view
+    var controls = _gamepad_virtual_controls()
+    if controls != null and controls.visible and (controls.is_menu_open() or controls.is_panel_open()):
+        return controls
+    var view = GamepadPlayerInput.active_view(self)
+    if view != null:
+        return view.header if gamepad_toolbar_mode else view
+    if ui_test_game_active and ui_test_game_overlay != null and ui_test_game_overlay.visible:
+        return ui_test_game_overlay
+    if shell_root != null and shell_root.visible:
+        return shell_root
+    if game_virtual_controls != null and game_virtual_controls.visible:
+        return game_virtual_controls
+    return self
+
+func _ensure_gamepad_focus() -> void:
+    var current := get_viewport().gui_get_focus_owner()
+    var focus_root := _gamepad_focus_root()
+    var candidates := _gamepad_focus_candidates(focus_root)
+    if candidates.has(current):
+        return
+    get_viewport().gui_release_focus()
+    if not candidates.is_empty():
+        (candidates[0] as Control).grab_focus()
+
+func _gamepad_focus_candidates(node: Node) -> Array:
+    var result: Array = []
+    if node is Control:
+        var control := node as Control
+        var enabled := true
+        if control is BaseButton:
+            enabled = not (control as BaseButton).disabled
+        elif control is Slider:
+            enabled = (control as Slider).editable
+        elif control is ScrollBar:
+            enabled = false
+        if control != self and not control.is_queued_for_deletion() and control.is_visible_in_tree() and control.focus_mode != Control.FOCUS_NONE and enabled:
+            result.append(control)
+    for child in node.get_children():
+        result.append_array(_gamepad_focus_candidates(child))
+    return result
+
+func _nearest_focus_control(current: Control, direction: Vector2) -> Control:
+    var candidates := _gamepad_focus_candidates(_gamepad_focus_root())
+    if current != null:
+        candidates.erase(current)
+    var origin := current.get_global_rect().get_center() if current != null else get_viewport_rect().get_center()
+    var best: Control = null
+    var best_score := INF
+    var unit := direction.normalized()
+    for candidate_variant in candidates:
+        var candidate := candidate_variant as Control
+        var offset := candidate.get_global_rect().get_center() - origin
+        if offset.length_squared() < 1.0 or unit.dot(offset.normalized()) < 0.2:
+            continue
+        var perpendicular := absf(unit.cross(offset.normalized()))
+        var score := offset.length() * (1.0 + perpendicular * 1.8)
+        if score < best_score:
+            best_score = score
+            best = candidate
+    return best
+
+func _activate_gamepad_focus() -> void:
+    _ensure_gamepad_focus()
+    var focused := get_viewport().gui_get_focus_owner()
+    if not focused is BaseButton or (focused as BaseButton).disabled:
+        return
+    if focused is OptionButton:
+        (focused as OptionButton).show_popup()
+        return
+    if focused is MenuButton:
+        (focused as MenuButton).show_popup()
+        return
+    var button := focused as BaseButton
+    button.emit_signal("button_down")
+    button.emit_signal("button_up")
+    if button.toggle_mode:
+        var group := button.button_group
+        if group == null or group.allow_unpress or not button.button_pressed:
+            button.button_pressed = not button.button_pressed
+    button.emit_signal("pressed")
+
+func _on_gamepad_pointer_vector(delta: Vector2) -> void:
+    if not _can_forward_gamepad_pointer():
+        return
+    var bounds := _gamepad_pointer_bounds()
+    if bounds.size.x <= 0.0 or bounds.size.y <= 0.0:
+        return
+    _sync_gamepad_cursor_position()
+    gamepad_cursor_screen_position += delta * gamepad_cursor_speed
+    _sync_gamepad_cursor_position()
+    var view = GamepadPlayerInput.active_view(self)
+    if view != null:
+        GamepadPlayerInput.pointer(view, "move", gamepad_cursor_screen_position)
+        return
+    var mapped := _map_viewport_point(gamepad_cursor_screen_position, true)
+    _send_game_pointer_event(POINTER_MOVE, GAMEPAD_POINTER_ID, mapped.x, mapped.y, 0.0, 0.0, 0)
+
+func _on_gamepad_confirm() -> void:
+    if not gamepad_enabled or app_lifecycle_paused or _gamepad_loading_blocks_input():
+        return
+    var popup := _gamepad_popup()
+    if popup != null:
+        var index := popup.get_focused_item()
+        if index >= 0 and not popup.is_item_disabled(index) and not popup.is_item_separator(index):
+            popup.id_pressed.emit(popup.get_item_id(index))
+            popup.index_pressed.emit(index)
+            popup.hide()
+        return
+    if _gamepad_ui_active():
+        _activate_gamepad_focus()
+        return
+    if _can_forward_gamepad_pointer():
+        _sync_gamepad_cursor_position()
+        var view = GamepadPlayerInput.active_view(self)
+        if view != null:
+            GamepadPlayerInput.pointer(view, "click", gamepad_cursor_screen_position)
+            if gamepad_cursor != null:
+                gamepad_cursor.click_pulse()
+            return
+        var mapped := _map_viewport_point(gamepad_cursor_screen_position, true)
+        _send_game_pointer_event(POINTER_DOWN, GAMEPAD_POINTER_ID, mapped.x, mapped.y, 0.0, 0.0, 0)
+        _send_game_pointer_event(POINTER_UP, GAMEPAD_POINTER_ID, mapped.x, mapped.y, 0.0, 0.0, 0)
+        if gamepad_cursor != null:
+            gamepad_cursor.click_pulse()
+        _hold_next_present_after_input(POST_CLICK_PRESENT_HOLD_FRAMES, true)
+        return
+    _activate_gamepad_focus()
+
+func _on_gamepad_cancel() -> void:
+    if not gamepad_enabled or app_lifecycle_paused:
+        return
+    var popup := _gamepad_popup()
+    if popup != null:
+        popup.hide()
+        return
+    var select_overlay := _gamepad_select_overlay()
+    if select_overlay != null:
+        for button in find_children("*", "Button", true, false):
+            if button is AetherSelect and button.overlay == select_overlay:
+                button._close_popup()
+                return
+        return
+    if modal_layer != null and modal_layer.visible:
+        if runtime_form_dialog != null:
+            runtime_form_dialog.cancel()
+        else:
+            _dismiss_modal()
+        return
+    if debug_console != null and debug_console.is_open():
+        debug_console.close_drawer()
+        return
+    var controls = _gamepad_virtual_controls()
+    if controls != null and (controls.is_menu_open() or controls.is_panel_open()):
+        controls.hide_virtual_controls()
+        get_viewport().gui_release_focus()
+        return
+    if gamepad_toolbar_mode and GamepadPlayerInput.active_view(self) != null:
+        gamepad_toolbar_mode = false
+        get_viewport().gui_release_focus()
+        return
+    if ui_test_game_active or ui_test_loading:
+        _return_to_library_after_runtime_exit()
+        return
+    if _gamepad_loading_blocks_input():
+        return
+    if video_playing:
+        _close_video_player()
+        return
+    if _can_forward_gamepad_pointer():
+        _send_gamepad_key(true, 0x1B)
+        _send_gamepad_key(false, 0x1B)
+        return
+    if shell_route in ["detail", "settings", "dashboard"]:
+        _show_library(home_library_mode)
+
+func _on_gamepad_menu() -> void:
+    if not gamepad_enabled or app_lifecycle_paused or _gamepad_loading_blocks_input() or _gamepad_popup() != null or _gamepad_select_overlay() != null or (modal_layer != null and modal_layer.visible):
+        return
+    _release_gamepad_keys()
+    if video_playing:
+        _set_video_controls_visible(true, false)
+        _ensure_gamepad_focus()
+        return
+    var view = GamepadPlayerInput.active_view(self)
+    if view != null and not _is_flash_active():
+        gamepad_toolbar_mode = not gamepad_toolbar_mode
+        if gamepad_toolbar_mode:
+            _ensure_gamepad_focus()
+        else:
+            get_viewport().gui_release_focus()
+        return
+    var controls = _gamepad_virtual_controls()
+    if (game_running or ui_test_game_active or view != null) and controls != null:
+        if controls.is_panel_open() or controls.is_menu_open():
+            controls.hide_virtual_controls()
+            get_viewport().gui_release_focus()
+        else:
+            controls.set_gamepad_navigation_enabled(true)
+            controls.show_virtual_controls()
+            _ensure_gamepad_focus()
+    elif shell_route != "settings":
+        _show_settings()
+
+func _on_gamepad_page(direction: int) -> void:
+    if not gamepad_enabled or app_lifecycle_paused or _gamepad_loading_blocks_input():
+        return
+    if _can_forward_gamepad_pointer():
+        _sync_gamepad_cursor_position()
+        var view = GamepadPlayerInput.active_view(self)
+        if view != null:
+            GamepadPlayerInput.pointer(view, "scroll", gamepad_cursor_screen_position, direction)
+            return
+        var mapped := _map_viewport_point(gamepad_cursor_screen_position, true)
+        _send_game_pointer_event(POINTER_SCROLL, GAMEPAD_POINTER_ID, mapped.x, mapped.y, 0.0, -float(direction), 0)
+        return
+    if game_running and not _gamepad_ui_active():
+        return
+    var scroll := _active_gamepad_scroll_container()
+    if scroll != null:
+        scroll.scroll_vertical = clampi(scroll.scroll_vertical + direction * int(scroll.size.y * 0.78), 0, int(scroll.get_v_scroll_bar().max_value))
+
+func _active_gamepad_scroll_container() -> ScrollContainer:
+    var focus := get_viewport().gui_get_focus_owner()
+    var focus_root := _gamepad_focus_root()
+    if focus != null and (focus == focus_root or focus_root.is_ancestor_of(focus)):
+        var ancestor: Node = focus
+        while ancestor != null:
+            if ancestor is ScrollContainer:
+                return ancestor as ScrollContainer
+            if ancestor == focus_root:
+                break
+            ancestor = ancestor.get_parent()
+    if _gamepad_ui_active():
+        return null
+    if shell_route == "settings" and settings_view != null and settings_view.visible:
+        return settings_view
+    if shell_route == "detail" and detail_scroll != null and detail_scroll.visible:
+        return detail_scroll
+    if dashboard_view != null and dashboard_view.visible:
+        return dashboard_view
+    if game_scroll != null and game_scroll.visible:
+        return game_scroll
+    return null
 
 func _can_forward_virtual_controls_input() -> bool:
     return (

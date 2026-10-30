@@ -72,9 +72,9 @@ func _run() -> void:
         return
     if not is_equal_approx(
         controls.menu_button.get_global_rect().end.x,
-        safe_rect.end.x
+        safe_rect.end.x - GameVirtualControls.MENU_EDGE_INSET
     ):
-        _fail("Menu is not flush with the safe-area edge")
+        _fail("Menu does not retain its safe-area inset")
         return
     if not is_equal_approx(
         controls.menu_button.get_global_rect().position.y,
@@ -89,22 +89,12 @@ func _run() -> void:
         return
     if (
         not controls.menu_button.text.is_empty()
-        or controls.menu_button.get_node_or_null("MenuIcon") == null
+        or controls.menu_button.get_node_or_null("Orb") == null
     ):
         _fail("edge Menu must render as an icon without a text label")
         return
-    var menu_style := controls.menu_button.get_theme_stylebox(
-        "normal"
-    ) as StyleBoxFlat
-    if (
-        menu_style == null
-        or menu_style.bg_color.a < 0.75
-        or menu_style.corner_radius_top_left < controls.menu_button.size.y * 0.5
-        or menu_style.corner_radius_bottom_left < controls.menu_button.size.y * 0.5
-        or menu_style.corner_radius_top_right != 0
-        or menu_style.corner_radius_bottom_right != 0
-    ):
-        _fail("edge Menu is missing its visible right-edge semicircle")
+    if controls.menu_button.get_node("Orb").mouse_filter != Control.MOUSE_FILTER_IGNORE:
+        _fail("liquid-glass launcher visual must not intercept input")
         return
 
     var hidden_menu_position: Vector2 = (
@@ -189,7 +179,7 @@ func _run() -> void:
 
     controls.menu_button.emit_signal("pressed")
     controls.virtual_controls_button.emit_signal("pressed")
-    await process_frame
+    await create_timer(0.6).timeout
     if not controls.is_panel_open() or _virtual_requests != 1:
         _fail("virtual-control panel did not open")
         return
@@ -247,9 +237,8 @@ func _run() -> void:
         if not is_equal_approx(button.size.x, button.size.y):
             _fail("UU-style control is not circular: %s" % button.name)
             return
-        var normal_style := button.get_theme_stylebox("normal") as StyleBoxFlat
-        if normal_style == null or normal_style.corner_radius_top_left < button.size.x * 0.5:
-            _fail("UU-style circular treatment is missing: %s" % button.name)
+        if button.get_node_or_null("Glass") == null:
+            _fail("liquid-glass treatment is missing: %s" % button.name)
             return
 
     var dpad_rect: Rect2 = controls.dpad_backdrop.get_global_rect()
@@ -289,6 +278,7 @@ func _run() -> void:
     if not controls.routes_pointer(dpad_drag):
         _fail("joystick diagonal drag was not captured")
         return
+    controls._process(1.0)
     if not controls.dpad_center.get_global_rect().get_center().is_equal_approx(
         dpad_drag.position
     ):
@@ -333,6 +323,7 @@ func _run() -> void:
     if not controls.routes_pointer(dpad_up):
         _fail("joystick release was not captured")
         return
+    controls._process(1.0)
     if (
         not controls.dpad_center.get_global_rect().get_center().is_equal_approx(
             dpad_home
@@ -368,6 +359,7 @@ func _run() -> void:
     if not controls.routes_pointer(dpad_mouse_down):
         _fail("mouse-driven joystick release was not captured")
         return
+    controls._process(1.0)
     if _key_events != [
         {"pressed": true, "key_code": 0x44, "modifiers": 0},
         {"pressed": false, "key_code": 0x44, "modifiers": 0},
@@ -406,23 +398,24 @@ func _run() -> void:
     var cursor_arrow_glow := cursor.get_node_or_null("ArrowGlow") as Line2D
     var cursor_outline := cursor.get_node_or_null("Outline") as Line2D
     if (
-        cursor.get_meta("visual_style", "") != "computer_use"
+        cursor.get_meta("visual_style", "") != "glass_arrow"
         or cursor.get_meta("hotspot", Vector2.ZERO) != GameVirtualControls.CURSOR_HOTSPOT
         or cursor.get_node_or_null("Glow") != null
         or cursor_arrow == null
         or cursor_arrow_glow != null
         or cursor_outline == null
-        or cursor.get_node_or_null("Shadow") != null
+        or cursor.get_node_or_null("Shadow") == null
+        or cursor.get_node_or_null("Halo") == null
     ):
-        _fail("Computer Use cursor must not include glow or shadow layers")
+        _fail("glass cursor must retain its arrow, shadow and click halo")
         return
     if (
         cursor.size.x < 40.0
         or cursor_arrow.polygon.size() != 7
-        or cursor_arrow.color.get_luminance() > 0.2
+        or cursor_arrow.color.get_luminance() < 0.8
         or cursor_arrow.color.a < 0.8
-        or cursor_outline.default_color.b < 0.8
-        or cursor_outline.default_color.a < 0.9
+        or cursor_outline.default_color.get_luminance() > 0.2
+        or cursor_outline.default_color.a < 0.8
     ):
         _fail("Computer Use cursor arrow shape or palette is incorrect")
         return

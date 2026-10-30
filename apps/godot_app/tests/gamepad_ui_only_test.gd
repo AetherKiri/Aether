@@ -84,10 +84,20 @@ func _run() -> void:
     app._sync_game_virtual_controls()
     _expect(app._gamepad_focus_root() == app.ui_test_game_overlay, "closed virtual menu cannot steal empty-scene focus")
     var toggle := app.ui_test_game_overlay.find_child("UiTestOverlayToggle", true, false) as Button
-    toggle.grab_focus()
+    app.gamepad_cursor_free_screen_position = toggle.get_global_rect().get_center()
+    app.gamepad_cursor_initialized = true
+    app._on_gamepad_ui_pointer_vector(Vector2.ZERO)
+    _expect(app.gamepad_cursor.visible and app.gamepad_cursor_snap_target == toggle, "dot cursor attracts to the production toggle")
+    await _capture("gamepad-dot-snapped")
     var was_on := toggle.button_pressed
     _press(JOY_BUTTON_A)
     _expect(toggle.button_pressed != was_on, "A toggles a real production widget")
+    app.ui_motion.reduced_motion = false
+    app.gamepad_cursor.click_pulse()
+    await create_timer(0.08).timeout
+    _expect(app.gamepad_cursor.get_parent().get_node_or_null("TouchRipple") != null, "gamepad click reuses the glass touch ripple")
+    await _capture("gamepad-dot-click")
+    app.ui_motion.reduced_motion = true
     var slider := app.ui_test_game_overlay.find_child("UiTestOpacity", true, false) as HSlider
     slider.grab_focus()
     var before := slider.value
@@ -95,6 +105,7 @@ func _run() -> void:
     _expect(slider.value < before, "left stick adjusts the shared slider")
     var select = app.ui_test_game_overlay.find_child("UiTestInputMode", true, false)
     select.grab_focus()
+    app.gamepad_ui_pointer_active = false
     _press(JOY_BUTTON_A)
     await _settle()
     _expect(select.overlay != null, "A opens the real scene dropdown")

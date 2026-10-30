@@ -24,6 +24,7 @@ func _initialize() -> void:
     call_deferred("_run")
 
 func _run() -> void:
+    root.size = Vector2i(1000, 700)
     # Attach the script after entering the tree to exercise its UI helpers
     # without launching the native runtime or loading persisted user settings.
     var app = Control.new()
@@ -187,6 +188,7 @@ func _run() -> void:
     app._on_gamepad_confirm()
     assert(app.player.pointers.size() == 2)
     assert(app.player.pointers[0][2].is_equal_approx(Vector2(400, 300)))
+
     app._on_gamepad_pointer_vector(Vector2(100, 100))
     var bounds: Rect2 = app._gamepad_pointer_bounds()
     assert(bounds.has_point(app.gamepad_cursor_screen_position), "pointer must stay inside the drawn frame")
@@ -226,12 +228,74 @@ func _run() -> void:
     var keys: Array = []
     app.game_virtual_controls.key_event_requested.connect(func(pressed: bool, code: int, _mods: int): keys.append([pressed, code]))
     app.game_virtual_controls.enter_button.grab_focus()
+    app.gamepad_ui_pointer_active = false
     app._on_gamepad_confirm()
     assert(keys == [[true, VirtualControls.VK_RETURN], [false, VirtualControls.VK_RETURN]])
     app._on_gamepad_cancel()
     assert(not app.game_virtual_controls.is_panel_open())
     app._reset_gamepad_cursor()
     assert(not app.gamepad_cursor.visible and not app.gamepad_cursor_initialized)
+
+    app.game_running = false
+    app.game_view.hide()
+    app.shell_root.show()
+    for child in app.shell_root.get_children():
+        child.queue_free()
+    await process_frame
+    var snap_button := Button.new()
+    snap_button.position = Vector2(400, 240)
+    snap_button.size = Vector2(120, 64)
+    app.shell_root.add_child(snap_button)
+    var clicks: Array = []
+    snap_button.pressed.connect(func(): clicks.append(true))
+    app.gamepad_cursor_free_screen_position = Vector2(380, 272)
+    app.gamepad_cursor_initialized = true
+    app._on_gamepad_ui_pointer_vector(Vector2.ZERO)
+    assert(app.gamepad_cursor.visible and app.gamepad_cursor_snap_target == snap_button)
+    assert(app.gamepad_cursor_screen_position.is_equal_approx(snap_button.get_global_rect().get_center()))
+    app._on_gamepad_confirm()
+    assert(clicks == [true], "A activates the magnetically selected shell control once")
+    app._on_gamepad_ui_pointer_vector(Vector2(0.6, 0))
+    assert(app.gamepad_cursor_snap_target == null, "continuous motion escapes attraction")
+    app._on_gamepad_confirm()
+    assert(clicks.size() == 1, "empty space must not activate stale focus")
+    snap_button.disabled = true
+    app.gamepad_cursor_free_screen_position = Vector2(460, 272)
+    app._on_gamepad_ui_pointer_vector(Vector2.ZERO)
+    assert(app.gamepad_cursor_snap_target == null, "disabled controls cannot attract")
+    snap_button.disabled = false
+    app._on_gamepad_ui_pointer_vector(Vector2.ZERO)
+    app.modal_layer.show()
+    app._on_gamepad_ui_pointer_vector(Vector2.ZERO)
+    assert(app.gamepad_cursor_snap_target != snap_button, "a modal invalidates the background target")
+    app.modal_layer.hide()
+    snap_button.queue_free()
+    await process_frame
+    app._on_gamepad_ui_pointer_vector(Vector2.ZERO)
+    assert(app.gamepad_cursor_snap_target == null, "deleted targets are safe")
+
+    var rail := HSlider.new()
+    rail.position = Vector2(300, 200)
+    rail.size = Vector2(200, 40)
+    rail.max_value = 100
+    app.shell_root.add_child(rail)
+    app.gamepad_cursor_free_screen_position = Vector2(450, 220)
+    app._on_gamepad_ui_pointer_vector(Vector2.ZERO)
+    app._on_gamepad_confirm()
+    assert(is_equal_approx(rail.value, 75), "pointer can choose a position along a slider")
+    rail.hide()
+    var clip := Control.new()
+    clip.position = Vector2(300, 200)
+    clip.size = Vector2(100, 100)
+    clip.clip_contents = true
+    app.shell_root.add_child(clip)
+    var clipped_button := Button.new()
+    clipped_button.position = Vector2(0, 200)
+    clipped_button.size = Vector2(100, 40)
+    clip.add_child(clipped_button)
+    app.gamepad_cursor_free_screen_position = Vector2(350, 420)
+    app._on_gamepad_ui_pointer_vector(Vector2.ZERO)
+    assert(app.gamepad_cursor_snap_target == null, "clipped offscreen controls cannot attract the pointer")
 
     app.free()
     print("gamepad_ui_test: PASS")

@@ -649,6 +649,32 @@ func routes_pointer(event: InputEvent) -> bool:
         )
     return false
 
+# Native game surfaces use these regions to hand input to this same Control
+# tree. Layout, gestures and actions remain owned by GameVirtualControls.
+func pointer_regions() -> Array[Rect2]:
+    var regions: Array[Rect2] = []
+    if not _enabled or not _menu_button_enabled:
+        return regions
+    if _panel_open and not is_touch_mode():
+        regions.append(_safe_rect)
+        return regions
+    for control in _interactive_controls:
+        if control.visible:
+            regions.append(control.get_global_rect())
+    if _panel_open:
+        regions.append(dpad_backdrop.get_global_rect())
+    return regions
+
+func hide_virtual_controls() -> void:
+    release_all()
+    _panel_open = false
+    _menu_open = false
+    _reset_cursor_touch_gesture()
+    _cursor_mouse_dragging = false
+    _reset_cursor_drag_position()
+    _mouse_mode_blocked_touch_indices.clear()
+    _sync_visibility()
+
 func cursor_screen_position() -> Vector2:
     if cursor_handle == null:
         return Vector2.ZERO

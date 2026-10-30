@@ -45,14 +45,14 @@ public final class TyranoHost implements Application.ActivityLifecycleCallbacks 
     private final ArrayList<JsResult> dialogs = new ArrayList<>();
     private final ArrayList<AlertDialog> dialogWindows = new ArrayList<>();
     private AtomicFile storage;
-    private String storageJSON = "{}", origin, entryURL;
+    private String storageJSON = "{}", controlsJSON = "{}", origin, entryURL;
     private volatile String error = "";
     private volatile boolean closed;
     private TyranoFiles files;
     private WebView web;
     private FrameLayout container;
     private View surface;
-    private boolean registered, paused, inactive, controls;
+    private boolean registered, paused, inactive;
     private final double[] rect = {0, 0, 1, 1};
     private final View.OnLayoutChangeListener layout = (v, l, t, r, b, ol, ot, or, ob) -> layoutWeb();
     private final ViewTreeObserver.OnWindowFocusChangeListener focus = value -> applyState();
@@ -181,7 +181,7 @@ public final class TyranoHost implements Application.ActivityLifecycleCallbacks 
                             try {
                                 JSONObject event = new JSONObject(text);
                                 String type = event.getString("type");
-                                if (type.equals("ready") || type.equals("log") || type.equals("close")) push(type, event.optString("value"));
+                                if (type.equals("ready") || type.equals("log") || type.equals("close") || type.equals("controls_input")) push(type, event.optString("value"));
                                 if (type.equals("ready")) view.post(() -> applyState());
                             } catch (Exception ignored) { }
                             result.cancel(); return true;
@@ -269,12 +269,22 @@ public final class TyranoHost implements Application.ActivityLifecycleCallbacks 
         }
     }
     public void setPaused(boolean value) { activity.runOnUiThread(() -> { paused = value; applyState(); }); }
-    public void setControls(boolean value) { activity.runOnUiThread(() -> { controls = value; applyState(); }); }
+    public void sendInput(String event) {
+        activity.runOnUiThread(() -> {
+            if (web != null && !closed) web.evaluateJavascript("window.AetherTyranoHost?.input(" + event + ")", null);
+        });
+    }
+    public void setControlsFrame(String frame) {
+        activity.runOnUiThread(() -> {
+            controlsJSON = frame;
+            if (web != null && !closed) web.evaluateJavascript("window.AetherTyranoHost?.controls(" + frame + ")", null);
+        });
+    }
     private void applyState() {
         if (closed || web == null) return;
         boolean suspended = paused || inactive || !activity.hasWindowFocus();
         if (!suspended) web.onResume();
-        web.evaluateJavascript("window.AetherTyranoHost?.pause(" + suspended + ");window.AetherTyranoHost?.controls(" + controls + ")", ignored -> {
+        web.evaluateJavascript("window.AetherTyranoHost?.controls(" + controlsJSON + ");window.AetherTyranoHost?.pause(" + suspended + ")", ignored -> {
             if (!closed && web != null && (paused || inactive || !activity.hasWindowFocus())) web.onPause();
         });
     }

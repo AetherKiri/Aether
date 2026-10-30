@@ -41,7 +41,7 @@
 }
 - (void)ready {
     self.documents++;
-    aether_tyrano_controls(self.handle, true);
+    aether_tyrano_controls(self.handle, "{}");
     if (self.documents == 1) {
         UIView *web = self.surface.subviews.lastObject;
         if (![web isKindOfClass:WKWebView.class] || ![[self.surface hitTest:CGPointMake(20, 20) withEvent:nil] isDescendantOfView:web]) {
@@ -53,10 +53,8 @@
             "const waiting=()=>TYRANO.kag.ftag.array_tag[TYRANO.kag.ftag.current_order_index]?.name==='l'&&!TYRANO.kag.stat.is_adding_text&&TYRANO.kag.key_mouse.util.canClick();"
             "await wait(()=>TYRANO.kag.stat.f.probe_step===1&&waiting());"
             "check(document.body.innerText.includes('第一句'),'Chinese text');"
-            "let leaked=0;const touch=()=>leaked++;document.addEventListener('touchstart',touch);"
-            "const touchEvent=new Event('touchstart',{bubbles:true,cancelable:true});document.getElementById('aether-tyrano-controls').dispatchEvent(touchEvent);"
-            "document.removeEventListener('touchstart',touch);check(leaked===0&&touchEvent.defaultPrevented,'virtual-key touch isolation');"
-            "AetherTyranoHost.key(13,true);AetherTyranoHost.key(13,false);"
+            "check(!document.getElementById('aether-tyrano-controls'),'no separate virtual-key widgets');"
+            "AetherTyranoHost.input({type:'key',code:13,pressed:true});AetherTyranoHost.input({type:'key',code:13,pressed:false});"
             "await wait(()=>TYRANO.kag.stat.f.probe_step===2&&waiting());"
             "jQuery('.layer_event_click').click();"
             "await wait(()=>TYRANO.kag.stat.f.probe_step===3&&jQuery('.glink_button').length===2);"

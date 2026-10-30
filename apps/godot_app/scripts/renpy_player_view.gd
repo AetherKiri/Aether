@@ -11,6 +11,7 @@ var active_touch := -1
 var restart_requested := false
 var ime_active := false
 var mouse_buttons: Dictionary = {}
+var overlay_event_sequence := 0
 
 func setup(app) -> void:
     super.setup(app)
@@ -49,7 +50,8 @@ func open_entry(value: Dictionary) -> String:
     active_touch = -1
     mouse_buttons.clear()
     controls_visible = false
-    keys_button.set_pressed_no_signal(false)
+    controls_viewport.set_enabled(false)
+    overlay_event_sequence = 0
     entry = value.duplicate(true)
     var root := ProjectSettings.globalize_path(host._game_runtime_root(String(entry.get("path", ""))))
     var relative := Metadata.renpy_game_directory(root)
@@ -82,15 +84,13 @@ func open_entry(value: Dictionary) -> String:
     if host.runtime_default_font_path.is_empty():
         host._stage_runtime_fonts()
     var manifest := {"sdk": sdk, "game": root.path_join(relative), "saves": storage_path(root), "ui_font": host.runtime_default_font_path,
-        "embedded": true, "forward_input": OS.get_name() in ["macOS", "iOS"], "parent_pid": OS.get_process_id(), "debug": _probe_enabled(),
-        "labels": {"menu": host._t("renpy.menu"), "keys": host._t("renpy.keys"), "back": host._t("flash.back")}}
+        "embedded": true, "forward_input": OS.get_name() in ["macOS", "iOS"], "parent_pid": OS.get_process_id(), "debug": _probe_enabled()}
     var path := session_directory.path_join("manifest.json")
     var file := FileAccess.open(path, FileAccess.WRITE)
     if file == null:
         return host._t("renpy.session_failed")
     file.store_string(JSON.stringify(manifest))
     file.close()
-    title.text = host._t("renpy.loading")
     if not native.open(sdk, path, session_directory.path_join("embedded.py"), greenlet):
         return host._t("renpy.failed", [native.get_error(), session_directory.path_join("runtime.log")])
     _layout()
@@ -104,12 +104,32 @@ func send_command(action: String, values: Dictionary = {}) -> int:
     commands.append(command)
     return sequence
 
-func set_virtual_controls(value: bool) -> void:
-    controls_visible = value
-    keys_button.set_pressed_no_signal(value)
-    send_command("controls", {"visible": value})
+func _present_controls(frame: Dictionary) -> void:
+    controls_visible = controls.is_panel_open()
+    if native != null and ready_received and not frame.is_empty():
+        var value := frame.duplicate()
+        value.type = "controls_frame"
+        native.send_input(value)
 
-func _input(event: InputEvent) -> void:
+func _send_engine_input(value: Dictionary) -> void:
+    if native == null or not ready_received or closing or lifecycle_paused:
+        return
+    if value.type == "key":
+        var names := {13: "enter", 17: "ctrl", 27: "esc", 32: "space",
+            33: "pgup", 34: "pgdn", 37: "left", 38: "up", 39: "right", 40: "down"}
+        value.key = names.get(int(value.code), String.chr(int(value.code)).to_lower())
+        value.mod = 192 if int(value.get("modifiers", 0)) & 4 else 0
+    elif value.type == "scroll":
+        value.type = "button"
+        value.button = 4 if float(value.delta) > 0 else 5
+        value.pressed = true
+        native.send_input(value)
+        value.pressed = false
+    elif value.type == "button":
+        value.button = {MOUSE_BUTTON_RIGHT: 3, MOUSE_BUTTON_MIDDLE: 2}.get(int(value.button), int(value.button))
+    native.send_input(value)
+
+func _game_input(event: InputEvent) -> void:
     if native == null or not ready_received or closing or lifecycle_paused:
         return
     if not OS.get_name() in ["macOS", "iOS"] and not (OS.get_name() == "Linux" and event is InputEventKey):
@@ -121,8 +141,7 @@ func _input(event: InputEvent) -> void:
             "repeat": key.echo, "text": String.chr(key.unicode) if key.unicode > 0 else "",
             "mod": (3 if key.shift_pressed else 0) | (192 if key.ctrl_pressed else 0) | (768 if key.alt_pressed else 0) | (3072 if key.meta_pressed else 0)}
     else:
-        var safe: Rect2 = host._ui_safe_rect(size)
-        var rect := Rect2(global_position + safe.position + Vector2(0, 56), Vector2(safe.size.x, maxf(1, safe.size.y - 56)))
+        var rect := _content_rect()
         var point := Vector2.ZERO
         if event is InputEventMouseMotion:
             if event.device == -1:
@@ -137,7 +156,7 @@ func _input(event: InputEvent) -> void:
                 mouse_buttons[event.button_index] = true
             elif not event.pressed and not mouse_buttons.has(event.button_index):
                 return
-            value = {"type": "button", "button": event.button_index, "pressed": event.pressed}
+            value = {"type": "button", "button": {MOUSE_BUTTON_RIGHT: 3, MOUSE_BUTTON_MIDDLE: 2}.get(event.button_index, event.button_index), "pressed": event.pressed}
         elif event is InputEventScreenTouch:
             if event.pressed and active_touch < 0 and rect.has_point(event.position):
                 active_touch = event.index
@@ -185,7 +204,7 @@ func _process(delta: float) -> void:
         closing_elapsed += delta
     elif not ready_received:
         startup_elapsed += delta
-    if poll_elapsed < 0.1:
+    if poll_elapsed < 0.02:
         return
     poll_elapsed = 0.0
     var path := session_directory.path_join("state.json")
@@ -193,14 +212,18 @@ func _process(delta: float) -> void:
         var value = JSON.parse_string(FileAccess.get_file_as_string(path))
         if value is Dictionary:
             state = value
+            for event in state.get("controls_events", []):
+                if int(event.get("seq", 0)) > overlay_event_sequence:
+                    overlay_event_sequence = int(event.seq)
+                    controls_viewport.pointer_input(event)
+                    controls_visible = controls.is_panel_open()
     if OS.get_name() in ["macOS", "Linux"]:
         var active := state.get("ime") is Array
         if active != ime_active:
             ime_active = active
             DisplayServer.window_set_ime_active(active)
         if active:
-            var safe: Rect2 = host._ui_safe_rect(size)
-            var rect := Rect2(global_position + safe.position + Vector2(0, 56), Vector2(safe.size.x, maxf(1, safe.size.y - 56)))
+            var rect := _content_rect()
             var point := rect.position + rect.size * Vector2(float(state.ime[0]), float(state.ime[1]))
             DisplayServer.window_set_ime_position(Vector2i(point))
     if String(state.get("phase", "")) == "error":
@@ -210,13 +233,11 @@ func _process(delta: float) -> void:
             _fail("The native view could not attach to Aether")
             return
         ready_received = true
-        title.text = String(entry.get("name", "Ren'Py"))
+        _controls_ready()
         game_ready.emit()
     _flush_command()
-    if commands.is_empty() and state.get("controls") is bool:
-        controls_visible = bool(state.controls)
-        keys_button.set_pressed_no_signal(controls_visible)
     if String(state.get("phase", "")) == "exited":
+        restart_requested = restart_requested or bool(state.get("restart", false))
         _finish()
     elif closing and closing_elapsed > 5.0:
         _finish()
@@ -239,6 +260,7 @@ func _abort_session(message: String) -> void:
 func close() -> void:
     if closing:
         return
+    controls_viewport.set_enabled(false)
     closing = true
     closing_elapsed = 0.0
     commands.clear()

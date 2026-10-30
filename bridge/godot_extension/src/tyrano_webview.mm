@@ -102,7 +102,7 @@ static void TyranoOnUI(dispatch_block_t action) {
 @property(nonatomic) BOOL closed;
 @property(nonatomic) BOOL paused;
 @property(nonatomic) BOOL inactive;
-@property(nonatomic) BOOL controls;
+@property(nonatomic, strong) NSString *controlsJSON;
 @property(nonatomic, strong) NSMutableArray *observers;
 - (void)push:(NSString *)type value:(id)value;
 - (NSString *)persist:(NSString *)json;
@@ -128,8 +128,8 @@ static void TyranoOnUI(dispatch_block_t action) {
 - (void)applyState {
     if (self.closed) return;
     BOOL suspended = self.paused || self.inactive;
-    [self.web evaluateJavaScript:[NSString stringWithFormat:@"window.AetherTyranoHost?.pause(%@);window.AetherTyranoHost?.controls(%@)",
-        suspended ? @"true" : @"false", self.controls ? @"true" : @"false"] completionHandler:nil];
+    [self.web evaluateJavaScript:[NSString stringWithFormat:@"window.AetherTyranoHost?.controls(%@);window.AetherTyranoHost?.pause(%@)",
+        self.controlsJSON ?: @"{}", suspended ? @"true" : @"false"] completionHandler:nil];
     [self.web setAllMediaPlaybackSuspended:suspended completionHandler:^{}];
 }
 - (NSString *)persist:(NSString *)json {
@@ -151,7 +151,7 @@ static void TyranoOnUI(dispatch_block_t action) {
     NSDictionary *body = message.body;
     NSString *type = body[@"type"];
     if (![type isKindOfClass:NSString.class]) return;
-    if ([@[@"ready", @"log", @"close"] containsObject:type]) {
+    if ([@[@"ready", @"log", @"close", @"controls_input"] containsObject:type]) {
         [self push:type value:[body[@"value"] isKindOfClass:NSString.class] ? body[@"value"] : @""];
         if ([type isEqualToString:@"ready"]) [self applyState];
     }
@@ -319,9 +319,20 @@ extern "C" void aether_tyrano_pause(void *handle, bool paused) {
     AetherTyranoWebHost *host = (__bridge AetherTyranoWebHost *)handle;
     TyranoOnUI(^{ host.paused = paused; [host applyState]; });
 }
-extern "C" void aether_tyrano_controls(void *handle, bool visible) {
+extern "C" void aether_tyrano_controls(void *handle, const char *frame_json) {
     AetherTyranoWebHost *host = (__bridge AetherTyranoWebHost *)handle;
-    TyranoOnUI(^{ host.controls = visible; [host applyState]; });
+    NSString *frame = frame_json ? @(frame_json) : @"{}";
+    TyranoOnUI(^{
+        host.controlsJSON = frame;
+        [host.web evaluateJavaScript:[NSString stringWithFormat:@"window.AetherTyranoHost?.controls(%@)", frame] completionHandler:nil];
+    });
+}
+extern "C" void aether_tyrano_input(void *handle, const char *event_json) {
+    AetherTyranoWebHost *host = (__bridge AetherTyranoWebHost *)handle;
+    NSString *event = event_json ? @(event_json) : @"{}";
+    TyranoOnUI(^{
+        [host.web evaluateJavaScript:[NSString stringWithFormat:@"window.AetherTyranoHost?.input(%@)", event] completionHandler:nil];
+    });
 }
 extern "C" char *aether_tyrano_poll(void *handle) {
     if (!NSThread.isMainThread) {

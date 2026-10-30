@@ -157,39 +157,79 @@
         }
     }
     function releaseKeys() { for (const code of Array.from(held.keys())) key(code, false); }
-    let panel;
-    function controls(visible) {
-        if (!panel) {
-            panel = document.createElement("div");
-            panel.id = "aether-tyrano-controls";
-            panel.style.cssText = "position:fixed;inset:auto 8px 8px auto;z-index:2147483647;";
-            // Mobile engines also listen for document-level touch gestures.
-            // A virtual key must not become a second game tap or swipe.
-            for (const name of ["touchstart", "touchmove", "touchend", "touchcancel", "mousedown", "mouseup", "click", "contextmenu", "wheel"]) {
-                panel.addEventListener(name, event => { event.preventDefault(); event.stopPropagation(); }, {passive: false});
-            }
-            const shadow = panel.attachShadow({mode: "closed"});
-            shadow.innerHTML = `<style>:host{font:16px sans-serif}div{display:flex;gap:6px;flex-wrap:wrap;max-width:340px}
-                button{touch-action:none;min-width:44px;min-height:44px;background:#242833d9;color:white;border:1px solid #aab0c0;border-radius:24px}
-                button:active{background:#465bca}</style><div></div>`;
-            const row = shadow.querySelector("div");
-            for (const [label, code] of [["Esc",27],["Ctrl",17],["↑",38],["↓",40],["←",37],["→",39],["PgUp",33],["PgDn",34],["Space",32],["Enter",13]]) {
-                const button = document.createElement("button"); button.textContent = label;
-                button.addEventListener("pointerdown", event => {
-                    event.preventDefault(); event.stopPropagation(); button.setPointerCapture(event.pointerId); key(code, true);
-                });
-                for (const name of ["pointerup", "pointercancel", "lostpointercapture"]) {
-                    button.addEventListener(name, event => { event.preventDefault(); event.stopPropagation(); if (held.has(code)) key(code, false); });
-                }
-                row.append(button);
-            }
-            document.documentElement.append(panel);
+    // This is only a compositor/input adapter. Godot renders and operates the
+    // same GameVirtualControls tree used by KiriKiri, including its menu.
+    let controlsImage, controlsFrame = {regions: []}, hovering = false, suppressClick = false;
+    const controlsPointers = new Set();
+    function controls(frame = {}) {
+        if (!frame.image || !document.documentElement) return;
+        controlsFrame = frame;
+        if (!controlsImage) {
+            controlsImage = document.createElement("img");
+            controlsImage.id = "aether-game-controls";
+            controlsImage.alt = "";
+            controlsImage.draggable = false;
+            controlsImage.setAttribute("aria-hidden", "true");
+            controlsImage.style.cssText = "all:initial;position:fixed;inset:0;width:100%;height:100%;pointer-events:none;z-index:2147483647;";
+            document.documentElement.append(controlsImage);
         }
-        panel.style.display = visible ? "block" : "none";
-        if (!visible) releaseKeys();
+        controlsImage.src = "data:image/png;base64," + frame.image;
+    }
+    function controlsHit(event) {
+        const x = event.clientX / innerWidth, y = event.clientY / innerHeight;
+        return controlsFrame.regions.some(rect => x >= rect[0] && y >= rect[1] && x < rect[0] + rect[2] && y < rect[1] + rect[3]);
+    }
+    for (const name of ["pointerdown", "pointermove", "pointerup", "pointercancel"]) {
+        document.addEventListener(name, event => {
+            if (!event.isTrusted) return;
+            const hit = controlsHit(event), captured = controlsPointers.has(event.pointerId);
+            const routed = hit || captured;
+            if (name === "pointerdown") {
+                suppressClick = hit;
+                if (hit) {
+                    controlsPointers.add(event.pointerId);
+                    document.documentElement.setPointerCapture(event.pointerId);
+                }
+            }
+            if (routed || (name === "pointermove" && hovering)) {
+                post("controls_input", JSON.stringify({type: name === "pointermove" ? "move" : "button",
+                    x: event.clientX / innerWidth, y: event.clientY / innerHeight,
+                    button: [1, 3, 2][event.button] || 1, buttons: event.buttons,
+                    pressed: name === "pointerdown"}));
+            }
+            hovering = hit;
+            if (name === "pointerup" || name === "pointercancel") controlsPointers.delete(event.pointerId);
+            if (routed) { event.preventDefault(); event.stopImmediatePropagation(); }
+        }, {capture: true, passive: false});
+    }
+    for (const name of ["mousedown", "mouseup", "click", "touchstart", "touchmove", "touchend", "touchcancel", "contextmenu", "wheel"]) {
+        document.addEventListener(name, event => {
+            if (!event.isTrusted) return;
+            const point = event.changedTouches?.[0] || event;
+            if (controlsPointers.size || suppressClick || controlsHit(point)) {
+                event.preventDefault(); event.stopImmediatePropagation();
+            }
+        }, {capture: true, passive: false});
+    }
+    function input(value) {
+        if (value.type === "key") { key(value.code, value.pressed); return; }
+        const x = value.x * innerWidth, y = value.y * innerHeight;
+        const target = document.elementFromPoint(x, y);
+        if (!target) return;
+        const options = {bubbles: true, cancelable: true, clientX: x, clientY: y, button: {1: 0, 2: 2, 3: 1}[value.button] || 0};
+        if (value.type === "move") target.dispatchEvent(new MouseEvent("mousemove", options));
+        else if (value.type === "scroll") target.dispatchEvent(new WheelEvent("wheel", {...options, deltaY: -value.delta * 100}));
+        else if (value.type === "button") {
+            target.dispatchEvent(new MouseEvent(value.pressed ? "mousedown" : "mouseup", options));
+            if (!value.pressed) {
+                const jq = window.jQuery;
+                if (options.button === 0 && hasLegacyTap(jq, target)) jq(target).trigger("tap");
+                else target.dispatchEvent(new MouseEvent(options.button === 2 ? "contextmenu" : "click", options));
+            }
+        }
     }
     window.AetherTyranoHost = Object.freeze({
-        controls, key,
+        controls, key, input,
         pause(value) {
             value = !!value; if (paused === value) return;
             paused = value; releaseKeys();

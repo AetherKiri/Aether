@@ -4,14 +4,14 @@ Aether imports Ren’Py 8 games from the visual-novel library and runs the origi
 engine inside the existing application window and process. The renderer uses a
 native view/Surface with its own GPU context; there is no WebView, WebAssembly,
 child game process, or per-frame pixel copy into Godot. Godot owns the library,
-toolbar, play-time accounting and return/refresh actions. Ren’Py owns scripts,
+play-time accounting and return/refresh actions. Ren’Py owns scripts,
 screens, rollback, archives, saves, audio and model rendering.
 
 ## Platform hosts
 
 | Platform | Native presentation | Input and scheduling |
 | --- | --- | --- |
-| macOS | Adopt the SDK’s Cocoa view below the Godot toolbar | Godot pointer/keyboard/IME forwarding; cooperative Python ticks on the UI thread; restore the host GL context between ticks |
+| macOS | Adopt the SDK’s Cocoa view across the safe game area | Godot pointer/keyboard/IME forwarding; cooperative Python ticks on the UI thread; restore the host GL context between ticks |
 | iOS/iPadOS | Adopt the SDK’s UIKit view/controller in Aether’s window; MetalANGLE renders through Metal | Godot touch/keyboard forwarding; cooperative ticks on the UI thread; Aether owns the UIKit event loop |
 | Android | SDK SDL Surface in the existing Godot Activity | Private SDL Java package and JNI bindings; SDK native owner thread stays alive across games; ordinary native touch/keyboard/IME |
 | Linux | Reparent the SDK’s X11 window inside Godot’s X11 window | Native SDL pointer input, Godot keyboard/IME forwarding when the parent has focus; preserve the host GL context |
@@ -20,9 +20,27 @@ Linux defaults to X11, also usable through XWayland on a Wayland desktop.
 An explicit `--display-driver wayland` cannot host the X11 child. Android product
 builds target `arm64-v8a`; the independent emulator probe also builds `x86_64`.
 Virtual keys start **disabled** for every game launch and refresh, like the
-other visual novels. They can be enabled in the toolbar or the in-game menu.
+other visual novels. Its right-edge button, draggable placement, Keyboard /
+Control Pad menu and virtual inputs are the same
+[`game_virtual_controls.gd`](../../apps/godot_app/scripts/game_virtual_controls.gd)
+instance type used by KiriKiri and the other engines. The game fills the safe
+viewport without a header or reserved toolbar space.
+
+[`native_game_controls.gd`](../../apps/godot_app/scripts/native_game_controls.gd)
+renders that existing Control tree into a transparent SubViewport. On Apple
+platforms a shared native compositor places its pixels above SDL/WebKit and
+routes hit tests back to Godot. Other platforms composite the same rendered
+layer inside the native engine and return pointer events to Godot. The native
+adapters contain no button layout, styling, menu actions or virtual-key widgets.
+
+Virtual-key panels have explicit bounds and do not take keyboard focus, so game
+styles cannot expand them across the screen and Enter cannot trigger itself.
 Returning releases the native view and renderer; reopening restores the engine
-baseline in the same Python interpreter. Pause/resume releases held input and
+baseline in the same Python interpreter. Original engine callables and class
+methods are restored before the SDK unpickles its baseline, and game-owned
+Python modules are unloaded. This lets game render hooks and their cleanup
+callbacks install afresh instead of retaining textures from an earlier session.
+Pause/resume releases held input and
 pauses audio. Android also receives SDL’s normal Activity lifecycle events.
 
 ## Runtime and packaging
@@ -62,7 +80,9 @@ only in ignored output/cache directories and are never committed here.
 
 The adapters isolate SDK SDL Objective-C/Java names from Godot’s SDL. The desktop
 shim uses SDL’s version-checked dynamic API without replacing the Cython Window
-object. The iOS framework adapts selected static SDL entry points and resolves
+object. Its owned window follows Aether's viewport even when game scripts request
+a different physical size, keeping rendering and pointer coordinates aligned.
+The iOS framework adapts selected static SDL entry points and resolves
 GL functions from its own MetalANGLE framework.
 
 `AETHER_RENPY_SDK` overrides runtime discovery for development; it must point at
@@ -84,6 +104,17 @@ data, signing keys, backups and compiled-script statement identities persist
 under `user://renpy_saves/<game-identity>/`. Normal refresh and reopening can load
 those saves without writing compiled files into the imported project.
 
+The host also recognizes RPA-3.0 archives whose index stores length before
+offset. It checks bounded resource-header samples for each archive and adjusts
+only the in-memory index when the reversed layout is confirmed. Standard or
+ambiguous archives retain the SDK interpretation; standard archives and reversed
+patch archives can coexist. Game-supplied engine Python files are not needed.
+The fork-specific `config.fixed_resolution` and `fixed_resolution_filter`
+preferences are accepted during game initialization. The upstream renderer still
+uses the native viewport resolution; the fork's intermediate framebuffer and
+scaling filter are not implemented. Other unknown configuration names continue
+to raise normal Ren'Py errors.
+
 The JSON probe uses allowlisted commands (`quit`, keys, controls, debug variable
 inspection and renderer screenshots) and atomic command/status files. The same
 probe works on all native hosts. Session logs remain under `user://renpy_sessions`.
@@ -95,12 +126,20 @@ There is no arbitrary Python-evaluation command.
 python3 -m unittest discover -s tests/python -p 'test_renpy*.py'
 python3 tools/renpy_smoke.py --sdk /path/to/original-sdk --runtime /path/to/prepared-runtime
 python3 tools/renpy_smoke.py --sdk /path/to/original-sdk --runtime /path/to/prepared-runtime --packed
+python3 tools/renpy_smoke.py --sdk /path/to/original-sdk --runtime /path/to/prepared-runtime --packed --reversed-index
 ```
 
 The desktop product regression checks normal library launch, same-process and
 same-window rendering, Chinese dialogue/choices, optional controls, native saves
 and thumbnails, refresh, reopen/load, play-time accounting and preservation of
-the original game. The packed case runs an original RPA-only fixture.
+the original game. The packed cases run original RPA-only fixtures with standard
+and reversed indexes, including refresh and reopen in the same interpreter.
+On macOS they also click an off-center Start button after a game-requested resize,
+exercise the edge menu and virtual Enter, and check that the virtual-key panels
+leave the central game canvas uncovered. Image color patches are checked on
+initial launch, refresh and reopen to catch invalid textures after teardown.
+An original Python fixture patches an engine function and a class method, then
+checks that both bindings and the game module start fresh after each restart.
 macOS is tested with both Godot Metal and OpenGL presentation. The UIKit probe
 in `tests/renpy_mobile/ios_host_smoke.mm` exercises the actual iOS native host,
 touch input, save/load, pause/resume and same-interpreter reopening.

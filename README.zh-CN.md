@@ -304,7 +304,8 @@ npm install && npm run web:dev:debug   # 附带所需的 COOP/COEP 头
 
 ## 游戏目录 Lua 扩展
 
-BGI、YU-RIS、ADVHD、SoftPal 和 CatSystem2 共用同一套 `aether` Lua 接口。
+BGI、YU-RIS、ADVHD、SoftPal、CatSystem2、Escude、SystemC 和 EntisGLS
+共用同一套 `aether` Lua 接口。
 将 UTF-8 编码的 `aether.lua` 放在游戏根目录，每次启动游戏时执行一次，准备
 资源覆盖。已支持的汉化包会自动加载；Lua 用于自定义补丁的兜底。
 资源优先级为：**Lua 显式注册的资源 → 原生汉化资源 → 原游戏资源**。
@@ -313,7 +314,8 @@ BGI、YU-RIS、ADVHD、SoftPal 和 CatSystem2 共用同一套 `aether` Lua 接�
 assert(aether.api_version == 1)
 if aether.exists("translation") then
     aether.mount_dir("translation")
-    aether.set_encoding("GBK")
+    -- 仅在引擎支持且汉化脚本需要时设置编码。
+    -- EntisGLS CSX 保留原生 Unicode 格式。
 end
 ```
 

@@ -342,7 +342,8 @@ session, because render resources must be recreated.
 
 ## Game-local Lua Hooks
 
-BGI, YU-RIS, ADVHD, SoftPal and CatSystem2 share the same `aether` Lua API.
+BGI, YU-RIS, ADVHD, SoftPal, CatSystem2, Escude, SystemC and EntisGLS share the
+same `aether` Lua API.
 Place a UTF-8 `aether.lua` in the game root to prepare resource overrides once
 per game launch. Supported translation packages load automatically; Lua is an
 optional fallback for custom patches. Explicit Lua resources take priority over
@@ -352,7 +353,8 @@ native translation resources, followed by the original game resources.
 assert(aether.api_version == 1)
 if aether.exists("translation") then
     aether.mount_dir("translation")
-    aether.set_encoding("GBK")
+    -- Set the encoding only when the engine and translated script need it.
+    -- EntisGLS CSX retains its native Unicode format.
 end
 ```
 

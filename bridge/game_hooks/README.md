@@ -2,8 +2,8 @@
 
 [简体中文](README.zh-CN.md) | English
 
-BGI, YU-RIS, ADVHD, SoftPal and CatSystem2 run `aether.lua` from the selected
-game directory before loading scenario resources. The script runs once per
+BGI, YU-RIS, ADVHD, SoftPal, CatSystem2, Escude, SystemC and EntisGLS run
+`aether.lua` from the selected game directory before loading scenario resources. The script runs once per
 open, using a separate Lua 5.4 state. Registered resources override native
 archives and loose files. A missing script preserves normal engine behavior;
 a script error stops startup with an `aether.lua` diagnostic. Reopening a game
@@ -39,7 +39,7 @@ The `aether` table exposes:
 | API | Meaning |
 | --- | --- |
 | `api_version` | `1` |
-| `engine` | `bgi`, `yuris`, `advhd`, `softpal`, or `catsystem2` |
+| `engine` | `bgi`, `yuris`, `advhd`, `softpal`, `catsystem2`, `escude`, `systemc`, or `entisgls` |
 | `read_file(path [, offset [, size]])` | Read binary bytes from a game-relative physical file. Offsets are zero-based; omitted size reads to EOF. |
 | `exists(path)` | Test whether a game-relative physical path exists. |
 | `add_file(name, bytes)` | Register bytes under an engine resource name. Later registrations replace earlier ones. Empty replacements are supported. |
@@ -56,9 +56,26 @@ bytes, before the engine's normal decoding; they do not replace executable
 code. For example, YU-RIS accepts `ysbin/yst00001.ybn`, CatSystem2 accepts
 `scene.cst`, and BGI accepts the name requested by its resource manager.
 BGI and ADVHD overrides also apply when a script names an explicit archive.
-YU-RIS materializes its overlay in an owned host-cache directory because its
-media consumers require filesystem paths; that directory is removed when the
+YU-RIS and EntisGLS materialize their overlays in an owned host-cache directory
+for consumers that require filesystem paths; that directory is removed when the
 session releases it.
+
+Escude includes Lua resources in VFS reads, existence checks, source discovery
+and resource lists. Use logical paths such as `script/main.c`, matching the
+archive mount prefix; Lua names are UTF-8 while the engine's resource paths
+remain CP932. SystemC covers VFS reads, existence checks and resource lists,
+including script selection. Both route streamed replacements through their
+existing resource staging instead of opening an original loose file.
+
+EntisGLS covers CSX and resources requested through the Cotopha environment,
+including NOA members. Register the logical name, for example `adventure.csx`;
+the adapter also recognizes reads through `storage://game/` and absolute paths
+inside the game directory. Relative reads from replaced images can still find
+original archive resources. Native game detection and launch configuration
+discovery remain unchanged. Overrides exclude `savedata/` and preserve existing
+save precedence and native write behavior. `set_font` takes precedence over
+script-requested font families for this session, retaining the requested size
+and style. Closing the session restores native font selection.
 
 | Engine | Supported explicit encodings |
 | --- | --- |
@@ -66,12 +83,15 @@ session releases it.
 | ADVHD legacy scripts, SoftPal | CP932, GBK |
 | YU-RIS compiled scripts | CP932, GBK, Big5, UTF-8 |
 | CatSystem2 scenes | CP932, GBK, GB18030, Big5, UTF-8 |
+| Escude ACPX scripts | CP932, GBK |
+| SystemC scripts | CP932, GBK, UTF-8 |
+| EntisGLS CSX | No global encoding override; CSX retains its native Unicode representation. Calling `set_encoding` reports an error. |
 
 `SJIS`, `Shift-JIS`, and `Shift_JIS` normalize to CP932; CP936 and GB2312
 normalize to GBK. Modern ADVHD scripts retain their native UTF-8 format.
 The game still determines native script formats and execution behavior.
 
-All five engines use the same `aether` functions and the same shared
+All eight engines use the same `aether` functions and the same shared
 `GameHooks` implementation. Resource names, accepted byte formats and supported
 scenario encodings remain engine-specific. This API registers startup
 resources; it does not expose per-read or per-line Lua callbacks.

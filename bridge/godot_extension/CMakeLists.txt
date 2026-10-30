@@ -301,6 +301,10 @@ if(TARGET aether_mages_runtime)
     target_compile_definitions(aether_kiri_godot PRIVATE
         AETHERKIRI_WITH_MAGES=1)
 endif()
+if(TARGET aether_entisgls_runtime)
+    target_link_libraries(aether_kiri_godot PRIVATE aether_entisgls_runtime)
+    target_compile_definitions(aether_kiri_godot PRIVATE AETHERKIRI_WITH_ENTISGLS=1)
+endif()
 if(TARGET aether_minori_runtime)
     target_link_libraries(aether_kiri_godot PRIVATE
         aether_minori_runtime)
@@ -356,6 +360,38 @@ get_property(_private_runtime_targets GLOBAL
 if(_private_runtime_targets)
     target_link_libraries(aether_kiri_godot PRIVATE ${_private_runtime_targets})
 endif()
+set(_runtime_targets ${_private_runtime_targets})
+if(TARGET aether_entisgls_runtime)
+    list(APPEND _runtime_targets aether_entisgls_runtime)
+endif()
+set(_runtime_libraries "")
+foreach(_runtime IN LISTS _runtime_targets)
+    get_target_property(_runtime_type "${_runtime}" TYPE)
+    if(_runtime_type STREQUAL "SHARED_LIBRARY")
+        string(APPEND _runtime_libraries "$<TARGET_FILE:${_runtime}>\n")
+        if(APPLE AND NOT IOS)
+            set(_runtime_stage "macos")
+        elseif(WIN32)
+            set(_runtime_stage "windows")
+        elseif(UNIX AND NOT ANDROID)
+            set(_runtime_stage "linux")
+        else()
+            unset(_runtime_stage)
+        endif()
+        if(_runtime_stage)
+            set(_runtime_destination "${CMAKE_SOURCE_DIR}/apps/godot_app/bin/${_runtime_stage}/$<LOWER_CASE:$<CONFIG>>")
+            add_custom_command(TARGET aether_kiri_godot POST_BUILD
+                COMMAND ${CMAKE_COMMAND} -E make_directory "${_runtime_destination}"
+                COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                    "$<TARGET_FILE:${_runtime}>" "${_runtime_destination}/$<TARGET_FILE_NAME:${_runtime}>"
+                VERBATIM)
+        endif()
+    endif()
+endforeach()
+# Export scripts consume the configured build's list, so disabled
+# providers cannot accidentally be packaged from stale editor staging files.
+file(GENERATE OUTPUT "${CMAKE_BINARY_DIR}/runtime-libraries-$<LOWER_CASE:$<CONFIG>>.txt"
+    CONTENT "${_runtime_libraries}")
 if(TARGET aether_rfvp_runtime)
     target_link_libraries(aether_kiri_godot PRIVATE aether_rfvp_runtime)
     target_compile_definitions(aether_kiri_godot PRIVATE AETHERKIRI_WITH_RFVP=1)

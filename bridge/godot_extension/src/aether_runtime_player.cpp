@@ -31,6 +31,9 @@
 #if defined(AETHERKIRI_WITH_MAGES)
 #include "mages_runtime.h"
 #endif
+#if defined(AETHERKIRI_WITH_ENTISGLS)
+#include "entisgls/provider.h"
+#endif
 #if defined(AETHERKIRI_WITH_MINORI)
 extern "C" engine_result_t aetherkiri_minori_register_runtime_provider();
 #endif
@@ -13695,7 +13698,9 @@ private:
             frame_rd_texture_.is_null() || !frame_rd_rid_.is_valid() ||
             frame_rd_width_ != desc.width || frame_rd_height_ != desc.height;
         if (needs_recreate) {
-            release_rd_texture(false);
+            // This upload path owns the RD allocation. Texture2DRD only wraps
+            // its RID; dropping the wrapper leaks the old allocation on resize.
+            release_rd_texture(true);
 
             Ref<RDTextureFormat> format;
             format.instantiate();
@@ -13732,7 +13737,7 @@ private:
         } else {
             const Error error = rd->texture_update(frame_rd_rid_, 0, data);
             if (error != OK) {
-                release_rd_texture(false);
+                release_rd_texture(true);
                 return Ref<Texture2D>();
             }
         }
@@ -14141,6 +14146,11 @@ void InitializeAetherRuntime(ModuleInitializationLevel level) {
 #if defined(AETHERKIRI_WITH_MINORI)
     if (aetherkiri_minori_register_runtime_provider() != ENGINE_RESULT_OK) {
         UtilityFunctions::printerr("Failed to register Minori runtime provider");
+    }
+#endif
+#if defined(AETHERKIRI_WITH_ENTISGLS)
+    if (engine_register_runtime_provider(AetherEntisGLSProvider()) != ENGINE_RESULT_OK) {
+        UtilityFunctions::printerr("Failed to register EntisGLS runtime provider");
     }
 #endif
 #if defined(AETHERKIRI_INTERNAL_RUNTIME_PROVIDERS)

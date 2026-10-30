@@ -147,6 +147,8 @@ option(AETHERKIRI_ENABLE_SIGLUS
        "enable the bundled siglus_rs runtime (requires a Rust toolchain)" ON)
 option(AETHERKIRI_ENABLE_MINORI
        "enable the independent Rust Minori runtime" ON)
+option(AETHERKIRI_ENABLE_ENTISGLS
+       "enable the public EntisGLS / Cotopha runtime" ON)
 option(AETHERKIRI_ENABLE_BGI
        "enable the optional private BGI/Ethornell provider" ON)
 option(AETHERKIRI_ENABLE_CODE_OBFUSCATION
@@ -189,6 +191,9 @@ set(AETHERKIRI_SIGLUS_DIR
 set(AETHERKIRI_MINORI_DIR
     "${CMAKE_CURRENT_SOURCE_DIR}/packages/AetherMinori"
     CACHE PATH "path to an AetherMinori runtime checkout")
+set(AETHERKIRI_ENTISGLS_DIR
+    "${CMAKE_CURRENT_SOURCE_DIR}/packages/EntisGLS-SDL3"
+    CACHE PATH "path to the EntisGLS-SDL3 aether branch checkout")
 set(AETHERKIRI_RFVP_DIR
     "${CMAKE_CURRENT_SOURCE_DIR}/packages/rfvp"
     CACHE PATH "path to an rfvp runtime checkout")
@@ -388,6 +393,11 @@ endif()
 if(AETHERKIRI_ENABLE_MINORI AND BUILD_GODOT_EXTENSION AND
     (LINUX OR APPLE OR ANDROID OR EMSCRIPTEN))
     add_subdirectory(${AETHERKIRI_MINORI_DIR})
+endif()
+if(AETHERKIRI_ENABLE_ENTISGLS AND (BUILD_GODOT_EXTENSION OR ENABLE_TESTS) AND
+   NOT (IOS OR ANDROID OR WEB OR EMSCRIPTEN))
+    option(AETHERKIRI_BUILD_ENTISGLS_TESTS "Build asset-free EntisGLS regression tests" ${ENABLE_TESTS})
+    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/bridge/entisgls_runtime)
 endif()
 if(AETHERKIRI_INTERNAL_ENABLED)
     aetherinternal_add_runtime_providers("${CMAKE_CURRENT_SOURCE_DIR}")

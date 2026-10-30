@@ -2083,6 +2083,7 @@ const RUNTIME_WA2 := "wa2"
 const RUNTIME_BGI := "bgi"
 const RUNTIME_ADVHD := "advhd"
 const RUNTIME_ESCUDE := "escude"
+const RUNTIME_ENTISGLS := "entisgls"
 const RUNTIME_TYRANO := "tyranoscript"
 const RUNTIME_MAGES := "mages"
 const RUNTIME_YURIS := "yuris"
@@ -11239,6 +11240,8 @@ func _probe_game_runtime_kind(root: String, runtime_kind: String) -> String:
             return RUNTIME_SYSTEMC
         if int(player.probe_runtime(RUNTIME_ESCUDE, root)) >= 90:
             return RUNTIME_ESCUDE
+        if int(player.probe_runtime(RUNTIME_ENTISGLS, root)) >= 90:
+            return RUNTIME_ENTISGLS
         if int(player.probe_runtime(RUNTIME_ADVHD, root)) >= 90:
             return RUNTIME_ADVHD
         if int(player.probe_runtime(RUNTIME_BGI, root)) >= 90:
@@ -12516,6 +12519,7 @@ func _switch_runtime_player(runtime_kind: String) -> bool:
         RUNTIME_YURIS,
         RUNTIME_ADVHD,
         RUNTIME_ESCUDE,
+        RUNTIME_ENTISGLS,
     ]:
         normalized = RUNTIME_KIRIKIRI
     # Returning to the library keeps the player Node but destroys its engine.
@@ -12572,6 +12576,8 @@ func _switch_runtime_player(runtime_kind: String) -> bool:
         if normalized == RUNTIME_BGI
         else "MAGES."
         if normalized == RUNTIME_MAGES
+        else "EntisGLS / Cotopha"
+        if normalized == RUNTIME_ENTISGLS
         else "ADV Player HD"
         if normalized == RUNTIME_ADVHD
         else "Escu:de / ACPX"
@@ -12628,7 +12634,7 @@ func _on_runtime_platform_request(operation: String, argument: String) -> void:
         softpal_aspect_mode = clampi(int(argument), 0, 3)
         _layout_game_viewport(get_viewport_rect().size)
         return
-    if operation == "softpal_cursor_visible":
+    if operation in ["softpal_cursor_visible", "runtime_cursor_visible"]:
         if not _is_touch_platform() and game_running:
             var fields := _parse_platform_form(argument)
             Input.mouse_mode = Input.MOUSE_MODE_VISIBLE if String(
@@ -12661,7 +12667,7 @@ func _on_runtime_platform_request(operation: String, argument: String) -> void:
             ]
         )
         return
-    if operation == "softpal_cursor_warp":
+    if operation in ["softpal_cursor_warp", "runtime_cursor_warp"]:
         var fields := _parse_platform_form(argument)
         var game_size := Vector2(
             maxi(1, int(fields.get("width", "1"))),
@@ -13305,6 +13311,7 @@ func _ensure_player_initialized() -> bool:
         RUNTIME_YURIS,
         RUNTIME_ADVHD,
         RUNTIME_ESCUDE,
+        RUNTIME_ENTISGLS,
     ]:
         runtime_id = current_player_runtime_kind
     var runtime_result := int(player.set_engine_option("runtime", runtime_id))
@@ -13337,6 +13344,8 @@ func _ensure_player_initialized() -> bool:
         if current_player_runtime_kind == RUNTIME_SIGLUS
         else "BGI/Ethornell"
         if current_player_runtime_kind == RUNTIME_BGI
+        else "EntisGLS / Cotopha"
+        if current_player_runtime_kind == RUNTIME_ENTISGLS
         else "ADV Player HD"
         if current_player_runtime_kind == RUNTIME_ADVHD
         else "Escu:de / ACPX"
@@ -16106,6 +16115,8 @@ func _on_open_game() -> void:
 
     var async_open := OS.get_environment("AETHERKIRI_SYNC_OPEN") != "1"
     var startup_script := String(selected_game.get("startupScript", "")).strip_edges()
+    if startup_script.is_empty() and detected_runtime == RUNTIME_ENTISGLS:
+        startup_script = GameLaunchEntry.configured_relative_path(selected_game)
     if not startup_script.is_empty() and not startup_script.begins_with("/"):
         startup_script = path.path_join(startup_script)
     if startup_script.is_empty() and detected_runtime == RUNTIME_YURIS:

@@ -38,12 +38,14 @@ Godot App Shell
             ├─ System4 Runtime ──── xsystem4（AliceSoft）
             ├─ System35 Runtime ─── xsystem35（AliceSoft）
             ├─ System3 Runtime ──── system3-sdl2（AliceSoft System 1–3）
+            ├─ EntisGLS Runtime ─── EntisGLS / Cotopha（公开 package）
             ├─ Artemis Runtime ──── Artemis（私有 package）
             ├─ CatSystem2 Runtime ─ CatSystem2（私有 package）
             ├─ BGI Runtime ──────── BGI / Ethornell（私有 package）
             ├─ ADVHD Runtime ────── ADV Player HD / WillPlus（私有 package）
             ├─ SoftPal Runtime ──── SoftPal（私有 package）
-            ├─ SystemC Runtime ──── CandySoft / Interheart（私包）
+            ├─ Escude Runtime ───── Escu:de / ACPX（私有 package）
+            ├─ SystemC Runtime ──── CandySoft / Interheart（私有 package）
             └─ YU-RIS Runtime ───── YU-RIS（私有 package）
 ```
 
@@ -64,9 +66,13 @@ Godot App Shell
 - 独立的 C++17 YU-RIS Runtime，通过私有 package 接入，支持源码项目和编译后的 YBN 游戏。
   存档保存在各游戏的 `savedata/` 目录；旧版应用目录中的独立存档会自动迁移，
   不覆盖已有本地存档。游戏目录只读时使用按游戏隔离的应用存储。
+- 通过可选私包支持 Escu:de / ACPX，复用统一原生宿主和游戏目录 Lua 资源接口。
 - 通过私包支持 SystemC ACT/SPT，复用 E-mote SDK，保留原版 UI，存档写入游戏目录的
   `savedata/`，支持选择肢、回看、
   视频、鉴赏和通关后附加篇章。参见[支持范围与验证方法](doc/systemc_runtime.md)。
+- 通过公开 EntisGLS / Cotopha Runtime 在桌面端运行传统 CSX 脚本并读取 NOA
+  资源，存档位于游戏目录的 `savedata/`。参见
+  [接入范围与验证说明](https://github.com/AetherKiri/EntisGLS-SDL3/blob/aether/aether_runtime/README.md)。
 - 覆盖 macOS、iOS/iPadOS、Android、Web 与 Linux 的导出配置。
 - 独立的 Flash 分类，使用原生 Ruffle 播放，支持声音、键鼠、触摸以及视觉小说的虚拟按钮。
 - 通过内置 xsystem35 原生运行 AliceSoft System 3.5/3.9 游戏，支持 ALD 目录导入、中日文和可选虚拟按键。参见[原生宿主与游戏测试范围](bridge/xsystem35_runtime/README.md)。
@@ -120,12 +126,14 @@ SWF 引用的本地相对路径资源从其所在目录读取，SharedObject 存
 | | `bridge/onscripter_runtime/` | OnscripterYuri 无窗口宿主、帧读取、输入桥接。 |
 | | `bridge/siglus_runtime/` | Siglus provider 与应用到 pristine `siglus_rs` 的构建期 overlay。 |
 | | `bridge/flash_runtime/` | Ruffle 静态库与原生画面、输入、音频桥接。 |
+| | `bridge/entisgls_runtime/` | 公开 EntisGLS / Cotopha provider 的构建接入。 |
 | 引擎 | `packages/AetherKrkr/` | KiriKiri2 引擎运行时 submodule。 |
 | | `packages/OnscripterYuri/` | 公开 OnscripterYuri submodule。 |
 | | `packages/AetherSiglus/` | 公开 siglus_rs submodule（保持只读）。 |
 | | `packages/ruffle/` | 固定版本的上游 Flash runtime submodule（保持只读）。 |
-| | `packages/AetherInternal/` | 可选私有 E-mote package；公开构建不依赖它。 |
+| | `packages/AetherInternal/` | 可选私有运行时（含 Escude、SystemC）及 E-mote/Live2D 支持；公开构建不依赖它。 |
 | | `packages/AetherSoftPal/` | 可选私有原生 SoftPal 运行时 submodule。 |
+| | `packages/EntisGLS-SDL3/` | 公开 EntisGLS / Cotopha 运行时 submodule 及 provider。 |
 | 支撑 | `demos/aetherkiri-kag3/` | 内置 KAG3 Demo 源码。 |
 | | `tests/` | 单元测试、fixture 与可移植 probe profile。 |
 | | `tools/` | 开发与兼容工具（xp3 归档工具等）。 |

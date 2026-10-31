@@ -4,6 +4,9 @@
 #include <stdexcept>
 #include <string>
 #include <vector>
+#if defined(__APPLE__) && !defined(USE_GLES)
+#include <OpenGL/OpenGL.h>
+#endif
 extern "C" {
 #include "system4/cg.h"
 #include "gfx/gfx.h"
@@ -14,6 +17,36 @@ namespace {
 void Require(bool condition, const char *message) {
     if(!condition)
         throw std::runtime_error(message);
+}
+
+bool HasRequiredRenderer() {
+#if defined(__APPLE__) && !defined(USE_GLES)
+    // Hosted macOS VMs may expose only the software renderer, while the
+    // production CGL context requires hardware acceleration. Check the host
+    // independently so a real context/FBO/readback regression still fails.
+    CGLRendererInfoObj info = nullptr;
+    GLint count = 0;
+    CGLError result = CGLQueryRendererInfo(0xffffffff, &info, &count);
+    bool accelerated = false;
+    if(result == kCGLNoError && count > 0) {
+        Require(info != nullptr, "Missing CGL renderer information");
+        for(GLint i = 0; i < count; ++i) {
+            GLint value = 0;
+            result = CGLDescribeRenderer(info, i, kCGLRPAccelerated, &value);
+            if(result != kCGLNoError)
+                break;
+            accelerated |= value != 0;
+        }
+    }
+    if(info)
+        CGLDestroyRendererInfo(info);
+    if(result != kCGLNoError)
+        throw std::runtime_error(std::string("Could not query CGL renderers: ") +
+                                 CGLErrorString(result));
+    return accelerated;
+#else
+    return true;
+#endif
 }
 
 GLuint Compile(GLenum type, const char *source) {
@@ -92,6 +125,10 @@ void VerifyFrame(aetherkiri::xsystem4::OffscreenContext &context,
 
 int main() {
     try {
+        if(!HasRequiredRenderer()) {
+            std::puts("SKIP: no accelerated CGL renderer; the native graphics contract requires a GPU");
+            return 77;
+        }
         aetherkiri::xsystem4::OffscreenContext context;
         std::string error;
         if(!context.initialize(8, 8, error))

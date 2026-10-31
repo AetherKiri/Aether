@@ -164,6 +164,10 @@ rectangles/quadrilaterals. Inactive shader attributes have location `-1` and
 must not be passed to vertex attribute APIs; mobile drivers can remove unused
 UV inputs from fill shaders. The test retains GL errors through presentation
 so an invalid draw cannot be hidden by clearing errors before frame readback.
+On macOS, an independent CGL renderer query marks this GPU test as skipped
+(exit code 77) only when no hardware-accelerated renderer is available, as on
+hosted virtual machines. Renderer-query errors and all context, shader,
+framebuffer and pixel-check failures still fail the test.
 
 On 2026-10-18, the supplied **Sengoku Rance v1.01** Chinese build was tested on
 macOS arm64: 800×600 startup, opening movie/audio, title, new game, Chinese

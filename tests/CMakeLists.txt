@@ -87,6 +87,7 @@ if(TARGET aether_xsystem4_runtime)
         "${CMAKE_SOURCE_DIR}/bridge/xsystem4_runtime/src")
     target_link_libraries(aether_xsystem4_graphics_contract PRIVATE
         $<IF:$<TARGET_EXISTS:SDL2::SDL2>,SDL2::SDL2,SDL2::SDL2-static>)
+    set_tests_properties(xsystem4-graphics-contract PROPERTIES SKIP_RETURN_CODE 77)
 endif()
 if(AETHERKIRI_ENABLE_ONSCRIPTER)
     add_subdirectory(unit-tests/onscripter_runtime)

@@ -84,3 +84,4 @@ target_include_directories(aether_xsystem4_graphics_contract PRIVATE
 target_link_libraries(aether_xsystem4_graphics_contract PRIVATE aether_xsystem4_runtime
     $<IF:$<TARGET_EXISTS:SDL2::SDL2>,SDL2::SDL2,SDL2::SDL2-static>)
 add_test(NAME xsystem4-graphics-contract COMMAND aether_xsystem4_graphics_contract)
+set_tests_properties(xsystem4-graphics-contract PROPERTIES SKIP_RETURN_CODE 77)

@@ -40,11 +40,13 @@ Godot App Shell
             ├─ System4 Runtime ──── xsystem4 (AliceSoft)
             ├─ System35 Runtime ─── xsystem35 (AliceSoft)
             ├─ System3 Runtime ──── system3-sdl2 (AliceSoft System 1–3)
+            ├─ EntisGLS Runtime ─── EntisGLS / Cotopha (public package)
             ├─ Artemis Runtime ──── Artemis (private package)
             ├─ CatSystem2 Runtime ─ CatSystem2 (private package)
             ├─ BGI Runtime ──────── BGI / Ethornell (private package)
             ├─ ADVHD Runtime ────── ADV Player HD / WillPlus (private package)
             ├─ SoftPal Runtime ──── SoftPal (private package)
+            ├─ Escude Runtime ───── Escu:de / ACPX (private package)
             ├─ SystemC Runtime ──── CandySoft / Interheart (private package)
             └─ YU-RIS Runtime ───── YU-RIS (private package)
 ```
@@ -71,9 +73,14 @@ and **Debug CPU** is a diagnostic fallback only.
   projects and compiled YBN games. Saves live in each game's `savedata/`
   directory; older per-game application saves are imported without overwriting
   local saves. Read-only game directories use isolated application storage.
+- Escu:de / ACPX runtime through the optional private package, using the shared
+  native host and game-local Lua resource hooks.
 - SystemC ACT/SPT runtime through the private package, with E-mote SDK rendering,
   game-local `savedata/`, original UI, choices, backlog, movies, galleries and replay.
   See [scope and validation](doc/systemc_runtime.md).
+- Public EntisGLS / Cotopha desktop runtime for traditional CSX scripts and NOA
+  resources, with game-local `savedata/`. See the
+  [provider scope and validation](https://github.com/AetherKiri/EntisGLS-SDL3/blob/aether/aether_runtime/README.md).
 - Export presets for macOS, iOS/iPadOS, Android, Web, and Linux.
 - A separate Flash library powered by native Ruffle, with sound, keyboard,
   mouse, touch, and the visual-novel virtual controls.
@@ -141,12 +148,14 @@ supported by the Flash player.
 | | `bridge/onscripter_runtime/` | Headless OnscripterYuri host, frame capture, input bridge. |
 | | `bridge/siglus_runtime/` | Siglus provider plus the build-time overlay applied to pristine `siglus_rs`. |
 | | `bridge/flash_runtime/` | Ruffle static library and native playback/input/audio bridge. |
+| | `bridge/entisgls_runtime/` | Build integration for the public EntisGLS / Cotopha provider. |
 | Engines | `packages/AetherKrkr/` | KiriKiri2 engine runtime submodule. |
 | | `packages/OnscripterYuri/` | Public OnscripterYuri submodule. |
 | | `packages/AetherSiglus/` | Public siglus_rs submodule (kept pristine). |
 | | `packages/ruffle/` | Pinned upstream Flash runtime submodule (kept pristine). |
-| | `packages/AetherInternal/` | Optional private E-mote package; public builds work without it. |
+| | `packages/AetherInternal/` | Optional private runtimes, including Escude and SystemC, plus E-mote/Live2D support; public builds work without it. |
 | | `packages/AetherSoftPal/` | Optional private native SoftPal runtime submodule. |
+| | `packages/EntisGLS-SDL3/` | Public EntisGLS / Cotopha runtime submodule and provider. |
 | Support | `demos/aetherkiri-kag3/` | Source of the built-in KAG3 demo. |
 | | `tests/` | Unit tests, fixtures, and portable probe profiles. |
 | | `tools/` | Developer and compatibility tools (xp3 archive tools). |
@@ -342,7 +351,8 @@ session, because render resources must be recreated.
 
 ## Game-local Lua Hooks
 
-BGI, YU-RIS, ADVHD, SoftPal and CatSystem2 share the same `aether` Lua API.
+BGI, YU-RIS, ADVHD, SoftPal, CatSystem2, Escude, SystemC and EntisGLS share the
+same `aether` Lua API.
 Place a UTF-8 `aether.lua` in the game root to prepare resource overrides once
 per game launch. Supported translation packages load automatically; Lua is an
 optional fallback for custom patches. Explicit Lua resources take priority over
@@ -352,7 +362,8 @@ native translation resources, followed by the original game resources.
 assert(aether.api_version == 1)
 if aether.exists("translation") then
     aether.mount_dir("translation")
-    aether.set_encoding("GBK")
+    -- Set the encoding only when the engine and translated script need it.
+    -- EntisGLS CSX retains its native Unicode format.
 end
 ```
 

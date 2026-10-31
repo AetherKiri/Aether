@@ -2,7 +2,8 @@
 
 简体中文 | [English](README.md)
 
-BGI、YU-RIS、ADVHD、SoftPal、CatSystem2 共用一套 `aether` Lua 接口，当前
+BGI、YU-RIS、ADVHD、SoftPal、CatSystem2、Escude、SystemC、EntisGLS
+共用一套 `aether` Lua 接口，当前
 `aether.api_version` 为 `1`。把 UTF-8 编码的 `aether.lua` 放在游戏根目录，
 引擎打开游戏时就会读取并执行它；支持带 UTF-8 BOM 的脚本。
 
@@ -13,14 +14,14 @@ BGI、YU-RIS、ADVHD、SoftPal、CatSystem2 共用一套 `aether` Lua 接口，�
 Lua 是未被引擎原生支持的补丁格式的兜底入口。已支持的汉化包会自动识别，
 不需要放置 `aether.lua`：
 
-| 引擎 | 本次新增的原生识别 |
+| 引擎 | 原生汉化识别示例 |
 | --- | --- |
 | YU-RIS | 游戏根目录内含 YBN 的未加密 XP3；支持 zlib/zstd 索引和资源段，脚本编码沿用 AUTO 严格解码选择。 |
 | SoftPal | DLL 的 RT_RCDATA 中带 `STRINGS.JSON` 的 RPCK v1；图片按需解压，UTF-8 译文按原生文本 ID 合并为 CP936，保留未翻译文本，并使用模块引用的本地字体。 |
 | BGI | `.chs` 中的 `ChihanaPackerVer2.0` 默认 `AlwaysLoad` 资源层；使用 UTF-8/CP932 回退，显式选择日文时不挂载中文包。可选图片模块和全 CG 存档不自动载入。 |
 
 资源优先级为 **Lua 明确注册的资源 → 原生汉化资源 → 原游戏资源**。
-原生识别依据文件签名、索引和资源内容，不依赖这三款测试游戏的目录名；
+原生识别依据文件签名、索引和资源内容，不依赖游戏目录名；
 读取 DLL 中的数据时不执行 DLL。
 
 **执行流程**
@@ -50,7 +51,8 @@ flowchart LR
 assert(aether.api_version == 1, "需要 Aether Lua 接口 v1")
 
 aether.mount_dir("translation")
-aether.set_encoding("GBK")
+-- 仅在引擎支持且汉化脚本使用 GBK 时调用：
+-- aether.set_encoding("GBK")
 
 if aether.exists("fonts/chinese.ttf") then
     aether.set_font("fonts/chinese.ttf")
@@ -71,7 +73,7 @@ aether.log("汉化资源已加载，引擎：" .. aether.engine)
 | 字段或函数 | 返回值 | 行为 |
 | --- | --- | --- |
 | `api_version` | 整数 | 当前为 `1`，供脚本检查接口版本。 |
-| `engine` | 字符串 | `bgi`、`yuris`、`advhd`、`softpal` 或 `catsystem2`。供脚本检查或选择处理逻辑。 |
+| `engine` | 字符串 | `bgi`、`yuris`、`advhd`、`softpal`、`catsystem2`、`escude`、`systemc` 或 `entisgls`。供脚本检查或选择处理逻辑。 |
 | `read_file(path [, offset [, size]])` | 二进制字符串 | 读取游戏目录内的物理文件。`offset` 默认为 `0`，从零计数；省略 `size` 时读到文件末尾。越界或读取失败会报错。 |
 | `exists(path)` | 布尔值 | 检查游戏目录内的物理文件或目录是否存在。路径不合法时会报错。 |
 | `add_file(name, bytes)` | 无 | 用逻辑资源名注册字节内容；同名资源后注册的覆盖先注册的。允许空内容。 |
@@ -117,6 +119,9 @@ aether.add_file("scene.cst", aether.decompress(packed, "zstd"))
 | ADVHD | 在资源存在性查询和读取入口优先检查注册表，包括指定归档的读取。 |
 | SoftPal | 在资源读取入口优先检查注册表；另支持下述文本 ID 覆盖数据。 |
 | CatSystem2 | 在 VFS 的存在性查询、读取、文件复制和资源列表中合并注册资源。 |
+| Escude | 接入 VFS 读取、存在性查询、ACPX 源码发现和资源列表；资源名需含原有挂载前缀，例如 `script/main.c`。Lua 使用 UTF-8 名称，引擎内部资源路径仍使用 CP932。流式消费者通过已有缓存读取覆盖内容。 |
+| SystemC | 接入 VFS 读取、存在性查询、资源列表和脚本选择；流式消费者通过已有缓存读取覆盖内容，避免绕过覆盖层打开原始散文件。 |
+| EntisGLS | 接入 Cotopha 环境中的 CSX 及资源读取，包括 NOA 成员。注册逻辑名，例如 `adventure.csx`；读取时也识别 `storage://game/` 和游戏目录内的绝对路径。覆盖资源写入会话缓存，相对引用仍可回到原封包，释放会话后清理缓存。原生启动配置发现保持不变；排除 `savedata/`，保留已有存档优先级和原生写入行为。 |
 
 Lua 脚本看到的函数完全相同。上述差异由 C++ 适配层处理，游戏无需选择另一套
 Lua API。引擎探测和部分启动配置仍可能早于 hook 执行；当前覆盖范围是已经接入
@@ -131,6 +136,9 @@ Lua API。引擎探测和部分启动配置仍可能早于 hook 执行；当前�
 | ADVHD 旧版脚本 | `CP932`、`GBK`；现代 ADVHD 脚本保留原生 UTF-8 格式。 |
 | SoftPal | `CP932`、`GBK`，其中 `GBK` 在适配层映射为 CP936。 |
 | CatSystem2 场景脚本 | `CP932`、`GBK`、`GB18030`、`BIG5`、`UTF-8`。 |
+| Escude ACPX 脚本 | `CP932`、`GBK`。 |
+| SystemC 脚本 | `CP932`、`GBK`、`UTF-8`。 |
+| EntisGLS CSX | 保留原生 Unicode 表示，没有全局字节编码开关；调用 `set_encoding` 会明确报错。资源覆盖、`transcode` 和字体选择仍可使用。 |
 
 `set_encoding` 的名称不区分 ASCII 大小写。`SJIS`、`Shift-JIS`、`Shift_JIS`
 归一为 `CP932`，`CP936`、`GB2312` 归一为 `GBK`，`UTF8` 归一为 `UTF-8`。
@@ -140,6 +148,8 @@ Lua API。引擎探测和部分启动配置仍可能早于 hook 执行；当前�
 例如 `aether.transcode("中文", "UTF-8", "GBK")` 返回 GBK 字节，但不会改变
 引擎设置。整体切换编码时，应确保被读取的文本与该编码相符，包括未翻译部分。
 字体选择决定字符如何绘制，不承担字符编码转换。
+EntisGLS 的 `set_font` 在本会话内优先于脚本指定的字体名，保留原有字号和样式；
+关闭会话后恢复原生字体选择。
 
 **SoftPal 的文本 ID 扩展**
 
@@ -171,7 +181,7 @@ Lua 文本覆盖表应使用这一最终编码。
 
 v1 在启动时一次性读取、解压并保存注册资源，能让运行中的查询保持简单，也能
 在进入游戏前发现补丁错误。代价是补丁较大时增加启动时间和内存占用；YU-RIS
-还会产生一份文件缓存。当前不提供按需解压、流式资源或运行期间动态回调。
+和 EntisGLS 还会产生一份文件缓存。当前不提供按需解压、流式资源或运行期间动态回调。
 
 **独立检查脚本**
 

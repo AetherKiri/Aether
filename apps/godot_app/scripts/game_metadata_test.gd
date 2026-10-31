@@ -61,6 +61,17 @@ func _init() -> void:
     _expect_equal(String(kirikiri.engine), "kirikiri", "KiriKiri remains default")
     _expect_equal(String(kirikiri.launchFile), "data.xp3", "KiriKiri archive preferred")
 
+    for script_path in ["startup.tjs", "data/startup.tjs", "data/STARTUP.TJS"]:
+        var loose_root := fixture_root.path_join("loose_" + script_path.replace("/", "_"))
+        DirAccess.make_dir_recursive_absolute(loose_root.path_join("data"))
+        _write(loose_root.path_join("game.exe"), "launcher")
+        _write(loose_root.path_join("data2.xp3"), "images")
+        _write(loose_root.path_join("data6.xp3"), "audio")
+        _write(loose_root.path_join(script_path), "// authored startup fixture")
+        var loose := GameMetadata.inspect(loose_root)
+        _expect_equal(String(loose.engine), "kirikiri", "loose KiriKiri detection")
+        _expect_equal(String(loose.launchFile), "", "loose startup keeps the game root: " + script_path)
+
     var mages_root := fixture_root.path_join("MemoriesoffIF")
     DirAccess.make_dir_recursive_absolute(mages_root)
     _write(mages_root.path_join("launcher.exe"), "launcher")

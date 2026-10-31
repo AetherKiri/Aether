@@ -4,8 +4,8 @@
 #include <initializer_list>
 #include <unordered_set>
 
-// Predicts the barriers required by whole-resource GPU hazards without
-// affecting command submission. Resource id 0 is treated as invalid.
+// Tracks whole-resource GPU hazards for command submission and optional
+// diagnostic counters. Resource id 0 is treated as invalid.
 class GodotGpuBarrierShadowPlanner {
 public:
     struct Step {

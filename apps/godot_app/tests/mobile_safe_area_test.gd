@@ -27,6 +27,7 @@ func _initialize() -> void:
     assert(app.game_virtual_input_mode == "mouse")
     assert(app._normalize_game_virtual_input_mode("mouse") == "mouse")
     assert(app._normalize_game_virtual_input_mode("touch") == "touch")
+    assert(app._normalize_game_virtual_input_mode("mouse_only") == "mouse_only")
     assert(app._normalize_game_virtual_input_mode("invalid") == "mouse")
 
     for runtime_kind in [app.RUNTIME_KIRIKIRI, app.RUNTIME_ONSCRIPTER]:

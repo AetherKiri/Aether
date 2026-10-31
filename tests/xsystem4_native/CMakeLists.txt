@@ -24,6 +24,13 @@ target_include_directories(aether_xsystem4_scene_keeper_contract PRIVATE
     "${AETHER_ROOT}/packages/xsystem4/subprojects/libsys4/include")
 target_link_libraries(aether_xsystem4_scene_keeper_contract PRIVATE aether_xsystem4_runtime)
 add_test(NAME xsystem4-scene-keeper-contract COMMAND aether_xsystem4_scene_keeper_contract)
+add_executable(aether_xsystem4_adv_log_contract adv_log.c)
+target_include_directories(aether_xsystem4_adv_log_contract PRIVATE
+    "${AETHER_ROOT}/packages/xsystem4/include"
+    "${AETHER_ROOT}/packages/xsystem4/src/hll"
+    "${AETHER_ROOT}/packages/xsystem4/subprojects/libsys4/include")
+target_link_libraries(aether_xsystem4_adv_log_contract PRIVATE aether_xsystem4_runtime)
+add_test(NAME xsystem4-adv-log-contract COMMAND aether_xsystem4_adv_log_contract)
 add_executable(aether_xsystem4_afa_contract afa.cpp)
 target_compile_features(aether_xsystem4_afa_contract PRIVATE cxx_std_17)
 target_include_directories(aether_xsystem4_afa_contract PRIVATE
@@ -70,3 +77,18 @@ target_include_directories(aether_xsystem4_font_fallback_contract PRIVATE
 target_link_libraries(aether_xsystem4_font_fallback_contract PRIVATE aether_xsystem4_runtime
     $<IF:$<TARGET_EXISTS:SDL2::SDL2>,SDL2::SDL2,SDL2::SDL2-static>)
 add_test(NAME xsystem4-font-fallback-contract COMMAND aether_xsystem4_font_fallback_contract)
+
+add_executable(aether_xsystem4_graphics_contract graphics.cpp)
+target_compile_features(aether_xsystem4_graphics_contract PRIVATE cxx_std_17)
+target_compile_definitions(aether_xsystem4_graphics_contract PRIVATE XSYSTEM4_EMBEDDED SDL_MAIN_HANDLED)
+if(NOT APPLE OR IOS)
+    target_compile_definitions(aether_xsystem4_graphics_contract PRIVATE USE_GLES)
+endif()
+target_include_directories(aether_xsystem4_graphics_contract PRIVATE
+    "${AETHER_ROOT}/bridge/xsystem4_runtime/src"
+    "${AETHER_ROOT}/packages/xsystem4/include"
+    "${AETHER_ROOT}/packages/xsystem4/subprojects/libsys4/include")
+target_link_libraries(aether_xsystem4_graphics_contract PRIVATE aether_xsystem4_runtime
+    $<IF:$<TARGET_EXISTS:SDL2::SDL2>,SDL2::SDL2,SDL2::SDL2-static>)
+add_test(NAME xsystem4-graphics-contract COMMAND aether_xsystem4_graphics_contract)
+set_tests_properties(xsystem4-graphics-contract PROPERTIES SKIP_RETURN_CODE 77)

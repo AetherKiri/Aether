@@ -51,9 +51,16 @@ if(TARGET aether_xsystem4_runtime)
         "${AETHERKIRI_XSYSTEM4_DIR}/subprojects/libsys4/include")
     target_link_libraries(aether_xsystem4_scene_keeper_contract PRIVATE aether_xsystem4_runtime)
     add_test(NAME xsystem4-scene-keeper-contract COMMAND aether_xsystem4_scene_keeper_contract)
+    add_executable(aether_xsystem4_adv_log_contract xsystem4_native/adv_log.c)
+    target_include_directories(aether_xsystem4_adv_log_contract PRIVATE
+        "${AETHERKIRI_XSYSTEM4_DIR}/include"
+        "${AETHERKIRI_XSYSTEM4_DIR}/src/hll"
+        "${AETHERKIRI_XSYSTEM4_DIR}/subprojects/libsys4/include")
+    target_link_libraries(aether_xsystem4_adv_log_contract PRIVATE aether_xsystem4_runtime)
+    add_test(NAME xsystem4-adv-log-contract COMMAND aether_xsystem4_adv_log_contract)
     find_package(SDL2 CONFIG REQUIRED)
     find_package(SDL2_image CONFIG REQUIRED)
-    foreach(contract afa assets lifecycle rance_quest tga)
+    foreach(contract afa assets lifecycle rance_quest tga graphics)
         add_executable(aether_xsystem4_${contract}_contract xsystem4_native/${contract}.cpp)
         target_compile_features(aether_xsystem4_${contract}_contract PRIVATE cxx_std_17)
         target_include_directories(aether_xsystem4_${contract}_contract PRIVATE
@@ -79,6 +86,15 @@ if(TARGET aether_xsystem4_runtime)
     target_link_libraries(aether_xsystem4_font_fallback_contract PRIVATE aether_xsystem4_runtime
         $<IF:$<TARGET_EXISTS:SDL2::SDL2>,SDL2::SDL2,SDL2::SDL2-static>)
     add_test(NAME xsystem4-font-fallback-contract COMMAND aether_xsystem4_font_fallback_contract)
+    target_compile_definitions(aether_xsystem4_graphics_contract PRIVATE XSYSTEM4_EMBEDDED SDL_MAIN_HANDLED)
+    if(NOT APPLE OR IOS)
+        target_compile_definitions(aether_xsystem4_graphics_contract PRIVATE USE_GLES)
+    endif()
+    target_include_directories(aether_xsystem4_graphics_contract PRIVATE
+        "${CMAKE_SOURCE_DIR}/bridge/xsystem4_runtime/src")
+    target_link_libraries(aether_xsystem4_graphics_contract PRIVATE
+        $<IF:$<TARGET_EXISTS:SDL2::SDL2>,SDL2::SDL2,SDL2::SDL2-static>)
+    set_tests_properties(xsystem4-graphics-contract PROPERTIES SKIP_RETURN_CODE 77)
 endif()
 if(AETHERKIRI_ENABLE_ONSCRIPTER)
     add_subdirectory(unit-tests/onscripter_runtime)

@@ -41,6 +41,9 @@ Press/release transitions remain observable to games that poll held state.
 InputString IME requests activate the host's native keyboard. Pausing suspends
 the VM and SDL audio; shaders, fonts, movies, HLL bindings and input are reset
 when the session ends.
+PartsEngine releases its shader program and parts table and clears its
+initialization state before the GL context is destroyed. Reopening therefore
+creates those resources in the new context instead of reusing stale handles.
 
 Saves go under `<writable>/xsystem4/<script-identity>/`, separate from game assets.
 The identity uses the AIN filename, size and leading script data, so moving a
@@ -154,6 +157,22 @@ provider: explicit exit and main return with zero, positive and negative codes,
 early completion before a frame, reopening the same runtime and genuine VM
 errors after clean exits. The shell's handle-recreation regression also covers
 System 4.
+
+The ADV log contract alternates numeric and named voice interfaces in one
+process, including repeated named-voice sessions. It checks text and voice
+save/load round trips through the production HLL initialization and teardown
+so Evenicle's named-voice mode cannot leak into a subsequent numeric game.
+
+The graphics contract draws through the production renderer and offscreen
+context, checking pixels while switching between solid fills and textured
+rectangles/quadrilaterals. Inactive shader attributes have location `-1` and
+must not be passed to vertex attribute APIs; mobile drivers can remove unused
+UV inputs from fill shaders. The test retains GL errors through presentation
+so an invalid draw cannot be hidden by clearing errors before frame readback.
+On macOS, an independent CGL renderer query marks this GPU test as skipped
+(exit code 77) only when no hardware-accelerated renderer is available, as on
+hosted virtual machines. Renderer-query errors and all context, shader,
+framebuffer and pixel-check failures still fail the test.
 
 On 2026-10-18, the supplied **Sengoku Rance v1.01** Chinese build was tested on
 macOS arm64: 800×600 startup, opening movie/audio, title, new game, Chinese

@@ -45,7 +45,9 @@ const DPAD_DIRECTION_AXIS_THRESHOLD := 0.382683
 const INPUT_DEVICE_ID_EMULATION := -1
 const INPUT_MODE_MOUSE := "mouse"
 const INPUT_MODE_TOUCH := "touch"
-const INPUT_MODES := [INPUT_MODE_MOUSE, INPUT_MODE_TOUCH]
+const INPUT_MODE_MOUSE_ONLY := "mouse_only"
+const INPUT_MODES := [INPUT_MODE_MOUSE, INPUT_MODE_TOUCH, INPUT_MODE_MOUSE_ONLY]
+const INPUT_MODE_HIDE_DELAY_MSEC := 3000
 const KEYBOARD_CONTROLS_OPACITY_MIN := 0.2
 const KEYBOARD_CONTROLS_OPACITY_MAX := 1.0
 
@@ -110,6 +112,7 @@ var _menu_drag_grab_offset_y := 0.0
 var _menu_drag_moved := false
 var _menu_y_ratio := 0.0
 var _input_mode := INPUT_MODE_MOUSE
+var _input_mode_hide_at_msec := 0
 var _mouse_mode_blocked_touch_indices := {}
 var _held_scroll_direction := 0.0
 var _scroll_next_repeat_msec := 0
@@ -138,6 +141,7 @@ func setup(tokens) -> void:
     virtual_controls_button = _create_action_button(
         "VirtualControlsButton", "Control Pad"
     )
+    virtual_controls_button.tooltip_text = "Show controls and mode selector"
     menu_button.pressed.connect(_toggle_menu)
     keyboard_button.pressed.connect(_request_keyboard)
     virtual_controls_button.pressed.connect(show_virtual_controls)
@@ -152,6 +156,8 @@ func setup(tokens) -> void:
 
     input_mode_button = _create_action_button("InputModeButton", "")
     input_mode_button.pressed.connect(_toggle_input_mode)
+    input_mode_button.button_down.connect(_show_input_mode_selector)
+    input_mode_button.button_up.connect(_show_input_mode_selector)
     _root.add_child(input_mode_button)
     _panel_controls.append(input_mode_button)
     _interactive_controls.append(input_mode_button)
@@ -305,6 +311,7 @@ func set_input_mode(mode: String, notify: bool = false) -> void:
     _mouse_mode_blocked_touch_indices.clear()
     _input_mode = normalized
     _sync_input_mode_presentation()
+    _show_input_mode_selector()
     _sync_visibility()
     if notify:
         input_mode_changed.emit(_input_mode)
@@ -314,11 +321,14 @@ func show_virtual_controls() -> void:
         return
     _menu_open = false
     _panel_open = true
+    _show_input_mode_selector()
     _sync_visibility()
     virtual_controls_requested.emit()
 
 func release_all() -> void:
     _cancel_scroll_hold()
+    _dpad_touch_index = -1
+    _dpad_mouse_dragging = false
     _reset_dpad()
     for key_variant in _held_keys.keys().duplicate():
         _release_key(int(key_variant))
@@ -1196,19 +1206,40 @@ func _request_keyboard() -> void:
 func _toggle_input_mode() -> void:
     if not _enabled or not _panel_open:
         return
-    set_input_mode(
-        INPUT_MODE_TOUCH if _input_mode == INPUT_MODE_MOUSE else INPUT_MODE_MOUSE,
-        true
-    )
+    var next_index := (INPUT_MODES.find(_input_mode) + 1) % INPUT_MODES.size()
+    set_input_mode(INPUT_MODES[next_index], true)
+
+func _show_input_mode_selector() -> void:
+    if not _enabled or not _menu_button_enabled or not _panel_open:
+        return
+    _input_mode_hide_at_msec = Time.get_ticks_msec() + INPUT_MODE_HIDE_DELAY_MSEC
+    input_mode_button.show()
+
+func _advance_input_mode_visibility(now_msec: int) -> void:
+    if not _enabled or not _panel_open or _input_mode_hide_at_msec == 0:
+        return
+    if input_mode_button.button_pressed:
+        _input_mode_hide_at_msec = now_msec + INPUT_MODE_HIDE_DELAY_MSEC
+    elif now_msec >= _input_mode_hide_at_msec:
+        _input_mode_hide_at_msec = 0
+        # Fully hide the button so its old bounds also stop intercepting input
+        # on Godot and native game surfaces. Control Pad reveals it again.
+        input_mode_button.hide()
 
 func _sync_input_mode_presentation() -> void:
     if input_mode_button == null:
         return
-    var touch_mode := is_touch_mode()
-    input_mode_button.text = "Mode: Touch" if touch_mode else "Mode: Mouse"
-    input_mode_button.tooltip_text = (
-        "Direct touch mode" if touch_mode else "Virtual mouse mode"
-    )
+    match _input_mode:
+        INPUT_MODE_TOUCH:
+            input_mode_button.text = "Mode: Touch"
+            input_mode_button.tooltip_text = "Direct touch mode"
+        INPUT_MODE_MOUSE_ONLY:
+            input_mode_button.text = "Mode: Mouse only"
+            input_mode_button.tooltip_text = "Drag to move, tap to click, two-finger tap to right-click"
+        _:
+            input_mode_button.text = "Mode: Mouse"
+            input_mode_button.tooltip_text = "Virtual mouse mode"
+    input_mode_button.tooltip_text += "\nHides after 3 seconds. Reopen Control Pad to change modes."
     input_mode_button.set_meta("input_mode", _input_mode)
 
 func _sync_visibility() -> void:
@@ -1218,12 +1249,18 @@ func _sync_visibility() -> void:
     menu_button.visible = controls_visible
     keyboard_button.visible = controls_visible and _menu_open
     virtual_controls_button.visible = controls_visible and _menu_open
+    var panel_visible := controls_visible and _panel_open
+    var mouse_only := _input_mode == INPUT_MODE_MOUSE_ONLY
+    var show_virtual_mouse := panel_visible and not is_touch_mode()
     for control in _panel_controls:
-        control.visible = controls_visible and _panel_open
-    var show_virtual_mouse := controls_visible and _panel_open and not is_touch_mode()
-    mouse_left_button.visible = show_virtual_mouse
-    mouse_right_button.visible = show_virtual_mouse
-    cursor_handle.visible = show_virtual_mouse
+        if control == input_mode_button:
+            control.visible = panel_visible and _input_mode_hide_at_msec > 0
+        elif control == cursor_handle:
+            control.visible = show_virtual_mouse
+        elif control == mouse_left_button or control == mouse_right_button:
+            control.visible = show_virtual_mouse and not mouse_only
+        else:
+            control.visible = panel_visible and not mouse_only
     var menu_visible := controls_visible and _menu_open
     if menu_visible != _menu_visible:
         _menu_visible = menu_visible
@@ -1294,7 +1331,9 @@ func _cancel_scroll_hold() -> void:
     _scroll_next_repeat_msec = 0
 
 func _process(_delta: float) -> void:
-    _advance_scroll_hold(Time.get_ticks_msec())
+    var now_msec := Time.get_ticks_msec()
+    _advance_scroll_hold(now_msec)
+    _advance_input_mode_visibility(now_msec)
 
 func _advance_scroll_hold(now_msec: int) -> void:
     if (

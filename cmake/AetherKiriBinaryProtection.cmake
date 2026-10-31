@@ -50,8 +50,18 @@ function(aetherkiri_limit_runtime_exports target_name export_surface)
         endif()
         target_link_options("${target_name}" PRIVATE
             "$<$<CONFIG:Release>:-Wl,--gc-sections>"
-            "$<$<CONFIG:Release>:-Wl,--version-script=${version_script}>"
         )
+        if(export_surface STREQUAL "GODOT_EXTENSION")
+            # Dependency symbols are not part of the extension ABI, including
+            # in Debug builds. In particular, Oboe's SL_IID_* placeholders must
+            # not interpose libOpenSLES symbols used by the shared SDL2 library.
+            # This changes dynamic exports only; debug information is retained.
+            target_link_options("${target_name}" PRIVATE
+                "-Wl,--version-script=${version_script}")
+        else()
+            target_link_options("${target_name}" PRIVATE
+                "$<$<CONFIG:Release>:-Wl,--version-script=${version_script}>")
+        endif()
         set_property(TARGET "${target_name}" APPEND PROPERTY
             LINK_DEPENDS "${version_script}")
         # Since the Phase 2d link flip the engine_api objects define the

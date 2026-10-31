@@ -41,6 +41,9 @@ Press/release transitions remain observable to games that poll held state.
 InputString IME requests activate the host's native keyboard. Pausing suspends
 the VM and SDL audio; shaders, fonts, movies, HLL bindings and input are reset
 when the session ends.
+PartsEngine releases its shader program and parts table and clears its
+initialization state before the GL context is destroyed. Reopening therefore
+creates those resources in the new context instead of reusing stale handles.
 
 Saves go under `<writable>/xsystem4/<script-identity>/`, separate from game assets.
 The identity uses the AIN filename, size and leading script data, so moving a

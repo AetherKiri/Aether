@@ -15323,28 +15323,18 @@ func _process(delta: float) -> void:
                 _append_log("Game exited during startup: %s" % startup_error_message)
                 _return_to_library_after_runtime_exit()
                 return
-            restart_notice.text = "Game startup failed."
-            _set_translation_loading_notice(false)
-            _hide_loading_overlay()
-            _set_game_background(false)
-            shell_root.visible = true
-            viewport.visible = false
-            game_view.visible = false
-            game_running = false
-            runtime_display_state.reset(get_window())
-            softpal_aspect_mode = 1
-            _sync_game_virtual_controls()
-            _deactivate_game_text_input()
-            _sync_debug_console_state()
             if diagnostic_session != null:
-                diagnostic_session.set_game_active(false)
                 diagnostic_session.record("godot", "lifecycle", "error", "game_startup_failed", 0, {
-                    "error": player.get_last_error(),
+                    "error": startup_error_message,
                 })
-            app_lifecycle_paused = false
             render_errors += 1
             var startup_error := "Startup failed: %s" % startup_error_message
             _append_log(startup_error)
+            # Reuse normal exit teardown so a failed asynchronous startup does
+            # not leave its worker/engine handle blocking the next launch.
+            _return_to_library_after_runtime_exit()
+            _show_message(startup_error)
+            return
 
     perf_accum += delta
     state_log_accum += delta

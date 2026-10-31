@@ -29,9 +29,12 @@ const VK_W := 0x57
 const MOD_CONTROL := 0x04
 const POINTER_MOD_RIGHT := 0x10
 const OVERLAY_LAYER := 120
+const AetherOrb = preload("res://scripts/ui/aether_orb.gd")
+const AetherGlass = preload("res://scripts/ui/aether_glass.gd")
 const BUTTON_MIN_SIZE := 44.0
 const BUTTON_MAX_SIZE := 68.0
-const MENU_BUTTON_SIZE := Vector2(44.0, 40.0)
+const MENU_BUTTON_SIZE := Vector2(52.0, 52.0)
+const MENU_EDGE_INSET := 6.0
 const CURSOR_SIZE := 44.0
 const CURSOR_HOTSPOT := Vector2(15.0, 10.0)
 const CURSOR_TAP_DRAG_THRESHOLD := 10.0
@@ -83,6 +86,10 @@ var _enabled := false
 var _menu_button_enabled := true
 var _keyboard_controls_opacity := 1.0
 var _panel_open := false
+var _panel_shown := false
+var _pad_frame: Panel
+var _orb: Control
+var _dpad_knob_target := Vector2.ZERO
 var _menu_open := false
 var _menu_visible := false
 var _safe_rect := Rect2()
@@ -133,6 +140,9 @@ func setup(tokens) -> void:
     _root.mouse_filter = Control.MOUSE_FILTER_IGNORE
     add_child(_root)
 
+    _pad_frame = _create_pad_frame()
+    _root.add_child(_pad_frame)
+
     menu_button = _create_action_button("MenuButton", "Menu")
     keyboard_button = _create_action_button("KeyboardButton", "Keyboard")
     virtual_controls_button = _create_action_button(
@@ -160,17 +170,21 @@ func setup(tokens) -> void:
 
     dpad_backdrop = _create_decorative_panel(
         "DpadBackdrop",
-        _button_style(Color(0.31, 0.32, 0.34, 0.46), REFERENCE_BORDER, true)
+        _dpad_backdrop_style()
     )
     dpad_backdrop.z_index = -2
+    _attach_dpad_decoration(dpad_backdrop)
     _root.add_child(dpad_backdrop)
     _panel_controls.append(dpad_backdrop)
 
     dpad_center = _create_decorative_panel(
         "DpadCenter",
-        _button_style(Color(0.42, 0.43, 0.45, 0.46), REFERENCE_BORDER, true)
+        _dpad_knob_style()
     )
     dpad_center.z_index = -1
+    var knob_glass = _attach_glass(dpad_center)
+    knob_glass.tint = Color(0.16, 0.17, 0.21, 0.42)
+    knob_glass.selected_amount = 0.38
     _root.add_child(dpad_center)
     _panel_controls.append(dpad_center)
 
@@ -317,6 +331,17 @@ func show_virtual_controls() -> void:
     _sync_visibility()
     virtual_controls_requested.emit()
 
+func hide_virtual_controls() -> void:
+    release_all()
+    _menu_open = false
+    _panel_open = false
+    _sync_visibility()
+
+func set_gamepad_navigation_enabled(enabled: bool) -> void:
+    for control in _interactive_controls:
+        if control is BaseButton:
+            control.focus_mode = Control.FOCUS_ALL if enabled else Control.FOCUS_NONE
+
 func release_all() -> void:
     _cancel_scroll_hold()
     _reset_dpad()
@@ -345,13 +370,15 @@ func layout(_window_size: Vector2, safe_rect: Rect2) -> void:
     var menu_size := MENU_BUTTON_SIZE
     var menu_y_range := maxf(0.0, safe_rect.size.y - menu_size.y)
     menu_button.position = Vector2(
-        safe_end.x - menu_size.x,
+        safe_end.x - menu_size.x - MENU_EDGE_INSET,
         safe_rect.position.y + menu_y_range * _menu_y_ratio
     )
     menu_button.size = menu_size
     _layout_edge_menu_icon()
 
     _layout_menu_options(diameter, gap)
+    _pad_frame.position = safe_rect.position + Vector2.ONE * 3.0
+    _pad_frame.size = safe_rect.size - Vector2.ONE * 6.0
 
     escape_button.position = safe_rect.position + Vector2(margin, margin)
     escape_button.size = key_size
@@ -394,7 +421,7 @@ func layout(_window_size: Vector2, safe_rect: Rect2) -> void:
         dpad_center_position - Vector2.ONE * center_size * 0.5
     )
     _dpad_travel_radius = (dpad_diameter - center_size) * 0.5
-    _position_dpad_center()
+    _position_dpad_center(true)
 
     var digit_x := menu_button.position.x - diameter - gap
     var digit_top := safe_rect.position.y + margin + diameter * 0.24
@@ -602,6 +629,7 @@ func routes_pointer(event: InputEvent) -> bool:
                     return true
                 _cursor_mouse_dragging = true
                 _begin_cursor_drag(mouse_button.position)
+                _spawn_touch_ripple(mouse_button.position)
                 return true
             if _cursor_mouse_dragging:
                 if not mouse_button.pressed:
@@ -727,34 +755,86 @@ func _create_control_button(node_name: String, label: String, wide: bool) -> But
     button.mouse_filter = Control.MOUSE_FILTER_STOP
     button.keep_pressed_outside = true
     button.add_theme_font_size_override("font_size", 14 if wide else 17)
-    button.add_theme_color_override("font_color", REFERENCE_TEXT)
+    button.add_theme_color_override("font_color", Color(1.0, 1.0, 1.0, 0.90))
     button.add_theme_color_override("font_hover_color", Color.WHITE)
     button.add_theme_color_override("font_pressed_color", Color.WHITE)
-    button.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.48))
-    button.add_theme_constant_override("outline_size", 2)
-    button.add_theme_stylebox_override(
-        "normal",
-        _button_style(REFERENCE_FILL, REFERENCE_BORDER, true)
-    )
-    button.add_theme_stylebox_override(
-        "hover",
-        _button_style(REFERENCE_FILL_HOVER, Color.WHITE, true)
-    )
-    button.add_theme_stylebox_override(
-        "pressed",
-        _button_style(
-            Color(
-                _tokens.accent.r,
-                _tokens.accent.g,
-                _tokens.accent.b,
-                0.86
-            ),
-            Color.WHITE,
-            true
-        )
-    )
-    button.add_theme_stylebox_override("focus", StyleBoxEmpty.new())
+    button.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.30))
+    button.add_theme_constant_override("outline_size", 1)
+    var empty := StyleBoxEmpty.new()
+    for state in ["normal", "hover", "pressed", "hover_pressed", "focus", "disabled"]:
+        button.add_theme_stylebox_override(state, empty)
+    _attach_glass(button)
     return button
+
+func _attach_glass(control: Control, radius: float = 999.0):
+    var glass = control.get_node_or_null("Glass")
+    if glass != null:
+        return glass
+    glass = AetherGlass.new()
+    glass.radius = radius
+    glass.accent = _tokens.accent
+    control.add_child(glass)
+    control.move_child(glass, 0)
+    if control is BaseButton:
+        glass.bind(control as BaseButton)
+    return glass
+
+func _detach_glass(control: Control) -> void:
+    var glass = control.get_node_or_null("Glass")
+    if glass != null:
+        control.remove_child(glass)
+        glass.queue_free()
+
+func _dpad_backdrop_style() -> StyleBoxFlat:
+    var style := StyleBoxFlat.new()
+    style.draw_center = false
+    style.bg_color = Color.TRANSPARENT
+    return style
+
+func _dpad_knob_style() -> StyleBoxFlat:
+    return _dpad_backdrop_style()
+
+func _create_pad_frame() -> Panel:
+    var frame := Panel.new()
+    frame.name = "PadFrame"
+    frame.mouse_filter = Control.MOUSE_FILTER_IGNORE
+    var style := StyleBoxFlat.new()
+    style.draw_center = false
+    style.border_color = Color(1.0, 1.0, 1.0, 0.16)
+    style.set_border_width_all(1)
+    style.set_corner_radius_all(22)
+    style.anti_aliasing = true
+    frame.add_theme_stylebox_override("panel", style)
+    frame.visible = false
+    return frame
+
+func _attach_dpad_decoration(backdrop: Panel) -> void:
+    var glass = _attach_glass(backdrop)
+    glass.tint = Color(0.08, 0.09, 0.12, 0.30)
+    var deco := Control.new()
+    deco.name = "Decoration"
+    deco.mouse_filter = Control.MOUSE_FILTER_IGNORE
+    deco.set_anchors_preset(Control.PRESET_FULL_RECT)
+    deco.draw.connect(_draw_dpad_decoration.bind(deco))
+    backdrop.add_child(deco)
+    backdrop.resized.connect(deco.queue_redraw)
+
+func _draw_dpad_decoration(deco: Control) -> void:
+    var c := deco.size * 0.5
+    var r := minf(deco.size.x, deco.size.y) * 0.5
+    if r <= 4.0:
+        return
+    deco.draw_arc(c, r * 0.66, 0.0, TAU, 72, Color(1, 1, 1, 0.07), 1.0, true)
+
+func _fresh_tween(owner: Control, channel: String) -> Tween:
+    var key := "_tw_" + channel
+    if owner.has_meta(key):
+        var previous = owner.get_meta(key)
+        if previous is Tween and (previous as Tween).is_valid():
+            (previous as Tween).kill()
+    var tween := owner.create_tween()
+    owner.set_meta(key, tween)
+    return tween
 
 func _create_action_button(node_name: String, label: String) -> Button:
     var button := _create_control_button(node_name, label, true)
@@ -769,19 +849,18 @@ func _create_decorative_panel(node_name: String, style: StyleBoxFlat) -> Panel:
     return panel
 
 func _apply_dpad_button_style(button: Button) -> void:
+    _detach_glass(button)
     var empty := StyleBoxEmpty.new()
     button.add_theme_stylebox_override("normal", empty)
     button.add_theme_stylebox_override("hover", empty)
-    button.add_theme_stylebox_override(
-        "pressed",
-        _button_style(
-            Color(_tokens.accent.r, _tokens.accent.g, _tokens.accent.b, 0.48),
-            Color.TRANSPARENT,
-            true,
-            0
-        )
-    )
-    button.add_theme_font_size_override("font_size", 24)
+    var lit := StyleBoxFlat.new()
+    lit.bg_color = Color(1.0, 1.0, 1.0, 0.10)
+    lit.set_corner_radius_all(999)
+    lit.anti_aliasing = true
+    button.add_theme_stylebox_override("pressed", lit)
+    button.add_theme_stylebox_override("hover_pressed", lit)
+    button.add_theme_color_override("font_color", Color(1, 1, 1, 0.62))
+    button.add_theme_font_size_override("font_size", 20)
 
 func _dpad_contains_point(screen_position: Vector2) -> bool:
     if dpad_backdrop == null or not dpad_backdrop.is_visible_in_tree():
@@ -800,12 +879,19 @@ func _update_dpad(screen_position: Vector2) -> void:
     _position_dpad_center()
     _set_dpad_keys(_dpad_vector)
 
-func _position_dpad_center() -> void:
+func _position_dpad_center(snap: bool = false) -> void:
     if dpad_center == null:
         return
-    dpad_center.position = (
+    _dpad_knob_target = (
         _dpad_home_position + _dpad_vector * _dpad_travel_radius
     )
+    if snap:
+        dpad_center.position = _dpad_knob_target
+    var glass = dpad_center.get_node_or_null("Glass")
+    if glass != null:
+        var active := _dpad_touch_index != -1 or _dpad_mouse_dragging
+        if glass.selected != active:
+            glass.set_selected(active)
 
 func _set_dpad_keys(direction_vector: Vector2) -> void:
     var desired := {}
@@ -850,97 +936,36 @@ func _reset_dpad() -> void:
 func _apply_edge_menu_style(button: Button) -> void:
     button.text = ""
     button.tooltip_text = "Menu"
-    button.add_theme_stylebox_override(
-        "normal", _edge_menu_style(
-            Color(0.10, 0.10, 0.11, 0.88),
-            Color(0.82, 0.84, 0.88, 0.78)
-        )
-    )
-    button.add_theme_stylebox_override(
-        "hover", _edge_menu_style(
-            Color(0.18, 0.19, 0.21, 0.96),
-            Color(0.92, 0.93, 0.95, 0.94)
-        )
-    )
-    button.add_theme_stylebox_override(
-        "pressed", _edge_menu_style(
-            Color(_tokens.accent.r, _tokens.accent.g, _tokens.accent.b, 0.82),
-            Color(0.95, 0.97, 1.0, 0.98)
-        )
-    )
+    _detach_glass(button)
+    button.mouse_entered.connect(_set_orb_hovered.bind(true))
+    button.mouse_exited.connect(_set_orb_hovered.bind(false))
+    button.button_down.connect(_set_orb_pressed.bind(true))
+    button.button_up.connect(_set_orb_pressed.bind(false))
 
-func _edge_menu_style(fill: Color, border: Color) -> StyleBoxFlat:
-    var style := StyleBoxFlat.new()
-    style.bg_color = fill
-    style.border_color = border
-    style.border_width_left = 2
-    style.border_width_top = 2
-    style.border_width_bottom = 2
-    style.border_width_right = 0
-    style.corner_radius_top_left = 999
-    style.corner_radius_bottom_left = 999
-    style.corner_radius_top_right = 0
-    style.corner_radius_bottom_right = 0
-    style.shadow_color = Color(0.0, 0.0, 0.0, 0.32)
-    style.shadow_size = 3
-    style.shadow_offset = Vector2(-2.0, 1.0)
-    return style
+func _set_orb_hovered(value: bool) -> void:
+    if _orb != null:
+        _orb.hovered = value
+
+func _set_orb_pressed(value: bool) -> void:
+    if _orb == null:
+        return
+    _orb.pressed = value
+    if value:
+        _orb.press_at(_orb.get_local_mouse_position())
+    else:
+        _orb.release()
 
 func _attach_edge_menu_icon(button: Button) -> void:
-    var icon := Control.new()
-    icon.name = "MenuIcon"
-    icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
-    button.add_child(icon)
-
-    for row in range(2):
-        var track := Panel.new()
-        track.name = "Track%d" % row
-        track.mouse_filter = Control.MOUSE_FILTER_IGNORE
-        var track_style := StyleBoxFlat.new()
-        track_style.bg_color = Color(0.10, 0.10, 0.11, 0.72)
-        track_style.border_color = Color(0.92, 0.93, 0.95, 0.94)
-        track_style.set_border_width_all(2)
-        track_style.set_corner_radius_all(999)
-        track.add_theme_stylebox_override("panel", track_style)
-        icon.add_child(track)
-
-        var knob := Panel.new()
-        knob.name = "Knob%d" % row
-        knob.mouse_filter = Control.MOUSE_FILTER_IGNORE
-        knob.add_theme_stylebox_override(
-            "panel",
-            _button_style(
-                Color(0.92, 0.93, 0.95, 1.0),
-                Color(0.10, 0.10, 0.11, 0.92),
-                true,
-                1
-            )
-        )
-        icon.add_child(knob)
+    _orb = AetherOrb.new()
+    _orb.setup(_tokens.accent, _tokens.accent_2)
+    button.add_child(_orb)
 
 func _layout_edge_menu_icon() -> void:
-    var icon := menu_button.get_node_or_null("MenuIcon") as Control
-    if icon == null:
+    if _orb == null:
         return
-    var icon_size := Vector2(
-        minf(28.0, menu_button.size.x * 0.56),
-        minf(30.0, menu_button.size.y * 0.62)
-    )
-    icon.position = (menu_button.size - icon_size) * 0.5
-    icon.size = icon_size
-    var track_height := maxf(8.0, icon_size.y * 0.28)
-    var knob_size := track_height - 2.0
-    for row in range(2):
-        var track := icon.get_node("Track%d" % row) as Panel
-        var knob := icon.get_node("Knob%d" % row) as Panel
-        var row_y := 1.0 if row == 0 else icon_size.y - track_height - 1.0
-        track.position = Vector2(0.0, row_y)
-        track.size = Vector2(icon_size.x, track_height)
-        knob.position = Vector2(
-            icon_size.x - knob_size - 1.0 if row == 0 else 1.0,
-            row_y + 1.0
-        )
-        knob.size = Vector2.ONE * knob_size
+    _orb.position = Vector2.ZERO
+    _orb.size = menu_button.size
+    _orb.pivot_offset = menu_button.size * 0.5
 
 func _layout_menu_options(diameter: float, gap: float) -> void:
     var option_size := Vector2(maxf(108.0, diameter * 2.15), menu_button.size.y)
@@ -961,38 +986,18 @@ func _layout_menu_options(diameter: float, gap: float) -> void:
 
 func _apply_menu_option_style(button: Button) -> void:
     button.add_theme_font_size_override("font_size", 13)
-    button.add_theme_color_override("font_color", _tokens.text_primary)
-    button.add_theme_color_override("font_hover_color", _tokens.text_primary)
-    button.add_theme_color_override("font_pressed_color", _tokens.background)
-    for state in ["normal", "hover", "pressed"]:
-        var fill := Color(_tokens.background_raised.r, _tokens.background_raised.g, _tokens.background_raised.b, 0.94)
-        if state == "hover":
-            fill = _tokens.background_raised.lightened(0.08)
-        elif state == "pressed":
-            fill = _tokens.accent
-        button.add_theme_stylebox_override(
-            state,
-            _button_style(fill, _tokens.separator, false, 10)
-        )
+    button.add_theme_color_override("font_color", Color(1, 1, 1, 0.92))
+    button.add_theme_constant_override("outline_size", 0)
+    var glass = _attach_glass(button)
+    glass.tint = Color(0.09, 0.10, 0.13, 0.46)
 
 func _apply_input_mode_style(button: Button) -> void:
     button.add_theme_font_size_override("font_size", 13)
-    button.add_theme_stylebox_override(
-        "normal",
-        _button_style(Color(0.08, 0.10, 0.12, 0.88), REFERENCE_BORDER, false)
-    )
-    button.add_theme_stylebox_override(
-        "hover",
-        _button_style(Color(0.14, 0.18, 0.21, 0.94), Color.WHITE, false)
-    )
-    button.add_theme_stylebox_override(
-        "pressed",
-        _button_style(
-            Color(_tokens.accent.r, _tokens.accent.g, _tokens.accent.b, 0.9),
-            Color.WHITE,
-            false
-        )
-    )
+    button.add_theme_constant_override("outline_size", 0)
+    var glass = _attach_glass(button)
+    glass.selected_amount = 0.26
+    if glass.selected != is_touch_mode():
+        glass.set_selected(is_touch_mode())
 
 func _attach_mouse_icon(button: Button, highlights_left: bool) -> void:
     var icon := Control.new()
@@ -1085,30 +1090,62 @@ func _layout_mouse_icon(button: Button) -> void:
     wheel.size = Vector2(4.0, icon_size.y * 0.22)
 
 func _attach_pointer_visual(pointer: Control) -> void:
-    pointer.set_meta("visual_style", "computer_use")
+    pointer.set_meta("visual_style", "glass_arrow")
     pointer.set_meta("hotspot", CURSOR_HOTSPOT)
-    var points := PackedVector2Array([
-        Vector2(15, 10),
-        Vector2(15, 29),
-        Vector2(19.5, 24.5),
-        Vector2(24, 33),
-        Vector2(27.5, 31),
-        Vector2(23, 23),
-        Vector2(32, 23),
+
+    # Click marker centred exactly on the hotspot.
+    var halo := Panel.new()
+    halo.name = "Halo"
+    halo.mouse_filter = Control.MOUSE_FILTER_IGNORE
+    var halo_style := StyleBoxFlat.new()
+    halo_style.bg_color = Color(1.0, 1.0, 1.0, 0.12)
+    halo_style.border_color = Color(1.0, 1.0, 1.0, 0.42)
+    halo_style.set_border_width_all(1)
+    halo_style.set_corner_radius_all(999)
+    halo_style.anti_aliasing = true
+    halo.add_theme_stylebox_override("panel", halo_style)
+    halo.size = Vector2.ONE * 24.0
+    halo.pivot_offset = halo.size * 0.5
+    halo.position = CURSOR_HOTSPOT - halo.size * 0.5
+    halo.modulate.a = 0.6
+    pointer.add_child(halo)
+
+    # Slim arrow whose tip sits exactly on CURSOR_HOTSPOT.
+    var shape := PackedVector2Array([
+        Vector2(0.0, 0.0),
+        Vector2(0.0, 17.5),
+        Vector2(4.4, 13.6),
+        Vector2(7.3, 20.2),
+        Vector2(10.0, 19.0),
+        Vector2(7.2, 12.6),
+        Vector2(12.8, 12.6),
     ])
+    var points := PackedVector2Array()
+    for point in shape:
+        points.append(CURSOR_HOTSPOT + point)
+    var shadow_points := PackedVector2Array()
+    for point in points:
+        shadow_points.append(point + Vector2(0.6, 1.4))
+    var shadow := Polygon2D.new()
+    shadow.name = "Shadow"
+    shadow.polygon = shadow_points
+    shadow.color = Color(0.0, 0.0, 0.0, 0.28)
+    shadow.antialiased = true
+    pointer.add_child(shadow)
     var arrow := Polygon2D.new()
     arrow.name = "Arrow"
     arrow.polygon = points
-    arrow.color = COMPUTER_USE_CURSOR_FILL
+    arrow.color = Color(0.98, 0.98, 0.99, 0.98)
     arrow.antialiased = true
     pointer.add_child(arrow)
     var outline := Line2D.new()
     outline.name = "Outline"
     outline.points = points
     outline.closed = true
-    outline.width = 1.5
+    outline.width = 1.25
     outline.antialiased = true
-    outline.default_color = COMPUTER_USE_CURSOR_OUTLINE
+    outline.joint_mode = Line2D.LINE_JOINT_ROUND
+    outline.default_color = Color(0.06, 0.07, 0.09, 0.88)
     pointer.add_child(outline)
 
 func _button_style(
@@ -1143,7 +1180,9 @@ func _drag_menu_to(pointer_y: float) -> void:
         min_y,
         max_y
     )
-    menu_button.position.x = _safe_rect.end.x - menu_button.size.x
+    menu_button.position.x = (
+        _safe_rect.end.x - menu_button.size.x - MENU_EDGE_INSET
+    )
     var menu_y_range := maxf(0.0, max_y - min_y)
     _menu_y_ratio = (
         (menu_button.position.y - min_y) / menu_y_range
@@ -1210,24 +1249,131 @@ func _sync_input_mode_presentation() -> void:
         "Direct touch mode" if touch_mode else "Virtual mouse mode"
     )
     input_mode_button.set_meta("input_mode", _input_mode)
+    _apply_input_mode_style(input_mode_button)
 
 func _sync_visibility() -> void:
     if menu_button == null:
         return
     var controls_visible := _enabled and _menu_button_enabled
+    var options_were_visible := keyboard_button.visible
     menu_button.visible = controls_visible
     keyboard_button.visible = controls_visible and _menu_open
     virtual_controls_button.visible = controls_visible and _menu_open
+    var panel_shown := controls_visible and _panel_open
     for control in _panel_controls:
-        control.visible = controls_visible and _panel_open
+        control.visible = panel_shown
     var show_virtual_mouse := controls_visible and _panel_open and not is_touch_mode()
     mouse_left_button.visible = show_virtual_mouse
     mouse_right_button.visible = show_virtual_mouse
     cursor_handle.visible = show_virtual_mouse
+    var frame_was_visible := _pad_frame.visible
+    _pad_frame.visible = show_virtual_mouse
+    if show_virtual_mouse and not frame_was_visible:
+        _start_pad_frame_pulse()
+    elif not show_virtual_mouse and frame_was_visible:
+        _stop_pad_frame_pulse()
+    if keyboard_button.visible and not options_were_visible:
+        _animate_menu_options()
+    if panel_shown and not _panel_shown:
+        _animate_panel_in()
+    _panel_shown = panel_shown
+    if _orb != null:
+        _orb.open = controls_visible and (_menu_open or _panel_open)
     var menu_visible := controls_visible and _menu_open
     if menu_visible != _menu_visible:
         _menu_visible = menu_visible
         menu_open_changed.emit(menu_visible)
+
+func _animate_menu_options() -> void:
+    if not is_inside_tree():
+        return
+    var index := 0
+    for option in [keyboard_button, virtual_controls_button]:
+        var target_x: float = option.position.x
+        var delay := index * 0.04
+        option.modulate.a = 0.0
+        option.position.x = target_x + 14.0
+        var tween := _fresh_tween(option, "enter")
+        tween.set_parallel(true)
+        tween.tween_property(option, "modulate:a", 1.0, 0.22).set_delay(delay)
+        tween.tween_property(option, "position:x", target_x, 0.32) \
+            .set_delay(delay).set_trans(Tween.TRANS_QUART).set_ease(Tween.EASE_OUT)
+        index += 1
+
+func _animate_panel_in() -> void:
+    if not is_inside_tree():
+        return
+    var origin := menu_button.position + menu_button.size * 0.5
+    var reach := maxf(_safe_rect.size.length(), 1.0)
+    for control in _panel_controls:
+        if not control.visible:
+            continue
+        var center := control.position + control.size * 0.5
+        var delay := clampf(origin.distance_to(center) / reach, 0.0, 1.0) * 0.12
+        control.pivot_offset = (
+            CURSOR_HOTSPOT if control == cursor_handle else control.size * 0.5
+        )
+        control.modulate.a = 0.0
+        control.scale = Vector2.ONE * 0.94
+        var tween := _fresh_tween(control, "enter")
+        tween.set_parallel(true)
+        tween.tween_property(control, "modulate:a", 1.0, 0.24).set_delay(delay)
+        tween.tween_property(control, "scale", Vector2.ONE, 0.32) \
+            .set_delay(delay).set_trans(Tween.TRANS_QUART).set_ease(Tween.EASE_OUT)
+
+func _start_pad_frame_pulse() -> void:
+    if not is_inside_tree():
+        return
+    var tween := _fresh_tween(_pad_frame, "enter")
+    _pad_frame.modulate.a = 0.0
+    tween.tween_property(_pad_frame, "modulate:a", 1.0, 0.4)
+
+func _stop_pad_frame_pulse() -> void:
+    if _pad_frame.has_meta("_tw_enter"):
+        var previous = _pad_frame.get_meta("_tw_enter")
+        if previous is Tween and (previous as Tween).is_valid():
+            (previous as Tween).kill()
+
+func _spawn_touch_ripple(screen_position: Vector2) -> void:
+    if _root == null or not is_inside_tree():
+        return
+    var ring := Panel.new()
+    ring.name = "TouchRipple"
+    ring.mouse_filter = Control.MOUSE_FILTER_IGNORE
+    var style := StyleBoxFlat.new()
+    style.bg_color = Color(1.0, 1.0, 1.0, 0.06)
+    style.border_color = Color(1.0, 1.0, 1.0, 0.50)
+    style.set_border_width_all(1)
+    style.set_corner_radius_all(999)
+    style.anti_aliasing = true
+    ring.add_theme_stylebox_override("panel", style)
+    ring.size = Vector2.ONE * 56.0
+    ring.pivot_offset = ring.size * 0.5
+    ring.position = screen_position - ring.size * 0.5
+    ring.scale = Vector2.ONE * 0.35
+    _root.add_child(ring)
+    var tween := ring.create_tween()
+    tween.set_parallel(true)
+    tween.tween_property(ring, "scale", Vector2.ONE, 0.45) \
+        .set_trans(Tween.TRANS_QUART).set_ease(Tween.EASE_OUT)
+    tween.tween_property(ring, "modulate:a", 0.0, 0.45) \
+        .set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
+    tween.chain().tween_callback(ring.queue_free)
+
+func _pulse_cursor() -> void:
+    if cursor_handle == null or not is_inside_tree():
+        return
+    var halo := cursor_handle.get_node_or_null("Halo") as Control
+    if halo == null:
+        return
+    halo.scale = Vector2.ONE * 0.55
+    halo.modulate.a = 1.0
+    var tween := _fresh_tween(halo, "pulse")
+    tween.set_parallel(true)
+    tween.tween_property(halo, "scale", Vector2.ONE, 0.36) \
+        .set_trans(Tween.TRANS_QUART).set_ease(Tween.EASE_OUT)
+    tween.tween_property(halo, "modulate:a", 0.6, 0.36) \
+        .set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
 
 func _apply_keyboard_controls_opacity() -> void:
     for control in _panel_controls:
@@ -1235,6 +1381,10 @@ func _apply_keyboard_controls_opacity() -> void:
         # key caps are intentionally subdued.
         var opacity := 1.0 if control == cursor_handle else _keyboard_controls_opacity
         control.self_modulate = Color(1.0, 1.0, 1.0, opacity)
+        for child_name in ["Glass", "Decoration"]:
+            var child := control.get_node_or_null(child_name) as CanvasItem
+            if child != null:
+                child.self_modulate = Color(1.0, 1.0, 1.0, opacity)
 
 func _press_key(key_code: int) -> void:
     if not _enabled or not _panel_open or _held_keys.has(key_code):
@@ -1255,6 +1405,7 @@ func _press_mouse_button(button: int, modifiers: int) -> void:
     if not _enabled or not _panel_open or _held_mouse_buttons.has(modifiers):
         return
     _held_mouse_buttons[modifiers] = {"button": button, "modifiers": modifiers}
+    _pulse_cursor()
     pointer_button_requested.emit(
         true, button, modifiers, cursor_screen_position()
     )
@@ -1293,8 +1444,16 @@ func _cancel_scroll_hold() -> void:
     _held_scroll_direction = 0.0
     _scroll_next_repeat_msec = 0
 
-func _process(_delta: float) -> void:
+func _process(delta: float) -> void:
     _advance_scroll_hold(Time.get_ticks_msec())
+    if dpad_center != null and dpad_center.visible:
+        var gap := _dpad_knob_target - dpad_center.position
+        if gap.length_squared() > 0.01:
+            var dragging := _dpad_touch_index != -1 or _dpad_mouse_dragging
+            var rate := 34.0 if dragging else 16.0
+            dpad_center.position += gap * (1.0 - exp(-rate * delta))
+        else:
+            dpad_center.position = _dpad_knob_target
 
 func _advance_scroll_hold(now_msec: int) -> void:
     if (
@@ -1333,6 +1492,7 @@ func _begin_cursor_touch(index: int, screen_position: Vector2) -> void:
     _cursor_secondary_touch_released = false
     _cursor_two_finger_tap_candidate = false
     _begin_cursor_drag(screen_position)
+    _spawn_touch_ripple(screen_position)
 
 func _begin_cursor_secondary_touch(index: int, screen_position: Vector2) -> void:
     if _cursor_secondary_touch_index != -1:

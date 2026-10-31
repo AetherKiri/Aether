@@ -54,7 +54,7 @@ func _run() -> void:
     assert(slider.get_theme_stylebox("slider") is StyleBoxFlat)
     assert(slider.get_theme_stylebox("grabber_area") is StyleBoxFlat)
     assert(not slider.mouse_force_pass_scroll_events)
-    assert(app._nearest_horizontal_slider(slider) == slider)
+    assert(app._nearest_horizontal_control(slider) == slider)
 
     var drag_state := {
         "axis_lock": app.SHELL_SCROLL_AXIS_PENDING,

@@ -158,6 +158,11 @@ early completion before a frame, reopening the same runtime and genuine VM
 errors after clean exits. The shell's handle-recreation regression also covers
 System 4.
 
+The ADV log contract alternates numeric and named voice interfaces in one
+process, including repeated named-voice sessions. It checks text and voice
+save/load round trips through the production HLL initialization and teardown
+so Evenicle's named-voice mode cannot leak into a subsequent numeric game.
+
 The graphics contract draws through the production renderer and offscreen
 context, checking pixels while switching between solid fills and textured
 rectangles/quadrilaterals. Inactive shader attributes have location `-1` and

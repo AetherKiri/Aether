@@ -51,6 +51,13 @@ if(TARGET aether_xsystem4_runtime)
         "${AETHERKIRI_XSYSTEM4_DIR}/subprojects/libsys4/include")
     target_link_libraries(aether_xsystem4_scene_keeper_contract PRIVATE aether_xsystem4_runtime)
     add_test(NAME xsystem4-scene-keeper-contract COMMAND aether_xsystem4_scene_keeper_contract)
+    add_executable(aether_xsystem4_adv_log_contract xsystem4_native/adv_log.c)
+    target_include_directories(aether_xsystem4_adv_log_contract PRIVATE
+        "${AETHERKIRI_XSYSTEM4_DIR}/include"
+        "${AETHERKIRI_XSYSTEM4_DIR}/src/hll"
+        "${AETHERKIRI_XSYSTEM4_DIR}/subprojects/libsys4/include")
+    target_link_libraries(aether_xsystem4_adv_log_contract PRIVATE aether_xsystem4_runtime)
+    add_test(NAME xsystem4-adv-log-contract COMMAND aether_xsystem4_adv_log_contract)
     find_package(SDL2 CONFIG REQUIRED)
     find_package(SDL2_image CONFIG REQUIRED)
     foreach(contract afa assets lifecycle rance_quest tga graphics)

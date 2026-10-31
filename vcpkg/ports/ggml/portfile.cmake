@@ -10,6 +10,8 @@ endif()
 set(ENV{SOURCE_DATE_EPOCH} "1")
 
 # Keep the upstream recipe and patches aligned with our 0.11.1 manifest.
+# The llama-cpp override in vcpkg.json must stay compatible with this overlay;
+# upgrade the pair together rather than updating llama-cpp through the baseline.
 # Source: microsoft/vcpkg at 9e593bb18ea69cc5095e012465dcd675a822ed0d.
 # A fresh vcpkg checkout may contain a newer recipe with a different hash.
 include("${CMAKE_CURRENT_LIST_DIR}/upstream-portfile.cmake")

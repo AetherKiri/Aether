@@ -2,6 +2,17 @@ extends SceneTree
 
 const GameVirtualControls = preload("res://scripts/game_virtual_controls.gd")
 const AetherDesignTokens = preload("res://scripts/ui/aether_design_tokens.gd")
+const NativeGameControls = preload("res://scripts/native_game_controls.gd")
+
+class NativeControlsHost:
+    extends Control
+    var ui_tokens = AetherDesignTokens.new()
+    var game_virtual_input_mode := GameVirtualControls.INPUT_MODE_TOUCH
+    var game_virtual_menu_enabled := true
+    var game_virtual_keyboard_opacity := 1.0
+
+    func _on_game_virtual_input_mode_changed(mode: String) -> void:
+        game_virtual_input_mode = mode
 
 var _key_events: Array[Dictionary] = []
 var _pointer_moves: Array[Dictionary] = []
@@ -600,12 +611,52 @@ func _run() -> void:
     controls.input_mode_button.emit_signal("pressed")
     await process_frame
     if (
+        controls.input_mode() != GameVirtualControls.INPUT_MODE_MOUSE_ONLY
+        or controls.input_mode_button.text != "Mode: Mouse only"
+        or not controls.cursor_handle.visible
+        or controls.is_touch_mode()
+        or controls.pointer_regions() != [safe_rect]
+    ):
+        _fail("mouse-only mode did not retain the shared virtual pointer")
+        return
+    for control in required_controls + [controls.dpad_backdrop, controls.dpad_center]:
+        if control != controls.cursor_handle and control != controls.input_mode_button and control.visible:
+            _fail("mouse-only mode still displays a pad control: %s" % control.name)
+            return
+
+    # Former keyboard/joystick regions must now behave like the trackpad.
+    _key_events.clear()
+    _pointer_buttons.clear()
+    var mouse_only_position: Vector2 = controls.dpad_backdrop.get_global_rect().get_center()
+    for contact in [[31, true], [31, false], [31, true], [32, true], [31, false], [32, false]]:
+        var touch := InputEventScreenTouch.new()
+        touch.index = contact[0]
+        touch.pressed = contact[1]
+        touch.position = mouse_only_position + Vector2(20.0 if touch.index == 32 else 0.0, 0.0)
+        if not controls.routes_pointer(touch) or not controls.owns_viewport_pointer(touch):
+            _fail("mouse-only mode lost trackpad touch ownership")
+            return
+    if (
+        not _key_events.is_empty()
+        or _pointer_buttons.size() != 4
+        or _pointer_buttons[0].button != 0 or not _pointer_buttons[0].pressed
+        or _pointer_buttons[1].button != 0 or _pointer_buttons[1].pressed
+        or _pointer_buttons[2].button != 1 or not _pointer_buttons[2].pressed
+        or _pointer_buttons[3].button != 1 or _pointer_buttons[3].pressed
+    ):
+        _fail("mouse-only mode did not route single/double-finger taps as left/right clicks")
+        return
+
+    controls.input_mode_button.emit_signal("pressed")
+    await process_frame
+    if (
         controls.is_touch_mode()
         or not controls.cursor_handle.visible
         or not controls.mouse_left_button.visible
         or not controls.mouse_right_button.visible
         or _input_modes != [
             GameVirtualControls.INPUT_MODE_TOUCH,
+            GameVirtualControls.INPUT_MODE_MOUSE_ONLY,
             GameVirtualControls.INPUT_MODE_MOUSE,
         ]
     ):
@@ -869,7 +920,53 @@ func _run() -> void:
         _fail("changing modes did not release the held scroll button")
         return
     controls.scroll_down_button.emit_signal("button_up")
-    controls.input_mode_button.emit_signal("pressed")
+    controls.set_input_mode(GameVirtualControls.INPUT_MODE_MOUSE)
+
+    # Switching away while dragging must release the joystick and prevent its
+    # old finger from steering hidden keys in mouse-only mode.
+    dpad_down.position = dpad_home + Vector2(24.0, 0.0)
+    controls.routes_pointer(dpad_down)
+    controls.set_input_mode(GameVirtualControls.INPUT_MODE_MOUSE_ONLY)
+    var released_key_count := _key_events.size()
+    controls.routes_pointer(dpad_drag)
+    controls.routes_pointer(dpad_up)
+    if _key_events.size() != released_key_count or not controls._held_keys.is_empty():
+        _fail("a hidden joystick kept generating keys after changing modes")
+        return
+
+    for mode in GameVirtualControls.INPUT_MODES:
+        controls.set_input_mode(mode)
+        controls.show_virtual_controls()
+        var opened_msec := Time.get_ticks_msec()
+        controls._advance_input_mode_visibility(opened_msec + 1000)
+        if not controls.input_mode_button.visible:
+            _fail("mode selector disappeared before its idle delay")
+            return
+        controls._advance_input_mode_visibility(
+            opened_msec + GameVirtualControls.INPUT_MODE_HIDE_DELAY_MSEC + 1
+        )
+        controls.set_enabled(true)
+        controls.layout(Vector2(844, 390), safe_rect)
+        if controls.input_mode_button.visible:
+            _fail("mode selector did not remain hidden after idle/layout refresh")
+            return
+        if controls.is_touch_mode():
+            var mode_point: Vector2 = controls.input_mode_button.get_global_rect().get_center()
+            for region in controls.pointer_regions():
+                if region.has_point(mode_point):
+                    _fail("native overlay still captures the hidden mode selector")
+                    return
+            direct_touch.position = mode_point
+            if controls.routes_pointer(direct_touch):
+                _fail("hidden mode selector still intercepts direct game touches")
+                return
+        controls.menu_button.emit_signal("pressed")
+        controls.virtual_controls_button.emit_signal("pressed")
+        if not controls.input_mode_button.visible or controls.input_mode() != mode:
+            _fail("Control Pad did not restore the mode selector with its selected mode")
+            return
+
+    controls.set_input_mode(GameVirtualControls.INPUT_MODE_MOUSE)
 
     controls.a_button.emit_signal("button_down")
     controls.mouse_right_button.emit_signal("button_down")
@@ -887,6 +984,23 @@ func _run() -> void:
     if controls.routes_pointer(inside):
         _fail("hidden controls still captured input")
         return
+
+    var native_host := NativeControlsHost.new()
+    var native_controls := NativeGameControls.new()
+    root.add_child(native_host)
+    root.add_child(native_controls)
+    native_controls.setup(native_host)
+    native_controls.set_enabled(true)
+    native_controls.set_virtual_controls(true)
+    native_controls._draw_pending = 0
+    native_controls.controls._advance_input_mode_visibility(
+        Time.get_ticks_msec() + GameVirtualControls.INPUT_MODE_HIDE_DELAY_MSEC + 1
+    )
+    if native_controls.controls.input_mode_button.visible or native_controls._draw_pending == 0:
+        _fail("mode idle hiding did not invalidate the native game overlay")
+        return
+    native_controls.free()
+    native_host.free()
 
     print("game_virtual_controls_test: PASS")
     quit(0)

@@ -334,8 +334,7 @@ func prepare_virtual_mouse() -> bool:
         if not controls.is_menu_open():
             controls.menu_button.emit_signal("pressed")
         controls.virtual_controls_button.emit_signal("pressed")
-    if controls.is_touch_mode():
-        controls.input_mode_button.emit_signal("pressed")
+    controls.set_input_mode(controls.INPUT_MODE_MOUSE)
     return controls.is_panel_open() and controls.input_mode_button.text == "Mode: Mouse"
 
 func virtual_mouse_click(action: Dictionary, label: String) -> bool:

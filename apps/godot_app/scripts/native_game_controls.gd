@@ -34,6 +34,9 @@ func setup(host) -> void:
     controls.set_keyboard_controls_opacity(host.game_virtual_keyboard_opacity)
     controls.menu_open_changed.connect(func(_open): invalidate())
     controls.virtual_controls_requested.connect(invalidate)
+    # Idle hiding happens without an input event, so publish a fresh native
+    # overlay frame and hit regions when the shared mode selector disappears.
+    controls.input_mode_button.visibility_changed.connect(invalidate)
     controls.input_mode_changed.connect(func(mode):
         host._on_game_virtual_input_mode_changed(mode)
         invalidate())

@@ -74,8 +74,12 @@ strip_elf() {
         require_regular_file "$binary"
         "$strip_tool" --strip-all "$binary"
         if [[ -n "$readelf_tool" ]] &&
-           "$readelf_tool" -S "$binary" 2>/dev/null |
-               grep -Eq '\.(symtab|debug_[[:alnum:]_.-]+)'; then
+           "$readelf_tool" -SW "$binary" 2>/dev/null |
+               # Rust marks its tiny GDB auto-load descriptor SHF_ALLOC, so
+               # llvm-strip preserves it along with the loaded image. It is
+               # not a DWARF symbol payload. Consume all readelf output to
+               # avoid SIGPIPE hiding a match under pipefail.
+               awk '/\.(symtab|debug_[[:alnum:]_.-]+)[[:space:]]/ && !/\.debug_gdb_scripts[[:space:]]/ { found = 1 } END { exit !found }'; then
             echo "Error: ELF symbol/debug sections remain after stripping: $binary" >&2
             exit 1
         fi

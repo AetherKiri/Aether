@@ -493,6 +493,7 @@ const UI_TEXT := {
         "game.type_directory": "目录",
         "game.type_archive": "归档",
         "dialog.import_title": "导入视觉小说",
+        "dialog.import_guide_body_android": "在 Android 上直接选择设备中的视觉小说文件夹：\n\n1. 先将游戏解压到设备存储中的文件夹\n2. 点击「导入」，按提示授予 Aether 文件访问权限\n3. 点击「选择游戏目录」，选择包含游戏数据的文件夹\n4. 导入完成后，在视觉小说库中点击游戏即可启动\n\n请保留完整的游戏文件夹，导入后不要移动或删除。",
         "dialog.import_guide_body": "请使用「文件」App 将视觉小说文件夹复制到本应用的目录：\n\n1. 打开 iPhone / iPad 上的「文件」App\n2. 前往：我的 iPhone / iPad > Aether > Games\n3. 将视觉小说文件夹复制到 Games 目录\n4. 返回本应用，点击「刷新」检测新视觉小说\n\n视觉小说目录：Games/",
         "dialog.ok": "知道了",
         "dialog.scrape_title": "完善游戏信息",
@@ -857,6 +858,7 @@ const UI_TEXT := {
         "game.type_directory": "目錄",
         "game.type_archive": "封存",
         "dialog.import_title": "匯入視覺小說",
+        "dialog.import_guide_body_android": "在 Android 上直接選擇裝置中的視覺小說資料夾：\n\n1. 先將遊戲解壓縮到裝置儲存空間中的資料夾\n2. 點選「匯入」，依提示授予 Aether 檔案存取權限\n3. 點選「選擇遊戲目錄」，選擇包含遊戲資料的資料夾\n4. 匯入完成後，在視覺小說庫中點選遊戲即可啟動\n\n請保留完整的遊戲資料夾，匯入後不要移動或刪除。",
         "dialog.import_guide_body": "請使用「檔案」App 將視覺小說資料夾複製到本 App 的目錄：\n\n1. 開啟 iPhone / iPad 上的「檔案」App\n2. 前往：我的 iPhone / iPad > Aether > Games\n3. 將視覺小說資料夾複製到 Games 目錄\n4. 返回本 App，點選「重新整理」偵測新視覺小說\n\n視覺小說目錄：Games/",
         "dialog.ok": "知道了",
         "dialog.scrape_title": "完善遊戲資訊",
@@ -1265,6 +1267,7 @@ You can find it any time under Settings → QQ Group.",
         "game.type_directory": "Directory",
         "game.type_archive": "Archive",
         "dialog.import_title": "Import Visual Novel",
+        "dialog.import_guide_body_android": "On Android, select a visual novel folder from your device storage:\n\n1. Extract the game into a folder on your device\n2. Tap Import and grant Aether file access when prompted\n3. Tap Choose Game Folder and select the folder containing the game data\n4. Once imported, tap the game in your visual novel library to launch it\n\nKeep the complete game folder in place after importing. Do not move or delete it.",
         "dialog.import_guide_body": "Use the Files app to copy your visual novel folder into this app's directory:\n\n1. Open the Files app on your iPhone / iPad\n2. Go to: On My iPhone / iPad > Aether > Games\n3. Copy the visual novel folder into Games\n4. Return to this app and tap Refresh to detect new visual novels\n\nVisual novel directory: Games/",
         "dialog.ok": "Got it",
         "dialog.scrape_title": "Finish Game Info",
@@ -1629,6 +1632,7 @@ You can find it any time under Settings → QQ Group.",
         "game.type_directory": "フォルダー",
         "game.type_archive": "アーカイブ",
         "dialog.import_title": "ビジュアルノベルをインポート",
+        "dialog.import_guide_body_android": "Android では、端末内のビジュアルノベルのフォルダーを直接選択します：\n\n1. ゲームを端末のストレージ内のフォルダーに展開\n2. 「インポート」をタップし、表示される案内に従って Aether にファイルアクセスを許可\n3. 「ゲームフォルダーを選択」をタップし、ゲームデータを含むフォルダーを選択\n4. インポート後、ライブラリでゲームをタップして起動\n\nゲームのフォルダーはすべてのファイルを保持し、インポート後に移動や削除をしないでください。",
         "dialog.import_guide_body": "「ファイル」App でビジュアルノベルのフォルダーをこのアプリのディレクトリにコピーしてください：\n\n1. iPhone / iPad で「ファイル」App を開く\n2. 移動先：この iPhone / iPad 内 > Aether > Games\n3. ビジュアルノベルのフォルダーを Games にコピー\n4. アプリに戻り、「更新」をタップして新しいビジュアルノベルを検出\n\nビジュアルノベルのディレクトリ：Games/",
         "dialog.ok": "了解",
         "dialog.scrape_title": "ゲーム情報を設定",
@@ -1993,6 +1997,7 @@ You can find it any time under Settings → QQ Group.",
         "game.type_directory": "폴더",
         "game.type_archive": "아카이브",
         "dialog.import_title": "비주얼 노벨 가져오기",
+        "dialog.import_guide_body_android": "Android에서는 기기에 있는 비주얼 노벨 폴더를 직접 선택하세요:\n\n1. 게임을 기기 저장 공간의 폴더에 압축 해제합니다\n2. 가져오기를 누르고 안내에 따라 Aether의 파일 접근을 허용합니다\n3. 게임 폴더 선택을 누르고 게임 데이터가 들어 있는 폴더를 선택합니다\n4. 가져온 후 라이브러리에서 게임을 눌러 실행합니다\n\n게임 폴더의 모든 파일을 유지하고, 가져온 후 폴더를 이동하거나 삭제하지 마세요.",
         "dialog.import_guide_body": "파일 앱으로 비주얼 노벨 폴더를 이 앱의 디렉터리에 복사하세요:\n\n1. iPhone / iPad에서 파일 앱을 엽니다\n2. 이동: 나의 iPhone / iPad > Aether > Games\n3. 비주얼 노벨 폴더를 Games에 복사합니다\n4. 앱으로 돌아와 새로고침을 눌러 새 비주얼 노벨을 감지합니다\n\n비주얼 노벨 디렉터리: Games/",
         "dialog.ok": "확인",
         "dialog.scrape_title": "게임 정보 설정",
@@ -8863,7 +8868,7 @@ func _dismiss_modal(after: Callable = Callable()) -> void:
 
 func _show_import_guide() -> void:
     var guide_title := _t("dialog.import_title")
-    var guide_body := _t("dialog.import_guide_body")
+    var guide_body := _t("dialog.import_guide_body_android") if OS.get_name() == "Android" else _t("dialog.import_guide_body")
     if home_library_mode != "game":
         guide_title = _media_text("video.guide_title")
         guide_body = _media_text("video.guide_body_ios") if OS.get_name() == "iOS" else _media_text("video.guide_body_desktop")

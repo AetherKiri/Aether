@@ -270,6 +270,8 @@ adb install -r out/godot/android/debug/Aether-debug.apk
 adb shell monkey -p org.github.krkr2.aetherkiri -c android.intent.category.LAUNCHER 1
 ```
 
+Android 构建默认移除打包库中运行时不需要的原生符号，Debug 构建也如此。完整符号保留在 `out/android/arm64-v8a/debug` 中，可用于原生调试和崩溃符号化。如需将完整符号一同打入 Debug 包，请运行 `KEEP_ANDROID_DEBUG_SYMBOLS=1 ./build.sh android debug`。
+
 Release APK（`out/godot/android/release/Aether-release.apk`）在配置发布
 keystore 前保持未签名——分发前请用 `apksigner` 签名。
 

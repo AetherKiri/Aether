@@ -77,30 +77,36 @@ save precedence and native write behavior. `set_font` takes precedence over
 script-requested font families for this session, retaining the requested size
 and style. Closing the session restores native font selection.
 
-| Engine | Supported explicit encodings |
-| --- | --- |
-| BGI | CP932, GBK, UTF-8 (native CP932 fallback) |
-| ADVHD legacy scripts, SoftPal | CP932, GBK |
-| YU-RIS compiled scripts | CP932, GBK, Big5, UTF-8 |
-| CatSystem2 scenes | CP932, GBK, GB18030, Big5, UTF-8 |
-| Escude ACPX scripts | CP932, GBK |
-| SystemC scripts | CP932, GBK, UTF-8 |
-| EntisGLS CSX | No global encoding override; CSX retains its native Unicode representation. Calling `set_encoding` reports an error. |
+BGI, YU-RIS compiled scripts, ADVHD legacy scripts, SoftPal, CatSystem2 scenes,
+Escude ACPX scripts and SystemC share all five explicit byte-text encodings:
 
-`SJIS`, `Shift-JIS`, and `Shift_JIS` normalize to CP932; CP936 and GB2312
-normalize to GBK. Modern ADVHD scripts retain their native UTF-8 format.
-The game still determines native script formats and execution behavior.
+| Canonical name | Aliases (ASCII case-insensitive) |
+| --- | --- |
+| `CP932` | `SJIS`, `Shift-JIS`, `Shift_JIS`, `ShiftJIS` |
+| `GBK` | `CP936`, `GB2312` |
+| `GB18030` | — |
+| `BIG5` | `CP950`, `Big-5` |
+| `UTF-8` | `UTF8` |
+
+GB18030 four-byte characters and UTF-8 multibyte characters are consumed whole.
+Unknown names fail with the common list of supported values. Omitting
+`set_encoding` preserves each engine's existing detection and defaults.
+
+Native Unicode formats retain their representation: modern ADVHD scripts use
+UTF-8, and EntisGLS CSX has no global byte-encoding override and explicitly
+rejects `set_encoding`. BGI retains its native CP932 fallback for UTF-8.
+These format rules do not silently map unsupported names to CP932.
 
 All eight engines use the same `aether` functions and the same shared
-`GameHooks` implementation. Resource names, accepted byte formats and supported
-scenario encodings remain engine-specific. This API registers startup
+`GameHooks` implementation. Resource names and native script
+formats remain engine-specific. This API registers startup
 resources; it does not expose per-read or per-line Lua callbacks.
 SoftPal additionally accepts `aether/softpal-text.bin`, a text-ID replacement
 bank registered through the same `add_file` API. Its contract is documented in
 the SoftPal package's `aether_runtime/examples/README.md`.
 If native RPCK translations are present, Lua entries override only matching
 IDs. The original DAT is decoded before the Unicode dictionary is converted
-to CP936; Lua text-bank entries use that final encoding.
+to the explicit Lua encoding (CP936 when omitted); Lua text-bank entries use that final encoding.
 
 Lua has base, string, table, math and UTF-8 libraries, including `string.unpack`
 and integer bit operations. It has no `io`, `os`, `package`, `debug`, filesystem

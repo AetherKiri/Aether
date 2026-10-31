@@ -155,6 +155,13 @@ early completion before a frame, reopening the same runtime and genuine VM
 errors after clean exits. The shell's handle-recreation regression also covers
 System 4.
 
+The graphics contract draws through the production renderer and offscreen
+context, checking pixels while switching between solid fills and textured
+rectangles/quadrilaterals. Inactive shader attributes have location `-1` and
+must not be passed to vertex attribute APIs; mobile drivers can remove unused
+UV inputs from fill shaders. The test retains GL errors through presentation
+so an invalid draw cannot be hidden by clearing errors before frame readback.
+
 On 2026-10-18, the supplied **Sengoku Rance v1.01** Chinese build was tested on
 macOS arm64: 800×600 startup, opening movie/audio, title, new game, Chinese
 dialogue and character rendering, pointer advancement and the in-game menu.

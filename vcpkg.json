@@ -176,6 +176,10 @@
   ],
   "overrides": [
     {
+      "name": "llama-cpp",
+      "version-string": "9030"
+    },
+    {
       "name": "opencv4",
       "version": "4.7.0#6"
     },

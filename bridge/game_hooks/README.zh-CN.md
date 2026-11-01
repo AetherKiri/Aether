@@ -129,20 +129,24 @@ Lua API。引擎探测和部分启动配置仍可能早于 hook 执行；当前�
 
 **编码与字体**
 
-| 引擎或脚本类型 | `set_encoding` 支持值 |
-| --- | --- |
-| BGI | `CP932`、`GBK`、`UTF-8`；UTF-8 使用引擎原有的 CP932 回退规则。 |
-| YU-RIS 编译脚本 | `CP932`、`GBK`、`BIG5`、`UTF-8`。 |
-| ADVHD 旧版脚本 | `CP932`、`GBK`；现代 ADVHD 脚本保留原生 UTF-8 格式。 |
-| SoftPal | `CP932`、`GBK`，其中 `GBK` 在适配层映射为 CP936。 |
-| CatSystem2 场景脚本 | `CP932`、`GBK`、`GB18030`、`BIG5`、`UTF-8`。 |
-| Escude ACPX 脚本 | `CP932`、`GBK`。 |
-| SystemC 脚本 | `CP932`、`GBK`、`UTF-8`。 |
-| EntisGLS CSX | 保留原生 Unicode 表示，没有全局字节编码开关；调用 `set_encoding` 会明确报错。资源覆盖、`transcode` 和字体选择仍可使用。 |
+BGI、YU-RIS 编译脚本、ADVHD 旧版脚本、SoftPal、CatSystem2 场景、Escude ACPX
+和 SystemC 统一支持以下五个标准值，名称不区分 ASCII 大小写：
 
-`set_encoding` 的名称不区分 ASCII 大小写。`SJIS`、`Shift-JIS`、`Shift_JIS`
-归一为 `CP932`，`CP936`、`GB2312` 归一为 `GBK`，`UTF8` 归一为 `UTF-8`。
-当前引擎不支持的编码会导致启动失败。未调用时保留原有选择和检测逻辑。
+| 标准值 | 兼容别名 |
+| --- | --- |
+| `CP932` | `SJIS`、`Shift-JIS`、`Shift_JIS`、`ShiftJIS` |
+| `GBK` | `CP936`、`GB2312` |
+| `GB18030` | — |
+| `BIG5` | `CP950`、`Big-5` |
+| `UTF-8` | `UTF8` |
+
+例如 `aether.set_encoding("GB18030")` 在上述引擎中选择同一编码；GB18030
+四字节字符和 UTF-8 多字节字符会按完整字符处理。未知名称会列出这五个标准值并
+终止加载。未调用时保留原有选择和检测逻辑。
+
+格式本身的 Unicode 约定保持不变：现代 ADVHD 脚本保留原生 UTF-8；EntisGLS
+CSX 没有全局字节编码开关，调用 `set_encoding` 仍明确报错。BGI 的 UTF-8
+保留原有 CP932 回退规则。这些约定不会把不支持的名称静默映射成 CP932。
 
 `set_encoding` 决定引擎如何解释资源中的文本字节；`transcode` 则实际转换字节。
 例如 `aether.transcode("中文", "UTF-8", "GBK")` 返回 GBK 字节，但不会改变
@@ -160,8 +164,8 @@ EntisGLS 的 `set_font` 在本会话内优先于脚本指定的字体名，保�
 `aether.add_file` 注册它，内容是带版本标记的文本 ID 映射。VM 先用原偏移找到
 原文本 ID，再读取对应的替换内容，保留原偏移和 ID 的含义。
 如果原生 RPCK 已提供同一 ID 的译文，Lua 的 ID 覆盖表优先；未覆盖的 ID 保留
-原生译文。RPCK 的原始 DAT 按其原编码解析，再把 Unicode 文本映射转为 CP936，
-Lua 文本覆盖表应使用这一最终编码。
+原生译文。RPCK 的原始 DAT 按其原编码解析，再把 Unicode 文本映射转为 Lua 显式选择的编码；
+未显式选择时保留原生 CP936 默认值。Lua 文本覆盖表应使用这一最终编码。
 
 这是 SoftPal 专属的数据约定，其他引擎不会自动消费它；没有新增一套 SoftPal
 专用 Lua 函数。二进制格式及实际加载示例见 SoftPal 包中的

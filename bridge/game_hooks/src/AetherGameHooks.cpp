@@ -1,4 +1,5 @@
 #include "AetherGameHooks.h"
+#include "AetherGb18030.h"
 #include <lua.hpp>
 #include <zlib.h>
 #include <zstd.h>
@@ -151,7 +152,16 @@ struct GameHooks::Script {
             const std::string from(String(state, 2));
             const std::string to(lua_isnoneornil(state, 3) ? std::string_view("UTF-8") : String(state, 3));
             if(length > kFileLimit) throw std::runtime_error("text conversion exceeds limit");
-            const auto converted = boost::locale::conv::between(first, first + length, to, from, boost::locale::conv::stop);
+            const auto convert = [](std::string_view bytes, const std::string& from, const std::string& to) {
+                return boost::locale::conv::between(bytes.data(), bytes.data() + bytes.size(), to, from, boost::locale::conv::stop);
+            };
+            std::string converted;
+            if(Upper(from) == "GB18030" || Upper(to) == "GB18030") {
+                const auto decode = [&](std::string_view bytes) { return convert(bytes, from, "UTF-8"); };
+                const auto utf8 = Upper(from) == "GB18030" ? aether::text::Gb18030ToUtf8(input, decode) : decode(input);
+                const auto encode = [&](std::string_view bytes) { return convert(bytes, "UTF-8", to); };
+                converted = Upper(to) == "GB18030" ? aether::text::Utf8ToGb18030(utf8, encode) : encode(utf8);
+            } else converted = convert(input, from, to);
             scratch.assign(converted.begin(), converted.end());
             return 1;
         }
@@ -173,11 +183,13 @@ struct GameHooks::Script {
         }
         if(operation == "set_encoding") {
             auto encoding = Upper(std::string(first, length));
-            if(encoding == "SJIS" || encoding == "SHIFT-JIS" || encoding == "SHIFT_JIS") encoding = "CP932";
+            if(encoding == "SJIS" || encoding == "SHIFT-JIS" || encoding == "SHIFT_JIS" || encoding == "SHIFTJIS") encoding = "CP932";
             if(encoding == "CP936" || encoding == "GB2312") encoding = "GBK";
+            if(encoding == "CP950" || encoding == "BIG-5") encoding = "BIG5";
             if(encoding == "UTF8") encoding = "UTF-8";
             if(encoding != "CP932" && encoding != "GBK" && encoding != "GB18030" &&
-               encoding != "BIG5" && encoding != "UTF-8") throw std::runtime_error("unsupported text encoding");
+               encoding != "BIG5" && encoding != "UTF-8")
+                throw std::runtime_error("unsupported text encoding; expected CP932, GBK, GB18030, BIG5 or UTF-8");
             output.encoding_ = std::move(encoding);
             return 0;
         }

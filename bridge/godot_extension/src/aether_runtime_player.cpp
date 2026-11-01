@@ -2,6 +2,9 @@
 #include "runtime_host_extension.h"
 #include "engine_options.h"
 #include "engine_runtime_provider.h"
+#if defined(AETHERKIRI_WITH_QLIE)
+extern "C" void AetherInternalRegisterQlieRuntime(void);
+#endif
 #include "flash_player.h"
 #include "tyrano_player.h"
 #include "native_controls_overlay.h"
@@ -14121,6 +14124,9 @@ void InitializeAetherRuntime(ModuleInitializationLevel level) {
     if (level != MODULE_INITIALIZATION_LEVEL_SCENE) {
         return;
     }
+#if defined(AETHERKIRI_WITH_QLIE)
+    AetherInternalRegisterQlieRuntime();
+#endif
 #if defined(AETHERKIRI_INTERNAL_FRAME_EFFECTS)
     RegisterAetherInternalFrameEffects();
 #endif
@@ -14176,10 +14182,16 @@ void InitializeAetherRuntime(ModuleInitializationLevel level) {
             ResultToString(shader_result));
     }
     ClassDB::register_class<AetherRuntimePlayer>();
+#if defined(AETHERKIRI_HOST_FLASH)
     RegisterAetherFlashPlayer();
+#endif
+#if defined(AETHERKIRI_HOST_TYRANO)
     RegisterAetherTyranoPlayer();
-    RegisterAetherNativeControls();
+#endif
+#if defined(AETHERKIRI_HOST_RENPY)
     RegisterAetherRenpyNativePlayer();
+#endif
+    RegisterAetherNativeControls();
 }
 
 void DeinitializeAetherRuntime(ModuleInitializationLevel level) {

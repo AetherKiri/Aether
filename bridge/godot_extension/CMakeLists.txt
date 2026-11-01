@@ -96,14 +96,21 @@ if(WEB OR EMSCRIPTEN)
 endif()
 
 set(AETHERKIRI_GODOT_SOURCES
-    src/flash_player.cpp
-    src/tyrano_player.cpp
     src/native_controls_overlay.cpp
-    src/renpy_native_player.cpp
     src/aether_runtime_player.cpp
     src/frame_effect_host.cpp
     src/presentation/RuntimePresentationSprite.cpp
 )
+foreach(_runtime FLASH TYRANO RENPY)
+    if(AETHERKIRI_ENABLE_${_runtime})
+        if(_runtime STREQUAL "RENPY")
+            list(APPEND AETHERKIRI_GODOT_SOURCES src/renpy_native_player.cpp)
+        else()
+            string(TOLOWER "${_runtime}" _runtime_lower)
+            list(APPEND AETHERKIRI_GODOT_SOURCES src/${_runtime_lower}_player.cpp)
+        endif()
+    endif()
+endforeach()
 
 if(WEB OR EMSCRIPTEN)
     add_executable(aether_kiri_godot ${AETHERKIRI_GODOT_SOURCES})
@@ -230,6 +237,11 @@ if(ANDROID OR CMAKE_SYSTEM_NAME STREQUAL "Linux")
 endif()
 
 target_compile_features(aether_kiri_godot PRIVATE cxx_std_17)
+foreach(_runtime FLASH TYRANO RENPY)
+    if(AETHERKIRI_ENABLE_${_runtime})
+        target_compile_definitions(aether_kiri_godot PRIVATE AETHERKIRI_HOST_${_runtime}=1)
+    endif()
+endforeach()
 if(MSVC)
     set_property(TARGET aether_kiri_godot PROPERTY
         MSVC_RUNTIME_LIBRARY "MultiThreadedDLL")
@@ -249,6 +261,14 @@ if(AETHERKIRI_INTERNAL_ENABLED AND
     aetherinternal_extend_godot_extension(
         aether_kiri_godot
         "${CMAKE_CURRENT_SOURCE_DIR}/src")
+endif()
+
+if(AETHERKIRI_ENABLE_QLIE)
+    if(NOT AETHERKIRI_INTERNAL_ENABLED OR NOT COMMAND aetherinternal_extend_qlie)
+        message(FATAL_ERROR "QLIE was requested but the Internal QLIE package is unavailable")
+    endif()
+    aetherinternal_extend_qlie(aether_kiri_godot "${CMAKE_SOURCE_DIR}")
+    target_compile_definitions(aether_kiri_godot PRIVATE AETHERKIRI_WITH_QLIE=1)
 endif()
 
 if(AETHERKIRI_ENABLE_SOFTPAL_RUNTIME)

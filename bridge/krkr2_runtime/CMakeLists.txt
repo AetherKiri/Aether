@@ -83,19 +83,19 @@ endif()
 # engine_api so krkr2_legacy_services.cpp declares exactly the registration
 # symbols the extension objects provide.
 if(AETHERKIRI_INTERNAL_ENABLED)
-    if(COMMAND aetherinternal_extend_catsystem2)
+    if(AETHERKIRI_ENABLE_CATSYSTEM2 AND COMMAND aetherinternal_extend_catsystem2)
         aetherinternal_extend_catsystem2(aether_krkr2_runtime)
         target_compile_definitions(aether_krkr2_runtime PRIVATE
             AETHERKIRI_INTERNAL_CATSYSTEM2=1)
     endif()
 
-    if(COMMAND aetherinternal_extend_artemis)
+    if(AETHERKIRI_ENABLE_ARTEMIS_RUNTIME AND COMMAND aetherinternal_extend_artemis)
         aetherinternal_extend_artemis(aether_krkr2_runtime)
         target_compile_definitions(aether_krkr2_runtime PRIVATE
             AETHERKIRI_INTERNAL_ARTEMIS=1)
     endif()
 
-    if(COMMAND aetherinternal_extend_wa2)
+    if(AETHERKIRI_ENABLE_WA2 AND COMMAND aetherinternal_extend_wa2)
         aetherinternal_extend_wa2(aether_krkr2_runtime)
         target_compile_definitions(aether_krkr2_runtime PRIVATE
             AETHERKIRI_INTERNAL_WA2=1

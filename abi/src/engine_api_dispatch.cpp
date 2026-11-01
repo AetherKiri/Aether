@@ -59,9 +59,6 @@ extern "C" void AetherInternalPrefetchTextTranslation(
 extern "C" void AetherInternalSetTextTranslationSkipping(
     const char* runtime_id_utf8, uint32_t skipping);
 #endif
-#if defined(AETHERKIRI_INTERNAL_QLIE)
-extern "C" void AetherInternalRegisterQlieRuntime(void);
-#endif
 
 namespace {
 
@@ -848,9 +845,6 @@ engine_result_t engine_create(const engine_create_desc_t* desc,
       services->register_private_runtimes();
     }
   }
-#if defined(AETHERKIRI_INTERNAL_QLIE)
-  AetherInternalRegisterQlieRuntime();
-#endif
   if (desc->struct_size < sizeof(engine_create_desc_t)) {
     return ThreadError(ENGINE_RESULT_INVALID_ARGUMENT,
                        "engine_create_desc_t.struct_size is too small");

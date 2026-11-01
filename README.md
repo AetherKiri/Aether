@@ -308,6 +308,8 @@ adb install -r out/godot/android/debug/Aether-debug.apk
 adb shell monkey -p org.github.krkr2.aetherkiri -c android.intent.category.LAUNCHER 1
 ```
 
+Android builds strip non-runtime native symbols from the packaged libraries, including in Debug builds. Full symbols remain in `out/android/arm64-v8a/debug` for native debugging and crash symbolication. To package Debug libraries with their full symbols, run `KEEP_ANDROID_DEBUG_SYMBOLS=1 ./build.sh android debug`.
+
 The release APK (`out/godot/android/release/Aether-release.apk`) is unsigned
 until a release keystore is configured — sign it with `apksigner` before
 distributing.

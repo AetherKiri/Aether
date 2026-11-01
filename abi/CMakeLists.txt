@@ -29,6 +29,9 @@ else()
 endif()
 
 target_compile_features(engine_api PRIVATE cxx_std_17)
+if(DEFINED AETHERKIRI_ENABLE_KRKR2 AND NOT AETHERKIRI_ENABLE_KRKR2)
+    target_compile_definitions(engine_api PRIVATE AETHERKIRI_DISABLE_KRKR2=1)
+endif()
 
 if(WEB OR EMSCRIPTEN)
     # Web links this static API into the side module and exports its C ABI.

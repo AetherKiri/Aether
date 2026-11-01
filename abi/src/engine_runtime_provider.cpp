@@ -81,11 +81,13 @@ const engine_runtime_provider_v1_t kLegacyKirikiriProvider = [] {
 }();
 
 void EnsureLegacyRegisteredLocked() {
+#if !defined(AETHERKIRI_DISABLE_KRKR2)
   if (g_legacy_builtin_registered) return;
   g_legacy_builtin_registered = true;
   g_providers.push_back(
       {&kLegacyKirikiriProvider, "kirikiri", g_next_registration_order++,
        /*is_legacy_builtin=*/true});
+#endif
 }
 
 }  // namespace

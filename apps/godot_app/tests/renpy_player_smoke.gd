@@ -192,6 +192,7 @@ func _run() -> void:
     _expect(FileAccess.file_exists(session.path_join("screenshot.png")), "The native renderer produces a real screenshot")
     await _key("f5")
     var saves: String = app.RenpyPlayerView.storage_path(original)
+    _expect(saves == original.path_join("savedata"), "Saves live beside the imported game")
     await _wait(func():
         var directory := DirAccess.open(saves)
         if directory == null:
@@ -200,7 +201,7 @@ func _run() -> void:
             if file.ends_with(".save"):
                 return true
         return false,
-        "The game saves into Aether's per-game directory")
+        "The game saves into its own savedata directory")
     await _key("enter")
     await _wait(func(): return int(_variables().get("aether_probe_step", 0)) == 4, "The scenario advances beyond the saved scene")
     await _key("f9")

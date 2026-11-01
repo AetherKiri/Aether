@@ -1,8 +1,10 @@
 import importlib.util
 import io
+import pickle
 from pathlib import Path
 import sys
 import tempfile
+import struct
 import unittest
 from types import SimpleNamespace
 from unittest.mock import patch
@@ -39,6 +41,23 @@ class RenpyArchiveTests(unittest.TestCase):
             "images/背景.png": b"\x89PNG\r\n\x1a\n" + b"image data" * 30,
             "audio/voice.ogg": b"OggS\x00" + b"audio data" * 40,
         }
+
+    def test_python2_archive_prefixes_remain_binary_and_names_remain_unicode(self):
+        class LegacyPickler(pickle._Pickler):
+            dispatch = pickle._Pickler.dispatch.copy()
+            def save_bytes(self, value):
+                self.write(pickle.BINSTRING + struct.pack("<I", len(value)) + value)
+                self.memoize(value)
+            dispatch[bytes] = save_bytes
+        for prefix in (b"", b"ASCII", b"\x89PNG\r\n\x1a\n", b"\xff\xd8\xff", b"\xc3\xa9", b"\xe2\x82\xac"):
+            with self.subTest(prefix=prefix):
+                stream = io.BytesIO()
+                LegacyPickler(stream, protocol=2).dump({"背景.png".encode("utf-8"): [(34, 500, prefix)],
+                                                       "unicode.rpyc": [(1000, 20)]})
+                decoded = HOST.load_archive_index(stream.getvalue())
+                self.assertEqual(decoded, {"背景.png": [(34, 500, prefix)], "unicode.rpyc": [(1000, 20)]})
+        modern = {"背景.png": [(34, 500, b"\x89PNG")], "legacy-unicode.png": [(50, 100, "\xff")]}
+        self.assertEqual(HOST.load_archive_index(pickle.dumps(modern, protocol=2)), modern)
 
     def test_standard_archive_keeps_its_index_and_file_position(self):
         stream, index = rpa_fixture(self.resources)
@@ -126,6 +145,8 @@ class RenpyArchiveTests(unittest.TestCase):
     import renpy
     renpy.import_all()
     renpy.seen = renpy.loader.RPAv3ArchiveHandler.read_index(renpy.archive)
+    renpy.loads_seen = renpy.loader.loads
+    renpy.callbacks_seen = list(renpy.loader.file_open_callbacks)
     renpy.config_seen = vars(renpy.config).copy()
     if renpy.fail:
         raise RuntimeError("game failed")
@@ -134,11 +155,14 @@ class RenpyArchiveTests(unittest.TestCase):
                 with self.subTest(fail=fail):
                     stream, index = rpa_fixture(self.resources, True)
                     original_reader = lambda _stream: index
+                    original_loads = lambda data: index
+                    original_open = lambda name: None
                     class Handler:
                         read_index = staticmethod(original_reader)
                     def imported():
                         self.assertIs(renpy.import_all, imported, "The engine backup must see the original import function")
-                    renpy = SimpleNamespace(import_all=imported, loader=SimpleNamespace(RPAv3ArchiveHandler=Handler),
+                    renpy = SimpleNamespace(import_all=imported, loader=SimpleNamespace(RPAv3ArchiveHandler=Handler, loads=original_loads,
+                                            load_from_archive=original_open, file_open_callbacks=[original_open]),
                                             config=SimpleNamespace(), archive=stream, fail=fail)
                     previous_main = sys.modules["__main__"]
                     with patch.dict(sys.modules, {"renpy": renpy}), patch.object(HOST, "_manifest", {"saves": directory}):
@@ -149,6 +173,10 @@ class RenpyArchiveTests(unittest.TestCase):
                             HOST.run_engine(sdk)
                     self.assertIsNot(renpy.seen, index)
                     self.assertIs(Handler.read_index, original_reader)
+                    self.assertIs(renpy.loads_seen, HOST.load_archive_index)
+                    self.assertIs(renpy.loader.loads, original_loads)
+                    self.assertEqual(renpy.callbacks_seen, [HOST.load_inline_archive, original_open])
+                    self.assertEqual(renpy.loader.file_open_callbacks, [original_open])
                     self.assertIs(renpy.import_all, imported)
                     self.assertIs(sys.modules["__main__"], previous_main)
                     self.assertEqual(renpy.config_seen, {"fixed_resolution": None, "fixed_resolution_filter": "linear"})
@@ -156,6 +184,93 @@ class RenpyArchiveTests(unittest.TestCase):
 
 
 class RenpyHostTests(unittest.TestCase):
+    def test_declared_patch_paths_are_literal_ordered_and_game_local(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory).resolve()
+            for name in ("translated/中文", "second", "unlisted"):
+                (root / name).mkdir(parents=True)
+            marker = root / "must-not-execute"
+            (root / "environment.txt").write_text(
+                f'open({str(marker)!r}, "w").write("executed")\n'
+                'LCHH_RENPY_PATCH_SEARCHPATH="translated\\\\中文::second::translated/中文"\n', encoding="utf-8-sig")
+            self.assertEqual(HOST.patch_directories(root), [root / "translated/中文", root / "second"])
+            self.assertFalse(marker.exists(), "Never execute the distributor's environment script")
+            (root / "environment.txt").write_text('OTHER_VARIABLE="unlisted"\n')
+            self.assertEqual(HOST.patch_directories(root), [], "Do not guess patches from directory names")
+            (root / "environment.txt").unlink()
+            self.assertEqual(HOST.patch_directories(root), [])
+
+    def test_patch_paths_cannot_escape_or_execute_expressions(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory) / "game-root"
+            root.mkdir()
+            (root.parent / "outside").mkdir()
+            (root / "link").symlink_to(root.parent / "outside", target_is_directory=True)
+            for value in ('"../outside"', '"link"', '"."', '"missing"', '42', 'str("outside")'):
+                with self.subTest(value=value):
+                    (root / "environment.txt").write_text("LCHH_RENPY_PATCH_SEARCHPATH=" + value)
+                    with self.assertRaises((ValueError, FileNotFoundError)):
+                        HOST.patch_directories(root)
+
+    def test_patch_mirrors_keep_loose_resources_and_compiled_ids_across_reopen(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory) / "original"
+            patch_dir = root / "translation"
+            patch_dir.mkdir(parents=True)
+            (root / "environment.txt").write_text('LCHH_RENPY_PATCH_SEARCHPATH="translation"\n')
+            (patch_dir / "story.rpy").write_text('label start:\n    "中文"\n')
+            (patch_dir / "opening.webm").write_bytes(b"translated movie")
+            cache = Path(directory) / "cache"
+            first, compiled = HOST.stage_patches(root, Path(directory) / "first", cache)[0]
+            self.assertEqual((first / "opening.webm").read_bytes(), b"translated movie")
+            (first / "story.rpyc").write_bytes(b"stable translated statement ids")
+            HOST.persist_compiled(first, compiled)
+            second, second_cache = HOST.stage_patches(root, Path(directory) / "second", cache)[0]
+            self.assertEqual(second_cache, compiled)
+            self.assertEqual((second / "story.rpyc").read_bytes(), b"stable translated statement ids")
+            self.assertFalse((patch_dir / "story.rpyc").exists(), "Never compile into the supplied patch")
+
+    def test_patch_search_and_archive_order_are_restored_after_each_game(self):
+        with tempfile.TemporaryDirectory() as directory:
+            sdk = Path(directory)
+            (sdk / "renpy.py").write_text('''def predefined_searchpath(common):
+    return ["original game", common]
+def main():
+    import renpy
+    renpy.import_all()
+    renpy.paths_seen = predefined_searchpath("common")
+    renpy.loader.index_archives()
+    renpy.archives_seen = list(renpy.loader.archives)
+    if renpy.fail:
+        raise RuntimeError("game failed")
+''')
+            patches = [sdk / "patches/0", sdk / "patches/1"]
+            stock = [(str(sdk / "game/z-original.rpa"), {}),
+                     (str(patches[1] / "z-patch.rpa"), {}),
+                     (str(patches[0] / "b-patch.rpa"), {}),
+                     (str(patches[0] / "a-patch.rpa"), {})]
+            for fail in (False, True):
+                with self.subTest(fail=fail):
+                    class Handler:
+                        read_index = staticmethod(lambda stream: {})
+                    def index_archives():
+                        loader.archives[:] = stock
+                    original_open = lambda name: None
+                    loader = SimpleNamespace(RPAv3ArchiveHandler=Handler, archives=[], index_archives=index_archives, loads=pickle.loads,
+                                             load_from_archive=original_open, file_open_callbacks=[original_open])
+                    renpy = SimpleNamespace(import_all=lambda: None, loader=loader, config=SimpleNamespace(), fail=fail)
+                    with patch.dict(sys.modules, {"renpy": renpy}), patch.object(HOST, "_manifest", {"saves": directory}):
+                        if fail:
+                            with self.assertRaisesRegex(RuntimeError, "game failed"):
+                                HOST.run_engine(sdk, patches)
+                        else:
+                            HOST.run_engine(sdk, patches)
+                    self.assertEqual(renpy.paths_seen, [str(p) for p in patches] + ["original game", "common"])
+                    self.assertEqual(renpy.archives_seen, stock[2:] + [stock[1], stock[0]])
+                    self.assertIs(loader.index_archives, index_archives, "A game's patch hook must not leak into the next game")
+                    loader.index_archives()
+                    self.assertEqual(loader.archives, stock)
+
     def test_text_input_preserves_modifiers_and_releases_held_keys_on_pause(self):
         events = []
         names = ["KEYDOWN", "KEYUP", "TEXTINPUT", "TEXTEDITING", "K_ESCAPE", "K_RETURN", "K_SPACE",

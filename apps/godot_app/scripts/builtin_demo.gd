@@ -52,6 +52,8 @@ func is_removed() -> bool:
     return bool(state.get_value("demo", "removed", false))
 
 func ensure_installed() -> Dictionary:
+    if not bool(ProjectSettings.get_setting("aether_kiri/runtimes/krkr2", true)):
+        return {}
     var state := _load_state()
     if bool(state.get_value("demo", "removed", false)):
         var cleanup_result := _cleanup_removed_files()

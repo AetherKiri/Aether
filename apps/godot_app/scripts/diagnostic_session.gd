@@ -293,7 +293,7 @@ func start(runtime_player, renderer: String) -> bool:
     var catalog := profile_catalog()
     var profile_definition: Dictionary = catalog.get(profile, {})
     var mask := int(profile_definition.get("category_mask", PROFILE_MASK.get(profile, PROFILE_MASK["baseline"])))
-    if player.has_method("set_diagnostic_config"):
+    if bool(ProjectSettings.get_setting("aether_kiri/runtimes/krkr2", true)) and player.has_method("set_diagnostic_config"):
         var result := int(player.set_diagnostic_config(
             true, session_id, mask, int(slow_frame_threshold_ms), MAX_RING_EVENTS
         ))
@@ -425,7 +425,7 @@ func mark_issue(label: String = "user_issue") -> bool:
         if provided is Dictionary:
             marker_context = (provided as Dictionary).duplicate(true)
     var native_sequence := -1
-    if player != null and player.has_method("mark_diagnostic_event"):
+    if bool(ProjectSettings.get_setting("aether_kiri/runtimes/krkr2", true)) and player != null and player.has_method("mark_diagnostic_event"):
         native_sequence = int(player.mark_diagnostic_event(label))
         if native_sequence >= 0:
             # Persist the native marker in the same synchronous flush as the
@@ -639,7 +639,7 @@ func finish() -> void:
     flush()
     if OS.get_name() == "Web":
         _export_web_download()
-    if player != null and player.has_method("set_diagnostic_config"):
+    if bool(ProjectSettings.get_setting("aether_kiri/runtimes/krkr2", true)) and player != null and player.has_method("set_diagnostic_config"):
         player.set_diagnostic_config(false, session_id, 0, int(slow_frame_threshold_ms), MAX_RING_EVENTS)
     active = false
     _event_file = null
@@ -698,7 +698,7 @@ func _accept_event(item: Dictionary, line: String) -> void:
         incident["lines"] = lines
 
 func _drain_native() -> void:
-    if player == null or not player.has_method("drain_diagnostic_events"):
+    if not bool(ProjectSettings.get_setting("aether_kiri/runtimes/krkr2", true)) or player == null or not player.has_method("drain_diagnostic_events"):
         return
     # The bridge drains a bounded batch. Loop so shutdown/marker flushes do not
     # discard a backlog larger than one 256 KiB bridge buffer.

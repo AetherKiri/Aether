@@ -14130,6 +14130,11 @@ void InitializeAetherRuntime(ModuleInitializationLevel level) {
     if (level != MODULE_INITIALIZATION_LEVEL_SCENE) {
         return;
     }
+#if defined(AETHERKIRI_WITH_KRKR2)
+    ProjectSettings::get_singleton()->set_setting("aether_kiri/runtimes/krkr2", true);
+#else
+    ProjectSettings::get_singleton()->set_setting("aether_kiri/runtimes/krkr2", false);
+#endif
 #if defined(AETHERKIRI_WITH_QLIE)
     AetherInternalRegisterQlieRuntime();
 #endif

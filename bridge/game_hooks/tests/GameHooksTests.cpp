@@ -116,3 +116,47 @@ TEST_CASE("Windows UTF8 BOM scripts load as text") {
     hooks.Load(f.root, "bgi");
     CHECK(hooks.Find("test") != nullptr);
 }
+
+TEST_CASE("byte-text engines share canonical encodings and aliases") {
+    Fixture f;
+    for(const auto *engine : {"bgi", "yuris", "advhd", "softpal", "catsystem2", "escude", "systemc"}) {
+        for(const auto &[input, expected] : std::vector<std::pair<std::string, std::string>>{
+                {"CP932", "CP932"}, {"shift-jis", "CP932"}, {"shift_jis", "CP932"},
+                {"sJiS", "CP932"}, {"shiftjis", "CP932"}, {"GBK", "GBK"},
+                {"cp936", "GBK"}, {"gb2312", "GBK"}, {"gb18030", "GB18030"},
+                {"BIG5", "BIG5"}, {"cp950", "BIG5"}, {"big-5", "BIG5"},
+                {"utf8", "UTF-8"}, {"Utf-8", "UTF-8"}}) {
+            CAPTURE(engine, input);
+            f.Write("aether.lua", "aether.set_encoding('" + input + "')");
+            GameHooks hooks;
+            hooks.Load(f.root, engine);
+            CHECK(hooks.Encoding() == expected);
+            CHECK_NOTHROW(hooks.RequireEncoding());
+            CHECK_THROWS(hooks.RequireEncoding({})); // Native-Unicode formats retain their explicit boundary.
+        }
+    }
+}
+
+TEST_CASE("Lua transcode round trips GB18030 supplementary boundaries and rejects malformed input") {
+    Fixture f;
+    f.Write("aether.lua", R"(
+        local cases = {
+            {utf8.char(0x10000), string.char(0x90,0x30,0x81,0x30)},
+            {utf8.char(0x20000), string.char(0x95,0x32,0x82,0x36)},
+            {utf8.char(0x10ffff), string.char(0xe3,0x32,0x9a,0x35)},
+        }
+        for _, case in ipairs(cases) do
+            local encoded = aether.transcode('中文' .. case[1] .. 'A', 'UTF-8', 'GB18030')
+            assert(encoded == string.char(0xd6,0xd0,0xce,0xc4) .. case[2] .. 'A')
+            assert(aether.transcode(encoded, 'GB18030') == '中文' .. case[1] .. 'A')
+        end
+        assert(not pcall(aether.transcode, string.char(0x95,0x32,0x82), 'GB18030'))
+        assert(not pcall(aether.transcode, string.char(0xe3,0x32,0x9a,0x36), 'GB18030'))
+        assert(not pcall(aether.transcode, string.char(0xf0,0x8f,0xbf,0xbf), 'UTF-8', 'GB18030'))
+        assert(not pcall(aether.transcode, string.char(0xed,0xa0,0x80), 'UTF-8', 'GB18030'))
+        assert(not pcall(aether.transcode, string.char(0xff) .. cases[2][2], 'GB18030'))
+        assert(not pcall(aether.transcode, cases[2][2] .. string.char(0xff), 'GB18030'))
+    )");
+    GameHooks hooks;
+    CHECK_NOTHROW(hooks.Load(f.root, "systemc"));
+}

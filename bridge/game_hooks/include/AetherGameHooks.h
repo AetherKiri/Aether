@@ -21,7 +21,10 @@ public:
     const std::filesystem::path& Font() const { return font_; }
     const std::vector<std::string>& Messages() const { return messages_; }
     bool Active() const { return active_; }
-    void RequireEncoding(const std::vector<std::string>& supported) const;
+    // Byte-text engines share this complete set. Unicode-only formats may
+    // explicitly pass an empty list to reject a global byte encoding override.
+    void RequireEncoding(const std::vector<std::string>& supported =
+        {"CP932", "GBK", "GB18030", "BIG5", "UTF-8"}) const;
 
     // For engines whose resource consumers require a native file path. The
     // caller owns this cache directory; original game files are never written.

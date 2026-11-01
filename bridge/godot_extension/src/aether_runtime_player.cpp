@@ -10205,14 +10205,18 @@ public:
         callbacks.poll_read_rgba = BridgePollReadRgba;
         callbacks.discard_read_rgba = BridgeDiscardReadRgba;
         callbacks.flush = BridgeFlush;
+#if defined(AETHERKIRI_WITH_KRKR2)
         engine_register_godot_gpu_bridge(&callbacks);
+#endif
         TVPGodotGpuBatchCallbacks batch_callbacks{};
         batch_callbacks.struct_size = sizeof(batch_callbacks);
         batch_callbacks.abi_version =
             TVP_GODOT_GPU_BATCH_CALLBACKS_ABI_VERSION;
         batch_callbacks.begin_batch = BridgeBeginBatch;
         batch_callbacks.end_batch = BridgeEndBatch;
+#if defined(AETHERKIRI_WITH_KRKR2)
         engine_register_godot_gpu_batch_bridge(&batch_callbacks);
+#endif
 #if defined(AETHERKIRI_WITH_MAGES)
         RegisterMagesGpuBridge();
 #endif
@@ -10239,8 +10243,10 @@ public:
             BridgeImportAndroidHardwareBuffer;
         external_texture_callbacks.publish_native_write =
             BridgePublishNativeWrite;
+#if defined(AETHERKIRI_WITH_KRKR2)
         engine_register_godot_gpu_external_texture_bridge(
             &external_texture_callbacks);
+#endif
 
         CharString writable_utf8 = writable_path.utf8();
         CharString cache_utf8 = cache_path.utf8();
@@ -14202,9 +14208,11 @@ void DeinitializeAetherRuntime(ModuleInitializationLevel level) {
     BridgeFlush();
     ReleaseRemainingGodotGpuTextures();
     ReleaseGodotGpuPipeline();
+#if defined(AETHERKIRI_WITH_KRKR2)
     engine_register_godot_gpu_batch_bridge(nullptr);
     engine_register_godot_gpu_external_texture_bridge(nullptr);
     engine_register_godot_gpu_bridge(nullptr);
+#endif
 #if defined(AETHERKIRI_INTERNAL_RUNTIME_GPU_BRIDGE)
     RegisterAetherInternalRuntimeGpuBridge(nullptr, nullptr, nullptr);
 #endif

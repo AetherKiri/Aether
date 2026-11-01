@@ -4,14 +4,18 @@ The embedded loop and allowlisted JSON probe share the same interpreter.
 The command-line entry point also supports isolated SDK diagnostics.
 """
 import argparse
+import ast
 import base64
 import ctypes
 from collections import deque
+import hashlib
+import io
 import json
 import importlib.util
 import math
 import os
 from pathlib import Path
+import pickle
 import re
 import shutil
 import stat
@@ -33,7 +37,7 @@ _keys_down = set()
 _raw_keys_down = set()
 _mouse_position = (0, 0)
 _mouse_buttons = [False, False, False]
-_compiled_cache = None
+_compiled_projects = []
 _log = None
 controls_visible = False
 menu_visible = False
@@ -101,6 +105,86 @@ def mirror_game(source, destination):
             if not resolved.is_relative_to(source) or not resolved.is_file():
                 raise ValueError(f"Game resource escapes its directory: {path}")
             copy_file(resolved, destination / path.relative_to(source))
+
+
+def patch_directories(root):
+    """Read the translation launcher's declared paths without executing it."""
+    root = root.resolve(strict=True)
+    environment = root / "environment.txt"
+    if not environment.is_file():
+        return []
+    value = ""
+    for statement in ast.parse(environment.read_text(encoding="utf-8-sig"), str(environment)).body:
+        if not isinstance(statement, ast.Assign) or not any(
+                isinstance(target, ast.Name) and target.id == "LCHH_RENPY_PATCH_SEARCHPATH"
+                for target in statement.targets):
+            continue
+        value = ast.literal_eval(statement.value)
+        if not isinstance(value, str):
+            raise ValueError("LCHH_RENPY_PATCH_SEARCHPATH must be a literal string")
+    result = []
+    for name in value.split("::"):
+        if not name.strip():
+            continue
+        path = (root / name.strip().replace("\\", "/")).resolve(strict=True)
+        if not path.is_relative_to(root) or path == root:
+            raise ValueError(f"Translation patch escapes its game directory: {name}")
+        if not path.is_dir():
+            raise ValueError(f"Translation patch is not a directory: {name}")
+        if path not in result:
+            result.append(path)
+    return result
+
+
+def stage_patches(root, project, cache):
+    result = []
+    for index, source in enumerate(patch_directories(root)):
+        destination = project / "patches" / str(index)
+        mirror_game(source, destination)
+        identity = source.relative_to(root.resolve()).as_posix()
+        compiled = cache / "patches" / hashlib.sha256(identity.encode("utf-8")).hexdigest()
+        restore_compiled(destination, compiled)
+        result.append((destination, compiled))
+        print("[Aether] Translation patch:", identity)
+    return result
+
+
+def archive_priority(filename, patches):
+    path = Path(filename).resolve()
+    for index, patch in enumerate(patches):
+        if path.is_relative_to(Path(patch).resolve()):
+            return index
+    return len(patches)
+
+
+def load_archive_index(data):
+    # Python 2 RPA indexes store inline binary resource headers as str. The
+    # SDK's general-purpose unpickler decodes those as UTF-8, then its RPA3
+    # reader encodes them as Latin-1. Keep binary fields as bytes and decode
+    # only filenames, so both old byte strings and modern Unicode keys work.
+    index = pickle.loads(data, encoding="bytes")
+    return {name.decode("utf-8", "surrogateescape") if isinstance(name, bytes) else name: records
+            for name, records in index.items()}
+
+
+def load_inline_archive(name):
+    # The pinned SDK creates a split stream for inline prefixes but omits its
+    # return, falling through to lower-priority archives. Use the same SDK
+    # stream implementation for that case; leave all other entries to it.
+    import renpy.loader
+    for filename, index in renpy.loader.archives:
+        if name not in index:
+            continue
+        records = index[name]
+        if len(records) == 1 and len(records[0]) == 3 and records[0][2]:
+            offset, length, prefix = records[0]
+            stream = renpy.loader.RWopsIO
+            header = stream.from_buffer(prefix, name=name)
+            # RPA length includes the inline bytes, which are not on disk.
+            body = stream(filename, "rb", base=offset, length=length - len(prefix))
+            return io.BufferedReader(stream.from_split(header, body, name=name))
+        return None
+    return None
 
 
 def restore_compiled(game, cache):
@@ -441,7 +525,8 @@ def _periodic():
 
 def _display_started():
     global _ready
-    persist_compiled(_session / "project/game", _compiled_cache)
+    for game, cache in _compiled_projects:
+        persist_compiled(game, cache)
     _ready = True
     _publish()
 
@@ -520,7 +605,7 @@ def unload_game_modules(game_root):
             delattr(parent_module, child)
 
 
-def run_engine(sdk):
+def run_engine(sdk, patches=()):
     import renpy
 
     # These are distributor hooks in the original launcher. Mobile launchers
@@ -531,17 +616,23 @@ def run_engine(sdk):
     sys.modules[spec.name] = entry
     spec.loader.exec_module(entry)
     entry.path_to_saves = lambda *_args, **_kwargs: _manifest["saves"]
+    if patches:
+        original_searchpath = entry.predefined_searchpath
+        entry.predefined_searchpath = lambda common: [str(path) for path in patches] + original_searchpath(common)
     previous_main = sys.modules.get("__main__")
     entry.__name__ = "__main__"
     sys.modules["__main__"] = entry
     original_import = renpy.import_all
     archive_handler = None
     original_reader = None
+    original_index = None
+    original_archive_loads = None
+    archive_callbacks = None
     added_config = []
     bindings = []
 
     def import_with_archive_compat():
-        nonlocal archive_handler, original_reader, bindings
+        nonlocal archive_handler, original_reader, original_index, original_archive_loads, archive_callbacks, bindings
         # Keep the SDK's interpreter backup free of session-local closures.
         # Embedded reopen supplies its own one-shot import hook; call it too.
         renpy.import_all = original_import
@@ -557,6 +648,10 @@ def run_engine(sdk):
                 added_config.append(name)
         archive_handler = renpy.loader.RPAv3ArchiveHandler
         original_reader = archive_handler.read_index
+        original_archive_loads = renpy.loader.loads
+        renpy.loader.loads = load_archive_index
+        archive_callbacks = renpy.loader.file_open_callbacks
+        archive_callbacks.insert(archive_callbacks.index(renpy.loader.load_from_archive), load_inline_archive)
 
         def read_index(infile):
             index = original_reader(infile)
@@ -566,6 +661,17 @@ def run_engine(sdk):
             return normalized
 
         archive_handler.read_index = staticmethod(read_index)
+        if patches:
+            original_index = renpy.loader.index_archives
+
+            def index_archives():
+                original_index()
+                # The SDK sorts RPA names in reverse order, independently of
+                # searchpath. Keep that order within each directory, but put
+                # declared patch archives ahead of the original game's RPAs.
+                renpy.loader.archives.sort(key=lambda item: archive_priority(item[0], patches))
+
+            renpy.loader.index_archives = index_archives
 
     renpy.import_all = import_with_archive_compat
     try:
@@ -575,6 +681,12 @@ def run_engine(sdk):
             renpy.import_all = original_import
         if archive_handler is not None:
             archive_handler.read_index = staticmethod(original_reader)
+        if original_archive_loads is not None:
+            renpy.loader.loads = original_archive_loads
+        if archive_callbacks is not None and load_inline_archive in archive_callbacks:
+            archive_callbacks.remove(load_inline_archive)
+        if original_index is not None:
+            renpy.loader.index_archives = original_index
         for name in added_config:
             vars(renpy.config).pop(name, None)
         restore_engine_bindings(bindings)
@@ -583,7 +695,7 @@ def run_engine(sdk):
 
 
 def main():
-    global _manifest, _session, _compiled_cache, _log
+    global _manifest, _session, _compiled_projects, _log
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--manifest", type=Path, required=True)
     args = parser.parse_args()
@@ -594,7 +706,9 @@ def main():
         threading.Thread(target=_watch_parent, daemon=True).start()
     sdk = Path(_manifest["sdk"]).resolve(strict=True)
     source = Path(_manifest["game"]).resolve(strict=True)
+    game_root = Path(_manifest.get("root", source.parent)).resolve(strict=True)
     project = _session / "project"
+    _compiled_projects = []
     exit_code = 1
     failed = False
     previous_cwd = Path.cwd()
@@ -616,8 +730,10 @@ def main():
                 raise ValueError("The prototype requires a Ren'Py 8 SDK; Ren'Py 7/Python 2 is not supported")
             _publish("starting")
             mirror_game(source, project / "game")
-            _compiled_cache = Path(_manifest["saves"]) / "_engine" / "compiled"
-            restore_compiled(project / "game", _compiled_cache)
+            cache = Path(_manifest["saves"]) / "_engine"
+            restore_compiled(project / "game", cache / "compiled")
+            patches = stage_patches(game_root, project, cache)
+            _compiled_projects = [(project / "game", cache / "compiled")] + patches
             overlay = Path(__file__).with_name("overlay.rpy")
             overlay_path = project / "game/_aether_host_overlay.rpy"
             if overlay_path.exists() or overlay_path.with_suffix(".rpyc").exists():
@@ -630,7 +746,7 @@ def main():
             Path(_manifest["saves"]).mkdir(parents=True, exist_ok=True)
             sys.argv = [str(sdk / "renpy.py"), str(project), "run", "--savedir", _manifest["saves"]]
             os.chdir(project)
-            run_engine(sdk)
+            run_engine(sdk, [path for path, _cache in patches])
             exit_code = 0
         except SystemExit as error:
             exit_code = int(error.code or 0)
@@ -646,8 +762,9 @@ def main():
                 if not failed:
                     # Preserve statement identities across VMs, including
                     # scripts loaded after startup, outside the original game.
-                    if _compiled_cache is not None and (project / "game").exists():
-                        persist_compiled(project / "game", _compiled_cache)
+                    for game, cache in _compiled_projects:
+                        if game.exists():
+                            persist_compiled(game, cache)
                     _publish("exited", exit_code=exit_code, restart=restart_requested)
             except Exception as error:
                 exit_code = 1

@@ -97,8 +97,12 @@ and **Debug CPU** is a diagnostic fallback only.
   See the [native host and validation](bridge/xsystem4_runtime/README.md).
 - Runtime-selectable render backend with persisted settings.
 - Native Ren’Py 8 playback on macOS, iOS/iPadOS, Android and Linux, inside the
-  existing Aether window, with isolated saves and optional virtual keys. See the
+  existing Aether window, with game-local `savedata/` and optional virtual keys.
+  Older Aether saves are imported automatically; read-only game directories
+  retain isolated application storage. See the
   [native host and validation](bridge/renpy_runtime/README.md).
+  Translation directories declared by `LCHH_RENPY_PATCH_SEARCHPATH` in the
+  game's `environment.txt`, including their RPA archives, load before original data.
 - Bundled multilingual KAG3 demo, playable from the library and deletable by
   the player.
 - Smoke, render, interaction, performance, and manual-repro probe scripts.

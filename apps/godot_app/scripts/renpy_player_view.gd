@@ -1,5 +1,7 @@
 extends "res://scripts/tyrano_player_view.gd"
 
+const SaveStorage := preload("res://scripts/renpy_save_storage.gd")
+
 var session_directory := ""
 var state: Dictionary = {}
 var sequence := 0
@@ -18,11 +20,7 @@ func setup(app) -> void:
     name = "RenpyPlayerView"
 
 static func storage_path(root: String) -> String:
-    var identity := root.simplify_path()
-    var user_root := ProjectSettings.globalize_path("user://").trim_suffix("/")
-    if identity.begins_with(user_root + "/"):
-        identity = "user://" + identity.substr(user_root.length() + 1)
-    return ProjectSettings.globalize_path("user://renpy_saves").path_join(identity.sha256_text())
+    return SaveStorage.storage_path(root)
 
 static func runtime_root() -> String:
     var configured := OS.get_environment("AETHER_RENPY_SDK").strip_edges()
@@ -83,7 +81,7 @@ func open_entry(value: Dictionary) -> String:
         file.close()
     if host.runtime_default_font_path.is_empty():
         host._stage_runtime_fonts()
-    var manifest := {"sdk": sdk, "game": root.path_join(relative), "saves": storage_path(root), "ui_font": host.runtime_default_font_path,
+    var manifest := {"sdk": sdk, "root": root, "game": root.path_join(relative), "saves": storage_path(root), "ui_font": host.runtime_default_font_path,
         "embedded": true, "forward_input": OS.get_name() in ["macOS", "iOS"], "parent_pid": OS.get_process_id(), "debug": _probe_enabled()}
     var path := session_directory.path_join("manifest.json")
     var file := FileAccess.open(path, FileAccess.WRITE)

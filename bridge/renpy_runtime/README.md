@@ -100,9 +100,28 @@ Each game runs from a private writable mirror. macOS uses APFS copy-on-write
 when available; other filesystems copy the data. The mirror excludes imported
 saves and engine caches, rejects external file symlinks and directory symlinks,
 and is removed on exit. Original assets remain unchanged. Saves, persistent
-data, signing keys, backups and compiled-script statement identities persist
-under `user://renpy_saves/<game-identity>/`. Normal refresh and reopening can load
-those saves without writing compiled files into the imported project.
+data, signing keys, backups and compiled-script statement identities persist in
+`savedata/` under the imported game root (beside `game/` for a PC distribution).
+On first launch, the complete bank from `user://renpy_saves/<game-identity>/` is
+copied there, retaining the originals. An existing local bank takes precedence;
+old slots and signing keys are never mixed into it. A completion marker prevents
+deleted saves from being reimported. If the local directory cannot be written or
+migration fails, the player keeps using the isolated application directory.
+Normal refresh and reopening can load those saves without writing compiled
+files into the game's script directory.
+
+External translation patches can declare their directories in the game root's
+`environment.txt`, for example `LCHH_RENPY_PATCH_SEARCHPATH="00patch"`. Multiple
+directories use `::` separators and are applied in the declared order. The host
+reads this literal setting without executing the environment file or replacing
+the SDK with game-supplied Python. Declared directories must stay inside the game
+root; they are mirrored into the session and searched before the original data.
+Their RPA archives also take precedence regardless of archive names, while
+retaining the SDK's ordering within each directory. Loose patch resources and
+compiled-script identities are preserved across refresh and reopening.
+Legacy Python 2 archive indexes retain their inline binary resource prefixes;
+the host also completes the SDK's split-stream return path so those resources
+remain readable and keep their archive's priority.
 
 The host also recognizes RPA-3.0 archives whose index stores length before
 offset. It checks bounded resource-header samples for each archive and adjusts
@@ -126,6 +145,7 @@ There is no arbitrary Python-evaluation command.
 python3 -m unittest discover -s tests/python -p 'test_renpy*.py'
 python3 tools/renpy_smoke.py --sdk /path/to/original-sdk --runtime /path/to/prepared-runtime
 python3 tools/renpy_smoke.py --sdk /path/to/original-sdk --runtime /path/to/prepared-runtime --packed
+python3 tools/renpy_smoke.py --sdk /path/to/original-sdk --runtime /path/to/prepared-runtime --packed --patch
 python3 tools/renpy_smoke.py --sdk /path/to/original-sdk --runtime /path/to/prepared-runtime --packed --reversed-index
 ```
 
@@ -134,6 +154,11 @@ same-window rendering, Chinese dialogue/choices, optional controls, native saves
 and thumbnails, refresh, reopen/load, play-time accounting and preservation of
 the original game. The packed cases run original RPA-only fixtures with standard
 and reversed indexes, including refresh and reopen in the same interpreter.
+The external-patch case checks that a declared patch overrides both the script
+and title texture in an original archive whose name otherwise sorts first, and
+that loose patch resources remain accessible.
+Its patch uses Python 2 byte-string indexes and inline prefixes, covering both
+legacy decoding and the SDK's split resource streams.
 On macOS they also click an off-center Start button after a game-requested resize,
 exercise the edge menu and virtual Enter, and check that the virtual-key panels
 leave the central game canvas uncovered. Image color patches are checked on

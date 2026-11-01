@@ -82,7 +82,10 @@ Godot App Shell
   支持范围与验证方法见 [接入说明](bridge/tyrano_runtime/README.md)。
 - 渲染后端可运行时切换并持久化设置。
 - macOS、iOS/iPadOS、Android 与 Linux 支持 Ren’Py 8 原生播放，复用 Aether
-  窗口，存档独立保存，虚拟按键默认关闭。见 [原生宿主与验证说明](bridge/renpy_runtime/README.md)。
+  窗口，存档保存在游戏目录的 `savedata/`，首次启动自动迁移旧版 Aether 存档，
+  游戏目录只读时回退到独立的应用存储。虚拟按键默认关闭。见 [原生宿主与验证说明](bridge/renpy_runtime/README.md)。
+  支持读取游戏根目录 `environment.txt` 中的 `LCHH_RENPY_PATCH_SEARCHPATH`，
+  优先加载声明的汉化补丁目录及其中的 RPA 包。
 - 内置多语言 KAG3 Demo，可从游戏库直接游玩，也可由玩家删除。
 - 提供 smoke、渲染、交互、性能与手动复现 probe 脚本。
 - 已验证游戏清单见 [`doc/verified_games.zh-CN.md`](doc/verified_games.zh-CN.md)。

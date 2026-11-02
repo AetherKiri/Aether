@@ -648,6 +648,11 @@ jobs:
             fi
           fi
 
+      - name: Free completed iOS Release intermediates
+        run: |
+          python3 -m unittest discover -s tests/python -p test_apple_build_cleanup.py -v
+          python3 .github/scripts/clean-apple-build-intermediates.py ios-release
+
       - name: Build iOS Debug
         run: |
           set -euo pipefail
@@ -933,6 +938,11 @@ jobs:
           path: .devtools/vcpkg/downloads
           key: ${{ runner.os }}-vcpkg-downloads-${{ hashFiles('vcpkg-configuration.json', 'vcpkg.json', 'vcpkg/ports/**', 'vcpkg/triplets/**') }}
 
+      - name: Free completed macOS Release intermediates
+        run: |
+          python3 -m unittest discover -s tests/python -p test_apple_build_cleanup.py -v
+          python3 .github/scripts/clean-apple-build-intermediates.py macos-release
+
       - name: Build macOS Debug
         run: |
           set -euo pipefail
@@ -951,6 +961,9 @@ jobs:
           "$GODOT_BIN" --headless \
             --path apps/godot_app \
             --script res://scripts/smoke_test.gd
+
+      - name: Free macOS Debug intermediates before unit tests
+        run: python3 .github/scripts/clean-apple-build-intermediates.py macos-debug
 
       - name: Run complete public and integrated private unit tests
         run: |

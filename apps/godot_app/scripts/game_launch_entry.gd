@@ -5,6 +5,7 @@ const Metadata = preload("res://scripts/game_metadata.gd")
 const FIELD := "launchFile"
 const SUPPORTED_EXTENSIONS := ["exe", "xp3", "hcb"]
 const DIRECTORY_RUNTIME_KINDS := [
+    "qlie",
     "advhd",
     "renpy",
     "artemis",

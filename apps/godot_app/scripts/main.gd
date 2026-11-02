@@ -2070,6 +2070,7 @@ const POINTER_MOD_MIDDLE := 0x20
 const POINTER_MOD_CANCEL := 1 << 30
 const KEY_MOD_CONTROL := 0x04
 const RUNTIME_KIRIKIRI := "kirikiri"
+const RUNTIME_QLIE := "qlie"
 const RUNTIME_ONSCRIPTER := "onscripter"
 const RUNTIME_MINORI := "minori"
 const RUNTIME_SOFTPAL := "softpal"
@@ -11236,6 +11237,8 @@ func _probe_game_runtime_kind(root: String, runtime_kind: String) -> String:
         return runtime_kind
     if player != null and player.has_method("probe_runtime"):
         # Format detection stays in the optional private provider.
+        if int(player.probe_runtime(RUNTIME_QLIE, root)) > 0:
+            return RUNTIME_QLIE
         if int(player.probe_runtime(RUNTIME_SYSTEMC, root)) > 0:
             return RUNTIME_SYSTEMC
         if int(player.probe_runtime(RUNTIME_ESCUDE, root)) >= 90:
@@ -12506,6 +12509,7 @@ func _create_runtime_player(runtime_kind: String = RUNTIME_KIRIKIRI) -> bool:
 func _switch_runtime_player(runtime_kind: String) -> bool:
     var normalized := runtime_kind
     if normalized not in [
+        RUNTIME_QLIE,
         RUNTIME_ONSCRIPTER,
         RUNTIME_MINORI,
         RUNTIME_CATSYSTEM2,
@@ -12582,6 +12586,8 @@ func _switch_runtime_player(runtime_kind: String) -> bool:
         if normalized == RUNTIME_ADVHD
         else "Escu:de / ACPX"
         if normalized == RUNTIME_ESCUDE
+        else "QLIE"
+        if normalized == RUNTIME_QLIE
         else "KiriKiri"
     ))
     return true
@@ -13298,6 +13304,7 @@ func _ensure_player_initialized() -> bool:
 
     var runtime_id := "auto"
     if current_player_runtime_kind in [
+        RUNTIME_QLIE,
         RUNTIME_ONSCRIPTER,
         RUNTIME_MINORI,
         RUNTIME_CATSYSTEM2,
@@ -13350,6 +13357,8 @@ func _ensure_player_initialized() -> bool:
         if current_player_runtime_kind == RUNTIME_ADVHD
         else "Escu:de / ACPX"
         if current_player_runtime_kind == RUNTIME_ESCUDE
+        else "QLIE"
+        if current_player_runtime_kind == RUNTIME_QLIE
         else "AetherKiri"
     ))
     return true

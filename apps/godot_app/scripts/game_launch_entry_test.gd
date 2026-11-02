@@ -43,6 +43,11 @@ func _init() -> void:
 
     _expect_equal(GameLaunchEntry.resolve({"path": root}), root, "default directory entry")
     _expect_equal(
+        GameLaunchEntry.resolve_for_runtime({"path": root, GameLaunchEntry.FIELD: "Config.exe"}, "qlie"),
+        root,
+        "QLIE provider receives the archive root instead of a Windows launcher"
+    )
+    _expect_equal(
         GameLaunchEntry.resolve_for_runtime({"path": root, GameLaunchEntry.FIELD: "game.exe"}, "entisgls"),
         root,
         "EntisGLS provider receives the archive root"

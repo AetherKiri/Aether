@@ -269,7 +269,7 @@ func _save_screenshot(label: String) -> void:
     await process_frame
     screenshot_index += 1
     var image := root.get_viewport().get_texture().get_image()
-    var path := "/tmp/aetherkiri-manual-%02d-%s.png" % [screenshot_index, label]
+    var path := OS.get_user_data_dir().path_join("manual-probe-%02d-%s.png" % [screenshot_index, label])
     image.save_png(path)
     print("manual probe screenshot=%s stats=%s renderer=\"%s\"" % [
         path,

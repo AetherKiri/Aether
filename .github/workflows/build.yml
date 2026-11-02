@@ -969,6 +969,10 @@ jobs:
         run: python3 .github/scripts/clean-apple-build-intermediates.py macos-debug
 
       - name: Run complete public and integrated private unit tests
+        env:
+          # Exercise playback/completion without depending on the runner's
+          # CoreAudio output device to advance the audio clock.
+          ALSOFT_DRIVERS: 'null'
         run: |
           set -euo pipefail
           test_build_dir="${GITHUB_WORKSPACE}/out/macos/ci-tests"

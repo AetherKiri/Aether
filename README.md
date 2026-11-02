@@ -177,7 +177,7 @@ supported by the Flash player.
 | Godot 4.7 | Exports | `/Applications/Godot.app` or `GODOT_BIN=/path/to/Godot` |
 | Current stable Rust (rustup) | Flash, Siglus, Minori | `rustup update stable`; use `RUSTUP_TOOLCHAIN=stable` consistently for all native runtimes |
 | Java 17+ | Flash player builtins | `java` on PATH; on macOS, e.g. `brew install openjdk@17` and add its `bin` directory to PATH |
-| Xcode | macOS / iOS | Tagged iOS releases need the iOS 26 SDK |
+| Xcode | macOS / iOS | CI pins Xcode 27.1 on the `xcode-27` ARM64 runner; see [release toolchain](doc/release.md) |
 | Android SDK/NDK | Android | NDK `28.1.13356709`; `ANDROID_HOME` or `$HOME/Library/Android/sdk` |
 | Emscripten (emsdk) | Web | `emcc`/`em++`/`emar` on PATH; Godot dlink templates (`web_dlink_*.zip`) |
 | Node.js + npm | Web dev server | TypeScript/Vite |

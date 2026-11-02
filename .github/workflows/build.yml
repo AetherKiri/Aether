@@ -387,8 +387,9 @@ jobs:
           !startsWith(github.ref_name, 'rfvp-update/') &&
           github.event.pull_request.user.login != 'github-actions[bot]' }}
     name: Build iOS App
-    runs-on: macos-latest
+    runs-on: xcode-27
     env:
+      DEVELOPER_DIR: /Applications/Xcode_27.1.app/Contents/Developer
       FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: 'true'
       AETHERKIRI_ENABLE_RFVP: 'ON'
       CCACHE_DIR: ${{ github.workspace }}/.ccache
@@ -396,6 +397,16 @@ jobs:
       GODOT_TEMPLATE_VERSION: 4.7.2.stable
 
     steps:
+      - name: Verify Xcode 27.1 toolchain
+        run: |
+          set -euo pipefail
+          test "$(uname -m)" = arm64
+          test -d "$DEVELOPER_DIR"
+          xcodebuild -version
+          test "$(xcodebuild -version | awk '/^Xcode / { print $2 }')" = 27.1
+          xcrun --sdk iphoneos --show-sdk-version
+          xcrun --sdk macosx --show-sdk-version
+
       - name: Checkout Repository
         uses: actions/checkout@v7
         with:
@@ -462,19 +473,6 @@ jobs:
             --build-number "$release_build_number" \
             --github-env "$GITHUB_ENV"
 
-      - name: Verify iOS 26 release toolchain
-        if: env.AETHERKIRI_RELEASE_VERSION != ''
-        run: |
-          set -euo pipefail
-          xcodebuild -version
-          sdk_version="$(xcrun --sdk iphoneos --show-sdk-version)"
-          sdk_major="${sdk_version%%.*}"
-          if ((sdk_major < 26)); then
-            echo "Release builds require the iOS 26 SDK or newer; found $sdk_version." >&2
-            exit 1
-          fi
-          echo "Release will use iOS SDK $sdk_version."
-
       - name: Check App Store signing configuration
         if: env.AETHERKIRI_RELEASE_VERSION != ''
         env:
@@ -538,9 +536,9 @@ jobs:
         uses: actions/cache/restore@v6
         with:
           path: .ccache
-          key: ${{ runner.os }}-ios-ccache-v2
+          key: ${{ runner.os }}-ios-xcode-27.1-ccache-v1
           restore-keys: |
-            ${{ runner.os }}-ios-ccache-
+            ${{ runner.os }}-ios-xcode-27.1-ccache-
 
       - name: Setup ccache config
         run: |
@@ -704,7 +702,7 @@ jobs:
         uses: actions/cache/save@v6
         with:
           path: .ccache
-          key: ${{ runner.os }}-ios-ccache-v2
+          key: ${{ runner.os }}-ios-xcode-27.1-ccache-v1
 
   macos:
     # Upstream bot candidates run only the secretless RFVP provider checks.
@@ -713,8 +711,9 @@ jobs:
           !startsWith(github.ref_name, 'rfvp-update/') &&
           github.event.pull_request.user.login != 'github-actions[bot]' }}
     name: Build macOS App
-    runs-on: macos-15
+    runs-on: xcode-27
     env:
+      DEVELOPER_DIR: /Applications/Xcode_27.1.app/Contents/Developer
       FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: 'true'
       AETHERKIRI_ENABLE_RFVP: 'ON'
       CCACHE_DIR: ${{ github.workspace }}/.ccache
@@ -723,14 +722,15 @@ jobs:
       AETHERKIRI_MACOS_ARCH: arm64
 
     steps:
-      - name: Verify native ARM runner
-        run: test "$(uname -m)" = arm64
-
-      - name: Select Xcode 16.2 for C++20 ranges
+      - name: Verify Xcode 27.1 toolchain
         run: |
-          test -d /Applications/Xcode_16.2.app
-          sudo xcode-select --switch /Applications/Xcode_16.2.app
+          set -euo pipefail
+          test "$(uname -m)" = arm64
+          test -d "$DEVELOPER_DIR"
           xcodebuild -version
+          test "$(xcodebuild -version | awk '/^Xcode / { print $2 }')" = 27.1
+          xcrun --sdk macosx --show-sdk-version
+          xcrun --sdk iphoneos --show-sdk-version
 
       - name: Checkout Repository
         uses: actions/checkout@v7
@@ -871,9 +871,9 @@ jobs:
         uses: actions/cache/restore@v6
         with:
           path: .ccache
-          key: ${{ runner.os }}-macos-ccache-v2
+          key: ${{ runner.os }}-macos-xcode-27.1-ccache-v1
           restore-keys: |
-            ${{ runner.os }}-macos-ccache-
+            ${{ runner.os }}-macos-xcode-27.1-ccache-
 
       - name: Setup ccache config
         run: |
@@ -1093,7 +1093,7 @@ jobs:
         uses: actions/cache/save@v6
         with:
           path: .ccache
-          key: ${{ runner.os }}-macos-ccache-v2
+          key: ${{ runner.os }}-macos-xcode-27.1-ccache-v1
 
   linux:
     # Upstream bot candidates run only the secretless RFVP provider checks.

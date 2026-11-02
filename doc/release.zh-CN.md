@@ -10,9 +10,12 @@
 `versionName`。SemVer 数字核心作为 iOS/macOS 营销版本号；GitHub run 号与
 attempt 组合出单调递增的 Apple build number 和 Android `versionCode`。
 
-Apple 相关 job 运行在 GitHub 托管的 `macos-latest` 镜像上。打了标签的 iOS
-构建要求所选 Xcode 携带 iOS 26 SDK 或更新版本，否则会提前失败。常规 CI
-仍产出未签名 IPA 用于验证。标签发布要求两个 Apple 平台都完成 App Store
+iOS 和 macOS 构建 job 使用 GitHub 托管的 `xcode-27` ARM64 镜像，该镜像目前
+处于公开预览阶段。两者均通过
+`DEVELOPER_DIR=/Applications/Xcode_27.1.app/Contents/Developer` 固定使用
+Xcode 27.1，并在构建前校验版本。[镜像软件清单](https://github.com/actions/runner-images/blob/main/images/macos/xcode-27-arm64-Readme.md)
+列出了该版本携带的 iOS 27.1 和 macOS 27.0 SDK。编译缓存按平台及 Xcode
+版本隔离。常规 CI 仍产出未签名 IPA 用于验证。标签发布要求两个 Apple 平台都完成 App Store
 签名。将 `AETHERID` 设为已注册的 Bundle ID `com.liuyu.aether.aether`，并配置
 以下仓库 Actions secrets：
 

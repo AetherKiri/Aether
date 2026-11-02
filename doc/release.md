@@ -12,9 +12,13 @@ the iOS and macOS marketing version, while the GitHub run number and attempt
 produce a monotonically increasing Apple build number and Android
 `versionCode`.
 
-The Apple jobs use the GitHub-hosted `macos-latest` image. Tagged iOS builds
-fail early unless the selected Xcode contains the iOS 26 SDK or newer. Regular
-CI continues to produce an unsigned IPA for validation. Tagged releases require
+The iOS and macOS build jobs use the GitHub-hosted `xcode-27` ARM64 image,
+currently in public preview. Both pin Xcode 27.1 through
+`DEVELOPER_DIR=/Applications/Xcode_27.1.app/Contents/Developer` and verify the
+version before building. The [runner image software list](https://github.com/actions/runner-images/blob/main/images/macos/xcode-27-arm64-Readme.md)
+lists iOS 27.1 and macOS 27.0 SDKs for this Xcode version. Compiler caches are
+separated by platform and Xcode version. Regular CI continues to produce an
+unsigned IPA for validation. Tagged releases require
 App Store signing for both Apple platforms. Set `AETHERID` to the registered
 Bundle ID `com.liuyu.aether.aether` and configure these repository Actions
 secrets:

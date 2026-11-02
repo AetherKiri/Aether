@@ -32,6 +32,8 @@ class AppleBuildCleanupTests(unittest.TestCase):
                     f"out/godot/{platform}/release/{artifact}",
                     f"out/godot/{platform}/release/Aether.xcodeproj/project.pbxproj",
                     f"out/{platform}/debug/object.o",
+                    f"out/{platform}/release/vcpkg_installed/include/dependency.h",
+                    f"out/{platform}/release/vcpkg_installed/lib/dependency.a",
                     f"apps/godot_app/bin/{platform}/release/runtime.a",
                     ".devtools/vcpkg/downloads/source.tar.gz",
                     ".devtools/vcpkg/installed/lib/dependency.a",
@@ -39,7 +41,6 @@ class AppleBuildCleanupTests(unittest.TestCase):
                 )]
                 discarded = [self.write(path) for path in (
                     f"out/{platform}/release/bridge/runtime.a",
-                    f"out/{platform}/release/vcpkg_installed/lib/dependency.a",
                     ".devtools/vcpkg/buildtrees/library/object.o",
                     ".devtools/vcpkg/packages/library/package.a",
                 )]

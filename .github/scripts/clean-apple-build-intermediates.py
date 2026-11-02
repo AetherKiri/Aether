@@ -20,11 +20,9 @@ def clean(workspace: Path, stage: str) -> None:
     # removing anything; retained vcpkg installs may themselves be symlinks.
     if build.resolve() != build:
         raise ValueError(f"Refusing symlinked build directory: {build}")
-    if stage == "macos-debug":
-        # The subsequent fresh CTest build reuses this dependency installation.
-        targets = [path for path in build.iterdir() if path.name != "vcpkg_installed"] if build.exists() else []
-    else:
-        targets = [build]
+    # Imported package metadata can retain absolute paths into the Release
+    # installation even in Debug. CTest also reuses the Debug installation.
+    targets = [path for path in build.iterdir() if path.name != "vcpkg_installed"] if build.exists() else []
     targets += [workspace / ".devtools/vcpkg" / name for name in ("buildtrees", "packages")]
     for path in targets:
         if path.resolve() != path:

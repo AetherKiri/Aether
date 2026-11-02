@@ -390,6 +390,8 @@ jobs:
     runs-on: xcode-27
     env:
       DEVELOPER_DIR: /Applications/Xcode_27.1.app/Contents/Developer
+      # Each CI build tree is used once; incremental Rust data only consumes disk.
+      CARGO_INCREMENTAL: '0'
       FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: 'true'
       AETHERKIRI_ENABLE_RFVP: 'ON'
       CCACHE_DIR: ${{ github.workspace }}/.ccache
@@ -719,6 +721,7 @@ jobs:
     runs-on: xcode-27
     env:
       DEVELOPER_DIR: /Applications/Xcode_27.1.app/Contents/Developer
+      CARGO_INCREMENTAL: '0'
       FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: 'true'
       AETHERKIRI_ENABLE_RFVP: 'ON'
       CCACHE_DIR: ${{ github.workspace }}/.ccache

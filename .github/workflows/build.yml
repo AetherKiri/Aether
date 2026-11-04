@@ -993,6 +993,9 @@ jobs:
           cmake -S . -B "$test_build_dir" \
             -D ENABLE_TESTS=ON \
             -D BUILD_TOOLS=ON \
+            -D AETHERKIRI_BUILD_ENTISGLS_TESTS=ON \
+            -D AETHERKIRI_BUILD_SYSTEMC_TESTS=ON \
+            -D AETHERKIRI_BUILD_ESCUDE_TESTS=ON \
             -D AETHERKIRI_BUILD_YURIS_CORE_TESTS=ON \
             -D AETHERKIRI_BUILD_YURIS_PROVIDER_TESTS=ON \
             -D VCPKG_MANIFEST_INSTALL=OFF \
@@ -1012,6 +1015,9 @@ jobs:
           inventory_file="${RUNNER_TEMP}/aetherkiri-test-inventory.json"
           ctest --test-dir "$test_build_dir" --show-only=json-v1 > "$inventory_file"
           required_suites=(
+            --require-executable aether_entisgls_storage_test
+            --require-executable aether_entisgls_provider_test
+            --require-executable aether_entisgls_adaptation_test
             --require-executable siglus-runtime-jpeg
             --require-executable mages-runtime-provider
             --require-executable mages-host-events
@@ -1023,6 +1029,13 @@ jobs:
               --require-executable engine-api-diagnostics
               --require-executable advhd-runtime-tests
               --require-executable advhd-registration-tests
+              --require-executable aether_systemc_tests
+              --require-executable aether_systemc_vm_tests
+              --require-executable aether_systemc_runtime_tests
+              --require-executable aether_systemc_native_ui_tests
+              --require-executable aether_systemc_metadata_tests
+              --require-executable aether_systemc_effects_tests
+              --require-executable aether_escude_tests
               --require-executable aether_yuris_compiled_tests
               --require-executable aether_yuris_provider_tests
               --require-executable bgi-runtime-vm

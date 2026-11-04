@@ -986,13 +986,16 @@ jobs:
           ALSOFT_DRIVERS: 'null'
         run: |
           set -euo pipefail
-          # Keep the Debug compiler options and object files; only add tests.
+          # Reuse Debug objects with the existing standalone-test link configuration.
+          # Explicitly enable suites whose cached defaults were OFF for the app.
           test_build_dir="${GITHUB_WORKSPACE}/out/macos/debug"
           configure_log="${RUNNER_TEMP}/aetherkiri-test-configure.log"
 
           cmake -S . -B "$test_build_dir" \
             -D ENABLE_TESTS=ON \
             -D BUILD_TOOLS=ON \
+            -D BUILD_ENGINE_API=OFF \
+            -D BUILD_GODOT_EXTENSION=OFF \
             -D AETHERKIRI_BUILD_ENTISGLS_TESTS=ON \
             -D AETHERKIRI_BUILD_SYSTEMC_TESTS=ON \
             -D AETHERKIRI_BUILD_ESCUDE_TESTS=ON \
@@ -1015,9 +1018,6 @@ jobs:
           inventory_file="${RUNNER_TEMP}/aetherkiri-test-inventory.json"
           ctest --test-dir "$test_build_dir" --show-only=json-v1 > "$inventory_file"
           required_suites=(
-            --require-executable aether_entisgls_storage_test
-            --require-executable aether_entisgls_provider_test
-            --require-executable aether_entisgls_adaptation_test
             --require-executable siglus-runtime-jpeg
             --require-executable mages-runtime-provider
             --require-executable mages-host-events

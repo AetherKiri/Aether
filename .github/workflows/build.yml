@@ -175,13 +175,15 @@ jobs:
         uses: actions/cache/restore@v6
         with:
           path: .ccache
-          key: ${{ runner.os }}-android-ccache-v2
+          key: ${{ runner.os }}-android-ccache-v3-${{ github.run_id }}-${{ github.run_attempt }}
           restore-keys: |
+            ${{ runner.os }}-android-ccache-v3-
             ${{ runner.os }}-android-ccache-
 
       - name: Setup ccache config
         run: |
-          ccache --max-size=400M
+          ccache --max-size=1G
+          ccache --set-config=compiler_check=content
           ccache --cleanup
           ccache -z
 
@@ -373,12 +375,16 @@ jobs:
           path: out/godot/android/release/Aether-release.apk
           retention-days: 7
 
+      - name: Report compiler cache statistics
+        if: always() && !cancelled()
+        run: ccache --show-stats
+
       - name: Save ccache
-        if: success() && github.event_name != 'pull_request' && steps.restore-ccache.outputs.cache-hit != 'true'
+        if: success() && github.event_name != 'pull_request' && env.AETHERKIRI_VCPKG_CACHE_WRITE == 'true' && steps.restore-ccache.outputs.cache-hit != 'true'
         uses: actions/cache/save@v6
         with:
           path: .ccache
-          key: ${{ runner.os }}-android-ccache-v2
+          key: ${{ steps.restore-ccache.outputs.cache-primary-key }}
 
   ios:
     # Upstream bot candidates run only the secretless RFVP provider checks.
@@ -538,13 +544,15 @@ jobs:
         uses: actions/cache/restore@v6
         with:
           path: .ccache
-          key: ${{ runner.os }}-ios-xcode-27.1-ccache-v1
+          key: ${{ runner.os }}-ios-xcode-27.1-ccache-v2-${{ github.run_id }}-${{ github.run_attempt }}
           restore-keys: |
+            ${{ runner.os }}-ios-xcode-27.1-ccache-v2-
             ${{ runner.os }}-ios-xcode-27.1-ccache-
 
       - name: Setup ccache config
         run: |
-          ccache --max-size=400M
+          ccache --max-size=1G
+          ccache --set-config=compiler_check=content
           ccache --cleanup
           ccache -z
 
@@ -704,12 +712,16 @@ jobs:
           path: out/godot/ios/release/Aether-App-Store.ipa
           retention-days: 7
 
+      - name: Report compiler cache statistics
+        if: always() && !cancelled()
+        run: ccache --show-stats
+
       - name: Save ccache
-        if: success() && github.event_name != 'pull_request' && steps.restore-ccache.outputs.cache-hit != 'true'
+        if: success() && github.event_name != 'pull_request' && env.AETHERKIRI_VCPKG_CACHE_WRITE == 'true' && steps.restore-ccache.outputs.cache-hit != 'true'
         uses: actions/cache/save@v6
         with:
           path: .ccache
-          key: ${{ runner.os }}-ios-xcode-27.1-ccache-v1
+          key: ${{ steps.restore-ccache.outputs.cache-primary-key }}
 
   macos:
     # Upstream bot candidates run only the secretless RFVP provider checks.
@@ -879,13 +891,15 @@ jobs:
         uses: actions/cache/restore@v6
         with:
           path: .ccache
-          key: ${{ runner.os }}-macos-xcode-27.1-ccache-v1
+          key: ${{ runner.os }}-macos-xcode-27.1-ccache-v2-${{ github.run_id }}-${{ github.run_attempt }}
           restore-keys: |
+            ${{ runner.os }}-macos-xcode-27.1-ccache-v2-
             ${{ runner.os }}-macos-xcode-27.1-ccache-
 
       - name: Setup ccache config
         run: |
-          ccache --max-size=400M
+          ccache --max-size=1G
+          ccache --set-config=compiler_check=content
           ccache --cleanup
           ccache -z
 
@@ -965,9 +979,6 @@ jobs:
             --path apps/godot_app \
             --script res://scripts/smoke_test.gd
 
-      - name: Free macOS Debug intermediates before unit tests
-        run: python3 .github/scripts/clean-apple-build-intermediates.py macos-debug
-
       - name: Run complete public and integrated private unit tests
         env:
           # Exercise playback/completion without depending on the runner's
@@ -975,15 +986,13 @@ jobs:
           ALSOFT_DRIVERS: 'null'
         run: |
           set -euo pipefail
-          test_build_dir="${GITHUB_WORKSPACE}/out/macos/ci-tests"
+          # Keep the Debug compiler options and object files; only add tests.
+          test_build_dir="${GITHUB_WORKSPACE}/out/macos/debug"
           configure_log="${RUNNER_TEMP}/aetherkiri-test-configure.log"
 
-          cmake --preset "MacOS Debug Config" --fresh \
-            -B "$test_build_dir" \
+          cmake -S . -B "$test_build_dir" \
             -D ENABLE_TESTS=ON \
             -D BUILD_TOOLS=ON \
-            -D BUILD_ENGINE_API=OFF \
-            -D BUILD_GODOT_EXTENSION=OFF \
             -D AETHERKIRI_BUILD_YURIS_CORE_TESTS=ON \
             -D AETHERKIRI_BUILD_YURIS_PROVIDER_TESTS=ON \
             -D VCPKG_MANIFEST_INSTALL=OFF \
@@ -1031,6 +1040,9 @@ jobs:
           # links cannot silently regress again (issue #241 Phase 2 fallout).
           tools/bin/mac/dbg/xp3 --help >/dev/null
           tools/bin/mac/dbg/xp3_select --help >/dev/null
+
+      - name: Free macOS Debug intermediates after unit tests
+        run: python3 .github/scripts/clean-apple-build-intermediates.py macos-debug
 
       - name: Verify built .app
         run: |
@@ -1108,12 +1120,16 @@ jobs:
           path: out/godot/macos/app-store/Aether-Mac-App-Store.pkg
           retention-days: 7
 
+      - name: Report compiler cache statistics
+        if: always() && !cancelled()
+        run: ccache --show-stats
+
       - name: Save ccache
-        if: success() && github.event_name != 'pull_request' && steps.restore-ccache.outputs.cache-hit != 'true'
+        if: success() && github.event_name != 'pull_request' && env.AETHERKIRI_VCPKG_CACHE_WRITE == 'true' && steps.restore-ccache.outputs.cache-hit != 'true'
         uses: actions/cache/save@v6
         with:
           path: .ccache
-          key: ${{ runner.os }}-macos-xcode-27.1-ccache-v1
+          key: ${{ steps.restore-ccache.outputs.cache-primary-key }}
 
   linux:
     # Upstream bot candidates run only the secretless RFVP provider checks.
@@ -1213,13 +1229,15 @@ jobs:
         uses: actions/cache/restore@v6
         with:
           path: .ccache/linux
-          key: ${{ runner.os }}-linux-${{ matrix.arch }}-ccache-v2
+          key: ${{ runner.os }}-linux-${{ matrix.arch }}-ccache-v3-${{ github.run_id }}-${{ github.run_attempt }}
           restore-keys: |
+            ${{ runner.os }}-linux-${{ matrix.arch }}-ccache-v3-
             ${{ runner.os }}-linux-${{ matrix.arch }}-ccache-
 
       - name: Setup ccache config
         run: |
-          ccache --max-size=400M
+          ccache --max-size=1G
+          ccache --set-config=compiler_check=content
           ccache --cleanup
           ccache -z
 
@@ -1252,8 +1270,10 @@ jobs:
         uses: actions/cache/restore@v6
         with:
           path: .aetherkiri-cache/vcpkg-binaries
-          key: ${{ runner.os }}-linux-${{ matrix.arch }}-vcpkg-binaries-v2-${{ hashFiles('vcpkg-configuration.json', 'vcpkg.json', 'vcpkg/ports/**', 'vcpkg/triplets/**') }}
+          key: ${{ runner.os }}-linux-${{ matrix.arch }}-vcpkg-binaries-v3-${{ hashFiles('vcpkg-configuration.json', 'vcpkg.json', 'vcpkg/ports/**', 'vcpkg/triplets/**', 'tools/linux_env.sh', 'tools/setup_linux.sh') }}-${{ github.run_id }}-${{ github.run_attempt }}
           restore-keys: |
+            ${{ runner.os }}-linux-${{ matrix.arch }}-vcpkg-binaries-v3-${{ hashFiles('vcpkg-configuration.json', 'vcpkg.json', 'vcpkg/ports/**', 'vcpkg/triplets/**', 'tools/linux_env.sh', 'tools/setup_linux.sh') }}-
+            ${{ runner.os }}-linux-${{ matrix.arch }}-vcpkg-binaries-v3-
             ${{ runner.os }}-linux-${{ matrix.arch }}-vcpkg-binaries-v2-
             ${{ runner.os }}-linux-${{ matrix.arch }}-vcpkg-binaries-v1-${{ hashFiles('vcpkg-configuration.json', 'vcpkg.json', 'vcpkg/ports/**', 'vcpkg/triplets/**') }}-
             ${{ runner.os }}-linux-${{ matrix.arch }}-vcpkg-binaries-v1-
@@ -1370,8 +1390,9 @@ jobs:
           if-no-files-found: error
           retention-days: 7
 
-      # Seed reusable caches from successful main builds. PR-scoped copies
-      # cannot be reused by main or other PRs and consume the same quota.
+      # Source archives are seeded by main. Compiler and binary snapshots also
+      # refresh on trusted manual runs so cold/warm cache behavior can be tested.
+      # Pull requests restore these caches without saving PR-scoped copies.
       - name: Save vcpkg source cache
         if: success() && github.ref == 'refs/heads/main' && env.AETHERKIRI_VCPKG_CACHE_WRITE == 'true' && steps.restore-vcpkg-downloads.outputs.cache-hit != 'true'
         uses: actions/cache/save@v6
@@ -1379,16 +1400,20 @@ jobs:
           path: .aetherkiri-cache/vcpkg-downloads
           key: ${{ runner.os }}-linux-${{ matrix.arch }}-vcpkg-downloads-${{ hashFiles('vcpkg-configuration.json', 'vcpkg.json', 'vcpkg/ports/**', 'vcpkg/triplets/**') }}
 
+      - name: Report compiler cache statistics
+        if: always() && !cancelled()
+        run: ccache --show-stats
+
       - name: Save ccache
-        if: success() && github.ref == 'refs/heads/main' && env.AETHERKIRI_VCPKG_CACHE_WRITE == 'true' && steps.restore-ccache.outputs.cache-hit != 'true'
+        if: success() && github.event_name != 'pull_request' && env.AETHERKIRI_VCPKG_CACHE_WRITE == 'true' && steps.restore-ccache.outputs.cache-hit != 'true'
         uses: actions/cache/save@v6
         with:
           path: .ccache/linux
-          key: ${{ runner.os }}-linux-${{ matrix.arch }}-ccache-v2
+          key: ${{ steps.restore-ccache.outputs.cache-primary-key }}
 
       - name: Save vcpkg binary cache
-        if: success() && github.ref == 'refs/heads/main' && env.AETHERKIRI_VCPKG_CACHE_WRITE == 'true' && steps.restore-vcpkg-binaries.outputs.cache-hit != 'true'
+        if: success() && github.event_name != 'pull_request' && env.AETHERKIRI_VCPKG_CACHE_WRITE == 'true' && steps.restore-vcpkg-binaries.outputs.cache-hit != 'true'
         uses: actions/cache/save@v6
         with:
           path: .aetherkiri-cache/vcpkg-binaries
-          key: ${{ runner.os }}-linux-${{ matrix.arch }}-vcpkg-binaries-v2-${{ hashFiles('vcpkg-configuration.json', 'vcpkg.json', 'vcpkg/ports/**', 'vcpkg/triplets/**') }}
+          key: ${{ steps.restore-vcpkg-binaries.outputs.cache-primary-key }}

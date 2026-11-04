@@ -58,6 +58,11 @@ func _init() -> void:
         "ACPX provider discovers its source entry instead of launching a Windows utility"
     )
     _expect_equal(
+        GameLaunchEntry.resolve_for_runtime({"path": root, GameLaunchEntry.FIELD: "translated.exe"}, "silky"),
+        root,
+        "Silky provider receives the archive root with a remembered translation launcher"
+    )
+    _expect_equal(
         GameLaunchEntry.resolve({"path": root, GameLaunchEntry.FIELD: "Script.HCB"}),
         root.path_join("Script.HCB"),
         "FVP script launch path"

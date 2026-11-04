@@ -2093,6 +2093,7 @@ const RUNTIME_TYRANO := "tyranoscript"
 const RUNTIME_MAGES := "mages"
 const RUNTIME_YURIS := "yuris"
 const RUNTIME_SYSTEMC := "systemc"
+const RUNTIME_SILKY := "silky"
 const RUNTIME_PLAYER_CLASS := "AetherRuntimePlayer"
 const ONSCRIPTER_SCRIPT_MARKERS := [
     "0.txt",
@@ -11241,6 +11242,8 @@ func _probe_game_runtime_kind(root: String, runtime_kind: String) -> String:
         return runtime_kind
     if player != null and player.has_method("probe_runtime"):
         # Format detection stays in the optional private provider.
+        if int(player.probe_runtime(RUNTIME_SILKY, root)) >= 90:
+            return RUNTIME_SILKY
         if int(player.probe_runtime(RUNTIME_SYSTEMC, root)) > 0:
             return RUNTIME_SYSTEMC
         if int(player.probe_runtime(RUNTIME_ESCUDE, root)) >= 90:
@@ -12521,6 +12524,7 @@ func _switch_runtime_player(runtime_kind: String) -> bool:
         RUNTIME_XSYSTEM35,
         RUNTIME_SYSTEM3,
         RUNTIME_SYSTEMC,
+        RUNTIME_SILKY,
         RUNTIME_YURIS,
         RUNTIME_ADVHD,
         RUNTIME_ESCUDE,
@@ -12565,6 +12569,8 @@ func _switch_runtime_player(runtime_kind: String) -> bool:
         if normalized == RUNTIME_XSYSTEM35
         else "AliceSoft System 4"
         if normalized == RUNTIME_XSYSTEM4
+        else "Silky Engine"
+        if normalized == RUNTIME_SILKY
         else "SystemC"
         if normalized == RUNTIME_SYSTEMC
         else "YU-RIS"
@@ -13313,6 +13319,7 @@ func _ensure_player_initialized() -> bool:
         RUNTIME_XSYSTEM35,
         RUNTIME_SYSTEM3,
         RUNTIME_SYSTEMC,
+        RUNTIME_SILKY,
         RUNTIME_YURIS,
         RUNTIME_ADVHD,
         RUNTIME_ESCUDE,
@@ -13337,6 +13344,7 @@ func _ensure_player_initialized() -> bool:
         if current_player_runtime_kind == RUNTIME_XSYSTEM35
         else "AliceSoft System 4"
         if current_player_runtime_kind == RUNTIME_XSYSTEM4
+        else "Silky Engine" if current_player_runtime_kind == RUNTIME_SILKY
         else "SystemC" if current_player_runtime_kind == RUNTIME_SYSTEMC
         else "YU-RIS" if current_player_runtime_kind == RUNTIME_YURIS
         else "OnscripterYuri"

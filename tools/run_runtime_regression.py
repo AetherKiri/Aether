@@ -111,8 +111,9 @@ def main():
     # A seeded result must never be accepted as evidence of this execution.
     (isolated / "regression-result.json").unlink(missing_ok=True)
     env = os.environ.copy()
-    env["AETHERKIRI_CLI_PROBE_SCRIPT"] = PROBE
-    env["AETHERKIRI_TEST_CONFIG_JSON"] = json.dumps(config, ensure_ascii=False)
+    if args.platform == "macos":
+        env["AETHERKIRI_CLI_PROBE_SCRIPT"] = PROBE
+        env["AETHERKIRI_TEST_CONFIG_JSON"] = json.dumps(config, ensure_ascii=False)
     env["AETHERKIRI_DIAGNOSTICS"] = "1"
 
     def device(*command, name, check=True):
@@ -130,22 +131,25 @@ def main():
             device("device", "copy", "to", "--device", args.device,
                 "--domain-type", "appDataContainer", "--domain-identifier", args.bundle,
                 "--source", str(isolated), "--destination", remote, name="seed-copy")
+        # A long case can exceed the host's per-argument limit when serialized
+        # into devicectl's launch environment. Use the existing one-shot file
+        # transport for immediate runs as well as deferred launches.
+        device("device", "copy", "from", "--device", args.device,
+            "--domain-type", "appDataContainer", "--domain-identifier", args.bundle,
+            "--source", "Documents/aetherkiri-probe-request.json",
+            "--destination", str(output / "previous-request.json"),
+            name="previous-request", check=False)
+        device("device", "copy", "to", "--device", args.device,
+            "--domain-type", "appDataContainer", "--domain-identifier", args.bundle,
+            "--source", str(output / "case.json"),
+            "--destination", "Documents/aetherkiri-probe-request.json", name="queue-case")
         if args.prepare_only:
-            device("device", "copy", "from", "--device", args.device,
-                "--domain-type", "appDataContainer", "--domain-identifier", args.bundle,
-                "--source", "Documents/aetherkiri-probe-request.json",
-                "--destination", str(output / "previous-request.json"),
-                name="previous-request", check=False)
-            device("device", "copy", "to", "--device", args.device,
-                "--domain-type", "appDataContainer", "--domain-identifier", args.bundle,
-                "--source", str(output / "case.json"),
-                "--destination", "Documents/aetherkiri-probe-request.json", name="queue-case")
             summary = {"prepared": True, "passed": None, "run_id": run_id,
                 "result_source": remote + "/regression-result.json", "artifacts": str(output)}
             (output / "summary.json").write_text(json.dumps(summary, ensure_ascii=False, indent=2))
             print(json.dumps(summary, ensure_ascii=False), flush=True)
             return 0
-        launch_env = {key: env[key] for key in ("AETHERKIRI_CLI_PROBE_SCRIPT", "AETHERKIRI_TEST_CONFIG_JSON", "AETHERKIRI_DIAGNOSTICS")}
+        launch_env = {"AETHERKIRI_DIAGNOSTICS": "1"}
         result_path = output / "regression-result.json"
         device("device", "process", "launch", "--device", args.device,
             "--terminate-existing", "--environment-variables", json.dumps(launch_env),

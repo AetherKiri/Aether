@@ -6,8 +6,9 @@ collects a structured result plus console logs. It captures no images.
 
 The installed app or Godot project must include
 `res://scripts/runtime_regression_probe.gd`. Normal launches do not run it.
-The host tool enables the probe explicitly using the existing CLI probe
-environment variables and gives every run a new writable directory beneath
+The host tool enables the probe explicitly using CLI probe environment variables
+on macOS and the existing one-shot request file on iOS. Long iOS cases stay out
+of the process launch arguments. Every run gets a new writable directory beneath
 `user://regressions/`. Engine saves and settings go into that directory.
 `--seed` optionally copies an existing writable-state tree into the isolated
 directory; it never passes the original save directory to the engine.
@@ -72,6 +73,9 @@ and SDK command results, including the engine cleanup status and process ID.
 Keep these artifacts and game-specific cases outside the public repo;
 private runtime packages own cases requiring private callback identifiers.
 Run directories are retained for investigation and can be removed afterwards.
+Reports are replaced atomically so device polling cannot observe a partially
+written JSON document. A reported runtime error fails the current action even
+when normal library playback owns the engine ticks.
 
 ## Case format
 

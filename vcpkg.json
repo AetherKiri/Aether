@@ -22,6 +22,7 @@
     },
     "minizip",
     "tinyxml2",
+    "nlohmann-json",
     {
       "name": "dirent",
       "platform": "windows"
@@ -86,6 +87,7 @@
       "platform": "!emscripten"
     },
     "libjpeg-turbo",
+    "liblzma",
     "lua",
     {
       "name": "llama-cpp",

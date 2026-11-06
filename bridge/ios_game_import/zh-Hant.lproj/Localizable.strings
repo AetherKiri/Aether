@@ -1,0 +1,10 @@
+"import.title" = "傳送到 Aether 視覺小說目錄";
+"import.cancel" = "取消";
+"import.done" = "完成";
+"import.preparing" = "正在接收遊戲資料夾…";
+"import.cancelling" = "正在取消…";
+"import.failed" = "無法完成匯入。";
+"import.open_aether" = "開啟 Aether 後，已接收的資料夾會自動加入 Games。";
+"import.received" = "已接收 %d 個資料夾。開啟 Aether 後將自動加入 Games。";
+"import.unsupported" = "請選擇完整的遊戲資料夾或 XP3 檔案。";
+"import.group_unavailable" = "共用匯入目錄無法使用，請安裝已啟用檔案匯入權限的 Aether 版本。";

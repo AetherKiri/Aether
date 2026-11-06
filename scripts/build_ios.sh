@@ -788,6 +788,8 @@ else
     fi
     python3 "$PROJECT_ROOT/tools/stage_renpy_ios.py" \
         --project "$PROJECT_ROOT/out/godot/ios/$BUILD_TYPE_LOWER/Aether.xcodeproj" --runtime "$RENPY_BUNDLE_DIR"
+    python3 "$PROJECT_ROOT/tools/stage_ios_game_import.py" \
+        --project "$PROJECT_ROOT/out/godot/ios/$BUILD_TYPE_LOWER/Aether.xcodeproj"
     if [[ "$PACKAGE_IPA" == true && "$SIMULATOR" == false ]]; then
         package_ios_unsigned_ipa "$PROJECT_ROOT/out/godot/ios/$BUILD_TYPE_LOWER" "$BUILD_TYPE_LOWER"
     elif [[ "$PACKAGE_IPA" == true && "$SIMULATOR" == true ]]; then

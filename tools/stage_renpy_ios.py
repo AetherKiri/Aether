@@ -27,7 +27,7 @@ def stage(project, runtime):
     data = json.loads(subprocess.check_output(["plutil", "-convert", "json", "-o", "-", str(file)]))
     objects = data["objects"]
     root = objects[data["rootObject"]]
-    targets = [objects[item] for item in root["targets"] if objects[item].get("isa") == "PBXNativeTarget"]
+    targets = [objects[item] for item in root["targets"] if objects[item].get("productType") == "com.apple.product-type.application"]
     if len(targets) != 1: raise ValueError("Expected one Godot app target")
     target = targets[0]
     export = project.parent

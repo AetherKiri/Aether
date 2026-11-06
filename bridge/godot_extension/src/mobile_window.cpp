@@ -1,4 +1,5 @@
 #include "mobile_window.h"
+#include <cstdlib>
 #include <godot_cpp/classes/display_server.hpp>
 #include <godot_cpp/classes/node.hpp>
 #include <godot_cpp/classes/window.hpp>
@@ -31,8 +32,25 @@ protected:
         ClassDB::bind_method(D_METHOD("configure", "game_active", "pip_enabled"), &AetherMobileWindow::configure);
         ClassDB::bind_method(D_METHOD("is_supported"), &AetherMobileWindow::is_supported);
         ClassDB::bind_method(D_METHOD("is_in_picture_in_picture"), &AetherMobileWindow::is_in_picture_in_picture);
+        ClassDB::bind_method(D_METHOD("take_import_event"), &AetherMobileWindow::take_import_event);
+        ClassDB::bind_method(D_METHOD("consume_pending_imports"), &AetherMobileWindow::consume_pending_imports);
     }
 public:
+    String take_import_event() {
+#if defined(__APPLE__) && TARGET_OS_IPHONE
+        char *json = aether_ios_import_take_event();
+        String result = json ? String::utf8(json) : String();
+        std::free(json);
+        return result;
+#else
+        return {};
+#endif
+    }
+    void consume_pending_imports() {
+#if defined(__APPLE__) && TARGET_OS_IPHONE
+        aether_ios_import_consume_pending();
+#endif
+    }
     ~AetherMobileWindow() override {
 #if defined(__APPLE__) && TARGET_OS_IPHONE
         if (handle_) aether_mobile_window_close(handle_);

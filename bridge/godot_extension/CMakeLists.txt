@@ -122,8 +122,8 @@ endif()
 
 if(APPLE)
     if(IOS)
-        target_sources(aether_kiri_godot PRIVATE src/renpy_native_ios.mm src/mobile_window_ios.mm)
-        set_source_files_properties(src/renpy_native_ios.mm src/mobile_window_ios.mm
+        target_sources(aether_kiri_godot PRIVATE src/renpy_native_ios.mm src/mobile_window_ios.mm src/ios_game_import.mm)
+        set_source_files_properties(src/renpy_native_ios.mm src/mobile_window_ios.mm src/ios_game_import.mm
             PROPERTIES LANGUAGE CXX COMPILE_FLAGS "-x objective-c++ -fobjc-arc")
         target_link_libraries(aether_kiri_godot PRIVATE "-framework AVKit" "-framework AVFoundation" "-framework CoreMedia" "-framework CoreVideo" "-framework QuartzCore")
     else()
@@ -158,7 +158,9 @@ if(APPLE)
         # the Swift objects into the archive consumed by the Godot exporter.
         add_library(aether_kiri_godot_swift STATIC
             src/apple_native_file_picker.swift
-            src/apple_storekit.swift)
+            src/apple_storekit.swift
+            ../ios_game_import/GameImportStore.swift
+            ../ios_game_import/GameImportHost.swift)
         set_property(TARGET aether_kiri_godot_swift PROPERTY
             Swift_LANGUAGE_VERSION 5)
         add_dependencies(aether_kiri_godot aether_kiri_godot_swift)

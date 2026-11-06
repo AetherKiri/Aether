@@ -99,6 +99,7 @@ set(AETHERKIRI_GODOT_SOURCES
     src/flash_player.cpp
     src/tyrano_player.cpp
     src/native_controls_overlay.cpp
+    src/mobile_window.cpp
     src/renpy_native_player.cpp
     src/aether_runtime_player.cpp
     src/frame_effect_host.cpp
@@ -121,9 +122,10 @@ endif()
 
 if(APPLE)
     if(IOS)
-        target_sources(aether_kiri_godot PRIVATE src/renpy_native_ios.mm)
-        set_source_files_properties(src/renpy_native_ios.mm
+        target_sources(aether_kiri_godot PRIVATE src/renpy_native_ios.mm src/mobile_window_ios.mm)
+        set_source_files_properties(src/renpy_native_ios.mm src/mobile_window_ios.mm
             PROPERTIES LANGUAGE CXX COMPILE_FLAGS "-x objective-c++ -fobjc-arc")
+        target_link_libraries(aether_kiri_godot PRIVATE "-framework AVKit" "-framework AVFoundation" "-framework CoreMedia" "-framework CoreVideo" "-framework QuartzCore")
     else()
         add_library(aether_renpy_sdl_hook SHARED "${CMAKE_SOURCE_DIR}/bridge/renpy_runtime/sdl_dynamic_hook.cpp")
         add_custom_command(TARGET aether_renpy_sdl_hook POST_BUILD

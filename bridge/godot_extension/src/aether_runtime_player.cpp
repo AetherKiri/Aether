@@ -5,6 +5,7 @@
 #include "flash_player.h"
 #include "tyrano_player.h"
 #include "native_controls_overlay.h"
+#include "mobile_window.h"
 #include "renpy_native.h"
 #if defined(AETHERKIRI_WITH_SYSTEM3)
 #include "system3_runtime_provider.h"
@@ -14223,6 +14224,7 @@ void InitializeAetherRuntime(ModuleInitializationLevel level) {
     RegisterAetherFlashPlayer();
     RegisterAetherTyranoPlayer();
     RegisterAetherNativeControls();
+    RegisterAetherMobileWindow();
     RegisterAetherRenpyNativePlayer();
 }
 

@@ -543,7 +543,7 @@ patch_ios_export_project() {
     for archive in "${FORCE_LOAD_PLUGIN_ARCHIVES[@]}"; do
         flags+=" -Wl,-force_load,Aether/bin/ios/$export_build_type/$archive"
     done
-    flags+=' -liconv -framework Accelerate -framework AudioToolbox -framework AVFAudio -framework AVFoundation -framework CoreAudio -framework CoreBluetooth -framework CoreHaptics -framework CoreMedia -framework CoreMotion -framework CoreVideo -framework GameController -framework VideoToolbox -framework CoreGraphics -framework QuartzCore -framework Metal -framework MetalKit -framework WebKit -framework OpenGLES -framework Security -framework StoreKit -framework SystemConfiguration -framework MobileCoreServices'
+    flags+=' -liconv -framework Accelerate -framework AudioToolbox -framework AVFAudio -framework AVFoundation -framework AVKit -framework CoreAudio -framework CoreBluetooth -framework CoreHaptics -framework CoreMedia -framework CoreMotion -framework CoreVideo -framework GameController -framework VideoToolbox -framework CoreGraphics -framework QuartzCore -framework Metal -framework MetalKit -framework WebKit -framework OpenGLES -framework Security -framework StoreKit -framework SystemConfiguration -framework MobileCoreServices'
 
     if [[ -f "$project_file" ]]; then
         FLAGS="$flags" perl -0pi -e 's/OTHER_LDFLAGS = "[^"]*";/"OTHER_LDFLAGS = \"" . $ENV{FLAGS} . "\";"/eg' "$project_file"
@@ -577,8 +577,22 @@ EOF
             /usr/libexec/PlistBuddy -c 'Add :LSSupportsOpeningDocumentsInPlace bool true' "$info_plist"
         /usr/libexec/PlistBuddy -c 'Set :UIStatusBarHidden false' "$info_plist" 2>/dev/null || \
             /usr/libexec/PlistBuddy -c 'Add :UIStatusBarHidden bool false' "$info_plist"
-        /usr/libexec/PlistBuddy -c 'Set :UIViewControllerBasedStatusBarAppearance false' "$info_plist" 2>/dev/null || \
-            /usr/libexec/PlistBuddy -c 'Add :UIViewControllerBasedStatusBarAppearance bool false' "$info_plist"
+        /usr/libexec/PlistBuddy -c 'Set :UIViewControllerBasedStatusBarAppearance true' "$info_plist" 2>/dev/null || \
+            /usr/libexec/PlistBuddy -c 'Add :UIViewControllerBasedStatusBarAppearance bool true' "$info_plist"
+        # AVKit retains the paused game's preview in system Picture in Picture.
+        python3 - "$info_plist" <<'PY'
+import plistlib
+import sys
+from pathlib import Path
+path = Path(sys.argv[1])
+with path.open('rb') as stream:
+    plist = plistlib.load(stream)
+modes = plist.setdefault('UIBackgroundModes', [])
+if 'audio' not in modes:
+    modes.append('audio')
+with path.open('wb') as stream:
+    plistlib.dump(plist, stream)
+PY
         /usr/libexec/PlistBuddy -c 'Set :SKIncludeConsumableInAppPurchaseHistory true' "$info_plist" 2>/dev/null || \
             /usr/libexec/PlistBuddy -c 'Add :SKIncludeConsumableInAppPurchaseHistory bool true' "$info_plist"
         /usr/libexec/PlistBuddy \

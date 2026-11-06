@@ -12,6 +12,17 @@ func _init() -> void:
     )
     DirAccess.make_dir_recursive_absolute(fixture_root)
 
+    var cmvs_root := fixture_root.path_join("cmvs")
+    DirAccess.make_dir_recursive_absolute(cmvs_root.path_join("data/pack"))
+    _write(cmvs_root.path_join("cmvs32_CHS.exe"), "launcher")
+    _write(cmvs_root.path_join("data/pack/start.ps3"), "PS2A fixture")
+    _write(cmvs_root.path_join("data/pack/script.cpz"), "CPZ6 fixture")
+    var cmvs := GameMetadata.inspect(cmvs_root)
+    _expect_equal(String(cmvs.engine), "cmvs", "CMVS container detection")
+    _expect_equal(String(cmvs.launchFile), "", "CMVS keeps directory launch")
+    _write(cmvs_root.path_join("data/pack/script.cpz"), "wrong magic")
+    _expect_true(not GameMetadata.is_cmvs_directory(cmvs_root), "CMVS requires container magic")
+
     var artemis_root := fixture_root.path_join("mobile_artemis")
     DirAccess.make_dir_recursive_absolute(artemis_root)
     _write(artemis_root.path_join("launcher.exe"), "launcher")

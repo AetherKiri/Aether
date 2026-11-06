@@ -2077,6 +2077,7 @@ const KEY_MOD_CONTROL := 0x04
 const RUNTIME_KIRIKIRI := "kirikiri"
 const RUNTIME_ONSCRIPTER := "onscripter"
 const RUNTIME_MINORI := "minori"
+const RUNTIME_CMVS := "cmvs"
 const RUNTIME_SOFTPAL := "softpal"
 const RUNTIME_CATSYSTEM2 := "catsystem2"
 const RUNTIME_SIGLUS := "siglus"
@@ -12513,6 +12514,7 @@ func _switch_runtime_player(runtime_kind: String) -> bool:
     if normalized not in [
         RUNTIME_ONSCRIPTER,
         RUNTIME_MINORI,
+        RUNTIME_CMVS,
         RUNTIME_CATSYSTEM2,
         RUNTIME_SIGLUS,
         RUNTIME_BGI,
@@ -12571,6 +12573,8 @@ func _switch_runtime_player(runtime_kind: String) -> bool:
         if normalized == RUNTIME_YURIS
         else "OnscripterYuri"
         if normalized == RUNTIME_ONSCRIPTER
+        else "CMVS"
+        if normalized == RUNTIME_CMVS
         else "MinoriRust"
         if normalized == RUNTIME_MINORI
         else "CatSystem2"
@@ -13305,6 +13309,7 @@ func _ensure_player_initialized() -> bool:
     if current_player_runtime_kind in [
         RUNTIME_ONSCRIPTER,
         RUNTIME_MINORI,
+        RUNTIME_CMVS,
         RUNTIME_CATSYSTEM2,
         RUNTIME_SIGLUS,
         RUNTIME_BGI,
@@ -13341,6 +13346,8 @@ func _ensure_player_initialized() -> bool:
         else "YU-RIS" if current_player_runtime_kind == RUNTIME_YURIS
         else "OnscripterYuri"
         if current_player_runtime_kind == RUNTIME_ONSCRIPTER
+        else "CMVS"
+        if current_player_runtime_kind == RUNTIME_CMVS
         else "MinoriRust"
         if current_player_runtime_kind == RUNTIME_MINORI
         else "CatSystem2"

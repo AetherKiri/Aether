@@ -95,6 +95,21 @@ KiriKiri、WHITE ALBUM2（Leaf TtT / WA2）、ONScripterYuri、Artemis、CatSyst
 SoftPal、ADV Player HD 和 YU-RIS 已普遍开放。
 Debug 构建及 Android/Linux 发布构建不执行该咖啡限制。
 
+## 引擎原版仓库
+
+Aether 使用了以下引擎 fork。表中分别提供 Aether 接入仓库和原版上游项目的链接。
+
+| 引擎 | Aether fork | 原版仓库 |
+| --- | --- | --- |
+| OnscripterYuri | [AetherKiri/OnscripterYuri](https://github.com/AetherKiri/OnscripterYuri) | [YuriSizuku/OnscripterYuri](https://github.com/YuriSizuku/OnscripterYuri) |
+| Siglus | [AetherKiri/AetherSiglus](https://github.com/AetherKiri/AetherSiglus) | [xmoezzz/siglus_rs](https://github.com/xmoezzz/siglus_rs) |
+| MAGES / impacto | [AetherKiri/AetherMAGES](https://github.com/AetherKiri/AetherMAGES) | [CommitteeOfZero/impacto](https://github.com/CommitteeOfZero/impacto) |
+| CMVS | [AetherKiri/cmvs-rs](https://github.com/AetherKiri/cmvs-rs) | [Shizuku-in/cmvs-rs](https://github.com/Shizuku-in/cmvs-rs) |
+| AliceSoft System 4 | [AetherKiri/xsystem4](https://github.com/AetherKiri/xsystem4) | [nunuhara/xsystem4](https://github.com/nunuhara/xsystem4) |
+| AliceSoft System 3.5 / 3.9 | [AetherKiri/xsystem35-sdl2](https://github.com/AetherKiri/xsystem35-sdl2) | [kichikuou/xsystem35-sdl2](https://github.com/kichikuou/xsystem35-sdl2) |
+| AliceSoft System 1–3 | [AetherKiri/system3-sdl2](https://github.com/AetherKiri/system3-sdl2) | [kichikuou/system3-sdl2](https://github.com/kichikuou/system3-sdl2) |
+| EntisGLS / Cotopha | [AetherKiri/EntisGLS-SDL3](https://github.com/AetherKiri/EntisGLS-SDL3) | [nL6DHZc3RhMnC/EntisGLS-SDL3](https://github.com/nL6DHZc3RhMnC/EntisGLS-SDL3) |
+
 ## Flash 播放
 
 macOS、Linux 和 Android 可在 Flash 分类中导入 `.swf` 文件或文件夹，
@@ -311,6 +326,9 @@ npm install && npm run web:dev:debug   # 附带所需的 COOP/COEP 头
   （GBK），可用 `AETHERKIRI_ONS_ENCODING=gbk|sjis|utf8` 覆盖。ONS 的
   `mpegplay`/`avi`/`movie` 命令共用 Aether 的 FFmpeg 媒体管线。集成
   授权与许可记录见[上游 issue #75](https://github.com/YuriSizuku/OnscripterYuri/issues/75)。
+- **CMVS 游戏**的剧情存档、系统进度、设置与字体偏好保存在游戏目录的
+  `savedata/` 中。已有 Aether 存档会在首次启动时迁入，不覆盖本地文件；
+  游戏目录只读时继续使用按游戏隔离的应用存储。
 - **内置 Demo**——多语言 Aether KAG3 Demo 随应用包分发，首次启动时
   自动加入游戏库，与导入游戏走完全相同的流程。删除时会一并清理可写副本与
   存档。源码：[`demos/aetherkiri-kag3/`](demos/aetherkiri-kag3/)。

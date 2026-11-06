@@ -217,9 +217,14 @@ if(ANDROID)
 endif()
 
 if(ANDROID OR CMAKE_SYSTEM_NAME STREQUAL "Linux")
-    if((TARGET aether_minori_runtime AND TARGET aether_siglus_runtime) OR
-       (TARGET aether_flash_native AND (TARGET aether_minori_runtime OR TARGET aether_siglus_runtime)))
-        # Flash, Minori and Siglus are independently-built Rust static libraries.
+    set(aether_rust_runtime_count 0)
+    foreach(runtime aether_minori_runtime aether_siglus_runtime aether_flash_native aether_cmvs_runtime)
+        if(TARGET ${runtime})
+            math(EXPR aether_rust_runtime_count "${aether_rust_runtime_count} + 1")
+        endif()
+    endforeach()
+    if(aether_rust_runtime_count GREATER 1)
+        # Flash, Minori, Siglus and CMVS use independent Rust static libraries.
         # Each archive carries the Rust runtime objects it needs. Both GNU ld
         # and lld can see duplicate std/alloc symbols when multiple providers
         # are pulled into the extension, especially with Release LTO. They are
@@ -306,6 +311,10 @@ if(TARGET aether_entisgls_runtime)
     target_link_libraries(aether_kiri_godot PRIVATE aether_entisgls_runtime)
     target_compile_definitions(aether_kiri_godot PRIVATE AETHERKIRI_WITH_ENTISGLS=1)
 endif()
+if(TARGET aether_cmvs_runtime)
+    target_link_libraries(aether_kiri_godot PRIVATE aether_cmvs_runtime)
+    target_compile_definitions(aether_kiri_godot PRIVATE AETHERKIRI_WITH_CMVS=1)
+endif()
 if(TARGET aether_minori_runtime)
     target_link_libraries(aether_kiri_godot PRIVATE
         aether_minori_runtime)
@@ -328,6 +337,9 @@ if(IOS)
     endif()
     if(TARGET aether_flash_native)
         list(APPEND AETHERKIRI_IOS_ARCHIVES "$<TARGET_FILE:aether_flash_native>")
+    endif()
+    if(TARGET aether_cmvs_runtime)
+        list(APPEND AETHERKIRI_IOS_ARCHIVES "$<TARGET_FILE:aether_cmvs_runtime>" "$<TARGET_FILE:aether_cmvs_rust>")
     endif()
     if(TARGET aether_minori_runtime)
         list(APPEND AETHERKIRI_IOS_ARCHIVES

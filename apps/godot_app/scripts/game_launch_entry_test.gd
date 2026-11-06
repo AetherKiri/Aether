@@ -7,6 +7,11 @@ var failures := 0
 func _init() -> void:
     var root := "/Users/test/游戏/NOBLE☆WORKS"
     var exe_path := root.path_join("开始游戏.exe")
+    _expect_equal(
+        GameLaunchEntry.resolve_for_runtime({"path": root, GameLaunchEntry.FIELD: "cmvs32_CHS.exe"}, "cmvs"),
+        root,
+        "CMVS provider consumes the resource directory"
+    )
     var archive_path := root.path_join("patch/data.xp3")
 
     _expect_equal(GameLaunchEntry.rfvp_encoding({}), "sjis", "Japanese default")

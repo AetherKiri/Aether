@@ -149,6 +149,9 @@ Useful environment variables:
 
 Use `./build.sh <platform> <debug|release>`.
 
+For the uploaded NeXAS development checkpoint, exact runtime revision and
+validation boundaries, see [NeXAS progress](nexas-progress.md).
+
 The independent C++ NeXAS provider can be linked into the GDExtension by
 configuring with `-DAETHERKIRI_ENABLE_NEXAS=ON` and
 `-DAETHERKIRI_NEXAS_RUNTIME_DIR=/absolute/path/to/AetherNeXAS-runtime-provider`.

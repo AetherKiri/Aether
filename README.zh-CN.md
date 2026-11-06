@@ -326,6 +326,9 @@ npm install && npm run web:dev:debug   # 附带所需的 COOP/COEP 头
   （GBK），可用 `AETHERKIRI_ONS_ENCODING=gbk|sjis|utf8` 覆盖。ONS 的
   `mpegplay`/`avi`/`movie` 命令共用 Aether 的 FFmpeg 媒体管线。集成
   授权与许可记录见[上游 issue #75](https://github.com/YuriSizuku/OnscripterYuri/issues/75)。
+- **CMVS 游戏**的剧情存档、系统进度、设置与字体偏好保存在游戏目录的
+  `savedata/` 中。已有 Aether 存档会在首次启动时迁入，不覆盖本地文件；
+  游戏目录只读时继续使用按游戏隔离的应用存储。
 - **内置 Demo**——多语言 Aether KAG3 Demo 随应用包分发，首次启动时
   自动加入游戏库，与导入游戏走完全相同的流程。删除时会一并清理可写副本与
   存档。源码：[`demos/aetherkiri-kag3/`](demos/aetherkiri-kag3/)。

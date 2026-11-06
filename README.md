@@ -366,6 +366,10 @@ session, because render resources must be recreated.
   `mpegplay`/`avi`/`movie` commands share Aether's FFmpeg media pipeline.
   Integration permission and licensing are recorded in
   [upstream issue #75](https://github.com/YuriSizuku/OnscripterYuri/issues/75).
+- **CMVS games** keep gameplay slots, system progress, settings and font
+  preferences in the game's `savedata/` directory. Existing Aether saves are
+  imported once without overwriting local files; read-only game directories
+  retain isolated application storage.
 - **Built-in demo** — the multilingual Aether KAG3 demo ships inside the
   app package and is staged into the library on first launch, using the same
   flow as an imported game. Deleting it removes the staged copy and its saves.

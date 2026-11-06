@@ -1,0 +1,29 @@
+diff --git a/Cargo.toml b/Cargo.toml
+--- a/Cargo.toml
++++ b/Cargo.toml
+@@ -48,4 +48,7 @@ image = { version = "0.24", default-features = false, features = ["png", "jpeg", "bmp", "dds"] }
+ log = "0.4"
+ env_logger = "0.11"
+-kira = "0.9"
++# The embedded runtime uses aether_audio_bridge::PcmBackend. Keep the codecs,
++# but do not embed CPAL's device backend (and its incompatible Android Oboe)
++# alongside the host's audio libraries.
++kira = { version = "0.9", default-features = false, features = ["mp3", "ogg", "flac", "wav"] }
+ chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
+diff --git a/crates/na_mpeg2_decoder/Cargo.toml b/crates/na_mpeg2_decoder/Cargo.toml
+--- a/crates/na_mpeg2_decoder/Cargo.toml
++++ b/crates/na_mpeg2_decoder/Cargo.toml
+@@ -31,5 +31,5 @@
+ wgpu = { version = "0.19" }
+ bytemuck = { version = "1" }
+-rodio = { version = "0.17" }
++rodio = { version = "0.17", optional = true }
+ env_logger = "0.11"
+ png = "0.17"
+@@ -39,5 +39,6 @@
+ desktop-bins = [
+   "dep:crossbeam-channel",
+   "dep:pollster",
++  "dep:rodio",
+   "dep:winit",
+ ]

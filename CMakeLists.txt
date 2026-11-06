@@ -145,6 +145,7 @@ option(AETHERKIRI_ENABLE_XSYSTEM4
        "enable the native AliceSoft System 4 runtime" ON)
 option(AETHERKIRI_ENABLE_SIGLUS
        "enable the bundled siglus_rs runtime (requires a Rust toolchain)" ON)
+option(AETHERKIRI_ENABLE_CMVS "enable the CMVS runtime on macOS and iOS" ON)
 option(AETHERKIRI_ENABLE_MINORI
        "enable the independent Rust Minori runtime" ON)
 option(AETHERKIRI_ENABLE_ENTISGLS
@@ -386,6 +387,9 @@ if(AETHERKIRI_ENABLE_MAGES AND
     # every product platform the Godot extension targets, like the other
     # runtime submodules.
     add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/bridge/mages_runtime)
+endif()
+if(AETHERKIRI_ENABLE_CMVS AND BUILD_GODOT_EXTENSION AND APPLE)
+    add_subdirectory(packages/cmvs-rs/integrations/aether)
 endif()
 # The Rust provider has targets for Linux, Apple, Android, and Emscripten.
 # Keep it out of unsupported native targets, but do not make Linux the only

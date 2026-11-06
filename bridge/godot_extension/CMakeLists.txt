@@ -217,9 +217,14 @@ if(ANDROID)
 endif()
 
 if(ANDROID OR CMAKE_SYSTEM_NAME STREQUAL "Linux")
-    if((TARGET aether_minori_runtime AND TARGET aether_siglus_runtime) OR
-       (TARGET aether_flash_native AND (TARGET aether_minori_runtime OR TARGET aether_siglus_runtime)))
-        # Flash, Minori and Siglus are independently-built Rust static libraries.
+    set(aether_rust_runtime_count 0)
+    foreach(runtime aether_minori_runtime aether_siglus_runtime aether_flash_native aether_cmvs_runtime)
+        if(TARGET ${runtime})
+            math(EXPR aether_rust_runtime_count "${aether_rust_runtime_count} + 1")
+        endif()
+    endforeach()
+    if(aether_rust_runtime_count GREATER 1)
+        # Flash, Minori, Siglus and CMVS use independent Rust static libraries.
         # Each archive carries the Rust runtime objects it needs. Both GNU ld
         # and lld can see duplicate std/alloc symbols when multiple providers
         # are pulled into the extension, especially with Release LTO. They are

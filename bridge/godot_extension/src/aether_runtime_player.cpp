@@ -1058,6 +1058,35 @@ jobject AndroidGetApplicationContextLocal(JNIEnv *env) {
     return app;
 }
 
+#if defined(AETHERKIRI_WITH_CMVS)
+bool AndroidInitializeCmvsContext() {
+    static std::mutex mutex;
+    std::lock_guard<std::mutex> lock(mutex);
+    // CPAL uses this from audio threads. Keep the Application, not an Activity,
+    // alive for the process; activity recreation must not invalidate the JNI ref.
+    static jobject application = nullptr;
+    if (application != nullptr) return true;
+    JNIEnv *env = krkr_GetJNIEnv();
+    JavaVM *vm = nullptr;
+    if (env == nullptr || env->GetJavaVM(&vm) != JNI_OK) return false;
+    jobject local = AndroidGetApplicationContextLocal(env);
+    if (local == nullptr) return false;
+    jobject global = env->NewGlobalRef(local);
+    env->DeleteLocalRef(local);
+    if (env->ExceptionCheck() || global == nullptr) {
+        AndroidClearJniException(env);
+        if (global != nullptr) env->DeleteGlobalRef(global);
+        return false;
+    }
+    if (!aetherkiri::cmvs::InitializeAndroidContext(vm, global)) {
+        env->DeleteGlobalRef(global);
+        return false;
+    }
+    application = global;
+    return true;
+}
+#endif
+
 jclass AndroidFindClassWithAppClassLoader(JNIEnv *env, const char *class_name) {
     if (env == nullptr || class_name == nullptr) {
         return nullptr;
@@ -10616,6 +10645,15 @@ public:
         const CharString startup_utf8 = startup_script.utf8();
         const char *startup = startup_script.is_empty() ? nullptr : startup_utf8.get_data();
         const String normalized_runtime = runtime_id_.strip_edges().to_lower();
+#if defined(__ANDROID__) && defined(AETHERKIRI_WITH_CMVS)
+        if ((normalized_runtime == "cmvs" ||
+             (normalized_runtime == "auto" && engine_probe_runtime_provider("cmvs", path_utf8.get_data()) > 0)) &&
+            !AndroidInitializeCmvsContext()) {
+            last_result_ = "INVALID_STATE";
+            last_error_ = "Unable to initialize the CMVS Android audio context";
+            return ENGINE_RESULT_INVALID_STATE;
+        }
+#endif
         artemis_logical_frame_pacing_ = normalized_runtime == "artemis" ||
             (normalized_runtime == "auto" &&
              engine_probe_runtime_provider("artemis", path_utf8.get_data()) > 0);

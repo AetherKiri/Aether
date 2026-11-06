@@ -298,6 +298,16 @@ function(aetherkiri_add_siglus_rs imported_target)
             -P ${CMAKE_CURRENT_SOURCE_DIR}/cmake/PrepareSiglusRsWorkspace.cmake
         VERBATIM)
 
+    set(siglus_audio_check "")
+    if(ANDROID)
+        list(APPEND siglus_audio_check
+            COMMAND "${CMAKE_COMMAND}"
+                "-DCARGO_EXECUTABLE=${CARGO_EXECUTABLE}"
+                "-DSIGLUS_RS_MANIFEST=${SIGLUS_RS_MANIFEST}"
+                "-DSIGLUS_RUST_TARGET=${rust_triple}"
+                -P "${CMAKE_CURRENT_FUNCTION_LIST_DIR}/CheckSiglusAndroidAudio.cmake")
+    endif()
+
     add_custom_target(siglus_rs_cargo_build ALL
         COMMAND ${CMAKE_COMMAND} -E env
             ${SIGLUS_PATH_PREFIX}
@@ -309,6 +319,7 @@ function(aetherkiri_add_siglus_rs imported_target)
                 --lib
                 ${rust_profile_flag}
                 --crate-type staticlib
+        ${siglus_audio_check}
         BYPRODUCTS "${SIGLUS_STATIC_LIB}"
         USES_TERMINAL
         VERBATIM

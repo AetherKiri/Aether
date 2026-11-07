@@ -31,6 +31,11 @@ const GAME_COVER_PATH_PREFIX := "game://"
 const SETTINGS_FILE := "user://aetherkiri_settings.cfg"
 const NOTICE_FILE := "user://aetherkiri_notice.cfg"
 const NOTICE_ID := "qq_group_2026_09"
+# Keep the notice ID stable; increment this only when publishing a new announcement,
+# independently of the application version or its translations.
+const NOTICE_VERSION := 1
+const AnnouncementState = preload("res://scripts/announcement_state.gd")
+var announcement_state := AnnouncementState.new(NOTICE_FILE)
 const QQ_GROUP_URL := "https://aetherkiri.github.io/qq/"
 const SCENE_TEST_SETTINGS_KEY := "aether_kiri/scene_test"
 const IAP_LIST_LIMIT_PRODUCT_ID := "com.aether.list.limit"
@@ -267,7 +272,9 @@ const UI_TEXT := {
 
 之后也可以在「设置 → QQ 交流群」中随时查看。",
         "notice.open": "加入交流群",
-        "notice.remind_week": "一周后提醒",
+        "notice.dismiss": "不再展示",
+        "notice.dismiss_hint": "有新版公告时会再次提醒",
+        "notice.save_failed": "无法保存公告偏好，请稍后重试。",
         "notice.skip_today": "今天不再弹出",
         "settings.section.purchases": "内购项目",
         "settings.language": "语言",
@@ -644,6 +651,13 @@ const UI_TEXT := {
         "settings.section.render": "渲染",
         "settings.section.developer": "開發者",
         "settings.section.about": "關於",
+        "notice.title": "公告",
+        "notice.qq_body": "歡迎加入 AetherKiri QQ 交流群，回報問題、取得最新版本並與其他玩家交流。\n\n之後也可以在「設定 → QQ 交流群」中隨時查看。",
+        "notice.open": "加入交流群",
+        "notice.dismiss": "不再顯示",
+        "notice.dismiss_hint": "有新版公告時會再次提醒",
+        "notice.save_failed": "無法儲存公告偏好，請稍後重試。",
+        "notice.skip_today": "今天不再彈出",
         "settings.section.purchases": "App 內購買",
         "settings.language": "語言",
         "settings.language_desc": "預設跟隨系統；也可以固定為簡體中文、繁體中文、英語、日語或韓語",
@@ -1057,7 +1071,9 @@ const UI_TEXT := {
 
 You can find it any time under Settings → QQ Group.",
         "notice.open": "Join group",
-        "notice.remind_week": "Remind me in a week",
+        "notice.dismiss": "Don't show again",
+        "notice.dismiss_hint": "New announcements will still appear",
+        "notice.save_failed": "Could not save your announcement preference. Please try again.",
         "notice.skip_today": "Not again today",
         "settings.section.purchases": "In-App Purchases",
         "settings.language": "Language",
@@ -1434,6 +1450,13 @@ You can find it any time under Settings → QQ Group.",
         "settings.section.render": "レンダリング",
         "settings.section.developer": "開発者",
         "settings.section.about": "情報",
+        "notice.title": "お知らせ",
+        "notice.qq_body": "AetherKiri の QQ グループで、不具合の報告、最新バージョンの確認、ほかのプレイヤーとの交流ができます。\n\nグループへのリンクは「設定 → QQ グループ」からいつでも開けます。",
+        "notice.open": "グループに参加",
+        "notice.dismiss": "今後表示しない",
+        "notice.dismiss_hint": "新しいお知らせが公開されたときに再び表示します",
+        "notice.save_failed": "お知らせの設定を保存できませんでした。もう一度お試しください。",
+        "notice.skip_today": "今日は表示しない",
         "settings.section.purchases": "アプリ内課金",
         "settings.language": "言語",
         "settings.language_desc": "既定ではシステムに従います。簡体字中国語、繁体字中国語、英語、日本語、韓国語に固定できます",
@@ -1807,6 +1830,13 @@ You can find it any time under Settings → QQ Group.",
         "settings.section.render": "렌더링",
         "settings.section.developer": "개발자",
         "settings.section.about": "정보",
+        "notice.title": "공지",
+        "notice.qq_body": "AetherKiri QQ 그룹에서 문제를 제보하고, 최신 버전을 확인하며 다른 플레이어와 이야기해 보세요.\n\n「설정 → QQ 그룹」에서 언제든지 다시 열 수 있습니다.",
+        "notice.open": "그룹 참여",
+        "notice.dismiss": "다시 표시 안 함",
+        "notice.dismiss_hint": "새 공지가 나오면 다시 표시됩니다",
+        "notice.save_failed": "공지 설정을 저장하지 못했습니다. 다시 시도해 주세요.",
+        "notice.skip_today": "오늘은 표시 안 함",
         "settings.section.purchases": "앱 내 구입",
         "settings.language": "언어",
         "settings.language_desc": "기본값은 시스템 언어입니다. 중국어 간체, 중국어 번체, 영어, 일본어, 한국어로 고정할 수 있습니다",
@@ -19622,25 +19652,19 @@ func _mipmapped_texture(texture: Texture2D) -> Texture2D:
 
 # Announcements
 # -------------
-# One hard-coded notice shown after the legal gate. It can be snoozed for a
-# week or silenced until local midnight; the choice is stored per notice id.
+# Each announcement has its own revision, separate from the app version.
+# Dismissal lasts for that revision; both choices allow newer announcements.
 
 func _open_qq_group() -> void:
     var result := OS.shell_open(QQ_GROUP_URL)
     if result != OK:
         _show_message(QQ_GROUP_URL)
 
-func _notice_snoozed_until() -> int:
-    var cfg := ConfigFile.new()
-    if cfg.load(NOTICE_FILE) != OK:
-        return 0
-    return int(cfg.get_value(NOTICE_ID, "snoozed_until", 0))
-
-func _snooze_notice(seconds: int) -> void:
-    var cfg := ConfigFile.new()
-    cfg.load(NOTICE_FILE)
-    cfg.set_value(NOTICE_ID, "snoozed_until", int(Time.get_unix_time_from_system()) + maxi(0, seconds))
-    cfg.save(NOTICE_FILE)
+func _finish_notice_choice(error: Error) -> void:
+    if error == OK:
+        _dismiss_modal()
+    else:
+        _show_message(_t("notice.save_failed"))
 
 func _seconds_until_local_midnight() -> int:
     var now := Time.get_time_dict_from_system()
@@ -19649,7 +19673,7 @@ func _seconds_until_local_midnight() -> int:
 func _maybe_show_notice() -> void:
     if DisplayServer.get_name() == "headless" or not OS.get_environment("AETHERKIRI_CAPTURE_UI").is_empty():
         return
-    if int(Time.get_unix_time_from_system()) < _notice_snoozed_until():
+    if not announcement_state.should_show(NOTICE_ID, NOTICE_VERSION, int(Time.get_unix_time_from_system())):
         return
     # Wait until update check completes and no modal is active
     for _i in range(15):
@@ -19662,7 +19686,7 @@ func _maybe_show_notice() -> void:
 
 func _show_notice() -> void:
     var dialog := _modal_dialog(Vector2(560, 360), 0.46)
-    var box := _modal_stack(dialog, _t("notice.title"), ICON_HELP)
+    var box := _modal_stack(dialog, "%s · v%d" % [_t("notice.title"), NOTICE_VERSION], ICON_HELP)
     box.add_child(_dialog_body_label(_t("notice.qq_body")))
     var link := _pill_button(_t("notice.open"), ICON_CHEVRON_RIGHT)
     link.custom_minimum_size = Vector2(0, 48)
@@ -19671,18 +19695,22 @@ func _show_notice() -> void:
     box.add_child(link)
     var buttons := _dialog_button_row()
     box.add_child(buttons)
-    var week := _secondary_dialog_button(_t("notice.remind_week"), Vector2(0, 46))
-    week.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-    week.pressed.connect(func():
-        _snooze_notice(7 * 86400)
-        _dismiss_modal()
+    var dismiss := _secondary_dialog_button(_t("notice.dismiss"), Vector2(0, 46))
+    dismiss.name = "DismissAnnouncement"
+    dismiss.tooltip_text = _t("notice.dismiss_hint")
+    dismiss.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+    dismiss.pressed.connect(func():
+        _finish_notice_choice(announcement_state.dismiss(NOTICE_ID, NOTICE_VERSION))
     )
-    buttons.add_child(week)
+    buttons.add_child(dismiss)
     var today := _secondary_dialog_button(_t("notice.skip_today"), Vector2(0, 46))
+    today.name = "SnoozeAnnouncementToday"
     today.size_flags_horizontal = Control.SIZE_EXPAND_FILL
     today.pressed.connect(func():
-        _snooze_notice(_seconds_until_local_midnight())
-        _dismiss_modal()
+        _finish_notice_choice(announcement_state.snooze(
+            NOTICE_ID, NOTICE_VERSION,
+            int(Time.get_unix_time_from_system()) + _seconds_until_local_midnight()
+        ))
     )
     buttons.add_child(today)
 

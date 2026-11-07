@@ -1349,6 +1349,18 @@ jobs:
             2>&1 | tee "$RUNNER_TEMP/linux-access.log"
           grep -Fx 'IAP_CATALOG_LIMIT_OK' "$RUNNER_TEMP/linux-access.log"
 
+      - name: Run announcement persistence tests
+        env:
+          LD_LIBRARY_PATH: ${{ github.workspace }}/apps/godot_app/bin/linux/debug
+        run: |
+          timeout 60 "$GODOT_BIN" --headless --path apps/godot_app \
+            --script res://tests/announcement_state_test.gd \
+            2>&1 | tee "$RUNNER_TEMP/announcement-state.log"
+          grep -Fx 'ANNOUNCEMENT_STATE_OK' "$RUNNER_TEMP/announcement-state.log"
+          if grep -E 'SCRIPT ERROR:|^ERROR:' "$RUNNER_TEMP/announcement-state.log"; then
+            exit 1
+          fi
+
       - name: Run game import metadata tests
         env:
           LD_LIBRARY_PATH: ${{ github.workspace }}/apps/godot_app/bin/linux/debug

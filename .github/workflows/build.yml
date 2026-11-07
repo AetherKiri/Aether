@@ -504,17 +504,24 @@ jobs:
           IOS_DISTRIBUTION_CERTIFICATE_BASE64: ${{ secrets.IOS_DISTRIBUTION_CERTIFICATE_BASE64 }}
           IOS_DISTRIBUTION_CERTIFICATE_PASSWORD: ${{ secrets.IOS_DISTRIBUTION_CERTIFICATE_PASSWORD }}
           IOS_PROVISIONING_PROFILE_BASE64: ${{ secrets.IOS_PROVISIONING_PROFILE_BASE64 }}
+          IOS_GAME_IMPORT_PROVISIONING_PROFILE_BASE64: ${{ secrets.IOS_GAME_IMPORT_PROVISIONING_PROFILE_BASE64 }}
         run: |
           set -euo pipefail
           configured=0
           [[ -n "$IOS_DISTRIBUTION_CERTIFICATE_BASE64" ]] && configured=$((configured + 1))
           [[ -n "$IOS_DISTRIBUTION_CERTIFICATE_PASSWORD" ]] && configured=$((configured + 1))
           [[ -n "$IOS_PROVISIONING_PROFILE_BASE64" ]] && configured=$((configured + 1))
-          if [[ "$configured" -ne 3 ]]; then
-            echo "Tagged releases require all three iOS App Store signing secrets." >&2
+          [[ -n "$IOS_GAME_IMPORT_PROVISIONING_PROFILE_BASE64" ]] && configured=$((configured + 1))
+          if [[ "$configured" -ne 4 ]]; then
+            echo "Tagged releases require all four iOS App Store signing secrets (including game import)." >&2
             exit 1
           fi
           echo "IOS_APP_STORE_SIGNING=1" >> "$GITHUB_ENV"
+
+      - name: Test iOS game import and extension packaging
+        run: |
+          python3 -m unittest discover -s tests/python -p test_ios_game_import.py -v
+          python3 -m unittest discover -s tests/python -p test_renpy_packaging.py -v
 
       - name: Verify private runtime packages
         if: env.AETHERKIRI_WITH_INTERNAL == 'true'
@@ -619,6 +626,7 @@ jobs:
           IOS_DISTRIBUTION_CERTIFICATE_BASE64: ${{ secrets.IOS_DISTRIBUTION_CERTIFICATE_BASE64 }}
           IOS_DISTRIBUTION_CERTIFICATE_PASSWORD: ${{ secrets.IOS_DISTRIBUTION_CERTIFICATE_PASSWORD }}
           IOS_PROVISIONING_PROFILE_BASE64: ${{ secrets.IOS_PROVISIONING_PROFILE_BASE64 }}
+          IOS_GAME_IMPORT_PROVISIONING_PROFILE_BASE64: ${{ secrets.IOS_GAME_IMPORT_PROVISIONING_PROFILE_BASE64 }}
           AETHER_APPLE_TEAM_ID: 3JL7FE9XQT
         run: |
           .github/scripts/package-ios-app-store.sh \
@@ -1340,6 +1348,18 @@ jobs:
             --script res://tests/iap_catalog_limit_test.gd \
             2>&1 | tee "$RUNNER_TEMP/linux-access.log"
           grep -Fx 'IAP_CATALOG_LIMIT_OK' "$RUNNER_TEMP/linux-access.log"
+
+      - name: Run announcement persistence tests
+        env:
+          LD_LIBRARY_PATH: ${{ github.workspace }}/apps/godot_app/bin/linux/debug
+        run: |
+          timeout 60 "$GODOT_BIN" --headless --path apps/godot_app \
+            --script res://tests/announcement_state_test.gd \
+            2>&1 | tee "$RUNNER_TEMP/announcement-state.log"
+          grep -Fx 'ANNOUNCEMENT_STATE_OK' "$RUNNER_TEMP/announcement-state.log"
+          if grep -E 'SCRIPT ERROR:|^ERROR:' "$RUNNER_TEMP/announcement-state.log"; then
+            exit 1
+          fi
 
       - name: Run game import metadata tests
         env:

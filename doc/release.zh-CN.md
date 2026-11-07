@@ -23,7 +23,10 @@ Xcode 27.1，并在构建前校验版本。[镜像软件清单](https://github.c
   `.p12` 证书与私钥。
 - `IOS_DISTRIBUTION_CERTIFICATE_PASSWORD`：该 `.p12` 的密码。
 - `IOS_PROVISIONING_PROFILE_BASE64`：base64 编码的 App Store provisioning
-  profile，对应 `com.liuyu.aether.aether` 与 team `3JL7FE9XQT`。
+  profile，对应 `com.liuyu.aether.aether` 与 team `3JL7FE9XQT`，并启用 App Group
+  `group.com.liuyu.aether.aether.game-import`。
+- `IOS_GAME_IMPORT_PROVISIONING_PROFILE_BASE64`：base64 编码的 App Store
+  profile，对应 `com.liuyu.aether.aether.GameImport`，使用相同 team 与 App Group。
 - `MACOS_INSTALLER_CERTIFICATE_BASE64`：base64 编码的 Mac Installer
   Distribution `.p12` 证书与私钥。
 - `MACOS_INSTALLER_CERTIFICATE_PASSWORD`：Mac installer `.p12` 的密码。
@@ -35,6 +38,17 @@ Xcode 27.1，并在构建前校验版本。[镜像软件清单](https://github.c
   Connect `AuthKey_*.p8` 文件。
 
 ## 商店打包
+
+发布文件夹导入功能前，需要在 Apple Developer 账户注册导入扩展的 App ID 和
+共享 App Group，将两个 iOS App ID 都加入该 Group，并重新生成两个 profile。
+Xcode 导出工程会自动嵌入操作扩展；手动打包会为主应用和扩展分别指定 profile。
+使用其他 Bundle ID 时，扩展 ID 为 `<bundle-id>.GameImport`，Group 为
+`group.<bundle-id>.game-import`。
+
+iOS 分享面板应用行的 **Aether** 入口会打开 Aether，将整个文件夹复制到
+`Documents/Games`。操作列表中的 **发送到 Aether 视觉小说目录** 先接收到共享
+容器，打开 Aether 时自动移入 Games；扩展无法直接访问主应用的 Documents。
+两个入口都保留原文件夹及其存档，重名时添加编号，复制未完成的内容不会显示在游戏列表。
 
 macOS App Store 包仅支持 Apple Silicon，启用 App Sandbox，并允许读写用户
 选中的文件。Release workflow 会校验签名后的 iOS IPA 与 macOS installer 包，

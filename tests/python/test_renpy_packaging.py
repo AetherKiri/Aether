@@ -65,7 +65,7 @@ class RenpyPackagingTests(unittest.TestCase):
             data = {"archiveVersion":"1", "objectVersion":"56", "rootObject":"PROJECT", "objects": {
                 "PROJECT":{"isa":"PBXProject", "targets":["TARGET"], "mainGroup":"GROUP"},
                 "GROUP":{"isa":"PBXGroup", "children":[]},
-                "TARGET":{"isa":"PBXNativeTarget", "buildPhases":["RESOURCES"]},
+                "TARGET":{"isa":"PBXNativeTarget", "productType":"com.apple.product-type.application", "buildPhases":["RESOURCES"]},
                 "RESOURCES":{"isa":"PBXResourcesBuildPhase", "files":[]}}}
             file = project / "project.pbxproj"
             file.write_text(stage_module.openstep(data))

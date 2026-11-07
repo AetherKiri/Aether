@@ -1,0 +1,10 @@
+"import.title" = "Aether のビジュアルノベルに送信";
+"import.cancel" = "キャンセル";
+"import.done" = "完了";
+"import.preparing" = "ゲームフォルダを受信中…";
+"import.cancelling" = "キャンセル中…";
+"import.failed" = "インポートを完了できませんでした。";
+"import.open_aether" = "Aether を開くと、受信済みのフォルダが Games に追加されます。";
+"import.received" = "%d 個のフォルダを受信しました。Aether を開くと Games に自動で追加されます。";
+"import.unsupported" = "ゲームフォルダ全体、または XP3 ファイルを選択してください。";
+"import.group_unavailable" = "共有インポートフォルダを利用できません。ファイルのインポート機能が有効な Aether をインストールしてください。";

@@ -18,8 +18,9 @@ contents rather than game titles. DLLs are only read as data.
 
 Resource precedence is explicit Lua replacements, native translation resources,
 then original resources. SoftPal decodes RPCK images on demand and merges
-Unicode text by native ID into a CP936 bank, retaining untranslated strings
-and the font referenced by the patch module. BGI uses UTF-8 with CP932 fallback,
+Unicode text by native ID. It retains untranslated strings and uses the font
+referenced by the patch module. Automatic encoding tries CP936 first and retries
+with GB18030 on an output conversion failure. BGI uses UTF-8 with CP932 fallback,
 respects an explicit Japanese selection, and excludes optional image modules
 and all-CG saves. YU-RIS retains automatic strict encoding validation.
 
@@ -105,8 +106,10 @@ SoftPal additionally accepts `aether/softpal-text.bin`, a text-ID replacement
 bank registered through the same `add_file` API. Its contract is documented in
 the SoftPal package's `aether_runtime/examples/README.md`.
 If native RPCK translations are present, Lua entries override only matching
-IDs. The original DAT is decoded before the Unicode dictionary is converted
-to the explicit Lua encoding (CP936 when omitted); Lua text-bank entries use that final encoding.
+IDs. The engine decodes the original DAT before converting the Unicode
+dictionary to the selected output encoding. An explicit Lua encoding takes
+precedence over automatic selection. Raw Lua text-bank entries use the final
+encoding.
 
 Lua has base, string, table, math and UTF-8 libraries, including `string.unpack`
 and integer bit operations. It has no `io`, `os`, `package`, `debug`, filesystem

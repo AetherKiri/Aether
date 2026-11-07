@@ -1,0 +1,10 @@
+"import.title" = "Send to Aether Visual Novels";
+"import.cancel" = "Cancel";
+"import.done" = "Done";
+"import.preparing" = "Receiving the game folder…";
+"import.cancelling" = "Cancelling…";
+"import.failed" = "Could not finish importing.";
+"import.open_aether" = "Open Aether to add the folders already received to Games.";
+"import.received" = "Received %d folder(s). Open Aether to add them to Games automatically.";
+"import.unsupported" = "Select a complete game folder or an XP3 archive.";
+"import.group_unavailable" = "The shared import folder is unavailable. Install an Aether build with the game-import capability enabled.";

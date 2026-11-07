@@ -27,7 +27,10 @@ secrets:
   `.p12` certificate and private key.
 - `IOS_DISTRIBUTION_CERTIFICATE_PASSWORD`: password for that `.p12`.
 - `IOS_PROVISIONING_PROFILE_BASE64`: base64-encoded App Store provisioning
-  profile for `com.liuyu.aether.aether` and team `3JL7FE9XQT`.
+  profile for `com.liuyu.aether.aether` and team `3JL7FE9XQT`, with App Group
+  `group.com.liuyu.aether.aether.game-import` enabled.
+- `IOS_GAME_IMPORT_PROVISIONING_PROFILE_BASE64`: base64-encoded App Store
+  profile for `com.liuyu.aether.aether.GameImport`, with the same team and App Group.
 - `MACOS_INSTALLER_CERTIFICATE_BASE64`: base64-encoded Mac Installer
   Distribution `.p12` certificate and private key.
 - `MACOS_INSTALLER_CERTIFICATE_PASSWORD`: password for the Mac installer
@@ -40,6 +43,20 @@ secrets:
   Connect `AuthKey_*.p8` file.
 
 ## Store Packaging
+
+Register the game-import extension App ID and the shared App Group in the Apple
+Developer account, assign the group to both iOS App IDs, and regenerate both
+profiles before releasing this feature. Xcode exports embed the Action extension
+automatically; manual packaging signs each target with its own profile. With a
+different app bundle ID, the extension is `<bundle-id>.GameImport` and the group
+is `group.<bundle-id>.game-import`.
+
+The iOS share sheet's **Aether** app entry opens Aether and copies the selected
+folder into `Documents/Games`. **Send to Aether Visual Novels** receives the
+folder in the shared container; opening Aether completes the move into Games.
+The extension cannot directly access the application's Documents directory.
+Both paths preserve the source folder and its save files. Existing names receive
+a numbered suffix; partial imports remain hidden until the copy finishes.
 
 The macOS App Store package is Apple Silicon-only, enables App Sandbox, and
 allows read-write access to files selected by the user. The Release workflow

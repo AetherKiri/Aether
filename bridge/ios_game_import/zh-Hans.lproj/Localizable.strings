@@ -1,0 +1,10 @@
+"import.title" = "发送到 Aether 视觉小说目录";
+"import.cancel" = "取消";
+"import.done" = "完成";
+"import.preparing" = "正在接收游戏文件夹…";
+"import.cancelling" = "正在取消…";
+"import.failed" = "未能完成导入。";
+"import.open_aether" = "打开 Aether 后，已接收的文件夹会自动加入 Games。";
+"import.received" = "已接收 %d 个文件夹。打开 Aether 后将自动加入 Games。";
+"import.unsupported" = "请选择完整的游戏文件夹或 XP3 文件。";
+"import.group_unavailable" = "共享导入目录不可用，请安装已启用文件导入权限的 Aether 版本。";

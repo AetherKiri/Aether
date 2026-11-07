@@ -1130,24 +1130,9 @@ engine_result_t engine_media_set_rate(engine_media_handle_t media,
 
 engine_result_t engine_media_set_volume(engine_media_handle_t media,
                                         double volume) {
-  return RouteMedia(media, "legacy media player failed to set media volume",
-                    [&](engine_media_handle_t legacy) {
-                      return LegacyServices()->media_set_volume(legacy, volume);
-                    });
-}
-
-engine_result_t engine_media_set_volume(engine_media_handle_t media,
-                                        double volume) {
   return RouteMedia(media, "legacy media player failed to set volume",
                     [&](engine_media_handle_t legacy) {
-                      const auto* services = LegacyServices();
-                      return services->struct_size >=
-                                     offsetof(engine_legacy_services_v1_t,
-                                              media_set_volume) +
-                                         sizeof(services->media_set_volume) &&
-                                     services->media_set_volume != nullptr
-                                 ? services->media_set_volume(legacy, volume)
-                                 : ENGINE_RESULT_NOT_SUPPORTED;
+                      return LegacyServices()->media_set_volume(legacy, volume);
                     });
 }
 

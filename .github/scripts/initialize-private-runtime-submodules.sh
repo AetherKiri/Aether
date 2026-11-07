@@ -30,6 +30,7 @@ git submodule update --init --recursive --depth 1 \
     packages/AetherInternal \
     packages/AetherKrkr \
     packages/AetherMAGES \
+    packages/AetherLuca \
     packages/AetherMinori \
     packages/cmvs-rs \
     packages/EntisGLS-SDL3 \

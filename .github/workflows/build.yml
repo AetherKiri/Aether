@@ -99,6 +99,7 @@ jobs:
         env:
           AETHER_INTERNAL_DEPLOY_KEY: ${{ secrets.AETHERSECRET }}
           AETHER_SOFTPAL_DEPLOY_KEY: ${{ secrets.AETHER_SOFTPAL_DEPLOY_KEY }}
+          AETHER_LUCA_DEPLOY_KEY: ${{ secrets.AETHER_LUCA_DEPLOY_KEY }}
         run: .github/scripts/initialize-private-runtime-submodules.sh
 
       - name: Set up Rust for native runtimes
@@ -442,6 +443,7 @@ jobs:
         env:
           AETHER_INTERNAL_DEPLOY_KEY: ${{ secrets.AETHERSECRET }}
           AETHER_SOFTPAL_DEPLOY_KEY: ${{ secrets.AETHER_SOFTPAL_DEPLOY_KEY }}
+          AETHER_LUCA_DEPLOY_KEY: ${{ secrets.AETHER_LUCA_DEPLOY_KEY }}
         run: .github/scripts/initialize-private-runtime-submodules.sh
 
       - name: Set up Rust for native runtimes
@@ -786,6 +788,7 @@ jobs:
         env:
           AETHER_INTERNAL_DEPLOY_KEY: ${{ secrets.AETHERSECRET }}
           AETHER_SOFTPAL_DEPLOY_KEY: ${{ secrets.AETHER_SOFTPAL_DEPLOY_KEY }}
+          AETHER_LUCA_DEPLOY_KEY: ${{ secrets.AETHER_LUCA_DEPLOY_KEY }}
         run: .github/scripts/initialize-private-runtime-submodules.sh
 
       - name: Set up Rust for native runtimes
@@ -1208,6 +1211,7 @@ jobs:
         env:
           AETHER_INTERNAL_DEPLOY_KEY: ${{ secrets.AETHERSECRET }}
           AETHER_SOFTPAL_DEPLOY_KEY: ${{ secrets.AETHER_SOFTPAL_DEPLOY_KEY }}
+          AETHER_LUCA_DEPLOY_KEY: ${{ secrets.AETHER_LUCA_DEPLOY_KEY }}
         run: .github/scripts/initialize-private-runtime-submodules.sh
 
       - name: Set up Java for Flash

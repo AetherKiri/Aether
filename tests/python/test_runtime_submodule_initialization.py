@@ -36,6 +36,7 @@ class RuntimeSubmoduleInitializationTests(unittest.TestCase):
                 GIT_CALL_LOG=str(log),
                 AETHER_INTERNAL_DEPLOY_KEY="test-only-internal-key",
                 AETHER_SOFTPAL_DEPLOY_KEY="test-only-softpal-key",
+                AETHER_LUCA_DEPLOY_KEY="test-only-luca-key",
             )
             subprocess.run(["bash", str(SCRIPT)], env=environment, check=True)
             calls = [json.loads(line) for line in log.read_text().splitlines()]

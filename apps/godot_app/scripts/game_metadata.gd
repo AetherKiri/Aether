@@ -17,6 +17,7 @@ const RUNTIME_XSYSTEM35 := "xsystem35"
 const RUNTIME_SYSTEM3 := "system3"
 const RUNTIME_YURIS := "yuris"
 const RUNTIME_SYSTEMC := "systemc"
+const RUNTIME_LUCA := "luca"
 
 static func inspect(path: String) -> Dictionary:
     var root := path
@@ -141,6 +142,13 @@ static func inspect(path: String) -> Dictionary:
         # directory to the embedded MAGES provider instead.
         result.engine = RUNTIME_MAGES
         result.signals.append("mages-mpk-marker")
+    elif _has_file_in_subdir(root, "files", "script.pak"):
+        # LucaSystem titles (PROTOTYPE) keep the script archive under files/.
+        # Mirror the provider probe marker (files/SCRIPT.PAK) so the launcher
+        # hands the game root to the luca runtime instead of sending the
+        # Windows executable to the legacy KiriKiri storage layer.
+        result.engine = RUNTIME_LUCA
+        result.signals.append("luca-marker")
     else:
         result.signals.append("kirikiri-xp3-or-default")
 
@@ -341,6 +349,20 @@ static func _first_file(root: String, extensions: Array) -> String:
     if not archive_fallback.is_empty():
         return archive_fallback
     return executable_fallback
+
+static func _has_file_in_subdir(root: String, subdir: String, file_name: String) -> bool:
+    var dir := DirAccess.open(root.path_join(subdir))
+    if dir == null:
+        return false
+    dir.list_dir_begin()
+    var entry := dir.get_next()
+    while not entry.is_empty():
+        if not dir.current_is_dir() and entry.to_lower() == file_name:
+            dir.list_dir_end()
+            return true
+        entry = dir.get_next()
+    dir.list_dir_end()
+    return false
 
 static func _has_prefix(values: PackedStringArray, prefix: String) -> bool:
     for value in values:

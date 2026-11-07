@@ -31,6 +31,10 @@
 	path = packages/AetherKrkr
 	url = https://github.com/AetherKiri/AetherKrkr.git
 	ignore = dirty
+[submodule "packages/cmvs-rs"]
+	path = packages/cmvs-rs
+	url = git@github.com:AetherKiri/cmvs-rs.git
+	branch = aether
 [submodule "packages/AetherSoftPal"]
 	path = packages/AetherSoftPal
 	url = git@github.com:AetherKiri/AetherSoftPal.git
@@ -57,7 +61,6 @@
 	path = packages/EntisGLS-SDL3
 	url = https://github.com/AetherKiri/EntisGLS-SDL3.git
 	branch = aether
-[submodule "packages/cmvs-rs"]
-	path = packages/cmvs-rs
-	url = git@github.com:AetherKiri/cmvs-rs.git
-	branch = aether
+[submodule "packages/AetherLuca"]
+	path = packages/AetherLuca
+	url = git@github.com:AetherKiri/AetherLuca.git

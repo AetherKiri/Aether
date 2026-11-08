@@ -106,9 +106,12 @@ def main():
         "SDL JNI class names isolated to org.aether.sdl; bootstrap returns to Aether.\n"
         "Sources: https://github.com/renpy/renpy https://github.com/renpy/renpy-build https://github.com/python-greenlet/greenlet\n"
         "Rebuild with tools/build_renpy_android.py and bridge/renpy_runtime/android.\n")
-    prebuilt = next((args.ndk / "toolchains/llvm/prebuilt").glob("*"))
     target = "aarch64-linux-android26" if args.abi == "arm64-v8a" else "x86_64-linux-android26"
-    compiler = prebuilt / "bin" / (target + "-clang++")
+    compiler = next((path / "bin" / (target + "-clang++")
+                     for path in (args.ndk / "toolchains/llvm/prebuilt").iterdir()
+                     if (path / "bin" / (target + "-clang++")).is_file()), None)
+    if compiler is None:
+        parser.error("The NDK has no host compiler for " + target)
     base = [str(compiler), "-std=c++17", "-O2", "-fPIC", "-I" + str(args.python_include.resolve()), "-I" + str(args.python_config.resolve())]
     objects = []
     for name, source in {"host":REPO / "bridge/renpy_runtime/android/native_host.cpp", "greenlet":greenlet / "src/greenlet/greenlet.cpp"}.items():

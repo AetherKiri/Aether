@@ -206,7 +206,13 @@ typedef struct engine_runtime_provider_v1_t {
   /* Optional complete IME snapshot; replaces reserved slots, preserving ABI. */
   engine_result_t (*get_text_input_details)(void* runtime, engine_text_input_state_t* out_state);
   engine_result_t (*copy_text_input_text)(void* runtime, char* output, uint32_t size, uint32_t* written);
-  void* reserved_ptr[3];
+  /* Opt-in CPU-only background contract; see engine_background_playback.
+   * Replaces one reserved pointer without changing the descriptor ABI size.
+   * Providers must also own their audio and presentation: host UI/platform
+   * requests are not serviced by the background frame pump.
+   */
+  engine_result_t (*background_playback)(void* runtime, uint32_t mode);
+  void* reserved_ptr[2];
 } engine_runtime_provider_v1_t;
 
 #define ENGINE_RUNTIME_PROVIDER_V1_MIN_SIZE                              \

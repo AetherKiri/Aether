@@ -295,7 +295,7 @@ const UI_TEXT := {
         "import.complete": "已导入 Games：%s",
         "import.failed": "导入失败：%s",
         "settings.picture_in_picture": "后台悬浮窗",
-        "settings.picture_in_picture_desc": "切到其他应用时保留游戏小窗，返回后继续；需要系统允许画中画",
+        "settings.picture_in_picture_desc": "切到其他应用时显示游戏小窗；支持的游戏会继续播放，其他游戏保留预览。关闭小窗后暂停",
         "settings.keyboard_control_opacity": "Keyboard 模式按键透明度",
         "settings.keyboard_control_opacity_desc": "调整屏幕虚拟按键的透明度；鼠标指针保持清晰",
         "ui_scale.compact": "较小",
@@ -677,7 +677,7 @@ const UI_TEXT := {
         "import.complete": "已匯入 Games：%s",
         "import.failed": "匯入失敗：%s",
         "settings.picture_in_picture": "背景懸浮視窗",
-        "settings.picture_in_picture_desc": "切換到其他應用程式時保留遊戲小視窗，返回後繼續；需系統允許子母畫面",
+        "settings.picture_in_picture_desc": "切換應用程式時顯示遊戲小視窗；支援的遊戲會繼續播放，其他遊戲保留預覽。關閉小視窗後暫停",
         "settings.keyboard_control_opacity": "Keyboard 模式按鍵透明度",
         "settings.keyboard_control_opacity_desc": "調整螢幕虛擬按鍵的透明度；滑鼠指標保持清晰",
         "ui_scale.compact": "較小",
@@ -1094,7 +1094,7 @@ You can find it any time under Settings → QQ Group.",
         "import.complete": "Added to Games: %s",
         "import.failed": "Import failed: %s",
         "settings.picture_in_picture": "Picture in Picture",
-        "settings.picture_in_picture_desc": "Keep a game preview when switching apps and return to continue; requires system Picture in Picture permission",
+        "settings.picture_in_picture_desc": "Show the game when switching apps. Supported games keep playing; others show a preview. Closing Picture in Picture pauses playback.",
         "settings.keyboard_control_opacity": "Keyboard Button Opacity",
         "settings.keyboard_control_opacity_desc": "Adjust on-screen virtual-key opacity while keeping the mouse pointer clear",
         "ui_scale.compact": "Smaller",
@@ -1476,7 +1476,7 @@ You can find it any time under Settings → QQ Group.",
         "import.complete": "Games に追加しました：%s",
         "import.failed": "インポートに失敗しました：%s",
         "settings.picture_in_picture": "ピクチャ・イン・ピクチャ",
-        "settings.picture_in_picture_desc": "他のアプリに切り替えるとゲーム画面を小窓に保持し、戻ると再開します。システムの許可が必要です",
+        "settings.picture_in_picture_desc": "他のアプリに切り替えると小窓を表示します。対応ゲームは再生を続け、その他はプレビューを表示します。小窓を閉じると一時停止します。",
         "settings.keyboard_control_opacity": "Keyboard モードのキー透明度",
         "settings.keyboard_control_opacity_desc": "画面上の仮想キーの透明度を調整します。マウスポインターは鮮明なままです",
         "ui_scale.compact": "小さめ",
@@ -1856,7 +1856,7 @@ You can find it any time under Settings → QQ Group.",
         "import.complete": "Games에 추가됨: %s",
         "import.failed": "가져오기 실패: %s",
         "settings.picture_in_picture": "화면 속 화면",
-        "settings.picture_in_picture_desc": "다른 앱으로 전환할 때 게임 화면을 작은 창에 보관하고 돌아오면 계속합니다. 시스템 허용이 필요합니다",
+        "settings.picture_in_picture_desc": "다른 앱으로 전환하면 작은 창을 표시합니다. 지원하는 게임은 계속 재생되고 나머지는 미리보기를 표시합니다. 작은 창을 닫으면 일시 정지합니다.",
         "settings.keyboard_control_opacity": "Keyboard 모드 버튼 투명도",
         "settings.keyboard_control_opacity_desc": "화면 가상 키의 투명도를 조절하며 마우스 포인터는 선명하게 유지합니다",
         "ui_scale.compact": "작게",
@@ -4789,7 +4789,7 @@ func _configure_mobile_window() -> void:
         add_child(mobile_window)
         mobile_window.consume_pending_imports()
     if mobile_window != null:
-        mobile_window.configure(mobile_window_game_active, picture_in_picture_enabled)
+        mobile_window.configure(mobile_window_game_active, picture_in_picture_enabled, player)
 
 func _show_game_import_notice(message: String, duration_ms: int) -> void:
     if game_import_notice == null:
@@ -15387,7 +15387,10 @@ func _process(delta: float) -> void:
         startup_poll_accum += delta
         if cached_startup_state == STARTUP_SUCCEEDED or startup_poll_accum >= STARTUP_POLL_INTERVAL:
             startup_poll_accum = 0.0
+            var previous_startup_state := cached_startup_state
             cached_startup_state = player.get_startup_state()
+            if cached_startup_state == STARTUP_SUCCEEDED and previous_startup_state != STARTUP_SUCCEEDED:
+                _configure_mobile_window()
             startup_state = cached_startup_state
             _sync_game_virtual_controls()
         if startup_state == STARTUP_SUCCEEDED:
@@ -16122,6 +16125,10 @@ func _quit_app_for_go_back() -> void:
         player.destroy_engine()
     get_tree().quit(0)
 
+func _mobile_window_owns_lifecycle() -> bool:
+    return mobile_window != null and mobile_window.has_method("handles_game_lifecycle") \
+        and mobile_window.handles_game_lifecycle()
+
 func _pause_game_for_lifecycle(reason: String) -> void:
     game_text_input_suspended = true
     _deactivate_game_text_input()
@@ -16130,7 +16137,7 @@ func _pause_game_for_lifecycle(reason: String) -> void:
     if app_lifecycle_paused or not game_running or cached_startup_state != STARTUP_SUCCEEDED:
         return
     _clear_game_input_capture()
-    var result: int = int(player.pause())
+    var result: int = ENGINE_RESULT_OK if _mobile_window_owns_lifecycle() else int(player.pause())
     if result != ENGINE_RESULT_OK:
         render_errors += 1
         _log_lifecycle_line("app_pause_failed reason=%s result=%s error=\"%s\"" % [
@@ -16148,7 +16155,7 @@ func _resume_game_for_lifecycle(reason: String) -> void:
         return
     if not app_lifecycle_paused:
         return
-    var result: int = int(player.resume())
+    var result: int = ENGINE_RESULT_OK if _mobile_window_owns_lifecycle() else int(player.resume())
     if result != ENGINE_RESULT_OK:
         render_errors += 1
         _log_lifecycle_line("app_resume_failed reason=%s result=%s error=\"%s\"" % [

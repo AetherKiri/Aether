@@ -6,6 +6,9 @@
 #include "tyrano_player.h"
 #include "native_controls_overlay.h"
 #include "mobile_window.h"
+#if defined(__APPLE__)
+#include <TargetConditionals.h>
+#endif
 #include "renpy_native.h"
 #if defined(AETHERKIRI_WITH_SYSTEM3)
 #include "system3_runtime_provider.h"
@@ -10312,7 +10315,12 @@ public:
         return result == ENGINE_RESULT_OK;
     }
 
+    engine_handle_t mobile_window_engine() const { return game_open_ ? handle_ : nullptr; }
+
     void destroy_engine() {
+#if defined(__APPLE__) && TARGET_OS_IPHONE
+        aether_mobile_window_detach_engine(handle_);
+#endif
         if (runtime_host_) {
             runtime_host_->Reset(is_inside_tree());
             runtime_host_.reset();
@@ -14158,6 +14166,11 @@ private:
     RuntimeAudioFade runtime_bgm_fade_out_{};
     std::vector<RuntimeAudioFade> runtime_audio_gain_fades_ = std::vector<RuntimeAudioFade>(5);
 };
+
+engine_handle_t MobileWindowEngine(Object* player) {
+    auto *runtime = Object::cast_to<AetherRuntimePlayer>(player);
+    return runtime ? runtime->mobile_window_engine() : nullptr;
+}
 
 void InitializeAetherRuntime(ModuleInitializationLevel level) {
     if (level != MODULE_INITIALIZATION_LEVEL_SCENE) {

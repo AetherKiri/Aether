@@ -29,7 +29,8 @@ class AetherMobileWindow : public Node {
 #endif
 protected:
     static void _bind_methods() {
-        ClassDB::bind_method(D_METHOD("configure", "game_active", "pip_enabled"), &AetherMobileWindow::configure);
+        ClassDB::bind_method(D_METHOD("configure", "game_active", "pip_enabled", "player"), &AetherMobileWindow::configure, DEFVAL(Variant()));
+        ClassDB::bind_method(D_METHOD("handles_game_lifecycle"), &AetherMobileWindow::handles_game_lifecycle);
         ClassDB::bind_method(D_METHOD("is_supported"), &AetherMobileWindow::is_supported);
         ClassDB::bind_method(D_METHOD("is_in_picture_in_picture"), &AetherMobileWindow::is_in_picture_in_picture);
         ClassDB::bind_method(D_METHOD("take_import_event"), &AetherMobileWindow::take_import_event);
@@ -56,16 +57,26 @@ public:
         if (handle_) aether_mobile_window_close(handle_);
 #endif
     }
-    void configure(bool game_active, bool pip_enabled) {
+    void configure(bool game_active, bool pip_enabled, Object* player) {
 #if defined(__APPLE__) && TARGET_OS_IPHONE
         if (!handle_ && get_window()) {
             handle_ = aether_mobile_window_open(DisplayServer::get_singleton()->window_get_native_handle(
                 DisplayServer::WINDOW_VIEW, get_window()->get_window_id()));
         }
-        if (handle_) aether_mobile_window_configure(handle_, game_active, pip_enabled);
+        if (handle_) {
+            aether_mobile_window_set_engine(handle_, MobileWindowEngine(player));
+            aether_mobile_window_configure(handle_, game_active, pip_enabled);
+        }
 #elif defined(__ANDROID__)
         Ref<JavaClass> api = bridge();
         if (api.is_valid()) api->call("configure", activity(), game_active, pip_enabled);
+#endif
+    }
+    bool handles_game_lifecycle() const {
+#if defined(__APPLE__) && TARGET_OS_IPHONE
+        return handle_ && aether_mobile_window_handles_lifecycle(handle_);
+#else
+        return false;
 #endif
     }
     bool is_supported() const {

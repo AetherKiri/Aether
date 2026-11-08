@@ -1,4 +1,5 @@
 #include "mobile_window.h"
+#include "mobile_playback.h"
 #import <UIKit/UIKit.h>
 #import <AVKit/AVKit.h>
 #import <AVFoundation/AVFoundation.h>
@@ -37,7 +38,11 @@ static Class MobileControllerClass(Class base) {
 + (Class)layerClass { return AVSampleBufferDisplayLayer.class; }
 @end
 
-@interface AetherMobileWindowHost : NSObject <AVPictureInPictureControllerDelegate, AVPictureInPictureSampleBufferPlaybackDelegate>
+@interface AetherMobileWindowHost : NSObject <AVPictureInPictureControllerDelegate, AVPictureInPictureSampleBufferPlaybackDelegate> {
+    aetherkiri::MobilePlayback _playback;
+    engine_handle_t _engine;
+    CFTimeInterval _lastFrameTime;
+}
 @property(nonatomic, weak) UIView *gameView;
 @property(nonatomic, weak) UIViewController *controller;
 @property(nonatomic) Class originalControllerClass;
@@ -53,16 +58,27 @@ static Class MobileControllerClass(Class base) {
 @property(nonatomic) AVAudioSessionCategoryOptions audioOptions;
 - (void)configureGame:(BOOL)active enabled:(BOOL)enabled;
 - (void)capture;
+- (void)bindEngine:(engine_handle_t)engine;
+- (void)detachEngine:(engine_handle_t)engine;
+- (BOOL)ownsLifecycle;
+- (BOOL)setRuntimePlaying:(BOOL)playing;
+- (void)enqueuePixels:(CVPixelBufferRef)pixels;
 - (void)close;
 @end
+
+static NSHashTable<AetherMobileWindowHost *> *MobileHosts;
 
 @implementation AetherMobileWindowHost
 - (instancetype)init {
     if ((self = [super init])) {
         _playing = YES;
+        if (!MobileHosts) MobileHosts = [NSHashTable weakObjectsHashTable];
+        [MobileHosts addObject:self];
         NSNotificationCenter *center = NSNotificationCenter.defaultCenter;
         [center addObserver:self selector:@selector(willResign:) name:UIApplicationWillResignActiveNotification object:nil];
         [center addObserver:self selector:@selector(didBecomeActive:) name:UIApplicationDidBecomeActiveNotification object:nil];
+        [center addObserver:self selector:@selector(didEnterBackground:) name:UIApplicationDidEnterBackgroundNotification object:nil];
+        [center addObserver:self selector:@selector(audioInterrupted:) name:AVAudioSessionInterruptionNotification object:nil];
     }
     return self;
 }
@@ -106,16 +122,43 @@ static Class MobileControllerClass(Class base) {
     self.pip.delegate = self;
     self.pip.requiresLinearPlayback = YES;
 }
+- (BOOL)ownsLifecycle { return self.gameActive && self.enabled && _playback.Supported(); }
+- (BOOL)setRuntimePlaying:(BOOL)playing {
+    if (playing) {
+        NSError *error = nil;
+        [AVAudioSession.sharedInstance setActive:YES error:&error];
+        if (error) {
+            NSLog(@"[AetherPiP] Audio resume: %@", error.localizedDescription);
+            return NO;
+        }
+    }
+    return _playback.Play(playing);
+}
+- (void)bindEngine:(engine_handle_t)engine {
+    if (_engine != engine) _playback.Unbind(UIApplication.sharedApplication.applicationState == UIApplicationStateActive);
+    _engine = engine;
+    if (self.gameActive && self.enabled) _playback.Bind(engine);
+}
+- (void)detachEngine:(engine_handle_t)engine {
+    if (_engine != engine) return;
+    [self.captureTimer invalidate]; self.captureTimer = nil;
+    [self.pip stopPictureInPicture];
+    _playback.Unbind(UIApplication.sharedApplication.applicationState == UIApplicationStateActive); _engine = nullptr;
+}
 - (void)startCaptureTimer {
     [self.captureTimer invalidate];
     self.captureTimer = nil;
-    if (!self.gameActive || !self.enabled || !self.pip ||
-        UIApplication.sharedApplication.applicationState != UIApplicationStateActive) return;
+    if (!self.gameActive || !self.enabled || !self.pip) return;
+    const BOOL foreground = UIApplication.sharedApplication.applicationState == UIApplicationStateActive;
+    if (!foreground && UIApplication.sharedApplication.applicationState != UIApplicationStateBackground) return;
+    if (!foreground && !(self.pip.isPictureInPictureActive && self.playing && [self ownsLifecycle])) return;
+    _lastFrameTime = CACurrentMediaTime();
     __weak AetherMobileWindowHost *weakSelf = self;
-    self.captureTimer = [NSTimer scheduledTimerWithTimeInterval:0.5 repeats:YES block:^(NSTimer *timer) {
+    self.captureTimer = [NSTimer timerWithTimeInterval:foreground ? 0.5 : 1.0/20.0 repeats:YES block:^(NSTimer *timer) {
         [weakSelf capture];
     }];
-    [self capture];
+    [NSRunLoop.mainRunLoop addTimer:self.captureTimer forMode:NSRunLoopCommonModes];
+    if (foreground) [self capture];
 }
 - (void)configureGame:(BOOL)active enabled:(BOOL)enabled {
     if (self.closed) return;
@@ -124,6 +167,9 @@ static Class MobileControllerClass(Class base) {
     if (active && enabled && !(self.gameActive && self.enabled)) self.playing = YES;
     self.gameActive = active;
     self.enabled = enabled;
+    if (active && enabled) _playback.Bind(_engine);
+    else if (UIApplication.sharedApplication.applicationState == UIApplicationStateActive) _playback.Unbind();
+    else _playback.Play(false);
     [self updateFullscreen];
     if (active && enabled) {
         [self preparePiP];
@@ -153,10 +199,46 @@ static Class MobileControllerClass(Class base) {
     [self startCaptureTimer];
 }
 - (void)capture {
-    // No GPU work or view snapshots after backgrounding. AVKit keeps the last
-    // submitted frame; the existing game lifecycle pauses and resumes play.
+    if (UIApplication.sharedApplication.applicationState == UIApplicationStateBackground && [self ownsLifecycle]) {
+        if (!self.pip.isPictureInPictureActive || !self.playing) return;
+        const double now = CACurrentMediaTime();
+        bool fresh = false;
+        if (!_playback.Advance(now - _lastFrameTime, fresh)) {
+            _playback.Play(false);
+            self.playing = NO;
+            [self.captureTimer invalidate]; self.captureTimer = nil;
+            [self.pip invalidatePlaybackState];
+            NSLog(@"[AetherPiP] Background runtime stopped; return to the game to continue");
+            return;
+        }
+        _lastFrameTime = now;
+        if (!fresh) return;
+        const auto& frame = _playback.Frame();
+        const double scale = MIN(1.0, 960.0 / MAX(frame.width, frame.height));
+        const size_t width = MAX(1u, uint32_t(frame.width * scale));
+        const size_t height = MAX(1u, uint32_t(frame.height * scale));
+        CVPixelBufferRef pixels = nil;
+        NSDictionary *attributes = @{(id)kCVPixelBufferIOSurfacePropertiesKey: @{}};
+        if (CVPixelBufferCreate(kCFAllocatorDefault, width, height, kCVPixelFormatType_32BGRA,
+            (__bridge CFDictionaryRef)attributes, &pixels) != kCVReturnSuccess) return;
+        CVPixelBufferLockBaseAddress(pixels, 0);
+        auto *dst = static_cast<uint8_t *>(CVPixelBufferGetBaseAddress(pixels));
+        const auto pitch = CVPixelBufferGetBytesPerRow(pixels);
+        const auto *src = _playback.Pixels();
+        for (size_t y = 0; y < height; ++y) for (size_t x = 0; x < width; ++x) {
+            const auto *in = src + (y * frame.height / height) * frame.stride_bytes + (x * frame.width / width) * 4;
+            auto *out = dst + y * pitch + x * 4;
+            out[0] = in[2]; out[1] = in[1]; out[2] = in[0]; out[3] = 255;
+        }
+        CVPixelBufferUnlockBaseAddress(pixels, 0);
+        [self enqueuePixels:pixels];
+        CVPixelBufferRelease(pixels);
+        return;
+    }
+    // Unsupported providers retain the existing preview. Do not call Godot,
+    // UIKit snapshots, texture readback or arbitrary provider ticks in background.
     if (!self.gameActive || !self.enabled || !self.sourceView || self.pip.isPictureInPictureActive ||
-        UIApplication.sharedApplication.applicationState == UIApplicationStateBackground) return;
+        UIApplication.sharedApplication.applicationState != UIApplicationStateActive) return;
     UIWindow *window = self.gameView.window;
     if (!window || window.bounds.size.width < 1 || window.bounds.size.height < 1) return;
     UIGraphicsImageRendererFormat *format = [UIGraphicsImageRendererFormat defaultFormat];
@@ -185,10 +267,14 @@ static Class MobileControllerClass(Class base) {
     }
     CGColorSpaceRelease(color);
     CVPixelBufferUnlockBaseAddress(pixels, 0);
+    if (context) [self enqueuePixels:pixels];
+    CVPixelBufferRelease(pixels);
+}
+- (void)enqueuePixels:(CVPixelBufferRef)pixels {
     CMVideoFormatDescriptionRef description = nil;
     CMSampleBufferRef sample = nil;
     CMSampleTimingInfo timing = {kCMTimeInvalid, CMClockGetTime(CMClockGetHostTimeClock()), kCMTimeInvalid};
-    if (context && CMVideoFormatDescriptionCreateForImageBuffer(kCFAllocatorDefault, pixels, &description) == noErr &&
+    if (CMVideoFormatDescriptionCreateForImageBuffer(kCFAllocatorDefault, pixels, &description) == noErr &&
         CMSampleBufferCreateReadyWithImageBuffer(kCFAllocatorDefault, pixels, description, &timing, &sample) == noErr) {
         CFArrayRef attachments = CMSampleBufferGetSampleAttachmentsArray(sample, true);
         CFDictionarySetValue((CFMutableDictionaryRef)CFArrayGetValueAtIndex(attachments, 0),
@@ -199,19 +285,50 @@ static Class MobileControllerClass(Class base) {
         CFRelease(sample);
     }
     if (description) CFRelease(description);
-    CVPixelBufferRelease(pixels);
 }
 - (void)willResign:(NSNotification *)notification {
     [self capture];
     [self.captureTimer invalidate];
     self.captureTimer = nil;
+    if ([self ownsLifecycle]) {
+        if (!_playback.Enter()) {
+            self.playing = NO;
+            [self.pip invalidatePlaybackState];
+            NSLog(@"[AetherPiP] Runtime could not enter CPU background playback");
+        }
+    }
+}
+- (void)didEnterBackground:(NSNotification *)notification {
+    if ([self ownsLifecycle] && _playback.Entered() && self.pip.isPictureInPictureActive) {
+        if (![self setRuntimePlaying:self.playing]) self.playing = NO;
+        [self.pip invalidatePlaybackState];
+    }
+    [self startCaptureTimer];
+}
+- (void)audioInterrupted:(NSNotification *)notification {
+    if ([notification.userInfo[AVAudioSessionInterruptionTypeKey] unsignedIntegerValue] != AVAudioSessionInterruptionTypeBegan) return;
+    if ([self ownsLifecycle] && UIApplication.sharedApplication.applicationState != UIApplicationStateActive) {
+        _playback.Play(false); self.playing = NO;
+        [self.captureTimer invalidate]; self.captureTimer = nil;
+        [self.pip invalidatePlaybackState];
+    }
 }
 - (void)didBecomeActive:(NSNotification *)notification {
+    [self.captureTimer invalidate]; self.captureTimer = nil;
+    if (_playback.Supported() && !_playback.Restore()) NSLog(@"[AetherPiP] Runtime foreground restore failed");
+    if (!self.gameActive || !self.enabled) _playback.Unbind();
     [self updateFullscreen];
     self.playing = YES;
     [self.pip invalidatePlaybackState];
     [self.pip stopPictureInPicture];
     [self.sourceView.superview sendSubviewToBack:self.sourceView];
+    [self startCaptureTimer];
+}
+- (void)pictureInPictureControllerDidStartPictureInPicture:(AVPictureInPictureController *)controller {
+    if ([self ownsLifecycle] && _playback.Entered() && UIApplication.sharedApplication.applicationState == UIApplicationStateBackground) {
+        if (![self setRuntimePlaying:self.playing]) self.playing = NO;
+        [controller invalidatePlaybackState];
+    }
     [self startCaptureTimer];
 }
 - (void)pictureInPictureControllerWillStartPictureInPicture:(AVPictureInPictureController *)controller {
@@ -222,7 +339,14 @@ static Class MobileControllerClass(Class base) {
     NSLog(@"[AetherPiP] Failed to start: %@", error.localizedDescription);
 }
 - (void)pictureInPictureControllerDidStopPictureInPicture:(AVPictureInPictureController *)controller {
+    if (UIApplication.sharedApplication.applicationState != UIApplicationStateActive) _playback.Play(false);
+    [self.captureTimer invalidate]; self.captureTimer = nil;
+    if (UIApplication.sharedApplication.applicationState == UIApplicationStateActive) [self startCaptureTimer];
     [self.sourceView.superview sendSubviewToBack:self.sourceView];
+}
+- (void)pictureInPictureControllerWillStopPictureInPicture:(AVPictureInPictureController *)controller {
+    [self.captureTimer invalidate]; self.captureTimer = nil;
+    if (UIApplication.sharedApplication.applicationState != UIApplicationStateActive) _playback.Play(false);
 }
 - (void)pictureInPictureController:(AVPictureInPictureController *)controller restoreUserInterfaceForPictureInPictureStopWithCompletionHandler:(void (^)(BOOL))completion {
     // AVKit brings the same scene back. Its game remains loaded and resumes
@@ -231,6 +355,10 @@ static Class MobileControllerClass(Class base) {
 }
 - (void)pictureInPictureController:(AVPictureInPictureController *)controller setPlaying:(BOOL)playing {
     self.playing = playing;
+    if ([self ownsLifecycle] && _playback.Entered() && UIApplication.sharedApplication.applicationState == UIApplicationStateBackground) {
+        if (![self setRuntimePlaying:playing]) self.playing = NO;
+    }
+    [self startCaptureTimer];
     [controller invalidatePlaybackState];
 }
 - (BOOL)pictureInPictureControllerIsPlaybackPaused:(AVPictureInPictureController *)controller { return !self.playing; }
@@ -243,6 +371,9 @@ static Class MobileControllerClass(Class base) {
     [self configureGame:NO enabled:NO];
     self.closed = YES;
     [NSNotificationCenter.defaultCenter removeObserver:self];
+    [MobileHosts removeObject:self];
+    _playback.Unbind(UIApplication.sharedApplication.applicationState == UIApplicationStateActive);
+    _engine = nullptr;
     self.pip.delegate = nil;
     self.pip = nil;
     [self.sourceView removeFromSuperview];
@@ -285,4 +416,17 @@ void aether_mobile_window_close(void *handle) {
         AetherMobileWindowHost *host = (__bridge_transfer AetherMobileWindowHost *)handle;
         [host close];
     });
+}
+
+void aether_mobile_window_set_engine(void *handle, engine_handle_t engine) {
+    MobileOnUI(^{ [(__bridge AetherMobileWindowHost *)handle bindEngine:engine]; });
+}
+void aether_mobile_window_detach_engine(engine_handle_t engine) {
+    if (!engine) return;
+    MobileOnUI(^{ for (AetherMobileWindowHost *host in MobileHosts.allObjects) [host detachEngine:engine]; });
+}
+bool aether_mobile_window_handles_lifecycle(void *handle) {
+    __block BOOL owns = NO;
+    MobileOnUI(^{ owns = [(__bridge AetherMobileWindowHost *)handle ownsLifecycle]; });
+    return owns;
 }

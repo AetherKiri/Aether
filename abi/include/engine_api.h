@@ -338,6 +338,20 @@ ENGINE_API_EXPORT engine_result_t engine_pause(engine_handle_t handle);
  */
 ENGINE_API_EXPORT engine_result_t engine_resume(engine_handle_t handle);
 
+/* Optional CPU-only execution for a host with active background media playback.
+ * QUERY has no side effects. ENTER is called before losing foreground GPU
+ * access; LEAVE is called after regaining it. While entered, tick, pause,
+ * resume, destruction and RGBA readback must not submit GPU work or require a UI render
+ * loop. This does not grant OS background execution permission, resume a
+ * paused game, or automatically advance user choices. Unsupported engines
+ * return NOT_SUPPORTED and must remain paused in the background.
+ */
+#define ENGINE_BACKGROUND_PLAYBACK_QUERY 0u
+#define ENGINE_BACKGROUND_PLAYBACK_ENTER 1u
+#define ENGINE_BACKGROUND_PLAYBACK_LEAVE 2u
+ENGINE_API_EXPORT engine_result_t engine_background_playback(
+    engine_handle_t handle, uint32_t mode);
+
 /*
  * Sets runtime option by UTF-8 key/value pair.
  * handle and option must be non-null.

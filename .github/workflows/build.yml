@@ -393,7 +393,10 @@ jobs:
 
       - name: Report compiler cache statistics
         if: always() && !cancelled()
-        run: ccache --show-stats
+        run: |
+          if command -v ccache >/dev/null 2>&1; then
+            ccache --show-stats
+          fi
 
       - name: Save ccache
         if: success() && github.event_name != 'pull_request' && env.AETHERKIRI_VCPKG_CACHE_WRITE == 'true' && steps.restore-ccache.outputs.cache-hit != 'true'
@@ -507,15 +510,15 @@ jobs:
           IOS_GAME_IMPORT_PROVISIONING_PROFILE_BASE64: ${{ secrets.IOS_GAME_IMPORT_PROVISIONING_PROFILE_BASE64 }}
         run: |
           set -euo pipefail
-          configured=0
-          [[ -n "$IOS_DISTRIBUTION_CERTIFICATE_BASE64" ]] && configured=$((configured + 1))
-          [[ -n "$IOS_DISTRIBUTION_CERTIFICATE_PASSWORD" ]] && configured=$((configured + 1))
-          [[ -n "$IOS_PROVISIONING_PROFILE_BASE64" ]] && configured=$((configured + 1))
-          [[ -n "$IOS_GAME_IMPORT_PROVISIONING_PROFILE_BASE64" ]] && configured=$((configured + 1))
-          if [[ "$configured" -ne 4 ]]; then
-            echo "Tagged releases require all four iOS App Store signing secrets (including game import)." >&2
-            exit 1
-          fi
+          missing=0
+          for name in IOS_DISTRIBUTION_CERTIFICATE_BASE64 IOS_DISTRIBUTION_CERTIFICATE_PASSWORD \
+                      IOS_PROVISIONING_PROFILE_BASE64 IOS_GAME_IMPORT_PROVISIONING_PROFILE_BASE64; do
+            if [[ -z "${!name}" ]]; then
+              echo "::error::Tagged iOS releases require GitHub Actions secret $name."
+              missing=1
+            fi
+          done
+          [[ "$missing" -eq 0 ]] || exit 1
           echo "IOS_APP_STORE_SIGNING=1" >> "$GITHUB_ENV"
 
       - name: Test iOS game import and extension packaging
@@ -739,7 +742,10 @@ jobs:
 
       - name: Report compiler cache statistics
         if: always() && !cancelled()
-        run: ccache --show-stats
+        run: |
+          if command -v ccache >/dev/null 2>&1; then
+            ccache --show-stats
+          fi
 
       - name: Save ccache
         if: success() && github.event_name != 'pull_request' && env.AETHERKIRI_VCPKG_CACHE_WRITE == 'true' && steps.restore-ccache.outputs.cache-hit != 'true'
@@ -860,16 +866,16 @@ jobs:
           MACOS_PROVISIONING_PROFILE_BASE64: ${{ secrets.MACOS_PROVISIONING_PROFILE_BASE64 }}
         run: |
           set -euo pipefail
-          configured=0
-          [[ -n "$IOS_DISTRIBUTION_CERTIFICATE_BASE64" ]] && configured=$((configured + 1))
-          [[ -n "$IOS_DISTRIBUTION_CERTIFICATE_PASSWORD" ]] && configured=$((configured + 1))
-          [[ -n "$MACOS_INSTALLER_CERTIFICATE_BASE64" ]] && configured=$((configured + 1))
-          [[ -n "$MACOS_INSTALLER_CERTIFICATE_PASSWORD" ]] && configured=$((configured + 1))
-          [[ -n "$MACOS_PROVISIONING_PROFILE_BASE64" ]] && configured=$((configured + 1))
-          if [[ "$configured" -ne 5 ]]; then
-            echo "Tagged releases require the Apple Distribution certificate plus all three Mac App Store signing secrets." >&2
-            exit 1
-          fi
+          missing=0
+          for name in IOS_DISTRIBUTION_CERTIFICATE_BASE64 IOS_DISTRIBUTION_CERTIFICATE_PASSWORD \
+                      MACOS_INSTALLER_CERTIFICATE_BASE64 MACOS_INSTALLER_CERTIFICATE_PASSWORD \
+                      MACOS_PROVISIONING_PROFILE_BASE64; do
+            if [[ -z "${!name}" ]]; then
+              echo "::error::Tagged macOS releases require GitHub Actions secret $name."
+              missing=1
+            fi
+          done
+          [[ "$missing" -eq 0 ]] || exit 1
           echo "MACOS_APP_STORE_SIGNING=1" >> "$GITHUB_ENV"
 
       - name: Verify private runtime packages
@@ -1161,7 +1167,10 @@ jobs:
 
       - name: Report compiler cache statistics
         if: always() && !cancelled()
-        run: ccache --show-stats
+        run: |
+          if command -v ccache >/dev/null 2>&1; then
+            ccache --show-stats
+          fi
 
       - name: Save ccache
         if: success() && github.event_name != 'pull_request' && env.AETHERKIRI_VCPKG_CACHE_WRITE == 'true' && steps.restore-ccache.outputs.cache-hit != 'true'
@@ -1454,7 +1463,10 @@ jobs:
 
       - name: Report compiler cache statistics
         if: always() && !cancelled()
-        run: ccache --show-stats
+        run: |
+          if command -v ccache >/dev/null 2>&1; then
+            ccache --show-stats
+          fi
 
       - name: Save ccache
         if: success() && github.event_name != 'pull_request' && env.AETHERKIRI_VCPKG_CACHE_WRITE == 'true' && steps.restore-ccache.outputs.cache-hit != 'true'

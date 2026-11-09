@@ -33,6 +33,24 @@ The app exposes three renderer choices in the Godot settings UI:
 CPU upload must remain a debug fallback. Performance work should target Godot
 Native first, then GPU Bridge where native coverage is incomplete.
 
+### Final-frame scaling
+
+The scaling selector also offers **MetalFX Spatial** on macOS/iOS. It scales the
+final 2D game texture to the displayed pixel area, independently of the output
+resolution and enhancement chain. It requires the native Metal driver, a
+supported GPU, macOS 13/iOS 16 or newer, and the optional frame-effect provider.
+Use Godot's default rendering thread mode; its experimental separate rendering
+thread currently uses the fallback.
+Unavailable devices, processing errors and downscaling use Bicubic. The setting
+is preserved across launches; choosing it does not change game input coordinates.
+
+Run `tests/frame_upscale_settings_test.gd` with Godot's `--script` option from
+`apps/godot_app` to check settings and display sizing. Run
+`tests/frame_upscale_test.gd` with `--rendering-method mobile --rendering-driver metal`
+to exercise native output, animation, resize and resource release. Set
+`AETHER_TEST_REQUIRE_UPSCALER=1` to fail instead of skipping the native cases on an
+unsupported renderer. A headless run checks the source-texture fallback.
+
 ## Repository Layout
 
 | Path | Purpose |

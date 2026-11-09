@@ -315,7 +315,7 @@ const UI_TEXT := {
         "settings.surface_mode": "画布尺寸",
         "settings.surface_mode_desc": "Game Native 按游戏基准画布运行；Display Fit 按设备显示尺寸运行",
         "settings.upscale": "缩放算法",
-        "settings.upscale_desc": "外层拉伸画面时使用；Bicubic/Lanczos 提供更高质量采样",
+        "settings.upscale_desc": "用于最终画面缩放。MetalFX Spatial 在支持的 Apple 设备上放大；无法使用时回退 Bicubic",
         "settings.output_resolution": "输出分辨率",
         "settings.output_resolution_desc": "设置外层缩放与画面增强的目标分辨率；较高档位会增加 GPU 和显存占用",
         "settings.output_resolution.original": "原始",
@@ -697,7 +697,7 @@ const UI_TEXT := {
         "settings.surface_mode": "畫布尺寸",
         "settings.surface_mode_desc": "Game Native 依遊戲基準畫布執行；Display Fit 依裝置顯示尺寸執行",
         "settings.upscale": "縮放演算法",
-        "settings.upscale_desc": "外層拉伸畫面時使用；Bicubic/Lanczos 提供更高品質取樣",
+        "settings.upscale_desc": "用於最終畫面縮放。MetalFX Spatial 在支援的 Apple 裝置上放大；無法使用時回退 Bicubic",
         "settings.output_resolution": "輸出解析度",
         "settings.output_resolution_desc": "設定外層縮放與畫面增強的目標解析度；較高檔位會增加 GPU 與顯示記憶體用量",
         "settings.output_resolution.original": "原始",
@@ -1114,7 +1114,7 @@ You can find it any time under Settings → QQ Group.",
         "settings.surface_mode": "Canvas Size",
         "settings.surface_mode_desc": "Game Native uses the game's base canvas; Display Fit uses the device display size",
         "settings.upscale": "Scaling",
-        "settings.upscale_desc": "Used when stretching the outer frame; Bicubic/Lanczos provide higher-quality filtering",
+        "settings.upscale_desc": "Scales the final frame. MetalFX Spatial upscales on supported Apple devices and falls back to Bicubic when unavailable",
         "settings.output_resolution": "Output Resolution",
         "settings.output_resolution_desc": "Sets the target for outer scaling and image enhancement; higher tiers use more GPU time and memory",
         "settings.output_resolution.original": "Original",
@@ -1496,7 +1496,7 @@ You can find it any time under Settings → QQ Group.",
         "settings.surface_mode": "キャンバスサイズ",
         "settings.surface_mode_desc": "Game Native はゲーム基準のキャンバス、Display Fit はデバイス表示サイズで実行します",
         "settings.upscale": "スケーリング",
-        "settings.upscale_desc": "外側の画面を引き伸ばすときに使用します。Bicubic/Lanczos は高品質な補間を行います",
+        "settings.upscale_desc": "最終画面の拡大縮小に使用します。MetalFX Spatial は対応 Apple デバイスで拡大し、利用できない場合は Bicubic を使用します",
         "settings.output_resolution": "出力解像度",
         "settings.output_resolution_desc": "外側のスケーリングと画質強化の目標解像度を設定します。高い設定ほど GPU とメモリを多く使用します",
         "settings.output_resolution.original": "オリジナル",
@@ -1876,7 +1876,7 @@ You can find it any time under Settings → QQ Group.",
         "settings.surface_mode": "캔버스 크기",
         "settings.surface_mode_desc": "Game Native는 게임 기준 캔버스를 사용하고 Display Fit은 장치 표시 크기를 사용합니다",
         "settings.upscale": "스케일링",
-        "settings.upscale_desc": "외부 화면을 늘릴 때 사용합니다. Bicubic/Lanczos는 고품질 보간을 적용합니다",
+        "settings.upscale_desc": "최종 화면 크기를 조절합니다. MetalFX Spatial은 지원되는 Apple 기기에서 확대하며, 사용할 수 없으면 Bicubic을 사용합니다",
         "settings.output_resolution": "출력 해상도",
         "settings.output_resolution_desc": "외부 스케일링과 화질 향상의 목표 해상도를 설정합니다. 높은 단계일수록 GPU와 메모리를 더 사용합니다",
         "settings.output_resolution.original": "원본",
@@ -2482,6 +2482,8 @@ var runtime_default_font_path := ""
 var runtime_font_dir_path := ""
 var selected_backend := "Godot Native"
 var upscale_algorithm := "bicubic"
+var frame_upscale_active := false
+var frame_upscale_source_texture: Texture2D
 var output_resolution := OUTPUT_RESOLUTION_DEFAULT
 var render_surface_mode := "game"
 var frame_enhancement_enabled := false
@@ -4149,7 +4151,7 @@ func _load_shell_settings() -> void:
     # into the default while loading the saved settings.
     if upscale_algorithm == "sharp":
         upscale_algorithm = "bicubic"
-    if not upscale_algorithm in ["smooth", "nearest", "linear", "bicubic", "lanczos"]:
+    if not upscale_algorithm in ["smooth", "nearest", "linear", "bicubic", "lanczos", "metalfx_spatial"]:
         upscale_algorithm = "bicubic"
     output_resolution = _normalize_output_resolution(String(cfg.get_value(
         "rendering",
@@ -4520,7 +4522,7 @@ func _apply_settings_snapshot(snapshot: Dictionary) -> void:
         selected_backend = "Godot Native"
 
     upscale_algorithm = String(snapshot.get("upscale_algorithm", upscale_algorithm))
-    if not upscale_algorithm in ["smooth", "nearest", "linear", "bicubic", "lanczos"]:
+    if not upscale_algorithm in ["smooth", "nearest", "linear", "bicubic", "lanczos", "metalfx_spatial"]:
         upscale_algorithm = "bicubic"
     _apply_upscale_algorithm()
     output_resolution = _normalize_output_resolution(String(snapshot.get(
@@ -4686,6 +4688,7 @@ func _apply_engine_options() -> void:
         player.set_engine_option("onscripter_encoding", onscripter_encoding)
 
 func _apply_frame_enhancement_settings() -> void:
+    _apply_upscale_algorithm()
     if player == null or not player.has_method("set_frame_enhancement_enabled"):
         return
     if player.has_method("set_frame_native_output_enabled"):
@@ -5154,7 +5157,7 @@ func _layout_game_viewport(window_size: Vector2) -> void:
         max(1.0, float(last_texture_size.x)),
         max(1.0, float(last_texture_size.y))
     )
-    if viewport.texture != null:
+    if viewport.texture != null and upscale_algorithm != "metalfx_spatial":
         tex_size = Vector2(
             max(1.0, float(viewport.texture.get_width())),
             max(1.0, float(viewport.texture.get_height()))
@@ -5300,8 +5303,13 @@ void fragment() {
     return _opaque_frame_material()
 
 func _apply_upscale_algorithm() -> void:
+    if player != null and player.has_method("set_frame_upscale_algorithm"):
+        player.set_frame_upscale_algorithm("metalfx_spatial" if upscale_algorithm == "metalfx_spatial" else "")
+    frame_upscale_active = _is_frame_upscale_active()
     if viewport == null:
         return
+    if not frame_upscale_active and viewport.texture != null and frame_upscale_source_texture != null:
+        viewport.texture = frame_upscale_source_texture
     match upscale_algorithm:
         "nearest":
             viewport.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
@@ -5316,9 +5324,49 @@ func _apply_upscale_algorithm() -> void:
         "bicubic", "lanczos":
             viewport.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR
             viewport.material = _resampling_frame_material(upscale_algorithm)
+        "metalfx_spatial":
+            viewport.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR
+            viewport.material = _opaque_frame_material() if frame_upscale_active else _resampling_frame_material("bicubic")
         _:
             viewport.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR
             viewport.material = _opaque_frame_material()
+
+func _is_frame_upscale_active() -> bool:
+    if upscale_algorithm != "metalfx_spatial" or player == null or not player.has_method("get_frame_upscale_status"):
+        return false
+    return bool(player.get_frame_upscale_status().get("active", false))
+
+func _frame_upscale_target_size() -> Vector2i:
+    if viewport == null or last_texture_size.x <= 0 or last_texture_size.y <= 0:
+        return Vector2i.ZERO
+    # Canvas-to-screen scale includes UI/content scaling. Do not multiply by
+    # the screen's Retina scale again; the result is already in window pixels.
+    var pixel_transform := viewport.get_viewport().get_stretch_transform() * viewport.get_global_transform_with_canvas()
+    var pixel_scale := pixel_transform.get_scale().abs()
+    var bounds := Vector2i((viewport.size * pixel_scale).ceil())
+    var target := _fit_frame_size_within(last_texture_size, bounds)
+    if target.x > 4096 or target.y > 4096:
+        target = _fit_frame_size_within(target, Vector2i(4096, 4096))
+    return target
+
+func _on_frame_upscale_ready(texture: Texture2D) -> void:
+    if upscale_algorithm != "metalfx_spatial" or viewport == null or viewport.texture == null or texture == null:
+        return
+    if frame_upscale_active != _is_frame_upscale_active():
+        _apply_upscale_algorithm()
+    viewport.texture = texture
+    viewport.queue_redraw()
+
+func _present_frame_upscale(texture: Texture2D) -> void:
+    frame_upscale_source_texture = texture
+    if upscale_algorithm != "metalfx_spatial" or not player.has_method("upscale_frame_texture"):
+        return
+    var target := _frame_upscale_target_size()
+    var scaled: Texture2D = player.upscale_frame_texture(texture, target.x, target.y)
+    if frame_upscale_active != _is_frame_upscale_active():
+        _apply_upscale_algorithm()
+    if scaled != null:
+        viewport.texture = scaled
 
 func _set_game_background(active: bool) -> void:
     if not active:
@@ -7861,6 +7909,8 @@ func _upscale_select() -> Control:
         {"label": "Bicubic", "value": "bicubic"},
         {"label": "Lanczos", "value": "lanczos"},
     ]
+    if OS.get_name() in ["macOS", "iOS"] or upscale_algorithm == "metalfx_spatial":
+        options.append({"label": "MetalFX Spatial", "value": "metalfx_spatial"})
     var selected_index := 0
     var draft_upscale := _settings_draft_string("upscale_algorithm", upscale_algorithm)
     for i in range(options.size()):
@@ -8133,7 +8183,7 @@ func _select_backend(value: String) -> void:
     _set_settings_draft_value("backend", BACKENDS[index])
 
 func _select_upscale_algorithm(value: String) -> void:
-    if not value in ["smooth", "nearest", "linear", "bicubic", "lanczos"]:
+    if not value in ["smooth", "nearest", "linear", "bicubic", "lanczos", "metalfx_spatial"]:
         return
     _set_settings_draft_value("upscale_algorithm", value)
 
@@ -12273,6 +12323,7 @@ func _return_to_library_after_runtime_exit() -> void:
         diagnostic_session.finish()
     if viewport != null:
         viewport.texture = null
+        frame_upscale_source_texture = null
         viewport.visible = false
     if game_view != null:
         game_view.visible = false
@@ -12684,6 +12735,8 @@ func _create_runtime_player(runtime_kind: String = RUNTIME_KIRIKIRI) -> bool:
         _show_system_alert(_t("alert.runtime_create_failed"), _t("alert.error_title"))
         return false
     player = instance
+    if instance.has_signal("frame_upscale_ready"):
+        instance.connect("frame_upscale_ready", Callable(self, "_on_frame_upscale_ready"))
     current_player_runtime_kind = runtime_kind
     if instance.has_signal("platform_request"):
         instance.connect(
@@ -14183,6 +14236,7 @@ func _prepare_cli_probe_view(config: Dictionary) -> void:
     _set_perf_visible(false)
     restart_notice.visible = false
     viewport.texture = null
+    frame_upscale_source_texture = null
     last_texture_size = Vector2i.ZERO
     last_source_texture_size = Vector2i.ZERO
     game_running = false
@@ -14285,6 +14339,7 @@ func _probe_tick_and_update() -> bool:
             if source_size.x > 0 and source_size.y > 0:
                 last_source_texture_size = source_size
         _layout_game_viewport(get_viewport_rect().size)
+        _present_frame_upscale(texture)
     return true
 
 func _probe_advance(frames: int) -> bool:
@@ -15248,6 +15303,7 @@ func _probe_cleanup_and_quit(code: int, record_cleanup: Callable = Callable()) -
     cached_startup_state = STARTUP_IDLE
     if player != null:
         viewport.texture = null
+        frame_upscale_source_texture = null
         viewport.visible = false
         await get_tree().process_frame
         player.release_frame_texture()
@@ -16033,6 +16089,7 @@ func _notification(what: int) -> void:
         if diagnostic_session != null:
             diagnostic_session.finish()
         viewport.texture = null
+        frame_upscale_source_texture = null
         player.release_frame_texture()
         _cleanup_softpal_platform_ui()
         player.destroy_engine()
@@ -16121,6 +16178,7 @@ func _quit_app_for_go_back() -> void:
         if diagnostic_session != null:
             diagnostic_session.finish()
         viewport.texture = null
+        frame_upscale_source_texture = null
         player.release_frame_texture()
         player.destroy_engine()
     get_tree().quit(0)
@@ -16636,6 +16694,7 @@ func _update_frame() -> void:
             last_source_texture_size = last_texture_size
         _sync_game_surface_to_texture(last_source_texture_size)
         _layout_game_viewport(get_viewport_rect().size)
+        _present_frame_upscale(texture)
         if not auto_probe_clicks.is_empty() and not auto_probe_running and not auto_probe_done:
             auto_probe_running = true
             call_deferred("_run_auto_probe")

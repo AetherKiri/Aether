@@ -10206,6 +10206,12 @@ public:
     AetherRuntimePlayer()
         : frame_effect_provider_(CreateFrameEffectProvider()) {}
     ~AetherRuntimePlayer() override {
+        RenderingServer *server = RenderingServer::get_singleton();
+        const Callable callback = callable_mp(this, &AetherRuntimePlayer::finish_frame_upscale);
+        if (server != nullptr && server->is_connected("frame_post_draw", callback)) {
+            server->disconnect("frame_post_draw", callback);
+        }
+        release_frame_upscale();
         destroy_engine();
     }
 
@@ -10349,6 +10355,7 @@ public:
     }
 
     void release_frame_texture() {
+        release_frame_upscale();
         if (frame_effect_provider_ != nullptr) {
             frame_effect_provider_->release(main_rendering_device());
         }
@@ -10370,6 +10377,98 @@ public:
 
     bool is_frame_enhancement_built() const {
         return frame_effect_provider_ != nullptr;
+    }
+
+    bool is_frame_upscale_available(const String &algorithm) const {
+        String reason;
+        return frame_effect_provider_ != nullptr &&
+            frame_effect_provider_->is_upscale_available(
+                algorithm, main_rendering_device(), &reason);
+    }
+
+    void release_frame_upscale() {
+        frame_upscale_pending_ = false;
+        frame_upscale_active_ = false;
+        frame_upscale_failed_ = false;
+        frame_upscale_error_ = "";
+        frame_upscale_source_.unref();
+        if (frame_effect_provider_ != nullptr) {
+            frame_effect_provider_->release_upscale(main_rendering_device());
+        }
+    }
+
+    void set_frame_upscale_algorithm(const String &algorithm) {
+        const String normalized = algorithm.strip_edges().to_lower();
+        if (normalized == frame_upscale_algorithm_) return;
+        release_frame_upscale();
+        frame_upscale_algorithm_ = normalized;
+    }
+
+    Ref<Texture2D> upscale_frame_texture(const Ref<Texture2D> &source,
+                                         int width, int height) {
+        frame_upscale_active_ = false;
+        if (source.is_null() || frame_upscale_algorithm_.is_empty() ||
+            frame_upscale_failed_ || width <= 0 || height <= 0) return source;
+        String reason = "provider_not_built";
+        RenderingDevice *rd = main_rendering_device();
+        if (frame_effect_provider_ == nullptr ||
+            !frame_effect_provider_->is_upscale_available(frame_upscale_algorithm_, rd, &reason)) {
+            frame_upscale_error_ = reason;
+            return source;
+        }
+        RenderingServer *server = RenderingServer::get_singleton();
+        if (server == nullptr) return source;
+        const Callable callback = callable_mp(this, &AetherRuntimePlayer::finish_frame_upscale);
+        if (!server->is_connected("frame_post_draw", callback)) {
+            server->connect("frame_post_draw", callback);
+        }
+        FrameEffectRequest request;
+        request.rendering_device = rd;
+        request.source_texture = server->texture_get_rd_texture(source->get_rid());
+        request.input_width = source->get_width();
+        request.input_height = source->get_height();
+        request.target_width = width;
+        request.target_height = height;
+        request.mode = frame_upscale_algorithm_;
+        FrameEffectOutput output;
+        frame_upscale_source_ = source;
+        frame_upscale_pending_ = frame_effect_provider_->prepare_upscale(
+            request, &output, &frame_upscale_error_);
+        if (!frame_upscale_pending_) {
+            frame_upscale_failed_ = frame_upscale_error_ != "upscale_not_required" &&
+                frame_upscale_error_ != "upscale_format_unsupported" &&
+                frame_upscale_error_ != "source_format_unavailable";
+            return source;
+        }
+        frame_upscale_active_ = output.texture.is_valid();
+        return frame_upscale_active_ ? output.texture : source;
+    }
+
+    void finish_frame_upscale() {
+        if (!frame_upscale_pending_ || frame_effect_provider_ == nullptr) return;
+        frame_upscale_pending_ = false;
+        FrameEffectOutput output;
+        if (frame_effect_provider_->finish_upscale(&output) && output.texture.is_valid()) {
+            frame_upscale_active_ = true;
+            emit_signal("frame_upscale_ready", output.texture);
+        } else {
+            frame_upscale_active_ = false;
+            frame_upscale_failed_ = true;
+            frame_upscale_error_ = "upscale_submission_failed";
+            emit_signal("frame_upscale_ready", frame_upscale_source_);
+        }
+    }
+
+    Dictionary get_frame_upscale_status() const {
+        Dictionary result;
+        result["algorithm"] = frame_upscale_algorithm_;
+        result["active"] = frame_upscale_active_;
+        result["pending"] = frame_upscale_pending_;
+        result["error"] = frame_upscale_error_;
+        result["bypassed_after_error"] = frame_upscale_failed_;
+        result["available"] = is_frame_upscale_available(frame_upscale_algorithm_);
+        if (frame_effect_provider_ != nullptr) result["provider"] = frame_effect_provider_->upscale_status();
+        return result;
     }
 
     bool is_text_translation_available() const {
@@ -12868,6 +12967,15 @@ protected:
                              &AetherRuntimePlayer::get_frame_texture_backend);
         ClassDB::bind_method(D_METHOD("is_frame_enhancement_built"),
                              &AetherRuntimePlayer::is_frame_enhancement_built);
+        ClassDB::bind_method(D_METHOD("is_frame_upscale_available", "algorithm"),
+                             &AetherRuntimePlayer::is_frame_upscale_available);
+        ClassDB::bind_method(D_METHOD("set_frame_upscale_algorithm", "algorithm"),
+                             &AetherRuntimePlayer::set_frame_upscale_algorithm);
+        ClassDB::bind_method(D_METHOD("upscale_frame_texture", "source", "width", "height"),
+                             &AetherRuntimePlayer::upscale_frame_texture);
+        ClassDB::bind_method(D_METHOD("get_frame_upscale_status"),
+                             &AetherRuntimePlayer::get_frame_upscale_status);
+        ADD_SIGNAL(MethodInfo("frame_upscale_ready", PropertyInfo(Variant::OBJECT, "texture", PROPERTY_HINT_RESOURCE_TYPE, "Texture2D")));
         ClassDB::bind_method(D_METHOD("is_text_translation_available"),
                              &AetherRuntimePlayer::is_text_translation_available);
         ClassDB::bind_method(D_METHOD("get_text_translation_state"),
@@ -14122,6 +14230,12 @@ private:
     uint64_t frame_present_serial_ = UINT64_MAX;
     uint64_t frame_texture_serial_ = UINT64_MAX;
     std::unique_ptr<FrameEffectProvider> frame_effect_provider_;
+    String frame_upscale_algorithm_;
+    String frame_upscale_error_;
+    bool frame_upscale_active_ = false;
+    bool frame_upscale_pending_ = false;
+    bool frame_upscale_failed_ = false;
+    Ref<Texture2D> frame_upscale_source_;
     bool frame_effect_enabled_ = false;
     bool frame_effect_active_ = false;
     bool frame_native_output_enabled_ = false;

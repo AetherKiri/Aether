@@ -28,7 +28,7 @@ func _initialize() -> void:
     app._apply_settings_snapshot(snapshot)
     assert(app.upscale_algorithm == "nearest")
     assert(String(app._current_settings_snapshot().get("upscale_algorithm", "")) == "nearest")
-    for algorithm in ["smooth", "linear", "bicubic", "lanczos"]:
+    for algorithm in ["smooth", "linear", "bicubic", "lanczos", "metalfx_spatial"]:
         snapshot["upscale_algorithm"] = algorithm
         app._apply_settings_snapshot(snapshot)
         assert(app.upscale_algorithm == algorithm)

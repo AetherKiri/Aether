@@ -1,0 +1,6 @@
+{
+  "game_path": "D:/Games/WHITE ALBUM2",
+  "output_dir": "D:/WA2-verification/smoke",
+  "mode": "smoke",
+  "max_frames": 20000
+}

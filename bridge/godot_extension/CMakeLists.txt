@@ -96,14 +96,21 @@ if(WEB OR EMSCRIPTEN)
 endif()
 
 set(AETHERKIRI_GODOT_SOURCES
-    src/flash_player.cpp
-    src/tyrano_player.cpp
     src/native_controls_overlay.cpp
-    src/renpy_native_player.cpp
     src/aether_runtime_player.cpp
     src/frame_effect_host.cpp
     src/presentation/RuntimePresentationSprite.cpp
 )
+foreach(_aetherkiri_host_runtime IN ITEMS FLASH TYRANO RENPY)
+    if(AETHERKIRI_ENABLE_${_aetherkiri_host_runtime})
+        if(_aetherkiri_host_runtime STREQUAL "RENPY")
+            list(APPEND AETHERKIRI_GODOT_SOURCES src/renpy_native_player.cpp)
+        else()
+            string(TOLOWER "${_aetherkiri_host_runtime}" _aetherkiri_host_runtime_lower)
+            list(APPEND AETHERKIRI_GODOT_SOURCES src/${_aetherkiri_host_runtime_lower}_player.cpp)
+        endif()
+    endif()
+endforeach()
 
 if(WEB OR EMSCRIPTEN)
     add_executable(aether_kiri_godot ${AETHERKIRI_GODOT_SOURCES})
@@ -120,11 +127,11 @@ if(AETHERKIRI_ENABLE_FLASH AND NOT (WEB OR EMSCRIPTEN))
 endif()
 
 if(APPLE)
-    if(IOS)
+    if(IOS AND AETHERKIRI_ENABLE_RENPY)
         target_sources(aether_kiri_godot PRIVATE src/renpy_native_ios.mm)
         set_source_files_properties(src/renpy_native_ios.mm
             PROPERTIES LANGUAGE CXX COMPILE_FLAGS "-x objective-c++ -fobjc-arc")
-    else()
+    elseif(AETHERKIRI_ENABLE_RENPY)
         add_library(aether_renpy_sdl_hook SHARED "${CMAKE_SOURCE_DIR}/bridge/renpy_runtime/sdl_dynamic_hook.cpp")
         add_custom_command(TARGET aether_renpy_sdl_hook POST_BUILD
             COMMAND ${CMAKE_COMMAND} -E make_directory
@@ -136,16 +143,21 @@ if(APPLE)
         set_source_files_properties(src/renpy_native_macos.mm
             PROPERTIES LANGUAGE CXX COMPILE_FLAGS "-x objective-c++ -fobjc-arc")
     endif()
+    if(AETHERKIRI_ENABLE_TYRANO)
     file(READ "${CMAKE_SOURCE_DIR}/bridge/tyrano_runtime/host.js" AETHER_TYRANO_HOST_JS)
     set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
         "${CMAKE_SOURCE_DIR}/bridge/tyrano_runtime/host.js")
     configure_file("${CMAKE_SOURCE_DIR}/bridge/tyrano_runtime/host_script.h.in"
         "${CMAKE_CURRENT_BINARY_DIR}/tyrano_host_script.h" @ONLY)
     target_include_directories(aether_kiri_godot PRIVATE "${CMAKE_CURRENT_BINARY_DIR}")
-    target_sources(aether_kiri_godot PRIVATE src/tyrano_webview.mm src/native_controls_overlay.mm)
-    set_source_files_properties(src/tyrano_webview.mm src/native_controls_overlay.mm
+    target_sources(aether_kiri_godot PRIVATE src/tyrano_webview.mm)
+    set_source_files_properties(src/tyrano_webview.mm
         PROPERTIES LANGUAGE CXX COMPILE_FLAGS "-x objective-c++ -fobjc-arc")
     target_link_libraries(aether_kiri_godot PRIVATE "-framework WebKit" "-framework CoreGraphics")
+    endif()
+    target_sources(aether_kiri_godot PRIVATE src/native_controls_overlay.mm)
+    set_source_files_properties(src/native_controls_overlay.mm
+        PROPERTIES LANGUAGE CXX COMPILE_FLAGS "-x objective-c++ -fobjc-arc")
     target_sources(aether_kiri_godot PRIVATE src/apple_external_texture.mm)
     set_source_files_properties(src/apple_external_texture.mm
         PROPERTIES LANGUAGE CXX COMPILE_FLAGS "-x objective-c++")
@@ -188,7 +200,7 @@ if(APPLE)
         "-framework StoreKit")
 endif()
 
-if(UNIX AND NOT APPLE AND NOT ANDROID AND NOT (WEB OR EMSCRIPTEN))
+if(AETHERKIRI_ENABLE_RENPY AND UNIX AND NOT APPLE AND NOT ANDROID AND NOT (WEB OR EMSCRIPTEN))
     add_library(aether_renpy_sdl_hook SHARED "${CMAKE_SOURCE_DIR}/bridge/renpy_runtime/sdl_dynamic_hook.cpp")
     target_link_libraries(aether_renpy_sdl_hook PRIVATE ${CMAKE_DL_LIBS})
     target_sources(aether_kiri_godot PRIVATE src/renpy_native_linux.cpp)
@@ -230,6 +242,12 @@ if(ANDROID OR CMAKE_SYSTEM_NAME STREQUAL "Linux")
 endif()
 
 target_compile_features(aether_kiri_godot PRIVATE cxx_std_17)
+foreach(_aetherkiri_host_runtime IN ITEMS FLASH TYRANO RENPY)
+    if(AETHERKIRI_ENABLE_${_aetherkiri_host_runtime})
+        target_compile_definitions(aether_kiri_godot PRIVATE
+            AETHERKIRI_HOST_${_aetherkiri_host_runtime}=1)
+    endif()
+endforeach()
 if(MSVC)
     set_property(TARGET aether_kiri_godot PROPERTY
         MSVC_RUNTIME_LIBRARY "MultiThreadedDLL")
@@ -249,6 +267,27 @@ if(AETHERKIRI_INTERNAL_ENABLED AND
     aetherinternal_extend_godot_extension(
         aether_kiri_godot
         "${CMAKE_CURRENT_SOURCE_DIR}/src")
+endif()
+
+if(AETHERKIRI_ENABLE_WA2 AND NOT AETHERKIRI_ENABLE_KRKR2)
+    if(NOT AETHERKIRI_INTERNAL_ENABLED OR NOT COMMAND aetherinternal_extend_wa2)
+        message(FATAL_ERROR "WA2 was requested but the Internal WA2 package is unavailable")
+    endif()
+    if(NOT TARGET engine_api)
+        message(FATAL_ERROR "The independent WA2 runtime requires BUILD_ENGINE_API=ON")
+    endif()
+    add_library(aetherkiri_wa2_runtime STATIC)
+    target_compile_features(aetherkiri_wa2_runtime PRIVATE cxx_std_17)
+    target_include_directories(aetherkiri_wa2_runtime PRIVATE "${CMAKE_SOURCE_DIR}/abi/include")
+    target_link_libraries(aetherkiri_wa2_runtime PRIVATE engine_api)
+    aetherinternal_extend_wa2(aetherkiri_wa2_runtime)
+    if(MSVC)
+        set_property(TARGET aetherkiri_wa2_runtime PROPERTY
+            MSVC_RUNTIME_LIBRARY "MultiThreadedDLL")
+        target_compile_options(aetherkiri_wa2_runtime PRIVATE /U_DEBUG)
+    endif()
+    target_link_libraries(aether_kiri_godot PRIVATE aetherkiri_wa2_runtime)
+    target_compile_definitions(aether_kiri_godot PRIVATE AETHERKIRI_WITH_WA2=1)
 endif()
 
 if(AETHERKIRI_ENABLE_SOFTPAL_RUNTIME)
@@ -325,6 +364,9 @@ if(IOS)
     if(TARGET aether_game_hooks)
         target_link_libraries(aether_kiri_godot PRIVATE aether_game_hooks)
         list(APPEND AETHERKIRI_IOS_ARCHIVES "$<TARGET_FILE:aether_game_hooks>")
+    endif()
+    if(TARGET aetherkiri_wa2_runtime)
+        list(APPEND AETHERKIRI_IOS_ARCHIVES "$<TARGET_FILE:aetherkiri_wa2_runtime>")
     endif()
     if(TARGET aether_flash_native)
         list(APPEND AETHERKIRI_IOS_ARCHIVES "$<TARGET_FILE:aether_flash_native>")
@@ -458,11 +500,15 @@ if(APPLE AND NOT IOS AND TARGET engine_api)
         COMMAND ${CMAKE_COMMAND} -E copy_if_different
             "$<TARGET_FILE:engine_api>"
             "${_aetherkiri_macos_godot_bin}/libengine_api.dylib"
-        COMMAND ${CMAKE_COMMAND} -E copy_if_different
-            "$<TARGET_FILE:aether_renpy_sdl_hook>"
-            "${_aetherkiri_macos_godot_bin}/libaether_renpy_sdl_hook.dylib"
         VERBATIM
     )
+    if(TARGET aether_renpy_sdl_hook)
+        add_custom_command(TARGET aether_kiri_godot POST_BUILD
+            COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                "$<TARGET_FILE:aether_renpy_sdl_hook>"
+                "${_aetherkiri_macos_godot_bin}/libaether_renpy_sdl_hook.dylib"
+            VERBATIM)
+    endif()
 endif()
 
 if(WIN32)

@@ -21,7 +21,7 @@ web.release.wasm32 = "res://bin/web/release/aether_kiri_godot.wasm"
 
 [dependencies]
 windows.debug.x86_64 = {
-  "res://bin/windows/debug/engine_api.dll": ""
+  "res://bin/windows/release/engine_api.dll": ""
 }
 windows.release.x86_64 = {
   "res://bin/windows/release/engine_api.dll": ""

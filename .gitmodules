@@ -1,6 +1,7 @@
 [submodule "packages/AetherInternal"]
 	path = packages/AetherInternal
 	url = git@github.com:AetherKiri/AetherInternal.git
+	branch = leafttt-engine
 	ignore = dirty
 [submodule "packages/OnscripterYuri"]
 	path = packages/OnscripterYuri

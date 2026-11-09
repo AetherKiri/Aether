@@ -1,0 +1,274 @@
+{
+  "audioAcks": 63,
+  "captures": 15,
+  "checkpointDifferences": [],
+  "checks": [
+    {
+      "detail": "runtime audioSilent=true",
+      "name": "silent",
+      "pass": true
+    },
+    {
+      "detail": "C:/Users/Administrator/Documents/deepseek-harness/default-workspace/probe-out/phase2-godot-save/userdata",
+      "name": "isolated-profile",
+      "pass": true
+    },
+    {
+      "detail": "2003",
+      "name": "chapter-entry",
+      "pass": true
+    },
+    {
+      "detail": "disabled original row refuses input without VM/global change",
+      "name": "disabled-row-rejected",
+      "pass": true
+    },
+    {
+      "detail": "raw_row=1",
+      "name": "choice-accepted",
+      "pass": true
+    },
+    {
+      "detail": "{\"actualRgbaSha256\":\"148a3ab6e88ef63573b29289e0801de685784a0b4def067a680c981c537bd261\",\"check\":\"pending-save-preserves-frame\",\"comparedBytes\":3686400,\"driverFrames\":591,\"expectedRgbaSha256\":\"148a3ab6e88ef63573b29289e0801de685784a0b4def067a680c981c537bd261\",\"maskStage\":false,\"pass\":true}",
+      "name": "pending-save-preserves-frame",
+      "pass": true
+    },
+    {
+      "detail": "raw_row=1",
+      "name": "choice-accepted",
+      "pass": true
+    },
+    {
+      "detail": "{\"actualRgbaSha256\":\"198ad86f8876978027bca993d736175a379af47960955c9f663f4064ae41bdd2\",\"check\":\"pending-reference-load-stage\",\"comparedBytes\":2127996,\"driverFrames\":595,\"expectedRgbaSha256\":\"198ad86f8876978027bca993d736175a379af47960955c9f663f4064ae41bdd2\",\"maskStage\":true,\"pass\":true}",
+      "name": "pending-reference-load-stage",
+      "pass": true
+    },
+    {
+      "detail": "pending VM/choice/globals restored",
+      "name": "pending-reference-load",
+      "pass": true
+    },
+    {
+      "detail": "raw_row=0",
+      "name": "choice-accepted",
+      "pass": true
+    },
+    {
+      "detail": "{\"actualRgbaSha256\":\"198ad86f8876978027bca993d736175a379af47960955c9f663f4064ae41bdd2\",\"check\":\"pending-load-stage\",\"comparedBytes\":2127996,\"driverFrames\":599,\"expectedRgbaSha256\":\"198ad86f8876978027bca993d736175a379af47960955c9f663f4064ae41bdd2\",\"maskStage\":true,\"pass\":true}",
+      "name": "pending-load-stage",
+      "pass": true
+    },
+    {
+      "detail": "same script/PC/group/page/globals/visible original rows",
+      "name": "pending-exact-load",
+      "pass": true
+    },
+    {
+      "detail": "system flags survive load",
+      "name": "pending-system-flags-kept",
+      "pass": true
+    },
+    {
+      "detail": "live history bitmask retains both tested original rows after load",
+      "name": "pending-history-kept",
+      "pass": true
+    },
+    {
+      "detail": "raw_row=1",
+      "name": "choice-accepted",
+      "pass": true
+    },
+    {
+      "detail": "wrong-branch effects removed; reanswer equals one clean answer",
+      "name": "pending-affection-once",
+      "pass": true
+    },
+    {
+      "detail": "2/2",
+      "name": "all-plan-consumed",
+      "pass": true
+    },
+    {
+      "detail": "requires a choice with two enabled rows",
+      "name": "pending-roundtrip-performed",
+      "pass": true
+    },
+    {
+      "detail": "requires a displayed disabled row",
+      "name": "disabled-rejection-performed",
+      "pass": true
+    }
+  ],
+  "disabledChecked": true,
+  "failure": "",
+  "frameComparisons": [
+    {
+      "actualRgbaSha256": "148a3ab6e88ef63573b29289e0801de685784a0b4def067a680c981c537bd261",
+      "check": "pending-save-preserves-frame",
+      "comparedBytes": 3686400,
+      "driverFrames": 591,
+      "expectedRgbaSha256": "148a3ab6e88ef63573b29289e0801de685784a0b4def067a680c981c537bd261",
+      "maskStage": false,
+      "pass": true
+    },
+    {
+      "actualRgbaSha256": "198ad86f8876978027bca993d736175a379af47960955c9f663f4064ae41bdd2",
+      "check": "pending-reference-load-stage",
+      "comparedBytes": 2127996,
+      "driverFrames": 595,
+      "expectedRgbaSha256": "198ad86f8876978027bca993d736175a379af47960955c9f663f4064ae41bdd2",
+      "maskStage": true,
+      "pass": true
+    },
+    {
+      "actualRgbaSha256": "198ad86f8876978027bca993d736175a379af47960955c9f663f4064ae41bdd2",
+      "check": "pending-load-stage",
+      "comparedBytes": 2127996,
+      "driverFrames": 599,
+      "expectedRgbaSha256": "198ad86f8876978027bca993d736175a379af47960955c9f663f4064ae41bdd2",
+      "maskStage": true,
+      "pass": true
+    }
+  ],
+  "frames": 603,
+  "mode": "chapter",
+  "moviesFinished": 0,
+  "pass": true,
+  "planConsumed": 2,
+  "planTotal": 2,
+  "roundtripDone": true,
+  "runtime": {
+    "audioSilent": true,
+    "auto": false,
+    "choiceGroup": 1.0,
+    "choiceHistoryBits": 3.0,
+    "choiceHistoryFlag": 901.0,
+    "choicePending": false,
+    "choices": [],
+    "choicesAccepted": 4.0,
+    "commandsDispatched": 2013.0,
+    "error": "",
+    "fncEntries": 130.0,
+    "frameHeight": 720.0,
+    "frameSerial": 1132.0,
+    "frameWidth": 1280.0,
+    "gameFlags": {
+      "0": 0.0,
+      "1": 0.0,
+      "10": 0.0,
+      "11": 0.0,
+      "12": 0.0,
+      "13": 0.0,
+      "14": 0.0,
+      "15": 0.0,
+      "16": 0.0,
+      "17": 0.0,
+      "18": 0.0,
+      "19": 0.0,
+      "2": 0.0,
+      "20": 0.0,
+      "21": 0.0,
+      "22": 0.0,
+      "23": 0.0,
+      "24": 0.0,
+      "25": 0.0,
+      "26": 0.0,
+      "27": 0.0,
+      "28": 0.0,
+      "29": 0.0,
+      "3": 0.0,
+      "30": 0.0,
+      "31": 0.0,
+      "32": 0.0,
+      "33": 0.0,
+      "4": 0.0,
+      "5": 0.0,
+      "6": 0.0,
+      "7": 0.0,
+      "8": 0.0,
+      "9": 0.0
+    },
+    "globals": 29.0,
+    "lastChoiceRawRow": 1.0,
+    "logicTicks": 603.0,
+    "movieWaiting": false,
+    "opened": true,
+    "overlayHits": 0.0,
+    "overlayLookups": 447.0,
+    "pageIndex": 0.0,
+    "pageText": "だから俺は、彼女の求めに応じなくちゃならない。",
+    "patchOverlay": false,
+    "pc": 149808.0,
+    "pendingAudio": [
+      {
+        "action": "stop",
+        "channel": "voice1",
+        "fade": 0.0,
+        "id": 439.0,
+        "kind": "voice",
+        "loop": 0.0,
+        "path": "",
+        "volume": 255.0
+      }
+    ],
+    "pendingMovie": "",
+    "pendingMovieId": 0.0,
+    "providerError": "",
+    "runtime": "wa2",
+    "saveReady": false,
+    "script": "2003",
+    "scriptCommands": 2006.0,
+    "scriptEnded": false,
+    "scriptError": "",
+    "scriptGlobals": [
+      0.0,
+      3200.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      1.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      2.0,
+      2.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0
+    ],
+    "scriptWaiting": true,
+    "skip": false,
+    "state": "story",
+    "ticks": 603.0,
+    "userDataDirectory": "C:/Users/Administrator/Documents/deepseek-harness/default-workspace/probe-out/phase2-godot-save/userdata",
+    "waitLatch": "wait-frames",
+    "weatherParticles": 110.0
+  },
+  "saveReadyWaits": [
+    {
+      "choiceGroup": 1.0,
+      "choicePending": true,
+      "driverFrames": 591,
+      "label": "pending",
+      "pc": 125488.0,
+      "saveReady": true,
+      "script": "2003",
+      "waitedFrames": 59
+    }
+  ]
+}

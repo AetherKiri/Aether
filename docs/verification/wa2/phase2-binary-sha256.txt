@@ -1,3 +1,0 @@
-93C36095697B08334E2364A79C9880731741EEF784A3C0D6207D47481DF5FB25 C:\Users\Administrator\Documents\deepseek-harness\default-workspace\repos\Aether\apps\godot_app\bin\windows\release\aether_kiri_godot.dll
-DE61AC5F0DC29CFEE0781130BD9BE93FEE5767C6E288EFDE3E8C0C5855CDC5F4 C:\Users\Administrator\Documents\deepseek-harness\default-workspace\repos\Aether\apps\godot_app\bin\windows\release\engine_api.dll
-B3AAD77D9BFD24EBD2879DA20F341ECC27E4C3A6CFC04A6D2195E7F59D2F5665 C:\Users\Administrator\Documents\deepseek-harness\default-workspace\build\r6-release\leafttt_lite.exe

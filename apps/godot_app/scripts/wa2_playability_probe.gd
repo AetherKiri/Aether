@@ -7,7 +7,9 @@ extends SceneTree
 # choice_plan=<UTF8 file of script group original_raw_row, # comments>,
 # expect_flag=20, max_frames=300000, capture_every=500, log_every=1000,
 # ordinary_smoke=true, pending_choice_roundtrip=true, save_slot=8,
-# stop_after_choices=0, chapter_frames=1200, finish_movies=true.
+# stop_after_choices=0, chapter_frames=1200, finish_movies=true,
+# engine_options={"wa2.patch_dir": "<patch-root>"}, expect_text_encoding="utf-8",
+# settled_capture_frames=120 (optional ordinary-load reveal, without input).
 # route requires a plan and expect_flag; chapter may use a partial plan plus
 # stop_after_choices. Smoke always starts from title and uses real NEW GAME input.
 
@@ -31,6 +33,7 @@ var roundtrip_done := false
 var disabled_checked := false
 var movies_finished := 0
 var audio_acks := 0
+var text_encoding_checks := 0
 var last_debug: Dictionary = {}
 var last_runtime: Dictionary = {}
 
@@ -58,6 +61,11 @@ func _run() -> void:
         _finish()
         return
     player.set_surface_size(1280, 720)
+    var engine_options: Dictionary = config.get("engine_options", {})
+    for key in engine_options.keys():
+        if not _option(String(key), str(engine_options[key])):
+            _finish()
+            return
     if not _option("wa2.audio.silent", "1") or not _option("wa2.user_data_dir", profile_dir):
         _finish()
         return
@@ -110,6 +118,8 @@ func _run() -> void:
     if failure.is_empty() and String(config.get("mode", "smoke")) != "smoke":
         await _drive()
     if failure.is_empty():
+        if config.has("expect_text_encoding"):
+            _check("text-encoding-checked", text_encoding_checks > 0, "actual textEncoding verified on%d story ticks with body/choices" % text_encoding_checks)
         _check("all-plan-consumed", consumed == plan.size(), "%d/%d" % [consumed, plan.size()])
         if bool(config.get("pending_choice_roundtrip", false)):
             _check("pending-roundtrip-performed", roundtrip_done, "requires a choice with two enabled rows")
@@ -131,6 +141,16 @@ func _load_config() -> bool:
     if not parsed is Dictionary:
         return _fail("configuration must be a JSON object: %s" % path)
     config = parsed
+    if not config.get("engine_options", {}) is Dictionary:
+        return _fail("engine_options must be a JSON object")
+    for key in config.get("engine_options", {}).keys():
+        var value = config["engine_options"][key]
+        if String(key).strip_edges().is_empty() or not (value is String or value is bool or value is int or value is float):
+            return _fail("engine_options requires nonempty keys and scalar string/number/bool values")
+    if config.has("expect_text_encoding") and String(config["expect_text_encoding"]).strip_edges().is_empty():
+        return _fail("expect_text_encoding must be nonempty when supplied")
+    if int(config.get("settled_capture_frames", 0)) < 0:
+        return _fail("settled_capture_frames must be nonnegative")
     if String(config.get("game_path", "")).is_empty() or String(config.get("output_dir", "")).is_empty():
         return _fail("game_path and output_dir are required")
     output_dir = ProjectSettings.globalize_path(String(config["output_dir"]))
@@ -219,6 +239,12 @@ func _healthy(state: Dictionary) -> bool:
     for key in ["error", "scriptError", "providerError"]:
         if not String(state.get(key, "")).is_empty():
             return _fail("runtime %s=%s at %s:%s" % [key, state[key], state.get("script"), state.get("pc")])
+    if config.has("expect_text_encoding") and state.get("state") == "story" and (bool(state.get("choicePending", false)) or not String(state.get("pageText", "")).is_empty()):
+        var expected := String(config["expect_text_encoding"]).strip_edges().to_lower()
+        var actual := String(state.get("textEncoding", "")).strip_edges().to_lower()
+        if actual != expected:
+            return _fail("textEncoding expected=%s actual=%s at%s:%s" % [expected, actual, state.get("script"), state.get("pc")])
+        text_encoding_checks += 1
     if not bool(state.get("audioSilent", false)):
         return _fail("silent contract violated: audioSilent=false")
     # Silent movie completion may enqueue lifecycle STOP events. It must never
@@ -391,7 +417,23 @@ func _ordinary_smoke() -> void:
         return
     var loaded := _state()
     _capture("ordinary-load-after")
-    _compare_checkpoint("ordinary-load", before, loaded, "script/PC/page/globals/wait restored exactly")
+    if not _compare_checkpoint("ordinary-load", before, loaded, "script/PC/page/globals/wait restored exactly"):
+        return
+    var settle_frames := int(config.get("settled_capture_frames", 0))
+    if settle_frames > 0:
+        if not _option("wa2.skip", "0"):
+            return
+        var parked_checkpoint := _checkpoint(loaded)
+        for i in range(settle_frames):
+            if not await _advance(1):
+                return
+            var settled := _state()
+            if _checkpoint(settled) != parked_checkpoint:
+                _compare_checkpoint("ordinary-load-settle", loaded, settled, "VM/globals/page must remain parked during reveal-only settling")
+                return
+        if not _capture("ordinary-load-settled"):
+            return
+        _check("ordinary-load-settled", true, "%d fixed ticks without input or checkpoint change" % settle_frames)
 
 func _hold_choice(label: String) -> Dictionary:
     var before := _state()
@@ -611,7 +653,7 @@ func _capture(label: String, captured_rgba: PackedByteArray = PackedByteArray())
     var path := output_dir.path_join(label)
     if image.save_png(path + ".png") != OK:
         return _fail("cannot write PNG: %s" % path)
-    var metadata := {"label": label, "driverFrames": frames, "fixedDeltaMs": 16, "captureSource": "engineRGBA", "rgbaSha256": _rgba_hash(rgba), "stageRgbaSha256": _rgba_hash(_stage_pixels(rgba)), "stageMaskExcluded": [{"x": 0, "y": 480, "width": 1280, "height": 240}, {"x": 330, "y": 290, "width": 681, "height": 121}], "renderBackend": player.get_render_backend(), "textureBackend": player.get_frame_texture_backend(), "rendererInfo": player.get_renderer_info(), "choicePlan": config.get("choice_plan", ""), "planConsumed": consumed, "planTotal": plan.size(), "planComplete": consumed == plan.size(), "roundtripDone": roundtrip_done, "saveReadyWaits": save_ready_waits, "audioAcks": audio_acks, "nextPlan": plan[consumed] if consumed < plan.size() else null, "runtime": state, "debug": last_debug, "failure": failure}
+    var metadata := {"label": label, "driverFrames": frames, "fixedDeltaMs": 16, "captureSource": "engineRGBA", "rgbaSha256": _rgba_hash(rgba), "stageRgbaSha256": _rgba_hash(_stage_pixels(rgba)), "stageMaskExcluded": [{"x": 0, "y": 480, "width": 1280, "height": 240}, {"x": 330, "y": 290, "width": 681, "height": 121}], "renderBackend": player.get_render_backend(), "textureBackend": player.get_frame_texture_backend(), "rendererInfo": player.get_renderer_info(), "choicePlan": config.get("choice_plan", ""), "planConsumed": consumed, "planTotal": plan.size(), "planComplete": consumed == plan.size(), "roundtripDone": roundtrip_done, "saveReadyWaits": save_ready_waits, "audioAcks": audio_acks, "textEncodingChecks": text_encoding_checks, "nextPlan": plan[consumed] if consumed < plan.size() else null, "runtime": state, "debug": last_debug, "failure": failure}
     if not _write_json(path + ".json", metadata):
         return false
     capture_index += 1
@@ -653,7 +695,7 @@ func _finish() -> void:
     if player != null and not last_runtime.is_empty():
         _capture("final")
         _drain_logs()
-    var summary := {"pass": failure.is_empty(), "failure": failure, "mode": config.get("mode", "smoke"), "frames": frames, "captures": capture_index, "planConsumed": consumed, "planTotal": plan.size(), "roundtripDone": roundtrip_done, "disabledChecked": disabled_checked, "moviesFinished": movies_finished, "audioAcks": audio_acks, "checks": checks, "checkpointDifferences": checkpoint_differences, "frameComparisons": frame_comparisons, "saveReadyWaits": save_ready_waits, "runtime": last_runtime}
+    var summary := {"pass": failure.is_empty(), "failure": failure, "mode": config.get("mode", "smoke"), "frames": frames, "captures": capture_index, "planConsumed": consumed, "planTotal": plan.size(), "roundtripDone": roundtrip_done, "disabledChecked": disabled_checked, "moviesFinished": movies_finished, "audioAcks": audio_acks, "textEncodingChecks": text_encoding_checks, "engineOptions": config.get("engine_options", {}), "expectTextEncoding": config.get("expect_text_encoding", ""), "checks": checks, "checkpointDifferences": checkpoint_differences, "frameComparisons": frame_comparisons, "saveReadyWaits": save_ready_waits, "runtime": last_runtime}
     if not output_dir.is_empty():
         _write_json(output_dir.path_join("report.json"), summary)
     print("[wa2-godot] RESULT %s" % JSON.stringify(summary))

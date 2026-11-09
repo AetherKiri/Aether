@@ -1,6 +1,6 @@
 # WA2 Leaf TtT host
 
-The leafttt-engine branch integrates the WA2 provider from packages/AetherInternal. The normal product retains its existing runtime defaults. A selective WA2 build can disable the default set and enable WA2 without requiring KiriKiri. It compiles the real interpreter, compositor, resources, text, persistent progress and save/load implementation.
+The leafttt-engine branch integrates the WA2 provider from packages/AetherInternal. See [Chinese overlay setup and final acceptance](wa2-chinese-overlay.md) for UTF-8 text, explicit fonts, and the final save-ready regression. The normal product retains its existing runtime defaults. A selective WA2 build can disable the default set and enable WA2 without requiring KiriKiri. It compiles the real interpreter, compositor, resources, text, persistent progress and save/load implementation.
 
 On Windows, configure a Release Ninja build with the standard vcpkg toolchain and x64-windows-static-md. An existing compatible installed tree can be supplied through VCPKG_INSTALLED_DIR with VCPKG_MANIFEST_INSTALL=OFF; this only reuses dependencies and does not substitute runtime code. Add AETHERKIRI_RUNTIMES_DEFAULT=OFF, AETHERKIRI_ENABLE_WA2=ON, BUILD_ENGINE_API=ON, BUILD_GODOT_EXTENSION=ON, BUILD_TOOLS=OFF and ENABLE_TESTS=OFF. Build target aether_kiri_godot. Both the extension and engine_api DLL stage into the matching Godot project binary directory.
 

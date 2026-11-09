@@ -15,6 +15,8 @@ build_number="${AETHER_BUILD_NUMBER:?AETHER_BUILD_NUMBER is required}"
 certificate_base64="${IOS_DISTRIBUTION_CERTIFICATE_BASE64:?IOS_DISTRIBUTION_CERTIFICATE_BASE64 is required}"
 certificate_password="${IOS_DISTRIBUTION_CERTIFICATE_PASSWORD:?IOS_DISTRIBUTION_CERTIFICATE_PASSWORD is required}"
 profile_base64="${IOS_PROVISIONING_PROFILE_BASE64:?IOS_PROVISIONING_PROFILE_BASE64 is required}"
+import_profile_base64="${IOS_GAME_IMPORT_PROVISIONING_PROFILE_BASE64:?IOS_GAME_IMPORT_PROVISIONING_PROFILE_BASE64 is required}"
+script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 if [[ ! -d "$project_path" ]]; then
     echo "Xcode project not found: $project_path" >&2
@@ -30,7 +32,8 @@ archive_path="$work_dir/Aether.xcarchive"
 export_dir="$work_dir/export"
 export_options="$work_dir/ExportOptions.plist"
 keychain_password="$(openssl rand -hex 24)"
-installed_profile=""
+installed_profiles=()
+profile_backups=()
 original_keychains=()
 
 while IFS= read -r keychain; do
@@ -45,9 +48,13 @@ cleanup() {
     if ((${#original_keychains[@]})); then
         security list-keychains -d user -s "${original_keychains[@]}" >/dev/null 2>&1 || true
     fi
-    if [[ -n "$installed_profile" && -f "$installed_profile" ]]; then
-        rm -f "$installed_profile"
-    fi
+    for index in "${!installed_profiles[@]}"; do
+        if [[ -f "${profile_backups[$index]}" ]]; then
+            cp "${profile_backups[$index]}" "${installed_profiles[$index]}"
+        else
+            rm -f "${installed_profiles[$index]}"
+        fi
+    done
     security delete-keychain "$keychain_path" >/dev/null 2>&1 || true
     rm -rf "$work_dir"
 }
@@ -55,6 +62,7 @@ trap cleanup EXIT
 
 printf '%s' "$certificate_base64" | /usr/bin/base64 -D > "$certificate_path"
 printf '%s' "$profile_base64" | /usr/bin/base64 -D > "$profile_path"
+printf '%s' "$import_profile_base64" | /usr/bin/base64 -D > "$work_dir/import.mobileprovision"
 
 security create-keychain -p "$keychain_password" "$keychain_path"
 security set-keychain-settings -lut 21600 "$keychain_path"
@@ -74,24 +82,25 @@ security list-keychains -d user -s "$keychain_path" "${original_keychains[@]}"
 security find-identity -v -p codesigning "$keychain_path"
 
 security cms -D -i "$profile_path" > "$profile_plist"
-profile_uuid="$(/usr/libexec/PlistBuddy -c 'Print :UUID' "$profile_plist")"
-profile_name="$(/usr/libexec/PlistBuddy -c 'Print :Name' "$profile_plist")"
-profile_team_id="$(/usr/libexec/PlistBuddy -c 'Print :TeamIdentifier:0' "$profile_plist")"
-profile_app_identifier="$(/usr/libexec/PlistBuddy -c 'Print :Entitlements:application-identifier' "$profile_plist")"
-
-if [[ "$profile_team_id" != "$team_id" ]]; then
-    echo "Provisioning profile team $profile_team_id does not match expected team $team_id." >&2
-    exit 1
-fi
-if [[ "$profile_app_identifier" != "$team_id.$bundle_id" ]]; then
-    echo "Provisioning profile targets $profile_app_identifier, expected $team_id.$bundle_id." >&2
-    exit 1
-fi
+security cms -D -i "$work_dir/import.mobileprovision" > "$work_dir/import.plist"
+python3 "$script_dir/configure-ios-signing.py" \
+    --project "$project_path" --bundle-id "$bundle_id" --team-id "$team_id" \
+    --app-profile "$profile_plist" --import-profile "$work_dir/import.plist" \
+    --export-options "$export_options"
 
 profile_dir="${HOME}/Library/MobileDevice/Provisioning Profiles"
 mkdir -p "$profile_dir"
-installed_profile="$profile_dir/$profile_uuid.mobileprovision"
-cp "$profile_path" "$installed_profile"
+for name in app-store import; do
+    plist="$profile_plist"
+    if [[ "$name" == import ]]; then plist="$work_dir/import.plist"; fi
+    uuid="$(/usr/libexec/PlistBuddy -c 'Print :UUID' "$plist")"
+    installed="$profile_dir/$uuid.mobileprovision"
+    backup="$work_dir/$name.previous.mobileprovision"
+    if [[ -f "$installed" ]]; then cp "$installed" "$backup"; fi
+    installed_profiles+=("$installed")
+    profile_backups+=("$backup")
+    cp "$work_dir/$name.mobileprovision" "$installed"
+done
 
 rm -rf "$archive_path" "$export_dir"
 xcodebuild archive \
@@ -101,26 +110,11 @@ xcodebuild archive \
     -destination 'generic/platform=iOS' \
     -archivePath "$archive_path" \
     DEVELOPMENT_TEAM="$team_id" \
-    PRODUCT_BUNDLE_IDENTIFIER="$bundle_id" \
     CODE_SIGN_STYLE=Manual \
     CODE_SIGN_IDENTITY='Apple Distribution' \
-    PROVISIONING_PROFILE_SPECIFIER="$profile_name" \
     MARKETING_VERSION="$marketing_version" \
     CURRENT_PROJECT_VERSION="$build_number" \
     OTHER_CODE_SIGN_FLAGS="--keychain $keychain_path"
-
-plutil -create xml1 "$export_options"
-/usr/libexec/PlistBuddy -c 'Add :method string app-store-connect' "$export_options"
-/usr/libexec/PlistBuddy -c "Add :teamID string $team_id" "$export_options"
-/usr/libexec/PlistBuddy -c 'Add :signingStyle string manual' "$export_options"
-/usr/libexec/PlistBuddy -c 'Add :signingCertificate string Apple Distribution' "$export_options"
-/usr/libexec/PlistBuddy -c 'Add :manageAppVersionAndBuildNumber bool false' "$export_options"
-/usr/libexec/PlistBuddy -c 'Add :stripSwiftSymbols bool true' "$export_options"
-/usr/libexec/PlistBuddy -c 'Add :uploadSymbols bool false' "$export_options"
-/usr/libexec/PlistBuddy -c 'Add :provisioningProfiles dict' "$export_options"
-/usr/libexec/PlistBuddy \
-    -c "Add :provisioningProfiles:$bundle_id string $profile_name" \
-    "$export_options"
 
 xcodebuild -exportArchive \
     -archivePath "$archive_path" \
@@ -178,5 +172,16 @@ mkdir -p "$verification_dir"
 unzip -q "$output_ipa" -d "$verification_dir"
 codesign --verify --deep --strict --verbose=2 \
     "$verification_dir/Payload/Aether.app"
+import_extension="$verification_dir/Payload/Aether.app/PlugIns/AetherGameImport.appex"
+if [[ ! -d "$import_extension" ]]; then
+    echo "Signed IPA is missing the game-import extension." >&2
+    exit 1
+fi
+actual_import_id="$(plutil -extract CFBundleIdentifier raw "$import_extension/Info.plist")"
+if [[ "$actual_import_id" != "$bundle_id.GameImport" ]]; then
+    echo "Signed import extension has an unexpected bundle ID." >&2
+    exit 1
+fi
+codesign --verify --strict --verbose=2 "$import_extension"
 
 echo "App Store IPA created: $output_ipa"

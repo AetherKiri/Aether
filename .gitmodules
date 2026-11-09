@@ -1,7 +1,7 @@
 [submodule "packages/AetherInternal"]
 	path = packages/AetherInternal
 	url = git@github.com:AetherKiri/AetherInternal.git
-	branch = leafttt-engine
+	branch = main
 	ignore = dirty
 [submodule "packages/OnscripterYuri"]
 	path = packages/OnscripterYuri
@@ -58,3 +58,11 @@
 	path = packages/EntisGLS-SDL3
 	url = https://github.com/AetherKiri/EntisGLS-SDL3.git
 	branch = aether
+[submodule "packages/cmvs-rs"]
+	path = packages/cmvs-rs
+	url = git@github.com:AetherKiri/cmvs-rs.git
+	branch = aether
+[submodule "packages/AetherLeafTtt"]
+	path = packages/AetherLeafTtt
+	url = git@github.com:AetherKiri/AetherLeafTtt.git
+	branch = main

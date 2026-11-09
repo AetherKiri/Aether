@@ -241,6 +241,8 @@ if [[ -z "$RENPY_BUNDLE_DIR" ]]; then
 fi
 python3 "$PROJECT_ROOT/tools/stage_renpy_android.py" \
     --build-dir "$GODOT_APP_DIR/android/build" --runtime "$RENPY_BUNDLE_DIR"
+python3 "$PROJECT_ROOT/tools/stage_mobile_window_android.py" \
+    --build-dir "$GODOT_APP_DIR/android/build"
 
 command -v cmake >/dev/null
 NINJA_BIN="${CMAKE_MAKE_PROGRAM:-$(command -v ninja || command -v ninja-build || true)}"
@@ -334,6 +336,8 @@ build_abi() {
     local vcpkg_triplet_dir
     local libomp_path
     local android_strip_path
+    local runtime_library
+    local runtime_libraries=()
     local cmake_config_args=(
         -D "CMAKE_MAKE_PROGRAM=$CMAKE_MAKE_PROGRAM"
         -D "AETHERKIRI_ENABLE_INTERNAL=${AETHERKIRI_ENABLE_INTERNAL:-ON}"
@@ -380,6 +384,11 @@ build_abi() {
     mkdir -p "$godot_bin_dir"
     copy_android_so "$cmake_build_dir/abi/libengine_api.so" "$godot_bin_dir/libengine_api.so"
     copy_android_so "$cmake_build_dir/bridge/godot_extension/libaether_kiri_godot.so" "$godot_bin_dir/libaether_kiri_godot.so"
+    while IFS= read -r runtime_library; do
+        [[ -n "$runtime_library" ]] || continue
+        copy_android_so "$runtime_library" "$godot_bin_dir/$(basename "$runtime_library")"
+        runtime_libraries+=("$godot_bin_dir/$(basename "$runtime_library")")
+    done < "$cmake_build_dir/runtime-libraries-$BUILD_TYPE_LOWER.txt"
     copy_android_so "$vcpkg_triplet_dir/lib/libSDL2.so" "$godot_bin_dir/libSDL2.so"
     libomp_path="$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/darwin-x86_64/lib/clang/19/lib/linux/aarch64/libomp.so"
     if [[ ! -f "$libomp_path" ]]; then
@@ -408,7 +417,15 @@ build_abi() {
             "$godot_bin_dir/libaether_kiri_godot.so" \
             "$godot_bin_dir/libSDL2.so" \
             "$godot_bin_dir/libomp.so"
+        for runtime_library in "${runtime_libraries[@]:-}"; do
+            [[ -n "$runtime_library" ]] || continue
+            AETHERKIRI_STRIP_TOOL="$android_strip_path" \
+                "$PROJECT_ROOT/tools/strip_runtime_symbols.sh" elf "$runtime_library"
+        done
     fi
+    python3 "$PROJECT_ROOT/tools/stage_android_runtime_libraries.py" \
+        --build-dir "$GODOT_APP_DIR/android/build" --source-dir "$godot_bin_dir" \
+        --manifest "$cmake_build_dir/runtime-libraries-$BUILD_TYPE_LOWER.txt" --abi "$abi"
 }
 
 IFS=',' read -r -a ABI_LIST <<< "$ABIS"

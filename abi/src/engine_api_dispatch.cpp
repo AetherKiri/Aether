@@ -103,6 +103,7 @@ struct DispatchHandle {
   std::deque<PlatformRequest> platform_requests;
   std::string last_error;
   bool provider_resume_pending = false;
+  bool provider_background_playback = false;
 };
 
 std::recursive_mutex g_dispatch_registry_mutex;
@@ -1345,7 +1346,8 @@ engine_result_t engine_tick(engine_handle_t public_handle, uint32_t delta_ms) {
                },
                [&](DispatchHandle* handle) {
                  if (handle->provider_resume_pending) {
-                   if (!ActivateProviderAudioSessionForHost()) {
+                   if (!handle->provider_background_playback &&
+                       !ActivateProviderAudioSessionForHost()) {
                      // UIApplication may still be foreground-inactive when
                      // Godot emits APPLICATION_RESUMED. Keep the provider
                      // paused and retry on the next host tick instead of
@@ -1368,9 +1370,11 @@ engine_result_t engine_tick(engine_handle_t public_handle, uint32_t delta_ms) {
                   // shared KiriKiri texture recycle queue through the
                   // installed services table (nothing to drain when no
                   // KiriKiri glue is installed).
-                  if (const engine_legacy_services_v1_t* services =
-                          LegacyServices()) {
-                    services->drain_texture_recycle();
+                  if (!handle->provider_background_playback) {
+                    if (const engine_legacy_services_v1_t* services =
+                            LegacyServices()) {
+                      services->drain_texture_recycle();
+                    }
                   }
                   return result;
                });
@@ -1392,7 +1396,8 @@ engine_result_t engine_resume(engine_handle_t public_handle) {
                  if (!PROVIDER_HAS(handle->provider, resume)) {
                    return ENGINE_RESULT_NOT_SUPPORTED;
                  }
-                 if (!ActivateProviderAudioSessionForHost()) {
+                 if (!handle->provider_background_playback &&
+                     !ActivateProviderAudioSessionForHost()) {
                    handle->provider_resume_pending = true;
                    return ENGINE_RESULT_OK;
                  }
@@ -1403,6 +1408,35 @@ engine_result_t engine_resume(engine_handle_t public_handle) {
                  }
                  return result;
                });
+}
+
+engine_result_t engine_background_playback(engine_handle_t public_handle,
+                                           uint32_t mode) {
+  if (mode > ENGINE_BACKGROUND_PLAYBACK_LEAVE)
+    return ENGINE_RESULT_INVALID_ARGUMENT;
+  std::lock_guard<std::recursive_mutex> registry_guard(g_dispatch_registry_mutex);
+  DispatchHandle* handle = nullptr;
+  auto result = ValidateHandleLocked(public_handle, &handle);
+  if (result != ENGINE_RESULT_OK) return result;
+  std::lock_guard<std::recursive_mutex> guard(handle->mutex);
+  // A capability query must not instantiate the legacy renderer or race an
+  // asynchronous provider startup.
+  if (handle->backend != BackendKind::kProvider)
+    return ENGINE_RESULT_NOT_SUPPORTED;
+  if (ProviderStarting(handle)) return ProviderStartupPending();
+  if (!PROVIDER_HAS(handle->provider, background_playback))
+    return ENGINE_RESULT_NOT_SUPPORTED;
+  try {
+    result = handle->provider->background_playback(handle->runtime, mode);
+  } catch (...) {
+    handle->last_error = "runtime provider background_playback threw an exception";
+    return ThreadError(ENGINE_RESULT_INTERNAL_ERROR, handle->last_error.c_str());
+  }
+  if (result == ENGINE_RESULT_OK && mode != ENGINE_BACKGROUND_PLAYBACK_QUERY) {
+    handle->provider_background_playback = mode == ENGINE_BACKGROUND_PLAYBACK_ENTER;
+  }
+  SetProviderError(handle, result, "background_playback");
+  return result;
 }
 
 engine_result_t engine_set_option(engine_handle_t public_handle,

@@ -114,6 +114,22 @@ coffee entitlement. KiriKiri, WHITE ALBUM2 (Leaf TtT / WA2), ONScripterYuri,
 Artemis, CatSystem2, SoftPal, ADV Player HD, and YU-RIS are generally available.
 Debug builds and Android/Linux releases do not enforce this coffee requirement.
 
+## Upstream Engine Repositories
+
+The following engine forks are used by Aether. Each row links to the Aether
+integration repository and the original upstream project.
+
+| Engine | Aether fork | Original repository |
+| --- | --- | --- |
+| OnscripterYuri | [AetherKiri/OnscripterYuri](https://github.com/AetherKiri/OnscripterYuri) | [YuriSizuku/OnscripterYuri](https://github.com/YuriSizuku/OnscripterYuri) |
+| Siglus | [AetherKiri/AetherSiglus](https://github.com/AetherKiri/AetherSiglus) | [xmoezzz/siglus_rs](https://github.com/xmoezzz/siglus_rs) |
+| MAGES / impacto | [AetherKiri/AetherMAGES](https://github.com/AetherKiri/AetherMAGES) | [CommitteeOfZero/impacto](https://github.com/CommitteeOfZero/impacto) |
+| CMVS | [AetherKiri/cmvs-rs](https://github.com/AetherKiri/cmvs-rs) | [Shizuku-in/cmvs-rs](https://github.com/Shizuku-in/cmvs-rs) |
+| AliceSoft System 4 | [AetherKiri/xsystem4](https://github.com/AetherKiri/xsystem4) | [nunuhara/xsystem4](https://github.com/nunuhara/xsystem4) |
+| AliceSoft System 3.5 / 3.9 | [AetherKiri/xsystem35-sdl2](https://github.com/AetherKiri/xsystem35-sdl2) | [kichikuou/xsystem35-sdl2](https://github.com/kichikuou/xsystem35-sdl2) |
+| AliceSoft System 1–3 | [AetherKiri/system3-sdl2](https://github.com/AetherKiri/system3-sdl2) | [kichikuou/system3-sdl2](https://github.com/kichikuou/system3-sdl2) |
+| EntisGLS / Cotopha | [AetherKiri/EntisGLS-SDL3](https://github.com/AetherKiri/EntisGLS-SDL3) | [nL6DHZc3RhMnC/EntisGLS-SDL3](https://github.com/nL6DHZc3RhMnC/EntisGLS-SDL3) |
+
 ## Flash Library
 
 Import `.swf` files or folders from the Flash category on macOS, Linux, and
@@ -350,6 +366,10 @@ session, because render resources must be recreated.
   `mpegplay`/`avi`/`movie` commands share Aether's FFmpeg media pipeline.
   Integration permission and licensing are recorded in
   [upstream issue #75](https://github.com/YuriSizuku/OnscripterYuri/issues/75).
+- **CMVS games** keep gameplay slots, system progress, settings and font
+  preferences in the game's `savedata/` directory. Existing Aether saves are
+  imported once without overwriting local files; read-only game directories
+  retain isolated application storage.
 - **Built-in demo** — the multilingual Aether KAG3 demo ships inside the
   app package and is staged into the library on first launch, using the same
   flow as an imported game. Deleting it removes the staged copy and its saves.

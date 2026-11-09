@@ -153,6 +153,9 @@ set(AETHERKIRI_FRAME_EFFECT_HOST_API_VERSION 2)
 set(AETHERKIRI_INTERNAL_DIR
     "${CMAKE_CURRENT_SOURCE_DIR}/packages/AetherInternal"
     CACHE PATH "path to an AetherInternal package checkout")
+set(AETHERKIRI_LEAFTTT_DIR
+    "${CMAKE_CURRENT_SOURCE_DIR}/packages/AetherLeafTtt"
+    CACHE PATH "path to an AetherLeafTtt runtime checkout")
 # Local checkouts for the runtime submodules. Point these at a working copy
 # to iterate on a runtime without committing a gitlink bump (same pattern as
 # AETHERKIRI_INTERNAL_DIR).
@@ -232,6 +235,16 @@ if(AETHERKIRI_INTERNAL_ENABLED)
     message(STATUS "AetherInternal E-mote/Live2D package: enabled")
 else()
     message(STATUS "AetherInternal package: unavailable; using public fallbacks")
+endif()
+
+if(AETHERKIRI_ENABLE_WA2)
+    set(AetherLeafTtt_DIR "${AETHERKIRI_LEAFTTT_DIR}/cmake")
+    find_package(AetherLeafTtt CONFIG QUIET NO_DEFAULT_PATH)
+    if(NOT AetherLeafTtt_FOUND OR
+       NOT COMMAND aether_leafttt_add_wa2_sources)
+        message(FATAL_ERROR
+            "WA2 is enabled but the AetherLeafTtt provider package is unavailable")
+    endif()
 endif()
 
 if(AETHERKIRI_ENABLE_SOFTPAL_RUNTIME)
@@ -372,6 +385,10 @@ if(AETHERKIRI_ENABLE_MAGES AND
     # runtime submodules.
     add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/bridge/mages_runtime)
 endif()
+if(AETHERKIRI_ENABLE_CMVS AND BUILD_GODOT_EXTENSION AND
+   (APPLE OR ANDROID OR CMAKE_SYSTEM_NAME STREQUAL "Linux") AND NOT (WEB OR EMSCRIPTEN))
+    add_subdirectory(packages/cmvs-rs/integrations/aether)
+endif()
 # The Rust provider has targets for Linux, Apple, Android, and Emscripten.
 # Keep it out of unsupported native targets, but do not make Linux the only
 # product platform that can register Minori.
@@ -380,7 +397,7 @@ if(AETHERKIRI_ENABLE_MINORI AND BUILD_GODOT_EXTENSION AND
     add_subdirectory(${AETHERKIRI_MINORI_DIR})
 endif()
 if(AETHERKIRI_ENABLE_ENTISGLS AND (BUILD_GODOT_EXTENSION OR ENABLE_TESTS) AND
-   NOT (IOS OR ANDROID OR WEB OR EMSCRIPTEN))
+   NOT (IOS OR WEB OR EMSCRIPTEN))
     option(AETHERKIRI_BUILD_ENTISGLS_TESTS "Build asset-free EntisGLS regression tests" ${ENABLE_TESTS})
     add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/bridge/entisgls_runtime)
 endif()

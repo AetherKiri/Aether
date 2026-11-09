@@ -97,6 +97,7 @@ endif()
 
 set(AETHERKIRI_GODOT_SOURCES
     src/native_controls_overlay.cpp
+    src/mobile_window.cpp
     src/aether_runtime_player.cpp
     src/frame_effect_host.cpp
     src/presentation/RuntimePresentationSprite.cpp
@@ -127,10 +128,20 @@ if(AETHERKIRI_ENABLE_FLASH AND NOT (WEB OR EMSCRIPTEN))
 endif()
 
 if(APPLE)
-    if(IOS AND AETHERKIRI_ENABLE_RENPY)
-        target_sources(aether_kiri_godot PRIVATE src/renpy_native_ios.mm)
-        set_source_files_properties(src/renpy_native_ios.mm
+    if(IOS)
+        if(AETHERKIRI_ENABLE_RENPY)
+            target_sources(aether_kiri_godot PRIVATE src/renpy_native_ios.mm)
+            set_source_files_properties(src/renpy_native_ios.mm
+                PROPERTIES LANGUAGE CXX COMPILE_FLAGS "-x objective-c++ -fobjc-arc")
+        endif()
+        target_sources(aether_kiri_godot PRIVATE
+            src/mobile_window_ios.mm
+            src/ios_game_import.mm)
+        set_source_files_properties(src/mobile_window_ios.mm src/ios_game_import.mm
             PROPERTIES LANGUAGE CXX COMPILE_FLAGS "-x objective-c++ -fobjc-arc")
+        target_link_libraries(aether_kiri_godot PRIVATE
+            "-framework AVKit" "-framework AVFoundation" "-framework CoreMedia"
+            "-framework CoreVideo" "-framework QuartzCore")
     elseif(AETHERKIRI_ENABLE_RENPY)
         add_library(aether_renpy_sdl_hook SHARED "${CMAKE_SOURCE_DIR}/bridge/renpy_runtime/sdl_dynamic_hook.cpp")
         add_custom_command(TARGET aether_renpy_sdl_hook POST_BUILD
@@ -168,7 +179,9 @@ if(APPLE)
         # the Swift objects into the archive consumed by the Godot exporter.
         add_library(aether_kiri_godot_swift STATIC
             src/apple_native_file_picker.swift
-            src/apple_storekit.swift)
+            src/apple_storekit.swift
+            ../ios_game_import/GameImportStore.swift
+            ../ios_game_import/GameImportHost.swift)
         set_property(TARGET aether_kiri_godot_swift PROPERTY
             Swift_LANGUAGE_VERSION 5)
         add_dependencies(aether_kiri_godot aether_kiri_godot_swift)
@@ -229,9 +242,14 @@ if(ANDROID)
 endif()
 
 if(ANDROID OR CMAKE_SYSTEM_NAME STREQUAL "Linux")
-    if((TARGET aether_minori_runtime AND TARGET aether_siglus_runtime) OR
-       (TARGET aether_flash_native AND (TARGET aether_minori_runtime OR TARGET aether_siglus_runtime)))
-        # Flash, Minori and Siglus are independently-built Rust static libraries.
+    set(aether_rust_runtime_count 0)
+    foreach(runtime aether_minori_runtime aether_siglus_runtime aether_flash_native aether_cmvs_runtime)
+        if(TARGET ${runtime})
+            math(EXPR aether_rust_runtime_count "${aether_rust_runtime_count} + 1")
+        endif()
+    endforeach()
+    if(aether_rust_runtime_count GREATER 1)
+        # Flash, Minori, Siglus and CMVS use independent Rust static libraries.
         # Each archive carries the Rust runtime objects it needs. Both GNU ld
         # and lld can see duplicate std/alloc symbols when multiple providers
         # are pulled into the extension, especially with Release LTO. They are
@@ -269,9 +287,9 @@ if(AETHERKIRI_INTERNAL_ENABLED AND
         "${CMAKE_CURRENT_SOURCE_DIR}/src")
 endif()
 
-if(AETHERKIRI_ENABLE_WA2 AND NOT AETHERKIRI_ENABLE_KRKR2)
-    if(NOT AETHERKIRI_INTERNAL_ENABLED OR NOT COMMAND aetherinternal_extend_wa2)
-        message(FATAL_ERROR "WA2 was requested but the Internal WA2 package is unavailable")
+if(AETHERKIRI_ENABLE_WA2)
+    if(NOT COMMAND aether_leafttt_add_wa2_sources)
+        message(FATAL_ERROR "WA2 was requested but the AetherLeafTtt provider is unavailable")
     endif()
     if(NOT TARGET engine_api)
         message(FATAL_ERROR "The independent WA2 runtime requires BUILD_ENGINE_API=ON")
@@ -280,7 +298,7 @@ if(AETHERKIRI_ENABLE_WA2 AND NOT AETHERKIRI_ENABLE_KRKR2)
     target_compile_features(aetherkiri_wa2_runtime PRIVATE cxx_std_17)
     target_include_directories(aetherkiri_wa2_runtime PRIVATE "${CMAKE_SOURCE_DIR}/abi/include")
     target_link_libraries(aetherkiri_wa2_runtime PRIVATE engine_api)
-    aetherinternal_extend_wa2(aetherkiri_wa2_runtime)
+    aether_leafttt_add_wa2_sources(aetherkiri_wa2_runtime)
     if(MSVC)
         set_property(TARGET aetherkiri_wa2_runtime PROPERTY
             MSVC_RUNTIME_LIBRARY "MultiThreadedDLL")
@@ -345,6 +363,10 @@ if(TARGET aether_entisgls_runtime)
     target_link_libraries(aether_kiri_godot PRIVATE aether_entisgls_runtime)
     target_compile_definitions(aether_kiri_godot PRIVATE AETHERKIRI_WITH_ENTISGLS=1)
 endif()
+if(TARGET aether_cmvs_runtime)
+    target_link_libraries(aether_kiri_godot PRIVATE aether_cmvs_runtime)
+    target_compile_definitions(aether_kiri_godot PRIVATE AETHERKIRI_WITH_CMVS=1)
+endif()
 if(TARGET aether_minori_runtime)
     target_link_libraries(aether_kiri_godot PRIVATE
         aether_minori_runtime)
@@ -370,6 +392,9 @@ if(IOS)
     endif()
     if(TARGET aether_flash_native)
         list(APPEND AETHERKIRI_IOS_ARCHIVES "$<TARGET_FILE:aether_flash_native>")
+    endif()
+    if(TARGET aether_cmvs_runtime)
+        list(APPEND AETHERKIRI_IOS_ARCHIVES "$<TARGET_FILE:aether_cmvs_runtime>" "$<TARGET_FILE:aether_cmvs_rust>")
     endif()
     if(TARGET aether_minori_runtime)
         list(APPEND AETHERKIRI_IOS_ARCHIVES

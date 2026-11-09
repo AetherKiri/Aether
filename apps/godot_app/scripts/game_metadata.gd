@@ -5,6 +5,7 @@ const TyranoAsar = preload("res://scripts/tyrano_asar.gd")
 const RUNTIME_KIRIKIRI := "kirikiri"
 const RUNTIME_ONSCRIPTER := "onscripter"
 const RUNTIME_RFVP := "rfvp"
+const RUNTIME_CMVS := "cmvs"
 const RUNTIME_ARTEMIS := "artemis"
 const RUNTIME_SIGLUS := "siglus"
 const RUNTIME_CATSYSTEM2 := "catsystem2"
@@ -70,6 +71,9 @@ static func inspect(path: String) -> Dictionary:
     elif (files.has("adisk.dat") or files.has("gdisk.dat") or files.has("agame.dat") or files.has("adisk.pat")) and (files.has("acg.dat") or files.has("gcg.dat")):
         result.engine = RUNTIME_SYSTEM3
         result.signals.append("system3-dat")
+    elif is_cmvs_directory(root):
+        result.engine = RUNTIME_CMVS
+        result.signals.append("cmvs-ps2a-cpz")
     elif not hcb.is_empty():
         result.engine = RUNTIME_RFVP
         result.signals.append("fvp-hcb")
@@ -427,5 +431,16 @@ static func _unique_nonempty(values: PackedStringArray) -> PackedStringArray:
 static func _has_suffix(files: PackedStringArray, suffix: String) -> bool:
     for name in files:
         if name.ends_with(suffix):
+            return true
+    return false
+
+static func is_cmvs_directory(root: String) -> bool:
+    var pack := root.path_join("data/pack")
+    var archive := FileAccess.open(pack.path_join("script.cpz"), FileAccess.READ)
+    if archive == null or archive.get_buffer(3).get_string_from_ascii() != "CPZ":
+        return false
+    for name in ["start.ps3", "start.ps2"]:
+        var script := FileAccess.open(pack.path_join(name), FileAccess.READ)
+        if script != null and script.get_buffer(4).get_string_from_ascii() == "PS2A":
             return true
     return false

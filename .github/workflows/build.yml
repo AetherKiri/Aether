@@ -25,6 +25,8 @@ on:
         required: false
       AETHER_SOFTPAL_DEPLOY_KEY:
         required: false
+      AETHER_LEAFTTT_DEPLOY_KEY:
+        required: false
       AETHERID:
         required: false
       ANDROID_RELEASE_KEYSTORE_BASE64:
@@ -99,6 +101,7 @@ jobs:
         env:
           AETHER_INTERNAL_DEPLOY_KEY: ${{ secrets.AETHERSECRET }}
           AETHER_SOFTPAL_DEPLOY_KEY: ${{ secrets.AETHER_SOFTPAL_DEPLOY_KEY }}
+          AETHER_LEAFTTT_DEPLOY_KEY: ${{ secrets.AETHER_LEAFTTT_DEPLOY_KEY }}
         run: .github/scripts/initialize-private-runtime-submodules.sh
 
       - name: Set up Rust for native runtimes
@@ -139,6 +142,7 @@ jobs:
           git submodule update --init --recursive --depth 1 packages/psdfile
           git submodule update --init --depth 1 packages/AetherSiglus
           git submodule update --init --depth 1 packages/AetherMinori
+          git -c url.https://github.com/.insteadOf=git@github.com: submodule update --init --depth 1 packages/cmvs-rs
           git submodule update --init --depth 1 packages/EntisGLS-SDL3
           git submodule update --init --depth 1 packages/AetherKrkr
           git submodule update --init --depth 1 packages/AetherMAGES
@@ -392,7 +396,10 @@ jobs:
 
       - name: Report compiler cache statistics
         if: always() && !cancelled()
-        run: ccache --show-stats
+        run: |
+          if command -v ccache >/dev/null 2>&1; then
+            ccache --show-stats
+          fi
 
       - name: Save ccache
         if: success() && github.event_name != 'pull_request' && env.AETHERKIRI_VCPKG_CACHE_WRITE == 'true' && steps.restore-ccache.outputs.cache-hit != 'true'
@@ -441,6 +448,7 @@ jobs:
         env:
           AETHER_INTERNAL_DEPLOY_KEY: ${{ secrets.AETHERSECRET }}
           AETHER_SOFTPAL_DEPLOY_KEY: ${{ secrets.AETHER_SOFTPAL_DEPLOY_KEY }}
+          AETHER_LEAFTTT_DEPLOY_KEY: ${{ secrets.AETHER_LEAFTTT_DEPLOY_KEY }}
         run: .github/scripts/initialize-private-runtime-submodules.sh
 
       - name: Set up Rust for native runtimes
@@ -480,6 +488,7 @@ jobs:
           git submodule update --init --recursive --depth 1 packages/psdfile
           git submodule update --init --depth 1 packages/AetherSiglus
           git submodule update --init --depth 1 packages/AetherMinori
+          git -c url.https://github.com/.insteadOf=git@github.com: submodule update --init --depth 1 packages/cmvs-rs
           git submodule update --init --depth 1 packages/EntisGLS-SDL3
           git submodule update --init --depth 1 packages/AetherKrkr
           git submodule update --init --depth 1 packages/AetherMAGES
@@ -502,17 +511,24 @@ jobs:
           IOS_DISTRIBUTION_CERTIFICATE_BASE64: ${{ secrets.IOS_DISTRIBUTION_CERTIFICATE_BASE64 }}
           IOS_DISTRIBUTION_CERTIFICATE_PASSWORD: ${{ secrets.IOS_DISTRIBUTION_CERTIFICATE_PASSWORD }}
           IOS_PROVISIONING_PROFILE_BASE64: ${{ secrets.IOS_PROVISIONING_PROFILE_BASE64 }}
+          IOS_GAME_IMPORT_PROVISIONING_PROFILE_BASE64: ${{ secrets.IOS_GAME_IMPORT_PROVISIONING_PROFILE_BASE64 }}
         run: |
           set -euo pipefail
-          configured=0
-          [[ -n "$IOS_DISTRIBUTION_CERTIFICATE_BASE64" ]] && configured=$((configured + 1))
-          [[ -n "$IOS_DISTRIBUTION_CERTIFICATE_PASSWORD" ]] && configured=$((configured + 1))
-          [[ -n "$IOS_PROVISIONING_PROFILE_BASE64" ]] && configured=$((configured + 1))
-          if [[ "$configured" -ne 3 ]]; then
-            echo "Tagged releases require all three iOS App Store signing secrets." >&2
-            exit 1
-          fi
+          missing=0
+          for name in IOS_DISTRIBUTION_CERTIFICATE_BASE64 IOS_DISTRIBUTION_CERTIFICATE_PASSWORD \
+                      IOS_PROVISIONING_PROFILE_BASE64 IOS_GAME_IMPORT_PROVISIONING_PROFILE_BASE64; do
+            if [[ -z "${!name}" ]]; then
+              echo "::error::Tagged iOS releases require GitHub Actions secret $name."
+              missing=1
+            fi
+          done
+          [[ "$missing" -eq 0 ]] || exit 1
           echo "IOS_APP_STORE_SIGNING=1" >> "$GITHUB_ENV"
+
+      - name: Test iOS game import and extension packaging
+        run: |
+          python3 -m unittest discover -s tests/python -p test_ios_game_import.py -v
+          python3 -m unittest discover -s tests/python -p test_renpy_packaging.py -v
 
       - name: Verify private runtime packages
         if: env.AETHERKIRI_WITH_INTERNAL == 'true'
@@ -617,6 +633,7 @@ jobs:
           IOS_DISTRIBUTION_CERTIFICATE_BASE64: ${{ secrets.IOS_DISTRIBUTION_CERTIFICATE_BASE64 }}
           IOS_DISTRIBUTION_CERTIFICATE_PASSWORD: ${{ secrets.IOS_DISTRIBUTION_CERTIFICATE_PASSWORD }}
           IOS_PROVISIONING_PROFILE_BASE64: ${{ secrets.IOS_PROVISIONING_PROFILE_BASE64 }}
+          IOS_GAME_IMPORT_PROVISIONING_PROFILE_BASE64: ${{ secrets.IOS_GAME_IMPORT_PROVISIONING_PROFILE_BASE64 }}
           AETHER_APPLE_TEAM_ID: 3JL7FE9XQT
         run: |
           .github/scripts/package-ios-app-store.sh \
@@ -729,7 +746,10 @@ jobs:
 
       - name: Report compiler cache statistics
         if: always() && !cancelled()
-        run: ccache --show-stats
+        run: |
+          if command -v ccache >/dev/null 2>&1; then
+            ccache --show-stats
+          fi
 
       - name: Save ccache
         if: success() && github.event_name != 'pull_request' && env.AETHERKIRI_VCPKG_CACHE_WRITE == 'true' && steps.restore-ccache.outputs.cache-hit != 'true'
@@ -784,6 +804,7 @@ jobs:
         env:
           AETHER_INTERNAL_DEPLOY_KEY: ${{ secrets.AETHERSECRET }}
           AETHER_SOFTPAL_DEPLOY_KEY: ${{ secrets.AETHER_SOFTPAL_DEPLOY_KEY }}
+          AETHER_LEAFTTT_DEPLOY_KEY: ${{ secrets.AETHER_LEAFTTT_DEPLOY_KEY }}
         run: .github/scripts/initialize-private-runtime-submodules.sh
 
       - name: Set up Rust for native runtimes
@@ -823,6 +844,7 @@ jobs:
           git submodule update --init --recursive --depth 1 packages/psdfile
           git submodule update --init --depth 1 packages/AetherSiglus
           git submodule update --init --depth 1 packages/AetherMinori
+          git -c url.https://github.com/.insteadOf=git@github.com: submodule update --init --depth 1 packages/cmvs-rs
           git submodule update --init --depth 1 packages/EntisGLS-SDL3
           git submodule update --init --depth 1 packages/AetherKrkr
           git submodule update --init --depth 1 packages/AetherMAGES
@@ -849,16 +871,16 @@ jobs:
           MACOS_PROVISIONING_PROFILE_BASE64: ${{ secrets.MACOS_PROVISIONING_PROFILE_BASE64 }}
         run: |
           set -euo pipefail
-          configured=0
-          [[ -n "$IOS_DISTRIBUTION_CERTIFICATE_BASE64" ]] && configured=$((configured + 1))
-          [[ -n "$IOS_DISTRIBUTION_CERTIFICATE_PASSWORD" ]] && configured=$((configured + 1))
-          [[ -n "$MACOS_INSTALLER_CERTIFICATE_BASE64" ]] && configured=$((configured + 1))
-          [[ -n "$MACOS_INSTALLER_CERTIFICATE_PASSWORD" ]] && configured=$((configured + 1))
-          [[ -n "$MACOS_PROVISIONING_PROFILE_BASE64" ]] && configured=$((configured + 1))
-          if [[ "$configured" -ne 5 ]]; then
-            echo "Tagged releases require the Apple Distribution certificate plus all three Mac App Store signing secrets." >&2
-            exit 1
-          fi
+          missing=0
+          for name in IOS_DISTRIBUTION_CERTIFICATE_BASE64 IOS_DISTRIBUTION_CERTIFICATE_PASSWORD \
+                      MACOS_INSTALLER_CERTIFICATE_BASE64 MACOS_INSTALLER_CERTIFICATE_PASSWORD \
+                      MACOS_PROVISIONING_PROFILE_BASE64; do
+            if [[ -z "${!name}" ]]; then
+              echo "::error::Tagged macOS releases require GitHub Actions secret $name."
+              missing=1
+            fi
+          done
+          [[ "$missing" -eq 0 ]] || exit 1
           echo "MACOS_APP_STORE_SIGNING=1" >> "$GITHUB_ENV"
 
       - name: Verify private runtime packages
@@ -1150,7 +1172,10 @@ jobs:
 
       - name: Report compiler cache statistics
         if: always() && !cancelled()
-        run: ccache --show-stats
+        run: |
+          if command -v ccache >/dev/null 2>&1; then
+            ccache --show-stats
+          fi
 
       - name: Save ccache
         if: success() && github.event_name != 'pull_request' && env.AETHERKIRI_VCPKG_CACHE_WRITE == 'true' && steps.restore-ccache.outputs.cache-hit != 'true'
@@ -1205,6 +1230,7 @@ jobs:
         env:
           AETHER_INTERNAL_DEPLOY_KEY: ${{ secrets.AETHERSECRET }}
           AETHER_SOFTPAL_DEPLOY_KEY: ${{ secrets.AETHER_SOFTPAL_DEPLOY_KEY }}
+          AETHER_LEAFTTT_DEPLOY_KEY: ${{ secrets.AETHER_LEAFTTT_DEPLOY_KEY }}
         run: .github/scripts/initialize-private-runtime-submodules.sh
 
       - name: Set up Java for Flash
@@ -1220,6 +1246,7 @@ jobs:
           git submodule update --init --recursive --depth 1 packages/psdfile
           git submodule update --init --depth 1 packages/AetherSiglus
           git submodule update --init --depth 1 packages/AetherMinori
+          git -c url.https://github.com/.insteadOf=git@github.com: submodule update --init --depth 1 packages/cmvs-rs
           git submodule update --init --depth 1 packages/EntisGLS-SDL3
           git submodule update --init --depth 1 packages/AetherKrkr
           git submodule update --init --depth 1 packages/AetherMAGES
@@ -1337,6 +1364,18 @@ jobs:
             2>&1 | tee "$RUNNER_TEMP/linux-access.log"
           grep -Fx 'IAP_CATALOG_LIMIT_OK' "$RUNNER_TEMP/linux-access.log"
 
+      - name: Run announcement persistence tests
+        env:
+          LD_LIBRARY_PATH: ${{ github.workspace }}/apps/godot_app/bin/linux/debug
+        run: |
+          timeout 60 "$GODOT_BIN" --headless --path apps/godot_app \
+            --script res://tests/announcement_state_test.gd \
+            2>&1 | tee "$RUNNER_TEMP/announcement-state.log"
+          grep -Fx 'ANNOUNCEMENT_STATE_OK' "$RUNNER_TEMP/announcement-state.log"
+          if grep -E 'SCRIPT ERROR:|^ERROR:' "$RUNNER_TEMP/announcement-state.log"; then
+            exit 1
+          fi
+
       - name: Run game import metadata tests
         env:
           LD_LIBRARY_PATH: ${{ github.workspace }}/apps/godot_app/bin/linux/debug
@@ -1430,7 +1469,10 @@ jobs:
 
       - name: Report compiler cache statistics
         if: always() && !cancelled()
-        run: ccache --show-stats
+        run: |
+          if command -v ccache >/dev/null 2>&1; then
+            ccache --show-stats
+          fi
 
       - name: Save ccache
         if: success() && github.event_name != 'pull_request' && env.AETHERKIRI_VCPKG_CACHE_WRITE == 'true' && steps.restore-ccache.outputs.cache-hit != 'true'

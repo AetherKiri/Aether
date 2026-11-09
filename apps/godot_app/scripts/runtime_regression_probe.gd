@@ -86,9 +86,13 @@ func record(event: Dictionary) -> void:
     print(line)
     app._write_probe_marker(line)
     var path := writable_root(config).path_join("regression-result.json")
-    var output := FileAccess.open(path, FileAccess.WRITE)
+    var temporary := path + ".tmp"
+    var output := FileAccess.open(temporary, FileAccess.WRITE)
     if output != null:
         output.store_string(JSON.stringify({"events": report, "snapshots": snapshots}, "\t"))
+        output.close()
+        if DirAccess.rename_absolute(temporary, path) != OK:
+            push_error("Cannot replace regression result: %s" % path)
     else:
         push_error("Cannot persist regression result: %s" % path)
 
@@ -254,7 +258,6 @@ func tap(action: Dictionary, label: String) -> bool:
         return false
     # Enter the same handler as real ScreenTouch events, including the
     # viewport-to-game transform, gesture classification and delayed release.
-    # The probe owns ticking, so normal game_running GUI dispatch stays off.
     var position: Vector2 = app._map_surface_point_to_viewport(source)
     var mapped: Vector2 = app._map_viewport_point(position)
     if mapped.distance_to(source) > 1.0:
@@ -564,6 +567,10 @@ func run(game_path: String) -> int:
         if not await advance(int(action.get("after_frames", 2))):
             var failure_error: String = app.player.get_last_error()
             record({"event": "failed", "label": label, "reason": "runtime error", "error": failure_error, "state": state()})
+            return 1
+        var current := state()
+        if not String(current.get("runtime_error", "")).is_empty():
+            record({"event": "failed", "label": label, "reason": "runtime error", "error": current.runtime_error, "state": current})
             return 1
         record({"event": "step_pass", "label": label})
     record({"event": "passed", "name": config.get("name", "regression")})

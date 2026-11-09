@@ -12,6 +12,7 @@ const FlashPlayerView = preload("res://scripts/flash_player_view.gd")
 const TyranoPlayerView = preload("res://scripts/tyrano_player_view.gd")
 const RenpyPlayerView = preload("res://scripts/renpy_player_view.gd")
 const RuntimeDisplayState = preload("res://scripts/runtime_display_state.gd")
+const GameLibraryStorage = preload("res://scripts/game_library_storage.gd")
 const VIDEO_LIST_FILE := "user://aetherkiri_videos.json"
 const VIDEO_PROGRESS_FILE := "user://aetherkiri_video_progress.json"
 const VIDEO_HIDDEN_FILE := "user://aetherkiri_hidden_videos.json"
@@ -30,6 +31,11 @@ const GAME_COVER_PATH_PREFIX := "game://"
 const SETTINGS_FILE := "user://aetherkiri_settings.cfg"
 const NOTICE_FILE := "user://aetherkiri_notice.cfg"
 const NOTICE_ID := "qq_group_2026_09"
+# Keep the notice ID stable; increment this only when publishing a new announcement,
+# independently of the application version or its translations.
+const NOTICE_VERSION := 1
+const AnnouncementState = preload("res://scripts/announcement_state.gd")
+var announcement_state := AnnouncementState.new(NOTICE_FILE)
 const QQ_GROUP_URL := "https://aetherkiri.github.io/qq/"
 const SCENE_TEST_SETTINGS_KEY := "aether_kiri/scene_test"
 const IAP_LIST_LIMIT_PRODUCT_ID := "com.aether.list.limit"
@@ -266,7 +272,9 @@ const UI_TEXT := {
 
 之后也可以在「设置 → QQ 交流群」中随时查看。",
         "notice.open": "加入交流群",
-        "notice.remind_week": "一周后提醒",
+        "notice.dismiss": "不再展示",
+        "notice.dismiss_hint": "有新版公告时会再次提醒",
+        "notice.save_failed": "无法保存公告偏好，请稍后重试。",
         "notice.skip_today": "今天不再弹出",
         "settings.section.purchases": "内购项目",
         "settings.language": "语言",
@@ -283,6 +291,11 @@ const UI_TEXT := {
         "settings.ui_scale_desc": "调整 iPhone 和 iPad 上的界面大小，保存后立即生效",
         "settings.virtual_control_menu": "游戏内控制菜单",
         "settings.virtual_control_menu_desc": "在游戏画面右上角显示虚拟控制菜单按钮",
+        "import.progress": "正在导入 %s · %s",
+        "import.complete": "已导入 Games：%s",
+        "import.failed": "导入失败：%s",
+        "settings.picture_in_picture": "后台悬浮窗",
+        "settings.picture_in_picture_desc": "切到其他应用时显示游戏小窗；支持的游戏会继续播放，其他游戏保留预览。关闭小窗后暂停",
         "settings.keyboard_control_opacity": "Keyboard 模式按键透明度",
         "settings.keyboard_control_opacity_desc": "调整屏幕虚拟按键的透明度；鼠标指针保持清晰",
         "ui_scale.compact": "较小",
@@ -484,6 +497,9 @@ const UI_TEXT := {
         "detail.rename": "重命名",
         "detail.remove": "移除视觉小说",
         "detail.delete_builtin": "删除内置 Demo",
+        "detail.delete_game": "删除视觉小说",
+        "dialog.delete_game_body": "永久删除「%s」？若它是文件夹，将同时删除其中的全部文件和存档，无法撤销。",
+        "message.game_delete_failed": "未能完整删除游戏文件，请重试：%s",
         "game.today": "今天",
         "game.days_ago": "%d 天前",
         "game.played_duration": "已玩 %s",
@@ -635,6 +651,13 @@ const UI_TEXT := {
         "settings.section.render": "渲染",
         "settings.section.developer": "開發者",
         "settings.section.about": "關於",
+        "notice.title": "公告",
+        "notice.qq_body": "歡迎加入 AetherKiri QQ 交流群，回報問題、取得最新版本並與其他玩家交流。\n\n之後也可以在「設定 → QQ 交流群」中隨時查看。",
+        "notice.open": "加入交流群",
+        "notice.dismiss": "不再顯示",
+        "notice.dismiss_hint": "有新版公告時會再次提醒",
+        "notice.save_failed": "無法儲存公告偏好，請稍後重試。",
+        "notice.skip_today": "今天不再彈出",
         "settings.section.purchases": "App 內購買",
         "settings.language": "語言",
         "settings.language_desc": "預設跟隨系統；也可以固定為簡體中文、繁體中文、英語、日語或韓語",
@@ -650,6 +673,11 @@ const UI_TEXT := {
         "settings.ui_scale_desc": "調整 iPhone 和 iPad 上的介面大小，儲存後立即生效",
         "settings.virtual_control_menu": "遊戲內控制選單",
         "settings.virtual_control_menu_desc": "在遊戲畫面右上角顯示虛擬控制選單按鈕",
+        "import.progress": "正在匯入 %s · %s",
+        "import.complete": "已匯入 Games：%s",
+        "import.failed": "匯入失敗：%s",
+        "settings.picture_in_picture": "背景懸浮視窗",
+        "settings.picture_in_picture_desc": "切換應用程式時顯示遊戲小視窗；支援的遊戲會繼續播放，其他遊戲保留預覽。關閉小視窗後暫停",
         "settings.keyboard_control_opacity": "Keyboard 模式按鍵透明度",
         "settings.keyboard_control_opacity_desc": "調整螢幕虛擬按鍵的透明度；滑鼠指標保持清晰",
         "ui_scale.compact": "較小",
@@ -849,6 +877,9 @@ const UI_TEXT := {
         "detail.rename": "重新命名",
         "detail.remove": "移除視覺小說",
         "detail.delete_builtin": "刪除內建 Demo",
+        "detail.delete_game": "刪除視覺小說",
+        "dialog.delete_game_body": "永久刪除「%s」？若它是資料夾，將同時刪除其中的全部檔案和存檔，無法復原。",
+        "message.game_delete_failed": "未能完整刪除遊戲檔案，請重試：%s",
         "game.today": "今天",
         "game.days_ago": "%d 天前",
         "game.played_duration": "已玩 %s",
@@ -1040,7 +1071,9 @@ const UI_TEXT := {
 
 You can find it any time under Settings → QQ Group.",
         "notice.open": "Join group",
-        "notice.remind_week": "Remind me in a week",
+        "notice.dismiss": "Don't show again",
+        "notice.dismiss_hint": "New announcements will still appear",
+        "notice.save_failed": "Could not save your announcement preference. Please try again.",
         "notice.skip_today": "Not again today",
         "settings.section.purchases": "In-App Purchases",
         "settings.language": "Language",
@@ -1057,6 +1090,11 @@ You can find it any time under Settings → QQ Group.",
         "settings.ui_scale_desc": "Adjust the interface size on iPhone and iPad; applies immediately after saving",
         "settings.virtual_control_menu": "In-Game Controls Menu",
         "settings.virtual_control_menu_desc": "Show the virtual-controls menu button at the top-right of the game view",
+        "import.progress": "Importing %s · %s",
+        "import.complete": "Added to Games: %s",
+        "import.failed": "Import failed: %s",
+        "settings.picture_in_picture": "Picture in Picture",
+        "settings.picture_in_picture_desc": "Show the game when switching apps. Supported games keep playing; others show a preview. Closing Picture in Picture pauses playback.",
         "settings.keyboard_control_opacity": "Keyboard Button Opacity",
         "settings.keyboard_control_opacity_desc": "Adjust on-screen virtual-key opacity while keeping the mouse pointer clear",
         "ui_scale.compact": "Smaller",
@@ -1258,6 +1296,9 @@ You can find it any time under Settings → QQ Group.",
         "detail.rename": "Rename",
         "detail.remove": "Remove Visual Novel",
         "detail.delete_builtin": "Delete Built-in Demo",
+        "detail.delete_game": "Delete Visual Novel",
+        "dialog.delete_game_body": "Permanently delete \"%s\"? If it is a folder, all files and saves inside it will also be deleted. This cannot be undone.",
+        "message.game_delete_failed": "Could not completely delete the game files. Please retry: %s",
         "game.today": "Today",
         "game.days_ago": "%d days ago",
         "game.played_duration": "Played %s",
@@ -1409,6 +1450,13 @@ You can find it any time under Settings → QQ Group.",
         "settings.section.render": "レンダリング",
         "settings.section.developer": "開発者",
         "settings.section.about": "情報",
+        "notice.title": "お知らせ",
+        "notice.qq_body": "AetherKiri の QQ グループで、不具合の報告、最新バージョンの確認、ほかのプレイヤーとの交流ができます。\n\nグループへのリンクは「設定 → QQ グループ」からいつでも開けます。",
+        "notice.open": "グループに参加",
+        "notice.dismiss": "今後表示しない",
+        "notice.dismiss_hint": "新しいお知らせが公開されたときに再び表示します",
+        "notice.save_failed": "お知らせの設定を保存できませんでした。もう一度お試しください。",
+        "notice.skip_today": "今日は表示しない",
         "settings.section.purchases": "アプリ内課金",
         "settings.language": "言語",
         "settings.language_desc": "既定ではシステムに従います。簡体字中国語、繁体字中国語、英語、日本語、韓国語に固定できます",
@@ -1424,6 +1472,11 @@ You can find it any time under Settings → QQ Group.",
         "settings.ui_scale_desc": "iPhone と iPad の UI サイズを調整します。保存後すぐに反映されます",
         "settings.virtual_control_menu": "ゲーム内コントロールメニュー",
         "settings.virtual_control_menu_desc": "ゲーム画面の右上に仮想コントロールメニューボタンを表示します",
+        "import.progress": "%s をインポート中 · %s",
+        "import.complete": "Games に追加しました：%s",
+        "import.failed": "インポートに失敗しました：%s",
+        "settings.picture_in_picture": "ピクチャ・イン・ピクチャ",
+        "settings.picture_in_picture_desc": "他のアプリに切り替えると小窓を表示します。対応ゲームは再生を続け、その他はプレビューを表示します。小窓を閉じると一時停止します。",
         "settings.keyboard_control_opacity": "Keyboard モードのキー透明度",
         "settings.keyboard_control_opacity_desc": "画面上の仮想キーの透明度を調整します。マウスポインターは鮮明なままです",
         "ui_scale.compact": "小さめ",
@@ -1623,6 +1676,9 @@ You can find it any time under Settings → QQ Group.",
         "detail.rename": "名前を変更",
         "detail.remove": "ビジュアルノベルを削除",
         "detail.delete_builtin": "内蔵デモを削除",
+        "detail.delete_game": "ビジュアルノベルを削除",
+        "dialog.delete_game_body": "「%s」を完全に削除しますか？フォルダーの場合は、中の全ファイルとセーブデータも削除されます。元に戻すことはできません。",
+        "message.game_delete_failed": "ゲームファイルを完全に削除できませんでした。再試行してください：%s",
         "game.today": "今日",
         "game.days_ago": "%d 日前",
         "game.played_duration": "プレイ時間 %s",
@@ -1774,6 +1830,13 @@ You can find it any time under Settings → QQ Group.",
         "settings.section.render": "렌더링",
         "settings.section.developer": "개발자",
         "settings.section.about": "정보",
+        "notice.title": "공지",
+        "notice.qq_body": "AetherKiri QQ 그룹에서 문제를 제보하고, 최신 버전을 확인하며 다른 플레이어와 이야기해 보세요.\n\n「설정 → QQ 그룹」에서 언제든지 다시 열 수 있습니다.",
+        "notice.open": "그룹 참여",
+        "notice.dismiss": "다시 표시 안 함",
+        "notice.dismiss_hint": "새 공지가 나오면 다시 표시됩니다",
+        "notice.save_failed": "공지 설정을 저장하지 못했습니다. 다시 시도해 주세요.",
+        "notice.skip_today": "오늘은 표시 안 함",
         "settings.section.purchases": "앱 내 구입",
         "settings.language": "언어",
         "settings.language_desc": "기본값은 시스템 언어입니다. 중국어 간체, 중국어 번체, 영어, 일본어, 한국어로 고정할 수 있습니다",
@@ -1789,6 +1852,11 @@ You can find it any time under Settings → QQ Group.",
         "settings.ui_scale_desc": "iPhone 및 iPad의 인터페이스 크기를 조절하며 저장 후 즉시 적용됩니다",
         "settings.virtual_control_menu": "게임 내 컨트롤 메뉴",
         "settings.virtual_control_menu_desc": "게임 화면 오른쪽 위에 가상 컨트롤 메뉴 버튼을 표시합니다",
+        "import.progress": "%s 가져오는 중 · %s",
+        "import.complete": "Games에 추가됨: %s",
+        "import.failed": "가져오기 실패: %s",
+        "settings.picture_in_picture": "화면 속 화면",
+        "settings.picture_in_picture_desc": "다른 앱으로 전환하면 작은 창을 표시합니다. 지원하는 게임은 계속 재생되고 나머지는 미리보기를 표시합니다. 작은 창을 닫으면 일시 정지합니다.",
         "settings.keyboard_control_opacity": "Keyboard 모드 버튼 투명도",
         "settings.keyboard_control_opacity_desc": "화면 가상 키의 투명도를 조절하며 마우스 포인터는 선명하게 유지합니다",
         "ui_scale.compact": "작게",
@@ -1988,6 +2056,9 @@ You can find it any time under Settings → QQ Group.",
         "detail.rename": "이름 변경",
         "detail.remove": "비주얼 노벨 제거",
         "detail.delete_builtin": "내장 데모 삭제",
+        "detail.delete_game": "비주얼 노벨 삭제",
+        "dialog.delete_game_body": "\"%s\"을(를) 영구 삭제할까요? 폴더라면 안에 있는 모든 파일과 저장 데이터도 삭제됩니다. 되돌릴 수 없습니다.",
+        "message.game_delete_failed": "게임 파일을 완전히 삭제하지 못했습니다. 다시 시도하세요: %s",
         "game.today": "오늘",
         "game.days_ago": "%d일 전",
         "game.played_duration": "플레이 %s",
@@ -2077,6 +2148,7 @@ const KEY_MOD_CONTROL := 0x04
 const RUNTIME_KIRIKIRI := "kirikiri"
 const RUNTIME_ONSCRIPTER := "onscripter"
 const RUNTIME_MINORI := "minori"
+const RUNTIME_CMVS := "cmvs"
 const RUNTIME_SOFTPAL := "softpal"
 const RUNTIME_CATSYSTEM2 := "catsystem2"
 const RUNTIME_SIGLUS := "siglus"
@@ -2133,6 +2205,7 @@ const SETTINGS_DRAFT_KEYS := [
     "style",
     "ios_ui_scale_mode",
     "game_virtual_menu_enabled",
+    "picture_in_picture_enabled",
     "game_virtual_keyboard_opacity",
     "backend",
     "upscale_algorithm",
@@ -2210,6 +2283,13 @@ var game_view: Control
 var game_virtual_controls
 var game_virtual_input_mode := GameVirtualControls.INPUT_MODE_MOUSE
 var game_virtual_menu_enabled := true
+var picture_in_picture_enabled := true
+var mobile_window: Node
+var mobile_window_game_active := false
+var game_import_poll_elapsed := 0.0
+var game_import_notice: PanelContainer
+var game_import_label: Label
+var game_import_notice_until := 0
 var game_virtual_keyboard_opacity := 1.0
 var modal_layer: Control
 var active_modal_scrim: ColorRect
@@ -2519,6 +2599,9 @@ var black_frame_consecutive := 0
 var black_frame_last_log_msec := 0
 var black_frame_guard_enabled := false
 var cli_probe_script := ""
+var wa2_import_root := ""
+var wa2_auto_launch := false
+var wa2_silent := false
 var cli_probe_audio_capture: RefCounted
 var cli_probe_runtime_debug := false
 var verbose_render_log := false
@@ -2800,6 +2883,24 @@ func _detect_cli_probe_script() -> String:
         return _normalize_cli_probe_script(String(request.get("probe_script", "")))
     return ""
 
+func _wa2_user_argument_value(name: String) -> String:
+    var args: Array[String] = []
+    args.append_array(OS.get_cmdline_user_args())
+    for index in range(args.size()):
+        var argument := String(args[index])
+        if argument == name and index + 1 < args.size():
+            return String(args[index + 1])
+        if argument.begins_with(name + "="):
+            return argument.substr(name.length() + 1)
+    return ""
+
+func _wa2_user_argument_enabled(name: String) -> bool:
+    if OS.get_environment(name.to_upper().replace("-", "_")) == "1":
+        return true
+    var args: Array[String] = []
+    args.append_array(OS.get_cmdline_user_args())
+    return args.has(name)
+
 func _normalize_cli_probe_script(path: String) -> String:
     var normalized := path.strip_edges()
     if normalized.is_empty():
@@ -2810,7 +2911,6 @@ func _normalize_cli_probe_script(path: String) -> String:
         "res://scripts/gui_render_probe.gd",
         "res://scripts/perf_input_probe.gd",
         "res://scripts/runtime_regression_probe.gd",
-        "res://scripts/wa2_gui.gd",
     ]
     for item in known:
         if normalized == item or normalized.ends_with("/" + item.get_file()):
@@ -4137,6 +4237,7 @@ func _load_shell_settings() -> void:
     game_virtual_menu_enabled = bool(cfg.get_value(
         "input", "virtual_control_menu_enabled", game_virtual_menu_enabled
     ))
+    picture_in_picture_enabled = bool(cfg.get_value("mobile", "picture_in_picture_enabled", true))
     game_virtual_keyboard_opacity = _normalize_game_virtual_keyboard_opacity(
         float(cfg.get_value(
             "input",
@@ -4223,6 +4324,7 @@ func _save_shell_settings() -> void:
     cfg.set_value("rendering", "target_fps", target_fps)
     cfg.set_value("rendering", "force_landscape", lock_landscape)
     cfg.set_value("rendering", "orientation_schema", MOBILE_ORIENTATION_SCHEMA_VERSION)
+    cfg.set_value("mobile", "picture_in_picture_enabled", picture_in_picture_enabled)
     cfg.set_value("input", "virtual_control_mode", game_virtual_input_mode)
     cfg.set_value(
         "input", "virtual_control_menu_enabled", game_virtual_menu_enabled
@@ -4269,6 +4371,7 @@ func _current_settings_snapshot() -> Dictionary:
         "style": style_mode,
         "ios_ui_scale_mode": ios_ui_scale_mode,
         "game_virtual_menu_enabled": game_virtual_menu_enabled,
+        "picture_in_picture_enabled": picture_in_picture_enabled,
         "game_virtual_keyboard_opacity": game_virtual_keyboard_opacity,
         "backend": selected_backend,
         "upscale_algorithm": upscale_algorithm,
@@ -4422,6 +4525,8 @@ func _apply_settings_snapshot(snapshot: Dictionary) -> void:
     game_virtual_menu_enabled = bool(snapshot.get(
         "game_virtual_menu_enabled", game_virtual_menu_enabled
     ))
+    picture_in_picture_enabled = bool(snapshot.get("picture_in_picture_enabled", picture_in_picture_enabled))
+    _configure_mobile_window()
     game_virtual_keyboard_opacity = _normalize_game_virtual_keyboard_opacity(
         float(snapshot.get(
             "game_virtual_keyboard_opacity",
@@ -4595,6 +4700,13 @@ func _apply_engine_options() -> void:
         player.set_engine_option("default_font", runtime_default_font_path)
     if not runtime_font_dir_path.is_empty():
         player.set_engine_option("font_dir", runtime_font_dir_path)
+    if current_player_runtime_kind == RUNTIME_WA2:
+        if not runtime_default_font_path.is_empty():
+            player.set_engine_option("wa2.font_path", runtime_default_font_path)
+        var patch_dir := OS.get_environment("AETHER_WA2_PATCH_DIR").strip_edges()
+        if not patch_dir.is_empty():
+            player.set_engine_option("wa2.patch_dir", patch_dir)
+        player.set_engine_option("wa2.audio.silent", "1" if wa2_silent else "0")
     player.set_engine_option("error_dialog_logs", "1" if error_dialog_logs else "0")
     var onscripter_encoding := OS.get_environment("AETHERKIRI_ONS_ENCODING").strip_edges()
     if not onscripter_encoding.is_empty():
@@ -4691,9 +4803,76 @@ func _advanced_snapshot() -> Dictionary:
     return result
 
 func _apply_shell_runtime_settings() -> void:
+    _configure_mobile_window()
     if OS.get_name() == "iOS" or OS.get_name() == "Android":
         var orientation := DisplayServer.SCREEN_LANDSCAPE if lock_landscape else DisplayServer.SCREEN_SENSOR
         DisplayServer.screen_set_orientation(orientation)
+
+func _configure_mobile_window() -> void:
+    if not _mobile_runtime():
+        return
+    if mobile_window == null and is_inside_tree() and ClassDB.class_exists("AetherMobileWindow"):
+        mobile_window = ClassDB.instantiate("AetherMobileWindow") as Node
+        add_child(mobile_window)
+        mobile_window.consume_pending_imports()
+    if mobile_window != null:
+        mobile_window.configure(mobile_window_game_active, picture_in_picture_enabled, player)
+
+func _show_game_import_notice(message: String, duration_ms: int) -> void:
+    if game_import_notice == null:
+        var layer := CanvasLayer.new()
+        layer.layer = 100
+        add_child(layer)
+        game_import_notice = PanelContainer.new()
+        game_import_notice.mouse_filter = Control.MOUSE_FILTER_IGNORE
+        game_import_notice.add_theme_stylebox_override("panel", _dialog_style())
+        layer.add_child(game_import_notice)
+        game_import_label = Label.new()
+        game_import_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+        game_import_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+        game_import_label.add_theme_font_override("font", UI_FONT)
+        game_import_label.add_theme_font_size_override("font_size", 16)
+        game_import_label.add_theme_color_override("font_color", color_text)
+        game_import_notice.add_child(game_import_label)
+    game_import_label.text = message
+    game_import_notice.visible = true
+    game_import_notice_until = Time.get_ticks_msec() + duration_ms if duration_ms > 0 else 0
+
+func _poll_game_imports(delta: float) -> void:
+    if OS.get_name() != "iOS" or mobile_window == null:
+        return
+    game_import_poll_elapsed += delta
+    if game_import_poll_elapsed < 0.15:
+        return
+    game_import_poll_elapsed = 0.0
+    var refresh := false
+    for _index in range(32):
+        var json: String = mobile_window.take_import_event()
+        if json.is_empty():
+            break
+        var event: Variant = JSON.parse_string(json)
+        if not event is Dictionary:
+            continue
+        var name := String(event.get("name", ""))
+        match String(event.get("status", "")):
+            "progress":
+                var size_text := String.humanize_size(int(event.get("bytes", 0)))
+                _show_game_import_notice(_t("import.progress", [name, size_text]), 0)
+            "complete":
+                refresh = true
+                _show_game_import_notice(_t("import.complete", [name]), 6000)
+            "error":
+                _show_game_import_notice(_t("import.failed", [String(event.get("error", ""))]), 15000)
+    if refresh:
+        _refresh_games()
+    if game_import_notice != null and game_import_notice.visible:
+        if game_import_notice_until > 0 and Time.get_ticks_msec() >= game_import_notice_until:
+            game_import_notice.hide()
+        else:
+            var safe := _ui_safe_rect(get_viewport_rect().size)
+            game_import_notice.size = Vector2(minf(520.0, safe.size.x - 32.0), 0.0)
+            game_import_notice.position = Vector2(safe.get_center().x - game_import_notice.size.x / 2.0,
+                safe.end.y - game_import_notice.size.y - 24.0)
 
 func _apply_host_frame_rate_limit() -> void:
     # The engine fps_limit only gates the embedded runtime's render step. The
@@ -4729,6 +4908,8 @@ func _set_game_runtime_frame_pacing(active: bool) -> void:
         Engine.max_fps = policy.max_fps
 
 func _set_game_runtime_orientation(active: bool) -> void:
+    mobile_window_game_active = active
+    _configure_mobile_window()
     _set_game_runtime_frame_pacing(active)
     if OS.get_name() != "iOS" and OS.get_name() != "Android":
         return
@@ -5649,6 +5830,13 @@ func _rebuild_settings_view() -> void:
     _add_settings_row(interface_rows, _settings_row(_t("settings.language"), _t("settings.language_desc"), _language_select(), stack_settings_controls))
     if OS.get_name() == "iOS":
         _add_settings_row(interface_rows, _settings_row(_t("settings.ui_scale"), _t("settings.ui_scale_desc"), _ios_ui_scale_segment(), stack_settings_controls))
+    if _mobile_runtime():
+        _add_settings_row(interface_rows, _settings_toggle_row(
+            _t("settings.picture_in_picture"),
+            _t("settings.picture_in_picture_desc"),
+            _settings_draft_bool("picture_in_picture_enabled", picture_in_picture_enabled),
+            "picture_in_picture"
+        ))
     _add_settings_row(interface_rows, _settings_toggle_row(
         _t("settings.virtual_control_menu"),
         _t("settings.virtual_control_menu_desc"),
@@ -7939,6 +8127,8 @@ func _on_setting_toggle(key: String, value: bool) -> void:
         _set_settings_draft_value("fps_limit_enabled", value)
     elif key == "game_virtual_menu":
         _set_settings_draft_value("game_virtual_menu_enabled", value)
+    elif key == "picture_in_picture":
+        _set_settings_draft_value("picture_in_picture_enabled", value)
     elif key == "landscape":
         _set_settings_draft_value("force_landscape", value)
     elif key == "mock":
@@ -8754,10 +8944,15 @@ func _detail_information_panel(game: Dictionary) -> PanelContainer:
     return info_panel
 
 func _detail_remove_button(game: Dictionary) -> Button:
-    var remove_label := "detail.delete_builtin" if builtin_demo.is_game(game) else "detail.remove"
+    var remove_label := _game_removal_label(game)
     var remove := _icon_action_button(ICON_DELETE, _t(remove_label), func(): _confirm_remove_selected(), false, true)
     _reveal_icon_action_label_on_hover(remove, _t(remove_label))
     return remove
+
+func _game_removal_label(game: Dictionary) -> String:
+    if builtin_demo.is_game(game):
+        return "detail.delete_builtin"
+    return "detail.delete_game" if OS.get_name() == "iOS" else "detail.remove"
 
 # Facts grid: label over value, two columns on desktop, hairlines between.
 
@@ -9911,17 +10106,20 @@ func _confirm_remove_selected() -> void:
     if path.is_empty():
         return
     var deleting_builtin := builtin_demo.is_game(selected_game)
-    var remove_label := "detail.delete_builtin" if deleting_builtin else "detail.remove"
+    var deleting_files := deleting_builtin or OS.get_name() == "iOS"
+    var remove_label := _game_removal_label(selected_game)
     var dialog := _modal_dialog(Vector2(520, 260))
     var box := _modal_stack(dialog, _t(remove_label), ICON_DELETE)
     var body_key := "dialog.delete_builtin_body" if deleting_builtin else "dialog.remove_body"
+    if OS.get_name() == "iOS" and not deleting_builtin:
+        body_key = "dialog.delete_game_body"
     box.add_child(_dialog_body_label(_t(body_key, [_game_display_title(selected_game)])))
     var buttons := _dialog_button_row()
     box.add_child(buttons)
     var cancel := _secondary_dialog_button(_t("dialog.cancel"))
     cancel.pressed.connect(func(): _dismiss_modal())
     buttons.add_child(cancel)
-    var remove := _danger_button(_t("dialog.delete" if deleting_builtin else "dialog.remove"))
+    var remove := _danger_button(_t("dialog.delete" if deleting_files else "dialog.remove"))
     remove.pressed.connect(func():
         _dismiss_modal(func(): _remove_game(path))
     )
@@ -10368,6 +10566,7 @@ func _open_renpy_player(entry: Dictionary) -> void:
     renpy_view.closed.connect(func():
         _finalize_active_game_session()
         renpy_view = null
+        _set_game_runtime_orientation(false)
         shell_root.visible = true
         _refresh_games()
     )
@@ -10376,6 +10575,7 @@ func _open_renpy_player(entry: Dictionary) -> void:
         renpy_view.close()
         _show_message(error)
         return
+    _set_game_runtime_orientation(true)
     shell_root.visible = false
 
 func _open_flash_player(entry: Dictionary) -> void:
@@ -11504,16 +11704,28 @@ func _update_game(path: String, values: Dictionary) -> void:
 
 func _remove_game(path: String) -> void:
     var deleting_builtin := builtin_demo.is_path(path)
+    var deleted_directory := ""
     var builtin_delete_result: Error = OK
     if deleting_builtin:
         builtin_delete_result = builtin_demo.remove_install()
         if not builtin_demo.is_removed():
             _show_message(_t("message.builtin_delete_failed", [error_string(builtin_delete_result)]))
             return
+    elif OS.get_name() == "iOS":
+        var resolved := _resolve_game_path(path)
+        var result := GameLibraryStorage.delete_game(resolved, "user://Games")
+        if result != OK:
+            _show_message(_t("message.game_delete_failed", [error_string(result)]))
+            return
+        deleted_directory = GameLibraryStorage.deletion_target(resolved, "user://Games")
     var games := _load_game_list()
     var next: Array[Dictionary] = []
     for game in games:
-        if String(game.get("path", "")) != path:
+        var entry_path := _resolve_game_path(String(game.get("path", "")))
+        var deleted_entry := not deleted_directory.is_empty() and (
+            entry_path == deleted_directory or entry_path.begins_with(deleted_directory + "/")
+        )
+        if String(game.get("path", "")) != path and not deleted_entry:
             next.append(game)
     _save_game_list(next)
     if deleting_builtin:
@@ -12111,6 +12323,9 @@ func _ready() -> void:
     add_child(vndb_resolver)
     vndb_resolver.resolved.connect(_on_vndb_cover_resolved)
     cli_probe_script = _detect_cli_probe_script()
+    wa2_import_root = _wa2_user_argument_value("--wa2-game-root").strip_edges()
+    wa2_auto_launch = _wa2_user_argument_enabled("--wa2-auto-launch")
+    wa2_silent = OS.get_environment("AETHER_WA2_SILENT") == "1"
     _apply_ui_font()
     DisplayServer.window_set_flag(DisplayServer.WINDOW_FLAG_TRANSPARENT, false)
     _apply_initial_window_size()
@@ -12513,6 +12728,7 @@ func _switch_runtime_player(runtime_kind: String) -> bool:
     if normalized not in [
         RUNTIME_ONSCRIPTER,
         RUNTIME_MINORI,
+        RUNTIME_CMVS,
         RUNTIME_CATSYSTEM2,
         RUNTIME_SIGLUS,
         RUNTIME_BGI,
@@ -12525,6 +12741,7 @@ func _switch_runtime_player(runtime_kind: String) -> bool:
         RUNTIME_ADVHD,
         RUNTIME_ESCUDE,
         RUNTIME_ENTISGLS,
+        RUNTIME_WA2,
     ]:
         normalized = RUNTIME_KIRIKIRI
     # Returning to the library keeps the player Node but destroys its engine.
@@ -12571,6 +12788,8 @@ func _switch_runtime_player(runtime_kind: String) -> bool:
         if normalized == RUNTIME_YURIS
         else "OnscripterYuri"
         if normalized == RUNTIME_ONSCRIPTER
+        else "CMVS"
+        if normalized == RUNTIME_CMVS
         else "MinoriRust"
         if normalized == RUNTIME_MINORI
         else "CatSystem2"
@@ -13305,6 +13524,7 @@ func _ensure_player_initialized() -> bool:
     if current_player_runtime_kind in [
         RUNTIME_ONSCRIPTER,
         RUNTIME_MINORI,
+        RUNTIME_CMVS,
         RUNTIME_CATSYSTEM2,
         RUNTIME_SIGLUS,
         RUNTIME_BGI,
@@ -13317,6 +13537,7 @@ func _ensure_player_initialized() -> bool:
         RUNTIME_ADVHD,
         RUNTIME_ESCUDE,
         RUNTIME_ENTISGLS,
+        RUNTIME_WA2,
     ]:
         runtime_id = current_player_runtime_kind
     var runtime_result := int(player.set_engine_option("runtime", runtime_id))
@@ -13341,6 +13562,8 @@ func _ensure_player_initialized() -> bool:
         else "YU-RIS" if current_player_runtime_kind == RUNTIME_YURIS
         else "OnscripterYuri"
         if current_player_runtime_kind == RUNTIME_ONSCRIPTER
+        else "CMVS"
+        if current_player_runtime_kind == RUNTIME_CMVS
         else "MinoriRust"
         if current_player_runtime_kind == RUNTIME_MINORI
         else "CatSystem2"
@@ -13417,7 +13640,36 @@ func _continue_ready_after_legal_gate() -> void:
         _append_log("Native auto-start ignored. Set AETHERKIRI_ENABLE_AUTO_START=1 for automation runs.")
     if not OS.get_environment("AETHERKIRI_CAPTURE_UI").is_empty():
         call_deferred("_capture_ui_after_ready")
+    if not wa2_import_root.is_empty():
+        call_deferred("_import_wa2_from_command_line")
     call_deferred("_check_app_update_silently")
+
+func _import_wa2_from_command_line() -> void:
+    var root := _resolve_game_path(wa2_import_root)
+    if not DirAccess.dir_exists_absolute(root):
+        _append_log("WA2 import path is not a directory: %s" % root)
+        return
+    var game := _game_info_from_path(root)
+    if String(game.get("engine", "")) != RUNTIME_WA2:
+        _append_log("WA2 import path did not match the Leaf TtT runtime fingerprint: %s" % root)
+        return
+    var existing := {}
+    for item in _load_game_list():
+        if String(item.get("path", "")) == root:
+            existing = item
+            break
+    if existing.is_empty():
+        if not _add_game_path(root):
+            return
+    else:
+        _update_game(root, {"engine": RUNTIME_WA2, "launchFile": ""})
+    _refresh_known_games_for_auto_start()
+    selected_game = _find_known_game_by_path(root)
+    if selected_game.is_empty():
+        selected_game = game
+    _show_detail(selected_game)
+    if wa2_auto_launch:
+        call_deferred("_start_selected_game")
 
 func _request_android_storage_permissions() -> void:
     if OS.get_name() != "Android":
@@ -15160,6 +15412,7 @@ func _apply_pending_video_resume(state: Dictionary) -> bool:
 
 func _process(delta: float) -> void:
     var process_started := Time.get_ticks_usec()
+    _poll_game_imports(delta)
     _poll_android_storage_permission_request()
     _poll_native_launch_file_picker()
     _poll_native_cover_file_picker()
@@ -15195,7 +15448,10 @@ func _process(delta: float) -> void:
         startup_poll_accum += delta
         if cached_startup_state == STARTUP_SUCCEEDED or startup_poll_accum >= STARTUP_POLL_INTERVAL:
             startup_poll_accum = 0.0
+            var previous_startup_state := cached_startup_state
             cached_startup_state = player.get_startup_state()
+            if cached_startup_state == STARTUP_SUCCEEDED and previous_startup_state != STARTUP_SUCCEEDED:
+                _configure_mobile_window()
             startup_state = cached_startup_state
             _sync_game_virtual_controls()
         if startup_state == STARTUP_SUCCEEDED:
@@ -15791,6 +16047,7 @@ func _log_input_trace(delta: float, tick_ms: float, update_ms: float) -> void:
 
 func _notification(what: int) -> void:
     if what == NOTIFICATION_RESIZED:
+        _configure_mobile_window()
         _fit_full_rects()
         _queue_settings_relayout_after_resize()
         _queue_detail_relayout_after_resize()
@@ -15929,6 +16186,10 @@ func _quit_app_for_go_back() -> void:
         player.destroy_engine()
     get_tree().quit(0)
 
+func _mobile_window_owns_lifecycle() -> bool:
+    return mobile_window != null and mobile_window.has_method("handles_game_lifecycle") \
+        and mobile_window.handles_game_lifecycle()
+
 func _pause_game_for_lifecycle(reason: String) -> void:
     game_text_input_suspended = true
     _deactivate_game_text_input()
@@ -15937,7 +16198,7 @@ func _pause_game_for_lifecycle(reason: String) -> void:
     if app_lifecycle_paused or not game_running or cached_startup_state != STARTUP_SUCCEEDED:
         return
     _clear_game_input_capture()
-    var result: int = int(player.pause())
+    var result: int = ENGINE_RESULT_OK if _mobile_window_owns_lifecycle() else int(player.pause())
     if result != ENGINE_RESULT_OK:
         render_errors += 1
         _log_lifecycle_line("app_pause_failed reason=%s result=%s error=\"%s\"" % [
@@ -15955,7 +16216,7 @@ func _resume_game_for_lifecycle(reason: String) -> void:
         return
     if not app_lifecycle_paused:
         return
-    var result: int = int(player.resume())
+    var result: int = ENGINE_RESULT_OK if _mobile_window_owns_lifecycle() else int(player.resume())
     if result != ENGINE_RESULT_OK:
         render_errors += 1
         _log_lifecycle_line("app_resume_failed reason=%s result=%s error=\"%s\"" % [
@@ -15985,7 +16246,9 @@ func _on_backend_selected(index: int) -> void:
     _apply_backend(true)
 
 func _apply_backend(log_selection: bool) -> void:
-    var result: int = int(player.set_render_backend(selected_backend))
+    # WA2 supplies its native RGBA frame; keep the saved backend for other runtimes.
+    var session_backend := "Debug CPU" if current_player_runtime_kind == RUNTIME_WA2 else selected_backend
+    var result: int = int(player.set_render_backend(session_backend))
     if result != ENGINE_RESULT_OK:
         render_errors += 1
         var backend_error_message := "Renderer selection failed: %s %s" % [
@@ -19459,25 +19722,19 @@ func _mipmapped_texture(texture: Texture2D) -> Texture2D:
 
 # Announcements
 # -------------
-# One hard-coded notice shown after the legal gate. It can be snoozed for a
-# week or silenced until local midnight; the choice is stored per notice id.
+# Each announcement has its own revision, separate from the app version.
+# Dismissal lasts for that revision; both choices allow newer announcements.
 
 func _open_qq_group() -> void:
     var result := OS.shell_open(QQ_GROUP_URL)
     if result != OK:
         _show_message(QQ_GROUP_URL)
 
-func _notice_snoozed_until() -> int:
-    var cfg := ConfigFile.new()
-    if cfg.load(NOTICE_FILE) != OK:
-        return 0
-    return int(cfg.get_value(NOTICE_ID, "snoozed_until", 0))
-
-func _snooze_notice(seconds: int) -> void:
-    var cfg := ConfigFile.new()
-    cfg.load(NOTICE_FILE)
-    cfg.set_value(NOTICE_ID, "snoozed_until", int(Time.get_unix_time_from_system()) + maxi(0, seconds))
-    cfg.save(NOTICE_FILE)
+func _finish_notice_choice(error: Error) -> void:
+    if error == OK:
+        _dismiss_modal()
+    else:
+        _show_message(_t("notice.save_failed"))
 
 func _seconds_until_local_midnight() -> int:
     var now := Time.get_time_dict_from_system()
@@ -19486,7 +19743,7 @@ func _seconds_until_local_midnight() -> int:
 func _maybe_show_notice() -> void:
     if DisplayServer.get_name() == "headless" or not OS.get_environment("AETHERKIRI_CAPTURE_UI").is_empty():
         return
-    if int(Time.get_unix_time_from_system()) < _notice_snoozed_until():
+    if not announcement_state.should_show(NOTICE_ID, NOTICE_VERSION, int(Time.get_unix_time_from_system())):
         return
     # Wait until update check completes and no modal is active
     for _i in range(15):
@@ -19499,7 +19756,7 @@ func _maybe_show_notice() -> void:
 
 func _show_notice() -> void:
     var dialog := _modal_dialog(Vector2(560, 360), 0.46)
-    var box := _modal_stack(dialog, _t("notice.title"), ICON_HELP)
+    var box := _modal_stack(dialog, "%s · v%d" % [_t("notice.title"), NOTICE_VERSION], ICON_HELP)
     box.add_child(_dialog_body_label(_t("notice.qq_body")))
     var link := _pill_button(_t("notice.open"), ICON_CHEVRON_RIGHT)
     link.custom_minimum_size = Vector2(0, 48)
@@ -19508,18 +19765,22 @@ func _show_notice() -> void:
     box.add_child(link)
     var buttons := _dialog_button_row()
     box.add_child(buttons)
-    var week := _secondary_dialog_button(_t("notice.remind_week"), Vector2(0, 46))
-    week.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-    week.pressed.connect(func():
-        _snooze_notice(7 * 86400)
-        _dismiss_modal()
+    var dismiss := _secondary_dialog_button(_t("notice.dismiss"), Vector2(0, 46))
+    dismiss.name = "DismissAnnouncement"
+    dismiss.tooltip_text = _t("notice.dismiss_hint")
+    dismiss.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+    dismiss.pressed.connect(func():
+        _finish_notice_choice(announcement_state.dismiss(NOTICE_ID, NOTICE_VERSION))
     )
-    buttons.add_child(week)
+    buttons.add_child(dismiss)
     var today := _secondary_dialog_button(_t("notice.skip_today"), Vector2(0, 46))
+    today.name = "SnoozeAnnouncementToday"
     today.size_flags_horizontal = Control.SIZE_EXPAND_FILL
     today.pressed.connect(func():
-        _snooze_notice(_seconds_until_local_midnight())
-        _dismiss_modal()
+        _finish_notice_choice(announcement_state.snooze(
+            NOTICE_ID, NOTICE_VERSION,
+            int(Time.get_unix_time_from_system()) + _seconds_until_local_midnight()
+        ))
     )
     buttons.add_child(today)
 

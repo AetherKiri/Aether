@@ -8,10 +8,20 @@ set -euo pipefail
 key_dir="$(mktemp -d "${RUNNER_TEMP:-/tmp}/aether-submodules.XXXXXX")"
 trap 'rm -rf "$key_dir"' EXIT
 chmod 700 "$key_dir"
-printf '%s\n' "$AETHER_INTERNAL_DEPLOY_KEY" > "$key_dir/internal"
-printf '%s\n' "$AETHER_SOFTPAL_DEPLOY_KEY" > "$key_dir/softpal"
-printf '%s\n' "$AETHER_LEAFTTT_DEPLOY_KEY" > "$key_dir/leafttt"
-chmod 600 "$key_dir/internal" "$key_dir/softpal" "$key_dir/leafttt"
+# Secrets uploaded from Windows may contain CRLF or a UTF-8 BOM. OpenSSH
+# requires the original LF-delimited key format, including its final newline.
+write_deploy_key() {
+    local key_name="$1" key_value="$2"
+    printf '%s\n' "$key_value" | tr -d '\r' | sed $'1s/^\xEF\xBB\xBF//' > "$key_dir/$key_name"
+    chmod 600 "$key_dir/$key_name"
+    if ! ssh-keygen -y -P "" -f "$key_dir/$key_name" > /dev/null 2>&1; then
+        echo "Invalid private deploy key: $key_name" >&2
+        return 1
+    fi
+}
+write_deploy_key internal "$AETHER_INTERNAL_DEPLOY_KEY"
+write_deploy_key softpal "$AETHER_SOFTPAL_DEPLOY_KEY"
+write_deploy_key leafttt "$AETHER_LEAFTTT_DEPLOY_KEY"
 
 # GitHub associates each deploy key with one private repository. The existing
 # key fetches the other runtimes; SoftPal and LeafTtt use their own read-only keys.
@@ -37,4 +47,4 @@ export GIT_SSH_COMMAND="ssh -i $key_dir/softpal -o IdentitiesOnly=yes -o StrictH
 git submodule update --init --depth 1 packages/AetherSoftPal
 
 export GIT_SSH_COMMAND="ssh -i $key_dir/leafttt -o IdentitiesOnly=yes -o StrictHostKeyChecking=accept-new"
-git submodule update --init --depth 1 packages/AetherLeafTtt
+git submodule update --init --recursive --depth 1 packages/AetherLeafTtt

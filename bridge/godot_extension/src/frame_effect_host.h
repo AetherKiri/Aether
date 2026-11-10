@@ -12,7 +12,7 @@
 
 namespace godot {
 
-inline constexpr uint32_t AETHERKIRI_FRAME_EFFECT_HOST_API_VERSION = 2;
+inline constexpr uint32_t AETHERKIRI_FRAME_EFFECT_HOST_API_VERSION = 3;
 
 struct FrameEffectRequest {
     RenderingDevice *rendering_device = nullptr;
@@ -49,6 +49,24 @@ public:
                          String *error) = 0;
     virtual void release(RenderingDevice *rendering_device) = 0;
     virtual Dictionary status() const = 0;
+
+    // Optional final-display scaling, independent of the enhancement chain.
+    // prepare_upscale may record RD work. finish_upscale runs after Godot has
+    // submitted that frame, allowing a native provider to order its GPU work
+    // without submitting/synchronizing the main RenderingDevice itself.
+    virtual bool is_upscale_available(const String &, RenderingDevice *,
+                                      String *reason) const {
+        if (reason != nullptr) *reason = "upscaler_unavailable";
+        return false;
+    }
+    virtual bool prepare_upscale(const FrameEffectRequest &,
+                                 FrameEffectOutput *, String *reason) {
+        if (reason != nullptr) *reason = "upscaler_unavailable";
+        return false;
+    }
+    virtual bool finish_upscale(FrameEffectOutput *) { return false; }
+    virtual void release_upscale(RenderingDevice *) {}
+    virtual Dictionary upscale_status() const { return Dictionary(); }
 };
 
 using FrameEffectProviderFactory = std::unique_ptr<FrameEffectProvider> (*)();

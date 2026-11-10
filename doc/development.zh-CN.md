@@ -30,6 +30,20 @@ Godot 设置页暴露三个渲染后端：
 
 CPU 上传只能作为 debug fallback。性能优化应优先落到 Godot Native，其次是 GPU Bridge。
 
+### 最终画面缩放
+
+macOS/iOS 的缩放算法可选择 **MetalFX Spatial**。它按照实际显示的像素区域放大
+最终 2D 游戏画面，与输出分辨率、画质增强链独立。需要原生 Metal 渲染驱动、支持的
+GPU、macOS 13 / iOS 16 或更新版本，以及可选的画面效果提供器。不支持的设备、
+Godot 实验性的独立渲染线程模式、
+处理失败和缩小画面时使用 Bicubic。设置会持久保存，切换算法不会改变游戏输入坐标。
+
+在 `apps/godot_app` 下使用 Godot 的 `--script tests/frame_upscale_settings_test.gd`
+验证设置和显示尺寸；使用 `--script tests/frame_upscale_test.gd`
+配合 `--rendering-method mobile --rendering-driver metal` 验证原生输出、动画、
+调整尺寸和资源释放。设置 `AETHER_TEST_REQUIRE_UPSCALER=1` 后，不支持的渲染器会令
+测试失败，避免误把跳过当成原生验证通过。无窗口模式验证原始纹理回退。
+
 ## 目录结构
 
 | 路径 | 作用 |

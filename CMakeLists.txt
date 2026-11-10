@@ -132,6 +132,10 @@ if(AETHERKIRI_ENABLE_ARTEMIS_RUNTIME)
 endif()
 
 option(ENABLE_TESTS "enable tests execute build(exclude android)" ON)
+if(ENABLE_TESTS AND NOT (IOS OR ANDROID OR WEB OR EMSCRIPTEN))
+    # Enable CTest before provider subdirectories register their tests.
+    enable_testing()
+endif()
 option(BUILD_TOOLS "build tools execute build(exclude android ios)" ON)
 option(BUILD_ENGINE_API "build engine_api bridge shared library" ON)
 option(BUILD_GODOT_EXTENSION "build Godot GDExtension host library" ON)
@@ -412,7 +416,6 @@ if(BUILD_GODOT_EXTENSION)
 endif()
 
 if(ENABLE_TESTS AND NOT (IOS OR ANDROID OR WEB OR EMSCRIPTEN))
-    enable_testing()
     if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/tests/CMakeLists.txt")
         add_subdirectory(tests)
     endif()

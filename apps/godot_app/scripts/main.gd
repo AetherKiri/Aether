@@ -12,6 +12,7 @@ const FlashPlayerView = preload("res://scripts/flash_player_view.gd")
 const TyranoPlayerView = preload("res://scripts/tyrano_player_view.gd")
 const RenpyPlayerView = preload("res://scripts/renpy_player_view.gd")
 const RuntimeDisplayState = preload("res://scripts/runtime_display_state.gd")
+const RuntimeCursorState = preload("res://scripts/runtime_cursor_state.gd")
 const GameLibraryStorage = preload("res://scripts/game_library_storage.gd")
 const VIDEO_LIST_FILE := "user://aetherkiri_videos.json"
 const VIDEO_PROGRESS_FILE := "user://aetherkiri_video_progress.json"
@@ -2238,6 +2239,8 @@ var restart_notice: Label
 var viewport: TextureRect
 var softpal_aspect_mode := 1
 var runtime_display_state = RuntimeDisplayState.new()
+var runtime_cursor_state = RuntimeCursorState.new()
+var runtime_pointer_in_window := true
 var perf: Label
 var perf_layer: CanvasLayer
 var perf_panel: PanelContainer
@@ -12918,9 +12921,8 @@ func _on_runtime_platform_request(operation: String, argument: String) -> void:
     if operation in ["softpal_cursor_visible", "runtime_cursor_visible"]:
         if not _is_touch_platform() and game_running:
             var fields := _parse_platform_form(argument)
-            Input.mouse_mode = Input.MOUSE_MODE_VISIBLE if String(
-                fields.get("visible", "1")
-            ) == "1" else Input.MOUSE_MODE_HIDDEN
+            runtime_cursor_state.request(String(fields.get("visible", "1")) == "1")
+            _sync_runtime_cursor()
         return
     if operation == "softpal_open_target":
         var target := String(_parse_platform_form(argument).get("target", ""))
@@ -14373,6 +14375,7 @@ func _probe_tick_and_update() -> bool:
     _flush_delayed_touch_releases()
     _flush_pending_touch_press_if_ready()
     var result: int = int(player.tick(1.0 / 60.0))
+    _sync_runtime_cursor()
     if result != ENGINE_RESULT_OK:
         _write_probe_marker("probe_tick failed result=%s last_result=%s error=%s" % [
             result,
@@ -14975,6 +14978,16 @@ func _probe_save_step(index: int, label: String, wait_frames: int = 2) -> void:
             audio_file.store_string(JSON.stringify(audio))
         print("step %02d audio=%s" % [index, JSON.stringify(audio)])
     if cli_probe_runtime_debug:
+        var host_file := FileAccess.open(path.get_basename() + ".host.json", FileAccess.WRITE)
+        if host_file != null:
+            host_file.store_string(JSON.stringify({
+                "mouse_mode": Input.mouse_mode,
+                "cursor_request_active": runtime_cursor_state.active,
+                "cursor_requested_visible": runtime_cursor_state.requested_visible,
+                "window_focused": get_window().has_focus(),
+                "pointer_in_window": runtime_pointer_in_window,
+                "mouse_position": get_viewport().get_mouse_position(),
+            }))
         var runtime_debug := String(player.get_plugin_debug_info())
         var debug_file := FileAccess.open(path.get_basename() + ".json", FileAccess.WRITE)
         if debug_file != null:
@@ -15485,6 +15498,7 @@ func _process(delta: float) -> void:
         if is_instance_valid(wa2_audio_host) and wa2_audio_host.runtime != null:
             _stop_wa2_audio()
     var process_started := Time.get_ticks_usec()
+    _sync_runtime_cursor()
     _poll_game_imports(delta)
     _poll_android_storage_permission_request()
     _poll_native_launch_file_picker()
@@ -16121,6 +16135,12 @@ func _log_input_trace(delta: float, tick_ms: float, update_ms: float) -> void:
     input_trace_present_holds = 0
 
 func _notification(what: int) -> void:
+    if what == NOTIFICATION_WM_MOUSE_ENTER or what == NOTIFICATION_WM_MOUSE_EXIT:
+        runtime_pointer_in_window = what == NOTIFICATION_WM_MOUSE_ENTER
+        _sync_runtime_cursor()
+    if what == NOTIFICATION_APPLICATION_FOCUS_OUT and runtime_cursor_state != null and runtime_cursor_state.active:
+        Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
+        _trace_runtime_platform_request("cursor_focus_out", "runtime_cursor_visible", "visible=1")
     if what == NOTIFICATION_RESIZED:
         _configure_mobile_window()
         _fit_full_rects()
@@ -17868,6 +17888,22 @@ func _can_forward_game_input() -> bool:
     return game_running and viewport.visible and cached_startup_state == STARTUP_SUCCEEDED and not loading_blocks_input and (
         modal_layer == null or not modal_layer.visible
     )
+
+func _sync_runtime_cursor() -> void:
+    if runtime_cursor_state == null or not runtime_cursor_state.active or video_playing:
+        return
+    var owns_pointer := false
+    if game_running and viewport != null and _can_forward_game_input() and runtime_pointer_in_window and get_window().has_focus():
+        var position := get_viewport().get_mouse_position()
+        var mapped := _map_viewport_point(position)
+        var hovered := get_viewport().gui_get_hovered_control()
+        owns_pointer = mapped.x >= 0.0 and mapped.y >= 0.0 and (hovered == null or hovered == viewport)
+    var mode: int = runtime_cursor_state.mouse_mode(owns_pointer)
+    if Input.mouse_mode != mode:
+        Input.mouse_mode = mode
+        _trace_runtime_platform_request("cursor_applied", "runtime_cursor_visible", "visible=%d&owns_pointer=%d" % [int(mode == Input.MOUSE_MODE_VISIBLE), int(owns_pointer)])
+    if not game_running:
+        runtime_cursor_state.reset()
 
 func _sync_game_virtual_controls() -> void:
     if game_virtual_controls == null:

@@ -2601,6 +2601,11 @@ var black_frame_consecutive := 0
 var black_frame_last_log_msec := 0
 var black_frame_guard_enabled := false
 var cli_probe_script := ""
+var wa2_import_root := ""
+var wa2_auto_launch := false
+var wa2_silent := false
+const Wa2AudioHost = preload("res://scripts/wa2_audio_host.gd")
+var wa2_audio_host: Node
 var cli_probe_audio_capture: RefCounted
 var cli_probe_runtime_debug := false
 var verbose_render_log := false
@@ -2882,6 +2887,24 @@ func _detect_cli_probe_script() -> String:
         return _normalize_cli_probe_script(String(request.get("probe_script", "")))
     return ""
 
+func _wa2_user_argument_value(name: String) -> String:
+    var args: Array[String] = []
+    args.append_array(OS.get_cmdline_user_args())
+    for index in range(args.size()):
+        var argument := String(args[index])
+        if argument == name and index + 1 < args.size():
+            return String(args[index + 1])
+        if argument.begins_with(name + "="):
+            return argument.substr(name.length() + 1)
+    return ""
+
+func _wa2_user_argument_enabled(name: String) -> bool:
+    if OS.get_environment(name.to_upper().replace("-", "_")) == "1":
+        return true
+    var args: Array[String] = []
+    args.append_array(OS.get_cmdline_user_args())
+    return args.has(name)
+
 func _normalize_cli_probe_script(path: String) -> String:
     var normalized := path.strip_edges()
     if normalized.is_empty():
@@ -2892,7 +2915,6 @@ func _normalize_cli_probe_script(path: String) -> String:
         "res://scripts/gui_render_probe.gd",
         "res://scripts/perf_input_probe.gd",
         "res://scripts/runtime_regression_probe.gd",
-        "res://scripts/wa2_gui.gd",
     ]
     for item in known:
         if normalized == item or normalized.ends_with("/" + item.get_file()):
@@ -4682,6 +4704,13 @@ func _apply_engine_options() -> void:
         player.set_engine_option("default_font", runtime_default_font_path)
     if not runtime_font_dir_path.is_empty():
         player.set_engine_option("font_dir", runtime_font_dir_path)
+    if current_player_runtime_kind == RUNTIME_WA2:
+        if not runtime_default_font_path.is_empty():
+            player.set_engine_option("wa2.font_path", runtime_default_font_path)
+        var patch_dir := OS.get_environment("AETHER_WA2_PATCH_DIR").strip_edges()
+        if not patch_dir.is_empty():
+            player.set_engine_option("wa2.patch_dir", patch_dir)
+        player.set_engine_option("wa2.audio.silent", "1" if wa2_silent else "0")
     player.set_engine_option("error_dialog_logs", "1" if error_dialog_logs else "0")
     var onscripter_encoding := OS.get_environment("AETHERKIRI_ONS_ENCODING").strip_edges()
     if not onscripter_encoding.is_empty():
@@ -12330,6 +12359,7 @@ func _return_to_library_after_runtime_exit() -> void:
     if player != null:
         player.release_frame_texture()
         _cleanup_softpal_platform_ui()
+        _stop_wa2_audio()
         player.destroy_engine()
     last_texture_size = Vector2i.ZERO
     _set_game_runtime_orientation(false)
@@ -12347,6 +12377,9 @@ func _ready() -> void:
     add_child(vndb_resolver)
     vndb_resolver.resolved.connect(_on_vndb_cover_resolved)
     cli_probe_script = _detect_cli_probe_script()
+    wa2_import_root = _wa2_user_argument_value("--wa2-game-root").strip_edges()
+    wa2_auto_launch = _wa2_user_argument_enabled("--wa2-auto-launch")
+    wa2_silent = OS.get_environment("AETHER_WA2_SILENT") == "1"
     _apply_ui_font()
     DisplayServer.window_set_flag(DisplayServer.WINDOW_FLAG_TRANSPARENT, false)
     _apply_initial_window_size()
@@ -12764,6 +12797,7 @@ func _switch_runtime_player(runtime_kind: String) -> bool:
         RUNTIME_ADVHD,
         RUNTIME_ESCUDE,
         RUNTIME_ENTISGLS,
+        RUNTIME_WA2,
     ]:
         normalized = RUNTIME_KIRIKIRI
     # Returning to the library keeps the player Node but destroys its engine.
@@ -12786,6 +12820,7 @@ func _switch_runtime_player(runtime_kind: String) -> bool:
         # Recreate only its engine handle so UI signals, frame effects, and
         # platform services do not need one Node implementation per backend.
         _cleanup_softpal_platform_ui()
+        _stop_wa2_audio()
         player.destroy_engine()
         current_player_runtime_kind = normalized
     if not _ensure_player_initialized():
@@ -13529,6 +13564,7 @@ func _ensure_player_initialized() -> bool:
         if String(player.get_meta("aether_user_directory", "")) == user_dir \
             and String(player.get_meta("aether_cache_directory", "")) == cache_dir:
             return true
+        _stop_wa2_audio()
         player.destroy_engine()
     DirAccess.make_dir_recursive_absolute(cache_dir)
     if not player.initialize_engine(user_dir, cache_dir):
@@ -13559,6 +13595,7 @@ func _ensure_player_initialized() -> bool:
         RUNTIME_ADVHD,
         RUNTIME_ESCUDE,
         RUNTIME_ENTISGLS,
+        RUNTIME_WA2,
     ]:
         runtime_id = current_player_runtime_kind
     var runtime_result := int(player.set_engine_option("runtime", runtime_id))
@@ -13569,6 +13606,7 @@ func _ensure_player_initialized() -> bool:
             player.get_last_error(),
         ])
         _cleanup_softpal_platform_ui()
+        _stop_wa2_audio()
         player.destroy_engine()
         return false
 
@@ -13661,7 +13699,36 @@ func _continue_ready_after_legal_gate() -> void:
         _append_log("Native auto-start ignored. Set AETHERKIRI_ENABLE_AUTO_START=1 for automation runs.")
     if not OS.get_environment("AETHERKIRI_CAPTURE_UI").is_empty():
         call_deferred("_capture_ui_after_ready")
+    if not wa2_import_root.is_empty():
+        call_deferred("_import_wa2_from_command_line")
     call_deferred("_check_app_update_silently")
+
+func _import_wa2_from_command_line() -> void:
+    var root := _resolve_game_path(wa2_import_root)
+    if not DirAccess.dir_exists_absolute(root):
+        _append_log("WA2 import path is not a directory: %s" % root)
+        return
+    var game := _game_info_from_path(root)
+    if String(game.get("engine", "")) != RUNTIME_WA2:
+        _append_log("WA2 import path did not match the Leaf TtT runtime fingerprint: %s" % root)
+        return
+    var existing := {}
+    for item in _load_game_list():
+        if String(item.get("path", "")) == root:
+            existing = item
+            break
+    if existing.is_empty():
+        if not _add_game_path(root):
+            return
+    else:
+        _update_game(root, {"engine": RUNTIME_WA2, "launchFile": ""})
+    _refresh_known_games_for_auto_start()
+    selected_game = _find_known_game_by_path(root)
+    if selected_game.is_empty():
+        selected_game = game
+    _show_detail(selected_game)
+    if wa2_auto_launch:
+        call_deferred("_start_selected_game")
 
 func _request_android_storage_permissions() -> void:
     if OS.get_name() != "Android":
@@ -15308,6 +15375,7 @@ func _probe_cleanup_and_quit(code: int, record_cleanup: Callable = Callable()) -
         await get_tree().process_frame
         player.release_frame_texture()
         _cleanup_softpal_platform_ui()
+        _stop_wa2_audio()
         player.destroy_engine()
     if record_cleanup.is_valid():
         record_cleanup.call({"event": "cleanup_complete", "exit_code": code})
@@ -15405,7 +15473,17 @@ func _apply_pending_video_resume(state: Dictionary) -> bool:
         video_progress_slider.value = target
     return true
 
+func _stop_wa2_audio() -> void:
+    if is_instance_valid(wa2_audio_host):
+        wa2_audio_host.stop_session()
+
+func _exit_tree() -> void:
+    _stop_wa2_audio()
+
 func _process(delta: float) -> void:
+    if not game_running:
+        if is_instance_valid(wa2_audio_host) and wa2_audio_host.runtime != null:
+            _stop_wa2_audio()
     var process_started := Time.get_ticks_usec()
     _poll_game_imports(delta)
     _poll_android_storage_permission_request()
@@ -15545,6 +15623,8 @@ func _process(delta: float) -> void:
                         tick_ms,
                         player.get_renderer_info(),
                     ])
+                if active_runtime_kind == RUNTIME_WA2 and is_instance_valid(wa2_audio_host):
+                    wa2_audio_host.poll(delta)
                 _sync_game_text_input_state()
                 var update_start := Time.get_ticks_usec()
                 var frame_rendered_this_tick := true
@@ -16092,6 +16172,7 @@ func _notification(what: int) -> void:
         frame_upscale_source_texture = null
         player.release_frame_texture()
         _cleanup_softpal_platform_ui()
+        _stop_wa2_audio()
         player.destroy_engine()
 
 func _handle_go_back_request() -> void:
@@ -16180,6 +16261,7 @@ func _quit_app_for_go_back() -> void:
         viewport.texture = null
         frame_upscale_source_texture = null
         player.release_frame_texture()
+        _stop_wa2_audio()
         player.destroy_engine()
     get_tree().quit(0)
 
@@ -16205,6 +16287,8 @@ func _pause_game_for_lifecycle(reason: String) -> void:
         ])
         return
     app_lifecycle_paused = true
+    if is_instance_valid(wa2_audio_host):
+        wa2_audio_host.set_paused(true)
     _log_lifecycle_line("app_paused reason=%s" % reason)
 
 func _resume_game_for_lifecycle(reason: String) -> void:
@@ -16223,6 +16307,8 @@ func _resume_game_for_lifecycle(reason: String) -> void:
         ])
         return
     app_lifecycle_paused = false
+    if is_instance_valid(wa2_audio_host):
+        wa2_audio_host.set_paused(false)
     _clear_game_input_capture()
     _log_lifecycle_line("app_resumed reason=%s" % reason)
 
@@ -16243,7 +16329,9 @@ func _on_backend_selected(index: int) -> void:
     _apply_backend(true)
 
 func _apply_backend(log_selection: bool) -> void:
-    var result: int = int(player.set_render_backend(selected_backend))
+    # WA2 supplies its native RGBA frame; keep the saved backend for other runtimes.
+    var session_backend := "Debug CPU" if current_player_runtime_kind == RUNTIME_WA2 else selected_backend
+    var result: int = int(player.set_render_backend(session_backend))
     if result != ENGINE_RESULT_OK:
         render_errors += 1
         var backend_error_message := "Renderer selection failed: %s %s" % [
@@ -16391,6 +16479,13 @@ func _on_open_game() -> void:
         _append_log(launch_error_message)
         return
 
+    _stop_wa2_audio()
+    if detected_runtime == RUNTIME_WA2:
+        if not is_instance_valid(wa2_audio_host):
+            wa2_audio_host = Wa2AudioHost.new()
+            wa2_audio_host.name = "Wa2AudioHost"
+            add_child(wa2_audio_host)
+        wa2_audio_host.start_session(player, not wa2_silent)
     game_running = true
     _set_game_runtime_frame_pacing(true)
     if diagnostic_session != null:

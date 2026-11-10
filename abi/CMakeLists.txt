@@ -87,4 +87,22 @@ endif()
 
 if(WIN32)
     target_link_libraries(engine_api PRIVATE dbghelp)
+    if(BUILD_GODOT_EXTENSION)
+        # An implementation-only API change may not relink the extension. Stage
+        # this DLL from its own target so Godot never loads the previous build.
+        # TARGET POST_BUILD must be declared where engine_api is created.
+        string(TOLOWER "${CMAKE_BUILD_TYPE}" _engine_api_windows_config_dir)
+        if(NOT _engine_api_windows_config_dir)
+            set(_engine_api_windows_config_dir "$<LOWER_CASE:$<CONFIG>>")
+        endif()
+        set(_engine_api_windows_stage_dir
+            "${CMAKE_SOURCE_DIR}/apps/godot_app/bin/windows/${_engine_api_windows_config_dir}")
+        add_custom_command(TARGET engine_api POST_BUILD
+            COMMAND ${CMAKE_COMMAND} -E make_directory
+                "${_engine_api_windows_stage_dir}"
+            COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                "$<TARGET_FILE:engine_api>"
+                "${_engine_api_windows_stage_dir}/engine_api.dll"
+            VERBATIM)
+    endif()
 endif()

@@ -95,12 +95,6 @@ if(AETHERKIRI_INTERNAL_ENABLED)
             AETHERKIRI_INTERNAL_ARTEMIS=1)
     endif()
 
-    if(COMMAND aetherinternal_extend_wa2)
-        aetherinternal_extend_wa2(aether_krkr2_runtime)
-        target_compile_definitions(aether_krkr2_runtime PRIVATE
-            AETHERKIRI_INTERNAL_WA2=1
-            AETHERKIRI_ENABLE_WA2_RUNTIME=1)
-    endif()
 endif()
 
 # The AetherInternal extension functions above run find_package(OpenAL) in

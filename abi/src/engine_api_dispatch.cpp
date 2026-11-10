@@ -1490,6 +1490,13 @@ engine_result_t engine_set_option(engine_handle_t public_handle,
     SetProviderError(handle, result, "runtime provider rejected option");
     return result;
   }
+  if (handle->backend == BackendKind::kUndecided && LegacyServices() == nullptr) {
+    // Provider-only hosts queue startup options until game detection creates
+    // the provider. SelectBackendLocked validates and applies them before Open.
+    handle->last_error.clear();
+    SetThreadError(nullptr);
+    return ENGINE_RESULT_OK;
+  }
   result = EnsureLegacyLocked(handle);
   if (result != ENGINE_RESULT_OK) return result;
   return LegacyServices()->set_option(handle->legacy, option);

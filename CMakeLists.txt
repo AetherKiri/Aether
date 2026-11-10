@@ -22,8 +22,6 @@ endif ()
 add_compile_definitions(
         $<$<CONFIG:Debug>:DEBUG>
         $<$<CONFIG:Debug>:_DEBUG>   # 对于 MSVC 兼容性
-        # Artemis is a supported runtime in every product configuration.
-        AETHERKIRI_ENABLE_ARTEMIS_RUNTIME
         $<$<NOT:$<CONFIG:Debug>>:NDEBUG>
 )
 
@@ -128,30 +126,16 @@ if(WEB OR EMSCRIPTEN)
     )
 endif()
 
+include(cmake/AetherKiriRuntimes.cmake)
+if(AETHERKIRI_ENABLE_ARTEMIS_RUNTIME)
+    add_compile_definitions(AETHERKIRI_ENABLE_ARTEMIS_RUNTIME)
+endif()
+
 option(ENABLE_TESTS "enable tests execute build(exclude android)" ON)
 option(BUILD_TOOLS "build tools execute build(exclude android ios)" ON)
 option(BUILD_ENGINE_API "build engine_api bridge shared library" ON)
 option(BUILD_GODOT_EXTENSION "build Godot GDExtension host library" ON)
-option(AETHERKIRI_ENABLE_FLASH "build the embedded Ruffle Flash player (requires Rust and Java)" ON)
-option(AETHERKIRI_ENABLE_RFVP "build the experimental native FVP runtime (requires Rust)" OFF)
 option(BUILD_GPU_BRIDGE "build legacy external GPU bridge renderer" OFF)
-option(AETHERKIRI_ENABLE_ONSCRIPTER
-       "enable the bundled OnscripterYuri runtime" ON)
-option(AETHERKIRI_ENABLE_SYSTEM3
-       "enable the native AliceSoft System 1/2/3 runtime" ON)
-option(AETHERKIRI_ENABLE_XSYSTEM35
-       "enable the native AliceSoft System 3.5/3.9 runtime" ON)
-option(AETHERKIRI_ENABLE_XSYSTEM4
-       "enable the native AliceSoft System 4 runtime" ON)
-option(AETHERKIRI_ENABLE_SIGLUS
-       "enable the bundled siglus_rs runtime (requires a Rust toolchain)" ON)
-option(AETHERKIRI_ENABLE_CMVS "enable the CMVS runtime on macOS, iOS, Android and Linux" ON)
-option(AETHERKIRI_ENABLE_MINORI
-       "enable the independent Rust Minori runtime" ON)
-option(AETHERKIRI_ENABLE_ENTISGLS
-       "enable the public EntisGLS / Cotopha runtime" ON)
-option(AETHERKIRI_ENABLE_BGI
-       "enable the optional private BGI/Ethornell provider" ON)
 option(AETHERKIRI_ENABLE_CODE_OBFUSCATION
        "obfuscate private Internal translation units in release builds" OFF)
 set(AETHERKIRI_OBFUSCATOR_PLUGIN "" CACHE FILEPATH
@@ -160,8 +144,6 @@ set(AETHERKIRI_OBFUSCATION_BUILD_ID "local" CACHE STRING
     "non-secret identifier mixed into deterministic obfuscation output")
 option(AETHERKIRI_ENABLE_INTERNAL
        "enable optional private AetherInternal packages when available" ON)
-option(AETHERKIRI_ENABLE_SOFTPAL_RUNTIME
-       "enable the optional native SoftPal runtime provider" OFF)
 set(AETHERKIRI_SOFTPAL_DIR
     "${CMAKE_CURRENT_SOURCE_DIR}/packages/AetherSoftPal"
     CACHE PATH "path to an AetherSoftPal package checkout")
@@ -171,6 +153,9 @@ set(AETHERKIRI_FRAME_EFFECT_HOST_API_VERSION 3)
 set(AETHERKIRI_INTERNAL_DIR
     "${CMAKE_CURRENT_SOURCE_DIR}/packages/AetherInternal"
     CACHE PATH "path to an AetherInternal package checkout")
+set(AETHERKIRI_LEAFTTT_DIR
+    "${CMAKE_CURRENT_SOURCE_DIR}/packages/AetherLeafTtt"
+    CACHE PATH "path to an AetherLeafTtt runtime checkout")
 # Local checkouts for the runtime submodules. Point these at a working copy
 # to iterate on a runtime without committing a gitlink bump (same pattern as
 # AETHERKIRI_INTERNAL_DIR).
@@ -198,8 +183,6 @@ set(AETHERKIRI_ENTISGLS_DIR
 set(AETHERKIRI_RFVP_DIR
     "${CMAKE_CURRENT_SOURCE_DIR}/packages/rfvp"
     CACHE PATH "path to an rfvp runtime checkout")
-option(AETHERKIRI_ENABLE_MAGES
-       "enable the embedded MAGES. (impacto host) runtime provider" ON)
 set(AETHERKIRI_MAGES_DIR
     "${CMAKE_CURRENT_SOURCE_DIR}/packages/AetherMAGES"
     CACHE PATH "path to an AetherMAGES (impacto) runtime submodule checkout")
@@ -252,6 +235,16 @@ if(AETHERKIRI_INTERNAL_ENABLED)
     message(STATUS "AetherInternal E-mote/Live2D package: enabled")
 else()
     message(STATUS "AetherInternal package: unavailable; using public fallbacks")
+endif()
+
+if(AETHERKIRI_ENABLE_WA2)
+    set(AetherLeafTtt_DIR "${AETHERKIRI_LEAFTTT_DIR}/cmake")
+    find_package(AetherLeafTtt CONFIG QUIET NO_DEFAULT_PATH)
+    if(NOT AetherLeafTtt_FOUND OR
+       NOT COMMAND aether_leafttt_add_wa2_sources)
+        message(FATAL_ERROR
+            "WA2 is enabled but the AetherLeafTtt provider package is unavailable")
+    endif()
 endif()
 
 if(AETHERKIRI_ENABLE_SOFTPAL_RUNTIME)
@@ -307,7 +300,9 @@ endif()
 # The krkr2 engine repository defines the engine targets (external/, core/,
 # plugins/); its integration glue stays in bridge/krkr2_runtime.
 add_subdirectory(bridge/game_hooks)
-add_subdirectory(${AETHERKIRI_KRKR_DIR})
+if(AETHERKIRI_ENABLE_KRKR2)
+    add_subdirectory(${AETHERKIRI_KRKR_DIR})
+endif()
 
 # AetherInternal contributes sources to public targets but does not own the
 # obfuscation policy. Register only package-owned source units for protected
@@ -353,7 +348,9 @@ endif()
 # installs its engine_legacy_* surface into engine_api through the legacy
 # services table (Phase 2d link flip — engine_api itself never links it).
 if(BUILD_ENGINE_API OR AETHERKIRI_BUILD_NATIVE_RUNTIME_TESTS OR AETHERKIRI_ENABLE_RFVP)
-    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/bridge/krkr2_runtime)
+    if(AETHERKIRI_ENABLE_KRKR2)
+        add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/bridge/krkr2_runtime)
+    endif()
     add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/abi)
 endif()
 

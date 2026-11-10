@@ -2,14 +2,23 @@
 #include "runtime_host_extension.h"
 #include "engine_options.h"
 #include "engine_runtime_provider.h"
+#if defined(AETHERKIRI_WITH_WA2)
+extern "C" void AetherInternalRegisterWa2Runtime(void);
+#endif
+#if defined(AETHERKIRI_HOST_FLASH)
 #include "flash_player.h"
+#endif
+#if defined(AETHERKIRI_HOST_TYRANO)
 #include "tyrano_player.h"
+#endif
 #include "native_controls_overlay.h"
 #include "mobile_window.h"
+#if defined(AETHERKIRI_HOST_RENPY)
+#include "renpy_native.h"
+#endif
 #if defined(__APPLE__)
 #include <TargetConditionals.h>
 #endif
-#include "renpy_native.h"
 #if defined(AETHERKIRI_WITH_SYSTEM3)
 #include "system3_runtime_provider.h"
 #endif
@@ -10244,14 +10253,20 @@ public:
         callbacks.poll_read_rgba = BridgePollReadRgba;
         callbacks.discard_read_rgba = BridgeDiscardReadRgba;
         callbacks.flush = BridgeFlush;
+#if defined(AETHERKIRI_WITH_KRKR2)
+        // These ABI wrappers install callbacks in the KiriKiri renderer.
+        // Independent providers receive their own bridge tables below.
         engine_register_godot_gpu_bridge(&callbacks);
+#endif
         TVPGodotGpuBatchCallbacks batch_callbacks{};
         batch_callbacks.struct_size = sizeof(batch_callbacks);
         batch_callbacks.abi_version =
             TVP_GODOT_GPU_BATCH_CALLBACKS_ABI_VERSION;
         batch_callbacks.begin_batch = BridgeBeginBatch;
         batch_callbacks.end_batch = BridgeEndBatch;
+#if defined(AETHERKIRI_WITH_KRKR2)
         engine_register_godot_gpu_batch_bridge(&batch_callbacks);
+#endif
 #if defined(AETHERKIRI_WITH_MAGES)
         RegisterMagesGpuBridge();
 #endif
@@ -10278,8 +10293,10 @@ public:
             BridgeImportAndroidHardwareBuffer;
         external_texture_callbacks.publish_native_write =
             BridgePublishNativeWrite;
+#if defined(AETHERKIRI_WITH_KRKR2)
         engine_register_godot_gpu_external_texture_bridge(
             &external_texture_callbacks);
+#endif
 
         CharString writable_utf8 = writable_path.utf8();
         CharString cache_utf8 = cache_path.utf8();
@@ -14290,6 +14307,9 @@ void InitializeAetherRuntime(ModuleInitializationLevel level) {
     if (level != MODULE_INITIALIZATION_LEVEL_SCENE) {
         return;
     }
+#if defined(AETHERKIRI_WITH_WA2)
+    AetherInternalRegisterWa2Runtime();
+#endif
 #if defined(AETHERKIRI_INTERNAL_FRAME_EFFECTS)
     RegisterAetherInternalFrameEffects();
 #endif
@@ -14348,11 +14368,17 @@ void InitializeAetherRuntime(ModuleInitializationLevel level) {
             ResultToString(shader_result));
     }
     ClassDB::register_class<AetherRuntimePlayer>();
+#if defined(AETHERKIRI_HOST_FLASH)
     RegisterAetherFlashPlayer();
+#endif
+#if defined(AETHERKIRI_HOST_TYRANO)
     RegisterAetherTyranoPlayer();
+#endif
     RegisterAetherNativeControls();
     RegisterAetherMobileWindow();
+#if defined(AETHERKIRI_HOST_RENPY)
     RegisterAetherRenpyNativePlayer();
+#endif
 }
 
 void DeinitializeAetherRuntime(ModuleInitializationLevel level) {
@@ -14363,9 +14389,11 @@ void DeinitializeAetherRuntime(ModuleInitializationLevel level) {
     BridgeFlush();
     ReleaseRemainingGodotGpuTextures();
     ReleaseGodotGpuPipeline();
+#if defined(AETHERKIRI_WITH_KRKR2)
     engine_register_godot_gpu_batch_bridge(nullptr);
     engine_register_godot_gpu_external_texture_bridge(nullptr);
     engine_register_godot_gpu_bridge(nullptr);
+#endif
 #if defined(AETHERKIRI_INTERNAL_RUNTIME_GPU_BRIDGE)
     RegisterAetherInternalRuntimeGpuBridge(nullptr, nullptr, nullptr);
 #endif

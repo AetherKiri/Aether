@@ -71,6 +71,7 @@ const RUNTIME_FONT_DIR := "user://runtime_fonts"
 const RUNTIME_DEFAULT_FONT_FILE := "default.otf"
 const RUNTIME_SYMBOL_FONT_FILE := "symbols.ttf"
 const ProbeConfig = preload("res://scripts/probe_config.gd")
+const ProbeFrameMetrics = preload("res://scripts/probe_frame_metrics.gd")
 const RuntimeRegressionProbe = preload("res://scripts/runtime_regression_probe.gd")
 const RuntimeFormDialog = preload("res://scripts/runtime_form_dialog.gd")
 const GameMetadata = preload("res://scripts/game_metadata.gd")
@@ -2611,6 +2612,7 @@ const Wa2AudioHost = preload("res://scripts/wa2_audio_host.gd")
 var wa2_audio_host: Node
 var cli_probe_audio_capture: RefCounted
 var cli_probe_runtime_debug := false
+var cli_probe_frame_metrics: Array[Dictionary] = []
 var verbose_render_log := false
 var diagnostics_enabled := false
 var ui_log_enabled := false
@@ -14288,6 +14290,8 @@ func _run_cli_script_probe() -> void:
         await _probe_cleanup_and_quit(2)
 
 func _prepare_cli_probe_view(config: Dictionary) -> void:
+    if config.has("host_max_fps"):
+        Engine.max_fps = maxi(0, int(config["host_max_fps"]))
     var window_size := ProbeConfig.window_size(config, Vector2i(1280, 720))
     if window_size.x > 0 and window_size.y > 0:
         DisplayServer.window_set_size(window_size)
@@ -14476,6 +14480,7 @@ func _run_cli_smoke_probe(config: Dictionary, target_game_path: String) -> void:
     await _probe_cleanup_and_quit(0)
 
 func _run_cli_step_probe(config: Dictionary, target_game_path: String) -> void:
+    cli_probe_frame_metrics.clear()
     cli_probe_runtime_debug = bool(config.get("runtime_debug", false))
     if bool(config.get("audio_capture", false)):
         cli_probe_audio_capture = load("res://scripts/probe_audio_capture.gd").new()
@@ -14739,6 +14744,10 @@ func _probe_run_click_stream(config: Dictionary, step: int, label: String, actio
     var sample_frame_max := 0.0
     var sample_spikes := 0
     var sample_index := 0
+    var record_metrics := bool(action.get("record_frame_metrics", config.get("record_frame_metrics", false)))
+    var frame_intervals: Array = []
+    var frame_samples: Array = []
+    var previous_frame_ticks := stream_start_ticks
 
     if label.is_empty() or label == "click_stream":
         label = "click_stream_%d_%d_%d" % [frames, int(pos.x), int(pos.y)]
@@ -14849,6 +14858,16 @@ func _probe_run_click_stream(config: Dictionary, step: int, label: String, actio
             deferred_captures.append(record)
         await get_tree().process_frame
         var sample_end_ticks := Time.get_ticks_usec()
+        if record_metrics:
+            var interval_ms := float(sample_end_ticks - previous_frame_ticks) / 1000.0
+            previous_frame_ticks = sample_end_ticks
+            frame_intervals.append(interval_ms)
+            var runtime_state = JSON.parse_string(String(player.get_plugin_debug_info()))
+            var loading := bool(runtime_state.get("loading", false)) if runtime_state is Dictionary else false
+            var budget_yield = runtime_state.get("timesliceExpired") if runtime_state is Dictionary else null
+            var presentations = runtime_state.get("presentations") if runtime_state is Dictionary else null
+            var frame_serial = runtime_state.get("frameSerial") if runtime_state is Dictionary else null
+            frame_samples.append([frame_index, interval_ms, input_ms, tick_ms, update_ms, loading, budget_yield, presentations, frame_serial])
         var sample_elapsed_ms := float(sample_end_ticks - sample_start_ticks) / 1000.0
         var stream_finished := frame_index + 1 >= frames
         if sample_interval_ms > 0 and (sample_elapsed_ms >= sample_interval_ms or stream_finished):
@@ -14903,6 +14922,21 @@ func _probe_run_click_stream(config: Dictionary, step: int, label: String, actio
     # Disk encoding is intentionally deferred until after the measured run.
     # Do not charge that offline work to the presented frame rate.
     var elapsed_sec: float = maxf(0.0001, float(Time.get_ticks_usec() - stream_start_ticks) / 1000000.0)
+    if record_metrics:
+        var summary := ProbeFrameMetrics.summarize(frame_intervals, float(config.get("minimum_fps", 30.0)))
+        summary["label"] = label
+        summary["capture_during_measurement"] = capture_every > 0 or deferred_capture_every > 0
+        summary["samples_columns"] = ["frame", "interval_ms", "input_ms", "tick_ms", "upload_ms", "runtime_loading", "runtime_budget_yield", "game_presentations", "game_frame_serial"]
+        summary["samples"] = frame_samples
+        cli_probe_frame_metrics.append(summary)
+        var metrics_file := FileAccess.open(_default_output_path("frame-metrics.json"), FileAccess.WRITE)
+        if metrics_file != null:
+            metrics_file.store_string(JSON.stringify({
+                "display_server": DisplayServer.get_name(), "host_max_fps": Engine.max_fps,
+                "window_size": [get_window().size.x, get_window().size.y], "renderer": player.get_renderer_info(),
+                "measurement": "Host frame intervals including the frame wait; not unique content FPS or GPU scanout timestamps",
+                "scenes": cli_probe_frame_metrics,
+            }, "  "))
     var capture_index: Array[Dictionary] = []
     for record in deferred_captures:
         var capture_path := _default_output_path("%s-f%04d.png" % [label, record["frame"]])

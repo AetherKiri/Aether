@@ -5,11 +5,84 @@ from pathlib import Path
 import subprocess
 import sys
 import tempfile
+import textwrap
 import unittest
 
 
 ROOT = Path(__file__).resolve().parents[2]
 SCRIPT = ROOT / ".github/scripts/configure-android-vcpkg-cache.py"
+WORKFLOW = ROOT / ".github/workflows/build.yml"
+
+
+def android_bootstrap_command():
+    android_job = WORKFLOW.read_text().split("  android:\n", 1)[1]
+    step = android_job.split("      - name: Bootstrap vcpkg\n", 1)[1]
+    step = step.split("\n      - name:", 1)[0]
+    return textwrap.dedent(step.split("        run: |\n", 1)[1])
+
+
+class AndroidVcpkgBootstrapTests(unittest.TestCase):
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temp.cleanup)
+        self.workspace = Path(self.temp.name) / "workspace with spaces"
+        self.checkout = self.workspace / ".devtools/vcpkg"
+        (self.checkout / ".git").mkdir(parents=True)
+        self.downloads = self.workspace / ".aetherkiri-cache/android/vcpkg-downloads"
+        self.binaries = self.workspace / ".aetherkiri-cache/android/vcpkg-binaries"
+        self.env_file = self.workspace / "github-env"
+        self.env = dict(os.environ, GITHUB_WORKSPACE=str(self.workspace),
+                        GITHUB_ENV=str(self.env_file), VCPKG_DOWNLOADS=str(self.downloads),
+                        VCPKG_DEFAULT_BINARY_CACHE=str(self.binaries))
+        # Exercise the real workflow step with vcpkg's bootstrap precondition.
+        # Cache configuration needs an already bootstrapped executable, so
+        # testing configure-android-vcpkg-cache.py alone misses this earlier bug.
+        bootstrap = self.checkout / "bootstrap-vcpkg.sh"
+        bootstrap.write_text(textwrap.dedent("""\
+            #!/bin/sh
+            set -eu
+            if [ ! -d "$VCPKG_DOWNLOADS" ]; then
+              echo "VCPKG_DOWNLOADS was set, but that was not a directory." >&2
+              exit 1
+            fi
+            test "$1" = -disableMetrics
+            printf 'bootstrapped\\n' >> bootstrap-count
+            printf '#!/bin/sh\\nexit 0\\n' > vcpkg
+            chmod +x vcpkg
+            """))
+        bootstrap.chmod(0o755)
+
+    def run_bootstrap(self):
+        result = subprocess.run(["bash", "-euo", "pipefail", "-c",
+                                 android_bootstrap_command()], cwd=self.workspace,
+                                env=self.env, capture_output=True, text=True)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertTrue(self.downloads.is_dir())
+        self.assertTrue(self.binaries.is_dir())
+        self.assertIn(f"VCPKG_ROOT={self.checkout}\n", self.env_file.read_text())
+
+    def test_cache_miss_creates_directories_before_bootstrap(self):
+        self.assertFalse(self.downloads.parent.exists())
+        self.run_bootstrap()
+        self.assertTrue(os.access(self.checkout / "vcpkg", os.X_OK))
+
+    def test_cache_hit_preserves_downloads_and_binaries(self):
+        self.downloads.mkdir(parents=True)
+        self.binaries.mkdir(parents=True)
+        source = self.downloads / "source.tar.gz"
+        binary = self.binaries / "dependency.zip"
+        source.write_bytes(b"cached source")
+        binary.write_bytes(b"cached binary")
+        self.run_bootstrap()
+        self.assertEqual(source.read_bytes(), b"cached source")
+        self.assertEqual(binary.read_bytes(), b"cached binary")
+
+    def test_existing_tool_still_prepares_cache_directories(self):
+        self.run_bootstrap()
+        self.downloads.rmdir()
+        self.binaries.rmdir()
+        self.run_bootstrap()
+        self.assertEqual((self.checkout / "bootstrap-count").read_text(), "bootstrapped\n")
 
 
 class AndroidDependencyCacheTests(unittest.TestCase):

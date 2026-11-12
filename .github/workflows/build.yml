@@ -303,6 +303,9 @@ jobs:
       - name: Bootstrap vcpkg
         run: |
           set -euo pipefail
+          # A cache miss does not create these paths, but bootstrap requires
+          # an explicitly configured VCPKG_DOWNLOADS directory to exist.
+          mkdir -p "$VCPKG_DOWNLOADS" "$VCPKG_DEFAULT_BINARY_CACHE"
           if [[ -d ".devtools/vcpkg" && ! -d ".devtools/vcpkg/.git" ]]; then
             rm -rf .devtools/vcpkg
           fi

@@ -88,6 +88,8 @@ jobs:
       GODOT_RELEASE: 4.7.2-stable
       GODOT_TEMPLATE_VERSION: 4.7.2.stable
       ANDROID_NDK_VERSION: 28.1.13356709
+      VCPKG_DEFAULT_BINARY_CACHE: ${{ github.workspace }}/.aetherkiri-cache/android/vcpkg-binaries
+      VCPKG_DOWNLOADS: ${{ github.workspace }}/.aetherkiri-cache/android/vcpkg-downloads
 
     steps:
       - name: Checkout Repository
@@ -171,7 +173,7 @@ jobs:
       - name: Install Build Systems
         run: |
           sudo apt-get update
-          sudo apt-get install -y cmake ninja-build pkg-config autoconf autoconf-archive automake libtool gettext bison flex curl unzip zip zstd ccache jq mono-complete
+          sudo apt-get install -y cmake ninja-build pkg-config autoconf autoconf-archive automake libtool gettext bison flex curl unzip zip zstd ccache jq
           rustup target add aarch64-linux-android armv7-linux-androideabi x86_64-linux-android i686-linux-android
 
       - name: Free unused Android SDK components
@@ -286,9 +288,24 @@ jobs:
       - name: Check TyranoScript Android host and resources
         run: python3 tools/test_tyrano_android.py
 
+      - name: Test Android dependency cache configuration
+        run: python3 -m unittest discover -s tests/python -p test_android_dependency_cache.py -v
+
+      - name: Restore Android dependency downloads
+        id: restore-android-vcpkg-downloads
+        uses: actions/cache/restore@v6
+        with:
+          path: .aetherkiri-cache/android/vcpkg-downloads
+          key: ${{ runner.os }}-${{ runner.arch }}-android-vcpkg-downloads-v1-${{ hashFiles('vcpkg-configuration.json', 'vcpkg.json', 'vcpkg/ports/**', 'vcpkg/triplets/**') }}
+          restore-keys: |
+            ${{ runner.os }}-${{ runner.arch }}-android-vcpkg-downloads-v1-
+
       - name: Bootstrap vcpkg
         run: |
           set -euo pipefail
+          # A cache miss does not create these paths, but bootstrap requires
+          # an explicitly configured VCPKG_DOWNLOADS directory to exist.
+          mkdir -p "$VCPKG_DOWNLOADS" "$VCPKG_DEFAULT_BINARY_CACHE"
           if [[ -d ".devtools/vcpkg" && ! -d ".devtools/vcpkg/.git" ]]; then
             rm -rf .devtools/vcpkg
           fi
@@ -301,10 +318,21 @@ jobs:
           fi
           echo "VCPKG_ROOT=${GITHUB_WORKSPACE}/.devtools/vcpkg" >> "$GITHUB_ENV"
 
-      - name: Configure vcpkg binary cache
-        env:
-          VCPKG_PACKAGES_TOKEN: ${{ github.token }}
-        run: bash .github/scripts/configure-vcpkg-binary-cache.sh "$VCPKG_ROOT/vcpkg"
+      - name: Configure Android dependency cache
+        id: android-vcpkg-cache
+        run: python3 .github/scripts/configure-android-vcpkg-cache.py "$VCPKG_ROOT/vcpkg"
+
+      - name: Restore Android dependency binaries
+        id: restore-android-vcpkg-binaries
+        uses: actions/cache/restore@v6
+        with:
+          path: .aetherkiri-cache/android/vcpkg-binaries
+          # The digest changes with vcpkg, host build tools or the NDK.
+          # Stable keys avoid uploading the same dependencies on every run.
+          key: ${{ runner.os }}-${{ runner.arch }}-android-vcpkg-binaries-v1-${{ env.ANDROID_NDK_VERSION }}-${{ hashFiles('vcpkg-configuration.json', 'vcpkg.json', 'vcpkg/ports/**', 'vcpkg/triplets/**', 'CMakePresets.json', '.github/scripts/configure-android-vcpkg-cache.py') }}-${{ steps.android-vcpkg-cache.outputs.toolchain-key }}
+          restore-keys: |
+            ${{ runner.os }}-${{ runner.arch }}-android-vcpkg-binaries-v1-${{ env.ANDROID_NDK_VERSION }}-${{ hashFiles('vcpkg-configuration.json', 'vcpkg.json', 'vcpkg/ports/**', 'vcpkg/triplets/**', 'CMakePresets.json', '.github/scripts/configure-android-vcpkg-cache.py') }}-
+            ${{ runner.os }}-${{ runner.arch }}-android-vcpkg-binaries-v1-${{ env.ANDROID_NDK_VERSION }}-
 
       - name: Configure Android signing
         env:
@@ -407,6 +435,20 @@ jobs:
         with:
           path: .ccache
           key: ${{ steps.restore-ccache.outputs.cache-primary-key }}
+
+      - name: Save Android dependency downloads
+        if: success() && github.event_name != 'pull_request' && env.AETHERKIRI_VCPKG_CACHE_WRITE == 'true' && steps.restore-android-vcpkg-downloads.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v6
+        with:
+          path: .aetherkiri-cache/android/vcpkg-downloads
+          key: ${{ steps.restore-android-vcpkg-downloads.outputs.cache-primary-key }}
+
+      - name: Save Android dependency binaries
+        if: success() && github.event_name != 'pull_request' && env.AETHERKIRI_VCPKG_CACHE_WRITE == 'true' && steps.restore-android-vcpkg-binaries.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v6
+        with:
+          path: .aetherkiri-cache/android/vcpkg-binaries
+          key: ${{ steps.restore-android-vcpkg-binaries.outputs.cache-primary-key }}
 
   ios:
     # Upstream bot candidates run only the secretless RFVP provider checks.

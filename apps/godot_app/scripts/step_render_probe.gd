@@ -2,6 +2,7 @@ extends SceneTree
 
 const ProbeConfig = preload("res://scripts/probe_config.gd")
 const GameInputMapping = preload("res://scripts/game_input_mapping.gd")
+const ProbeFrameMetrics = preload("res://scripts/probe_frame_metrics.gd")
 const STARTUP_SUCCEEDED := 2
 const STARTUP_FAILED := 3
 const POINTER_DOWN := 1
@@ -16,6 +17,7 @@ var player
 var rect: TextureRect
 var test_config := {}
 var output_dir := "/tmp"
+var frame_metrics: Array[Dictionary] = []
 
 func _initialize() -> void:
     test_config = ProbeConfig.load()
@@ -29,6 +31,8 @@ func _initialize() -> void:
         _env_int("AETHERKIRI_PROBE_WINDOW_W", 1600),
         _env_int("AETHERKIRI_PROBE_WINDOW_H", 900)
     ))
+    if test_config.has("host_max_fps"):
+        Engine.max_fps = maxi(0, int(test_config["host_max_fps"]))
 
     rect = TextureRect.new()
     rect.set_anchors_preset(Control.PRESET_FULL_RECT)
@@ -491,7 +495,11 @@ func _run_click_stream(step: int, label: String, action: Dictionary) -> int:
     var input_events := 0
     var clicks_sent := 0
     var measured_frames := 0
+    var intervals: Array = []
+    var samples: Array = []
+    var record_metrics := bool(action.get("record_frame_metrics", test_config.get("record_frame_metrics", false)))
     var stream_start_ticks := Time.get_ticks_usec()
+    var previous_frame_ticks := stream_start_ticks
 
     if label.is_empty() or label == "click_stream":
         label = "click_stream_%d_%d_%d" % [frames, int(pos.x), int(pos.y)]
@@ -583,13 +591,38 @@ func _run_click_stream(step: int, label: String, action: Dictionary) -> int:
                     deferred_image = deferred_image.get_region(bounded_crop)
             deferred_captures.append({"frame": frame_index, "image": deferred_image})
         await process_frame
-        var present_ms := float(Time.get_ticks_usec() - frame_start) / 1000.0
+        var presented_at := Time.get_ticks_usec()
+        var present_ms := float(presented_at - previous_frame_ticks) / 1000.0
+        previous_frame_ticks = presented_at
+        if record_metrics:
+            intervals.append(present_ms)
+            var runtime_state = JSON.parse_string(String(player.get_plugin_debug_info()))
+            var loading := bool(runtime_state.get("loading", false)) if runtime_state is Dictionary else false
+            var budget_yield = runtime_state.get("timesliceExpired") if runtime_state is Dictionary else null
+            var presentations = runtime_state.get("presentations") if runtime_state is Dictionary else null
+            var frame_serial = runtime_state.get("frameSerial") if runtime_state is Dictionary else null
+            samples.append([frame_index, present_ms, input_ms, tick_ms, update_ms, loading, budget_yield, presentations, frame_serial])
         present_total += present_ms
         present_max = maxf(present_max, present_ms)
         if spike_ms > 0.0 and present_ms >= spike_ms:
             present_spikes += 1
 
     var stream_end_ticks := Time.get_ticks_usec()
+    if record_metrics:
+        var summary := ProbeFrameMetrics.summarize(intervals, float(test_config.get("minimum_fps", 30.0)))
+        summary["label"] = label
+        summary["capture_during_measurement"] = capture_every > 0 or deferred_capture_every > 0
+        summary["samples_columns"] = ["frame", "interval_ms", "input_ms", "tick_ms", "upload_ms", "runtime_loading", "runtime_budget_yield", "game_presentations", "game_frame_serial"]
+        summary["samples"] = samples
+        frame_metrics.append(summary)
+        var file := FileAccess.open(output_dir.path_join("frame-metrics.json"), FileAccess.WRITE)
+        if file != null:
+            file.store_string(JSON.stringify({
+                "display_server": DisplayServer.get_name(), "host_max_fps": Engine.max_fps,
+                "window_size": [root.size.x, root.size.y], "renderer": player.get_renderer_info(),
+                "measurement": "Host frame intervals including the frame wait; not unique content FPS or GPU scanout timestamps",
+                "scenes": frame_metrics,
+            }, "  "))
 
     for deferred_capture in deferred_captures:
         var deferred_frame := int(deferred_capture["frame"])

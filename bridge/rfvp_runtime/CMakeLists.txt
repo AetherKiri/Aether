@@ -78,7 +78,7 @@ set_target_properties(aether_rfvp_runtime PROPERTIES POSITION_INDEPENDENT_CODE O
 target_include_directories(aether_rfvp_runtime PUBLIC include
     "${AETHERKIRI_RFVP_PROJECT_ROOT}/abi/include")
 if(NOT TARGET aether_game_text_settings)
-    add_subdirectory("${AETHERKIRI_RFVP_PROJECT_ROOT}/bridge/game_hooks" "game_hooks")
+    add_subdirectory("${AETHERKIRI_RFVP_PROJECT_ROOT}/bridge/game_hooks/text_settings" "game_text_settings")
 endif()
 target_link_libraries(aether_rfvp_runtime PUBLIC aether_rfvp_rust PRIVATE aether_game_text_settings)
 if(APPLE)

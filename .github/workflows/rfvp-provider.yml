@@ -5,6 +5,9 @@ on:
     paths:
       - 'packages/rfvp'
       - 'bridge/rfvp_runtime/**'
+      - 'bridge/game_hooks/include/AetherGameTextSettings.h'
+      - 'bridge/game_hooks/src/AetherGameTextSettings.cpp'
+      - 'bridge/game_hooks/text_settings/**'
       - 'abi/include/**'
       - 'apps/godot_app/assets/fonts/**'
       - '.github/workflows/rfvp-provider.yml'
@@ -13,6 +16,9 @@ on:
     paths:
       - 'packages/rfvp'
       - 'bridge/rfvp_runtime/**'
+      - 'bridge/game_hooks/include/AetherGameTextSettings.h'
+      - 'bridge/game_hooks/src/AetherGameTextSettings.cpp'
+      - 'bridge/game_hooks/text_settings/**'
       - 'abi/include/**'
       - 'apps/godot_app/assets/fonts/**'
       - '.github/workflows/rfvp-provider.yml'
@@ -38,6 +44,8 @@ jobs:
         run: git submodule update --init packages/rfvp
       - name: Verify runner build tools
         run: cargo --version && cmake --version && ninja --version
+      - name: Install game settings JSON headers
+        run: brew install nlohmann-json
       - name: Prepare isolated host overlay
         run: cmake -S bridge/rfvp_runtime -B out/rfvp-check -G Ninja -DCMAKE_BUILD_TYPE=Debug
       - name: Check locked Rust dependency graph

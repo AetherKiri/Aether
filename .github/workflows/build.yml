@@ -41,6 +41,8 @@ on:
         required: false
       IOS_PROVISIONING_PROFILE_BASE64:
         required: false
+      IOS_GAME_IMPORT_PROVISIONING_PROFILE_BASE64:
+        required: false
       MACOS_INSTALLER_CERTIFICATE_BASE64:
         required: false
       MACOS_INSTALLER_CERTIFICATE_PASSWORD:
@@ -189,13 +191,18 @@ jobs:
           sudo rm -rf -- "${sdk_root}/emulator" "${sdk_root}/system-images"
           df -h /
 
+      - name: Resolve native compiler cache key
+        id: native-cache-key
+        run: python3 .github/scripts/native-cache-key.py
+
       - name: Restore ccache
         id: restore-ccache
         uses: actions/cache/restore@v6
         with:
           path: .ccache
-          key: ${{ runner.os }}-android-ccache-v3-${{ github.run_id }}-${{ github.run_attempt }}
+          key: ${{ runner.os }}-android-ccache-v4-${{ steps.native-cache-key.outputs.key }}
           restore-keys: |
+            ${{ runner.os }}-android-ccache-v4-
             ${{ runner.os }}-android-ccache-v3-
             ${{ runner.os }}-android-ccache-
 
@@ -288,8 +295,11 @@ jobs:
       - name: Check TyranoScript Android host and resources
         run: python3 tools/test_tyrano_android.py
 
-      - name: Test Android dependency cache configuration
-        run: python3 -m unittest discover -s tests/python -p test_android_dependency_cache.py -v
+      - name: Test CI dependency cache configuration
+        run: |
+          python3 -m unittest discover -s tests/python -p test_android_dependency_cache.py -v
+          python3 -m unittest discover -s tests/python -p test_android_configure_only.py -v
+          python3 -m unittest discover -s tests/python -p test_ci_cache_policy.py -v
 
       - name: Restore Android dependency downloads
         id: restore-android-vcpkg-downloads
@@ -301,26 +311,11 @@ jobs:
             ${{ runner.os }}-${{ runner.arch }}-android-vcpkg-downloads-v1-
 
       - name: Bootstrap vcpkg
-        run: |
-          set -euo pipefail
-          # A cache miss does not create these paths, but bootstrap requires
-          # an explicitly configured VCPKG_DOWNLOADS directory to exist.
-          mkdir -p "$VCPKG_DOWNLOADS" "$VCPKG_DEFAULT_BINARY_CACHE"
-          if [[ -d ".devtools/vcpkg" && ! -d ".devtools/vcpkg/.git" ]]; then
-            rm -rf .devtools/vcpkg
-          fi
-          if [[ ! -d ".devtools/vcpkg/.git" ]]; then
-            mkdir -p .devtools
-            git clone https://github.com/microsoft/vcpkg.git .devtools/vcpkg
-          fi
-          if [[ ! -x ".devtools/vcpkg/vcpkg" ]]; then
-            (cd .devtools/vcpkg && ./bootstrap-vcpkg.sh -disableMetrics)
-          fi
-          echo "VCPKG_ROOT=${GITHUB_WORKSPACE}/.devtools/vcpkg" >> "$GITHUB_ENV"
+        run: python3 .github/scripts/bootstrap-ci-vcpkg.py .devtools/vcpkg
 
       - name: Configure Android dependency cache
         id: android-vcpkg-cache
-        run: python3 .github/scripts/configure-android-vcpkg-cache.py "$VCPKG_ROOT/vcpkg"
+        run: python3 .github/scripts/configure-vcpkg-file-cache.py "$VCPKG_ROOT/vcpkg" --android
 
       - name: Restore Android dependency binaries
         id: restore-android-vcpkg-binaries
@@ -329,10 +324,29 @@ jobs:
           path: .aetherkiri-cache/android/vcpkg-binaries
           # The digest changes with vcpkg, host build tools or the NDK.
           # Stable keys avoid uploading the same dependencies on every run.
-          key: ${{ runner.os }}-${{ runner.arch }}-android-vcpkg-binaries-v1-${{ env.ANDROID_NDK_VERSION }}-${{ hashFiles('vcpkg-configuration.json', 'vcpkg.json', 'vcpkg/ports/**', 'vcpkg/triplets/**', 'CMakePresets.json', '.github/scripts/configure-android-vcpkg-cache.py') }}-${{ steps.android-vcpkg-cache.outputs.toolchain-key }}
+          key: ${{ runner.os }}-${{ runner.arch }}-android-vcpkg-binaries-v1-${{ env.ANDROID_NDK_VERSION }}-${{ hashFiles('vcpkg-configuration.json', 'vcpkg.json', 'vcpkg/ports/**', 'vcpkg/triplets/**', 'CMakePresets.json', '.github/scripts/configure-vcpkg-file-cache.py') }}-${{ steps.android-vcpkg-cache.outputs.toolchain-key }}
           restore-keys: |
-            ${{ runner.os }}-${{ runner.arch }}-android-vcpkg-binaries-v1-${{ env.ANDROID_NDK_VERSION }}-${{ hashFiles('vcpkg-configuration.json', 'vcpkg.json', 'vcpkg/ports/**', 'vcpkg/triplets/**', 'CMakePresets.json', '.github/scripts/configure-android-vcpkg-cache.py') }}-
+            ${{ runner.os }}-${{ runner.arch }}-android-vcpkg-binaries-v1-${{ env.ANDROID_NDK_VERSION }}-${{ hashFiles('vcpkg-configuration.json', 'vcpkg.json', 'vcpkg/ports/**', 'vcpkg/triplets/**', 'CMakePresets.json', '.github/scripts/configure-vcpkg-file-cache.py') }}-
             ${{ runner.os }}-${{ runner.arch }}-android-vcpkg-binaries-v1-${{ env.ANDROID_NDK_VERSION }}-
+
+      - name: Prepare Android native dependencies
+        run: |
+          ./build.sh android release --configure-only --jobs=4
+          ./build.sh android debug --configure-only --jobs=4
+
+      - name: Save Android dependency downloads
+        if: success() && env.AETHERKIRI_VCPKG_CACHE_WRITE == 'true' && steps.restore-android-vcpkg-downloads.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v6
+        with:
+          path: .aetherkiri-cache/android/vcpkg-downloads
+          key: ${{ steps.restore-android-vcpkg-downloads.outputs.cache-primary-key }}
+
+      - name: Save Android dependency binaries
+        if: success() && env.AETHERKIRI_VCPKG_CACHE_WRITE == 'true' && steps.restore-android-vcpkg-binaries.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v6
+        with:
+          path: .aetherkiri-cache/android/vcpkg-binaries
+          key: ${{ steps.restore-android-vcpkg-binaries.outputs.cache-primary-key }}
 
       - name: Configure Android signing
         env:
@@ -430,25 +444,11 @@ jobs:
           fi
 
       - name: Save ccache
-        if: success() && github.event_name != 'pull_request' && env.AETHERKIRI_VCPKG_CACHE_WRITE == 'true' && steps.restore-ccache.outputs.cache-hit != 'true'
+        if: success() && github.ref == 'refs/heads/main' && env.AETHERKIRI_VCPKG_CACHE_WRITE == 'true' && steps.restore-ccache.outputs.cache-hit != 'true'
         uses: actions/cache/save@v6
         with:
           path: .ccache
           key: ${{ steps.restore-ccache.outputs.cache-primary-key }}
-
-      - name: Save Android dependency downloads
-        if: success() && github.event_name != 'pull_request' && env.AETHERKIRI_VCPKG_CACHE_WRITE == 'true' && steps.restore-android-vcpkg-downloads.outputs.cache-hit != 'true'
-        uses: actions/cache/save@v6
-        with:
-          path: .aetherkiri-cache/android/vcpkg-downloads
-          key: ${{ steps.restore-android-vcpkg-downloads.outputs.cache-primary-key }}
-
-      - name: Save Android dependency binaries
-        if: success() && github.event_name != 'pull_request' && env.AETHERKIRI_VCPKG_CACHE_WRITE == 'true' && steps.restore-android-vcpkg-binaries.outputs.cache-hit != 'true'
-        uses: actions/cache/save@v6
-        with:
-          path: .aetherkiri-cache/android/vcpkg-binaries
-          key: ${{ steps.restore-android-vcpkg-binaries.outputs.cache-primary-key }}
 
   ios:
     # Upstream bot candidates run only the secretless RFVP provider checks.
@@ -612,13 +612,18 @@ jobs:
           echo "GODOT_BIN=${GITHUB_WORKSPACE}/.godot/Godot.app/Contents/MacOS/Godot" >> "$GITHUB_ENV"
           echo "GODOT_EXPORT_TEMPLATE=${template_dir}/ios.zip" >> "$GITHUB_ENV"
 
+      - name: Resolve native compiler cache key
+        id: native-cache-key
+        run: python3 .github/scripts/native-cache-key.py
+
       - name: Restore ccache
         id: restore-ccache
         uses: actions/cache/restore@v6
         with:
           path: .ccache
-          key: ${{ runner.os }}-ios-xcode-27.1-ccache-v2-${{ github.run_id }}-${{ github.run_attempt }}
+          key: ${{ runner.os }}-ios-xcode-27.1-ccache-v3-${{ steps.native-cache-key.outputs.key }}
           restore-keys: |
+            ${{ runner.os }}-ios-xcode-27.1-ccache-v3-
             ${{ runner.os }}-ios-xcode-27.1-ccache-v2-
             ${{ runner.os }}-ios-xcode-27.1-ccache-
 
@@ -630,19 +635,7 @@ jobs:
           ccache -z
 
       - name: Bootstrap vcpkg
-        run: |
-          set -euo pipefail
-          if [[ -d ".devtools/vcpkg" && ! -f ".devtools/vcpkg/.vcpkg-root" ]]; then
-            rm -rf .devtools/vcpkg
-          fi
-          if [[ ! -d ".devtools/vcpkg/.git" ]]; then
-            mkdir -p .devtools
-            git clone https://github.com/microsoft/vcpkg.git .devtools/vcpkg
-          fi
-          if [[ ! -x ".devtools/vcpkg/vcpkg" ]]; then
-            (cd .devtools/vcpkg && ./bootstrap-vcpkg.sh -disableMetrics)
-          fi
-          echo "VCPKG_ROOT=${GITHUB_WORKSPACE}/.devtools/vcpkg" >> "$GITHUB_ENV"
+        run: python3 .github/scripts/bootstrap-ci-vcpkg.py .devtools/vcpkg
 
       - name: Configure vcpkg binary cache
         env:
@@ -794,7 +787,7 @@ jobs:
           fi
 
       - name: Save ccache
-        if: success() && github.event_name != 'pull_request' && env.AETHERKIRI_VCPKG_CACHE_WRITE == 'true' && steps.restore-ccache.outputs.cache-hit != 'true'
+        if: success() && github.ref == 'refs/heads/main' && env.AETHERKIRI_VCPKG_CACHE_WRITE == 'true' && steps.restore-ccache.outputs.cache-hit != 'true'
         uses: actions/cache/save@v6
         with:
           path: .ccache
@@ -965,13 +958,18 @@ jobs:
           echo "GODOT_BIN=${GITHUB_WORKSPACE}/.godot/Godot.app/Contents/MacOS/Godot" >> "$GITHUB_ENV"
           echo "GODOT_EXPORT_TEMPLATE=${template_dir}/macos.zip" >> "$GITHUB_ENV"
 
+      - name: Resolve native compiler cache key
+        id: native-cache-key
+        run: python3 .github/scripts/native-cache-key.py
+
       - name: Restore ccache
         id: restore-ccache
         uses: actions/cache/restore@v6
         with:
           path: .ccache
-          key: ${{ runner.os }}-macos-xcode-27.1-ccache-v2-${{ github.run_id }}-${{ github.run_attempt }}
+          key: ${{ runner.os }}-macos-xcode-27.1-ccache-v3-${{ steps.native-cache-key.outputs.key }}
           restore-keys: |
+            ${{ runner.os }}-macos-xcode-27.1-ccache-v3-
             ${{ runner.os }}-macos-xcode-27.1-ccache-v2-
             ${{ runner.os }}-macos-xcode-27.1-ccache-
 
@@ -983,19 +981,7 @@ jobs:
           ccache -z
 
       - name: Bootstrap vcpkg
-        run: |
-          set -euo pipefail
-          if [[ -d ".devtools/vcpkg" && ! -f ".devtools/vcpkg/.vcpkg-root" ]]; then
-            rm -rf .devtools/vcpkg
-          fi
-          if [[ ! -d ".devtools/vcpkg/.git" ]]; then
-            mkdir -p .devtools
-            git clone https://github.com/microsoft/vcpkg.git .devtools/vcpkg
-          fi
-          if [[ ! -x ".devtools/vcpkg/vcpkg" ]]; then
-            (cd .devtools/vcpkg && ./bootstrap-vcpkg.sh -disableMetrics)
-          fi
-          echo "VCPKG_ROOT=${GITHUB_WORKSPACE}/.devtools/vcpkg" >> "$GITHUB_ENV"
+        run: python3 .github/scripts/bootstrap-ci-vcpkg.py .devtools/vcpkg
 
       - name: Configure vcpkg binary cache
         env:
@@ -1028,7 +1014,7 @@ jobs:
           fi
 
       - name: Save vcpkg source cache
-        if: always() && steps.restore-vcpkg-downloads.outputs.cache-hit != 'true'
+        if: success() && github.ref == 'refs/heads/main' && env.AETHERKIRI_VCPKG_CACHE_WRITE == 'true' && steps.restore-vcpkg-downloads.outputs.cache-hit != 'true'
         uses: actions/cache/save@v6
         with:
           path: .devtools/vcpkg/downloads
@@ -1220,7 +1206,7 @@ jobs:
           fi
 
       - name: Save ccache
-        if: success() && github.event_name != 'pull_request' && env.AETHERKIRI_VCPKG_CACHE_WRITE == 'true' && steps.restore-ccache.outputs.cache-hit != 'true'
+        if: success() && github.ref == 'refs/heads/main' && env.AETHERKIRI_VCPKG_CACHE_WRITE == 'true' && steps.restore-ccache.outputs.cache-hit != 'true'
         uses: actions/cache/save@v6
         with:
           path: .ccache
@@ -1321,13 +1307,18 @@ jobs:
             libwayland-dev libxkbcommon-dev \
             libasound2-dev libpulse-dev libudev-dev libdbus-1-dev
 
+      - name: Resolve native compiler cache key
+        id: native-cache-key
+        run: python3 .github/scripts/native-cache-key.py
+
       - name: Restore ccache
         id: restore-ccache
         uses: actions/cache/restore@v6
         with:
           path: .ccache/linux
-          key: ${{ runner.os }}-linux-${{ matrix.arch }}-ccache-v3-${{ github.run_id }}-${{ github.run_attempt }}
+          key: ${{ runner.os }}-linux-${{ matrix.arch }}-ccache-v4-${{ steps.native-cache-key.outputs.key }}
           restore-keys: |
+            ${{ runner.os }}-linux-${{ matrix.arch }}-ccache-v4-
             ${{ runner.os }}-linux-${{ matrix.arch }}-ccache-v3-
             ${{ runner.os }}-linux-${{ matrix.arch }}-ccache-
 
@@ -1348,7 +1339,10 @@ jobs:
             ${{ runner.os }}-linux-${{ matrix.arch }}-vcpkg-downloads-
 
       - name: Set up Linux build environment
+        id: linux-vcpkg-cache
         run: |
+          source tools/linux_env.sh
+          python3 .github/scripts/bootstrap-ci-vcpkg.py "$VCPKG_ROOT"
           tools/setup_linux.sh
           source tools/linux_env.sh
           for variable in VCPKG_ROOT VCPKG_DOWNLOADS VCPKG_DEFAULT_BINARY_CACHE \
@@ -1356,19 +1350,16 @@ jobs:
                           GODOT_BIN GODOT_TEMPLATE_DIR; do
             echo "$variable=${!variable}" >> "$GITHUB_ENV"
           done
-          cache_mode=read
-          if [[ "$AETHERKIRI_VCPKG_CACHE_WRITE" == "true" ]]; then
-            cache_mode=readwrite
-          fi
-          echo "VCPKG_BINARY_SOURCES=clear;files,$VCPKG_DEFAULT_BINARY_CACHE,$cache_mode" >> "$GITHUB_ENV"
+          python3 .github/scripts/configure-vcpkg-file-cache.py "$VCPKG_ROOT/vcpkg"
 
       - name: Restore vcpkg binary cache
         id: restore-vcpkg-binaries
         uses: actions/cache/restore@v6
         with:
           path: .aetherkiri-cache/vcpkg-binaries
-          key: ${{ runner.os }}-linux-${{ matrix.arch }}-vcpkg-binaries-v3-${{ hashFiles('vcpkg-configuration.json', 'vcpkg.json', 'vcpkg/ports/**', 'vcpkg/triplets/**', 'tools/linux_env.sh', 'tools/setup_linux.sh') }}-${{ github.run_id }}-${{ github.run_attempt }}
+          key: ${{ runner.os }}-linux-${{ matrix.arch }}-vcpkg-binaries-v4-${{ hashFiles('vcpkg-configuration.json', 'vcpkg.json', 'vcpkg/ports/**', 'vcpkg/triplets/**', 'tools/linux_env.sh', 'tools/setup_linux.sh', '.github/scripts/configure-vcpkg-file-cache.py') }}-${{ steps.linux-vcpkg-cache.outputs.toolchain-key }}
           restore-keys: |
+            ${{ runner.os }}-linux-${{ matrix.arch }}-vcpkg-binaries-v4-
             ${{ runner.os }}-linux-${{ matrix.arch }}-vcpkg-binaries-v3-${{ hashFiles('vcpkg-configuration.json', 'vcpkg.json', 'vcpkg/ports/**', 'vcpkg/triplets/**', 'tools/linux_env.sh', 'tools/setup_linux.sh') }}-
             ${{ runner.os }}-linux-${{ matrix.arch }}-vcpkg-binaries-v3-
             ${{ runner.os }}-linux-${{ matrix.arch }}-vcpkg-binaries-v2-
@@ -1499,9 +1490,9 @@ jobs:
           if-no-files-found: error
           retention-days: 7
 
-      # Source archives are seeded by main. Compiler and binary snapshots also
-      # refresh on trusted manual runs so cold/warm cache behavior can be tested.
-      # Pull requests restore these caches without saving PR-scoped copies.
+      # Main seeds shared snapshots. Dependency keys change with inputs/tools;
+      # compiler keys change with native sources, never with a CI run number.
+      # Pull requests restore these Linux caches without saving scoped copies.
       - name: Save vcpkg source cache
         if: success() && github.ref == 'refs/heads/main' && env.AETHERKIRI_VCPKG_CACHE_WRITE == 'true' && steps.restore-vcpkg-downloads.outputs.cache-hit != 'true'
         uses: actions/cache/save@v6
@@ -1517,14 +1508,14 @@ jobs:
           fi
 
       - name: Save ccache
-        if: success() && github.event_name != 'pull_request' && env.AETHERKIRI_VCPKG_CACHE_WRITE == 'true' && steps.restore-ccache.outputs.cache-hit != 'true'
+        if: success() && github.ref == 'refs/heads/main' && env.AETHERKIRI_VCPKG_CACHE_WRITE == 'true' && steps.restore-ccache.outputs.cache-hit != 'true'
         uses: actions/cache/save@v6
         with:
           path: .ccache/linux
           key: ${{ steps.restore-ccache.outputs.cache-primary-key }}
 
       - name: Save vcpkg binary cache
-        if: success() && github.event_name != 'pull_request' && env.AETHERKIRI_VCPKG_CACHE_WRITE == 'true' && steps.restore-vcpkg-binaries.outputs.cache-hit != 'true'
+        if: success() && github.ref == 'refs/heads/main' && env.AETHERKIRI_VCPKG_CACHE_WRITE == 'true' && steps.restore-vcpkg-binaries.outputs.cache-hit != 'true'
         uses: actions/cache/save@v6
         with:
           path: .aetherkiri-cache/vcpkg-binaries

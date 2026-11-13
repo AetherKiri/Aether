@@ -1,14 +1,14 @@
 #!/usr/bin/env python3
-"""Configure job-local dependency reuse and identify the Android CI toolchain."""
+"""Configure file-based dependency reuse and identify the CI toolchain."""
 
+import argparse
 import hashlib
 import os
 from pathlib import Path
 import subprocess
-import sys
 
 
-def configure(vcpkg):
+def configure(vcpkg, android=False):
     binary_cache = Path(os.environ["VCPKG_DEFAULT_BINARY_CACHE"]).resolve()
     downloads = Path(os.environ["VCPKG_DOWNLOADS"]).resolve()
     github_env = Path(os.environ["GITHUB_ENV"])
@@ -18,7 +18,8 @@ def configure(vcpkg):
 
     digest = hashlib.sha256()
     digest.update(vcpkg.read_bytes())
-    digest.update((Path(os.environ["ANDROID_NDK_HOME"]) / "source.properties").read_bytes())
+    if android:
+        digest.update((Path(os.environ["ANDROID_NDK_HOME"]) / "source.properties").read_bytes())
     # vcpkg scripts can change independently of its bootstrapped executable.
     # CMake/tool updates also affect package ABIs: an immutable Actions cache
     # needs a fresh key so new binaries can be saved after such an update.
@@ -36,13 +37,15 @@ def configure(vcpkg):
         # every restore and upload before falling back to a source build.
         # Local writes are safe even for fork PRs and allow Debug to reuse
         # Release's dependencies. Only the workflow may persist this cache,
-        # and its save steps exclude pull requests.
+        # and its save steps exclude untrusted pull requests.
         output.write(f"VCPKG_BINARY_SOURCES=clear;files,{location},readwrite\n")
     with github_output.open("a") as output:
         output.write(f"toolchain-key={digest.hexdigest()}\n")
 
 
 if __name__ == "__main__":
-    if len(sys.argv) != 2:
-        sys.exit(f"Usage: {sys.argv[0]} /path/to/vcpkg")
-    configure(Path(sys.argv[1]))
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("vcpkg", type=Path)
+    parser.add_argument("--android", action="store_true")
+    args = parser.parse_args()
+    configure(args.vcpkg, args.android)

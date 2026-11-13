@@ -1,0 +1,41 @@
+name: Maintain build caches
+
+on:
+  workflow_run:
+    workflows: [Build]
+    types: [completed]
+  schedule:
+    - cron: '23 4 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: write
+  pull-requests: read
+
+concurrency:
+  group: maintain-build-caches
+  cancel-in-progress: false
+
+jobs:
+  prune:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      # workflow_run has a privileged token. Always execute the default branch
+      # script; never check out the triggering PR or download its artifacts.
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          persist-credentials: false
+      - name: Test cache retention policy
+        run: python3 -m unittest discover -s tests/python -p test_ci_cache_policy.py -v
+      - name: Remove superseded build caches
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CACHE_REPOSITORY: ${{ github.repository }}
+          CACHE_DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        run: >-
+          python3 .github/scripts/prune-ci-caches.py
+          --repo "$CACHE_REPOSITORY" --default-branch "$CACHE_DEFAULT_BRANCH"
+          --budget-gib 8 --apply

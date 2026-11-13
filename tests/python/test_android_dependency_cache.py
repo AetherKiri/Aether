@@ -1,5 +1,6 @@
 """Exercise cache configuration without NuGet credentials or an Android SDK."""
 
+import importlib.util
 import os
 from pathlib import Path
 import subprocess
@@ -7,18 +8,17 @@ import sys
 import tempfile
 import textwrap
 import unittest
+from unittest.mock import patch
 
 
 ROOT = Path(__file__).resolve().parents[2]
-SCRIPT = ROOT / ".github/scripts/configure-android-vcpkg-cache.py"
+SCRIPT = ROOT / ".github/scripts/configure-vcpkg-file-cache.py"
 WORKFLOW = ROOT / ".github/workflows/build.yml"
 
 
-def android_bootstrap_command():
-    android_job = WORKFLOW.read_text().split("  android:\n", 1)[1]
-    step = android_job.split("      - name: Bootstrap vcpkg\n", 1)[1]
-    step = step.split("\n      - name:", 1)[0]
-    return textwrap.dedent(step.split("        run: |\n", 1)[1])
+spec = importlib.util.spec_from_file_location("bootstrap_ci_vcpkg", ROOT / ".github/scripts/bootstrap-ci-vcpkg.py")
+bootstrap_module = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(bootstrap_module)
 
 
 class AndroidVcpkgBootstrapTests(unittest.TestCase):
@@ -26,63 +26,84 @@ class AndroidVcpkgBootstrapTests(unittest.TestCase):
         self.temp = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)
         self.workspace = Path(self.temp.name) / "workspace with spaces"
-        self.checkout = self.workspace / ".devtools/vcpkg"
-        (self.checkout / ".git").mkdir(parents=True)
-        self.downloads = self.workspace / ".aetherkiri-cache/android/vcpkg-downloads"
-        self.binaries = self.workspace / ".aetherkiri-cache/android/vcpkg-binaries"
-        self.env_file = self.workspace / "github-env"
-        self.env = dict(os.environ, GITHUB_WORKSPACE=str(self.workspace),
-                        GITHUB_ENV=str(self.env_file), VCPKG_DOWNLOADS=str(self.downloads),
-                        VCPKG_DEFAULT_BINARY_CACHE=str(self.binaries))
-        # Exercise the real workflow step with vcpkg's bootstrap precondition.
-        # Cache configuration needs an already bootstrapped executable, so
-        # testing configure-android-vcpkg-cache.py alone misses this earlier bug.
-        bootstrap = self.checkout / "bootstrap-vcpkg.sh"
+        self.workspace.mkdir()
+        self.origin = self.workspace / "origin"
+        self.origin.mkdir()
+        self.git("init", "-q")
+        self.git("config", "user.email", "cache-test@example.invalid")
+        self.git("config", "user.name", "Cache test")
+        bootstrap = self.origin / "bootstrap-vcpkg.sh"
         bootstrap.write_text(textwrap.dedent("""\
             #!/bin/sh
             set -eu
-            if [ ! -d "$VCPKG_DOWNLOADS" ]; then
-              echo "VCPKG_DOWNLOADS was set, but that was not a directory." >&2
-              exit 1
-            fi
+            test -d "$VCPKG_DOWNLOADS"
+            test -d "$VCPKG_DEFAULT_BINARY_CACHE"
             test "$1" = -disableMetrics
             printf 'bootstrapped\\n' >> bootstrap-count
             printf '#!/bin/sh\\nexit 0\\n' > vcpkg
             chmod +x vcpkg
             """))
-        bootstrap.chmod(0o755)
+        self.git("add", ".")
+        self.git("commit", "-qm", "baseline")
+        self.baseline = self.git("rev-parse", "HEAD").strip()
+        (self.origin / "later.txt").write_text("upstream HEAD moved")
+        self.git("add", ".")
+        self.git("commit", "-qm", "later revision")
+        self.checkout = self.workspace / ".devtools/vcpkg"
+        self.downloads = self.workspace / "downloads"
+        self.binaries = self.workspace / "binaries"
+        self.configuration = self.workspace / "vcpkg-configuration.json"
+        self.configuration.write_text('{"default-registry":{"baseline":"' + self.baseline + '"}}')
+        self.env_file = self.workspace / "github-env"
+        self.env = dict(os.environ, GITHUB_ENV=str(self.env_file),
+                        VCPKG_DOWNLOADS=str(self.downloads),
+                        VCPKG_DEFAULT_BINARY_CACHE=str(self.binaries))
+
+    def git(self, *args):
+        return subprocess.check_output(["git", "-C", str(self.origin), *args], text=True)
 
     def run_bootstrap(self):
-        result = subprocess.run(["bash", "-euo", "pipefail", "-c",
-                                 android_bootstrap_command()], cwd=self.workspace,
-                                env=self.env, capture_output=True, text=True)
-        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
-        self.assertTrue(self.downloads.is_dir())
-        self.assertTrue(self.binaries.is_dir())
-        self.assertIn(f"VCPKG_ROOT={self.checkout}\n", self.env_file.read_text())
+        with patch.dict(os.environ, self.env, clear=True):
+            bootstrap_module.bootstrap(self.checkout, self.configuration, str(self.origin))
+        self.assertEqual(subprocess.check_output(["git", "-C", str(self.checkout),
+                         "rev-parse", "HEAD"], text=True).strip(), self.baseline)
+        self.assertIn(f"VCPKG_ROOT={self.checkout.resolve()}\n", self.env_file.read_text())
 
-    def test_cache_miss_creates_directories_before_bootstrap(self):
-        self.assertFalse(self.downloads.parent.exists())
+    def test_cache_miss_prepares_directories_and_pins_baseline(self):
+        self.assertFalse(self.downloads.exists())
         self.run_bootstrap()
         self.assertTrue(os.access(self.checkout / "vcpkg", os.X_OK))
+        self.assertFalse((self.checkout / "later.txt").exists())
 
     def test_cache_hit_preserves_downloads_and_binaries(self):
-        self.downloads.mkdir(parents=True)
-        self.binaries.mkdir(parents=True)
+        self.downloads.mkdir(); self.binaries.mkdir()
         source = self.downloads / "source.tar.gz"
         binary = self.binaries / "dependency.zip"
-        source.write_bytes(b"cached source")
-        binary.write_bytes(b"cached binary")
+        source.write_bytes(b"cached source"); binary.write_bytes(b"cached binary")
         self.run_bootstrap()
         self.assertEqual(source.read_bytes(), b"cached source")
         self.assertEqual(binary.read_bytes(), b"cached binary")
 
-    def test_existing_tool_still_prepares_cache_directories(self):
+    def test_existing_tool_is_not_bootstrapped_again(self):
         self.run_bootstrap()
-        self.downloads.rmdir()
-        self.binaries.rmdir()
+        self.downloads.rmdir(); self.binaries.rmdir()
         self.run_bootstrap()
         self.assertEqual((self.checkout / "bootstrap-count").read_text(), "bootstrapped\n")
+
+    def test_baseline_change_rebootstraps_tool(self):
+        self.run_bootstrap()
+        self.baseline = self.git("rev-parse", "HEAD").strip()
+        self.configuration.write_text('{"default-registry":{"baseline":"' + self.baseline + '"}}')
+        self.run_bootstrap()
+        self.assertEqual((self.checkout / "bootstrap-count").read_text(), "bootstrapped\n" * 2)
+
+    def test_non_git_directory_is_not_deleted(self):
+        self.checkout.mkdir(parents=True)
+        marker = self.checkout / "keep.txt"
+        marker.write_text("user data")
+        with self.assertRaisesRegex(ValueError, "non-git"):
+            self.run_bootstrap()
+        self.assertEqual(marker.read_text(), "user data")
 
 
 class AndroidDependencyCacheTests(unittest.TestCase):
@@ -118,7 +139,7 @@ class AndroidDependencyCacheTests(unittest.TestCase):
     def run_configure(self):
         self.env_file.write_text("EXISTING_SETTING=retained\n")
         self.output_file.write_text("existing-output=retained\n")
-        return subprocess.run([sys.executable, str(SCRIPT), str(self.vcpkg)],
+        return subprocess.run([sys.executable, str(SCRIPT), str(self.vcpkg), "--android"],
                               env=self.env, capture_output=True, text=True)
 
     def key(self):
@@ -162,6 +183,14 @@ class AndroidDependencyCacheTests(unittest.TestCase):
             current = self.key()
             self.assertNotEqual(previous, current)
             previous = current
+
+    def test_linux_configuration_does_not_require_android_sdk(self):
+        self.env.pop("ANDROID_NDK_HOME")
+        result = subprocess.run([sys.executable, str(SCRIPT), str(self.vcpkg)],
+                                env=self.env, capture_output=True, text=True)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("toolchain-key=", self.output_file.read_text())
+        self.assertIn(f"files,{self.cache},readwrite", self.env_file.read_text())
 
     def test_provider_separators_in_paths_are_escaped(self):
         self.env["VCPKG_DEFAULT_BINARY_CACHE"] = str(self.root / "cache,semi;tick`")

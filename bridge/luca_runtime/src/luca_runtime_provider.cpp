@@ -597,6 +597,19 @@ namespace aetherkiri::luca {
                 event->type == ENGINE_INPUT_EVENT_KEY_DOWN &&
                 (event->key_code == 0x20 || event->key_code == 0x0D);
 
+            if(pointer_down || event->type == ENGINE_INPUT_EVENT_POINTER_MOVE) {
+                int32_t consumed = 0;
+                const int32_t result = luca_ak_pointer_input(
+                    instance->ak, pointer_down ? 1 : 0, event->x, event->y, &consumed);
+                if(result < 0) {
+                    return Fail(instance->error, result, instance->ak,
+                                "luca_ak_pointer_input");
+                }
+                if(consumed != 0) {
+                    return ENGINE_RESULT_OK;
+                }
+            }
+
             // Movie latch active: a click / confirm releases the latch
             // (skip; engine playback-termination path, notes/017 §4) —
             // the host sees movie_state flip back to idle on the next
@@ -764,8 +777,11 @@ namespace aetherkiri::luca {
                 info += luca_ak_waiting_title(instance->ak) != 0
                             ? " titleWaiting=1"
                             : " titleWaiting=0";
+                info += luca_ak_waiting_task(instance->ak) != 0
+                            ? " taskWaiting=1"
+                            : " taskWaiting=0";
             } else {
-                info += " movieWaiting=0 titleWaiting=0";
+                info += " movieWaiting=0 titleWaiting=0 taskWaiting=0";
             }
             return CopyString(info, output, output_size, bytes_written);
         }

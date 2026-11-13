@@ -9,6 +9,7 @@
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
+#include <limits>
 #include <string>
 #include <vector>
 
@@ -241,6 +242,24 @@ TEST_CASE("Luca vertical slice runs the script and composes the frame") {
     const auto second_desc = second.frame();
     CHECK(second_desc.width == desc.width);
     CHECK(second_desc.height == desc.height);
+}
+
+TEST_CASE("Luca native task pointer routing preserves coordinates and errors") {
+    aetherkiri::luca::RegisterRuntimeProvider();
+    Instance game;
+    REQUIRE(game.open(FixtureRoot()) == ENGINE_RESULT_OK);
+    engine_input_event_t event{};
+    event.struct_size = sizeof(event);
+    event.type = ENGINE_INPUT_EVENT_POINTER_MOVE;
+    event.x = std::numeric_limits<float>::quiet_NaN();
+    event.y = 200;
+    CHECK(provider->send_input(game.value, &event) == ENGINE_RESULT_INVALID_ARGUMENT);
+    CHECK(std::string(provider->get_last_error(game.value)).find("luca_ak_pointer_input") != std::string::npos);
+    event.x = 100;
+    REQUIRE(provider->send_input(game.value, &event) == ENGINE_RESULT_OK);
+    char debug[2048] = {};
+    REQUIRE(provider->get_plugin_debug_info(game.value, debug, sizeof(debug), nullptr) == ENGINE_RESULT_OK);
+    CHECK(std::string(debug).find("taskWaiting=0") != std::string::npos);
 }
 
 TEST_CASE("Luca open rejects invalid roots") {

@@ -178,11 +178,14 @@ function(aetherkiri_add_luca_rs imported_target)
     set_target_properties(${imported_target} PROPERTIES
         INTERFACE_INCLUDE_DIRECTORIES "${LUCA_RS_ROOT}/crates/luca_runtime/include")
 
-    # luca_runtime is a pure-Rust staticlib whose std only needs libSystem /
-    # default CRT libraries that every consumer already links. When future
-    # phases add native dependencies (vorbis, wgpu, ...), their system link
-    # surface belongs here so it propagates through the archive like the
-    # siglus frameworks do.
+    # Chrono's local save timestamps resolve the system time zone through
+    # CoreFoundation on macOS. C++ consumers of the Rust static archive must
+    # receive that framework explicitly, including standalone provider tests.
+    if(APPLE)
+        find_library(LUCA_COREFOUNDATION_FRAMEWORK CoreFoundation REQUIRED)
+        set_property(TARGET ${imported_target} APPEND PROPERTY
+            INTERFACE_LINK_LIBRARIES "${LUCA_COREFOUNDATION_FRAMEWORK}")
+    endif()
 
     set(${imported_target}_FOUND TRUE PARENT_SCOPE)
 endfunction()

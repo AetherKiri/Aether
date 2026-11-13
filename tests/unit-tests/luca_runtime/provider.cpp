@@ -5,10 +5,13 @@
 #include "luca_runtime.h"
 
 #include <chrono>
+#include <cmath>
 #include <cstdio>
 #include <cstdlib>
+#include <ctime>
 #include <filesystem>
 #include <fstream>
+#include <iterator>
 #include <limits>
 #include <string>
 #include <vector>
@@ -485,4 +488,75 @@ TEST_CASE("Luca native save panel routes paging and cancellation") {
     REQUIRE(provider->send_input(game.value, &input) == ENGINE_RESULT_OK);
     REQUIRE(provider->get_plugin_debug_info(game.value, debug, sizeof(debug), nullptr) == ENGINE_RESULT_OK);
     CHECK(std::string(debug).find("saveMenuWaiting=0") != std::string::npos);
+}
+
+TEST_CASE("Luca quick save writes a scene thumbnail and native local date") {
+    const fs::path original("/Volumes/yorkyang2333/LUCA/Summer Pockets REFLECTION BLUE");
+    if(!fs::is_regular_file(original / "files" / "SCRIPT2.PAK")) {
+        SKIP("no original SPRB resources");
+    }
+    struct SaveRoot {
+        fs::path path = fs::temp_directory_path() / UniquePath("save-preview");
+        ~SaveRoot() { std::error_code error; fs::remove_all(path, error); }
+    } root;
+    REQUIRE(fs::create_directories(root.path));
+    std::error_code link_error;
+    fs::create_directory_symlink(original / "files", root.path / "files", link_error);
+    if(link_error) { SKIP("cannot link read-only game resources: " + link_error.message()); }
+    aetherkiri::luca::RegisterRuntimeProvider();
+    Instance game;
+    REQUIRE(game.open(root.path) == ENGINE_RESULT_OK);
+    for(int i = 0; i != 40; ++i) REQUIRE(provider->tick(game.value, 16) == ENGINE_RESULT_OK);
+    engine_input_event_t input{};
+    input.struct_size = sizeof(input);
+    input.type = ENGINE_INPUT_EVENT_KEY_DOWN;
+    input.key_code = 0x0D;
+    REQUIRE(provider->send_input(game.value, &input) == ENGINE_RESULT_OK);
+    for(int i = 0; i != 180; ++i) REQUIRE(provider->tick(game.value, 16) == ENGINE_RESULT_OK);
+    char debug[2048] = {};
+    REQUIRE(provider->get_plugin_debug_info(game.value, debug, sizeof(debug), nullptr) == ENGINE_RESULT_OK);
+    REQUIRE(std::string(debug).find("titleWaiting=0") != std::string::npos);
+    input.key_code = 0x74; // The host F5 path must capture before any save-panel pixels.
+    REQUIRE(provider->send_input(game.value, &input) == ENGINE_RESULT_OK);
+    const fs::path prefix = root.path / "savedata";
+    REQUIRE(fs::is_regular_file(prefix / "data321.dat"));
+    REQUIRE(fs::is_regular_file(prefix / "data321.info"));
+    REQUIRE(fs::is_regular_file(prefix / "data321.thm"));
+    std::ifstream png(prefix / "data321.thm", std::ios::binary);
+    std::vector<unsigned char> header(24);
+    png.read(reinterpret_cast<char *>(header.data()), header.size());
+    REQUIRE(png.gcount() == 24);
+    CHECK((std::vector<unsigned char>(header.begin(), header.begin() + 8) ==
+           std::vector<unsigned char>{137, 80, 78, 71, 13, 10, 26, 10}));
+    const auto be32 = [&](size_t at) {
+        return (uint32_t(header[at]) << 24) | (uint32_t(header[at + 1]) << 16) |
+               (uint32_t(header[at + 2]) << 8) | uint32_t(header[at + 3]);
+    };
+    CHECK(be32(16) == 320);
+    CHECK(be32(20) == 180);
+
+    std::ifstream metadata(prefix / "data321.info", std::ios::binary);
+    const std::vector<unsigned char> info((std::istreambuf_iterator<char>(metadata)), {});
+    const auto le16 = [&](size_t at) {
+        REQUIRE(at + 2 <= info.size());
+        return uint16_t(info[at]) | (uint16_t(info[at + 1]) << 8);
+    };
+    size_t position = 14;
+    // SPRB writes its caption and three language pairs before the date block.
+    for(int i = 0; i != 7; ++i) {
+        const auto length = le16(position);
+        position += 2 + length;
+        REQUIRE(position <= info.size());
+    }
+    std::tm saved{};
+    saved.tm_year = le16(position) - 1900;
+    saved.tm_mon = le16(position + 2) - 1;
+    saved.tm_mday = le16(position + 4);
+    saved.tm_hour = le16(position + 6);
+    saved.tm_min = le16(position + 8);
+    saved.tm_sec = le16(position + 10);
+    saved.tm_isdst = -1;
+    const auto saved_epoch = std::mktime(&saved);
+    REQUIRE(saved_epoch != std::time_t(-1));
+    CHECK(std::abs(std::difftime(std::time(nullptr), saved_epoch)) < 10.0);
 }

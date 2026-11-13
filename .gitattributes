@@ -7,6 +7,7 @@
 
 # Unified diffs retain a single context prefix on blank lines.
 vcpkg/ports/ggml/*.diff whitespace=-blank-at-eol
+vcpkg/ports/lua/*.patch whitespace=-blank-at-eol,-blank-at-eof
 
 # Product game archives are binary assets.
 *.xp3 -text

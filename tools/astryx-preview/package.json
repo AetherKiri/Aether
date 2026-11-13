@@ -1,0 +1,28 @@
+{
+  "name": "aether-astryx-preview",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host 127.0.0.1 --port 8766 --strictPort",
+    "build": "tsc --noEmit && vite build",
+    "tokens": "node scripts/export-godot-tokens.mjs",
+    "icons": "node scripts/export-godot-icons.mjs"
+  },
+  "dependencies": {
+    "@astryxdesign/core": "file:../../../astryx/packages/core",
+    "@astryxdesign/theme-neutral": "file:../../../astryx/packages/themes/neutral",
+    "@heroicons/react": "2.2.0",
+    "@stylexjs/stylex": "^0.19.0",
+    "react": "19.2.7",
+    "react-dom": "19.2.7"
+  },
+  "devDependencies": {
+    "@astryxdesign/build": "file:../../../astryx/packages/build",
+    "@stylexjs/unplugin": "^0.19.0",
+    "@types/react": "19.2.17",
+    "@types/react-dom": "19.2.3",
+    "@vitejs/plugin-react": "^5.2.0",
+    "typescript": "^6.0.3",
+    "vite": "^8.1.3"
+  }
+}

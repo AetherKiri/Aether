@@ -136,7 +136,7 @@ if(NOT TARGET engine_api)
     message(FATAL_ERROR
         "The embedded OnscripterYuri media bridge requires engine_api.")
 endif()
-target_link_libraries(aether_onscripter_runtime PRIVATE engine_api)
+target_link_libraries(aether_onscripter_runtime PRIVATE engine_api aether_game_text_settings)
 
 if(UNIX)
     target_link_libraries(aether_onscripter_runtime PUBLIC m)

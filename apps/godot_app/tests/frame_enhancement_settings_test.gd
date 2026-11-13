@@ -176,5 +176,6 @@ func _initialize() -> void:
                 "settings.frame_enhancement_algorithm.%s.desc" % algorithm_id
             )).is_empty())
 
+    app.ui_motion.free()
     app.free()
     quit(0)

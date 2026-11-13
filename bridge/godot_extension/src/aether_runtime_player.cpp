@@ -171,6 +171,11 @@ int32_t aether_native_launch_file_picker_present(
 int32_t aether_native_cover_file_picker_present(
     const char *title, const char *initial_directory,
     const char *destination_directory);
+int32_t aether_native_cover_photo_picker_present(
+    const char *title, const char *destination_directory);
+int32_t aether_native_font_file_picker_present(
+    const char *title, const char *initial_directory,
+    const char *destination_directory);
 int32_t aether_native_translation_model_file_picker_present(
     const char *title, const char *initial_directory);
 char *aether_native_translation_model_restore_path(
@@ -12821,6 +12826,36 @@ void main() {
 #endif
     }
 
+    bool native_cover_photo_picker_open(const String &title, const String &destination_directory) const {
+#if defined(__APPLE__)
+        const CharString title_utf8 = title.utf8();
+        const CharString destination_utf8 = destination_directory.utf8();
+        return aether_native_cover_photo_picker_present(title_utf8.get_data(), destination_utf8.get_data()) != 0;
+#elif defined(__ANDROID__)
+        auto *wrapper = JavaClassWrapper::get_singleton();
+        if (!wrapper || !Engine::get_singleton()->has_singleton("AndroidRuntime")) return false;
+        Ref<JavaClass> api = wrapper->wrap("org.aether.mobile.CoverPhotoPicker");
+        if (api.is_null()) return false;
+        Variant activity = Engine::get_singleton()->get_singleton("AndroidRuntime")->call("getActivity");
+        return bool(api->call("open", activity, destination_directory));
+#else
+        return false;
+#endif
+    }
+
+    String native_cover_photo_picker_take_result_json() const {
+#if defined(__APPLE__)
+        return native_launch_file_picker_take_result_json();
+#elif defined(__ANDROID__)
+        auto *wrapper = JavaClassWrapper::get_singleton();
+        if (!wrapper) return String();
+        Ref<JavaClass> api = wrapper->wrap("org.aether.mobile.CoverPhotoPicker");
+        return api.is_valid() ? String(api->call("takeResultJSON")) : String();
+#else
+        return String();
+#endif
+    }
+
     bool native_cover_file_picker_open(
             const String &title,
             const String &initial_directory,
@@ -12830,6 +12865,25 @@ void main() {
         const CharString directory_utf8 = initial_directory.utf8();
         const CharString destination_utf8 = destination_directory.utf8();
         return aether_native_cover_file_picker_present(
+                   title_utf8.get_data(), directory_utf8.get_data(),
+                   destination_utf8.get_data()) != 0;
+#else
+        (void)title;
+        (void)initial_directory;
+        (void)destination_directory;
+        return false;
+#endif
+    }
+
+    bool native_font_file_picker_open(
+            const String &title,
+            const String &initial_directory,
+            const String &destination_directory) const {
+#if defined(__APPLE__)
+        const CharString title_utf8 = title.utf8();
+        const CharString directory_utf8 = initial_directory.utf8();
+        const CharString destination_utf8 = destination_directory.utf8();
+        return aether_native_font_file_picker_present(
                    title_utf8.get_data(), directory_utf8.get_data(),
                    destination_utf8.get_data()) != 0;
 #else
@@ -13060,6 +13114,14 @@ protected:
             D_METHOD("native_cover_file_picker_open", "title", "initial_directory",
                      "destination_directory"),
             &AetherRuntimePlayer::native_cover_file_picker_open);
+        ClassDB::bind_method(D_METHOD("native_cover_photo_picker_open", "title", "destination_directory"),
+            &AetherRuntimePlayer::native_cover_photo_picker_open);
+        ClassDB::bind_method(D_METHOD("native_cover_photo_picker_take_result_json"),
+            &AetherRuntimePlayer::native_cover_photo_picker_take_result_json);
+        ClassDB::bind_method(
+            D_METHOD("native_font_file_picker_open", "title", "initial_directory",
+                     "destination_directory"),
+            &AetherRuntimePlayer::native_font_file_picker_open);
         ClassDB::bind_method(
             D_METHOD("native_translation_model_file_picker_open", "title",
                      "initial_directory"),

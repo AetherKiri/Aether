@@ -14,7 +14,8 @@ namespace aether::hooks {
 class GameHooks {
 public:
     using Bytes = std::vector<uint8_t>;
-    void Load(const std::filesystem::path& root, const std::string& engine);
+    void Load(const std::filesystem::path& root, const std::string& engine,
+              const std::filesystem::path& settings_root = {});
     const Bytes* Find(const std::string& name) const;
     const std::map<std::string, Bytes>& Files() const { return files_; }
     const std::string& Encoding() const { return encoding_; }

@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="zh-CN">
+  <meta charset="utf-8" /><meta
+    name="viewport"
+    content="width=device-width,initial-scale=1"
+  />
+  <title>Aether · Astryx 交互对照</title>
+  <style>
+    * {
+      box-sizing: border-box;
+    }
+    body {
+      margin: 0;
+      background: #e8e8e8;
+      color: #1b1b1b;
+      font: 14px system-ui;
+    }
+    header {
+      height: 60px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 0 24px;
+      background: white;
+      border-bottom: 1px solid #ddd;
+    }
+    header strong {
+      margin-right: auto;
+    }
+    button {
+      font: inherit;
+      border: 1px solid #ddd;
+      border-radius: 24px;
+      padding: 9px 18px;
+      background: white;
+      cursor: pointer;
+    }
+    button[aria-pressed="true"] {
+      color: white;
+      background: #1b1b1b;
+      border-color: #1b1b1b;
+    }
+    small {
+      color: #6a6a6a;
+    }
+    #stage {
+      position: absolute;
+      inset: 80px 24px 20px;
+      display: block;
+    }
+    #frame {
+      position: absolute;
+      left: 50%;
+      top: 50%;
+      border: 0;
+      box-shadow: 0 12px 40px #0001;
+      border-radius: 28px;
+      transform-origin: center;
+      flex-shrink: 0;
+    }
+  </style>
+  <header>
+    <strong>Aether / Astryx <small>React 19 · 本地原始组件库</small></strong
+    ><button data-device="phone" aria-pressed="false">iPhone · 竖屏</button
+    ><button data-device="portrait" aria-pressed="false">iPad · 竖屏</button
+    ><button data-device="tablet" aria-pressed="true">iPad · 横屏</button>
+  </header>
+  <main id="stage">
+    <iframe id="frame" title="Aether 交互原型" src="/app.html?platform=ios"></iframe>
+  </main>
+  <script>
+    let device = "tablet";
+    const frame = document.querySelector("#frame");
+    function resize() {
+      const [w, h] = {
+        phone: [393, 852],
+        portrait: [834, 1194],
+        tablet: [1194, 834],
+      }[device];
+      frame.style.width = w + "px";
+      frame.style.height = h + "px";
+      frame.style.transform = `translate(-50%,-50%) scale(${Math.min((innerWidth - 48) / w, (innerHeight - 100) / h, 1)})`;
+    }
+    document.querySelectorAll("[data-device]").forEach(
+      (b) =>
+        (b.onclick = () => {
+          device = b.dataset.device;
+          document
+            .querySelectorAll("[data-device]")
+            .forEach((x) => x.setAttribute("aria-pressed", x === b));
+          resize();
+        }),
+    );
+    addEventListener("resize", resize);
+    resize();
+  </script>
+</html>

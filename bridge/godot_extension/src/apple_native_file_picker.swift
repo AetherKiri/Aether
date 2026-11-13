@@ -3,6 +3,7 @@ import UniformTypeIdentifiers
 
 #if os(iOS)
 import UIKit
+import PhotosUI
 #elseif os(macOS)
 import AppKit
 #endif
@@ -13,7 +14,9 @@ private final class AetherNativeLaunchFilePicker: NSObject, @unchecked Sendable 
     private enum Purpose {
         case launchFile
         case coverImage(destinationDirectory: String)
+        case photoCover(destinationDirectory: String)
         case translationModel
+        case gameFont(destinationDirectory: String)
     }
 
     private let lock = NSLock()
@@ -22,6 +25,8 @@ private final class AetherNativeLaunchFilePicker: NSObject, @unchecked Sendable 
 
 #if os(iOS)
     private var documentPicker: UIDocumentPickerViewController?
+    private var photoPicker: PHPickerViewController?
+    private var photoDestination = ""
     private var documentPickerPurpose: Purpose = .launchFile
     private var activeTranslationModelURL: URL?
     private var activeTranslationModelUsesSecurityScope = false
@@ -65,6 +70,20 @@ private final class AetherNativeLaunchFilePicker: NSObject, @unchecked Sendable 
             initialDirectory: initialDirectory,
             purpose: .launchFile
         )
+    }
+
+    func presentGameFont(title: String, initialDirectory: String, destinationDirectory: String) -> Bool {
+        return present(title: title, initialDirectory: initialDirectory,
+                       purpose: .gameFont(destinationDirectory: destinationDirectory))
+    }
+
+    func presentPhotoCover(title: String, destinationDirectory: String) -> Bool {
+#if os(iOS)
+        return present(title: title, initialDirectory: "",
+                       purpose: .photoCover(destinationDirectory: destinationDirectory))
+#else
+        return false
+#endif
     }
 
     func presentCoverImage(
@@ -155,6 +174,27 @@ private final class AetherNativeLaunchFilePicker: NSObject, @unchecked Sendable 
             return nil
         }
         return URL(fileURLWithPath: path, isDirectory: true)
+    }
+
+    private func importedFontPath(from sourceURL: URL, destinationDirectory: String) throws -> String {
+        let ext = sourceURL.pathExtension.lowercased()
+        let size = try sourceURL.resourceValues(forKeys: [.fileSizeKey]).fileSize ?? 0
+        guard ["ttf", "otf"].contains(ext), size > 0, size <= 32 * 1024 * 1024,
+              !destinationDirectory.isEmpty else {
+            throw NSError(domain: "AetherNativeFilePicker", code: 3,
+                          userInfo: [NSLocalizedDescriptionKey: "Choose a TTF or OTF font up to 32 MiB"])
+        }
+        let directory = URL(fileURLWithPath: destinationDirectory, isDirectory: true)
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        let file = directory.appendingPathComponent(sourceURL.lastPathComponent)
+        do {
+            try FileManager.default.copyItem(at: sourceURL, to: file)
+        } catch {
+            try? FileManager.default.removeItem(at: directory)
+            throw error
+        }
+        return file.standardizedFileURL.path
     }
 
     private func importedCoverPath(
@@ -267,16 +307,31 @@ private final class AetherNativeLaunchFilePicker: NSObject, @unchecked Sendable 
             complete(status: "error", error: "Unable to find a window for the system file picker")
             return
         }
+        if case .photoCover(let destination) = purpose {
+            var configuration = PHPickerConfiguration(photoLibrary: .shared())
+            configuration.filter = .images
+            configuration.selectionLimit = 1
+            configuration.preferredAssetRepresentationMode = .compatible
+            let picker = PHPickerViewController(configuration: configuration)
+            picker.delegate = self
+            picker.modalPresentationStyle = .formSheet
+            photoDestination = destination
+            photoPicker = picker
+            presenter.present(picker, animated: true)
+            return
+        }
         let contentTypes: [UTType]
         switch purpose {
         case .launchFile:
             contentTypes = [.data]
-        case .coverImage:
+        case .coverImage, .photoCover:
             contentTypes = [
                 .png,
                 .jpeg,
                 UTType(filenameExtension: "webp"),
             ].compactMap { $0 }
+        case .gameFont:
+            contentTypes = [UTType(filenameExtension: "ttf"), UTType(filenameExtension: "otf")].compactMap { $0 }
         case .translationModel:
             contentTypes = [UTType(filenameExtension: "gguf")].compactMap { $0 }
         }
@@ -329,12 +384,14 @@ private final class AetherNativeLaunchFilePicker: NSObject, @unchecked Sendable 
                 UTType(filenameExtension: "xp3"),
                 UTType(filenameExtension: "hcb"),
             ].compactMap { $0 }
-        case .coverImage:
+        case .coverImage, .photoCover:
             panel.allowedContentTypes = [
                 .png,
                 .jpeg,
                 UTType(filenameExtension: "webp"),
             ].compactMap { $0 }
+        case .gameFont:
+            panel.allowedContentTypes = [UTType(filenameExtension: "ttf"), UTType(filenameExtension: "otf")].compactMap { $0 }
         case .translationModel:
             panel.allowedContentTypes = [
                 UTType(filenameExtension: "gguf"),
@@ -349,12 +406,19 @@ private final class AetherNativeLaunchFilePicker: NSObject, @unchecked Sendable 
                 switch purpose {
                 case .launchFile:
                     self.complete(status: "selected", path: url.standardizedFileURL.path)
-                case .coverImage(let destinationDirectory):
+                case .coverImage(let destinationDirectory), .photoCover(let destinationDirectory):
                     do {
                         let path = try self.importedCoverPath(
                             from: url,
                             destinationDirectory: destinationDirectory
                         )
+                        self.complete(status: "selected", path: path)
+                    } catch {
+                        self.complete(status: "error", error: error.localizedDescription)
+                    }
+                case .gameFont(let destinationDirectory):
+                    do {
+                        let path = try self.importedFontPath(from: url, destinationDirectory: destinationDirectory)
                         self.complete(status: "selected", path: path)
                     } catch {
                         self.complete(status: "error", error: error.localizedDescription)
@@ -382,6 +446,53 @@ private final class AetherNativeLaunchFilePicker: NSObject, @unchecked Sendable 
 }
 
 #if os(iOS)
+extension AetherNativeLaunchFilePicker: PHPickerViewControllerDelegate {
+    func picker(_ picker: PHPickerViewController, didFinishPicking results: [PHPickerResult]) {
+        picker.dismiss(animated: true)
+        photoPicker = nil
+        let destination = photoDestination
+        photoDestination = ""
+        guard let provider = results.first?.itemProvider else {
+            complete(status: "cancelled")
+            return
+        }
+        guard provider.canLoadObject(ofClass: UIImage.self) else {
+            complete(status: "error", error: "The selected photo cannot be read")
+            return
+        }
+        provider.loadObject(ofClass: UIImage.self) { [weak self] object, error in
+            DispatchQueue.main.async {
+                guard let self else { return }
+                guard let image = object as? UIImage, image.size.width > 0, image.size.height > 0 else {
+                    self.complete(status: "error", error: error?.localizedDescription ?? "The selected photo cannot be read")
+                    return
+                }
+                do {
+                    // Normalize HEIC/orientation and bound large camera images.
+                    let ratio = min(1, 4096 / max(image.size.width, image.size.height))
+                    let size = CGSize(width: image.size.width * ratio, height: image.size.height * ratio)
+                    let format = UIGraphicsImageRendererFormat()
+                    format.scale = 1
+                    let rendered = UIGraphicsImageRenderer(size: size, format: format).image { _ in
+                        image.draw(in: CGRect(origin: .zero, size: size))
+                    }
+                    guard !destination.isEmpty, let bytes = rendered.pngData() else {
+                        throw NSError(domain: "AetherNativeFilePicker", code: 4,
+                                      userInfo: [NSLocalizedDescriptionKey: "Cannot import the selected photo"])
+                    }
+                    let directory = URL(fileURLWithPath: destination, isDirectory: true)
+                    try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+                    let file = directory.appendingPathComponent("cover-\(UUID().uuidString).png")
+                    try bytes.write(to: file, options: .atomic)
+                    self.complete(status: "selected", path: file.path)
+                } catch {
+                    self.complete(status: "error", error: error.localizedDescription)
+                }
+            }
+        }
+    }
+}
+
 extension AetherNativeLaunchFilePicker: UIDocumentPickerDelegate {
     func documentPicker(
         _ controller: UIDocumentPickerViewController,
@@ -401,12 +512,19 @@ extension AetherNativeLaunchFilePicker: UIDocumentPickerDelegate {
         switch documentPickerPurpose {
         case .launchFile:
             complete(status: "selected", path: url.standardizedFileURL.path)
-        case .coverImage(let destinationDirectory):
+        case .coverImage(let destinationDirectory), .photoCover(let destinationDirectory):
             do {
                 let path = try importedCoverPath(
                     from: url,
                     destinationDirectory: destinationDirectory
                 )
+                complete(status: "selected", path: path)
+            } catch {
+                complete(status: "error", error: error.localizedDescription)
+            }
+        case .gameFont(let destinationDirectory):
+            do {
+                let path = try importedFontPath(from: url, destinationDirectory: destinationDirectory)
                 complete(status: "selected", path: path)
             } catch {
                 complete(status: "error", error: error.localizedDescription)
@@ -454,6 +572,33 @@ public func aetherNativeCoverFilePickerPresent(
         title: title,
         initialDirectory: initialDirectory,
         destinationDirectory: destinationDirectory
+    ) ? 1 : 0
+}
+
+@_cdecl("aether_native_font_file_picker_present")
+public func aetherNativeFontFilePickerPresent(
+    _ titlePointer: UnsafePointer<CChar>?,
+    _ initialDirectoryPointer: UnsafePointer<CChar>?,
+    _ destinationDirectoryPointer: UnsafePointer<CChar>?
+) -> Int32 {
+    let title = titlePointer.map { String(cString: $0) } ?? ""
+    let initialDirectory = initialDirectoryPointer.map { String(cString: $0) } ?? ""
+    let destinationDirectory = destinationDirectoryPointer.map { String(cString: $0) } ?? ""
+    return AetherNativeLaunchFilePicker.shared.presentGameFont(
+        title: title,
+        initialDirectory: initialDirectory,
+        destinationDirectory: destinationDirectory
+    ) ? 1 : 0
+}
+
+@_cdecl("aether_native_cover_photo_picker_present")
+public func aetherNativeCoverPhotoPickerPresent(
+    _ titlePointer: UnsafePointer<CChar>?,
+    _ destinationDirectoryPointer: UnsafePointer<CChar>?
+) -> Int32 {
+    return AetherNativeLaunchFilePicker.shared.presentPhotoCover(
+        title: titlePointer.map { String(cString: $0) } ?? "",
+        destinationDirectory: destinationDirectoryPointer.map { String(cString: $0) } ?? ""
     ) ? 1 : 0
 }
 

@@ -1,4 +1,5 @@
 #include "AetherGameHooks.h"
+#include "AetherGameTextSettings.h"
 #include "AetherGb18030.h"
 #include <lua.hpp>
 #include <zlib.h>
@@ -259,12 +260,20 @@ struct GameHooks::Script {
     }
 };
 
-void GameHooks::Load(const std::filesystem::path& root, const std::string& engine) {
+void GameHooks::Load(const std::filesystem::path& root, const std::string& engine,
+                     const std::filesystem::path& settings_root) {
     *this = GameHooks{};
     Script script;
     script.root = std::filesystem::canonical(root);
     const auto path = script.Path("aether.lua");
-    if(!std::filesystem::exists(path)) return;
+    auto config_root = settings_root.empty() ? script.root : settings_root;
+    if(std::filesystem::is_regular_file(config_root)) config_root = config_root.parent_path();
+    const auto settings = aether::text::GameTextSettings::Load(config_root, engine);
+    if(!std::filesystem::exists(path)) {
+        encoding_ = settings.encoding;
+        font_ = settings.font;
+        return;
+    }
     if(std::filesystem::file_size(path) > 1024 * 1024) throw std::runtime_error("aether.lua exceeds 1 MiB limit");
     const auto source = Read(path, 0, UINT64_MAX);
     std::string_view script_source(reinterpret_cast<const char*>(source.data()), source.size());
@@ -283,6 +292,10 @@ void GameHooks::Load(const std::filesystem::path& root, const std::string& engin
         throw std::runtime_error(std::string("aether.lua: ") + (message ? message : "script failed"));
     }
     script.output.active_ = true;
+    // Explicit user choices win over patch defaults. Empty values preserve
+    // the patch's encoding/font and do not alter its resource registrations.
+    if(!settings.encoding.empty()) script.output.encoding_ = settings.encoding;
+    if(!settings.font.empty()) script.output.font_ = settings.font;
     *this = std::move(script.output);
 }
 
@@ -295,7 +308,7 @@ const GameHooks::Bytes* GameHooks::Find(const std::string& name) const {
 }
 void GameHooks::RequireEncoding(const std::vector<std::string>& supported) const {
     if(!encoding_.empty() && std::find(supported.begin(), supported.end(), encoding_) == supported.end())
-        throw std::runtime_error("aether.lua: this engine does not support " + encoding_);
+        throw std::runtime_error("game text settings: this engine does not support " + encoding_);
 }
 void GameHooks::Materialize(const std::filesystem::path& directory) const {
     std::filesystem::create_directories(directory);

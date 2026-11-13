@@ -129,6 +129,7 @@ endif()
 
 if(APPLE)
     if(IOS)
+        target_link_libraries(aether_kiri_godot PRIVATE "-framework PhotosUI" "-framework Photos")
         if(AETHERKIRI_ENABLE_RENPY)
             target_sources(aether_kiri_godot PRIVATE src/renpy_native_ios.mm)
             set_source_files_properties(src/renpy_native_ios.mm

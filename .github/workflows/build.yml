@@ -1438,7 +1438,7 @@ jobs:
         run: |
           python3 -m unittest discover -s tests/python -p test_renpy_host.py
           python3 -m unittest discover -s tests/python -p test_runtime_submodule_initialization.py -v
-          for test in video_library_folders video_library_ui video_import_permissions flash_library tyrano_library tyrano_asar renpy_library xsystem4_library xsystem35_library system3_library rfvp_import; do
+          for test in android_tree_uri video_library_folders video_library_ui video_import_permissions flash_library tyrano_library tyrano_asar renpy_library xsystem4_library xsystem35_library system3_library rfvp_import; do
             timeout 60 "$GODOT_BIN" --headless --path apps/godot_app \
               --script "res://tests/${test}_test.gd" \
               2>&1 | tee "$RUNNER_TEMP/${test}.log"

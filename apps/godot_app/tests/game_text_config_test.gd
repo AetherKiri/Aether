@@ -48,7 +48,7 @@ func _run() -> void:
     var imported := Config.load_font("res://assets/fonts/Figtree-Regular.ttf")
     _expect(imported.error == OK and imported.font != null and not imported.data.is_empty(), "Validate real font bytes before import")
     _expect(not DirAccess.dir_exists_absolute(root_a.path_join("aether_fonts")), "Choosing a font does not write into the game")
-    _write(path, JSON.stringify({"custom": 42, "rendering": {"output_resolution": "4k"}, "text": {"future_option": "keep"}}))
+    _write(path, JSON.stringify({"custom": 42, "rendering": {"output_resolution": "4k", "frame_enhancement_kind": "preset", "frame_enhancement_mode": "chain_light", "frame_enhancement_custom_chain": ["fxaa"]}, "text": {"future_option": "keep"}}))
     _expect(Config.save(root_a, "yuris", legacy, {"font_file": ""}, imported) == OK, "Import a validated TTF on Save")
     var saved := Config.read(root_a, "yuris", legacy)
     var relative: String = saved.text.font_file
@@ -57,6 +57,7 @@ func _run() -> void:
     _expect(FileAccess.get_file_as_bytes(actual) == imported.data, "Imported font bytes are unchanged")
     _expect(saved.text.encoding == "GBK" and saved.document.text.future_option == "keep" and saved.document.custom == 42, "Font save migrates legacy encoding and preserves unrelated fields")
     _expect(saved.document.rendering.output_resolution == "4k", "Font save preserves per-game rendering")
+    _expect(saved.document.rendering.frame_enhancement_mode == "chain_light" and not saved.document.rendering.has("frame_enhancement_custom_chain"), "Font save removes stale custom steps from preset configuration")
     _expect(Config.save(root_a, "yuris", legacy, {"font_file": relative}, imported) == OK, "Repeated font import reuses identical content")
     _expect(Config.read(root_a, "yuris").text.font_file == relative, "Repeated import retains the same path")
     _expect(Render.save(root_a, {"upscale_algorithm": "nearest"}) == OK, "Rendering can be saved after text settings")

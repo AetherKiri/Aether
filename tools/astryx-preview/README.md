@@ -94,7 +94,9 @@ so Neutral's component overrides retain their intended cascade priority.
   `aether_config.json`; Cancel leaves the file untouched. Failed saves retain
   the editor and draft with an inline error. Rotation preserves drafts; leaving
   details, switching games or closing the section discards them. Empty strings
-  inherit current app preferences at launch without changing the global draft. See
+  inherit current app preferences at launch without changing the global draft.
+  Saving a preset stores its identifier and removes any custom-chain field from
+  the game JSON; preset implementations remain in the renderer. See
   [per-game rendering settings](../../doc/game_render_settings.md) for the schema
   and launch/validation behavior. React stores per-game fixture choices only
   in memory, so navigation preserves them and reload resets them.

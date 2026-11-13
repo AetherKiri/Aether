@@ -420,6 +420,8 @@ func _exercise_game_render_settings() -> void:
     await _click("AstryxSaveDetail_frame_enhancement_kind")
     var stored: Dictionary = app._read_game_render_config(game).rendering
     _expect(stored.upscale_algorithm == "nearest" and stored.output_resolution == "4k" and stored.frame_enhancement_mode == "chain_light", "Inline Save writes the selected game settings")
+    var preset_document: Dictionary = JSON.parse_string(FileAccess.get_file_as_string(config_path))
+    _expect(preset_document.rendering.frame_enhancement_kind == "preset" and not preset_document.rendering.has("frame_enhancement_custom_chain"), "The preset editor never exposes custom steps in the game JSON")
     var body: Control = controller.view.find_child("AstryxDetailBody_rendering", true, false)
     controller.view.scroll.scroll_vertical += int(body.global_position.y - controller.view.scroll.global_position.y - 64)
     await _capture("astryx-godot-ipad-game-rendering")

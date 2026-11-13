@@ -17,10 +17,7 @@ are independent of the global settings draft and its Save/Cancel actions.
     "upscale_algorithm": "nearest",
     "output_resolution": "",
     "frame_enhancement_kind": "preset",
-    "frame_enhancement_mode": "chain_soft",
-    "frame_enhancement_custom_chain": [
-      "anime4k_upscale_s", "bicubic", "anime4k_restore_soft_s"
-    ]
+    "frame_enhancement_mode": "chain_soft"
   }
 }
 ```
@@ -39,12 +36,17 @@ the app's enhancement kind and its preset/custom chain together.
 | `frame_enhancement_mode` | `chain_4k_max`, `chain_lossless`, `chain_ultra`, `chain_detail`, `chain_balanced`, `chain_soft`, `chain_light`, `chain_basic` |
 | `frame_enhancement_custom_chain` | Ordered array of up to 32 algorithm IDs |
 
-Preset and chain fields belong to the game's explicit enhancement choice.
-They are ignored when enhancement follows the app, and retained when switching
-modes. Choosing Preset or Custom saves the displayed defaults if needed.
-An absent/invalid preset defaults to `chain_soft`. An absent/invalid custom chain
-defaults to the three algorithms in the example. An empty array is valid and
-means no processing steps.
+Presets store only their identifier; their implementation stays in the renderer.
+When `frame_enhancement_kind` is `preset`, `frame_enhancement_custom_chain` is
+omitted. Any successful rendering, text or cover save also removes that field
+from older preset configurations. Reading or launching alone does not rewrite
+the file. Selecting Custom saves the user's ordered steps; switching back to
+Preset removes them. Choosing Custom again uses its displayed defaults.
+
+Preset and chain fields are ignored when enhancement follows the app. Choosing
+Preset or Custom saves the displayed defaults if needed. An absent/invalid
+preset defaults to `chain_soft`; an absent/invalid custom chain uses the Custom
+editor's default. An empty custom array is valid and means no processing steps.
 
 Custom algorithm IDs are `anime4k_upscale_s`, `anime4k_upscale_l`,
 `anime4k_upscale_vl`, `anime4k_restore_s`, `anime4k_restore_soft_s`,

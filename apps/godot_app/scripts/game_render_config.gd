@@ -133,11 +133,17 @@ static func save(game_root: String, patch: Dictionary) -> Error:
     return write_document(loaded.path, document)
 
 static func write_document(path: String, document: Dictionary) -> Error:
+    # Presets are identified by name. Do not serialize a custom editor draft or
+    # an old chain alongside them, including when saving text or cover settings.
+    var stored := document.duplicate(true)
+    var rendering = stored.get("rendering", {})
+    if rendering is Dictionary and rendering.get("frame_enhancement_kind") == "preset":
+        rendering.erase("frame_enhancement_custom_chain")
     var temporary := "%s.%d.%d.tmp" % [path, OS.get_process_id(), Time.get_ticks_usec()]
     var file := FileAccess.open(temporary, FileAccess.WRITE)
     if file == null:
         return FileAccess.get_open_error()
-    file.store_string(JSON.stringify(document, "  ") + "\n")
+    file.store_string(JSON.stringify(stored, "  ") + "\n")
     file.flush()
     var error := file.get_error()
     file.close()

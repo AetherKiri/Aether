@@ -1156,8 +1156,9 @@ func _save_detail_edit() -> void:
     else:
         var patch := {detail_edit_key: detail_edit_draft[detail_edit_key]}
         if detail_edit_key == "frame_enhancement_kind":
-            for key in ["frame_enhancement_mode", "frame_enhancement_custom_chain"]:
-                patch[key] = detail_edit_draft[key]
+            patch.frame_enhancement_mode = detail_edit_draft.frame_enhancement_mode
+            if patch.frame_enhancement_kind != "preset":
+                patch.frame_enhancement_custom_chain = detail_edit_draft.frame_enhancement_custom_chain
         var error: Error = host._save_game_render_config(host.selected_game, patch)
         if error != OK:
             detail_edit_error = _text("无法保存游戏配置：", "Could not save game settings: ", "ゲーム設定を保存できません：") + error_string(error)

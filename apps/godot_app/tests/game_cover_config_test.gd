@@ -16,9 +16,13 @@ func _run() -> void:
     var fixture := DirAccess.create_temp("aether-cover-config")
     var root := fixture.get_current_dir().path_join("游戏")
     DirAccess.make_dir_recursive_absolute(root)
-    var document := {"rendering": {"output_resolution": "4k"}, "text": {"encoding": "GBK"}, "custom": {"keep": true}}
+    var document := {"rendering": {"output_resolution": "4k", "frame_enhancement_kind": "preset", "frame_enhancement_mode": "chain_light"}, "text": {"encoding": "GBK"}, "custom": {"keep": true}}
     var config_path := root.path_join("aether_config.json")
-    Config.write_document(config_path, document)
+    var legacy := document.duplicate(true)
+    legacy.rendering.frame_enhancement_custom_chain = ["fxaa"]
+    var legacy_file := FileAccess.open(config_path, FileAccess.WRITE)
+    legacy_file.store_string(JSON.stringify(legacy))
+    legacy_file.close()
     var image := Image.create(32, 48, false, Image.FORMAT_RGB8)
     image.fill(Color.CORNFLOWER_BLUE)
     var saved := Cover.save_image(root, image, "vndb", "v34")
@@ -28,6 +32,7 @@ func _run() -> void:
     _expect(not loaded.document.cover.path.is_absolute_path() and loaded.document.cover.vndb_id == "v34", "Config stores a portable path and the selected VNDB entry")
     for key in document:
         _expect(loaded.document[key] == document[key], "Saving a cover preserves " + key)
+    _expect(not loaded.document.rendering.has("frame_enhancement_custom_chain"), "Cover save removes stale custom steps from preset configuration")
     var count := DirAccess.get_files_at(root).size()
     _expect(Cover.save_image(root, image, "vndb", "v34").error == OK and DirAccess.get_files_at(root).size() == count, "Selecting the same cover reuses its file")
     var moved := fixture.get_current_dir().path_join("移动后的游戏")

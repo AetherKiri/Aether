@@ -30,8 +30,8 @@ namespace aetherkiri::luca {
         constexpr int32_t kProviderPriority = 90;
         constexpr uint32_t kDefaultSurfaceWidth = 1280;
         constexpr uint32_t kDefaultSurfaceHeight = 720;
-        /// Engine save-slot count (notes/020: 300 regular slots).
-        constexpr uint32_t kLucaSlotCount = 300;
+        // The runtime checks this release's regular and physical quick slots.
+        constexpr uint32_t kLucaMaximumPhysicalSlot = 321;
 
         uint32_t ReadU32(const uint8_t *bytes) {
             return static_cast<uint32_t>(bytes[0]) |
@@ -481,7 +481,7 @@ namespace aetherkiri::luca {
                 char *end = nullptr;
                 const long slot = std::strtol(option->value_utf8, &end, 10);
                 if(end == option->value_utf8 || *end != '\0' || slot < 1 ||
-                   static_cast<uint32_t>(slot) > kLucaSlotCount) {
+                   slot > kLucaMaximumPhysicalSlot) {
                     return ENGINE_RESULT_INVALID_ARGUMENT;
                 }
                 const int32_t result =
@@ -504,7 +504,7 @@ namespace aetherkiri::luca {
                 char *end = nullptr;
                 const long slot = std::strtol(slot_text.c_str(), &end, 10);
                 if(end == slot_text.c_str() || *end != '\0' || slot < 1 ||
-                   static_cast<uint32_t>(slot) > kLucaSlotCount) {
+                   slot > kLucaMaximumPhysicalSlot) {
                     return ENGINE_RESULT_INVALID_ARGUMENT;
                 }
                 const std::string title =
@@ -515,6 +515,20 @@ namespace aetherkiri::luca {
                     return Fail(instance->error, result, instance->ak,
                                 "luca_ak_write_save_slot");
                 }
+                return ENGINE_RESULT_OK;
+            }
+            if(std::strcmp(option->key_utf8, "luca.save.menu") == 0) {
+                if(instance->ak == nullptr || !instance->opened) {
+                    return ENGINE_RESULT_INVALID_STATE;
+                }
+                int32_t mode = -1;
+                if(std::strcmp(option->value_utf8, "save") == 0) mode = 0;
+                else if(std::strcmp(option->value_utf8, "load") == 0) mode = 1;
+                else if(std::strcmp(option->value_utf8, "quick-save") == 0) mode = 2;
+                else if(std::strcmp(option->value_utf8, "quick-load") == 0) mode = 3;
+                if(mode < 0) return ENGINE_RESULT_INVALID_ARGUMENT;
+                const int32_t result = luca_ak_save_menu_open(instance->ak, mode);
+                if(result < 0) return Fail(instance->error, result, instance->ak, "luca_ak_save_menu_open");
                 return ENGINE_RESULT_OK;
             }
             // Runtime options (translation hooks, IME, skipping) arrive with
@@ -597,6 +611,52 @@ namespace aetherkiri::luca {
                 event->type == ENGINE_INPUT_EVENT_KEY_DOWN &&
                 (event->key_code == 0x20 || event->key_code == 0x0D);
 
+            if(luca_ak_waiting_save_menu(instance->ak) != 0) {
+                int32_t kind = -1;
+                if(event->type == ENGINE_INPUT_EVENT_KEY_DOWN) {
+                    switch(event->key_code) {
+                        case 0x25: kind = LUCA_AK_SAVE_MENU_LEFT; break;
+                        case 0x27: kind = LUCA_AK_SAVE_MENU_RIGHT; break;
+                        case 0x26: kind = LUCA_AK_SAVE_MENU_UP; break;
+                        case 0x28: kind = LUCA_AK_SAVE_MENU_DOWN; break;
+                        case 0x21: kind = LUCA_AK_SAVE_MENU_PAGE_PREVIOUS; break;
+                        case 0x22: kind = LUCA_AK_SAVE_MENU_PAGE_NEXT; break;
+                        case 0x24: kind = LUCA_AK_SAVE_MENU_HOME; break;
+                        case 0x23: kind = LUCA_AK_SAVE_MENU_END; break;
+                        case 0x1B: kind = LUCA_AK_SAVE_MENU_CANCEL; break;
+                        default: if(key_confirm) kind = LUCA_AK_SAVE_MENU_CONFIRM; break;
+                    }
+                } else if(event->type == ENGINE_INPUT_EVENT_POINTER_DOWN && event->button == 1) {
+                    kind = LUCA_AK_SAVE_MENU_CANCEL;
+                }
+                if(kind >= 0) {
+                    const int32_t result = luca_ak_save_menu_input(instance->ak, kind);
+                    if(result < 0 && result != LUCA_AK_INVALID_STATE) return Fail(instance->error, result, instance->ak, "luca_ak_save_menu_input");
+                } else if(pointer_down || event->type == ENGINE_INPUT_EVENT_POINTER_MOVE) {
+                    int32_t consumed = 0;
+                    const int32_t result = luca_ak_pointer_input(instance->ak, pointer_down ? 1 : 0, event->x, event->y, &consumed);
+                    if(result < 0) return Fail(instance->error, result, instance->ak, "luca_ak_pointer_input");
+                }
+                return ENGINE_RESULT_OK;
+            }
+
+            // Host shortcuts open the same native panel used by title LOAD.
+            if(event->type == ENGINE_INPUT_EVENT_KEY_DOWN) {
+                int32_t mode = -1;
+                switch(event->key_code) {
+                    case 0x74: mode = 2; break; // F5: quick save
+                    case 0x75: mode = 0; break; // F6: save
+                    case 0x76: mode = 1; break; // F7: load
+                    case 0x78: mode = 3; break; // F9: quick load
+                    default: break;
+                }
+                if(mode >= 0) {
+                    const int32_t result = luca_ak_save_menu_open(instance->ak, mode);
+                    if(result < 0) return Fail(instance->error, result, instance->ak, "luca_ak_save_menu_open");
+                    return ENGINE_RESULT_OK;
+                }
+            }
+
             if(pointer_down || event->type == ENGINE_INPUT_EVENT_POINTER_MOVE) {
                 int32_t consumed = 0;
                 const int32_t result = luca_ak_pointer_input(
@@ -626,16 +686,17 @@ namespace aetherkiri::luca {
 
             // SELECT window (content-space coordinates): pointer hover /
             // click rows, arrows move the cursor, confirm decides.
-            if(luca_ak_waiting_select(instance->ak) != 0) {
+            if(luca_ak_waiting_select(instance->ak) != 0 ||
+               luca_ak_waiting_task(instance->ak) != 0) {
                 int32_t kind = -1;
                 if(event->type == ENGINE_INPUT_EVENT_POINTER_MOVE) {
                     kind = LUCA_AK_SELECT_HOVER;
                 } else if(pointer_down) {
                     kind = LUCA_AK_SELECT_CLICK;
                 } else if(event->type == ENGINE_INPUT_EVENT_KEY_DOWN) {
-                    if(event->key_code == 0x28) {  // VK_DOWN
+                    if(event->key_code == 0x28 || event->key_code == 0x27) {
                         kind = LUCA_AK_SELECT_MOVE_DOWN;
-                    } else if(event->key_code == 0x26) {  // VK_UP
+                    } else if(event->key_code == 0x26 || event->key_code == 0x25) {
                         kind = LUCA_AK_SELECT_MOVE_UP;
                     } else if(key_confirm) {
                         kind = LUCA_AK_SELECT_CONFIRM;
@@ -780,8 +841,11 @@ namespace aetherkiri::luca {
                 info += luca_ak_waiting_task(instance->ak) != 0
                             ? " taskWaiting=1"
                             : " taskWaiting=0";
+                info += luca_ak_waiting_save_menu(instance->ak) != 0
+                            ? " saveMenuWaiting=1"
+                            : " saveMenuWaiting=0";
             } else {
-                info += " movieWaiting=0 titleWaiting=0 taskWaiting=0";
+                info += " movieWaiting=0 titleWaiting=0 taskWaiting=0 saveMenuWaiting=0";
             }
             return CopyString(info, output, output_size, bytes_written);
         }

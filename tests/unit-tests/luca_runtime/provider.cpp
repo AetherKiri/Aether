@@ -448,3 +448,41 @@ TEST_CASE("Luca save-slot load option validates and applies") {
     REQUIRE(error != nullptr);
     CHECK(std::string(error).find("luca_ak_load_slot") != std::string::npos);
 }
+
+TEST_CASE("Luca native save panel routes paging and cancellation") {
+    const fs::path root("/Volumes/yorkyang2333/LUCA/Summer Pockets REFLECTION BLUE");
+    if(!fs::is_regular_file(root / "files" / "image" / "SYSCG.PAK")) {
+        SKIP("no native panel assets");
+    }
+    aetherkiri::luca::RegisterRuntimeProvider();
+    Instance game;
+    REQUIRE(game.open(root) == ENGINE_RESULT_OK);
+    engine_input_event_t input{};
+    input.struct_size = sizeof(input);
+    input.type = ENGINE_INPUT_EVENT_KEY_DOWN;
+    input.key_code = 0x76; // F7 opens LOAD, including an empty save directory.
+    REQUIRE(provider->send_input(game.value, &input) == ENGINE_RESULT_OK);
+    REQUIRE(provider->tick(game.value, 16) == ENGINE_RESULT_OK);
+    char debug[2048] = {};
+    REQUIRE(provider->get_plugin_debug_info(game.value, debug, sizeof(debug), nullptr) == ENGINE_RESULT_OK);
+    CHECK(std::string(debug).find("saveMenuWaiting=1") != std::string::npos);
+    const auto before = game.pixels(game.frame());
+    input.key_code = 0x22; // PageDown selects the next native card page.
+    REQUIRE(provider->send_input(game.value, &input) == ENGINE_RESULT_OK);
+    REQUIRE(provider->tick(game.value, 16) == ENGINE_RESULT_OK);
+    CHECK(game.pixels(game.frame()) != before);
+    input.key_code = 0x1B;
+    REQUIRE(provider->send_input(game.value, &input) == ENGINE_RESULT_OK);
+    REQUIRE(provider->get_plugin_debug_info(game.value, debug, sizeof(debug), nullptr) == ENGINE_RESULT_OK);
+    CHECK(std::string(debug).find("saveMenuWaiting=0") != std::string::npos);
+    CHECK(std::string(debug).find("titleWaiting=1") != std::string::npos);
+    engine_option_t option{};
+    option.key_utf8 = "luca.save.menu";
+    option.value_utf8 = "load";
+    REQUIRE(provider->set_option(game.value, &option) == ENGINE_RESULT_OK);
+    input.type = ENGINE_INPUT_EVENT_POINTER_DOWN;
+    input.button = 1; // Right-click cancellation stays inside the panel.
+    REQUIRE(provider->send_input(game.value, &input) == ENGINE_RESULT_OK);
+    REQUIRE(provider->get_plugin_debug_info(game.value, debug, sizeof(debug), nullptr) == ENGINE_RESULT_OK);
+    CHECK(std::string(debug).find("saveMenuWaiting=0") != std::string::npos);
+}

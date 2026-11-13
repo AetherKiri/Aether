@@ -369,10 +369,8 @@ if(TARGET aether_cmvs_runtime)
     target_compile_definitions(aether_kiri_godot PRIVATE AETHERKIRI_WITH_CMVS=1)
 endif()
 if(TARGET aether_luca_runtime)
-    target_link_libraries(aether_kiri_godot PRIVATE
-        aether_luca_runtime)
-    target_compile_definitions(aether_kiri_godot PRIVATE
-        AETHERKIRI_WITH_LUCA=1)
+    target_link_libraries(aether_kiri_godot PRIVATE aether_luca_runtime)
+    target_compile_definitions(aether_kiri_godot PRIVATE AETHERKIRI_WITH_LUCA=1)
 endif()
 if(TARGET aether_minori_runtime)
     target_link_libraries(aether_kiri_godot PRIVATE

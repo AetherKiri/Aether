@@ -2181,6 +2181,7 @@ const RUNTIME_TYRANO := "tyranoscript"
 const RUNTIME_MAGES := "mages"
 const RUNTIME_YURIS := "yuris"
 const RUNTIME_SYSTEMC := "systemc"
+const RUNTIME_LUCA := "luca"
 const RUNTIME_PLAYER_CLASS := "AetherRuntimePlayer"
 const ONSCRIPTER_SCRIPT_MARKERS := [
     "0.txt",
@@ -2568,17 +2569,10 @@ var active_subtitle_cues: Array[Dictionary] = []
 var active_subtitle_index := 0
 var video_progress_data := {}
 var video_progress_save_accum := 0.0
-
-# --- Engine movie overlay (runtime-latched movies) ----------------------------
-# Providers (luca today, WA2 through its probe GUI) latch a pending movie in
-# get_renderer_info() and expect the host to drive engine_media_open/play/
-# read_frame_rgba, layering the video ABOVE the composed game frame. Clicks
-# pass through to the runtime so its own skip logic releases the latch; the
-# next renderer-info poll then reports idle and the overlay closes.
 var engine_movie_rect: TextureRect
 var engine_movie_playing := false
-var engine_movie_failed_token := ""
 var engine_movie_runtime := ""
+var engine_movie_path := ""
 var engine_movie_was_playing := false
 var app_lifecycle_paused := false
 var render_errors := 0
@@ -3074,6 +3068,18 @@ func _build_ui() -> void:
     viewport.gui_input.connect(_on_viewport_input)
     _apply_upscale_algorithm()
 
+    # A viewport child stays above the game even when the viewport is raised.
+    # Pointer events reach the runtime so it owns movie skip decisions.
+    engine_movie_rect = TextureRect.new()
+    engine_movie_rect.name = "EngineMovieOverlay"
+    viewport.add_child(engine_movie_rect)
+    engine_movie_rect.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+    engine_movie_rect.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+    engine_movie_rect.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+    engine_movie_rect.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR
+    engine_movie_rect.mouse_filter = Control.MOUSE_FILTER_IGNORE
+    engine_movie_rect.visible = false
+
     game_view = Control.new()
     game_view.set_anchors_preset(Control.PRESET_FULL_RECT)
     game_view.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -3108,19 +3114,6 @@ func _build_ui() -> void:
     )
 
     _build_video_view()
-
-    # The engine movie overlay sits above the game viewport at the same stack
-    # level (the viewport is moved to the front while playing) and lets every
-    # pointer event pass through so runtime-side skip handling sees the click.
-    engine_movie_rect = TextureRect.new()
-    engine_movie_rect.name = "EngineMovieOverlay"
-    engine_movie_rect.set_anchors_preset(Control.PRESET_FULL_RECT)
-    engine_movie_rect.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
-    engine_movie_rect.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
-    engine_movie_rect.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR
-    engine_movie_rect.mouse_filter = Control.MOUSE_FILTER_IGNORE
-    engine_movie_rect.visible = false
-    add_child(engine_movie_rect)
 
     shell_root = Control.new()
     shell_root.set_anchors_preset(Control.PRESET_FULL_RECT)
@@ -12512,7 +12505,6 @@ func _return_to_library_after_runtime_exit() -> void:
             child.queue_free()
     _deactivate_game_text_input()
     _clear_game_input_capture()
-    _close_engine_movie()
     _finalize_active_game_session()
     game_running = false
     runtime_display_state.reset(get_window())
@@ -12541,6 +12533,7 @@ func _return_to_library_after_runtime_exit() -> void:
         player.release_frame_texture()
         _cleanup_softpal_platform_ui()
         _stop_wa2_audio()
+        _close_engine_movie()
         player.destroy_engine()
     last_texture_size = Vector2i.ZERO
     _set_game_runtime_orientation(false)
@@ -12968,6 +12961,7 @@ func _switch_runtime_player(runtime_kind: String) -> bool:
         RUNTIME_CMVS,
         RUNTIME_CATSYSTEM2,
         RUNTIME_SIGLUS,
+        RUNTIME_LUCA,
         RUNTIME_BGI,
         RUNTIME_MAGES,
         RUNTIME_XSYSTEM4,
@@ -13002,6 +12996,7 @@ func _switch_runtime_player(runtime_kind: String) -> bool:
         # platform services do not need one Node implementation per backend.
         _cleanup_softpal_platform_ui()
         _stop_wa2_audio()
+        _close_engine_movie()
         player.destroy_engine()
         current_player_runtime_kind = normalized
     if not _ensure_player_initialized():
@@ -13034,6 +13029,8 @@ func _switch_runtime_player(runtime_kind: String) -> bool:
         if normalized == RUNTIME_CATSYSTEM2
         else "Siglus"
         if normalized == RUNTIME_SIGLUS
+        else "LucaSystem"
+        if normalized == RUNTIME_LUCA
         else "BGI/Ethornell"
         if normalized == RUNTIME_BGI
         else "MAGES."
@@ -13745,6 +13742,7 @@ func _ensure_player_initialized() -> bool:
             and String(player.get_meta("aether_cache_directory", "")) == cache_dir:
             return true
         _stop_wa2_audio()
+        _close_engine_movie()
         player.destroy_engine()
     DirAccess.make_dir_recursive_absolute(cache_dir)
     if not player.initialize_engine(user_dir, cache_dir):
@@ -13765,6 +13763,7 @@ func _ensure_player_initialized() -> bool:
         RUNTIME_CMVS,
         RUNTIME_CATSYSTEM2,
         RUNTIME_SIGLUS,
+        RUNTIME_LUCA,
         RUNTIME_BGI,
         RUNTIME_MAGES,
         RUNTIME_XSYSTEM4,
@@ -13787,6 +13786,7 @@ func _ensure_player_initialized() -> bool:
         ])
         _cleanup_softpal_platform_ui()
         _stop_wa2_audio()
+        _close_engine_movie()
         player.destroy_engine()
         return false
 
@@ -13809,6 +13809,8 @@ func _ensure_player_initialized() -> bool:
         if current_player_runtime_kind == RUNTIME_CATSYSTEM2
         else "Siglus"
         if current_player_runtime_kind == RUNTIME_SIGLUS
+        else "LucaSystem"
+        if current_player_runtime_kind == RUNTIME_LUCA
         else "BGI/Ethornell"
         if current_player_runtime_kind == RUNTIME_BGI
         else "EntisGLS / Cotopha"
@@ -15599,6 +15601,7 @@ func _probe_cleanup_and_quit(code: int, record_cleanup: Callable = Callable()) -
         player.release_frame_texture()
         _cleanup_softpal_platform_ui()
         _stop_wa2_audio()
+        _close_engine_movie()
         player.destroy_engine()
     if record_cleanup.is_valid():
         record_cleanup.call({"event": "cleanup_complete", "exit_code": code})
@@ -15681,103 +15684,65 @@ func _process_video_playback(delta: float) -> void:
     _process_video_controls(delta)
 
 func _renderer_fields(info: String) -> Dictionary:
-    var out := {}
+    var fields := {}
     for token in info.split(" ", false):
-        var eq := token.find("=")
-        if eq > 0:
-            out[token.substr(0, eq)] = token.substr(eq + 1)
-    return out
-
-func _decode_percent(v: String) -> String:
-    if not v.contains("%"):
-        return v
-    var bytes := PackedByteArray()
-    var i := 0
-    var n := v.length()
-    while i < n:
-        if v[i] == "%" and i + 2 < n:
-            bytes.append(("0x" + v.substr(i + 1, 2)).hex_to_int())
-            i += 3
-        else:
-            bytes.append(v.unicode_at(i))
-            i += 1
-    return bytes.get_string_from_utf8()
+        var separator := token.find("=")
+        if separator > 0:
+            fields[token.substr(0, separator)] = token.substr(separator + 1)
+    return fields
 
 func _close_engine_movie() -> void:
-    if player != null:
+    if player != null and engine_movie_playing:
         player.media_close()
     if engine_movie_rect != null:
         engine_movie_rect.visible = false
         engine_movie_rect.texture = null
     engine_movie_playing = false
+    engine_movie_was_playing = false
+    engine_movie_runtime = ""
+    engine_movie_path = ""
 
 func _finish_engine_movie(mark_seen := false) -> void:
-    # Drop the media player first, then release the runtime's movie latch
-    # through the provider option channel (idempotent per provider).
+    var runtime_id := engine_movie_runtime
     _close_engine_movie()
-    if player != null and not engine_movie_runtime.is_empty():
-        player.set_engine_option(
-            engine_movie_runtime + ".movie.finish",
-            "seen" if mark_seen else ""
-        )
+    if player != null and not runtime_id.is_empty():
+        player.set_engine_option(runtime_id + ".movie.finish", "seen" if mark_seen else "")
 
 func _poll_engine_movie() -> void:
-    # Generic runtime-movie channel: any provider that reports a movie_state
-    # renderer-info key participates (luca today). The finish key follows the
-    # "<runtime>.movie.finish" convention.
+    # Providers opt in through renderer-info and release their movie latch via
+    # <runtime>.movie.finish. This shares the host decoder with library videos.
     if player == null or video_playing:
         return
     var fields := _renderer_fields(String(player.get_renderer_info()))
-    if not fields.has("movie_state"):
-        return
     var runtime_id := String(fields.get("runtime", ""))
-    if engine_movie_runtime.is_empty():
-        engine_movie_runtime = runtime_id
-    var state: String = fields.get("movie_state", "idle")
-    if state != "pending":
+    var state := String(fields.get("movie_state", "idle"))
+    if state != "pending" or runtime_id.is_empty():
         if engine_movie_playing:
-            # The runtime released the latch itself (skip click): stop pulling
-            # frames and restore plain game rendering.
-            print("[movie] latch gone -> close media")
             _close_engine_movie()
         return
-    var token: String = fields.get("movie_path", "-")
+    var path := String(fields.get("movie_path", "-")).uri_decode()
+    if engine_movie_playing and (engine_movie_runtime != runtime_id or engine_movie_path != path):
+        _close_engine_movie()
     if not engine_movie_playing:
-        if token == "-" or token == engine_movie_failed_token:
-            return  # nothing to open, or this one already failed once
-        var path := _decode_percent(token)
-        if not bool(player.media_open(path)):
-            printerr("[movie] open FAILED path=%s err=%s" % [
-                path, player.get_last_error(),
-            ])
-            engine_movie_failed_token = token
-            # Native missing-file behavior: finish immediately.
-            _finish_engine_movie()
-            return
-        var volume := float(fields.get("movie_volume", "1.0"))
-        if player.has_method("media_set_volume"):
-            player.media_set_volume(clampf(volume, 0.0, 1.0))
-        if int(player.media_play()) != ENGINE_RESULT_OK:
-            printerr("[movie] play FAILED path=%s err=%s" % [
-                path, player.get_last_error(),
-            ])
-            engine_movie_failed_token = token
+        engine_movie_runtime = runtime_id
+        engine_movie_path = path
+        if path == "-" or path.is_empty() or not bool(player.media_open(path)):
+            printerr("[movie] open failed: %s" % path)
             _finish_engine_movie()
             return
         engine_movie_playing = true
+        player.media_set_volume(clampf(float(fields.get("movie_volume", "1.0")), 0.0, 1.0))
+        if int(player.media_play()) != ENGINE_RESULT_OK:
+            printerr("[movie] play failed: %s" % path)
+            _finish_engine_movie()
+            return
+    var texture: Texture2D = player.media_update_texture()
+    if texture != null:
+        engine_movie_rect.texture = texture
         engine_movie_rect.visible = true
-        print("[movie] playing path=%s" % path)
-        return
-    # Playing: pull the latest RGBA frame into the overlay texture.
-    var tex: Texture2D = player.media_update_texture()
-    if tex != null:
-        engine_movie_rect.texture = tex
-    var st: Dictionary = player.media_get_state()
-    var status := int(st.get("status", 0))
+    var media_state: Dictionary = player.media_get_state()
+    var status := int(media_state.get("status", 0))
     if status == MEDIA_STATUS_ENDED or status == MEDIA_STATUS_ERROR:
-        print("[movie] ended status=%d pos=%.1fs/%.1fs" % [
-            status, float(st.get("position", 0.0)), float(st.get("duration", 0.0)),
-        ])
         _finish_engine_movie(status == MEDIA_STATUS_ENDED)
 
 func _apply_pending_video_resume(state: Dictionary) -> bool:
@@ -15801,6 +15766,7 @@ func _stop_wa2_audio() -> void:
         wa2_audio_host.stop_session()
 
 func _exit_tree() -> void:
+    _close_engine_movie()
     _stop_wa2_audio()
 
 func _process(delta: float) -> void:
@@ -15928,6 +15894,7 @@ func _process(delta: float) -> void:
                     perf_log_file.store_line(tick_error_line)
                     perf_log_file.flush()
                 game_running = false
+                _close_engine_movie()
                 _set_game_runtime_frame_pacing(false)
                 runtime_display_state.reset(get_window())
                 softpal_aspect_mode = 1
@@ -16478,8 +16445,8 @@ func _notification(what: int) -> void:
             _store_active_video_progress()
             player.media_pause()
         if engine_movie_playing:
-            var st: Dictionary = player.media_get_state()
-            engine_movie_was_playing = int(st.get("status", 0)) == MEDIA_STATUS_PLAYING
+            var media_state: Dictionary = player.media_get_state()
+            engine_movie_was_playing = int(media_state.get("status", 0)) == MEDIA_STATUS_PLAYING
             player.media_pause()
         _pause_game_for_lifecycle("notification_%d" % what)
         return
@@ -16500,7 +16467,6 @@ func _notification(what: int) -> void:
             _store_active_video_progress()
             player.media_close()
             video_playing = false
-        _close_engine_movie()
         if app_lifecycle_paused:
             player.resume()
             app_lifecycle_paused = false
@@ -16513,6 +16479,7 @@ func _notification(what: int) -> void:
         player.release_frame_texture()
         _cleanup_softpal_platform_ui()
         _stop_wa2_audio()
+        _close_engine_movie()
         player.destroy_engine()
 
 func _handle_go_back_request() -> void:
@@ -16537,8 +16504,6 @@ func _handle_go_back_request() -> void:
         _close_video_player()
         return
     if engine_movie_playing:
-        # Movie playback is part of the running game session; treat a back
-        # gesture as a skip (same as an in-movie click) rather than exiting.
         _finish_engine_movie()
         return
     if game_running or cached_startup_state == STARTUP_RUNNING:
@@ -16600,7 +16565,6 @@ func _quit_app_for_go_back() -> void:
             _store_active_video_progress()
             player.media_close()
             video_playing = false
-        _close_engine_movie()
         _finalize_active_game_session()
         if diagnostic_session != null:
             diagnostic_session.finish()
@@ -16608,6 +16572,7 @@ func _quit_app_for_go_back() -> void:
         frame_upscale_source_texture = null
         player.release_frame_texture()
         _stop_wa2_audio()
+        _close_engine_movie()
         player.destroy_engine()
     get_tree().quit(0)
 
@@ -16755,6 +16720,7 @@ func _renderer_summary(renderer: String) -> String:
 
 
 func _on_open_game() -> void:
+    _close_engine_movie()
     if not _require_legal_documents_for_media():
         return
     var requested_path := game_path.text.strip_edges()

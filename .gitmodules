@@ -32,10 +32,6 @@
 	path = packages/AetherKrkr
 	url = https://github.com/AetherKiri/AetherKrkr.git
 	ignore = dirty
-[submodule "packages/cmvs-rs"]
-	path = packages/cmvs-rs
-	url = git@github.com:AetherKiri/cmvs-rs.git
-	branch = aether
 [submodule "packages/AetherSoftPal"]
 	path = packages/AetherSoftPal
 	url = git@github.com:AetherKiri/AetherSoftPal.git

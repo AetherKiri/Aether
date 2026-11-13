@@ -10942,8 +10942,7 @@ public:
 
     int media_set_volume(double volume) {
         if (media_ == nullptr) return ENGINE_RESULT_INVALID_STATE;
-        const engine_result_t result =
-            engine_media_set_volume(media_, volume);
+        const engine_result_t result = engine_media_set_volume(media_, volume);
         update_last_error(result);
         return result;
     }

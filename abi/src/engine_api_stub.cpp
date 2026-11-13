@@ -561,19 +561,11 @@ engine_result_t engine_media_seek(engine_media_handle_t media,
 }
 
 engine_result_t engine_media_set_rate(engine_media_handle_t media,
-                                       double playback_rate) {
+                                      double playback_rate) {
   (void)media;
   (void)playback_rate;
   return SetThreadErrorAndReturn(ENGINE_RESULT_NOT_SUPPORTED,
-                                  "media playback is unavailable");
-}
-
-engine_result_t engine_media_set_volume(engine_media_handle_t media,
-                                        double volume) {
-  (void)media;
-  (void)volume;
-  return SetThreadErrorAndReturn(ENGINE_RESULT_NOT_SUPPORTED,
-                                  "media playback is unavailable");
+                                 "media playback is unavailable");
 }
 
 engine_result_t engine_media_set_volume(engine_media_handle_t media,
@@ -1129,7 +1121,6 @@ engine_stub_legacy_services(void) {
       &engine_legacy_media_pause,
       &engine_legacy_media_seek,
       &engine_legacy_media_set_rate,
-      &engine_legacy_media_set_volume,
       &engine_legacy_media_get_state,
       &engine_legacy_media_get_subtitle_tracks_json,
       &engine_legacy_media_extract_subtitle,

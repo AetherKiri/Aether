@@ -190,6 +190,7 @@ set(AETHERKIRI_RFVP_DIR
 set(AETHERKIRI_MAGES_DIR
     "${CMAKE_CURRENT_SOURCE_DIR}/packages/AetherMAGES"
     CACHE PATH "path to an AetherMAGES (impacto) runtime submodule checkout")
+
 set(AETHERKIRI_LUCA_DIR
     "${CMAKE_CURRENT_SOURCE_DIR}/packages/AetherLuca"
     CACHE PATH "path to an AetherLuca runtime checkout")
@@ -350,15 +351,6 @@ if(ENABLE_TESTS AND AETHERKIRI_ENABLE_ONSCRIPTER AND
     set(AETHERKIRI_BUILD_NATIVE_ONSCRIPTER_TESTS ON)
 endif()
 
-set(AETHERKIRI_BUILD_NATIVE_LUCA_TESTS OFF)
-if(ENABLE_TESTS AND AETHERKIRI_ENABLE_LUCA AND
-   NOT (IOS OR ANDROID OR WEB OR EMSCRIPTEN))
-    # Wide gate (deliberate deviation from the siglus bridge, which is gated
-    # on BUILD_GODOT_EXTENSION): the luca provider contract test runs in the
-    # native test-only configuration used by CI even without the Godot host.
-    set(AETHERKIRI_BUILD_NATIVE_LUCA_TESTS ON)
-endif()
-
 # The KiriKiri runtime glue owns the legacy engine implementation and the
 # krkr2core/krkr2plugin linkage; the Godot extension host links the glue and
 # installs its engine_legacy_* surface into engine_api through the legacy
@@ -406,11 +398,8 @@ if(AETHERKIRI_ENABLE_CMVS AND BUILD_GODOT_EXTENSION AND
     add_subdirectory(packages/cmvs-rs/integrations/aether)
 endif()
 if(AETHERKIRI_ENABLE_LUCA AND
-   (BUILD_GODOT_EXTENSION OR AETHERKIRI_BUILD_NATIVE_LUCA_TESTS) AND
+   (BUILD_GODOT_EXTENSION OR AETHERKIRI_BUILD_NATIVE_RUNTIME_TESTS) AND
    NOT (IOS OR ANDROID OR WEB OR EMSCRIPTEN))
-    # The LucaSystem bridge follows the rfvp pattern (no engine_api link), so
-    # it can build in test-only configurations; mobile/wasm targets are wired
-    # with the presentation phase (Phase 4+).
     add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/bridge/luca_runtime)
 endif()
 # The Rust provider has targets for Linux, Apple, Android, and Emscripten.

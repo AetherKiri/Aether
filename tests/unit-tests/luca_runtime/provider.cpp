@@ -1,4 +1,5 @@
 #include <catch2/catch_test_macros.hpp>
+#include <catch2/catch_message.hpp>
 
 #include "engine_runtime_provider.h"
 #include "luca_runtime.h"
@@ -143,6 +144,10 @@ TEST_CASE("Luca probe matches only PAK game roots") {
     fs::copy(FixtureRoot() / "files" / "image" / "SMOKE.PAK",
              files / "image" / "SMOKE.PAK",
              fs::copy_options::overwrite_existing);
+    CHECK(provider->probe(nullptr, root.u8string().c_str()) == 90);
+
+    // SCRIPT2 is a complete replacement archive, so SCRIPT is optional.
+    fs::rename(files / "SCRIPT.PAK", files / "SCRIPT2.PAK");
     CHECK(provider->probe(nullptr, root.u8string().c_str()) == 90);
 
     std::error_code ec;
@@ -315,26 +320,24 @@ TEST_CASE("Luca title screen boots the engine boot order") {
         CHECK(std::string(debug).find("titleWaiting=1") != std::string::npos);
     }
 
-    // The title renders the white engine fill (65001) with art on top:
-    // sample a corner far from the right-side art and menu.
+    // The settled native title includes its full OTHCG background.
     const auto desc = game.frame();
     REQUIRE(desc.width == 1920);
     REQUIRE(desc.height == 1080);
     const auto pixels = game.pixels(desc);
     const size_t corner = 4 * (40 * 1920 + 40);
     CHECK(pixels[corner + 3] == 255);
-    CHECK(pixels[corner] > 200);
-    CHECK(pixels[corner + 1] > 200);
-    CHECK(pixels[corner + 2] > 200);
+    CHECK_FALSE((pixels[corner] == 255 && pixels[corner + 1] == 255 &&
+                 pixels[corner + 2] == 255));
 
     // Pointer events are consumed through the select channel (title).
     engine_input_event_t event{};
     event.struct_size = sizeof(event);
     event.type = ENGINE_INPUT_EVENT_POINTER_MOVE;
     event.x = 300;
-    event.y = 600;
+    event.y = 365;
     REQUIRE(provider->send_input(game.value, &event) == ENGINE_RESULT_OK);
-    // Fade-in completes, then START (x≈300, y≈600) launches the game.
+    // Fade-in completes, then native START (x≈300, y≈365) launches the game.
     for(int i = 0; i < 48; ++i) {
         REQUIRE(provider->tick(game.value, 16) == ENGINE_RESULT_OK);
     }
@@ -353,6 +356,49 @@ TEST_CASE("Luca title screen boots the engine boot order") {
         closed = std::string(debug).find("titleWaiting=0") != std::string::npos;
     }
     CHECK(closed);
+}
+
+TEST_CASE("Luca releases preserve native frame and START coordinates") {
+    const char *library_env = std::getenv("AETHERLUCA_LIBRARY_ROOT");
+    const fs::path library = library_env != nullptr
+        ? fs::path(library_env) : fs::path("/Volumes/yorkyang2333/LUCA");
+    struct GameCase { const char *name; uint32_t width; uint32_t height; int x; int y; };
+    const GameCase cases[] = {
+        {"AIR", 1280, 720, 250, 570},
+        {"Kanon", 1280, 720, 250, 570},
+        {"Harmonia Full HD Edition", 1920, 1080, 960, 380},
+        {"LOOPERS", 1920, 1080, 170, 1000},
+        {"Summer Pockets REFLECTION BLUE", 1920, 1080, 300, 365},
+    };
+    aetherkiri::luca::RegisterRuntimeProvider();
+    for(const auto &item : cases) {
+        const auto root = library / item.name;
+        if(!fs::is_directory(root)) continue;
+        INFO(item.name);
+        Instance game;
+        REQUIRE(game.open(root) == ENGINE_RESULT_OK);
+        for(int frame = 0; frame < 40; ++frame) {
+            REQUIRE(provider->tick(game.value, 16) == ENGINE_RESULT_OK);
+        }
+        const auto desc = game.frame();
+        CHECK(desc.width == item.width);
+        CHECK(desc.height == item.height);
+        CHECK(desc.stride_bytes == item.width * 4);
+        CHECK(game.pixels(desc).size() == static_cast<size_t>(item.width) * item.height * 4);
+        engine_input_event_t input{};
+        input.struct_size = sizeof(input);
+        input.type = ENGINE_INPUT_EVENT_POINTER_DOWN;
+        input.button = 0;
+        input.x = item.x;
+        input.y = item.y;
+        REQUIRE(provider->send_input(game.value, &input) == ENGINE_RESULT_OK);
+        for(int frame = 0; frame < 32; ++frame) {
+            REQUIRE(provider->tick(game.value, 16) == ENGINE_RESULT_OK);
+        }
+        char debug[2048] = {};
+        REQUIRE(provider->get_plugin_debug_info(game.value, debug, sizeof(debug), nullptr) == ENGINE_RESULT_OK);
+        CHECK(std::string(debug).find("titleWaiting=0") != std::string::npos);
+    }
 }
 
 TEST_CASE("Luca save-slot load option validates and applies") {

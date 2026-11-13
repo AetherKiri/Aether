@@ -60,9 +60,7 @@ typedef struct engine_legacy_services_v1_t {
   engine_result_t (*media_seek)(engine_media_handle_t media,
                                 int64_t position_ms);
   engine_result_t (*media_set_rate)(engine_media_handle_t media,
-                                     double playback_rate);
-  engine_result_t (*media_set_volume)(engine_media_handle_t media,
-                                      double volume);
+                                    double playback_rate);
   engine_result_t (*media_get_state)(engine_media_handle_t media,
                                      engine_media_state_t* out_state);
   engine_result_t (*media_get_subtitle_tracks_json)(
@@ -138,8 +136,9 @@ typedef struct engine_legacy_services_v1_t {
    * AetherInternalRegister*Runtime() calls it replaces. */
   void (*register_private_runtimes)(void);
 
-  /* media_set_volume is declared with the other media services above. */
-
+  /* Optional v1 tail extension for host-owned video audio gain. */
+  engine_result_t (*media_set_volume)(engine_media_handle_t media,
+                                      double volume);
 } engine_legacy_services_v1_t;
 
 #define ENGINE_LEGACY_SERVICES_V1_FULL_SIZE \

@@ -4,7 +4,7 @@
 option(AETHERKIRI_RUNTIMES_DEFAULT "Enable supported runtimes by default" ON)
 foreach(_aetherkiri_runtime IN ITEMS
         KRKR2 ARTEMIS_RUNTIME CATSYSTEM2 WA2 ONSCRIPTER SYSTEM3 XSYSTEM35
-        XSYSTEM4 SIGLUS MAGES MINORI ENTISGLS BGI SYSTEMC ESCUDE YURIS ADVHD
+        XSYSTEM4 SIGLUS MAGES MINORI ENTISGLS LUCA BGI SYSTEMC ESCUDE YURIS ADVHD
         FLASH TYRANO RENPY)
     option(AETHERKIRI_ENABLE_${_aetherkiri_runtime}
         "Enable the ${_aetherkiri_runtime} runtime" ${AETHERKIRI_RUNTIMES_DEFAULT})
@@ -24,7 +24,7 @@ endforeach()
 set(_aetherkiri_enabled_runtimes "")
 foreach(_aetherkiri_runtime IN ITEMS
         KRKR2 ARTEMIS_RUNTIME CATSYSTEM2 WA2 ONSCRIPTER SYSTEM3 XSYSTEM35
-        XSYSTEM4 SIGLUS MAGES MINORI ENTISGLS BGI SYSTEMC ESCUDE YURIS ADVHD
+        XSYSTEM4 SIGLUS MAGES MINORI ENTISGLS LUCA BGI SYSTEMC ESCUDE YURIS ADVHD
         FLASH TYRANO RENPY RFVP SOFTPAL_RUNTIME)
     if(AETHERKIRI_ENABLE_${_aetherkiri_runtime})
         list(APPEND _aetherkiri_enabled_runtimes ${_aetherkiri_runtime})

@@ -142,11 +142,7 @@ static func inspect(path: String) -> Dictionary:
         # directory to the embedded MAGES provider instead.
         result.engine = RUNTIME_MAGES
         result.signals.append("mages-mpk-marker")
-    elif _has_file_in_subdir(root, "files", "script.pak"):
-        # LucaSystem titles (PROTOTYPE) keep the script archive under files/.
-        # Mirror the provider probe marker (files/SCRIPT.PAK) so the launcher
-        # hands the game root to the luca runtime instead of sending the
-        # Windows executable to the legacy KiriKiri storage layer.
+    elif _is_luca_directory(root):
         result.engine = RUNTIME_LUCA
         result.signals.append("luca-marker")
     else:
@@ -350,20 +346,6 @@ static func _first_file(root: String, extensions: Array) -> String:
         return archive_fallback
     return executable_fallback
 
-static func _has_file_in_subdir(root: String, subdir: String, file_name: String) -> bool:
-    var dir := DirAccess.open(root.path_join(subdir))
-    if dir == null:
-        return false
-    dir.list_dir_begin()
-    var entry := dir.get_next()
-    while not entry.is_empty():
-        if not dir.current_is_dir() and entry.to_lower() == file_name:
-            dir.list_dir_end()
-            return true
-        entry = dir.get_next()
-    dir.list_dir_end()
-    return false
-
 static func _has_prefix(values: PackedStringArray, prefix: String) -> bool:
     for value in values:
         if value.begins_with(prefix):
@@ -466,3 +448,7 @@ static func is_cmvs_directory(root: String) -> bool:
         if script != null and script.get_buffer(4).get_string_from_ascii() == "PS2A":
             return true
     return false
+
+static func _is_luca_directory(root: String) -> bool:
+    var files := _file_names(root.path_join("files"))
+    return (files.has("script.pak") or files.has("script2.pak")) and _has_extension(_file_names(root.path_join("files/image")), "pak")

@@ -109,7 +109,8 @@ namespace aetherkiri::luca {
                 if(!std::filesystem::is_directory(files, ec)) {
                     return 0;
                 }
-                if(!LooksLikePak(files / "SCRIPT.PAK")) {
+                if(!LooksLikePak(files / "SCRIPT2.PAK") &&
+                   !LooksLikePak(files / "SCRIPT.PAK")) {
                     return 0;
                 }
                 if(!HasPakArchive(files / "image")) {

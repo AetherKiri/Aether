@@ -303,6 +303,8 @@ func _run() -> void:
     root.add_child(host)
     await _frames()
     await _exercise("Android portrait", Vector2i(393, 852), Vector4.ZERO)
+    await _exercise("Android portrait cutout", Vector2i(393, 852), Vector4(0, 40, 0, 16))
+    await _exercise("Android landscape cutout", Vector2i(852, 393), Vector4(40, 0, 0, 16))
     await _exercise("iPhone portrait", Vector2i(393, 852), Vector4(0, 59, 0, 34))
     await _exercise("iPhone landscape", Vector2i(852, 393), Vector4(59, 0, 59, 21))
     await _exercise("iPad landscape", Vector2i(1194, 834), Vector4(0, 24, 0, 20))

@@ -99,7 +99,7 @@ func _queue_layout() -> void:
 
 func _finish_layout() -> void:
     layout_pending = false
-    # The host briefly resets full-window anchors before applying iOS safe
+    # The host briefly resets full-window anchors before applying mobile safe
     # insets every frame. Rebuild only if the final size actually changed;
     # otherwise a held touch loses its Button before the release arrives.
     if is_inside_tree() and not size.is_equal_approx(last_size):

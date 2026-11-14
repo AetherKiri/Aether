@@ -5042,7 +5042,7 @@ func _scaled_display_safe_rect(
 
 func _ui_safe_rect(viewport_size: Vector2) -> Rect2:
     var full_rect := Rect2(Vector2.ZERO, viewport_size)
-    if OS.get_name() != "iOS":
+    if not _mobile_runtime():
         return full_rect
     var screen_size := Vector2(DisplayServer.screen_get_size())
     var display_safe_rect := Rect2(DisplayServer.get_display_safe_area())
@@ -5214,8 +5214,8 @@ func _layout_shell_safe_area_fills(window_size: Vector2, safe_rect: Rect2) -> vo
         return
     var top_inset := maxf(0.0, safe_rect.position.y)
     # The status-bar region continues the bar surface so the native clock
-    # row and the first app row read as one header on iPhone/iPad.
-    shell_safe_top_fill.visible = OS.get_name() == "iOS" and top_inset > 0.0
+    # row and the first app row read as one header on mobile devices.
+    shell_safe_top_fill.visible = _mobile_runtime() and top_inset > 0.0
     shell_safe_top_fill.color = ui_tokens.tint(ui_tokens.background, 0.92)
     if shell_safe_top_fill.visible:
         shell_safe_top_fill.position = Vector2(-safe_rect.position.x, -top_inset)

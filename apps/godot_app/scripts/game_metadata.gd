@@ -12,6 +12,7 @@ const RUNTIME_CATSYSTEM2 := "catsystem2"
 const RUNTIME_TYRANO := "tyranoscript"
 const RUNTIME_RENPY := "renpy"
 const RUNTIME_MAGES := "mages"
+const RUNTIME_N2SYSTEM := "n2system"
 const RUNTIME_XSYSTEM4 := "xsystem4"
 const RUNTIME_XSYSTEM35 := "xsystem35"
 const RUNTIME_SYSTEM3 := "system3"
@@ -62,6 +63,9 @@ static func inspect(path: String) -> Dictionary:
         var title_match := pattern.search(options)
         if title_match != null:
             candidates.append(title_match.get_string(1))
+    elif is_n2system_directory(root):
+        result.engine = RUNTIME_N2SYSTEM
+        result.signals.append("n2system-profile-or-npa")
     elif (files.has("system40.ini") or files.has("alicestart.ini")) and _has_extension(files, "ain"):
         result.engine = RUNTIME_XSYSTEM4
         result.signals.append("system4-ain-ini")
@@ -382,6 +386,42 @@ static func _is_mages_package(files: PackedStringArray) -> bool:
         or files.has("chara.mpk")
         or files.has("model.mpk")
     )
+
+static func is_n2system_directory(root: String) -> bool:
+    # An explicit Aether profile opts this directory into NitroSharp. Generic
+    # profiles.json files need engine-specific fields; NPA extensions alone
+    # are insufficient because other Nitroplus engines also use that suffix.
+    var directory := DirAccess.open(root)
+    if directory == null:
+        return false
+    var npa_markers := 0
+    for name in directory.get_files():
+        var lower := name.to_lower()
+        if lower == "aether-n2system.json":
+            return true
+        if lower == "profiles.json":
+            var parsed: Variant = JSON.parse_string(_read_text(root.path_join(name)))
+            if _is_n2system_profile(parsed):
+                return true
+        if lower in ["nss.npa", "system.npa"]:
+            var file := FileAccess.open(root.path_join(name), FileAccess.READ)
+            if file != null and file.get_buffer(7) == PackedByteArray([0x4e, 0x50, 0x41, 1, 0, 0, 0]):
+                npa_markers += 1
+    return npa_markers == 2
+
+static func _is_n2system_profile(parsed: Variant) -> bool:
+    if not parsed is Dictionary or not parsed.has("activeProfile"):
+        return false
+    var selected: Dictionary = parsed.duplicate()
+    var active: Variant = parsed.get("activeProfile")
+    if active != null:
+        if not active is String:
+            return false
+        var profiles: Variant = parsed.get("profiles")
+        if not profiles is Dictionary or not profiles.get(active) is Dictionary:
+            return false
+        selected.merge(profiles[active], true)
+    return selected.get("product.name") is String and selected.get("designResolution") is String
 
 static func _read_text(path: String) -> String:
     var file := FileAccess.open(path, FileAccess.READ)

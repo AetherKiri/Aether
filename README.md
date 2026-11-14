@@ -41,6 +41,7 @@ Godot App Shell
             ├─ System35 Runtime ─── xsystem35 (AliceSoft)
             ├─ System3 Runtime ──── system3-sdl2 (AliceSoft System 1–3)
             ├─ EntisGLS Runtime ─── EntisGLS / Cotopha (public package)
+            ├─ N2System Runtime ──── AetherN2System / NitroSharp (experimental desktop integration)
             ├─ Artemis Runtime ──── Artemis (private package)
             ├─ CatSystem2 Runtime ─ CatSystem2 (private package)
             ├─ BGI Runtime ──────── BGI / Ethornell (private package)
@@ -81,6 +82,7 @@ and **Debug CPU** is a diagnostic fallback only.
 - Public EntisGLS / Cotopha desktop runtime for traditional CSX scripts and NOA
   resources, with game-local `savedata/`. See the
   [provider scope and validation](https://github.com/AetherKiri/EntisGLS-SDL3/blob/aether/aether_runtime/README.md).
+- Experimental NitroSharp / N2System desktop source integration through the public [AetherN2System](https://github.com/AetherKiri/AetherN2System) submodule, with game-directory detection and an initial NativeAOT host bridge. Compressed/encrypted NPA archives are not supported yet. Media decoder dependencies on macOS/Linux are still incomplete; full audio/video playback and individual game compatibility require further work. Mobile and Web are not supported.
 - Export presets for macOS, iOS/iPadOS, Android, Web, and Linux.
 - A separate Flash library powered by native Ruffle, with sound, keyboard,
   mouse, touch, and the visual-novel virtual controls.
@@ -129,6 +131,7 @@ integration repository and the original upstream project.
 | AliceSoft System 3.5 / 3.9 | [AetherKiri/xsystem35-sdl2](https://github.com/AetherKiri/xsystem35-sdl2) | [kichikuou/xsystem35-sdl2](https://github.com/kichikuou/xsystem35-sdl2) |
 | AliceSoft System 1–3 | [AetherKiri/system3-sdl2](https://github.com/AetherKiri/system3-sdl2) | [kichikuou/system3-sdl2](https://github.com/kichikuou/system3-sdl2) |
 | EntisGLS / Cotopha | [AetherKiri/EntisGLS-SDL3](https://github.com/AetherKiri/EntisGLS-SDL3) | [nL6DHZc3RhMnC/EntisGLS-SDL3](https://github.com/nL6DHZc3RhMnC/EntisGLS-SDL3) |
+| N2System / NitroSharp | [AetherKiri/AetherN2System](https://github.com/AetherKiri/AetherN2System) | [CommitteeOfZero/nitrosharp](https://github.com/CommitteeOfZero/nitrosharp) |
 
 ## Flash Library
 
@@ -169,6 +172,7 @@ supported by the Flash player.
 | | `bridge/siglus_runtime/` | Siglus provider plus the build-time overlay applied to pristine `siglus_rs`. |
 | | `bridge/flash_runtime/` | Ruffle static library and native playback/input/audio bridge. |
 | | `bridge/entisgls_runtime/` | Build integration for the public EntisGLS / Cotopha provider. |
+| | `bridge/n2system_runtime/` | Experimental N2System provider and desktop NativeAOT host bridge. |
 | Engines | `packages/AetherKrkr/` | KiriKiri2 engine runtime submodule. |
 | | `packages/OnscripterYuri/` | Public OnscripterYuri submodule. |
 | | `packages/AetherSiglus/` | Public siglus_rs submodule (kept pristine). |
@@ -176,6 +180,7 @@ supported by the Flash player.
 | | `packages/AetherInternal/` | Optional private runtimes, including Escude and SystemC, plus E-mote/Live2D support; public builds work without it. |
 | | `packages/AetherSoftPal/` | Optional private native SoftPal runtime submodule. |
 | | `packages/EntisGLS-SDL3/` | Public EntisGLS / Cotopha runtime submodule and provider. |
+| | `packages/AetherN2System/` | Public NitroSharp / N2System runtime submodule. |
 | Support | `demos/aetherkiri-kag3/` | Source of the built-in KAG3 demo. |
 | | `tests/` | Unit tests, fixtures, and portable probe profiles. |
 | | `tools/` | Developer and compatibility tools (xp3 archive tools). |
@@ -192,6 +197,7 @@ supported by the Flash player.
 | vcpkg | All builds | `.devtools/vcpkg` or `VCPKG_ROOT` |
 | Godot 4.7 | Exports | `/Applications/Godot.app` or `GODOT_BIN=/path/to/Godot` |
 | Current stable Rust (rustup) | Flash, Siglus, Minori | `rustup update stable`; use `RUSTUP_TOOLCHAIN=stable` consistently for all native runtimes |
+| .NET 10 SDK | Desktop N2System NativeAOT host | Required when N2System is enabled, together with the target platform’s native compiler toolchain |
 | Java 17+ | Flash player builtins | `java` on PATH; on macOS, e.g. `brew install openjdk@17` and add its `bin` directory to PATH |
 | Xcode | macOS / iOS | CI pins Xcode 27.1 on the `xcode-27` ARM64 runner; see [release toolchain](doc/release.md) |
 | Android SDK/NDK | Android | NDK `28.1.13356709`; `ANDROID_HOME` or `$HOME/Library/Android/sdk` |
@@ -204,13 +210,14 @@ supported by the Flash player.
 ```bash
 git submodule update --init \
   packages/AetherKrkr packages/OnscripterYuri packages/psdfile \
-  packages/AetherSiglus packages/AetherMinori packages/ruffle
+  packages/AetherSiglus packages/AetherMinori packages/ruffle \
+  packages/AetherN2System
 ./build.sh macos debug        # or: macos release / ios debug --simulator /
                                # ios release / android debug --abi=arm64-v8a /
                                / web debug / linux release
 ```
 
-These six public runtime submodules are the minimum for a default build
+These public runtime submodules are used by the default build
 (the engine repository is a hard configure requirement; Siglus and Minori
 degrade gracefully without a Rust toolchain, but the checkouts must be
 present; Flash requires current stable Rust and Java). Set
@@ -232,6 +239,8 @@ available. Linux exports bundle the required vcpkg shared libraries beside the
 executable.
 The four native platform build scripts also prepare and bundle the pinned
 Ren’Py runtime; their first build requires downloading the upstream SDK inputs.
+
+The N2System submodule pins a commit from its `aether` integration branch. N2System follows `AETHERKIRI_RUNTIMES_DEFAULT` on supported desktop builds and is enabled by default; iOS, Android, and Web default to disabled. Initialize its sources separately with `git submodule update --init --recursive packages/AetherN2System`, or set `AETHERKIRI_ENABLE_N2SYSTEM=OFF` in CMake to omit the runtime and its .NET build dependency.
 
 ### Optional Components
 
@@ -266,7 +275,7 @@ Ren’Py runtime; their first build requires downloading the upstream SDK inputs
   path for engine-side hot iteration without committing a gitlink bump:
   `AETHERKIRI_KRKR_DIR`, `AETHERKIRI_ONSCRIPTERYURI_DIR`,
   `AETHERKIRI_SIGLUS_DIR`, `AETHERKIRI_MINORI_DIR`, `AETHERKIRI_RFVP_DIR`,
-  `AETHERKIRI_INTERNAL_DIR`, and `AETHERKIRI_SOFTPAL_DIR`.
+  `AETHERKIRI_INTERNAL_DIR`, `AETHERKIRI_SOFTPAL_DIR`, and `AETHERKIRI_N2SYSTEM_DIR`.
 
 - **TJS2 analysis helper** — `git submodule update --init
   packages/tjs2Decompiler` (see

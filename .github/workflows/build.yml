@@ -1069,6 +1069,11 @@ jobs:
             --path apps/godot_app \
             --script res://scripts/smoke_test.gd
 
+      - name: Test Astryx mobile input with safe-area layout
+        run: |
+          "$GODOT_BIN" --headless --path apps/godot_app \
+            --script res://tests/astryx_mobile_input_test.gd
+
       - name: Run complete public and integrated private unit tests
         env:
           # Exercise playback/completion without depending on the runner's

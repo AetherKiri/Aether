@@ -28,8 +28,8 @@ def cache(number, key, ref="refs/heads/main", size=100):
 
 
 class CacheRetentionTests(unittest.TestCase):
-    def deleted(self, entries, open_prs=(), budget=8 * policy.GIB):
-        plan, remaining = policy.plan_evictions(entries, set(open_prs), budget=budget)
+    def deleted(self, entries, **kwargs):
+        plan, remaining = policy.plan_evictions(entries, **kwargs)
         return {item["id"] for item, reason in plan}, remaining
 
     def test_keeps_latest_main_snapshot_for_each_platform_and_cache_kind(self):
@@ -44,18 +44,43 @@ class CacheRetentionTests(unittest.TestCase):
         key = "Linux-X64-android-vcpkg-binaries-v1-dependencies"
         entries = [cache(1, key), cache(2, key, "refs/pull/11/merge"),
                    cache(3, key, "refs/pull/12/merge"), cache(4, key, "refs/pull/13/merge")]
-        self.assertEqual(self.deleted(entries, {11, 12}), ({2, 4}, 200))
+        self.assertEqual(self.deleted(entries), ({2, 3, 4}, 100))
 
-    def test_budget_discards_pr_copy_before_only_shared_android_cache(self):
+    def test_pr_branch_and_tag_copies_are_removed_even_below_budget(self):
         entries = [cache(1, "Linux-X64-android-vcpkg-binaries-v1-deps", size=500),
-                   cache(2, "macOS-vcpkg-downloads-old", "refs/pull/11/merge", 400)]
-        self.assertEqual(self.deleted(entries, {11}, 600), ({2}, 500))
+                   cache(2, "macOS-vcpkg-downloads-old", "refs/pull/11/merge", 400),
+                   cache(3, "Linux-android-ccache-v4-native", "refs/heads/feature"),
+                   cache(4, "Linux-linux-arm64-vcpkg-binaries-v4-abi", "refs/tags/1.1.2")]
+        self.assertEqual(self.deleted(entries), ({2, 3, 4}, 500))
 
-    def test_unknown_caches_and_manual_branch_caches_are_not_deleted(self):
+    def test_unknown_and_gradle_component_caches_are_not_deleted(self):
         entries = [cache(1, "gradle-dependencies-v2-digest"),
-                   cache(2, "macOS-private-runtime-apple-digest", "refs/pull/99/merge"),
-                   cache(3, "Linux-android-ccache-v4-native", "refs/heads/release")]
-        self.assertEqual(self.deleted(entries, budget=1), (set(), 300))
+                   cache(2, "gradle-dependencies-v2-other-digest"),
+                   cache(3, "unrelated-workflow-cache", "refs/heads/feature")]
+        self.assertEqual(self.deleted(entries), (set(), 300))
+
+    def test_private_runtime_downloads_keep_one_main_copy_per_platform(self):
+        entries = [cache(1, "macOS-private-runtime-apple-old"),
+                   cache(2, "macOS-private-runtime-apple-new"),
+                   cache(3, "macOS-private-runtime-macos-digest"),
+                   cache(4, "Linux-private-runtime-android-digest"),
+                   cache(5, "Linux-private-runtime-android-digest", "refs/pull/99/merge")]
+        self.assertEqual(self.deleted(entries), ({1, 5}, 300))
+
+    def test_xcode_upgrade_replaces_snapshot_without_removing_other_platform(self):
+        entries = [cache(1, "macOS-ios-xcode-27.0-ccache-v3-old"),
+                   cache(2, "macOS-ios-xcode-27.1-ccache-v3-new"),
+                   cache(3, "macOS-macos-xcode-27.0-ccache-v3-native")]
+        self.assertEqual(self.deleted(entries), ({1}, 200))
+
+    def test_default_branch_is_not_assumed_to_be_main(self):
+        key = "Linux-linux-arm64-ccache-v4-native"
+        entries = [cache(1, key, "refs/heads/trunk"), cache(2, key)]
+        self.assertEqual(self.deleted(entries, default_ref="refs/heads/trunk"), ({2}, 100))
+
+    def test_only_shared_snapshot_is_preserved_even_above_budget_target(self):
+        entries = [cache(1, "Linux-X64-android-vcpkg-binaries-v1-deps", size=9 * policy.GIB)]
+        self.assertEqual(self.deleted(entries), (set(), 9 * policy.GIB))
 
     def test_dry_run_and_repeated_cleanup_do_not_mutate_inventory(self):
         entries = [cache(1, "macOS-ios-xcode-27.1-ccache-v2-old"),

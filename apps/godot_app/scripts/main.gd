@@ -2136,6 +2136,7 @@ const ENGINE_RESULT_OK := 0
 const MEDIA_STATUS_PLAYING := 1
 const MEDIA_STATUS_PAUSED := 2
 const MEDIA_STATUS_ENDED := 3
+const MEDIA_STATUS_ERROR := 4
 const VIDEO_CONTROLS_AUTO_HIDE_SEC := 3.0
 const VIDEO_CONTROLS_FADE_SEC := 0.18
 const VIDEO_SEEK_DRAG_THRESHOLD := 14.0
@@ -2180,6 +2181,7 @@ const RUNTIME_TYRANO := "tyranoscript"
 const RUNTIME_MAGES := "mages"
 const RUNTIME_YURIS := "yuris"
 const RUNTIME_SYSTEMC := "systemc"
+const RUNTIME_LUCA := "luca"
 const RUNTIME_PLAYER_CLASS := "AetherRuntimePlayer"
 const ONSCRIPTER_SCRIPT_MARKERS := [
     "0.txt",
@@ -2567,6 +2569,11 @@ var active_subtitle_cues: Array[Dictionary] = []
 var active_subtitle_index := 0
 var video_progress_data := {}
 var video_progress_save_accum := 0.0
+var engine_movie_rect: TextureRect
+var engine_movie_playing := false
+var engine_movie_runtime := ""
+var engine_movie_path := ""
+var engine_movie_was_playing := false
 var app_lifecycle_paused := false
 var render_errors := 0
 var last_renderer_info_logged := ""
@@ -3060,6 +3067,18 @@ func _build_ui() -> void:
     add_child(viewport)
     viewport.gui_input.connect(_on_viewport_input)
     _apply_upscale_algorithm()
+
+    # A viewport child stays above the game even when the viewport is raised.
+    # Pointer events reach the runtime so it owns movie skip decisions.
+    engine_movie_rect = TextureRect.new()
+    engine_movie_rect.name = "EngineMovieOverlay"
+    viewport.add_child(engine_movie_rect)
+    engine_movie_rect.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+    engine_movie_rect.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+    engine_movie_rect.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+    engine_movie_rect.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR
+    engine_movie_rect.mouse_filter = Control.MOUSE_FILTER_IGNORE
+    engine_movie_rect.visible = false
 
     game_view = Control.new()
     game_view.set_anchors_preset(Control.PRESET_FULL_RECT)
@@ -12514,6 +12533,7 @@ func _return_to_library_after_runtime_exit() -> void:
         player.release_frame_texture()
         _cleanup_softpal_platform_ui()
         _stop_wa2_audio()
+        _close_engine_movie()
         player.destroy_engine()
     last_texture_size = Vector2i.ZERO
     _set_game_runtime_orientation(false)
@@ -12941,6 +12961,7 @@ func _switch_runtime_player(runtime_kind: String) -> bool:
         RUNTIME_CMVS,
         RUNTIME_CATSYSTEM2,
         RUNTIME_SIGLUS,
+        RUNTIME_LUCA,
         RUNTIME_BGI,
         RUNTIME_MAGES,
         RUNTIME_XSYSTEM4,
@@ -12975,6 +12996,7 @@ func _switch_runtime_player(runtime_kind: String) -> bool:
         # platform services do not need one Node implementation per backend.
         _cleanup_softpal_platform_ui()
         _stop_wa2_audio()
+        _close_engine_movie()
         player.destroy_engine()
         current_player_runtime_kind = normalized
     if not _ensure_player_initialized():
@@ -13007,6 +13029,8 @@ func _switch_runtime_player(runtime_kind: String) -> bool:
         if normalized == RUNTIME_CATSYSTEM2
         else "Siglus"
         if normalized == RUNTIME_SIGLUS
+        else "LucaSystem"
+        if normalized == RUNTIME_LUCA
         else "BGI/Ethornell"
         if normalized == RUNTIME_BGI
         else "MAGES."
@@ -13718,6 +13742,7 @@ func _ensure_player_initialized() -> bool:
             and String(player.get_meta("aether_cache_directory", "")) == cache_dir:
             return true
         _stop_wa2_audio()
+        _close_engine_movie()
         player.destroy_engine()
     DirAccess.make_dir_recursive_absolute(cache_dir)
     if not player.initialize_engine(user_dir, cache_dir):
@@ -13738,6 +13763,7 @@ func _ensure_player_initialized() -> bool:
         RUNTIME_CMVS,
         RUNTIME_CATSYSTEM2,
         RUNTIME_SIGLUS,
+        RUNTIME_LUCA,
         RUNTIME_BGI,
         RUNTIME_MAGES,
         RUNTIME_XSYSTEM4,
@@ -13760,6 +13786,7 @@ func _ensure_player_initialized() -> bool:
         ])
         _cleanup_softpal_platform_ui()
         _stop_wa2_audio()
+        _close_engine_movie()
         player.destroy_engine()
         return false
 
@@ -13782,6 +13809,8 @@ func _ensure_player_initialized() -> bool:
         if current_player_runtime_kind == RUNTIME_CATSYSTEM2
         else "Siglus"
         if current_player_runtime_kind == RUNTIME_SIGLUS
+        else "LucaSystem"
+        if current_player_runtime_kind == RUNTIME_LUCA
         else "BGI/Ethornell"
         if current_player_runtime_kind == RUNTIME_BGI
         else "EntisGLS / Cotopha"
@@ -15572,6 +15601,7 @@ func _probe_cleanup_and_quit(code: int, record_cleanup: Callable = Callable()) -
         player.release_frame_texture()
         _cleanup_softpal_platform_ui()
         _stop_wa2_audio()
+        _close_engine_movie()
         player.destroy_engine()
     if record_cleanup.is_valid():
         record_cleanup.call({"event": "cleanup_complete", "exit_code": code})
@@ -15653,6 +15683,68 @@ func _process_video_playback(delta: float) -> void:
         _store_active_video_progress()
     _process_video_controls(delta)
 
+func _renderer_fields(info: String) -> Dictionary:
+    var fields := {}
+    for token in info.split(" ", false):
+        var separator := token.find("=")
+        if separator > 0:
+            fields[token.substr(0, separator)] = token.substr(separator + 1)
+    return fields
+
+func _close_engine_movie() -> void:
+    if player != null and engine_movie_playing:
+        player.media_close()
+    if engine_movie_rect != null:
+        engine_movie_rect.visible = false
+        engine_movie_rect.texture = null
+    engine_movie_playing = false
+    engine_movie_was_playing = false
+    engine_movie_runtime = ""
+    engine_movie_path = ""
+
+func _finish_engine_movie(mark_seen := false) -> void:
+    var runtime_id := engine_movie_runtime
+    _close_engine_movie()
+    if player != null and not runtime_id.is_empty():
+        player.set_engine_option(runtime_id + ".movie.finish", "seen" if mark_seen else "")
+
+func _poll_engine_movie() -> void:
+    # Providers opt in through renderer-info and release their movie latch via
+    # <runtime>.movie.finish. This shares the host decoder with library videos.
+    if player == null or video_playing:
+        return
+    var fields := _renderer_fields(String(player.get_renderer_info()))
+    var runtime_id := String(fields.get("runtime", ""))
+    var state := String(fields.get("movie_state", "idle"))
+    if state != "pending" or runtime_id.is_empty():
+        if engine_movie_playing:
+            _close_engine_movie()
+        return
+    var path := String(fields.get("movie_path", "-")).uri_decode()
+    if engine_movie_playing and (engine_movie_runtime != runtime_id or engine_movie_path != path):
+        _close_engine_movie()
+    if not engine_movie_playing:
+        engine_movie_runtime = runtime_id
+        engine_movie_path = path
+        if path == "-" or path.is_empty() or not bool(player.media_open(path)):
+            printerr("[movie] open failed: %s" % path)
+            _finish_engine_movie()
+            return
+        engine_movie_playing = true
+        player.media_set_volume(clampf(float(fields.get("movie_volume", "1.0")), 0.0, 1.0))
+        if int(player.media_play()) != ENGINE_RESULT_OK:
+            printerr("[movie] play failed: %s" % path)
+            _finish_engine_movie()
+            return
+    var texture: Texture2D = player.media_update_texture()
+    if texture != null:
+        engine_movie_rect.texture = texture
+        engine_movie_rect.visible = true
+    var media_state: Dictionary = player.media_get_state()
+    var status := int(media_state.get("status", 0))
+    if status == MEDIA_STATUS_ENDED or status == MEDIA_STATUS_ERROR:
+        _finish_engine_movie(status == MEDIA_STATUS_ENDED)
+
 func _apply_pending_video_resume(state: Dictionary) -> bool:
     if video_pending_resume_position <= 2.0 or player == null:
         return false
@@ -15674,6 +15766,7 @@ func _stop_wa2_audio() -> void:
         wa2_audio_host.stop_session()
 
 func _exit_tree() -> void:
+    _close_engine_movie()
     _stop_wa2_audio()
 
 func _process(delta: float) -> void:
@@ -15801,6 +15894,7 @@ func _process(delta: float) -> void:
                     perf_log_file.store_line(tick_error_line)
                     perf_log_file.flush()
                 game_running = false
+                _close_engine_movie()
                 _set_game_runtime_frame_pacing(false)
                 runtime_display_state.reset(get_window())
                 softpal_aspect_mode = 1
@@ -15834,6 +15928,7 @@ func _process(delta: float) -> void:
                     # Count presentation holds in host frames even when the
                     # embedded engine's render limiter skipped this tick.
                     present_hold_frames -= 1
+                _poll_engine_movie()
                 var update_ms := float(Time.get_ticks_usec() - update_start) / 1000.0
                 last_update_ms = update_ms
                 _flush_artemis_input_trace_samples()
@@ -16349,6 +16444,10 @@ func _notification(what: int) -> void:
             active_video_was_playing = int(active_video_state.get("status", 0)) == MEDIA_STATUS_PLAYING
             _store_active_video_progress()
             player.media_pause()
+        if engine_movie_playing:
+            var media_state: Dictionary = player.media_get_state()
+            engine_movie_was_playing = int(media_state.get("status", 0)) == MEDIA_STATUS_PLAYING
+            player.media_pause()
         _pause_game_for_lifecycle("notification_%d" % what)
         return
     if what == NOTIFICATION_APPLICATION_RESUMED or what == NOTIFICATION_APPLICATION_FOCUS_IN:
@@ -16357,6 +16456,9 @@ func _notification(what: int) -> void:
         if video_playing and active_video_was_playing:
             player.media_play()
             active_video_was_playing = false
+        if engine_movie_playing and engine_movie_was_playing:
+            player.media_play()
+            engine_movie_was_playing = false
         _resume_game_for_lifecycle("notification_%d" % what)
         return
     if what == NOTIFICATION_WM_CLOSE_REQUEST:
@@ -16377,6 +16479,7 @@ func _notification(what: int) -> void:
         player.release_frame_texture()
         _cleanup_softpal_platform_ui()
         _stop_wa2_audio()
+        _close_engine_movie()
         player.destroy_engine()
 
 func _handle_go_back_request() -> void:
@@ -16399,6 +16502,9 @@ func _handle_go_back_request() -> void:
         return
     if video_playing:
         _close_video_player()
+        return
+    if engine_movie_playing:
+        _finish_engine_movie()
         return
     if game_running or cached_startup_state == STARTUP_RUNNING:
         _confirm_exit_game_for_go_back()
@@ -16466,6 +16572,7 @@ func _quit_app_for_go_back() -> void:
         frame_upscale_source_texture = null
         player.release_frame_texture()
         _stop_wa2_audio()
+        _close_engine_movie()
         player.destroy_engine()
     get_tree().quit(0)
 
@@ -16613,6 +16720,7 @@ func _renderer_summary(renderer: String) -> String:
 
 
 func _on_open_game() -> void:
+    _close_engine_movie()
     if not _require_legal_documents_for_media():
         return
     var requested_path := game_path.text.strip_edges()

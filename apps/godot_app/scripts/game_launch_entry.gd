@@ -13,6 +13,7 @@ const DIRECTORY_RUNTIME_KINDS := [
     "entisgls",
     "catsystem2",
     "mages",
+    "luca",
     "minori",
     "cmvs",
     "onscripter",

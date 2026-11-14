@@ -51,6 +51,9 @@ extern "C" void AetherInternalRegisterWa2Runtime(void);
 #if defined(AETHERKIRI_WITH_CMVS)
 #include "cmvs_runtime_provider.h"
 #endif
+#if defined(AETHERKIRI_WITH_LUCA)
+#include "luca_runtime.h"
+#endif
 #if defined(AETHERKIRI_WITH_MINORI)
 extern "C" engine_result_t aetherkiri_minori_register_runtime_provider();
 #endif
@@ -10937,6 +10940,13 @@ public:
         return result;
     }
 
+    int media_set_volume(double volume) {
+        if (media_ == nullptr) return ENGINE_RESULT_INVALID_STATE;
+        const engine_result_t result = engine_media_set_volume(media_, volume);
+        update_last_error(result);
+        return result;
+    }
+
     String media_get_subtitle_tracks_json() {
         if (media_ == nullptr) return "[]";
         std::vector<char> buffer(64 * 1024);
@@ -12992,6 +13002,8 @@ protected:
                              &AetherRuntimePlayer::media_seek);
         ClassDB::bind_method(D_METHOD("media_set_rate", "playback_rate"),
                              &AetherRuntimePlayer::media_set_rate);
+        ClassDB::bind_method(D_METHOD("media_set_volume", "volume"),
+                             &AetherRuntimePlayer::media_set_volume);
         ClassDB::bind_method(D_METHOD("media_get_subtitle_tracks_json"),
                              &AetherRuntimePlayer::media_get_subtitle_tracks_json);
         ClassDB::bind_method(D_METHOD("media_extract_subtitle", "stream_index",
@@ -14401,6 +14413,9 @@ void InitializeAetherRuntime(ModuleInitializationLevel level) {
 #endif
 #if defined(AETHERKIRI_WITH_CMVS)
     aetherkiri::cmvs::RegisterRuntimeProvider();
+#endif
+#if defined(AETHERKIRI_WITH_LUCA)
+    aetherkiri::luca::RegisterRuntimeProvider();
 #endif
 #if defined(AETHERKIRI_WITH_MINORI)
     if (aetherkiri_minori_register_runtime_provider() != ENGINE_RESULT_OK) {

@@ -9,6 +9,7 @@ func configure(value: bool, palette: RefCounted, reduce_motion: bool) -> void:
     design = palette
     reduced_motion = reduce_motion
     toggle_mode = true
+    mouse_filter = Control.MOUSE_FILTER_PASS
     button_pressed = value
     progress = 1.0 if value else 0.0
     custom_minimum_size = Vector2(48, 44)

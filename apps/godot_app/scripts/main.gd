@@ -4913,16 +4913,14 @@ func _poll_game_imports(delta: float) -> void:
             game_import_notice.position = Vector2(safe.get_center().x - game_import_notice.size.x / 2.0,
                 safe.end.y - game_import_notice.size.y - 24.0)
 
-func _apply_host_frame_rate_limit() -> void:
-    # The engine fps_limit only gates the embedded runtime's render step. The
-    # Godot host can still tick and submit the presentation texture at the
-    # display refresh rate, which is wasteful on high-refresh mobile devices
-    # when the visual novel has no animation that needs 90/120Hz.
+func _apply_host_frame_rate_limit(runtime_active: bool = false) -> void:
+    # Let VSync pace the shell at the display's refresh rate. Keep the existing
+    # mobile runtime cap while playing; the engine's own fps_limit is separate.
     var override := OS.get_environment("AETHERKIRI_HOST_MAX_FPS").strip_edges()
     if not override.is_empty():
         Engine.max_fps = maxi(0, int(override))
-    elif OS.get_name() == "iOS" or OS.get_name() == "Android":
-        Engine.max_fps = 60
+    elif _is_touch_platform():
+        Engine.max_fps = 60 if runtime_active else 0
 
 func _game_runtime_restore_orientation(previous_screen_size: Vector2i, fallback: int) -> int:
     if lock_landscape:
@@ -4934,6 +4932,9 @@ func _game_runtime_restore_orientation(previous_screen_size: Vector2i, fallback:
     return fallback
 
 func _set_game_runtime_frame_pacing(active: bool) -> void:
+    if _is_touch_platform():
+        _apply_host_frame_rate_limit(active)
+        return
     var policy: Dictionary
     if active:
         policy = game_frame_pacing.enter(active_runtime_kind, OS.get_name(),
@@ -8575,11 +8576,11 @@ func _show_flash_library() -> void:
 func _show_video_library() -> void:
     _show_library("video")
 
-func _show_library(mode: String) -> void:
+func _show_library(mode: String, refresh_games: bool = true) -> void:
     if not mode in ["game", "video", "flash"]:
         mode = "game"
     if _request_settings_navigation(
-        Callable(self, "_show_library").bind(mode)
+        Callable(self, "_show_library").bind(mode, refresh_games)
     ):
         return
     var previous_route := shell_route
@@ -8596,8 +8597,10 @@ func _show_library(mode: String) -> void:
     _sync_shell_route(_library_route(mode))
     if mode != "game":
         _refresh_file_library()
-    else:
+    elif refresh_games:
         _refresh_games()
+    if _astryx_shell_controller() != null:
+        return
     if previous_route != "library":
         _animate_shell_route(outgoing, home_view, not returning_from_detail)
     else:
@@ -10650,6 +10653,12 @@ func _rebuild_game_cards(animate_cards: bool = false) -> void:
         if _game_matches_home_search(game, query):
             filtered_games.append(game)
     home_filtered_game_count = filtered_games.size()
+    var astryx := _astryx_shell_controller()
+    if astryx != null:
+        astryx.library_revision += 1
+        _sync_home_header_text()
+        _apply_home_library_visibility()
+        return
     for child in game_list.get_children():
         game_list.remove_child(child)
         child.queue_free()
@@ -10664,6 +10673,10 @@ func _rebuild_game_cards(animate_cards: bool = false) -> void:
 
 func _library_route(mode: String) -> String:
     return "flash" if mode == "flash" else ("videos" if mode == "video" else "library")
+
+func _astryx_shell_controller() -> Node:
+    var presenter := get_node_or_null("ShellInterface")
+    return presenter if presenter != null and presenter.enabled else null
 
 func _active_file_library() -> VideoLibrary:
     return flash_library if home_library_mode == "flash" else video_library
@@ -10790,7 +10803,7 @@ func _rebuild_video_cards(_animate_cards: bool = false) -> void:
         if _video_matches_home_search(video, query):
             filtered_videos.append(video)
     home_filtered_video_count = filtered_videos.size()
-    if video_list != null:
+    if video_list != null and _astryx_shell_controller() == null:
         for child in video_list.get_children():
             video_list.remove_child(child)
             child.queue_free()

@@ -395,8 +395,19 @@ static func is_n2system_directory(root: String) -> bool:
     if directory == null:
         return false
     var npa_markers := 0
+    var names: Dictionary = {}
+    var pak_markers := 0
     for name in directory.get_files():
         var lower := name.to_lower()
+        names[lower] = true
+        if lower in ["script.pak", "system.pak"]:
+            var pak := FileAccess.open(root.path_join(name), FileAccess.READ)
+            if pak != null and pak.get_length() >= 0x108:
+                pak.big_endian = false
+                var version := pak.get_32()
+                pak.seek(0x104)
+                if version == 3 and pak.get_32() == 100:
+                    pak_markers += 1
         if lower == "aether-n2system.json":
             return true
         if lower == "profiles.json":
@@ -407,7 +418,9 @@ static func is_n2system_directory(root: String) -> bool:
             var file := FileAccess.open(root.path_join(name), FileAccess.READ)
             if file != null and file.get_buffer(7) == PackedByteArray([0x4e, 0x50, 0x41, 1, 0, 0, 0]):
                 npa_markers += 1
-    return npa_markers == 2
+    return npa_markers == 2 or (pak_markers == 2
+        and (names.has("sys.ini") or names.has("sys_cn.ini"))
+        and (names.has("game.ini") or names.has("game_cn.ini")))
 
 static func _is_n2system_profile(parsed: Variant) -> bool:
     if not parsed is Dictionary or not parsed.has("activeProfile"):

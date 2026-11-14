@@ -1,5 +1,6 @@
 #include "AetherGameHooks.h"
 #include <catch2/catch_test_macros.hpp>
+#include <catch2/matchers/catch_matchers.hpp>
 #include <fstream>
 #include <random>
 
@@ -135,6 +136,32 @@ TEST_CASE("byte-text engines share canonical encodings and aliases") {
             CHECK_THROWS(hooks.RequireEncoding({})); // Native-Unicode formats retain their explicit boundary.
         }
     }
+}
+
+TEST_CASE("unsupported encodings identify the effective settings source") {
+    Fixture f;
+    GameHooks hooks;
+    f.Write("aether.lua", "aether.set_encoding('GBK')");
+    hooks.Load(f.root, "entisgls");
+    CHECK_THROWS_WITH(hooks.RequireEncoding({}), "aether.lua: this engine does not support GBK");
+
+    f.Write("aether_config.json", R"({"text":{"encoding":"UTF-8"}})");
+    hooks.Load(f.root, "bgi");
+    CHECK_THROWS_WITH(hooks.RequireEncoding({}), "aether_config.json: this engine does not support UTF-8");
+
+    fs::remove(f.root / "aether.lua");
+    hooks.Load(f.root, "bgi");
+    CHECK_FALSE(hooks.Active());
+    CHECK_THROWS_WITH(hooks.RequireEncoding({}), "aether_config.json: this engine does not support UTF-8");
+
+    // An inherited choice restores the patch's encoding and its diagnostic source.
+    f.Write("aether.lua", "aether.set_encoding('GBK')");
+    f.Write("aether_config.json", R"({"text":{"encoding":""}})");
+    hooks.Load(f.root, "bgi");
+    CHECK_THROWS_WITH(hooks.RequireEncoding({}), "aether.lua: this engine does not support GBK");
+    fs::remove(f.root / "aether.lua");
+    hooks.Load(f.root, "bgi");
+    CHECK_NOTHROW(hooks.RequireEncoding({}));
 }
 
 TEST_CASE("Lua transcode round trips GB18030 supplementary boundaries and rejects malformed input") {

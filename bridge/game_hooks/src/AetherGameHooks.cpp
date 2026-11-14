@@ -271,6 +271,7 @@ void GameHooks::Load(const std::filesystem::path& root, const std::string& engin
     const auto settings = aether::text::GameTextSettings::Load(config_root, engine);
     if(!std::filesystem::exists(path)) {
         encoding_ = settings.encoding;
+        encoding_from_config_ = !settings.encoding.empty();
         font_ = settings.font;
         return;
     }
@@ -294,7 +295,10 @@ void GameHooks::Load(const std::filesystem::path& root, const std::string& engin
     script.output.active_ = true;
     // Explicit user choices win over patch defaults. Empty values preserve
     // the patch's encoding/font and do not alter its resource registrations.
-    if(!settings.encoding.empty()) script.output.encoding_ = settings.encoding;
+    if(!settings.encoding.empty()) {
+        script.output.encoding_ = settings.encoding;
+        script.output.encoding_from_config_ = true;
+    }
     if(!settings.font.empty()) script.output.font_ = settings.font;
     *this = std::move(script.output);
 }
@@ -308,7 +312,8 @@ const GameHooks::Bytes* GameHooks::Find(const std::string& name) const {
 }
 void GameHooks::RequireEncoding(const std::vector<std::string>& supported) const {
     if(!encoding_.empty() && std::find(supported.begin(), supported.end(), encoding_) == supported.end())
-        throw std::runtime_error("game text settings: this engine does not support " + encoding_);
+        throw std::runtime_error(std::string(encoding_from_config_ ? "aether_config.json" : "aether.lua") +
+                                 ": this engine does not support " + encoding_);
 }
 void GameHooks::Materialize(const std::filesystem::path& directory) const {
     std::filesystem::create_directories(directory);

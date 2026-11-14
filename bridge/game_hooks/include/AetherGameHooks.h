@@ -42,6 +42,7 @@ private:
     std::filesystem::path font_;
     std::vector<std::string> messages_;
     bool active_ = false;
+    bool encoding_from_config_ = false;
 };
 
 } // namespace aether::hooks

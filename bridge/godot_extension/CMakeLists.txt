@@ -129,6 +129,7 @@ endif()
 
 if(APPLE)
     if(IOS)
+        target_link_libraries(aether_kiri_godot PRIVATE "-framework PhotosUI" "-framework Photos")
         if(AETHERKIRI_ENABLE_RENPY)
             target_sources(aether_kiri_godot PRIVATE src/renpy_native_ios.mm)
             set_source_files_properties(src/renpy_native_ios.mm
@@ -383,10 +384,14 @@ if(IOS)
     set(AETHERKIRI_IOS_ARCHIVES
         "$<TARGET_FILE:aether_kiri_godot>"
         "$<TARGET_FILE:aether_kiri_godot_swift>")
-    if(TARGET aether_game_hooks)
-        target_link_libraries(aether_kiri_godot PRIVATE aether_game_hooks)
-        list(APPEND AETHERKIRI_IOS_ARCHIVES "$<TARGET_FILE:aether_game_hooks>")
-    endif()
+    # Static archives do not include their dependencies. The settings loader
+    # is shared by game hooks and standalone providers and must be bundled too.
+    foreach(_support_target IN ITEMS aether_game_hooks aether_game_text_settings)
+        if(TARGET ${_support_target})
+            target_link_libraries(aether_kiri_godot PRIVATE ${_support_target})
+            list(APPEND AETHERKIRI_IOS_ARCHIVES "$<TARGET_FILE:${_support_target}>")
+        endif()
+    endforeach()
     if(TARGET aetherkiri_wa2_runtime)
         list(APPEND AETHERKIRI_IOS_ARCHIVES "$<TARGET_FILE:aetherkiri_wa2_runtime>")
     endif()

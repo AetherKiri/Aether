@@ -7,6 +7,11 @@ BGI、YU-RIS、ADVHD、SoftPal、CatSystem2、Escude、SystemC、EntisGLS
 `aether.api_version` 为 `1`。把 UTF-8 编码的 `aether.lua` 放在游戏根目录，
 引擎打开游戏时就会读取并执行它；支持带 UTF-8 BOM 的脚本。
 
+公共加载器同时读取游戏目录 `aether_config.json` 的 `text.encoding` 和
+`text.font_file`，无需 Lua 脚本。非空的用户选择优先于 Lua 的编码、字体默认值，
+空字符串则沿用原有行为；资源覆盖顺序不变。编辑入口、引擎范围和字体导入方式见
+[游戏文本设置](../../doc/game_text_settings.md)。
+
 这套接口用于在启动阶段准备汉化资源：Lua 负责读取、解析补丁文件，公共层保存
 注册结果，各引擎把结果接到自己的资源读取入口。接口名称和调用方式统一；
 资源名称、资源的二进制格式和可选编码仍由目标引擎决定。
@@ -80,7 +85,7 @@ aether.log("汉化资源已加载，引擎：" .. aether.engine)
 | `mount_dir(path)` | 无 | 递归读取目录内的普通文件并注册，逻辑名称相对于该目录；拒绝目录内容中的符号链接。 |
 | `decompress(bytes, format [, size])` | 二进制字符串 | 解压 `zlib` 或 `zstd` 数据。显式传入的解压大小必须匹配结果；zstd 帧没有记录大小时必须提供 `size`。损坏数据会报错。 |
 | `transcode(bytes, from [, to])` | 二进制字符串 | 严格转换字符编码，`to` 默认为 `UTF-8`。输入无效或目标编码无法表示字符时会报错。 |
-| `set_encoding(name)` | 无 | 指定本次游戏会话的文本编码。在适用的脚本格式中，启动时优先于自动检测和启动器编码设置。各引擎支持范围见下表。 |
+| `set_encoding(name)` | 无 | 指定本次游戏会话的文本编码。在适用的脚本格式中优先于自动检测及旧启动器默认值；JSON 中明确保存的用户选择具有更高优先级。各引擎支持范围见下表。 |
 | `set_font(path)` | 无 | 选择游戏目录内已存在的物理字体文件；路径校验在脚本阶段完成，字体加载由引擎完成。 |
 | `log(message)` | 无 | 记录补丁启动日志，成功加载后由引擎输出。使用它代替 `print`。 |
 

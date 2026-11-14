@@ -1,0 +1,84 @@
+/* Only media fill and root sizing live here. Components use Astryx's own CSS. */
+@font-face {
+  font-family: Figtree;
+  src: url("../../../apps/godot_app/assets/fonts/Figtree-Regular.ttf");
+  font-weight: 400;
+}
+@font-face {
+  font-family: Figtree;
+  src: url("../../../apps/godot_app/assets/fonts/Figtree-Semibold.ttf");
+  font-weight: 500 800;
+}
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+}
+.poster {
+  height: 100%;
+  width: 100%;
+  object-fit: cover;
+  border-radius: var(--radius-container);
+  display: block;
+}
+.library-thumbnail {
+  display: block;
+  width: 54px;
+  height: 72px;
+  object-fit: cover;
+  border-radius: var(--radius-container);
+}
+.detail-page {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+}
+.detail-page::before {
+  content: "";
+  position: absolute;
+  z-index: -1;
+  pointer-events: none;
+  inset: 0 0 auto;
+  height: 420px;
+  background-image: var(--detail-backdrop);
+  background-size: cover;
+  background-position: center;
+  filter: blur(18px) brightness(var(--detail-backdrop-brightness));
+  opacity: var(--detail-backdrop-opacity);
+  mask-image: linear-gradient(#000 15%, transparent);
+}
+.detail-info {
+  position: sticky;
+  top: var(--spacing-8);
+  align-self: start;
+}
+.detail-gallery {
+  --detail-cover-height: calc(100dvh - 140px);
+  width: 100%;
+  max-width: min(
+    100%,
+    calc(var(--detail-cover-height) * var(--detail-cover-ratio))
+  );
+  justify-self: center;
+}
+.detail-poster {
+  border-radius: var(--radius-container);
+}
+@media (max-width: 699px) {
+  .detail-gallery {
+    --detail-cover-height: min(60dvh, calc(100dvh - 208px));
+  }
+}
+.player-preview {
+  background: #111;
+  color: white;
+  display: grid;
+  place-items: center;
+  height: 100%;
+  border-radius: var(--radius-container);
+}
+.device-bottom {
+  padding-top: 4px;
+  padding-bottom: max(16px, env(safe-area-inset-bottom));
+}

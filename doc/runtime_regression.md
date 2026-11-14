@@ -172,3 +172,39 @@ navigation, save restoration, and render-state metadata. They do not compare
 visual pixels, exercise physical touch hardware, or test OS event dispatch.
 Use precise target identities and cleared navigation flags as
 the success criteria; absence of an error message alone is insufficient.
+
+## CMVS library restart
+
+`tests/profiles/cmvs_library_reopen.json` covers Amatsutsumi
+(`アマツツミ`, also distributed as `天津罪`): open through the library, start,
+advance 20 times, exit to the library, reopen, and exit again. It checks that
+both exits destroy the engine handle and release the frame texture. Let the
+startup animation finish before comparing the `title_before` and
+`title_after_reopen` frame hashes; an intermediate logo transition can be black.
+
+CMVS uses `<game>/savedata` even when the probe has an isolated writable root.
+Run this case against a disposable copy of the entire game directory, including
+its saves. Do not use `--seed` alone to isolate CMVS writes. A useful fixture
+contains an existing native `system.dat` and `save870.dat` that normally resume
+the story on launch.
+
+The apparent retained runtime was a disk auto-load: an independent process also
+restored the story. Aether already destroys the host on exit. Its CMVS provider
+now selects the core's reviewed skip-auto-resume policy before the first tick.
+Only the recorded startup flag is cleared in memory; save files remain and
+manual loading still works. Standalone CMVS hosts keep native behavior unless
+they explicitly select this policy.
+
+The dependency update integrates cmvs-rs main `34fdb7e` into Aether's adaptation
+branch, retaining PKP overlays, translated glyphs, local saves and platform
+hooks. It uses the new core/font encoding APIs instead of maintaining the old
+per-message encoding fields.
+
+Validated on Apple Silicon macOS with the full Debug app and Internal enabled:
+both title hashes matched after 20 advances, the story hash differed, and both
+exits reported an uninitialized engine and cleared texture. The host's
+`amatsutsumi_game_savedata_survives_player_restart` regression also creates a
+native resume state, checks default auto-load versus fresh launch, then loads
+and resaves a manual slot with identical gameplay snapshot bytes. The original
+installation's nine save files were unchanged. This case has not been run on
+a physical iPad.

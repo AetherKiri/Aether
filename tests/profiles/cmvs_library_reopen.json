@@ -1,0 +1,254 @@
+{
+  "name": "cmvs-library-reopen-after-20",
+  "probe_script": "res://scripts/runtime_regression_probe.gd",
+  "launch_mode": "library",
+  "surface_width": 1280,
+  "surface_height": 720,
+  "window_width": 1280,
+  "window_height": 720,
+  "coord_width": 1280,
+  "coord_height": 720,
+  "fps_limit": 60,
+  "steps": [
+    {
+      "type": "snapshot",
+      "label": "opened",
+      "after_frames": 2400
+    },
+    {
+      "type": "frame",
+      "label": "title_before",
+      "min_visible_ratio": 0.1
+    },
+    {
+      "type": "click",
+      "label": "start_game",
+      "x": 640,
+      "y": 280,
+      "after_frames": 3600
+    },
+    {
+      "type": "click",
+      "label": "advance_01",
+      "x": 640,
+      "y": 610,
+      "after_frames": 90
+    },
+    {
+      "type": "click",
+      "label": "advance_02",
+      "x": 640,
+      "y": 610,
+      "after_frames": 90
+    },
+    {
+      "type": "click",
+      "label": "advance_03",
+      "x": 640,
+      "y": 610,
+      "after_frames": 90
+    },
+    {
+      "type": "click",
+      "label": "advance_04",
+      "x": 640,
+      "y": 610,
+      "after_frames": 90
+    },
+    {
+      "type": "click",
+      "label": "advance_05",
+      "x": 640,
+      "y": 610,
+      "after_frames": 90
+    },
+    {
+      "type": "click",
+      "label": "advance_06",
+      "x": 640,
+      "y": 610,
+      "after_frames": 90
+    },
+    {
+      "type": "click",
+      "label": "advance_07",
+      "x": 640,
+      "y": 610,
+      "after_frames": 90
+    },
+    {
+      "type": "click",
+      "label": "advance_08",
+      "x": 640,
+      "y": 610,
+      "after_frames": 90
+    },
+    {
+      "type": "click",
+      "label": "advance_09",
+      "x": 640,
+      "y": 610,
+      "after_frames": 90
+    },
+    {
+      "type": "click",
+      "label": "advance_10",
+      "x": 640,
+      "y": 610,
+      "after_frames": 90
+    },
+    {
+      "type": "click",
+      "label": "advance_11",
+      "x": 640,
+      "y": 610,
+      "after_frames": 90
+    },
+    {
+      "type": "click",
+      "label": "advance_12",
+      "x": 640,
+      "y": 610,
+      "after_frames": 90
+    },
+    {
+      "type": "click",
+      "label": "advance_13",
+      "x": 640,
+      "y": 610,
+      "after_frames": 90
+    },
+    {
+      "type": "click",
+      "label": "advance_14",
+      "x": 640,
+      "y": 610,
+      "after_frames": 90
+    },
+    {
+      "type": "click",
+      "label": "advance_15",
+      "x": 640,
+      "y": 610,
+      "after_frames": 90
+    },
+    {
+      "type": "click",
+      "label": "advance_16",
+      "x": 640,
+      "y": 610,
+      "after_frames": 90
+    },
+    {
+      "type": "click",
+      "label": "advance_17",
+      "x": 640,
+      "y": 610,
+      "after_frames": 90
+    },
+    {
+      "type": "click",
+      "label": "advance_18",
+      "x": 640,
+      "y": 610,
+      "after_frames": 90
+    },
+    {
+      "type": "click",
+      "label": "advance_19",
+      "x": 640,
+      "y": 610,
+      "after_frames": 90
+    },
+    {
+      "type": "click",
+      "label": "advance_20",
+      "x": 640,
+      "y": 610,
+      "after_frames": 90
+    },
+    {
+      "type": "frame",
+      "label": "story_after_20"
+    },
+    {
+      "type": "exit_to_library",
+      "label": "exit_game"
+    },
+    {
+      "type": "assert",
+      "label": "runtime_destroyed",
+      "conditions": [
+        {
+          "field": "host.library_visible",
+          "equals": true
+        },
+        {
+          "field": "host.engine_initialized",
+          "equals": false
+        },
+        {
+          "field": "host.frame_texture_cleared",
+          "equals": true
+        },
+        {
+          "field": "host.game_running",
+          "equals": false
+        }
+      ]
+    },
+    {
+      "type": "reopen",
+      "label": "reopen_same_game",
+      "after_frames": 2400
+    },
+    {
+      "type": "assert",
+      "label": "fresh_runtime_ready",
+      "conditions": [
+        {
+          "field": "host.library_visible",
+          "equals": false
+        },
+        {
+          "field": "host.engine_initialized",
+          "equals": true
+        },
+        {
+          "field": "host.game_running",
+          "equals": true
+        },
+        {
+          "field": "host.render_errors",
+          "equals": 0
+        }
+      ]
+    },
+    {
+      "type": "frame",
+      "label": "title_after_reopen"
+    },
+    {
+      "type": "exit_to_library",
+      "label": "exit_again"
+    },
+    {
+      "type": "assert",
+      "label": "second_runtime_destroyed",
+      "conditions": [
+        {
+          "field": "host.library_visible",
+          "equals": true
+        },
+        {
+          "field": "host.engine_initialized",
+          "equals": false
+        },
+        {
+          "field": "host.frame_texture_cleared",
+          "equals": true
+        }
+      ]
+    }
+  ]
+}

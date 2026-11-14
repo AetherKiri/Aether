@@ -77,7 +77,10 @@ target_compile_features(aether_rfvp_runtime PUBLIC cxx_std_17)
 set_target_properties(aether_rfvp_runtime PROPERTIES POSITION_INDEPENDENT_CODE ON)
 target_include_directories(aether_rfvp_runtime PUBLIC include
     "${AETHERKIRI_RFVP_PROJECT_ROOT}/abi/include")
-target_link_libraries(aether_rfvp_runtime PUBLIC aether_rfvp_rust)
+if(NOT TARGET aether_game_text_settings)
+    add_subdirectory("${AETHERKIRI_RFVP_PROJECT_ROOT}/bridge/game_hooks/text_settings" "game_text_settings")
+endif()
+target_link_libraries(aether_rfvp_runtime PUBLIC aether_rfvp_rust PRIVATE aether_game_text_settings)
 if(APPLE)
     target_link_libraries(aether_rfvp_runtime PUBLIC
         "-framework AudioToolbox" "-framework CoreAudio" "-framework CoreFoundation"

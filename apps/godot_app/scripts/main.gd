@@ -76,6 +76,7 @@ const RuntimeRegressionProbe = preload("res://scripts/runtime_regression_probe.g
 const RuntimeFormDialog = preload("res://scripts/runtime_form_dialog.gd")
 const GameMetadata = preload("res://scripts/game_metadata.gd")
 const CoverIndex = preload("res://scripts/cover_index.gd")
+const GameCoverConfig = preload("res://scripts/game_cover_config.gd")
 const VNDBCoverResolver = preload("res://scripts/vndb_cover_resolver.gd")
 const GameInputMapping = preload("res://scripts/game_input_mapping.gd")
 const GameVirtualControls = preload("res://scripts/game_virtual_controls.gd")
@@ -98,6 +99,8 @@ const AetherDisclosure = preload("res://scripts/ui/aether_disclosure.gd")
 const AetherSelect = preload("res://scripts/ui/aether_select.gd")
 const AetherDisplayScale = preload("res://scripts/ui/aether_display_scale.gd")
 const AetherShaders = preload("res://scripts/ui/aether_shaders.gd")
+const GameRenderConfig = preload("res://scripts/game_render_config.gd")
+const GameTextConfig = preload("res://scripts/game_text_config.gd")
 const AppUpdater = preload("res://scripts/app_updater.gd")
 const UI_ICON_DIR := "res://assets/ui/icons/"
 const ICON_SETTINGS := UI_ICON_DIR + "gear-fill.svg"
@@ -548,6 +551,8 @@ const UI_TEXT := {
         "message.launch_file_outside_game": "启动文件必须位于当前游戏目录内",
         "message.launch_file_missing": "启动文件不存在：%s",
         "message.cover_file_missing": "无法读取所选封面图片：%s",
+        "message.photo_picker_unavailable": "相册暂时无法打开，请稍后重试。",
+        "message.cover_save_failed": "封面保存失败，请检查游戏目录及其配置文件。",
         "message.game_exists": "游戏已存在：%s",
         "message.builtin_delete_failed": "删除内置 Demo 时发生错误：%s",
         "alert.error_title": "Aether 错误",
@@ -928,6 +933,8 @@ const UI_TEXT := {
         "message.launch_file_outside_game": "啟動檔案必須位於目前遊戲目錄內",
         "message.launch_file_missing": "啟動檔案不存在：%s",
         "message.cover_file_missing": "無法讀取所選封面圖片：%s",
+        "message.photo_picker_unavailable": "相簿暫時無法開啟，請稍後再試。",
+        "message.cover_save_failed": "封面儲存失敗，請檢查遊戲目錄及其設定檔。",
         "message.game_exists": "遊戲已存在：%s",
         "message.builtin_delete_failed": "刪除內建 Demo 時發生錯誤：%s",
         "alert.error_title": "Aether 錯誤",
@@ -1347,6 +1354,8 @@ You can find it any time under Settings → QQ Group.",
         "message.launch_file_outside_game": "The launch file must be inside this game folder",
         "message.launch_file_missing": "Launch file does not exist: %s",
         "message.cover_file_missing": "Could not read the selected cover image: %s",
+        "message.photo_picker_unavailable": "The photo picker is unavailable. Please try again.",
+        "message.cover_save_failed": "Could not save the cover. Check the game folder and its configuration file.",
         "message.game_exists": "Game already exists: %s",
         "message.builtin_delete_failed": "Could not completely delete the built-in demo: %s",
         "alert.error_title": "Aether Error",
@@ -1727,6 +1736,8 @@ You can find it any time under Settings → QQ Group.",
         "message.launch_file_outside_game": "起動ファイルは現在のゲームフォルダー内にある必要があります",
         "message.launch_file_missing": "起動ファイルが存在しません：%s",
         "message.cover_file_missing": "選択したカバー画像を読み込めません：%s",
+        "message.photo_picker_unavailable": "写真を開けません。もう一度お試しください。",
+        "message.cover_save_failed": "カバーを保存できません。ゲームフォルダーと設定ファイルを確認してください。",
         "message.game_exists": "ゲームは既に存在します：%s",
         "message.builtin_delete_failed": "内蔵デモを完全に削除できませんでした：%s",
         "alert.error_title": "Aether エラー",
@@ -2107,6 +2118,8 @@ You can find it any time under Settings → QQ Group.",
         "message.launch_file_outside_game": "실행 파일은 현재 게임 폴더 안에 있어야 합니다",
         "message.launch_file_missing": "실행 파일이 존재하지 않습니다: %s",
         "message.cover_file_missing": "선택한 표지 이미지를 읽을 수 없습니다: %s",
+        "message.photo_picker_unavailable": "사진 선택기를 열 수 없습니다. 다시 시도해 주세요.",
+        "message.cover_save_failed": "표지를 저장할 수 없습니다. 게임 폴더와 설정 파일을 확인해 주세요.",
         "message.game_exists": "게임이 이미 있습니다: %s",
         "message.builtin_delete_failed": "내장 데모를 완전히 삭제하지 못했습니다: %s",
         "alert.error_title": "Aether 오류",
@@ -2432,7 +2445,9 @@ var detail_relayout_scroll_vertical := 0
 var native_launch_file_picker_pending := false
 var native_launch_file_picker_library_path := ""
 var native_cover_file_picker_pending := false
+var native_cover_file_picker_is_photo := false
 var native_cover_file_picker_library_path := ""
+var native_font_file_picker_callback := Callable()
 var native_translation_model_file_picker_pending := false
 var active_game_path := ""
 var active_game_started_msec := 0
@@ -2496,6 +2511,8 @@ var frame_enhancement_mode := FRAME_ENHANCEMENT_MODE_DEFAULT
 var frame_enhancement_custom_chain := PackedStringArray([
     "anime4k_upscale_s", "bicubic", "anime4k_restore_soft_s",
 ])
+var game_render_overrides: Dictionary = {}
+var game_render_root := ""
 var game_running := false
 var runtime_dialog_input: LineEdit = null
 var runtime_form_dialog: RefCounted = null
@@ -2669,47 +2686,16 @@ const RENDER_SURFACE_SIZE := Vector2i(1920, 1080)
 const RENDER_SURFACE_MAX_SIZE := Vector2i(3840, 2160)
 const RENDER_SURFACE_MODE_GAME := "game"
 const RENDER_SURFACE_MODE_DISPLAY := "display"
-const OUTPUT_RESOLUTION_DEFAULT := "1080p"
-const OUTPUT_RESOLUTION_MODES := ["original", "1080p", "2k", "4k"]
-const FRAME_ENHANCEMENT_KINDS := ["off", "preset", "custom"]
-const FRAME_ENHANCEMENT_MODE_DEFAULT := "chain_soft"
-const FRAME_ENHANCEMENT_MODES := [
-    "chain_4k_max", "chain_lossless", "chain_ultra", "chain_detail",
-    "chain_balanced", "chain_soft", "chain_light", "chain_basic",
-]
-const FRAME_ENHANCEMENT_PRESET_MODES := [
-    "chain_4k_max", "chain_lossless", "chain_ultra", "chain_detail",
-    "chain_balanced", "chain_soft", "chain_light", "chain_basic",
-]
-const FRAME_ENHANCEMENT_ALGORITHMS := [
-    "anime4k_upscale_s", "anime4k_upscale_l", "anime4k_upscale_vl",
-    "anime4k_restore_s", "anime4k_restore_soft_s", "anime4k_restore_soft_m",
-    "anime4k_restore_l", "anime4k_restore_vl",
-    "fsr1_easu", "fsr1_rcas", "bicubic", "lanczos", "fxaa",
-    "ravu_lite_r2", "cunny_2x4c", "nnedi3_nns16",
-]
-const FRAME_ENHANCEMENT_ALGORITHM_LABELS := {
-    "anime4k_upscale_s": "Anime4K Upscale S",
-    "anime4k_upscale_l": "Anime4K Upscale L",
-    "anime4k_upscale_vl": "Anime4K Upscale VL",
-    "anime4k_restore_s": "Anime4K Restore S",
-    "anime4k_restore_soft_s": "Anime4K Restore Soft S",
-    "anime4k_restore_soft_m": "Anime4K Restore Soft M",
-    "anime4k_restore_l": "Anime4K Restore L",
-    "anime4k_restore_vl": "Anime4K Restore VL",
-    "fsr1_easu": "FSR1 EASU",
-    "fsr1_rcas": "FSR1 RCAS",
-    "bicubic": "Bicubic",
-    "lanczos": "Lanczos",
-    "fxaa": "FXAA",
-    "ravu_lite_r2": "RAVU-Lite R2",
-    "cunny_2x4c": "CuNNy 2x4C",
-    "nnedi3_nns16": "NNEDI3 nns16",
-}
-const FRAME_ENHANCEMENT_CUSTOM_DEFAULT := [
-    "anime4k_upscale_s", "bicubic", "anime4k_restore_soft_s",
-]
-const FRAME_ENHANCEMENT_CUSTOM_MAX_STEPS := 32
+const OUTPUT_RESOLUTION_DEFAULT = GameRenderConfig.OUTPUT_RESOLUTION_DEFAULT
+const OUTPUT_RESOLUTION_MODES = GameRenderConfig.OUTPUT_RESOLUTION_MODES
+const FRAME_ENHANCEMENT_KINDS = GameRenderConfig.FRAME_ENHANCEMENT_KINDS
+const FRAME_ENHANCEMENT_MODE_DEFAULT = GameRenderConfig.FRAME_ENHANCEMENT_MODE_DEFAULT
+const FRAME_ENHANCEMENT_MODES = GameRenderConfig.FRAME_ENHANCEMENT_MODES
+const FRAME_ENHANCEMENT_PRESET_MODES = GameRenderConfig.FRAME_ENHANCEMENT_PRESET_MODES
+const FRAME_ENHANCEMENT_ALGORITHMS = GameRenderConfig.FRAME_ENHANCEMENT_ALGORITHMS
+const FRAME_ENHANCEMENT_ALGORITHM_LABELS = GameRenderConfig.FRAME_ENHANCEMENT_ALGORITHM_LABELS
+const FRAME_ENHANCEMENT_CUSTOM_DEFAULT = GameRenderConfig.FRAME_ENHANCEMENT_CUSTOM_DEFAULT
+const FRAME_ENHANCEMENT_CUSTOM_MAX_STEPS = GameRenderConfig.FRAME_ENHANCEMENT_CUSTOM_MAX_STEPS
 const AETHER_SELECT_OVERLAY_INPUT_GROUP := "aether_select_input_overlay"
 const OUTPUT_RESOLUTION_LIMITS := {
     "1080p": Vector2i(1920, 1080),
@@ -4421,6 +4407,9 @@ func _should_confirm_settings_navigation() -> bool:
     return shell_route == "settings" and dirty_settings
 
 func _request_settings_navigation(destination: Callable) -> bool:
+    var shell_interface := get_node_or_null("ShellInterface")
+    if shell_interface != null and shell_interface.enabled:
+        return shell_interface.request_navigation(destination)
     if not _should_confirm_settings_navigation():
         return false
     _show_unsaved_settings_prompt(destination)
@@ -4667,12 +4656,12 @@ func _apply_engine_options() -> void:
     if current_player_runtime_kind == RUNTIME_SYSTEMC:
         player.set_engine_option("SYSTEMC_SCRIPT_ENCODING",
             preload("res://scripts/systemc_engine_options.gd").script_encoding(
-                selected_game, _runtime_string("AETHERKIRI_SYSTEMC_ENCODING", "")))
+                {"systemcScriptEncoding": _game_text_encoding(selected_game, "systemc")}, _runtime_string("AETHERKIRI_SYSTEMC_ENCODING", "")))
     if current_player_runtime_kind == RUNTIME_YURIS:
         var yuris_options = preload("res://scripts/yuris_engine_options.gd")
         player.set_engine_option(
             "YURIS_SCRIPT_ENCODING", yuris_options.script_encoding(
-                selected_game, _runtime_string("AETHERKIRI_YURIS_ENCODING", "")
+                {"yurisScriptEncoding": _game_text_encoding(selected_game, "yuris")}, _runtime_string("AETHERKIRI_YURIS_ENCODING", "")
             )
         )
         var yuris_worker_budget_value: int = preload("res://scripts/yuris_engine_options.gd").worker_step_budget(
@@ -4705,10 +4694,19 @@ func _apply_engine_options() -> void:
     player.set_engine_option("artemis.max_visual_delta_ms", "34")
     var effective_export_scripts := export_scripts or _runtime_flag("AETHERKIRI_EXPORT_SCRIPTS", false)
     player.set_engine_option("export_scripts", "1" if effective_export_scripts else "0")
-    if not runtime_default_font_path.is_empty():
+    # These are startup fallbacks. Reapplying them during a live session can
+    # replace the game's explicitly selected font in native renderers.
+    if not game_running and not runtime_default_font_path.is_empty():
         player.set_engine_option("default_font", runtime_default_font_path)
-    if not runtime_font_dir_path.is_empty():
+    if not game_running and not runtime_font_dir_path.is_empty():
         player.set_engine_option("font_dir", runtime_font_dir_path)
+    if current_player_runtime_kind == "rfvp":
+        var selected_root := _game_runtime_root(String(selected_game.get("path", "")))
+        player.set_engine_option("rfvp_config_root", game_render_root if not game_render_root.is_empty() else selected_root)
+        var encoding := _game_text_encoding(selected_game, "rfvp")
+        var legacy_value := "gbk" if encoding == "GBK" else "utf8" if encoding == "UTF-8" else "sjis"
+        player.set_engine_option("rfvp_encoding", GameLaunchEntry.rfvp_encoding(
+            {"rfvpEncoding": legacy_value}, _runtime_string("AETHERKIRI_RFVP_ENCODING", "")))
     if current_player_runtime_kind == RUNTIME_WA2:
         if not runtime_default_font_path.is_empty():
             player.set_engine_option("wa2.font_path", runtime_default_font_path)
@@ -4721,18 +4719,49 @@ func _apply_engine_options() -> void:
     if not onscripter_encoding.is_empty():
         player.set_engine_option("onscripter_encoding", onscripter_encoding)
 
+func _read_game_render_config(game: Dictionary) -> Dictionary:
+    return GameRenderConfig.read(_game_runtime_root(String(game.get("path", ""))))
+
+func _save_game_render_config(game: Dictionary, patch: Dictionary) -> Error:
+    return GameRenderConfig.save(_game_runtime_root(String(game.get("path", ""))), patch)
+
+func _load_game_render_overrides(launch_path: String) -> void:
+    game_render_root = _game_runtime_root(launch_path)
+    # An explicitly selected entry may be nested below the library's game root.
+    var selected_root := _game_runtime_root(String(selected_game.get("path", "")))
+    if not selected_root.is_empty() and (game_render_root == selected_root or launch_path.begins_with(selected_root.trim_suffix("/") + "/")):
+        game_render_root = selected_root
+    var config := GameRenderConfig.read(game_render_root)
+    game_render_overrides = config.rendering
+    if config.error != OK:
+        _append_log("Game rendering config ignored: %s (%s)" % [config.path, error_string(config.error)])
+
+func _clear_game_render_overrides() -> void:
+    game_render_overrides.clear()
+    game_render_root = ""
+
+func _effective_render_value(key: String):
+    var override_kind: String = game_render_overrides.get("frame_enhancement_kind", "")
+    if key == "frame_enhancement_mode":
+        return game_render_overrides.get(key, frame_enhancement_mode) if override_kind == "preset" else frame_enhancement_mode
+    if key == "frame_enhancement_custom_chain":
+        return game_render_overrides.get(key, frame_enhancement_custom_chain) if override_kind == "custom" else frame_enhancement_custom_chain
+    var value = game_render_overrides.get(key, "")
+    return value if value is String and not value.is_empty() else get(key)
+
 func _apply_frame_enhancement_settings() -> void:
     _apply_upscale_algorithm()
     if player == null or not player.has_method("set_frame_enhancement_enabled"):
         return
     if player.has_method("set_frame_native_output_enabled"):
-        player.set_frame_native_output_enabled(output_resolution == "original")
+        player.set_frame_native_output_enabled(_effective_render_value("output_resolution") == "original")
     if player.has_method("set_frame_enhancement_custom_chain"):
-        player.set_frame_enhancement_custom_chain(frame_enhancement_custom_chain)
+        player.set_frame_enhancement_custom_chain(PackedStringArray(_effective_render_value("frame_enhancement_custom_chain")))
+    var kind: String = _effective_render_value("frame_enhancement_kind")
     player.set_frame_enhancement_mode(
-        "custom" if frame_enhancement_kind == "custom" else frame_enhancement_mode
+        "custom" if kind == "custom" else String(_effective_render_value("frame_enhancement_mode"))
     )
-    player.set_frame_enhancement_enabled(frame_enhancement_kind != "off")
+    player.set_frame_enhancement_enabled(kind != "off")
 
 func _frame_enhancement_description() -> String:
     if player == null or not player.has_method("is_frame_enhancement_available"):
@@ -5191,7 +5220,7 @@ func _layout_game_viewport(window_size: Vector2) -> void:
         max(1.0, float(last_texture_size.x)),
         max(1.0, float(last_texture_size.y))
     )
-    if viewport.texture != null and upscale_algorithm != "metalfx_spatial":
+    if viewport.texture != null and _effective_render_value("upscale_algorithm") != "metalfx_spatial":
         tex_size = Vector2(
             max(1.0, float(viewport.texture.get_width())),
             max(1.0, float(viewport.texture.get_height()))
@@ -5337,14 +5366,15 @@ void fragment() {
     return _opaque_frame_material()
 
 func _apply_upscale_algorithm() -> void:
+    var algorithm: String = _effective_render_value("upscale_algorithm")
     if player != null and player.has_method("set_frame_upscale_algorithm"):
-        player.set_frame_upscale_algorithm("metalfx_spatial" if upscale_algorithm == "metalfx_spatial" else "")
+        player.set_frame_upscale_algorithm("metalfx_spatial" if algorithm == "metalfx_spatial" else "")
     frame_upscale_active = _is_frame_upscale_active()
     if viewport == null:
         return
     if not frame_upscale_active and viewport.texture != null and frame_upscale_source_texture != null:
         viewport.texture = frame_upscale_source_texture
-    match upscale_algorithm:
+    match algorithm:
         "nearest":
             viewport.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
             # The opaque presentation shader samples TEXTURE through its own
@@ -5357,7 +5387,7 @@ func _apply_upscale_algorithm() -> void:
             viewport.material = _opaque_frame_material()
         "bicubic", "lanczos":
             viewport.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR
-            viewport.material = _resampling_frame_material(upscale_algorithm)
+            viewport.material = _resampling_frame_material(algorithm)
         "metalfx_spatial":
             viewport.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR
             viewport.material = _opaque_frame_material() if frame_upscale_active else _resampling_frame_material("bicubic")
@@ -5366,7 +5396,7 @@ func _apply_upscale_algorithm() -> void:
             viewport.material = _opaque_frame_material()
 
 func _is_frame_upscale_active() -> bool:
-    if upscale_algorithm != "metalfx_spatial" or player == null or not player.has_method("get_frame_upscale_status"):
+    if _effective_render_value("upscale_algorithm") != "metalfx_spatial" or player == null or not player.has_method("get_frame_upscale_status"):
         return false
     return bool(player.get_frame_upscale_status().get("active", false))
 
@@ -5384,7 +5414,7 @@ func _frame_upscale_target_size() -> Vector2i:
     return target
 
 func _on_frame_upscale_ready(texture: Texture2D) -> void:
-    if upscale_algorithm != "metalfx_spatial" or viewport == null or viewport.texture == null or texture == null:
+    if _effective_render_value("upscale_algorithm") != "metalfx_spatial" or viewport == null or viewport.texture == null or texture == null:
         return
     if frame_upscale_active != _is_frame_upscale_active():
         _apply_upscale_algorithm()
@@ -5393,7 +5423,7 @@ func _on_frame_upscale_ready(texture: Texture2D) -> void:
 
 func _present_frame_upscale(texture: Texture2D) -> void:
     frame_upscale_source_texture = texture
-    if upscale_algorithm != "metalfx_spatial" or not player.has_method("upscale_frame_texture"):
+    if _effective_render_value("upscale_algorithm") != "metalfx_spatial" or not player.has_method("upscale_frame_texture"):
         return
     var target := _frame_upscale_target_size()
     var scaled: Texture2D = player.upscale_frame_texture(texture, target.x, target.y)
@@ -5881,6 +5911,8 @@ func _rebuild_settings_view() -> void:
     _add_settings_row(community_rows, _settings_action_row(_t("settings.qq_group"), _t("settings.qq_group_desc"), _t("settings.qq_group_open"), _open_qq_group))
 
     var interface_rows := _settings_section(flow, _t("settings.section.interface"), animate_page, 0.04, ICON_PAGE)
+    if has_node("ShellInterface"):
+        get_node("ShellInterface").mount_classic_switch(interface_rows)
     _add_settings_row(interface_rows, _settings_row(_t("settings.style"), _t("settings.style_desc"), _style_select(), stack_settings_controls))
     _add_settings_row(interface_rows, _settings_row(_t("settings.language"), _t("settings.language_desc"), _language_select(), stack_settings_controls))
     if OS.get_name() == "iOS":
@@ -9847,6 +9879,57 @@ func _offer_scrape_after_add(game: Dictionary) -> void:
     )
     buttons.add_child(yes)
 
+func _choose_game_font(callback: Callable) -> void:
+    var path := String(selected_game.get("path", ""))
+    var title := "Choose game font"
+    match active_language:
+        LANG_ZH_HANS: title = "选择游戏字体"
+        LANG_ZH_HANT: title = "選擇遊戲字型"
+        LANG_JA: title = "ゲームフォントを選択"
+        LANG_KO: title = "게임 글꼴 선택"
+    if OS.get_name() in ["iOS", "macOS"] and player != null and player.has_method("native_font_file_picker_open"):
+        if bool(player.native_font_file_picker_open(title, path, ProjectSettings.globalize_path("user://font_import"))):
+            native_font_file_picker_callback = callback
+            return
+    var dialog := _create_file_dialog(title, FileDialog.FILE_MODE_OPEN_FILE, PackedStringArray(["*.ttf,*.otf;Fonts"]))
+    dialog.current_dir = path
+    dialog.file_selected.connect(func(font_path: String):
+        callback.call(GameTextConfig.load_font(font_path))
+    )
+    add_child(dialog)
+    dialog.popup_centered(Vector2i(900, 640))
+
+func _poll_native_font_file_picker() -> void:
+    if not native_font_file_picker_callback.is_valid() or player == null:
+        return
+    var json := String(player.native_launch_file_picker_take_result_json())
+    if json.is_empty():
+        return
+    var callback := native_font_file_picker_callback
+    native_font_file_picker_callback = Callable()
+    var result = JSON.parse_string(json)
+    if not result is Dictionary:
+        callback.call({"error": ERR_PARSE_ERROR})
+        return
+    if result.get("status") == "selected":
+        var path := String(result.get("path", ""))
+        var loaded := GameTextConfig.load_font(path)
+        if path.begins_with(ProjectSettings.globalize_path("user://font_import").trim_suffix("/") + "/"):
+            DirAccess.remove_absolute(path)
+            DirAccess.remove_absolute(path.get_base_dir())
+        callback.call(loaded)
+    elif result.get("status") == "error":
+        callback.call({"error": ERR_FILE_CANT_READ})
+
+func _read_game_text_config(game: Dictionary) -> Dictionary:
+    return GameTextConfig.read(_game_runtime_root(String(game.get("path", ""))), _game_runtime_kind(String(game.get("path", ""))), game)
+
+func _game_text_encoding(game: Dictionary, runtime: String) -> String:
+    var selected_root := _game_runtime_root(String(game.get("path", "")))
+    var root := game_render_root if not game_render_root.is_empty() else selected_root
+    var loaded := GameTextConfig.read(root, runtime, game if root == selected_root else {})
+    return String(loaded.text.encoding)
+
 func _set_cover_for_selected() -> void:
     var path := String(selected_game.get("path", ""))
     if path.is_empty():
@@ -9860,9 +9943,26 @@ func _set_cover_for_selected() -> void:
                 _t("dialog.choose_cover"), path, cover_directory
         )):
             native_cover_file_picker_pending = true
+            native_cover_file_picker_is_photo = false
             native_cover_file_picker_library_path = path
             return
     _show_cover_godot_dialog(path)
+
+func _can_select_cover_photo() -> bool:
+    return OS.get_name() in ["iOS", "Android"]
+
+func _cover_import_directory() -> String:
+    return ProjectSettings.globalize_path("user://Covers")
+
+func _select_cover_photo(library_path: String) -> void:
+    if not _can_select_cover_photo():
+        return
+    if player != null and player.has_method("native_cover_photo_picker_open") and bool(player.native_cover_photo_picker_open(_t("dialog.choose_cover"), _cover_import_directory())):
+        native_cover_file_picker_pending = true
+        native_cover_file_picker_is_photo = true
+        native_cover_file_picker_library_path = library_path
+    else:
+        _show_system_alert(_t("message.photo_picker_unavailable"), _t("alert.warning_title"))
 
 func _delete_cover_for_selected() -> void:
     var path := String(selected_game.get("path", ""))
@@ -9876,6 +9976,9 @@ func _delete_cover_for_selected() -> void:
 func _clear_cover_for_selected() -> void:
     var path := String(selected_game.get("path", ""))
     if path.is_empty():
+        return
+    if GameCoverConfig.clear(_game_runtime_root(path)) != OK:
+        _show_system_alert(_t("message.cover_save_failed"), _t("alert.warning_title"))
         return
     _update_game(path, {"coverPath": "", GAME_AUTO_COVER_SCANNED_FIELD: true})
     var index := CoverIndex.load_index()
@@ -9897,13 +10000,27 @@ func _show_cover_godot_dialog(path: String) -> void:
     add_child(dialog)
     dialog.popup_centered(Vector2i(900, 640))
 
-func _apply_selected_cover(library_path: String, cover_path: String) -> void:
+func _apply_selected_cover(library_path: String, cover_path: String, source: String = "local") -> void:
     if cover_path.is_empty() or not FileAccess.file_exists(cover_path):
         _show_system_alert(
             _t("message.cover_file_missing", [cover_path]),
             _t("alert.warning_title")
         )
         return
+    var result := _save_cover_image(library_path, Image.load_from_file(cover_path), source)
+    if result.error != OK:
+        _show_system_alert(_t("message.cover_save_failed"), _t("alert.warning_title"))
+        return
+    if String(selected_game.get("path", "")) == library_path:
+        _show_detail(selected_game)
+
+func _save_cover_image(library_path: String, image: Image, source: String, vndb_id: String = "") -> Dictionary:
+    var result := GameCoverConfig.save_image(_game_runtime_root(library_path), image, source, vndb_id)
+    if result.error == OK:
+        _record_selected_cover(library_path, result.path)
+    return result
+
+func _record_selected_cover(library_path: String, cover_path: String) -> void:
     _update_game(library_path, {
         "coverPath": _portable_cover_path(library_path, cover_path),
         GAME_AUTO_COVER_SCANNED_FIELD: true,
@@ -9914,7 +10031,6 @@ func _apply_selected_cover(library_path: String, cover_path: String) -> void:
             index[CoverIndex.key_for(game)] = CoverIndex.record(_portable_cover_path(library_path, cover_path))
             break
     CoverIndex.save_index(index)
-    _show_detail(selected_game)
 
 func _game_launch_entry_label(game: Dictionary) -> String:
     var relative_path := GameLaunchEntry.configured_relative_path(game)
@@ -10044,11 +10160,13 @@ func _poll_native_cover_file_picker() -> void:
             or player == null \
             or not player.has_method("native_launch_file_picker_take_result_json"):
         return
-    var result_json := String(player.native_launch_file_picker_take_result_json())
+    var result_json := String(player.native_cover_photo_picker_take_result_json()) if native_cover_file_picker_is_photo else String(player.native_launch_file_picker_take_result_json())
     if result_json.is_empty():
         return
     var library_path := native_cover_file_picker_library_path
+    var source := "photos" if native_cover_file_picker_is_photo else "local"
     native_cover_file_picker_pending = false
+    native_cover_file_picker_is_photo = false
     native_cover_file_picker_library_path = ""
     var parsed = JSON.parse_string(result_json)
     if typeof(parsed) != TYPE_DICTIONARY:
@@ -10057,7 +10175,7 @@ func _poll_native_cover_file_picker() -> void:
     var result: Dictionary = parsed
     match String(result.get("status", "error")):
         "selected":
-            _apply_selected_cover(library_path, String(result.get("path", "")))
+            _apply_selected_cover(library_path, String(result.get("path", "")), source)
         "cancelled":
             pass
         _:
@@ -11307,6 +11425,8 @@ func _add_game_dictionary(game: Dictionary) -> bool:
     return true
 
 func _start_vndb_cover_lookup(game: Dictionary, force: bool = false) -> void:
+    if GameCoverConfig.read(_game_runtime_root(String(game.get("path", "")))).configured:
+        return
     var index := CoverIndex.load_index()
     var key := CoverIndex.key_for(game)
     if key.is_empty() or (not force and not CoverIndex.needs_recognition(index, key)):
@@ -11332,6 +11452,8 @@ func _on_vndb_cover_resolved(game_path: String, cover_path: String, vndb_id: Str
     for game in games:
         if String(game.get("path", "")) != game_path:
             continue
+        if GameCoverConfig.read(_game_runtime_root(game_path)).configured:
+            break
         var key := CoverIndex.key_for(game)
         var resolved_cover := _portable_cover_path(game_path, cover_path) if not cover_path.is_empty() else ""
         index[key] = CoverIndex.record(resolved_cover)
@@ -11574,6 +11696,15 @@ func _backfill_default_game_covers(games: Array[Dictionary]) -> bool:
             continue
         var game_path := String(game.get("path", ""))
         var stored_cover_path := String(game.get("coverPath", ""))
+        var configured := GameCoverConfig.read(_game_runtime_root(game_path))
+        if configured.configured:
+            var portable := _portable_cover_path(game_path, configured.path)
+            if portable != stored_cover_path or not bool(game.get(GAME_AUTO_COVER_SCANNED_FIELD, false)):
+                game["coverPath"] = portable
+                game[GAME_AUTO_COVER_SCANNED_FIELD] = true
+                games[index] = game
+                changed = true
+            continue
         var resolved_cover_path := _resolve_cover_path(game)
         if bool(game.get(GAME_AUTO_COVER_SCANNED_FIELD, false)):
             if stored_cover_path.is_empty() \
@@ -11607,9 +11738,11 @@ func _sync_cover_index(games: Array[Dictionary]) -> void:
             continue
         var cover_path := _resolve_cover_path(game)
         var stored_path := _portable_cover_path(String(game.get("path", "")), cover_path) if not cover_path.is_empty() and FileAccess.file_exists(cover_path) else ""
-        index[key] = CoverIndex.record(stored_path, false)
+        var configured: bool = GameCoverConfig.read(_game_runtime_root(String(game.get("path", "")))).configured
+        index[key] = CoverIndex.record(stored_path, configured)
         changed = true
-        pending.append(game)
+        if not configured:
+            pending.append(game)
     if changed:
         CoverIndex.save_index(index)
     for game in pending:
@@ -11629,6 +11762,9 @@ func _portable_cover_path(game_path: String, cover_path: String) -> String:
     return absolute_cover
 
 func _resolve_cover_path(game: Dictionary) -> String:
+    var configured := GameCoverConfig.read(_game_runtime_root(String(game.get("path", ""))))
+    if configured.configured:
+        return configured.path
     var stored_path := String(game.get("coverPath", "")).strip_edges()
     if stored_path.is_empty():
         return ""
@@ -11656,6 +11792,9 @@ func _resolve_cover_path(game: Dictionary) -> String:
     return resolved_path
 
 func _discover_default_cover_path(game_path: String) -> String:
+    var configured := GameCoverConfig.read(_game_runtime_root(game_path))
+    if configured.configured:
+        return configured.path
     var directory := game_path
     if not DirAccess.dir_exists_absolute(directory):
         directory = game_path.get_base_dir()
@@ -12230,14 +12369,6 @@ func _start_selected_game_after_entitlements() -> void:
         return
     if not _switch_runtime_player(active_runtime_kind):
         return
-    if active_runtime_kind == "rfvp":
-        var rfvp_encoding := GameLaunchEntry.rfvp_encoding(
-            selected_game, OS.get_environment("AETHERKIRI_RFVP_ENCODING")
-        )
-        var option_result := int(player.set_engine_option("rfvp_encoding", rfvp_encoding))
-        if option_result != ENGINE_RESULT_OK:
-            _show_system_alert(String(player.get_last_error()), _t("alert.error_title"))
-            return
     var launch_uses_directory := GameLaunchEntry.runtime_uses_directory(
         active_runtime_kind
     )
@@ -12312,6 +12443,7 @@ func _start_selected_game_after_entitlements() -> void:
         game_view.visible = false
 
 func _finalize_active_game_session() -> void:
+    _clear_game_render_overrides()
     if active_game_path.is_empty() or active_game_started_msec <= 0:
         return
     var elapsed := int((Time.get_ticks_msec() - active_game_started_msec) / 1000)
@@ -15537,6 +15669,7 @@ func _process(delta: float) -> void:
     _poll_android_storage_permission_request()
     _poll_native_launch_file_picker()
     _poll_native_cover_file_picker()
+    _poll_native_font_file_picker()
     _poll_native_translation_model_file_picker()
     _fit_full_rects()
     _follow_nav_pills()
@@ -15774,8 +15907,8 @@ func _process(delta: float) -> void:
         if game_running and player.has_method("get_frame_enhancement_status"):
             var effect_status: Dictionary = player.get_frame_enhancement_status()
             var effect_state := "active" if bool(effect_status.get("active", false)) else ("waiting" if bool(effect_status.get("enabled", false)) else "off")
-            var effect_label := _t("settings.frame_enhancement_mode.%s" % frame_enhancement_mode)
-            if frame_enhancement_kind == "custom":
+            var effect_label := _t("settings.frame_enhancement_mode.%s" % String(_effective_render_value("frame_enhancement_mode")))
+            if _effective_render_value("frame_enhancement_kind") == "custom":
                 effect_label = _t("settings.frame_enhancement_kind.custom")
             summary_text += "\nEnhancement: %s | Effect: %s | Source: %dx%d | Output: %dx%d | Raw: %s" % [
                 effect_state,
@@ -16477,9 +16610,11 @@ func _on_open_game() -> void:
         _append_log("Game path is empty.")
         return
 
+    _load_game_render_overrides(path)
     var detected_runtime := _game_runtime_kind(path)
     if not _switch_runtime_player(detected_runtime):
         render_errors += 1
+        _clear_game_render_overrides()
         return
     active_runtime_kind = detected_runtime
     if GameLaunchEntry.runtime_uses_directory(detected_runtime):
@@ -16495,11 +16630,13 @@ func _on_open_game() -> void:
         device_probe_enabled = device_probe_enabled or not auto_probe_clicks.is_empty()
 
     if not _ensure_player_initialized():
+        _clear_game_render_overrides()
         return
 
     ProjectSettings.set_setting(GAME_PATH_KEY, path)
     _apply_backend(false)
     _apply_engine_options()
+    _apply_frame_enhancement_settings()
     if diagnostic_session != null:
         # A natural in-game exit destroys the reusable native engine handle.
         # Start diagnostics again when the next title recreates that handle.
@@ -16531,6 +16668,8 @@ func _on_open_game() -> void:
             player.get_last_error(),
         ]
         _append_log(launch_error_message)
+        _clear_game_render_overrides()
+        _apply_frame_enhancement_settings()
         return
 
     _stop_wa2_audio()
@@ -16584,7 +16723,7 @@ func _on_open_game() -> void:
 
 func _desired_render_surface_size() -> Vector2i:
     var base_size := _base_render_surface_size()
-    if output_resolution != "original":
+    if _effective_render_value("output_resolution") != "original":
         return _frame_output_target_size(base_size)
     if render_surface_mode == RENDER_SURFACE_MODE_GAME:
         return base_size
@@ -16615,7 +16754,7 @@ func _desired_render_surface_size() -> Vector2i:
     )
 
 func _frame_output_resolution_limit() -> Vector2i:
-    var normalized := _normalize_output_resolution(output_resolution)
+    var normalized := _normalize_output_resolution(String(_effective_render_value("output_resolution")))
     if normalized == "original":
         return Vector2i.ZERO
     var preset: Vector2i = OUTPUT_RESOLUTION_LIMITS.get(
@@ -16642,7 +16781,7 @@ func _fit_frame_size_within(source_size: Vector2i, bounds: Vector2i) -> Vector2i
     )
 
 func _frame_output_target_size(source_size: Vector2i) -> Vector2i:
-    if _normalize_output_resolution(output_resolution) == "original":
+    if _effective_render_value("output_resolution") == "original":
         return source_size
     return _fit_frame_size_within(source_size, _frame_output_resolution_limit())
 
@@ -16796,7 +16935,7 @@ func _frame_enhancement_target_size() -> Vector2i:
     # once at source size; only EASU/Bicubic/Lanczos sees this target.
     var source_size := last_source_texture_size
     if source_size.x <= 0 or source_size.y <= 0:
-        if output_resolution == "original":
+        if _effective_render_value("output_resolution") == "original":
             # A zero target asks the host to use the source texture dimensions,
             # avoiding a speculative 1080p allocation for the first frame.
             return Vector2i.ZERO

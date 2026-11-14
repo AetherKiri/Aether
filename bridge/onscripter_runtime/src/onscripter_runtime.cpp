@@ -1,3 +1,4 @@
+#include "AetherGameTextSettings.h"
 #include "onscripter_runtime.h"
 #include "onscripter_presentation.h"
 #include "onscripter_save_storage.h"
@@ -1175,38 +1176,33 @@ struct Runtime::Impl final : EmbeddedMovieHost {
         }
     }
 
-    void configure_encoding() {
+    void configure_encoding(const std::string& selected_encoding) {
         // ONScripter Yuri uses one process-wide converter. Replace it before
         // each embedded session so a later game may choose another encoding.
         if (coding2utf16 != nullptr) {
             delete coding2utf16;
             coding2utf16 = nullptr;
         }
-        if (encoding == "sjis" || encoding == "shift-jis" ||
-            encoding == "shift_jis") {
+        if (selected_encoding == "sjis" || selected_encoding == "shift-jis" ||
+            selected_encoding == "shift_jis") {
             coding2utf16 = new SJIS2UTF16();
         } else {
             auto *converter = new GBK2UTF16();
-            converter->force_utf8 = encoding == "utf8" || encoding == "utf-8";
+            converter->force_utf8 = selected_encoding == "utf8" || selected_encoding == "utf-8";
             coding2utf16 = converter;
         }
     }
 
-    void load_game_options(const fs::path &root) {
+    std::string load_game_options(const fs::path &root) {
+        std::string selected = encoding;
         std::ifstream arguments(root / "ons_args");
-        if (!arguments) {
-            return;
-        }
         std::string value;
         while (arguments >> value) {
-            if (value == "--enc:sjis") {
-                encoding = "sjis";
-            } else if (value == "--enc:utf8") {
-                encoding = "utf8";
-            } else if (value == "--enc:gbk") {
-                encoding = "gbk";
-            }
+            if (value == "--enc:sjis") selected = "sjis";
+            else if (value == "--enc:utf8") selected = "utf8";
+            else if (value == "--enc:gbk") selected = "gbk";
         }
+        return selected;
     }
 
     void run_game(fs::path root) {
@@ -1237,8 +1233,11 @@ struct Runtime::Impl final : EmbeddedMovieHost {
             SDL_SetHintWithPriority(SDL_HINT_AUDIODRIVER, "openslES",
                                     SDL_HINT_OVERRIDE);
 #endif
-            load_game_options(root);
-            configure_encoding();
+            const auto text_settings = aether::text::GameTextSettings::Load(root, "onscripter");
+            const auto selected_encoding = text_settings.encoding.empty() ? load_game_options(root)
+                : text_settings.encoding == "CP932" ? "sjis"
+                : text_settings.encoding == "UTF-8" ? "utf8" : "gbk";
+            configure_encoding(selected_encoding);
             ons = new (static_cast<void *>(&::ons)) ONScripter();
             g_translation_ons.store(ons, std::memory_order_release);
             ons->setWindowMode();
@@ -1276,7 +1275,9 @@ struct Runtime::Impl final : EmbeddedMovieHost {
             std::error_code error_code;
 
             fs::path font;
-            if (!default_font.empty()) {
+            if (!text_settings.font.empty()) {
+                font = text_settings.font;
+            } else if (!default_font.empty()) {
                 font = fs::u8path(default_font);
             } else if (fs::is_regular_file(root / "default.ttf", error_code)) {
                 font = root / "default.ttf";

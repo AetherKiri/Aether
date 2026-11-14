@@ -9,6 +9,12 @@ archives and loose files. A missing script preserves normal engine behavior;
 a script error stops startup with an `aether.lua` diagnostic. Reopening a game
 loads its script again and discards the previous game's replacements.
 
+The same loader also reads per-game `text.encoding` and `text.font_file` from
+`aether_config.json`, even without Lua. Nonempty user choices override Lua
+encoding/font defaults; empty values keep them. Resource precedence is unchanged.
+See [per-game text settings](../../doc/game_text_settings.md) for the editor,
+engine capability matrix and portable font storage.
+
 Lua is the fallback for formats the engine does not yet recognize. Native
 translation discovery does not require `aether.lua`: YU-RIS reads unfiltered
 XP3 packs containing YBN resources (zlib/zstd), SoftPal reads RPCK v1 bundles
@@ -47,7 +53,7 @@ The `aether` table exposes:
 | `mount_dir(path)` | Register all files below a directory, relative to that directory. |
 | `decompress(bytes, format [, size])` | Decode `zlib` or `zstd`. Supply size when the zstd frame omits it. An explicit size must match the decoded result. |
 | `transcode(bytes, from [, to])` | Strict character conversion; `to` defaults to UTF-8. Invalid/unrepresentable text raises an error. |
-| `set_encoding(name)` | Select the scenario encoding. The explicit patch selection overrides automatic detection and launcher encoding settings. |
+| `set_encoding(name)` | Select the scenario encoding. Overrides automatic detection and legacy launcher defaults; an explicit JSON user choice takes precedence. |
 | `set_font(path)` | Select a game-relative font file. |
 | `log(message)` | Add a startup diagnostic to the engine log. |
 

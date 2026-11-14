@@ -1,3 +1,4 @@
+#include "AetherGameTextSettings.h"
 #include "rfvp_runtime_provider.h"
 #include "rfvp_host.h"
 #include "engine_runtime_provider.h"
@@ -78,6 +79,7 @@ const aether_rfvp_gpu_callbacks_t* GpuCallbacks() {
 struct Runtime {
     void* core = nullptr;
     engine_runtime_host_v1_t host{};
+    std::string config_root;
     std::string writable, font, encoding = "sjis", renderer = "auto", error;
     uint64_t read_serial = 0;
     bool opened = false;
@@ -118,9 +120,20 @@ void Destroy(void* p) { delete cast(p); }
 engine_result_t Open(void* p, const char* path, const char* startup) {
     if (!p || !path) return ENGINE_RESULT_INVALID_ARGUMENT;
     auto& r = *cast(p);
-    const auto result = r.result(aether_rfvp_open(r.core, path, startup,
-        r.writable.c_str(), r.font.c_str(), r.encoding.c_str(),
-        r.renderer.c_str()));
+    engine_result_t result;
+    try {
+        const auto game_root = r.config_root.empty()
+            ? std::filesystem::u8path(path).parent_path() : std::filesystem::u8path(r.config_root);
+        const auto settings = aether::text::GameTextSettings::Load(game_root, "rfvp");
+        const auto font = settings.font.empty() ? r.font : settings.font.u8string();
+        const auto encoding = settings.encoding.empty() ? r.encoding
+            : settings.encoding == "CP932" ? "sjis" : settings.encoding == "UTF-8" ? "utf8" : "gbk";
+        result = r.result(aether_rfvp_open(r.core, path, startup,
+            r.writable.c_str(), font.c_str(), encoding.c_str(), r.renderer.c_str()));
+    } catch(const std::exception& error) {
+        r.error = error.what();
+        return ENGINE_RESULT_IO_ERROR;
+    }
     if (result == ENGINE_RESULT_OK) r.opened = true;
     return result;
 }
@@ -141,6 +154,11 @@ engine_result_t Option(void* p, const engine_option_t* option) {
         return ENGINE_RESULT_INVALID_ARGUMENT;
     auto& r = *cast(p);
     const std::string key = option->key_utf8, value = option->value_utf8;
+    if (key == "rfvp_config_root") {
+        if (r.opened && r.config_root != value) return ENGINE_RESULT_INVALID_STATE;
+        r.config_root = value;
+        return ENGINE_RESULT_OK;
+    }
     if (key == "default_font" || key == "rfvp_encoding" ||
         key == "rfvp_renderer") {
         const std::string& current = key == "default_font" ? r.font

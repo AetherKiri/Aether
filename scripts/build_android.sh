@@ -6,10 +6,12 @@ PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 
 BUILD_TYPE="debug"
 ABIS="arm64-v8a"
+CONFIGURE_ONLY=false
 for arg in "$@"; do
     case "$arg" in
         debug|release|Debug|Release) BUILD_TYPE="$arg" ;;
         --abi=*) ABIS="${arg#*=}" ;;
+        --configure-only) CONFIGURE_ONLY=true ;;
         *) echo "[WARN] Unknown Android build argument ignored: $arg" ;;
     esac
 done
@@ -208,41 +210,43 @@ export ANDROID_SDK_ROOT="$ANDROID_HOME"
 export ANDROID_NDK_HOME="$ANDROID_NDK_HOME_RESOLVED"
 export ANDROID_NDK="$ANDROID_NDK_HOME_RESOLVED"
 
-# The Android export uses a custom Gradle build template (minSdk 26 lives in
-# export_presets.cfg). The template is generated content and gitignored;
-# materialize it from the installed Godot export templates when missing.
-# Layout mirrors Godot's official installer (ExportTemplateManager::
-# install_android_template): <android>/.build_version marks the template
-# version, <android>/build/.gdignore keeps Godot from scanning it.
-if [[ ! -f "$GODOT_APP_DIR/android/.build_version" || ! -f "$GODOT_APP_DIR/android/build/build.gradle" ]]; then
-    if [[ ! -f "$GODOT_TEMPLATE_DIR/android_source.zip" ]]; then
-        echo "Error: Android build template missing and " >&2
-        echo "       $GODOT_TEMPLATE_DIR/android_source.zip not found." >&2
-        echo "       Install Godot export templates or set GODOT_TEMPLATE_DIR." >&2
-        exit 1
+if [[ "$CONFIGURE_ONLY" != true ]]; then
+    # The Android export uses a custom Gradle build template (minSdk 26 lives in
+    # export_presets.cfg). The template is generated content and gitignored;
+    # materialize it from the installed Godot export templates when missing.
+    # Layout mirrors Godot's official installer (ExportTemplateManager::
+    # install_android_template): <android>/.build_version marks the template
+    # version, <android>/build/.gdignore keeps Godot from scanning it.
+    if [[ ! -f "$GODOT_APP_DIR/android/.build_version" || ! -f "$GODOT_APP_DIR/android/build/build.gradle" ]]; then
+        if [[ ! -f "$GODOT_TEMPLATE_DIR/android_source.zip" ]]; then
+            echo "Error: Android build template missing and " >&2
+            echo "       $GODOT_TEMPLATE_DIR/android_source.zip not found." >&2
+            echo "       Install Godot export templates or set GODOT_TEMPLATE_DIR." >&2
+            exit 1
+        fi
+        echo "Installing Godot Android build template into apps/godot_app/android/build"
+        rm -rf "$GODOT_APP_DIR/android"
+        mkdir -p "$GODOT_APP_DIR/android/build"
+        unzip -qo "$GODOT_TEMPLATE_DIR/android_source.zip" -d "$GODOT_APP_DIR/android/build"
+        printf '%s\n' "${GODOT_TEMPLATE_DIR##*/}" > "$GODOT_APP_DIR/android/.build_version"
+        : > "$GODOT_APP_DIR/android/build/.gdignore"
     fi
-    echo "Installing Godot Android build template into apps/godot_app/android/build"
-    rm -rf "$GODOT_APP_DIR/android"
-    mkdir -p "$GODOT_APP_DIR/android/build"
-    unzip -qo "$GODOT_TEMPLATE_DIR/android_source.zip" -d "$GODOT_APP_DIR/android/build"
-    printf '%s\n' "${GODOT_TEMPLATE_DIR##*/}" > "$GODOT_APP_DIR/android/.build_version"
-    : > "$GODOT_APP_DIR/android/build/.gdignore"
-fi
 
-# The generated Gradle template owns Java/resources outside the Godot PCK.
-# Stage the source host on every build so template updates cannot omit it.
-python3 "$PROJECT_ROOT/tools/stage_tyrano_android.py" \
-    --build-dir "$GODOT_APP_DIR/android/build"
-RENPY_BUNDLE_DIR="${AETHER_RENPY_RUNTIME_DIR:-}"
-if [[ -z "$RENPY_BUNDLE_DIR" ]]; then
-    echo "==> Preparing the native Ren'Py Android runtime"
-    RENPY_BUNDLE_DIR="$(python3 "$PROJECT_ROOT/tools/prepare_renpy_runtime.py" android \
-        --arch arm64 --ndk "$ANDROID_NDK_HOME_RESOLVED" | tail -n 1)"
+    # The generated Gradle template owns Java/resources outside the Godot PCK.
+    # Stage the source host on every build so template updates cannot omit it.
+    python3 "$PROJECT_ROOT/tools/stage_tyrano_android.py" \
+        --build-dir "$GODOT_APP_DIR/android/build"
+    RENPY_BUNDLE_DIR="${AETHER_RENPY_RUNTIME_DIR:-}"
+    if [[ -z "$RENPY_BUNDLE_DIR" ]]; then
+        echo "==> Preparing the native Ren'Py Android runtime"
+        RENPY_BUNDLE_DIR="$(python3 "$PROJECT_ROOT/tools/prepare_renpy_runtime.py" android \
+            --arch arm64 --ndk "$ANDROID_NDK_HOME_RESOLVED" | tail -n 1)"
+    fi
+    python3 "$PROJECT_ROOT/tools/stage_renpy_android.py" \
+        --build-dir "$GODOT_APP_DIR/android/build" --runtime "$RENPY_BUNDLE_DIR"
+    python3 "$PROJECT_ROOT/tools/stage_mobile_window_android.py" \
+        --build-dir "$GODOT_APP_DIR/android/build"
 fi
-python3 "$PROJECT_ROOT/tools/stage_renpy_android.py" \
-    --build-dir "$GODOT_APP_DIR/android/build" --runtime "$RENPY_BUNDLE_DIR"
-python3 "$PROJECT_ROOT/tools/stage_mobile_window_android.py" \
-    --build-dir "$GODOT_APP_DIR/android/build"
 
 command -v cmake >/dev/null
 NINJA_BIN="${CMAKE_MAKE_PROGRAM:-$(command -v ninja || command -v ninja-build || true)}"
@@ -379,6 +383,11 @@ build_abi() {
     fi
 
     cmake --preset "$cmake_config_preset" --fresh "${cmake_config_args[@]}"
+    # CI persists completed dependency packages before compiling the app, so
+    # an unrelated compiler/export failure does not discard the warm cache.
+    if [[ "$CONFIGURE_ONLY" == true ]]; then
+        return 0
+    fi
     cmake --build --preset "$cmake_build_preset" -- -j"$PARALLEL_JOBS"
 
     mkdir -p "$godot_bin_dir"
@@ -432,6 +441,11 @@ IFS=',' read -r -a ABI_LIST <<< "$ABIS"
 for abi in "${ABI_LIST[@]}"; do
     build_abi "$abi"
 done
+
+if [[ "$CONFIGURE_ONLY" == true ]]; then
+    echo "Android native configuration and dependencies are ready."
+    exit 0
+fi
 
 if [[ ! -x "$GODOT_BIN" ]]; then
     echo "Warning: Godot not found at $GODOT_BIN; native libraries were staged only." >&2

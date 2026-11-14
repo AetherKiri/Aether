@@ -12,6 +12,7 @@
 # Options:
 #   debug|release       Build type (default: debug)
 #   --abi=<abis>        Android only: target ABIs (default: arm64-v8a)
+#   --configure-only    Android only: prepare native dependencies without building
 #   --simulator         iOS only: build for iOS Simulator
 #   --package-ipa       iOS only: build unsigned .ipa package for sideloading
 #   --jobs=<N>          Parallel build jobs (default: 8)
@@ -108,6 +109,7 @@ show_help() {
     echo "  debug|release       Build type (default: debug)
   --abi=<abis>        Android only: comma-separated ABIs
                       (arm64-v8a, armeabi-v7a, x86_64, x86)
+  --configure-only    Android only: prepare native dependencies without building
   --simulator         iOS only: build for iOS Simulator
   --package-ipa       iOS only: build unsigned .ipa package for sideloading
   --jobs=<N>          Parallel build jobs (default: 8)
@@ -149,7 +151,7 @@ for arg in "$@"; do
         debug|release|Debug|Release)
             BUILD_TYPE="$(echo "$arg" | tr '[:upper:]' '[:lower:]')"
             ;;
-        --abi=*)
+        --abi=*|--configure-only)
             EXTRA_ARGS+=("$arg")
             ;;
         --simulator)

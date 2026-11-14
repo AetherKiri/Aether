@@ -32,6 +32,20 @@ func _initialize() -> void:
     _expect(found.engine == "n2system" and found.launchFile.is_empty(), "A Windows launcher resolves to the game directory")
     DirAccess.remove_absolute(game_root.path_join("nss.npa"))
     DirAccess.remove_absolute(game_root.path_join("system.npa"))
+    _write("script.pak", "unrelated".to_utf8_buffer())
+    _write("system.pak", "unrelated".to_utf8_buffer())
+    _write("sys_cn.ini", "width=800".to_utf8_buffer())
+    _write("game_cn.ini", "Begin=menu.nps".to_utf8_buffer())
+    _expect(Metadata.inspect(game_root).engine == "kirikiri", "Legacy PAK extensions alone do not select N2System")
+    var pak := PackedByteArray()
+    pak.resize(0x108)
+    pak[0] = 3
+    pak[0x104] = 100
+    _write("script.pak", pak)
+    _write("system.pak", pak)
+    _expect(Metadata.inspect(game_root).engine == "n2system", "Legacy N2 PAK pair and config select N2System")
+    for file in ["script.pak", "system.pak", "sys_cn.ini", "game_cn.ini"]:
+        DirAccess.remove_absolute(game_root.path_join(file))
     _write("profiles.json", '{"activeProfile":"default","profiles":{}}'.to_utf8_buffer())
     _expect(Metadata.inspect(game_root).engine == "kirikiri", "Unrelated JSON profiles do not select NitroSharp")
     _write("profiles.json", '{"activeProfile":null,"product.name":"Test","designResolution":"1280x720"}'.to_utf8_buffer())

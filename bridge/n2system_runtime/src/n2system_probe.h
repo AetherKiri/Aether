@@ -15,6 +15,14 @@ inline bool IsNpa(const std::filesystem::path& path) {
     return input.gcount() == sizeof(bytes) &&
         std::string(bytes, sizeof(bytes)) == std::string("NPA\1\0\0\0", 7);
 }
+inline bool IsLegacyPak(const std::filesystem::path& path) {
+    std::ifstream input(path, std::ios::binary);
+    unsigned char header[0x108]{};
+    input.read(reinterpret_cast<char*>(header), sizeof(header));
+    return input.gcount() == sizeof(header) && header[0] == 3 && header[1] == 0 &&
+        header[2] == 0 && header[3] == 0 && header[0x104] == 100 &&
+        header[0x105] == 0 && header[0x106] == 0 && header[0x107] == 0;
+}
 inline int ProbeRoot(const char* root) {
     if(!root || !*root) return 0;
     try {
@@ -33,6 +41,10 @@ inline int ProbeRoot(const char* root) {
         if(files.count("aether-n2system.json")) return 95;
         if(files.count("nss.npa") && files.count("system.npa") &&
            IsNpa(files.at("nss.npa")) && IsNpa(files.at("system.npa"))) return 90;
+        if(files.count("script.pak") && files.count("system.pak") &&
+           (files.count("sys.ini") || files.count("sys_cn.ini")) &&
+           (files.count("game.ini") || files.count("game_cn.ini")) &&
+           IsLegacyPak(files.at("script.pak")) && IsLegacyPak(files.at("system.pak"))) return 90;
         if(!files.count("profiles.json")) return 0;
         std::ifstream input(files.at("profiles.json"));
         const auto profile = nlohmann::json::parse(input, nullptr, false);

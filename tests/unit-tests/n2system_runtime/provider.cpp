@@ -28,6 +28,14 @@ int main() {
         Write(root / "nss.npa", magic); Write(root / "system.npa", magic);
         Require(provider->probe(nullptr, path.c_str()) > 0, "NPA pair magic detection");
         std::filesystem::remove(root / "nss.npa"); std::filesystem::remove(root / "system.npa");
+        Write(root / "script.pak", "unrelated"); Write(root / "system.pak", "unrelated");
+        Write(root / "sys_cn.ini", "width=800"); Write(root / "game_cn.ini", "Begin=menu.nps");
+        Require(provider->probe(nullptr, path.c_str()) == 0, "legacy PAK extensions alone must not match");
+        std::string legacyHeader(0x108, '\0'); legacyHeader[0] = 3; legacyHeader[0x104] = 100;
+        Write(root / "script.pak", legacyHeader); Write(root / "system.pak", legacyHeader);
+        Require(provider->probe(nullptr, path.c_str()) > 0, "legacy N2 PAK pair and configuration");
+        std::filesystem::remove(root / "script.pak"); std::filesystem::remove(root / "system.pak");
+        std::filesystem::remove(root / "sys_cn.ini"); std::filesystem::remove(root / "game_cn.ini");
         Write(root / "profiles.json", R"({"activeProfile":"x","profiles":{"x":{}}})");
         Require(provider->probe(nullptr, path.c_str()) == 0, "generic profiles must not match");
         Write(root / "profiles.json", R"({"activeProfile":"x","product.name":"Fixture","designResolution":"2x2","profiles":{"x":{}}})");

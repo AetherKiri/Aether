@@ -140,6 +140,7 @@ else()
     set(_n2_openal_name libopenal.so.1)
 endif()
 include(cmake/N2SystemMedia.cmake)
+set(_n2_runtime_cjk_font "${CMAKE_SOURCE_DIR}/apps/godot_app/assets/fonts/aetherkiri-runtime-cjk.otf")
 set(_n2_stamp "${CMAKE_CURRENT_BINARY_DIR}/nativeaot.stamp")
 add_custom_command(OUTPUT "${_n2_stamp}"
     COMMAND "${AETHERKIRI_DOTNET_EXECUTABLE}" publish
@@ -153,8 +154,11 @@ add_custom_command(OUTPUT "${_n2_stamp}"
         "$<TARGET_FILE:${_n2_openal_target}>" "${AETHERKIRI_N2SYSTEM_PUBLISH_DIR}/${_n2_openal_name}"
     COMMAND "${CMAKE_COMMAND}" -E copy_if_different
         "$<TARGET_FILE:aether_n2system_media>" "${AETHERKIRI_N2SYSTEM_PUBLISH_DIR}/$<TARGET_FILE_NAME:aether_n2system_media>"
+    COMMAND "${CMAKE_COMMAND}" -E make_directory "${AETHERKIRI_N2SYSTEM_PUBLISH_DIR}/Fonts"
+    COMMAND "${CMAKE_COMMAND}" -E copy_if_different
+        "${_n2_runtime_cjk_font}" "${AETHERKIRI_N2SYSTEM_PUBLISH_DIR}/Fonts/aetherkiri-runtime-cjk.otf"
     COMMAND "${CMAKE_COMMAND}" -E touch "${_n2_stamp}"
-    DEPENDS ${_n2_sources} ${_n2_freetype_target} ${_n2_openal_target} aether_n2system_media
+    DEPENDS ${_n2_sources} ${_n2_freetype_target} ${_n2_openal_target} aether_n2system_media "${_n2_runtime_cjk_font}"
         "${AETHERKIRI_N2SYSTEM_DIR}/Directory.Build.props"
         "${AETHERKIRI_N2SYSTEM_DIR}/OutputPath.props"
         "${AETHERKIRI_N2SYSTEM_DIR}/NuGet.Config"

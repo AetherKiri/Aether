@@ -274,6 +274,9 @@ const UI_TEXT := {
         "settings.community": "玩家社区",
         "settings.community_desc": "反馈问题、获取更新、与其他玩家交流",
         "settings.community_open": "加入 QQ 群",
+        "settings.rate_app": "为 Aether 评分",
+        "settings.rate_app_desc": "前往 App Store 分享你的使用体验",
+        "settings.rate_app_open": "评分",
         "notice.title": "公告",
         "notice.qq_body": "欢迎加入 AetherKiri QQ 交流群，反馈问题、获取最新版本与其他玩家交流。
 
@@ -665,6 +668,9 @@ const UI_TEXT := {
         "settings.community": "玩家社群",
         "settings.community_desc": "回報問題、取得更新，並與其他玩家交流",
         "settings.community_open": "加入 Discord",
+        "settings.rate_app": "為 Aether 評分",
+        "settings.rate_app_desc": "前往 App Store 分享你的使用體驗",
+        "settings.rate_app_open": "評分",
         "notice.title": "公告",
         "notice.qq_body": "歡迎加入 AetherKiri QQ 交流群，回報問題、取得最新版本並與其他玩家交流。\n\n之後也可以在「設定 → QQ 交流群」中隨時查看。",
         "notice.open": "加入交流群",
@@ -1083,6 +1089,9 @@ const UI_TEXT := {
         "settings.community": "Player community",
         "settings.community_desc": "Report issues, get updates and chat with other players",
         "settings.community_open": "Join Discord",
+        "settings.rate_app": "Rate Aether",
+        "settings.rate_app_desc": "Share your experience on the App Store",
+        "settings.rate_app_open": "Rate app",
         "notice.title": "Announcement",
         "notice.qq_body": "Join the AetherKiri QQ group to report issues, get the latest builds and chat with other players.
 
@@ -1474,6 +1483,9 @@ You can find it any time under Settings → QQ Group.",
         "settings.community": "プレイヤーコミュニティ",
         "settings.community_desc": "不具合の報告、最新情報の確認、ほかのプレイヤーとの交流",
         "settings.community_open": "Discord に参加",
+        "settings.rate_app": "Aether を評価",
+        "settings.rate_app_desc": "App Store で使用した感想をお聞かせください",
+        "settings.rate_app_open": "評価する",
         "notice.title": "お知らせ",
         "notice.qq_body": "AetherKiri の QQ グループで、不具合の報告、最新バージョンの確認、ほかのプレイヤーとの交流ができます。\n\nグループへのリンクは「設定 → QQ グループ」からいつでも開けます。",
         "notice.open": "グループに参加",
@@ -1861,6 +1873,9 @@ You can find it any time under Settings → QQ Group.",
         "settings.community": "플레이어 커뮤니티",
         "settings.community_desc": "문제를 제보하고, 업데이트를 확인하며 다른 플레이어와 소통하세요",
         "settings.community_open": "Discord 참여",
+        "settings.rate_app": "Aether 평가",
+        "settings.rate_app_desc": "App Store에서 사용 경험을 공유해 주세요",
+        "settings.rate_app_open": "평가하기",
         "notice.title": "공지",
         "notice.qq_body": "AetherKiri QQ 그룹에서 문제를 제보하고, 최신 버전을 확인하며 다른 플레이어와 이야기해 보세요.\n\n「설정 → QQ 그룹」에서 언제든지 다시 열 수 있습니다.",
         "notice.open": "그룹 참여",
@@ -6031,6 +6046,8 @@ func _rebuild_settings_view() -> void:
         groups.append(purchase_rows)
 
     var about_rows := _settings_section(flow, _t("settings.section.about"), animate_page, 0.24, ICON_HELP)
+    if _apple_app_store_platform():
+        _add_settings_row(about_rows, _settings_action_row(_t("settings.rate_app"), _t("settings.rate_app_desc"), _t("settings.rate_app_open"), _open_app_store_review))
     if _coffee_sponsorship_available():
         _add_settings_row(about_rows, _settings_action_row(_t("support.coffee.title"), _t("support.coffee.desc"), _t("support.coffee.open"), _open_coffee_sponsorship))
     _add_settings_row(about_rows, _settings_action_row(_t("settings.legal"), _t("settings.legal_desc"), _t("settings.legal_open"), func(): _show_legal_agreement(false)))
@@ -20104,6 +20121,13 @@ func _community_url() -> String:
 
 func _open_community() -> void:
     var url := _community_url()
+    if OS.shell_open(url) != OK:
+        _show_message(url)
+
+func _open_app_store_review() -> void:
+    if not _apple_app_store_platform():
+        return
+    var url := AppUpdater.APPLE_STORE_URL + "?action=write-review"
     if OS.shell_open(url) != OK:
         _show_message(url)
 

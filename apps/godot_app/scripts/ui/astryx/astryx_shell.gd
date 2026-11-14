@@ -1482,6 +1482,8 @@ func _about_settings() -> void:
         _about_row(fields, "prerelease", _t("settings.include_prerelease"), _t("settings.include_prerelease_desc"), toggle)
     var community := _section(_t("settings.section.community_support"), "")
     _about_row(community, "community", _t("settings.community"), _t("settings.community_desc"), _setting_link(_t("settings.community_open"), host._open_community))
+    if host._apple_app_store_platform():
+        _about_row(community, "rate_app", _t("settings.rate_app"), _t("settings.rate_app_desc"), _setting_link(_t("settings.rate_app_open"), host._open_app_store_review))
     if host._coffee_sponsorship_available():
         _about_row(community, "support", _t("support.coffee.title"), _t("support.coffee.desc"), _setting_link(_t("support.coffee.open"), host._open_coffee_sponsorship))
     if host._iap_supported_platform():

@@ -68,6 +68,8 @@ func _input(event: InputEvent) -> void:
             _show_scrollbar()
 
 func _show_scrollbar() -> void:
+    if not is_inside_tree() or not is_instance_valid(idle_timer) or not idle_timer.is_inside_tree():
+        return
     if fade != null:
         fade.kill()
     get_v_scroll_bar().modulate.a = 1.0

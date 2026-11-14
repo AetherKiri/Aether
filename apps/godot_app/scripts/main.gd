@@ -8576,11 +8576,11 @@ func _show_flash_library() -> void:
 func _show_video_library() -> void:
     _show_library("video")
 
-func _show_library(mode: String) -> void:
+func _show_library(mode: String, refresh_games: bool = true) -> void:
     if not mode in ["game", "video", "flash"]:
         mode = "game"
     if _request_settings_navigation(
-        Callable(self, "_show_library").bind(mode)
+        Callable(self, "_show_library").bind(mode, refresh_games)
     ):
         return
     var previous_route := shell_route
@@ -8597,8 +8597,10 @@ func _show_library(mode: String) -> void:
     _sync_shell_route(_library_route(mode))
     if mode != "game":
         _refresh_file_library()
-    else:
+    elif refresh_games:
         _refresh_games()
+    if _astryx_shell_controller() != null:
+        return
     if previous_route != "library":
         _animate_shell_route(outgoing, home_view, not returning_from_detail)
     else:
@@ -10651,6 +10653,12 @@ func _rebuild_game_cards(animate_cards: bool = false) -> void:
         if _game_matches_home_search(game, query):
             filtered_games.append(game)
     home_filtered_game_count = filtered_games.size()
+    var astryx := _astryx_shell_controller()
+    if astryx != null:
+        astryx.library_revision += 1
+        _sync_home_header_text()
+        _apply_home_library_visibility()
+        return
     for child in game_list.get_children():
         game_list.remove_child(child)
         child.queue_free()
@@ -10665,6 +10673,10 @@ func _rebuild_game_cards(animate_cards: bool = false) -> void:
 
 func _library_route(mode: String) -> String:
     return "flash" if mode == "flash" else ("videos" if mode == "video" else "library")
+
+func _astryx_shell_controller() -> Node:
+    var presenter := get_node_or_null("ShellInterface")
+    return presenter if presenter != null and presenter.enabled else null
 
 func _active_file_library() -> VideoLibrary:
     return flash_library if home_library_mode == "flash" else video_library
@@ -10791,7 +10803,7 @@ func _rebuild_video_cards(_animate_cards: bool = false) -> void:
         if _video_matches_home_search(video, query):
             filtered_videos.append(video)
     home_filtered_video_count = filtered_videos.size()
-    if video_list != null:
+    if video_list != null and _astryx_shell_controller() == null:
         for child in video_list.get_children():
             video_list.remove_child(child)
             child.queue_free()

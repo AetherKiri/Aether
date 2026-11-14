@@ -50,6 +50,9 @@ var notice_layer: MarginContainer
 var notice_tween: Tween
 var external_modal_id := 0
 var expanded_details := {"information": true, "rendering": false, "cover": false}
+var layout_root: Control
+var library_content_key := ""
+var cached_library: Dictionary = {}
 
 func setup(owner_node: Node) -> void:
     controller = owner_node
@@ -118,6 +121,13 @@ func sync_state() -> void:
 func rebuild(preserve_scroll: bool = false) -> void:
     if not is_inside_tree() or size.x <= 0:
         return
+    if route == "library" and String(host.shell_route) != "library" and is_instance_valid(scroll):
+        _discard_library_cache()
+        # Keep the page in the tree: reattaching hundreds of controls would
+        # still repeat theme propagation and text layout on every tab switch.
+        cached_library = {"key": library_content_key, "root": layout_root,
+            "page": page, "scroll": scroll, "content": content, "search": search}
+        layout_root.hide()
     var previous_scroll := scroll.scroll_vertical if preserve_scroll and is_instance_valid(scroll) else 0
     route = String(host.shell_route)
     if route != "detail":
@@ -127,11 +137,17 @@ func rebuild(preserve_scroll: bool = false) -> void:
     if not sidebar_animating:
         sidebar_width = 260.0 if sidebar_expanded else 48.0
     last_size = size
-    design = DESIGN.new(controller.draft_theme)
+    if design == null or design.mode != controller.draft_theme:
+        design = DESIGN.new(controller.draft_theme)
     theme = design.native
-    theme.default_font_size = 16 if phone else 14
+    var default_font_size := 16 if phone else 14
+    if theme.default_font_size != default_font_size:
+        theme.default_font_size = default_font_size
     _dismiss_notice()
-    _clear(self)
+    if is_instance_valid(layout_root) and layout_root != cached_library.get("root"):
+        remove_child(layout_root)
+        layout_root.queue_free()
+    layout_root = null
     save_button = null
     cancel_button = null
     save_status = null
@@ -141,15 +157,34 @@ func rebuild(preserve_scroll: bool = false) -> void:
     detail_backdrop = null
     search = null
     notice = null
+    if route == "library" and not cached_library.is_empty():
+        if cached_library.key == _library_key():
+            layout_root = cached_library.root
+            page = cached_library.page
+            scroll = cached_library.scroll
+            content = cached_library.content
+            search = cached_library.search
+            library_content_key = cached_library.key
+            cached_library = {}
+            move_child(layout_root, 0)
+            layout_root.show()
+            sync_dirty_state()
+            return
+        _discard_library_cache()
+    layout_root = Control.new()
+    layout_root.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+    layout_root.mouse_filter = Control.MOUSE_FILTER_IGNORE
+    add_child(layout_root)
+    move_child(layout_root, 0)
     var fill := ColorRect.new()
     fill.color = design.color("surface" if phone else "canvas")
     fill.mouse_filter = Control.MOUSE_FILTER_IGNORE
     fill.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-    add_child(fill)
+    layout_root.add_child(fill)
 
     var outer := _margin(0, 0, 0, 0)
     outer.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-    add_child(outer)
+    layout_root.add_child(outer)
     var frame: BoxContainer = _vbox(0) if phone else _hbox(0)
     outer.add_child(frame)
     if not phone:
@@ -172,6 +207,17 @@ func rebuild(preserve_scroll: bool = false) -> void:
     if previous_scroll > 0:
         _restore_scroll.call_deferred(previous_scroll)
     sync_dirty_state()
+
+func _discard_library_cache() -> void:
+    var cached_root: Control = cached_library.get("root")
+    if is_instance_valid(cached_root):
+        remove_child(cached_root)
+        cached_root.queue_free()
+    cached_library = {}
+
+func _library_key() -> String:
+    return str([host.known_games.hash(), controller.library_revision, language,
+        controller.draft_theme, controller.library_display, size, sidebar_width, query, recent_only])
 
 func _restore_scroll(value: int) -> void:
     if is_instance_valid(scroll):
@@ -355,7 +401,7 @@ func _navigation(bottom: bool) -> Control:
     return holder
 
 func _toggle_sidebar() -> void:
-    var toggle: Button = find_child("AstryxToggleSidebar", true, false)
+    var toggle: Button = layout_root.find_child("AstryxToggleSidebar", true, false)
     var keyboard_activation := toggle != null and bool(toggle.get_meta("keyboard_activation", false))
     if is_instance_valid(sidebar_tween):
         sidebar_tween.kill()
@@ -364,7 +410,7 @@ func _toggle_sidebar() -> void:
     sidebar_animating = not _reduced_motion()
     rebuild(true)
     if sidebar_animating:
-        var rail: Control = find_child("AstryxSideNav", true, false)
+        var rail: Control = layout_root.find_child("AstryxSideNav", true, false)
         sidebar_tween = create_tween()
         sidebar_tween.tween_method(func(value: float):
             sidebar_width = value
@@ -381,7 +427,7 @@ func _toggle_sidebar() -> void:
         _focus_sidebar_toggle()
 
 func _focus_sidebar_toggle() -> void:
-    var toggle: Button = find_child("AstryxToggleSidebar", true, false)
+    var toggle: Button = layout_root.find_child("AstryxToggleSidebar", true, false)
     if toggle != null:
         toggle.grab_focus()
 
@@ -397,8 +443,10 @@ func navigate(destination: String) -> void:
         "settings": host._show_settings()
         "videos": host._show_video_library()
         "flash": host._show_flash_library()
-        _: host._show_home()
-    sync_state()
+        # Tab changes reuse the loaded model. Imports, edits and explicit
+        # refreshes keep using the host's normal library refresh lifecycle.
+        _: host._show_library("game", false)
+    controller.sync_state()
 
 func _header(title: String, searchable: bool = false, action: Control = null) -> void:
     var pad := _margin(16, 16, 16, 16)
@@ -486,6 +534,8 @@ func sync_dirty_state() -> void:
         save_button.disabled = not controller.is_dirty()
         cancel_button.disabled = save_button.disabled
         save_status.text = _text("有未保存的更改", "Unsaved changes", "未保存の変更") if controller.is_dirty() else _text("所有更改已保存", "All changes saved", "保存済み")
+
+func sync_modal_style() -> void:
     if is_instance_valid(host.modal_layer) and host.modal_layer.visible:
         var dialog: Control = host.active_modal_dialog
         if is_instance_valid(dialog) and dialog.get_instance_id() != external_modal_id:
@@ -524,7 +574,7 @@ func _dismiss_then(action: Callable) -> void:
     host._dismiss_modal(func():
         action.call()
         if is_instance_valid(controller.view) and controller.enabled:
-            controller.view.sync_state()
+            controller.sync_state()
     )
 
 func confirm_navigation(destination: Callable) -> void:
@@ -548,7 +598,7 @@ func show_notice(message: String) -> void:
     # Match Astryx's bounded toast card. A wrapping Label has almost no
     # intrinsic width, so measuring it before layout collapses CJK into a column.
     var bottom_inset := 16
-    var navigation := find_child("AstryxBottomNav", true, false) as Control
+    var navigation := layout_root.find_child("AstryxBottomNav", true, false) as Control
     if is_instance_valid(navigation):
         bottom_inset += int(maxf(navigation.size.y, navigation.get_combined_minimum_size().y))
     notice_layer = _margin(16, 16, 16, bottom_inset)
@@ -1491,6 +1541,7 @@ func _library_content() -> void:
     if route in ["videos", "flash"]:
         _media_content()
         return
+    library_content_key = _library_key()
     var bar := _hbox(8)
     content.add_child(bar)
     var all := _tab_button(_text("全部游戏", "All games", "すべて"), func():

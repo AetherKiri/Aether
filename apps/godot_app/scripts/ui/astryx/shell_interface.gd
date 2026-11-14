@@ -12,6 +12,9 @@ var view: Control
 var backdrop: ColorRect
 var elapsed := 0.0
 var state_signature := ""
+var library_revision := 0
+var observed_modal_layer: Control
+var modal_style_pending := false
 
 func _ready() -> void:
     host = get_parent()
@@ -70,7 +73,13 @@ func _ensure_view() -> void:
         view.name = "AstryxShell"
         view.setup(self)
         host.shell_root.add_child(view)
-        state_signature = ""
+        state_signature = _state_signature()
+    if observed_modal_layer != host.modal_layer:
+        if is_instance_valid(observed_modal_layer):
+            observed_modal_layer.child_entered_tree.disconnect(_modal_child_entered)
+        observed_modal_layer = host.modal_layer
+        observed_modal_layer.child_entered_tree.connect(_modal_child_entered)
+        _modal_child_entered(observed_modal_layer)
     view.visible = enabled
     _hide_classic_chrome()
 
@@ -91,13 +100,32 @@ func _process(delta: float) -> void:
     if elapsed < 0.15:
         return
     elapsed = 0.0
-    var signature := "%s:%s:%s:%s:%s:%s:%s" % [host.shell_route, host.active_language,
+    sync_state()
+    view.sync_dirty_state()
+
+func _state_signature() -> String:
+    return "%s:%s:%s:%s:%s:%s:%s:%s" % [host.shell_route, host.active_language,
         host.known_games.hash(), host.selected_game.hash(), host._active_file_library().entries.hash(),
-        host._active_file_library().current_directory, host.settings_draft.hash()]
+        host._active_file_library().current_directory, host.settings_draft.hash(), library_revision]
+
+func sync_state() -> void:
+    var signature := _state_signature()
     if signature != state_signature:
         state_signature = signature
         view.sync_state()
-    view.sync_dirty_state()
+
+func _modal_child_entered(_child: Node) -> void:
+    if modal_style_pending or not enabled:
+        return
+    modal_style_pending = true
+    # Modal builders add the panel before its contents. Finish styling after
+    # that synchronous construction, in the same frame and before drawing.
+    _style_pending_modal.call_deferred()
+
+func _style_pending_modal() -> void:
+    modal_style_pending = false
+    if enabled and is_instance_valid(view):
+        view.sync_modal_style()
 
 func mount_classic_switch(rows: Control) -> void:
     var row: Control = host._settings_action_row(
@@ -116,16 +144,22 @@ func set_enabled(value: bool, persist: bool = true) -> void:
     draft_theme = theme_mode
     host._reset_shell_scroll_drag()
     if enabled:
+        library_revision += 1
         if host.shell_route == "settings":
             host._begin_settings_edit()
+        var existing_view := is_instance_valid(view)
         _ensure_view()
-        view.rebuild()
+        if existing_view:
+            view.rebuild()
+        state_signature = _state_signature()
     else:
         if is_instance_valid(view):
             view.hide()
         if is_instance_valid(backdrop):
             backdrop.hide()
         host.shell_content.show()
+        host._rebuild_game_cards()
+        host._rebuild_video_cards()
         host._fit_full_rects()
         if host.shell_route == "settings":
             host._begin_settings_edit()

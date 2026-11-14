@@ -16,6 +16,9 @@ var snapshot: Dictionary
 func _storage_path(relative: String) -> String:
     return ProjectSettings.globalize_path("user://".path_join(relative))
 
+func _platform_name() -> String:
+    return OS.get_name()
+
 func _prune_exports(root: String) -> void:
     var directory := DirAccess.open(root)
     if directory == null:
@@ -96,7 +99,7 @@ func _native() -> void:
     var title := _text("选择 iCloud Drive 存档文件夹", "Choose an iCloud Drive saves folder", "iCloud Drive のセーブフォルダーを選択")
     if operation == "share":
         title = game_name + " · " + _text("存档", "Saves", "セーブデータ")
-    if OS.get_name() not in ["macOS", "iOS", "Android"] and operation == "share":
+    if _platform_name() not in ["macOS", "iOS", "Android"] and operation == "share":
         _save_to_file()
         return
     if player == null or not player.has_method("native_save_transfer_begin") \

@@ -12,6 +12,8 @@ class Glyph:
     var phase := 0.0
     var drift := 0.0
     var opacity := 0.0
+    var angle := 0.0
+    var angular_speed := 0.0
     var outline := PackedVector2Array()
 
 var glyphs: Array[Glyph] = []
@@ -76,6 +78,10 @@ func _spawn(glyph: Glyph) -> void:
     glyph.phase = random.randf_range(0.0, TAU)
     glyph.drift = random.randf_range(6.0, 18.0)
     glyph.opacity = random.randf_range(0.12, 0.22)
+    glyph.angle = random.randf_range(-0.2, 0.2)
+    # Independent directions and roughly 0.6–1.4 degrees per second keep
+    # the floating shapes moving gently without synchronized rocking.
+    glyph.angular_speed = random.randf_range(0.01, 0.025) * (-1.0 if random.randf() < 0.5 else 1.0)
     glyph.outline = triangle.duplicate() if glyph.kind == 1 else square.duplicate()
     for index in range(glyph.outline.size()):
         glyph.outline[index] *= glyph.radius
@@ -84,6 +90,7 @@ func _process(delta: float) -> void:
     var step := minf(delta, 0.05)
     elapsed += step
     for glyph in glyphs:
+        glyph.angle = wrapf(glyph.angle + glyph.angular_speed * step, -PI, PI)
         glyph.progress += step * glyph.speed / maxf(size.y + 52.0, 1.0)
         if glyph.progress >= 1.0:
             _spawn(glyph)
@@ -96,10 +103,9 @@ func _draw() -> void:
         var fade := smoothstep(0.0, 0.1, glyph.progress) * (1.0 - smoothstep(0.82, 1.0, glyph.progress))
         var ink := tint
         ink.a *= glyph.opacity * fade
-        var angle := sin(elapsed * 0.2 + glyph.phase) * 0.08
         # Scale the geometry rather than the canvas transform: scaling that
         # transform also magnifies the antialias fringe and makes outlines fuzzy.
-        draw_set_transform(position, angle)
+        draw_set_transform(position, glyph.angle)
         # Match the substantial ring / triangle / cross / frame silhouettes.
         # Proportional strokes retain the same weight at every particle size.
         var stroke := glyph.radius * 0.30

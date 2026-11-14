@@ -53,11 +53,12 @@ var notice: PanelContainer
 var notice_layer: MarginContainer
 var notice_tween: Tween
 var external_modal_id := 0
-var expanded_details := {"information": true, "rendering": false, "cover": false}
+var expanded_details := {"information": true, "rendering": false, "saves": true, "cover": false}
 var layout_root: Control
 var library_content_key := ""
 var cached_library: Dictionary = {}
 var background_effect: Control
+var touch_navigation
 
 func setup(owner_node: Node) -> void:
     controller = owner_node
@@ -65,12 +66,16 @@ func setup(owner_node: Node) -> void:
     design = DESIGN.new(controller.draft_theme)
 
 func _ready() -> void:
+    touch_navigation = preload("res://scripts/ui/astryx/astryx_touch_navigation.gd").new(self)
     set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
     mouse_filter = Control.MOUSE_FILTER_STOP
     resized.connect(_queue_layout)
     rebuild()
 
 func _input(event: InputEvent) -> void:
+    if touch_navigation != null and touch_navigation.handle_input(event):
+        get_viewport().set_input_as_handled()
+        return
     if not is_visible_in_tree() or not is_instance_valid(scroll) or host.modal_layer.visible:
         return
     var pointer := Vector2.ZERO
@@ -126,6 +131,8 @@ func sync_state() -> void:
 func rebuild(preserve_scroll: bool = false) -> void:
     if not is_inside_tree() or size.x <= 0:
         return
+    if touch_navigation != null:
+        touch_navigation.cancel_gesture()
     # Real route/viewport changes supersede an in-flight rail animation.
     if is_instance_valid(sidebar_tween):
         sidebar_tween.kill()
@@ -298,6 +305,7 @@ func _button(value: String, action: Callable, variant: String = "secondary", nod
     button.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
     button.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
     button.focus_mode = Control.FOCUS_ALL
+    button.action_mode = BaseButton.ACTION_MODE_BUTTON_RELEASE
     design.style_button(button, variant)
     if action.is_valid():
         button.pressed.connect(action)
@@ -428,6 +436,7 @@ func _navigation(bottom: bool) -> Control:
                 caption.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
                 button.add_child(caption)
         button.accessibility_name = label
+        button.set_meta("astryx_touch_navigation", true)
         button.tooltip_text = label
         items.add_child(button)
     return holder
@@ -702,6 +711,9 @@ func show_notice(message: String) -> void:
     notice.size_flags_horizontal = Control.SIZE_SHRINK_END
     notice.size_flags_vertical = Control.SIZE_SHRINK_END
     var surface: StyleBoxFlat = design.box("toast_surface", 12, "", 0, Vector2(16, 8))
+    # The centered 16 pt icon adds 14 pt inside its 44 pt touch target.
+    # Keep its visible trailing inset equal to the text's 16 pt leading inset.
+    surface.content_margin_right = 2
     surface.shadow_color = Color(0, 0, 0, 0.12)
     surface.shadow_size = 8
     surface.shadow_offset = Vector2(0, 4)
@@ -718,10 +730,12 @@ func show_notice(message: String) -> void:
     row.add_child(label)
     var close := _button("", _dismiss_notice, "quiet", "AstryxDismissNotice")
     close.custom_minimum_size = Vector2(44, 44)
+    close.size_flags_vertical = Control.SIZE_SHRINK_CENTER
     close.accessibility_name = _text("关闭提示", "Dismiss notification", "通知を閉じる")
     close.tooltip_text = close.accessibility_name
     close.icon = load("res://assets/ui/astryx/close.svg")
     close.expand_icon = true
+    close.icon_alignment = HORIZONTAL_ALIGNMENT_CENTER
     close.add_theme_constant_override("icon_max_width", 16)
     close.add_theme_stylebox_override("normal", design.box("", 8))
     var hover: StyleBoxFlat = design.box("", 8)
@@ -790,7 +804,7 @@ func style_external_modal(control: Control) -> void:
         control.add_theme_font_override("font", design.bold if font_size >= 20 else design.font)
         control.add_theme_color_override("font_color", design.color("text"))
     elif control is Button:
-        design.style_button(control, "secondary")
+        design.style_button(control, "destructive" if control.get_meta("destructive_action", false) else "secondary")
     elif control is LineEdit:
         control.add_theme_color_override("font_color", design.color("text"))
         control.add_theme_stylebox_override("normal", design.box("surface", 10, "input_border", 1, Vector2(12, 10)))
@@ -871,6 +885,7 @@ func _build_settings() -> void:
 
 func _settings_menu_item(title: String, icon_name: String, action: Callable, node_name: String, selected: bool = false) -> Button:
     var button := _button("", action, "quiet", node_name)
+    button.set_meta("astryx_touch_navigation", true)
     button.accessibility_name = title
     button.custom_minimum_size.y = 56
     button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -2074,10 +2089,53 @@ func _detail_content() -> void:
     var rendering := _collapsible(info, "rendering", _text("画面与渲染", "Graphics & rendering", "画面とレンダリング"))
     if rendering.visible:
         _game_render_settings(rendering, game)
+    var saves := _collapsible(info, "saves", _text("存档", "Saves", "セーブデータ"))
+    if saves.visible:
+        _detail_save_actions(saves, game)
     var cover_section := _collapsible(info, "cover", _text("封面", "Cover", "カバー"))
     if cover_section.visible:
         _detail_cover_actions(cover_section, game)
     info.add_child(_divider())
+
+func _save_transfer():
+    var transfer = host.get_node_or_null("GameSaveTransfer")
+    if transfer == null:
+        transfer = preload("res://scripts/game_save_transfer.gd").new()
+        transfer.name = "GameSaveTransfer"
+        host.add_child(transfer)
+    return transfer
+
+func _detail_save_actions(section: Control, game: Dictionary) -> void:
+    var transfer = _save_transfer()
+    section.add_child(_label(_text("仅处理当前游戏的存档。", "Only this game's saves are included.", "このゲームのセーブデータのみを扱います。"), 14, true))
+    var snapshot := game.duplicate(true)
+    var export_button := _button(_text("导出存档", "Export saves", "セーブを書き出す"), func(): transfer.start("share", snapshot), "secondary", "AstryxExportSaves")
+    export_button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+    export_button.disabled = transfer.busy
+    section.add_child(export_button)
+    if OS.get_name() in ["iOS", "macOS"]:
+        var upload := _button(_text("上传至 iCloud", "Upload to iCloud", "iCloud にアップロード"), func(): transfer.start("upload", snapshot), "secondary", "AstryxUploadSaves")
+        upload.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+        upload.disabled = transfer.busy
+        section.add_child(upload)
+        var download := _button(_text("从 iCloud 同步", "Sync from iCloud", "iCloud から同期"), func(): _confirm_save_sync(snapshot), "secondary", "AstryxDownloadSaves")
+        download.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+        download.disabled = transfer.busy
+        section.add_child(download)
+        section.add_child(_label(_text("首次使用时，选择 iCloud Drive 中的同一个存档文件夹。不同游戏按名字分开保存。", "On each device, select the same iCloud Drive saves folder on first use. Games are stored separately by name.", "初回に各端末で同じ iCloud Drive フォルダーを選びます。ゲーム名ごとに保存します。"), 12, true))
+    if transfer.busy:
+        section.add_child(_label(_text("正在处理存档…", "Working on saves…", "セーブデータを処理しています…"), 14, true))
+
+func _confirm_save_sync(game: Dictionary) -> void:
+    var stack := _dialog(_text("同步当前游戏的存档？", "Sync this game's saves?", "このゲームのセーブを同期しますか？"),
+        _text("只同步「%s」的存档。游戏名和引擎必须一致；覆盖同名文件前，会自动备份本地存档。", "Sync saves for “%s” only. The game name and engine must match. Local saves are backed up before replacing matching files.", "「%s」のセーブだけを同期します。ゲーム名とエンジンを確認し、同名ファイルを置き換える前にバックアップします。") % host._game_display_title(game))
+    var actions := _hbox(12)
+    actions.alignment = BoxContainer.ALIGNMENT_END
+    stack.add_child(actions)
+    var cancel := _button(_t("dialog.cancel"), func(): host._dismiss_modal(), "secondary", "AstryxCancelSaveSync")
+    actions.add_child(cancel)
+    actions.add_child(_button(_text("同步", "Sync", "同期"), func(): _dismiss_then(func(): _save_transfer().start("download", game)), "primary", "AstryxConfirmSaveSync"))
+    cancel.grab_focus()
 
 func _resize_detail_cover() -> void:
     if not is_instance_valid(detail_cover):
@@ -2144,7 +2202,7 @@ func _detail_information(rows: Control, game: Dictionary) -> void:
             reset_launch.size_flags_horizontal = Control.SIZE_SHRINK_END
             rows.add_child(reset_launch)
     rows.add_child(_label(String(game.get("path", "")), 12, true))
-    var remove := _button(_text("删除游戏", "Delete game", "ゲームを削除"), host._confirm_remove_selected, "destructive", "AstryxRemoveGame")
+    var remove := _button(_text("删除游戏", "Delete game", "ゲームを削除"), host._confirm_remove_selected, "secondary", "AstryxRemoveGame")
     remove.size_flags_horizontal = Control.SIZE_EXPAND_FILL
     rows.add_child(remove)
 
@@ -2168,9 +2226,31 @@ func _detail_cover_actions(cover_section: Control, game: Dictionary) -> void:
     cover_actions.add_child(set_cover)
     if not cover_path.is_empty():
         # Remove the cover association, preserving the user's source image.
-        var clear_cover := _button(_text("清除封面", "Clear cover", "カバーをクリア"), host._clear_cover_for_selected, "destructive", "AstryxClearCover")
+        var clear_cover := _button(_text("清除封面", "Clear cover", "カバーをクリア"), _confirm_clear_cover, "secondary", "AstryxClearCover")
         clear_cover.size_flags_horizontal = Control.SIZE_EXPAND_FILL
         cover_actions.add_child(clear_cover)
+
+func _confirm_clear_cover() -> void:
+    var path := String(host.selected_game.get("path", ""))
+    if path.is_empty():
+        return
+    var stack := _dialog(_text("清除封面？", "Clear cover?", "カバーをクリアしますか？"),
+        _text("清除此游戏的封面设置？原始图片文件会保留。", "Clear this game's cover? The original image file will be kept.", "このゲームのカバー設定をクリアしますか？元の画像ファイルは保持されます。"))
+    var actions := _hbox(12)
+    actions.alignment = BoxContainer.ALIGNMENT_END
+    stack.add_child(actions)
+    var cancel := _button(_t("dialog.cancel"), func(): host._dismiss_modal(), "secondary", "AstryxCancelClearCover")
+    actions.add_child(cancel)
+    actions.add_child(_button(_text("清除", "Clear", "クリア"), func():
+        _dismiss_then(func():
+            if String(host.selected_game.get("path", "")) == path:
+                host._clear_cover_for_selected()
+        )
+    , "destructive", "AstryxConfirmClearCover"))
+    for action in actions.get_children():
+        action.custom_minimum_size = Vector2(100, 44)
+        action.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+    cancel.grab_focus()
 
 func _show_cover_sources() -> void:
     COVER_PICKER.new().show_for(self)

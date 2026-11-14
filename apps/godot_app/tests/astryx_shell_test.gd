@@ -13,6 +13,9 @@ class TestHost:
     var removal_requested := ""
     var game_removal_requested := ""
     var text_runtime := ""
+    var removal_platform := "macOS"
+    func _game_removal_platform() -> String:
+        return removal_platform
     var font_callback := Callable()
     func _game_runtime_kind(path: String) -> String:
         return text_runtime if not text_runtime.is_empty() else super._game_runtime_kind(path)
@@ -193,6 +196,11 @@ func _check_notice(message: String, single_line: bool = true) -> void:
     _expect(view.get_global_rect().grow(-15).encloses(toast.get_global_rect()), "Notification keeps viewport gutters")
     _expect(label.get_global_rect().end.x + 11 <= close.global_position.x, "Notification text leaves room for dismissal")
     _expect(toast.get_global_rect().encloses(label.get_global_rect()), "Notification text fits its surface")
+    var leading_inset := label.global_position.x - toast.global_position.x
+    var icon_right := close.global_position.x + (close.size.x + close.get_theme_constant("icon_max_width")) / 2.0
+    _expect(close.icon_alignment == HORIZONTAL_ALIGNMENT_CENTER and absf(toast.get_global_rect().end.x - icon_right - leading_inset) <= 1.0,
+        "Notification icon and text have equal visible edge insets")
+    _expect(close.size.x >= 44 and close.size.y >= 44, "Notification dismissal retains a full touch target")
     var navigation: Control = view.find_child("AstryxBottomNav", true, false)
     if navigation != null:
         _expect(toast.get_global_rect().end.y + 15 <= navigation.global_position.y, "Phone notification clears the bottom navigation")
@@ -327,6 +335,7 @@ func _check_detail_actions() -> void:
         _expect(clear.global_position.y - set_cover.get_global_rect().end.y >= 11, "Cover actions occupy separate rows with spacing")
         _expect(is_equal_approx(clear.size.x, body.size.x), "Clear Cover fills the content width")
         _expect(clear.get_theme_stylebox("normal").bg_color != set_cover.get_theme_stylebox("normal").bg_color, "Set and Clear have distinct semantic colors")
+        _expect(clear.get_theme_stylebox("normal").bg_color == controller.view.design.color("subtle"), "Clear Cover is neutral before confirmation")
         _expect(is_equal_approx(clear.size.y, set_cover.size.y), "Cover action heights match")
         _expect(actions.get_global_rect().encloses(clear.get_global_rect()), "Cover Clear button fits its section")
         _expect(actions.get_child_count() == 2, "A configured cover exposes Set and Clear")
@@ -607,8 +616,12 @@ func _check_game_information_actions() -> void:
     await _click("AstryxSaveDetail_name")
     _expect(controller.view.find_child("AstryxGameName", true, false).text == "新的游戏名字", "Saving the inline name refreshes game information")
     _expect(String(app.selected_game.path) == game_path and String(app.selected_game.coverPath) == original_cover, "Renaming preserves game identity and its cover")
+    _expect(_button("AstryxRemoveGame").get_theme_stylebox("normal").bg_color == controller.view.design.color("subtle"), "Delete Game is neutral before confirmation")
     await _click("AstryxRemoveGame")
     _expect(app.modal_layer.visible and app.game_removal_requested == game_path, "Delete opens the existing confirmation for the selected game")
+    for action in app.active_modal_dialog.find_children("*", "Button", true, false):
+        if action.text in [app._t("dialog.remove"), app._t("dialog.delete")]:
+            _expect(action.get_theme_stylebox("normal").bg_color == controller.view.design.color("danger_muted"), "The modal preserves the destructive confirmation style")
     for action in app.active_modal_dialog.find_children("*", "Button", true, false):
         if action.text == app._t("dialog.cancel"):
             action.pressed.emit()
@@ -616,6 +629,41 @@ func _check_game_information_actions() -> void:
     await _settle()
     _expect(not app.modal_layer.visible and app.shell_route == "detail", "Cancelling deletion stays on the game detail")
     _expect(app.known_games.size() == 6 and FileAccess.file_exists(original_cover), "Cancelling preserves the library and original cover file")
+    app.removal_platform = "iOS"
+    await _click("AstryxRemoveGame")
+    var removal_buttons := app.active_modal_dialog.find_children("*", "Button", true, false)
+    var cancel: Button
+    var confirm: Button
+    for action in removal_buttons:
+        if action.text == app._t("dialog.cancel"):
+            cancel = action
+        if action.text == app._t("dialog.delete"):
+            confirm = action
+    _expect(cancel != null and confirm != null, "iOS uses Delete rather than library-only Remove")
+    if cancel != null and confirm != null:
+        _expect(cancel.size.is_equal_approx(confirm.size), "Delete and Cancel have equal width and height")
+        _expect(cancel.has_focus(), "Deletion starts with Cancel focused")
+    var expected: String = app._t("dialog.delete_game_body", [app._game_display_title(app.selected_game)])
+    _expect(app.active_modal_dialog.find_children("*", "Label", true, false).any(func(label): return label.text == expected), "iOS confirmation explains deletion of game files and saves")
+    await _capture("astryx-godot-ios-delete-confirmation")
+    cancel.pressed.emit()
+    await _settle()
+    app.removal_platform = "macOS"
+    _expect(DirAccess.dir_exists_absolute(game_path), "Cancelling the iOS dialog preserves the game directory")
+    var saves: Control = controller.view.find_child("AstryxDetailBody_saves", true, false)
+    var export_button := _button("AstryxExportSaves")
+    _expect(saves != null and export_button != null and is_equal_approx(export_button.size.x, saves.size.x), "Save export uses a full-width action")
+    controller.view.scroll.scroll_vertical = 180
+    await _settle()
+    var save_scroll: int = controller.view.scroll.scroll_vertical
+    app.get_node("GameSaveTransfer")._refresh()
+    await _settle()
+    _expect(save_scroll > 0 and controller.view.scroll.scroll_vertical == save_scroll, "Save operation state changes preserve the detail scroll position")
+    if OS.get_name() in ["iOS", "macOS"]:
+        await _click("AstryxDownloadSaves")
+        _expect(app.modal_layer.visible and _button("AstryxCancelSaveSync").has_focus(), "Cloud restore requires confirmation with Cancel focused")
+        await _click("AstryxCancelSaveSync")
+        _expect(not app.get_node("GameSaveTransfer").busy, "Cancelling cloud restore never starts a transfer")
     app._update_game(game_path, {"title": original_title})
     app._show_detail(app.selected_game)
     await _settle()
@@ -758,7 +806,8 @@ func _run() -> void:
     app.add_child(controller)
     root.add_child(app)
     await _settle()
-    _expect(not controller.enabled, "Classic remains the default")
+    _expect(controller.enabled, "Fresh installs default to Astryx")
+    controller.set_enabled(false, false)
     app._show_settings()
     await _settle()
     _expect(app.find_child("ShellInterfaceSwitch", true, false) != null, "Classic settings expose the optional switch")
@@ -961,6 +1010,14 @@ func _run() -> void:
     _expect(app.cover_picker_opened, "Cover Set delegates to the host picker")
     var original_cover: String = app.selected_game.coverPath
     await _click("AstryxClearCover")
+    _expect(app.modal_layer.visible and not app.cover_cleared and String(app.selected_game.coverPath) == original_cover, "Clear Cover waits for confirmation")
+    _expect(_button("AstryxConfirmClearCover").get_theme_stylebox("normal").bg_color == controller.view.design.color("danger_muted"), "Only the cover confirmation uses the destructive color")
+    _expect(_button("AstryxCancelClearCover").has_focus(), "Cover confirmation initially focuses Cancel")
+    await _click("AstryxCancelClearCover")
+    _expect(not app.modal_layer.visible and not app.cover_cleared and String(app.selected_game.coverPath) == original_cover, "Cancelling keeps the cover and closes the confirmation")
+    await _click("AstryxClearCover")
+    await _capture("astryx-godot-ipad-clear-cover-confirmation")
+    await _click("AstryxConfirmClearCover")
     _expect(app.cover_cleared and String(app.selected_game.coverPath).is_empty(), "Delete clears the cover association through the host")
     _expect(controller.view.find_child("AstryxClearCover", true, false) == null, "Delete disappears after removing the cover")
     _expect(controller.view.find_child("AstryxDetailCover", true, false).find_child("CoverImage", true, false) == null, "Removing the cover refreshes the hero to its placeholder")

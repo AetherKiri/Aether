@@ -4,7 +4,7 @@ extends Node
 const VIEW := preload("res://scripts/ui/astryx/astryx_shell.gd")
 const PREFERENCES := "user://astryx_shell.cfg"
 var host
-var enabled := false
+var enabled := true
 var theme_mode := "light"
 var draft_theme := "light"
 var background_effects := true
@@ -26,8 +26,9 @@ func _ready() -> void:
 
 func load_preferences(path: String = PREFERENCES) -> void:
     var config := ConfigFile.new()
+    enabled = true
     if config.load(path) == OK:
-        enabled = String(config.get_value("shell", "interface", "classic")) == "astryx"
+        enabled = String(config.get_value("shell", "interface", "astryx")) == "astryx"
         theme_mode = String(config.get_value("shell", "theme", "light"))
         background_effects = bool(config.get_value("shell", "background_effects", true))
         library_display = String(config.get_value("shell", "library_display", "cards"))

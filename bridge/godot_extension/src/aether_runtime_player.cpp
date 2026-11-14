@@ -159,6 +159,9 @@ void RegisterAetherInternalRuntimeGpuBridge(const TVPGodotGpuBridgeCallbacks *,
 
 #if defined(__APPLE__)
 extern "C" {
+int32_t aether_save_transfer_begin(const char *action, const char *path,
+                                 const char *folder, const char *title);
+char *aether_save_transfer_take_result();
 int32_t aether_storekit_start(const char *product_id);
 uint64_t aether_storekit_refresh_entitlement(const char *product_id);
 uint64_t aether_storekit_purchase(const char *product_id);
@@ -12812,6 +12815,41 @@ void main() {
 #endif
     }
 
+    bool native_save_transfer_begin(const String &action, const String &path,
+                                    const String &folder, const String &title) const {
+#if defined(__APPLE__)
+        return aether_save_transfer_begin(action.utf8().get_data(), path.utf8().get_data(),
+            folder.utf8().get_data(), title.utf8().get_data()) != 0;
+#elif defined(__ANDROID__)
+        if (action != "share") return false;
+        auto *wrapper = JavaClassWrapper::get_singleton();
+        if (!wrapper || !Engine::get_singleton()->has_singleton("AndroidRuntime")) return false;
+        Ref<JavaClass> api = wrapper->wrap("org.aether.mobile.SaveShare");
+        if (api.is_null()) return false;
+        Variant activity = Engine::get_singleton()->get_singleton("AndroidRuntime")->call("getActivity");
+        return bool(api->call("share", activity, path, title));
+#else
+        return false;
+#endif
+    }
+
+    String native_save_transfer_take_result() const {
+#if defined(__APPLE__)
+        char *json = aether_save_transfer_take_result();
+        if (!json) return String();
+        String result = String::utf8(json);
+        aether_native_launch_file_picker_free_string(json);
+        return result;
+#elif defined(__ANDROID__)
+        auto *wrapper = JavaClassWrapper::get_singleton();
+        if (!wrapper) return String();
+        Ref<JavaClass> api = wrapper->wrap("org.aether.mobile.SaveShare");
+        return api.is_valid() ? String(api->call("takeResultJSON")) : String();
+#else
+        return String();
+#endif
+    }
+
     bool native_launch_file_picker_open(
             const String &title, const String &initial_directory) const {
 #if defined(__APPLE__)
@@ -13107,6 +13145,10 @@ protected:
                              &AetherRuntimePlayer::iap_get_state_json);
         ClassDB::bind_method(D_METHOD("verify_unlock_secret", "candidate"),
                              &AetherRuntimePlayer::verify_unlock_secret);
+        ClassDB::bind_method(D_METHOD("native_save_transfer_begin", "action", "path", "folder", "title"),
+                             &AetherRuntimePlayer::native_save_transfer_begin);
+        ClassDB::bind_method(D_METHOD("native_save_transfer_take_result"),
+                             &AetherRuntimePlayer::native_save_transfer_take_result);
         ClassDB::bind_method(
             D_METHOD("native_launch_file_picker_open", "title", "initial_directory"),
             &AetherRuntimePlayer::native_launch_file_picker_open);

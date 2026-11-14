@@ -3,6 +3,7 @@
 import argparse
 from pathlib import Path
 import shutil
+import xml.etree.ElementTree as ET
 
 
 def stage(build: Path):
@@ -28,6 +29,31 @@ def stage(build: Path):
     manifest = (build / "src/main/AndroidManifest.xml").read_text()
     if "isPiPEnabled" not in activity or 'android:supportsPictureInPicture="true"' not in manifest:
         raise ValueError("Picture in Picture requires the Godot 4.7 Android template")
+    # The sharing provider exposes only temporary ZIP copies, never game files.
+    android = "http://schemas.android.com/apk/res/android"
+    ET.register_namespace("android", android)
+    ET.register_namespace("tools", "http://schemas.android.com/tools")
+    tree = ET.fromstring(manifest)
+    application = tree.find("application")
+    if application is None:
+        raise ValueError("Android template has no application")
+    authority = "${applicationId}.aether.saves"
+    provider = next((item for item in application.findall("provider") if item.get(f"{{{android}}}authorities") == authority), None)
+    if provider is None:
+        provider = ET.SubElement(application, "provider", {
+            f"{{{android}}}name": "org.aether.mobile.SaveFileProvider",
+            f"{{{android}}}authorities": authority,
+            f"{{{android}}}exported": "false", f"{{{android}}}grantUriPermissions": "true"})
+        ET.SubElement(provider, "meta-data", {
+            f"{{{android}}}name": "android.support.FILE_PROVIDER_PATHS",
+            f"{{{android}}}resource": "@xml/aether_save_share_paths"})
+    # A dedicated subclass prevents Android's manifest merger from combining
+    # this restricted provider with Godot's separate file picker provider.
+    provider.set(f"{{{android}}}name", "org.aether.mobile.SaveFileProvider")
+    (build / "src/main/AndroidManifest.xml").write_text(ET.tostring(tree, encoding="unicode") + "\n")
+    paths = build / "src/main/res/xml/aether_save_share_paths.xml"
+    paths.parent.mkdir(parents=True, exist_ok=True)
+    paths.write_text('<paths><cache-path name="saves" path="aether-save-share/" /></paths>\n')
 
 
 if __name__ == "__main__":

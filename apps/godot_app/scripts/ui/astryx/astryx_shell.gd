@@ -5,6 +5,7 @@ const SWITCH := preload("res://scripts/ui/astryx/astryx_switch.gd")
 const SCROLL := preload("res://scripts/ui/astryx/astryx_scroll.gd")
 const SHADERS := preload("res://scripts/ui/aether_shaders.gd")
 const COVER_PICKER := preload("res://scripts/ui/astryx/cover_picker.gd")
+const BACKGROUND := preload("res://scripts/ui/astryx/astryx_background.gd")
 const NAV := [
     ["library", "library", "nav.library"],
     ["videos", "video", "nav.videos"], ["flash", "flash", "nav.flash"],
@@ -39,6 +40,9 @@ var page: VBoxContainer
 var scroll: ScrollContainer
 var content: VBoxContainer
 var detail_backdrop: TextureRect
+var detail_layout: BoxContainer
+var detail_gallery: VBoxContainer
+var detail_cover: Control
 var save_button: Button
 var cancel_button: Button
 var save_status: Label
@@ -53,6 +57,7 @@ var expanded_details := {"information": true, "rendering": false, "cover": false
 var layout_root: Control
 var library_content_key := ""
 var cached_library: Dictionary = {}
+var background_effect: Control
 
 func setup(owner_node: Node) -> void:
     controller = owner_node
@@ -99,7 +104,7 @@ func _queue_layout() -> void:
 
 func _finish_layout() -> void:
     layout_pending = false
-    # The host briefly resets full-window anchors before applying iOS safe
+    # The host briefly resets full-window anchors before applying mobile safe
     # insets every frame. Rebuild only if the final size actually changed;
     # otherwise a held touch loses its Button before the release arrives.
     if is_inside_tree() and not size.is_equal_approx(last_size):
@@ -121,6 +126,11 @@ func sync_state() -> void:
 func rebuild(preserve_scroll: bool = false) -> void:
     if not is_inside_tree() or size.x <= 0:
         return
+    # Real route/viewport changes supersede an in-flight rail animation.
+    if is_instance_valid(sidebar_tween):
+        sidebar_tween.kill()
+    sidebar_tween = null
+    sidebar_animating = false
     if route == "library" and String(host.shell_route) != "library" and is_instance_valid(scroll):
         _discard_library_cache()
         # Keep the page in the tree: reattaching hundreds of controls would
@@ -134,8 +144,7 @@ func rebuild(preserve_scroll: bool = false) -> void:
         _reset_detail_edit()
     language = String(host.active_language)
     phone = size.x < 700
-    if not sidebar_animating:
-        sidebar_width = 260.0 if sidebar_expanded else 48.0
+    sidebar_width = 260.0 if sidebar_expanded else 48.0
     last_size = size
     if design == null or design.mode != controller.draft_theme:
         design = DESIGN.new(controller.draft_theme)
@@ -143,6 +152,10 @@ func rebuild(preserve_scroll: bool = false) -> void:
     var default_font_size := 16 if phone else 14
     if theme.default_font_size != default_font_size:
         theme.default_font_size = default_font_size
+    # One field survives page rebuilds and cached-library navigation. Detach it
+    # before retiring the old page so hidden layouts cannot keep animating.
+    if is_instance_valid(background_effect) and background_effect.get_parent() != null:
+        background_effect.get_parent().remove_child(background_effect)
     _dismiss_notice()
     if is_instance_valid(layout_root) and layout_root != cached_library.get("root"):
         remove_child(layout_root)
@@ -155,6 +168,9 @@ func rebuild(preserve_scroll: bool = false) -> void:
     scroll = null
     content = null
     detail_backdrop = null
+    detail_layout = null
+    detail_gallery = null
+    detail_cover = null
     search = null
     notice = null
     if route == "library" and not cached_library.is_empty():
@@ -168,6 +184,7 @@ func rebuild(preserve_scroll: bool = false) -> void:
             cached_library = {}
             move_child(layout_root, 0)
             layout_root.show()
+            _attach_background(layout_root.find_child("AstryxPage", true, false))
             sync_dirty_state()
             return
         _discard_library_cache()
@@ -196,6 +213,7 @@ func rebuild(preserve_scroll: bool = false) -> void:
     panel.add_theme_stylebox_override("panel", design.box("surface", 0 if phone else 28))
     panel.clip_contents = true
     frame.add_child(panel)
+    _attach_background(panel)
     page = _vbox(0)
     panel.add_child(page)
     match route:
@@ -207,6 +225,14 @@ func rebuild(preserve_scroll: bool = false) -> void:
     if previous_scroll > 0:
         _restore_scroll.call_deferred(previous_scroll)
     sync_dirty_state()
+
+func _attach_background(panel: Control) -> void:
+    if not is_instance_valid(background_effect):
+        background_effect = BACKGROUND.new()
+        background_effect.name = "AstryxBackgroundEffect"
+    panel.add_child(background_effect)
+    panel.move_child(background_effect, 0)
+    background_effect.configure(controller.draft_background_effects, design.color("text"), _reduced_motion())
 
 func _discard_library_cache() -> void:
     var cached_root: Control = cached_library.get("root")
@@ -269,6 +295,7 @@ func _button(value: String, action: Callable, variant: String = "secondary", nod
     # card or action, and cancel the pending click when scrolling begins.
     button.mouse_filter = Control.MOUSE_FILTER_PASS
     button.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
+    button.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
     button.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
     button.focus_mode = Control.FOCUS_ALL
     design.style_button(button, variant)
@@ -281,6 +308,7 @@ func _icon(name_value: String, point_size: int = 22, ink: String = "text") -> Te
     icon.texture = load("res://assets/ui/astryx/%s.svg" % name_value)
     icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
     icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+    icon.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
     icon.custom_minimum_size = Vector2(point_size, point_size)
     icon.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
     icon.size_flags_vertical = Control.SIZE_SHRINK_CENTER
@@ -356,13 +384,17 @@ func _navigation(bottom: bool) -> Control:
         brand.accessibility_name = "Aether"
         brand.mouse_filter = Control.MOUSE_FILTER_IGNORE
         brand_row.add_child(brand)
-        if sidebar_expanded:
+        if sidebar_expanded or sidebar_animating:
             var name_label := _label("Aether", 18, false, true)
             name_label.name = "AstryxSidebarTitle"
+            name_label.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+            name_label.offset_left = 44
+            name_label.offset_right = -8
             name_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
             name_label.autowrap_mode = TextServer.AUTOWRAP_OFF
             name_label.clip_text = true
-            brand_row.add_child(name_label)
+            # An overlay label cannot enlarge the collapsed rail's minimum size.
+            toggle.add_child(name_label)
     for entry in NAV:
         var id: String = entry[0]
         var selected := route == id or (route == "detail" and id == "library")
@@ -385,7 +417,7 @@ func _navigation(bottom: bool) -> Control:
             var icon := _icon(entry[1], 18, "text" if selected else "secondary")
             icon.position = Vector2(7, 7)
             button.add_child(icon)
-            if sidebar_expanded:
+            if sidebar_expanded or sidebar_animating:
                 var caption := _label(label, 14, not selected, selected)
                 caption.name = "AstryxNavLabel_" + id
                 caption.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
@@ -408,22 +440,57 @@ func _toggle_sidebar() -> void:
     sidebar_expanded = not sidebar_expanded
     var target := 260.0 if sidebar_expanded else 48.0
     sidebar_animating = not _reduced_motion()
-    rebuild(true)
+    # Keep the page and cover textures alive. Rebuilding here and again at the
+    # end restarted their entrance fades and caused two visible flashes.
+    var rail := _replace_sidebar_navigation()
+    _resize_sidebar(sidebar_width, rail)
+    if keyboard_activation:
+        _focus_sidebar_toggle()
     if sidebar_animating:
-        var rail: Control = layout_root.find_child("AstryxSideNav", true, false)
         sidebar_tween = create_tween()
-        sidebar_tween.tween_method(func(value: float):
-            sidebar_width = value
-            if is_instance_valid(rail):
-                rail.custom_minimum_size.x = value
-        , sidebar_width, target, design.metric("page_seconds")).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_IN_OUT)
-        sidebar_tween.tween_callback(func():
-            sidebar_animating = false
-            rebuild(true)
-            if keyboard_activation:
-                _focus_sidebar_toggle()
-        )
-    elif keyboard_activation:
+        var duration: float = design.metric("page_seconds") * absf(target - sidebar_width) / 212.0
+        sidebar_tween.tween_method(_resize_sidebar.bind(rail), sidebar_width, target, maxf(0.06, duration)) \
+            .set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_IN_OUT)
+        sidebar_tween.tween_callback(_finish_sidebar_animation.bind(keyboard_activation))
+    else:
+        _resize_sidebar(target, rail)
+        _finish_sidebar_animation(keyboard_activation)
+
+func _replace_sidebar_navigation() -> Control:
+    var previous: Control = layout_root.find_child("AstryxSideNav", true, false)
+    var frame := previous.get_parent()
+    var index := previous.get_index()
+    frame.remove_child(previous)
+    previous.queue_free()
+    var rail := _navigation(false)
+    frame.add_child(rail)
+    frame.move_child(rail, index)
+    return rail
+
+func _resize_sidebar(value: float, rail: Control) -> void:
+    sidebar_width = value
+    rail.custom_minimum_size.x = value
+    var opacity := clampf((value - 48.0) / 212.0, 0.0, 1.0)
+    for label in rail.find_children("AstryxNavLabel_*", "Label", true, false):
+        label.modulate.a = opacity
+    var title: Label = rail.find_child("AstryxSidebarTitle", true, false)
+    if title != null:
+        title.modulate.a = opacity
+    if route == "detail":
+        _resize_detail_cover()
+    elif route == "library":
+        library_content_key = _library_key()
+
+func _finish_sidebar_animation(keyboard_activation: bool) -> void:
+    sidebar_animating = false
+    sidebar_tween = null
+    if not sidebar_expanded:
+        _replace_sidebar_navigation()
+    # Settings can cross from two panes into the category drill-down layout.
+    # Ordinary rail resizing does not replace the content or its input state.
+    if route == "settings" and settings_narrow != (size.x - sidebar_width <= 768.0):
+        rebuild(true)
+    if keyboard_activation:
         _focus_sidebar_toggle()
 
 func _focus_sidebar_toggle() -> void:
@@ -448,6 +515,17 @@ func navigate(destination: String) -> void:
         _: host._show_library("game", false)
     controller.sync_state()
 
+func handle_back() -> bool:
+    if route == "settings" and settings_narrow and settings_detail:
+        settings_detail = false
+        editing_setting = ""
+        rebuild()
+        return true
+    if route == "detail":
+        navigate("library")
+        return true
+    return false
+
 func _header(title: String, searchable: bool = false, action: Control = null) -> void:
     var pad := _margin(16, 16, 16, 16)
     page.add_child(pad)
@@ -468,12 +546,24 @@ func _header(title: String, searchable: bool = false, action: Control = null) ->
             search.placeholder_text = _text("搜索游戏…", "Search games…", "ゲームを検索…")
         search.accessibility_name = search.placeholder_text
         search.custom_minimum_size = Vector2(0 if phone else 260, 44)
+        search.add_theme_stylebox_override("normal", design.box("", 10, "input_border", 1, Vector2(12, 10)))
         search.size_flags_horizontal = Control.SIZE_EXPAND_FILL if phone else Control.SIZE_SHRINK_END
-        search.right_icon = load("res://assets/ui/astryx/search.svg")
+        # LineEdit sizes right_icon from the texture's pixel dimensions. Use a
+        # logical-size child so the high-DPI SVG cannot enlarge the input.
+        var search_icon := _icon("search", 20, "secondary")
+        search_icon.name = "AstryxSearchIcon"
+        search_icon.set_anchors_and_offsets_preset(Control.PRESET_CENTER_RIGHT)
+        search_icon.offset_left = -32
+        search_icon.offset_right = -12
+        search_icon.offset_top = -10
+        search_icon.offset_bottom = 10
+        search_icon.visible = query.is_empty()
+        search.add_child(search_icon)
         search.add_theme_color_override("clear_button_color", design.color("secondary"))
         search.clear_button_enabled = true
         search.text_changed.connect(func(value: String):
             query = value
+            search_icon.visible = value.is_empty()
             refresh_content()
         )
     if action != null:
@@ -748,31 +838,18 @@ func _build_settings() -> void:
                 var separator := _margin(0, 8, 0, 8)
                 items.add_child(separator)
                 separator.add_child(_divider())
-            var button := _button("", func():
+            var button := _settings_menu_item(_group_label(id), id, func():
                 section = id
                 settings_detail = true
                 editing_setting = ""
                 rebuild()
-            , "quiet", "AstryxSection_" + id)
-            button.accessibility_name = _group_label(id)
-            button.custom_minimum_size.y = 56
-            button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-            button.add_theme_stylebox_override("normal", design.box("selected" if section == id and not settings_narrow else "", 10))
-            button.add_theme_stylebox_override("hover", design.box("selected", 10))
-            var inset := _margin(16, 12, 16, 12)
-            inset.mouse_filter = Control.MOUSE_FILTER_IGNORE
-            inset.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-            button.add_child(inset)
-            var row := _hbox(16)
-            row.mouse_filter = Control.MOUSE_FILTER_IGNORE
-            inset.add_child(row)
-            row.add_child(_icon(id, 24))
-            var label := _label(_group_label(id), 16)
-            label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-            row.add_child(label)
-            if settings_narrow:
-                row.add_child(_icon("chevron_right", 20, "secondary"))
+            , "AstryxSection_" + id, section == id and not settings_narrow)
             items.add_child(button)
+        items.add_child(_settings_menu_item(_t("settings.community_open"), "community",
+            host._open_community, "AstryxSettingsCommunity"))
+        if host._apple_app_store_platform():
+            items.add_child(_settings_menu_item(_t("settings.rate_app_open"), "star",
+                host._open_app_store_review, "AstryxSettingsRateApp"))
         if settings_narrow:
             scroll = menu
             _settings_actions(page)
@@ -791,6 +868,28 @@ func _build_settings() -> void:
     content.add_theme_constant_override("separation", 16)
     _settings_content()
     _settings_actions(detail)
+
+func _settings_menu_item(title: String, icon_name: String, action: Callable, node_name: String, selected: bool = false) -> Button:
+    var button := _button("", action, "quiet", node_name)
+    button.accessibility_name = title
+    button.custom_minimum_size.y = 56
+    button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+    button.add_theme_stylebox_override("normal", design.box("selected" if selected else "", 10))
+    button.add_theme_stylebox_override("hover", design.box("selected", 10))
+    var inset := _margin(16, 12, 16, 12)
+    inset.mouse_filter = Control.MOUSE_FILTER_IGNORE
+    inset.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+    button.add_child(inset)
+    var row := _hbox(16)
+    row.mouse_filter = Control.MOUSE_FILTER_IGNORE
+    inset.add_child(row)
+    row.add_child(_icon(icon_name, 24))
+    var label := _label(title, 16)
+    label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+    row.add_child(label)
+    if settings_narrow:
+        row.add_child(_icon("chevron_right", 20, "secondary"))
+    return button
 
 func _settings_actions(parent: Control) -> void:
     settings_footer = _vbox(0)
@@ -820,10 +919,7 @@ func _settings_content() -> void:
     heading.name = "AstryxSettingsHeading"
     content.add_child(heading)
     if settings_narrow:
-        var back := _button("", func():
-            settings_detail = false
-            rebuild()
-        , "quiet", "AstryxSettingsBack")
+        var back := _button("", handle_back, "quiet", "AstryxSettingsBack")
         back.accessibility_name = _text("返回设置", "Back to settings", "設定に戻る")
         back.custom_minimum_size = Vector2(44, 44)
         back.icon = load("res://assets/ui/astryx/back.svg")
@@ -923,10 +1019,17 @@ func _setting_field(parent: Control, title: String, control: Control, descriptio
     parent.add_child(_divider())
 
 func _value(key: String):
+    if key == "background_effects":
+        return controller.draft_background_effects
     var snapshot: Dictionary = host.settings_draft if not host.settings_draft.is_empty() else host._current_settings_snapshot()
     return snapshot.get(key)
 
 func _set_value(key: String, value) -> void:
+    if key == "background_effects":
+        controller.draft_background_effects = bool(value)
+        background_effect.configure(bool(value), design.color("text"), _reduced_motion())
+        sync_dirty_state()
+        return
     host._set_settings_draft_value(key, value)
     if key == "frame_enhancement_kind":
         host._set_settings_draft_value("frame_enhancement_enabled", value != "off")
@@ -983,6 +1086,7 @@ func _interface_settings() -> void:
     var fields := _section(_text("外观", "Appearance", "外観"), _text("选择适合你的界面，让每一段故事都有舒适的开始。", "Make every story feel at home with an interface that suits you.", "あなたに合った外観で、心地よく物語を始めましょう。"))
     var themes := _theme_segment()
     _field(fields, _text("主题", "Theme", "テーマ"), themes)
+    _toggle(fields, _t("settings.background_effects"), _t("settings.background_effects_desc"), "background_effects")
     var language_labels: Array = []
     for mode in host.LANGUAGE_MODES:
         language_labels.append(host._language_option_label(mode))
@@ -1275,11 +1379,10 @@ func _choose_detail_font() -> void:
         refresh_content(true)
     )
 
-func _detail_text_settings(parent: Control, game: Dictionary) -> void:
-    var runtime: String = host._game_runtime_kind(String(game.get("path", "")))
+func _detail_text_settings(parent: Control, game: Dictionary, runtime: String) -> void:
     if runtime not in host.GameTextConfig.ENGINES:
         return
-    var loaded: Dictionary = host._read_game_text_config(game)
+    var loaded: Dictionary = host._read_game_text_config(game, runtime)
     var fields := _vbox(0)
     fields.name = "AstryxGameTextSettings"
     parent.add_child(fields)
@@ -1473,8 +1576,10 @@ func _about_settings() -> void:
         toggle.accessibility_name = _t("settings.include_prerelease")
         toggle.toggled.connect(func(value: bool): host._on_setting_toggle("include_prerelease", value))
         _about_row(fields, "prerelease", _t("settings.include_prerelease"), _t("settings.include_prerelease_desc"), toggle)
-    var community := _section(_text("社区与支持", "Community & support", "コミュニティとサポート"), "")
-    _about_row(community, "community", _t("settings.qq_group"), _t("settings.qq_group_desc"), _setting_link(_t("settings.qq_group_open"), host._open_qq_group))
+    var community := _section(_t("settings.section.community_support"), "")
+    _about_row(community, "community", _t("settings.community"), _t("settings.community_desc"), _setting_link(_t("settings.community_open"), host._open_community))
+    if host._apple_app_store_platform():
+        _about_row(community, "rate_app", _t("settings.rate_app"), _t("settings.rate_app_desc"), _setting_link(_t("settings.rate_app_open"), host._open_app_store_review))
     if host._coffee_sponsorship_available():
         _about_row(community, "support", _t("support.coffee.title"), _t("support.coffee.desc"), _setting_link(_t("support.coffee.open"), host._open_coffee_sponsorship))
     if host._iap_supported_platform():
@@ -1486,13 +1591,22 @@ func _about_settings() -> void:
 func _build_library() -> void:
     var media := route in ["videos", "flash"]
     var title := _nav_label(route)
-    var import_button := _button(_text("＋ 导入", "+ Import", "＋ 追加"), _import, "primary", "AstryxImport")
+    var refresh_only: bool = host._library_uses_refresh_action()
+    var import_button := _button(_t("home.refresh") if refresh_only else _t("home.import"),
+        _import, "primary", "AstryxRefresh" if refresh_only else "AstryxImport")
+    import_button.icon = load("res://assets/ui/astryx/%s.svg" % ("refresh" if refresh_only else "plus"))
+    import_button.expand_icon = true
+    import_button.add_theme_constant_override("icon_max_width", 18)
     var actions := _hbox(8 if phone else 12)
     actions.size_flags_horizontal = Control.SIZE_SHRINK_END
     if not media:
         actions.add_child(_library_display_switch())
     actions.add_child(import_button)
     _header(title, true, actions)
+    # Expanded icons do not contribute to Button's minimum width.
+    var text_width := import_button.get_theme_font("font").get_string_size(import_button.text,
+        HORIZONTAL_ALIGNMENT_LEFT, -1, import_button.get_theme_font_size("font_size")).x
+    import_button.custom_minimum_size.x = text_width + 18 + 8 + 24
     if media and is_instance_valid(search):
         search.placeholder_text = _text("搜索文件…", "Search files…", "ファイルを検索…")
         search.accessibility_name = search.placeholder_text
@@ -1532,10 +1646,8 @@ func _library_display_switch() -> Control:
     return panel
 
 func _import() -> void:
-    if route in ["videos", "flash"]:
-        host._open_video_import_dialog()
-    else:
-        host._on_refresh_or_import()
+    host._on_refresh_or_import()
+    controller.sync_state()
 
 func _library_content() -> void:
     if route in ["videos", "flash"]:
@@ -1569,7 +1681,7 @@ func _library_content() -> void:
         elif recent_only:
             _empty(_text("尚未开始游玩", "Your next story awaits", "まだプレイしていません"), _text("开始一个游戏后，会在这里找到它。", "Games you play will appear here.", "プレイしたゲームはここに表示されます。"), "library")
         else:
-            _empty(_t("home.empty_title"), host._empty_help_text(), "library", _button(_t("home.import"), _import, "primary"))
+            _empty(_t("home.empty_title"), host._empty_help_text(), "library", _button(_t("home.refresh" if host._library_uses_refresh_action() else "home.import"), _import, "primary", "AstryxEmptyLibraryAction"))
         return
     if controller.library_display == "list":
         var list := _vbox(4)
@@ -1673,7 +1785,13 @@ func _game_card(game: Dictionary, width: float) -> Button:
     stack.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
     button.add_child(stack)
     var height := width * (4.0 / 3.0 if phone else 0.75)
-    stack.add_child(_cover(game, height))
+    var cover := _cover(game, height)
+    cover.name = "AstryxCardCover"
+    stack.add_child(cover)
+    button.resized.connect(func():
+        if button.size.x > 0:
+            cover.custom_minimum_size.y = button.size.x * (4.0 / 3.0 if phone else 0.75)
+    )
     var label := _label(title, 14 if phone else 16, false, true)
     label.max_lines_visible = 2
     label.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
@@ -1811,7 +1929,7 @@ func _media_content() -> void:
             folder_count += 1
     content.add_child(_label(_text("%d 个文件夹 · %d 个文件", "%d folders · %d files", "%d フォルダー · %d ファイル") % [folder_count, entries.size() - folder_count], 12, true))
     if entries.is_empty():
-        _empty(_t("search.no_results_title") if not query.is_empty() else host._media_text("video.empty_folder_title" if library.can_go_up() else "video.empty_title"), _t("search.no_results_help") if not query.is_empty() else host._video_empty_help_text(), "flash" if route == "flash" else "video", _button(host._media_text("video.import"), _import, "primary") if query.is_empty() else null)
+        _empty(_t("search.no_results_title") if not query.is_empty() else host._media_text("video.empty_folder_title" if library.can_go_up() else "video.empty_title"), _t("search.no_results_help") if not query.is_empty() else host._video_empty_help_text(), "flash" if route == "flash" else "video", _button(host._media_text("video.refresh" if host._library_uses_refresh_action() else "video.import"), _import, "primary", "AstryxEmptyLibraryAction") if query.is_empty() else null)
         return
     for item in entries:
         var row := _hbox(12)
@@ -1916,19 +2034,13 @@ func _detail_content() -> void:
     if game.is_empty():
         return
     var narrow := _content_width() < 660
-    var layout: BoxContainer = _vbox(20) if narrow else _hbox(20)
-    content.add_child(layout)
-    var column_width := _content_width() - 10 if narrow else (_content_width() - 30) / 2
-    # Use the artwork's own ratio so landscape covers fill the column without
-    # letterboxing. Only shrink when needed to keep the full image on screen.
-    var available_height := maxf(80, size.y - 133 - (68 if phone else 0))
-    var max_cover_height := minf(available_height, size.y * 0.60) if phone else available_height
-    var gallery := _vbox(0)
-    if not narrow:
-        gallery.custom_minimum_size.x = column_width
-        gallery.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
-    layout.add_child(gallery)
+    detail_layout = _vbox(20) if narrow else _hbox(20)
+    detail_layout.set_meta("narrow", narrow)
+    content.add_child(detail_layout)
+    detail_gallery = _vbox(0)
+    detail_layout.add_child(detail_gallery)
     var image := _cover(game, 0)
+    detail_cover = image
     image.name = "AstryxDetailCover"
     image.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
     image.size_flags_vertical = Control.SIZE_SHRINK_BEGIN
@@ -1938,13 +2050,11 @@ func _detail_content() -> void:
         ratio = artwork.texture.get_size().aspect()
         artwork.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
         image.add_theme_stylebox_override("panel", StyleBoxEmpty.new())
-    var cover_size := Vector2(column_width, column_width / ratio)
-    if cover_size.y > max_cover_height:
-        cover_size *= max_cover_height / cover_size.y
-    image.custom_minimum_size = cover_size
-    gallery.add_child(image)
+    image.set_meta("aspect_ratio", ratio)
+    detail_gallery.add_child(image)
+    _resize_detail_cover()
     var info := _vbox(20)
-    layout.add_child(info)
+    detail_layout.add_child(info)
     var heading := _vbox(8)
     info.add_child(heading)
     heading.add_child(_label(host._game_display_title(game), 34, false, true))
@@ -1959,6 +2069,42 @@ func _detail_content() -> void:
     launch.size_flags_horizontal = Control.SIZE_EXPAND_FILL
     actions.add_child(launch)
     var rows := _collapsible(info, "information", _text("游戏信息", "Game information", "ゲーム情報"))
+    if rows.visible:
+        _detail_information(rows, game)
+    var rendering := _collapsible(info, "rendering", _text("画面与渲染", "Graphics & rendering", "画面とレンダリング"))
+    if rendering.visible:
+        _game_render_settings(rendering, game)
+    var cover_section := _collapsible(info, "cover", _text("封面", "Cover", "カバー"))
+    if cover_section.visible:
+        _detail_cover_actions(cover_section, game)
+    info.add_child(_divider())
+
+func _resize_detail_cover() -> void:
+    if not is_instance_valid(detail_cover):
+        return
+    var narrow := _content_width() < 660
+    if bool(detail_layout.get_meta("narrow")) != narrow:
+        var previous := detail_layout
+        detail_layout = _vbox(20) if narrow else _hbox(20)
+        detail_layout.set_meta("narrow", narrow)
+        content.add_child(detail_layout)
+        content.move_child(detail_layout, previous.get_index())
+        for child in previous.get_children():
+            child.reparent(detail_layout, false)
+        content.remove_child(previous)
+        previous.queue_free()
+    var column_width := _content_width() - 10 if narrow else (_content_width() - 30) / 2
+    detail_gallery.custom_minimum_size.x = 0.0 if narrow else column_width
+    detail_gallery.size_flags_horizontal = Control.SIZE_EXPAND_FILL if narrow else Control.SIZE_SHRINK_BEGIN
+    var ratio: float = detail_cover.get_meta("aspect_ratio")
+    var cover_size := Vector2(column_width, column_width / ratio)
+    var available_height := maxf(80, size.y - 133 - (68 if phone else 0))
+    var max_cover_height := minf(available_height, size.y * 0.60) if phone else available_height
+    if cover_size.y > max_cover_height:
+        cover_size *= max_cover_height / cover_size.y
+    detail_cover.custom_minimum_size = cover_size
+
+func _detail_information(rows: Control, game: Dictionary) -> void:
     var input := LineEdit.new()
     input.name = "AstryxGameNameInput"
     input.accessibility_name = _text("游戏名字", "Game name", "ゲーム名")
@@ -1974,7 +2120,10 @@ func _detail_content() -> void:
     )
     input.text_submitted.connect(func(_value: String): _save_detail_edit())
     _detail_field(rows, "name", input.accessibility_name, host._game_display_title(game), input, false)
-    _detail_text_settings(rows, game)
+    # Reuse one engine detection for all fields on this page; probing archives
+    # repeatedly on mobile storage can block the opening frame.
+    var runtime: String = host._game_runtime_kind(String(game.get("path", "")))
+    _detail_text_settings(rows, game, runtime)
     var launch_row := _hbox(16)
     launch_row.name = "AstryxLaunchFileRow"
     rows.add_child(launch_row)
@@ -1984,7 +2133,7 @@ func _detail_content() -> void:
     launch_row.add_child(launch_copy)
     launch_copy.add_child(_label(_text("启动文件", "Launch file", "起動ファイル"), 16, false, true))
     launch_copy.add_child(_label(host._game_launch_entry_label(game), 14, true))
-    if host._can_configure_launch_file(game):
+    if host._can_configure_launch_file(game, runtime):
         var set_launch := _setting_link(_text("设置", "Set", "設定"), host._set_launch_file_for_selected, "AstryxSetLaunchFile")
         set_launch.accessibility_name = _t("detail.set_launch_file")
         set_launch.size_flags_horizontal = Control.SIZE_SHRINK_END
@@ -1998,9 +2147,8 @@ func _detail_content() -> void:
     var remove := _button(_text("删除游戏", "Delete game", "ゲームを削除"), host._confirm_remove_selected, "destructive", "AstryxRemoveGame")
     remove.size_flags_horizontal = Control.SIZE_EXPAND_FILL
     rows.add_child(remove)
-    var rendering := _collapsible(info, "rendering", _text("画面与渲染", "Graphics & rendering", "画面とレンダリング"))
-    _game_render_settings(rendering, game)
-    var cover_section := _collapsible(info, "cover", _text("封面", "Cover", "カバー"))
+
+func _detail_cover_actions(cover_section: Control, game: Dictionary) -> void:
     var cover_path: String = host._resolve_cover_path(game)
     var location := _label(cover_path if not cover_path.is_empty() else _text("未设置封面", "No cover set", "カバー未設定"), 14, true)
     location.name = "AstryxCoverPath"
@@ -2023,7 +2171,6 @@ func _detail_content() -> void:
         var clear_cover := _button(_text("清除封面", "Clear cover", "カバーをクリア"), host._clear_cover_for_selected, "destructive", "AstryxClearCover")
         clear_cover.size_flags_horizontal = Control.SIZE_EXPAND_FILL
         cover_actions.add_child(clear_cover)
-    info.add_child(_divider())
 
 func _show_cover_sources() -> void:
     COVER_PICKER.new().show_for(self)

@@ -11,6 +11,9 @@ import {
   MagnifyingGlassIcon,
   PlusIcon,
   ArrowLeftIcon,
+  ArrowPathIcon,
+  ChatBubbleLeftRightIcon,
+  StarIcon,
   PlayIcon,
   ChevronRightIcon,
   ChevronUpIcon,
@@ -42,6 +45,8 @@ const icons = {
   compatibility: ShieldCheckIcon,
   diagnostics: WrenchScrewdriverIcon,
   about: InformationCircleIcon,
+  community: ChatBubbleLeftRightIcon,
+  star: StarIcon,
   cards: Squares2X2Icon,
   list: ListBulletIcon,
   library_selected: BookOpenSolid,
@@ -55,6 +60,7 @@ const icons = {
   folder: FolderIcon,
   search: MagnifyingGlassIcon,
   plus: PlusIcon,
+  refresh: ArrowPathIcon,
   back: ArrowLeftIcon,
   play: PlayIcon,
   chevron_right: ChevronRightIcon,
@@ -65,6 +71,8 @@ const target = new URL(
   "../../../apps/godot_app/assets/ui/astryx/",
   import.meta.url,
 );
+// Keep the committed .svg.import settings alongside these 24-unit vectors:
+// 4x rasterization supplies high-DPI pixels; mipmaps handle smaller UI sizes.
 for (const [name, component] of Object.entries(icons)) {
   const svg = renderToStaticMarkup(createElement(component)).replaceAll(
     "currentColor",

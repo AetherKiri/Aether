@@ -275,6 +275,55 @@ func _check_ios_library_actions() -> void:
     _expect(host.modal_layer.visible, "Import still opens the picker on other platforms")
     host._dismiss_modal()
 
+func _check_background_effects() -> void:
+    host.ui_motion.reduced_motion = false
+    controller.view.rebuild()
+    await _settle()
+    var field: Control = controller.view.background_effect
+    var field_id := field.get_instance_id()
+    _expect(field.is_visible_in_tree() and field.is_processing(), "The background animates when the shell is visible")
+    _expect(field.mouse_filter == Control.MOUSE_FILTER_IGNORE, "The background never intercepts library touches")
+    controller.view.navigate("settings")
+    await _settle()
+    _button("AstryxSection_interface").pressed.emit()
+    await _settle()
+    _button("AstryxSetting_background_effects").button_pressed = false
+    _expect(controller.is_dirty() and not field.visible and not field.is_processing(), "Turning effects off previews immediately and stops animation")
+    controller.discard_settings()
+    _expect(not controller.is_dirty() and field.visible, "Cancel restores the saved background preference")
+    _button("AstryxSetting_background_effects").button_pressed = false
+    _expect(controller.save_settings(), "The background preference can be saved")
+    var reloaded := Suite.TestController.new()
+    reloaded.preference_path = controller.preference_path
+    reloaded.load_preferences()
+    _expect(not reloaded.background_effects and not reloaded.draft_background_effects, "Disabling effects survives a fresh preference load")
+    reloaded.free()
+    _button("AstryxSetting_background_effects").button_pressed = true
+    controller.discard_settings()
+    _expect(not field.visible, "Canceling an enabled preview restores the saved disabled state")
+    _button("AstryxSetting_background_effects").button_pressed = true
+    _expect(controller.save_settings(), "Effects can be re-enabled")
+    controller.view.navigate("library")
+    await _settle()
+    controller.view.navigate("videos")
+    controller.view.navigate("library")
+    await _settle()
+    _expect(controller.view.background_effect.get_instance_id() == field_id,
+        "Settings rebuilds and cached-library navigation reuse one background")
+    _expect(controller.view.find_children("AstryxBackgroundEffect", "Control", true, false).size() == 1,
+        "Cached pages do not leave duplicate background renderers")
+    host.shell_root.hide()
+    _expect(not field.is_processing(), "Hiding the shell for gameplay stops background work")
+    host.shell_root.show()
+    _expect(field.is_processing(), "Returning to the shell resumes background work")
+    field.notification(Node.NOTIFICATION_APPLICATION_FOCUS_OUT)
+    _expect(not field.is_processing(), "Leaving the foreground suspends background work")
+    field.notification(Node.NOTIFICATION_APPLICATION_FOCUS_IN)
+    _expect(field.is_processing(), "Returning to the foreground resumes background work")
+    host.ui_motion.reduced_motion = true
+    controller.view.rebuild()
+    _expect(not field.visible and not field.is_processing(), "Reduced motion disables decorative animation")
+
 func _run() -> void:
     create_timer(60).timeout.connect(func(): quit(1))
     root.size = Vector2i(393, 852)
@@ -306,6 +355,7 @@ func _run() -> void:
     await _check_return()
     await _check_updates()
     await _check_modal_first_frame()
+    await _check_background_effects()
     controller.set_enabled(false, false)
     _expect(host.game_list.get_child_count() == host.known_games.size(), "Switching to classic restores its current library")
     var title_visible := false

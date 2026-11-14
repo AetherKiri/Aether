@@ -5,6 +5,7 @@ const SWITCH := preload("res://scripts/ui/astryx/astryx_switch.gd")
 const SCROLL := preload("res://scripts/ui/astryx/astryx_scroll.gd")
 const SHADERS := preload("res://scripts/ui/aether_shaders.gd")
 const COVER_PICKER := preload("res://scripts/ui/astryx/cover_picker.gd")
+const BACKGROUND := preload("res://scripts/ui/astryx/astryx_background.gd")
 const NAV := [
     ["library", "library", "nav.library"],
     ["videos", "video", "nav.videos"], ["flash", "flash", "nav.flash"],
@@ -53,6 +54,7 @@ var expanded_details := {"information": true, "rendering": false, "cover": false
 var layout_root: Control
 var library_content_key := ""
 var cached_library: Dictionary = {}
+var background_effect: Control
 
 func setup(owner_node: Node) -> void:
     controller = owner_node
@@ -143,6 +145,10 @@ func rebuild(preserve_scroll: bool = false) -> void:
     var default_font_size := 16 if phone else 14
     if theme.default_font_size != default_font_size:
         theme.default_font_size = default_font_size
+    # One field survives page rebuilds and cached-library navigation. Detach it
+    # before retiring the old page so hidden layouts cannot keep animating.
+    if is_instance_valid(background_effect) and background_effect.get_parent() != null:
+        background_effect.get_parent().remove_child(background_effect)
     _dismiss_notice()
     if is_instance_valid(layout_root) and layout_root != cached_library.get("root"):
         remove_child(layout_root)
@@ -168,6 +174,7 @@ func rebuild(preserve_scroll: bool = false) -> void:
             cached_library = {}
             move_child(layout_root, 0)
             layout_root.show()
+            _attach_background(layout_root.find_child("AstryxPage", true, false))
             sync_dirty_state()
             return
         _discard_library_cache()
@@ -196,6 +203,7 @@ func rebuild(preserve_scroll: bool = false) -> void:
     panel.add_theme_stylebox_override("panel", design.box("surface", 0 if phone else 28))
     panel.clip_contents = true
     frame.add_child(panel)
+    _attach_background(panel)
     page = _vbox(0)
     panel.add_child(page)
     match route:
@@ -207,6 +215,14 @@ func rebuild(preserve_scroll: bool = false) -> void:
     if previous_scroll > 0:
         _restore_scroll.call_deferred(previous_scroll)
     sync_dirty_state()
+
+func _attach_background(panel: Control) -> void:
+    if not is_instance_valid(background_effect):
+        background_effect = BACKGROUND.new()
+        background_effect.name = "AstryxBackgroundEffect"
+    panel.add_child(background_effect)
+    panel.move_child(background_effect, 0)
+    background_effect.configure(controller.draft_background_effects, design.color("text"), _reduced_motion())
 
 func _discard_library_cache() -> void:
     var cached_root: Control = cached_library.get("root")
@@ -269,6 +285,7 @@ func _button(value: String, action: Callable, variant: String = "secondary", nod
     # card or action, and cancel the pending click when scrolling begins.
     button.mouse_filter = Control.MOUSE_FILTER_PASS
     button.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
+    button.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
     button.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
     button.focus_mode = Control.FOCUS_ALL
     design.style_button(button, variant)
@@ -281,6 +298,7 @@ func _icon(name_value: String, point_size: int = 22, ink: String = "text") -> Te
     icon.texture = load("res://assets/ui/astryx/%s.svg" % name_value)
     icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
     icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+    icon.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
     icon.custom_minimum_size = Vector2(point_size, point_size)
     icon.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
     icon.size_flags_vertical = Control.SIZE_SHRINK_CENTER
@@ -479,12 +497,24 @@ func _header(title: String, searchable: bool = false, action: Control = null) ->
             search.placeholder_text = _text("搜索游戏…", "Search games…", "ゲームを検索…")
         search.accessibility_name = search.placeholder_text
         search.custom_minimum_size = Vector2(0 if phone else 260, 44)
+        search.add_theme_stylebox_override("normal", design.box("", 10, "input_border", 1, Vector2(12, 10)))
         search.size_flags_horizontal = Control.SIZE_EXPAND_FILL if phone else Control.SIZE_SHRINK_END
-        search.right_icon = load("res://assets/ui/astryx/search.svg")
+        # LineEdit sizes right_icon from the texture's pixel dimensions. Use a
+        # logical-size child so the high-DPI SVG cannot enlarge the input.
+        var search_icon := _icon("search", 20, "secondary")
+        search_icon.name = "AstryxSearchIcon"
+        search_icon.set_anchors_and_offsets_preset(Control.PRESET_CENTER_RIGHT)
+        search_icon.offset_left = -32
+        search_icon.offset_right = -12
+        search_icon.offset_top = -10
+        search_icon.offset_bottom = 10
+        search_icon.visible = query.is_empty()
+        search.add_child(search_icon)
         search.add_theme_color_override("clear_button_color", design.color("secondary"))
         search.clear_button_enabled = true
         search.text_changed.connect(func(value: String):
             query = value
+            search_icon.visible = value.is_empty()
             refresh_content()
         )
     if action != null:
@@ -759,31 +789,18 @@ func _build_settings() -> void:
                 var separator := _margin(0, 8, 0, 8)
                 items.add_child(separator)
                 separator.add_child(_divider())
-            var button := _button("", func():
+            var button := _settings_menu_item(_group_label(id), id, func():
                 section = id
                 settings_detail = true
                 editing_setting = ""
                 rebuild()
-            , "quiet", "AstryxSection_" + id)
-            button.accessibility_name = _group_label(id)
-            button.custom_minimum_size.y = 56
-            button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-            button.add_theme_stylebox_override("normal", design.box("selected" if section == id and not settings_narrow else "", 10))
-            button.add_theme_stylebox_override("hover", design.box("selected", 10))
-            var inset := _margin(16, 12, 16, 12)
-            inset.mouse_filter = Control.MOUSE_FILTER_IGNORE
-            inset.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-            button.add_child(inset)
-            var row := _hbox(16)
-            row.mouse_filter = Control.MOUSE_FILTER_IGNORE
-            inset.add_child(row)
-            row.add_child(_icon(id, 24))
-            var label := _label(_group_label(id), 16)
-            label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-            row.add_child(label)
-            if settings_narrow:
-                row.add_child(_icon("chevron_right", 20, "secondary"))
+            , "AstryxSection_" + id, section == id and not settings_narrow)
             items.add_child(button)
+        items.add_child(_settings_menu_item(_t("settings.community_open"), "community",
+            host._open_community, "AstryxSettingsCommunity"))
+        if host._apple_app_store_platform():
+            items.add_child(_settings_menu_item(_t("settings.rate_app_open"), "star",
+                host._open_app_store_review, "AstryxSettingsRateApp"))
         if settings_narrow:
             scroll = menu
             _settings_actions(page)
@@ -802,6 +819,28 @@ func _build_settings() -> void:
     content.add_theme_constant_override("separation", 16)
     _settings_content()
     _settings_actions(detail)
+
+func _settings_menu_item(title: String, icon_name: String, action: Callable, node_name: String, selected: bool = false) -> Button:
+    var button := _button("", action, "quiet", node_name)
+    button.accessibility_name = title
+    button.custom_minimum_size.y = 56
+    button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+    button.add_theme_stylebox_override("normal", design.box("selected" if selected else "", 10))
+    button.add_theme_stylebox_override("hover", design.box("selected", 10))
+    var inset := _margin(16, 12, 16, 12)
+    inset.mouse_filter = Control.MOUSE_FILTER_IGNORE
+    inset.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+    button.add_child(inset)
+    var row := _hbox(16)
+    row.mouse_filter = Control.MOUSE_FILTER_IGNORE
+    inset.add_child(row)
+    row.add_child(_icon(icon_name, 24))
+    var label := _label(title, 16)
+    label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+    row.add_child(label)
+    if settings_narrow:
+        row.add_child(_icon("chevron_right", 20, "secondary"))
+    return button
 
 func _settings_actions(parent: Control) -> void:
     settings_footer = _vbox(0)
@@ -931,10 +970,17 @@ func _setting_field(parent: Control, title: String, control: Control, descriptio
     parent.add_child(_divider())
 
 func _value(key: String):
+    if key == "background_effects":
+        return controller.draft_background_effects
     var snapshot: Dictionary = host.settings_draft if not host.settings_draft.is_empty() else host._current_settings_snapshot()
     return snapshot.get(key)
 
 func _set_value(key: String, value) -> void:
+    if key == "background_effects":
+        controller.draft_background_effects = bool(value)
+        background_effect.configure(bool(value), design.color("text"), _reduced_motion())
+        sync_dirty_state()
+        return
     host._set_settings_draft_value(key, value)
     if key == "frame_enhancement_kind":
         host._set_settings_draft_value("frame_enhancement_enabled", value != "off")
@@ -991,6 +1037,7 @@ func _interface_settings() -> void:
     var fields := _section(_text("外观", "Appearance", "外観"), _text("选择适合你的界面，让每一段故事都有舒适的开始。", "Make every story feel at home with an interface that suits you.", "あなたに合った外観で、心地よく物語を始めましょう。"))
     var themes := _theme_segment()
     _field(fields, _text("主题", "Theme", "テーマ"), themes)
+    _toggle(fields, _t("settings.background_effects"), _t("settings.background_effects_desc"), "background_effects")
     var language_labels: Array = []
     for mode in host.LANGUAGE_MODES:
         language_labels.append(host._language_option_label(mode))
@@ -1496,14 +1543,21 @@ func _build_library() -> void:
     var media := route in ["videos", "flash"]
     var title := _nav_label(route)
     var refresh_only: bool = host._library_uses_refresh_action()
-    var import_button := _button(_t("home.refresh") if refresh_only else _text("＋ 导入", "+ Import", "＋ 追加"),
+    var import_button := _button(_t("home.refresh") if refresh_only else _t("home.import"),
         _import, "primary", "AstryxRefresh" if refresh_only else "AstryxImport")
+    import_button.icon = load("res://assets/ui/astryx/%s.svg" % ("refresh" if refresh_only else "plus"))
+    import_button.expand_icon = true
+    import_button.add_theme_constant_override("icon_max_width", 18)
     var actions := _hbox(8 if phone else 12)
     actions.size_flags_horizontal = Control.SIZE_SHRINK_END
     if not media:
         actions.add_child(_library_display_switch())
     actions.add_child(import_button)
     _header(title, true, actions)
+    # Expanded icons do not contribute to Button's minimum width.
+    var text_width := import_button.get_theme_font("font").get_string_size(import_button.text,
+        HORIZONTAL_ALIGNMENT_LEFT, -1, import_button.get_theme_font_size("font_size")).x
+    import_button.custom_minimum_size.x = text_width + 18 + 8 + 24
     if media and is_instance_valid(search):
         search.placeholder_text = _text("搜索文件…", "Search files…", "ファイルを検索…")
         search.accessibility_name = search.placeholder_text

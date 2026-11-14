@@ -7,6 +7,8 @@ var host
 var enabled := false
 var theme_mode := "light"
 var draft_theme := "light"
+var background_effects := true
+var draft_background_effects := true
 var library_display := "cards"
 var view: Control
 var backdrop: ColorRect
@@ -27,10 +29,12 @@ func load_preferences(path: String = PREFERENCES) -> void:
     if config.load(path) == OK:
         enabled = String(config.get_value("shell", "interface", "classic")) == "astryx"
         theme_mode = String(config.get_value("shell", "theme", "light"))
+        background_effects = bool(config.get_value("shell", "background_effects", true))
         library_display = String(config.get_value("shell", "library_display", "cards"))
     if theme_mode not in ["light", "dark"]:
         theme_mode = "light"
     draft_theme = theme_mode
+    draft_background_effects = background_effects
     if library_display not in ["cards", "list"]:
         library_display = "cards"
 
@@ -38,6 +42,7 @@ func save_preferences(path: String = PREFERENCES) -> Error:
     var config := ConfigFile.new()
     config.set_value("shell", "interface", "astryx" if enabled else "classic")
     config.set_value("shell", "theme", theme_mode)
+    config.set_value("shell", "background_effects", background_effects)
     config.set_value("shell", "library_display", library_display)
     return config.save(path)
 
@@ -146,6 +151,7 @@ func mount_classic_switch(rows: Control) -> void:
 func set_enabled(value: bool, persist: bool = true) -> void:
     enabled = value
     draft_theme = theme_mode
+    draft_background_effects = background_effects
     host._reset_shell_scroll_drag()
     if enabled:
         library_revision += 1
@@ -174,7 +180,7 @@ func set_enabled(value: bool, persist: bool = true) -> void:
         push_warning("Could not save shell interface preference")
 
 func is_dirty() -> bool:
-    return bool(host.dirty_settings) or draft_theme != theme_mode
+    return bool(host.dirty_settings) or draft_theme != theme_mode or draft_background_effects != background_effects
 
 func request_navigation(destination: Callable) -> bool:
     if host.shell_route != "settings" or not is_dirty():
@@ -187,10 +193,13 @@ func handle_back() -> bool:
 
 func save_settings() -> bool:
     var previous := theme_mode
+    var previous_effects := background_effects
     theme_mode = draft_theme
+    background_effects = draft_background_effects
     if save_preferences() != OK:
         view.show_notice(text("界面偏好保存失败，请重试。", "Could not save interface preferences. Try again.", "設定を保存できませんでした。"))
         theme_mode = previous
+        background_effects = previous_effects
         return false
     host._save_settings_draft()
     host._begin_settings_edit()
@@ -200,6 +209,7 @@ func save_settings() -> bool:
 
 func discard_settings() -> void:
     draft_theme = theme_mode
+    draft_background_effects = background_effects
     host._begin_settings_edit()
     view.rebuild(true)
 

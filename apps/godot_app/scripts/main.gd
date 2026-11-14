@@ -38,6 +38,7 @@ const NOTICE_VERSION := 1
 const AnnouncementState = preload("res://scripts/announcement_state.gd")
 var announcement_state := AnnouncementState.new(NOTICE_FILE)
 const QQ_GROUP_URL := "https://aetherkiri.github.io/qq/"
+const DISCORD_INVITE_URL := "https://discord.gg/6bZjp6hB"
 const SCENE_TEST_SETTINGS_KEY := "aether_kiri/scene_test"
 const IAP_LIST_LIMIT_PRODUCT_ID := "com.aether.list.limit"
 const IAP_COFFEE_PRODUCT_ID := "com.aether.coffee"
@@ -268,10 +269,11 @@ const UI_TEXT := {
         "settings.section.render": "渲染",
         "settings.section.developer": "开发者",
         "settings.section.about": "关于",
-        "settings.section.community": "QQ 交流群",
-        "settings.qq_group": "加入 QQ 交流群",
-        "settings.qq_group_desc": "反馈问题、获取更新、与其他玩家交流",
-        "settings.qq_group_open": "前往",
+        "settings.section.community": "社区",
+        "settings.section.community_support": "社区与支持",
+        "settings.community": "玩家社区",
+        "settings.community_desc": "反馈问题、获取更新、与其他玩家交流",
+        "settings.community_open": "加入 QQ 群",
         "notice.title": "公告",
         "notice.qq_body": "欢迎加入 AetherKiri QQ 交流群，反馈问题、获取最新版本与其他玩家交流。
 
@@ -658,6 +660,11 @@ const UI_TEXT := {
         "settings.section.render": "渲染",
         "settings.section.developer": "開發者",
         "settings.section.about": "關於",
+        "settings.section.community": "社群",
+        "settings.section.community_support": "社群與支援",
+        "settings.community": "玩家社群",
+        "settings.community_desc": "回報問題、取得更新，並與其他玩家交流",
+        "settings.community_open": "加入 Discord",
         "notice.title": "公告",
         "notice.qq_body": "歡迎加入 AetherKiri QQ 交流群，回報問題、取得最新版本並與其他玩家交流。\n\n之後也可以在「設定 → QQ 交流群」中隨時查看。",
         "notice.open": "加入交流群",
@@ -1071,10 +1078,11 @@ const UI_TEXT := {
         "settings.section.render": "Rendering",
         "settings.section.developer": "Developer",
         "settings.section.about": "About",
-        "settings.section.community": "QQ Group",
-        "settings.qq_group": "Join the QQ group",
-        "settings.qq_group_desc": "Report issues, get updates and chat with other players",
-        "settings.qq_group_open": "Open",
+        "settings.section.community": "Community",
+        "settings.section.community_support": "Community & support",
+        "settings.community": "Player community",
+        "settings.community_desc": "Report issues, get updates and chat with other players",
+        "settings.community_open": "Join Discord",
         "notice.title": "Announcement",
         "notice.qq_body": "Join the AetherKiri QQ group to report issues, get the latest builds and chat with other players.
 
@@ -1461,6 +1469,11 @@ You can find it any time under Settings → QQ Group.",
         "settings.section.render": "レンダリング",
         "settings.section.developer": "開発者",
         "settings.section.about": "情報",
+        "settings.section.community": "コミュニティ",
+        "settings.section.community_support": "コミュニティとサポート",
+        "settings.community": "プレイヤーコミュニティ",
+        "settings.community_desc": "不具合の報告、最新情報の確認、ほかのプレイヤーとの交流",
+        "settings.community_open": "Discord に参加",
         "notice.title": "お知らせ",
         "notice.qq_body": "AetherKiri の QQ グループで、不具合の報告、最新バージョンの確認、ほかのプレイヤーとの交流ができます。\n\nグループへのリンクは「設定 → QQ グループ」からいつでも開けます。",
         "notice.open": "グループに参加",
@@ -1843,6 +1856,11 @@ You can find it any time under Settings → QQ Group.",
         "settings.section.render": "렌더링",
         "settings.section.developer": "개발자",
         "settings.section.about": "정보",
+        "settings.section.community": "커뮤니티",
+        "settings.section.community_support": "커뮤니티 및 지원",
+        "settings.community": "플레이어 커뮤니티",
+        "settings.community_desc": "문제를 제보하고, 업데이트를 확인하며 다른 플레이어와 소통하세요",
+        "settings.community_open": "Discord 참여",
         "notice.title": "공지",
         "notice.qq_body": "AetherKiri QQ 그룹에서 문제를 제보하고, 최신 버전을 확인하며 다른 플레이어와 이야기해 보세요.\n\n「설정 → QQ 그룹」에서 언제든지 다시 열 수 있습니다.",
         "notice.open": "그룹 참여",
@@ -5909,7 +5927,7 @@ func _rebuild_settings_view() -> void:
     settings_index_host.set_meta("rail", rail)
 
     var community_rows := _settings_section(flow, _t("settings.section.community"), animate_page, 0.02, ICON_HELP)
-    _add_settings_row(community_rows, _settings_action_row(_t("settings.qq_group"), _t("settings.qq_group_desc"), _t("settings.qq_group_open"), _open_qq_group))
+    _add_settings_row(community_rows, _settings_action_row(_t("settings.community"), _t("settings.community_desc"), _t("settings.community_open"), _open_community))
 
     var interface_rows := _settings_section(flow, _t("settings.section.interface"), animate_page, 0.04, ICON_PAGE)
     if has_node("ShellInterface"):
@@ -20080,6 +20098,14 @@ func _mipmapped_texture(texture: Texture2D) -> Texture2D:
 # -------------
 # Each announcement has its own revision, separate from the app version.
 # Dismissal lasts for that revision; both choices allow newer announcements.
+
+func _community_url() -> String:
+    return QQ_GROUP_URL if active_language == LANG_ZH_HANS else DISCORD_INVITE_URL
+
+func _open_community() -> void:
+    var url := _community_url()
+    if OS.shell_open(url) != OK:
+        _show_message(url)
 
 func _open_qq_group() -> void:
     var result := OS.shell_open(QQ_GROUP_URL)

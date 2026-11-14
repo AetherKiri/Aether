@@ -1480,8 +1480,8 @@ func _about_settings() -> void:
         toggle.accessibility_name = _t("settings.include_prerelease")
         toggle.toggled.connect(func(value: bool): host._on_setting_toggle("include_prerelease", value))
         _about_row(fields, "prerelease", _t("settings.include_prerelease"), _t("settings.include_prerelease_desc"), toggle)
-    var community := _section(_text("社区与支持", "Community & support", "コミュニティとサポート"), "")
-    _about_row(community, "community", _t("settings.qq_group"), _t("settings.qq_group_desc"), _setting_link(_t("settings.qq_group_open"), host._open_qq_group))
+    var community := _section(_t("settings.section.community_support"), "")
+    _about_row(community, "community", _t("settings.community"), _t("settings.community_desc"), _setting_link(_t("settings.community_open"), host._open_community))
     if host._coffee_sponsorship_available():
         _about_row(community, "support", _t("support.coffee.title"), _t("support.coffee.desc"), _setting_link(_t("support.coffee.open"), host._open_coffee_sponsorship))
     if host._iap_supported_platform():

@@ -1,0 +1,7 @@
+{
+  "product.name": "Aether N2System smoke",
+  "product.displayName": "Aether N2System smoke",
+  "designResolution": "320x180",
+  "startupScript": "boot.nss",
+  "dev.useUtf8": true
+}

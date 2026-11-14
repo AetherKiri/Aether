@@ -66,3 +66,7 @@
 	path = packages/AetherLeafTtt
 	url = git@github.com:AetherKiri/AetherLeafTtt.git
 	branch = main
+[submodule "packages/AetherN2System"]
+	path = packages/AetherN2System
+	url = https://github.com/AetherKiri/AetherN2System.git
+	branch = aether

@@ -184,6 +184,9 @@ set(AETHERKIRI_MINORI_DIR
 set(AETHERKIRI_ENTISGLS_DIR
     "${CMAKE_CURRENT_SOURCE_DIR}/packages/EntisGLS-SDL3"
     CACHE PATH "path to the EntisGLS-SDL3 aether branch checkout")
+set(AETHERKIRI_N2SYSTEM_DIR
+    "${CMAKE_CURRENT_SOURCE_DIR}/packages/AetherN2System"
+    CACHE PATH "path to an AetherN2System runtime checkout")
 set(AETHERKIRI_RFVP_DIR
     "${CMAKE_CURRENT_SOURCE_DIR}/packages/rfvp"
     CACHE PATH "path to an rfvp runtime checkout")
@@ -405,12 +408,23 @@ if(AETHERKIRI_ENABLE_ENTISGLS AND (BUILD_GODOT_EXTENSION OR ENABLE_TESTS) AND
     option(AETHERKIRI_BUILD_ENTISGLS_TESTS "Build asset-free EntisGLS regression tests" ${ENABLE_TESTS})
     add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/bridge/entisgls_runtime)
 endif()
+if(AETHERKIRI_ENABLE_N2SYSTEM AND (BUILD_GODOT_EXTENSION OR ENABLE_TESTS))
+    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/bridge/n2system_runtime)
+endif()
 if(AETHERKIRI_INTERNAL_ENABLED)
     aetherinternal_add_runtime_providers("${CMAKE_CURRENT_SOURCE_DIR}")
 endif()
 if(AETHERKIRI_ENABLE_RFVP)
     add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/bridge/rfvp_runtime)
 endif()
+# Export helpers consume only this configuration's enabled host package.
+set(_n2_publish "")
+if(TARGET aether_n2system_runtime)
+    get_target_property(_n2_publish aether_n2system_runtime AETHERKIRI_N2SYSTEM_PUBLISH_DIR)
+endif()
+file(GENERATE OUTPUT "${CMAKE_BINARY_DIR}/n2system-runtime-publish.txt"
+    CONTENT "${_n2_publish}\n")
+unset(_n2_publish)
 if(BUILD_GODOT_EXTENSION)
     add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/bridge/godot_extension)
 endif()

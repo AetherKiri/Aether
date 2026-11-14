@@ -149,6 +149,28 @@ stage_all_vcpkg_runtime_libraries() {
     done
 }
 
+stage_n2system_runtime_libraries() {
+    local runtime_dir="$CMAKE_BUILD_DIR/vcpkg_installed/$AETHERKIRI_LINUX_TRIPLET/lib"
+    local destination="$GODOT_BIN_DIR/n2system-runtime"
+    local previous_count=-1 current_count library dependency
+    while true; do
+        current_count="$(find "$destination" -maxdepth 1 -type f -name '*.so*' | wc -l)"
+        [[ "$current_count" != "$previous_count" ]] || break
+        previous_count="$current_count"
+        while IFS= read -r -d '' library; do
+            while IFS= read -r dependency; do
+                [[ -n "$dependency" ]] || continue
+                cp -Lf "$dependency" "$destination/"
+            done < <(
+                LD_LIBRARY_PATH="$runtime_dir:$destination${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}" \
+                    ldd "$library" | awk -v runtime_dir="$runtime_dir/" '
+                        $2 == "=>" && index($3, runtime_dir) == 1 { print $3 }
+                    ' | sort -u
+            )
+        done < <(find "$destination" -maxdepth 1 -type f -name '*.so*' -print0)
+    done
+}
+
 relocate_linux_libraries() {
     local library
     # RUNPATH applies only to a library's direct dependencies. Each bundled
@@ -194,6 +216,10 @@ strip_linux_runtime_libraries() {
 stage_export_runtime_libraries() {
     find "$GODOT_BIN_DIR" -maxdepth 1 -type f -name 'lib*.so*' \
         -exec cp -Lf {} "$GODOT_EXPORT_DIR/" \;
+    rm -rf "$GODOT_EXPORT_DIR/n2system-runtime"
+    if [[ -d "$GODOT_BIN_DIR/n2system-runtime" ]]; then
+        cp -R "$GODOT_BIN_DIR/n2system-runtime" "$GODOT_EXPORT_DIR/"
+    fi
 }
 
 stage_release_extension_for_editor_scan() {
@@ -208,6 +234,10 @@ stage_release_extension_for_editor_scan() {
     mkdir -p "$debug_dir"
     find "$GODOT_BIN_DIR" -maxdepth 1 -type f -name 'lib*.so*' \
         -exec cp -Lf {} "$debug_dir/" \;
+    rm -rf "$debug_dir/n2system-runtime"
+    if [[ -d "$GODOT_BIN_DIR/n2system-runtime" ]]; then
+        cp -R "$GODOT_BIN_DIR/n2system-runtime" "$debug_dir/"
+    fi
 }
 
 echo "==> Building Linux engine and Godot extension"
@@ -215,6 +245,8 @@ cmake --preset "$CMAKE_CONFIG_PRESET" \
     -D "CMAKE_MAKE_PROGRAM=$CMAKE_MAKE_PROGRAM" \
     -D "AETHERKIRI_ENABLE_INTERNAL=${AETHERKIRI_ENABLE_INTERNAL:-ON}" \
     -D "AETHERKIRI_ENABLE_FLASH=${AETHERKIRI_ENABLE_FLASH:-ON}" \
+    -D "AETHERKIRI_ENABLE_N2SYSTEM=${AETHERKIRI_ENABLE_N2SYSTEM:-ON}" \
+    -D "AETHERKIRI_N2SYSTEM_DIR=${AETHERKIRI_N2SYSTEM_DIR:-$PROJECT_ROOT/packages/AetherN2System}" \
     -D "AETHERKIRI_ENABLE_SOFTPAL_RUNTIME=${AETHERKIRI_ENABLE_SOFTPAL_RUNTIME:-OFF}" \
     -D "AETHERKIRI_SOFTPAL_DIR=${AETHERKIRI_SOFTPAL_DIR:-$PROJECT_ROOT/packages/AetherSoftPal}"
 cmake --build --preset "$CMAKE_BUILD_PRESET" -- -j"$PARALLEL_JOBS"
@@ -222,11 +254,22 @@ cmake --build --preset "$CMAKE_BUILD_PRESET" -- -j"$PARALLEL_JOBS"
 mkdir -p "$GODOT_BIN_DIR"
 cp -f "$CMAKE_BUILD_DIR/abi/libengine_api.so" "$GODOT_BIN_DIR/"
 cp -f "$CMAKE_BUILD_DIR/bridge/godot_extension/libaether_kiri_godot.so" "$GODOT_BIN_DIR/"
+python3 "$PROJECT_ROOT/tools/stage_n2system_runtime.py" \
+    --manifest "$CMAKE_BUILD_DIR/n2system-runtime-publish.txt" \
+    --destination "$GODOT_BIN_DIR/n2system-runtime"
+if [[ -d "$GODOT_BIN_DIR/n2system-runtime" ]]; then
+    stage_n2system_runtime_libraries
+    relocate_linux_libraries "$GODOT_BIN_DIR/n2system-runtime"
+    verify_linux_libraries "$GODOT_BIN_DIR/n2system-runtime"
+fi
 stage_all_vcpkg_runtime_libraries
 relocate_linux_libraries "$GODOT_BIN_DIR"
 if [[ "$BUILD_TYPE_LOWER" == "release" ]]; then
     echo "==> Removing non-runtime symbols from staged Linux Release libraries"
     strip_linux_runtime_libraries "$GODOT_BIN_DIR"
+    if [[ -d "$GODOT_BIN_DIR/n2system-runtime" ]]; then
+        strip_linux_runtime_libraries "$GODOT_BIN_DIR/n2system-runtime"
+    fi
 fi
 
 if readelf -d "$GODOT_BIN_DIR/libengine_api.so" | grep -Fq "$CMAKE_BUILD_DIR"; then

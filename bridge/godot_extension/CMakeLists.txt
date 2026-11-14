@@ -360,6 +360,32 @@ if(TARGET aether_mages_runtime)
     target_compile_definitions(aether_kiri_godot PRIVATE
         AETHERKIRI_WITH_MAGES=1)
 endif()
+set(_n2_publish "")
+if(TARGET aether_n2system_runtime)
+    target_link_libraries(aether_kiri_godot PRIVATE aether_n2system_runtime)
+    target_compile_definitions(aether_kiri_godot PRIVATE AETHERKIRI_WITH_N2SYSTEM=1)
+    get_target_property(_n2_stage aether_n2system_runtime AETHERKIRI_N2SYSTEM_STAGE)
+    get_target_property(_n2_publish aether_n2system_runtime AETHERKIRI_N2SYSTEM_PUBLISH_DIR)
+    find_package(Python3 REQUIRED COMPONENTS Interpreter)
+    # A NativeAOT-only update need not relink the extension. Run staging on
+    # every requested extension build, after the host package is published.
+    # CMP0112 NEW keeps TARGET_FILE_DIR from adding a reverse dependency on
+    # the extension and forming a cycle with the explicit dependency below.
+    cmake_policy(PUSH)
+    cmake_policy(SET CMP0112 NEW)
+    add_custom_target(aether_n2system_stage ALL
+        COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/tools/stage_n2system_runtime.py"
+            --manifest "${CMAKE_BINARY_DIR}/n2system-runtime-publish.txt"
+            --destination "${CMAKE_SOURCE_DIR}/apps/godot_app/bin/${_n2_stage}/$<LOWER_CASE:$<CONFIG>>/n2system-runtime"
+        COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/tools/stage_n2system_runtime.py"
+            --manifest "${CMAKE_BINARY_DIR}/n2system-runtime-publish.txt"
+            --destination "$<TARGET_FILE_DIR:aether_kiri_godot>/n2system-runtime"
+        DEPENDS aether_n2system_host
+        COMMENT "Staging N2System host, fonts and isolated native dependencies"
+        VERBATIM)
+    cmake_policy(POP)
+    add_dependencies(aether_kiri_godot aether_n2system_stage)
+endif()
 if(TARGET aether_entisgls_runtime)
     target_link_libraries(aether_kiri_godot PRIVATE aether_entisgls_runtime)
     target_compile_definitions(aether_kiri_godot PRIVATE AETHERKIRI_WITH_ENTISGLS=1)

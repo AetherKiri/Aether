@@ -34,3 +34,25 @@ if(AETHERKIRI_INTERNAL_ENABLED AND
 endif()
 
 catch_discover_tests(engine-api-diagnostics)
+
+# Keep this process free of engine_api_stub's installed legacy services.
+# Provider-only hosts must cache presentation settings before game detection.
+add_executable(engine-api-provider-only
+    provider_only.cpp
+    ${CMAKE_SOURCE_DIR}/abi/src/engine_api_dispatch.cpp
+    ${CMAKE_SOURCE_DIR}/abi/src/engine_api_crash_capture.cpp
+    ${CMAKE_SOURCE_DIR}/abi/src/engine_runtime_provider.cpp
+    ${CMAKE_SOURCE_DIR}/abi/src/TextTransform.cpp
+)
+target_compile_features(engine-api-provider-only PRIVATE cxx_std_17)
+target_include_directories(engine-api-provider-only PRIVATE
+    ${CMAKE_SOURCE_DIR}/abi/include
+    ${CMAKE_SOURCE_DIR}/abi/src
+)
+target_link_libraries(engine-api-provider-only PRIVATE
+    Catch2::Catch2WithMain fmt::fmt spdlog::spdlog
+)
+if(WIN32)
+    target_link_libraries(engine-api-provider-only PRIVATE dbghelp)
+endif()
+catch_discover_tests(engine-api-provider-only)

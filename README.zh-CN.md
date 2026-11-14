@@ -39,6 +39,7 @@ Godot App Shell
             ├─ System35 Runtime ─── xsystem35（AliceSoft）
             ├─ System3 Runtime ──── system3-sdl2（AliceSoft System 1–3）
             ├─ EntisGLS Runtime ─── EntisGLS / Cotopha（公开 package）
+            ├─ N2System Runtime ──── AetherN2System / NitroSharp（实验性桌面接入）
             ├─ Artemis Runtime ──── Artemis（私有 package）
             ├─ CatSystem2 Runtime ─ CatSystem2（私有 package）
             ├─ BGI Runtime ──────── BGI / Ethornell（私有 package）
@@ -73,6 +74,7 @@ Godot App Shell
 - 通过公开 EntisGLS / Cotopha Runtime 在桌面端运行传统 CSX 脚本并读取 NOA
   资源，存档位于游戏目录的 `savedata/`。参见
   [接入范围与验证说明](https://github.com/AetherKiri/EntisGLS-SDL3/blob/aether/aether_runtime/README.md)。
+- 通过公开 [AetherN2System](https://github.com/AetherKiri/AetherN2System) submodule 实验性接入 NitroSharp / N2System 桌面源码，提供游戏目录识别与初步 NativeAOT 宿主桥接。压缩或加密的 NPA 归档尚未支持；macOS/Linux 的媒体解码依赖仍不完整，完整音视频播放与具体游戏兼容性仍需后续完善。移动端与 Web 尚未支持。
 - 覆盖 macOS、iOS/iPadOS、Android、Web 与 Linux 的导出配置。
 - 独立的 Flash 分类，使用原生 Ruffle 播放，支持声音、键鼠、触摸以及视觉小说的虚拟按钮。
 - 通过内置 xsystem35 原生运行 AliceSoft System 3.5/3.9 游戏，支持 ALD 目录导入、中日文和可选虚拟按键。参见[原生宿主与游戏测试范围](bridge/xsystem35_runtime/README.md)。
@@ -109,6 +111,7 @@ Aether 使用了以下引擎 fork。表中分别提供 Aether 接入仓库和原
 | AliceSoft System 3.5 / 3.9 | [AetherKiri/xsystem35-sdl2](https://github.com/AetherKiri/xsystem35-sdl2) | [kichikuou/xsystem35-sdl2](https://github.com/kichikuou/xsystem35-sdl2) |
 | AliceSoft System 1–3 | [AetherKiri/system3-sdl2](https://github.com/AetherKiri/system3-sdl2) | [kichikuou/system3-sdl2](https://github.com/kichikuou/system3-sdl2) |
 | EntisGLS / Cotopha | [AetherKiri/EntisGLS-SDL3](https://github.com/AetherKiri/EntisGLS-SDL3) | [nL6DHZc3RhMnC/EntisGLS-SDL3](https://github.com/nL6DHZc3RhMnC/EntisGLS-SDL3) |
+| N2System / NitroSharp | [AetherKiri/AetherN2System](https://github.com/AetherKiri/AetherN2System) | [CommitteeOfZero/nitrosharp](https://github.com/CommitteeOfZero/nitrosharp) |
 
 ## Flash 播放
 
@@ -145,6 +148,7 @@ SWF 引用的本地相对路径资源从其所在目录读取，SharedObject 存
 | | `bridge/siglus_runtime/` | Siglus provider 与应用到 pristine `siglus_rs` 的构建期 overlay。 |
 | | `bridge/flash_runtime/` | Ruffle 静态库与原生画面、输入、音频桥接。 |
 | | `bridge/entisgls_runtime/` | 公开 EntisGLS / Cotopha provider 的构建接入。 |
+| | `bridge/n2system_runtime/` | 实验性 N2System provider 与桌面 NativeAOT 宿主桥接。 |
 | 引擎 | `packages/AetherKrkr/` | KiriKiri2 引擎运行时 submodule。 |
 | | `packages/OnscripterYuri/` | 公开 OnscripterYuri submodule。 |
 | | `packages/AetherSiglus/` | 公开 siglus_rs submodule（保持只读）。 |
@@ -152,6 +156,7 @@ SWF 引用的本地相对路径资源从其所在目录读取，SharedObject 存
 | | `packages/AetherInternal/` | 可选私有运行时（含 Escude、SystemC）及 E-mote/Live2D 支持；公开构建不依赖它。 |
 | | `packages/AetherSoftPal/` | 可选私有原生 SoftPal 运行时 submodule。 |
 | | `packages/EntisGLS-SDL3/` | 公开 EntisGLS / Cotopha 运行时 submodule 及 provider。 |
+| | `packages/AetherN2System/` | 公开 NitroSharp / N2System 运行时 submodule。 |
 | 支撑 | `demos/aetherkiri-kag3/` | 内置 KAG3 Demo 源码。 |
 | | `tests/` | 单元测试、fixture 与可移植 probe profile。 |
 | | `tools/` | 开发与兼容工具（xp3 归档工具等）。 |
@@ -168,6 +173,7 @@ SWF 引用的本地相对路径资源从其所在目录读取，SharedObject 存
 | vcpkg | 所有构建 | `.devtools/vcpkg` 或 `VCPKG_ROOT` |
 | Godot 4.7 | 导出 | `/Applications/Godot.app` 或 `GODOT_BIN=/path/to/Godot` |
 | 最新 stable Rust（rustup） | Flash、Siglus、Minori | `rustup update stable`；原生运行时统一使用 `RUSTUP_TOOLCHAIN=stable` |
+| .NET 10 SDK | 桌面 N2System NativeAOT 宿主 | 启用 N2System 时需要；同时需要目标平台的原生编译工具链 |
 | Java 17+ | Flash 内建类 | `java` 需在 PATH 中；macOS 可用 `brew install openjdk@17`，再将其 `bin` 目录加入 PATH |
 | Xcode | macOS / iOS | 标签发布的 iOS 构建需要 iOS 26 SDK |
 | Android SDK/NDK | Android | NDK `28.1.13356709`；`ANDROID_HOME` 或 `$HOME/Library/Android/sdk` |
@@ -180,13 +186,14 @@ SWF 引用的本地相对路径资源从其所在目录读取，SharedObject 存
 ```bash
 git submodule update --init \
   packages/AetherKrkr packages/OnscripterYuri packages/psdfile \
-  packages/AetherSiglus packages/AetherMinori packages/ruffle
+  packages/AetherSiglus packages/AetherMinori packages/ruffle \
+  packages/AetherN2System
 ./build.sh macos debug        # 或：macos release / ios debug --simulator /
                                # ios release / android debug --abi=arm64-v8a /
                                # web debug / linux release
 ```
 
-这六个公开 runtime submodule 是默认构建的最小集合（引擎仓是 configure
+这些公开 runtime submodule 用于默认构建（引擎仓是 configure
 硬依赖；Siglus 与 Minori 在无 Rust 工具链时会优雅降级，但检出必须存在；
 Flash 需要最新 stable Rust 和 Java）。设置 `AETHERKIRI_ENABLE_FLASH=OFF`
 可构建不包含 Flash 播放的版本。
@@ -202,6 +209,8 @@ git config --global url."https://github.com/".insteadOf git@github.com:
 脚本会构建 native engine 与 Godot host library，将产物放到
 `apps/godot_app/bin/`，并在 Godot 可用时运行对应的导出 preset。Linux 导出
 会把所需的 vcpkg 共享库放在可执行文件旁边。
+
+N2System submodule 固定到其 `aether` 接入分支上的提交。N2System 在支持的桌面构建中遵循 `AETHERKIRI_RUNTIMES_DEFAULT`，默认启用；iOS、Android 和 Web 默认禁用。可用 `git submodule update --init --recursive packages/AetherN2System` 单独初始化其源码，并在 CMake 中设置 `AETHERKIRI_ENABLE_N2SYSTEM=OFF` 关闭此运行时及其 .NET 构建依赖。
 
 ### 可选组件
 
@@ -233,7 +242,7 @@ git config --global url."https://github.com/".insteadOf git@github.com:
   迭代而无需提交 gitlink：`AETHERKIRI_KRKR_DIR`、
   `AETHERKIRI_ONSCRIPTERYURI_DIR`、`AETHERKIRI_SIGLUS_DIR`、
   `AETHERKIRI_MINORI_DIR`、`AETHERKIRI_RFVP_DIR`、`AETHERKIRI_INTERNAL_DIR`、
-  `AETHERKIRI_SOFTPAL_DIR`。
+  `AETHERKIRI_SOFTPAL_DIR`、`AETHERKIRI_N2SYSTEM_DIR`。
 
 - **TJS2 分析辅助**——`git submodule update --init packages/tjs2Decompiler`
   （见 [development.zh-CN.md](doc/development.zh-CN.md#编译后-tjs2-分析)）。

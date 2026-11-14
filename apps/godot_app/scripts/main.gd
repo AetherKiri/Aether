@@ -11535,17 +11535,34 @@ func _android_external_storage_path_from_tree_uri(path: String) -> String:
     if not path.begins_with(prefix):
         return path
     var document_id := path.substr(prefix.length()).uri_decode()
-    if document_id.begins_with("primary:"):
-        var relative_path := document_id.substr("primary:".length()).strip_edges()
-        if relative_path.is_empty():
-            return "/storage/emulated/0"
-        return "/storage/emulated/0".path_join(relative_path)
-    if document_id.begins_with("home:"):
-        var home_relative_path := document_id.substr("home:".length()).strip_edges()
-        if home_relative_path.is_empty():
-            return "/storage/emulated/0/Documents"
-        return "/storage/emulated/0/Documents".path_join(home_relative_path)
-    return path
+    # ACTION_OPEN_DOCUMENT_TREE returns "<volume-id>:<relative-path>".
+    # ExternalStorageProvider uses "primary" for the primary shared volume,
+    # "home" for the Documents root, and the volume UUID for removable
+    # microSD/USB volumes.
+    var separator := document_id.find(":")
+    if separator <= 0:
+        return path
+    var volume_id := document_id.substr(0, separator)
+    var relative_path := document_id.substr(separator + 1).trim_prefix("/")
+    var volume_root := ""
+    if volume_id == "primary":
+        volume_root = "/storage/emulated/0"
+    elif volume_id == "home":
+        volume_root = "/storage/emulated/0/Documents"
+    elif (
+        not volume_id.is_empty()
+        and not volume_id.contains("/")
+        and not volume_id.contains("\\")
+        and volume_id != "."
+        and volume_id != ".."
+    ):
+        # Removable volumes are mounted under /storage/<UUID>.
+        volume_root = "/storage".path_join(volume_id)
+    else:
+        return path
+    if relative_path.is_empty():
+        return volume_root
+    return volume_root.path_join(relative_path)
 
 func _web_game_entry_available(game: Dictionary) -> bool:
     if OS.get_name() != "Web":

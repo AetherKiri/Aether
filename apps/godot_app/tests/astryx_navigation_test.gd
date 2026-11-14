@@ -275,6 +275,89 @@ func _check_ios_library_actions() -> void:
     _expect(host.modal_layer.visible, "Import still opens the picker on other platforms")
     host._dismiss_modal()
 
+func _check_sidebar_transition() -> void:
+    controller.set_library_display("cards")
+    host.ui_motion.reduced_motion = false
+    await create_timer(0.35).timeout
+    controller.view.scroll.scroll_vertical = 160
+    for _direction in range(2):
+        var first := _first_game()
+        var card_id := first.get_instance_id()
+        var page_id: int = controller.view.layout_root.get_instance_id()
+        var cover_loads := host.cover_loads
+        var widths: Array[float] = [first.size.x]
+        var stable_controls := true
+        var opaque := true
+        controller.view._toggle_sidebar()
+        # Sample a fixed timeline so CI scheduling cannot turn a smooth tween
+        # into a one-frame jump in the test. Containers settle between samples.
+        var transition: Tween = controller.view.sidebar_tween
+        transition.pause()
+        while controller.view.sidebar_animating:
+            transition.custom_step(1.0 / 60.0)
+            await process_frame
+            await process_frame
+            var current := _first_game()
+            stable_controls = stable_controls and current.get_instance_id() == card_id \
+                and controller.view.layout_root.get_instance_id() == page_id
+            var grid: Control = controller.view.find_child("AstryxLibraryGrid", true, false)
+            opaque = opaque and is_equal_approx(grid.modulate.a, 1.0)
+            widths.append(current.size.x)
+        await _settle()
+        _expect(stable_controls and _first_game().get_instance_id() == card_id,
+            "Sidebar animation keeps the existing page and cards, including its final frame")
+        _expect(opaque, "Sidebar resizing never restarts the grid entrance fade")
+        _expect(host.cover_loads == cover_loads, "Sidebar resizing does not reload cover textures")
+        _expect(controller.view.scroll.scroll_vertical == 160, "Sidebar resizing retains the library scroll position")
+        var distance := absf(widths.back() - widths.front())
+        var largest_step := 0.0
+        for index in range(1, widths.size()):
+            largest_step = maxf(largest_step, absf(widths[index] - widths[index - 1]))
+        _expect(widths.size() >= 3 and distance > 20 and largest_step < distance * 0.6,
+            "Card widths change continuously across the sidebar transition")
+        var cover: Control = _first_game().find_child("AstryxCardCover", true, false)
+        _expect(absf(cover.size.y - _first_game().size.x * 0.75) < 1,
+            "The existing cover follows the card width without an end-of-animation size jump")
+    controller.view._toggle_sidebar()
+    await create_timer(0.06).timeout
+    var interrupted_width: float = controller.view.sidebar_width
+    controller.view._toggle_sidebar()
+    _expect(is_equal_approx(controller.view.sidebar_width, interrupted_width),
+        "Reversing the sidebar starts from its current width")
+    await _settle()
+    _expect(not controller.view.sidebar_expanded and is_equal_approx(controller.view.sidebar_width, 48),
+        "Rapid toggles settle at the last requested state")
+    controller.view._toggle_sidebar()
+    controller.view.navigate("videos")
+    await _settle()
+    _expect(controller.view.route == "videos" and not controller.view.sidebar_animating,
+        "Navigating during the animation cancels callbacks for the retired rail")
+    controller.view.navigate("library")
+    await _settle()
+    host.ui_motion.reduced_motion = true
+    controller.view._toggle_sidebar()
+    host._open_game_detail_with_iap(host.known_games[0])
+    await _settle()
+    # Crossing the detail breakpoint must also retain the artwork and fields.
+    root.size = Vector2i(834, 1194)
+    await _settle()
+    var detail_id: int = controller.view.detail_cover.get_instance_id()
+    var cover_loads := host.cover_loads
+    host.ui_motion.reduced_motion = false
+    controller.view._toggle_sidebar()
+    await _settle()
+    _expect(controller.view.detail_cover.get_instance_id() == detail_id and host.cover_loads == cover_loads,
+        "Detail resizing reflows the existing cover across its narrow breakpoint")
+    _expect(controller.view.detail_layout is VBoxContainer, "The narrower detail pane uses a vertical layout")
+    controller.view._toggle_sidebar()
+    await _settle()
+    _expect(controller.view.detail_cover.get_instance_id() == detail_id and controller.view.detail_layout is HBoxContainer,
+        "Widening details restores columns without replacing the cover")
+    host.ui_motion.reduced_motion = true
+    root.size = Vector2i(1194, 834)
+    controller.view.navigate("library")
+    await _settle()
+
 func _check_background_effects() -> void:
     host.ui_motion.reduced_motion = false
     controller.view.rebuild()
@@ -355,6 +438,7 @@ func _run() -> void:
     await _check_return()
     await _check_updates()
     await _check_modal_first_frame()
+    await _check_sidebar_transition()
     await _check_background_effects()
     controller.set_enabled(false, false)
     _expect(host.game_list.get_child_count() == host.known_games.size(), "Switching to classic restores its current library")

@@ -40,6 +40,9 @@ var page: VBoxContainer
 var scroll: ScrollContainer
 var content: VBoxContainer
 var detail_backdrop: TextureRect
+var detail_layout: BoxContainer
+var detail_gallery: VBoxContainer
+var detail_cover: Control
 var save_button: Button
 var cancel_button: Button
 var save_status: Label
@@ -123,6 +126,11 @@ func sync_state() -> void:
 func rebuild(preserve_scroll: bool = false) -> void:
     if not is_inside_tree() or size.x <= 0:
         return
+    # Real route/viewport changes supersede an in-flight rail animation.
+    if is_instance_valid(sidebar_tween):
+        sidebar_tween.kill()
+    sidebar_tween = null
+    sidebar_animating = false
     if route == "library" and String(host.shell_route) != "library" and is_instance_valid(scroll):
         _discard_library_cache()
         # Keep the page in the tree: reattaching hundreds of controls would
@@ -136,8 +144,7 @@ func rebuild(preserve_scroll: bool = false) -> void:
         _reset_detail_edit()
     language = String(host.active_language)
     phone = size.x < 700
-    if not sidebar_animating:
-        sidebar_width = 260.0 if sidebar_expanded else 48.0
+    sidebar_width = 260.0 if sidebar_expanded else 48.0
     last_size = size
     if design == null or design.mode != controller.draft_theme:
         design = DESIGN.new(controller.draft_theme)
@@ -161,6 +168,9 @@ func rebuild(preserve_scroll: bool = false) -> void:
     scroll = null
     content = null
     detail_backdrop = null
+    detail_layout = null
+    detail_gallery = null
+    detail_cover = null
     search = null
     notice = null
     if route == "library" and not cached_library.is_empty():
@@ -374,13 +384,17 @@ func _navigation(bottom: bool) -> Control:
         brand.accessibility_name = "Aether"
         brand.mouse_filter = Control.MOUSE_FILTER_IGNORE
         brand_row.add_child(brand)
-        if sidebar_expanded:
+        if sidebar_expanded or sidebar_animating:
             var name_label := _label("Aether", 18, false, true)
             name_label.name = "AstryxSidebarTitle"
+            name_label.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+            name_label.offset_left = 44
+            name_label.offset_right = -8
             name_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
             name_label.autowrap_mode = TextServer.AUTOWRAP_OFF
             name_label.clip_text = true
-            brand_row.add_child(name_label)
+            # An overlay label cannot enlarge the collapsed rail's minimum size.
+            toggle.add_child(name_label)
     for entry in NAV:
         var id: String = entry[0]
         var selected := route == id or (route == "detail" and id == "library")
@@ -403,7 +417,7 @@ func _navigation(bottom: bool) -> Control:
             var icon := _icon(entry[1], 18, "text" if selected else "secondary")
             icon.position = Vector2(7, 7)
             button.add_child(icon)
-            if sidebar_expanded:
+            if sidebar_expanded or sidebar_animating:
                 var caption := _label(label, 14, not selected, selected)
                 caption.name = "AstryxNavLabel_" + id
                 caption.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
@@ -426,22 +440,57 @@ func _toggle_sidebar() -> void:
     sidebar_expanded = not sidebar_expanded
     var target := 260.0 if sidebar_expanded else 48.0
     sidebar_animating = not _reduced_motion()
-    rebuild(true)
+    # Keep the page and cover textures alive. Rebuilding here and again at the
+    # end restarted their entrance fades and caused two visible flashes.
+    var rail := _replace_sidebar_navigation()
+    _resize_sidebar(sidebar_width, rail)
+    if keyboard_activation:
+        _focus_sidebar_toggle()
     if sidebar_animating:
-        var rail: Control = layout_root.find_child("AstryxSideNav", true, false)
         sidebar_tween = create_tween()
-        sidebar_tween.tween_method(func(value: float):
-            sidebar_width = value
-            if is_instance_valid(rail):
-                rail.custom_minimum_size.x = value
-        , sidebar_width, target, design.metric("page_seconds")).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_IN_OUT)
-        sidebar_tween.tween_callback(func():
-            sidebar_animating = false
-            rebuild(true)
-            if keyboard_activation:
-                _focus_sidebar_toggle()
-        )
-    elif keyboard_activation:
+        var duration: float = design.metric("page_seconds") * absf(target - sidebar_width) / 212.0
+        sidebar_tween.tween_method(_resize_sidebar.bind(rail), sidebar_width, target, maxf(0.06, duration)) \
+            .set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_IN_OUT)
+        sidebar_tween.tween_callback(_finish_sidebar_animation.bind(keyboard_activation))
+    else:
+        _resize_sidebar(target, rail)
+        _finish_sidebar_animation(keyboard_activation)
+
+func _replace_sidebar_navigation() -> Control:
+    var previous: Control = layout_root.find_child("AstryxSideNav", true, false)
+    var frame := previous.get_parent()
+    var index := previous.get_index()
+    frame.remove_child(previous)
+    previous.queue_free()
+    var rail := _navigation(false)
+    frame.add_child(rail)
+    frame.move_child(rail, index)
+    return rail
+
+func _resize_sidebar(value: float, rail: Control) -> void:
+    sidebar_width = value
+    rail.custom_minimum_size.x = value
+    var opacity := clampf((value - 48.0) / 212.0, 0.0, 1.0)
+    for label in rail.find_children("AstryxNavLabel_*", "Label", true, false):
+        label.modulate.a = opacity
+    var title: Label = rail.find_child("AstryxSidebarTitle", true, false)
+    if title != null:
+        title.modulate.a = opacity
+    if route == "detail":
+        _resize_detail_cover()
+    elif route == "library":
+        library_content_key = _library_key()
+
+func _finish_sidebar_animation(keyboard_activation: bool) -> void:
+    sidebar_animating = false
+    sidebar_tween = null
+    if not sidebar_expanded:
+        _replace_sidebar_navigation()
+    # Settings can cross from two panes into the category drill-down layout.
+    # Ordinary rail resizing does not replace the content or its input state.
+    if route == "settings" and settings_narrow != (size.x - sidebar_width <= 768.0):
+        rebuild(true)
+    if keyboard_activation:
         _focus_sidebar_toggle()
 
 func _focus_sidebar_toggle() -> void:
@@ -1736,7 +1785,13 @@ func _game_card(game: Dictionary, width: float) -> Button:
     stack.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
     button.add_child(stack)
     var height := width * (4.0 / 3.0 if phone else 0.75)
-    stack.add_child(_cover(game, height))
+    var cover := _cover(game, height)
+    cover.name = "AstryxCardCover"
+    stack.add_child(cover)
+    button.resized.connect(func():
+        if button.size.x > 0:
+            cover.custom_minimum_size.y = button.size.x * (4.0 / 3.0 if phone else 0.75)
+    )
     var label := _label(title, 14 if phone else 16, false, true)
     label.max_lines_visible = 2
     label.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
@@ -1979,19 +2034,13 @@ func _detail_content() -> void:
     if game.is_empty():
         return
     var narrow := _content_width() < 660
-    var layout: BoxContainer = _vbox(20) if narrow else _hbox(20)
-    content.add_child(layout)
-    var column_width := _content_width() - 10 if narrow else (_content_width() - 30) / 2
-    # Use the artwork's own ratio so landscape covers fill the column without
-    # letterboxing. Only shrink when needed to keep the full image on screen.
-    var available_height := maxf(80, size.y - 133 - (68 if phone else 0))
-    var max_cover_height := minf(available_height, size.y * 0.60) if phone else available_height
-    var gallery := _vbox(0)
-    if not narrow:
-        gallery.custom_minimum_size.x = column_width
-        gallery.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
-    layout.add_child(gallery)
+    detail_layout = _vbox(20) if narrow else _hbox(20)
+    detail_layout.set_meta("narrow", narrow)
+    content.add_child(detail_layout)
+    detail_gallery = _vbox(0)
+    detail_layout.add_child(detail_gallery)
     var image := _cover(game, 0)
+    detail_cover = image
     image.name = "AstryxDetailCover"
     image.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
     image.size_flags_vertical = Control.SIZE_SHRINK_BEGIN
@@ -2001,13 +2050,11 @@ func _detail_content() -> void:
         ratio = artwork.texture.get_size().aspect()
         artwork.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
         image.add_theme_stylebox_override("panel", StyleBoxEmpty.new())
-    var cover_size := Vector2(column_width, column_width / ratio)
-    if cover_size.y > max_cover_height:
-        cover_size *= max_cover_height / cover_size.y
-    image.custom_minimum_size = cover_size
-    gallery.add_child(image)
+    image.set_meta("aspect_ratio", ratio)
+    detail_gallery.add_child(image)
+    _resize_detail_cover()
     var info := _vbox(20)
-    layout.add_child(info)
+    detail_layout.add_child(info)
     var heading := _vbox(8)
     info.add_child(heading)
     heading.add_child(_label(host._game_display_title(game), 34, false, true))
@@ -2031,6 +2078,31 @@ func _detail_content() -> void:
     if cover_section.visible:
         _detail_cover_actions(cover_section, game)
     info.add_child(_divider())
+
+func _resize_detail_cover() -> void:
+    if not is_instance_valid(detail_cover):
+        return
+    var narrow := _content_width() < 660
+    if bool(detail_layout.get_meta("narrow")) != narrow:
+        var previous := detail_layout
+        detail_layout = _vbox(20) if narrow else _hbox(20)
+        detail_layout.set_meta("narrow", narrow)
+        content.add_child(detail_layout)
+        content.move_child(detail_layout, previous.get_index())
+        for child in previous.get_children():
+            child.reparent(detail_layout, false)
+        content.remove_child(previous)
+        previous.queue_free()
+    var column_width := _content_width() - 10 if narrow else (_content_width() - 30) / 2
+    detail_gallery.custom_minimum_size.x = 0.0 if narrow else column_width
+    detail_gallery.size_flags_horizontal = Control.SIZE_EXPAND_FILL if narrow else Control.SIZE_SHRINK_BEGIN
+    var ratio: float = detail_cover.get_meta("aspect_ratio")
+    var cover_size := Vector2(column_width, column_width / ratio)
+    var available_height := maxf(80, size.y - 133 - (68 if phone else 0))
+    var max_cover_height := minf(available_height, size.y * 0.60) if phone else available_height
+    if cover_size.y > max_cover_height:
+        cover_size *= max_cover_height / cover_size.y
+    detail_cover.custom_minimum_size = cover_size
 
 func _detail_information(rows: Control, game: Dictionary) -> void:
     var input := LineEdit.new()

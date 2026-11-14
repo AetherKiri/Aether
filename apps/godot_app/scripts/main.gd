@@ -8637,6 +8637,19 @@ func _show_detail(game: Dictionary, source: Control = null) -> void:
         Callable(self, "_show_detail").bind(game, source)
     ):
         return
+    var astryx := _astryx_shell_controller()
+    if astryx != null:
+        # Only the active presenter needs a detail tree. Synchronize now so
+        # opening a game does not wait for the presenter's periodic poll.
+        _finish_hero_overlay()
+        _clear_hero_state()
+        _reset_shell_scroll_drag()
+        _set_game_background(false)
+        selected_game = game
+        modal_layer.visible = false
+        _sync_shell_route("detail")
+        astryx.sync_state()
+        return
     var previous_route := shell_route
     var animate_hero := false
     if source != null and is_instance_valid(source):
@@ -8710,6 +8723,8 @@ func _restore_detail_scroll_after_relayout(scroll_vertical: int) -> void:
     detail_scroll.scroll_vertical = mini(scroll_vertical, maximum_scroll)
 
 func _rebuild_detail_contents(game: Dictionary, animate_hero: bool, animate_content: bool) -> void:
+    if _astryx_shell_controller() != null:
+        return
     for child in detail_scroll.get_children():
         detail_scroll.remove_child(child)
         child.queue_free()
@@ -9924,8 +9939,10 @@ func _poll_native_font_file_picker() -> void:
     elif result.get("status") == "error":
         callback.call({"error": ERR_FILE_CANT_READ})
 
-func _read_game_text_config(game: Dictionary) -> Dictionary:
-    return GameTextConfig.read(_game_runtime_root(String(game.get("path", ""))), _game_runtime_kind(String(game.get("path", ""))), game)
+func _read_game_text_config(game: Dictionary, runtime: String = "") -> Dictionary:
+    if runtime.is_empty():
+        runtime = _game_runtime_kind(String(game.get("path", "")))
+    return GameTextConfig.read(_game_runtime_root(String(game.get("path", ""))), runtime, game)
 
 func _game_text_encoding(game: Dictionary, runtime: String) -> String:
     var selected_root := _game_runtime_root(String(game.get("path", "")))
@@ -10041,10 +10058,10 @@ func _game_launch_entry_label(game: Dictionary) -> String:
         return _t("detail.default_launch_entry")
     return relative_path
 
-func _can_configure_launch_file(game: Dictionary) -> bool:
+func _can_configure_launch_file(game: Dictionary, runtime: String = "") -> bool:
     return OS.get_name() != "Web" \
         and not builtin_demo.is_game(game) \
-        and _game_runtime_kind(String(game.get("path", ""))) not in [RUNTIME_ONSCRIPTER, RUNTIME_XSYSTEM4, RUNTIME_XSYSTEM35, RUNTIME_SYSTEM3] \
+        and (runtime if not runtime.is_empty() else _game_runtime_kind(String(game.get("path", "")))) not in [RUNTIME_ONSCRIPTER, RUNTIME_XSYSTEM4, RUNTIME_XSYSTEM35, RUNTIME_SYSTEM3] \
         and String(game.get("type", "Directory")).to_lower() == "directory"
 
 func _set_launch_file_for_selected() -> void:
@@ -10303,17 +10320,20 @@ func _confirm_remove_selected() -> void:
     )
     buttons.add_child(remove)
 
+func _library_uses_refresh_action() -> bool:
+    return OS.get_name() == "iOS"
+
 func _on_refresh_or_import() -> void:
     if home_library_mode != "game":
         if OS.get_name() == "Android":
             _open_video_import_dialog()
             return
-        if OS.get_name() == "iOS":
+        if _library_uses_refresh_action():
             _refresh_file_library()
         else:
             _open_video_import_dialog()
         return
-    if OS.get_name() == "iOS":
+    if _library_uses_refresh_action():
         _refresh_games()
         return
     if OS.get_name() == "Web":
@@ -16416,6 +16436,9 @@ func _handle_go_back_request() -> void:
     if game_running or cached_startup_state == STARTUP_RUNNING:
         _confirm_exit_game_for_go_back()
         return
+    var astryx := _astryx_shell_controller()
+    if astryx != null and astryx.handle_back():
+        return
     if shell_route in ["videos", "flash"] and _active_file_library().can_go_up():
         _go_up_video_directory()
         return
@@ -17747,6 +17770,9 @@ func _edge_back_gesture_qualified(
 func _perform_mobile_shell_back() -> bool:
     if modal_layer != null and modal_layer.visible:
         _dismiss_modal()
+        return true
+    var astryx := _astryx_shell_controller()
+    if astryx != null and astryx.handle_back():
         return true
     if shell_route in ["videos", "flash"] and _active_file_library().can_go_up():
         _go_up_video_directory()

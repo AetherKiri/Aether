@@ -448,6 +448,17 @@ func navigate(destination: String) -> void:
         _: host._show_library("game", false)
     controller.sync_state()
 
+func handle_back() -> bool:
+    if route == "settings" and settings_narrow and settings_detail:
+        settings_detail = false
+        editing_setting = ""
+        rebuild()
+        return true
+    if route == "detail":
+        navigate("library")
+        return true
+    return false
+
 func _header(title: String, searchable: bool = false, action: Control = null) -> void:
     var pad := _margin(16, 16, 16, 16)
     page.add_child(pad)
@@ -820,10 +831,7 @@ func _settings_content() -> void:
     heading.name = "AstryxSettingsHeading"
     content.add_child(heading)
     if settings_narrow:
-        var back := _button("", func():
-            settings_detail = false
-            rebuild()
-        , "quiet", "AstryxSettingsBack")
+        var back := _button("", handle_back, "quiet", "AstryxSettingsBack")
         back.accessibility_name = _text("返回设置", "Back to settings", "設定に戻る")
         back.custom_minimum_size = Vector2(44, 44)
         back.icon = load("res://assets/ui/astryx/back.svg")
@@ -1275,11 +1283,10 @@ func _choose_detail_font() -> void:
         refresh_content(true)
     )
 
-func _detail_text_settings(parent: Control, game: Dictionary) -> void:
-    var runtime: String = host._game_runtime_kind(String(game.get("path", "")))
+func _detail_text_settings(parent: Control, game: Dictionary, runtime: String) -> void:
     if runtime not in host.GameTextConfig.ENGINES:
         return
-    var loaded: Dictionary = host._read_game_text_config(game)
+    var loaded: Dictionary = host._read_game_text_config(game, runtime)
     var fields := _vbox(0)
     fields.name = "AstryxGameTextSettings"
     parent.add_child(fields)
@@ -1486,7 +1493,9 @@ func _about_settings() -> void:
 func _build_library() -> void:
     var media := route in ["videos", "flash"]
     var title := _nav_label(route)
-    var import_button := _button(_text("＋ 导入", "+ Import", "＋ 追加"), _import, "primary", "AstryxImport")
+    var refresh_only: bool = host._library_uses_refresh_action()
+    var import_button := _button(_t("home.refresh") if refresh_only else _text("＋ 导入", "+ Import", "＋ 追加"),
+        _import, "primary", "AstryxRefresh" if refresh_only else "AstryxImport")
     var actions := _hbox(8 if phone else 12)
     actions.size_flags_horizontal = Control.SIZE_SHRINK_END
     if not media:
@@ -1532,10 +1541,8 @@ func _library_display_switch() -> Control:
     return panel
 
 func _import() -> void:
-    if route in ["videos", "flash"]:
-        host._open_video_import_dialog()
-    else:
-        host._on_refresh_or_import()
+    host._on_refresh_or_import()
+    controller.sync_state()
 
 func _library_content() -> void:
     if route in ["videos", "flash"]:
@@ -1569,7 +1576,7 @@ func _library_content() -> void:
         elif recent_only:
             _empty(_text("尚未开始游玩", "Your next story awaits", "まだプレイしていません"), _text("开始一个游戏后，会在这里找到它。", "Games you play will appear here.", "プレイしたゲームはここに表示されます。"), "library")
         else:
-            _empty(_t("home.empty_title"), host._empty_help_text(), "library", _button(_t("home.import"), _import, "primary"))
+            _empty(_t("home.empty_title"), host._empty_help_text(), "library", _button(_t("home.refresh" if host._library_uses_refresh_action() else "home.import"), _import, "primary", "AstryxEmptyLibraryAction"))
         return
     if controller.library_display == "list":
         var list := _vbox(4)
@@ -1811,7 +1818,7 @@ func _media_content() -> void:
             folder_count += 1
     content.add_child(_label(_text("%d 个文件夹 · %d 个文件", "%d folders · %d files", "%d フォルダー · %d ファイル") % [folder_count, entries.size() - folder_count], 12, true))
     if entries.is_empty():
-        _empty(_t("search.no_results_title") if not query.is_empty() else host._media_text("video.empty_folder_title" if library.can_go_up() else "video.empty_title"), _t("search.no_results_help") if not query.is_empty() else host._video_empty_help_text(), "flash" if route == "flash" else "video", _button(host._media_text("video.import"), _import, "primary") if query.is_empty() else null)
+        _empty(_t("search.no_results_title") if not query.is_empty() else host._media_text("video.empty_folder_title" if library.can_go_up() else "video.empty_title"), _t("search.no_results_help") if not query.is_empty() else host._video_empty_help_text(), "flash" if route == "flash" else "video", _button(host._media_text("video.refresh" if host._library_uses_refresh_action() else "video.import"), _import, "primary", "AstryxEmptyLibraryAction") if query.is_empty() else null)
         return
     for item in entries:
         var row := _hbox(12)
@@ -1959,6 +1966,17 @@ func _detail_content() -> void:
     launch.size_flags_horizontal = Control.SIZE_EXPAND_FILL
     actions.add_child(launch)
     var rows := _collapsible(info, "information", _text("游戏信息", "Game information", "ゲーム情報"))
+    if rows.visible:
+        _detail_information(rows, game)
+    var rendering := _collapsible(info, "rendering", _text("画面与渲染", "Graphics & rendering", "画面とレンダリング"))
+    if rendering.visible:
+        _game_render_settings(rendering, game)
+    var cover_section := _collapsible(info, "cover", _text("封面", "Cover", "カバー"))
+    if cover_section.visible:
+        _detail_cover_actions(cover_section, game)
+    info.add_child(_divider())
+
+func _detail_information(rows: Control, game: Dictionary) -> void:
     var input := LineEdit.new()
     input.name = "AstryxGameNameInput"
     input.accessibility_name = _text("游戏名字", "Game name", "ゲーム名")
@@ -1974,7 +1992,10 @@ func _detail_content() -> void:
     )
     input.text_submitted.connect(func(_value: String): _save_detail_edit())
     _detail_field(rows, "name", input.accessibility_name, host._game_display_title(game), input, false)
-    _detail_text_settings(rows, game)
+    # Reuse one engine detection for all fields on this page; probing archives
+    # repeatedly on mobile storage can block the opening frame.
+    var runtime: String = host._game_runtime_kind(String(game.get("path", "")))
+    _detail_text_settings(rows, game, runtime)
     var launch_row := _hbox(16)
     launch_row.name = "AstryxLaunchFileRow"
     rows.add_child(launch_row)
@@ -1984,7 +2005,7 @@ func _detail_content() -> void:
     launch_row.add_child(launch_copy)
     launch_copy.add_child(_label(_text("启动文件", "Launch file", "起動ファイル"), 16, false, true))
     launch_copy.add_child(_label(host._game_launch_entry_label(game), 14, true))
-    if host._can_configure_launch_file(game):
+    if host._can_configure_launch_file(game, runtime):
         var set_launch := _setting_link(_text("设置", "Set", "設定"), host._set_launch_file_for_selected, "AstryxSetLaunchFile")
         set_launch.accessibility_name = _t("detail.set_launch_file")
         set_launch.size_flags_horizontal = Control.SIZE_SHRINK_END
@@ -1998,9 +2019,8 @@ func _detail_content() -> void:
     var remove := _button(_text("删除游戏", "Delete game", "ゲームを削除"), host._confirm_remove_selected, "destructive", "AstryxRemoveGame")
     remove.size_flags_horizontal = Control.SIZE_EXPAND_FILL
     rows.add_child(remove)
-    var rendering := _collapsible(info, "rendering", _text("画面与渲染", "Graphics & rendering", "画面とレンダリング"))
-    _game_render_settings(rendering, game)
-    var cover_section := _collapsible(info, "cover", _text("封面", "Cover", "カバー"))
+
+func _detail_cover_actions(cover_section: Control, game: Dictionary) -> void:
     var cover_path: String = host._resolve_cover_path(game)
     var location := _label(cover_path if not cover_path.is_empty() else _text("未设置封面", "No cover set", "カバー未設定"), 14, true)
     location.name = "AstryxCoverPath"
@@ -2023,7 +2043,6 @@ func _detail_content() -> void:
         var clear_cover := _button(_text("清除封面", "Clear cover", "カバーをクリア"), host._clear_cover_for_selected, "destructive", "AstryxClearCover")
         clear_cover.size_flags_horizontal = Control.SIZE_EXPAND_FILL
         cover_actions.add_child(clear_cover)
-    info.add_child(_divider())
 
 func _show_cover_sources() -> void:
     COVER_PICKER.new().show_for(self)

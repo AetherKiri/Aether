@@ -109,6 +109,10 @@ func _state_signature() -> String:
         host._active_file_library().current_directory, host.settings_draft.hash(), library_revision]
 
 func sync_state() -> void:
+    if not is_instance_valid(view):
+        _ensure_view()
+    if not is_instance_valid(view):
+        return
     var signature := _state_signature()
     if signature != state_signature:
         state_signature = signature
@@ -164,6 +168,8 @@ func set_enabled(value: bool, persist: bool = true) -> void:
         if host.shell_route == "settings":
             host._begin_settings_edit()
             host._rebuild_settings_view()
+        elif host.shell_route == "detail":
+            host._show_detail(host.selected_game)
     if persist and save_preferences() != OK:
         push_warning("Could not save shell interface preference")
 
@@ -175,6 +181,9 @@ func request_navigation(destination: Callable) -> bool:
         return false
     view.confirm_navigation(destination)
     return true
+
+func handle_back() -> bool:
+    return enabled and is_instance_valid(view) and view.handle_back()
 
 func save_settings() -> bool:
     var previous := theme_mode

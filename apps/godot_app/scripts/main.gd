@@ -4711,8 +4711,9 @@ func _apply_engine_options() -> void:
         if not runtime_default_font_path.is_empty():
             player.set_engine_option("wa2.font_path", runtime_default_font_path)
         var patch_dir := OS.get_environment("AETHER_WA2_PATCH_DIR").strip_edges()
-        if not patch_dir.is_empty():
-            player.set_engine_option("wa2.patch_dir", patch_dir)
+        # Empty selects native discovery of the installed Chinese patch on iOS
+        # and desktop. Always clear a previous session's explicit override.
+        player.set_engine_option("wa2.patch_dir", patch_dir)
         player.set_engine_option("wa2.audio.silent", "1" if wa2_silent else "0")
     player.set_engine_option("error_dialog_logs", "1" if error_dialog_logs else "0")
     var onscripter_encoding := OS.get_environment("AETHERKIRI_ONS_ENCODING").strip_edges()

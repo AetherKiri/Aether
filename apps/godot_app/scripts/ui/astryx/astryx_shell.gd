@@ -2,6 +2,7 @@ extends Control
 ## Native presenter for the React/Astryx reference. Runtime operations stay in the host.
 const DESIGN := preload("res://scripts/ui/astryx/astryx_theme.gd")
 const SWITCH := preload("res://scripts/ui/astryx/astryx_switch.gd")
+const SCROLL := preload("res://scripts/ui/astryx/astryx_scroll.gd")
 const SHADERS := preload("res://scripts/ui/aether_shaders.gd")
 const COVER_PICKER := preload("res://scripts/ui/astryx/cover_picker.gd")
 const NAV := [
@@ -218,6 +219,9 @@ func _button(value: String, action: Callable, variant: String = "secondary", nod
     if not node_name.is_empty():
         button.name = node_name
     button.custom_minimum_size = Vector2(0, 44)
+    # Let the surrounding ScrollContainer recognize a drag that starts on a
+    # card or action, and cancel the pending click when scrolling begins.
+    button.mouse_filter = Control.MOUSE_FILTER_PASS
     button.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
     button.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
     button.focus_mode = Control.FOCUS_ALL
@@ -434,14 +438,13 @@ func _header(title: String, searchable: bool = false, action: Control = null) ->
         search_pad.add_child(search)
 
 func _scroll_into(parent: Control, gutter: int) -> void:
-    scroll = ScrollContainer.new()
+    scroll = SCROLL.new()
     scroll.name = "AstryxScroll"
     scroll.size_flags_horizontal = Control.SIZE_EXPAND_FILL
     scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
     scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
     scroll.vertical_scroll_mode = ScrollContainer.SCROLL_MODE_AUTO
     scroll.follow_focus = true
-    scroll.scroll_deadzone = 12
     parent.add_child(scroll)
     var pad := _margin(gutter, 20 if phone else 24, gutter, 32)
     scroll.add_child(pad)
@@ -673,7 +676,7 @@ func _build_settings() -> void:
     body.size_flags_vertical = Control.SIZE_EXPAND_FILL
     page.add_child(body)
     if not settings_narrow or not settings_detail:
-        var menu := ScrollContainer.new()
+        var menu := SCROLL.new()
         menu.name = "AstryxSettingsMenu"
         menu.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
         menu.size_flags_vertical = Control.SIZE_EXPAND_FILL
@@ -886,6 +889,8 @@ func _select(key: String, options: Array, labels: Array = []) -> OptionButton:
 
 func _option(node_name: String, options: Array, labels: Array, current, changed: Callable) -> OptionButton:
     var select := OptionButton.new()
+    select.mouse_filter = Control.MOUSE_FILTER_PASS
+    select.action_mode = BaseButton.ACTION_MODE_BUTTON_RELEASE
     select.name = node_name
     select.custom_minimum_size = Vector2(0, 44)
     select.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -1897,7 +1902,7 @@ func _detail_content() -> void:
     info.add_child(actions)
     var launch := _button(_text("开始游戏", "Start game", "ゲームを開始"), host._start_selected_game, "primary", "AstryxLaunchGame")
     launch.icon = load("res://assets/ui/astryx/play.svg")
-    launch.icon_alignment = HORIZONTAL_ALIGNMENT_CENTER
+    launch.icon_alignment = HORIZONTAL_ALIGNMENT_LEFT
     launch.expand_icon = true
     launch.add_theme_constant_override("icon_max_width", 20)
     launch.size_flags_horizontal = Control.SIZE_EXPAND_FILL

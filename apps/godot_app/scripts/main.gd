@@ -4913,16 +4913,14 @@ func _poll_game_imports(delta: float) -> void:
             game_import_notice.position = Vector2(safe.get_center().x - game_import_notice.size.x / 2.0,
                 safe.end.y - game_import_notice.size.y - 24.0)
 
-func _apply_host_frame_rate_limit() -> void:
-    # The engine fps_limit only gates the embedded runtime's render step. The
-    # Godot host can still tick and submit the presentation texture at the
-    # display refresh rate, which is wasteful on high-refresh mobile devices
-    # when the visual novel has no animation that needs 90/120Hz.
+func _apply_host_frame_rate_limit(runtime_active: bool = false) -> void:
+    # Let VSync pace the shell at the display's refresh rate. Keep the existing
+    # mobile runtime cap while playing; the engine's own fps_limit is separate.
     var override := OS.get_environment("AETHERKIRI_HOST_MAX_FPS").strip_edges()
     if not override.is_empty():
         Engine.max_fps = maxi(0, int(override))
-    elif OS.get_name() == "iOS" or OS.get_name() == "Android":
-        Engine.max_fps = 60
+    elif _is_touch_platform():
+        Engine.max_fps = 60 if runtime_active else 0
 
 func _game_runtime_restore_orientation(previous_screen_size: Vector2i, fallback: int) -> int:
     if lock_landscape:
@@ -4934,6 +4932,9 @@ func _game_runtime_restore_orientation(previous_screen_size: Vector2i, fallback:
     return fallback
 
 func _set_game_runtime_frame_pacing(active: bool) -> void:
+    if _is_touch_platform():
+        _apply_host_frame_rate_limit(active)
+        return
     var policy: Dictionary
     if active:
         policy = game_frame_pacing.enter(active_runtime_kind, OS.get_name(),

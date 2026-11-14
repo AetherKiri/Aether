@@ -1,6 +1,7 @@
 extends Node
 ## Source selection and explicit VNDB search; native pickers stay in the host.
 const API_URL := "https://api.vndb.org/kana/vn"
+const SCROLL := preload("res://scripts/ui/astryx/astryx_scroll.gd")
 var view
 var host
 var game: Dictionary
@@ -105,7 +106,7 @@ func _vndb() -> void:
     var status: Label = view._label("", 14, true)
     status.name = "AstryxCoverSearchStatus"
     status.hide()
-    var scroller := ScrollContainer.new()
+    var scroller := SCROLL.new()
     scroller.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
     scroller.size_flags_vertical = Control.SIZE_EXPAND_FILL
     var results: VBoxContainer = view._vbox(12)

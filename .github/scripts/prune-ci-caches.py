@@ -10,13 +10,15 @@ import subprocess
 
 GIB = 2**30
 # Only caches owned by build.yml are managed. In particular, Gradle's split
-# caches, unrelated workflows and private dependency downloads are untouched.
+# caches and unrelated workflows are untouched.
 FAMILIES = (
     r"(Linux-(?:android|linux-(?:x86_64|arm64))-ccache)-v\d+-",
-    r"(macOS-(?:ios|macos)-xcode-[\d.]+-ccache)-v\d+-",
+    r"(macOS-(?:ios|macos))-xcode-[\d.]+-ccache-v\d+-",
     r"(Linux-(?:X64|ARM64)-android-vcpkg-(?:downloads|binaries))-v\d+-",
     r"(Linux-linux-(?:x86_64|arm64)-vcpkg-(?:downloads|binaries))-",
     r"(macOS-vcpkg-downloads)-",
+    r"(Linux-private-runtime-android)-",
+    r"(macOS-private-runtime-(?:apple|macos))-",
 )
 
 
@@ -28,41 +30,28 @@ def family(key):
     return None
 
 
-def plan_evictions(caches, open_prs, default_ref="refs/heads/main", budget=8 * GIB):
+def plan_evictions(caches, default_ref="refs/heads/main"):
     groups = defaultdict(list)
     removals = {}
     for cache in caches:
         group = family(cache["key"])
         if group is None:
             continue
-        pr = re.fullmatch(r"refs/pull/(\d+)/merge", cache["ref"])
-        if pr and int(pr[1]) not in open_prs:
-            removals[cache["id"]] = (cache, "closed PR")
-        elif cache["ref"] == default_ref or pr:
+        if cache["ref"] == default_ref:
             groups[group].append(cache)
-        # Manual builds on other branches may still be in use. Do not delete
-        # their last cache based on assumptions about the branch's lifetime.
+        else:
+            # All other refs are readers. Legacy PR, branch and tag copies
+            # cannot seed main and only consume the shared storage budget.
+            removals[cache["id"]] = (cache, "non-default-branch copy")
 
-    pr_candidates = []
     for entries in groups.values():
         entries.sort(key=lambda item: (item["created_at"], item["id"]), reverse=True)
-        # Keep one shared main snapshot and at most one recent open-PR copy
-        # per platform/cache kind. Old prefixes remain usable via restore-keys.
-        for on_main in (True, False):
-            scoped = [item for item in entries if (item["ref"] == default_ref) == on_main]
-            for old in scoped[1:]:
-                removals[old["id"]] = (old, "superseded snapshot")
-            if scoped and not on_main:
-                pr_candidates.append(scoped[0])
+        # Keep one shared main snapshot per platform/cache kind, including
+        # across compiler versions. Never sacrifice a platform's only copy.
+        for old in entries[1:]:
+            removals[old["id"]] = (old, "superseded snapshot")
 
     remaining = sum(item["size_in_bytes"] for item in caches if item["id"] not in removals)
-    # Make headroom for the next upload. Preserve each platform's only main
-    # snapshot; PR copies are recoverable from main or regenerated in that PR.
-    for cache in sorted(pr_candidates, key=lambda item: item["last_accessed_at"]):
-        if remaining <= budget:
-            break
-        removals[cache["id"]] = (cache, "PR copy exceeds shared cache budget")
-        remaining -= cache["size_in_bytes"]
     return list(removals.values()), remaining
 
 
@@ -81,10 +70,7 @@ def main():
         parser.error("Expected owner/repository and a positive cache budget")
     caches = [item for page in pages(f"repos/{args.repo}/actions/caches?per_page=100")
               for item in page["actions_caches"]]
-    open_prs = {item["number"] for page in pages(f"repos/{args.repo}/pulls?state=open&per_page=100")
-                for item in page}
-    plan, remaining = plan_evictions(caches, open_prs, "refs/heads/" + args.default_branch,
-                                     args.budget_gib * GIB)
+    plan, remaining = plan_evictions(caches, "refs/heads/" + args.default_branch)
     before = sum(item["size_in_bytes"] for item in caches)
     print(f"Cache usage: {before / GIB:.2f} -> {remaining / GIB:.2f} GiB; {len(plan)} obsolete entries")
     for cache, reason in plan:

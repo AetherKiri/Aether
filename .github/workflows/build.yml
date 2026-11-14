@@ -66,9 +66,9 @@ env:
   # Forward the checkout decision to build.sh so a stale or partial package
   # checkout cannot accidentally enable private extensions in public builds.
   AETHERKIRI_ENABLE_INTERNAL: ${{ github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && github.actor != 'dependabot[bot]') }}
-  # Trusted same-repository changes may populate the package cache. Fork and
-  # Dependabot pull requests receive read-only package access.
-  AETHERKIRI_VCPKG_CACHE_WRITE: ${{ github.event_name != 'pull_request' || (github.event.pull_request.head.repo.full_name == github.repository && github.actor != 'dependabot[bot]') }}
+  # Only main publishes shared caches. Branches, PRs and release tags restore
+  # main's snapshots without uploading copies scoped to their own ref.
+  AETHERKIRI_VCPKG_CACHE_WRITE: ${{ github.ref == 'refs/heads/main' && github.actor != 'dependabot[bot]' }}
   AETHERKIRI_RELEASE_VERSION: ${{ inputs.release_version || '' }}
   AETHERKIRI_BUILD_NUMBER: ${{ inputs.release_build_number || github.run_number }}
   AETHERKIRI_BUILD_ATTEMPT: ${{ github.run_attempt }}
@@ -123,8 +123,9 @@ jobs:
           echo "key=$key" >> "$GITHUB_OUTPUT"
 
       - name: Restore private runtime dependencies
+        id: restore-private-runtime-dependencies
         if: env.AETHERKIRI_WITH_INTERNAL == 'true'
-        uses: actions/cache@v6
+        uses: actions/cache/restore@v6
         with:
           path: packages/AetherInternal/.ci-cache/runtime-dependencies/android
           key: ${{ runner.os }}-${{ steps.private-runtime-cache-key.outputs.key }}
@@ -132,6 +133,13 @@ jobs:
       - name: Initialize private runtime dependencies
         if: env.AETHERKIRI_WITH_INTERNAL == 'true'
         run: packages/AetherInternal/tools/prepare_ci_dependencies.sh --platform android
+
+      - name: Save private runtime dependencies
+        if: success() && env.AETHERKIRI_WITH_INTERNAL == 'true' && env.AETHERKIRI_VCPKG_CACHE_WRITE == 'true' && steps.restore-private-runtime-dependencies.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v6
+        with:
+          path: packages/AetherInternal/.ci-cache/runtime-dependencies/android
+          key: ${{ steps.restore-private-runtime-dependencies.outputs.cache-primary-key }}
 
       - name: Set up Java for Flash
         uses: actions/setup-java@v6
@@ -226,6 +234,7 @@ jobs:
           # Validation is performed explicitly above so the pinned SDL wrapper
           # can be allowed without disabling checks for every other wrapper.
           validate-wrappers: false
+          cache-read-only: ${{ github.ref != 'refs/heads/main' }}
 
       - name: Install Godot export tools
         run: |
@@ -507,8 +516,9 @@ jobs:
           echo "key=$key" >> "$GITHUB_OUTPUT"
 
       - name: Restore private runtime dependencies
+        id: restore-private-runtime-dependencies
         if: env.AETHERKIRI_WITH_INTERNAL == 'true'
-        uses: actions/cache@v6
+        uses: actions/cache/restore@v6
         with:
           path: packages/AetherInternal/.ci-cache/runtime-dependencies/apple
           key: ${{ runner.os }}-${{ steps.private-runtime-cache-key.outputs.key }}
@@ -516,6 +526,13 @@ jobs:
       - name: Initialize private runtime dependencies
         if: env.AETHERKIRI_WITH_INTERNAL == 'true'
         run: packages/AetherInternal/tools/prepare_ci_dependencies.sh --platform apple
+
+      - name: Save private runtime dependencies
+        if: success() && env.AETHERKIRI_WITH_INTERNAL == 'true' && env.AETHERKIRI_VCPKG_CACHE_WRITE == 'true' && steps.restore-private-runtime-dependencies.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v6
+        with:
+          path: packages/AetherInternal/.ci-cache/runtime-dependencies/apple
+          key: ${{ steps.restore-private-runtime-dependencies.outputs.cache-primary-key }}
 
       - name: Set up Java for Flash
         uses: actions/setup-java@v6
@@ -856,8 +873,9 @@ jobs:
           echo "key=$key" >> "$GITHUB_OUTPUT"
 
       - name: Restore private runtime dependencies
+        id: restore-private-runtime-dependencies
         if: env.AETHERKIRI_WITH_INTERNAL == 'true'
-        uses: actions/cache@v6
+        uses: actions/cache/restore@v6
         with:
           path: packages/AetherInternal/.ci-cache/runtime-dependencies/macos
           key: ${{ runner.os }}-${{ steps.private-runtime-cache-key.outputs.key }}
@@ -865,6 +883,13 @@ jobs:
       - name: Initialize private runtime dependencies
         if: env.AETHERKIRI_WITH_INTERNAL == 'true'
         run: packages/AetherInternal/tools/prepare_ci_dependencies.sh --platform macos
+
+      - name: Save private runtime dependencies
+        if: success() && env.AETHERKIRI_WITH_INTERNAL == 'true' && env.AETHERKIRI_VCPKG_CACHE_WRITE == 'true' && steps.restore-private-runtime-dependencies.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v6
+        with:
+          path: packages/AetherInternal/.ci-cache/runtime-dependencies/macos
+          key: ${{ steps.restore-private-runtime-dependencies.outputs.cache-primary-key }}
 
       - name: Set up Java for Flash
         uses: actions/setup-java@v6

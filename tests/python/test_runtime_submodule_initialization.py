@@ -54,6 +54,7 @@ class RuntimeSubmoduleInitializationTests(unittest.TestCase):
                 RUNNER_TEMP=temporary.as_posix(),
                 GIT_CALL_LOG=str(log),
                 AETHER_INTERNAL_DEPLOY_KEY=original.decode(),
+                AETHER_LUCA_DEPLOY_KEY=original.decode().replace("\n", "\r\n"),
                 AETHER_SOFTPAL_DEPLOY_KEY=original.decode().replace("\n", "\r\n"),
                 AETHER_LEAFTTT_DEPLOY_KEY="\ufeff" + original.decode().replace("\n", "\r\n").rstrip("\r\n"),
             )
@@ -75,6 +76,7 @@ class RuntimeSubmoduleInitializationTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             environment = dict(os.environ, RUNNER_TEMP=Path(directory).as_posix(),
                                AETHER_INTERNAL_DEPLOY_KEY="invalid-test-key",
+                               AETHER_LUCA_DEPLOY_KEY="invalid-test-key",
                                AETHER_SOFTPAL_DEPLOY_KEY="invalid-test-key",
                                AETHER_LEAFTTT_DEPLOY_KEY="invalid-test-key")
             result = subprocess.run([BASH, SCRIPT.as_posix()], env=environment, capture_output=True, text=True)

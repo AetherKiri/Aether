@@ -1,0 +1,11 @@
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index d2b5a21..1c003f1 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -233,5 +233,5 @@ list(FILTER sources_src INCLUDE REGEX "^src/")
+ set(sources_inc ${sources})
+ list(FILTER sources_inc EXCLUDE REGEX "^src/")
+ source_group(TREE "${CMAKE_CURRENT_SOURCE_DIR}/src" PREFIX "sources" FILES ${sources_src})
+-source_group(TREE "${CMAKE_CURRENT_SOURCE_DIR}/include/boost/locale" PREFIX "headers" FILES ${sources_inc})
++source_group(TREE "${CMAKE_CURRENT_SOURCE_DIR}/include/boost" PREFIX "headers" FILES ${sources_inc})
+ source_group("headers" FILES "include/boost/locale.hpp")

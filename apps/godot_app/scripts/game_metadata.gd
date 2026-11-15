@@ -17,6 +17,7 @@ const RUNTIME_XSYSTEM35 := "xsystem35"
 const RUNTIME_SYSTEM3 := "system3"
 const RUNTIME_YURIS := "yuris"
 const RUNTIME_SYSTEMC := "systemc"
+const RUNTIME_LUCA := "luca"
 
 static func inspect(path: String) -> Dictionary:
     var root := path
@@ -141,6 +142,9 @@ static func inspect(path: String) -> Dictionary:
         # directory to the embedded MAGES provider instead.
         result.engine = RUNTIME_MAGES
         result.signals.append("mages-mpk-marker")
+    elif _is_luca_directory(root):
+        result.engine = RUNTIME_LUCA
+        result.signals.append("luca-marker")
     else:
         result.signals.append("kirikiri-xp3-or-default")
 
@@ -444,3 +448,7 @@ static func is_cmvs_directory(root: String) -> bool:
         if script != null and script.get_buffer(4).get_string_from_ascii() == "PS2A":
             return true
     return false
+
+static func _is_luca_directory(root: String) -> bool:
+    var files := _file_names(root.path_join("files"))
+    return (files.has("script.pak") or files.has("script2.pak")) and _has_extension(_file_names(root.path_join("files/image")), "pak")

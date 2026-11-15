@@ -66,3 +66,6 @@
 	path = packages/AetherLeafTtt
 	url = git@github.com:AetherKiri/AetherLeafTtt.git
 	branch = main
+[submodule "packages/AetherLuca"]
+	path = packages/AetherLuca
+	url = git@github.com:AetherKiri/AetherLuca.git

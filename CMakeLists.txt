@@ -191,6 +191,10 @@ set(AETHERKIRI_MAGES_DIR
     "${CMAKE_CURRENT_SOURCE_DIR}/packages/AetherMAGES"
     CACHE PATH "path to an AetherMAGES (impacto) runtime submodule checkout")
 
+set(AETHERKIRI_LUCA_DIR
+    "${CMAKE_CURRENT_SOURCE_DIR}/packages/AetherLuca"
+    CACHE PATH "path to an AetherLuca runtime checkout")
+
 include(cmake/AetherKiriBinaryProtection.cmake)
 # Unify the Rust toolchain resolution before any runtime subproject runs its
 # own find_program(cargo) (see cmake/RustToolchain.cmake).
@@ -392,6 +396,11 @@ endif()
 if(AETHERKIRI_ENABLE_CMVS AND BUILD_GODOT_EXTENSION AND
    (APPLE OR ANDROID OR CMAKE_SYSTEM_NAME STREQUAL "Linux") AND NOT (WEB OR EMSCRIPTEN))
     add_subdirectory(packages/cmvs-rs/integrations/aether)
+endif()
+if(AETHERKIRI_ENABLE_LUCA AND
+   (BUILD_GODOT_EXTENSION OR AETHERKIRI_BUILD_NATIVE_RUNTIME_TESTS) AND
+   NOT (IOS OR ANDROID OR WEB OR EMSCRIPTEN))
+    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/bridge/luca_runtime)
 endif()
 # The Rust provider has targets for Linux, Apple, Android, and Emscripten.
 # Keep it out of unsupported native targets, but do not make Linux the only

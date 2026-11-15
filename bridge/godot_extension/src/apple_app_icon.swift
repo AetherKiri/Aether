@@ -3,8 +3,8 @@ import Foundation
 import UIKit
 
 // Coalesce rapid interface changes and defer requests while backgrounded.
-// nil is the primary Astryx icon; Classic is bundled as an alternate on both
-// iPhone and iPad. Public UIKit API owns any system confirmation UI.
+// nil is the primary Astryx light icon; Classic and AstryxDark are bundled as
+// alternates on both iPhone and iPad. UIKit owns any system confirmation UI.
 private final class AppIconController {
     static let shared = AppIconController()
     private var desired: String?
@@ -18,8 +18,8 @@ private final class AppIconController {
         ) { [weak self] _ in self?.update() }
     }
 
-    func apply(astryx: Bool) {
-        desired = astryx ? nil : "Classic"
+    func apply(astryx: Bool, dark: Bool) {
+        desired = astryx ? (dark ? "AstryxDark" : nil) : "Classic"
         requested = true
         update()
     }
@@ -47,9 +47,9 @@ import AppKit
 #endif
 
 @_cdecl("aether_app_icon_apply")
-public func aetherAppIconApply(_ astryx: Bool, _ png: UnsafePointer<UInt8>?, _ length: Int64) {
+public func aetherAppIconApply(_ astryx: Bool, _ dark: Bool, _ png: UnsafePointer<UInt8>?, _ length: Int64) {
     #if os(iOS)
-    DispatchQueue.main.async { AppIconController.shared.apply(astryx: astryx) }
+    DispatchQueue.main.async { AppIconController.shared.apply(astryx: astryx, dark: dark) }
     #elseif os(macOS)
     guard let png = png, length > 0 else { return }
     // Copy the Godot-owned buffer before leaving its calling thread.

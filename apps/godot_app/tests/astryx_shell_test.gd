@@ -210,6 +210,7 @@ func _exercise_saved_notice() -> void:
     var cases := [
         [Vector2i(1194, 834), "light", "ja", "変更を保存しました", "ipad"],
         [Vector2i(834, 1194), "light", "en", "Changes saved", "ipad-portrait"],
+        [Vector2i(393, 852), "light", "zh_hant", "變更已儲存", "iphone-traditional"],
         [Vector2i(393, 852), "dark", "zh_hans", "更改已保存", "iphone"],
     ]
     for sample in cases:

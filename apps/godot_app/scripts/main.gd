@@ -642,6 +642,39 @@ const UI_TEXT := {
         "home.status": "視覺小說庫",
         "nav.library": "視覺小說",
         "nav.videos": "影片庫",
+        "nav.dashboard": "首頁",
+        "dash.title": "遊玩統計",
+        "dash.greeting": "歡迎回來",
+        "dash.subtitle": "你在這裡讀過的每一段故事，都被悄悄記錄著。",
+        "dash.total_time": "累計遊玩",
+        "dash.hours": "小時",
+        "dash.minutes": "%d 分鐘",
+        "dash.milestone": "距離 %d 小時里程碑",
+        "dash.completion": "已遊玩作品",
+        "dash.open_library": "開啟視覺小說庫",
+        "dash.games": "作品總數",
+        "dash.played": "已遊玩",
+        "dash.week": "本週活躍",
+        "dash.average": "平均時長",
+        "dash.top": "遊玩時長排行",
+        "dash.recent": "最近遊玩",
+        "dash.empty": "還沒有遊玩紀錄，開始一段故事吧。",
+        "dash.greeting.morning": "早安",
+        "dash.greeting.afternoon": "午安",
+        "dash.greeting.evening": "晚上好",
+        "dash.greeting.night": "夜深了，故事還在",
+        "dash.subtitle.stats": "你已遊玩 %d 部作品，共度過 %s 的故事時光。",
+        "dash.ring.milestone": "時長里程碑",
+        "dash.ring.library": "書庫探索",
+        "dash.ring.days": "活躍天數",
+        "dash.week_trail": "近七天足跡",
+        "dash.week_summary": "過去一週有 %d 天開啟過故事",
+        "dash.weekdays": "日,一,二,三,四,五,六",
+        "dash.day_idle": "這天沒有遊玩",
+        "dash.continue_eyebrow": "繼續閱讀",
+        "dash.continue": "繼續",
+        "detail.delete_cover": "刪除封面",
+        "detail.clear_cover": "清除封面",
         "home.empty_title": "尚未加入任何遊戲",
         "home.game_count": "%d 個遊戲",
         "video.item_count": "%d 個項目",
@@ -2499,6 +2532,8 @@ var native_font_file_picker_callback := Callable()
 var native_translation_model_file_picker_pending := false
 var active_game_path := ""
 var active_game_started_msec := 0
+var active_game_paused_msec := 0
+var play_duration_checkpoint_elapsed := 0.0
 var active_runtime_kind := RUNTIME_KIRIKIRI
 var shell_scroll_drag_states := {}
 var shell_scroll_remainders := {}
@@ -5230,7 +5265,7 @@ func _layout_shell_safe_area_fills(window_size: Vector2, safe_rect: Rect2) -> vo
     var top_inset := maxf(0.0, safe_rect.position.y)
     # The status-bar region continues the bar surface so the native clock
     # row and the first app row read as one header on mobile devices.
-    shell_safe_top_fill.visible = _mobile_runtime() and top_inset > 0.0
+    shell_safe_top_fill.visible = _astryx_shell_controller() == null and _mobile_runtime() and top_inset > 0.0
     shell_safe_top_fill.color = ui_tokens.tint(ui_tokens.background, 0.92)
     if shell_safe_top_fill.visible:
         shell_safe_top_fill.position = Vector2(-safe_rect.position.x, -top_inset)
@@ -10792,9 +10827,7 @@ func _open_tyrano_game(game: Dictionary) -> void:
     tyrano_view.setup(self)
     tyrano_view.game_ready.connect(func():
         if active_game_started_msec == 0:
-            active_game_path = String(game.get("path", ""))
-            active_game_started_msec = Time.get_ticks_msec()
-            _mark_game_played(active_game_path)
+            _begin_active_game_session(String(game.get("path", "")))
     )
     tyrano_view.closed.connect(func():
         _finalize_active_game_session()
@@ -10825,11 +10858,9 @@ func _open_renpy_player(entry: Dictionary) -> void:
         var library_path := String(entry.get("path", ""))
         if active_game_path == library_path and active_game_started_msec > 0:
             return
-        var played_game := _mark_game_played(library_path)
+        var played_game := _begin_active_game_session(library_path)
         if not played_game.is_empty():
             selected_game = played_game
-        active_game_path = library_path
-        active_game_started_msec = Time.get_ticks_msec()
     )
     renpy_view.closed.connect(func():
         _finalize_active_game_session()
@@ -11440,10 +11471,13 @@ func _load_game_list() -> Array[Dictionary]:
                 games.append(game)
     return games
 
-func _save_game_list(games: Array[Dictionary]) -> void:
+func _save_game_list(games: Array[Dictionary]) -> Error:
     var file := FileAccess.open(GAME_LIST_FILE, FileAccess.WRITE)
-    if file != null:
-        file.store_string(JSON.stringify(games))
+    if file == null:
+        return FileAccess.get_open_error()
+    file.store_string(JSON.stringify(games))
+    file.flush()
+    return file.get_error()
 
 func _scan_ios_games_dir(existing: Array[Dictionary]) -> Array[Dictionary]:
     var root := ProjectSettings.globalize_path("user://Games")
@@ -11945,8 +11979,10 @@ func _game_type_label(value: String) -> String:
     return value
 
 func _format_play_duration(seconds: int) -> String:
-    if seconds < 60:
+    if seconds <= 0:
         return "0m"
+    if seconds < 60:
+        return "%ds" % seconds
     var minutes := seconds / 60
     if minutes < 60:
         return "%dm" % minutes
@@ -11987,15 +12023,27 @@ func _mark_game_played(path: String) -> Dictionary:
     _save_game_list(games)
     return updated
 
-func _add_play_duration(path: String, seconds: int) -> void:
+func _add_play_duration(path: String, seconds: int) -> Error:
     if seconds <= 0:
-        return
+        return OK
     var games := _load_game_list()
+    var total := -1
     for i in range(games.size()):
         if String(games[i].get("path", "")) == path:
-            games[i]["playDurationSeconds"] = int(games[i].get("playDurationSeconds", 0)) + min(seconds, 86400)
+            total = int(games[i].get("playDurationSeconds", 0)) + min(seconds, 86400)
+            games[i]["playDurationSeconds"] = total
             break
-    _save_game_list(games)
+    if total < 0:
+        return ERR_DOES_NOT_EXIST
+    var error := _save_game_list(games)
+    if error != OK:
+        return error
+    for game in known_games:
+        if String(game.get("path", "")) == path:
+            game["playDurationSeconds"] = total
+    if String(selected_game.get("path", "")) == path:
+        selected_game["playDurationSeconds"] = total
+    return OK
 
 func _update_game(path: String, values: Dictionary) -> void:
     var games := _load_game_list()
@@ -12526,12 +12574,10 @@ func _start_selected_game_after_entitlements() -> void:
     # record (for example a section regression). Updating play statistics must
     # preserve that entry for this launch.
     var requested_startup_script := String(selected_game.get("startupScript", ""))
-    var played_game := _mark_game_played(library_path)
+    var played_game := _begin_active_game_session(library_path)
     if not played_game.is_empty():
         selected_game = played_game
         selected_game["startupScript"] = requested_startup_script
-    active_game_path = library_path
-    active_game_started_msec = Time.get_ticks_msec()
     game_path.text = launch_path
     _write_probe_marker("library_launch root=%s entry=%s" % [library_path, launch_path])
     _set_game_background(true)
@@ -12555,14 +12601,60 @@ func _start_selected_game_after_entitlements() -> void:
         viewport.visible = false
         game_view.visible = false
 
-func _finalize_active_game_session() -> void:
-    _clear_game_render_overrides()
+func _play_session_now_msec() -> int:
+    return Time.get_ticks_msec()
+
+func _begin_active_game_session(path: String) -> Dictionary:
+    if not active_game_path.is_empty():
+        _finalize_active_game_session()
+    active_game_path = path
+    active_game_started_msec = _play_session_now_msec()
+    active_game_paused_msec = 0
+    play_duration_checkpoint_elapsed = 0.0
+    return _mark_game_played(path)
+
+func _checkpoint_active_game_session() -> void:
     if active_game_path.is_empty() or active_game_started_msec <= 0:
         return
-    var elapsed := int((Time.get_ticks_msec() - active_game_started_msec) / 1000)
-    _add_play_duration(active_game_path, elapsed)
+    var now := active_game_paused_msec if active_game_paused_msec > 0 else _play_session_now_msec()
+    var seconds := maxi(0, int((now - active_game_started_msec) / 1000))
+    if seconds == 0:
+        return
+    var error := _add_play_duration(active_game_path, seconds)
+    if error == OK:
+        # Keep the fractional second and never recount an already saved span.
+        active_game_started_msec += seconds * 1000
+    else:
+        push_warning("Could not save play duration: " + error_string(error))
+
+func _process_active_game_session(delta: float) -> void:
+    if active_game_path.is_empty() or active_game_paused_msec > 0:
+        return
+    play_duration_checkpoint_elapsed += delta
+    if play_duration_checkpoint_elapsed >= 30.0:
+        play_duration_checkpoint_elapsed = 0.0
+        _checkpoint_active_game_session()
+
+func _pause_active_game_session() -> void:
+    if active_game_path.is_empty() or active_game_paused_msec > 0:
+        return
+    active_game_paused_msec = _play_session_now_msec()
+    _checkpoint_active_game_session()
+    play_duration_checkpoint_elapsed = 0.0
+
+func _resume_active_game_session() -> void:
+    if active_game_path.is_empty() or active_game_paused_msec <= 0:
+        return
+    active_game_started_msec += _play_session_now_msec() - active_game_paused_msec
+    active_game_paused_msec = 0
+
+func _finalize_active_game_session() -> void:
+    _clear_game_render_overrides()
+    _checkpoint_active_game_session()
     active_game_path = ""
     active_game_started_msec = 0
+    active_game_paused_msec = 0
+    play_duration_checkpoint_elapsed = 0.0
 
 func _is_runtime_exit_error(message: String) -> bool:
     var lower := message.to_lower()
@@ -13473,7 +13565,8 @@ func _show_softpal_file_dialog(fields: Dictionary) -> void:
 
 func _show_softpal_stand_dialog(fields: Dictionary) -> void:
     var dialog := ConfirmationDialog.new()
-    dialog.title = "立绘文本编辑" if active_language.begins_with("zh") else \
+    dialog.title = "立繪文字編輯" if active_language == LANG_ZH_HANT else \
+        "立绘文本编辑" if active_language == LANG_ZH_HANS else \
         "立ち絵テキスト編集" if active_language.begins_with("ja") else \
         "Stand Text Editor"
     dialog.exclusive = true
@@ -15770,9 +15863,11 @@ func _stop_wa2_audio() -> void:
         wa2_audio_host.stop_session()
 
 func _exit_tree() -> void:
+    _finalize_active_game_session()
     _stop_wa2_audio()
 
 func _process(delta: float) -> void:
+    _process_active_game_session(delta)
     if not game_running:
         if is_instance_valid(wa2_audio_host) and wa2_audio_host.runtime != null:
             _stop_wa2_audio()
@@ -16436,6 +16531,14 @@ func _notification(what: int) -> void:
         flash_view.close()
     if what == NOTIFICATION_WM_CLOSE_REQUEST and _is_tyrano_active():
         tyrano_view.close()
+    # Mobile processes may be reclaimed without a window-close notification.
+    # Persist before suspension, including native web-player sessions that do
+    # not have a Godot runtime player, and exclude time spent in the background.
+    if _is_touch_platform():
+        if what in [NOTIFICATION_APPLICATION_PAUSED, NOTIFICATION_APPLICATION_FOCUS_OUT]:
+            _pause_active_game_session()
+        elif what in [NOTIFICATION_APPLICATION_RESUMED, NOTIFICATION_APPLICATION_FOCUS_IN]:
+            _resume_active_game_session()
     if player == null:
         return
     if what == NOTIFICATION_APPLICATION_PAUSED or what == NOTIFICATION_APPLICATION_FOCUS_OUT:

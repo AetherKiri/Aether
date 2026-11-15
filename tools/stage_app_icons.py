@@ -16,21 +16,22 @@ ANDROID = "http://schemas.android.com/apk/res/android"
 def stage_android_icons(build, application):
     attr = lambda key: "{" + ANDROID + "}" + key
     # Preserve Godot's existing launcher component for upgrades and pinned
-    # shortcuts. It becomes the default Astryx identity; Classic is alternate.
+    # shortcuts. It becomes Astryx light; Classic and Astryx dark are alternates.
     primary = next((a for a in application.findall("activity-alias")
                     if a.get(attr("name")) in (".GodotAppLauncher", "com.godot.game.GodotAppLauncher")), None)
     if primary is None:
         raise ValueError("Android template has no GodotAppLauncher alias")
     primary.set(attr("enabled"), "true")
     primary.set(attr("icon"), "@mipmap/icon")
-    name = "com.godot.game.AetherClassicLauncher"
-    classic = next((a for a in application.findall("activity-alias") if a.get(attr("name")) == name), None)
-    if classic is None:
-        classic = copy.deepcopy(primary)
-        application.insert(list(application).index(primary) + 1, classic)
-    classic.set(attr("name"), name)
-    classic.set(attr("enabled"), "false")
-    classic.set(attr("icon"), "@mipmap/aether_classic")
+    for name, resource in (("com.godot.game.AetherClassicLauncher", "aether_classic"),
+                           ("com.godot.game.AetherAstryxDarkLauncher", "aether_astryx_dark")):
+        alternate = next((a for a in application.findall("activity-alias") if a.get(attr("name")) == name), None)
+        if alternate is None:
+            alternate = copy.deepcopy(primary)
+            application.append(alternate)
+        alternate.set(attr("name"), name)
+        alternate.set(attr("enabled"), "false")
+        alternate.set(attr("icon"), "@mipmap/" + resource)
     # Full-resolution resources keep task icons and high-density launchers crisp.
     files = {
         "mipmap-nodpi/aether_classic.png": ASSETS / "icon.png",
@@ -38,20 +39,25 @@ def stage_android_icons(build, application):
         "drawable-nodpi/aether_astryx_task.png": ASSETS / "icons/astryx/icon.png",
         "drawable-nodpi/aether_classic_foreground.png": ASSETS / "icons/icon_adaptive_fg.png",
         "drawable-nodpi/aether_classic_background.png": ASSETS / "icons/icon_adaptive_bg.png",
+        "mipmap-nodpi/aether_astryx_dark.png": ASSETS / "icons/astryx/dark/icon.png",
+        "drawable-nodpi/aether_astryx_dark_task.png": ASSETS / "icons/astryx/dark/icon.png",
+        "drawable-nodpi/aether_astryx_dark_foreground.png": ASSETS / "icons/astryx/dark/icon_adaptive_fg.png",
+        "drawable-nodpi/aether_astryx_dark_background.png": ASSETS / "icons/astryx/dark/icon_adaptive_bg.png",
     }
     res = build / "src/main/res"
     for relative, source in files.items():
         destination = res / relative
         destination.parent.mkdir(parents=True, exist_ok=True)
         shutil.copyfile(source, destination)
-    adaptive = res / "mipmap-anydpi-v26/aether_classic.xml"
-    adaptive.parent.mkdir(parents=True, exist_ok=True)
-    adaptive.write_text(
-        '<?xml version="1.0" encoding="utf-8"?>\n'
-        f'<adaptive-icon xmlns:android="{ANDROID}">\n'
-        '  <background android:drawable="@drawable/aether_classic_background" />\n'
-        '  <foreground android:drawable="@drawable/aether_classic_foreground" />\n'
-        '</adaptive-icon>\n')
+    for resource in ("aether_classic", "aether_astryx_dark"):
+        adaptive = res / f"mipmap-anydpi-v26/{resource}.xml"
+        adaptive.parent.mkdir(parents=True, exist_ok=True)
+        adaptive.write_text(
+            '<?xml version="1.0" encoding="utf-8"?>\n'
+            f'<adaptive-icon xmlns:android="{ANDROID}">\n'
+            f'  <background android:drawable="@drawable/{resource}_background" />\n'
+            f'  <foreground android:drawable="@drawable/{resource}_foreground" />\n'
+            '</adaptive-icon>\n')
 
 
 def stage_ios_icons(project):
@@ -62,30 +68,31 @@ def stage_ios_icons(project):
     export = project.parent
     # Use explicit alternate image files, so this also works with Godot exports
     # whose primary icon catalog was generated before Xcode's alternate assets.
-    icons = {
-        "AetherClassic60@2x.png": 120, "AetherClassic60@3x.png": 180,
-        "AetherClassic76@2x.png": 152, "AetherClassic83.5@2x.png": 167,
-        "AetherClassic40@2x.png": 80, "AetherClassic40@3x.png": 120,
-        "AetherClassic29@2x.png": 58, "AetherClassic29@3x.png": 87,
-    }
+    sizes = {"60@2x": 120, "60@3x": 180, "76@2x": 152, "83.5@2x": 167,
+             "40@2x": 80, "40@3x": 120, "29@2x": 58, "29@3x": 87}
+    variants = {"Classic": ASSETS / "icons", "AstryxDark": ASSETS / "icons/astryx/dark"}
+    icons = {f"Aether{variant}{suffix}.png": source / f"icon_{size}x{size}.png"
+             for variant, source in variants.items() for suffix, size in sizes.items()}
     for config in configurations(objects, app):
         info_path = export / config["buildSettings"]["INFOPLIST_FILE"].strip('"')
         info = plistlib.loads(info_path.read_bytes())
-        for key, files in (
-            ("CFBundleIcons", ["AetherClassic60", "AetherClassic40", "AetherClassic29"]),
-            ("CFBundleIcons~ipad", ["AetherClassic76", "AetherClassic83.5", "AetherClassic60", "AetherClassic40", "AetherClassic29"]),
+        for key, suffixes in (
+            ("CFBundleIcons", ["60", "40", "29"]),
+            ("CFBundleIcons~ipad", ["76", "83.5", "60", "40", "29"]),
         ):
-            info.setdefault(key, {}).setdefault("CFBundleAlternateIcons", {})["Classic"] = {
-                "CFBundleIconFiles": files, "UIPrerenderedIcon": False}
+            alternates = info.setdefault(key, {}).setdefault("CFBundleAlternateIcons", {})
+            for variant in variants:
+                alternates[variant] = {"CFBundleIconFiles": [f"Aether{variant}{s}" for s in suffixes],
+                                       "UIPrerenderedIcon": False}
         write_plist(info_path, info)
     resource_phase = next(objects[p] for p in app["buildPhases"]
                           if objects[p]["isa"] == "PBXResourcesBuildPhase")
     root_group = objects[objects[data["rootObject"]]["mainGroup"]]
-    for filename, size in icons.items():
+    for filename, source in icons.items():
         path = Path("AetherAlternateIcons") / filename
         target = export / path
         target.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copyfile(ASSETS / f"icons/icon_{size}x{size}.png", target)
+        shutil.copyfile(source, target)
         ref = hashlib.sha256(("AetherAppIcon/ref/" + filename).encode()).hexdigest()[:24].upper()
         build = hashlib.sha256(("AetherAppIcon/build/" + filename).encode()).hexdigest()[:24].upper()
         objects[ref] = {"isa": "PBXFileReference", "lastKnownFileType": "image.png",

@@ -1069,8 +1069,16 @@ jobs:
             --path apps/godot_app \
             --script res://scripts/smoke_test.gd
 
-      - name: Test Astryx mobile input and navigation
+      - name: Test Astryx UI and session statistics
         run: |
+          set -euo pipefail
+          python3 -m unittest tools.tests.test_stage_app_icons -v
+          "$GODOT_BIN" --headless --path apps/godot_app \
+            --script res://tests/app_icon_test.gd
+          "$GODOT_BIN" --headless --path apps/godot_app \
+            --script res://tests/astryx_localization_test.gd
+          "$GODOT_BIN" --headless --path apps/godot_app \
+            --script res://tests/play_duration_test.gd
           "$GODOT_BIN" --headless --path apps/godot_app \
             --script res://tests/astryx_mobile_input_test.gd
           "$GODOT_BIN" --headless --path apps/godot_app \

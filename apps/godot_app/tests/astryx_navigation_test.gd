@@ -72,6 +72,17 @@ func _settle() -> void:
 func _first_game() -> Node:
     return controller.view.find_child("AstryxGameCard", true, false)
 
+func _step_page_transition(seconds: float) -> void:
+    # CI can spend longer than 150 ms laying out the first three frames. Drive
+    # the tween clock explicitly after layout instead of sampling wall time.
+    var view = controller.view
+    view.set_process(false)
+    view.page_arm_frames = 0
+    view.page_tween.pause()
+    for _frame in range(3):
+        await process_frame
+    view.page_tween.custom_step(seconds)
+
 func _check_return() -> void:
     var first_id := _first_game().get_instance_id()
     controller.view.scroll.scroll_vertical = 160
@@ -104,12 +115,12 @@ func _check_page_transitions() -> void:
         "Entering details retains the outgoing library for a crossfade")
     _expect(controller.view.page_stage.modulate.a < 0.01 and not controller.view.page_tween.is_running(),
         "Details begin transparent instead of flashing fully opaque")
-    await create_timer(0.08).timeout
+    await _step_page_transition(0.08)
     _expect(controller.view.outgoing_stage.modulate.a > 0.0 and controller.view.outgoing_stage.modulate.a < 1.0,
         "The library visibly fades out before the detail fades in")
     _expect(is_equal_approx(controller.view.layout_root.modulate.a, 1.0),
         "Navigation and the background remain opaque during the content fade")
-    await create_timer(0.18).timeout
+    await _step_page_transition(0.18)
     _expect(controller.view.page_stage.modulate.a > 0.0 and controller.view.page_stage.modulate.a < 1.0,
         "The detail opacity progresses through intermediate frames after the exit")
     controller.view.navigate("library")
@@ -145,12 +156,13 @@ func _check_settings_slide() -> void:
     var incoming: Control = controller.view.page_stage
     _expect(incoming.position.x > 300 and controller.view.outgoing_stage.position.x == 0,
         "Portrait settings details begin to the right of the category menu")
-    await create_timer(0.15).timeout
+    await _step_page_transition(0.16)
     _expect(incoming.position.x > 0 and incoming.position.x < 300 and controller.view.outgoing_stage.position.x < 0,
         "Settings pages move horizontally through intermediate positions")
     var current_nav: Control = controller.view.layout_root.find_child("AstryxBottomNav", true, false)
     _expect(current_nav.get_global_rect().is_equal_approx(nav_rect) and is_equal_approx(current_nav.modulate.a, 1.0),
         "Bottom navigation stays fixed and opaque during the page slide")
+    controller.view.page_tween.play()
     await _settle()
     controller.view.handle_back()
     _expect(controller.view.page_stage.position.x < -300,

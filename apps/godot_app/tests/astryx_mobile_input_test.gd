@@ -295,10 +295,13 @@ func _exercise(name_value: String, viewport_size: Vector2i, insets: Vector4) -> 
         _expect(safe_cover != null and safe_cover.visible and is_zero_approx(safe_cover.global_position.y),
             name_value + ": cover wash reaches the top edge above the camera safe area")
         if safe_cover != null:
-            _expect(is_equal_approx(safe_cover.get_global_rect().end.y, controller.view.global_position.y),
-                name_value + ": safe-area wash ends exactly at the content edge")
-            _expect(controller.safe_cover_image.get_global_rect().is_equal_approx(wash.get_global_rect()),
-                name_value + ": safe area and detail sample the same image without a seam")
+            _expect(safe_cover.get_global_rect().end.y >= controller.view.global_position.y,
+                name_value + ": opaque safe-area base covers fractional boundaries")
+            var panel: Control = controller.view.layout_root.find_child("AstryxPage", true, false)
+            _expect(not panel.clip_contents and is_zero_approx(wash.global_position.y),
+                name_value + ": one unclipped cover spans the safe area and content")
+            _expect(not host.shell_safe_top_fill.visible,
+                name_value + ": classic safe-area fill never overlays the Astryx cover")
         var back: Control = controller.view.find_child("AstryxDetailBack", true, false)
         _expect(back.global_position.y >= insets.y, name_value + ": interactive controls still avoid the camera")
     host.launched = false
@@ -446,6 +449,7 @@ func _run() -> void:
     await _frames()
     await _exercise("Android portrait", Vector2i(393, 852), Vector4.ZERO)
     await _exercise("Android portrait cutout", Vector2i(393, 852), Vector4(0, 40, 0, 16))
+    await _exercise("Android fractional cutout", Vector2i(393, 852), Vector4(0, 40.5, 0, 16.25))
     await _exercise("Android landscape cutout", Vector2i(852, 393), Vector4(40, 0, 0, 16))
     await _exercise("iPhone portrait", Vector2i(393, 852), Vector4(0, 59, 0, 34))
     await _exercise("iPhone landscape", Vector2i(852, 393), Vector4(59, 0, 59, 21))

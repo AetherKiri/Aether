@@ -9,6 +9,7 @@ import {
   type ReactNode,
 } from "react";
 import appIcon from "../../../apps/godot_app/assets/icons/astryx/icon.png";
+import darkAppIcon from "../../../apps/godot_app/assets/icons/astryx/dark/icon.png";
 import { Theme } from "@astryxdesign/core/theme";
 import { neutralTheme } from "@astryxdesign/theme-neutral/built";
 import { AppShell } from "@astryxdesign/core/AppShell";
@@ -2228,7 +2229,7 @@ export function App() {
                         width={32}
                         style={{ height: 32, outlineColor: "currentColor" }}
                         icon={
-                          <img src={appIcon} alt="" width={32} height={32} />
+                          <img src={draft.theme === "dark" ? darkAppIcon : appIcon} alt="" width={32} height={32} />
                         }
                         onClick={() => setNavCollapsed((value) => !value)}
                       />

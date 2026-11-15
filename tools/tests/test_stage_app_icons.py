@@ -11,7 +11,7 @@ from stage_ios_game_import import read_project, write_project
 
 
 class AppIconPackagingTests(unittest.TestCase):
-    def test_android_preserves_launcher_and_only_adds_one_alternate(self):
+    def test_android_preserves_launcher_and_adds_disabled_alternates(self):
         name = "{" + ANDROID + "}name"
         app = ET.fromstring(f'''<application xmlns:android="{ANDROID}">
           <activity android:name=".GodotApp" android:exported="false" />
@@ -27,14 +27,20 @@ class AppIconPackagingTests(unittest.TestCase):
             stage_android_icons(build, app)
             self.assertEqual(ET.tostring(app), once)
             self.assertEqual(ET.tostring(app.find("activity")), activity)
-            self.assertEqual(len(app.findall("activity-alias")), 2)
-            primary, classic = app.findall("activity-alias")
+            self.assertEqual(len(app.findall("activity-alias")), 3)
+            primary, classic, dark = app.findall("activity-alias")
             self.assertEqual(primary.get(name), ".GodotAppLauncher")
             self.assertEqual(primary.get("{" + ANDROID + "}enabled"), "true")
             self.assertEqual(classic.get("{" + ANDROID + "}enabled"), "false")
+            self.assertEqual(dark.get(name), "com.godot.game.AetherAstryxDarkLauncher")
+            self.assertEqual(dark.get("{" + ANDROID + "}enabled"), "false")
+            self.assertEqual(dark.get("{" + ANDROID + "}icon"), "@mipmap/aether_astryx_dark")
             self.assertEqual(ET.tostring(primary.find("intent-filter")), ET.tostring(classic.find("intent-filter")))
+            self.assertEqual(ET.tostring(primary.find("intent-filter")), ET.tostring(dark.find("intent-filter")))
             self.assertTrue((build / "src/main/res/mipmap-anydpi-v26/aether_classic.xml").is_file())
             self.assertTrue((build / "src/main/res/drawable-nodpi/aether_astryx_task.png").is_file())
+            self.assertTrue((build / "src/main/res/drawable-nodpi/aether_astryx_dark_task.png").is_file())
+            self.assertTrue((build / "src/main/res/mipmap-anydpi-v26/aether_astryx_dark.xml").is_file())
 
     def test_ios_includes_ipad_and_phone_alternates_and_keeps_primary(self):
         with tempfile.TemporaryDirectory() as folder:
@@ -62,10 +68,12 @@ class AppIconPackagingTests(unittest.TestCase):
             for key in ("CFBundleIcons", "CFBundleIcons~ipad"):
                 self.assertEqual(output[key]["CFBundlePrimaryIcon"], info[key]["CFBundlePrimaryIcon"])
                 self.assertIn("Classic", output[key]["CFBundleAlternateIcons"])
+                self.assertIn("AstryxDark", output[key]["CFBundleAlternateIcons"])
             self.assertIn("AetherClassic83.5", output["CFBundleIcons~ipad"]["CFBundleAlternateIcons"]["Classic"]["CFBundleIconFiles"])
+            self.assertIn("AetherAstryxDark83.5", output["CFBundleIcons~ipad"]["CFBundleAlternateIcons"]["AstryxDark"]["CFBundleIconFiles"])
             self.assertTrue(output["UIFileSharingEnabled"])
             files = once["objects"]["RESOURCES"]["files"]
-            self.assertEqual(len(files), 8)
+            self.assertEqual(len(files), 16)
             for build in files:
                 ref = once["objects"][build]["fileRef"]
                 self.assertTrue((root / once["objects"][ref]["path"]).is_file())

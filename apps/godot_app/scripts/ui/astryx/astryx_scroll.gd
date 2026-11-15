@@ -43,6 +43,12 @@ func _ready() -> void:
             get_v_scroll_bar().modulate.a = 0.0)
 
 func _input(event: InputEvent) -> void:
+    # A touch gives a Button focus before a drag is recognized. Following that
+    # focus would snap a partially visible card into view on touch-down.
+    if event is InputEventScreenTouch and event.pressed:
+        follow_focus = false
+    elif event is InputEventKey and event.pressed:
+        follow_focus = true
     var bar := get_v_scroll_bar()
     if not is_visible_in_tree() or not bar.is_visible_in_tree():
         return

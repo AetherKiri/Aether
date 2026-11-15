@@ -63,7 +63,58 @@ func _move_touch(from: Vector2, to: Vector2) -> void:
 func _center(name_value: String) -> Vector2:
     return host.find_child(name_value, true, false).get_global_rect().get_center()
 
+func _check_leave_button(name_value: String) -> void:
+    var button := host.find_child(name_value, true, false) as Button
+    var normal := button.get_theme_stylebox("normal")
+    var route_before: String = host.shell_route
+    var section_before: String = controller.view.section
+    var start := button.get_global_rect().get_center()
+    # Move vertically out of the original icon, then release outside the group.
+    var outside := Vector2(start.x, button.get_parent().get_global_rect().position.y - 24)
+    await _touch_at(start, true)
+    await _move_touch(start, outside)
+    _expect(button.get_theme_stylebox("normal") == normal and not button.is_hovered(),
+        name_value + ": leaving the original button clears its highlight before release")
+    await _touch_at(outside, false)
+    _expect(not button.is_hovered() and not button.has_focus() and button.get_draw_mode() == BaseButton.DRAW_NORMAL,
+        name_value + ": outside release clears all native pressed/hover/focus state")
+    _expect(host.shell_route == route_before and controller.view.section == section_before,
+        name_value + ": outside release does not activate the original button")
+
+func _check_partial_card_drag() -> void:
+    var scroll: ScrollContainer = controller.view.scroll
+    scroll.scroll_vertical = 0
+    await _frames()
+    var clip := scroll.get_global_rect()
+    var card: Button
+    for child in controller.view.find_child("AstryxLibraryGrid", true, false).get_children():
+        var rect: Rect2 = child.get_global_rect()
+        if rect.position.y < clip.end.y - 24 and rect.end.y > clip.end.y + 16:
+            card = child
+            break
+    _expect(card != null, "The library fixture has a partially visible bottom card")
+    if card == null:
+        return
+    var start := Vector2(card.get_global_rect().get_center().x, clip.end.y - 20)
+    var offset := scroll.scroll_vertical
+    await _touch_at(start, true)
+    _expect(scroll.scroll_vertical == offset, "Pressing a clipped bottom card never snaps its description into view")
+    _expect(card.get_draw_mode() in [BaseButton.DRAW_PRESSED, BaseButton.DRAW_HOVER_PRESSED],
+        "A card shows its pressed feedback while the finger stays down")
+    var feedback := card.find_child("AstryxCardFeedback", true, false) as Control
+    _expect(feedback != null and feedback.get_global_rect().is_equal_approx(card.get_global_rect()),
+        "Card feedback covers the image, title and history together")
+    var finish := start - Vector2(0, 72)
+    await _move_touch(start, finish)
+    await _touch_at(finish, false)
+    _expect(host.shell_route == "library", "Dragging a partial card never opens it on release")
+    _expect(scroll.scroll_vertical > offset, "The partial card follows the drag normally")
+    _expect(not card.is_hovered() and not card.has_focus(), "The original scrolling card leaves no touch feedback")
+    await create_timer(0.4).timeout
+
 func _check_navigation_release() -> void:
+    await _check_leave_button("AstryxNav_library")
+    await _check_leave_button("AstryxNav_settings")
     var start := _center("AstryxNav_library")
     var videos := _center("AstryxNav_videos")
     var settings := _center("AstryxNav_settings")
@@ -99,6 +150,7 @@ func _check_navigation_release() -> void:
 
 func _check_settings_release() -> void:
     await _tap("AstryxNav_settings")
+    await _check_leave_button("AstryxSection_interface")
     var start := _center("AstryxSection_interface")
     var target := _center("AstryxSection_about")
     var before: String = controller.view.section
@@ -391,6 +443,7 @@ func _run() -> void:
     _expect(controller.view.section == section_before_scroll, "Scrolling an overflowing settings menu never changes category on release")
     await _tap("AstryxNav_library")
     await _rotate_active(Vector2i(393, 852), Vector4(0, 59, 0, 34))
+    await _check_partial_card_drag()
     await _check_navigation_release()
     await _check_settings_drags()
     await _check_scrollbar_visibility()

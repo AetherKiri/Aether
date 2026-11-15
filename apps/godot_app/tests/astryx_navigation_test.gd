@@ -88,6 +88,65 @@ func _check_return() -> void:
     _expect(_first_game().get_instance_id() == first_id, "Returning reuses the existing game controls, including after the state poll")
     _expect(controller.view.scroll.scroll_vertical == offset, "Returning preserves the library scroll position")
 
+func _check_page_transitions() -> void:
+    controller.view.navigate("library")
+    host.ui_motion.reduced_motion = false
+    await _settle()
+    var library: Control = controller.view.layout_root
+    var scroll: ScrollContainer = controller.view.scroll
+    scroll.scroll_vertical = 120
+    await _settle()
+    var offset := scroll.scroll_vertical
+    host._show_detail(host.known_games[0])
+    _expect(controller.view.outgoing_page == library and library.visible,
+        "Entering details retains the outgoing library for a crossfade")
+    _expect(controller.view.layout_root.modulate.a < 0.01,
+        "Details begin transparent instead of flashing fully opaque")
+    await create_timer(0.08).timeout
+    _expect(controller.view.layout_root.modulate.a > 0.0 and controller.view.layout_root.modulate.a < 1.0,
+        "The detail opacity progresses through intermediate frames")
+    controller.view.navigate("library")
+    await _settle()
+    _expect(controller.view.layout_root == library and scroll.scroll_vertical == offset,
+        "Returning during the fade reuses the library and preserves its offset")
+    _expect(controller.view.transition_blocker == null and controller.view.outgoing_page == null and is_equal_approx(library.modulate.a, 1.0),
+        "A completed or interrupted transition leaves no input blocker or faded page")
+    host._show_detail(host.known_games[0])
+    await _settle()
+    _expect(not library.visible, "The cached outgoing library is hidden after its fade")
+    controller.view.navigate("library")
+    controller.view.navigate("settings")
+    await _settle()
+    _expect(controller.view.transition_blocker == null and controller.view.outgoing_page == null,
+        "Another navigation cancels the crossfade cleanly")
+    host.ui_motion.reduced_motion = true
+    controller.view.navigate("library")
+    host._show_detail(host.known_games[0])
+    _expect(controller.view.transition_blocker == null and is_equal_approx(controller.view.layout_root.modulate.a, 1.0),
+        "Reduced motion switches pages immediately")
+    controller.view.navigate("library")
+    await _settle()
+
+func _check_refresh_rotation() -> void:
+    host.ios_library = true
+    host.ui_motion.reduced_motion = false
+    controller.view.rebuild()
+    await _settle()
+    var refresh := _button("AstryxRefresh")
+    var icon := refresh.find_child("AstryxRefreshIcon", true, false) as TextureRect
+    var before := host.refreshes
+    refresh.pressed.emit()
+    refresh.pressed.emit()
+    await create_timer(0.15).timeout
+    _expect(host.refreshes == before + 1, "Refresh stays functional and coalesces repeated taps during its feedback")
+    _expect(icon.rotation > 0 and icon.rotation < TAU, "The refresh icon rotates independently of its label")
+    await create_timer(0.5).timeout
+    _expect(is_zero_approx(icon.rotation) and is_zero_approx(refresh.rotation), "A full turn resets the icon while the button stays upright")
+    host.ios_library = false
+    host.ui_motion.reduced_motion = true
+    controller.view.rebuild()
+    await _settle()
+
 func _check_updates() -> void:
     controller.view.navigate("flash")
     await _settle()
@@ -440,6 +499,8 @@ func _run() -> void:
     await _check_modal_first_frame()
     await _check_sidebar_transition()
     await _check_background_effects()
+    await _check_page_transitions()
+    await _check_refresh_rotation()
     controller.set_enabled(false, false)
     _expect(host.game_list.get_child_count() == host.known_games.size(), "Switching to classic restores its current library")
     var title_visible := false

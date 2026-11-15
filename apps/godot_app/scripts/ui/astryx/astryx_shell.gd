@@ -59,6 +59,10 @@ var library_content_key := ""
 var cached_library: Dictionary = {}
 var background_effect: Control
 var touch_navigation
+var page_tween: Tween
+var outgoing_page: Control
+var transition_blocker: Control
+var refresh_tween: Tween
 
 func setup(owner_node: Node) -> void:
     controller = owner_node
@@ -74,6 +78,9 @@ func _ready() -> void:
 
 func _input(event: InputEvent) -> void:
     if touch_navigation != null and touch_navigation.handle_input(event):
+        get_viewport().set_input_as_handled()
+        return
+    if is_instance_valid(transition_blocker) and (event is InputEventScreenTouch or event is InputEventScreenDrag or event is InputEventMouseButton or event is InputEventMouseMotion):
         get_viewport().set_input_as_handled()
         return
     if not is_visible_in_tree() or not is_instance_valid(scroll) or host.modal_layer.visible:
@@ -131,6 +138,11 @@ func sync_state() -> void:
 func rebuild(preserve_scroll: bool = false) -> void:
     if not is_inside_tree() or size.x <= 0:
         return
+    _finish_page_transition()
+    var previous_root := layout_root
+    var next_route := String(host.shell_route)
+    var animate_page := is_instance_valid(previous_root) and not _reduced_motion() and (
+        (route == "library" and next_route == "detail") or (route == "detail" and next_route == "library"))
     if touch_navigation != null:
         touch_navigation.cancel_gesture()
     # Real route/viewport changes supersede an in-flight rail animation.
@@ -144,7 +156,8 @@ func rebuild(preserve_scroll: bool = false) -> void:
         # still repeat theme propagation and text layout on every tab switch.
         cached_library = {"key": library_content_key, "root": layout_root,
             "page": page, "scroll": scroll, "content": content, "search": search}
-        layout_root.hide()
+        if not animate_page:
+            layout_root.hide()
     var previous_scroll := scroll.scroll_vertical if preserve_scroll and is_instance_valid(scroll) else 0
     route = String(host.shell_route)
     if route != "detail":
@@ -164,7 +177,7 @@ func rebuild(preserve_scroll: bool = false) -> void:
     if is_instance_valid(background_effect) and background_effect.get_parent() != null:
         background_effect.get_parent().remove_child(background_effect)
     _dismiss_notice()
-    if is_instance_valid(layout_root) and layout_root != cached_library.get("root"):
+    if is_instance_valid(layout_root) and layout_root != cached_library.get("root") and not animate_page:
         remove_child(layout_root)
         layout_root.queue_free()
     layout_root = null
@@ -193,6 +206,8 @@ func rebuild(preserve_scroll: bool = false) -> void:
             layout_root.show()
             _attach_background(layout_root.find_child("AstryxPage", true, false))
             sync_dirty_state()
+            if animate_page:
+                _begin_page_transition(previous_root)
             return
         _discard_library_cache()
     layout_root = Control.new()
@@ -232,6 +247,47 @@ func rebuild(preserve_scroll: bool = false) -> void:
     if previous_scroll > 0:
         _restore_scroll.call_deferred(previous_scroll)
     sync_dirty_state()
+    if animate_page:
+        _begin_page_transition(previous_root)
+
+func _begin_page_transition(previous: Control) -> void:
+    outgoing_page = previous
+    # Keep both real layouts alive for the short crossfade, including the
+    # cached library and its scroll position. No screenshots or cover reloads.
+    outgoing_page.show()
+    move_child(outgoing_page, 0)
+    move_child(layout_root, 1)
+    layout_root.modulate.a = 0.0
+    transition_blocker = Control.new()
+    transition_blocker.name = "AstryxPageTransition"
+    transition_blocker.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+    transition_blocker.mouse_filter = Control.MOUSE_FILTER_STOP
+    add_child(transition_blocker)
+    page_tween = create_tween().set_parallel(true)
+    page_tween.set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_IN_OUT)
+    # The opaque outgoing page fades through the incoming page's alpha. Also
+    # lowering its alpha would wash out shared chrome halfway through the fade.
+    page_tween.tween_property(layout_root, "modulate:a", 1.0, 0.20)
+    page_tween.chain().tween_callback(_finish_page_transition)
+
+func _finish_page_transition() -> void:
+    if is_instance_valid(page_tween):
+        page_tween.kill()
+    page_tween = null
+    if is_instance_valid(layout_root):
+        layout_root.modulate.a = 1.0
+    if is_instance_valid(outgoing_page):
+        if outgoing_page == cached_library.get("root"):
+            outgoing_page.hide()
+            outgoing_page.modulate.a = 1.0
+        elif outgoing_page != layout_root:
+            remove_child(outgoing_page)
+            outgoing_page.queue_free()
+    outgoing_page = null
+    if is_instance_valid(transition_blocker):
+        remove_child(transition_blocker)
+        transition_blocker.queue_free()
+    transition_blocker = null
 
 func _attach_background(panel: Control) -> void:
     if not is_instance_valid(background_effect):
@@ -591,7 +647,7 @@ func _scroll_into(parent: Control, gutter: int) -> void:
     scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
     scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
     scroll.vertical_scroll_mode = ScrollContainer.SCROLL_MODE_AUTO
-    scroll.follow_focus = true
+    scroll.follow_focus = not host._is_touch_platform()
     parent.add_child(scroll)
     var pad := _margin(gutter, 20 if phone else 24, gutter, 32)
     scroll.add_child(pad)
@@ -1622,6 +1678,21 @@ func _build_library() -> void:
     var text_width := import_button.get_theme_font("font").get_string_size(import_button.text,
         HORIZONTAL_ALIGNMENT_LEFT, -1, import_button.get_theme_font_size("font_size")).x
     import_button.custom_minimum_size.x = text_width + 18 + 8 + 24
+    if refresh_only:
+        # A child icon can rotate independently of the native button label.
+        import_button.icon = null
+        import_button.alignment = HORIZONTAL_ALIGNMENT_RIGHT
+        for state in ["normal", "hover", "pressed", "disabled"]:
+            var style := import_button.get_theme_stylebox(state).duplicate() as StyleBox
+            style.content_margin_left = 38
+            style.content_margin_right = 12
+            import_button.add_theme_stylebox_override(state, style)
+        var icon := _icon("refresh", 18, "on_accent")
+        icon.name = "AstryxRefreshIcon"
+        import_button.add_child(icon)
+        icon.pivot_offset = Vector2(9, 9)
+        import_button.resized.connect(func():
+            icon.position = Vector2(12, (import_button.size.y - 18) / 2))
     if media and is_instance_valid(search):
         search.placeholder_text = _text("搜索文件…", "Search files…", "ファイルを検索…")
         search.accessibility_name = search.placeholder_text
@@ -1661,6 +1732,20 @@ func _library_display_switch() -> Control:
     return panel
 
 func _import() -> void:
+    if host._library_uses_refresh_action() and not _reduced_motion():
+        if is_instance_valid(refresh_tween) and refresh_tween.is_running():
+            return
+        var icon := layout_root.find_child("AstryxRefreshIcon", true, false) as TextureRect
+        if icon != null:
+            icon.rotation = 0
+            refresh_tween = icon.create_tween()
+            refresh_tween.tween_property(icon, "rotation", TAU, 0.55).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_IN_OUT)
+            refresh_tween.tween_callback(func(): icon.rotation = 0)
+            _perform_import.call_deferred()
+            return
+    _perform_import()
+
+func _perform_import() -> void:
     host._on_refresh_or_import()
     controller.sync_state()
 
@@ -1792,9 +1877,8 @@ func _game_card(game: Dictionary, width: float) -> Button:
     button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
     # Reserve two title lines and the history; longer localized dates may wrap.
     button.custom_minimum_size = Vector2(0, width * (4.0 / 3.0 if phone else 0.75))
-    for key in ["normal", "hover", "pressed"]:
+    for key in ["normal", "hover", "pressed", "focus"]:
         button.add_theme_stylebox_override(key, StyleBoxEmpty.new())
-    button.add_theme_stylebox_override("focus", design.focus_box(16))
     var stack := _vbox(10)
     stack.mouse_filter = Control.MOUSE_FILTER_IGNORE
     stack.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
@@ -1807,11 +1891,21 @@ func _game_card(game: Dictionary, width: float) -> Button:
         if button.size.x > 0:
             cover.custom_minimum_size.y = button.size.x * (4.0 / 3.0 if phone else 0.75)
     )
+    var text_pad := _margin(10, 0, 10, 12)
+    text_pad.mouse_filter = Control.MOUSE_FILTER_IGNORE
+    stack.add_child(text_pad)
+    var text_stack := _vbox(10)
+    text_stack.mouse_filter = Control.MOUSE_FILTER_IGNORE
+    text_pad.add_child(text_stack)
     var label := _label(title, 14 if phone else 16, false, true)
     label.max_lines_visible = 2
     label.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
-    stack.add_child(label)
-    stack.add_child(_game_history(game))
+    text_stack.add_child(label)
+    text_stack.add_child(_game_history(game))
+    var feedback := preload("res://scripts/ui/astryx/astryx_card_feedback.gd").new()
+    feedback.name = "AstryxCardFeedback"
+    feedback.configure(button, design, _reduced_motion(), host._is_touch_platform())
+    button.add_child(feedback)
     stack.minimum_size_changed.connect(func(): button.custom_minimum_size.y = stack.get_combined_minimum_size().y)
     button.custom_minimum_size.y = stack.get_combined_minimum_size().y
     return button

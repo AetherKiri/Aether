@@ -9,6 +9,8 @@ var group: Control
 var highlighted: Button
 var styles: Dictionary = {}
 var cancelled := false
+var touched_buttons: Array[WeakRef] = []
+var feedback_generation := 0
 
 func _init(shell: Control) -> void:
     view = shell
@@ -17,17 +19,42 @@ func _button_at(position: Vector2) -> BaseButton:
     var control: Control = view.host._control_at_pointer(position)
     return view.host._nearest_base_button(control) if control != null else null
 
-func _clear_pointer_feedback(position: Vector2) -> void:
+func _remember_button(button: BaseButton) -> void:
+    if not is_instance_valid(button):
+        return
+    for reference in touched_buttons:
+        if reference.get_ref() == button:
+            return
+    touched_buttons.append(weakref(button))
+
+func _clear_pointer_feedback(position: Vector2, finished: bool = true) -> void:
     if not is_instance_valid(view) or not view.is_inside_tree():
         return
     var control := view.get_viewport().gui_get_hovered_control()
     var hovered: BaseButton = view.host._nearest_base_button(control) if control != null else null
-    for button in [hovered, _button_at(position)]:
+    _remember_button(hovered)
+    _remember_button(_button_at(position))
+    for reference in touched_buttons:
+        var button := reference.get_ref() as BaseButton
         if is_instance_valid(button):
             # Touch-emulated mouse hover has no pointer to leave the target.
             # Clear only transient feedback, preserving the selected tab/style.
             button.notification(Control.NOTIFICATION_MOUSE_EXIT)
-            button.release_focus()
+            if finished:
+                button.notification(Control.NOTIFICATION_SCROLL_BEGIN)
+                if button.is_inside_tree():
+                    button.release_focus()
+    if finished:
+        touched_buttons.clear()
+
+func _defer_feedback_cleanup(position: Vector2, finished: bool) -> void:
+    var generation := feedback_generation
+    # Viewport hover dispatch can run after _input, including after a drag was
+    # consumed. Clear that later feedback too, without cancelling a native tap.
+    (func():
+        if generation == feedback_generation:
+            _clear_pointer_feedback(position, finished)
+    ).call_deferred()
 
 func _highlight(button: Button) -> void:
     if highlighted == button:
@@ -35,10 +62,14 @@ func _highlight(button: Button) -> void:
     if is_instance_valid(highlighted):
         for key in styles:
             highlighted.add_theme_stylebox_override(key, styles[key])
+        highlighted.notification(Control.NOTIFICATION_SCROLL_BEGIN)
         highlighted.notification(Control.NOTIFICATION_MOUSE_EXIT)
+        if highlighted.is_inside_tree():
+            highlighted.release_focus()
     highlighted = button
     styles.clear()
     if highlighted != null:
+        _remember_button(highlighted)
         for key in ["normal", "hover"]:
             styles[key] = highlighted.get_theme_stylebox(key)
             highlighted.add_theme_stylebox_override(key, highlighted.get_theme_stylebox("pressed"))
@@ -67,12 +98,14 @@ func handle_input(event: InputEvent) -> bool:
         return false
     if event is InputEventMouseMotion or event is InputEventMouseButton:
         if event.device == EMULATED_MOUSE:
-            if event is InputEventMouseButton and not event.pressed:
-                _clear_pointer_feedback.call_deferred(event.position)
+            var released: bool = event is InputEventMouseButton and not event.pressed
+            _defer_feedback_cleanup(event.position, released)
             return touch_index >= 0
         # An attached mouse still gets ordinary hover, including when its
         # first movement follows a touch on the same control.
         if event is InputEventMouseMotion and view.is_visible_in_tree():
+            feedback_generation += 1
+            touched_buttons.clear()
             var button := _button_at(event.position)
             if button != null and not button.is_hovered():
                 button.notification(Control.NOTIFICATION_MOUSE_ENTER)
@@ -80,8 +113,12 @@ func handle_input(event: InputEvent) -> bool:
     if not event is InputEventScreenTouch and not event is InputEventScreenDrag:
         return false
     var position: Vector2 = event.position
+    feedback_generation += 1
+    _remember_button(_button_at(position))
     if event is InputEventScreenTouch and not event.pressed:
-        _clear_pointer_feedback.call_deferred(position)
+        _defer_feedback_cleanup(position, true)
+    elif event is InputEventScreenDrag:
+        _defer_feedback_cleanup(position, false)
     if view.host.modal_layer.visible:
         cancel_gesture()
         touch_index = -1

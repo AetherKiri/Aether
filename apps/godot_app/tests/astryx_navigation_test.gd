@@ -64,11 +64,24 @@ func _expect(ok: bool, message: String) -> void:
 
 func _settle() -> void:
     await create_timer(0.22).timeout
+    if controller != null and is_instance_valid(controller.view) and controller.view.page_tween != null:
+        await create_timer(0.5).timeout
     for _frame in range(4):
         await process_frame
 
 func _first_game() -> Node:
     return controller.view.find_child("AstryxGameCard", true, false)
+
+func _step_page_transition(seconds: float) -> void:
+    # CI can spend longer than 150 ms laying out the first three frames. Drive
+    # the tween clock explicitly after layout instead of sampling wall time.
+    var view = controller.view
+    view.set_process(false)
+    view.page_arm_frames = 0
+    view.page_tween.pause()
+    for _frame in range(3):
+        await process_frame
+    view.page_tween.custom_step(seconds)
 
 func _check_return() -> void:
     var first_id := _first_game().get_instance_id()
@@ -87,6 +100,105 @@ func _check_return() -> void:
     _expect(host.cover_loads == before[2], "Returning to an unchanged library does not reload covers")
     _expect(_first_game().get_instance_id() == first_id, "Returning reuses the existing game controls, including after the state poll")
     _expect(controller.view.scroll.scroll_vertical == offset, "Returning preserves the library scroll position")
+
+func _check_page_transitions() -> void:
+    controller.view.navigate("library")
+    host.ui_motion.reduced_motion = false
+    await _settle()
+    var library: Control = controller.view.layout_root
+    var scroll: ScrollContainer = controller.view.scroll
+    scroll.scroll_vertical = 120
+    await _settle()
+    var offset := scroll.scroll_vertical
+    host._show_detail(host.known_games[0])
+    _expect(controller.view.outgoing_page == library and library.visible,
+        "Entering details retains the outgoing library for a crossfade")
+    _expect(controller.view.page_stage.modulate.a < 0.01 and not controller.view.page_tween.is_running(),
+        "Details begin transparent instead of flashing fully opaque")
+    await _step_page_transition(0.08)
+    _expect(controller.view.outgoing_stage.modulate.a > 0.0 and controller.view.outgoing_stage.modulate.a < 1.0,
+        "The library visibly fades out before the detail fades in")
+    _expect(is_equal_approx(controller.view.layout_root.modulate.a, 1.0),
+        "Navigation and the background remain opaque during the content fade")
+    await _step_page_transition(0.18)
+    _expect(controller.view.page_stage.modulate.a > 0.0 and controller.view.page_stage.modulate.a < 1.0,
+        "The detail opacity progresses through intermediate frames after the exit")
+    controller.view.navigate("library")
+    await _settle()
+    _expect(controller.view.layout_root == library and scroll.scroll_vertical == offset,
+        "Returning during the fade reuses the library and preserves its offset")
+    _expect(controller.view.transition_blocker == null and controller.view.outgoing_page == null and is_equal_approx(library.modulate.a, 1.0),
+        "A completed or interrupted transition leaves no input blocker or faded page")
+    host._show_detail(host.known_games[0])
+    await _settle()
+    _expect(not library.visible, "The cached outgoing library is hidden after its fade")
+    controller.view.navigate("library")
+    controller.view.navigate("settings")
+    await _settle()
+    _expect(controller.view.transition_blocker == null and controller.view.outgoing_page == null,
+        "Another navigation cancels the crossfade cleanly")
+    host.ui_motion.reduced_motion = true
+    controller.view.navigate("library")
+    host._show_detail(host.known_games[0])
+    _expect(controller.view.transition_blocker == null and is_equal_approx(controller.view.layout_root.modulate.a, 1.0),
+        "Reduced motion switches pages immediately")
+    controller.view.navigate("library")
+    await _settle()
+
+func _check_settings_slide() -> void:
+    root.size = Vector2i(393, 852)
+    controller.view.navigate("settings")
+    await _settle()
+    host.ui_motion.reduced_motion = false
+    var nav: Control = controller.view.find_child("AstryxBottomNav", true, false)
+    var nav_rect := nav.get_global_rect()
+    _button("AstryxSection_render").pressed.emit()
+    var incoming: Control = controller.view.page_stage
+    _expect(incoming.position.x > 300 and controller.view.outgoing_stage.position.x == 0,
+        "Portrait settings details begin to the right of the category menu")
+    await _step_page_transition(0.16)
+    _expect(incoming.position.x > 0 and incoming.position.x < 300 and controller.view.outgoing_stage.position.x < 0,
+        "Settings pages move horizontally through intermediate positions")
+    var current_nav: Control = controller.view.layout_root.find_child("AstryxBottomNav", true, false)
+    _expect(current_nav.get_global_rect().is_equal_approx(nav_rect) and is_equal_approx(current_nav.modulate.a, 1.0),
+        "Bottom navigation stays fixed and opaque during the page slide")
+    controller.view.page_tween.play()
+    await _settle()
+    controller.view.handle_back()
+    _expect(controller.view.page_stage.position.x < -300,
+        "Returning brings the category menu back from the left")
+    await _settle()
+    _expect(is_zero_approx(controller.view.page_stage.position.x) and controller.view.transition_blocker == null,
+        "The completed slide restores normal geometry and input")
+    _button("AstryxSection_render").pressed.emit()
+    controller.view.handle_back()
+    root.size = Vector2i(1194, 834)
+    await _settle()
+    _expect(controller.view.page_tween == null and controller.view.outgoing_stage == null,
+        "Rotation and an interrupted back transition leave no retired settings page")
+    host.ui_motion.reduced_motion = true
+    controller.view.navigate("library")
+    await _settle()
+
+func _check_refresh_rotation() -> void:
+    host.ios_library = true
+    host.ui_motion.reduced_motion = false
+    controller.view.rebuild()
+    await _settle()
+    var refresh := _button("AstryxRefresh")
+    var icon := refresh.find_child("AstryxRefreshIcon", true, false) as TextureRect
+    var before := host.refreshes
+    refresh.pressed.emit()
+    refresh.pressed.emit()
+    await create_timer(0.15).timeout
+    _expect(host.refreshes == before + 1, "Refresh stays functional and coalesces repeated taps during its feedback")
+    _expect(icon.rotation > 0 and icon.rotation < TAU, "The refresh icon rotates independently of its label")
+    await create_timer(0.5).timeout
+    _expect(is_zero_approx(icon.rotation) and is_zero_approx(refresh.rotation), "A full turn resets the icon while the button stays upright")
+    host.ios_library = false
+    host.ui_motion.reduced_motion = true
+    controller.view.rebuild()
+    await _settle()
 
 func _check_updates() -> void:
     controller.view.navigate("flash")
@@ -325,7 +437,7 @@ func _check_sidebar_transition() -> void:
     _expect(is_equal_approx(controller.view.sidebar_width, interrupted_width),
         "Reversing the sidebar starts from its current width")
     await _settle()
-    _expect(not controller.view.sidebar_expanded and is_equal_approx(controller.view.sidebar_width, 48),
+    _expect(not controller.view.sidebar_expanded and is_equal_approx(controller.view.sidebar_width, 64),
         "Rapid toggles settle at the last requested state")
     controller.view._toggle_sidebar()
     controller.view.navigate("videos")
@@ -440,6 +552,9 @@ func _run() -> void:
     await _check_modal_first_frame()
     await _check_sidebar_transition()
     await _check_background_effects()
+    await _check_page_transitions()
+    await _check_settings_slide()
+    await _check_refresh_rotation()
     controller.set_enabled(false, false)
     _expect(host.game_list.get_child_count() == host.known_games.size(), "Switching to classic restores its current library")
     var title_visible := false

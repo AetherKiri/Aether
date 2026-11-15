@@ -210,6 +210,7 @@ func _exercise_saved_notice() -> void:
     var cases := [
         [Vector2i(1194, 834), "light", "ja", "変更を保存しました", "ipad"],
         [Vector2i(834, 1194), "light", "en", "Changes saved", "ipad-portrait"],
+        [Vector2i(393, 852), "light", "zh_hant", "變更已儲存", "iphone-traditional"],
         [Vector2i(393, 852), "dark", "zh_hans", "更改已保存", "iphone"],
     ]
     for sample in cases:
@@ -864,7 +865,7 @@ func _run() -> void:
     await _click("AstryxNav_library")
     _check_header_heights()
     var rail: Control = controller.view.find_child("AstryxSideNav", true, false)
-    _expect(is_equal_approx(rail.size.x, 48), "Sidebar starts as an icon rail")
+    _expect(is_equal_approx(rail.size.x, 64), "Sidebar starts as a touch-sized icon rail")
     app.ui_motion.reduced_motion = false
     await _pointer_click("AstryxToggleSidebar")
     _expect(controller.view.sidebar_expanded, "App icon expands the sidebar")

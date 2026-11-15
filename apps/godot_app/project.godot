@@ -28,7 +28,7 @@ config/quit_on_go_back=false
 boot_splash/show_image=false
 boot_splash/bg_color=Color(0.055, 0.059, 0.071, 1)
 boot_splash/stretch_mode=0
-config/icon="res://assets/icon.png"
+config/icon="res://assets/icons/astryx/icon.png"
 
 [display]
 

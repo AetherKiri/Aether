@@ -77,7 +77,7 @@ func _spawn(glyph: Glyph) -> void:
     glyph.speed = random.randf_range(12.0, 24.0)
     glyph.phase = random.randf_range(0.0, TAU)
     glyph.drift = random.randf_range(6.0, 18.0)
-    glyph.opacity = random.randf_range(0.12, 0.22)
+    glyph.opacity = random.randf_range(0.06, 0.11)
     glyph.angle = random.randf_range(-0.2, 0.2)
     # Independent directions and roughly 0.6–1.4 degrees per second keep
     # the floating shapes moving gently without synchronized rocking.

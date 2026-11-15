@@ -63,7 +63,58 @@ func _move_touch(from: Vector2, to: Vector2) -> void:
 func _center(name_value: String) -> Vector2:
     return host.find_child(name_value, true, false).get_global_rect().get_center()
 
+func _check_leave_button(name_value: String) -> void:
+    var button := host.find_child(name_value, true, false) as Button
+    var normal := button.get_theme_stylebox("normal")
+    var route_before: String = host.shell_route
+    var section_before: String = controller.view.section
+    var start := button.get_global_rect().get_center()
+    # Move vertically out of the original icon, then release outside the group.
+    var outside := Vector2(start.x, button.get_parent().get_global_rect().position.y - 24)
+    await _touch_at(start, true)
+    await _move_touch(start, outside)
+    _expect(button.get_theme_stylebox("normal") == normal and not button.is_hovered(),
+        name_value + ": leaving the original button clears its highlight before release")
+    await _touch_at(outside, false)
+    _expect(not button.is_hovered() and not button.has_focus() and button.get_draw_mode() == BaseButton.DRAW_NORMAL,
+        name_value + ": outside release clears all native pressed/hover/focus state")
+    _expect(host.shell_route == route_before and controller.view.section == section_before,
+        name_value + ": outside release does not activate the original button")
+
+func _check_partial_card_drag() -> void:
+    var scroll: ScrollContainer = controller.view.scroll
+    scroll.scroll_vertical = 0
+    await _frames()
+    var clip := scroll.get_global_rect()
+    var card: Button
+    for child in controller.view.find_child("AstryxLibraryGrid", true, false).get_children():
+        var rect: Rect2 = child.get_global_rect()
+        if rect.position.y < clip.end.y - 24 and rect.end.y > clip.end.y + 16:
+            card = child
+            break
+    _expect(card != null, "The library fixture has a partially visible bottom card")
+    if card == null:
+        return
+    var start := Vector2(card.get_global_rect().get_center().x, clip.end.y - 20)
+    var offset := scroll.scroll_vertical
+    await _touch_at(start, true)
+    _expect(scroll.scroll_vertical == offset, "Pressing a clipped bottom card never snaps its description into view")
+    _expect(card.get_draw_mode() in [BaseButton.DRAW_PRESSED, BaseButton.DRAW_HOVER_PRESSED],
+        "A card shows its pressed feedback while the finger stays down")
+    var feedback := card.find_child("AstryxCardFeedback", true, false) as Control
+    _expect(feedback != null and feedback.get_global_rect().is_equal_approx(card.get_global_rect()),
+        "Card feedback covers the image, title and history together")
+    var finish := start - Vector2(0, 72)
+    await _move_touch(start, finish)
+    await _touch_at(finish, false)
+    _expect(host.shell_route == "library", "Dragging a partial card never opens it on release")
+    _expect(scroll.scroll_vertical > offset, "The partial card follows the drag normally")
+    _expect(not card.is_hovered() and not card.has_focus(), "The original scrolling card leaves no touch feedback")
+    await create_timer(0.4).timeout
+
 func _check_navigation_release() -> void:
+    await _check_leave_button("AstryxNav_library")
+    await _check_leave_button("AstryxNav_settings")
     var start := _center("AstryxNav_library")
     var videos := _center("AstryxNav_videos")
     var settings := _center("AstryxNav_settings")
@@ -99,6 +150,7 @@ func _check_navigation_release() -> void:
 
 func _check_settings_release() -> void:
     await _tap("AstryxNav_settings")
+    await _check_leave_button("AstryxSection_interface")
     var start := _center("AstryxSection_interface")
     var target := _center("AstryxSection_about")
     var before: String = controller.view.section
@@ -236,6 +288,22 @@ func _exercise(name_value: String, viewport_size: Vector2i, insets: Vector4) -> 
     _expect(host.shell_route == "detail", name_value + ": touch opens game details")
     if host.shell_route != "detail":
         return
+    await _frames()
+    if insets.y > 0:
+        var wash: TextureRect = controller.view.detail_backdrop
+        var safe_cover: Control = controller.safe_cover_clip
+        _expect(safe_cover != null and safe_cover.visible and is_zero_approx(safe_cover.global_position.y),
+            name_value + ": cover wash reaches the top edge above the camera safe area")
+        if safe_cover != null:
+            _expect(safe_cover.get_global_rect().end.y >= controller.view.global_position.y,
+                name_value + ": opaque safe-area base covers fractional boundaries")
+            var panel: Control = controller.view.layout_root.find_child("AstryxPage", true, false)
+            _expect(not panel.clip_contents and is_zero_approx(wash.global_position.y),
+                name_value + ": one unclipped cover spans the safe area and content")
+            _expect(not host.shell_safe_top_fill.visible,
+                name_value + ": classic safe-area fill never overlays the Astryx cover")
+        var back: Control = controller.view.find_child("AstryxDetailBack", true, false)
+        _expect(back.global_position.y >= insets.y, name_value + ": interactive controls still avoid the camera")
     host.launched = false
     await _drag_button("AstryxLaunchGame", 24.0)
     _expect(not host.launched, name_value + ": scrolling from Start does not launch a game")
@@ -243,6 +311,8 @@ func _exercise(name_value: String, viewport_size: Vector2i, insets: Vector4) -> 
     _expect(host.launched, name_value + ": touch invokes game launch")
     await _tap("AstryxDetailBack")
     _expect(host.shell_route == "library", name_value + ": touch returns from game details")
+    _expect(controller.safe_cover_clip == null or not controller.safe_cover_clip.visible,
+        name_value + ": cover wash disappears after leaving details")
     await _tap("AstryxDisplay_list")
     await _drag_button("AstryxGameRow", 24.0)
     if host.shell_route != "library":
@@ -379,6 +449,7 @@ func _run() -> void:
     await _frames()
     await _exercise("Android portrait", Vector2i(393, 852), Vector4.ZERO)
     await _exercise("Android portrait cutout", Vector2i(393, 852), Vector4(0, 40, 0, 16))
+    await _exercise("Android fractional cutout", Vector2i(393, 852), Vector4(0, 40.5, 0, 16.25))
     await _exercise("Android landscape cutout", Vector2i(852, 393), Vector4(40, 0, 0, 16))
     await _exercise("iPhone portrait", Vector2i(393, 852), Vector4(0, 59, 0, 34))
     await _exercise("iPhone landscape", Vector2i(852, 393), Vector4(59, 0, 59, 21))
@@ -391,6 +462,7 @@ func _run() -> void:
     _expect(controller.view.section == section_before_scroll, "Scrolling an overflowing settings menu never changes category on release")
     await _tap("AstryxNav_library")
     await _rotate_active(Vector2i(393, 852), Vector4(0, 59, 0, 34))
+    await _check_partial_card_drag()
     await _check_navigation_release()
     await _check_settings_drags()
     await _check_scrollbar_visibility()

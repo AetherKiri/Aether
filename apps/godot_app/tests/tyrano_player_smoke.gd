@@ -17,8 +17,9 @@ class TyranoApp:
     func _mark_game_played(path: String) -> Dictionary:
         marked.append(path)
         return {}
-    func _add_play_duration(_path: String, seconds: int) -> void:
+    func _add_play_duration(_path: String, seconds: int) -> Error:
         play_seconds += seconds
+        return OK
     func _show_message(text: String) -> void:
         messages.append(text)
 

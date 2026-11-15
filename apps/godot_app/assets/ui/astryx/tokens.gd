@@ -41,7 +41,7 @@ const VALUES := {
     },
     "layout": {
         "phone_breakpoint": 700,
-        "rail_width": 48,
+        "rail_width": 64,
         "settings_nav_width": 208,
         "phone_gutter": 20,
         "tablet_gutter": 24,

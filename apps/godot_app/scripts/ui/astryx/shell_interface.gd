@@ -3,6 +3,7 @@ extends Node
 ## This node survives the classic shell's style rebuilds; no classic view is reparented.
 const VIEW := preload("res://scripts/ui/astryx/astryx_shell.gd")
 const PREFERENCES := "user://astryx_shell.cfg"
+const APP_ICON := preload("res://scripts/ui/app_icon.gd")
 var host
 var enabled := true
 var theme_mode := "light"
@@ -12,6 +13,7 @@ var draft_background_effects := true
 var library_display := "cards"
 var view: Control
 var backdrop: ColorRect
+var safe_cover_clip: ColorRect
 var elapsed := 0.0
 var state_signature := ""
 var library_revision := 0
@@ -54,11 +56,12 @@ func set_library_display(value: String) -> void:
     library_display = value
     if save_preferences() != OK:
         library_display = previous
-        view.show_notice(text("展示方式保存失败，请重试。", "Could not save display preference. Try again.", "表示設定を保存できませんでした。"))
+        view.show_notice(text("展示方式保存失败，请重试。", "Could not save display preference. Try again.", "表示設定を保存できませんでした。", "顯示方式儲存失敗，請重試。"))
         return
     view.rebuild()
 
 func _attach() -> void:
+    _apply_app_icon()
     set_process(true)
     if enabled:
         _ensure_view()
@@ -102,12 +105,40 @@ func _process(delta: float) -> void:
         return
     backdrop.visible = host.shell_root.visible
     backdrop.color = view.design.color("surface" if view.phone else "canvas")
+    _sync_safe_top_cover()
     elapsed += delta
     if elapsed < 0.15:
         return
     elapsed = 0.0
     sync_state()
     view.sync_dirty_state()
+
+func _sync_safe_top_cover() -> void:
+    var source: TextureRect = view.detail_backdrop
+    if not is_instance_valid(source) and is_instance_valid(view.outgoing_page):
+        source = view.outgoing_page.find_child("AstryxDetailBackdrop", true, false)
+    if not is_instance_valid(source) or not source.is_visible_in_tree() or source.texture == null:
+        if is_instance_valid(safe_cover_clip):
+            safe_cover_clip.hide()
+        return
+    var top := maxf(0.0, view.global_position.y)
+    # One image extends through the safe edge. Splitting it into two clipped
+    # images leaves a seam at fractional scales; only its opaque base extends.
+    source.offset_top = -top
+    if top <= 0.0:
+        if is_instance_valid(safe_cover_clip):
+            safe_cover_clip.hide()
+        return
+    if not is_instance_valid(safe_cover_clip):
+        safe_cover_clip = ColorRect.new()
+        safe_cover_clip.name = "AstryxSafeTopSurface"
+        safe_cover_clip.mouse_filter = Control.MOUSE_FILTER_IGNORE
+        backdrop.add_child(safe_cover_clip)
+    safe_cover_clip.show()
+    safe_cover_clip.color = view.design.color("surface")
+    safe_cover_clip.global_position = Vector2(source.global_position.x, 0.0)
+    # Opaque overlap is behind the page; the translucent image is drawn once.
+    safe_cover_clip.size = Vector2(source.size.x, top + 1.0)
 
 func _state_signature() -> String:
     return "%s:%s:%s:%s:%s:%s:%s:%s" % [host.shell_route, host.active_language,
@@ -139,9 +170,9 @@ func _style_pending_modal() -> void:
 
 func mount_classic_switch(rows: Control) -> void:
     var row: Control = host._settings_action_row(
-        text("界面版本", "Interface", "インターフェイス"),
-        text("试用 Astryx 界面，随时可以切回。", "Try Astryx. Switch back at any time.", "Astryx を試す。いつでも元に戻せます。"),
-        text("切换到 Astryx", "Switch to Astryx", "Astryx に切り替える"),
+        text("界面版本", "Interface", "インターフェイス", "介面版本"),
+        text("试用 Astryx 界面，随时可以切回。", "Try Astryx. Switch back at any time.", "Astryx を試す。いつでも元に戻せます。", "試用 Astryx 介面，隨時可以切回。"),
+        text("切换到 Astryx", "Switch to Astryx", "Astryx に切り替える", "切換至 Astryx"),
         func():
             if not host._request_settings_navigation(Callable(self, "set_enabled").bind(true)):
                 set_enabled(true)
@@ -150,7 +181,14 @@ func mount_classic_switch(rows: Control) -> void:
     host._add_settings_row(rows, row)
 
 func set_enabled(value: bool, persist: bool = true) -> void:
+    var previous := enabled
     enabled = value
+    # The OS and next launch must follow a durable choice. Do not change the
+    # launcher icon (or visible interface) if saving that choice failed.
+    if persist and save_preferences() != OK:
+        enabled = previous
+        push_warning("Could not save shell interface preference")
+        return
     draft_theme = theme_mode
     draft_background_effects = background_effects
     host._reset_shell_scroll_drag()
@@ -177,8 +215,15 @@ func set_enabled(value: bool, persist: bool = true) -> void:
             host._rebuild_settings_view()
         elif host.shell_route == "detail":
             host._show_detail(host.selected_game)
-    if persist and save_preferences() != OK:
-        push_warning("Could not save shell interface preference")
+    if persist:
+        _apply_app_icon()
+
+func app_icon_texture() -> Texture2D:
+    # Preview the draft in the UI; only saved choices update the system icon.
+    return APP_ICON.texture(enabled, draft_theme == "dark")
+
+func _apply_app_icon() -> void:
+    APP_ICON.apply(enabled, theme_mode == "dark")
 
 func is_dirty() -> bool:
     return bool(host.dirty_settings) or draft_theme != theme_mode or draft_background_effects != background_effects
@@ -198,14 +243,16 @@ func save_settings() -> bool:
     theme_mode = draft_theme
     background_effects = draft_background_effects
     if save_preferences() != OK:
-        view.show_notice(text("界面偏好保存失败，请重试。", "Could not save interface preferences. Try again.", "設定を保存できませんでした。"))
+        view.show_notice(text("界面偏好保存失败，请重试。", "Could not save interface preferences. Try again.", "設定を保存できませんでした。", "介面偏好儲存失敗，請重試。"))
         theme_mode = previous
         background_effects = previous_effects
         return false
     host._save_settings_draft()
     host._begin_settings_edit()
+    if enabled and previous != theme_mode:
+        _apply_app_icon()
     view.rebuild(true)
-    view.show_notice(text("更改已保存", "Changes saved", "変更を保存しました"))
+    view.show_notice(text("更改已保存", "Changes saved", "変更を保存しました", "變更已儲存"))
     return true
 
 func discard_settings() -> void:
@@ -214,8 +261,9 @@ func discard_settings() -> void:
     host._begin_settings_edit()
     view.rebuild(true)
 
-func text(zh: String, en: String, ja: String = "") -> String:
+func text(zh: String, en: String, ja: String, zh_hant: String) -> String:
     match String(host.active_language):
-        "zh_hans", "zh_hant": return zh
+        "zh_hans": return zh
+        "zh_hant": return zh_hant
         "ja": return ja if not ja.is_empty() else en
         _: return en

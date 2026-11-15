@@ -98,6 +98,7 @@ endif()
 set(AETHERKIRI_GODOT_SOURCES
     src/native_controls_overlay.cpp
     src/mobile_window.cpp
+    src/app_icon.cpp
     src/aether_runtime_player.cpp
     src/frame_effect_host.cpp
     src/presentation/RuntimePresentationSprite.cpp
@@ -179,6 +180,7 @@ if(APPLE)
         # own target so the Darwin module sees only SDK headers, then merge
         # the Swift objects into the archive consumed by the Godot exporter.
         add_library(aether_kiri_godot_swift STATIC
+            src/apple_app_icon.swift
             src/apple_native_file_picker.swift
             src/apple_save_transfer.swift
             src/apple_storekit.swift
@@ -197,6 +199,7 @@ if(APPLE)
         # runtime through LC_LINKER_OPTION entries, so the CXX link resolves
         # them without the Swift driver.
         add_library(aether_kiri_godot_swift STATIC
+            src/apple_app_icon.swift
             src/apple_native_file_picker.swift
             src/apple_save_transfer.swift
             src/apple_storekit.swift)

@@ -13,6 +13,7 @@ extern "C" void AetherInternalRegisterWa2Runtime(void);
 #endif
 #include "native_controls_overlay.h"
 #include "mobile_window.h"
+#include "app_icon.h"
 #if defined(AETHERKIRI_HOST_RENPY)
 #include "renpy_native.h"
 #endif
@@ -14486,6 +14487,7 @@ void InitializeAetherRuntime(ModuleInitializationLevel level) {
 #endif
     RegisterAetherNativeControls();
     RegisterAetherMobileWindow();
+    RegisterAetherAppIcon();
 #if defined(AETHERKIRI_HOST_RENPY)
     RegisterAetherRenpyNativePlayer();
 #endif

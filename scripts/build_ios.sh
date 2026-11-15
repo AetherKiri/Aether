@@ -795,6 +795,8 @@ else
         PATCH_ARCH="$SIMULATOR_ARCH"
     fi
     patch_ios_export_project "$PROJECT_ROOT/out/godot/ios/$BUILD_TYPE_LOWER/Aether.xcodeproj" "$PATCH_ARCH" "$BUILD_TYPE_LOWER"
+    python3 "$PROJECT_ROOT/tools/stage_app_icons.py" \
+        --ios-project "$PROJECT_ROOT/out/godot/ios/$BUILD_TYPE_LOWER/Aether.xcodeproj"
     RENPY_BUNDLE_DIR="${AETHER_RENPY_RUNTIME_DIR:-}"
     if [[ -z "$RENPY_BUNDLE_DIR" ]]; then
         echo "==> Preparing the native Ren'Py iOS runtime"

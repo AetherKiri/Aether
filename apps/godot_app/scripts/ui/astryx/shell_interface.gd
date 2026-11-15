@@ -3,6 +3,7 @@ extends Node
 ## This node survives the classic shell's style rebuilds; no classic view is reparented.
 const VIEW := preload("res://scripts/ui/astryx/astryx_shell.gd")
 const PREFERENCES := "user://astryx_shell.cfg"
+const APP_ICON := preload("res://scripts/ui/app_icon.gd")
 var host
 var enabled := true
 var theme_mode := "light"
@@ -61,6 +62,7 @@ func set_library_display(value: String) -> void:
     view.rebuild()
 
 func _attach() -> void:
+    _apply_app_icon()
     set_process(true)
     if enabled:
         _ensure_view()
@@ -194,7 +196,14 @@ func mount_classic_switch(rows: Control) -> void:
     host._add_settings_row(rows, row)
 
 func set_enabled(value: bool, persist: bool = true) -> void:
+    var previous := enabled
     enabled = value
+    # The OS and next launch must follow a durable choice. Do not change the
+    # launcher icon (or visible interface) if saving that choice failed.
+    if persist and save_preferences() != OK:
+        enabled = previous
+        push_warning("Could not save shell interface preference")
+        return
     draft_theme = theme_mode
     draft_background_effects = background_effects
     host._reset_shell_scroll_drag()
@@ -221,8 +230,14 @@ func set_enabled(value: bool, persist: bool = true) -> void:
             host._rebuild_settings_view()
         elif host.shell_route == "detail":
             host._show_detail(host.selected_game)
-    if persist and save_preferences() != OK:
-        push_warning("Could not save shell interface preference")
+    if persist:
+        _apply_app_icon()
+
+func app_icon_texture() -> Texture2D:
+    return APP_ICON.texture(enabled)
+
+func _apply_app_icon() -> void:
+    APP_ICON.apply(enabled)
 
 func is_dirty() -> bool:
     return bool(host.dirty_settings) or draft_theme != theme_mode or draft_background_effects != background_effects

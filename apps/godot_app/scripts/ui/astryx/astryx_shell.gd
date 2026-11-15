@@ -493,7 +493,7 @@ func _navigation(bottom: bool) -> Control:
         items.add_child(toggle)
         var brand := TextureRect.new()
         brand.name = "AstryxAppIcon"
-        brand.texture = preload("res://assets/icon.png")
+        brand.texture = controller.app_icon_texture()
         brand.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
         brand.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
         brand.custom_minimum_size = Vector2(40, 40)
@@ -897,7 +897,7 @@ func style_external_modal(control: Control) -> void:
         # Classic modal badges use an on-accent icon. Restyling their surface
         # without its tint made the icon disappear against the new light theme.
         if is_instance_valid(host.active_modal_dialog) and host.active_modal_dialog.find_child("DismissAnnouncement", true, false) != null:
-            badge_icon.texture = preload("res://assets/icon.png")
+            badge_icon.texture = controller.app_icon_texture()
             badge_icon.custom_minimum_size = Vector2(36, 36)
             badge_icon.modulate = Color.WHITE
             badge_icon.accessibility_name = "Aether"

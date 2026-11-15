@@ -8,7 +8,7 @@ import {
   type CSSProperties,
   type ReactNode,
 } from "react";
-import appIcon from "../../../apps/godot_app/assets/icon.png";
+import appIcon from "../../../apps/godot_app/assets/icons/astryx/icon.png";
 import { Theme } from "@astryxdesign/core/theme";
 import { neutralTheme } from "@astryxdesign/theme-neutral/built";
 import { AppShell } from "@astryxdesign/core/AppShell";

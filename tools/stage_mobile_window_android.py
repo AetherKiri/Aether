@@ -4,6 +4,7 @@ import argparse
 from pathlib import Path
 import shutil
 import xml.etree.ElementTree as ET
+from stage_app_icons import stage_android_icons
 
 
 def stage(build: Path):
@@ -50,6 +51,7 @@ def stage(build: Path):
     # A dedicated subclass prevents Android's manifest merger from combining
     # this restricted provider with Godot's separate file picker provider.
     provider.set(f"{{{android}}}name", "org.aether.mobile.SaveFileProvider")
+    stage_android_icons(build, application)
     (build / "src/main/AndroidManifest.xml").write_text(ET.tostring(tree, encoding="unicode") + "\n")
     paths = build / "src/main/res/xml/aether_save_share_paths.xml"
     paths.parent.mkdir(parents=True, exist_ok=True)

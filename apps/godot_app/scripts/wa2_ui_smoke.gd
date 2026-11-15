@@ -40,6 +40,8 @@ func _run() -> void:
     empty_library.close()
     library_changed = true
     app = load("res://scenes/main.tscn").instantiate()
+    # A network update modal must not intercept this disposable input probe.
+    app.update_checking = true
     root.add_child(app)
     # Test-only consent state belongs to this disposable scene instance.
     app.legal_accepted_version = app.LEGAL_AGREEMENT_VERSION
@@ -128,12 +130,18 @@ func _run() -> void:
             var page := String(final_state.get("pageText", ""))
             if page.length() >= 12:
                 break
+            if OS.get_cmdline_user_args().has("--wa2-smoke-default-chinese") and bool(final_state.get("movieWaiting", false)):
+                # This bounded text check acknowledges the prologue movie only;
+                # it does not validate video-decoder fidelity.
+                app.player.set_engine_option("wa2.movie.finish", "seen")
             if index % 30 == 0 and (not page.is_empty() or bool(final_state.get("movieWaiting", false))):
                 await _click(body)
             await process_frame
     await _frames(60)
     final_state = _runtime_state(JSON.parse_string(String(app.player.get_plugin_debug_info())))
     await _capture("04-font")
+    if OS.get_cmdline_user_args().has("--wa2-smoke-default-chinese"):
+        _check("default-chinese-without-overlay-option", OS.get_environment("AETHER_WA2_PATCH_DIR").is_empty() and String(final_state.get("textEncoding", "")) == "utf-8" and String(final_state.get("textSource", "")) == "ck-gal.pak" and String(final_state.get("pageText", "")).contains("机场"), JSON.stringify(final_state))
     _finish()
 
 func _launch_button(node: Node) -> Button:

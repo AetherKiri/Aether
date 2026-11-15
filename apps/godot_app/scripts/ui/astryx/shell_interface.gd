@@ -12,6 +12,8 @@ var draft_background_effects := true
 var library_display := "cards"
 var view: Control
 var backdrop: ColorRect
+var safe_cover_clip: Control
+var safe_cover_image: TextureRect
 var elapsed := 0.0
 var state_signature := ""
 var library_revision := 0
@@ -102,12 +104,54 @@ func _process(delta: float) -> void:
         return
     backdrop.visible = host.shell_root.visible
     backdrop.color = view.design.color("surface" if view.phone else "canvas")
+    _sync_safe_top_cover()
     elapsed += delta
     if elapsed < 0.15:
         return
     elapsed = 0.0
     sync_state()
     view.sync_dirty_state()
+
+func _sync_safe_top_cover() -> void:
+    var source: TextureRect = view.detail_backdrop
+    var stage: Control = view.page_stage
+    if not is_instance_valid(source) and is_instance_valid(view.outgoing_page):
+        source = view.outgoing_page.find_child("AstryxDetailBackdrop", true, false)
+        stage = view.outgoing_stage
+    if not is_instance_valid(source) or not source.is_visible_in_tree() or source.texture == null:
+        if is_instance_valid(safe_cover_clip):
+            safe_cover_clip.hide()
+        return
+    var top := maxf(0.0, view.global_position.y)
+    # Both pieces sample the same full image. The page clips below the safe
+    # edge; this sibling paints only above it, so there is no seam or overlap.
+    source.offset_top = -top
+    if top <= 0.0:
+        if is_instance_valid(safe_cover_clip):
+            safe_cover_clip.hide()
+        return
+    if not is_instance_valid(safe_cover_clip):
+        safe_cover_clip = Control.new()
+        safe_cover_clip.name = "AstryxSafeTopCover"
+        safe_cover_clip.mouse_filter = Control.MOUSE_FILTER_IGNORE
+        safe_cover_clip.clip_contents = true
+        backdrop.add_child(safe_cover_clip)
+        safe_cover_image = TextureRect.new()
+        safe_cover_image.mouse_filter = Control.MOUSE_FILTER_IGNORE
+        safe_cover_image.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+        safe_cover_image.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_COVERED
+        safe_cover_image.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
+        safe_cover_clip.add_child(safe_cover_image)
+    safe_cover_clip.show()
+    safe_cover_clip.global_position = Vector2(source.global_position.x, 0.0)
+    safe_cover_clip.size = Vector2(source.size.x, top)
+    safe_cover_image.global_position = source.global_position
+    safe_cover_image.size = source.size
+    safe_cover_image.texture = source.texture
+    safe_cover_image.material = source.material
+    safe_cover_image.modulate = source.modulate
+    if is_instance_valid(stage):
+        safe_cover_image.modulate.a *= stage.modulate.a
 
 func _state_signature() -> String:
     return "%s:%s:%s:%s:%s:%s:%s:%s" % [host.shell_route, host.active_language,

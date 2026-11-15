@@ -6,6 +6,7 @@ const SCROLL := preload("res://scripts/ui/astryx/astryx_scroll.gd")
 const SHADERS := preload("res://scripts/ui/aether_shaders.gd")
 const COVER_PICKER := preload("res://scripts/ui/astryx/cover_picker.gd")
 const BACKGROUND := preload("res://scripts/ui/astryx/astryx_background.gd")
+const SIDEBAR_EXPANDED_WIDTH := 260.0
 const NAV := [
     ["library", "library", "nav.library"],
     ["videos", "video", "nav.videos"], ["flash", "flash", "nav.flash"],
@@ -17,7 +18,7 @@ var host
 var design
 var phone := false
 var sidebar_expanded := false
-var sidebar_width := 48.0
+var sidebar_width := 0.0
 var sidebar_tween: Tween
 var sidebar_animating := false
 var route := ""
@@ -37,6 +38,7 @@ var settings_footer: VBoxContainer
 var query := ""
 var recent_only := false
 var page: VBoxContainer
+var page_stage: Control
 var scroll: ScrollContainer
 var content: VBoxContainer
 var detail_backdrop: TextureRect
@@ -60,7 +62,9 @@ var cached_library: Dictionary = {}
 var background_effect: Control
 var touch_navigation
 var page_tween: Tween
+var page_arm_frames := 0
 var outgoing_page: Control
+var outgoing_stage: Control
 var transition_blocker: Control
 var refresh_tween: Tween
 
@@ -68,13 +72,22 @@ func setup(owner_node: Node) -> void:
     controller = owner_node
     host = controller.host
     design = DESIGN.new(controller.draft_theme)
+    sidebar_width = design.metric("rail_width")
 
 func _ready() -> void:
+    set_process(false)
     touch_navigation = preload("res://scripts/ui/astryx/astryx_touch_navigation.gd").new(self)
     set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
     mouse_filter = Control.MOUSE_FILTER_STOP
     resized.connect(_queue_layout)
     rebuild()
+
+func _process(_delta: float) -> void:
+    page_arm_frames -= 1
+    if page_arm_frames <= 0:
+        set_process(false)
+        if is_instance_valid(page_tween) and page_tween.is_valid():
+            page_tween.play()
 
 func _input(event: InputEvent) -> void:
     if touch_navigation != null and touch_navigation.handle_input(event):
@@ -135,14 +148,15 @@ func sync_state() -> void:
     elif route != "settings":
         refresh_content(true)
 
-func rebuild(preserve_scroll: bool = false) -> void:
+func rebuild(preserve_scroll: bool = false, settings_direction: int = 0) -> void:
     if not is_inside_tree() or size.x <= 0:
         return
     _finish_page_transition()
     var previous_root := layout_root
     var next_route := String(host.shell_route)
     var animate_page := is_instance_valid(previous_root) and not _reduced_motion() and (
-        (route == "library" and next_route == "detail") or (route == "detail" and next_route == "library"))
+        (route == "library" and next_route == "detail") or (route == "detail" and next_route == "library") or
+        (route == "settings" and next_route == "settings" and settings_direction != 0))
     if touch_navigation != null:
         touch_navigation.cancel_gesture()
     # Real route/viewport changes supersede an in-flight rail animation.
@@ -164,7 +178,7 @@ func rebuild(preserve_scroll: bool = false) -> void:
         _reset_detail_edit()
     language = String(host.active_language)
     phone = size.x < 700
-    sidebar_width = 260.0 if sidebar_expanded else 48.0
+    sidebar_width = SIDEBAR_EXPANDED_WIDTH if sidebar_expanded else design.metric("rail_width")
     last_size = size
     if design == null or design.mode != controller.draft_theme:
         design = DESIGN.new(controller.draft_theme)
@@ -181,6 +195,7 @@ func rebuild(preserve_scroll: bool = false) -> void:
         remove_child(layout_root)
         layout_root.queue_free()
     layout_root = null
+    page_stage = null
     save_button = null
     cancel_button = null
     save_status = null
@@ -197,6 +212,7 @@ func rebuild(preserve_scroll: bool = false) -> void:
         if cached_library.key == _library_key():
             layout_root = cached_library.root
             page = cached_library.page
+            page_stage = page.get_parent()
             scroll = cached_library.scroll
             content = cached_library.content
             search = cached_library.search
@@ -216,6 +232,7 @@ func rebuild(preserve_scroll: bool = false) -> void:
     add_child(layout_root)
     move_child(layout_root, 0)
     var fill := ColorRect.new()
+    fill.name = "AstryxCanvas"
     fill.color = design.color("surface" if phone else "canvas")
     fill.mouse_filter = Control.MOUSE_FILTER_IGNORE
     fill.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
@@ -236,8 +253,21 @@ func rebuild(preserve_scroll: bool = false) -> void:
     panel.clip_contents = true
     frame.add_child(panel)
     _attach_background(panel)
+    var page_viewport := Control.new()
+    page_viewport.name = "AstryxPageViewport"
+    page_viewport.mouse_filter = Control.MOUSE_FILTER_IGNORE
+    page_viewport.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+    page_viewport.size_flags_vertical = Control.SIZE_EXPAND_FILL
+    panel.add_child(page_viewport)
+    # A plain parent lets pages move without a Container resetting their offset.
+    page_stage = Control.new()
+    page_stage.name = "AstryxPageStage"
+    page_stage.mouse_filter = Control.MOUSE_FILTER_IGNORE
+    page_stage.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+    page_viewport.add_child(page_stage)
     page = _vbox(0)
-    panel.add_child(page)
+    page.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+    page_stage.add_child(page)
     match route:
         "settings": _build_settings()
         "detail": _build_detail()
@@ -248,35 +278,61 @@ func rebuild(preserve_scroll: bool = false) -> void:
         _restore_scroll.call_deferred(previous_scroll)
     sync_dirty_state()
     if animate_page:
-        _begin_page_transition(previous_root)
+        _begin_page_transition(previous_root, settings_direction)
 
-func _begin_page_transition(previous: Control) -> void:
+func _begin_page_transition(previous: Control, direction: int = 0) -> void:
     outgoing_page = previous
-    # Keep both real layouts alive for the short crossfade, including the
-    # cached library and its scroll position. No screenshots or cover reloads.
+    outgoing_stage = previous.find_child("AstryxPageStage", true, false)
     outgoing_page.show()
-    move_child(outgoing_page, 0)
-    move_child(layout_root, 1)
-    layout_root.modulate.a = 0.0
+    # Only page content moves/fades. Navigation, the surface, and floating
+    # symbols stay at full opacity beneath the transparent outgoing layout.
+    _set_transition_chrome(outgoing_page, false)
+    move_child(outgoing_page, get_child_count() - 1)
+    page_stage.modulate.a = 0.0 if direction == 0 else 1.0
     transition_blocker = Control.new()
     transition_blocker.name = "AstryxPageTransition"
     transition_blocker.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
     transition_blocker.mouse_filter = Control.MOUSE_FILTER_STOP
     add_child(transition_blocker)
-    page_tween = create_tween().set_parallel(true)
-    page_tween.set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_IN_OUT)
-    # The opaque outgoing page fades through the incoming page's alpha. Also
-    # lowering its alpha would wash out shared chrome halfway through the fade.
-    page_tween.tween_property(layout_root, "modulate:a", 1.0, 0.20)
-    page_tween.chain().tween_callback(_finish_page_transition)
+    page_tween = create_tween()
+    page_tween.set_trans(Tween.TRANS_CUBIC)
+    if direction == 0:
+        page_tween.tween_property(outgoing_stage, "modulate:a", 0.0, 0.16).set_ease(Tween.EASE_IN)
+        page_tween.tween_property(page_stage, "modulate:a", 1.0, 0.26).set_ease(Tween.EASE_OUT)
+    else:
+        var travel := maxf(1.0, size.x - (0.0 if phone else sidebar_width))
+        page_stage.position.x = direction * travel
+        page_tween.set_parallel(true).set_ease(Tween.EASE_IN_OUT)
+        page_tween.tween_property(outgoing_stage, "position:x", -direction * travel, 0.32)
+        page_tween.tween_property(page_stage, "position:x", 0.0, 0.32)
+        page_tween.chain()
+    page_tween.tween_callback(_finish_page_transition)
+    # A costly detail layout must not consume the animation on its first tick.
+    page_tween.pause()
+    page_arm_frames = 3
+    set_process(true)
+
+func _set_transition_chrome(root: Control, visible_value: bool) -> void:
+    for name_value in ["AstryxCanvas", "AstryxSideNav", "AstryxBottomNav"]:
+        var chrome := root.find_child(name_value, true, false) as Control
+        if chrome != null:
+            chrome.modulate.a = 1.0 if visible_value else 0.0
+    var surface := root.find_child("AstryxPage", true, false) as Control
+    if surface != null:
+        surface.self_modulate.a = 1.0 if visible_value else 0.0
 
 func _finish_page_transition() -> void:
+    page_arm_frames = 0
+    set_process(false)
     if is_instance_valid(page_tween):
         page_tween.kill()
     page_tween = null
-    if is_instance_valid(layout_root):
-        layout_root.modulate.a = 1.0
+    for stage in [page_stage, outgoing_stage]:
+        if is_instance_valid(stage):
+            stage.modulate.a = 1.0
+            stage.position.x = 0.0
     if is_instance_valid(outgoing_page):
+        _set_transition_chrome(outgoing_page, true)
         if outgoing_page == cached_library.get("root"):
             outgoing_page.hide()
             outgoing_page.modulate.a = 1.0
@@ -284,6 +340,7 @@ func _finish_page_transition() -> void:
             remove_child(outgoing_page)
             outgoing_page.queue_free()
     outgoing_page = null
+    outgoing_stage = null
     if is_instance_valid(transition_blocker):
         remove_child(transition_blocker)
         transition_blocker.queue_free()
@@ -414,13 +471,13 @@ func _navigation(bottom: bool) -> Control:
         holder.custom_minimum_size.x = sidebar_width
         holder.clip_contents = true
     holder.add_theme_stylebox_override("panel", style)
-    var pad := _margin(8, 4 if bottom else 8, 8, 16 if bottom and OS.get_name() != "iOS" else 4)
+    var pad := _margin(8 if bottom else 10, 4 if bottom else 10, 8 if bottom else 10, 16 if bottom and OS.get_name() != "iOS" else 4)
     holder.add_child(pad)
-    var items: BoxContainer = _hbox(4) if bottom else _vbox(4)
+    var items: BoxContainer = _hbox(4) if bottom else _vbox(8)
     pad.add_child(items)
     if not bottom:
         var toggle := _button("", _toggle_sidebar, "quiet", "AstryxToggleSidebar")
-        toggle.custom_minimum_size.y = 48
+        toggle.custom_minimum_size.y = 56
         toggle.size_flags_horizontal = Control.SIZE_EXPAND_FILL
         # Pointer activation should not leave a selection ring on the app logo.
         # Keyboard users keep a neutral focus indicator after the rebuild.
@@ -434,25 +491,22 @@ func _navigation(bottom: bool) -> Control:
         toggle.accessibility_name = _text("收起侧栏", "Collapse sidebar", "サイドバーを折りたたむ") if sidebar_expanded else _text("展开侧栏", "Expand sidebar", "サイドバーを展開")
         toggle.tooltip_text = toggle.accessibility_name
         items.add_child(toggle)
-        var brand_row := _hbox(12)
-        brand_row.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-        brand_row.mouse_filter = Control.MOUSE_FILTER_IGNORE
-        toggle.add_child(brand_row)
         var brand := TextureRect.new()
         brand.name = "AstryxAppIcon"
         brand.texture = preload("res://assets/icon.png")
         brand.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
         brand.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
-        brand.custom_minimum_size = Vector2(32, 32)
+        brand.custom_minimum_size = Vector2(40, 40)
+        brand.position = Vector2(2, 8)
         brand.size_flags_vertical = Control.SIZE_SHRINK_CENTER
         brand.accessibility_name = "Aether"
         brand.mouse_filter = Control.MOUSE_FILTER_IGNORE
-        brand_row.add_child(brand)
+        toggle.add_child(brand)
         if sidebar_expanded or sidebar_animating:
-            var name_label := _label("Aether", 18, false, true)
+            var name_label := _label("Aether", 20, false, true)
             name_label.name = "AstryxSidebarTitle"
             name_label.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-            name_label.offset_left = 44
+            name_label.offset_left = 56
             name_label.offset_right = -8
             name_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
             name_label.autowrap_mode = TextServer.AUTOWRAP_OFF
@@ -475,17 +529,17 @@ func _navigation(bottom: bool) -> Control:
             button.add_theme_stylebox_override("normal", design.box("", 10))
         else:
             button = _button("", func(): navigate(id), "quiet", "AstryxNav_" + id)
-            button.custom_minimum_size = Vector2(32, 32)
+            button.custom_minimum_size = Vector2(44, 44)
             button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
             button.add_theme_stylebox_override("normal", design.box("subtle" if selected else "", 10))
-            var icon := _icon(entry[1], 18, "text" if selected else "secondary")
-            icon.position = Vector2(7, 7)
+            var icon := _icon(entry[1], 24, "text" if selected else "secondary")
+            icon.position = Vector2(10, 10)
             button.add_child(icon)
             if sidebar_expanded or sidebar_animating:
-                var caption := _label(label, 14, not selected, selected)
+                var caption := _label(label, 16, not selected, selected)
                 caption.name = "AstryxNavLabel_" + id
                 caption.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-                caption.offset_left = 40
+                caption.offset_left = 56
                 caption.offset_right = -8
                 caption.autowrap_mode = TextServer.AUTOWRAP_OFF
                 caption.clip_text = true
@@ -503,7 +557,8 @@ func _toggle_sidebar() -> void:
     if is_instance_valid(sidebar_tween):
         sidebar_tween.kill()
     sidebar_expanded = not sidebar_expanded
-    var target := 260.0 if sidebar_expanded else 48.0
+    var collapsed: float = design.metric("rail_width")
+    var target := SIDEBAR_EXPANDED_WIDTH if sidebar_expanded else collapsed
     sidebar_animating = not _reduced_motion()
     # Keep the page and cover textures alive. Rebuilding here and again at the
     # end restarted their entrance fades and caused two visible flashes.
@@ -513,7 +568,7 @@ func _toggle_sidebar() -> void:
         _focus_sidebar_toggle()
     if sidebar_animating:
         sidebar_tween = create_tween()
-        var duration: float = design.metric("page_seconds") * absf(target - sidebar_width) / 212.0
+        var duration: float = design.metric("page_seconds") * absf(target - sidebar_width) / (SIDEBAR_EXPANDED_WIDTH - collapsed)
         sidebar_tween.tween_method(_resize_sidebar.bind(rail), sidebar_width, target, maxf(0.06, duration)) \
             .set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_IN_OUT)
         sidebar_tween.tween_callback(_finish_sidebar_animation.bind(keyboard_activation))
@@ -535,7 +590,8 @@ func _replace_sidebar_navigation() -> Control:
 func _resize_sidebar(value: float, rail: Control) -> void:
     sidebar_width = value
     rail.custom_minimum_size.x = value
-    var opacity := clampf((value - 48.0) / 212.0, 0.0, 1.0)
+    var collapsed: float = design.metric("rail_width")
+    var opacity := clampf((value - collapsed) / (SIDEBAR_EXPANDED_WIDTH - collapsed), 0.0, 1.0)
     for label in rail.find_children("AstryxNavLabel_*", "Label", true, false):
         label.modulate.a = opacity
     var title: Label = rail.find_child("AstryxSidebarTitle", true, false)
@@ -584,7 +640,7 @@ func handle_back() -> bool:
     if route == "settings" and settings_narrow and settings_detail:
         settings_detail = false
         editing_setting = ""
-        rebuild()
+        rebuild(false, -1)
         return true
     if route == "detail":
         navigate("library")
@@ -912,7 +968,7 @@ func _build_settings() -> void:
                 section = id
                 settings_detail = true
                 editing_setting = ""
-                rebuild()
+                rebuild(false, 1 if settings_narrow else 0)
             , "AstryxSection_" + id, section == id and not settings_narrow)
             items.add_child(button)
         items.add_child(_settings_menu_item(_t("settings.community_open"), "community",
@@ -2093,6 +2149,7 @@ func _media_content() -> void:
 func _build_detail() -> void:
     # A separate layer keeps the cover wash behind the header and scrollport.
     var backdrop_layer := Control.new()
+    backdrop_layer.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
     backdrop_layer.mouse_filter = Control.MOUSE_FILTER_IGNORE
     page.get_parent().add_child(backdrop_layer)
     page.get_parent().move_child(backdrop_layer, 0)

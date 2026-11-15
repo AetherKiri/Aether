@@ -864,7 +864,7 @@ func _run() -> void:
     await _click("AstryxNav_library")
     _check_header_heights()
     var rail: Control = controller.view.find_child("AstryxSideNav", true, false)
-    _expect(is_equal_approx(rail.size.x, 48), "Sidebar starts as an icon rail")
+    _expect(is_equal_approx(rail.size.x, 64), "Sidebar starts as a touch-sized icon rail")
     app.ui_motion.reduced_motion = false
     await _pointer_click("AstryxToggleSidebar")
     _expect(controller.view.sidebar_expanded, "App icon expands the sidebar")

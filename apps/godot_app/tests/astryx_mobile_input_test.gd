@@ -288,6 +288,19 @@ func _exercise(name_value: String, viewport_size: Vector2i, insets: Vector4) -> 
     _expect(host.shell_route == "detail", name_value + ": touch opens game details")
     if host.shell_route != "detail":
         return
+    await _frames()
+    if insets.y > 0:
+        var wash: TextureRect = controller.view.detail_backdrop
+        var safe_cover: Control = controller.safe_cover_clip
+        _expect(safe_cover != null and safe_cover.visible and is_zero_approx(safe_cover.global_position.y),
+            name_value + ": cover wash reaches the top edge above the camera safe area")
+        if safe_cover != null:
+            _expect(is_equal_approx(safe_cover.get_global_rect().end.y, controller.view.global_position.y),
+                name_value + ": safe-area wash ends exactly at the content edge")
+            _expect(controller.safe_cover_image.get_global_rect().is_equal_approx(wash.get_global_rect()),
+                name_value + ": safe area and detail sample the same image without a seam")
+        var back: Control = controller.view.find_child("AstryxDetailBack", true, false)
+        _expect(back.global_position.y >= insets.y, name_value + ": interactive controls still avoid the camera")
     host.launched = false
     await _drag_button("AstryxLaunchGame", 24.0)
     _expect(not host.launched, name_value + ": scrolling from Start does not launch a game")
@@ -295,6 +308,8 @@ func _exercise(name_value: String, viewport_size: Vector2i, insets: Vector4) -> 
     _expect(host.launched, name_value + ": touch invokes game launch")
     await _tap("AstryxDetailBack")
     _expect(host.shell_route == "library", name_value + ": touch returns from game details")
+    _expect(controller.safe_cover_clip == null or not controller.safe_cover_clip.visible,
+        name_value + ": cover wash disappears after leaving details")
     await _tap("AstryxDisplay_list")
     await _drag_button("AstryxGameRow", 24.0)
     if host.shell_route != "library":

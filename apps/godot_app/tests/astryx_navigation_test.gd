@@ -64,6 +64,8 @@ func _expect(ok: bool, message: String) -> void:
 
 func _settle() -> void:
     await create_timer(0.22).timeout
+    if controller != null and is_instance_valid(controller.view) and controller.view.page_tween != null:
+        await create_timer(0.5).timeout
     for _frame in range(4):
         await process_frame
 
@@ -100,11 +102,16 @@ func _check_page_transitions() -> void:
     host._show_detail(host.known_games[0])
     _expect(controller.view.outgoing_page == library and library.visible,
         "Entering details retains the outgoing library for a crossfade")
-    _expect(controller.view.layout_root.modulate.a < 0.01,
+    _expect(controller.view.page_stage.modulate.a < 0.01 and not controller.view.page_tween.is_running(),
         "Details begin transparent instead of flashing fully opaque")
     await create_timer(0.08).timeout
-    _expect(controller.view.layout_root.modulate.a > 0.0 and controller.view.layout_root.modulate.a < 1.0,
-        "The detail opacity progresses through intermediate frames")
+    _expect(controller.view.outgoing_stage.modulate.a > 0.0 and controller.view.outgoing_stage.modulate.a < 1.0,
+        "The library visibly fades out before the detail fades in")
+    _expect(is_equal_approx(controller.view.layout_root.modulate.a, 1.0),
+        "Navigation and the background remain opaque during the content fade")
+    await create_timer(0.18).timeout
+    _expect(controller.view.page_stage.modulate.a > 0.0 and controller.view.page_stage.modulate.a < 1.0,
+        "The detail opacity progresses through intermediate frames after the exit")
     controller.view.navigate("library")
     await _settle()
     _expect(controller.view.layout_root == library and scroll.scroll_vertical == offset,
@@ -124,6 +131,40 @@ func _check_page_transitions() -> void:
     host._show_detail(host.known_games[0])
     _expect(controller.view.transition_blocker == null and is_equal_approx(controller.view.layout_root.modulate.a, 1.0),
         "Reduced motion switches pages immediately")
+    controller.view.navigate("library")
+    await _settle()
+
+func _check_settings_slide() -> void:
+    root.size = Vector2i(393, 852)
+    controller.view.navigate("settings")
+    await _settle()
+    host.ui_motion.reduced_motion = false
+    var nav: Control = controller.view.find_child("AstryxBottomNav", true, false)
+    var nav_rect := nav.get_global_rect()
+    _button("AstryxSection_render").pressed.emit()
+    var incoming: Control = controller.view.page_stage
+    _expect(incoming.position.x > 300 and controller.view.outgoing_stage.position.x == 0,
+        "Portrait settings details begin to the right of the category menu")
+    await create_timer(0.15).timeout
+    _expect(incoming.position.x > 0 and incoming.position.x < 300 and controller.view.outgoing_stage.position.x < 0,
+        "Settings pages move horizontally through intermediate positions")
+    var current_nav: Control = controller.view.layout_root.find_child("AstryxBottomNav", true, false)
+    _expect(current_nav.get_global_rect().is_equal_approx(nav_rect) and is_equal_approx(current_nav.modulate.a, 1.0),
+        "Bottom navigation stays fixed and opaque during the page slide")
+    await _settle()
+    controller.view.handle_back()
+    _expect(controller.view.page_stage.position.x < -300,
+        "Returning brings the category menu back from the left")
+    await _settle()
+    _expect(is_zero_approx(controller.view.page_stage.position.x) and controller.view.transition_blocker == null,
+        "The completed slide restores normal geometry and input")
+    _button("AstryxSection_render").pressed.emit()
+    controller.view.handle_back()
+    root.size = Vector2i(1194, 834)
+    await _settle()
+    _expect(controller.view.page_tween == null and controller.view.outgoing_stage == null,
+        "Rotation and an interrupted back transition leave no retired settings page")
+    host.ui_motion.reduced_motion = true
     controller.view.navigate("library")
     await _settle()
 
@@ -384,7 +425,7 @@ func _check_sidebar_transition() -> void:
     _expect(is_equal_approx(controller.view.sidebar_width, interrupted_width),
         "Reversing the sidebar starts from its current width")
     await _settle()
-    _expect(not controller.view.sidebar_expanded and is_equal_approx(controller.view.sidebar_width, 48),
+    _expect(not controller.view.sidebar_expanded and is_equal_approx(controller.view.sidebar_width, 64),
         "Rapid toggles settle at the last requested state")
     controller.view._toggle_sidebar()
     controller.view.navigate("videos")
@@ -500,6 +541,7 @@ func _run() -> void:
     await _check_sidebar_transition()
     await _check_background_effects()
     await _check_page_transitions()
+    await _check_settings_slide()
     await _check_refresh_rotation()
     controller.set_enabled(false, false)
     _expect(host.game_list.get_child_count() == host.known_games.size(), "Switching to classic restores its current library")

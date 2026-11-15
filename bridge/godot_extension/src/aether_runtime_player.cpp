@@ -46,6 +46,9 @@ extern "C" void AetherInternalRegisterWa2Runtime(void);
 #if defined(AETHERKIRI_WITH_MAGES)
 #include "mages_runtime.h"
 #endif
+#if defined(AETHERKIRI_WITH_N2SYSTEM)
+#include "n2system_runtime.h"
+#endif
 #if defined(AETHERKIRI_WITH_ENTISGLS)
 #include "entisgls/provider.h"
 #endif
@@ -14441,6 +14444,9 @@ void InitializeAetherRuntime(ModuleInitializationLevel level) {
 #endif
 #if defined(AETHERKIRI_WITH_MAGES)
     aetherkiri::mages::RegisterRuntimeProvider();
+#endif
+#if defined(AETHERKIRI_WITH_N2SYSTEM)
+    aetherkiri::n2system::RegisterRuntimeProvider();
 #endif
 #if defined(AETHERKIRI_WITH_CMVS)
     aetherkiri::cmvs::RegisterRuntimeProvider();

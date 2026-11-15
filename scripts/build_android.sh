@@ -340,6 +340,7 @@ build_abi() {
     local vcpkg_triplet_dir
     local libomp_path
     local android_strip_path
+    local cxx_runtime_path
     local runtime_library
     local runtime_libraries=()
     local cmake_config_args=(
@@ -434,9 +435,12 @@ build_abi() {
                 "$PROJECT_ROOT/tools/strip_runtime_symbols.sh" elf "$runtime_library"
         done
     fi
+    cxx_runtime_path="$(find "$ANDROID_NDK_HOME/toolchains/llvm/prebuilt" \
+        -path '*/sysroot/usr/lib/aarch64-linux-android/libc++_shared.so' -print -quit)"
     python3 "$PROJECT_ROOT/tools/stage_android_runtime_libraries.py" \
         --build-dir "$GODOT_APP_DIR/android/build" --source-dir "$godot_bin_dir" \
-        --manifest "$cmake_build_dir/runtime-libraries-$BUILD_TYPE_LOWER.txt" --abi "$abi"
+        --manifest "$cmake_build_dir/runtime-libraries-$BUILD_TYPE_LOWER.txt" --abi "$abi" \
+        --cxx-runtime "$cxx_runtime_path"
 }
 
 IFS=',' read -r -a ABI_LIST <<< "$ABIS"

@@ -2259,6 +2259,7 @@ const RUNTIME_ESCUDE := "escude"
 const RUNTIME_ENTISGLS := "entisgls"
 const RUNTIME_TYRANO := "tyranoscript"
 const RUNTIME_MAGES := "mages"
+const RUNTIME_N2SYSTEM := "n2system"
 const RUNTIME_YURIS := "yuris"
 const RUNTIME_SYSTEMC := "systemc"
 const RUNTIME_PLAYER_CLASS := "AetherRuntimePlayer"
@@ -10150,7 +10151,7 @@ func _game_launch_entry_label(game: Dictionary) -> String:
 func _can_configure_launch_file(game: Dictionary, runtime: String = "") -> bool:
     return OS.get_name() != "Web" \
         and not builtin_demo.is_game(game) \
-        and (runtime if not runtime.is_empty() else _game_runtime_kind(String(game.get("path", "")))) not in [RUNTIME_ONSCRIPTER, RUNTIME_XSYSTEM4, RUNTIME_XSYSTEM35, RUNTIME_SYSTEM3] \
+        and (runtime if not runtime.is_empty() else _game_runtime_kind(String(game.get("path", "")))) not in [RUNTIME_ONSCRIPTER, RUNTIME_N2SYSTEM, RUNTIME_XSYSTEM4, RUNTIME_XSYSTEM35, RUNTIME_SYSTEM3] \
         and String(game.get("type", "Directory")).to_lower() == "directory"
 
 func _set_launch_file_for_selected() -> void:
@@ -11796,6 +11797,8 @@ func _probe_game_runtime_kind(root: String, runtime_kind: String) -> String:
             return RUNTIME_WA2
         if int(player.probe_runtime(RUNTIME_MAGES, root)) > 0:
             return RUNTIME_MAGES
+        if int(player.probe_runtime(RUNTIME_N2SYSTEM, root)) > 0:
+            return RUNTIME_N2SYSTEM
     return runtime_kind
 
 func _backfill_game_metadata(games: Array[Dictionary]) -> bool:
@@ -13132,6 +13135,7 @@ func _switch_runtime_player(runtime_kind: String) -> bool:
         RUNTIME_SIGLUS,
         RUNTIME_BGI,
         RUNTIME_MAGES,
+        RUNTIME_N2SYSTEM,
         RUNTIME_XSYSTEM4,
         RUNTIME_XSYSTEM35,
         RUNTIME_SYSTEM3,
@@ -13200,6 +13204,8 @@ func _switch_runtime_player(runtime_kind: String) -> bool:
         if normalized == RUNTIME_BGI
         else "MAGES."
         if normalized == RUNTIME_MAGES
+        else "N2System / NitroSharp"
+        if normalized == RUNTIME_N2SYSTEM
         else "EntisGLS / Cotopha"
         if normalized == RUNTIME_ENTISGLS
         else "ADV Player HD"
@@ -13930,6 +13936,7 @@ func _ensure_player_initialized() -> bool:
         RUNTIME_SIGLUS,
         RUNTIME_BGI,
         RUNTIME_MAGES,
+        RUNTIME_N2SYSTEM,
         RUNTIME_XSYSTEM4,
         RUNTIME_XSYSTEM35,
         RUNTIME_SYSTEM3,
@@ -13974,6 +13981,8 @@ func _ensure_player_initialized() -> bool:
         if current_player_runtime_kind == RUNTIME_SIGLUS
         else "BGI/Ethornell"
         if current_player_runtime_kind == RUNTIME_BGI
+        else "N2System / NitroSharp"
+        if current_player_runtime_kind == RUNTIME_N2SYSTEM
         else "EntisGLS / Cotopha"
         if current_player_runtime_kind == RUNTIME_ENTISGLS
         else "ADV Player HD"
@@ -16799,6 +16808,8 @@ func _renderer_summary(renderer: String) -> String:
         summary = "System 3.5/3.9 (Godot Texture)"
     elif renderer.contains("backend=xsystem4"):
         summary = "System 4 (Godot Texture)"
+    elif renderer.contains("backend=n2system"):
+        summary = "N2System / NitroSharp (Godot Texture)"
     elif renderer.contains("backend=godot_native"):
         summary = "Godot Native GPU"
     elif renderer.contains("backend=gpu_bridge"):

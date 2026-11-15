@@ -164,6 +164,8 @@ cmake_config_args=(
     -D "AETHERKIRI_LEAFTTT_DIR=${AETHERKIRI_LEAFTTT_DIR:-$PROJECT_ROOT/packages/AetherLeafTtt}"
     -D "AETHERKIRI_ENABLE_FLASH=${AETHERKIRI_ENABLE_FLASH:-ON}"
     -D "AETHERKIRI_ENABLE_RFVP=${AETHERKIRI_ENABLE_RFVP:-OFF}"
+    -D "AETHERKIRI_ENABLE_N2SYSTEM=${AETHERKIRI_ENABLE_N2SYSTEM:-ON}"
+    -D "AETHERKIRI_N2SYSTEM_DIR=${AETHERKIRI_N2SYSTEM_DIR:-$PROJECT_ROOT/packages/AetherN2System}"
     -D "AETHERKIRI_ENABLE_SOFTPAL_RUNTIME=${AETHERKIRI_ENABLE_SOFTPAL_RUNTIME:-OFF}"
     -D "AETHERKIRI_SOFTPAL_DIR=${AETHERKIRI_SOFTPAL_DIR:-$PROJECT_ROOT/packages/AetherSoftPal}"
 )
@@ -203,6 +205,14 @@ if [[ -f "$runtime_manifest" ]]; then
         cp -f "$runtime_library" "$GODOT_BIN_DIR/"
         codesign --force --sign - "$GODOT_BIN_DIR/$(basename "$runtime_library")"
     done < "$runtime_manifest"
+fi
+python3 "$PROJECT_ROOT/tools/stage_n2system_runtime.py" \
+    --manifest "$CMAKE_BUILD_DIR/n2system-runtime-publish.txt" \
+    --destination "$GODOT_BIN_DIR/n2system-runtime"
+if [[ -d "$GODOT_BIN_DIR/n2system-runtime" ]]; then
+    while IFS= read -r -d '' n2_library; do
+        codesign --force --sign - "$n2_library"
+    done < <(find "$GODOT_BIN_DIR/n2system-runtime" -type f -name '*.dylib' -print0)
 fi
 if [[ -f "$CMAKE_BUILD_DIR/aethermages-impacto/libImpacto.dylib" ]]; then
     cp -f "$CMAKE_BUILD_DIR/aethermages-impacto/libImpacto.dylib" "$GODOT_BIN_DIR/"
@@ -262,6 +272,10 @@ else
             cp -f "$runtime_library" "$GODOT_EXPORT_APP/Contents/Frameworks/"
             codesign --force --sign - "$GODOT_EXPORT_APP/Contents/Frameworks/$(basename "$runtime_library")"
         done
+        rm -rf "$GODOT_EXPORT_APP/Contents/Frameworks/n2system-runtime"
+        if [[ -d "$GODOT_BIN_DIR/n2system-runtime" ]]; then
+            cp -R "$GODOT_BIN_DIR/n2system-runtime" "$GODOT_EXPORT_APP/Contents/Frameworks/"
+        fi
         if [[ -f "$GODOT_BIN_DIR/libImpacto.dylib" ]]; then
             cp -f "$GODOT_BIN_DIR/libImpacto.dylib" "$GODOT_EXPORT_APP/Contents/Frameworks/"
             codesign --force --sign - "$GODOT_EXPORT_APP/Contents/Frameworks/libImpacto.dylib"
@@ -296,6 +310,11 @@ else
             "$GODOT_EXPORT_APP/Contents/Frameworks/libengine_api.dylib" \
             "$GODOT_EXPORT_APP/Contents/Frameworks/libaether_kiri_godot.dylib" \
             >/dev/null 2>&1 || true
+        if [[ -d "$GODOT_EXPORT_APP/Contents/Frameworks/n2system-runtime" ]]; then
+            while IFS= read -r -d '' n2_library; do
+                codesign --force --sign - "$n2_library"
+            done < <(find "$GODOT_EXPORT_APP/Contents/Frameworks/n2system-runtime" -type f -name '*.dylib' -print0)
+        fi
         while IFS= read -r -d '' renpy_binary; do
             if file -b "$renpy_binary" | grep -q 'Mach-O'; then
                 codesign --force --sign - "$renpy_binary"

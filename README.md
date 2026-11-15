@@ -41,7 +41,7 @@ Godot App Shell
             ├─ System35 Runtime ─── xsystem35 (AliceSoft)
             ├─ System3 Runtime ──── system3-sdl2 (AliceSoft System 1–3)
             ├─ EntisGLS Runtime ─── EntisGLS / Cotopha (public package)
-            ├─ N2System Runtime ──── AetherN2System / NitroSharp (experimental desktop integration)
+            ├─ N2System Runtime ──── AetherN2System / NitroSharp (experimental NativeAOT integration)
             ├─ Artemis Runtime ──── Artemis (private package)
             ├─ CatSystem2 Runtime ─ CatSystem2 (private package)
             ├─ BGI Runtime ──────── BGI / Ethornell (private package)
@@ -82,7 +82,7 @@ and **Debug CPU** is a diagnostic fallback only.
 - Public EntisGLS / Cotopha desktop runtime for traditional CSX scripts and NOA
   resources, with game-local `savedata/`. See the
   [provider scope and validation](https://github.com/AetherKiri/EntisGLS-SDL3/blob/aether/aether_runtime/README.md).
-- Experimental NitroSharp / N2System desktop runtime through the public [AetherN2System](https://github.com/AetherKiri/AetherN2System) submodule, with game-directory detection, an in-process NativeAOT host, plain and compressed NPA archives, and early NPS/PAK installations. Desktop packaging includes native text, audio and video dependencies. Persistent save/load and parts of the legacy system menu remain unimplemented; individual game compatibility is still evolving. Mobile and Web are not supported.
+- Experimental NitroSharp / N2System runtime for desktop, Android, and iOS through the public [AetherN2System](https://github.com/AetherKiri/AetherN2System) submodule, with game-directory detection, an in-process NativeAOT host, plain and compressed NPA archives, and early NPS/PAK installations. Packaging includes native text, audio and video dependencies. Android startup and rendering have been tested on a device; iOS has compile verification only and has not been tested on a device. Persistent saves restore script execution, dialogue, scene and media state, with separate game/profile storage under the game’s `savedata/AetherN2System/` directory, shared settings, thumbnails and authored save-menu metadata. Read-only game directories fall back to app storage; existing app-private saves migrate without overwriting game-local saves. Legacy games can use the touch and keyboard save menu; F5/F9 provide quicksave and quickload. Saves use Aether’s own format. Some legacy system-menu operations remain unimplemented; individual game compatibility is still evolving. Web is not supported.
 - Export presets for macOS, iOS/iPadOS, Android, Web, and Linux.
 - A separate Flash library powered by native Ruffle, with sound, keyboard,
   mouse, touch, and the visual-novel virtual controls.
@@ -172,7 +172,7 @@ supported by the Flash player.
 | | `bridge/siglus_runtime/` | Siglus provider plus the build-time overlay applied to pristine `siglus_rs`. |
 | | `bridge/flash_runtime/` | Ruffle static library and native playback/input/audio bridge. |
 | | `bridge/entisgls_runtime/` | Build integration for the public EntisGLS / Cotopha provider. |
-| | `bridge/n2system_runtime/` | Experimental N2System provider and desktop NativeAOT host bridge. |
+| | `bridge/n2system_runtime/` | Experimental N2System provider and desktop/mobile NativeAOT host bridge. |
 | Engines | `packages/AetherKrkr/` | KiriKiri2 engine runtime submodule. |
 | | `packages/OnscripterYuri/` | Public OnscripterYuri submodule. |
 | | `packages/AetherSiglus/` | Public siglus_rs submodule (kept pristine). |
@@ -197,7 +197,7 @@ supported by the Flash player.
 | vcpkg | All builds | `.devtools/vcpkg` or `VCPKG_ROOT` |
 | Godot 4.7 | Exports | `/Applications/Godot.app` or `GODOT_BIN=/path/to/Godot` |
 | Current stable Rust (rustup) | Flash, Siglus, Minori | `rustup update stable`; use `RUSTUP_TOOLCHAIN=stable` consistently for all native runtimes |
-| .NET 10 SDK | Desktop N2System NativeAOT host | Required when N2System is enabled, together with the target platform’s native compiler toolchain |
+| .NET 10+ SDK | N2System NativeAOT host | Required when N2System is enabled, together with the target platform’s native compiler toolchain |
 | Java 17+ | Flash player builtins | `java` on PATH; on macOS, e.g. `brew install openjdk@17` and add its `bin` directory to PATH |
 | Xcode | macOS / iOS | CI pins Xcode 27.1 on the `xcode-27` ARM64 runner; see [release toolchain](doc/release.md) |
 | Android SDK/NDK | Android | NDK `28.1.13356709`; `ANDROID_HOME` or `$HOME/Library/Android/sdk` |
@@ -240,7 +240,7 @@ executable.
 The four native platform build scripts also prepare and bundle the pinned
 Ren’Py runtime; their first build requires downloading the upstream SDK inputs.
 
-The N2System submodule pins a commit from its `aether` integration branch. N2System follows `AETHERKIRI_RUNTIMES_DEFAULT` on supported desktop builds and is enabled by default; iOS, Android, and Web default to disabled. Initialize its sources separately with `git submodule update --init --recursive packages/AetherN2System`, or set `AETHERKIRI_ENABLE_N2SYSTEM=OFF` in CMake to omit the runtime and its .NET build dependency.
+The N2System submodule pins a commit from its `aether` integration branch. N2System follows `AETHERKIRI_RUNTIMES_DEFAULT` on supported desktop, Android ARM64, and iOS builds and is enabled by default; Web defaults to disabled. Initialize its sources separately with `git submodule update --init --recursive packages/AetherN2System`, or set `AETHERKIRI_ENABLE_N2SYSTEM=OFF` in CMake to omit the runtime and its .NET build dependency.
 
 ### Optional Components
 

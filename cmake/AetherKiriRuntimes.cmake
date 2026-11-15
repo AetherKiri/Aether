@@ -9,13 +9,12 @@ foreach(_aetherkiri_runtime IN ITEMS
     option(AETHERKIRI_ENABLE_${_aetherkiri_runtime}
         "Enable the ${_aetherkiri_runtime} runtime" ${AETHERKIRI_RUNTIMES_DEFAULT})
 endforeach()
-# NativeAOT embeds the desktop CLR runtime. Mobile and Web targets have no
-# supported host yet, so their default remains off even in full product builds.
+# NativeAOT supplies desktop and mobile hosts. Web has no supported host.
 set(_aetherkiri_n2system_default ${AETHERKIRI_RUNTIMES_DEFAULT})
-if(IOS OR ANDROID OR WEB OR EMSCRIPTEN)
+if(WEB OR EMSCRIPTEN)
     set(_aetherkiri_n2system_default OFF)
 endif()
-option(AETHERKIRI_ENABLE_N2SYSTEM "Enable the desktop N2System NativeAOT runtime" ${_aetherkiri_n2system_default})
+option(AETHERKIRI_ENABLE_N2SYSTEM "Enable the N2System NativeAOT runtime" ${_aetherkiri_n2system_default})
 unset(_aetherkiri_n2system_default)
 
 # These providers were opt-in before runtime selection was introduced.

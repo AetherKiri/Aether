@@ -2,6 +2,7 @@ import importlib.util
 from pathlib import Path
 import tempfile
 import unittest
+import zipfile
 
 
 spec = importlib.util.spec_from_file_location("stage_android_runtime_libraries",
@@ -11,6 +12,27 @@ spec.loader.exec_module(module)
 
 
 class AndroidRuntimeLibrariesTests(unittest.TestCase):
+    def test_cxx_runtime_matches_the_selected_ndk_without_changing_other_aar_entries(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            libraries = root / "libs/debug"
+            libraries.mkdir(parents=True)
+            archive = libraries / "godot.aar"
+            with zipfile.ZipFile(archive, "w") as output:
+                output.writestr("jni/arm64-v8a/libc++_shared.so", b"old NDK")
+                output.writestr("jni/x86_64/libc++_shared.so", b"other ABI")
+                output.writestr("classes.jar", b"Godot Java classes")
+            runtime = root / "libc++_shared.so"
+            runtime.write_bytes(b"selected NDK")
+            module.stage_cxx_runtime(root, runtime, "arm64-v8a")
+            first = archive.read_bytes()
+            module.stage_cxx_runtime(root, runtime, "arm64-v8a")
+            self.assertEqual(first, archive.read_bytes())
+            with zipfile.ZipFile(archive) as output:
+                self.assertEqual(output.read("jni/arm64-v8a/libc++_shared.so"), b"selected NDK")
+                self.assertEqual(output.read("jni/x86_64/libc++_shared.so"), b"other ABI")
+                self.assertEqual(output.read("classes.jar"), b"Godot Java classes")
+
     def test_configured_providers_are_packaged_and_disabled_providers_are_removed(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

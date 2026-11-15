@@ -373,20 +373,22 @@ if(TARGET aether_n2system_runtime)
     # every requested extension build, after the host package is published.
     # CMP0112 NEW keeps TARGET_FILE_DIR from adding a reverse dependency on
     # the extension and forming a cycle with the explicit dependency below.
-    cmake_policy(PUSH)
-    cmake_policy(SET CMP0112 NEW)
-    add_custom_target(aether_n2system_stage ALL
-        COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/tools/stage_n2system_runtime.py"
-            --manifest "${CMAKE_BINARY_DIR}/n2system-runtime-publish.txt"
-            --destination "${CMAKE_SOURCE_DIR}/apps/godot_app/bin/${_n2_stage}/$<LOWER_CASE:$<CONFIG>>/n2system-runtime"
-        COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/tools/stage_n2system_runtime.py"
-            --manifest "${CMAKE_BINARY_DIR}/n2system-runtime-publish.txt"
-            --destination "$<TARGET_FILE_DIR:aether_kiri_godot>/n2system-runtime"
-        DEPENDS aether_n2system_host
-        COMMENT "Staging N2System host, fonts and isolated native dependencies"
-        VERBATIM)
-    cmake_policy(POP)
-    add_dependencies(aether_kiri_godot aether_n2system_stage)
+    if(NOT IOS AND NOT ANDROID)
+        cmake_policy(PUSH)
+        cmake_policy(SET CMP0112 NEW)
+        add_custom_target(aether_n2system_stage ALL
+            COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/tools/stage_n2system_runtime.py"
+                --manifest "${CMAKE_BINARY_DIR}/n2system-runtime-publish.txt"
+                --destination "${CMAKE_SOURCE_DIR}/apps/godot_app/bin/${_n2_stage}/$<LOWER_CASE:$<CONFIG>>/n2system-runtime"
+            COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/tools/stage_n2system_runtime.py"
+                --manifest "${CMAKE_BINARY_DIR}/n2system-runtime-publish.txt"
+                --destination "$<TARGET_FILE_DIR:aether_kiri_godot>/n2system-runtime"
+            DEPENDS aether_n2system_host
+            COMMENT "Staging N2System host, fonts and isolated native dependencies"
+            VERBATIM)
+        cmake_policy(POP)
+        add_dependencies(aether_kiri_godot aether_n2system_stage)
+    endif()
 endif()
 if(TARGET aether_entisgls_runtime)
     target_link_libraries(aether_kiri_godot PRIVATE aether_entisgls_runtime)
@@ -433,6 +435,21 @@ if(IOS)
         list(APPEND AETHERKIRI_IOS_ARCHIVES
             "$<TARGET_FILE:aether_minori_runtime>")
     endif()
+    if(TARGET aether_n2system_runtime)
+        # Static-library dependencies are otherwise only ordered by Ninja.
+        # Recreate the extension archive when managed code alone changes so
+        # its post-build merge cannot keep the previous NativeAOT image.
+        set(_n2_archive_anchor "${CMAKE_CURRENT_BINARY_DIR}/n2system_archive_anchor.cpp")
+        add_custom_command(OUTPUT "${_n2_archive_anchor}"
+            COMMAND "${CMAKE_COMMAND}" -E touch "${_n2_archive_anchor}"
+            DEPENDS aether_n2system_runtime "$<TARGET_FILE:aether_n2system_runtime>"
+                "$<TARGET_FILE:aether_n2system_native_host>"
+            VERBATIM)
+        target_sources(aether_kiri_godot PRIVATE "${_n2_archive_anchor}")
+        list(APPEND AETHERKIRI_IOS_ARCHIVES
+            "$<TARGET_FILE:aether_n2system_runtime>"
+            "$<TARGET_FILE:aether_n2system_native_host>")
+    endif()
     get_property(_private_runtime_targets GLOBAL
         PROPERTY AETHERKIRI_PRIVATE_RUNTIME_TARGETS)
     foreach(_runtime_target IN LISTS _private_runtime_targets)
@@ -462,6 +479,10 @@ if(_private_runtime_targets)
     target_link_libraries(aether_kiri_godot PRIVATE ${_private_runtime_targets})
 endif()
 set(_runtime_targets ${_private_runtime_targets})
+if(ANDROID AND TARGET aether_n2system_runtime)
+    get_target_property(_n2_shared_targets aether_n2system_runtime AETHERKIRI_N2SYSTEM_SHARED_TARGETS)
+    list(APPEND _runtime_targets ${_n2_shared_targets})
+endif()
 if(TARGET aether_entisgls_runtime)
     list(APPEND _runtime_targets aether_entisgls_runtime)
 endif()

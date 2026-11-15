@@ -49,6 +49,20 @@ bool HostApi::Load() {
     std::lock_guard<std::mutex> lock(mutex);
     if(ready) return true;
     if(image) return false;
+#ifdef AETHERKIRI_N2SYSTEM_STATIC_HOST
+    // iOS includes the NativeAOT image in the application's static link.
+    abi_version = &aether_n2system_abi_version;
+    create = &aether_n2system_create;
+    tick = &aether_n2system_tick;
+    event = &aether_n2system_event;
+    pause = &aether_n2system_pause;
+    frame = &aether_n2system_frame;
+    status = &aether_n2system_status;
+    last_error = &aether_n2system_last_error;
+    destroy = &aether_n2system_destroy;
+    ready = true;
+    return true;
+#else
     std::filesystem::path directory;
 #ifdef _WIN32
     HMODULE module = nullptr;
@@ -72,7 +86,11 @@ bool HostApi::Load() {
         error = "Cannot locate the N2System provider library"; return false;
     }
     directory = std::filesystem::path(location.dli_fname).parent_path();
-#ifdef __APPLE__
+#ifdef __ANDROID__
+    // Android's application linker namespace resolves packaged JNI libraries.
+    // dladdr may point inside an APK when extractNativeLibs is disabled.
+    const std::filesystem::path library = "libaether_n2system.so";
+#elif defined(__APPLE__)
     const auto library = directory / "n2system-runtime" / "aether_n2system.dylib";
 #else
     const auto library = directory / "n2system-runtime" / "aether_n2system.so";
@@ -97,6 +115,7 @@ bool HostApi::Load() {
 #undef N2_BIND
     ready = true;
     return true;
+#endif
 }
 struct Runtime {
     engine_runtime_host_v1_t host{};

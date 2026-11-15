@@ -543,10 +543,24 @@ patch_ios_export_project() {
     for archive in "${FORCE_LOAD_PLUGIN_ARCHIVES[@]}"; do
         flags+=" -Wl,-force_load,Aether/bin/ios/$export_build_type/$archive"
     done
-    flags+=' -liconv -framework Accelerate -framework AudioToolbox -framework AVFAudio -framework AVFoundation -framework AVKit -framework CoreAudio -framework CoreBluetooth -framework CoreHaptics -framework CoreMedia -framework CoreMotion -framework CoreVideo -framework GameController -framework VideoToolbox -framework CoreGraphics -framework QuartzCore -framework Metal -framework MetalFX -framework MetalKit -framework WebKit -framework OpenGLES -framework Security -framework StoreKit -framework PhotosUI -framework Photos -framework SystemConfiguration -framework MobileCoreServices'
+    flags+=' -liconv -framework Accelerate -framework AudioToolbox -framework AVFAudio -framework AVFoundation -framework AVKit -framework CoreAudio -framework CoreBluetooth -framework CoreHaptics -framework CoreMedia -framework CoreMotion -framework CoreVideo -framework GameController -framework VideoToolbox -framework CoreGraphics -framework QuartzCore -framework Metal -framework MetalKit -framework WebKit -framework OpenGLES -framework Security -framework StoreKit -framework PhotosUI -framework Photos -framework SystemConfiguration -framework MobileCoreServices'
+
+    local platform_sdk="iphoneos"
+    if [[ "$SIMULATOR" == true ]]; then platform_sdk="iphonesimulator"; fi
+    local platform_sdk_path
+    platform_sdk_path="$(xcrun --sdk "$platform_sdk" --show-sdk-path)"
+    if [[ -d "$platform_sdk_path/System/Library/Frameworks/MetalFX.framework" ]]; then
+        flags+=' -framework MetalFX'
+    fi
+
+    if [[ -f "$CMAKE_BUILD_DIR/bridge/n2system_runtime/publish/libaether_n2system_native.a" ]]; then
+        # The static extension contains NativeAOT's runtime archives, while
+        # Apple's frameworks and Swift compatibility libraries link at app level.
+        flags+=' -licucore -lz -lc++ -lobjc -L/usr/lib/swift -lswiftCore -lswiftFoundation -framework CoreFoundation -framework CryptoKit -framework Foundation -framework Network -framework GSS'
+    fi
 
     if [[ -f "$project_file" ]]; then
-        FLAGS="$flags" perl -0pi -e 's/OTHER_LDFLAGS = "[^"]*";/"OTHER_LDFLAGS = \"" . $ENV{FLAGS} . "\";"/eg' "$project_file"
+        FLAGS="$flags" perl -0pi -e 's/("?OTHER_LDFLAGS"?) = "[^"]*";/$1 . " = \"" . $ENV{FLAGS} . "\";"/eg' "$project_file"
         # Automatic signing archives with a development identity first, then
         # Xcode re-signs the exported archive for App Store distribution.
         # Godot's explicit Apple Distribution value conflicts with Automatic.

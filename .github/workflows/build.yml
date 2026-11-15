@@ -100,6 +100,11 @@ jobs:
           submodules: false
           persist-credentials: false
 
+      - name: Set up .NET for N2System NativeAOT
+        uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: '10.0.x'
+
       - name: Initialize private runtime submodules
         if: env.AETHERKIRI_WITH_INTERNAL == 'true'
         env:
@@ -494,6 +499,11 @@ jobs:
         with:
           submodules: false
           persist-credentials: false
+
+      - name: Set up .NET for N2System NativeAOT
+        uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: '10.0.x'
 
       - name: Initialize private runtime submodules
         if: env.AETHERKIRI_WITH_INTERNAL == 'true'
@@ -1350,7 +1360,7 @@ jobs:
           sudo apt-get install -y \
             build-essential gobjc gobjc++ cmake ninja-build pkg-config autoconf autoconf-archive \
             automake libtool gettext bison flex curl unzip zip zstd nasm yasm patchelf \
-            ccache libclang-dev libgl1-mesa-dev libglu1-mesa-dev libegl-dev libgles-dev \
+            ccache clang libclang-dev zlib1g-dev libgl1-mesa-dev libglu1-mesa-dev libegl-dev libgles-dev \
             libx11-dev libxrandr-dev libxinerama-dev libxcursor-dev libxi-dev \
             libxext-dev libxfixes-dev libxrender-dev libxss-dev libxtst-dev \
             libwayland-dev libxkbcommon-dev \

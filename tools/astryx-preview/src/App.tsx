@@ -529,6 +529,9 @@ export function App() {
   const coverFileGame = useRef("");
   const coverObjectURLs = useRef<string[]>([]);
   const previewPlatform = new URLSearchParams(location.search).get("platform");
+  const hasICloud = previewPlatform
+    ? ["ios", "macos"].includes(previewPlatform)
+    : /Mac|iPhone|iPad|iPod/.test(navigator.platform);
   const canBrowsePhotos = previewPlatform
     ? ["ios", "android"].includes(previewPlatform)
     : /Android|iPhone|iPad|iPod/.test(navigator.userAgent) ||
@@ -571,6 +574,7 @@ export function App() {
     id: number;
   } | null>(null);
   const [removingGame, setRemovingGame] = useState(false);
+  const [clearingCover, setClearingCover] = useState(false);
   const dirty = JSON.stringify(saved) !== JSON.stringify(draft);
   function changeLibraryDisplay(value: string) {
     if (value !== "cards" && value !== "list") return;
@@ -1891,7 +1895,7 @@ export function App() {
                 </VStack>
                 <CollapsibleGroup
                   type="multiple"
-                  defaultValue={["information"]}
+                  defaultValue={["information", "saves"]}
                   onChange={(values) => {
                     const open = Array.isArray(values) ? values : [values];
                     if (
@@ -1964,7 +1968,7 @@ export function App() {
                       <Text color="secondary">本地游戏 / {selected.name}</Text>
                       <Button
                         label="删除游戏"
-                        variant="destructive"
+                        variant="secondary"
                         width="100%"
                         size="lg"
                         onClick={() => setRemovingGame(true)}
@@ -1977,6 +1981,24 @@ export function App() {
                     trigger={<Heading level={3}>画面与渲染</Heading>}
                   >
                     {gameRenderSettings()}
+                  </Collapsible>
+                  <Divider />
+                  <Collapsible
+                    value="saves"
+                    trigger={<Heading level={3}>存档</Heading>}
+                  >
+                    <VStack gap={3} style={detailSectionPadding}>
+                      <Text color="secondary">仅处理当前游戏的存档。</Text>
+                      <Button label="导出存档" variant="secondary" width="100%" size="lg"
+                        onClick={() => setNotice("Godot 中会将当前游戏存档压缩为 ZIP，并打开系统分享。")}/>
+                      {hasICloud && <>
+                        <Button label="上传至 iCloud" variant="secondary" width="100%" size="lg"
+                          onClick={() => setNotice("Godot 中会选择 iCloud Drive 文件夹，按游戏名分别上传存档。")}/>
+                        <Button label="从 iCloud 同步" variant="secondary" width="100%" size="lg"
+                          onClick={() => setNotice("Godot 中会先确认、校验游戏名并备份本地存档，再同步当前游戏。")}/>
+                        <Text type="supporting" color="secondary">首次使用时，两台设备选择 iCloud Drive 中的同一个存档文件夹。不同游戏按名字分开保存。</Text>
+                      </>}
+                    </VStack>
                   </Collapsible>
                   <Divider />
                   <Collapsible
@@ -1997,10 +2019,10 @@ export function App() {
                       {covers.length > 0 && (
                         <Button
                           label="清除封面"
-                          variant="destructive"
+                          variant="secondary"
                           width="100%"
                           size="lg"
-                          onClick={clearCover}
+                          onClick={() => setClearingCover(true)}
                         />
                       )}
                     </VStack>
@@ -2605,12 +2627,14 @@ export function App() {
                     <Button
                       label="取消"
                       size="lg"
+                      width="100%"
                       onClick={() => setRemovingGame(false)}
                     />
                     <Button
                       label="删除"
                       variant="destructive"
                       size="lg"
+                      width="100%"
                       onClick={() => {
                         setRemovedGames((current) => [
                           ...current,
@@ -2618,6 +2642,40 @@ export function App() {
                         ]);
                         setRemovingGame(false);
                         go("library");
+                      }}
+                    />
+                  </HStack>
+                </LayoutFooter>
+              }
+            />
+          </Dialog>
+          <Dialog
+            isOpen={clearingCover}
+            onOpenChange={setClearingCover}
+            width={420}
+          >
+            <Layout
+              height="auto"
+              header={
+                <DialogHeader title="清除封面？" onOpenChange={setClearingCover} />
+              }
+              content={
+                <LayoutContent>
+                  <Text>清除此游戏的封面设置？原始图片文件会保留。</Text>
+                </LayoutContent>
+              }
+              footer={
+                <LayoutFooter>
+                  <HStack gap={3} hAlign="end">
+                    <Button label="取消" size="lg" width="100%" onClick={() => setClearingCover(false)} />
+                    <Button
+                      label="清除"
+                      variant="destructive"
+                      size="lg"
+                      width="100%"
+                      onClick={() => {
+                        clearCover();
+                        setClearingCover(false);
                       }}
                     />
                   </HStack>

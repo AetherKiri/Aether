@@ -180,6 +180,7 @@ if(APPLE)
         # the Swift objects into the archive consumed by the Godot exporter.
         add_library(aether_kiri_godot_swift STATIC
             src/apple_native_file_picker.swift
+            src/apple_save_transfer.swift
             src/apple_storekit.swift
             ../ios_game_import/GameImportStore.swift
             ../ios_game_import/GameImportHost.swift)
@@ -197,6 +198,7 @@ if(APPLE)
         # them without the Swift driver.
         add_library(aether_kiri_godot_swift STATIC
             src/apple_native_file_picker.swift
+            src/apple_save_transfer.swift
             src/apple_storekit.swift)
         set_property(TARGET aether_kiri_godot_swift PROPERTY
             Swift_LANGUAGE_VERSION 5)

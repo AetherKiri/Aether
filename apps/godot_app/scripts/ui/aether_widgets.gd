@@ -22,6 +22,7 @@ func primary_button(button: Button) -> Button:
     return _solid_button(button, tokens.accent, tokens.text_on_accent)
 
 func destructive_button(button: Button) -> Button:
+    button.set_meta("destructive_action", true)
     return _solid_button(button, tokens.danger, Color.WHITE)
 
 func secondary_button(button: Button, destructive: bool = false) -> Button:

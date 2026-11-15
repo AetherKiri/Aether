@@ -31,13 +31,14 @@ const DEFAULT_COVER_BASENAMES := [
 const GAME_COVER_PATH_PREFIX := "game://"
 const SETTINGS_FILE := "user://aetherkiri_settings.cfg"
 const NOTICE_FILE := "user://aetherkiri_notice.cfg"
-const NOTICE_ID := "qq_group_2026_09"
+const NOTICE_ID := "astryx_beta_2026_11"
 # Keep the notice ID stable; increment this only when publishing a new announcement,
 # independently of the application version or its translations.
 const NOTICE_VERSION := 1
 const AnnouncementState = preload("res://scripts/announcement_state.gd")
 var announcement_state := AnnouncementState.new(NOTICE_FILE)
 const QQ_GROUP_URL := "https://aetherkiri.github.io/qq/"
+const DISCORD_INVITE_URL := "https://discord.gg/6bZjp6hB"
 const SCENE_TEST_SETTINGS_KEY := "aether_kiri/scene_test"
 const IAP_LIST_LIMIT_PRODUCT_ID := "com.aether.list.limit"
 const IAP_COFFEE_PRODUCT_ID := "com.aether.coffee"
@@ -268,11 +269,18 @@ const UI_TEXT := {
         "settings.section.render": "渲染",
         "settings.section.developer": "开发者",
         "settings.section.about": "关于",
-        "settings.section.community": "QQ 交流群",
-        "settings.qq_group": "加入 QQ 交流群",
-        "settings.qq_group_desc": "反馈问题、获取更新、与其他玩家交流",
-        "settings.qq_group_open": "前往",
+        "settings.section.community": "社区",
+        "settings.section.community_support": "社区与支持",
+        "settings.community": "玩家社区",
+        "settings.community_desc": "反馈问题、获取更新、与其他玩家交流",
+        "settings.community_open": "加入 QQ 群",
+        "settings.rate_app": "为 Aether 评分",
+        "settings.rate_app_desc": "前往 App Store 分享你的使用体验",
+        "settings.rate_app_open": "评分",
+        "settings.background_effects": "背景特效",
+        "settings.background_effects_desc": "让随主题配色的几何图形在背景中缓缓上浮",
         "notice.title": "公告",
+        "notice.astryx_body": "新版 Astryx UI 开始内测，欢迎体验！\n\n新安装默认使用新版 UI。你可以随时前往「设置 → 界面 → 界面版本」切回经典 UI。已有的界面选择会保留。",
         "notice.qq_body": "欢迎加入 AetherKiri QQ 交流群，反馈问题、获取最新版本与其他玩家交流。
 
 之后也可以在「设置 → QQ 交流群」中随时查看。",
@@ -503,7 +511,7 @@ const UI_TEXT := {
         "detail.remove": "移除视觉小说",
         "detail.delete_builtin": "删除内置 Demo",
         "detail.delete_game": "删除视觉小说",
-        "dialog.delete_game_body": "永久删除「%s」？若它是文件夹，将同时删除其中的全部文件和存档，无法撤销。",
+        "dialog.delete_game_body": "永久删除「%s」？这会删除游戏文件及游戏目录内的全部存档，无法撤销。请先导出需要保留的存档。",
         "message.game_delete_failed": "未能完整删除游戏文件，请重试：%s",
         "game.today": "今天",
         "game.days_ago": "%d 天前",
@@ -658,7 +666,18 @@ const UI_TEXT := {
         "settings.section.render": "渲染",
         "settings.section.developer": "開發者",
         "settings.section.about": "關於",
+        "settings.section.community": "社群",
+        "settings.section.community_support": "社群與支援",
+        "settings.community": "玩家社群",
+        "settings.community_desc": "回報問題、取得更新，並與其他玩家交流",
+        "settings.community_open": "加入 Discord",
+        "settings.rate_app": "為 Aether 評分",
+        "settings.rate_app_desc": "前往 App Store 分享你的使用體驗",
+        "settings.rate_app_open": "評分",
+        "settings.background_effects": "背景特效",
+        "settings.background_effects_desc": "讓隨主題配色的幾何圖形在背景中緩緩上浮",
         "notice.title": "公告",
+        "notice.astryx_body": "新版 Astryx UI 開始內測，歡迎體驗！\n\n新安裝預設使用新版 UI。你可以隨時前往「設定 → 介面 → 介面版本」切回經典 UI。既有的介面選擇會保留。",
         "notice.qq_body": "歡迎加入 AetherKiri QQ 交流群，回報問題、取得最新版本並與其他玩家交流。\n\n之後也可以在「設定 → QQ 交流群」中隨時查看。",
         "notice.open": "加入交流群",
         "notice.dismiss": "不再顯示",
@@ -885,7 +904,7 @@ const UI_TEXT := {
         "detail.remove": "移除視覺小說",
         "detail.delete_builtin": "刪除內建 Demo",
         "detail.delete_game": "刪除視覺小說",
-        "dialog.delete_game_body": "永久刪除「%s」？若它是資料夾，將同時刪除其中的全部檔案和存檔，無法復原。",
+        "dialog.delete_game_body": "永久刪除「%s」？這會刪除遊戲檔案及遊戲目錄內的全部存檔，無法復原。請先匯出需要保留的存檔。",
         "message.game_delete_failed": "未能完整刪除遊戲檔案，請重試：%s",
         "game.today": "今天",
         "game.days_ago": "%d 天前",
@@ -1071,11 +1090,18 @@ const UI_TEXT := {
         "settings.section.render": "Rendering",
         "settings.section.developer": "Developer",
         "settings.section.about": "About",
-        "settings.section.community": "QQ Group",
-        "settings.qq_group": "Join the QQ group",
-        "settings.qq_group_desc": "Report issues, get updates and chat with other players",
-        "settings.qq_group_open": "Open",
+        "settings.section.community": "Community",
+        "settings.section.community_support": "Community & support",
+        "settings.community": "Player community",
+        "settings.community_desc": "Report issues, get updates and chat with other players",
+        "settings.community_open": "Join Discord",
+        "settings.rate_app": "Rate Aether",
+        "settings.rate_app_desc": "Share your experience on the App Store",
+        "settings.rate_app_open": "Rate app",
+        "settings.background_effects": "Background effects",
+        "settings.background_effects_desc": "Gently float shapes that match your theme behind the interface",
         "notice.title": "Announcement",
+        "notice.astryx_body": "The new Astryx UI is now in beta!\n\nNew installations use Astryx by default. You can switch back to the classic UI at any time in Settings → Appearance → Interface. Your existing interface choice is preserved.",
         "notice.qq_body": "Join the AetherKiri QQ group to report issues, get the latest builds and chat with other players.
 
 You can find it any time under Settings → QQ Group.",
@@ -1306,7 +1332,7 @@ You can find it any time under Settings → QQ Group.",
         "detail.remove": "Remove Visual Novel",
         "detail.delete_builtin": "Delete Built-in Demo",
         "detail.delete_game": "Delete Visual Novel",
-        "dialog.delete_game_body": "Permanently delete \"%s\"? If it is a folder, all files and saves inside it will also be deleted. This cannot be undone.",
+        "dialog.delete_game_body": "Permanently delete \"%s\"? This deletes the game files and all saves inside the game folder. This cannot be undone. Export any saves you want to keep first.",
         "message.game_delete_failed": "Could not completely delete the game files. Please retry: %s",
         "game.today": "Today",
         "game.days_ago": "%d days ago",
@@ -1461,7 +1487,18 @@ You can find it any time under Settings → QQ Group.",
         "settings.section.render": "レンダリング",
         "settings.section.developer": "開発者",
         "settings.section.about": "情報",
+        "settings.section.community": "コミュニティ",
+        "settings.section.community_support": "コミュニティとサポート",
+        "settings.community": "プレイヤーコミュニティ",
+        "settings.community_desc": "不具合の報告、最新情報の確認、ほかのプレイヤーとの交流",
+        "settings.community_open": "Discord に参加",
+        "settings.rate_app": "Aether を評価",
+        "settings.rate_app_desc": "App Store で使用した感想をお聞かせください",
+        "settings.rate_app_open": "評価する",
+        "settings.background_effects": "背景エフェクト",
+        "settings.background_effects_desc": "テーマに合った色の図形が背景をゆっくり浮かび上がります",
         "notice.title": "お知らせ",
+        "notice.astryx_body": "新しい Astryx UI のベータテストが始まりました！\n\n新規インストールでは新版が標準です。「設定 → 外観 → インターフェイス」からいつでもクラシック UI に戻せます。既存の選択は維持されます。",
         "notice.qq_body": "AetherKiri の QQ グループで、不具合の報告、最新バージョンの確認、ほかのプレイヤーとの交流ができます。\n\nグループへのリンクは「設定 → QQ グループ」からいつでも開けます。",
         "notice.open": "グループに参加",
         "notice.dismiss": "今後表示しない",
@@ -1688,7 +1725,7 @@ You can find it any time under Settings → QQ Group.",
         "detail.remove": "ビジュアルノベルを削除",
         "detail.delete_builtin": "内蔵デモを削除",
         "detail.delete_game": "ビジュアルノベルを削除",
-        "dialog.delete_game_body": "「%s」を完全に削除しますか？フォルダーの場合は、中の全ファイルとセーブデータも削除されます。元に戻すことはできません。",
+        "dialog.delete_game_body": "「%s」を完全に削除しますか？ゲームファイルとゲームフォルダー内の全セーブデータを削除します。元に戻せません。必要なセーブを先に書き出してください。",
         "message.game_delete_failed": "ゲームファイルを完全に削除できませんでした。再試行してください：%s",
         "game.today": "今日",
         "game.days_ago": "%d 日前",
@@ -1843,7 +1880,18 @@ You can find it any time under Settings → QQ Group.",
         "settings.section.render": "렌더링",
         "settings.section.developer": "개발자",
         "settings.section.about": "정보",
+        "settings.section.community": "커뮤니티",
+        "settings.section.community_support": "커뮤니티 및 지원",
+        "settings.community": "플레이어 커뮤니티",
+        "settings.community_desc": "문제를 제보하고, 업데이트를 확인하며 다른 플레이어와 소통하세요",
+        "settings.community_open": "Discord 참여",
+        "settings.rate_app": "Aether 평가",
+        "settings.rate_app_desc": "App Store에서 사용 경험을 공유해 주세요",
+        "settings.rate_app_open": "평가하기",
+        "settings.background_effects": "배경 효과",
+        "settings.background_effects_desc": "테마 색상에 맞는 도형이 배경에서 천천히 떠오릅니다",
         "notice.title": "공지",
+        "notice.astryx_body": "새 Astryx UI 베타 테스트가 시작되었습니다!\n\n새로 설치하면 Astryx가 기본으로 적용됩니다. 설정 → 모양 → 인터페이스에서 언제든 클래식 UI로 돌아갈 수 있습니다. 기존 인터페이스 선택은 유지됩니다.",
         "notice.qq_body": "AetherKiri QQ 그룹에서 문제를 제보하고, 최신 버전을 확인하며 다른 플레이어와 이야기해 보세요.\n\n「설정 → QQ 그룹」에서 언제든지 다시 열 수 있습니다.",
         "notice.open": "그룹 참여",
         "notice.dismiss": "다시 표시 안 함",
@@ -2070,7 +2118,7 @@ You can find it any time under Settings → QQ Group.",
         "detail.remove": "비주얼 노벨 제거",
         "detail.delete_builtin": "내장 데모 삭제",
         "detail.delete_game": "비주얼 노벨 삭제",
-        "dialog.delete_game_body": "\"%s\"을(를) 영구 삭제할까요? 폴더라면 안에 있는 모든 파일과 저장 데이터도 삭제됩니다. 되돌릴 수 없습니다.",
+        "dialog.delete_game_body": "\"%s\"을(를) 영구 삭제할까요? 게임 파일과 게임 폴더 안의 모든 저장 데이터가 삭제됩니다. 되돌릴 수 없습니다. 보관할 저장 데이터를 먼저 내보내세요.",
         "message.game_delete_failed": "게임 파일을 완전히 삭제하지 못했습니다. 다시 시도하세요: %s",
         "game.today": "오늘",
         "game.days_ago": "%d일 전",
@@ -5009,7 +5057,7 @@ func _scaled_display_safe_rect(
 
 func _ui_safe_rect(viewport_size: Vector2) -> Rect2:
     var full_rect := Rect2(Vector2.ZERO, viewport_size)
-    if OS.get_name() != "iOS":
+    if not _mobile_runtime():
         return full_rect
     var screen_size := Vector2(DisplayServer.screen_get_size())
     var display_safe_rect := Rect2(DisplayServer.get_display_safe_area())
@@ -5181,8 +5229,8 @@ func _layout_shell_safe_area_fills(window_size: Vector2, safe_rect: Rect2) -> vo
         return
     var top_inset := maxf(0.0, safe_rect.position.y)
     # The status-bar region continues the bar surface so the native clock
-    # row and the first app row read as one header on iPhone/iPad.
-    shell_safe_top_fill.visible = OS.get_name() == "iOS" and top_inset > 0.0
+    # row and the first app row read as one header on mobile devices.
+    shell_safe_top_fill.visible = _mobile_runtime() and top_inset > 0.0
     shell_safe_top_fill.color = ui_tokens.tint(ui_tokens.background, 0.92)
     if shell_safe_top_fill.visible:
         shell_safe_top_fill.position = Vector2(-safe_rect.position.x, -top_inset)
@@ -5909,7 +5957,7 @@ func _rebuild_settings_view() -> void:
     settings_index_host.set_meta("rail", rail)
 
     var community_rows := _settings_section(flow, _t("settings.section.community"), animate_page, 0.02, ICON_HELP)
-    _add_settings_row(community_rows, _settings_action_row(_t("settings.qq_group"), _t("settings.qq_group_desc"), _t("settings.qq_group_open"), _open_qq_group))
+    _add_settings_row(community_rows, _settings_action_row(_t("settings.community"), _t("settings.community_desc"), _t("settings.community_open"), _open_community))
 
     var interface_rows := _settings_section(flow, _t("settings.section.interface"), animate_page, 0.04, ICON_PAGE)
     if has_node("ShellInterface"):
@@ -6013,6 +6061,8 @@ func _rebuild_settings_view() -> void:
         groups.append(purchase_rows)
 
     var about_rows := _settings_section(flow, _t("settings.section.about"), animate_page, 0.24, ICON_HELP)
+    if _apple_app_store_platform():
+        _add_settings_row(about_rows, _settings_action_row(_t("settings.rate_app"), _t("settings.rate_app_desc"), _t("settings.rate_app_open"), _open_app_store_review))
     if _coffee_sponsorship_available():
         _add_settings_row(about_rows, _settings_action_row(_t("support.coffee.title"), _t("support.coffee.desc"), _t("support.coffee.open"), _open_coffee_sponsorship))
     _add_settings_row(about_rows, _settings_action_row(_t("settings.legal"), _t("settings.legal_desc"), _t("settings.legal_open"), func(): _show_legal_agreement(false)))
@@ -8637,6 +8687,19 @@ func _show_detail(game: Dictionary, source: Control = null) -> void:
         Callable(self, "_show_detail").bind(game, source)
     ):
         return
+    var astryx := _astryx_shell_controller()
+    if astryx != null:
+        # Only the active presenter needs a detail tree. Synchronize now so
+        # opening a game does not wait for the presenter's periodic poll.
+        _finish_hero_overlay()
+        _clear_hero_state()
+        _reset_shell_scroll_drag()
+        _set_game_background(false)
+        selected_game = game
+        modal_layer.visible = false
+        _sync_shell_route("detail")
+        astryx.sync_state()
+        return
     var previous_route := shell_route
     var animate_hero := false
     if source != null and is_instance_valid(source):
@@ -8710,6 +8773,8 @@ func _restore_detail_scroll_after_relayout(scroll_vertical: int) -> void:
     detail_scroll.scroll_vertical = mini(scroll_vertical, maximum_scroll)
 
 func _rebuild_detail_contents(game: Dictionary, animate_hero: bool, animate_content: bool) -> void:
+    if _astryx_shell_controller() != null:
+        return
     for child in detail_scroll.get_children():
         detail_scroll.remove_child(child)
         child.queue_free()
@@ -9044,7 +9109,10 @@ func _detail_remove_button(game: Dictionary) -> Button:
 func _game_removal_label(game: Dictionary) -> String:
     if builtin_demo.is_game(game):
         return "detail.delete_builtin"
-    return "detail.delete_game" if OS.get_name() == "iOS" else "detail.remove"
+    return "detail.delete_game" if _game_removal_platform() == "iOS" else "detail.remove"
+
+func _game_removal_platform() -> String:
+    return OS.get_name()
 
 # Facts grid: label over value, two columns on desktop, hairlines between.
 
@@ -9924,8 +9992,10 @@ func _poll_native_font_file_picker() -> void:
     elif result.get("status") == "error":
         callback.call({"error": ERR_FILE_CANT_READ})
 
-func _read_game_text_config(game: Dictionary) -> Dictionary:
-    return GameTextConfig.read(_game_runtime_root(String(game.get("path", ""))), _game_runtime_kind(String(game.get("path", ""))), game)
+func _read_game_text_config(game: Dictionary, runtime: String = "") -> Dictionary:
+    if runtime.is_empty():
+        runtime = _game_runtime_kind(String(game.get("path", "")))
+    return GameTextConfig.read(_game_runtime_root(String(game.get("path", ""))), runtime, game)
 
 func _game_text_encoding(game: Dictionary, runtime: String) -> String:
     var selected_root := _game_runtime_root(String(game.get("path", "")))
@@ -10041,10 +10111,10 @@ func _game_launch_entry_label(game: Dictionary) -> String:
         return _t("detail.default_launch_entry")
     return relative_path
 
-func _can_configure_launch_file(game: Dictionary) -> bool:
+func _can_configure_launch_file(game: Dictionary, runtime: String = "") -> bool:
     return OS.get_name() != "Web" \
         and not builtin_demo.is_game(game) \
-        and _game_runtime_kind(String(game.get("path", ""))) not in [RUNTIME_ONSCRIPTER, RUNTIME_XSYSTEM4, RUNTIME_XSYSTEM35, RUNTIME_SYSTEM3] \
+        and (runtime if not runtime.is_empty() else _game_runtime_kind(String(game.get("path", "")))) not in [RUNTIME_ONSCRIPTER, RUNTIME_XSYSTEM4, RUNTIME_XSYSTEM35, RUNTIME_SYSTEM3] \
         and String(game.get("type", "Directory")).to_lower() == "directory"
 
 func _set_launch_file_for_selected() -> void:
@@ -10280,16 +10350,19 @@ func _rename_selected_game() -> void:
         input.call_deferred("grab_focus")
 
 func _confirm_remove_selected() -> void:
+    var transfer = get_node_or_null("GameSaveTransfer")
+    if transfer != null and transfer.busy:
+        return
     var path := String(selected_game.get("path", ""))
     if path.is_empty():
         return
     var deleting_builtin := builtin_demo.is_game(selected_game)
-    var deleting_files := deleting_builtin or OS.get_name() == "iOS"
+    var deleting_files := deleting_builtin or _game_removal_platform() == "iOS"
     var remove_label := _game_removal_label(selected_game)
     var dialog := _modal_dialog(Vector2(520, 260))
     var box := _modal_stack(dialog, _t(remove_label), ICON_DELETE)
     var body_key := "dialog.delete_builtin_body" if deleting_builtin else "dialog.remove_body"
-    if OS.get_name() == "iOS" and not deleting_builtin:
+    if _game_removal_platform() == "iOS" and not deleting_builtin:
         body_key = "dialog.delete_game_body"
     box.add_child(_dialog_body_label(_t(body_key, [_game_display_title(selected_game)])))
     var buttons := _dialog_button_row()
@@ -10302,18 +10375,25 @@ func _confirm_remove_selected() -> void:
         _dismiss_modal(func(): _remove_game(path))
     )
     buttons.add_child(remove)
+    for action in [cancel, remove]:
+        action.custom_minimum_size = Vector2(120, 44)
+        action.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+    cancel.call_deferred("grab_focus")
+
+func _library_uses_refresh_action() -> bool:
+    return OS.get_name() == "iOS"
 
 func _on_refresh_or_import() -> void:
     if home_library_mode != "game":
         if OS.get_name() == "Android":
             _open_video_import_dialog()
             return
-        if OS.get_name() == "iOS":
+        if _library_uses_refresh_action():
             _refresh_file_library()
         else:
             _open_video_import_dialog()
         return
-    if OS.get_name() == "iOS":
+    if _library_uses_refresh_action():
         _refresh_games()
         return
     if OS.get_name() == "Web":
@@ -11937,7 +12017,7 @@ func _remove_game(path: String) -> void:
         if not builtin_demo.is_removed():
             _show_message(_t("message.builtin_delete_failed", [error_string(builtin_delete_result)]))
             return
-    elif OS.get_name() == "iOS":
+    elif _game_removal_platform() == "iOS":
         var resolved := _resolve_game_path(path)
         var result := GameLibraryStorage.delete_game(resolved, "user://Games")
         if result != OK:
@@ -12285,6 +12365,9 @@ func _mask_corner_pixel(image: Image, x: int, y: int, center: Vector2, radius: f
     image.set_pixel(x, y, color)
 
 func _start_selected_game() -> void:
+    var save_transfer = get_node_or_null("GameSaveTransfer")
+    if save_transfer != null and save_transfer.busy:
+        return
     _android_input_debug_log("_start_selected_game selected=%s" % str(selected_game))
     if not _require_legal_documents_for_media():
         return
@@ -16416,6 +16499,9 @@ func _handle_go_back_request() -> void:
     if game_running or cached_startup_state == STARTUP_RUNNING:
         _confirm_exit_game_for_go_back()
         return
+    var astryx := _astryx_shell_controller()
+    if astryx != null and astryx.handle_back():
+        return
     if shell_route in ["videos", "flash"] and _active_file_library().can_go_up():
         _go_up_video_directory()
         return
@@ -17747,6 +17833,9 @@ func _edge_back_gesture_qualified(
 func _perform_mobile_shell_back() -> bool:
     if modal_layer != null and modal_layer.visible:
         _dismiss_modal()
+        return true
+    var astryx := _astryx_shell_controller()
+    if astryx != null and astryx.handle_back():
         return true
     if shell_route in ["videos", "flash"] and _active_file_library().can_go_up():
         _go_up_video_directory()
@@ -20055,6 +20144,21 @@ func _mipmapped_texture(texture: Texture2D) -> Texture2D:
 # Each announcement has its own revision, separate from the app version.
 # Dismissal lasts for that revision; both choices allow newer announcements.
 
+func _community_url() -> String:
+    return QQ_GROUP_URL if active_language == LANG_ZH_HANS else DISCORD_INVITE_URL
+
+func _open_community() -> void:
+    var url := _community_url()
+    if OS.shell_open(url) != OK:
+        _show_message(url)
+
+func _open_app_store_review() -> void:
+    if not _apple_app_store_platform():
+        return
+    var url := AppUpdater.APPLE_STORE_URL + "?action=write-review"
+    if OS.shell_open(url) != OK:
+        _show_message(url)
+
 func _open_qq_group() -> void:
     var result := OS.shell_open(QQ_GROUP_URL)
     if result != OK:
@@ -20087,12 +20191,7 @@ func _maybe_show_notice() -> void:
 func _show_notice() -> void:
     var dialog := _modal_dialog(Vector2(560, 360), 0.46)
     var box := _modal_stack(dialog, "%s · v%d" % [_t("notice.title"), NOTICE_VERSION], ICON_HELP)
-    box.add_child(_dialog_body_label(_t("notice.qq_body")))
-    var link := _pill_button(_t("notice.open"), ICON_CHEVRON_RIGHT)
-    link.custom_minimum_size = Vector2(0, 48)
-    link.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-    link.pressed.connect(_open_qq_group)
-    box.add_child(link)
+    box.add_child(_dialog_body_label(_t("notice.astryx_body")))
     var buttons := _dialog_button_row()
     box.add_child(buttons)
     var dismiss := _secondary_dialog_button(_t("notice.dismiss"), Vector2(0, 46))

@@ -1441,6 +1441,21 @@ jobs:
             exit 1
           fi
 
+      - name: Run game save archive and transfer tests
+        env:
+          LD_LIBRARY_PATH: ${{ github.workspace }}/apps/godot_app/bin/linux/debug
+        run: |
+          set -euo pipefail
+          for suite in archive transfer; do
+            log="$RUNNER_TEMP/game-save-${suite}.log"
+            timeout 60 "$GODOT_BIN" --headless --path apps/godot_app \
+              --script "res://tests/game_save_${suite}_test.gd" 2>&1 | tee "$log"
+            grep -Fx "Save ${suite} failures: 0" "$log"
+            if grep -E 'SCRIPT ERROR:|^ERROR:' "$log"; then
+              exit 1
+            fi
+          done
+
       - name: Run game import metadata tests
         env:
           LD_LIBRARY_PATH: ${{ github.workspace }}/apps/godot_app/bin/linux/debug

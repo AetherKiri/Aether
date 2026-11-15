@@ -41,6 +41,78 @@ func _frames(count: int = 12) -> void:
     for _frame in range(count):
         await process_frame
 
+func _touch_at(position: Vector2, pressed: bool, cancelled: bool = false) -> void:
+    var event := InputEventScreenTouch.new()
+    event.index = 0
+    event.position = position
+    event.pressed = pressed
+    event.canceled = cancelled
+    Input.parse_input_event(event)
+    Input.flush_buffered_events()
+    await _frames(3)
+
+func _move_touch(from: Vector2, to: Vector2) -> void:
+    var event := InputEventScreenDrag.new()
+    event.index = 0
+    event.position = to
+    event.relative = to - from
+    Input.parse_input_event(event)
+    Input.flush_buffered_events()
+    await _frames(3)
+
+func _center(name_value: String) -> Vector2:
+    return host.find_child(name_value, true, false).get_global_rect().get_center()
+
+func _check_navigation_release() -> void:
+    var start := _center("AstryxNav_library")
+    var videos := _center("AstryxNav_videos")
+    var settings := _center("AstryxNav_settings")
+    var original: String = host.shell_route
+    await _touch_at(start, true)
+    _expect(host.shell_route == original, "Holding navigation does not activate on touch-down")
+    await _move_touch(start, settings)
+    await _move_touch(settings, videos)
+    _expect(host.shell_route == original, "Sliding across navigation only previews the final target")
+    await _touch_at(videos, false)
+    await _frames()
+    _expect(host.shell_route == "videos", "Releasing a navigation slide selects the final icon exactly once")
+    for id in ["library", "videos", "flash", "settings"]:
+        var button := host.find_child("AstryxNav_" + id, true, false) as Button
+        _expect(not button.is_hovered() and not button.has_focus(), "Touch navigation leaves no hover/focus residue: " + id)
+    start = _center("AstryxNav_library")
+    var outside := Vector2(controller.view.get_global_rect().get_center().x, 200)
+    await _touch_at(start, true)
+    await _move_touch(start, outside)
+    await _touch_at(outside, false)
+    _expect(host.shell_route == "videos", "Releasing outside navigation does not activate content beneath the finger")
+    await _touch_at(start, true)
+    await _touch_at(start, false, true)
+    _expect(host.shell_route == "videos", "System-cancelled touches never navigate")
+    await _tap("AstryxNav_library")
+    # Real mouse input on a mobile host still owns a hover and activates normally.
+    var motion := InputEventMouseMotion.new()
+    motion.position = _center("AstryxNav_settings")
+    Input.parse_input_event(motion)
+    Input.flush_buffered_events()
+    await _frames()
+    _expect(host.find_child("AstryxNav_settings", true, false).is_hovered(), "An attached mouse retains ordinary hover")
+
+func _check_settings_release() -> void:
+    await _tap("AstryxNav_settings")
+    var start := _center("AstryxSection_interface")
+    var target := _center("AstryxSection_about")
+    var before: String = controller.view.section
+    await _touch_at(start, true)
+    await _move_touch(start, target)
+    _expect(controller.view.section == before, "Settings categories do not change while the finger moves")
+    await _touch_at(target, false)
+    await _frames()
+    _expect(controller.view.section == "about", "A non-scrolling settings menu selects its release target")
+    for id in ["interface", "render", "compatibility", "diagnostics", "about"]:
+        var button := host.find_child("AstryxSection_" + id, true, false) as Button
+        _expect(not button.is_hovered() and not button.has_focus(), "Settings touch leaves no hover/focus residue: " + id)
+    await _tap("AstryxNav_library")
+
 func _tap(name_value: String, drift: Vector2 = Vector2.ZERO) -> void:
     var button := host.find_child(name_value, true, false) as BaseButton
     _expect(button != null, "Missing touch target: " + name_value)
@@ -118,6 +190,9 @@ func _drag_button(name_value: String, distance: float) -> void:
     _expect(scroll.scroll_vertical > initial_offset + 1,
         name_value + ": dragging over a button scrolls before release")
     _expect(scroll.get_v_scroll_bar().modulate.a > 0.9, "Scrollbar appears during a drag")
+    if name_value in ["AstryxGameCard", "AstryxGameRow"]:
+        var under_finger := host._nearest_base_button(host._control_at_pointer(position))
+        _expect(under_finger != null, "A scroll can end over a game entry without becoming a click")
     touch = InputEventScreenTouch.new()
     touch.index = 0
     touch.position = position
@@ -303,10 +378,20 @@ func _run() -> void:
     root.add_child(host)
     await _frames()
     await _exercise("Android portrait", Vector2i(393, 852), Vector4.ZERO)
+    await _exercise("Android portrait cutout", Vector2i(393, 852), Vector4(0, 40, 0, 16))
+    await _exercise("Android landscape cutout", Vector2i(852, 393), Vector4(40, 0, 0, 16))
     await _exercise("iPhone portrait", Vector2i(393, 852), Vector4(0, 59, 0, 34))
     await _exercise("iPhone landscape", Vector2i(852, 393), Vector4(59, 0, 59, 21))
     await _exercise("iPad landscape", Vector2i(1194, 834), Vector4(0, 24, 0, 20))
+    await _check_settings_release()
+    await _rotate_active(Vector2i(1194, 393), Vector4.ZERO)
+    await _tap("AstryxNav_settings")
+    var section_before_scroll: String = controller.view.section
+    await _drag_button("AstryxSection_interface", 24.0)
+    _expect(controller.view.section == section_before_scroll, "Scrolling an overflowing settings menu never changes category on release")
+    await _tap("AstryxNav_library")
     await _rotate_active(Vector2i(393, 852), Vector4(0, 59, 0, 34))
+    await _check_navigation_release()
     await _check_settings_drags()
     await _check_scrollbar_visibility()
     await _rotate_active(Vector2i(852, 393), Vector4(59, 0, 59, 21))

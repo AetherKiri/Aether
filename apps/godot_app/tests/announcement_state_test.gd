@@ -21,6 +21,8 @@ func _run() -> void:
     var id: String = MAIN_SCRIPT.NOTICE_ID
     var now := 1000000
     assert(state.should_show(id, 1, now))
+    assert(state.dismiss("qq_group_2026_09", 1) == OK)
+    assert(state.should_show(id, MAIN_SCRIPT.NOTICE_VERSION, now))
 
     # Existing weekly/today snoozes only apply to the original announcement.
     var legacy := ConfigFile.new()
@@ -74,7 +76,7 @@ func _run() -> void:
 
     # All supported UI languages name both choices without falling back.
     for language in ["zh_hans", "zh_hant", "en", "ja", "ko"]:
-        for key in ["notice.title", "notice.dismiss", "notice.dismiss_hint", "notice.skip_today", "notice.save_failed"]:
+        for key in ["notice.title", "notice.astryx_body", "notice.dismiss", "notice.dismiss_hint", "notice.skip_today", "notice.save_failed"]:
             assert(app.UI_TEXT[language].has(key))
 
     assert(DirAccess.remove_absolute(path) == OK)

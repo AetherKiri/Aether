@@ -1618,6 +1618,13 @@ engine_result_t engine_set_surface_size(engine_handle_t public_handle,
     result =
         handle->provider->set_surface_size(handle->runtime, width, height);
     SetProviderError(handle, result, "set_surface_size");
+  } else if (handle->backend == BackendKind::kUndecided &&
+             LegacyServices() == nullptr) {
+    // Provider-only hosts select their runtime when a game is opened. Cache
+    // presentation dimensions now; SelectBackendLocked replays them first.
+    handle->last_error.clear();
+    SetThreadError(nullptr);
+    result = ENGINE_RESULT_OK;
   } else {
     result = EnsureLegacyLocked(handle);
     if (result == ENGINE_RESULT_OK) {

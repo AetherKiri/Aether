@@ -3,6 +3,35 @@
 import argparse
 from pathlib import Path
 import shutil
+import tempfile
+import zipfile
+
+
+def stage_cxx_runtime(build: Path, runtime: Path, abi: str):
+    """Keep Godot's packaged libc++ consistent with the native build's NDK."""
+    if not runtime.is_file():
+        raise ValueError(f"Missing Android C++ runtime: {runtime}")
+    data = runtime.read_bytes()
+    entry = f"jni/{abi}/libc++_shared.so"
+    for archive in (build / "libs").glob("*/*.aar"):
+        with zipfile.ZipFile(archive) as source:
+            if entry not in source.namelist() or source.read(entry) == data:
+                continue
+            # Godot's Gradle template deliberately picks the AAR's libc++ first.
+            # Replace that generated packaging copy, preserving every other entry.
+            with tempfile.NamedTemporaryFile(dir=archive.parent, suffix=".aar", delete=False) as temporary:
+                temporary_path = Path(temporary.name)
+            try:
+                with zipfile.ZipFile(temporary_path, "w") as destination:
+                    for item in source.infolist():
+                        destination.writestr(item, data if item.filename == entry else source.read(item))
+                temporary_path.replace(archive)
+            finally:
+                temporary_path.unlink(missing_ok=True)
+    for configuration in ("debug", "release"):
+        loose = build / "libs" / configuration / abi / "libc++_shared.so"
+        if loose.is_file():
+            shutil.copyfile(runtime, loose)
 
 
 def stage(build: Path, source: Path, manifest: Path, abi: str):
@@ -35,5 +64,9 @@ if __name__ == "__main__":
     parser.add_argument("--source-dir", type=Path, required=True)
     parser.add_argument("--manifest", type=Path, required=True)
     parser.add_argument("--abi", required=True)
+    parser.add_argument("--cxx-runtime", type=Path)
     args = parser.parse_args()
     stage(args.build_dir, args.source_dir, args.manifest, args.abi)
+
+    if args.cxx_runtime is not None:
+        stage_cxx_runtime(args.build_dir, args.cxx_runtime, args.abi)

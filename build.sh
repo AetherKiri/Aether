@@ -80,6 +80,30 @@ case "$(printf '%s' "$softpal_setting" | tr '[:upper:]' '[:lower:]')" in
 esac
 export AETHERKIRI_ENABLE_SOFTPAL_RUNTIME
 
+# WA2 also needs a private provider, which public CI does not check out.
+# Preserve explicit overrides and detect the provider for local builds.
+wa2_setting="${AETHERKIRI_ENABLE_WA2:-}"
+if [[ -z "$wa2_setting" && -n "${AETHERKIRI_WITH_INTERNAL:-}" ]]; then
+    wa2_setting="$AETHERKIRI_WITH_INTERNAL"
+fi
+if [[ -z "$wa2_setting" ]]; then
+    leafttt_package_dir="${AETHERKIRI_LEAFTTT_DIR:-$SCRIPT_DIR/packages/AetherLeafTtt}"
+    if [[ -f "$leafttt_package_dir/cmake/AetherLeafTttConfig.cmake" ]]; then
+        wa2_setting="ON"
+    else
+        wa2_setting="OFF"
+    fi
+fi
+case "$(printf '%s' "$wa2_setting" | tr '[:upper:]' '[:lower:]')" in
+    1|on|true|yes) AETHERKIRI_ENABLE_WA2="ON" ;;
+    0|off|false|no) AETHERKIRI_ENABLE_WA2="OFF" ;;
+    *)
+        echo "[ERROR] AETHERKIRI_ENABLE_WA2 must be ON/OFF or true/false, got: $wa2_setting" >&2
+        exit 1
+        ;;
+esac
+export AETHERKIRI_ENABLE_WA2
+
 # Colors
 RED='\033[0;31m'
 GREEN='\033[0;32m'

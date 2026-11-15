@@ -82,7 +82,7 @@ and **Debug CPU** is a diagnostic fallback only.
 - Public EntisGLS / Cotopha desktop runtime for traditional CSX scripts and NOA
   resources, with game-local `savedata/`. See the
   [provider scope and validation](https://github.com/AetherKiri/EntisGLS-SDL3/blob/aether/aether_runtime/README.md).
-- Experimental NitroSharp / N2System desktop source integration through the public [AetherN2System](https://github.com/AetherKiri/AetherN2System) submodule, with game-directory detection and an initial NativeAOT host bridge. Compressed/encrypted NPA archives are not supported yet. Media decoder dependencies on macOS/Linux are still incomplete; full audio/video playback and individual game compatibility require further work. Mobile and Web are not supported.
+- Experimental NitroSharp / N2System desktop runtime through the public [AetherN2System](https://github.com/AetherKiri/AetherN2System) submodule, with game-directory detection, an in-process NativeAOT host, plain and compressed NPA archives, and early NPS/PAK installations. Desktop packaging includes native text, audio and video dependencies. Persistent save/load and parts of the legacy system menu remain unimplemented; individual game compatibility is still evolving. Mobile and Web are not supported.
 - Export presets for macOS, iOS/iPadOS, Android, Web, and Linux.
 - A separate Flash library powered by native Ruffle, with sound, keyboard,
   mouse, touch, and the visual-novel virtual controls.

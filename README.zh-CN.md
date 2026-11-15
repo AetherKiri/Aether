@@ -74,7 +74,7 @@ Godot App Shell
 - 通过公开 EntisGLS / Cotopha Runtime 在桌面端运行传统 CSX 脚本并读取 NOA
   资源，存档位于游戏目录的 `savedata/`。参见
   [接入范围与验证说明](https://github.com/AetherKiri/EntisGLS-SDL3/blob/aether/aether_runtime/README.md)。
-- 通过公开 [AetherN2System](https://github.com/AetherKiri/AetherN2System) submodule 实验性接入 NitroSharp / N2System 桌面源码，提供游戏目录识别与初步 NativeAOT 宿主桥接。压缩或加密的 NPA 归档尚未支持；macOS/Linux 的媒体解码依赖仍不完整，完整音视频播放与具体游戏兼容性仍需后续完善。移动端与 Web 尚未支持。
+- 通过公开 [AetherN2System](https://github.com/AetherKiri/AetherN2System) submodule 实验性接入 NitroSharp / N2System 桌面运行时，提供游戏目录识别、进程内 NativeAOT 宿主、普通及压缩 NPA 归档读取，以及早期 NPS/PAK 安装格式兼容。桌面打包包含文字、音频和视频所需的原生依赖。持久化存读档及部分旧版系统菜单尚未实现，具体游戏兼容性仍在完善。移动端与 Web 尚未支持。
 - 覆盖 macOS、iOS/iPadOS、Android、Web 与 Linux 的导出配置。
 - 独立的 Flash 分类，使用原生 Ruffle 播放，支持声音、键鼠、触摸以及视觉小说的虚拟按钮。
 - 通过内置 xsystem35 原生运行 AliceSoft System 3.5/3.9 游戏，支持 ALD 目录导入、中日文和可选虚拟按键。参见[原生宿主与游戏测试范围](bridge/xsystem35_runtime/README.md)。

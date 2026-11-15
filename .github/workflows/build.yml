@@ -598,6 +598,7 @@ jobs:
 
       - name: Test iOS game import and extension packaging
         run: |
+          python3 -m unittest discover -s tests/python -p test_ios_ipa_packaging.py -v
           python3 -m unittest discover -s tests/python -p test_ios_game_import.py -v
           python3 -m unittest discover -s tests/python -p test_renpy_packaging.py -v
 
@@ -865,6 +866,7 @@ jobs:
 
       - name: Test Mac App Store nested signing
         run: |
+          python3 -m unittest discover -s tests/python -p test_n2system_packaging.py -v
           python3 -m unittest discover -s tests/python -p test_macos_app_store_signing.py -v
           python3 -m unittest discover -s tests/python -p test_runtime_submodule_initialization.py -v
           python3 -m unittest discover -s tests/python -p test_ctest_inventory.py -v

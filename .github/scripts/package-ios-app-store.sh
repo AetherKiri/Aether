@@ -108,6 +108,7 @@ xcodebuild archive \
     -scheme Aether \
     -configuration Release \
     -destination 'generic/platform=iOS' \
+    -derivedDataPath "$work_dir/DerivedData" \
     -archivePath "$archive_path" \
     DEVELOPMENT_TEAM="$team_id" \
     CODE_SIGN_STYLE=Manual \

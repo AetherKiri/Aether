@@ -18,6 +18,10 @@ SPEC = importlib.util.spec_from_file_location(
 )
 SIGNING = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(SIGNING)
+STAGE_SPEC = importlib.util.spec_from_file_location(
+    "stage_n2system", REPO / "tools/stage_n2system_runtime.py")
+N2_STAGE = importlib.util.module_from_spec(STAGE_SPEC)
+STAGE_SPEC.loader.exec_module(N2_STAGE)
 SANDBOX = "com.apple.security.app-sandbox"
 INHERIT = "com.apple.security.inherit"
 JIT = "com.apple.security.cs.allow-jit"
@@ -350,6 +354,15 @@ class MacAppStoreAdHocSigningTests(unittest.TestCase):
             script = app / "Contents/Resources/script"
             script.write_text("#!/bin/sh\nexit 0\n")
             script.chmod(0o755)
+            # A font license under Frameworks reproduced the release signing
+            # failure. Exercise the actual resource layout and Apple signer.
+            n2_publish = root / "n2-publish"
+            (n2_publish / "Fonts").mkdir(parents=True)
+            (n2_publish / "Fonts/LICENSE_J.mplus").write_text("Synthetic font license\n")
+            shutil.copy2(library, n2_publish / "aether_n2system.dylib")
+            n2_runtime = frameworks / "n2system-runtime"
+            N2_STAGE.stage(n2_publish, n2_runtime, macos_bundle=True)
+            self.assertEqual((n2_runtime / "Fonts/LICENSE_J.mplus").read_text(), "Synthetic font license\n")
             real_run = SIGNING.run
 
             def ad_hoc_run(*args):

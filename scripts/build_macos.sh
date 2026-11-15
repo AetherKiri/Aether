@@ -272,10 +272,10 @@ else
             cp -f "$runtime_library" "$GODOT_EXPORT_APP/Contents/Frameworks/"
             codesign --force --sign - "$GODOT_EXPORT_APP/Contents/Frameworks/$(basename "$runtime_library")"
         done
-        rm -rf "$GODOT_EXPORT_APP/Contents/Frameworks/n2system-runtime"
-        if [[ -d "$GODOT_BIN_DIR/n2system-runtime" ]]; then
-            cp -R "$GODOT_BIN_DIR/n2system-runtime" "$GODOT_EXPORT_APP/Contents/Frameworks/"
-        fi
+        python3 "$PROJECT_ROOT/tools/stage_n2system_runtime.py" \
+            --manifest "$CMAKE_BUILD_DIR/n2system-runtime-publish.txt" \
+            --destination "$GODOT_EXPORT_APP/Contents/Frameworks/n2system-runtime" \
+            --macos-bundle
         if [[ -f "$GODOT_BIN_DIR/libImpacto.dylib" ]]; then
             cp -f "$GODOT_BIN_DIR/libImpacto.dylib" "$GODOT_EXPORT_APP/Contents/Frameworks/"
             codesign --force --sign - "$GODOT_EXPORT_APP/Contents/Frameworks/libImpacto.dylib"

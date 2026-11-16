@@ -2878,6 +2878,7 @@ func _apply_style_mode(update_theme: bool = true) -> void:
         _set_game_background(game_running)
     else:
         RenderingServer.set_default_clear_color(color_game_bg if game_running else color_bg)
+    _configure_mobile_window()
 
 func _normalize_language_mode(value: String) -> String:
     return value if value in LANGUAGE_MODES else LANG_SYSTEM
@@ -4940,7 +4941,11 @@ func _configure_mobile_window() -> void:
         add_child(mobile_window)
         mobile_window.consume_pending_imports()
     if mobile_window != null:
-        mobile_window.configure(mobile_window_game_active, picture_in_picture_enabled, player)
+        mobile_window.configure(mobile_window_game_active, picture_in_picture_enabled, player, _mobile_shell_background())
+
+func _mobile_shell_background() -> Color:
+    var astryx := _astryx_shell_controller()
+    return astryx.system_bar_color() if astryx != null else color_bg
 
 func _show_game_import_notice(message: String, duration_ms: int) -> void:
     if game_import_notice == null:

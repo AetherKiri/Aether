@@ -65,6 +65,10 @@ func _attach() -> void:
     set_process(true)
     if enabled:
         _ensure_view()
+    host._configure_mobile_window()
+
+func system_bar_color() -> Color:
+    return Color(String(VIEW.DESIGN.TOKENS.VALUES[draft_theme]["surface"]))
 
 func _ensure_view() -> void:
     if not is_instance_valid(host.shell_root):
@@ -191,6 +195,7 @@ func set_enabled(value: bool, persist: bool = true) -> void:
         return
     draft_theme = theme_mode
     draft_background_effects = background_effects
+    host._configure_mobile_window()
     host._reset_shell_scroll_drag()
     if enabled:
         library_revision += 1

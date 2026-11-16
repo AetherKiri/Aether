@@ -182,6 +182,7 @@ func rebuild(preserve_scroll: bool = false, settings_direction: int = 0) -> void
     last_size = size
     if design == null or design.mode != controller.draft_theme:
         design = DESIGN.new(controller.draft_theme)
+    host._configure_mobile_window()
     theme = design.native
     var default_font_size := 16 if phone else 14
     if theme.default_font_size != default_font_size:

@@ -4,6 +4,7 @@
 #include <godot_cpp/classes/node.hpp>
 #include <godot_cpp/classes/window.hpp>
 #include <godot_cpp/core/class_db.hpp>
+#include <godot_cpp/variant/color.hpp>
 #ifdef __APPLE__
 #include <TargetConditionals.h>
 #endif
@@ -29,7 +30,7 @@ class AetherMobileWindow : public Node {
 #endif
 protected:
     static void _bind_methods() {
-        ClassDB::bind_method(D_METHOD("configure", "game_active", "pip_enabled", "player"), &AetherMobileWindow::configure, DEFVAL(Variant()));
+        ClassDB::bind_method(D_METHOD("configure", "game_active", "pip_enabled", "player", "shell_background"), &AetherMobileWindow::configure, DEFVAL(Variant()), DEFVAL(Color(1, 1, 1)));
         ClassDB::bind_method(D_METHOD("handles_game_lifecycle"), &AetherMobileWindow::handles_game_lifecycle);
         ClassDB::bind_method(D_METHOD("is_supported"), &AetherMobileWindow::is_supported);
         ClassDB::bind_method(D_METHOD("is_in_picture_in_picture"), &AetherMobileWindow::is_in_picture_in_picture);
@@ -57,7 +58,7 @@ public:
         if (handle_) aether_mobile_window_close(handle_);
 #endif
     }
-    void configure(bool game_active, bool pip_enabled, Object* player) {
+    void configure(bool game_active, bool pip_enabled, Object* player, const Color& shell_background) {
 #if defined(__APPLE__) && TARGET_OS_IPHONE
         if (!handle_ && get_window()) {
             handle_ = aether_mobile_window_open(DisplayServer::get_singleton()->window_get_native_handle(
@@ -65,11 +66,12 @@ public:
         }
         if (handle_) {
             aether_mobile_window_set_engine(handle_, MobileWindowEngine(player));
-            aether_mobile_window_configure(handle_, game_active, pip_enabled);
+            aether_mobile_window_configure(handle_, game_active, pip_enabled, shell_background.srgb_to_linear().get_luminance() < 0.5f);
         }
 #elif defined(__ANDROID__)
         Ref<JavaClass> api = bridge();
-        if (api.is_valid()) api->call("configure", activity(), game_active, pip_enabled);
+        if (api.is_valid()) api->call("configure", activity(), game_active, pip_enabled,
+            String("#") + (game_active ? Color(0, 0, 0) : shell_background).to_html(false));
 #endif
     }
     bool handles_game_lifecycle() const {

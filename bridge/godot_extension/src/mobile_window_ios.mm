@@ -14,8 +14,13 @@ static void MobileOnUI(dispatch_block_t block) {
 // Override only the controller instance hosting Godot. A child SDL controller
 // must not bring the status bar or home indicator back over a running game.
 static const char FullscreenKey = 0;
+static const char DarkBackgroundKey = 0;
 static BOOL MobileFullscreen(id controller, SEL selector) {
     return [objc_getAssociatedObject(controller, &FullscreenKey) boolValue];
+}
+static UIStatusBarStyle MobileStatusStyle(id controller, SEL selector) {
+    return [objc_getAssociatedObject(controller, &DarkBackgroundKey) boolValue]
+        ? UIStatusBarStyleLightContent : UIStatusBarStyleDarkContent;
 }
 static UIViewController *MobileStatusChild(id controller, SEL selector) { return nil; }
 static Class MobileControllerClass(Class base) {
@@ -25,7 +30,9 @@ static Class MobileControllerClass(Class base) {
         subclass = objc_allocateClassPair(base, name.UTF8String, 0);
         class_addMethod(subclass, @selector(prefersStatusBarHidden), (IMP)MobileFullscreen, "B@:");
         class_addMethod(subclass, @selector(prefersHomeIndicatorAutoHidden), (IMP)MobileFullscreen, "B@:");
+        class_addMethod(subclass, @selector(preferredStatusBarStyle), (IMP)MobileStatusStyle, "q@:");
         class_addMethod(subclass, @selector(childViewControllerForStatusBarHidden), (IMP)MobileStatusChild, "@@:");
+        class_addMethod(subclass, @selector(childViewControllerForStatusBarStyle), (IMP)MobileStatusChild, "@@:");
         class_addMethod(subclass, @selector(childViewControllerForHomeIndicatorAutoHidden), (IMP)MobileStatusChild, "@@:");
         objc_registerClassPair(subclass);
     }
@@ -50,13 +57,15 @@ static Class MobileControllerClass(Class base) {
 @property(nonatomic, strong) AVPictureInPictureController *pip;
 @property(nonatomic, strong) NSTimer *captureTimer;
 @property(nonatomic) BOOL gameActive;
+@property(nonatomic) BOOL darkBackground;
 @property(nonatomic) BOOL enabled;
 @property(nonatomic) BOOL playing;
 @property(nonatomic) BOOL closed;
 @property(nonatomic, copy) NSString *audioCategory;
 @property(nonatomic, copy) NSString *audioMode;
 @property(nonatomic) AVAudioSessionCategoryOptions audioOptions;
-- (void)configureGame:(BOOL)active enabled:(BOOL)enabled;
+- (void)configureGame:(BOOL)active enabled:(BOOL)enabled darkBackground:(BOOL)dark;
+- (void)restoreController;
 - (void)capture;
 - (void)bindEngine:(engine_handle_t)engine;
 - (void)detachEngine:(engine_handle_t)engine;
@@ -85,15 +94,28 @@ static NSHashTable<AetherMobileWindowHost *> *MobileHosts;
 - (void)installController {
     UIViewController *controller = self.gameView.window.rootViewController;
     if (!controller || self.controller == controller) return;
+    [self restoreController];
     self.controller = controller;
     self.originalControllerClass = object_getClass(controller);
     object_setClass(controller, MobileControllerClass(self.originalControllerClass));
 }
+- (void)restoreController {
+    if (self.controller && object_getClass(self.controller) == MobileControllerClass(self.originalControllerClass)) {
+        object_setClass(self.controller, self.originalControllerClass);
+        objc_setAssociatedObject(self.controller, &FullscreenKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        objc_setAssociatedObject(self.controller, &DarkBackgroundKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+        [self.controller setNeedsStatusBarAppearanceUpdate];
+        [self.controller setNeedsUpdateOfHomeIndicatorAutoHidden];
+    }
+}
 - (void)updateFullscreen {
     [self installController];
+    if (!self.controller) return;
     NSNumber *previous = objc_getAssociatedObject(self.controller, &FullscreenKey);
-    if (previous && previous.boolValue == self.gameActive) return;
+    NSNumber *previousDark = objc_getAssociatedObject(self.controller, &DarkBackgroundKey);
+    if (previous && previous.boolValue == self.gameActive && previousDark && previousDark.boolValue == self.darkBackground) return;
     objc_setAssociatedObject(self.controller, &FullscreenKey, @(self.gameActive), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    objc_setAssociatedObject(self.controller, &DarkBackgroundKey, @(self.darkBackground), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
     [self.controller setNeedsStatusBarAppearanceUpdate];
     [self.controller setNeedsUpdateOfHomeIndicatorAutoHidden];
 }
@@ -160,12 +182,14 @@ static NSHashTable<AetherMobileWindowHost *> *MobileHosts;
     [NSRunLoop.mainRunLoop addTimer:self.captureTimer forMode:NSRunLoopCommonModes];
     if (foreground) [self capture];
 }
-- (void)configureGame:(BOOL)active enabled:(BOOL)enabled {
+- (void)configureGame:(BOOL)active enabled:(BOOL)enabled darkBackground:(BOOL)dark {
     if (self.closed) return;
-    if (self.gameActive == active && self.enabled == enabled && self.controller &&
+    if (self.gameActive == active && self.enabled == enabled && self.darkBackground == dark && self.controller &&
+        self.controller == self.gameView.window.rootViewController &&
         (!(active && enabled) || self.pip)) return;
     if (active && enabled && !(self.gameActive && self.enabled)) self.playing = YES;
     self.gameActive = active;
+    self.darkBackground = dark;
     self.enabled = enabled;
     if (active && enabled) _playback.Bind(_engine);
     else if (UIApplication.sharedApplication.applicationState == UIApplicationStateActive) _playback.Unbind();
@@ -368,7 +392,7 @@ static NSHashTable<AetherMobileWindowHost *> *MobileHosts;
 - (void)pictureInPictureController:(AVPictureInPictureController *)controller didTransitionToRenderSize:(CMVideoDimensions)size {}
 - (void)pictureInPictureController:(AVPictureInPictureController *)controller skipByInterval:(CMTime)interval completionHandler:(void (^)(void))completion { completion(); }
 - (void)close {
-    [self configureGame:NO enabled:NO];
+    [self configureGame:NO enabled:NO darkBackground:self.darkBackground];
     self.closed = YES;
     [NSNotificationCenter.defaultCenter removeObserver:self];
     [MobileHosts removeObject:self];
@@ -378,12 +402,7 @@ static NSHashTable<AetherMobileWindowHost *> *MobileHosts;
     self.pip = nil;
     [self.sourceView removeFromSuperview];
     self.sourceView = nil;
-    if (self.controller && object_getClass(self.controller) == MobileControllerClass(self.originalControllerClass)) {
-        object_setClass(self.controller, self.originalControllerClass);
-        objc_setAssociatedObject(self.controller, &FullscreenKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-        [self.controller setNeedsStatusBarAppearanceUpdate];
-        [self.controller setNeedsUpdateOfHomeIndicatorAutoHidden];
-    }
+    [self restoreController];
 }
 @end
 
@@ -398,8 +417,8 @@ void *aether_mobile_window_open(uint64_t native_view) {
     });
     return handle;
 }
-void aether_mobile_window_configure(void *handle, bool active, bool enabled) {
-    MobileOnUI(^{ [(__bridge AetherMobileWindowHost *)handle configureGame:active enabled:enabled]; });
+void aether_mobile_window_configure(void *handle, bool active, bool enabled, bool dark) {
+    MobileOnUI(^{ [(__bridge AetherMobileWindowHost *)handle configureGame:active enabled:enabled darkBackground:dark]; });
 }
 bool aether_mobile_window_supported(void *handle) {
     __block BOOL supported = NO;

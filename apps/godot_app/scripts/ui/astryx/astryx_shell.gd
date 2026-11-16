@@ -976,6 +976,8 @@ func _build_settings() -> void:
             items.add_child(button)
         items.add_child(_settings_menu_item(_t("settings.community_open"), "community",
             host._open_community, "AstryxSettingsCommunity"))
+        items.add_child(_settings_menu_item(_t("settings.telegram_open"), "telegram",
+            host._open_telegram, "AstryxSettingsTelegram"))
         if OS.get_name() == "Android" and host._coffee_sponsorship_available():
             items.add_child(_settings_menu_item(_t("support.coffee.title"), "coffee",
                 host._open_coffee_sponsorship, "AstryxSettingsCoffee"))
@@ -1711,6 +1713,7 @@ func _about_settings() -> void:
         _about_row(fields, "prerelease", _t("settings.include_prerelease"), _t("settings.include_prerelease_desc"), toggle)
     var community := _section(_t("settings.section.community_support"), "")
     _about_row(community, "community", _t("settings.community"), _t("settings.community_desc"), _setting_link(_t("settings.community_open"), host._open_community))
+    _about_row(community, "telegram", _t("settings.telegram"), _t("settings.telegram_desc"), _setting_link(_t("settings.telegram_open"), host._open_telegram))
     if host._apple_app_store_platform():
         _about_row(community, "rate_app", _t("settings.rate_app"), _t("settings.rate_app_desc"), _setting_link(_t("settings.rate_app_open"), host._open_app_store_review))
     if OS.get_name() != "Android" and host._coffee_sponsorship_available():

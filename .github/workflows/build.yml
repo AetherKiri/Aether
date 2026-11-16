@@ -1104,6 +1104,8 @@ jobs:
             --script res://tests/astryx_mobile_input_test.gd
           "$GODOT_BIN" --headless --path apps/godot_app \
             --script res://tests/astryx_navigation_test.gd
+          "$GODOT_BIN" --headless --path apps/godot_app \
+            --script res://tests/library_startup_test.gd
 
       - name: Run complete public and integrated private unit tests
         env:

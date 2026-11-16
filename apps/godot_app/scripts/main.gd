@@ -246,6 +246,7 @@ const UI_TEXT := {
         "dash.day_idle": "这天没有游玩",
         "dash.continue_eyebrow": "继续阅读",
         "dash.continue": "继续",
+        "home.loading_title": "正在加载游戏库…",
         "home.empty_title": "尚未添加任何游戏",
         "home.game_count": "%d 个游戏",
         "video.item_count": "%d 个项目",
@@ -679,6 +680,7 @@ const UI_TEXT := {
         "dash.continue": "繼續",
         "detail.delete_cover": "刪除封面",
         "detail.clear_cover": "清除封面",
+        "home.loading_title": "正在載入遊戲庫…",
         "home.empty_title": "尚未加入任何遊戲",
         "home.game_count": "%d 個遊戲",
         "video.item_count": "%d 個項目",
@@ -1106,6 +1108,7 @@ const UI_TEXT := {
         "dash.day_idle": "Nothing played this day",
         "dash.continue_eyebrow": "CONTINUE READING",
         "dash.continue": "Continue",
+        "home.loading_title": "Loading your library…",
         "home.empty_title": "No games added yet",
         "home.game_count": "%d games",
         "video.item_count": "%d items",
@@ -1506,6 +1509,7 @@ You can find it any time under Settings → QQ Group.",
         "home.status": "ビジュアルノベルライブラリ",
         "nav.library": "ビジュアルノベル",
         "nav.videos": "ビデオ",
+        "home.loading_title": "ライブラリを読み込み中…",
         "home.empty_title": "ゲームはまだ追加されていません",
         "home.game_count": "%d 本のゲーム",
         "video.item_count": "%d 項目",
@@ -1902,6 +1906,7 @@ You can find it any time under Settings → QQ Group.",
         "home.status": "비주얼 노벨 라이브러리",
         "nav.library": "비주얼 노벨",
         "nav.videos": "비디오",
+        "home.loading_title": "라이브러리 불러오는 중…",
         "home.empty_title": "아직 추가된 게임이 없습니다",
         "home.game_count": "게임 %d개",
         "video.item_count": "항목 %d개",
@@ -2460,6 +2465,7 @@ var hero_overlay: Control
 var hero_hidden_target: CanvasItem
 var hero_transition_id := 0
 var known_games: Array[Dictionary] = []
+var game_library_loading := false
 var vndb_cover_queue: Array[Dictionary] = []
 var vndb_cover_busy := false
 var known_videos: Array[Dictionary] = []
@@ -5638,6 +5644,8 @@ func _sync_home_subtitle_text() -> void:
     var target := visible if searching else total
     var key := "video.item_count" if home_library_mode != "game" else "home.game_count"
     var formatter := func(value: int) -> String:
+        if home_library_mode == "game" and _game_library_is_loading():
+            return _t("home.loading_title")
         if searching:
             return _t("search.filtered_count", [value, total])
         return _media_text(key, [value])
@@ -8612,14 +8620,15 @@ func _apply_home_library_visibility() -> void:
 
 func _sync_home_empty_state_text() -> void:
     var searching := not _current_home_search_query().is_empty()
+    var loading := _game_library_is_loading()
     if is_instance_valid(video_empty_icon):
         video_empty_icon.texture = _load_ui_icon(_file_library_icon())
     if is_instance_valid(empty_title_label):
-        empty_title_label.text = _t("search.no_results_title") if searching else _t("home.empty_title")
+        empty_title_label.text = _t("home.loading_title") if loading else (_t("search.no_results_title") if searching else _t("home.empty_title"))
     if is_instance_valid(empty_help_label):
-        empty_help_label.text = _t("search.no_results_help") if searching else _empty_help_text()
+        empty_help_label.text = "" if loading else (_t("search.no_results_help") if searching else _empty_help_text())
     if is_instance_valid(empty_primary_button):
-        empty_primary_button.visible = not searching
+        empty_primary_button.visible = not searching and not loading
     if is_instance_valid(video_empty_title_label):
         video_empty_title_label.text = _media_text("search.no_results_title") if searching else _media_text(
             "video.empty_folder_title" if _active_file_library().can_go_up() else "video.empty_title"
@@ -10764,7 +10773,12 @@ func _remember_import_directory(imported_path: String) -> void:
     cfg.set_value("import", "last_directory", parent_directory)
     cfg.save(IMPORT_STATE_FILE)
 
+func _game_library_is_loading() -> bool:
+    return game_library_loading and known_games.is_empty()
+
 func _refresh_games() -> void:
+    var initial_refresh := game_library_loading
+    var initial_games := known_games.duplicate(true) if initial_refresh else []
     var loaded_games := _load_game_list()
     known_games = builtin_demo.reconcile_games(loaded_games)
     var library_changed := JSON.stringify(known_games) != JSON.stringify(loaded_games)
@@ -10781,7 +10795,18 @@ func _refresh_games() -> void:
     if library_changed:
         _sync_web_user_fs("builtin_demo_reconciled")
     known_games = _sorted_games(known_games)
-    _rebuild_game_cards(not home_cards_animated_once)
+    game_library_loading = false
+    # Keep the cached first frame intact when reconciliation found no changes.
+    # Recreating the cards here would replay their entrance animation.
+    if initial_refresh and known_games == initial_games:
+        _sync_home_header_text()
+        _apply_home_library_visibility()
+    else:
+        _rebuild_game_cards(not home_cards_animated_once)
+    if initial_refresh:
+        var astryx := _astryx_shell_controller()
+        if astryx != null:
+            astryx.sync_state()
 
 func _rebuild_game_cards(animate_cards: bool = false) -> void:
     if game_list == null:
@@ -12825,6 +12850,12 @@ func _ready() -> void:
     if ui_motion.get_parent() == null:
         add_child(ui_motion)
     _build_ui()
+    # Restore the persisted index before either presenter draws its first frame.
+    # Installation, directory scans and metadata/cover probing stay deferred.
+    game_library_loading = true
+    known_games = _sorted_games(_load_game_list())
+    home_count_value = known_games.size()
+    _rebuild_game_cards()
     _stage_runtime_fonts()
 
     # Scene-test preview: scheduled before the optional runtime player init

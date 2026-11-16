@@ -975,6 +975,9 @@ func _build_settings() -> void:
             items.add_child(button)
         items.add_child(_settings_menu_item(_t("settings.community_open"), "community",
             host._open_community, "AstryxSettingsCommunity"))
+        if OS.get_name() == "Android" and host._coffee_sponsorship_available():
+            items.add_child(_settings_menu_item(_t("support.coffee.title"), "coffee",
+                host._open_coffee_sponsorship, "AstryxSettingsCoffee"))
         if host._apple_app_store_platform():
             items.add_child(_settings_menu_item(_t("settings.rate_app_open"), "star",
                 host._open_app_store_review, "AstryxSettingsRateApp"))
@@ -1709,7 +1712,7 @@ func _about_settings() -> void:
     _about_row(community, "community", _t("settings.community"), _t("settings.community_desc"), _setting_link(_t("settings.community_open"), host._open_community))
     if host._apple_app_store_platform():
         _about_row(community, "rate_app", _t("settings.rate_app"), _t("settings.rate_app_desc"), _setting_link(_t("settings.rate_app_open"), host._open_app_store_review))
-    if host._coffee_sponsorship_available():
+    if OS.get_name() != "Android" and host._coffee_sponsorship_available():
         _about_row(community, "support", _t("support.coffee.title"), _t("support.coffee.desc"), _setting_link(_t("support.coffee.open"), host._open_coffee_sponsorship))
     if host._iap_supported_platform():
         var purchases := _section(_t("settings.section.purchases"), "")

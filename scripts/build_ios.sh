@@ -636,11 +636,13 @@ package_ios_unsigned_ipa() {
     fi
     echo "==> Building unsigned iOS App ($config_cap) for Sideloading..."
     mkdir -p "$export_dir/build"
+    local derived_data_dir="$export_dir/DerivedData"
     local xcodebuild_args=(
         -project "$xcodeproj" \
         -scheme Aether \
         -configuration "$config_cap" \
         -sdk iphoneos \
+        -derivedDataPath "$derived_data_dir" \
         CODE_SIGN_IDENTITY="" \
         CODE_SIGNING_REQUIRED=NO \
         CODE_SIGNING_ALLOWED=NO \
@@ -679,12 +681,22 @@ package_ios_unsigned_ipa() {
         echo "==> Removing non-runtime symbols from iOS Release executable..."
         "$PROJECT_ROOT/tools/strip_runtime_symbols.sh" macho-executable "$app_binary"
     fi
+    # The finished app is outside DerivedData. CI will not reuse these Xcode
+    # objects, and needs the space before compressing the large Debug binary.
+    if [[ "${CI:-}" == "true" ]]; then
+        rm -rf "$derived_data_dir"
+    fi
 
     echo "==> Packaging into unsigned .ipa..."
     mkdir -p "$export_dir/Payload"
     rm -rf "$export_dir/Payload/Aether.app" "$export_dir/Aether-${config_cap}-Unsigned.ipa"
-    cp -R "$export_dir/build/Aether.app" "$export_dir/Payload/"
-    (cd "$export_dir" && zip -qry "Aether-${config_cap}-Unsigned.ipa" Payload)
+    # Rename within the export volume instead of duplicating a multi-GB app.
+    mv "$export_dir/build/Aether.app" "$export_dir/Payload/"
+    if ! (cd "$export_dir" && zip -qry "Aether-${config_cap}-Unsigned.ipa" Payload); then
+        mv "$export_dir/Payload/Aether.app" "$export_dir/build/"
+        rm -f "$export_dir/Aether-${config_cap}-Unsigned.ipa"
+        return 1
+    fi
     rm -rf "$export_dir/Payload" "$export_dir/build"
     echo "Unsigned IPA created: $export_dir/Aether-${config_cap}-Unsigned.ipa"
 }

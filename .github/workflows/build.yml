@@ -981,6 +981,9 @@ jobs:
           echo "$(brew --prefix bison)/bin" >> $GITHUB_PATH
           rustup target add aarch64-apple-darwin
 
+      - name: Check macOS SDK headers
+        run: python3 -m unittest discover -s tests/python -p test_macos_sdk.py -v
+
       - name: Install Godot export tools
         run: |
           set -euo pipefail

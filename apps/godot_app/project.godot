@@ -40,6 +40,8 @@ window/size/viewport_height=720
 window/size/window_width_override=2240
 window/size/window_height_override=1260
 window/handheld/orientation=6
+window/ios/hide_status_bar=false
+window/ios/hide_home_indicator=false
 
 [editor_plugins]
 

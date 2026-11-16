@@ -38,7 +38,8 @@ const NOTICE_VERSION := 1
 const AnnouncementState = preload("res://scripts/announcement_state.gd")
 var announcement_state := AnnouncementState.new(NOTICE_FILE)
 const QQ_GROUP_URL := "https://aetherkiri.github.io/qq/"
-const DISCORD_INVITE_URL := "https://discord.gg/6bZjp6hB"
+const DISCORD_INVITE_URL := "https://discord.gg/xnUyNeCvDU"
+const TELEGRAM_INVITE_URL := "https://t.me/+dMcISRvOwx42MzQ1"
 const SCENE_TEST_SETTINGS_KEY := "aether_kiri/scene_test"
 const IAP_LIST_LIMIT_PRODUCT_ID := "com.aether.list.limit"
 const IAP_COFFEE_PRODUCT_ID := "com.aether.coffee"
@@ -274,6 +275,9 @@ const UI_TEXT := {
         "settings.community": "玩家社区",
         "settings.community_desc": "反馈问题、获取更新、与其他玩家交流",
         "settings.community_open": "加入 QQ 群",
+        "settings.telegram": "Telegram 社区",
+        "settings.telegram_desc": "在 Telegram 反馈问题、获取更新、与其他玩家交流",
+        "settings.telegram_open": "加入 Telegram",
         "settings.rate_app": "为 Aether 评分",
         "settings.rate_app_desc": "前往 App Store 分享你的使用体验",
         "settings.rate_app_open": "评分",
@@ -704,6 +708,9 @@ const UI_TEXT := {
         "settings.community": "玩家社群",
         "settings.community_desc": "回報問題、取得更新，並與其他玩家交流",
         "settings.community_open": "加入 Discord",
+        "settings.telegram": "Telegram 社群",
+        "settings.telegram_desc": "在 Telegram 回報問題、取得更新，並與其他玩家交流",
+        "settings.telegram_open": "加入 Telegram",
         "settings.rate_app": "為 Aether 評分",
         "settings.rate_app_desc": "前往 App Store 分享你的使用體驗",
         "settings.rate_app_open": "評分",
@@ -1128,6 +1135,9 @@ const UI_TEXT := {
         "settings.community": "Player community",
         "settings.community_desc": "Report issues, get updates and chat with other players",
         "settings.community_open": "Join Discord",
+        "settings.telegram": "Telegram community",
+        "settings.telegram_desc": "Report issues, get updates and chat with other players on Telegram",
+        "settings.telegram_open": "Join Telegram",
         "settings.rate_app": "Rate Aether",
         "settings.rate_app_desc": "Share your experience on the App Store",
         "settings.rate_app_open": "Rate app",
@@ -1525,6 +1535,9 @@ You can find it any time under Settings → QQ Group.",
         "settings.community": "プレイヤーコミュニティ",
         "settings.community_desc": "不具合の報告、最新情報の確認、ほかのプレイヤーとの交流",
         "settings.community_open": "Discord に参加",
+        "settings.telegram": "Telegram コミュニティ",
+        "settings.telegram_desc": "Telegram で不具合の報告、最新情報の確認、ほかのプレイヤーとの交流",
+        "settings.telegram_open": "Telegram に参加",
         "settings.rate_app": "Aether を評価",
         "settings.rate_app_desc": "App Store で使用した感想をお聞かせください",
         "settings.rate_app_open": "評価する",
@@ -1918,6 +1931,9 @@ You can find it any time under Settings → QQ Group.",
         "settings.community": "플레이어 커뮤니티",
         "settings.community_desc": "문제를 제보하고, 업데이트를 확인하며 다른 플레이어와 소통하세요",
         "settings.community_open": "Discord 참여",
+        "settings.telegram": "Telegram 커뮤니티",
+        "settings.telegram_desc": "Telegram에서 문제를 제보하고, 업데이트를 확인하며 다른 플레이어와 소통하세요",
+        "settings.telegram_open": "Telegram 참여",
         "settings.rate_app": "Aether 평가",
         "settings.rate_app_desc": "App Store에서 사용 경험을 공유해 주세요",
         "settings.rate_app_open": "평가하기",
@@ -2878,6 +2894,7 @@ func _apply_style_mode(update_theme: bool = true) -> void:
         _set_game_background(game_running)
     else:
         RenderingServer.set_default_clear_color(color_game_bg if game_running else color_bg)
+    _configure_mobile_window()
 
 func _normalize_language_mode(value: String) -> String:
     return value if value in LANGUAGE_MODES else LANG_SYSTEM
@@ -4940,7 +4957,11 @@ func _configure_mobile_window() -> void:
         add_child(mobile_window)
         mobile_window.consume_pending_imports()
     if mobile_window != null:
-        mobile_window.configure(mobile_window_game_active, picture_in_picture_enabled, player)
+        mobile_window.configure(mobile_window_game_active, picture_in_picture_enabled, player, _mobile_shell_background())
+
+func _mobile_shell_background() -> Color:
+    var astryx := _astryx_shell_controller()
+    return astryx.system_bar_color() if astryx != null else color_bg
 
 func _show_game_import_notice(message: String, duration_ms: int) -> void:
     if game_import_notice == null:
@@ -5995,6 +6016,7 @@ func _rebuild_settings_view() -> void:
 
     var community_rows := _settings_section(flow, _t("settings.section.community"), animate_page, 0.02, ICON_HELP)
     _add_settings_row(community_rows, _settings_action_row(_t("settings.community"), _t("settings.community_desc"), _t("settings.community_open"), _open_community))
+    _add_settings_row(community_rows, _settings_action_row(_t("settings.telegram"), _t("settings.telegram_desc"), _t("settings.telegram_open"), _open_telegram))
 
     var interface_rows := _settings_section(flow, _t("settings.section.interface"), animate_page, 0.04, ICON_PAGE)
     if has_node("ShellInterface"):
@@ -20266,6 +20288,10 @@ func _open_community() -> void:
     var url := _community_url()
     if OS.shell_open(url) != OK:
         _show_message(url)
+
+func _open_telegram() -> void:
+    if OS.shell_open(TELEGRAM_INVITE_URL) != OK:
+        _show_message(TELEGRAM_INVITE_URL)
 
 func _open_app_store_review() -> void:
     if not _apple_app_store_platform():

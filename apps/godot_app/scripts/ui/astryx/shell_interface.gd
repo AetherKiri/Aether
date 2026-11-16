@@ -145,9 +145,10 @@ func _sync_safe_top_cover() -> void:
     safe_cover_clip.size = Vector2(source.size.x, top + 1.0)
 
 func _state_signature() -> String:
-    return "%s:%s:%s:%s:%s:%s:%s:%s" % [host.shell_route, host.active_language,
+    return "%s:%s:%s:%s:%s:%s:%s:%s:%s" % [host.shell_route, host.active_language,
         host.known_games.hash(), host.selected_game.hash(), host._active_file_library().entries.hash(),
-        host._active_file_library().current_directory, host.settings_draft.hash(), library_revision]
+        host._active_file_library().current_directory, host.settings_draft.hash(), library_revision,
+        host._game_library_is_loading()]
 
 func sync_state() -> void:
     if not is_instance_valid(view):

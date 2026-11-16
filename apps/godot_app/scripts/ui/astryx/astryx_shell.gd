@@ -146,6 +146,10 @@ func sync_state() -> void:
                 editing_setting = ""
         rebuild(not changed_route)
     elif route != "settings":
+        # Startup also restores the video library. Its state changes must not
+        # replace unchanged game cards or replay their entrance animation.
+        if route == "library" and library_content_key == _library_key():
+            return
         refresh_content(true)
 
 func rebuild(preserve_scroll: bool = false, settings_direction: int = 0) -> void:
@@ -366,7 +370,8 @@ func _discard_library_cache() -> void:
 
 func _library_key() -> String:
     return str([host.known_games.hash(), controller.library_revision, language,
-        controller.draft_theme, controller.library_display, size, sidebar_width, query, recent_only])
+        controller.draft_theme, controller.library_display, size, sidebar_width, query, recent_only,
+        host._game_library_is_loading()])
 
 func _restore_scroll(value: int) -> void:
     if is_instance_valid(scroll):
@@ -1836,12 +1841,15 @@ func _library_content() -> void:
             games.append(game)
     if recent_only:
         games.sort_custom(func(a, b): return int(a.get("lastPlayed", 0)) > int(b.get("lastPlayed", 0)))
-    var count := _label(_text("%d 部游戏", "%d games", "%d 本", "%d 部遊戲") % games.size(), 12, true)
+    var loading: bool = host._game_library_is_loading()
+    var count := _label(_t("home.loading_title") if loading else _text("%d 部游戏", "%d games", "%d 本", "%d 部遊戲") % games.size(), 12, true)
     count.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
     count.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
     bar.add_child(count)
     if games.is_empty():
-        if not query.is_empty():
+        if loading:
+            _empty(_t("home.loading_title"), "", "library")
+        elif not query.is_empty():
             _empty(_t("search.no_results_title"), _t("search.no_results_help"), "search")
         elif recent_only:
             _empty(_text("尚未开始游玩", "Your next story awaits", "まだプレイしていません", "尚未開始遊玩"), _text("开始一个游戏后，会在这里找到它。", "Games you play will appear here.", "プレイしたゲームはここに表示されます。", "開始遊戲後，就能在這裡找到它。"), "library")

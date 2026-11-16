@@ -124,6 +124,7 @@
       "cacheVariables": {
         "MACOS": true,
         "CMAKE_OSX_ARCHITECTURES": "arm64",
+        "CMAKE_OSX_SYSROOT": "macosx",
         "CMAKE_OSX_DEPLOYMENT_TARGET": "13.0",
         "CMAKE_Swift_COMPILER_TARGET": "arm64-apple-macosx13.0",
         "CMAKE_C_COMPILER": "clang",

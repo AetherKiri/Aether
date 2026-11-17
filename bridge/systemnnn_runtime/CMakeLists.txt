@@ -10,6 +10,30 @@ set(NNN_BUILD_TOOLS OFF CACHE BOOL "Do not embed diagnostic players" FORCE)
 set(BUILD_TESTING OFF)
 add_subdirectory("${AETHERKIRI_SYSTEMNNN_DIR}/platform/scene" "${CMAKE_CURRENT_BINARY_DIR}/emberfall")
 find_package(Freetype REQUIRED)
+if(CMAKE_SYSTEM_NAME STREQUAL "iOS" AND VCPKG_TARGET_TRIPLET)
+    # The pinned vcpkg wrapper prefers SDK iconv, while other dependencies expose
+    # GNU iconv.h. Select a matching header/library pair from the target prefix.
+    set(_systemnnn_iconv_prefix "${VCPKG_INSTALLED_DIR}/${VCPKG_TARGET_TRIPLET}")
+    foreach(_systemnnn_iconv_file IN ITEMS include/iconv.h lib/libiconv.a lib/libcharset.a)
+        if(NOT EXISTS "${_systemnnn_iconv_prefix}/${_systemnnn_iconv_file}")
+            message(FATAL_ERROR "Missing target GNU iconv dependency: ${_systemnnn_iconv_file}")
+        endif()
+    endforeach()
+    file(STRINGS "${_systemnnn_iconv_prefix}/include/iconv.h" _systemnnn_iconv_version
+        REGEX "^#define _LIBICONV_VERSION ")
+    if(NOT _systemnnn_iconv_version)
+        message(FATAL_ERROR "Expected GNU iconv header beside the target iconv archives")
+    endif()
+    set(Iconv_IS_BUILT_IN FALSE CACHE BOOL "Use target GNU iconv" FORCE)
+    set(Iconv_INCLUDE_DIR "${_systemnnn_iconv_prefix}/include" CACHE PATH "Target GNU iconv headers" FORCE)
+    set(Iconv_LIBRARY "${_systemnnn_iconv_prefix}/lib/libiconv.a;${_systemnnn_iconv_prefix}/lib/libcharset.a"
+        CACHE STRING "Target GNU iconv and charset archives" FORCE)
+    if(TARGET Iconv::Iconv)
+        set_target_properties(Iconv::Iconv PROPERTIES
+            INTERFACE_INCLUDE_DIRECTORIES "${Iconv_INCLUDE_DIR}"
+            INTERFACE_LINK_LIBRARIES "${Iconv_LIBRARY}")
+    endif()
+endif()
 find_package(Iconv REQUIRED)
 find_package(nlohmann_json CONFIG REQUIRED)
 find_package(Threads REQUIRED)

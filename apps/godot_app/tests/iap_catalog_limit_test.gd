@@ -120,6 +120,9 @@ func _initialize() -> void:
 
     for language in ["zh_hans", "zh_hant", "en", "ja", "ko"]:
         app.active_language = language
+        var coffee_url: String = app._coffee_sponsorship_url("Android")
+        _expect(coffee_url == ("https://qr.alipay.com/fkx108053gol728ayzhec90" if language == "zh_hans" else "https://buymeacoffee.com/akitasummer"))
+        _expect(app._coffee_sponsorship_url("Linux") == "https://qr.alipay.com/fkx108053gol728ayzhec90")
         _expect(not String(app._t("iap.list_limit.title")).is_empty())
         _expect(not String(app._t("iap.limit_body")).is_empty())
         _expect(not String(app._t("iap.restore")).is_empty())

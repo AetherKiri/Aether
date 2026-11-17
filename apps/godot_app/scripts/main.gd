@@ -45,6 +45,7 @@ const IAP_LIST_LIMIT_PRODUCT_ID := "com.aether.list.limit"
 const IAP_COFFEE_PRODUCT_ID := "com.aether.coffee"
 const AppAccessPolicy := preload("res://scripts/app_access_policy.gd")
 const COFFEE_SPONSORSHIP_URL := "https://qr.alipay.com/fkx108053gol728ayzhec90"
+const COFFEE_SPONSORSHIP_INTERNATIONAL_URL := "https://buymeacoffee.com/akitasummer"
 const IAP_POLL_INTERVAL_SEC := 0.12
 const IAP_DETAIL_AUTHORIZATION_TTL_MS := 30000
 const SECRET_UNLOCK_TAP_TARGET := 20
@@ -862,8 +863,8 @@ const UI_TEXT := {
         "iap.coffee.inactive": "測試功能目前尚未啟用",
         "iap.coffee.purchase_success": "感謝支持！測試功能有效期限至：%s",
         "support.coffee.title": "請作者喝一杯咖啡",
-        "support.coffee.desc": "開啟支付寶支持作者，不影響遊戲匯入或啟動",
-        "support.coffee.open": "開啟支付寶",
+        "support.coffee.desc": "支持作者，不影響遊戲匯入或啟動",
+        "support.coffee.open": "前往支持",
         "support.coffee.thanks_title": "感謝支持",
         "support.coffee.thanks": "謝謝你的支持！",
         "support.coffee.open_failed": "無法開啟瀏覽器，請稍後再試。",
@@ -1292,8 +1293,8 @@ You can find it any time under Settings → QQ Group.",
         "iap.coffee.inactive": "Beta feature access is not active",
         "iap.coffee.purchase_success": "Thank you! Beta feature access expires: %s",
         "support.coffee.title": "Buy the Author a Coffee",
-        "support.coffee.desc": "Open Alipay to support the author; game import and launch are unaffected",
-        "support.coffee.open": "Open Alipay",
+        "support.coffee.desc": "Support the author; game import and launch are unaffected",
+        "support.coffee.open": "Support the author",
         "support.coffee.thanks_title": "Thank You",
         "support.coffee.thanks": "Thank you for your support!",
         "support.coffee.open_failed": "Unable to open the browser. Please try again later.",
@@ -1691,8 +1692,8 @@ You can find it any time under Settings → QQ Group.",
         "iap.coffee.inactive": "ベータ機能は現在有効ではありません",
         "iap.coffee.purchase_success": "ご支援ありがとうございます！ベータ機能の有効期限：%s",
         "support.coffee.title": "作者にコーヒーを一杯贈る",
-        "support.coffee.desc": "Alipay を開いて作者を支援します。ゲームの読み込みや起動には影響しません",
-        "support.coffee.open": "Alipay を開く",
+        "support.coffee.desc": "作者を支援します。ゲームの読み込みや起動には影響しません",
+        "support.coffee.open": "作者を支援",
         "support.coffee.thanks_title": "ご支援ありがとうございます",
         "support.coffee.thanks": "ご支援ありがとうございます！",
         "support.coffee.open_failed": "ブラウザを開けませんでした。後でもう一度お試しください。",
@@ -2088,8 +2089,8 @@ You can find it any time under Settings → QQ Group.",
         "iap.coffee.inactive": "베타 기능이 현재 활성화되어 있지 않습니다",
         "iap.coffee.purchase_success": "후원해 주셔서 감사합니다! 베타 기능 만료일: %s",
         "support.coffee.title": "작가에게 커피 한 잔 사주기",
-        "support.coffee.desc": "Alipay를 열어 작가를 후원합니다. 게임 가져오기나 실행에는 영향을 주지 않습니다",
-        "support.coffee.open": "Alipay 열기",
+        "support.coffee.desc": "작가를 후원합니다. 게임 가져오기나 실행에는 영향을 주지 않습니다",
+        "support.coffee.open": "작가 후원하기",
         "support.coffee.thanks_title": "후원해 주셔서 감사합니다",
         "support.coffee.thanks": "후원해 주셔서 감사합니다!",
         "support.coffee.open_failed": "브라우저를 열 수 없습니다. 나중에 다시 시도해 주세요.",
@@ -9322,10 +9323,16 @@ func _coffee_sponsorship_available(platform_name: String = "") -> bool:
     var effective_platform := platform_name if not platform_name.is_empty() else OS.get_name()
     return AppAccessPolicy.coffee_sponsorship_available(effective_platform)
 
+func _coffee_sponsorship_url(platform_name: String = "") -> String:
+    var effective_platform := platform_name if not platform_name.is_empty() else OS.get_name()
+    if effective_platform == "Android" and active_language != LANG_ZH_HANS:
+        return COFFEE_SPONSORSHIP_INTERNATIONAL_URL
+    return COFFEE_SPONSORSHIP_URL
+
 func _open_coffee_sponsorship() -> void:
     if not _coffee_sponsorship_available():
         return
-    var result := OS.shell_open(COFFEE_SPONSORSHIP_URL)
+    var result := OS.shell_open(_coffee_sponsorship_url())
     if result == OK:
         _show_system_alert(
             _t("support.coffee.thanks"),

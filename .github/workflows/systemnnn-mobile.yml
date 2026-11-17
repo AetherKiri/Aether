@@ -86,8 +86,18 @@ jobs:
           sdk_root="${ANDROID_SDK_ROOT:-$ANDROID_HOME}"
           ndk_root="$sdk_root/ndk/$ANDROID_NDK_VERSION"
           if [[ ! -f "$ndk_root/build/cmake/android.toolchain.cmake" ]]; then
-            sdkmanager "ndk;$ANDROID_NDK_VERSION"
+            sdkmanager_bin="$sdk_root/cmdline-tools/latest/bin/sdkmanager"
+            if [[ ! -x "$sdkmanager_bin" ]]; then
+              echo "Android sdkmanager missing: $sdkmanager_bin" >&2
+              exit 1
+            fi
+            set +o pipefail
+            yes | "$sdkmanager_bin" "ndk;$ANDROID_NDK_VERSION"
+            sdkmanager_status=${PIPESTATUS[1]}
+            set -o pipefail
+            if [[ "$sdkmanager_status" -ne 0 ]]; then exit "$sdkmanager_status"; fi
           fi
+          test -f "$ndk_root/build/cmake/android.toolchain.cmake"
           echo "ANDROID_NDK_HOME=$ndk_root" >> "$GITHUB_ENV"
       - name: Install Apple build dependencies
         if: matrix.platform == 'ios'

@@ -6,6 +6,9 @@ on:
       - 'packages/SystemNNN-Emberfall'
       - 'bridge/systemnnn_runtime/**'
       - 'tests/systemnnn_native/**'
+      - 'tests/systemnnn_mobile/**'
+      - 'tests/systemnnn_godot/**'
+      - 'tests/python/test_systemnnn_*.py'
       - 'tests/systemnnn_presenter_test.cpp'
       - 'tests/CMakeLists.txt'
       - 'abi/**'
@@ -29,6 +32,9 @@ on:
       - 'packages/SystemNNN-Emberfall'
       - 'bridge/systemnnn_runtime/**'
       - 'tests/systemnnn_native/**'
+      - 'tests/systemnnn_mobile/**'
+      - 'tests/systemnnn_godot/**'
+      - 'tests/python/test_systemnnn_*.py'
       - 'tests/systemnnn_presenter_test.cpp'
       - 'tests/CMakeLists.txt'
       - 'abi/**'
@@ -56,6 +62,20 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  source-contracts:
+    name: Source and inspection contracts
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          submodules: false
+          persist-credentials: false
+      - name: Test selectors, initialization and source-only validation helpers
+        run: |
+          python3 -m unittest discover -s tests/python -p test_runtime_selection.py -v
+          python3 -m unittest discover -s tests/python -p test_runtime_submodule_initialization.py -v
+          python3 -m unittest discover -s tests/python -p 'test_systemnnn_*.py' -v
   native:
     name: Native (${{ matrix.os }}, ${{ matrix.dependencies }})
     runs-on: ${{ matrix.os }}

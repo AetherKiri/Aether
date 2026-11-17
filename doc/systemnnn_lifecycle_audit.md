@@ -12,7 +12,7 @@ Audit date: 2026-11-17. Read-only production-source review; no REA, no edits to 
 
 **Minimal fix:** one `chart_root()` helper returning `writable.empty() ? root/"sav" : writable/"systemnnn"`; set it on every candidate, **before** `load_pc_save_candidate`, because loading can consult chart nodes.
 
-**Status:** relayed to parent/provider/test owners. At the 17:35 follow-up read, provider had `chart_root()` around line 153, start_story used it around line 178, and load set it on the candidate around line 219 before importing. Source fix observed; independent end-to-end regression result still pending with test owner.
+**Status:** relayed to parent/provider/test owners. At the 17:35 follow-up read, provider had `chart_root()` around line 153, start_story used it around line 178, and load set it on the candidate around line 219 before importing. Source fix observed at that checkpoint. The later final provider ABI regression covers canonical chart checkpoints across new story, save/load and reopen; it passed in the collected 12/12 suite, as recorded in [validation](systemnnn_validation.md). This auditor did not independently rerun that complete chart fixture.
 
 **Regression specification:** progress through a chart node from New Game with a writable directory; save a slot, replace the session using slot load, and verify the node remains jumpable with its exact continuation. Repeat after reopen and without a writable path. Verify only the canonical private chart namespace is written.
 

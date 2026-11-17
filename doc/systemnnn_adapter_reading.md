@@ -2,7 +2,7 @@
 
 Source-only audit, 2026-11-17 UTC. Scope: the available public other-engine provider adapters, Godot's shared runtime input/presentation/registration boundary, their CMake integration, and the current SystemNNN provider. Only this document is authored by this audit. Other agents are editing implementation concurrently. No REA was used; no build, game execution, or tests were performed by this audit. This is **not a claim to have read the whole project, all upstream engines, or all platform packaging**.
 
-The earlier [selective audit](/var/lib/dsh/systemnnn/AETHER-ADAPTER-AUDIT.md) is context, not transferable evidence that this audit read its files. F/P/U below describe this audit's reads. F = read from line 1 through observed EOF using read calls; P = selected ranges or output needing further recovery, so no complete-read claim; U = not read / unavailable. A complete wrapper read does not imply complete underlying engine coverage. Counts describe snapshots, not immutable repository versions.
+The earlier [selective audit](../../AETHER-ADAPTER-AUDIT.md) is context, not transferable evidence that this audit read its files. F/P/U below describe this audit's reads. F = read from line 1 through observed EOF using read calls; P = selected ranges or output needing further recovery, so no complete-read claim; U = not read / unavailable. A complete wrapper read does not imply complete underlying engine coverage. Counts describe snapshots, not immutable repository versions.
 
 ## Public provider inventory
 

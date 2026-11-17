@@ -5,8 +5,8 @@
 ## 仓库与分支
 
 - Aether：[PR #532](https://github.com/AetherKiri/Aether/pull/532)，分支 `feat/systemnnn-emberfall`。
-- Emberfall：[AetherKiri fork](https://github.com/AetherKiri/SystemNNN-Emberfall)，分支 `feat/aether-integration`，gitlink 固定 `f52d77fe05104726d35389266f0ba6f5be3a3f59`。
-- 移动目标验证分支：`feat/systemnnn-mobile-verify`，已通过的最终运行时代码提交为 `de4a1f29`。桌面与 Linux 图形验证的运行时代码与之相同；后续审计/测试辅助文件不会冒充新的运行时执行结果。
+- Emberfall：[AetherKiri fork](https://github.com/AetherKiri/SystemNNN-Emberfall)，分支 `feat/aether-integration`，下述已执行证据使用 gitlink `f52d77fe05104726d35389266f0ba6f5be3a3f59`；Windows 原生路径修复正在子仓库准备，新 SHA 与其重跑结果尚待记录。
+- 移动目标验证分支：`feat/systemnnn-mobile-verify`，已通过的历史运行时快照为 `de4a1f29`，其子仓库固定 `f52d77fe`。`81c09626` 的桌面证据也使用该子仓库版本；这些结果不自动覆盖待合入的 Windows 原生路径修复。后续审计/测试辅助文件不会冒充新的运行时执行结果。
 
 ```sh
 git clone --branch feat/systemnnn-emberfall https://github.com/AetherKiri/Aether.git
@@ -25,11 +25,11 @@ git submodule update --init --recursive packages/SystemNNN-Emberfall
 | 范围 | 实际证据与边界 |
 |---|---|
 | Linux / macOS adapter | `81c09626` 托管 CI 均通过 12/12 合约；Linux 另通过生成影片集成，Godot shell 通过五套测试。 |
-| Windows adapter | 最终冷启动 vcpkg 构建仍在运行；以[桌面验证记录](systemnnn_desktop_validation.md)的最终结果为准，尚不标为通过。 |
-| Android ARM64 | 实际 NDK r28b / Clang 19 编译、whole-archive 完整链接、安装和 ELF 检查通过；AArch64、16 KiB LOAD 对齐、指定三库直接依赖及注册符号通过。不是 APK 或真机运行。 |
-| iPhoneOS ARM64 | AppleClang 17 编译、完整链接、安装和 Mach-O 检查通过；iOS 平台、arm64、最低系统 16.0 及注册符号有日志证据。GNU iconv 头文件/库不匹配已在真正运行时构建中修复并验证。不是 IPA 或真机运行。 |
-| 真实 Linux GDExtension | 完整 `KRKR2;SYSTEMNNN` 产品目标在 Godot 4.7.2/X11/Mesa 加载并通过独立编写的图形场景：可见文字、纹理读回、键盘分支、槽 13 存读档与继续位置恢复；正常环境的 `ldd -r` 无缺库/未定义符号。依赖宿主发行版库，不是干净机器发行认证。 |
-| 内存/未定义行为检查 | 全十个 native 合约在新建 ASan/UBSan/泄漏检测构建中通过；只说明已运行场景未报告诊断。 |
+| Windows adapter | `81c09626` 的[Windows job](https://github.com/AetherKiri/Aether/actions/runs/44141468366/job/134245088587)通过依赖配置、缓存上传、Release 构建与目标清单，但合约仅 11/12 通过；provider 的日文目录、日文启动文件两项因原生路径窄字符串转换失败。子仓库修复与新 SHA 重跑待完成；见[桌面验证记录](systemnnn_desktop_validation.md)。 |
+| Android ARM64 | 历史快照 `de4a1f29` / 子仓库 `f52d77fe` 的实际 NDK r28b / Clang 19 编译、whole-archive 完整链接、安装和 ELF 检查通过；AArch64、16 KiB LOAD 对齐、指定三库直接依赖及注册符号通过。不是 APK 或真机运行。 |
+| iPhoneOS ARM64 | 历史快照 `de4a1f29` / 子仓库 `f52d77fe` 的 AppleClang 17 编译、完整链接、安装和 Mach-O 检查通过；iOS 平台、arm64、最低系统 16.0 及注册符号有日志证据。GNU iconv 头文件/库不匹配已在真正运行时构建中修复并验证。不是 IPA 或真机运行。 |
+| 真实 Linux GDExtension | 使用子仓库 `f52d77fe` 的历史完整 `KRKR2;SYSTEMNNN` 产品目标在 Godot 4.7.2/X11/Mesa 加载并通过独立编写的图形场景：可见文字、纹理读回、键盘分支、槽 13 存读档与继续位置恢复；正常环境的 `ldd -r` 无缺库/未定义符号。依赖宿主发行版库，不是干净机器发行认证。 |
+| 内存/未定义行为检查 | 使用子仓库 `f52d77fe` 的全十个 native 合约在新建 ASan/UBSan/泄漏检测构建中通过；只说明该快照已运行场景未报告诊断。移动链接、真实产品图形与 sanitizer 均尚未覆盖待合入的子仓库路径修复。 |
 | Python 辅助合约 | 14 个新 fixture/检查器测试与 6 个 selector/初始化测试通过。广泛 Python 回归中的七个既有诊断测试依赖宿主 ADB 发现；不修改生产代码的 resolver mock 可使这七项通过，不宣称原始全套全绿。 |
 
 复现入口：[运行时说明](systemnnn_runtime.md)、[汇总验证](systemnnn_validation.md)、[桌面](systemnnn_desktop_validation.md)、[移动目标](systemnnn_mobile_validation.md)、[真实产品图形构建](systemnnn_production_validation.md)、[图形 fixture](../tests/systemnnn_godot/README.md)、[sanitizer](systemnnn_sanitizer_validation.md)。

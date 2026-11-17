@@ -49,6 +49,16 @@ class RuntimeSelectionTests(unittest.TestCase):
         self.check_runtime("EXHIBIT", True, "-DAETHERKIRI_RUNTIMES_DEFAULT=OFF",
                            "-DAETHERKIRI_ENABLE_EXHIBIT=ON")
 
+    def test_systemnnn_selection(self):
+        self.check_runtime("SYSTEMNNN", True)
+        for platform in ("WEB", "EMSCRIPTEN"):
+            with self.subTest(platform=platform):
+                self.check_runtime("SYSTEMNNN", False, f"-D{platform}=ON")
+        self.check_runtime("SYSTEMNNN", False, "-DAETHERKIRI_ENABLE_SYSTEMNNN=OFF")
+        self.check_runtime("SYSTEMNNN", False, "-DAETHERKIRI_RUNTIMES_DEFAULT=OFF")
+        self.check_runtime("SYSTEMNNN", True, "-DAETHERKIRI_RUNTIMES_DEFAULT=OFF",
+                           "-DAETHERKIRI_ENABLE_SYSTEMNNN=ON")
+
     def test_explicit_disable_is_preserved(self):
         self.check_runtime("CMVS", False, "-DAETHERKIRI_ENABLE_CMVS=OFF")
 

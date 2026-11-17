@@ -1411,7 +1411,8 @@ engine_result_t engine_tick(engine_handle_t public_handle, uint32_t delta_ms) {
 }
 
 engine_result_t engine_pause(engine_handle_t public_handle) {
-  return Route(public_handle, "pause", LegacyServices()->pause,
+  return Route(public_handle, "pause",
+               [](engine_handle_t legacy) { return LegacyServices()->pause(legacy); },
                [](DispatchHandle* handle) {
                  handle->provider_resume_pending = false;
                  return PROVIDER_HAS(handle->provider, pause)
@@ -1421,7 +1422,8 @@ engine_result_t engine_pause(engine_handle_t public_handle) {
 }
 
 engine_result_t engine_resume(engine_handle_t public_handle) {
-  return Route(public_handle, "resume", LegacyServices()->resume,
+  return Route(public_handle, "resume",
+               [](engine_handle_t legacy) { return LegacyServices()->resume(legacy); },
                [](DispatchHandle* handle) {
                  if (!PROVIDER_HAS(handle->provider, resume)) {
                    return ENGINE_RESULT_NOT_SUPPORTED;

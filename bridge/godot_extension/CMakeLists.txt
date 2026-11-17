@@ -408,6 +408,10 @@ if(TARGET aether_n2system_runtime)
         add_dependencies(aether_kiri_godot aether_n2system_stage)
     endif()
 endif()
+if(TARGET aether_systemnnn_runtime)
+    target_link_libraries(aether_kiri_godot PRIVATE aether_systemnnn_runtime)
+    target_compile_definitions(aether_kiri_godot PRIVATE AETHERKIRI_WITH_SYSTEMNNN=1)
+endif()
 if(TARGET aether_entisgls_runtime)
     target_link_libraries(aether_kiri_godot PRIVATE aether_entisgls_runtime)
     target_compile_definitions(aether_kiri_godot PRIVATE AETHERKIRI_WITH_ENTISGLS=1)
@@ -476,6 +480,26 @@ if(IOS)
             VERBATIM)
         target_sources(aether_kiri_godot PRIVATE "${_archive_anchor}")
         list(APPEND AETHERKIRI_IOS_ARCHIVES ${_runtime_archives})
+    endif()
+    if(TARGET aether_systemnnn_runtime)
+        # Godot consumes one archive and cannot follow Emberfall target links.
+        get_target_property(_systemnnn_static_targets aether_systemnnn_runtime
+            AETHERKIRI_SYSTEMNNN_STATIC_TARGETS)
+        if(NOT _systemnnn_static_targets)
+            message(FATAL_ERROR "SystemNNN must expose AETHERKIRI_SYSTEMNNN_STATIC_TARGETS for iOS")
+        endif()
+        set(_systemnnn_archives "")
+        foreach(_systemnnn_target IN LISTS _systemnnn_static_targets)
+            list(APPEND _systemnnn_archives "$<TARGET_FILE:${_systemnnn_target}>")
+        endforeach()
+        list(APPEND AETHERKIRI_IOS_ARCHIVES ${_systemnnn_archives})
+        # A provider-only rebuild must also rerun the extension post-build merge.
+        set(_systemnnn_archive_anchor "${CMAKE_CURRENT_BINARY_DIR}/systemnnn_archive_anchor.cpp")
+        add_custom_command(OUTPUT "${_systemnnn_archive_anchor}"
+            COMMAND "${CMAKE_COMMAND}" -E touch "${_systemnnn_archive_anchor}"
+            DEPENDS ${_systemnnn_static_targets} ${_systemnnn_archives}
+            VERBATIM)
+        target_sources(aether_kiri_godot PRIVATE "${_systemnnn_archive_anchor}")
     endif()
     get_property(_private_runtime_targets GLOBAL
         PROPERTY AETHERKIRI_PRIVATE_RUNTIME_TARGETS)

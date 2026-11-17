@@ -74,3 +74,7 @@
 	path = packages/AetherExHIBIT
 	url = git@github.com:AetherKiri/AetherExHIBIT.git
 	branch = main
+[submodule "packages/SystemNNN-Emberfall"]
+	path = packages/SystemNNN-Emberfall
+	url = https://github.com/AetherKiri/SystemNNN-Emberfall.git
+	branch = feat/aether-integration

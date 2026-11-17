@@ -17,6 +17,14 @@ endif()
 option(AETHERKIRI_ENABLE_N2SYSTEM "Enable the N2System NativeAOT runtime" ${_aetherkiri_n2system_default})
 unset(_aetherkiri_n2system_default)
 
+# Emberfall supplies a native offscreen host; Web is not supported yet.
+set(_aetherkiri_systemnnn_default ${AETHERKIRI_RUNTIMES_DEFAULT})
+if(WEB OR EMSCRIPTEN)
+    set(_aetherkiri_systemnnn_default OFF)
+endif()
+option(AETHERKIRI_ENABLE_SYSTEMNNN "Enable the SystemNNN Emberfall runtime" ${_aetherkiri_systemnnn_default})
+unset(_aetherkiri_systemnnn_default)
+
 # These providers were opt-in before runtime selection was introduced.
 option(AETHERKIRI_ENABLE_RFVP "Enable the experimental RFVP runtime" OFF)
 option(AETHERKIRI_ENABLE_SOFTPAL_RUNTIME "Enable the SoftPal runtime" OFF)
@@ -33,7 +41,7 @@ set(_aetherkiri_enabled_runtimes "")
 foreach(_aetherkiri_runtime IN ITEMS
         KRKR2 ARTEMIS_RUNTIME CATSYSTEM2 WA2 ONSCRIPTER SYSTEM3 XSYSTEM35
         XSYSTEM4 SIGLUS MAGES CMVS MINORI ENTISGLS BGI SYSTEMC ESCUDE YURIS ADVHD
-        EXHIBIT FLASH TYRANO RENPY N2SYSTEM RFVP SOFTPAL_RUNTIME)
+        EXHIBIT FLASH TYRANO RENPY N2SYSTEM SYSTEMNNN RFVP SOFTPAL_RUNTIME)
     if(AETHERKIRI_ENABLE_${_aetherkiri_runtime})
         list(APPEND _aetherkiri_enabled_runtimes ${_aetherkiri_runtime})
     endif()

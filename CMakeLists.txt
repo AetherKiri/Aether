@@ -201,6 +201,9 @@ set(AETHERKIRI_MINORI_DIR
 set(AETHERKIRI_ENTISGLS_DIR
     "${CMAKE_CURRENT_SOURCE_DIR}/packages/AetherEntisGLS"
     CACHE PATH "path to the EntisGLS-SDL3 aether branch checkout")
+set(AETHERKIRI_SYSTEMNNN_DIR
+    "${CMAKE_CURRENT_SOURCE_DIR}/packages/SystemNNN-Emberfall"
+    CACHE PATH "path to a SystemNNN-Emberfall runtime checkout")
 set(AETHERKIRI_N2SYSTEM_DIR
     "${CMAKE_CURRENT_SOURCE_DIR}/packages/AetherN2System"
     CACHE PATH "path to an AetherN2System runtime checkout")
@@ -456,6 +459,9 @@ if(AETHERKIRI_ENABLE_ENTISGLS AND (BUILD_GODOT_EXTENSION OR ENABLE_TESTS) AND
    NOT (WEB OR EMSCRIPTEN))
     option(AETHERKIRI_BUILD_ENTISGLS_TESTS "Build asset-free EntisGLS regression tests" ${ENABLE_TESTS})
     add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/bridge/entisgls_runtime)
+endif()
+if(AETHERKIRI_ENABLE_SYSTEMNNN AND (BUILD_GODOT_EXTENSION OR ENABLE_TESTS))
+    add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/bridge/systemnnn_runtime)
 endif()
 if(AETHERKIRI_ENABLE_N2SYSTEM AND (BUILD_GODOT_EXTENSION OR ENABLE_TESTS))
     add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/bridge/n2system_runtime)

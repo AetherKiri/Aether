@@ -15,6 +15,7 @@ cmake -S tests/systemnnn_mobile -B build/systemnnn-mobile-android -G Ninja \
   -DVCPKG_TARGET_TRIPLET=arm64-android \
   -DVCPKG_OVERLAY_TRIPLETS="$PWD/tests/systemnnn_mobile/triplets" \
   -DVCPKG_INSTALLED_DIR="$PWD/build/systemnnn-mobile-android/vcpkg_installed" \
+  -DCMAKE_SYSTEM_NAME=Android \
   -DANDROID_ABI=arm64-v8a -DANDROID_PLATFORM=android-24 -DANDROID_STL=c++_shared
 cmake --build build/systemnnn-mobile-android --parallel 2
 cmake --install build/systemnnn-mobile-android --prefix build/systemnnn-mobile-android/package

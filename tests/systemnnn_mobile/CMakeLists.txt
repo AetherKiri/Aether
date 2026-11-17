@@ -1,5 +1,11 @@
 cmake_minimum_required(VERSION 3.28)
 project(AetherSystemNNNMobile LANGUAGES C CXX)
+if(VCPKG_TARGET_TRIPLET MATCHES "android" AND NOT ANDROID)
+    message(FATAL_ERROR "Android dependencies require -DCMAKE_SYSTEM_NAME=Android for the adapter compiler")
+endif()
+if(VCPKG_TARGET_TRIPLET MATCHES "ios" AND NOT CMAKE_SYSTEM_NAME STREQUAL "iOS")
+    message(FATAL_ERROR "iOS dependencies require -DCMAKE_SYSTEM_NAME=iOS for the adapter compiler")
+endif()
 
 # A focused compile/link gate. It intentionally avoids the product manifest,
 # Godot, signing, and executing cross-compiled contract binaries on the host.

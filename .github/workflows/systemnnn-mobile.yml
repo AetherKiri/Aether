@@ -105,11 +105,13 @@ jobs:
           brew install cmake ninja pkgconf autoconf automake libtool nasm
           xcodebuild -version
           xcrun --sdk iphoneos --show-sdk-path
-      - uses: actions/cache@v6
+      - uses: actions/cache/restore@v6
+        id: dependencies-cache
         with:
           path: .systemnnn-mobile-cache
           key: systemnnn-mobile-${{ matrix.os }}-${{ matrix.triplet }}-${{ env.ANDROID_NDK_VERSION }}-${{ steps.baseline.outputs.commit }}-${{ hashFiles('tests/systemnnn_mobile/vcpkg.json', 'tests/systemnnn_mobile/triplets/**', 'vcpkg/triplets/**') }}
       - name: Bootstrap isolated vcpkg
+        id: bootstrap
         run: |
           mkdir -p "$VCPKG_DEFAULT_BINARY_CACHE"
           .systemnnn-mobile-vcpkg/bootstrap-vcpkg.sh -disableMetrics
@@ -170,3 +172,9 @@ jobs:
             .systemnnn-mobile-vcpkg/buildtrees/ffmpeg/*-out.log
             .systemnnn-mobile-vcpkg/buildtrees/ffmpeg/*-err.log
             .systemnnn-mobile-vcpkg/buildtrees/detect_compiler/stdout-*.log
+      - name: Preserve built dependencies even when adapter configuration fails
+        if: always() && steps.bootstrap.outcome == 'success' && steps.dependencies-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v6
+        with:
+          path: .systemnnn-mobile-cache
+          key: ${{ steps.dependencies-cache.outputs.cache-primary-key }}

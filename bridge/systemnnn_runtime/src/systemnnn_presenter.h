@@ -54,6 +54,8 @@ public:
     // A: Back=0 Choose=1 Page=2 Hover=3 Confirm=4 Group=5 Resume=6 Scroll=7 Commit=8.
     // Chart Choose uses signed packed logical XY, NOT a node id.
     // A chart result 4 (LeaveReady) requires host Commit=8 after its exit effect.
+    // Minigames: minigame:N uses the ZERO-based minigame registration index.
+    // Title and omake/extras overlays honor their own miniGameFlag and caller gates.
     // Settings: param:ID:VALUE (host applies a SystemNNN runtime parameter).
     std::string hit(int x, int y) const;
     void set_page(int page) noexcept;

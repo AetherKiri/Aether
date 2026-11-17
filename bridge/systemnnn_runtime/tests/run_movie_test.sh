@@ -13,6 +13,10 @@ python3 - "$movie_test_dir" <<'PY'
 import json, subprocess, sys
 from pathlib import Path
 root = Path(sys.argv[1])
+for width, height in [(2, 2), (3, 3), (22, 3), (64, 2)]:
+    header = f"YUV4MPEG2 W{width} H{height} F10:1 Ip A1:1 C420jpeg\nFRAME\n".encode()
+    payload = bytes([80]) * (width * height) + bytes([128]) * (2 * ((width + 1) // 2) * ((height + 1) // 2))
+    (root / f"tiny-{width}x{height}.y4m").write_bytes(header + payload)
 source = root / "faststart.mp4"
 packets = json.loads(subprocess.check_output(["ffprobe", "-v", "error", "-select_streams", "v:0", "-show_entries", "packet=pos,size", "-of", "json", str(source)]))["packets"]
 last = packets[-1]

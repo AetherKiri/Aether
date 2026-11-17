@@ -46,6 +46,10 @@ struct Script {
     void color(Word r,Word g,Word b){number(0x33330013U,{0,54,0,r,g,b});}
     void draw(Word frames=1){number(0x22220004U,{frames});}
     void print(Word serial,Word message){add({6,command,0x22220001U,message,serial,0});}
+    void user(Word id,std::initializer_list<Word> args={}){
+        code.insert(code.end(),{4U+static_cast<Word>(args.size()),0x66660003U,id,static_cast<Word>(args.size())});
+        for(Word value:args)code.push_back(0x90000000U|(value&0xffffU));
+    }
     // Foreground END restarts SYS; EXIT is the actual return-to-title boundary.
     void end(){add({3,control,0x5556000bU});}
     Bytes encode()const {
@@ -101,6 +105,9 @@ struct Engine {
     explicit Engine(const Fixture& fixture){
         const auto writable=fixture.writable.u8string();engine_create_desc_t desc{};desc.struct_size=sizeof(desc);desc.api_version=ENGINE_API_VERSION;desc.writable_path_utf8=writable.c_str();
         ok(engine_create(&desc,&handle),handle,"create");
+#ifdef SYSTEMNNN_TEST_FONT
+        option("systemnnn.font",SYSTEMNNN_TEST_FONT);
+#endif
     }
     ~Engine(){if(handle)engine_destroy(handle);}
     void destroy(){ok(engine_destroy(handle),nullptr,"destroy");handle=nullptr;}
@@ -110,6 +117,8 @@ struct Engine {
     void tick(unsigned ms=20){ok(engine_tick(handle,ms),handle,"tick");}
     void key(unsigned value,bool down=true){engine_input_event_t e{};e.struct_size=sizeof(e);e.type=down?ENGINE_INPUT_EVENT_KEY_DOWN:ENGINE_INPUT_EVENT_KEY_UP;e.key_code=value;ok(engine_send_input(handle,&e),handle,"key input");}
     void pointer(unsigned button,double x=0,double y=0){engine_input_event_t e{};e.struct_size=sizeof(e);e.type=ENGINE_INPUT_EVENT_POINTER_UP;e.button=button;e.x=x;e.y=y;ok(engine_send_input(handle,&e),handle,"pointer input");}
+    void point(uint32_t type,double x,double y,uint32_t modifiers=0){engine_input_event_t e{};e.struct_size=sizeof(e);e.type=type;e.x=x;e.y=y;e.modifiers=modifiers;ok(engine_send_input(handle,&e),handle,"minigame pointer");}
+    void click(double x,double y){point(ENGINE_INPUT_EVENT_POINTER_DOWN,x,y);point(ENGINE_INPUT_EVENT_POINTER_UP,x,y);tick();}
     std::string debug(){char result[65536]{};uint32_t count=0;ok(engine_get_plugin_debug_info(handle,result,sizeof(result),&count),handle,"debug");check(count>1&&count<=sizeof(result),"debug size includes terminator");return result;}
     std::string field(const char* key){
         const auto json=debug(),needle=std::string("\"")+key+"\":";auto p=json.find(needle);check(p!=std::string::npos,"debug field "+std::string(key)+" in "+json);p+=needle.size();
@@ -123,6 +132,19 @@ struct Engine {
         for(std::size_t i=3;i<s.pixels.size();i+=4)check(s.pixels[i]==255,"opaque RGBA alpha");return s;
     }
     void until(int expected,unsigned limit=30){for(unsigned i=0;wait()!=expected&&i<limit;++i)tick();check(wait()==expected,"expected wait "+std::to_string(expected)+"; "+debug());}
+    std::string form(){
+        char operation[128]{},argument[16384]{};uint32_t available=0;
+        ok(engine_poll_platform_request(handle,operation,sizeof(operation),argument,sizeof(argument),&available),handle,"poll form");
+        check(available&&std::string(operation)=="runtime_form","native runtime_form request emitted");return argument;
+    }
+    static std::string form_id(const std::string& form){
+        const std::string key="\"request_id\":\"";const auto begin=form.find(key);check(begin!=std::string::npos,"form has correlation id: "+form);
+        const auto start=begin+key.size(),end=form.find('"',start);check(end!=std::string::npos,"terminated request id");return form.substr(start,end-start);
+    }
+    engine_result_t answer(const std::string& id,const std::string& first="New",const std::string& second="Given"){
+        const auto response="{\"request_id\":\""+id+"\",\"result\":\"1\",\"values\":{\"field0\":\""+first+"\",\"field1\":\""+second+"\"}}";
+        return engine_submit_platform_response(handle,"runtime_form",response.c_str());
+    }
     void start(){key(0x0d);check(field("overlay").empty(),"Return starts new game");until(dialogue_wait);}
     void advance(){const auto original=word();for(unsigned i=0;i<4&&word()==original;++i){key(0x0d);tick();}check(word()!=original,"acknowledged dialogue advances; "+debug());}
 };
@@ -132,6 +154,17 @@ void color(const Snapshot& frame,unsigned r,unsigned g,unsigned b){
         "RGB effect expected "+std::to_string(r)+","+std::to_string(g)+","+std::to_string(b)+" got "+std::to_string(frame.pixels[0])+","+std::to_string(frame.pixels[1])+","+std::to_string(frame.pixels[2]));
 }
 engine_result_t set(Engine& e,const char* key,const char* value){engine_option_t o{};o.key_utf8=key;o.value_utf8=value;return engine_set_option(e.handle,&o);}
+// Independent type-0 DWQ with sixteen uniquely colored source tiles.
+Bytes puzzle_art(){
+    Bytes out(118+64*64*3,0);std::fill_n(out.begin(),64,' ');out[0]='B';out[1]='M';out[2]='P';
+    const std::string tag="PACKTYPE=0";std::copy(tag.begin(),tag.end(),out.begin()+48);
+    const auto put=[&](std::size_t p,Word n){for(unsigned i=0;i<4;++i)out[p+i]=static_cast<unsigned char>(n>>(i*8));};
+    put(36,64);put(40,64);out[64]='B';out[65]='M';put(66,static_cast<Word>(out.size()-64));put(74,54);put(78,40);put(82,64);put(86,64);out[90]=1;out[92]=24;
+    for(unsigned y=0;y<64;++y)for(unsigned x=0;x<64;++x){const auto p=118+(y*64+x)*3;out[p]=static_cast<unsigned char>(20+(y/16*4+x/16)*12);out[p+1]=90;out[p+2]=130;}return out;
+}
+Word persisted_block_word(const Fixture& f,Word code,unsigned word){
+    const auto data=bytes(f.writable/"systemnnn/sysfile.sav");for(std::size_t p=0;p+32<=data.size();){const auto size=le(data,p);check(size>=32&&size<=data.size()-p,"valid persisted block");if(le(data,p+4)==code)return le(data,p+word*4);p+=size;}throw std::runtime_error("missing persisted block");
+}
 Word persisted_music(const Fixture& f){
     const auto data=bytes(f.writable/"systemnnn/sysfile.sav");std::size_t p=0;
     while(p+32<=data.size()){const auto size=le(data,p);check(size>=32&&size<=data.size()-p,"valid PC block extent");if(le(data,p+4)==1)return le(data,p+44*4);p+=size;}
@@ -141,7 +174,7 @@ Word persisted_music(const Fixture& f){
 int main(){
     const auto temporary=fs::temp_directory_path()/("aether-systemnnn-"+std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));
     unsigned failures=0;
-    const auto test=[&](const char* name,const std::function<void()>& run){try{run();std::cout<<"PASS "<<name<<'\n';}catch(const std::exception& error){++failures;std::cerr<<"FAIL "<<name<<": "<<error.what()<<'\n';}};
+    const auto test=[&](const char* name,const std::function<void()>& run){if(const auto* filter=std::getenv("SYSTEMNNN_PROVIDER_TEST_FILTER");filter&&std::string(name).find(filter)==std::string::npos)return;try{run();std::cout<<"PASS "<<name<<'\n';}catch(const std::exception& error){++failures;std::cerr<<"FAIL "<<name<<": "<<error.what()<<'\n';}};
     try{
         ok(aether_systemnnn_register_runtime(),nullptr,"register");
         check(engine_get_runtime_provider_count()>=1,"provider inventory includes builtins");
@@ -215,6 +248,82 @@ int main(){
             Fixture f(temporary,"unicode");Script unicode;unicode.color(40,170,90);unicode.draw();unicode.print(9,0);unicode.end();
             const auto entry=std::string(u8"場面");binary(f.root/"SpT"/fs::u8path(entry+".SpT"),unicode.encode());
             Engine e(f);e.open(f,entry.c_str());e.until(dialogue_wait);color(e.frame(),40,170,90);
+        });
+        test("script OPTIONOFF blocks right-click and host menu shortcuts",[&]{
+            Fixture f(temporary,"option-off");Script s;s.number(0x3333005aU,{1});s.print(1,0);s.end();binary(f.root/"SpT/SyS.SpT",s.encode());
+            Engine e(f);e.open(f);e.action("start");e.until(dialogue_wait);e.pointer(1);check(e.field("overlay").empty(),"OPTIONOFF blocks right-click menu");
+            for(const std::string action:{"menu","save","load","settings","backlog","quicksave","quickload"}){e.action(action);check(e.field("overlay").empty(),"OPTIONOFF blocks "+action);}
+            check(!fs::exists(f.slot(0)),"OPTIONOFF prevents quicksave file creation");
+        });
+        test("paused reopen starts an active fresh session",[&]{
+            Fixture f(temporary,"paused-reopen");Engine e(f);e.open(f);e.start();
+            ok(engine_pause(e.handle),e.handle,"pause before reopen");e.open(f);
+            check(e.field("paused")=="false","open clears previous session pause");e.start();e.advance();
+        });
+        test("missing and invalid story movies resume the suspended script",[&]{
+            for(unsigned mode=0;mode<3;++mode){
+                Fixture f(temporary,"story-movie-"+std::to_string(mode));
+                Script s;s.user(0,{1});s.color(19,73,141);s.draw();s.print(17,0);s.end();binary(f.root/"SpT/SyS.SpT",s.encode());
+                text(f.root/"SpT/command.xtx","printmovie,0\n");
+                text(f.root/"init/game.xtx","frameTime 20\nprintmovieIsDefault 1\n");
+                if(mode){text(f.root/"SpT/movielist.xtx","intro,Intro\n");fs::create_directories(f.root/"movie");}
+                if(mode==2)text(f.root/"movie/intro.wmv","invalid movie bytes");
+                Engine e(f);e.option("systemnnn.audio","0");e.open(f);e.action("start");e.until(dialogue_wait);
+                check(e.field("overlay").empty(),"movie failure resumes story rather than title");color(e.frame(),19,73,141);
+            }
+        });
+        test("return to title cancels active story movie",[&]{
+            Fixture f(temporary,"movie-title");Script s;s.user(0,{1});s.print(1,0);s.end();binary(f.root/"SpT/SyS.SpT",s.encode());
+            text(f.root/"SpT/command.xtx","printmovie,0\n");text(f.root/"SpT/movielist.xtx","intro,Intro\n");
+            text(f.root/"init/game.xtx","frameTime 20\nprintmovieIsDefault 1\n");
+            std::string y4m="YUV4MPEG2 W2 H2 F1:1 Ip A1:1 C420jpeg\nFRAME\n";y4m.append(4,char(80));y4m.append(2,char(128));text(f.root/"movie/intro.wmv",y4m);
+            Engine e(f);e.option("systemnnn.audio","0");e.open(f);e.action("start");e.tick();
+            const auto movie=e.frame();check(movie.pixels[0]>=70&&movie.pixels[0]<=80&&movie.pixels[0]==movie.pixels[1]&&movie.pixels[1]==movie.pixels[2],"story movie began decoding neutral Y80 frame");e.action("title");
+            check(e.field("overlay")=="title"&&e.frame().pixels!=movie.pixels,"title action immediately replaces active movie frame");
+        });
+        test("startup movie failures continue to a usable title",[&]{
+            for(unsigned mode=0;mode<2;++mode){
+                Fixture f(temporary,"startup-missing-"+std::to_string(mode));
+                text(f.root/"init/nothing.xtx","nextMode printMovie\n");
+                text(f.root/"init/printMovie.xtx","movieFileName absent.wmv\nnextMode title\n");
+                if(mode)text(f.root/"movie/absent.wmv","invalid movie bytes");
+                Engine e(f);e.option("systemnnn.audio","0");e.open(f);
+                for(unsigned i=0;i<8;++i)e.tick(100);
+                check(e.field("overlay")=="title","startup failure reaches title");e.start();
+            }
+        });
+        test("startup filename movie actually plays then reaches title",[&]{
+            Fixture f(temporary,"startup-filename");
+            text(f.root/"init/nothing.xtx","nextMode printMovie\n");
+            text(f.root/"init/printMovie.xtx","movieFileName intro.wmv\nnextMode title\nnoSkipFlag 1\n");
+            std::string y4m="YUV4MPEG2 W2 H2 F1:1 Ip A1:1 C420jpeg\nFRAME\n";y4m.append(4,char(80));y4m.append(2,char(128));text(f.root/"movie/intro.wmv",y4m);
+            Engine e(f);e.option("systemnnn.audio","0");e.open(f);const auto first=e.frame();
+            check(first.desc.width==800&&first.desc.height==600,"startup movie keeps native game canvas dimensions");
+            check(first.pixels[0]>=70&&first.pixels[0]<=80&&first.pixels[0]==first.pixels[1]&&first.pixels[1]==first.pixels[2],"configured filename supplies actual decoded neutral Y80 movie");
+            for(unsigned i=0;i<20;++i)e.tick(100);
+            check(e.frame().pixels!=first.pixels&&e.field("overlay")=="title","movie end restores title canvas");e.start();
+        });
+        test("native name input validates fields and rejects responses from prior visits",[&]{
+            Fixture f(temporary,"native-name");Script s;s.user(0);s.color(21,91,37);s.draw();s.print(1,0);s.end();binary(f.root/"SpT/SyS.SpT",s.encode());
+            text(f.root/"SpT/command.xtx","NAMEINPUT,0\n");
+            text(f.root/"init/game.xtx","frameTime 20\ncodeByte 1\nNameInputIsDefault 1\nseiInitData Old\nmeiInitData Given\n");
+            text(f.root/"init/nameInput.xtx","seiMax 3\nmeiMax 5\nnullNameOk 0\n");
+            Engine e(f);e.option("systemnnn.audio","0");e.open(f);e.action("start");e.until(9);e.tick();
+            const auto first=Engine::form_id(e.form());
+            check(e.answer(first,"","")!=ENGINE_RESULT_OK,"blank names fail declared nonempty policy");check(e.wait()==9,"invalid name leaves modal suspended");
+            e.tick();const auto after_blank=Engine::form_id(e.form());
+            check(after_blank!=first,"retry has fresh response identity");
+            check(e.answer(after_blank,"LongerThanLimit","Given")!=ENGINE_RESULT_OK,"encoded name byte limit enforced");
+            e.tick();const auto retry=Engine::form_id(e.form());check(retry!=after_blank,"encoding failure reissues a usable form");
+            e.action("title");e.action("start");e.until(9);e.tick();const auto current=Engine::form_id(e.form());
+            check(current!=retry,"new story name request has fresh identity");
+            check(e.answer(retry)!=ENGINE_RESULT_OK,"old story response cannot complete the new name request");
+            check(e.wait()==9,"stale response retains current modal");
+            ok(e.answer(current),e.handle,"valid name completion");e.until(dialogue_wait);color(e.frame(),21,91,37);
+            e.action("title");e.action("start");e.until(9);e.tick();const auto reopen_old=Engine::form_id(e.form());
+            e.open(f);e.action("start");e.until(9);e.tick();const auto reopened=Engine::form_id(e.form());
+            check(e.answer(reopen_old)!=ENGINE_RESULT_OK,"response from before open cannot complete reopened name modal");
+            ok(e.answer(reopened),e.handle,"name completion after reopen");e.until(dialogue_wait);
         });
         test("invalid open recovery",[&]{
             Fixture f(temporary,"recovery");Engine e(f);e.option("runtime","systemnnn");e.open(f);

@@ -123,7 +123,8 @@ jobs:
           persist-credentials: false
       - name: Restore focused vcpkg binaries
         if: matrix.dependencies == 'vcpkg'
-        uses: actions/cache@v6
+        id: vcpkg-cache
+        uses: actions/cache/restore@v6
         with:
           path: .systemnnn-vcpkg-cache
           key: systemnnn-${{ runner.os }}-static-md-${{ steps.baseline.outputs.commit }}-${{ hashFiles('tests/systemnnn_native/vcpkg.json') }}
@@ -148,13 +149,23 @@ jobs:
             -DCMAKE_BUILD_TYPE=Release -DCMAKE_EXPORT_COMPILE_COMMANDS=ON "${system_args[@]}"
       - name: Configure with minimal vcpkg manifest
         if: matrix.dependencies == 'vcpkg'
+        id: vcpkg-configure
         # Static third-party libraries with the DLL CRT match shared engine_api.
         run: >-
           cmake -S tests/systemnnn_native -B build/systemnnn-native -A x64
           -DCMAKE_TOOLCHAIN_FILE="${GITHUB_WORKSPACE}/.systemnnn-vcpkg/scripts/buildsystems/vcpkg.cmake"
           -DVCPKG_MANIFEST_DIR="${GITHUB_WORKSPACE}/tests/systemnnn_native"
           -DVCPKG_TARGET_TRIPLET=x64-windows-static-md
+          -DCMAKE_FIND_PACKAGE_PREFER_CONFIG=ON
           -DVCPKG_INSTALLED_DIR="${GITHUB_WORKSPACE}/build/systemnnn-native/vcpkg_installed"
+          -DOPENAL_INCLUDE_DIR="${GITHUB_WORKSPACE}/build/systemnnn-native/vcpkg_installed/x64-windows-static-md/include"
+          -DOPENAL_LIBRARY="${GITHUB_WORKSPACE}/build/systemnnn-native/vcpkg_installed/x64-windows-static-md/lib/OpenAL32.lib"
+      - name: Save focused vcpkg binaries
+        if: ${{ !cancelled() && matrix.dependencies == 'vcpkg' && steps.vcpkg-configure.outcome == 'success' && steps.vcpkg-cache.outputs.cache-hit != 'true' }}
+        uses: actions/cache/save@v6
+        with:
+          path: .systemnnn-vcpkg-cache
+          key: ${{ steps.vcpkg-cache.outputs.cache-primary-key }}
       - name: Build Release contracts
         run: cmake --build build/systemnnn-native --config Release --parallel 2
       - name: Require native helper contracts
@@ -165,21 +176,22 @@ jobs:
           from pathlib import Path
           import os
           inventory = json.loads(Path("build/systemnnn-native/inventory.json").read_text())
-          expected = {f"systemnnn-{name}-contract" for name in ("provider", "text", "startup", "progress", "audio", "presenter", "native-panel")}
+          expected = {f"systemnnn-{name}-contract" for name in ("provider", "text", "startup", "progress", "audio", "presenter", "native-panel", "minigame", "minigame-binding")}
           observed = {Path(test["command"][0]).stem for test in inventory["tests"] if test.get("command")}
           missing = expected - observed
           if missing:
               raise SystemExit(f"Missing native contract executables: {sorted(missing)}")
           if os.environ["RUNNER_OS"] == "Linux":
               names = {test["name"] for test in inventory["tests"]}
-              if "systemnnn-progress-java-contract" not in names:
-                  raise SystemExit("Missing Java progress compatibility contract")
+              for required in ("systemnnn-progress-java-contract", "systemnnn-minigame-java-contract"):
+                  if required not in names:
+                      raise SystemExit(f"Missing Java compatibility contract: {required}")
           print(f"Required native contracts found: {sorted(expected)}")
           PY
       - name: Run native contracts
         run: >-
           ctest --test-dir build/systemnnn-native -C Release
-          --output-on-failure --no-tests=error --timeout 120
+          --output-on-failure --no-tests=error --timeout 240
       - name: Run generated movie fixtures
         if: matrix.dependencies == 'apt'
         run: bash bridge/systemnnn_runtime/tests/run_movie_test.sh
@@ -226,6 +238,13 @@ jobs:
             if grep -E 'SCRIPT ERROR:|^ERROR:' "$log"; then
               exit 1
             fi
+          done
+          for suite in runtime_form_dialog; do
+            log="$RUNNER_TEMP/${suite}.log"
+            timeout 60 "$GODOT_BIN" --headless --path "$SHELL_PROJECT" \
+              --script "res://tests/${suite}_test.gd" 2>&1 | tee "$log"
+            grep -Fx "${suite}_test: PASS" "$log"
+            if grep -E 'SCRIPT ERROR:|^ERROR:' "$log"; then exit 1; fi
           done
           for suite in game_launch_entry game_input_mapping; do
             log="$RUNNER_TEMP/${suite}.log"

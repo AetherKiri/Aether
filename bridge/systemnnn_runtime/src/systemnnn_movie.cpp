@@ -329,6 +329,7 @@ struct MoviePlayer::Impl {
     AVChannelLayout input_layout{};
     int input_rate = 0, input_format = -1;
     emberfall::render::Surface surface;
+    std::vector<std::uint8_t> rgb_staging;
     std::deque<AudioBlock> blocks;
     std::int64_t clock_us = 0, video_end_us = 0, audio_end_sample = 0;
     std::int64_t sample_cursor = 0, output_cursor = 0;
@@ -355,10 +356,25 @@ struct MoviePlayer::Impl {
         surface.width = static_cast<unsigned>(f->width);
         surface.height = static_cast<unsigned>(f->height);
         surface.rgb.resize(static_cast<std::size_t>(f->width) * f->height * 3);
-        std::uint8_t* pixels[4] = {surface.rgb.data(), nullptr, nullptr, nullptr};
-        int stride[4] = {f->width * 3, 0, 0, 0};
+        // swscale vectorized RGB stores require row and tail padding even for
+        // tiny valid frames. Keep packed public pixels separate from that buffer.
+        const int row_bytes = f->width * 3;
+        // Include a complete vector of spare bytes per row, one spare row,
+        // input-style tail padding, and room to align the vector base manually.
+        // std::vector itself does not promise swscale SIMD alignment.
+        constexpr std::size_t alignment = 64;
+        const int padded_stride = (row_bytes + 127) & ~63;
+        rgb_staging.resize(static_cast<std::size_t>(padded_stride) * (f->height + 1)
+            + AV_INPUT_BUFFER_PADDING_SIZE + alignment - 1);
+        auto address = reinterpret_cast<std::uintptr_t>(rgb_staging.data());
+        auto* staging = reinterpret_cast<std::uint8_t*>((address + alignment - 1) & ~(alignment - 1));
+        std::uint8_t* pixels[4] = {staging, nullptr, nullptr, nullptr};
+        int stride[4] = {padded_stride, 0, 0, 0};
         if (sws_scale(scale, f->data, f->linesize, 0, f->height, pixels, stride) != f->height)
             throw std::runtime_error("Movie RGB conversion was incomplete");
+        for (int y = 0; y < f->height; ++y)
+            std::copy_n(staging + static_cast<std::size_t>(y) * padded_stride, row_bytes,
+                surface.rgb.data() + static_cast<std::size_t>(y) * row_bytes);
         have_frame = true;
     }
     void append(const std::uint8_t** data, int count, int capacity) {

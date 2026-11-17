@@ -17,7 +17,8 @@ if(NOT TARGET aether_systemnnn_runtime)
 endif()
 add_executable(systemnnn-provider-contract provider.cpp)
 target_link_libraries(systemnnn-provider-contract PRIVATE aether_systemnnn_runtime)
-target_compile_definitions(systemnnn-provider-contract PRIVATE EMBERFALL_ROOT="${AETHERKIRI_SYSTEMNNN_DIR}")
+target_compile_definitions(systemnnn-provider-contract PRIVATE EMBERFALL_ROOT="${AETHERKIRI_SYSTEMNNN_DIR}"
+    SYSTEMNNN_TEST_FONT="${AETHER_ROOT}/apps/godot_app/assets/fonts/aetherkiri-runtime-cjk.otf")
 add_test(NAME systemnnn-provider-contract COMMAND systemnnn-provider-contract)
 set_tests_properties(systemnnn-provider-contract PROPERTIES ENVIRONMENT "ALSOFT_DRIVERS=null")
 add_executable(systemnnn-text-contract "${AETHER_ROOT}/bridge/systemnnn_runtime/tests/systemnnn_text_test.cpp")
@@ -40,7 +41,12 @@ add_test(NAME systemnnn-progress-contract COMMAND systemnnn-progress-contract)
 add_executable(systemnnn-audio-contract audio.cpp
     "${AETHER_ROOT}/bridge/systemnnn_runtime/src/systemnnn_audio.cpp")
 target_include_directories(systemnnn-audio-contract PRIVATE "${AETHER_ROOT}/bridge/systemnnn_runtime/src")
-find_package(OpenAL REQUIRED)
+if(NOT TARGET OpenAL::OpenAL)
+    find_package(OpenAL CONFIG QUIET)
+    if(NOT TARGET OpenAL::OpenAL)
+        find_package(OpenAL REQUIRED)
+    endif()
+endif()
 find_package(Threads REQUIRED)
 target_link_libraries(systemnnn-audio-contract PRIVATE OpenAL::OpenAL Threads::Threads)
 add_test(NAME systemnnn-audio-contract COMMAND systemnnn-audio-contract)
@@ -57,7 +63,19 @@ add_executable(systemnnn-native-panel-contract
 target_include_directories(systemnnn-native-panel-contract PRIVATE "${AETHER_ROOT}/bridge/systemnnn_runtime/src")
 add_test(NAME systemnnn-native-panel-contract COMMAND systemnnn-native-panel-contract)
 
-foreach(contract provider text startup progress audio presenter native-panel)
+add_executable(systemnnn-minigame-contract
+    "${AETHER_ROOT}/bridge/systemnnn_runtime/tests/systemnnn_minigame_test.cpp"
+    "${AETHER_ROOT}/bridge/systemnnn_runtime/src/systemnnn_minigame.cpp")
+target_include_directories(systemnnn-minigame-contract PRIVATE "${AETHER_ROOT}/bridge/systemnnn_runtime/src")
+add_test(NAME systemnnn-minigame-contract COMMAND systemnnn-minigame-contract)
+
+add_executable(systemnnn-minigame-binding-contract
+    "${AETHER_ROOT}/bridge/systemnnn_runtime/tests/systemnnn_minigame_binding_test.cpp"
+    "${AETHER_ROOT}/bridge/systemnnn_runtime/src/systemnnn_minigame.cpp")
+target_link_libraries(systemnnn-minigame-binding-contract PRIVATE emberfall-scene)
+add_test(NAME systemnnn-minigame-binding-contract COMMAND systemnnn-minigame-binding-contract)
+
+foreach(contract provider text startup progress audio presenter native-panel minigame minigame-binding)
     set(target "systemnnn-${contract}-contract")
     target_compile_features(${target} PRIVATE cxx_std_17)
     # Keep assert-based and explicit checks active in every Release build.
@@ -74,6 +92,7 @@ foreach(contract provider text startup progress audio presenter native-panel)
     endif()
 endforeach()
 set_tests_properties(systemnnn-audio-contract PROPERTIES TIMEOUT 15)
+set_tests_properties(systemnnn-provider-contract PROPERTIES TIMEOUT 240)
 
 find_package(Python3 COMPONENTS Interpreter QUIET)
 find_package(Java COMPONENTS Runtime Development QUIET)
@@ -82,4 +101,8 @@ if(Python3_Interpreter_FOUND AND Java_FOUND)
         COMMAND "${Python3_EXECUTABLE}" "${AETHER_ROOT}/bridge/systemnnn_runtime/tests/check_progress_java.py"
             "${AETHERKIRI_SYSTEMNNN_DIR}" "$<TARGET_FILE:systemnnn-progress-contract>")
     set_tests_properties(systemnnn-progress-java-contract PROPERTIES TIMEOUT 120)
+    add_test(NAME systemnnn-minigame-java-contract
+        COMMAND "${Python3_EXECUTABLE}" "${AETHER_ROOT}/bridge/systemnnn_runtime/tests/check_minigame_java.py"
+            "${AETHERKIRI_SYSTEMNNN_DIR}" "$<TARGET_FILE:systemnnn-minigame-contract>")
+    set_tests_properties(systemnnn-minigame-java-contract PROPERTIES TIMEOUT 120)
 endif()

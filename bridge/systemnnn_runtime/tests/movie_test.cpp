@@ -33,6 +33,22 @@ int main(int argc, char** argv) {
         const fs::path fixtures = argv[1];
         std::string error;
         MoviePlayer player;
+        // Tiny/odd-width valid frames exercise SIMD stores, packed row copies,
+        // end padding and destructor on repeated decoder lifetimes.
+        for (const auto& dimensions : {std::pair<int, int>{2, 2}, {3, 3}, {22, 3}, {64, 2}}) {
+            const auto name = "tiny-" + std::to_string(dimensions.first) + "x" + std::to_string(dimensions.second) + ".y4m";
+            for (int attempt = 0; attempt < 32; ++attempt) {
+                MoviePlayer tiny;
+                require(tiny.open(fixtures / name, error), error);
+                tiny.tick(0);
+                require(tiny.frame() && tiny.frame()->width == static_cast<unsigned>(dimensions.first)
+                    && tiny.frame()->height == static_cast<unsigned>(dimensions.second), "Tiny frame dimensions");
+                require(tiny.frame()->rgb.size() == static_cast<std::size_t>(dimensions.first * dimensions.second * 3), "Tiny packed RGB shape");
+                for (auto channel : tiny.frame()->rgb) require(channel >= 70 && channel <= 80, "Tiny YUV conversion color");
+                tiny.tick(200);
+                tiny.close();
+            }
+        }
         require(!player.active() && !player.ended() && !player.frame(), "Initial state");
         require(!player.open(fixtures / "missing.mp4", error) && !error.empty(), "Missing file error");
         require(!player.active() && !player.ended(), "Failed open is not EOF");

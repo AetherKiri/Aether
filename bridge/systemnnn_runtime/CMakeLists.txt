@@ -13,7 +13,10 @@ find_package(Freetype REQUIRED)
 find_package(Iconv REQUIRED)
 find_package(nlohmann_json CONFIG REQUIRED)
 find_package(Threads REQUIRED)
-find_package(OpenAL REQUIRED)
+find_package(OpenAL CONFIG QUIET)
+if(NOT TARGET OpenAL::OpenAL)
+    find_package(OpenAL REQUIRED)
+endif()
 # The vcpkg overlay supplies FindFFMPEG and its complete static dependency
 # list. Other Windows distributions expose CONFIG targets instead; retain their
 # include paths, debug/release locations and transitive dependencies.
@@ -53,7 +56,7 @@ endif()
 add_library(aether_systemnnn_runtime STATIC
     src/systemnnn_runtime_provider.cpp src/systemnnn_text.cpp
     src/systemnnn_presenter.cpp src/systemnnn_audio.cpp src/systemnnn_progress.cpp
-    src/systemnnn_movie.cpp src/systemnnn_startup.cpp)
+    src/systemnnn_movie.cpp src/systemnnn_startup.cpp src/systemnnn_minigame.cpp src/systemnnn_minigame_binding.cpp)
 target_compile_features(aether_systemnnn_runtime PUBLIC cxx_std_17)
 set_target_properties(aether_systemnnn_runtime PROPERTIES POSITION_INDEPENDENT_CODE ON)
 target_include_directories(aether_systemnnn_runtime PUBLIC include PRIVATE ${FFMPEG_INCLUDE_DIRS})

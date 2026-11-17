@@ -6,6 +6,8 @@
 #include "systemnnn_movie.h"
 #include "systemnnn_startup.h"
 #include "systemnnn_native_panel.h"
+#include "systemnnn_minigame_binding.h"
+#include "nnn/game_name_list.hpp"
 #include "emberfall/story_compositor.hpp"
 #include "nnn/resource_path.hpp"
 #include <nlohmann/json.hpp>
@@ -96,17 +98,20 @@ struct Runtime {
     scene::StoryCompositor compositor;
     AudioOutput audio;
     MoviePlayer movie;
+    MiniGameBinding minigame;
+    std::string preview_script;bool preview_loop=true;
     std::unique_ptr<StartupSequence> startup_sequence;
     bool movie_from_startup=false,movie_skippable=true;
     uint64_t movie_request=0;
     std::shared_ptr<const Frame> frame,described_frame;
     std::unordered_map<std::string,std::string> options;
     std::string error,overlay="title",previous_overlay;
-    uint64_t serial=0,line_sequence=UINT64_MAX;
+    uint64_t serial=0,delivered_frame_serial=0,line_sequence=UINT64_MAX;
     uint32_t surface_width=0,surface_height=0;
     scene::InputState input;
     bool paused=false,audio_enabled=true,auto_mode=false,closed=false;
     bool text_request=false,native_menu_open=false;
+    uint64_t form_generation=0,text_request_id=0;
     unsigned selected=1;
     explicit Runtime(const engine_runtime_host_v1_t* h,const engine_create_desc_t* desc) {
         if(h) std::memcpy(&host,h,std::min<std::size_t>(sizeof(host),h->struct_size));
@@ -124,7 +129,7 @@ struct Runtime {
     void request(const char* operation,const std::string& argument) {
         if(host.platform_request) host.platform_request(host.user_data,operation,argument.c_str());
     }
-    GameSession* audio_game() { return game.get(); }
+    GameSession* audio_game() { return startup_sequence && !startup_sequence->finished()?startup_sequence->audio_session():game.get(); }
     fs::path slot(unsigned number) const {
         if(number>999) throw std::invalid_argument("Invalid save slot");
         auto base=writable.empty()?root/"sav":writable/"systemnnn";
@@ -136,10 +141,10 @@ struct Runtime {
         return result;
     }
     void begin_audio() {
-        if(!audio_enabled) return;
         if(!audio.start([this](int16_t* samples,std::size_t frames) {
             std::lock_guard<std::mutex> guard(game_mutex);
-            if(movie.active() && !paused) movie.pull(samples,frames);
+            if(!audio_enabled)std::fill_n(samples,frames*2,0);
+            else if(movie.active() && !paused) movie.pull(samples,frames);
             else if(auto* owner=audio_game();owner && !paused) owner->audio().pull(samples,frames);
             else std::fill_n(samples,frames*2,0);
         },session_options.audio.sample_rate)) log(ENGINE_RUNTIME_LOG_WARNING,"Audio device unavailable: "+audio.error());
@@ -149,7 +154,9 @@ struct Runtime {
         if(native_menu_open){native_menu_open=false;if(game->resume_native_panel()){game->audio().restart_loop_script_audio();game->reset_frame_pacing();}}
     }
     void title() {
-        native_menu_open=false;
+        minigame.stop(*game,false);preview_script=presenter->title_script();preview_loop=presenter->title_script_loop();
+        movie.close();movie_from_startup=false;movie_request=0;
+        native_menu_open=false;text_request=false;++form_generation;
         persist();
         overlay="title"; auto_mode=false; input={}; preview.reset();
         auto opts=fresh_options();
@@ -164,9 +171,12 @@ struct Runtime {
         compositor.reset_present_state();
     }
     void start_story() {
+        minigame.stop(*game,false);
         auto candidate=std::make_unique<GameSession>(root,fresh_options());
+        if(!writable.empty())candidate->set_chart_storage(writable/"systemnnn"/"chart");
         candidate->audio().inherit_music(game->audio());
-        game=std::move(candidate); native_menu_open=false;preview.reset(); overlay.clear(); input={}; line_sequence=UINT64_MAX;
+        movie.close();movie_from_startup=false;movie_request=0;
+        game=std::move(candidate); native_menu_open=false;text_request=false;++form_generation;preview.reset(); overlay.clear(); input={}; line_sequence=UINT64_MAX;
         game->sync_runtime_names(); compositor.reset_present_state();
         input.play_movies=true;game->step_frame(0,input); update_line();
     }
@@ -204,8 +214,10 @@ struct Runtime {
     void load(unsigned number) {
         auto candidate=std::make_unique<GameSession>(root,fresh_options(true));
         candidate->load_pc_save_candidate(read_file(slot(number)),preview?nullptr:game.get());
+        minigame.stop(*game,false);
         // The audio callback takes game_mutex, so replacing ownership here is serialized.
-        game=std::move(candidate); native_menu_open=false;preview.reset(); overlay.clear(); input={}; line_sequence=UINT64_MAX;
+        movie.close();movie_from_startup=false;movie_request=0;
+        game=std::move(candidate); native_menu_open=false;text_request=false;++form_generation;preview.reset(); overlay.clear(); input={}; line_sequence=UINT64_MAX;
         game->set_chart_storage(writable.empty()?root/"sav":writable/"systemnnn");
         compositor.reset_present_state(); update_line();
     }
@@ -218,24 +230,45 @@ struct Runtime {
             game->set_text_length(static_cast<uint32_t>(body.size()),static_cast<uint32_t>(body.size()));
         }
     }
+    void extras() {
+        minigame.stop(*game,false);movie.close();input={};auto_mode=false;
+        const nnn::game_config::NameListSetup config(nnn::game_config::read(root,"init","omake.xtx"));
+        preview=GameSession::create_ui_preview(root,fresh_options());overlay="omake";
+        preview_script=config.integer("backScriptFlag",0)?std::string(config.field("backScriptName").value_or("omake")):std::string{};
+        preview_loop=config.integer("backScriptLoop",1)!=0;
+        if(!preview_script.empty()){preview->reset_ui_background(preview_script,15,game->runtime());preview->step_ui_background({},preview_loop);}
+        game->audio().play_menu_music(config.integer("bgmNumber",1),config.integer("bgmLoop",0),config.integer("bgmVolume",0),config.integer("bgmFadeInTime",-1),config.integer("bgmRestartFlag",1)!=0);
+        compositor.reset_present_state();presenter->set_page(0);
+    }
     void action(const std::string& action) {
-        if(action.empty()) return;
+        if(action.empty() || !game)return;
+        if(minigame.active()){
+            if(action=="back"){minigame.stop(*game);input={};}
+            else if(action=="title")title();else if(action=="exit"){minigame.stop(*game,false);closed=true;request("runtime_end","");}
+            return;
+        }
+        if(action.rfind("minigame:",0)==0){
+            if(!preview || (overlay!="title" && overlay!="omake"))throw std::invalid_argument("Minigame entry is not exposed");
+            minigame.start(static_cast<unsigned>(std::stoul(action.substr(9))),*game,overlay);input={};return;
+        }
+        if(!preview && overlay.empty() && !game->options_enabled() && (action=="menu" || action=="save" || action=="load" || action=="settings" || action=="backlog" || action=="quicksave" || action=="quickload"))return;
         if(startup_sequence && !startup_sequence->finished()){input.advance=true;return;}
         if(game && !preview && overlay.empty() && game->state().wait==Wait::NativePanel && native_panel::action(*game,action,input.mouse_x,input.mouse_y))return;
         if(action=="start") start_story();
         else if(action=="title") title();
         else if(action=="exit") { closed=true; request("runtime_end",""); }
         else if(action=="back") {
-            if(!overlay.empty()) { close_overlay(); }
+            if(overlay=="omake")title();
+            else if(!overlay.empty()) { close_overlay(); }
             else if(game->state().modal) game->act_modal(game->state().modal->request,0,0);
-            else overlay="menu";
+            else if(game->options_enabled())overlay="menu";
         } else if(action=="save" || action=="load" || action=="settings" || action=="backlog") {
             if(action=="save" && preview) return;
             overlay=action; presenter->set_page(0);if(action=="save" || action=="load")refresh_slots();
         } else if(action=="menu") { if(game->options_enabled()) overlay="menu"; }
         else if(action=="auto") { auto_mode=!auto_mode; overlay.clear(); }
         else if(action=="skip") { game->set_skip_active(!game->skip_active()); overlay.clear(); }
-        else if(action=="extras") { preview.reset(); overlay.clear(); game->open_modal(nnn::RuntimeMode::Omake,nnn::RuntimeMode::Title,true); }
+        else if(action=="extras")extras();
         else if(action=="next_page" || action=="page:next") presenter->set_page(presenter->page()+1);
         else if(action=="previous_page" || action=="page:prev") presenter->set_page(std::max(0,presenter->page()-1));
         else if(action.rfind("choice:",0)==0) input.choice=static_cast<unsigned>(std::stoul(action.substr(7)));
@@ -250,18 +283,20 @@ struct Runtime {
         else if(action.rfind("modal:action:",0)==0 && game->state().modal) {
             const auto separator=action.find(':',13);
             if(separator==std::string::npos)throw std::invalid_argument("Invalid modal action");
+            const auto return_mode=game->state().modal->return_mode;
             const auto request=game->state().modal->request;
             const int result=game->act_modal(request,std::stoi(action.substr(13,separator-13)),std::stoi(action.substr(separator+1)));
-            if(result==4)game->act_modal(request,8,0);else if(result==2)title();
+            if(result==4)game->act_modal(request,8,0);else if(result==2 && return_mode==nnn::RuntimeMode::Title)title();
         }
         else if(action.rfind("modal:page:",0)==0 && game->state().modal) {
             game->act_modal(game->state().modal->request,2,std::stoi(action.substr(11)));
         }
         else if(action.rfind("modal:",0)==0 && game->state().modal) {
+            const auto return_mode=game->state().modal->return_mode;
             const auto request_id=game->state().modal->request;
             int result=game->act_modal(request_id,1,std::stoi(action.substr(6)));
             if(result==4) game->act_modal(request_id,8,0);
-            else if(result==2) title();
+            else if(result==2 && return_mode==nnn::RuntimeMode::Title) title();
         } else if(action.rfind("slot:",0)==0) {
             const auto number=static_cast<unsigned>(std::stoul(action.substr(5)));
             if(overlay=="save") save(number); else load(number);
@@ -282,7 +317,20 @@ struct Runtime {
         frame=std::move(next);
     }
     void present() {
-        if(movie.active()) {if(const auto* image=movie.frame())publish(*image);return;}
+        if(minigame.active()){publish(minigame.render());return;}
+        if(movie.active()) {
+            if(const auto* image=movie.frame()){
+                const auto size=game->shared_config_snapshot();
+                if(image->width==static_cast<unsigned>(size.screen_width) && image->height==static_cast<unsigned>(size.screen_height))publish(*image);
+                else {
+                    render::Surface scaled;scaled.width=size.screen_width;scaled.height=size.screen_height;scaled.rgb.resize(static_cast<std::size_t>(scaled.width)*scaled.height*3);
+                    for(unsigned y=0;y<scaled.height;++y)for(unsigned x=0;x<scaled.width;++x){
+                        const auto src=(static_cast<std::size_t>(y)*image->height/scaled.height*image->width+static_cast<std::size_t>(x)*image->width/scaled.width)*3;
+                        const auto dst=(static_cast<std::size_t>(y)*scaled.width+x)*3;std::copy_n(image->rgb.data()+src,3,scaled.rgb.data()+dst);
+                    }publish(scaled);
+                }
+            }return;
+        }
         if(startup_sequence && !startup_sequence->finished() && !startup_sequence->awaiting_title()) {
             if(const auto* image=startup_sequence->frame())publish(*image);return;
         }
@@ -307,10 +355,16 @@ struct Runtime {
     }
     void tick(uint32_t ms) {
         if(!game || paused || closed) return;
+        if(minigame.active()){
+            minigame.tick(ms);const auto result=minigame.dispatch(*game);
+            for(const auto& warning:result.warnings)log(ENGINE_RUNTIME_LOG_WARNING,warning);
+            if(result.progress_changed)persist();input={};present();return;
+        }
         if(movie.active()) {
             movie.tick(ms);
-            if(!movie.error().empty())throw std::runtime_error(movie.error());
-            if(movie.ended() || (input.advance && movie_skippable)) {
+            const auto movie_error=movie.error();
+            if(!movie_error.empty())log(ENGINE_RUNTIME_LOG_WARNING,"Movie playback interrupted: "+movie_error);
+            if(!movie_error.empty() || movie.ended() || (input.advance && movie_skippable)) {
                 movie.close();input.advance=false;
                 if(movie_from_startup && startup_sequence)startup_sequence->finish_movie();
                 else {game->step_frame(scene::FrameTiming{0,0},input);game->reset_frame_pacing();}
@@ -321,16 +375,18 @@ struct Runtime {
             if(startup_sequence->awaiting_movie()) {
                 const auto request=*startup_sequence->movie_request();
                 fs::path path;
-                if(request.movie_number)path=resolve_movie(root,request.movie_number);
-                else {
+                try {
+                if(request.movie_number)try{path=resolve_movie(root,request.movie_number);}catch(const std::exception& e){log(ENGINE_RUNTIME_LOG_WARNING,std::string("Startup movie list fallback: ")+e.what());}
+                if(path.empty()) {
                     const auto directory=nnn::resource::find_directory(root,"movie");
                     path=nnn::resource::find_file(directory,request.filename,session_options.filename_encoder);
                     if(path.empty())for(const char* suffix:{".wmv",".mpg",".mpeg",".avi",".mp4"}) {
                         path=nnn::resource::find_file(directory,request.filename+suffix,session_options.filename_encoder);if(!path.empty())break;
                     }
                 }
-                std::string reason;if(!movie.open(path,reason))throw std::runtime_error(reason);
+                std::string reason;if(!movie.open(path,reason)){log(ENGINE_RUNTIME_LOG_WARNING,"Startup movie unavailable: "+reason);startup_sequence->finish_movie();}
                 movie_from_startup=true;movie_skippable=request.skippable;
+                }catch(const std::exception& e){log(ENGINE_RUNTIME_LOG_WARNING,std::string("Startup movie unavailable: ")+e.what());movie.close();startup_sequence->finish_movie();}
             }
             if(startup_sequence->awaiting_title()) {
                 title();present();
@@ -343,20 +399,21 @@ struct Runtime {
             startup_sequence.reset();
         }
         if(preview) {
-            if(!presenter->title_script().empty()) preview->tick_ui_background(input,presenter->title_script_loop(),ms);
+            if(!preview_script.empty()) preview->tick_ui_background(input,preview_loop,ms);
         } else if(overlay.empty()) {
             const auto& state=game->state();
             if(state.wait==Wait::Error) throw std::runtime_error(state.error);
             if(state.wait==Wait::Ended) { title(); present(); return; }
             if(state.wait==Wait::Movie && state.movie) {
                 std::string reason;
-                if(!movie.open(resolve_movie(root,state.movie),reason))throw std::runtime_error(reason);
+                try {if(!movie.open(resolve_movie(root,state.movie),reason))throw std::runtime_error(reason);}
+                catch(const std::exception& e){log(ENGINE_RUNTIME_LOG_WARNING,std::string("Story movie unavailable: ")+e.what());input={};input.play_movies=true;game->step_frame(scene::FrameTiming{0,0},input);game->reset_frame_pacing();update_line();present();return;}
                 movie_request=state.movie;movie_from_startup=false;movie_skippable=true;
                 input={};present();return;
             }
             if(state.wait==Wait::Modal && state.modal && !text_request &&
                (state.modal->mode==nnn::RuntimeMode::NameInput || state.modal->mode==nnn::RuntimeMode::KanjiInput)) {
-                text_request=true;
+                text_request=true;text_request_id=state.modal->request;++form_generation;
                 const auto& modal=*state.modal;
                 Json items=Json::array();const auto count=std::clamp<std::size_t>(modal.byte_limits.size(),1,8);
                 for(std::size_t i=0;i<count;++i){
@@ -366,7 +423,7 @@ struct Runtime {
                 const int height=100+static_cast<int>(count)*76;
                 items.push_back({{"kind","button"},{"id","1"},{"rect",{12,height-48,198,36}},{"text","OK"}});
                 items.push_back({{"kind","button"},{"id","2"},{"rect",{224,height-48,198,36}},{"text","Cancel"}});
-                request("runtime_form",Json{{"title","SystemNNN"},{"width",434},{"height",height},{"items",items}}.dump());
+                request("runtime_form",Json{{"title","SystemNNN"},{"width",434},{"height",height},{"items",items},{"request_id",std::to_string(form_generation)}}.dump());
             }
             if(state.wait==Wait::Dialogue && (game->skip_effective() || (auto_mode && game->auto_ready(ms,true)))) input.advance=true;
             // Only a fully composed and acknowledged message may advance the VM.
@@ -401,8 +458,9 @@ static int32_t probe(void*,const char* root) {
     } catch(...) {return 0;}
 }
 static engine_result_t create(void*,const engine_runtime_host_v1_t* host,const engine_create_desc_t* desc,void** out) {
-    if(!desc || !out || desc->struct_size<sizeof(engine_create_desc_t)) return ENGINE_RESULT_INVALID_ARGUMENT;
-    *out=nullptr;
+    if(!out)return ENGINE_RESULT_INVALID_ARGUMENT;*out=nullptr;
+    if(!desc || desc->struct_size<sizeof(engine_create_desc_t) || desc->api_version!=ENGINE_API_VERSION ||
+       !host || host->struct_size<offsetof(engine_runtime_host_v1_t,reserved_u64) || host->api_version!=ENGINE_RUNTIME_PROVIDER_API_VERSION)return ENGINE_RESULT_INVALID_ARGUMENT;
     try {*out=new Runtime(host,desc);return ENGINE_RESULT_OK;}catch(...){return ENGINE_RESULT_INTERNAL_ERROR;}
 }
 static engine_result_t open(void* opaque,const char* root,const char* startup) {
@@ -410,7 +468,9 @@ static engine_result_t open(void* opaque,const char* root,const char* startup) {
     auto& self=*static_cast<Runtime*>(opaque);
     self.audio.stop();
     const auto result=guarded(opaque,[&](Runtime& r) {
-        r.persist();r.movie.close();r.startup_sequence.reset();r.root=fs::u8path(root);r.game.reset();r.preview.reset();r.closed=false;
+        if(r.game)r.minigame.stop(*r.game,false);r.persist();r.movie.close();r.startup_sequence.reset();r.root=fs::u8path(root);r.game.reset();r.preview.reset();
+        r.closed=false;r.paused=false;r.native_menu_open=false;r.text_request=false;++r.form_generation;r.input={};r.selected=1;r.auto_mode=false;
+        r.compositor.reset_present_state();
         r.text.load_game_codec(r.root);
         std::vector<fs::path> fonts;
         if(auto it=r.options.find("systemnnn.font");it!=r.options.end()) fonts.push_back(fs::u8path(it->second));
@@ -480,17 +540,27 @@ static engine_result_t read_frame(void* opaque,void* pixels,size_t size) {
     auto snapshot=r.described_frame?r.described_frame:r.frame;
     if(!snapshot)return ENGINE_RESULT_INVALID_STATE;
     if(size<snapshot->rgba.size())return ENGINE_RESULT_INVALID_ARGUMENT;
-    std::memcpy(pixels,snapshot->rgba.data(),snapshot->rgba.size());return ENGINE_RESULT_OK;
+    std::memcpy(pixels,snapshot->rgba.data(),snapshot->rgba.size());r.delivered_frame_serial=snapshot->desc.frame_serial;return ENGINE_RESULT_OK;
 }
 static engine_result_t send_input(void* opaque,const engine_input_event_t* event) {
     if(!event || event->struct_size<sizeof(engine_input_event_t))return ENGINE_RESULT_INVALID_ARGUMENT;
     return guarded(opaque,[&](Runtime& r){
         if(!r.game || !r.frame || r.paused)return;
         // Godot maps aspect-fit viewport coordinates into native frame pixels.
-        const double sx=1,sy=1;
-        if(!std::isfinite(event->x) || !std::isfinite(event->y))return;
-        r.input.mouse_x=static_cast<int>(std::clamp(event->x*sx,-32768.0,32768.0));
-        r.input.mouse_y=static_cast<int>(std::clamp(event->y*sy,-32768.0,32768.0));
+        const bool pointer=event->type==ENGINE_INPUT_EVENT_POINTER_MOVE || event->type==ENGINE_INPUT_EVENT_POINTER_DOWN || event->type==ENGINE_INPUT_EVENT_POINTER_UP || event->type==ENGINE_INPUT_EVENT_POINTER_SCROLL;
+        if(pointer){
+            if(!std::isfinite(event->x) || !std::isfinite(event->y))return;
+            r.input.mouse_x=static_cast<int>(std::clamp(event->x,-32768.0,32768.0));
+            r.input.mouse_y=static_cast<int>(std::clamp(event->y,-32768.0,32768.0));
+        }
+        if(r.minigame.active()){
+            using Pointer=minigame::Pointer;const auto x=static_cast<float>(r.input.mouse_x),y=static_cast<float>(r.input.mouse_y);
+            if(event->type==ENGINE_INPUT_EVENT_POINTER_DOWN)r.minigame.pointer(Pointer::Down,x,y,event->button);
+            else if(event->type==ENGINE_INPUT_EVENT_POINTER_MOVE)r.minigame.pointer(Pointer::Move,x,y,event->button);
+            else if(event->type==ENGINE_INPUT_EVENT_POINTER_UP)r.minigame.pointer((event->modifiers&ENGINE_INPUT_MODIFIER_POINTER_CANCEL)?Pointer::Cancel:Pointer::Up,x,y,event->button);
+            else if(event->type==ENGINE_INPUT_EVENT_BACK || (event->type==ENGINE_INPUT_EVENT_KEY_DOWN && event->key_code==0x1b))r.action("back");
+            return;
+        }
         if(!r.preview && r.overlay.empty() && r.game->state().wait==Wait::NativePanel) {
             using Pointer=native_panel::Pointer;const int x=r.input.mouse_x,y=r.input.mouse_y;
             if(event->type==ENGINE_INPUT_EVENT_POINTER_MOVE)native_panel::pointer(*r.game,Pointer::Move,event->button,x,y);
@@ -505,6 +575,7 @@ static engine_result_t send_input(void* opaque,const engine_input_event_t* event
             r.input.held=false;
             if(event->modifiers & ENGINE_INPUT_MODIFIER_POINTER_CANCEL)return;
             if(event->button==1){r.action("back");return;}
+            if(event->button!=0)return;
             auto action=r.presenter->hit(r.input.mouse_x,r.input.mouse_y);
             if(!action.empty())r.action(action);
             else if(r.game->state().wait==Wait::NativePanel)r.game->native_panel_input(r.input.mouse_x,r.input.mouse_y,true,false);
@@ -546,19 +617,24 @@ static engine_result_t response(void* opaque,const char* operation,const char* a
     return guarded(opaque,[&](Runtime& r){
         if(std::string(operation)!="runtime_form" || !r.text_request || !r.game->state().modal)throw std::invalid_argument("No matching text request");
         const auto modal=*r.game->state().modal;
-        const auto value=Json::parse(argument);const bool accepted=value.value("result",std::string{})=="1";
+        const auto value=Json::parse(argument);
+        if(modal.request!=r.text_request_id || value.value("request_id",std::string{})!=std::to_string(r.form_generation))throw std::invalid_argument("Stale SystemNNN form response");
+        r.text_request=false;
+        const bool accepted=value.value("result",std::string{})=="1";
         std::vector<std::string> fields;
         if(accepted){
             const auto values=value.at("values");const auto count=std::clamp<std::size_t>(modal.byte_limits.size(),1,8);
             for(std::size_t i=0;i<count;++i)fields.push_back(r.text.encode(r.text.decode_utf8(values.value("field"+std::to_string(i),std::string{})),modal.byte_limits.empty()?256:modal.byte_limits[i]));
         }
-        r.game->complete_modal(modal.request,accepted,0,fields);r.text_request=false;r.present();
+        if(!r.game->complete_modal(modal.request,accepted,0,fields)){r.text_request=false;throw std::invalid_argument("SystemNNN rejected text input");}
+        r.text_request=false;r.present();
     });
 }
 static engine_result_t text_state(void* opaque,uint32_t* flags) {
     if(!opaque || !flags)return ENGINE_RESULT_INVALID_ARGUMENT;
     auto& r=*static_cast<Runtime*>(opaque);std::lock_guard<std::mutex> guard(r.game_mutex);
-    *flags=r.text_request?ENGINE_TEXT_INPUT_STATE_ACTIVE:0;return ENGINE_RESULT_OK;
+    // The host runtime_form dialog owns its IME and editing focus.
+    *flags=0;return ENGINE_RESULT_OK;
 }
 static engine_result_t renderer(void* opaque,char* buffer,uint32_t size) {
     if(!opaque)return ENGINE_RESULT_INVALID_ARGUMENT;
@@ -567,7 +643,7 @@ static engine_result_t renderer(void* opaque,char* buffer,uint32_t size) {
 static engine_result_t debug(void* opaque,char* buffer,uint32_t size,uint32_t* written) {
     if(!opaque)return ENGINE_RESULT_INVALID_ARGUMENT;
     auto& r=*static_cast<Runtime*>(opaque);std::lock_guard<std::mutex> guard(r.game_mutex);
-    Json data={{"runtime","systemnnn"},{"overlay",r.overlay},{"paused",r.paused},{"frame_serial",r.serial},{"audio_error",r.audio.error()}};
+    Json data={{"runtime","systemnnn"},{"overlay",r.overlay},{"paused",r.paused},{"frame_serial",r.serial},{"audio_error",r.audio.error()},{"minigame_active",r.minigame.active()}};
     if(r.game){const auto& state=r.game->state();data["script"]=utf8(r.text.decode(state.script));data["word"]=state.word;data["wait"]=static_cast<int>(state.wait);data["warnings"]=r.game->warnings();}
     return copy_string(data.dump(),buffer,size,written);
 }
@@ -580,7 +656,7 @@ static const engine_runtime_provider_v1_t& provider() {
         p.get_frame_desc=describe;p.read_frame_rgba=read_frame;p.send_input=send_input;
         p.get_main_menu_json=menu;p.activate_menu_item=activate;p.get_renderer_info=renderer;p.get_plugin_debug_info=debug;
         p.submit_platform_response=response;p.get_text_input_state=text_state;
-        p.get_frame_rendered_flag=[](void* opaque,uint32_t* rendered){if(!opaque || !rendered)return ENGINE_RESULT_INVALID_ARGUMENT;*rendered=static_cast<Runtime*>(opaque)->frame?1:0;return ENGINE_RESULT_OK;};
+        p.get_frame_rendered_flag=[](void* opaque,uint32_t* rendered){if(!opaque || !rendered)return ENGINE_RESULT_INVALID_ARGUMENT;auto& r=*static_cast<Runtime*>(opaque);std::lock_guard<std::mutex> lock(r.game_mutex);*rendered=r.frame && r.frame->desc.frame_serial!=r.delivered_frame_serial?1:0;return ENGINE_RESULT_OK;};
         p.get_last_error=[](void* opaque)->const char*{return opaque?static_cast<Runtime*>(opaque)->error.c_str():"Invalid SystemNNN runtime";};
         return p;}();return value;
 }

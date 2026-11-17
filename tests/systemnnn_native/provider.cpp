@@ -325,6 +325,36 @@ int main(){
             check(e.answer(reopen_old)!=ENGINE_RESULT_OK,"response from before open cannot complete reopened name modal");
             ok(e.answer(reopened),e.handle,"name completion after reopen");e.until(dialogue_wait);
         });
+        test("script term modal Return resumes its script caller",[&]{
+            Fixture f(temporary,"script-term");Script s;s.user(0);s.color(33,92,144);s.draw();s.print(8,0);s.end();binary(f.root/"SpT/SyS.SpT",s.encode());
+            text(f.root/"SpT/command.xtx","printterm,0\n");text(f.root/"init/game.xtx","frameTime 20\ncodeByte 1\nPrintTermIsDefault 1\n");
+            text(f.root/"init/printTerm.xtx","termTypeNumber 1\ntermPerPage 1\n");text(f.root/"SpT/termList.xtx","Fixture,1,0,fixture\n");text(f.root/"nya/term/fixture.xtx","Independent term description\n");
+            Engine e(f);e.option("systemnnn.audio","0");e.open(f);e.action("start");e.until(9);e.action("modal:action:0:0");
+            check(e.field("overlay").empty(),"script-origin term Return does not route to title");e.until(dialogue_wait);color(e.frame(),33,92,144);
+            e.action("title");e.action("start");e.until(9);e.key(0x1b);e.tick();e.until(dialogue_wait);check(e.field("overlay").empty(),"Escape and modal Return share script continuation");
+        });
+        test("minigame title and omake input lifecycle and Change solve through ABI",[&]{
+            Fixture f(temporary,"minigame-abi");binary(f.root/"sys/puzzle.dwq",puzzle_art());
+            text(f.root/"init/title.xtx","enterFadeType 0\nminiGameFlag 1\n");text(f.root/"init/omake.xtx","miniGameFlag 1\n");
+            text(f.root/"init/minigame.xtx","addMiniGame 2\nminiGame1 2\nminiGame2 2\nminiGameCheckMode1 title\nminiGameCheckMode2 omake\nminiGameCheckX1 700\nminiGameCheckY1 100\nminiGameCheckSizeX1 80\nminiGameCheckSizeY1 40\nminiGameCheckX2 700\nminiGameCheckY2 100\nminiGameCheckSizeX2 80\nminiGameCheckSizeY2 40\nnoCGFileName puzzle\nexitPrintX 760\nexitPrintY 570\nexitSizeX 40\nexitSizeY 30\nsetCGNumber1 1\nsetCGPlayer1_1 1\nsetCGParam1_1 1\n");
+            Engine e(f);e.option("systemnnn.audio","0");e.open(f);e.pointer(0,720,120);e.tick();
+            check(e.field("minigame_active")=="true"&&e.field("overlay")=="title","configured title area opens minigame");
+            const auto board=e.frame();std::vector<unsigned> values(16);std::vector<bool> seen(16,false);
+            for(unsigned i=0;i<16;++i){const auto p=(static_cast<std::size_t>(i/4*150+12)*800+i%4*200+12)*4;const unsigned red=board.pixels[p];check(red>=20&&(red-20)%12==0,"rendered tile identifies authored source art");values[i]=(red-20)/12;check(values[i]<16&&!seen[values[i]],"board is a permutation of authored tiles");seen[values[i]]=true;}
+            e.point(ENGINE_INPUT_EVENT_POINTER_DOWN,100,75);e.point(ENGINE_INPUT_EVENT_POINTER_UP,100,75,ENGINE_INPUT_MODIFIER_POINTER_CANCEL);e.tick();check(e.frame().pixels==board.pixels,"cancelled touch does not pick up a tile");
+            ok(engine_pause(e.handle),e.handle,"pause minigame");e.click(100,75);check(e.frame().pixels==board.pixels,"paused minigame ignores board input");ok(engine_resume(e.handle),e.handle,"resume minigame");
+            // Sort the visible permutation using only public pointer events. Moving
+            // the cursor outside the viewport keeps the held tile clear of samples.
+            const auto choose=[&](unsigned i){e.point(ENGINE_INPUT_EVENT_POINTER_DOWN,i%4*200+100,i/4*150+75);e.point(ENGINE_INPUT_EVENT_POINTER_UP,i%4*200+100,i/4*150+75);e.point(ENGINE_INPUT_EVENT_POINTER_MOVE,-1000,-1000);e.tick();};
+            for(unsigned i=0;i<16;++i){if(values[i]==i)continue;const auto pos=std::find(values.begin(),values.end(),i)-values.begin();check(pos<16,"target tile found");choose(i);choose(static_cast<unsigned>(pos));choose(i);std::swap(values[i],values[pos]);}
+            e.tick();check((persisted_block_word(f,7,8)&1U)!=0,"solving via ABI commits configured CG reward to PC global save");
+            e.key(0x1b);e.tick();check(e.field("minigame_active")=="false"&&e.field("overlay")=="title","Escape returns to title caller");
+            e.action("extras");e.pointer(0,720,120);e.tick();check(e.field("minigame_active")=="true"&&e.field("overlay")=="omake","configured omake area opens its own minigame");
+            e.click(780,585);check(e.field("minigame_active")=="false"&&e.field("overlay")=="omake","exit hit returns to omake caller");
+            e.action("minigame:1");e.key(0x1b);e.tick();check(e.field("overlay")=="omake"&&e.field("minigame_active")=="false","omake Escape preserves caller");
+            e.action("minigame:1");e.open(f);check(e.field("minigame_active")=="false"&&e.field("overlay")=="title","reopen discards active board");
+            e.start();check(set(e,"systemnnn.action","minigame:0")!=ENGINE_RESULT_OK,"story cannot invoke title-only minigame");
+        });
         test("invalid open recovery",[&]{
             Fixture f(temporary,"recovery");Engine e(f);e.option("runtime","systemnnn");e.open(f);
             const auto invalid=(temporary/"invalid").u8string();fs::create_directories(fs::u8path(invalid));

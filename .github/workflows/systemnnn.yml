@@ -156,12 +156,11 @@ jobs:
           -DCMAKE_TOOLCHAIN_FILE="${GITHUB_WORKSPACE}/.systemnnn-vcpkg/scripts/buildsystems/vcpkg.cmake"
           -DVCPKG_MANIFEST_DIR="${GITHUB_WORKSPACE}/tests/systemnnn_native"
           -DVCPKG_TARGET_TRIPLET=x64-windows-static-md
-          -DCMAKE_FIND_PACKAGE_PREFER_CONFIG=ON
           -DVCPKG_INSTALLED_DIR="${GITHUB_WORKSPACE}/build/systemnnn-native/vcpkg_installed"
           -DOPENAL_INCLUDE_DIR="${GITHUB_WORKSPACE}/build/systemnnn-native/vcpkg_installed/x64-windows-static-md/include"
           -DOPENAL_LIBRARY="${GITHUB_WORKSPACE}/build/systemnnn-native/vcpkg_installed/x64-windows-static-md/lib/OpenAL32.lib"
       - name: Save focused vcpkg binaries
-        if: ${{ !cancelled() && matrix.dependencies == 'vcpkg' && steps.vcpkg-configure.outcome == 'success' && steps.vcpkg-cache.outputs.cache-hit != 'true' }}
+        if: ${{ !cancelled() && matrix.dependencies == 'vcpkg' && (steps.vcpkg-configure.outcome == 'success' || steps.vcpkg-configure.outcome == 'failure') && steps.vcpkg-cache.outputs.cache-hit != 'true' }}
         uses: actions/cache/save@v6
         with:
           path: .systemnnn-vcpkg-cache

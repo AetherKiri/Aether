@@ -295,6 +295,50 @@ struct Presenter::Impl {
     }
     void back(Plane& p) { row(p,{8,8,std::min(100,width/4),32},U"Back","back",true,20); }
     void heading(Plane& p,std::u32string_view text) { label(p,text,std::max(118,width/5),12,std::max(18,std::min(28,width/24)),width-130); }
+    void minigame_entries(Plane& p,scene::GameSession& game,const Config& parent,std::string_view mode) {
+        if(parent.number("miniGameFlag",0)==0)return;
+        const auto& c=cfg("minigame");
+        const int count=bound(c.number("addMiniGame",0),0,64);
+        const int checks=bound(c.number("miniGameCheckNumber",count),0,count);
+        const bool buttons=c.number("areaButtonMode",0)!=0;
+        std::string caller="omake";
+        int area_x=0,area_y=0,area_w=16,area_h=16,button_x=0,button_y=0;
+        Button inherited;
+        for(int i=1;i<=checks;++i) {
+            const auto number=std::to_string(i),key="miniGameButton"+number;
+            // Inheritance advances for every registration, including entries
+            // belonging to another caller or currently gated by a variable.
+            inherited=button(c,key,inherited);
+            caller=lower(c.value("miniGameCheckMode"+number,caller));
+            area_x=c.number("miniGameCheckX"+number,area_x);area_y=c.number("miniGameCheckY"+number,area_y);
+            area_w=dimension(c.number("miniGameCheckSizeX"+number,area_w));
+            area_h=dimension(c.number("miniGameCheckSizeY"+number,area_h));
+            button_x=c.number(key+"PrintX",button_x);button_y=c.number(key+"PrintY",button_y);
+            Button b=inherited;b.x=button_x;b.y=button_y;
+            const Rect area{area_x,area_y,area_w,area_h};
+            area_x=safe_add(area_x,area_w);button_x=safe_add(button_x,b.w);
+            const int type=c.number("miniGame"+number,0);
+            if(type<1 || type>10 || (caller!=mode && caller!=(mode=="title"?"4":"15")))continue;
+            const auto variable=c.value("checkVarName"+number);
+            if(!variable.empty() && game.named_variable(variable,mode=="title")==0 && game.named_variable(variable,false,-1)!=-1)continue;
+            const auto action="minigame:"+std::to_string(i-1);
+            if(buttons) {
+                const auto title=c.value(key+"Name");
+                const auto caption=title.empty()?U"Minigame "+std::u32string(number.begin(),number.end()):decode(title,true);
+                draw_button(p,game,b,caption,action);
+            } else {
+                // Original area mode deliberately draws no widget: the title or
+                // Omake background contains the authored entry artwork.
+                target(area,action);
+            }
+        }
+    }
+    void render_omake(Plane& p,scene::GameSession& game,bool modal=false) {
+        const auto& c=cfg("omake");
+        rectangle(p,{0,0,width,height},0xe00c1420);backdrop(p,game,c,"title_bg2");
+        row(p,{8,8,std::min(100,width/4),32},U"Back",modal?modal_action(0,0):"back",true,20);
+        minigame_entries(p,game,c,"omake");
+    }
     void render_title(Plane& p,scene::GameSession& game) {
         const auto& c=cfg("title");
         backdrop(p,game,c,"title_bg");
@@ -325,6 +369,7 @@ struct Presenter::Impl {
             const auto name=c.value(key+"Name");
             draw_button(p,game,b,name.empty()?labels[i]:decode(name,true),actions[i]);
         }
+        minigame_entries(p,game,c,"title");
         if(c.number("extButtonNumber",0)>0 || c.number("EnableHTMLButton",0)!=0 || c.number("EnableLastLoadButton",0)!=0)
             note("Title website, last-load and extension buttons have no portable action binding.");
     }
@@ -797,6 +842,7 @@ struct Presenter::Impl {
     }
     void render_modal(Plane& p,scene::GameSession& game) {
         const auto& m=*game.state().modal;
+        if(m.mode==nnn::RuntimeMode::Omake) {render_omake(p,game,true);return;}
         if(m.chart) {render_chart(p,game,m);return;}
         if(m.mode==nnn::RuntimeMode::NameInput || m.mode==nnn::RuntimeMode::KanjiInput) {render_text_fields(p,game,m);return;}
         rectangle(p,{0,0,width,height},0xe00c1420);
@@ -875,7 +921,7 @@ struct Presenter::Impl {
 };
 
 Presenter::Presenter(const std::filesystem::path& root,TextRenderer& text):impl_(std::make_unique<Impl>(root,text)) {
-    for(const char* name:{"title","game","printmessage","messagewindow","selectmessage","systemmenu","backlog","save","load","datafile","selectplace","selectplace2","selectchart","chart","nameinput","kanjiinput","printitem","shop","printterm","listenvoice"}) {
+    for(const char* name:{"title","game","printmessage","messagewindow","selectmessage","systemmenu","backlog","save","load","datafile","selectplace","selectplace2","selectchart","chart","nameinput","kanjiinput","printitem","shop","printterm","listenvoice","omake","minigame"}) {
         Config config;
         try {
             const auto source=nnn::game_config::read(root,"init",std::string(name)+".xtx");
@@ -944,6 +990,7 @@ std::shared_ptr<Plane> Presenter::render(scene::GameSession& game,std::string_vi
     // between scene layers and this transparent plane.
     plane->show_backdrop=true;
     if(overlay=="title") i.render_title(*plane,game);
+    else if(overlay=="omake" || overlay=="extras") i.render_omake(*plane,game);
     else if(overlay=="menu") i.render_menu(*plane,game);
     else if(overlay=="backlog") i.render_backlog(*plane,game);
     else if(overlay=="settings") i.render_settings(*plane,game);

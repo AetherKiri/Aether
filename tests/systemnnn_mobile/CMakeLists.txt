@@ -10,6 +10,9 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 function(aetherkiri_limit_runtime_exports target kind)
 endfunction()
 add_subdirectory("${AETHER_ROOT}/abi" abi)
+# Preserve static OpenAL backend dependencies from its package target. This also
+# prevents Apple framework discovery from selecting the system OpenAL instead.
+find_package(OpenAL CONFIG QUIET)
 add_subdirectory("${AETHER_ROOT}/bridge/systemnnn_runtime" runtime)
 
 # Whole-archive linking below forces every adapter object into the final link.

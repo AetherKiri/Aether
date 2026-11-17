@@ -182,7 +182,7 @@ int main(int argc, char** argv) {
     assert(malformed.rgba == before);
 
     // The test owns this unique temporary directory and only its fixture files.
-    assert(root.parent_path() == std::filesystem::temp_directory_path());
+    assert(std::filesystem::equivalent(root.parent_path(), std::filesystem::temp_directory_path()));
     std::filesystem::remove_all(root);
     std::cout << "systemnnn text: CP932, 3422 canonical + legacy tunnel entries, UIF, markup and rendering passed\n";
 }

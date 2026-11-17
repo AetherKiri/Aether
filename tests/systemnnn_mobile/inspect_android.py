@@ -8,7 +8,7 @@ from pathlib import Path
 package, readelf = Path(sys.argv[1]), sys.argv[2]
 observations = []
 provided = {path.name for path in (package / "lib").glob("*.so")}
-platform = {"libc.so", "libm.so", "libdl.so", "liblog.so", "libandroid.so", "libOpenSLES.so", "libaaudio.so", "libz.so"}
+platform = {"libc.so", "libm.so", "libdl.so", "liblog.so", "libandroid.so", "libOpenSLES.so", "libaaudio.so", "libmediandk.so", "libz.so"}
 for name in ("libsystemnnn-mobile-link.so", "libengine_api.so", "libc++_shared.so"):
     binary = package / "lib" / name
     output = subprocess.check_output([readelf, "--wide", "-h", "-l", "-d", "-s", str(binary)], text=True)

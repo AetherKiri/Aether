@@ -33,6 +33,17 @@ int main(int argc,char** argv) {
     struct Cleanup {fs::path p;~Cleanup(){std::error_code ec;fs::remove_all(p,ec);}} cleanup{root};
     put(root/"init/game.xtx","screenSizeX 800\nscreenSizeY 600\n");
     put(root/"init/shop.xtx","itemTypeNumber 3\n");
+    put(root/"init/title.xtx","basicButtonNumber 0\nminiGameFlag 1\n");
+    put(root/"init/omake.xtx","miniGameFlag 1\n");
+    put(root/"init/minigame.xtx","addMiniGame 8\nminiGameCheckNumber 7\nareaButtonMode 0\n"
+        "miniGame1 1\nminiGameCheckMode1 TITLE\nminiGameCheckX1 100\nminiGameCheckY1 450\nminiGameCheckSizeX1 60\nminiGameCheckSizeY1 36\n"
+        "miniGame2 2\nminiGameCheckMode2 15\nminiGame3 11\nminiGameCheckMode3 4\n"
+        "miniGame4 4\nminiGameCheckMode4 4\ncheckVarName4 gate\n"
+        "miniGame5 5\nminiGameCheckMode5 4\ncheckVarName5 missing_variable\n"
+        "miniGame6 10\nminiGameCheckMode6 15\nminiGame7 3\nminiGame8 1\nminiGameCheckMode8 title\n");
+    // var.fxf names are inverted bytes, unlike configuration text.
+    std::string variables="gate\n";for(char& byte:variables)byte=static_cast<char>(static_cast<unsigned char>(byte)^255);
+    put(root/"spt/var.fxf",variables);
     TextRenderer text;if(argc>1)assert(text.load_font(fs::u8path(argv[1])));
     scene::SessionOptions opts;opts.width=800;opts.height=600;opts.audio.enabled=false;
     auto game=scene::GameSession::create_ui_preview(root,opts);
@@ -95,5 +106,47 @@ int main(int argc,char** argv) {
     const auto at=70*saved->stride+80*4;assert(saved->rgba[at]==255 && saved->rgba[at+1]==0);
     premultiplied(*saved);
     ui.render(*game,"save");assert(ui.hit(100,170)=="slot:2");
+    // Authored area entries share Android's registration order, caller values,
+    // type validation, variable gates and inherited geometry.
+    ui.render(*game,"title");
+    assert(ui.hit(110,460)=="minigame:0");
+    assert(ui.hit(170,460).empty()); // Omake caller
+    assert(ui.hit(230,460).empty()); // invalid type=11
+    assert(ui.hit(290,460).empty()); // existing zero gate
+    assert(ui.hit(350,460)=="minigame:4"); // unknown var follows Android's fallback=-1
+    assert(ui.hit(410,460).empty() && ui.hit(530,460).empty()); // Omake and excluded check count
+    game->set_ui_variable("gate",1);ui.render(*game,"title");assert(ui.hit(290,460)=="minigame:3");
+    ui.render(*game,"omake");
+    assert(ui.hit(110,460).empty() && ui.hit(170,460)=="minigame:1");
+    assert(ui.hit(410,460)=="minigame:5" && ui.hit(470,460)=="minigame:6"); // inherited caller
+    assert(ui.hit(30,20)=="back");
+    ui.render(*game,"extras");assert(ui.hit(170,460)=="minigame:1");
+    frame(*game).modal->mode=nnn::RuntimeMode::Omake;ui.render(*game);
+    assert(ui.hit(170,460)=="minigame:1" && ui.hit(30,20)=="modal:action:0:0");
+
+    // Parent feature flags suppress every entry, even with registrations present.
+    put(root/"init/title.xtx","basicButtonNumber 0\nminiGameFlag 0\n");
+    put(root/"init/omake.xtx","miniGameFlag 0\n");
+    Presenter disabled(root,text);disabled.render(*game,"title");assert(disabled.hit(110,460).empty());
+    disabled.render(*game,"omake");assert(disabled.hit(170,460).empty());
+
+    // Button mode inherits artwork geometry across registrations and preserves
+    // configured pixel-independent hit rectangles when no image is supplied.
+    put(root/"init/title.xtx","basicButtonNumber 0\nminiGameFlag 1\n");
+    put(root/"init/omake.xtx","miniGameFlag 1\n");
+    put(root/"init/minigame.xtx","addMiniGame 3\nareaButtonMode 1\n"
+        "miniGame1 1\nminiGameCheckMode1 4\nminiGameButton1PrintX 100\nminiGameButton1PrintY 400\nminiGameButton1SizeX 100\nminiGameButton1SizeY 40\nminiGameButton1PrintMode 0\n"
+        "miniGame2 2\nminiGameCheckMode2 omake\nminiGame3 3\nminiGameCheckMode3 title\n");
+    Presenter buttons(root,text);premultiplied(*buttons.render(*game,"title"));
+    assert(buttons.hit(110,410)=="minigame:0");assert(buttons.hit(210,410).empty());
+    assert(buttons.hit(310,410)=="minigame:2");
+    buttons.render(*game,"omake");assert(buttons.hit(210,410)=="minigame:1");
+    assert(buttons.hit(110,410).empty() && buttons.hit(310,410).empty());
+    // Omitted caller defaults to Omake, and negative counts produce no entries.
+    put(root/"init/minigame.xtx","addMiniGame 1\nminiGame1 1\nminiGameCheckX1 100\nminiGameCheckY1 400\n");
+    Presenter defaults(root,text);defaults.render(*game,"title");assert(defaults.hit(105,405).empty());
+    defaults.render(*game,"omake");assert(defaults.hit(105,405)=="minigame:0");
+    put(root/"init/minigame.xtx","addMiniGame -1\nminiGame1 1\n");
+    Presenter none(root,text);none.render(*game,"omake");assert(none.hit(105,405).empty());
     std::cout<<"SystemNNN presenter contract passed\n";
 }

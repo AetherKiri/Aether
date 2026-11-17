@@ -13,6 +13,7 @@ const RUNTIME_TYRANO := "tyranoscript"
 const RUNTIME_RENPY := "renpy"
 const RUNTIME_MAGES := "mages"
 const RUNTIME_N2SYSTEM := "n2system"
+const RUNTIME_SYSTEMNNN := "systemnnn"
 const RUNTIME_XSYSTEM4 := "xsystem4"
 const RUNTIME_XSYSTEM35 := "xsystem35"
 const RUNTIME_SYSTEM3 := "system3"
@@ -63,6 +64,9 @@ static func inspect(path: String) -> Dictionary:
         var title_match := pattern.search(options)
         if title_match != null:
             candidates.append(title_match.get_string(1))
+    elif is_systemnnn_directory(root):
+        result.engine = RUNTIME_SYSTEMNNN
+        result.signals.append("systemnnn-spt-sys")
     elif is_n2system_directory(root):
         result.engine = RUNTIME_N2SYSTEM
         result.signals.append("n2system-profile-or-npa")
@@ -386,6 +390,17 @@ static func _is_mages_package(files: PackedStringArray) -> bool:
         or files.has("chara.mpk")
         or files.has("model.mpk")
     )
+
+static func is_systemnnn_directory(root: String) -> bool:
+    # Require the exact boot-script path; arbitrary SPT files are insufficient.
+    # Preserve original case when opening files on case-sensitive platforms.
+    var directory := DirAccess.open(root)
+    if directory == null:
+        return false
+    for name in directory.get_directories():
+        if name.to_lower() == "spt" and _file_names(root.path_join(name)).has("sys.spt"):
+            return true
+    return false
 
 static func is_n2system_directory(root: String) -> bool:
     # An explicit Aether profile opts this directory into NitroSharp. Generic

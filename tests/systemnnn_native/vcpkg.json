@@ -1,0 +1,21 @@
+{
+  "$schema": "https://raw.githubusercontent.com/microsoft/vcpkg-tool/main/docs/vcpkg.schema.json",
+  "name": "aether-systemnnn-native-tests",
+  "version-string": "1.0.0",
+  "builtin-baseline": "9eec002df1cd109f8f104cd966a763daf9751489",
+  "dependencies": [
+    "fmt",
+    "spdlog",
+    "libpng",
+    "zlib",
+    { "name": "freetype", "default-features": false },
+    "libiconv",
+    "nlohmann-json",
+    { "name": "openal-soft", "default-features": false },
+    {
+      "name": "ffmpeg",
+      "default-features": false,
+      "features": ["avcodec", "avformat", "swresample", "swscale"]
+    }
+  ]
+}

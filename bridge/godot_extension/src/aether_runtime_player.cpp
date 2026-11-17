@@ -49,6 +49,9 @@ extern "C" void AetherInternalRegisterWa2Runtime(void);
 #if defined(AETHERKIRI_WITH_N2SYSTEM)
 #include "n2system_runtime.h"
 #endif
+#if defined(AETHERKIRI_WITH_SYSTEMNNN)
+#include "systemnnn_runtime.h"
+#endif
 #if defined(AETHERKIRI_WITH_ENTISGLS)
 #include "entisgls/provider.h"
 #endif
@@ -14447,6 +14450,11 @@ void InitializeAetherRuntime(ModuleInitializationLevel level) {
 #endif
 #if defined(AETHERKIRI_WITH_N2SYSTEM)
     aetherkiri::n2system::RegisterRuntimeProvider();
+#endif
+#if defined(AETHERKIRI_WITH_SYSTEMNNN)
+    if (aether_systemnnn_register_runtime() != ENGINE_RESULT_OK) {
+        UtilityFunctions::printerr("Failed to register SystemNNN Emberfall runtime provider");
+    }
 #endif
 #if defined(AETHERKIRI_WITH_CMVS)
     aetherkiri::cmvs::RegisterRuntimeProvider();

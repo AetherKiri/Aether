@@ -14,6 +14,7 @@ const DIRECTORY_RUNTIME_KINDS := [
     "catsystem2",
     "mages",
     "n2system",
+    "systemnnn",
     "minori",
     "cmvs",
     "onscripter",

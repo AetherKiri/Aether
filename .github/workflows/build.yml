@@ -164,6 +164,7 @@ jobs:
           git submodule update --init --depth 1 packages/AetherKrkr
           git submodule update --init --depth 1 packages/AetherMAGES
           git submodule update --init --recursive --depth 1 packages/AetherN2System
+          git submodule update --init --recursive --depth 1 packages/SystemNNN-Emberfall
           git submodule update --init --depth 1 packages/ruffle
           git submodule update --init --recursive --depth 1 packages/xsystem4 packages/xsystem35 packages/system3
 
@@ -563,6 +564,7 @@ jobs:
           git submodule update --init --depth 1 packages/AetherKrkr
           git submodule update --init --depth 1 packages/AetherMAGES
           git submodule update --init --recursive --depth 1 packages/AetherN2System
+          git submodule update --init --recursive --depth 1 packages/SystemNNN-Emberfall
           git submodule update --init --depth 1 packages/rfvp
           git submodule update --init --depth 1 packages/ruffle
           git submodule update --init --recursive --depth 1 packages/xsystem4 packages/xsystem35 packages/system3
@@ -869,6 +871,7 @@ jobs:
           python3 -m unittest discover -s tests/python -p test_n2system_packaging.py -v
           python3 -m unittest discover -s tests/python -p test_macos_app_store_signing.py -v
           python3 -m unittest discover -s tests/python -p test_runtime_submodule_initialization.py -v
+          python3 -m unittest discover -s tests/python -p test_runtime_selection.py -v
           python3 -m unittest discover -s tests/python -p test_ctest_inventory.py -v
 
       - name: Initialize private runtime submodules
@@ -929,6 +932,7 @@ jobs:
           git submodule update --init --depth 1 packages/AetherKrkr
           git submodule update --init --depth 1 packages/AetherMAGES
           git submodule update --init --recursive --depth 1 packages/AetherN2System
+          git submodule update --init --recursive --depth 1 packages/SystemNNN-Emberfall
           git submodule update --init --depth 1 packages/rfvp
           git submodule update --init --depth 1 packages/ruffle
           git submodule update --init --recursive --depth 1 packages/xsystem4 packages/xsystem35 packages/system3
@@ -1153,6 +1157,7 @@ jobs:
             --require-executable mages-runtime-provider
             --require-executable mages-host-events
             --require-executable n2system-runtime-provider
+            --require-executable systemnnn-provider-contract
             --require-executable aether_xsystem35_embedded_midi_contract
           )
           if [[ "$AETHERKIRI_WITH_INTERNAL" == "true" ]]; then
@@ -1352,6 +1357,7 @@ jobs:
           git submodule update --init --depth 1 packages/AetherKrkr
           git submodule update --init --depth 1 packages/AetherMAGES
           git submodule update --init --recursive --depth 1 packages/AetherN2System
+          git submodule update --init --recursive --depth 1 packages/SystemNNN-Emberfall
           git submodule update --init --depth 1 packages/ruffle
           git submodule update --init --recursive --depth 1 packages/xsystem4 packages/xsystem35 packages/system3
 
@@ -1502,7 +1508,7 @@ jobs:
         env:
           LD_LIBRARY_PATH: ${{ github.workspace }}/apps/godot_app/bin/linux/debug
         run: |
-          for test in game_metadata game_launch_entry; do
+          for test in game_metadata game_launch_entry game_input_mapping; do
             timeout 60 "$GODOT_BIN" --headless --path apps/godot_app \
               --script "res://scripts/${test}_test.gd" \
               2>&1 | tee "$RUNNER_TEMP/${test}.log"
@@ -1518,7 +1524,8 @@ jobs:
         run: |
           python3 -m unittest discover -s tests/python -p test_renpy_host.py
           python3 -m unittest discover -s tests/python -p test_runtime_submodule_initialization.py -v
-          for test in android_tree_uri video_library_folders video_library_ui video_import_permissions flash_library tyrano_library tyrano_asar renpy_library xsystem4_library xsystem35_library system3_library rfvp_import; do
+          python3 -m unittest discover -s tests/python -p test_runtime_selection.py -v
+          for test in android_tree_uri video_library_folders video_library_ui video_import_permissions flash_library tyrano_library tyrano_asar renpy_library xsystem4_library xsystem35_library system3_library systemnnn_library runtime_player_reopen rfvp_import; do
             timeout 60 "$GODOT_BIN" --headless --path apps/godot_app \
               --script "res://tests/${test}_test.gd" \
               2>&1 | tee "$RUNNER_TEMP/${test}.log"

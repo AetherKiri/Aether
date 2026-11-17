@@ -1,5 +1,6 @@
 #include "systemnnn_presenter.h"
 #include "systemnnn_text.h"
+#include "systemnnn_dialogue_reveal.h"
 
 #include "emberfall/game_session.hpp"
 #include "nnn/game_config.hpp"
@@ -142,37 +143,8 @@ std::string chart_point(int x,int y) {
     return modal_action(1,static_cast<int>(value));
 }
 struct TextLayout { int x=0,y=0,font=24,next_x=0,next_y=30,space=1; };
-struct Ruby { std::size_t start=0,end=0; std::u32string text; };
-struct Markup { std::u32string text; std::vector<Ruby> ruby; };
-Markup markup(std::u32string_view text, bool single_byte) {
-    Markup out;
-    const char32_t open=single_byte?U'[':U'［',close=single_byte?U']':U'］',em=single_byte?U'.':U'強';
-    std::size_t line=0;
-    for(std::size_t i=0;i<text.size();) {
-        if(text[i]==U'#' && i+1<text.size()) {
-            const auto command=text[i+1];
-            if(command==close) {i+=2;continue;}
-            if(command==open || command==em) {
-                std::size_t at=i+2, count=0;
-                if(command==open && at<text.size()) {
-                    auto digit=text[at++];
-                    if(digit>=U'1' && digit<=U'9') count=digit-U'0';
-                    else if(digit>=U'１' && digit<=U'９') count=digit-U'０';
-                }
-                const auto begin=at;
-                while(at<text.size() && text[at]!=close && text[at]!=U'\r' && text[at]!=U'\n' && at-begin<100) ++at;
-                if(at<text.size() && text[at]==close && at>begin && at-begin<100 && (command==em || count)) {
-                    if(command==em) count=at-begin;
-                    if(count<=out.text.size()-line) out.ruby.push_back({out.text.size()-count,out.text.size(),std::u32string(text.substr(begin,at-begin))});
-                    i=at+1;continue;
-                }
-            }
-        }
-        out.text.push_back(text[i++]);
-        if(out.text.back()==U'\r' || out.text.back()==U'\n') line=out.text.size();
-    }
-    return out;
-}
+using Markup = dialogue::Markup;
+Markup markup(std::u32string_view source,bool single_byte) {return dialogue::parse(source,single_byte);}
 // Fixed cells preserve the PC's configured nextX/nextY/space and ruby anchors.
 // FreeType still supplies glyph outlines; proportional advance is used in menus.
 int cell_width(char32_t c,int font) { return c<0x100 ? std::max(1,font/2) : font; }
@@ -387,8 +359,9 @@ struct Presenter::Impl {
         paint(p,*asset,{0,0,r.width,r.height},r.x,r.y,(opacity*255+50)/100);
         if(bands&1) paint(p,*asset,{0,r.height,r.width,r.height},r.x,r.y);
     }
-    void body(Plane& p,std::u32string_view source,TextLayout l,std::uint32_t tone,const Config& game_config) {
+    void body(Plane& p,std::u32string_view source,TextLayout l,std::uint32_t tone,const Config& game_config,std::size_t visible=std::numeric_limits<std::size_t>::max()) {
         auto parsed=markup(source,game_config.number("codeByte",2)==1);
+        const auto reveal_end=parsed.offset_for_glyphs(visible);
         l.font=bound(l.font,1,128);l.space=bound(l.space,-l.font/2,128);
         l.next_x=bound(l.next_x,-width,width);l.next_y=bound(l.next_y,1,height);
         std::vector<GlyphPosition> positions;
@@ -406,7 +379,7 @@ struct Presenter::Impl {
                 ++row_index;x=safe_add(l.x,row_index*l.next_x);y=safe_add(l.y,row_index*l.next_y);
             }
             positions.push_back({x,y,row_index});
-            if(y<height && y+l.font>0) label(p,std::u32string_view(&parsed.text[i],1),x,y,l.font,std::max(1,width-x),tone);
+            if(i<reveal_end && y<height && y+l.font>0) label(p,std::u32string_view(&parsed.text[i],1),x,y,l.font,std::max(1,width-x),tone);
             x=safe_add(x,advance);
         }
         if(game_config.number("rubiFlag",0)==0) return;
@@ -418,8 +391,18 @@ struct Presenter::Impl {
             if(first.row!=last.row) {note("Ruby crossing a wrapped line is omitted.");continue;}
             const int extent=last.x-first.x+cell_width(parsed.text[ruby.end-1],l.font);
             const int label_width=static_cast<int>(ruby.text.size())*ruby_size;
-            text.draw(p,ruby.text,first.x+(extent-label_width)/2,first.y-ruby_size+offset,ruby_size,std::max(extent,label_width),color(game_config,"rubiColor"));
+            const auto shown=ruby.label_offset(reveal_end);
+            if(shown)text.draw(p,std::u32string_view(ruby.text).substr(0,shown),first.x+(extent-label_width)/2,first.y-ruby_size+offset,ruby_size,std::max(extent,label_width),color(game_config,"rubiColor"));
         }
+    }
+    dialogue::Message dialogue_message(scene::GameSession& game) {
+        const auto& d=game.state().dialogue;const auto& c=cfg("printmessage");
+        const auto decoded=decode(d.display_bytes);
+        const auto normalized=dialogue::normalize(decoded);
+        const auto first=normalized.substr(0,normalized.find(U'\n'));
+        const bool recognized=name_colors.find(first)!=name_colors.end();
+        return dialogue::split(decoded,d.layout_command==0x22220001U && !game.dialogue_visuals().cutin,
+            c.number("nameFlag",1)!=0,c.number("autoNameWindowFlag",0)!=0,recognized);
     }
     void render_dialogue(Plane& p,scene::GameSession& game) {
         const auto& frame=game.state();const auto& d=frame.dialogue;
@@ -446,18 +429,9 @@ struct Presenter::Impl {
         if(!normal) {
             layout.x=shared.lprint_x;layout.y=shared.lprint_y;layout.next_x=shared.lnext_x;layout.next_y=shared.lnext_y;
         }
-        auto decoded=decode(d.display_bytes);std::u32string name;
-        const bool print_name=normal && c.number("nameFlag",1)!=0;
-        if(print_name && !decoded.empty() && !visuals.cutin) {
-            const auto newline=decoded.find_first_of(U"\r\n");
-            if(c.number("autoNameWindowFlag",0)==0 || name_colors.find(decoded.substr(0,newline))!=name_colors.end()) {
-                name=decoded.substr(0,newline);
-                if(newline!=std::u32string::npos) {
-                    auto at=newline+1;if(decoded[newline]==U'\r' && at<decoded.size() && decoded[at]==U'\n') ++at;
-                    decoded.erase(0,at);
-                } else decoded.clear();
-            }
-        }
+        auto message=dialogue_message(game);
+        const auto& decoded=message.body;const auto& name=message.name;
+        auto remaining=frame.wait==scene::Wait::Dialogue?static_cast<std::size_t>(game.visible_text()):std::numeric_limits<std::size_t>::max();
         const int setting=game.runtime()?game.runtime()->message_window():0;
         const int opacity=shared.window_opacity_percent;
         if(windowed && !visuals.cutin) {
@@ -496,12 +470,15 @@ struct Presenter::Impl {
                             rectangle(p,{r.window_x,r.window_y,rw,row_layout.font+2*r.pad_y},0xd0000000|r.window_color);
                     }
                 }
-                body(p,std::u32string_view(decoded).substr(start,end==std::u32string::npos?decoded.size()-start:end-start),row_layout,color(c,"color"),gc);
+                const auto row_source=std::u32string_view(decoded).substr(start,end==std::u32string::npos?decoded.size()-start:end-start);
+                body(p,row_source,row_layout,color(c,"color"),gc,remaining);
+                const auto spent=markup(row_source,shared.code_byte==1).glyph_count();
+                remaining-=std::min(remaining,spent);
                 if(end==std::u32string::npos) break;
                 start=end+1;if(decoded[end]==U'\r' && start<decoded.size() && decoded[start]==U'\n') ++start;
                 ++index;
             }
-        } else body(p,decoded,layout,color(c,"color"),gc);
+        } else body(p,decoded,layout,color(c,"color"),gc,remaining);
     }
     void render_choices(Plane& p,scene::GameSession& game) {
         const auto& f=game.state();if(!f.selection) return;
@@ -971,6 +948,16 @@ Presenter::Presenter(const std::filesystem::path& root,TextRenderer& text):impl_
     impl_->note("Portable UI uses static normal/disabled button artwork; hover/press animation, button sounds, animated cursors and portrait lip animation are not implemented.");
 }
 Presenter::~Presenter()=default;
+void Presenter::prepare_text(scene::GameSession& game) {
+    if(game.state().wait!=scene::Wait::Dialogue)return;
+    const auto message=impl_->dialogue_message(game);
+    const bool single_byte=game.shared_config_snapshot().code_byte==1;
+    const auto count=dialogue::parse(message.body,single_byte).glyph_count();
+    const auto raw_prefix=game.append_prefix();std::optional<std::uint32_t> prefix;
+    if(!raw_prefix.empty())prefix=dialogue::native_count(dialogue::append_glyphs(message,impl_->decode(raw_prefix),single_byte));
+    game.set_text_length(dialogue::native_count(count),prefix);
+    if(game.skip_effective())game.text_characters(0);
+}
 std::shared_ptr<Plane> Presenter::render(scene::GameSession& game,std::string_view overlay) {
     auto& i=*impl_;i.targets.clear();i.chart_targets.clear();i.mini_targets.clear();
     const auto dimensions=game.shared_config_snapshot();

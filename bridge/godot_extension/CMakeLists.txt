@@ -582,11 +582,11 @@ if(TARGET aether_rfvp_runtime)
     target_compile_definitions(aether_kiri_godot PRIVATE AETHERKIRI_WITH_RFVP=1)
 endif()
 if(TARGET krkr2plugin)
-    if(WEB OR EMSCRIPTEN)
+    if(WEB OR EMSCRIPTEN OR LINUX)
         # krkr2plugin has cyclic static dependencies with sub-plugin targets.
         # Force-load the archive by path exactly once; leave target-based
         # krkr2plugin links as normal archives so repeated dependency scans do
-        # not produce duplicate symbols under wasm-ld.
+        # not produce duplicate symbols under wasm-ld or the Linux linker.
         add_dependencies(aether_kiri_godot krkr2plugin)
         target_link_libraries(aether_kiri_godot PRIVATE
             "$<LINK_LIBRARY:WHOLE_ARCHIVE,$<TARGET_FILE:krkr2plugin>>"

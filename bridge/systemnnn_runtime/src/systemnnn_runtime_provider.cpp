@@ -99,7 +99,7 @@ struct Runtime {
     AudioOutput audio;
     MoviePlayer movie;
     MiniGameBinding minigame;
-    std::string preview_script;bool preview_loop=true;
+    std::string preview_script,preview_owner="title";bool preview_loop=true;
     std::unique_ptr<StartupSequence> startup_sequence;
     bool movie_from_startup=false,movie_skippable=true;
     uint64_t movie_request=0;
@@ -109,7 +109,7 @@ struct Runtime {
     uint64_t serial=0,delivered_frame_serial=0,line_sequence=UINT64_MAX;
     uint32_t surface_width=0,surface_height=0;
     scene::InputState input;
-    bool paused=false,audio_enabled=true,auto_mode=false,closed=false;
+    bool paused=false,audio_enabled=true,closed=false;
     bool text_request=false,native_menu_open=false;
     uint64_t form_generation=0,text_request_id=0;
     unsigned selected=1;
@@ -149,8 +149,10 @@ struct Runtime {
             else std::fill_n(samples,frames*2,0);
         },session_options.audio.sample_rate)) log(ENGINE_RUNTIME_LOG_WARNING,"Audio device unavailable: "+audio.error());
     }
+    void set_auto(bool enabled) {if(game)game->set_system_parameter(nnn::NNNPARAM_AUTOMODE,enabled?1:0);}
+    fs::path chart_root() const {return writable.empty()?root/"sav":writable/"systemnnn";}
     void close_overlay() {
-        overlay=preview?"title":"";input={};
+        overlay=preview?preview_owner:"";input={};
         if(native_menu_open){native_menu_open=false;if(game->resume_native_panel()){game->audio().restart_loop_script_audio();game->reset_frame_pacing();}}
     }
     void title() {
@@ -158,7 +160,8 @@ struct Runtime {
         movie.close();movie_from_startup=false;movie_request=0;
         native_menu_open=false;text_request=false;++form_generation;
         persist();
-        overlay="title"; auto_mode=false; input={}; preview.reset();
+        game->audio().stop_script_audio();
+        overlay="title";preview_owner="title"; set_auto(false); input={}; preview.reset();
         auto opts=fresh_options();
         preview=GameSession::create_ui_preview(root,opts);
         if(!presenter->title_script().empty()) {
@@ -173,7 +176,7 @@ struct Runtime {
     void start_story() {
         minigame.stop(*game,false);
         auto candidate=std::make_unique<GameSession>(root,fresh_options());
-        if(!writable.empty())candidate->set_chart_storage(writable/"systemnnn"/"chart");
+        candidate->set_chart_storage(chart_root());
         candidate->audio().inherit_music(game->audio());
         movie.close();movie_from_startup=false;movie_request=0;
         game=std::move(candidate); native_menu_open=false;text_request=false;++form_generation;preview.reset(); overlay.clear(); input={}; line_sequence=UINT64_MAX;
@@ -213,6 +216,7 @@ struct Runtime {
     }
     void load(unsigned number) {
         auto candidate=std::make_unique<GameSession>(root,fresh_options(true));
+        candidate->set_chart_storage(chart_root());
         candidate->load_pc_save_candidate(read_file(slot(number)),preview?nullptr:game.get());
         minigame.stop(*game,false);
         // The audio callback takes game_mutex, so replacing ownership here is serialized.
@@ -225,15 +229,15 @@ struct Runtime {
         const auto& state=game->state();
         if(state.wait==Wait::Dialogue && state.dialogue.sequence!=line_sequence) {
             line_sequence=state.dialogue.sequence;
-            const auto body=TextRenderer::plain_dialogue(text.decode(state.dialogue.display_bytes));
-            game->begin_player_line(game->audio().state().voices[0].active,game->audio().voice_duration_ms(0));
-            game->set_text_length(static_cast<uint32_t>(body.size()),static_cast<uint32_t>(body.size()));
+            // The VM already initializes voice duration, script speed and APPEND
+            // timing. The presenter supplies only its exact decoded body count.
+            presenter->prepare_text(*game);
         }
     }
     void extras() {
-        minigame.stop(*game,false);movie.close();input={};auto_mode=false;
+        minigame.stop(*game,false);movie.close();input={};set_auto(false);game->audio().stop_script_audio();
         const nnn::game_config::NameListSetup config(nnn::game_config::read(root,"init","omake.xtx"));
-        preview=GameSession::create_ui_preview(root,fresh_options());overlay="omake";
+        preview=GameSession::create_ui_preview(root,fresh_options());overlay="omake";preview_owner="omake";
         preview_script=config.integer("backScriptFlag",0)?std::string(config.field("backScriptName").value_or("omake")):std::string{};
         preview_loop=config.integer("backScriptLoop",1)!=0;
         if(!preview_script.empty()){preview->reset_ui_background(preview_script,15,game->runtime());preview->step_ui_background({},preview_loop);}
@@ -266,7 +270,7 @@ struct Runtime {
             if(action=="save" && preview) return;
             overlay=action; presenter->set_page(0);if(action=="save" || action=="load")refresh_slots();
         } else if(action=="menu") { if(game->options_enabled()) overlay="menu"; }
-        else if(action=="auto") { auto_mode=!auto_mode; overlay.clear(); }
+        else if(action=="auto") { set_auto(game->get_system_parameter(nnn::NNNPARAM_AUTOMODE)==0); overlay.clear(); }
         else if(action=="skip") { game->set_skip_active(!game->skip_active()); overlay.clear(); }
         else if(action=="extras")extras();
         else if(action=="next_page" || action=="page:next") presenter->set_page(presenter->page()+1);
@@ -347,7 +351,8 @@ struct Runtime {
         }
         owner.set_message_plane(plane);
         const auto key=owner.expected_plane_key();
-        auto complete_key=key; complete_key[5]|=1<<17;
+        auto complete_key=key;
+        if(owner.state().wait==Wait::Dialogue && owner.text_complete())complete_key[5]|=1<<17;
         compositor.mailbox()->set_attached(true);
         compositor.mailbox()->push(plane->rgba.data(),plane->stride,plane->width,plane->height,complete_key,
             plane->show_backdrop,plane->floating_rgba.empty()?nullptr:plane->floating_rgba.data(),plane->stride);
@@ -425,15 +430,34 @@ struct Runtime {
                 items.push_back({{"kind","button"},{"id","2"},{"rect",{224,height-48,198,36}},{"text","Cancel"}});
                 request("runtime_form",Json{{"title","SystemNNN"},{"width",434},{"height",height},{"items",items},{"request_id",std::to_string(form_generation)}}.dump());
             }
-            if(state.wait==Wait::Dialogue && (game->skip_effective() || (auto_mode && game->auto_ready(ms,true)))) input.advance=true;
-            // Only a fully composed and acknowledged message may advance the VM.
-            if(input.advance && !scene::scene_plane_key_matches(compositor.presented_plane_key(),game->expected_plane_key())) input.advance=false;
-            if(input.advance) input.advance=game->request_advance();
+            if(state.wait==Wait::Dialogue) {
+                game->text_characters(ms);
+                // Call even with Auto off: native script AUTOMESSAGE and the
+                // source's Auto-reset frame rules also live in this clock.
+                const bool ready=game->auto_ready(ms,game->text_complete());
+                const bool automatic=(game->skip_effective() && game->text_complete()) || ready;
+                if(automatic)input.advance=true;
+                if(input.advance) {
+                    if(!game->text_complete()) {
+                        // First click reveals, but never advances the script.
+                        game->request_advance();input.advance=false;
+                    } else {
+                        const auto& presented=compositor.presented_plane_key();
+                        if(!scene::scene_plane_key_matches(presented,game->expected_plane_key()) || !(presented[5]&(1<<17)))input.advance=false;
+                        // Script AUTOMESSAGE intentionally rejects manual clicks.
+                        // Native auto readiness is already the authority for it.
+                        else if(!automatic)input.advance=game->request_advance();
+                    }
+                }
+            } else if(input.advance) {
+                if(!scene::scene_plane_key_matches(compositor.presented_plane_key(),game->expected_plane_key()))input.advance=false;
+                else input.advance=game->request_advance();
+            }
             input.play_movies=true;
             if(!compositor.waiting_for_draw(*game)) game->step_frame(scene::FrameTiming{ms,game->pace(ms)},input);
             update_line();
             if(const auto view=native_panel::menu_overlay(game->take_native_panel_menu());!view.empty()){
-                native_menu_open=true;overlay=std::string(view);input={};auto_mode=false;game->set_skip_active(false);
+                native_menu_open=true;overlay=std::string(view);input={};set_auto(false);game->set_skip_active(false);
                 game->audio().suspend_script_audio();presenter->set_page(0);if(overlay=="save" || overlay=="load")refresh_slots();
             }
             if(game->take_system_save_request())persist();
@@ -469,7 +493,7 @@ static engine_result_t open(void* opaque,const char* root,const char* startup) {
     self.audio.stop();
     const auto result=guarded(opaque,[&](Runtime& r) {
         if(r.game)r.minigame.stop(*r.game,false);r.persist();r.movie.close();r.startup_sequence.reset();r.root=fs::u8path(root);r.game.reset();r.preview.reset();
-        r.closed=false;r.paused=false;r.native_menu_open=false;r.text_request=false;++r.form_generation;r.input={};r.selected=1;r.auto_mode=false;
+        r.closed=false;r.paused=false;r.native_menu_open=false;r.text_request=false;++r.form_generation;r.input={};r.selected=1;r.set_auto(false);
         r.compositor.reset_present_state();
         r.text.load_game_codec(r.root);
         std::vector<fs::path> fonts;
@@ -515,7 +539,7 @@ static engine_result_t option(void* opaque,const engine_option_t* option) {
         else if(key=="systemnnn.action") {r.action(value);if(r.game)r.present();}
         else if(key=="systemnnn.save_slot") r.save(static_cast<unsigned>(std::stoul(value)));
         else if(key=="systemnnn.load_slot") {r.load(static_cast<unsigned>(std::stoul(value)));r.present();}
-        else if(key=="systemnnn.auto") r.auto_mode=value=="1";
+        else if(key=="systemnnn.auto") r.set_auto(value=="1");
         else if(key=="systemnnn.skip" && r.game)r.game->set_skip_active(value=="1");
         else if(key.rfind("systemnnn.parameter.",0)==0 && r.game) {
             if(!r.game->set_system_parameter(static_cast<nnn::Word>(std::stoul(key.substr(20))),std::stoi(value)))
@@ -644,7 +668,7 @@ static engine_result_t debug(void* opaque,char* buffer,uint32_t size,uint32_t* w
     if(!opaque)return ENGINE_RESULT_INVALID_ARGUMENT;
     auto& r=*static_cast<Runtime*>(opaque);std::lock_guard<std::mutex> guard(r.game_mutex);
     Json data={{"runtime","systemnnn"},{"overlay",r.overlay},{"paused",r.paused},{"frame_serial",r.serial},{"audio_error",r.audio.error()},{"minigame_active",r.minigame.active()}};
-    if(r.game){const auto& state=r.game->state();data["script"]=utf8(r.text.decode(state.script));data["word"]=state.word;data["wait"]=static_cast<int>(state.wait);data["warnings"]=r.game->warnings();}
+    if(r.game){const auto& state=r.game->state();data["script"]=utf8(r.text.decode(state.script));data["word"]=state.word;data["wait"]=static_cast<int>(state.wait);data["warnings"]=r.game->warnings();data["visible_text"]=r.game->visible_text();data["text_length"]=r.game->text_length();data["text_complete"]=r.game->text_complete();data["auto_mode"]=r.game->get_system_parameter(nnn::NNNPARAM_AUTOMODE)!=0;data["auto_remaining_ms"]=r.game->auto_remaining_ms();}
     return copy_string(data.dump(),buffer,size,written);
 }
 static const engine_runtime_provider_v1_t& provider() {

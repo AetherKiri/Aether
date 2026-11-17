@@ -75,7 +75,13 @@ add_executable(systemnnn-minigame-binding-contract
 target_link_libraries(systemnnn-minigame-binding-contract PRIVATE emberfall-scene)
 add_test(NAME systemnnn-minigame-binding-contract COMMAND systemnnn-minigame-binding-contract)
 
-foreach(contract provider text startup progress audio presenter native-panel minigame minigame-binding)
+add_executable(systemnnn-dialogue-reveal-contract
+    "${AETHER_ROOT}/bridge/systemnnn_runtime/tests/systemnnn_dialogue_reveal_test.cpp")
+target_include_directories(systemnnn-dialogue-reveal-contract PRIVATE "${AETHER_ROOT}/bridge/systemnnn_runtime/src")
+target_link_libraries(systemnnn-dialogue-reveal-contract PRIVATE nnn-script-core)
+add_test(NAME systemnnn-dialogue-reveal-contract COMMAND systemnnn-dialogue-reveal-contract)
+
+foreach(contract provider text startup progress audio presenter native-panel minigame minigame-binding dialogue-reveal)
     set(target "systemnnn-${contract}-contract")
     target_compile_features(${target} PRIVATE cxx_std_17)
     # Keep assert-based and explicit checks active in every Release build.

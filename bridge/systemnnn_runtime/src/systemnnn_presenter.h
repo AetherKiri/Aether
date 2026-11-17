@@ -47,6 +47,9 @@ public:
 
     std::shared_ptr<emberfall::render::MessagePlane> render(
         emberfall::scene::GameSession& game, std::string_view overlay = {});
+    // Call exactly once on entry to a new dialogue sequence, before ticking its
+    // native text clock. Preserves APPEND prefixes; does not reset voice timing.
+    void prepare_text(emberfall::scene::GameSession& game);
     // Coordinates are in logical game pixels. Empty means no enabled target.
     // choice/place/slot indices are ONE based; modal uses ScriptModalRow::id.
     // Pagination: page:prev/page:next; engine modal pages: modal:page:N.

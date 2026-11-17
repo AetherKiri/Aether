@@ -176,7 +176,7 @@ jobs:
           from pathlib import Path
           import os
           inventory = json.loads(Path("build/systemnnn-native/inventory.json").read_text())
-          expected = {f"systemnnn-{name}-contract" for name in ("provider", "text", "startup", "progress", "audio", "presenter", "native-panel", "minigame", "minigame-binding")}
+          expected = {f"systemnnn-{name}-contract" for name in ("provider", "text", "startup", "progress", "audio", "presenter", "native-panel", "minigame", "minigame-binding", "dialogue-reveal")}
           observed = {Path(test["command"][0]).stem for test in inventory["tests"] if test.get("command")}
           missing = expected - observed
           if missing:

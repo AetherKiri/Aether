@@ -35,7 +35,7 @@ Word le(const Bytes& value,std::size_t at){check(at+4<=value.size(),"PC word wit
 // platform/scene/tests/scene_tests.cpp documents the SPT word/table encoding;
 // these fixtures neither copy its scenarios nor read precompiled game scripts.
 struct Script {
-    std::vector<Word> code,selection_adjust;
+    std::vector<Word> code,selection_adjust,command_adjust;
     std::vector<std::string> messages{"First independent line.","Second independent line.","Selected route."};
     std::vector<std::string> strings{"Amber route","Azure route"};
     Word add(std::initializer_list<Word> words){const auto at=32U+static_cast<Word>(code.size());code.insert(code.end(),words);return at;}
@@ -72,7 +72,7 @@ struct Script {
         words[4]=static_cast<Word>(messages.size());string_table(0x44440002U,5,messages);
         words[6]=static_cast<Word>(strings.size());string_table(0x44440001U,7,strings);
         table(0x44440004U,18,{});table(0x44440005U,20,{});table(0x44440006U,21,selection_adjust);
-        table(0x44440007U,22,{});table(0x44440008U,23,{});
+        table(0x44440007U,22,command_adjust);table(0x44440008U,23,{});
         Bytes result;for(Word word:words)for(unsigned n=0;n<4;++n)result.push_back(static_cast<unsigned char>((word^UINT32_MAX)>>(n*8)));return result;
     }
 };
@@ -93,7 +93,9 @@ struct Fixture {
     explicit Fixture(const fs::path& parent,const std::string& name):root(parent/fs::u8path(name)),writable(root.parent_path()/fs::u8path(name+"-writable")){
         binary(root/"SpT/SyS.SpT",story().encode());
         text(root/"init/game.xtx","frameTime 20\nextSaveDataNumber 0\n");
-        text(root/"init/printmessage.xtx","nameFlag 0\n");
+        // Existing fixtures test VM/input contracts with fast text; reveal fixtures
+        // override this authored speed table to exercise gradual presentation.
+        text(root/"init/printmessage.xtx","nameFlag 0\ncustomMessageSpeed 1\nmessageSpeed1 1000000\nmessageSpeed2 1000000\nmessageSpeed3 1000000\nmessageSpeed4 1000000\nmessageSpeed5 1000000\n");
         text(root/"init/nothing.xtx","nextMode title\n");text(root/"init/title.xtx","enterFadeType 0\n");
         text(root/"init/emberfall-system.cfg","emberfall_system 4\nfile_layer_records 32\nfile_message_width 1024\nfile_status_bytes 7088\nfile_okikae 1\nfile_system_save_version 1\nexe_analyzed 0\nsystem_save_version 1\nsystem_save_trial 0\nsystem_save_source game_files\next_start_code 100\next_block_count 1\next_block_size 6400 engine\n");
     }
@@ -325,6 +327,59 @@ int main(){
             check(e.answer(reopen_old)!=ENGINE_RESULT_OK,"response from before open cannot complete reopened name modal");
             ok(e.answer(reopened),e.handle,"name completion after reopen");e.until(dialogue_wait);
         });
+        test("chart checkpoints share writable root across new story load and reopen",[&]{
+            Fixture f(temporary,"chart-storage");binary(f.root/"sys/ta_chart_button1_1.dwq",puzzle_art());Script s;s.command_adjust.push_back(s.add({5,0x66660003U,0,0,0}));s.print(1,0);s.end();binary(f.root/"SpT/SyS.SpT",s.encode());
+            text(f.root/"init/game.xtx","frameTime 20\ncodeByte 1\nSelectChartIsDefault 1\nautoExtDataMode1 selectchart\n");text(f.root/"SpT/command.xtx","selectchart,0\n");
+            text(f.root/"init/selectchart.xtx","chartListNumber 1\nbasicChartNumber 1\nchartBlockSize 1000\nslotSizeX 1\nslotSizeY 1\nslotVarName now\nworkVarName prior\n");text(f.root/"chart/chart1.xtx","1800 @1 1 100 100 Fixture\n");
+            const std::string names="now\nprior\n";Bytes variables(names.begin(),names.end());for(auto& byte:variables)byte^=0xffU;binary(f.root/"SpT/var.fxf",variables);
+            Engine e(f);e.option("systemnnn.audio","0");e.open(f);e.action("start");e.until(9);
+            const auto checkpoint=f.writable/"systemnnn/chart1/slot1.dat";check(fs::is_regular_file(checkpoint),"new story writes native chart checkpoint to shared private root");const auto initial=bytes(checkpoint);
+            check(!fs::exists(f.writable/"systemnnn/chart/chart1/slot1.dat"),"new story does not create a separate chart directory");
+            e.option("systemnnn.save_slot","2");e.action("title");e.option("systemnnn.load_slot","2");check(e.wait()==9&&bytes(checkpoint)==initial,"saved chart modal restores using the same checkpoint root");
+            e.open(f);e.action("start");e.until(9);const auto reopened=bytes(checkpoint);check(reopened.size()==initial.size()&&le(reopened,0)==le(initial,0),"reopened new story preserves checkpoint format and location");
+        });
+        test("progressive dialogue reveal preserves speaker ruby and APPEND acknowledgement",[&]{
+            Fixture f(temporary,"progressive-text");Script s;
+            const std::string first="A deliberately long opening sentence that reveals gradually.\r\nA separate body row.",tail="ABCD continues with a second row.";
+            const auto first_length=static_cast<unsigned>(std::count_if(first.begin(),first.end(),[](char c){return c!='\r'&&c!='\n';}));
+            s.messages={"Alice\r\n"+first,"AB#[2phonetic]CD continues with a second row.","Final independent dialogue."};
+            s.color(44,88,132);s.draw();s.print(1,0);s.add({6,command,0x22220003U,1,2,0});s.print(3,2);s.end();binary(f.root/"SpT/SyS.SpT",s.encode());
+            text(f.root/"init/game.xtx","frameTime 20\ncodeByte 1\n");
+            text(f.root/"init/printmessage.xtx","nameFlag 1\nautoNameWindowFlag 1\nappendSkipName 1\nfontSize 20\nprintX 24\nprintY 430\nnextX 10\nnextY 28\nnameX 24\nnameY 400\ncustomMessageSpeed 1\nmessageSpeed1 20\nmessageSpeed2 20\nmessageSpeed3 20\nmessageSpeed4 20\nmessageSpeed5 20\n");
+            text(f.root/"SpT/namecol.xtx","Alice 255 255 255\n");
+            Engine e(f);e.option("systemnnn.audio","0");e.open(f);e.action("start");e.until(dialogue_wait);
+            const auto count=[&](const char* key){return static_cast<unsigned>(std::stoul(e.field(key)));};
+            check(count("text_length")==first_length,"speaker and separators do not spend reveal glyphs");
+            const auto word=e.word(),visible=count("visible_text");check(visible<first_length&&e.field("text_complete")=="false","first presented dialogue is partial");
+            const auto partial=e.frame();e.tick(100);check(e.word()==word&&count("visible_text")==visible+2,"native 20 CPS reveals two glyphs per 100ms");
+            const auto more=e.frame();check(more.pixels!=partial.pixels,"partial reveal changes rendered glyphs");
+            e.pointer(0,400,500);e.tick();check(e.word()==word&&e.wait()==dialogue_wait&&e.field("text_complete")=="true","first pointer click reveals whole line without advancing");
+            const auto complete=e.frame();check(complete.pixels!=more.pixels&&count("visible_text")==first_length,"completed glyphs are rendered before continuation");
+            e.pointer(0,400,500);e.tick();e.until(dialogue_wait);check(e.word()!=word,"next click advances after completed frame acknowledgement");
+            const auto appended=e.word();check(count("text_length")==first_length+tail.size(),"APPEND timing excludes ruby annotation bytes; "+e.debug());
+            check(count("visible_text")>=first_length&&count("visible_text")<first_length+tail.size(),"APPEND preserves old body while revealing only the suffix");
+            const auto append_visible=count("visible_text");e.tick(100);check(count("visible_text")==append_visible+2&&e.word()==appended,"ruby base glyphs use native reveal timing");
+            e.pointer(0,400,500);e.tick();check(e.word()==appended&&e.field("text_complete")=="true","first APPEND click completes suffix only");e.frame();
+            e.pointer(0,400,500);e.tick();e.until(dialogue_wait);check(e.word()!=appended,"completed APPEND advances on following click");
+        });
+        test("progressive dialogue Auto settings and script AUTOMESSAGE use native wait",[&]{
+            for(unsigned scripted=0;scripted<2;++scripted){
+                Fixture f(temporary,"progressive-auto-"+std::to_string(scripted));Script s;s.messages={"ABCDEFGHIJ","A second sentence stays pending."};
+                if(scripted)s.number(0x33330057U,{1});s.print(1,0);if(scripted)s.number(0x33330057U,{UINT32_MAX});s.print(2,1);s.end();binary(f.root/"SpT/SyS.SpT",s.encode());
+                text(f.root/"init/game.xtx","frameTime 20\ncodeByte 1\n");
+                text(f.root/"init/printmessage.xtx","nameFlag 0\ncustomMessageSpeed 1\nmessageSpeed1 20\nmessageSpeed2 20\nmessageSpeed3 20\nmessageSpeed4 20\nmessageSpeed5 20\nnoVoiceLastWait 100\nautoMessageLastWait 100\nautoMessageWaitVoiceFlag 0\n");
+                Engine e(f);e.option("systemnnn.audio","0");e.open(f);e.action("start");e.until(dialogue_wait);const auto word=e.word();
+                if(!scripted){e.action("param:6:1");check(e.field("auto_mode")=="true","system parameter enables provider Auto state");}
+                for(unsigned n=0;e.field("text_complete")!="true"&&n<10;++n){e.tick(50);check(e.word()==word,"Auto cannot skip a partially revealed line");}
+                check(e.field("text_complete")=="true"&&e.word()==word,"last-glyph frame retains the dialogue");e.frame();
+                e.tick(99);check(e.word()==word,"native Auto wait retains all but final millisecond");e.tick(1);
+                for(unsigned n=0;e.word()==word&&n<3;++n)e.tick(20);
+                check(e.word()!=word&&e.wait()==dialogue_wait,"Auto advances after native completed-text wait");
+                if(!scripted){e.action("auto");check(e.field("auto_mode")=="false","Auto action turns off the native system parameter");const auto second=e.word();e.tick(5000);e.tick(5000);check(e.word()==second,"Auto action turns off the setting previously enabled through system parameter");
+                    e.option("systemnnn.auto","1");check(e.field("auto_mode")=="true","Auto option shares native parameter with settings and action");e.tick(100);e.tick(20);check(e.word()!=second||e.field("overlay")=="title","Auto option re-enables native parameter for continuation");}
+                else {const auto second=e.word();e.tick(5000);e.tick(5000);check(e.word()==second,"script AUTOMESSAGE off leaves manual line pending");}
+            }
+        });
         test("script term modal Return resumes its script caller",[&]{
             Fixture f(temporary,"script-term");Script s;s.user(0);s.color(33,92,144);s.draw();s.print(8,0);s.end();binary(f.root/"SpT/SyS.SpT",s.encode());
             text(f.root/"SpT/command.xtx","printterm,0\n");text(f.root/"init/game.xtx","frameTime 20\ncodeByte 1\nPrintTermIsDefault 1\n");
@@ -351,6 +406,7 @@ int main(){
             e.key(0x1b);e.tick();check(e.field("minigame_active")=="false"&&e.field("overlay")=="title","Escape returns to title caller");
             e.action("extras");e.pointer(0,720,120);e.tick();check(e.field("minigame_active")=="true"&&e.field("overlay")=="omake","configured omake area opens its own minigame");
             e.click(780,585);check(e.field("minigame_active")=="false"&&e.field("overlay")=="omake","exit hit returns to omake caller");
+            e.action("settings");e.action("back");check(e.field("overlay")=="omake","closing settings opened from Omake preserves the Omake caller");
             e.action("minigame:1");e.key(0x1b);e.tick();check(e.field("overlay")=="omake"&&e.field("minigame_active")=="false","omake Escape preserves caller");
             e.action("minigame:1");e.open(f);check(e.field("minigame_active")=="false"&&e.field("overlay")=="title","reopen discards active board");
             e.start();check(set(e,"systemnnn.action","minigame:0")!=ENGINE_RESULT_OK,"story cannot invoke title-only minigame");

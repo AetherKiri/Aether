@@ -65,6 +65,10 @@ SystemNNN already follows the independent target/static aggregation path. Its ob
 
 Large combined tool deliveries can abbreviate display output. The core provider read calls acquired contiguous source chunks; key lifecycle/frame/input methods were re-read in compact source form for concrete findings. Supporting files marked P deliberately retain an incomplete claim. This ledger describes source reading, not exhaustive code review or runtime proof.
 
+Parent follow-up also read [KiriKiri glue CMake](../bridge/krkr2_runtime/CMakeLists.txt) through EOF, ranges 1–110 and 99–138: independent legacy-services glue, archive preservation/RESCAN, Apple OpenAL/pthread interface cleanup, internal Lua prefixing and Android platform libraries. This closes that build file’s U gap for the combined task; the engine implementation remains outside this full-read claim.
+
+Parent follow-up read: the remaining Tyrano WebView implementation was independently read through EOF in explicit ranges 1–180,98–187,188–272,273–351. This closes that file’s earlier P delivery gap for the combined task, while preserving the original auditor ledger above. Its UI-thread WKWebView embedding, symlink-resolved local scheme handler/ranges, bounded atomic string storage, synchronous save acknowledgment, native dialogs, lifecycle suspension, normalized native-view rectangle and queued events were inspected. This adds source reading only; no Apple WebView execution or SystemNNN behavior follows from it.
+
 ## Concrete integration contracts for SystemNNN
 
 1. **Independent provider and ABI lifetime.** [ABI](../abi/include/engine_runtime_provider.h#L120) requires process-lifetime descriptors/function pointers, positive probe scores with deterministic score/priority/order selection, and provider-owned runtime instances paired with one destruction. Use the provider version for host validation and ENGINE_API_VERSION for create-desc validation; do not conflate them. [Dispatch](../abi/src/engine_api_dispatch.cpp#L645) supplies a non-null host/create-desc and catches create exceptions, but direct provider clients still need deterministic argument checks.

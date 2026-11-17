@@ -33,7 +33,7 @@ UBSAN_OPTIONS=halt_on_error=1:print_stacktrace=1 \
 ctest --test-dir build/systemnnn-native-asan -E 'provider|java' --output-on-failure
 ```
 
-The full provider executable ran directly because instrumentation increased its runtime to **126.76 seconds**, exceeding its normal **120-second CTest timeout**. No provider test filter was set. The helper command selects the nine remaining native contracts. Java parity tests were excluded from this sanitizer run.
+The full provider executable ran directly and completed in **126.76 seconds**. No provider test filter was set. The final source revision configures a **240-second provider CTest timeout** (the helper defaults are 120 seconds); the earlier reason recorded for choosing direct execution referred to the old 120-second limit. The direct process exit remains the execution evidence. The helper command selects the nine remaining native contracts. Java parity tests were excluded from this sanitizer run.
 
 ## Recorded results and evidence
 

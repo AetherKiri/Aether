@@ -18,7 +18,7 @@ git submodule update --init --recursive packages/SystemNNN-Emberfall
 
 ## 接入范围
 
-注册独立 `systemnnn` provider，以不区分大小写的 `spt/sys.spt` 识别目录；接入 Godot 的 CPU RGBA 图形通路、FreeType/CP932 文本、原生逐字/Auto/Skip 时间规则、OpenAL 音频、FFmpeg 影片、启动序列、PC 存读档和全局进度。标题/Omake 可进入十种已配置小游戏，具有规则、输入、完成事件及奖励持久化接线。各平台构建开关、字体、输入坐标、私有存储和静态归档接线均已实现；Web 默认关闭本运行时。
+注册独立 `systemnnn` provider，以不区分大小写的 `spt/sys.spt` 识别目录；接入 Godot 的 CPU RGBA 图形通路、FreeType/CP932 文本、原生逐字/Auto/Skip 时间规则、OpenAL 音频、FFmpeg 影片、启动序列、PC 存读档和全局进度。标题/Omake 可进入十种已配置小游戏，具有规则与输入，并按各类型协议接入完成事件和奖励持久化；Paint 按设计没有胜利条件或奖励。各平台构建开关、字体、输入坐标、私有存储和静态归档接线均已实现；Web 默认关闭本运行时。
 
 ## 已完成的验证
 

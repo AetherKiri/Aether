@@ -423,7 +423,13 @@ int main(){
         });
         if(failures){std::cerr<<failures<<" provider fixture(s) failed; retained at "<<temporary<<'\n';return 1;}
         if(std::getenv("SYSTEMNNN_KEEP_FIXTURES"))std::cout<<"Fixtures retained at "<<temporary<<'\n';
-        else fs::remove_all(temporary);
+        else {
+            // The ABI owns a process-global diagnostic sink beyond engine_destroy.
+            // Windows cannot unlink its open log until process exit. Keep fixtures
+            // and report cleanup separately from the completed runtime assertions.
+            std::error_code cleanup_error;fs::remove_all(temporary,cleanup_error);
+            if(cleanup_error)std::cerr<<"Fixture cleanup deferred: "<<cleanup_error.message()<<"\nFixtures retained at "<<temporary<<'\n';
+        }
         return 0;
     }catch(const std::exception& error){std::cerr<<error.what()<<"\nFixtures retained at "<<temporary<<'\n';return 1;}
 }

@@ -5,8 +5,8 @@
 ## 仓库与分支
 
 - Aether：[PR #532](https://github.com/AetherKiri/Aether/pull/532)，分支 `feat/systemnnn-emberfall`。
-- Emberfall：[AetherKiri fork](https://github.com/AetherKiri/SystemNNN-Emberfall)，分支 `feat/aether-integration`，下述已执行证据使用 gitlink `f52d77fe05104726d35389266f0ba6f5be3a3f59`；Windows 原生路径修复正在子仓库准备，新 SHA 与其重跑结果尚待记录。
-- 移动目标验证分支：`feat/systemnnn-mobile-verify`，已通过的历史运行时快照为 `de4a1f29`，其子仓库固定 `f52d77fe`。`81c09626` 的桌面证据也使用该子仓库版本；这些结果不自动覆盖待合入的 Windows 原生路径修复。后续审计/测试辅助文件不会冒充新的运行时执行结果。
+- Emberfall：[AetherKiri fork](https://github.com/AetherKiri/SystemNNN-Emberfall)，分支 `feat/aether-integration`，当前 gitlink 固定 `e5ca4283b9c4f933f9cea9d486239396eeb9b086`，已修复 Windows 原生路径在脚本、散装图片和 GTB/GPK 图包读取时的窄字符转换；Aether 对应运行时提交为 `b634edba`。
+- 移动目标验证分支：`feat/systemnnn-mobile-verify`，已通过的历史运行时快照为 `de4a1f29`，其子仓库固定 `f52d77fe`。`81c09626` 的桌面证据也使用该子仓库版本；最终 `b634edba` / `e5ca4283` 已另行通过移动目标链接、本地原生测试、sanitizer 与真实 Linux 图形复测，见下述记录。后续审计/测试辅助文件不会冒充新的运行时执行结果。
 
 ```sh
 git clone --branch feat/systemnnn-emberfall https://github.com/AetherKiri/Aether.git
@@ -24,12 +24,12 @@ git submodule update --init --recursive packages/SystemNNN-Emberfall
 
 | 范围 | 实际证据与边界 |
 |---|---|
-| Linux / macOS adapter | `81c09626` 托管 CI 均通过 12/12 合约；Linux 另通过生成影片集成，Godot shell 通过五套测试。 |
-| Windows adapter | `81c09626` 的[Windows job](https://github.com/AetherKiri/Aether/actions/runs/44141468366/job/134245088587)通过依赖配置、缓存上传、Release 构建与目标清单，但合约仅 11/12 通过；provider 的日文目录、日文启动文件两项因原生路径窄字符串转换失败。子仓库修复与新 SHA 重跑待完成；见[桌面验证记录](systemnnn_desktop_validation.md)。 |
-| Android ARM64 | 历史快照 `de4a1f29` / 子仓库 `f52d77fe` 的实际 NDK r28b / Clang 19 编译、whole-archive 完整链接、安装和 ELF 检查通过；AArch64、16 KiB LOAD 对齐、指定三库直接依赖及注册符号通过。不是 APK 或真机运行。 |
-| iPhoneOS ARM64 | 历史快照 `de4a1f29` / 子仓库 `f52d77fe` 的 AppleClang 17 编译、完整链接、安装和 Mach-O 检查通过；iOS 平台、arm64、最低系统 16.0 及注册符号有日志证据。GNU iconv 头文件/库不匹配已在真正运行时构建中修复并验证。不是 IPA 或真机运行。 |
-| 真实 Linux GDExtension | 使用子仓库 `f52d77fe` 的历史完整 `KRKR2;SYSTEMNNN` 产品目标在 Godot 4.7.2/X11/Mesa 加载并通过独立编写的图形场景：可见文字、纹理读回、键盘分支、槽 13 存读档与继续位置恢复；正常环境的 `ldd -r` 无缺库/未定义符号。依赖宿主发行版库，不是干净机器发行认证。 |
-| 内存/未定义行为检查 | 使用子仓库 `f52d77fe` 的全十个 native 合约在新建 ASan/UBSan/泄漏检测构建中通过；只说明该快照已运行场景未报告诊断。移动链接、真实产品图形与 sanitizer 均尚未覆盖待合入的子仓库路径修复。 |
+| Linux / macOS adapter | 最终 `b72bdca3` 托管 CI 均通过 12/12 合约；Linux 另通过生成影片集成，Godot shell 通过五套测试。 |
+| Windows adapter | `81c09626` 的[Windows job](https://github.com/AetherKiri/Aether/actions/runs/44141468366/job/134245088587)通过依赖配置、缓存上传、Release 构建与目标清单，但合约仅 11/12 通过；provider 的日文目录、日文启动文件两项因原生路径窄字符串转换失败。最终 `b72bdca3` 的[CI](https://github.com/AetherKiri/Aether/actions/runs/44150877791)已通过全部 12/12 合约，包含日文目录与启动文件。测试在进程日志持有临时文件时报告清理延后并保留剩余文件。见[桌面验证记录](systemnnn_desktop_validation.md)。 |
+| Android ARM64 | 最终 `b634edba` / 子仓库 `e5ca4283` 已通过托管 NDK r28b / Clang 19 编译、whole-archive 完整链接、安装和 ELF 检查；AArch64、16 KiB LOAD 对齐、指定三库直接依赖及注册符号通过。不是 APK 或真机运行。 |
+| iPhoneOS ARM64 | 最终 `b634edba` / 子仓库 `e5ca4283` 已通过托管 AppleClang 17 编译、完整链接、安装和 Mach-O 检查；iOS 平台、arm64、最低系统 16.0 及注册符号有日志证据。GNU iconv 头文件/库不匹配已在真正运行时构建中修复并验证。不是 IPA 或真机运行。 |
+| 真实 Linux GDExtension | 使用最终子仓库 `e5ca4283` 的完整 `KRKR2;SYSTEMNNN` 产品目标在 Godot 4.7.2/X11/Mesa 加载并通过独立编写的图形场景：可见文字、纹理读回、键盘分支、槽 13 存读档与继续位置恢复；正常环境的 `ldd -r` 无缺库/未定义符号。依赖宿主发行版库，不是干净机器发行认证。 |
+| 内存/未定义行为检查 | 最终子仓库 `e5ca4283` 的十个 native 合约在增量重建 ASan/UBSan/泄漏检测后全通过，136.03 秒，无诊断；最初新建构建的历史证据也保留。只说明已运行场景未报告诊断。 |
 | Python 辅助合约 | 14 个新 fixture/检查器测试与 6 个 selector/初始化测试通过。广泛 Python 回归中的七个既有诊断测试依赖宿主 ADB 发现；不修改生产代码的 resolver mock 可使这七项通过，不宣称原始全套全绿。 |
 
 复现入口：[运行时说明](systemnnn_runtime.md)、[汇总验证](systemnnn_validation.md)、[桌面](systemnnn_desktop_validation.md)、[移动目标](systemnnn_mobile_validation.md)、[真实产品图形构建](systemnnn_production_validation.md)、[图形 fixture](../tests/systemnnn_godot/README.md)、[sanitizer](systemnnn_sanitizer_validation.md)。
@@ -42,4 +42,4 @@ git submodule update --init --recursive packages/SystemNNN-Emberfall
 4. CardSystem 模式 45 在当前 Emberfall core/Android 版本没有可用游戏/完成协议；不编造前端支持，也不与 Monte/Pyramid/Golf 等小游戏混同。[审计](systemnnn_cardsystem_audit.md)。部分 UI 动画、ruby 跨行、backlog 回放等仍有边界。
 5. renderer 阅读发现直接 native snapshot 恢复缺少某些 effect 特有状态约束；当前 PC-save bridge 通过 restore_layer/configure 重建 effect 状态，不直接读入 native State；这两个 native-state 绕过点未在该路径建立可达性。另一个上游 Android JNI 使用 native snapshot，未审计其 Java 持久化/信任来源；不宣称已验证的恶意存档漏洞或全局解析安全。CPU 发布回执与实际显示的区别、批量 tick 的调度风险同样记录在 renderer 补充中。
 
-请在发布门槛关闭、Windows 最终结果收集以及所需真实设备/游戏验收完成前，不将 Draft PR 标记为“全平台发行就绪”。
+Windows 最终验证已通过；请在发布门槛关闭以及所需真实设备/游戏验收完成前，不将 Draft PR 标记为“全平台发行就绪”。

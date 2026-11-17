@@ -29,6 +29,7 @@ if(ANDROID)
 elseif(CMAKE_SYSTEM_NAME STREQUAL "iOS")
     add_executable(systemnnn-mobile-link link.cpp)
     set_target_properties(systemnnn-mobile-link PROPERTIES
+        MACOSX_BUNDLE FALSE
         XCODE_ATTRIBUTE_CODE_SIGNING_ALLOWED NO
         XCODE_ATTRIBUTE_CODE_SIGNING_REQUIRED NO)
 else()

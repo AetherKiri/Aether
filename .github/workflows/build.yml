@@ -78,9 +78,12 @@ env:
 jobs:
   android:
     # Upstream bot candidates run only the secretless RFVP provider checks.
+    # SystemNNN integration refs run source contracts only while binary distribution authorization is unresolved.
     if: >-
       ${{ !startsWith(github.head_ref, 'rfvp-update/') &&
           !startsWith(github.ref_name, 'rfvp-update/') &&
+          !startsWith(github.head_ref, 'feat/systemnnn') &&
+          !startsWith(github.ref_name, 'feat/systemnnn') &&
           github.event.pull_request.user.login != 'github-actions[bot]' }}
     name: Build Android App
     runs-on: ubuntu-latest
@@ -468,9 +471,12 @@ jobs:
 
   ios:
     # Upstream bot candidates run only the secretless RFVP provider checks.
+    # SystemNNN integration refs run source contracts only while binary distribution authorization is unresolved.
     if: >-
       ${{ !startsWith(github.head_ref, 'rfvp-update/') &&
           !startsWith(github.ref_name, 'rfvp-update/') &&
+          !startsWith(github.head_ref, 'feat/systemnnn') &&
+          !startsWith(github.ref_name, 'feat/systemnnn') &&
           github.event.pull_request.user.login != 'github-actions[bot]' }}
     name: Build iOS App
     runs-on: xcode-27
@@ -827,9 +833,12 @@ jobs:
 
   macos:
     # Upstream bot candidates run only the secretless RFVP provider checks.
+    # SystemNNN integration refs run source contracts only while binary distribution authorization is unresolved.
     if: >-
       ${{ !startsWith(github.head_ref, 'rfvp-update/') &&
           !startsWith(github.ref_name, 'rfvp-update/') &&
+          !startsWith(github.head_ref, 'feat/systemnnn') &&
+          !startsWith(github.ref_name, 'feat/systemnnn') &&
           github.event.pull_request.user.login != 'github-actions[bot]' }}
     name: Build macOS App
     runs-on: xcode-27
@@ -1286,9 +1295,12 @@ jobs:
 
   linux:
     # Upstream bot candidates run only the secretless RFVP provider checks.
+    # SystemNNN integration refs run source contracts only while binary distribution authorization is unresolved.
     if: >-
       ${{ !startsWith(github.head_ref, 'rfvp-update/') &&
           !startsWith(github.ref_name, 'rfvp-update/') &&
+          !startsWith(github.head_ref, 'feat/systemnnn') &&
+          !startsWith(github.ref_name, 'feat/systemnnn') &&
           github.event.pull_request.user.login != 'github-actions[bot]' }}
     name: Build Linux App (${{ matrix.arch }})
     runs-on: ${{ matrix.runner }}

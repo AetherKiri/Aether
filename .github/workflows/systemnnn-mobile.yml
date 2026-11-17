@@ -161,7 +161,6 @@ jobs:
           name: systemnnn-${{ matrix.platform }}-arm64-link
           if-no-files-found: warn
           path: |
-            build/systemnnn-mobile/package
             build/systemnnn-mobile/binary-inspection.txt
             build/systemnnn-mobile/package-inspection.json
             build/systemnnn-mobile/source-revisions.txt

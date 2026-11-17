@@ -44,4 +44,4 @@ cmake --install build/systemnnn-mobile-ios --prefix build/systemnnn-mobile-ios/p
 
 Inspect the executable with file, lipo, otool, and nm. No signing secrets are required. The existing product iOS workflow remains responsible for Godot static archive merging, export, signing, and IPA packaging; this focused link gate does not replace that acceptance work. No simulator or device run is implied.
 
-The separate SystemNNN mobile link workflow runs both configurations, verifies the root/manifest baseline relationship, and retains binaries, compile commands, CMake cache, vcpkg status, and binary inspection output for review.
+The separate SystemNNN mobile link workflow runs both configurations, verifies the root/manifest baseline relationship, and retains compile commands, CMake cache, vcpkg status, and textual binary inspection output for review. Combined native binaries remain in the runner workspace and are excluded from artifact uploads while license compatibility is unresolved.

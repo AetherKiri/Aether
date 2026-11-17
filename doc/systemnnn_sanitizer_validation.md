@@ -1,5 +1,9 @@
 # SystemNNN native sanitizer validation
 
+## Final native-path revision
+
+After pinning Emberfall `e5ca4283b9c4f933f9cea9d486239396eeb9b086` at Aether `b634edba5630429ca1cbae2003e4ded1cc389524`, rebuilt the instrumented targets and ran all ten native CTests with `ASAN_OPTIONS=detect_leaks=1:halt_on_error=1`, `UBSAN_OPTIONS=halt_on_error=1`, `--timeout 240 -E java`. All ten passed in 136.03 seconds; provider 127.25 seconds. No sanitizer diagnostics were reported. Exact retained CTest output is under `build/systemnnn-native-asan/Testing/Temporary/LastTest.log`. This rerun covers the final native-path correction, and supersedes the earlier snapshot-only limitation. The build below was reused incrementally with unchanged instrumentation; this was not a second fresh configure.
+
 Validated on Linux x86-64 with GCC 13.3.0 on 2026-11-17, against source revision `81c096263cc74a09faabaf9ce621306883ad1a86`. The validation changed no runtime source or existing build files. It used a separate `build/systemnnn-native-asan` directory; the normal native build was untouched.
 
 ## Reproduce

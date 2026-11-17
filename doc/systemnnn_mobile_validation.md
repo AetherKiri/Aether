@@ -1,5 +1,9 @@
 # SystemNNN Android and iOS native validation
 
+## Final native-path revision
+
+The [push run 44149796365](https://github.com/AetherKiri/Aether/actions/runs/44149796365) passed both targets at Aether `b634edba5630429ca1cbae2003e4ded1cc389524` / Emberfall `e5ca4283b9c4f933f9cea9d486239396eeb9b086`. [Android job 134274642291](https://github.com/AetherKiri/Aether/actions/runs/44149796365/job/134274642291) completed in 2m25s; [iOS job 134274641164](https://github.com/AetherKiri/Aether/actions/runs/44149796365/job/134274641164) completed in 1m20s. Both passed actual target compile, complete adapter link, install, binary inspection and diagnostic-only upload after the Windows native-path IO correction. The retained local full run log is `/tmp/systemnnn-b634-mobile-push.log`. These results extend the earlier target-build evidence below to the final child pin; they retain the same no-device/no-APK/no-IPA limitations. The `b72bdca3` follow-up changes fixture cleanup only, with identical runtime sources and child pin. A duplicate PR run at `b634edba` had an iOS dependency-build step interrupted with “The operation was canceled” when the next push arrived; this was not a compiler/linker failure and does not replace the successful push run. At collection, its `b72bdca3` PR follow-up had passed Android and was waiting for the iOS runner; this record does not label that duplicate run successful.
+
 Verified on 2026-11-17 against Aether commit `de4a1f29781babddc7a302260ed6e4869d644e7b` and Emberfall commit `f52d77fe05104726d35389266f0ba6f5be3a3f59`. The [focused mobile workflow](../.github/workflows/systemnnn-mobile.yml) [completed successfully](https://github.com/AetherKiri/Aether/actions/runs/44140280096) on both targets.
 
 | Target | Hosted job | Result |

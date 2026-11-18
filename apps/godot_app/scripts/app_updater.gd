@@ -11,6 +11,8 @@ const APPLE_LOOKUP_URL := "https://itunes.apple.com/lookup?id=6796580469"
 const APPLE_STORE_URL := "https://apps.apple.com/app/id6796580469"
 const APPLE_TESTFLIGHT_URL := "itms-beta://"
 const GITHUB_REPO_RELEASES_PAGE := "https://github.com/AetherKiri/Aether/releases"
+const ANDROID_DOWNLOAD_BASE_URL := "https://dl.colorcard.cc"
+const ANDROID_DOWNLOAD_MIN_VERSION := "1.1.2"
 
 enum CheckStatus {
     SUCCESS_HAS_UPDATE,
@@ -115,6 +117,71 @@ static func is_mac_app_store() -> bool:
 static func is_prerelease(v: String) -> bool:
     var parsed := _parse_version(v)
     return not str(parsed.get("prerelease", "")).is_empty()
+
+## Returns the Android APK URL on the Cloudflare R2 mirror. Releases older than
+## the first mirrored version return an empty string so callers can fall back to
+## the GitHub release asset.
+static func android_download_url(version: String) -> String:
+    var clean := version.strip_edges().trim_prefix("v").trim_prefix("V")
+    if clean.is_empty() or compare_versions(clean, ANDROID_DOWNLOAD_MIN_VERSION) < 0:
+        return ""
+    return "%s/android/%s/AetherKiri-%s-android.apk" % [
+        ANDROID_DOWNLOAD_BASE_URL,
+        clean,
+        clean,
+    ]
+
+## Decides which URL to use after probing the mirror. A 2xx/3xx response keeps
+## the mirror; redirects are followed by HTTPRequest, so the final code is used.
+## Missing, failed, or timed-out probes fall back to the GitHub asset.
+static func _download_url_after_probe(
+    mirror_url: String,
+    fallback_url: String,
+    probe_result: int,
+    response_code: int
+) -> String:
+    if mirror_url.is_empty():
+        return fallback_url
+    if probe_result == HTTPRequest.RESULT_SUCCESS and response_code >= 200 and response_code < 400:
+        return mirror_url
+    return fallback_url
+
+## Probes the mirror with a short HEAD request before opening a browser, so a
+## missing or not-yet-published R2 object falls back to the GitHub asset.
+## callback signature: func(url: String)
+static func resolve_download_url(
+    node: Node,
+    mirror_url: String,
+    fallback_url: String,
+    callback: Callable
+) -> void:
+    if mirror_url.is_empty() or not is_instance_valid(node):
+        callback.call(fallback_url)
+        return
+
+    var finished := [false]
+    var finish := func(url: String):
+        if finished[0]:
+            return
+        finished[0] = true
+        callback.call(url)
+
+    var req := HTTPRequest.new()
+    req.timeout = 4.0
+    node.add_child(req)
+    req.request_completed.connect(func(result: int, response_code: int, _headers: PackedStringArray, _body: PackedByteArray):
+        req.queue_free()
+        finish.call(_download_url_after_probe(mirror_url, fallback_url, result, response_code))
+    )
+
+    var err := req.request(
+        mirror_url,
+        PackedStringArray(["User-Agent: AetherKiri-Updater"]),
+        HTTPClient.METHOD_HEAD
+    )
+    if err != OK:
+        req.queue_free()
+        finish.call(fallback_url)
 
 ## Returns true if running an Apple TestFlight (iOS or macOS TestFlight) build.
 static func is_apple_testflight(current_version: String) -> bool:
@@ -245,6 +312,7 @@ static func _format_inline_markdown(text: String) -> String:
 ##   "github_url": String
 ##   "github_apk_url": String
 ##   "github_macos_url": String
+##   "android_download_url": String
 ##   "app_store_url": String
 ##   "is_app_store": bool
 ##   "is_prerelease": bool
@@ -428,6 +496,7 @@ static func _finish_with_release_data(
         "github_url": github_url,
         "github_apk_url": github_apk_url,
         "github_macos_url": github_macos_url,
+        "android_download_url": android_download_url(latest_ver),
         "is_app_store": false,
         "is_prerelease": is_pre,
         "source": source,

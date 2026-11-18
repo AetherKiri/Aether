@@ -166,6 +166,8 @@ extern "C" {
 int32_t aether_save_transfer_begin(const char *action, const char *path,
                                  const char *folder, const char *title);
 char *aether_save_transfer_take_result();
+int32_t aether_cloud_save_sync_begin(const char *action, const char *path, const char *game);
+char *aether_cloud_save_sync_take_result();
 int32_t aether_storekit_start(const char *product_id);
 uint64_t aether_storekit_refresh_entitlement(const char *product_id);
 uint64_t aether_storekit_purchase(const char *product_id);
@@ -12819,6 +12821,26 @@ void main() {
 #endif
     }
 
+    bool native_cloud_save_sync_begin(const String &action, const String &path, const String &game) const {
+#if defined(__APPLE__)
+        return aether_cloud_save_sync_begin(action.utf8().get_data(), path.utf8().get_data(), game.utf8().get_data()) != 0;
+#else
+        return false;
+#endif
+    }
+
+    String native_cloud_save_sync_take_result() const {
+#if defined(__APPLE__)
+        char *json = aether_cloud_save_sync_take_result();
+        if (!json) return String();
+        String result = String::utf8(json);
+        aether_native_launch_file_picker_free_string(json);
+        return result;
+#else
+        return String();
+#endif
+    }
+
     bool native_save_transfer_begin(const String &action, const String &path,
                                     const String &folder, const String &title) const {
 #if defined(__APPLE__)
@@ -13149,6 +13171,8 @@ protected:
                              &AetherRuntimePlayer::iap_get_state_json);
         ClassDB::bind_method(D_METHOD("verify_unlock_secret", "candidate"),
                              &AetherRuntimePlayer::verify_unlock_secret);
+        ClassDB::bind_method(D_METHOD("native_cloud_save_sync_begin", "action", "path", "game"), &AetherRuntimePlayer::native_cloud_save_sync_begin);
+        ClassDB::bind_method(D_METHOD("native_cloud_save_sync_take_result"), &AetherRuntimePlayer::native_cloud_save_sync_take_result);
         ClassDB::bind_method(D_METHOD("native_save_transfer_begin", "action", "path", "folder", "title"),
                              &AetherRuntimePlayer::native_save_transfer_begin);
         ClassDB::bind_method(D_METHOD("native_save_transfer_take_result"),

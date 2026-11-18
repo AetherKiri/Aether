@@ -3,6 +3,18 @@
 #import <UIKit/UIKit.h>
 #import <objc/runtime.h>
 
+// Godot 4.7 propagates its preferences to the current root class from
+// viewDidAppear, including when that instance already has Aether's subclass.
+static BOOL GodotLibraryBarPreference(id controller, SEL selector) { return NO; }
+static void PropagateGodotLibraryPreferences(UIViewController *root) {
+    for (NSString *name in @[@"prefersStatusBarHidden", @"prefersHomeIndicatorAutoHidden"]) {
+        Method method = class_getInstanceMethod(object_getClass(root), NSSelectorFromString(name));
+        method_setImplementation(method, (IMP)GodotLibraryBarPreference);
+    }
+    [root setNeedsStatusBarAppearanceUpdate];
+    [root setNeedsUpdateOfHomeIndicatorAutoHidden];
+}
+
 extern "C" engine_result_t engine_background_playback(engine_handle_t, uint32_t) { return ENGINE_RESULT_NOT_SUPPORTED; }
 extern "C" engine_result_t engine_pause(engine_handle_t) { return ENGINE_RESULT_OK; }
 extern "C" engine_result_t engine_resume(engine_handle_t) { return ENGINE_RESULT_OK; }
@@ -30,6 +42,7 @@ extern "C" engine_result_t engine_read_frame_rgba(engine_handle_t, void*, size_t
 @property(strong, nonatomic) UIViewController *game;
 @property(strong, nonatomic) NSMutableArray *results;
 - (void)check:(NSString*)name active:(BOOL)active dark:(BOOL)dark next:(dispatch_block_t)next;
+- (void)checkGodotRefresh:(dispatch_block_t)next;
 @end
 @implementation SystemBarsSmoke
 - (BOOL)application:(UIApplication*)app didFinishLaunchingWithOptions:(NSDictionary*)options {
@@ -49,35 +62,50 @@ extern "C" engine_result_t engine_read_frame_rgba(engine_handle_t, void*, size_t
     [self check:@"library-light" active:NO dark:NO next:^{
         [self check:@"settings-dark" active:NO dark:YES next:^{
             [self check:@"game-pip-disabled" active:YES dark:YES next:^{
-                [self check:@"return-to-library" active:NO dark:NO next:^{
-                    // Reparent the same Godot view, as a window/container change can do.
-                    UIViewController *previous = self.window.rootViewController;
-                    [self.game willMoveToParentViewController:nil];
-                    [self.game.view removeFromSuperview];
-                    [self.game removeFromParentViewController];
-                    ContainerController *replacement = [ContainerController new];
-                    [replacement addChildViewController:self.game];
-                    self.game.view.frame = replacement.view.bounds;
-                    [replacement.view addSubview:self.game.view];
-                    [self.game didMoveToParentViewController:replacement];
-                    self.window.rootViewController = replacement;
-                    [self check:@"replacement-container" active:NO dark:YES next:^{
-                        BOOL restored = object_getClass(previous) == ContainerController.class;
-                        aether_mobile_window_close(self->_host); self->_host = nullptr;
-                        restored = restored && object_getClass(replacement) == ContainerController.class;
-                        [self.results addObject:@{@"name":@"controller-restoration", @"passed":@(restored)}];
-                        BOOL passed = YES;
-                        for (NSDictionary *result in self.results) passed &= [result[@"passed"] boolValue];
-                        NSDictionary *report = @{@"passed":@(passed), @"checks":self.results};
-                        NSString *path = [NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES).firstObject stringByAppendingPathComponent:@"system-bars-result.json"];
-                        [[NSJSONSerialization dataWithJSONObject:report options:NSJSONWritingPrettyPrinted error:nil] writeToFile:path atomically:YES];
-                        NSLog(@"SYSTEM_BARS_TEST %@", passed ? @"PASSED" : @"FAILED");
+                [self checkGodotRefresh:^{
+                    [self check:@"return-to-library" active:NO dark:NO next:^{
+                        // Reparent the same Godot view, as a window/container change can do.
+                        UIViewController *previous = self.window.rootViewController;
+                        [self.game willMoveToParentViewController:nil];
+                        [self.game.view removeFromSuperview];
+                        [self.game removeFromParentViewController];
+                        ContainerController *replacement = [ContainerController new];
+                        [replacement addChildViewController:self.game];
+                        self.game.view.frame = replacement.view.bounds;
+                        [replacement.view addSubview:self.game.view];
+                        [self.game didMoveToParentViewController:replacement];
+                        self.window.rootViewController = replacement;
+                        [self check:@"replacement-container" active:NO dark:YES next:^{
+                            BOOL restored = object_getClass(previous) == ContainerController.class;
+                            aether_mobile_window_close(self->_host); self->_host = nullptr;
+                            restored = restored && object_getClass(replacement) == ContainerController.class;
+                            [self.results addObject:@{@"name":@"controller-restoration", @"passed":@(restored)}];
+                            BOOL passed = YES;
+                            for (NSDictionary *result in self.results) passed &= [result[@"passed"] boolValue];
+                            NSDictionary *report = @{@"passed":@(passed), @"checks":self.results};
+                            NSString *path = [NSSearchPathForDirectoriesInDomains(NSDocumentDirectory, NSUserDomainMask, YES).firstObject stringByAppendingPathComponent:@"system-bars-result.json"];
+                            [[NSJSONSerialization dataWithJSONObject:report options:NSJSONWritingPrettyPrinted error:nil] writeToFile:path atomically:YES];
+                            NSLog(@"SYSTEM_BARS_TEST %@", passed ? @"PASSED" : @"FAILED");
+                        }];
                     }];
                 }];
             }];
         }];
     }];
     return YES;
+}
+- (void)checkGodotRefresh:(dispatch_block_t)next {
+    PropagateGodotLibraryPreferences(self.window.rootViewController);
+    [self check:@"game-after-godot-controller-refresh" active:YES dark:YES next:^{
+        PropagateGodotLibraryPreferences(self.window.rootViewController);
+        [NSNotificationCenter.defaultCenter postNotificationName:UIApplicationDidBecomeActiveNotification object:UIApplication.sharedApplication];
+        // Inspect before configure is called again: foreground handling itself
+        // must restore both preferences even when gameActive has not changed.
+        UIViewController *root = self.window.rootViewController;
+        [self.results addObject:@{@"name":@"foreground-restores-overwritten-preferences",
+            @"passed":@(root.prefersStatusBarHidden && root.prefersHomeIndicatorAutoHidden)}];
+        [self check:@"game-after-foreground" active:YES dark:YES next:next];
+    }];
 }
 - (void)check:(NSString*)name active:(BOOL)active dark:(BOOL)dark next:(dispatch_block_t)next {
     self.game.view.backgroundColor = dark ? UIColor.blackColor : UIColor.whiteColor;

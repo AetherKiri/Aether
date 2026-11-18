@@ -701,18 +701,19 @@ package_ios_unsigned_ipa() {
     echo "Unsigned IPA created: $export_dir/Aether-${config_cap}-Unsigned.ipa"
 }
 
-with_ios_only_gdextension() {
-    local gdextension_file="$GODOT_APP_DIR/aether_kiri.gdextension"
-    local backup_file
+with_ios_only_gdextension() (
+    # Subshell variables remain available to EXIT even when errexit unwinds
+    # the function after a failed export (bash drops function-local values).
+    gdextension_file="$GODOT_APP_DIR/aether_kiri.gdextension"
     backup_file="$(mktemp /tmp/aetherkiri-gdextension.XXXXXX)"
 
     cp "$gdextension_file" "$backup_file"
     restore_gdextension() {
-        trap - RETURN
+        trap - EXIT
         cp "$backup_file" "$gdextension_file"
         rm -f "$backup_file"
     }
-    trap restore_gdextension RETURN
+    trap restore_gdextension EXIT
 
     awk '
         BEGIN { skip = 0 }
@@ -722,9 +723,17 @@ with_ios_only_gdextension() {
         !skip || !/^macos\./ { print }
     ' "$backup_file" | grep -v '^macos\.' > "$gdextension_file"
 
+    # Dynamic providers keep their SDK globals isolated from Godot and the
+    # statically linked engines. Let Godot add both Link and Embed Frameworks
+    # entries, including CodeSignOnCopy, to the generated Xcode project.
+    python3 "$PROJECT_ROOT/tools/stage_ios_runtime_frameworks.py" \
+        --manifest "$CMAKE_BUILD_DIR/runtime-frameworks-$BUILD_TYPE_LOWER.txt" \
+        --project "$GODOT_APP_DIR" --configuration "$BUILD_TYPE_LOWER" \
+        --gdextension "$gdextension_file"
+
     "$GODOT_BIN" --headless --path "$GODOT_APP_DIR" \
         "$EXPORT_MODE" "$EXPORT_PRESET" "$PROJECT_ROOT/out/godot/ios/$BUILD_TYPE_LOWER/Aether.xcodeproj"
-}
+)
 
 echo "==> Building native engine and Godot extension"
 cmake_config_args=(
@@ -739,6 +748,7 @@ cmake_config_args=(
     -D "AETHERKIRI_OBFUSCATOR_PLUGIN=${AETHERKIRI_OBFUSCATOR_PLUGIN:-}"
     -D "AETHERKIRI_OBFUSCATION_BUILD_ID=${AETHERKIRI_OBFUSCATION_BUILD_ID:-local}"
     -D "AETHERKIRI_ENABLE_RFVP=${AETHERKIRI_ENABLE_RFVP:-OFF}"
+    -D "AETHERKIRI_ENABLE_ENTISGLS=${AETHERKIRI_ENABLE_ENTISGLS:-ON}"
 )
 if [[ -n "${RFVP_CARGO:-}" ]]; then
     cmake_config_args+=(-D "RFVP_CARGO=$RFVP_CARGO")

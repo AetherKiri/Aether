@@ -70,19 +70,27 @@ class IOSGameImportTests(unittest.TestCase):
         self.assertEqual(len(info["CFBundleDocumentTypes"]), 2)
         self.assertIn("public.folder", info["CFBundleDocumentTypes"][1]["LSItemContentTypes"])
         self.assertEqual(info["AetherImportAppGroup"], self.group)
+        cloud = "iCloud." + self.bundle
+        self.assertEqual(info["AetherSaveCloudContainer"], cloud)
+        self.assertEqual(info["NSUbiquitousContainers"][cloud]["NSUbiquitousContainerName"], "aether")
+        self.assertEqual(host_entitlements["com.apple.developer.icloud-container-identifiers"], [cloud])
+        self.assertEqual(host_entitlements["com.apple.developer.icloud-services"], ["CloudDocuments"])
         # Ren'Py staging must still select the app after adding an extension.
         runtime = self.root / "runtime"
         (runtime / "renpy-runtime").mkdir(parents=True)
         (runtime / "Frameworks").mkdir()
         stage_renpy_ios.stage(self.project, runtime)
 
-    def profiles(self, include_group=True):
+    def profiles(self, include_group=True, include_cloud=True):
         paths = []
         for index, bundle in enumerate((self.bundle, self.bundle + ".GameImport")):
             path = self.root / f"profile-{index}.plist"
             stage.write_plist(path, {"UUID": f"profile-{index}", "TeamIdentifier": ["TEAM"],
                                    "Entitlements": {"application-identifier": "TEAM." + bundle,
-                                                    stage.GROUP_KEY: [self.group] if include_group else []}})
+                                                    stage.GROUP_KEY: [self.group] if include_group else [],
+                                                    **({"com.apple.developer.icloud-container-identifiers": ["iCloud." + self.bundle],
+                                                        "com.apple.developer.ubiquity-container-identifiers": ["iCloud." + self.bundle],
+                                                        "com.apple.developer.icloud-services": ["CloudDocuments"]} if index == 0 and include_cloud else {})}})
             paths.append(path)
         return paths
 
@@ -104,6 +112,28 @@ class IOSGameImportTests(unittest.TestCase):
             signing.configure(self.project, self.bundle, "TEAM", self.profiles(False), self.root / "export.plist")
         self.assertEqual(original, (self.project / "project.pbxproj").read_bytes())
         self.assertFalse((self.root / "export.plist").exists())
+
+    @unittest.skipUnless(shutil.which("xcrun"), "Requires Swift")
+    def test_save_sync_replacement_and_recovery(self):
+        executable = self.root / "sync-tests"
+        subprocess.run(["xcrun", "swiftc", "-swift-version", "5", str(REPO / "bridge/godot_extension/src/apple_save_sync_store.swift"),
+                        str(REPO / "tests/ios/SaveSyncStoreTests.swift"), "-o", str(executable)], check=True)
+        subprocess.run([str(executable)], check=True)
+
+    def test_missing_cloud_capability_is_actionable(self):
+        stage.stage(self.project)
+        original = (self.project / "project.pbxproj").read_bytes()
+        with self.assertRaisesRegex(ValueError, "must include iCloud container"):
+            signing.configure(self.project, self.bundle, "TEAM", self.profiles(include_cloud=False), self.root / "export.plist")
+        self.assertEqual(original, (self.project / "project.pbxproj").read_bytes())
+
+    def test_apple_wildcard_icloud_service_profile(self):
+        stage.stage(self.project)
+        profiles = self.profiles()
+        profile = plistlib.loads(profiles[0].read_bytes())
+        profile["Entitlements"]["com.apple.developer.icloud-services"] = "*"
+        stage.write_plist(profiles[0], profile)
+        signing.configure(self.project, self.bundle, "TEAM", profiles, self.root / "export.plist")
 
     @unittest.skipUnless(shutil.which("xcrun"), "Requires Swift")
     def test_native_folder_copy_and_crash_recovery(self):

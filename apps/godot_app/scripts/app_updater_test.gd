@@ -31,6 +31,58 @@ func _run() -> void:
         "Prereleases after the mirror cutoff should use the R2 mirror"
     )
 
+    # 1c. Mirror probe fallback decisions (success, missing, server error, timeout)
+    var probe_fallback := "https://github.com/AetherKiri/Aether/releases/download/v1.1.2/AetherKiri-1.1.2-android.apk"
+    _assert(
+        APP_UPDATER_SCRIPT._download_url_after_probe(expected_mirror, probe_fallback, HTTPRequest.RESULT_SUCCESS, 200) == expected_mirror,
+        "Reachable mirror should stay selected"
+    )
+    _assert(
+        APP_UPDATER_SCRIPT._download_url_after_probe(expected_mirror, probe_fallback, HTTPRequest.RESULT_SUCCESS, 302) == expected_mirror,
+        "Redirected mirror should stay selected"
+    )
+    _assert(
+        APP_UPDATER_SCRIPT._download_url_after_probe(expected_mirror, probe_fallback, HTTPRequest.RESULT_SUCCESS, 404) == probe_fallback,
+        "Missing mirror object should fall back to GitHub"
+    )
+    _assert(
+        APP_UPDATER_SCRIPT._download_url_after_probe(expected_mirror, probe_fallback, HTTPRequest.RESULT_SUCCESS, 500) == probe_fallback,
+        "Mirror server error should fall back to GitHub"
+    )
+    _assert(
+        APP_UPDATER_SCRIPT._download_url_after_probe(expected_mirror, probe_fallback, HTTPRequest.RESULT_TIMEOUT, 0) == probe_fallback,
+        "Mirror timeout should fall back to GitHub"
+    )
+    _assert(
+        APP_UPDATER_SCRIPT._download_url_after_probe(expected_mirror, probe_fallback, HTTPRequest.RESULT_CANT_CONNECT, 0) == probe_fallback,
+        "Unreachable mirror should fall back to GitHub"
+    )
+    _assert(
+        APP_UPDATER_SCRIPT._download_url_after_probe("", probe_fallback, HTTPRequest.RESULT_SUCCESS, 200) == probe_fallback,
+        "Empty mirror URL should fall back to GitHub"
+    )
+
+    var immediate_result := [""]
+    APP_UPDATER_SCRIPT.resolve_download_url(
+        null,
+        expected_mirror,
+        probe_fallback,
+        func(url: String): immediate_result[0] = url
+    )
+    _assert(immediate_result[0] == probe_fallback, "Invalid probe node should fall back to GitHub")
+
+    var probe_node := Node.new()
+    root.add_child(probe_node)
+    immediate_result[0] = ""
+    APP_UPDATER_SCRIPT.resolve_download_url(
+        probe_node,
+        "",
+        probe_fallback,
+        func(url: String): immediate_result[0] = url
+    )
+    _assert(immediate_result[0] == probe_fallback, "Empty mirror should resolve immediately to GitHub")
+    probe_node.queue_free()
+
     # 2. Test release picking logic with prerelease filtering
     var mock_releases: Array = [
         {"tag_name": "v1.0.7-beta.1", "prerelease": true, "body": "Beta notes"},

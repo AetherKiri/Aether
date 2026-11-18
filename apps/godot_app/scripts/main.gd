@@ -478,6 +478,8 @@ const UI_TEXT := {
         "update.notes_title": "更新日志：",
         "update.download_github": "前往 GitHub 下载",
         "update.download_update": "下载更新",
+        "update.download_github_backup": "GitHub 备用下载",
+        "update.checking_download": "正在检查下载…",
         "update.open_app_store": "前往 App Store 更新",
         "update.open_testflight": "前往 TestFlight 更新",
         "update.later": "稍后提醒",
@@ -911,6 +913,8 @@ const UI_TEXT := {
         "update.notes_title": "更新日誌：",
         "update.download_github": "前往 GitHub 下載",
         "update.download_update": "下載更新",
+        "update.download_github_backup": "GitHub 備用下載",
+        "update.checking_download": "正在檢查下載…",
         "update.open_app_store": "前往 App Store 更新",
         "update.open_testflight": "前往 TestFlight 更新",
         "update.later": "稍後提醒",
@@ -1342,6 +1346,8 @@ You can find it any time under Settings → QQ Group.",
         "update.notes_title": "Release Notes:",
         "update.download_github": "Download from GitHub",
         "update.download_update": "Download Update",
+        "update.download_github_backup": "GitHub Backup Download",
+        "update.checking_download": "Checking download…",
         "update.open_app_store": "Update in App Store",
         "update.open_testflight": "Open TestFlight",
         "update.later": "Remind Me Later",
@@ -1742,6 +1748,8 @@ You can find it any time under Settings → QQ Group.",
         "update.notes_title": "更新履歴：",
         "update.download_github": "GitHub からダウンロード",
         "update.download_update": "アップデートをダウンロード",
+        "update.download_github_backup": "GitHub 予備ダウンロード",
+        "update.checking_download": "ダウンロードを確認中…",
         "update.open_app_store": "App Store でアップデート",
         "update.open_testflight": "TestFlight を開く",
         "update.later": "あとで",
@@ -2140,6 +2148,8 @@ You can find it any time under Settings → QQ Group.",
         "update.notes_title": "릴리스 노트:",
         "update.download_github": "GitHub에서 다운로드",
         "update.download_update": "업데이트 다운로드",
+        "update.download_github_backup": "GitHub 예비 다운로드",
+        "update.checking_download": "다운로드 확인 중…",
         "update.open_app_store": "App Store에서 업데이트",
         "update.open_testflight": "TestFlight 열기",
         "update.later": "나중에 알림",
@@ -9442,6 +9452,7 @@ func _show_app_update_dialog(info: Dictionary) -> void:
     var github_macos_url: String = str(info.get("github_macos_url", ""))
     var android_download_url: String = str(info.get("android_download_url", ""))
     var app_store_url: String = str(info.get("app_store_url", ""))
+    var update_dismissed := [false]
 
     var title_text := _t("update.dialog_title")
     if is_pre:
@@ -9509,6 +9520,29 @@ func _show_app_update_dialog(info: Dictionary) -> void:
         var is_macos := OS.get_name() == "macOS"
         var use_android_mirror := is_android and not android_download_url.is_empty()
 
+        var android_fallback_url := github_apk_url
+        if android_fallback_url.is_empty():
+            android_fallback_url = github_url if not github_url.is_empty() else AppUpdater.GITHUB_REPO_RELEASES_PAGE
+
+        var default_target_url := ""
+        if is_android:
+            default_target_url = android_fallback_url
+        elif is_macos and not github_macos_url.is_empty():
+            default_target_url = github_macos_url
+        elif not github_url.is_empty():
+            default_target_url = github_url
+        else:
+            default_target_url = AppUpdater.GITHUB_REPO_RELEASES_PAGE
+
+        var download_opened := [false]
+        var open_download := func(target_url: String):
+            if download_opened[0]:
+                return
+            download_opened[0] = true
+            _dismiss_modal(func():
+                OS.shell_open(target_url)
+            )
+
         var download_label := (
             _t("update.download_update") if use_android_mirror else _t("update.download_github")
         )
@@ -9517,22 +9551,35 @@ func _show_app_update_dialog(info: Dictionary) -> void:
         gh_btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
         gh_btn.custom_minimum_size = Vector2(0, 42)
         gh_btn.pressed.connect(func():
-            _dismiss_modal(func():
-                var target_url := ""
-                if use_android_mirror:
-                    target_url = android_download_url
-                elif is_android and not github_apk_url.is_empty():
-                    target_url = github_apk_url
-                elif is_macos and not github_macos_url.is_empty():
-                    target_url = github_macos_url
-                elif not github_url.is_empty():
-                    target_url = github_url
-                else:
-                    target_url = AppUpdater.GITHUB_REPO_RELEASES_PAGE
-                OS.shell_open(target_url)
+            if not use_android_mirror:
+                open_download.call(default_target_url)
+                return
+            gh_btn.disabled = true
+            gh_btn.text = _t("update.checking_download")
+            AppUpdater.resolve_download_url(
+                self,
+                android_download_url,
+                default_target_url,
+                func(target_url: String):
+                    if update_dismissed[0] or active_modal_dialog != dialog:
+                        return
+                    gh_btn.disabled = false
+                    gh_btn.text = download_label
+                    open_download.call(target_url)
             )
         )
         action_box.add_child(gh_btn)
+
+        if use_android_mirror:
+            var backup_btn := _pill_button(_t("update.download_github_backup"))
+            backup_btn.clip_text = false
+            backup_btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+            backup_btn.custom_minimum_size = Vector2(0, 38)
+            ui_widgets.secondary_button(backup_btn)
+            backup_btn.pressed.connect(func():
+                open_download.call(default_target_url)
+            )
+            action_box.add_child(backup_btn)
 
     var secondary_row := HBoxContainer.new()
     secondary_row.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -9545,6 +9592,7 @@ func _show_app_update_dialog(info: Dictionary) -> void:
     skip_btn.custom_minimum_size = Vector2(0, 36)
     ui_widgets.secondary_button(skip_btn)
     skip_btn.pressed.connect(func():
+        update_dismissed[0] = true
         skipped_update_version = latest_ver
         var cfg := ConfigFile.new()
         cfg.load(SETTINGS_FILE)
@@ -9559,7 +9607,10 @@ func _show_app_update_dialog(info: Dictionary) -> void:
     later_btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
     later_btn.custom_minimum_size = Vector2(0, 36)
     ui_widgets.secondary_button(later_btn)
-    later_btn.pressed.connect(func(): _dismiss_modal())
+    later_btn.pressed.connect(func():
+        update_dismissed[0] = true
+        _dismiss_modal()
+    )
     secondary_row.add_child(later_btn)
 
 func _iap_supported_platform() -> bool:

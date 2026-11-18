@@ -56,8 +56,9 @@ GitHub Release 发布后，`publish-r2` job 会把 Android APK 镜像到 Cloudfl
 发布版本目录。重跑较旧的稳定标签不会把 `latest` 回退。版本化对象使用一年期
 immutable 缓存，`latest` 指针五分钟重新验证。Cloudflare 的 zone 级缓存规则可能
 覆盖这些响应头，建议让 `android/latest/*` 和 `latest.json` 保持较短的边缘缓存
-TTL。Android 更新弹窗对 1.1.2 及之后版本使用同一 R2 版本路径下载 APK，更早版本
-回退到 GitHub Release 资源。
+TTL。Android 更新弹窗对 1.1.2 及之后版本使用同一 R2 版本路径下载 APK；打开浏览器
+前会用短超时 HEAD 请求探测，对象缺失、请求失败或超时会自动回退到 GitHub Release
+资源。更早版本始终使用 GitHub，弹窗中同时保留独立的 GitHub 备用下载入口。
 
 每次成功发布后，脚本只保留最新的 8 个 `android/<version>/` 目录，删除更早的
 版本目录。可通过仓库 variable `R2_RETAIN_VERSIONS` 调整数量；设为 `0` 可关闭

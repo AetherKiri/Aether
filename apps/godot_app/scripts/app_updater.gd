@@ -131,6 +131,58 @@ static func android_download_url(version: String) -> String:
         clean,
     ]
 
+## Decides which URL to use after probing the mirror. A 2xx/3xx response keeps
+## the mirror; redirects are followed by HTTPRequest, so the final code is used.
+## Missing, failed, or timed-out probes fall back to the GitHub asset.
+static func _download_url_after_probe(
+    mirror_url: String,
+    fallback_url: String,
+    probe_result: int,
+    response_code: int
+) -> String:
+    if mirror_url.is_empty():
+        return fallback_url
+    if probe_result == HTTPRequest.RESULT_SUCCESS and response_code >= 200 and response_code < 400:
+        return mirror_url
+    return fallback_url
+
+## Probes the mirror with a short HEAD request before opening a browser, so a
+## missing or not-yet-published R2 object falls back to the GitHub asset.
+## callback signature: func(url: String)
+static func resolve_download_url(
+    node: Node,
+    mirror_url: String,
+    fallback_url: String,
+    callback: Callable
+) -> void:
+    if mirror_url.is_empty() or not is_instance_valid(node):
+        callback.call(fallback_url)
+        return
+
+    var finished := [false]
+    var finish := func(url: String):
+        if finished[0]:
+            return
+        finished[0] = true
+        callback.call(url)
+
+    var req := HTTPRequest.new()
+    req.timeout = 4.0
+    node.add_child(req)
+    req.request_completed.connect(func(result: int, response_code: int, _headers: PackedStringArray, _body: PackedByteArray):
+        req.queue_free()
+        finish.call(_download_url_after_probe(mirror_url, fallback_url, result, response_code))
+    )
+
+    var err := req.request(
+        mirror_url,
+        PackedStringArray(["User-Agent: AetherKiri-Updater"]),
+        HTTPClient.METHOD_HEAD
+    )
+    if err != OK:
+        req.queue_free()
+        finish.call(fallback_url)
+
 ## Returns true if running an Apple TestFlight (iOS or macOS TestFlight) build.
 static func is_apple_testflight(current_version: String) -> bool:
     if OS.get_environment("AETHERKIRI_SIMULATE_TESTFLIGHT") == "1":

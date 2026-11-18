@@ -65,8 +65,10 @@ not move `latest` backwards. Versioned objects use a one-year immutable cache;
 `latest` pointers revalidate after five minutes. Zone-level Cloudflare cache
 rules can override these headers, so keep `android/latest/*` and `latest.json`
 on a short edge TTL. The Android update dialog downloads from the same versioned
-path for 1.1.2 and newer, falling back to the GitHub release asset for older
-versions.
+path for 1.1.2 and newer. It probes that URL with a short HEAD request and falls
+back to the GitHub release asset when the object is missing, the request fails,
+or the probe times out. Older versions always use GitHub, and the dialog keeps a
+separate GitHub backup action.
 
 After a successful publish the script keeps the eight newest `android/<version>/`
 directories and deletes older ones. Override the count with the

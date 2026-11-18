@@ -2216,6 +2216,8 @@ func _detail_content() -> void:
     detail_backdrop.visible = texture != null
     if game.is_empty():
         return
+    # Share the archive probe across text, launch and legacy-cache fields.
+    var runtime: String = host._game_runtime_kind(String(game.get("path", "")))
     var narrow := _content_width() < 660
     detail_layout = _vbox(20) if narrow else _hbox(20)
     detail_layout.set_meta("narrow", narrow)
@@ -2253,7 +2255,7 @@ func _detail_content() -> void:
     actions.add_child(launch)
     var rows := _collapsible(info, "information", _text("游戏信息", "Game information", "ゲーム情報", "遊戲資訊"))
     if rows.visible:
-        _detail_information(rows, game)
+        _detail_information(rows, game, runtime)
     var rendering := _collapsible(info, "rendering", _text("画面与渲染", "Graphics & rendering", "画面とレンダリング", "畫面與渲染"))
     if rendering.visible:
         _game_render_settings(rendering, game)
@@ -2262,16 +2264,16 @@ func _detail_content() -> void:
         _detail_save_actions(saves, game)
     var cache_section := _collapsible(info, "cache", _text("缓存", "Cache", "キャッシュ", "快取"))
     if cache_section.visible:
-        _detail_cache_actions(cache_section, game)
+        _detail_cache_actions(cache_section, game, runtime)
     var cover_section := _collapsible(info, "cover", _text("封面", "Cover", "カバー", "封面"))
     if cover_section.visible:
         _detail_cover_actions(cover_section, game)
     info.add_child(_divider())
 
-func _detail_cache_actions(section: Control, game: Dictionary) -> void:
+func _detail_cache_actions(section: Control, game: Dictionary, runtime: String) -> void:
     var usage := _label(_text("正在计算…", "Calculating…", "計算中…", "正在計算…"), 14, true)
     var usage_ref: WeakRef = weakref(usage)
-    var locations: PackedStringArray = host._game_cache_paths(game)
+    var locations: PackedStringArray = host._game_cache_paths(game, runtime)
     var clear_button := _button(_text("清除", "Clear", "消去", "清除"), func():
         if host.game_storage_busy or host.game_running:
             return
@@ -2369,7 +2371,7 @@ func _resize_detail_cover() -> void:
         cover_size *= max_cover_height / cover_size.y
     detail_cover.custom_minimum_size = cover_size
 
-func _detail_information(rows: Control, game: Dictionary) -> void:
+func _detail_information(rows: Control, game: Dictionary, runtime: String) -> void:
     var input := LineEdit.new()
     input.name = "AstryxGameNameInput"
     input.accessibility_name = _text("游戏名字", "Game name", "ゲーム名", "遊戲名稱")
@@ -2385,9 +2387,6 @@ func _detail_information(rows: Control, game: Dictionary) -> void:
     )
     input.text_submitted.connect(func(_value: String): _save_detail_edit())
     _detail_field(rows, "name", input.accessibility_name, host._game_display_title(game), input, false)
-    # Reuse one engine detection for all fields on this page; probing archives
-    # repeatedly on mobile storage can block the opening frame.
-    var runtime: String = host._game_runtime_kind(String(game.get("path", "")))
     _detail_text_settings(rows, game, runtime)
     var launch_row := _hbox(16)
     launch_row.name = "AstryxLaunchFileRow"

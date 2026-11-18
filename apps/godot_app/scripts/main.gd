@@ -12115,9 +12115,11 @@ func _update_game(path: String, values: Dictionary) -> void:
     _save_game_list(games)
     _refresh_games()
 
-func _game_cache_paths(game: Dictionary) -> PackedStringArray:
+func _game_cache_paths(game: Dictionary, runtime: String = "") -> PackedStringArray:
     var path := String(game.get("path", ""))
-    return preload("res://scripts/game_cache.gd").paths(OS.get_user_data_dir(), _game_cache_identity(path), _game_runtime_kind(path))
+    if runtime.is_empty():
+        runtime = _game_runtime_kind(path)
+    return preload("res://scripts/game_cache.gd").paths(OS.get_user_data_dir(), _game_cache_identity(path), runtime)
 
 func _game_cache_identity(path: String) -> String:
     var resolved := _resolve_game_path(path)

@@ -23,17 +23,31 @@ static UIStatusBarStyle MobileStatusStyle(id controller, SEL selector) {
         ? UIStatusBarStyleLightContent : UIStatusBarStyleDarkContent;
 }
 static UIViewController *MobileStatusChild(id controller, SEL selector) { return nil; }
+static BOOL MobileInstallPreferences(Class subclass) {
+    const struct { SEL selector; IMP implementation; const char *types; } methods[] = {
+        {@selector(prefersStatusBarHidden), (IMP)MobileFullscreen, "B@:"},
+        {@selector(prefersHomeIndicatorAutoHidden), (IMP)MobileFullscreen, "B@:"},
+        {@selector(preferredStatusBarStyle), (IMP)MobileStatusStyle, "q@:"},
+        {@selector(childViewControllerForStatusBarHidden), (IMP)MobileStatusChild, "@@:"},
+        {@selector(childViewControllerForStatusBarStyle), (IMP)MobileStatusChild, "@@:"},
+        {@selector(childViewControllerForHomeIndicatorAutoHidden), (IMP)MobileStatusChild, "@@:"},
+    };
+    BOOL changed = NO;
+    for (const auto& method : methods) {
+        if (class_getMethodImplementation(subclass, method.selector) == method.implementation) continue;
+        // Godot's viewDidAppear can replace methods on this very subclass.
+        // Reinstall on our subclass only; never mutate UIKit/Godot base classes.
+        class_replaceMethod(subclass, method.selector, method.implementation, method.types);
+        changed = YES;
+    }
+    return changed;
+}
 static Class MobileControllerClass(Class base) {
     NSString *name = [@"AetherMobile_" stringByAppendingString:NSStringFromClass(base)];
     Class subclass = NSClassFromString(name);
     if (!subclass) {
         subclass = objc_allocateClassPair(base, name.UTF8String, 0);
-        class_addMethod(subclass, @selector(prefersStatusBarHidden), (IMP)MobileFullscreen, "B@:");
-        class_addMethod(subclass, @selector(prefersHomeIndicatorAutoHidden), (IMP)MobileFullscreen, "B@:");
-        class_addMethod(subclass, @selector(preferredStatusBarStyle), (IMP)MobileStatusStyle, "q@:");
-        class_addMethod(subclass, @selector(childViewControllerForStatusBarHidden), (IMP)MobileStatusChild, "@@:");
-        class_addMethod(subclass, @selector(childViewControllerForStatusBarStyle), (IMP)MobileStatusChild, "@@:");
-        class_addMethod(subclass, @selector(childViewControllerForHomeIndicatorAutoHidden), (IMP)MobileStatusChild, "@@:");
+        MobileInstallPreferences(subclass);
         objc_registerClassPair(subclass);
     }
     return subclass;
@@ -91,13 +105,20 @@ static NSHashTable<AetherMobileWindowHost *> *MobileHosts;
     }
     return self;
 }
-- (void)installController {
+- (BOOL)installController {
     UIViewController *controller = self.gameView.window.rootViewController;
-    if (!controller || self.controller == controller) return;
+    if (!controller) return NO;
+    if (self.controller == controller) {
+        Class subclass = MobileControllerClass(self.originalControllerClass);
+        return object_getClass(controller) == subclass && MobileInstallPreferences(subclass);
+    }
     [self restoreController];
     self.controller = controller;
     self.originalControllerClass = object_getClass(controller);
-    object_setClass(controller, MobileControllerClass(self.originalControllerClass));
+    Class subclass = MobileControllerClass(self.originalControllerClass);
+    MobileInstallPreferences(subclass);
+    object_setClass(controller, subclass);
+    return YES;
 }
 - (void)restoreController {
     if (self.controller && object_getClass(self.controller) == MobileControllerClass(self.originalControllerClass)) {
@@ -109,11 +130,11 @@ static NSHashTable<AetherMobileWindowHost *> *MobileHosts;
     }
 }
 - (void)updateFullscreen {
-    [self installController];
+    const BOOL repaired = [self installController];
     if (!self.controller) return;
     NSNumber *previous = objc_getAssociatedObject(self.controller, &FullscreenKey);
     NSNumber *previousDark = objc_getAssociatedObject(self.controller, &DarkBackgroundKey);
-    if (previous && previous.boolValue == self.gameActive && previousDark && previousDark.boolValue == self.darkBackground) return;
+    if (!repaired && previous && previous.boolValue == self.gameActive && previousDark && previousDark.boolValue == self.darkBackground) return;
     objc_setAssociatedObject(self.controller, &FullscreenKey, @(self.gameActive), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
     objc_setAssociatedObject(self.controller, &DarkBackgroundKey, @(self.darkBackground), OBJC_ASSOCIATION_RETAIN_NONATOMIC);
     [self.controller setNeedsStatusBarAppearanceUpdate];
@@ -186,7 +207,10 @@ static NSHashTable<AetherMobileWindowHost *> *MobileHosts;
     if (self.closed) return;
     if (self.gameActive == active && self.enabled == enabled && self.darkBackground == dark && self.controller &&
         self.controller == self.gameView.window.rootViewController &&
-        (!(active && enabled) || self.pip)) return;
+        (!(active && enabled) || self.pip)) {
+        [self updateFullscreen];
+        return;
+    }
     if (active && enabled && !(self.gameActive && self.enabled)) self.playing = YES;
     self.gameActive = active;
     self.darkBackground = dark;

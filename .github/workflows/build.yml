@@ -1186,6 +1186,27 @@ jobs:
           tools/bin/mac/dbg/xp3 --help >/dev/null
           tools/bin/mac/dbg/xp3_select --help >/dev/null
 
+      - name: Diagnose macOS test teardown
+        if: failure()
+        shell: bash
+        run: |
+          set +e
+          test_build_dir="${GITHUB_WORKSPACE}/out/macos/debug"
+          binary="$test_build_dir/packages/AetherKrkr/tests/plugins/motionplayer-dll"
+          test_name="emoteplayer timeline state and todo stubs"
+          echo "=== serial rerun ==="
+          (cd "$test_build_dir" && "$binary" "$test_name")
+          echo "serial exit=$?"
+          echo "=== lldb backtrace ==="
+          xcrun lldb -batch -o run -o "bt all" -- "$binary" "$test_name" 2>&1 | tail -160
+          echo "=== crash reports ==="
+          ls -lt "$HOME/Library/Logs/DiagnosticReports" 2>/dev/null | head -5
+          latest="$(ls -t "$HOME"/Library/Logs/DiagnosticReports/*.ips 2>/dev/null | head -1)"
+          if [[ -n "$latest" ]]; then
+            echo "--- $latest"
+            sed -n '1,200p' "$latest"
+          fi
+
       - name: Free macOS Debug intermediates after unit tests
         run: python3 .github/scripts/clean-apple-build-intermediates.py macos-debug
 

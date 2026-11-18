@@ -22,8 +22,9 @@ add_library(aether_game_hooks STATIC src/AetherGameHooks.cpp)
 target_compile_features(aether_game_hooks PUBLIC cxx_std_17)
 target_include_directories(aether_game_hooks PUBLIC include PRIVATE ${LUA_INCLUDE_DIR})
 target_link_libraries(aether_game_hooks PRIVATE aether_game_text_settings ${LUA_LIBRARIES} ZLIB::ZLIB zstd::libzstd Boost::locale)
-if(APPLE AND VCPKG_INSTALLED_DIR AND VCPKG_TARGET_TRIPLET)
-    # Cached Boost.Locale archives use GNU libiconv's libiconv_* symbols.
+if(CMAKE_SYSTEM_NAME STREQUAL "iOS" AND VCPKG_INSTALLED_DIR AND VCPKG_TARGET_TRIPLET)
+    # iOS Boost.Locale archives use GNU libiconv's libiconv_* symbols; macOS
+    # uses the SDK implementation and its vcpkg port has no GNU archive.
     # FindIconv may instead select the Apple SDK's iconv_* implementation.
     # Keep its SDK target intact for other consumers and supply GNU's archive
     # here without propagating its headers into the platform include paths.

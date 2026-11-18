@@ -68,6 +68,12 @@ on a short edge TTL. The Android update dialog downloads from the same versioned
 path for 1.1.2 and newer, falling back to the GitHub release asset for older
 versions.
 
+After a successful publish the script keeps the eight newest `android/<version>/`
+directories and deletes older ones. Override the count with the
+`R2_RETAIN_VERSIONS` repository variable; `0` disables pruning. The
+`android/latest/*` aliases, `latest.json`, and the version referenced by
+`latest.json` are never pruned.
+
 ## Store Packaging
 
 Register the game-import extension App ID and the shared App Group in the Apple

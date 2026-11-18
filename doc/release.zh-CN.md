@@ -59,6 +59,11 @@ immutable 缓存，`latest` 指针五分钟重新验证。Cloudflare 的 zone �
 TTL。Android 更新弹窗对 1.1.2 及之后版本使用同一 R2 版本路径下载 APK，更早版本
 回退到 GitHub Release 资源。
 
+每次成功发布后，脚本只保留最新的 8 个 `android/<version>/` 目录，删除更早的
+版本目录。可通过仓库 variable `R2_RETAIN_VERSIONS` 调整数量；设为 `0` 可关闭
+自动清理。`android/latest/*` 别名、`latest.json` 以及该文件当前指向的版本不会
+被删除。
+
 ## 商店打包
 
 发布文件夹导入功能前，需要在 Apple Developer 账户注册导入扩展的 App ID 和

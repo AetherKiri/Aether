@@ -21,6 +21,8 @@
 # Optional environment:
 #   R2_PUBLIC_BASE_URL    Public base URL used for absolute links in latest.json
 #   R2_PREFIX             Optional key prefix, e.g. staging
+#   R2_RETAIN_VERSIONS    Number of versioned directories to keep (default: 8,
+#                         0 disables pruning)
 #   GITHUB_REPOSITORY     owner/repo, used for release_url
 #   RELEASE_PUBLISHED_AT  ISO-8601 release timestamp
 #   DRY_RUN=1             Print the upload plan without calling AWS
@@ -38,6 +40,11 @@ apk_path="$1"
 }
 
 dry_run="${DRY_RUN:-0}"
+retain_versions="${R2_RETAIN_VERSIONS:-8}"
+[[ "$retain_versions" =~ ^[0-9]+$ ]] || {
+  echo "error: R2_RETAIN_VERSIONS must be a non-negative integer" >&2
+  exit 1
+}
 
 for required in R2_ENDPOINT R2_BUCKET RELEASE_TAG; do
   value="${!required-}"
@@ -205,6 +212,75 @@ verify_object() {
   fi
 }
 
+prune_old_versions() {
+  local protected_version="$1"
+  local retain="$2"
+  local listing="$tmp_dir/version-prefixes.json"
+  local deletions="$tmp_dir/prune.txt"
+
+  "${s3api[@]}" list-objects-v2 \
+    --bucket "$R2_BUCKET" \
+    --prefix "${prefix}android/" \
+    --delimiter "/" \
+    --output json >"$listing"
+
+  python3 - "$listing" "${prefix}android/" "$retain" "$protected_version" >"$deletions" <<'PY'
+import json
+import re
+import sys
+
+listing_path, key_prefix, retain_arg, protected = sys.argv[1:5]
+retain = int(retain_arg)
+
+with open(listing_path, encoding="utf-8") as source:
+    data = json.load(source)
+
+versions = []
+for entry in data.get("CommonPrefixes", []):
+    key = entry.get("Prefix", "")
+    if not key.startswith(key_prefix) or not key.endswith("/"):
+        continue
+    name = key[len(key_prefix):-1]
+    if not name or name == "latest" or not re.match(r"^[0-9][0-9A-Za-z._+-]*$", name):
+        continue
+    versions.append(name)
+
+
+def semver_key(name):
+    core, _, prerelease = name.partition("-")
+    numbers = []
+    for part in core.split("."):
+        match = re.match(r"^(\d+)", part)
+        numbers.append(int(match.group(1)) if match else 0)
+    while len(numbers) < 3:
+        numbers.append(0)
+    if prerelease:
+        identifiers = tuple(
+            (0, int(part)) if part.isdigit() else (1, part)
+            for part in prerelease.split(".")
+        )
+        return (tuple(numbers), 0, identifiers)
+    return (tuple(numbers), 1, ())
+
+
+versions.sort(key=semver_key)
+cutoff = max(0, len(versions) - retain)
+for index, name in enumerate(versions):
+    if index < cutoff and name != protected:
+        print(f"{key_prefix}{name}/")
+PY
+
+  if [[ -s "$deletions" ]]; then
+    while IFS= read -r key; do
+      [[ -n "$key" ]] || continue
+      echo "Retention: removing s3://${R2_BUCKET}/${key}"
+      "${s3[@]}" rm "s3://${R2_BUCKET}/${key}" --recursive --only-show-errors
+    done <"$deletions"
+  else
+    echo "Retention: nothing to prune (keeping up to ${retain} versions)."
+  fi
+}
+
 version_is_newer() {
   local candidate="$1"
   local current="$2"
@@ -339,6 +415,22 @@ if ((should_publish_latest)); then
     "$mutable_cache"
 fi
 
+if ((retain_versions > 0)); then
+  protected_version=""
+  if ((should_publish_latest)); then
+    protected_version="$version"
+  else
+    protected_version="$current_version"
+  fi
+  if [[ "$dry_run" == "1" ]]; then
+    echo "[dry-run] retention: keep ${retain_versions} newest versions, protect ${protected_version:-none}"
+  else
+    prune_old_versions "$protected_version" "$retain_versions"
+  fi
+else
+  echo "Retention: disabled (R2_RETAIN_VERSIONS=0)."
+fi
+
 if [[ -n "${GITHUB_STEP_SUMMARY:-}" ]]; then
   {
     echo "### Cloudflare R2 release"
@@ -351,6 +443,11 @@ if [[ -n "${GITHUB_STEP_SUMMARY:-}" ]]; then
       echo "- Pointer: \`${prefix}latest.json\`"
     else
       echo "- Latest pointers: unchanged"
+    fi
+    if ((retain_versions > 0)); then
+      echo "- Retention: keep ${retain_versions} newest versions"
+    else
+      echo "- Retention: disabled"
     fi
   } >>"$GITHUB_STEP_SUMMARY"
 fi

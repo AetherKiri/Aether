@@ -74,6 +74,13 @@ def stage(project):
         info_path = export / settings["INFOPLIST_FILE"].strip('"')
         info = plistlib.loads(info_path.read_bytes())
         info["AetherImportAppGroup"] = group
+        cloud = "iCloud." + bundle
+        info["AetherSaveCloudContainer"] = cloud
+        info.setdefault("NSUbiquitousContainers", {})[cloud] = {
+            "NSUbiquitousContainerIsDocumentScopePublic": True,
+            "NSUbiquitousContainerName": "aether",
+            "NSUbiquitousContainerSupportedFolderLevels": "Any",
+        }
         info["LSSupportsOpeningDocumentsInPlace"] = True
         info["UIFileSharingEnabled"] = True
         # Preserve other document handlers supplied by the exporter.
@@ -97,6 +104,13 @@ def stage(project):
         groups = entitlements.setdefault(GROUP_KEY, [])
         if group not in groups:
             groups.append(group)
+        for key in ("com.apple.developer.icloud-container-identifiers", "com.apple.developer.ubiquity-container-identifiers"):
+            containers = entitlements.setdefault(key, [])
+            if cloud not in containers:
+                containers.append(cloud)
+        services = entitlements.setdefault("com.apple.developer.icloud-services", [])
+        if "CloudDocuments" not in services:
+            services.append("CloudDocuments")
         write_plist(path, entitlements)
 
     write_plist(extension_dir / "GameImport.entitlements", {GROUP_KEY: [group]})
@@ -198,6 +212,7 @@ def stage(project):
     attributes = root.setdefault("attributes", {}).setdefault("TargetAttributes", {})
     for key in (app_id, target):
         attributes.setdefault(key, {}).setdefault("SystemCapabilities", {})["com.apple.ApplicationGroups.iOS"] = {"enabled": "1"}
+    attributes[app_id]["SystemCapabilities"]["com.apple.iCloud"] = {"enabled": "1"}
     write_project(project, data)
 
 

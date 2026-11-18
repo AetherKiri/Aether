@@ -1,7 +1,7 @@
 import Foundation
 
-/// Shared by the application and its Action extension. Completed jobs are
-/// published by rename; the app never sees a half-copied game as importable.
+/// Shared import metadata and bounded copying. Game bytes are written only by
+/// the host, directly into a visible work folder underneath Documents/Games.
 enum GameImportStore {
     typealias Progress = (_ bytes: Int64) -> Void
     static let fileManager = FileManager.default
@@ -10,6 +10,7 @@ enum GameImportStore {
     struct Job: Codable {
         var name: String
         var destination: String?
+        var sourceBookmark: Data?
     }
 
     static func failure(_ message: String) -> NSError {
@@ -65,7 +66,7 @@ enum GameImportStore {
             if values.isDirectory == true {
                 try fileManager.createDirectory(at: target, withIntermediateDirectories: false)
                 for child in try fileManager.contentsOfDirectory(at: source, includingPropertiesForKeys: nil) {
-                    try copy(child, target.appendingPathComponent(child.lastPathComponent), depth: depth + 1)
+                    try autoreleasepool { try copy(child, target.appendingPathComponent(child.lastPathComponent), depth: depth + 1) }
                 }
             } else {
                 guard values.isRegularFile == true else { throw failure("The folder contains an unsupported file: \(source.lastPathComponent)") }
@@ -78,10 +79,15 @@ enum GameImportStore {
                 defer { try? output.close() }
                 while true {
                     guard !cancelled() else { throw CocoaError(.userCancelled) }
-                    let data = try input.read(upToCount: 1024 * 1024) ?? Data()
-                    if data.isEmpty { break }
-                    try output.write(contentsOf: data)
-                    bytes += Int64(data.count)
+                    // Foundation may autorelease each NSData returned by a read.
+                    // Drain every chunk, not at the end of a multi-GB import.
+                    let count = try autoreleasepool { () throws -> Int in
+                        let data = try input.read(upToCount: 1024 * 1024) ?? Data()
+                        if !data.isEmpty { try output.write(contentsOf: data) }
+                        return data.count
+                    }
+                    if count == 0 { break }
+                    bytes += Int64(count)
                     if Date().timeIntervalSince(lastReport) >= 0.1 {
                         progress(bytes)
                         lastReport = Date()
@@ -98,36 +104,93 @@ enum GameImportStore {
         }
     }
 
+    /// The extension retains an in-place provider URL, not a second game copy.
+    /// The host resolves this bookmark and performs the one copy into Games.
     static func receive(_ source: URL, suggestedName: String? = nil, into incoming: URL,
                         cancelled: () -> Bool = { false }, progress: Progress = { _ in }) throws -> URL {
-        // Reject a source that contains our destination, before creating it.
-        guard !isInside(incoming, source) else { throw failure("A folder cannot be imported into itself.") }
+        guard !isInside(incoming, source), !cancelled() else { throw CocoaError(.userCancelled) }
         let scoped = source.startAccessingSecurityScopedResource()
         defer { if scoped { source.stopAccessingSecurityScopedResource() } }
-        let id = UUID().uuidString
-        let staging = incoming.appendingPathComponent(".partial-" + id, isDirectory: true)
-        let ready = incoming.appendingPathComponent(id, isDirectory: true)
-        try fileManager.createDirectory(at: incoming, withIntermediateDirectories: true)
-        try fileManager.createDirectory(at: staging, withIntermediateDirectories: false)
-        var result: Result<Void, Error> = .failure(failure("The file provider did not return a readable folder."))
-        var coordinationError: NSError?
-        NSFileCoordinator().coordinate(readingItemAt: source, options: .withoutChanges, error: &coordinationError) { readable in
-            result = Result {
-                let name = try sourceName(readable, suggestedName: suggestedName ?? source.lastPathComponent)
-                try copyTree(readable, to: staging.appendingPathComponent("payload"),
-                             cancelled: cancelled, progress: progress)
-                try JSONEncoder().encode(Job(name: name)).write(to: staging.appendingPathComponent(metadataName), options: .atomic)
+        let name = try sourceName(source, suggestedName: suggestedName)
+        let bookmark = try source.bookmarkData(options: .minimalBookmark, includingResourceValuesForKeys: nil, relativeTo: nil)
+        let job = incoming.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        try fileManager.createDirectory(at: job, withIntermediateDirectories: true)
+        do {
+            try JSONEncoder().encode(Job(name: name, sourceBookmark: bookmark))
+                .write(to: job.appendingPathComponent(metadataName), options: .atomic)
+            return job
+        } catch { try? fileManager.removeItem(at: job); throw error }
+    }
+
+    static let workPrefix = "Importing-"
+    static let workMarker = "aether-import-in-progress.json"
+
+    static func importDirect(_ source: URL, suggestedName: String? = nil, into games: URL,
+                             cancelled: () -> Bool = { false }, progress: Progress = { _ in }) throws -> URL {
+        guard !isInside(games, source) else { throw failure("A folder cannot be imported into itself.") }
+        let scoped = source.startAccessingSecurityScopedResource()
+        defer { if scoped { source.stopAccessingSecurityScopedResource() } }
+        let name = try sourceName(source, suggestedName: suggestedName)
+        try fileManager.createDirectory(at: games, withIntermediateDirectories: true)
+        let work = games.appendingPathComponent(workPrefix + UUID().uuidString, isDirectory: true)
+        try fileManager.createDirectory(at: work, withIntermediateDirectories: false)
+        do {
+            try JSONEncoder().encode(Job(name: name)).write(to: work.appendingPathComponent(workMarker))
+            var copyError: Error?
+            var coordinationError: NSError?
+            NSFileCoordinator().coordinate(readingItemAt: source, options: .withoutChanges, error: &coordinationError) { readable in
+                do { try copyTree(readable, to: work.appendingPathComponent("payload"), cancelled: cancelled, progress: progress) }
+                catch { copyError = error }
+            }
+            if let error = copyError ?? coordinationError { throw error }
+            guard !cancelled() else { throw CocoaError(.userCancelled) }
+            var number = 1
+            while true {
+                let destination = games.appendingPathComponent(uniqueName(name, in: games, number: number))
+                if fileManager.fileExists(atPath: destination.path) { number += 1; continue }
+                do {
+                    // Same parent filesystem: publish by rename, without copying.
+                    try fileManager.moveItem(at: work.appendingPathComponent("payload"), to: destination)
+                    try fileManager.removeItem(at: work)
+                    return destination
+                } catch let error as NSError where error.domain == NSCocoaErrorDomain && error.code == NSFileWriteFileExistsError {
+                    number += 1
+                }
+            }
+        } catch { try? fileManager.removeItem(at: work); throw error }
+    }
+
+    /// Called once before accepting imports. Only remove our interrupted work;
+    /// neither finished games nor user-created directories match this contract.
+    static func cleanInterrupted(in games: URL) throws {
+        guard fileManager.fileExists(atPath: games.path) else { return }
+        for item in try fileManager.contentsOfDirectory(at: games, includingPropertiesForKeys: [.isSymbolicLinkKey]) {
+            guard item.lastPathComponent.hasPrefix(workPrefix),
+                  UUID(uuidString: String(item.lastPathComponent.dropFirst(workPrefix.count))) != nil,
+                  (try item.resourceValues(forKeys: [.isSymbolicLinkKey])).isSymbolicLink != true,
+                  fileManager.fileExists(atPath: item.appendingPathComponent(workMarker).path) else { continue }
+            try fileManager.removeItem(at: item)
+        }
+    }
+
+    static func cleanLegacyPartials(in incoming: URL) throws {
+        guard fileManager.fileExists(atPath: incoming.path) else { return }
+        for entry in try fileManager.contentsOfDirectory(at: incoming, includingPropertiesForKeys: nil) {
+            if entry.lastPathComponent.hasPrefix(".partial-"), UUID(uuidString: String(entry.lastPathComponent.dropFirst(9))) != nil {
+                try fileManager.removeItem(at: entry)
             }
         }
-        do {
-            if let error = coordinationError { throw error }
-            try result.get()
-            guard !cancelled() else { throw CocoaError(.userCancelled) }
-            try fileManager.moveItem(at: staging, to: ready)
-            return ready
-        } catch {
-            try? fileManager.removeItem(at: staging)
-            throw error
+    }
+
+    static func revealLegacyWork(in games: URL) throws {
+        guard fileManager.fileExists(atPath: games.path) else { return }
+        let prefix = ".aether-import-"
+        for item in try fileManager.contentsOfDirectory(at: games, includingPropertiesForKeys: nil) {
+            guard item.lastPathComponent.hasPrefix(prefix),
+                  let id = UUID(uuidString: String(item.lastPathComponent.dropFirst(prefix.count))) else { continue }
+            var target = games.appendingPathComponent("Recovered Import-" + id.uuidString)
+            if fileManager.fileExists(atPath: target.path) { target = games.appendingPathComponent("Recovered Import-" + UUID().uuidString) }
+            try fileManager.moveItem(at: item, to: target)
         }
     }
 
@@ -147,41 +210,39 @@ enum GameImportStore {
         return "\(name) (\(number))"
     }
 
-    /// Keep a small journal until promotion finishes so a killed app can resume
-    /// the move without exposing a partial folder or duplicating a completed one.
-    static func promote(_ jobURL: URL, into games: URL) throws -> URL {
+    /// Also consumes jobs left by older versions. Never create hidden staging
+    /// directories or retain completed payloads in the shared container.
+    static func promote(_ jobURL: URL, into games: URL, cancelled: () -> Bool = { false }, progress: Progress = { _ in }) throws -> URL {
         guard UUID(uuidString: jobURL.lastPathComponent) != nil else { throw failure("Invalid import job.") }
-        let metadata = jobURL.appendingPathComponent(metadataName)
-        var job = try JSONDecoder().decode(Job.self, from: Data(contentsOf: metadata))
+        let job = try JSONDecoder().decode(Job.self, from: Data(contentsOf: jobURL.appendingPathComponent(metadataName)))
         guard validName(job.name), job.destination.map(validName) ?? true else { throw failure("Invalid import name.") }
-        try fileManager.createDirectory(at: games, withIntermediateDirectories: true)
+        if let bookmark = job.sourceBookmark {
+            var stale = false
+            let source = try URL(resolvingBookmarkData: bookmark, options: .withoutUI, relativeTo: nil, bookmarkDataIsStale: &stale)
+            let destination = try importDirect(source, suggestedName: job.name, into: games, cancelled: cancelled, progress: progress)
+            try fileManager.removeItem(at: jobURL)
+            return destination
+        }
         let payload = jobURL.appendingPathComponent("payload")
-        let staging = games.appendingPathComponent(".aether-import-" + jobURL.lastPathComponent)
-        if !fileManager.fileExists(atPath: payload.path), !fileManager.fileExists(atPath: staging.path),
-           let name = job.destination, fileManager.fileExists(atPath: games.appendingPathComponent(name).path) {
+        let oldWork = games.appendingPathComponent(".aether-import-" + jobURL.lastPathComponent)
+        if fileManager.fileExists(atPath: payload.path) {
+            if fileManager.fileExists(atPath: oldWork.path) { try fileManager.removeItem(at: oldWork) }
+            let destination = try importDirect(payload, suggestedName: job.name, into: games, cancelled: cancelled, progress: progress)
+            try fileManager.removeItem(at: jobURL)
+            return destination
+        }
+        if fileManager.fileExists(atPath: oldWork.path) {
+            var number = 1
+            while fileManager.fileExists(atPath: games.appendingPathComponent(uniqueName(job.name, in: games, number: number)).path) { number += 1 }
+            let destination = games.appendingPathComponent(uniqueName(job.name, in: games, number: number))
+            try fileManager.moveItem(at: oldWork, to: destination)
+            try fileManager.removeItem(at: jobURL)
+            return destination
+        }
+        if let name = job.destination, fileManager.fileExists(atPath: games.appendingPathComponent(name).path) {
             try fileManager.removeItem(at: jobURL)
             return games.appendingPathComponent(name)
         }
-        if fileManager.fileExists(atPath: payload.path) {
-            // A failed cross-container copy leaves its original intact.
-            if fileManager.fileExists(atPath: staging.path) { try fileManager.removeItem(at: staging) }
-            try fileManager.moveItem(at: payload, to: staging)
-        }
-        guard fileManager.fileExists(atPath: staging.path) else { throw failure("The imported folder is missing.") }
-        var number = 1
-        while true {
-            let name = uniqueName(job.name, in: games, number: number)
-            let destination = games.appendingPathComponent(name)
-            if fileManager.fileExists(atPath: destination.path) { number += 1; continue }
-            job.destination = name
-            try JSONEncoder().encode(job).write(to: metadata, options: .atomic)
-            do {
-                try fileManager.moveItem(at: staging, to: destination)
-                try fileManager.removeItem(at: jobURL)
-                return destination
-            } catch let error as NSError where error.domain == NSCocoaErrorDomain && error.code == NSFileWriteFileExistsError {
-                number += 1 // Files.app or another importer won this name.
-            }
-        }
+        throw failure("The imported folder is missing. Share it again from Files.")
     }
 }

@@ -183,6 +183,8 @@ if(APPLE)
             src/apple_app_icon.swift
             src/apple_native_file_picker.swift
             src/apple_save_transfer.swift
+            src/apple_save_sync_store.swift
+            src/apple_save_sync.swift
             src/apple_storekit.swift
             ../ios_game_import/GameImportStore.swift
             ../ios_game_import/GameImportHost.swift)
@@ -202,6 +204,8 @@ if(APPLE)
             src/apple_app_icon.swift
             src/apple_native_file_picker.swift
             src/apple_save_transfer.swift
+            src/apple_save_sync_store.swift
+            src/apple_save_sync.swift
             src/apple_storekit.swift)
         set_property(TARGET aether_kiri_godot_swift PROPERTY
             Swift_LANGUAGE_VERSION 5)
@@ -490,15 +494,23 @@ if(TARGET aether_entisgls_runtime)
     list(APPEND _runtime_targets aether_entisgls_runtime)
 endif()
 set(_runtime_libraries "")
+set(_runtime_frameworks "")
 foreach(_runtime IN LISTS _runtime_targets)
     get_target_property(_runtime_type "${_runtime}" TYPE)
     if(_runtime_type STREQUAL "SHARED_LIBRARY")
         string(APPEND _runtime_libraries "$<TARGET_FILE:${_runtime}>\n")
+        if(IOS)
+            get_target_property(_runtime_framework "${_runtime}" FRAMEWORK)
+            if(NOT _runtime_framework)
+                message(FATAL_ERROR "iOS runtime ${_runtime} must be packaged as a framework")
+            endif()
+            string(APPEND _runtime_frameworks "$<TARGET_BUNDLE_DIR:${_runtime}>\n")
+        endif()
         if(APPLE AND NOT IOS)
             set(_runtime_stage "macos")
         elseif(WIN32)
             set(_runtime_stage "windows")
-        elseif(UNIX AND NOT ANDROID)
+        elseif(UNIX AND NOT ANDROID AND NOT IOS)
             set(_runtime_stage "linux")
         else()
             unset(_runtime_stage)
@@ -517,6 +529,10 @@ endforeach()
 # providers cannot accidentally be packaged from stale editor staging files.
 file(GENERATE OUTPUT "${CMAKE_BINARY_DIR}/runtime-libraries-$<LOWER_CASE:$<CONFIG>>.txt"
     CONTENT "${_runtime_libraries}")
+if(IOS)
+    file(GENERATE OUTPUT "${CMAKE_BINARY_DIR}/runtime-frameworks-$<LOWER_CASE:$<CONFIG>>.txt"
+        CONTENT "${_runtime_frameworks}")
+endif()
 if(TARGET aether_rfvp_runtime)
     target_link_libraries(aether_kiri_godot PRIVATE aether_rfvp_runtime)
     target_compile_definitions(aether_kiri_godot PRIVATE AETHERKIRI_WITH_RFVP=1)

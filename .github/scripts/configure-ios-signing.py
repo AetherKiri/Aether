@@ -25,6 +25,14 @@ def configure(project, bundle, team, profiles, export_options):
             raise ValueError(f"Profile {profile_path.name} must target {identifier}")
         if group not in entitlements.get(GROUP_KEY, []):
             raise ValueError(f"Profile {profile_path.name} must include App Group {group}; regenerate it after enabling the capability")
+        if identifier == bundle:
+            cloud = "iCloud." + bundle
+            for key in ("com.apple.developer.icloud-container-identifiers", "com.apple.developer.ubiquity-container-identifiers"):
+                if cloud not in entitlements.get(key, []) and "*" not in entitlements.get(key, []):
+                    raise ValueError(f"App profile must include iCloud container {cloud}; enable iCloud Documents and regenerate the app profile")
+            services = entitlements.get("com.apple.developer.icloud-services", [])
+            if "CloudDocuments" not in services and "*" not in services:
+                raise ValueError("App profile must include iCloud Documents (CloudDocuments)")
         matches = [t for t in targets if t.get("productType") == expected[identifier]
                    and all(c["buildSettings"].get("PRODUCT_BUNDLE_IDENTIFIER") == identifier
                            for c in configurations(objects, t))]

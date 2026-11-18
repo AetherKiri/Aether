@@ -88,8 +88,8 @@ final class GameImportActionViewController: UIViewController, @unchecked Sendabl
                     do {
                         if let error { throw error }
                         guard let url else { throw GameImportStore.failure("The sharing app did not provide a file URL.") }
-                        // Provider URLs may expire when this callback returns.
-                        // Finish copying inside the callback, with bounded RAM.
+                        // Retain only an in-place source bookmark. The host copies
+                        // directly to Games when the user returns to Aether.
                         _ = try GameImportStore.receive(url, suggestedName: name, into: incoming,
                             cancelled: { self.isCancelled() }, progress: { bytes in
                                 DispatchQueue.main.async {
@@ -105,7 +105,13 @@ final class GameImportActionViewController: UIViewController, @unchecked Sendabl
                 }
                 let progress: Progress?
                 if let type = fileType {
-                    progress = provider.loadInPlaceFileRepresentation(forTypeIdentifier: type) { url, _, error in finish(url, error) }
+                    progress = provider.loadInPlaceFileRepresentation(forTypeIdentifier: type) { url, inPlace, error in
+                        guard inPlace else {
+                            finish(nil, error ?? GameImportStore.failure("This provider cannot share the folder in place. Open the folder in Files and send it to Aether from there."))
+                            return
+                        }
+                        finish(url, error)
+                    }
                 } else if provider.hasItemConformingToTypeIdentifier(UTType.fileURL.identifier) {
                     provider.loadItem(forTypeIdentifier: UTType.fileURL.identifier, options: nil) { item, error in
                         let url = (item as? URL) ?? (item as? Data).flatMap { URL(dataRepresentation: $0, relativeTo: nil) }

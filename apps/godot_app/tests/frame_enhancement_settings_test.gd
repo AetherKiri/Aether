@@ -146,7 +146,7 @@ func _initialize() -> void:
     for legacy_mode in ["anime4k", "fsr1", "bicubic", "lanczos", "ravu", "cunny", "nnedi3"]:
         assert(legacy_mode not in app.FRAME_ENHANCEMENT_PRESET_MODES)
 
-    for language in ["zh_hans", "zh_hant", "en", "ja", "ko"]:
+    for language in ["zh_hans", "zh_hant", "en", "ja", "ko", "es"]:
         app.active_language = language
         assert(not String(app._t("settings.output_resolution")).is_empty())
         assert(not String(app._t("settings.output_resolution_desc")).is_empty())

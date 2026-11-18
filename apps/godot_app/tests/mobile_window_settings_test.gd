@@ -40,7 +40,7 @@ func _run() -> void:
     assert(not app._current_settings_snapshot().picture_in_picture_enabled)
     app._apply_settings_snapshot({}) # Older snapshots preserve the current choice.
     assert(not app.picture_in_picture_enabled)
-    for language in ["zh_hans", "zh_hant", "en", "ja", "ko"]:
+    for language in ["zh_hans", "zh_hant", "en", "ja", "ko", "es"]:
         app.active_language = language
         for key in ["settings.picture_in_picture", "settings.picture_in_picture_desc",
                 "detail.delete_game", "dialog.delete_game_body", "message.game_delete_failed"]:

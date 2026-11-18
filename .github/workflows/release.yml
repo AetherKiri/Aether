@@ -169,6 +169,83 @@ jobs:
 
           gh release create "$tag" "${assets[@]}" "${release_args[@]}"
 
+  publish-r2:
+    name: Publish Android APK to Cloudflare R2
+    # Optional mirror. Configure repository variables R2_ENDPOINT, R2_BUCKET
+    # and R2_PUBLIC_BASE_URL plus secrets R2_ACCESS_KEY_ID and
+    # R2_SECRET_ACCESS_KEY to enable it. Stable tags refresh the latest
+    # pointers; prerelease tags only publish their versioned directory.
+    needs: publish
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    # Serialize promotions so concurrent tag builds cannot move latest backwards.
+    concurrency:
+      group: publish-r2
+      cancel-in-progress: false
+    env:
+      R2_ENDPOINT: ${{ vars.R2_ENDPOINT || secrets.R2_ENDPOINT }}
+      R2_BUCKET: ${{ vars.R2_BUCKET || 'aether' }}
+      R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+      R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+      R2_PUBLIC_BASE_URL: ${{ vars.R2_PUBLIC_BASE_URL }}
+      RELEASE_TAG: ${{ github.ref_name }}
+      GITHUB_REPOSITORY: ${{ github.repository }}
+      GH_TOKEN: ${{ github.token }}
+
+    steps:
+      - name: Check R2 configuration
+        id: config
+        shell: bash
+        run: |
+          set -euo pipefail
+          missing=()
+          [[ -n "$R2_ENDPOINT" ]] || missing+=("R2_ENDPOINT")
+          [[ -n "$R2_ACCESS_KEY_ID" ]] || missing+=("R2_ACCESS_KEY_ID")
+          [[ -n "$R2_SECRET_ACCESS_KEY" ]] || missing+=("R2_SECRET_ACCESS_KEY")
+          if (( ${#missing[@]} > 0 )); then
+            echo "::notice::Skipping R2 publishing; configure ${missing[*]} to enable it."
+            echo "enabled=false" >>"$GITHUB_OUTPUT"
+          else
+            echo "enabled=true" >>"$GITHUB_OUTPUT"
+          fi
+
+      - name: Checkout publishing script
+        if: steps.config.outputs.enabled == 'true'
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Download published Android APK
+        if: steps.config.outputs.enabled == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p r2-apk
+          asset="AetherKiri-${RELEASE_TAG}-android.apk"
+          for attempt in 1 2 3 4 5; do
+            if gh release download "$RELEASE_TAG" \
+              --repo "$GITHUB_REPOSITORY" \
+              --pattern "$asset" \
+              --dir r2-apk \
+              --clobber; then
+              exit 0
+            fi
+            echo "Release asset ${asset} not available yet (attempt ${attempt}); retrying..."
+            sleep 10
+          done
+          echo "error: failed to download release asset ${asset}" >&2
+          exit 1
+
+      - name: Publish release to R2
+        if: steps.config.outputs.enabled == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          apk="$(find r2-apk -type f -name '*.apk' -print -quit)"
+          test -n "$apk"
+          .github/scripts/publish-r2-release.sh "$apk"
+
   update-version:
     name: Open repository version update
     needs: publish

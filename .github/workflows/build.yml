@@ -1175,11 +1175,14 @@ jobs:
             )
           fi
           python3 tools/check_ctest_inventory.py "$inventory_file" "${required_suites[@]}"
+          # Native plugin teardown is not safe under parallel CTest on macOS:
+          # the emoteplayer test passes serially and under lldb but segfaults
+          # during process exit when several plugin binaries run at once.
           ctest \
             --test-dir "$test_build_dir" \
             --output-on-failure \
             --no-tests=error \
-            --parallel 4
+            --parallel 1
 
           # The xp3 archive tools are built in this step so their standalone
           # links cannot silently regress again (issue #241 Phase 2 fallout).

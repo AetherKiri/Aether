@@ -477,6 +477,7 @@ const UI_TEXT := {
         "update.prerelease_badge": "（测试版）",
         "update.notes_title": "更新日志：",
         "update.download_github": "前往 GitHub 下载",
+        "update.download_update": "下载更新",
         "update.open_app_store": "前往 App Store 更新",
         "update.open_testflight": "前往 TestFlight 更新",
         "update.later": "稍后提醒",
@@ -909,6 +910,7 @@ const UI_TEXT := {
         "update.prerelease_badge": "（測試版）",
         "update.notes_title": "更新日誌：",
         "update.download_github": "前往 GitHub 下載",
+        "update.download_update": "下載更新",
         "update.open_app_store": "前往 App Store 更新",
         "update.open_testflight": "前往 TestFlight 更新",
         "update.later": "稍後提醒",
@@ -1339,6 +1341,7 @@ You can find it any time under Settings → QQ Group.",
         "update.prerelease_badge": " (Beta)",
         "update.notes_title": "Release Notes:",
         "update.download_github": "Download from GitHub",
+        "update.download_update": "Download Update",
         "update.open_app_store": "Update in App Store",
         "update.open_testflight": "Open TestFlight",
         "update.later": "Remind Me Later",
@@ -1738,6 +1741,7 @@ You can find it any time under Settings → QQ Group.",
         "update.prerelease_badge": "（ベータ版）",
         "update.notes_title": "更新履歴：",
         "update.download_github": "GitHub からダウンロード",
+        "update.download_update": "アップデートをダウンロード",
         "update.open_app_store": "App Store でアップデート",
         "update.open_testflight": "TestFlight を開く",
         "update.later": "あとで",
@@ -2135,6 +2139,7 @@ You can find it any time under Settings → QQ Group.",
         "update.prerelease_badge": " (베타)",
         "update.notes_title": "릴리스 노트:",
         "update.download_github": "GitHub에서 다운로드",
+        "update.download_update": "업데이트 다운로드",
         "update.open_app_store": "App Store에서 업데이트",
         "update.open_testflight": "TestFlight 열기",
         "update.later": "나중에 알림",
@@ -9435,6 +9440,7 @@ func _show_app_update_dialog(info: Dictionary) -> void:
     var github_url: String = str(info.get("github_url", ""))
     var github_apk_url: String = str(info.get("github_apk_url", ""))
     var github_macos_url: String = str(info.get("github_macos_url", ""))
+    var android_download_url: String = str(info.get("android_download_url", ""))
     var app_store_url: String = str(info.get("app_store_url", ""))
 
     var title_text := _t("update.dialog_title")
@@ -9501,15 +9507,21 @@ func _show_app_update_dialog(info: Dictionary) -> void:
     else:
         var is_android := OS.get_name() == "Android"
         var is_macos := OS.get_name() == "macOS"
+        var use_android_mirror := is_android and not android_download_url.is_empty()
 
-        var gh_btn := _pill_button(_t("update.download_github"))
+        var download_label := (
+            _t("update.download_update") if use_android_mirror else _t("update.download_github")
+        )
+        var gh_btn := _pill_button(download_label)
         gh_btn.clip_text = false
         gh_btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
         gh_btn.custom_minimum_size = Vector2(0, 42)
         gh_btn.pressed.connect(func():
             _dismiss_modal(func():
                 var target_url := ""
-                if is_android and not github_apk_url.is_empty():
+                if use_android_mirror:
+                    target_url = android_download_url
+                elif is_android and not github_apk_url.is_empty():
                     target_url = github_apk_url
                 elif is_macos and not github_macos_url.is_empty():
                     target_url = github_macos_url

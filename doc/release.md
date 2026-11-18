@@ -64,7 +64,9 @@ tags publish only their versioned directory. Re-running an older stable tag does
 not move `latest` backwards. Versioned objects use a one-year immutable cache;
 `latest` pointers revalidate after five minutes. Zone-level Cloudflare cache
 rules can override these headers, so keep `android/latest/*` and `latest.json`
-on a short edge TTL.
+on a short edge TTL. The Android update dialog downloads from the same versioned
+path for 1.1.2 and newer, falling back to the GitHub release asset for older
+versions.
 
 ## Store Packaging
 

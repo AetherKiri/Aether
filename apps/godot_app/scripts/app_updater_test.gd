@@ -21,6 +21,16 @@ func _run() -> void:
     _assert(APP_UPDATER_SCRIPT.compare_versions("1.0.6-alpha.beta", "1.0.6-alpha.1") == 1, "non-numeric should have higher precedence than numeric")
     _assert(APP_UPDATER_SCRIPT.compare_versions("1.0.6-beta", "1.0.6-alpha") == 1, "beta should be greater than alpha")
 
+    # 1b. Android mirror URL construction and pre-mirror fallback
+    var expected_mirror := "https://dl.colorcard.cc/android/1.1.2/AetherKiri-1.1.2-android.apk"
+    _assert(APP_UPDATER_SCRIPT.android_download_url("1.1.2") == expected_mirror, "1.1.2 should use the R2 mirror")
+    _assert(APP_UPDATER_SCRIPT.android_download_url("v1.1.2") == expected_mirror, "v1.1.2 should normalize to the R2 mirror")
+    _assert(APP_UPDATER_SCRIPT.android_download_url("1.1.1") == "", "1.1.1 should fall back to GitHub")
+    _assert(
+        APP_UPDATER_SCRIPT.android_download_url("1.1.3-beta.1") == "https://dl.colorcard.cc/android/1.1.3-beta.1/AetherKiri-1.1.3-beta.1-android.apk",
+        "Prereleases after the mirror cutoff should use the R2 mirror"
+    )
+
     # 2. Test release picking logic with prerelease filtering
     var mock_releases: Array = [
         {"tag_name": "v1.0.7-beta.1", "prerelease": true, "body": "Beta notes"},
@@ -57,9 +67,33 @@ func _run() -> void:
         _assert(status == APP_UPDATER_SCRIPT.CheckStatus.SUCCESS_HAS_UPDATE, "Should report update")
         _assert(info.get("github_macos_url") == "https://custom.com/macos.zip", "Should extract github_macos_url")
         _assert(info.get("github_apk_url") == "https://custom.com/apk", "Should extract github_apk_url")
+        _assert(info.get("android_download_url") == "", "Pre-mirror versions should not advertise a mirror URL")
 
     APP_UPDATER_SCRIPT._finish_with_release_data(mock_release_data, "1.0.5", "github", test_cb)
     _assert(res_tracker[0], "Callback should be invoked")
+
+    # 4b. Mirrored Android release advertises the R2 URL and keeps the GitHub fallback
+    var mirror_release_data := {
+        "tag_name": "v1.1.2",
+        "body": "Mirrored release",
+        "assets": [
+            {
+                "name": "AetherKiri-1.1.2-android.apk",
+                "browser_download_url": "https://github.com/AetherKiri/Aether/releases/download/v1.1.2/AetherKiri-1.1.2-android.apk",
+            },
+        ],
+    }
+    var mirror_tracker := [false]
+    APP_UPDATER_SCRIPT._finish_with_release_data(mirror_release_data, "1.1.1", "github", func(status: int, info: Dictionary):
+        mirror_tracker[0] = true
+        _assert(status == APP_UPDATER_SCRIPT.CheckStatus.SUCCESS_HAS_UPDATE, "Mirrored release should report update")
+        _assert(info.get("android_download_url") == expected_mirror, "Mirrored release should use the R2 URL")
+        _assert(
+            info.get("github_apk_url") == "https://github.com/AetherKiri/Aether/releases/download/v1.1.2/AetherKiri-1.1.2-android.apk",
+            "GitHub asset should remain the fallback"
+        )
+    )
+    _assert(mirror_tracker[0], "Mirrored release callback should be invoked")
 
     # 5. Test is_mac_app_store callable without crash
     var mas_check: bool = APP_UPDATER_SCRIPT.is_mac_app_store()

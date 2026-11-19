@@ -2846,6 +2846,7 @@ const GAME_VIRTUAL_KEYBOARD_OPACITY_STEP := 0.05
 const TOUCH_SECONDARY_TAP_WINDOW_MS := 180
 const TOUCH_SECONDARY_QUARANTINE_MS := 320
 const TOUCH_SINGLE_TAP_DELAY_MS := 90
+const QLIE_TOUCH_TAP_MAX_MS := 350
 const TOUCH_CLICK_HOLD_MS := 48
 const ARTEMIS_INPUT_TRACE_DELAYS_MS := [0, 80, 240, 800]
 const INPUT_DEVICE_ID_EMULATION := -1
@@ -18835,8 +18836,18 @@ func _handle_game_pointer_event(event: InputEvent) -> bool:
             _clear_pending_touch_if_matches(pointer_id)
             _trace_input_throttled()
             return true
+        var qlie_tap_only := active_runtime_kind == RUNTIME_QLIE
         if pointer_id == pending_touch_index:
-            var pending_up_mapped := _map_viewport_point(touch.position, true)
+            var pending_up_mapped := _map_viewport_point(touch.position, not qlie_tap_only)
+            if qlie_tap_only and (
+                touch.canceled
+                or Time.get_ticks_msec() - pending_touch_down_msec >= QLIE_TOUCH_TAP_MAX_MS
+                or pending_up_mapped.x < 0.0 or pending_up_mapped.y < 0.0
+                or pending_up_mapped.distance_to(pending_touch_mapped) >= _touch_drag_distance_threshold()
+            ):
+                _clear_pending_touch()
+                _trace_input_throttled()
+                return true
             if pending_up_mapped.x < 0.0 or pending_up_mapped.y < 0.0:
                 pending_up_mapped = pending_touch_mapped
             if pending_touch_quarantined:
@@ -18869,7 +18880,9 @@ func _handle_game_pointer_event(event: InputEvent) -> bool:
         dragging_touch_points.erase(pointer_id)
         last_forwarded_touch_move_msec_by_id.erase(pointer_id)
         if GameInputMapping.touch_drag_is_cursor_only(active_runtime_kind):
-            if not dragged:
+            # A forced flush has already promoted this contact to cursor-only
+            # tracking. For QLIE, only a still-pending contact can be a tap.
+            if not dragged and not qlie_tap_only:
                 _set_pending_touch(pointer_id, down_mapped)
                 _send_pending_touch_click(pointer_id, mapped)
             # Cursor-only holds never sent DOWN, so they must not send UP.
@@ -18889,10 +18902,16 @@ func _handle_game_pointer_event(event: InputEvent) -> bool:
             _trace_input_throttled()
             return true
         if pointer_id == pending_touch_index:
-            var pending_drag_mapped := _map_viewport_point(drag.position, true)
-            if pending_drag_mapped.x < 0.0 or pending_drag_mapped.y < 0.0:
+            # Clamping can hide a QLIE drag that leaves the game near its edge.
+            var qlie_tap_only := active_runtime_kind == RUNTIME_QLIE
+            var pending_drag_mapped := _map_viewport_point(drag.position, not qlie_tap_only)
+            var outside := pending_drag_mapped.x < 0.0 or pending_drag_mapped.y < 0.0
+            if outside and not qlie_tap_only:
                 pending_drag_mapped = pending_touch_mapped
-            if pending_drag_mapped.distance_to(pending_touch_mapped) < drag_distance_threshold:
+            if (
+                not (qlie_tap_only and outside)
+                and pending_drag_mapped.distance_to(pending_touch_mapped) < drag_distance_threshold
+            ):
                 _trace_input_move_suppressed()
                 return true
             _flush_pending_touch_press(true)
@@ -19018,8 +19037,8 @@ func _flush_pending_touch_press(force: bool = false) -> bool:
         return false
     var cursor_only := GameInputMapping.touch_drag_is_cursor_only(active_runtime_kind)
     if cursor_only and not force:
-        # A stationary hold can still become either a tap or a two-finger
-        # gesture. Sending DOWN on a timer would advance BGI before release.
+        # Wait for release to classify the tap. A timer-triggered DOWN would
+        # activate a control while the contact can still become a drag.
         return false
     if not force and now - pending_touch_down_msec < TOUCH_SINGLE_TAP_DELAY_MS:
         return false

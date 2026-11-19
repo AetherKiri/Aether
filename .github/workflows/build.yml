@@ -184,6 +184,9 @@ jobs:
         run: |
           set -euo pipefail
           test -f packages/AetherInternal/cmake/AetherInternalConfig.cmake
+          test -f packages/AetherELIQ/cmake/AetherELIQConfig.cmake
+          test "$(git -C packages/AetherELIQ rev-parse HEAD)" = \
+            "$(git rev-parse HEAD:packages/AetherELIQ)"
           test -f packages/AetherSoftPal/cmake/AetherSoftPalConfig.cmake
           test "$(git -C packages/AetherSoftPal rev-parse HEAD)" = \
             "$(git rev-parse HEAD:packages/AetherSoftPal)"
@@ -611,6 +614,9 @@ jobs:
         run: |
           set -euo pipefail
           test -f packages/AetherInternal/cmake/AetherInternalConfig.cmake
+          test -f packages/AetherELIQ/cmake/AetherELIQConfig.cmake
+          test "$(git -C packages/AetherELIQ rev-parse HEAD)" = \
+            "$(git rev-parse HEAD:packages/AetherELIQ)"
           test -f packages/AetherSoftPal/cmake/AetherSoftPalConfig.cmake
           test "$(git -C packages/AetherSoftPal rev-parse HEAD)" = \
             "$(git rev-parse HEAD:packages/AetherSoftPal)"
@@ -974,6 +980,9 @@ jobs:
         run: |
           set -euo pipefail
           test -f packages/AetherInternal/cmake/AetherInternalConfig.cmake
+          test -f packages/AetherELIQ/cmake/AetherELIQConfig.cmake
+          test "$(git -C packages/AetherELIQ rev-parse HEAD)" = \
+            "$(git rev-parse HEAD:packages/AetherELIQ)"
           test -f packages/AetherSoftPal/cmake/AetherSoftPalConfig.cmake
           test "$(git -C packages/AetherSoftPal rev-parse HEAD)" = \
             "$(git rev-parse HEAD:packages/AetherSoftPal)"
@@ -1132,6 +1141,8 @@ jobs:
             -D BUILD_TOOLS=ON \
             -D BUILD_ENGINE_API=OFF \
             -D BUILD_GODOT_EXTENSION=OFF \
+            -D AETHERKIRI_ENABLE_QLIE=OFF \
+            -D AETHERKIRI_BUILD_QLIE_TESTS="$AETHERKIRI_WITH_INTERNAL" \
             -D AETHERKIRI_BUILD_ENTISGLS_TESTS=ON \
             -D AETHERKIRI_BUILD_SYSTEMC_TESTS=ON \
             -D AETHERKIRI_BUILD_ESCUDE_TESTS=ON \
@@ -1177,6 +1188,10 @@ jobs:
               --require-executable aether_yuris_provider_tests
               --require-executable bgi-runtime-vm
               --require-executable bgi-runtime-provider
+              --require-executable aethereliq-runtime-tests
+              --require-executable aethereliq-audio-tests
+              --require-executable aethereliq-render-tests
+              --require-executable aethereliq-provider-tests
             )
           fi
           python3 tools/check_ctest_inventory.py "$inventory_file" "${required_suites[@]}"
@@ -1366,6 +1381,9 @@ jobs:
         run: |
           set -euo pipefail
           test -f packages/AetherInternal/cmake/AetherInternalConfig.cmake
+          test -f packages/AetherELIQ/cmake/AetherELIQConfig.cmake
+          test "$(git -C packages/AetherELIQ rev-parse HEAD)" = \
+            "$(git rev-parse HEAD:packages/AetherELIQ)"
           test -f packages/AetherSoftPal/cmake/AetherSoftPalConfig.cmake
           for package in AetherInternal AetherSoftPal; do
             test "$(git -C "packages/$package" rev-parse HEAD)" = \
@@ -1538,11 +1556,16 @@ jobs:
         if: env.AETHERKIRI_WITH_INTERNAL == 'true'
         run: |
           cmake -S . -B out/linux/debug \
-            -D ENABLE_TESTS=ON -D VCPKG_MANIFEST_INSTALL=OFF
+            -D ENABLE_TESTS=ON -D AETHERKIRI_BUILD_QLIE_TESTS=ON \
+            -D VCPKG_MANIFEST_INSTALL=OFF
           cmake --build out/linux/debug --parallel 2 \
-            --target bgi-runtime-vm bgi-runtime-provider
+            --target bgi-runtime-vm bgi-runtime-provider \
+              aethereliq-runtime-tests aethereliq-audio-tests \
+              aethereliq-render-tests aethereliq-provider-tests
           ctest --test-dir out/linux/debug/packages/AetherInternal/tests/bgi_runtime \
             --no-tests=error --parallel 2
+          ctest --test-dir out/linux/debug -R '^aethereliq-' \
+            --no-tests=error --output-on-failure --parallel 2
 
       - name: Run OnscripterYuri Godot smoke test
         env:

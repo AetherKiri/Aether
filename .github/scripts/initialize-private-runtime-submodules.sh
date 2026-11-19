@@ -23,6 +23,7 @@ write_deploy_key() {
 write_deploy_key internal "$AETHER_INTERNAL_DEPLOY_KEY"
 write_deploy_key softpal "$AETHER_SOFTPAL_DEPLOY_KEY"
 write_deploy_key leafttt "$AETHER_LEAFTTT_DEPLOY_KEY"
+write_deploy_key eliq "$AETHER_ELIQ_DEPLOY_KEY"
 
 # GitHub associates each deploy key with one private repository. The existing
 # key fetches the other runtimes; SoftPal and LeafTtt use their own read-only keys.
@@ -51,6 +52,5 @@ git submodule update --init --depth 1 packages/AetherSoftPal
 export GIT_SSH_COMMAND="ssh -i $key_dir/leafttt -o IdentitiesOnly=yes -o StrictHostKeyChecking=accept-new"
 git submodule update --init --recursive --depth 1 packages/AetherLeafTtt
 
-write_deploy_key eliq "$AETHER_ELIQ_DEPLOY_KEY"
 GIT_SSH_COMMAND="ssh -i $key_dir/eliq -o IdentitiesOnly=yes -o StrictHostKeyChecking=accept-new" \
-    git submodule update --init --depth 1 packages/AetherELIQ
+    git submodule update --init --recursive --depth 1 packages/AetherELIQ

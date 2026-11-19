@@ -4,6 +4,7 @@ set -euo pipefail
 : "${AETHER_INTERNAL_DEPLOY_KEY:?Missing AetherInternal CI deploy key}"
 : "${AETHER_SOFTPAL_DEPLOY_KEY:?Missing AetherSoftPal CI deploy key}"
 : "${AETHER_LEAFTTT_DEPLOY_KEY:?Missing AetherLeafTtt CI deploy key}"
+: "${AETHER_ELIQ_DEPLOY_KEY:?Missing AetherELIQ CI deploy key}"
 
 key_dir="$(mktemp -d "${RUNNER_TEMP:-/tmp}/aether-submodules.XXXXXX")"
 trap 'rm -rf "$key_dir"' EXIT
@@ -49,3 +50,7 @@ git submodule update --init --depth 1 packages/AetherSoftPal
 
 export GIT_SSH_COMMAND="ssh -i $key_dir/leafttt -o IdentitiesOnly=yes -o StrictHostKeyChecking=accept-new"
 git submodule update --init --recursive --depth 1 packages/AetherLeafTtt
+
+write_deploy_key eliq "$AETHER_ELIQ_DEPLOY_KEY"
+GIT_SSH_COMMAND="ssh -i $key_dir/eliq -o IdentitiesOnly=yes -o StrictHostKeyChecking=accept-new" \
+    git submodule update --init --depth 1 packages/AetherELIQ

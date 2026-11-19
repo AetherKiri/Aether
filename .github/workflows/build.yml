@@ -27,6 +27,8 @@ on:
         required: false
       AETHER_LEAFTTT_DEPLOY_KEY:
         required: false
+      AETHER_ELIQ_DEPLOY_KEY:
+        required: false
       AETHERID:
         required: false
       ANDROID_RELEASE_KEYSTORE_BASE64:
@@ -111,6 +113,7 @@ jobs:
           AETHER_INTERNAL_DEPLOY_KEY: ${{ secrets.AETHERSECRET }}
           AETHER_SOFTPAL_DEPLOY_KEY: ${{ secrets.AETHER_SOFTPAL_DEPLOY_KEY }}
           AETHER_LEAFTTT_DEPLOY_KEY: ${{ secrets.AETHER_LEAFTTT_DEPLOY_KEY }}
+          AETHER_ELIQ_DEPLOY_KEY: ${{ secrets.AETHER_ELIQ_DEPLOY_KEY }}
         run: .github/scripts/initialize-private-runtime-submodules.sh
 
       - name: Set up Rust for native runtimes
@@ -511,6 +514,7 @@ jobs:
           AETHER_INTERNAL_DEPLOY_KEY: ${{ secrets.AETHERSECRET }}
           AETHER_SOFTPAL_DEPLOY_KEY: ${{ secrets.AETHER_SOFTPAL_DEPLOY_KEY }}
           AETHER_LEAFTTT_DEPLOY_KEY: ${{ secrets.AETHER_LEAFTTT_DEPLOY_KEY }}
+          AETHER_ELIQ_DEPLOY_KEY: ${{ secrets.AETHER_ELIQ_DEPLOY_KEY }}
         run: .github/scripts/initialize-private-runtime-submodules.sh
 
       - name: Set up Rust for native runtimes
@@ -877,6 +881,7 @@ jobs:
           AETHER_INTERNAL_DEPLOY_KEY: ${{ secrets.AETHERSECRET }}
           AETHER_SOFTPAL_DEPLOY_KEY: ${{ secrets.AETHER_SOFTPAL_DEPLOY_KEY }}
           AETHER_LEAFTTT_DEPLOY_KEY: ${{ secrets.AETHER_LEAFTTT_DEPLOY_KEY }}
+          AETHER_ELIQ_DEPLOY_KEY: ${{ secrets.AETHER_ELIQ_DEPLOY_KEY }}
         run: .github/scripts/initialize-private-runtime-submodules.sh
 
       - name: Set up Rust for native runtimes
@@ -1332,6 +1337,7 @@ jobs:
           AETHER_INTERNAL_DEPLOY_KEY: ${{ secrets.AETHERSECRET }}
           AETHER_SOFTPAL_DEPLOY_KEY: ${{ secrets.AETHER_SOFTPAL_DEPLOY_KEY }}
           AETHER_LEAFTTT_DEPLOY_KEY: ${{ secrets.AETHER_LEAFTTT_DEPLOY_KEY }}
+          AETHER_ELIQ_DEPLOY_KEY: ${{ secrets.AETHER_ELIQ_DEPLOY_KEY }}
         run: .github/scripts/initialize-private-runtime-submodules.sh
 
       - name: Set up Java for Flash

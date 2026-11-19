@@ -318,6 +318,12 @@ if(AETHERKIRI_ENABLE_WA2)
     target_compile_definitions(aether_kiri_godot PRIVATE AETHERKIRI_WITH_WA2=1)
 endif()
 
+if(AETHERKIRI_ENABLE_QLIE)
+    aethereliq_extend_qlie(aether_kiri_godot "${CMAKE_SOURCE_DIR}")
+    aetherkiri_sanitize_openal_link()
+    target_compile_definitions(aether_kiri_godot PRIVATE AETHERKIRI_WITH_QLIE=1)
+endif()
+
 if(AETHERKIRI_ENABLE_SOFTPAL_RUNTIME)
     # The provider registers alongside the other independent runtimes in the
     # Godot host. Its private sources stay in the AetherSoftPal submodule.

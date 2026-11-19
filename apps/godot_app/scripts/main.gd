@@ -2290,6 +2290,7 @@ const RUNTIME_XSYSTEM4 := "xsystem4"
 const RUNTIME_XSYSTEM35 := "xsystem35"
 const RUNTIME_SYSTEM3 := "system3"
 const RUNTIME_WA2 := "wa2"
+const RUNTIME_QLIE := "qlie"
 const RUNTIME_BGI := "bgi"
 const RUNTIME_ADVHD := "advhd"
 const RUNTIME_ESCUDE := "escude"
@@ -10253,7 +10254,7 @@ func _game_launch_entry_label(game: Dictionary) -> String:
 func _can_configure_launch_file(game: Dictionary, runtime: String = "") -> bool:
     return OS.get_name() != "Web" \
         and not builtin_demo.is_game(game) \
-        and (runtime if not runtime.is_empty() else _game_runtime_kind(String(game.get("path", "")))) not in [RUNTIME_ONSCRIPTER, RUNTIME_N2SYSTEM, RUNTIME_XSYSTEM4, RUNTIME_XSYSTEM35, RUNTIME_SYSTEM3] \
+        and (runtime if not runtime.is_empty() else _game_runtime_kind(String(game.get("path", "")))) not in [RUNTIME_ONSCRIPTER, RUNTIME_N2SYSTEM, RUNTIME_XSYSTEM4, RUNTIME_XSYSTEM35, RUNTIME_SYSTEM3, RUNTIME_QLIE] \
         and String(game.get("type", "Directory")).to_lower() == "directory"
 
 func _set_launch_file_for_selected() -> void:
@@ -11884,6 +11885,8 @@ func _probe_game_runtime_kind(root: String, runtime_kind: String) -> String:
         return runtime_kind
     if player != null and player.has_method("probe_runtime"):
         # Format detection stays in the optional private provider.
+        if int(player.probe_runtime(RUNTIME_QLIE, root)) >= 950:
+            return RUNTIME_QLIE
         if int(player.probe_runtime(RUNTIME_SYSTEMC, root)) > 0:
             return RUNTIME_SYSTEMC
         if int(player.probe_runtime(RUNTIME_ESCUDE, root)) >= 90:
@@ -13342,6 +13345,7 @@ func _switch_runtime_player(runtime_kind: String) -> bool:
         RUNTIME_ESCUDE,
         RUNTIME_ENTISGLS,
         RUNTIME_WA2,
+        RUNTIME_QLIE,
     ]:
         normalized = RUNTIME_KIRIKIRI
     # Returning to the library keeps the player Node but destroys its engine.
@@ -13403,6 +13407,8 @@ func _switch_runtime_player(runtime_kind: String) -> bool:
         if normalized == RUNTIME_MAGES
         else "N2System / NitroSharp"
         if normalized == RUNTIME_N2SYSTEM
+        else "QLIE"
+        if normalized == RUNTIME_QLIE
         else "EntisGLS / Cotopha"
         if normalized == RUNTIME_ENTISGLS
         else "ADV Player HD"
@@ -14147,6 +14153,7 @@ func _ensure_player_initialized() -> bool:
         RUNTIME_ESCUDE,
         RUNTIME_ENTISGLS,
         RUNTIME_WA2,
+        RUNTIME_QLIE,
     ]:
         runtime_id = current_player_runtime_kind
     var runtime_result := int(player.set_engine_option("runtime", runtime_id))
@@ -14184,6 +14191,8 @@ func _ensure_player_initialized() -> bool:
         if current_player_runtime_kind == RUNTIME_BGI
         else "N2System / NitroSharp"
         if current_player_runtime_kind == RUNTIME_N2SYSTEM
+        else "QLIE"
+        if current_player_runtime_kind == RUNTIME_QLIE
         else "EntisGLS / Cotopha"
         if current_player_runtime_kind == RUNTIME_ENTISGLS
         else "ADV Player HD"
@@ -14896,8 +14905,7 @@ func _probe_open_game(config: Dictionary, target_game_path: String, backend_env:
     current_surface_size = surface_size
     game_path.text = target_game_path
     var startup_script := ProbeConfig.string_value(config, "startup_script", "").strip_edges()
-    if not startup_script.is_empty() and not startup_script.begins_with("/"):
-        startup_script = target_game_path.path_join(startup_script)
+    startup_script = GameLaunchEntry.resolve_startup_script(runtime_kind, target_game_path, startup_script)
     var result: int = int(player.open_game(target_game_path, true, startup_script))
     if result != ENGINE_RESULT_OK:
         _write_probe_marker("probe_open_game failed error=%s" % player.get_last_error())
@@ -17085,8 +17093,7 @@ func _on_open_game() -> void:
     var startup_script := String(selected_game.get("startupScript", "")).strip_edges()
     if startup_script.is_empty() and detected_runtime == RUNTIME_ENTISGLS:
         startup_script = GameLaunchEntry.configured_relative_path(selected_game)
-    if not startup_script.is_empty() and not startup_script.begins_with("/"):
-        startup_script = path.path_join(startup_script)
+    startup_script = GameLaunchEntry.resolve_startup_script(detected_runtime, path, startup_script)
     if startup_script.is_empty() and detected_runtime == RUNTIME_YURIS:
         startup_script = GameLaunchEntry.default_yuris_startup_script(path)
         if not startup_script.is_empty():

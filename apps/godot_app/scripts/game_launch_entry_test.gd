@@ -48,6 +48,21 @@ func _init() -> void:
 
     _expect_equal(GameLaunchEntry.resolve({"path": root}), root, "default directory entry")
     _expect_equal(
+        GameLaunchEntry.resolve_for_runtime({"path": root, GameLaunchEntry.FIELD: "Config.exe"}, "qlie"),
+        root,
+        "QLIE uses the game directory even with a saved launcher"
+    )
+    _expect_equal(
+        GameLaunchEntry.resolve_startup_script("qlie", root, "Script/intro.s"),
+        "Script/intro.s",
+        "QLIE startup overrides retain archive-relative names"
+    )
+    _expect_equal(
+        GameLaunchEntry.resolve_startup_script("entisgls", root, "intro.txt"),
+        root.path_join("intro.txt"),
+        "Filesystem startup overrides remain relative to the game directory"
+    )
+    _expect_equal(
         GameLaunchEntry.resolve_for_runtime({"path": root, GameLaunchEntry.FIELD: "game.exe"}, "entisgls"),
         root,
         "EntisGLS provider receives the archive root"

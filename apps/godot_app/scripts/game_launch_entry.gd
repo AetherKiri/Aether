@@ -12,6 +12,7 @@ const DIRECTORY_RUNTIME_KINDS := [
     "escude",
     "entisgls",
     "catsystem2",
+    "qlie",
     "mages",
     "n2system",
     "minori",
@@ -106,6 +107,13 @@ static func resolve_for_runtime(
             if not hcb.is_empty():
                 return root.path_join(hcb)
     return resolve(game)
+
+
+static func resolve_startup_script(runtime_kind: String, root: String, entry: String) -> String:
+    # QLIE resolves logical entries through its game archive.
+    if runtime_kind == "qlie" or entry.is_empty() or entry.begins_with("/"):
+        return entry
+    return root.path_join(entry)
 
 
 static func runtime_uses_directory(runtime_kind: String) -> bool:

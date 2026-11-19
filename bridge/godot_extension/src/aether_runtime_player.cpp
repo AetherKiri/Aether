@@ -5,6 +5,9 @@
 #if defined(AETHERKIRI_WITH_WA2)
 extern "C" void AetherInternalRegisterWa2Runtime(void);
 #endif
+#if defined(AETHERKIRI_WITH_QLIE)
+extern "C" void AetherInternalRegisterQlieRuntime(void);
+#endif
 #if defined(AETHERKIRI_HOST_FLASH)
 #include "flash_player.h"
 #endif
@@ -14441,6 +14444,9 @@ void InitializeAetherRuntime(ModuleInitializationLevel level) {
     }
 #if defined(AETHERKIRI_WITH_WA2)
     AetherInternalRegisterWa2Runtime();
+#endif
+#if defined(AETHERKIRI_WITH_QLIE)
+    AetherInternalRegisterQlieRuntime();
 #endif
 #if defined(AETHERKIRI_INTERNAL_FRAME_EFFECTS)
     RegisterAetherInternalFrameEffects();

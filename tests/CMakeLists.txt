@@ -34,8 +34,10 @@ if(TARGET krkr2core)
             endif()
             set_property(TARGET ${_krkr_plugin_test}
                 PROPERTY LINK_LIBRARY_OVERRIDE_krkr2plugin DEFAULT)
-            target_link_libraries(${_krkr_plugin_test} PRIVATE
-                "$<LINK_LIBRARY:WHOLE_ARCHIVE,$<TARGET_FILE:krkr2plugin>>")
+            get_target_property(_krkr_plugin_test_libraries ${_krkr_plugin_test} LINK_LIBRARIES)
+            set_property(TARGET ${_krkr_plugin_test} PROPERTY LINK_LIBRARIES
+                "$<LINK_LIBRARY:WHOLE_ARCHIVE,$<TARGET_FILE:krkr2plugin>>"
+                ${_krkr_plugin_test_libraries})
         endforeach()
     endif()
     add_subdirectory("${AETHERKIRI_KRKR_DIR}/tests/tjs2"

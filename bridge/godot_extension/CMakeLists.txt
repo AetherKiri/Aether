@@ -499,7 +499,7 @@ if(IOS)
         COMMAND "${AETHERKIRI_LIBTOOL_EXECUTABLE}" -static
             -o "${AETHERKIRI_MERGED_GODOT_ARCHIVE}"
             ${AETHERKIRI_IOS_ARCHIVES}
-        COMMAND "${CMAKE_COMMAND}" -E copy_if_different
+        COMMAND "${CMAKE_COMMAND}" -E rename
             "${AETHERKIRI_MERGED_GODOT_ARCHIVE}"
             "$<TARGET_FILE:aether_kiri_godot>"
         VERBATIM)

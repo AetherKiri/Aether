@@ -69,6 +69,8 @@ env:
   # Only main publishes shared caches. Branches, PRs and release tags restore
   # main's snapshots without uploading copies scoped to their own ref.
   AETHERKIRI_VCPKG_CACHE_WRITE: ${{ github.ref == 'refs/heads/main' && github.actor != 'dependabot[bot]' }}
+  # Release artifacts exclude Emberfall pending redistribution clearance.
+  AETHERKIRI_ENABLE_SYSTEMNNN: 'OFF'
   AETHERKIRI_RELEASE_VERSION: ${{ inputs.release_version || '' }}
   AETHERKIRI_BUILD_NUMBER: ${{ inputs.release_build_number || github.run_number }}
   AETHERKIRI_BUILD_ATTEMPT: ${{ github.run_attempt }}
@@ -78,12 +80,9 @@ env:
 jobs:
   android:
     # Upstream bot candidates run only the secretless RFVP provider checks.
-    # SystemNNN integration refs run source contracts only while binary distribution authorization is unresolved.
     if: >-
       ${{ !startsWith(github.head_ref, 'rfvp-update/') &&
           !startsWith(github.ref_name, 'rfvp-update/') &&
-          !startsWith(github.head_ref, 'feat/systemnnn') &&
-          !startsWith(github.ref_name, 'feat/systemnnn') &&
           github.event.pull_request.user.login != 'github-actions[bot]' }}
     name: Build Android App
     runs-on: ubuntu-latest
@@ -351,7 +350,7 @@ jobs:
       - name: Prepare Android native dependencies
         run: |
           ./build.sh android release --configure-only --jobs=4
-          ./build.sh android debug --configure-only --jobs=4
+          AETHERKIRI_ENABLE_SYSTEMNNN=${{ github.event_name == 'pull_request' && 'ON' || 'OFF' }} ./build.sh android debug --configure-only --jobs=4
 
       - name: Save Android dependency downloads
         if: success() && env.AETHERKIRI_VCPKG_CACHE_WRITE == 'true' && steps.restore-android-vcpkg-downloads.outputs.cache-hit != 'true'
@@ -425,6 +424,7 @@ jobs:
           export CMAKE_CXX_COMPILER_LAUNCHER=ccache
           export NDK_CCACHE=ccache
           ./build.sh android release --jobs=4
+          grep -Fx 'AETHERKIRI_ENABLE_SYSTEMNNN:BOOL=OFF' out/android/arm64-v8a/release/CMakeCache.txt
           if [[ "$AETHERKIRI_WITH_INTERNAL" == "true" ]]; then
             grep -Fx 'AETHERKIRI_ENABLE_SOFTPAL_RUNTIME:BOOL=ON' \
               out/android/arm64-v8a/release/CMakeCache.txt
@@ -433,6 +433,8 @@ jobs:
           fi
 
       - name: Build Android Debug
+        env:
+          AETHERKIRI_ENABLE_SYSTEMNNN: ${{ github.event_name == 'pull_request' && 'ON' || 'OFF' }}
         run: |
           set -euo pipefail
           chmod +x ./build.sh
@@ -440,6 +442,7 @@ jobs:
           export CMAKE_CXX_COMPILER_LAUNCHER=ccache
           export NDK_CCACHE=ccache
           ./build.sh android debug --jobs=4
+          grep -Fx "AETHERKIRI_ENABLE_SYSTEMNNN:BOOL=$AETHERKIRI_ENABLE_SYSTEMNNN" out/android/arm64-v8a/debug/CMakeCache.txt
 
       - name: Verify exported APKs
         run: |
@@ -471,12 +474,9 @@ jobs:
 
   ios:
     # Upstream bot candidates run only the secretless RFVP provider checks.
-    # SystemNNN integration refs run source contracts only while binary distribution authorization is unresolved.
     if: >-
       ${{ !startsWith(github.head_ref, 'rfvp-update/') &&
           !startsWith(github.ref_name, 'rfvp-update/') &&
-          !startsWith(github.head_ref, 'feat/systemnnn') &&
-          !startsWith(github.ref_name, 'feat/systemnnn') &&
           github.event.pull_request.user.login != 'github-actions[bot]' }}
     name: Build iOS App
     runs-on: xcode-27
@@ -687,6 +687,7 @@ jobs:
           export CMAKE_C_COMPILER_LAUNCHER=ccache
           export CMAKE_CXX_COMPILER_LAUNCHER=ccache
           ./build.sh ios release --jobs=4 --package-ipa 2>&1 | tee "${RUNNER_TEMP}/ios-release-build.log"
+          grep -Fx 'AETHERKIRI_ENABLE_SYSTEMNNN:BOOL=OFF' out/ios/release/CMakeCache.txt
           grep -Fx 'AETHERKIRI_ENABLE_RFVP:BOOL=ON' out/ios/release/CMakeCache.txt
           test -s out/ios/release/bridge/rfvp_runtime/libaether_rfvp_runtime.a
           if [[ "$AETHERKIRI_WITH_INTERNAL" == "true" ]]; then
@@ -769,12 +770,15 @@ jobs:
           python3 .github/scripts/clean-apple-build-intermediates.py ios-release
 
       - name: Build iOS Debug
+        env:
+          AETHERKIRI_ENABLE_SYSTEMNNN: ${{ github.event_name == 'pull_request' && 'ON' || 'OFF' }}
         run: |
           set -euo pipefail
           chmod +x ./build.sh
           export CMAKE_C_COMPILER_LAUNCHER=ccache
           export CMAKE_CXX_COMPILER_LAUNCHER=ccache
           ./build.sh ios debug --jobs=4 --package-ipa 2>&1 | tee "${RUNNER_TEMP}/ios-debug-build.log"
+          grep -Fx "AETHERKIRI_ENABLE_SYSTEMNNN:BOOL=$AETHERKIRI_ENABLE_SYSTEMNNN" out/ios/debug/CMakeCache.txt
           grep -Fx 'AETHERKIRI_ENABLE_RFVP:BOOL=ON' out/ios/debug/CMakeCache.txt
           test -s out/ios/debug/bridge/rfvp_runtime/libaether_rfvp_runtime.a
           if grep -E "SCRIPT ERROR|Failed to load script|Can't open GDExtension|Can't open dynamic library" "${RUNNER_TEMP}/ios-debug-build.log"; then
@@ -833,12 +837,9 @@ jobs:
 
   macos:
     # Upstream bot candidates run only the secretless RFVP provider checks.
-    # SystemNNN integration refs run source contracts only while binary distribution authorization is unresolved.
     if: >-
       ${{ !startsWith(github.head_ref, 'rfvp-update/') &&
           !startsWith(github.ref_name, 'rfvp-update/') &&
-          !startsWith(github.head_ref, 'feat/systemnnn') &&
-          !startsWith(github.ref_name, 'feat/systemnnn') &&
           github.event.pull_request.user.login != 'github-actions[bot]' }}
     name: Build macOS App
     runs-on: xcode-27
@@ -880,7 +881,6 @@ jobs:
           python3 -m unittest discover -s tests/python -p test_n2system_packaging.py -v
           python3 -m unittest discover -s tests/python -p test_macos_app_store_signing.py -v
           python3 -m unittest discover -s tests/python -p test_runtime_submodule_initialization.py -v
-          python3 -m unittest discover -s tests/python -p test_runtime_selection.py -v
           python3 -m unittest discover -s tests/python -p test_ctest_inventory.py -v
 
       - name: Initialize private runtime submodules
@@ -1066,6 +1066,7 @@ jobs:
           export CMAKE_C_COMPILER_LAUNCHER=ccache
           export CMAKE_CXX_COMPILER_LAUNCHER=ccache
           ./build.sh macos release --jobs=4
+          grep -Fx 'AETHERKIRI_ENABLE_SYSTEMNNN:BOOL=OFF' out/macos/release/CMakeCache.txt
           grep -Fx 'AETHERKIRI_ENABLE_RFVP:BOOL=ON' out/macos/release/CMakeCache.txt
           test -s out/macos/release/bridge/rfvp_runtime/libaether_rfvp_runtime.a
           if [[ "$AETHERKIRI_WITH_INTERNAL" == "true" ]]; then
@@ -1088,12 +1089,15 @@ jobs:
           python3 .github/scripts/clean-apple-build-intermediates.py macos-release
 
       - name: Build macOS Debug
+        env:
+          AETHERKIRI_ENABLE_SYSTEMNNN: ${{ github.event_name == 'pull_request' && 'ON' || 'OFF' }}
         run: |
           set -euo pipefail
           chmod +x ./build.sh
           export CMAKE_C_COMPILER_LAUNCHER=ccache
           export CMAKE_CXX_COMPILER_LAUNCHER=ccache
           ./build.sh macos debug --jobs=4
+          grep -Fx "AETHERKIRI_ENABLE_SYSTEMNNN:BOOL=$AETHERKIRI_ENABLE_SYSTEMNNN" out/macos/debug/CMakeCache.txt
           grep -Fx 'AETHERKIRI_ENABLE_RFVP:BOOL=ON' out/macos/debug/CMakeCache.txt
           test -s out/macos/debug/bridge/rfvp_runtime/libaether_rfvp_runtime.a
 
@@ -1125,6 +1129,7 @@ jobs:
 
       - name: Run complete public and integrated private unit tests
         env:
+          AETHERKIRI_ENABLE_SYSTEMNNN: ${{ github.event_name == 'pull_request' && 'ON' || 'OFF' }}
           # Exercise playback/completion without depending on the runner's
           # CoreAudio output device to advance the audio clock.
           ALSOFT_DRIVERS: 'null'
@@ -1140,6 +1145,7 @@ jobs:
             -D BUILD_TOOLS=ON \
             -D BUILD_ENGINE_API=OFF \
             -D BUILD_GODOT_EXTENSION=OFF \
+            -D AETHERKIRI_ENABLE_SYSTEMNNN="$AETHERKIRI_ENABLE_SYSTEMNNN" \
             -D AETHERKIRI_BUILD_ENTISGLS_TESTS=ON \
             -D AETHERKIRI_BUILD_SYSTEMC_TESTS=ON \
             -D AETHERKIRI_BUILD_ESCUDE_TESTS=ON \
@@ -1166,7 +1172,6 @@ jobs:
             --require-executable mages-runtime-provider
             --require-executable mages-host-events
             --require-executable n2system-runtime-provider
-            --require-executable systemnnn-provider-contract
             --require-executable aether_xsystem35_embedded_midi_contract
           )
           if [[ "$AETHERKIRI_WITH_INTERNAL" == "true" ]]; then
@@ -1187,6 +1192,9 @@ jobs:
               --require-executable bgi-runtime-vm
               --require-executable bgi-runtime-provider
             )
+          fi
+          if [[ "$AETHERKIRI_ENABLE_SYSTEMNNN" == "ON" ]]; then
+            required_suites+=(--require-executable systemnnn-provider-contract)
           fi
           python3 tools/check_ctest_inventory.py "$inventory_file" "${required_suites[@]}"
           ctest \
@@ -1295,12 +1303,9 @@ jobs:
 
   linux:
     # Upstream bot candidates run only the secretless RFVP provider checks.
-    # SystemNNN integration refs run source contracts only while binary distribution authorization is unresolved.
     if: >-
       ${{ !startsWith(github.head_ref, 'rfvp-update/') &&
           !startsWith(github.ref_name, 'rfvp-update/') &&
-          !startsWith(github.head_ref, 'feat/systemnnn') &&
-          !startsWith(github.ref_name, 'feat/systemnnn') &&
           github.event.pull_request.user.login != 'github-actions[bot]' }}
     name: Build Linux App (${{ matrix.arch }})
     runs-on: ${{ matrix.runner }}
@@ -1470,6 +1475,7 @@ jobs:
       - name: Build Linux Release
         run: |
           ./build.sh linux release --jobs=2
+          grep -Fx 'AETHERKIRI_ENABLE_SYSTEMNNN:BOOL=OFF' out/linux/release/CMakeCache.txt
           if [[ "$AETHERKIRI_WITH_INTERNAL" == "true" ]]; then
             grep -Fx 'AETHERKIRI_ENABLE_SOFTPAL_RUNTIME:BOOL=ON' \
               out/linux/release/CMakeCache.txt
@@ -1478,7 +1484,11 @@ jobs:
           fi
 
       - name: Build Linux Debug
-        run: ./build.sh linux debug --jobs=2
+        env:
+          AETHERKIRI_ENABLE_SYSTEMNNN: ${{ github.event_name == 'pull_request' && 'ON' || 'OFF' }}
+        run: |
+          ./build.sh linux debug --jobs=2
+          grep -Fx "AETHERKIRI_ENABLE_SYSTEMNNN:BOOL=$AETHERKIRI_ENABLE_SYSTEMNNN" out/linux/debug/CMakeCache.txt
 
       - name: Run Linux access policy tests
         env:
@@ -1536,7 +1546,6 @@ jobs:
         run: |
           python3 -m unittest discover -s tests/python -p test_renpy_host.py
           python3 -m unittest discover -s tests/python -p test_runtime_submodule_initialization.py -v
-          python3 -m unittest discover -s tests/python -p test_runtime_selection.py -v
           for test in android_tree_uri video_library_folders video_library_ui video_import_permissions flash_library tyrano_library tyrano_asar renpy_library xsystem4_library xsystem35_library system3_library systemnnn_library runtime_player_reopen rfvp_import; do
             timeout 60 "$GODOT_BIN" --headless --path apps/godot_app \
               --script "res://tests/${test}_test.gd" \

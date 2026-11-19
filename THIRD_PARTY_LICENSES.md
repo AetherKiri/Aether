@@ -64,7 +64,7 @@ packages/SystemNNN-Emberfall/LICENSE and THIRD_PARTY_NOTICES.md. This attributio
 does not relicense Emberfall or grant permission to combine it with GPL-3.0
 components. The incompatible license declarations and product FFmpeg Bink 2
 feature require resolution before distributing combined binaries, including
-public CI artifacts. See doc/systemnnn_redistribution.md for the release gate.
+public CI artifacts. See doc/systemnnn_runtime.md for the build configuration.
 
 ----------------------------------------------------------------------------
 AetherN2System / NitroSharp

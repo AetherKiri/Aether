@@ -791,6 +791,12 @@ if [[ "${SKIP_VCPKG_INSTALL:-}" == "1" ]]; then
         -D "VCPKG_MANIFEST_INSTALL=OFF"
         -D "VCPKG_INSTALLED_DIR=$CMAKE_BUILD_DIR/vcpkg_installed"
     )
+elif [[ "${CI:-}" == "true" && "$PACKAGE_IPA" == true && "$SIMULATOR" == false ]]; then
+    # Keep installed dependencies and downloaded sources while freeing port
+    # build trees and package staging before the native build and app link.
+    cmake_config_args+=(
+        -D 'VCPKG_INSTALL_OPTIONS=--clean-buildtrees-after-build;--clean-packages-after-build'
+    )
 fi
 
 cmake --preset "$CMAKE_CONFIG_PRESET" --fresh "${cmake_config_args[@]}"

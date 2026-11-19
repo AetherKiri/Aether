@@ -22,6 +22,22 @@ if(TARGET krkr2core)
         "${CMAKE_SOURCE_DIR}/abi/src/TextTransform.cpp")
     add_subdirectory("${AETHERKIRI_KRKR_DIR}/tests/plugins"
         "${CMAKE_BINARY_DIR}/packages/AetherKrkr/tests/plugins")
+    if(LINUX)
+        # Force-load registration objects once, as the Godot host does, while
+        # allowing the cyclic plugin dependencies to rescan the normal archive.
+        get_property(_krkr_plugin_tests DIRECTORY "${AETHERKIRI_KRKR_DIR}/tests/plugins"
+            PROPERTY BUILDSYSTEM_TARGETS)
+        foreach(_krkr_plugin_test IN LISTS _krkr_plugin_tests)
+            get_target_property(_krkr_plugin_test_type ${_krkr_plugin_test} TYPE)
+            if(NOT _krkr_plugin_test_type STREQUAL "EXECUTABLE")
+                continue()
+            endif()
+            set_property(TARGET ${_krkr_plugin_test}
+                PROPERTY LINK_LIBRARY_OVERRIDE_krkr2plugin DEFAULT)
+            target_link_libraries(${_krkr_plugin_test} PRIVATE
+                "$<LINK_LIBRARY:WHOLE_ARCHIVE,$<TARGET_FILE:krkr2plugin>>")
+        endforeach()
+    endif()
     add_subdirectory("${AETHERKIRI_KRKR_DIR}/tests/tjs2"
         "${CMAKE_BINARY_DIR}/packages/AetherKrkr/tests/tjs2")
 endif()

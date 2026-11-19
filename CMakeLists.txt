@@ -326,7 +326,12 @@ if(MSVC)
         "$<$<CONFIG:Release>:/OPT:REF>"
         "$<$<CONFIG:Release>:/OPT:ICF>"
     )
-    # set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
+    if(CMAKE_MSVC_RUNTIME_LIBRARY STREQUAL "MultiThreadedDLL")
+        # Windows Debug keeps Godot diagnostics but uses the release STL ABI
+        # shared by the extension, provider archives and vcpkg dependencies.
+        add_compile_options("$<$<COMPILE_LANGUAGE:CXX>:/U_DEBUG>")
+        add_compile_definitions(_ITERATOR_DEBUG_LEVEL=0)
+    endif()
     # windows.h (pulled in transitively by the KiriKiri engine, the psdfile
     # adapter, and the impacto host) exports min/max macros that mangle
     # std::min and std::numeric_limits<...>::max(). Define NOMINMAX globally

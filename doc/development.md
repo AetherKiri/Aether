@@ -122,7 +122,7 @@ Required for normal development:
 
 - macOS with Xcode command line tools for macOS/iOS builds.
 - CMake 3.28+ and Ninja.
-- Godot 4.6.3 stable at `/Applications/Godot.app`, or set `GODOT_BIN`.
+- Godot 4.7 stable at `/Applications/Godot.app`, or set `GODOT_BIN`.
 - Godot export templates for the platforms you build.
 - vcpkg in `.devtools/vcpkg` or `VCPKG_ROOT`.
 

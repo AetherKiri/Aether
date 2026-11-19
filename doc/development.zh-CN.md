@@ -115,7 +115,7 @@ Godot 实验性的独立渲染线程模式、
 
 - macOS 和 Xcode command line tools，用于 macOS/iOS 构建。
 - CMake 3.28+ 和 Ninja。
-- Godot 4.6.3 stable，默认路径 `/Applications/Godot.app`，也可以设置 `GODOT_BIN`。
+- Godot 4.7 stable，默认路径 `/Applications/Godot.app`，也可以设置 `GODOT_BIN`。
 - 对应平台的 Godot export templates。
 - `.devtools/vcpkg` 或 `VCPKG_ROOT`。
 

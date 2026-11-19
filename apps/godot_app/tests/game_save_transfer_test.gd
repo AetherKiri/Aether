@@ -19,10 +19,13 @@ class Host extends Node:
     var game_running := false
     var player := FakePlayer.new()
     var selected_game := {}
+    var detected_engines := {}
     func _game_display_title(game: Dictionary) -> String:
         return game.name
     func _game_runtime_root(path: String) -> String:
         return path
+    func _game_runtime_kind(path: String) -> String:
+        return String(detected_engines.get(path, "kirikiri"))
 
 class Service extends "res://scripts/game_save_transfer.gd":
     var storage := ""
@@ -161,4 +164,21 @@ func run() -> void:
             check(service.file_dialog_opened and FileAccess.file_exists(service.archive_path), platform + " offers the completed ZIP through a save picker")
             check(host.player.action.is_empty(), platform + " does not call the unsupported native share bridge")
             service._finish("")
+    service.platform = "iOS"
+    var qlie_root := path.path_join("QLIE")
+    var qlie := {"name": "QLIE", "engine": "kirikiri", "path": qlie_root}
+    host.detected_engines[qlie_root] = "qlie"
+    put(qlie_root.path_join("SaveData/story.svd"), "native save")
+    service.start("share", qlie)
+    if await settle("native"):
+        var qlie_zip := ZIPReader.new()
+        var qlie_opened := qlie_zip.open(host.player.path) == OK
+        check(qlie_opened, "Legacy QLIE library entries reach the share bridge")
+        if qlie_opened:
+            check(qlie_zip.read_file("main/story.svd").get_string_from_utf8() == "native save", "Share uses the QLIE save directory identified by the runtime probe")
+            var qlie_manifest = JSON.parse_string(qlie_zip.read_file(Archive.MANIFEST).get_string_from_utf8())
+            check(qlie_manifest is Dictionary and qlie_manifest.get("engine") == "qlie", "Legacy library entries produce portable archives with the QLIE engine")
+            qlie_zip.close()
+        host.player.result = '{"status":"presented"}'
+        await settle("")
     await finish()

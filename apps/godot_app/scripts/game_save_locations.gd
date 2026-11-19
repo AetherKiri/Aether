@@ -77,10 +77,22 @@ static func _mages_profile(root: String) -> String:
                 return profile[0]
     return ""
 
+static func save_engine(host: Node, game: Dictionary) -> String:
+    var engine := String(game.get("engine", ""))
+    if engine.is_empty() or engine == "kirikiri":
+        # Older QLIE entries can have the generic KiriKiri engine label.
+        var detected: String = host._game_runtime_kind(String(game.get("path", "")))
+        if engine.is_empty() or detected == "qlie":
+            return detected
+    return engine
+
+static func game_root_save_dir(root: String, engine: String) -> String:
+    return root.path_join("SaveData" if engine == "qlie" else "savedata")
+
 static func resolve(root: String, engine: String, game: Dictionary, user_root: String = "") -> Dictionary:
     root = ProjectSettings.globalize_path(root).simplify_path().trim_suffix("/")
     var base := ProjectSettings.globalize_path("user://").trim_suffix("/") if user_root.is_empty() else user_root
-    var local := root.path_join("savedata")
+    var local := game_root_save_dir(root, engine)
     var banks := {"main": _bank(local)}
     match engine:
         "renpy":

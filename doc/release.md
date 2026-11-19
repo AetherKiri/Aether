@@ -42,6 +42,40 @@ secrets:
 - `APP_STORE_CONNECT_API_PRIVATE_KEY_BASE64`: base64-encoded App Store
   Connect `AuthKey_*.p8` file.
 
+## R2 Mirror
+
+The `publish-r2` job runs after the GitHub Release is published and mirrors the
+Android APK to Cloudflare R2. It is optional; when configuration is missing the
+job logs a notice and leaves the release untouched. Configure these repository
+variables:
+
+- `R2_ENDPOINT`: S3 endpoint, e.g. `https://<account>.r2.cloudflarestorage.com`.
+- `R2_BUCKET`: bucket name; defaults to `aether`.
+- `R2_PUBLIC_BASE_URL`: optional public download base URL used in `latest.json`.
+
+And these repository secrets:
+
+- `R2_ACCESS_KEY_ID`: R2 access key ID.
+- `R2_SECRET_ACCESS_KEY`: R2 secret access key.
+
+Stable tags publish `android/<version>/AetherKiri-<version>-android.apk` with a
+`SHA256SUMS.txt`, plus `android/latest/*` and `latest.json` pointers. Prerelease
+tags publish only their versioned directory. Re-running an older stable tag does
+not move `latest` backwards. Versioned objects use a one-year immutable cache;
+`latest` pointers revalidate after five minutes. Zone-level Cloudflare cache
+rules can override these headers, so keep `android/latest/*` and `latest.json`
+on a short edge TTL. The Android update dialog downloads from the same versioned
+path for 1.1.2 and newer. It probes that URL with a short HEAD request and falls
+back to the GitHub release asset when the object is missing, the request fails,
+or the probe times out. Older versions always use GitHub, and the dialog keeps a
+separate GitHub backup action.
+
+After a successful publish the script keeps the eight newest `android/<version>/`
+directories and deletes older ones. Override the count with the
+`R2_RETAIN_VERSIONS` repository variable; `0` disables pruning. The
+`android/latest/*` aliases, `latest.json`, and the version referenced by
+`latest.json` are never pruned.
+
 ## Store Packaging
 
 Register the game-import extension App ID and the shared App Group in the Apple

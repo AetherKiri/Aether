@@ -992,6 +992,7 @@ func _run() -> void:
     await _settle()
     await _check_game_information_actions()
     await _check_detail_geometry()
+    _expect(_button("AstryxClearGameCache") != null, "Game details expose cache cleanup")
     await _click("AstryxDetailSection_rendering")
     _expect(controller.view.find_child("AstryxDetailBody_rendering", true, false).visible, "Game detail accordion expands")
     await _exercise_game_render_settings()

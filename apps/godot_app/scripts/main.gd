@@ -477,6 +477,9 @@ const UI_TEXT := {
         "update.prerelease_badge": "（测试版）",
         "update.notes_title": "更新日志：",
         "update.download_github": "前往 GitHub 下载",
+        "update.download_update": "下载更新",
+        "update.download_github_backup": "GitHub 备用下载",
+        "update.checking_download": "正在检查下载…",
         "update.open_app_store": "前往 App Store 更新",
         "update.open_testflight": "前往 TestFlight 更新",
         "update.later": "稍后提醒",
@@ -909,6 +912,9 @@ const UI_TEXT := {
         "update.prerelease_badge": "（測試版）",
         "update.notes_title": "更新日誌：",
         "update.download_github": "前往 GitHub 下載",
+        "update.download_update": "下載更新",
+        "update.download_github_backup": "GitHub 備用下載",
+        "update.checking_download": "正在檢查下載…",
         "update.open_app_store": "前往 App Store 更新",
         "update.open_testflight": "前往 TestFlight 更新",
         "update.later": "稍後提醒",
@@ -1339,6 +1345,9 @@ You can find it any time under Settings → QQ Group.",
         "update.prerelease_badge": " (Beta)",
         "update.notes_title": "Release Notes:",
         "update.download_github": "Download from GitHub",
+        "update.download_update": "Download Update",
+        "update.download_github_backup": "GitHub Backup Download",
+        "update.checking_download": "Checking download…",
         "update.open_app_store": "Update in App Store",
         "update.open_testflight": "Open TestFlight",
         "update.later": "Remind Me Later",
@@ -1738,6 +1747,9 @@ You can find it any time under Settings → QQ Group.",
         "update.prerelease_badge": "（ベータ版）",
         "update.notes_title": "更新履歴：",
         "update.download_github": "GitHub からダウンロード",
+        "update.download_update": "アップデートをダウンロード",
+        "update.download_github_backup": "GitHub 予備ダウンロード",
+        "update.checking_download": "ダウンロードを確認中…",
         "update.open_app_store": "App Store でアップデート",
         "update.open_testflight": "TestFlight を開く",
         "update.later": "あとで",
@@ -2135,6 +2147,9 @@ You can find it any time under Settings → QQ Group.",
         "update.prerelease_badge": " (베타)",
         "update.notes_title": "릴리스 노트:",
         "update.download_github": "GitHub에서 다운로드",
+        "update.download_update": "업데이트 다운로드",
+        "update.download_github_backup": "GitHub 예비 다운로드",
+        "update.checking_download": "다운로드 확인 중…",
         "update.open_app_store": "App Store에서 업데이트",
         "update.open_testflight": "TestFlight 열기",
         "update.later": "나중에 알림",
@@ -2622,6 +2637,7 @@ var frame_enhancement_custom_chain := PackedStringArray([
 var game_render_overrides: Dictionary = {}
 var game_render_root := ""
 var game_running := false
+var game_storage_busy := false
 var runtime_dialog_input: LineEdit = null
 var runtime_form_dialog: RefCounted = null
 var softpal_name_input_layer: Control = null
@@ -9438,7 +9454,9 @@ func _show_app_update_dialog(info: Dictionary) -> void:
     var github_url: String = str(info.get("github_url", ""))
     var github_apk_url: String = str(info.get("github_apk_url", ""))
     var github_macos_url: String = str(info.get("github_macos_url", ""))
+    var android_download_url: String = str(info.get("android_download_url", ""))
     var app_store_url: String = str(info.get("app_store_url", ""))
+    var update_dismissed := [false]
 
     var title_text := _t("update.dialog_title")
     if is_pre:
@@ -9504,26 +9522,68 @@ func _show_app_update_dialog(info: Dictionary) -> void:
     else:
         var is_android := OS.get_name() == "Android"
         var is_macos := OS.get_name() == "macOS"
+        var use_android_mirror := is_android and not android_download_url.is_empty()
 
-        var gh_btn := _pill_button(_t("update.download_github"))
+        var android_fallback_url := github_apk_url
+        if android_fallback_url.is_empty():
+            android_fallback_url = github_url if not github_url.is_empty() else AppUpdater.GITHUB_REPO_RELEASES_PAGE
+
+        var default_target_url := ""
+        if is_android:
+            default_target_url = android_fallback_url
+        elif is_macos and not github_macos_url.is_empty():
+            default_target_url = github_macos_url
+        elif not github_url.is_empty():
+            default_target_url = github_url
+        else:
+            default_target_url = AppUpdater.GITHUB_REPO_RELEASES_PAGE
+
+        var download_opened := [false]
+        var open_download := func(target_url: String):
+            if download_opened[0]:
+                return
+            download_opened[0] = true
+            _dismiss_modal(func():
+                OS.shell_open(target_url)
+            )
+
+        var download_label := (
+            _t("update.download_update") if use_android_mirror else _t("update.download_github")
+        )
+        var gh_btn := _pill_button(download_label)
         gh_btn.clip_text = false
         gh_btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
         gh_btn.custom_minimum_size = Vector2(0, 42)
         gh_btn.pressed.connect(func():
-            _dismiss_modal(func():
-                var target_url := ""
-                if is_android and not github_apk_url.is_empty():
-                    target_url = github_apk_url
-                elif is_macos and not github_macos_url.is_empty():
-                    target_url = github_macos_url
-                elif not github_url.is_empty():
-                    target_url = github_url
-                else:
-                    target_url = AppUpdater.GITHUB_REPO_RELEASES_PAGE
-                OS.shell_open(target_url)
+            if not use_android_mirror:
+                open_download.call(default_target_url)
+                return
+            gh_btn.disabled = true
+            gh_btn.text = _t("update.checking_download")
+            AppUpdater.resolve_download_url(
+                self,
+                android_download_url,
+                default_target_url,
+                func(target_url: String):
+                    if update_dismissed[0] or active_modal_dialog != dialog:
+                        return
+                    gh_btn.disabled = false
+                    gh_btn.text = download_label
+                    open_download.call(target_url)
             )
         )
         action_box.add_child(gh_btn)
+
+        if use_android_mirror:
+            var backup_btn := _pill_button(_t("update.download_github_backup"))
+            backup_btn.clip_text = false
+            backup_btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+            backup_btn.custom_minimum_size = Vector2(0, 38)
+            ui_widgets.secondary_button(backup_btn)
+            backup_btn.pressed.connect(func():
+                open_download.call(default_target_url)
+            )
+            action_box.add_child(backup_btn)
 
     var secondary_row := HBoxContainer.new()
     secondary_row.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -9536,6 +9596,7 @@ func _show_app_update_dialog(info: Dictionary) -> void:
     skip_btn.custom_minimum_size = Vector2(0, 36)
     ui_widgets.secondary_button(skip_btn)
     skip_btn.pressed.connect(func():
+        update_dismissed[0] = true
         skipped_update_version = latest_ver
         var cfg := ConfigFile.new()
         cfg.load(SETTINGS_FILE)
@@ -9550,7 +9611,10 @@ func _show_app_update_dialog(info: Dictionary) -> void:
     later_btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
     later_btn.custom_minimum_size = Vector2(0, 36)
     ui_widgets.secondary_button(later_btn)
-    later_btn.pressed.connect(func(): _dismiss_modal())
+    later_btn.pressed.connect(func():
+        update_dismissed[0] = true
+        _dismiss_modal()
+    )
     secondary_row.add_child(later_btn)
 
 func _iap_supported_platform() -> bool:
@@ -11557,7 +11621,7 @@ func _scan_ios_games_dir(existing: Array[Dictionary]) -> Array[Dictionary]:
     while not entry.is_empty():
         if not entry.begins_with("."):
             var path := root.path_join(entry)
-            if dir.current_is_dir() or entry.to_lower().ends_with(".xp3"):
+            if (dir.current_is_dir() or entry.to_lower().ends_with(".xp3")) and not FileAccess.file_exists(path.path_join("aether-import-in-progress.json")):
                 var game: Dictionary = by_entry.get(entry, _game_info_from_path(path))
                 game["path"] = path
                 next.append(game)
@@ -12119,7 +12183,43 @@ func _update_game(path: String, values: Dictionary) -> void:
     _save_game_list(games)
     _refresh_games()
 
+func _game_cache_paths(game: Dictionary, runtime: String = "") -> PackedStringArray:
+    var path := String(game.get("path", ""))
+    if runtime.is_empty():
+        runtime = _game_runtime_kind(path)
+    return preload("res://scripts/game_cache.gd").paths(OS.get_user_data_dir(), _game_cache_identity(path), runtime)
+
+func _game_cache_identity(path: String) -> String:
+    var resolved := _resolve_game_path(path)
+    # Standalone archives in Games must not share a cache with one another.
+    if FileAccess.file_exists(resolved) and resolved.get_base_dir() == ProjectSettings.globalize_path("user://Games"):
+        return resolved
+    return _game_runtime_root(path)
+
+func _game_cache_jobs() -> Node:
+    var jobs := get_node_or_null("GameCacheJobs")
+    if jobs == null:
+        jobs = preload("res://scripts/game_cache_jobs.gd").new()
+        jobs.name = "GameCacheJobs"
+        add_child(jobs)
+    return jobs
+
+func _clear_game_cache(game: Dictionary, done: Callable) -> void:
+    if game_storage_busy or game_running or _is_tyrano_active() or _is_renpy_active():
+        return
+    game_storage_busy = true
+    if player != null and player.is_initialized():
+        _stop_wa2_audio()
+        player.destroy_engine()
+    _game_cache_jobs().submit(preload("res://scripts/game_cache.gd").clear.bind(_game_cache_paths(game)), func(result: Dictionary):
+        game_storage_busy = false
+        if done.is_valid():
+            done.call(result)
+    )
+
 func _remove_game(path: String) -> void:
+    if game_storage_busy or game_running or _is_tyrano_active() or _is_renpy_active():
+        return
     var deleting_builtin := builtin_demo.is_path(path)
     var deleted_directory := ""
     var builtin_delete_result: Error = OK
@@ -12130,7 +12230,23 @@ func _remove_game(path: String) -> void:
             return
     elif _game_removal_platform() == "iOS":
         var resolved := _resolve_game_path(path)
-        var result := GameLibraryStorage.delete_game(resolved, "user://Games")
+        game_storage_busy = true
+        await _game_save_sync().cancel_for_storage()
+        if player != null and player.is_initialized():
+            _stop_wa2_audio()
+            player.destroy_engine()
+        var locations := _game_cache_paths({"path": path})
+        var completed := {"done": false, "error": OK}
+        _game_cache_jobs().submit(func():
+            return {"error": preload("res://scripts/game_cache.gd").delete_with_cache(resolved, "user://Games", locations)}
+        , func(value: Dictionary):
+            completed.error = value.error
+            completed.done = true
+        )
+        while not completed.done:
+            await get_tree().process_frame
+        var result := int(completed.error)
+        game_storage_busy = false
         if result != OK:
             _show_message(_t("message.game_delete_failed", [error_string(result)]))
             return
@@ -12476,6 +12592,8 @@ func _mask_corner_pixel(image: Image, x: int, y: int, center: Vector2, radius: f
     image.set_pixel(x, y, color)
 
 func _start_selected_game() -> void:
+    if game_storage_busy:
+        return
     var save_transfer = get_node_or_null("GameSaveTransfer")
     if save_transfer != null and save_transfer.busy:
         return
@@ -12576,7 +12694,26 @@ func _deny_runtime_beta_launch() -> void:
         _t("alert.warning_title")
     )
 
+func _game_save_sync() -> Node:
+    var sync := get_node_or_null("GameSaveSync")
+    if sync == null:
+        sync = preload("res://scripts/game_save_sync.gd").new()
+        sync.name = "GameSaveSync"
+        add_child(sync)
+    return sync
+
 func _start_selected_game_after_entitlements() -> void:
+    if game_storage_busy:
+        return
+    var game := selected_game.duplicate(true)
+    _game_save_sync().prepare_start(game, func():
+        if String(selected_game.get("path", "")) == String(game.get("path", "")):
+            _start_selected_game_after_save_sync()
+        else:
+            _game_save_sync().stop()
+    )
+
+func _start_selected_game_after_save_sync() -> void:
     var library_path := String(selected_game.get("path", ""))
     if library_path.is_empty():
         return
@@ -13982,6 +14119,10 @@ func _ensure_player_initialized() -> bool:
             var game_root := _game_runtime_root(library_path)
             cache_dir = options.cache_directory(user_dir, game_root)
             user_dir = options.user_directory(user_dir, game_root)
+    if cli_probe_script.is_empty():
+        var game_root := _game_cache_identity(String(selected_game.get("path", "")))
+        if not game_root.is_empty():
+            cache_dir = preload("res://scripts/game_cache.gd").directory(OS.get_user_data_dir(), game_root)
     if player.is_initialized():
         if String(player.get_meta("aether_user_directory", "")) == user_dir \
             and String(player.get_meta("aether_cache_directory", "")) == cache_dir:
@@ -15949,6 +16090,9 @@ func _stop_wa2_audio() -> void:
         wa2_audio_host.stop_session()
 
 func _exit_tree() -> void:
+    var sync := get_node_or_null("GameSaveSync")
+    if sync != null:
+        sync.stop()
     _finalize_active_game_session()
     _stop_wa2_audio()
 
@@ -16762,6 +16906,7 @@ func _mobile_window_owns_lifecycle() -> bool:
         and mobile_window.handles_game_lifecycle()
 
 func _pause_game_for_lifecycle(reason: String) -> void:
+    _game_save_sync().flush()
     game_text_input_suspended = true
     _deactivate_game_text_input()
     if not _is_touch_platform():

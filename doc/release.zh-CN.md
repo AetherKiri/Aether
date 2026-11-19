@@ -37,6 +37,34 @@ Xcode 27.1，并在构建前校验版本。[镜像软件清单](https://github.c
 - `APP_STORE_CONNECT_API_PRIVATE_KEY_BASE64`：base64 编码的 App Store
   Connect `AuthKey_*.p8` 文件。
 
+## R2 镜像
+
+GitHub Release 发布后，`publish-r2` job 会把 Android APK 镜像到 Cloudflare R2。
+该功能可选：配置缺失时 job 只输出提示，不影响发布。配置以下仓库 variables：
+
+- `R2_ENDPOINT`：S3 端点，例如 `https://<account>.r2.cloudflarestorage.com`。
+- `R2_BUCKET`：bucket 名称，默认 `aether`。
+- `R2_PUBLIC_BASE_URL`：可选的公开下载基础 URL，用于生成 `latest.json` 中的链接。
+
+以及以下仓库 secrets：
+
+- `R2_ACCESS_KEY_ID`：R2 access key ID。
+- `R2_SECRET_ACCESS_KEY`：R2 secret access key。
+
+稳定版标签会发布 `android/<version>/AetherKiri-<version>-android.apk` 与
+`SHA256SUMS.txt`，并更新 `android/latest/*` 和 `latest.json` 指针。预发布标签只
+发布版本目录。重跑较旧的稳定标签不会把 `latest` 回退。版本化对象使用一年期
+immutable 缓存，`latest` 指针五分钟重新验证。Cloudflare 的 zone 级缓存规则可能
+覆盖这些响应头，建议让 `android/latest/*` 和 `latest.json` 保持较短的边缘缓存
+TTL。Android 更新弹窗对 1.1.2 及之后版本使用同一 R2 版本路径下载 APK；打开浏览器
+前会用短超时 HEAD 请求探测，对象缺失、请求失败或超时会自动回退到 GitHub Release
+资源。更早版本始终使用 GitHub，弹窗中同时保留独立的 GitHub 备用下载入口。
+
+每次成功发布后，脚本只保留最新的 8 个 `android/<version>/` 目录，删除更早的
+版本目录。可通过仓库 variable `R2_RETAIN_VERSIONS` 调整数量；设为 `0` 可关闭
+自动清理。`android/latest/*` 别名、`latest.json` 以及该文件当前指向的版本不会
+被删除。
+
 ## 商店打包
 
 发布文件夹导入功能前，需要在 Apple Developer 账户注册导入扩展的 App ID 和

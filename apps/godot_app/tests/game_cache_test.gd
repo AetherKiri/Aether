@@ -1,0 +1,42 @@
+extends SceneTree
+
+const Cache = preload("res://scripts/game_cache.gd")
+const Storage = preload("res://scripts/game_library_storage.gd")
+
+func put(path: String, text: String) -> void:
+    assert(DirAccess.make_dir_recursive_absolute(path.get_base_dir()) == OK)
+    var file := FileAccess.open(path, FileAccess.WRITE)
+    assert(file != null)
+    file.store_string(text)
+    file.close()
+
+func _initialize() -> void:
+    var fixture := DirAccess.create_temp("aether-game-cache")
+    var base := fixture.get_current_dir()
+    var game := base.path_join("Games/One")
+    var other := base.path_join("Games/Two")
+    put(game.path_join("savedata/slot"), "save")
+    put(other.path_join("savedata/slot"), "other save")
+    var paths := Cache.paths(base, game, "yuris")
+    var other_paths := Cache.paths(base, other, "yuris")
+    put(paths[0].path_join("data"), "12345")
+    put(paths[1].path_join(".partial"), "12")
+    put(other_paths[0].path_join("data"), "other cache")
+    assert(Cache.paths(base, "", "yuris").is_empty())
+    assert(Cache.measure(paths).bytes == 7)
+    if OS.get_name() in ["macOS", "Linux"]:
+        assert(DirAccess.open(paths[0]).create_link(other, "linked") == OK)
+        assert(Cache.measure(paths).bytes == 7)
+    assert(Cache.clear(paths).error == OK)
+    assert(Cache.measure(paths).bytes == 0)
+    assert(FileAccess.get_file_as_string(game.path_join("savedata/slot")) == "save")
+    assert(FileAccess.get_file_as_string(other.path_join("savedata/slot")) == "other save")
+    assert(Cache.measure(other_paths).bytes == 11)
+    put(paths[0].path_join("regenerated"), "cache")
+    assert(Cache.delete_with_cache(game, base.path_join("Games"), paths) == OK)
+    assert(not DirAccess.dir_exists_absolute(game))
+    assert(Cache.measure(paths).bytes == 0)
+    assert(Cache.measure(other_paths).bytes == 11)
+    assert(Storage._remove_entry(base) == OK)
+    print("GAME_CACHE_OK: game isolation, size, hidden cache, links, saves, permanent deletion")
+    quit()

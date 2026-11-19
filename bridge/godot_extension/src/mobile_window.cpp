@@ -2,6 +2,7 @@
 #include <cstdlib>
 #include <godot_cpp/classes/display_server.hpp>
 #include <godot_cpp/classes/node.hpp>
+#include <godot_cpp/classes/project_settings.hpp>
 #include <godot_cpp/classes/window.hpp>
 #include <godot_cpp/core/class_db.hpp>
 #include <godot_cpp/variant/color.hpp>
@@ -60,6 +61,11 @@ public:
     }
     void configure(bool game_active, bool pip_enabled, Object* player, const Color& shell_background) {
 #if defined(__APPLE__) && TARGET_OS_IPHONE
+        // Godot re-copies its controller methods onto the SwiftUI root in
+        // viewDidAppear. Those methods read these live settings, so they must
+        // agree with our UIKit host even before its next appearance update.
+        ProjectSettings::get_singleton()->set_setting("display/window/ios/hide_status_bar", game_active);
+        ProjectSettings::get_singleton()->set_setting("display/window/ios/hide_home_indicator", game_active);
         if (!handle_ && get_window()) {
             handle_ = aether_mobile_window_open(DisplayServer::get_singleton()->window_get_native_handle(
                 DisplayServer::WINDOW_VIEW, get_window()->get_window_id()));

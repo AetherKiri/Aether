@@ -280,7 +280,7 @@ func _check_detail_entry() -> void:
     host._open_game_detail_with_iap(host.known_games[0])
     _expect(controller.view.route == "detail", "Opening details updates the presenter without waiting for its state poll")
     _expect(host.classic_details == previous[0], "Opening Astryx details does not build a hidden classic page")
-    _expect(host.runtime_probes - previous[1] == 1, "Text and launch fields share one runtime detection")
+    _expect(host.runtime_probes - previous[1] == 1, "Text, launch and cache fields share one runtime detection")
     var launch := _button("AstryxLaunchGame")
     var launch_id := launch.get_instance_id() if launch != null else 0
     _expect(launch_id != 0, "Detail actions are available immediately")

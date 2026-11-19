@@ -60,7 +60,7 @@ TTL。Android 更新弹窗对 1.1.2 及之后版本使用同一 R2 版本路径�
 前会用短超时 HEAD 请求探测，对象缺失、请求失败或超时会自动回退到 GitHub Release
 资源。更早版本始终使用 GitHub，弹窗中同时保留独立的 GitHub 备用下载入口。
 
-每次成功发布后，脚本只保留最新的 8 个 `android/<version>/` 目录，删除更早的
+每次成功发布后，脚本只保留最新的 5 个 `android/<version>/` 目录，删除更早的
 版本目录。可通过仓库 variable `R2_RETAIN_VERSIONS` 调整数量；设为 `0` 可关闭
 自动清理。`android/latest/*` 别名、`latest.json` 以及该文件当前指向的版本不会
 被删除。

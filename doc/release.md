@@ -70,7 +70,7 @@ back to the GitHub release asset when the object is missing, the request fails,
 or the probe times out. Older versions always use GitHub, and the dialog keeps a
 separate GitHub backup action.
 
-After a successful publish the script keeps the eight newest `android/<version>/`
+After a successful publish the script keeps the five newest `android/<version>/`
 directories and deletes older ones. Override the count with the
 `R2_RETAIN_VERSIONS` repository variable; `0` disables pruning. The
 `android/latest/*` aliases, `latest.json`, and the version referenced by

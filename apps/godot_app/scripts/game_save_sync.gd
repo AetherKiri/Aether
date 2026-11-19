@@ -57,7 +57,8 @@ func _native(operation: String, game: Dictionary = {}) -> bool:
         return player.native_cloud_save_sync_begin(operation, "", "")
     var root := _root(game)
     var engine := Locations.save_engine(host, game)
-    return player.native_cloud_save_sync_begin(operation, Locations.game_root_save_dir(root, engine), root.get_file())
+    var saves := Locations.qlie_save_dir(root) if engine == "qlie" else Locations.game_root_save_dir(root, engine)
+    return not saves.is_empty() and player.native_cloud_save_sync_begin(operation, saves, root.get_file())
 
 func set_enabled(game: Dictionary, value: bool) -> void:
     if busy or _running() or host.game_storage_busy or not supported():

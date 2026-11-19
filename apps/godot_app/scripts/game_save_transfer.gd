@@ -66,9 +66,7 @@ func start(action: String, game: Dictionary) -> void:
     snapshot = game.duplicate(true)
     game_name = host._game_display_title(snapshot)
     var root: String = host._game_runtime_root(String(snapshot.get("path", "")))
-    game_engine = String(snapshot.get("engine", ""))
-    if game_engine.is_empty():
-        game_engine = host._game_runtime_kind(String(snapshot.get("path", "")))
+    game_engine = Locations.save_engine(host, snapshot)
     banks = Locations.resolve(root, game_engine, snapshot)
     if banks.is_empty():
         _notice(_text("无法确定此游戏的独立存档目录，未读取其他游戏的存档。", "This game's separate save folder could not be identified.", "このゲーム専用のセーブフォルダーを特定できませんでした。"))

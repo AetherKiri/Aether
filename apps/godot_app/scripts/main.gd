@@ -78,6 +78,7 @@ const ProbeFrameMetrics = preload("res://scripts/probe_frame_metrics.gd")
 const RuntimeRegressionProbe = preload("res://scripts/runtime_regression_probe.gd")
 const RuntimeFormDialog = preload("res://scripts/runtime_form_dialog.gd")
 const GameMetadata = preload("res://scripts/game_metadata.gd")
+const GameSaveLocations = preload("res://scripts/game_save_locations.gd")
 const CoverIndex = preload("res://scripts/cover_index.gd")
 const GameCoverConfig = preload("res://scripts/game_cover_config.gd")
 const VNDBCoverResolver = preload("res://scripts/vndb_cover_resolver.gd")
@@ -11757,7 +11758,7 @@ func _path_exists(path: String) -> bool:
     return DirAccess.dir_exists_absolute(candidate) or FileAccess.file_exists(candidate)
 
 func _resolve_game_path(path: String) -> String:
-    var normalized := path.strip_edges()
+    var normalized := path if path.is_absolute_path() or path.begins_with("content://") else path.strip_edges()
     if normalized.is_empty():
         return normalized
     if OS.get_name() == "Android":
@@ -11875,18 +11876,27 @@ func _game_runtime_root(path: String) -> String:
     return resolved
 
 func _game_runtime_kind(path: String) -> String:
+    return _detect_game_runtime(path, "")
+
+func _game_runtime_kind_for_launch(path: String, startup_script: String) -> String:
+    if startup_script.strip_edges().is_empty():
+        return _game_runtime_kind(path)
+    return _detect_game_runtime(path, startup_script)
+
+func _detect_game_runtime(path: String, startup_script: String) -> String:
     var root := _game_runtime_root(path)
     var runtime_kind := String(
         GameMetadata.inspect(root).get("engine", RUNTIME_KIRIKIRI)
     )
-    return _probe_game_runtime_kind(root, runtime_kind)
+    return _probe_game_runtime_kind(root, runtime_kind, startup_script)
 
-func _probe_game_runtime_kind(root: String, runtime_kind: String) -> String:
+func _probe_game_runtime_kind(root: String, runtime_kind: String, startup_script: String = "") -> String:
     if runtime_kind != RUNTIME_KIRIKIRI:
         return runtime_kind
     if player != null and player.has_method("probe_runtime"):
         # Format detection stays in the optional private provider.
-        if int(player.probe_runtime(RUNTIME_QLIE, root)) >= 950:
+        var qlie_min_score := 950 if startup_script.strip_edges().is_empty() else 700
+        if int(player.probe_runtime(RUNTIME_QLIE, root)) >= qlie_min_score:
             return RUNTIME_QLIE
         if int(player.probe_runtime(RUNTIME_SYSTEMC, root)) > 0:
             return RUNTIME_SYSTEMC
@@ -12623,10 +12633,10 @@ func _finish_launch_transition() -> void:
     shell_root.pivot_offset = Vector2.ZERO
 
 func _start_selected_game_after_iap() -> void:
-    var library_path := String(selected_game.get("path", "")).strip_edges()
+    var library_path := String(selected_game.get("path", ""))
     if library_path.is_empty():
         return
-    var selected_runtime_kind := _game_runtime_kind(library_path)
+    var selected_runtime_kind := _game_runtime_kind_for_launch(library_path, String(selected_game.get("startupScript", "")))
     if selected_runtime_kind == RUNTIME_RENPY:
         _start_selected_game_after_entitlements()
         return
@@ -12720,7 +12730,7 @@ func _start_selected_game_after_save_sync() -> void:
         return
     if not _mount_web_game(selected_game):
         return
-    active_runtime_kind = _game_runtime_kind(library_path)
+    active_runtime_kind = _game_runtime_kind_for_launch(library_path, String(selected_game.get("startupScript", "")))
     if active_runtime_kind == RUNTIME_TYRANO:
         _open_tyrano_game(selected_game)
         return
@@ -12790,7 +12800,7 @@ func _start_selected_game_after_save_sync() -> void:
     _set_translation_loading_notice(_translation_model_configured())
     _show_loading_overlay(true)
     restart_notice.visible = true
-    _on_open_game()
+    _on_open_game(active_runtime_kind)
     if game_running:
         _begin_launch_transition()
     else:
@@ -14398,12 +14408,15 @@ func _android_path_needs_storage_permission(path: String) -> bool:
         return false
     if normalized.begins_with("content://"):
         return true
-    if normalized.begins_with("/sdcard"):
-        return true
-    if not normalized.begins_with("/storage/emulated/"):
+    var app_data := ProjectSettings.globalize_path("user://").trim_suffix("/")
+    if normalized == app_data or normalized.begins_with(app_data + "/"):
         return false
-    var package_path := "/storage/emulated/0/Android/data/org.github.krkr2.aetherkiri/"
-    return not normalized.begins_with(package_path)
+    if normalized == "/sdcard" or normalized.begins_with("/sdcard/"):
+        return true
+    if not normalized.begins_with("/storage/"):
+        return false
+    var package_path := "/storage/emulated/0/Android/data/org.github.krkr2.aetherkiri"
+    return normalized != package_path and not normalized.begins_with(package_path + "/")
 
 func _android_has_external_storage_permission() -> bool:
     if OS.get_name() != "Android":
@@ -14876,7 +14889,8 @@ func _prepare_cli_probe_view(config: Dictionary) -> void:
     _fit_full_rects()
 
 func _probe_open_game(config: Dictionary, target_game_path: String, backend_env: String) -> bool:
-    var runtime_kind := _game_runtime_kind(target_game_path)
+    var startup_script := ProbeConfig.string_value(config, "startup_script", "").strip_edges()
+    var runtime_kind := _game_runtime_kind_for_launch(target_game_path, startup_script)
     if not _switch_runtime_player(runtime_kind):
         _write_probe_marker("probe_open_game runtime_switch_failed kind=%s" % runtime_kind)
         return false
@@ -14905,7 +14919,8 @@ func _probe_open_game(config: Dictionary, target_game_path: String, backend_env:
         return false
     current_surface_size = surface_size
     game_path.text = target_game_path
-    var startup_script := ProbeConfig.string_value(config, "startup_script", "").strip_edges()
+    if not _configure_qlie_save_directory(runtime_kind, target_game_path):
+        return false
     startup_script = GameLaunchEntry.resolve_startup_script(runtime_kind, target_game_path, startup_script)
     var result: int = int(player.open_game(target_game_path, true, startup_script))
     if result != ENGINE_RESULT_OK:
@@ -17040,10 +17055,19 @@ func _renderer_summary(renderer: String) -> String:
     return summary
 
 
-func _on_open_game() -> void:
+func _configure_qlie_save_directory(runtime_kind: String, path: String) -> bool:
+    if runtime_kind != RUNTIME_QLIE:
+        return true
+    var save_dir := GameSaveLocations.qlie_save_dir(path)
+    if not save_dir.is_empty() and int(player.set_engine_option("qlie.save_directory", save_dir)) == ENGINE_RESULT_OK:
+        return true
+    _append_log("QLIE save directory unavailable: %s" % path)
+    return false
+
+func _on_open_game(detected_runtime: String = "") -> void:
     if not _require_legal_documents_for_media():
         return
-    var requested_path := game_path.text.strip_edges()
+    var requested_path := game_path.text
     var path := _resolve_game_path(requested_path)
     if path != requested_path:
         _write_probe_marker("open_game remapped_path=%s requested=%s" % [path, requested_path])
@@ -17056,7 +17080,8 @@ func _on_open_game() -> void:
         return
 
     _load_game_render_overrides(path)
-    var detected_runtime := _game_runtime_kind(path)
+    if detected_runtime.is_empty():
+        detected_runtime = _game_runtime_kind_for_launch(path, String(selected_game.get("startupScript", "")))
     if not _switch_runtime_player(detected_runtime):
         render_errors += 1
         _clear_game_render_overrides()
@@ -17075,6 +17100,11 @@ func _on_open_game() -> void:
         device_probe_enabled = device_probe_enabled or not auto_probe_clicks.is_empty()
 
     if not _ensure_player_initialized():
+        _clear_game_render_overrides()
+        return
+
+    if not _configure_qlie_save_directory(detected_runtime, path):
+        render_errors += 1
         _clear_game_render_overrides()
         return
 

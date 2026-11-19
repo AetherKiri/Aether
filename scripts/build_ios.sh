@@ -394,6 +394,15 @@ combine_ios_static_extension() {
     fi
 
     while IFS= read -r lib; do
+        # Match the SystemNNN CMake target's GNU iconv pair in Debug.
+        case "${lib##*/}" in
+            libiconv.a|libcharset.a)
+                if [[ "$BUILD_TYPE_LOWER" == debug && "${AETHERKIRI_ENABLE_SYSTEMNNN:-ON}" == ON &&
+                      -f "$vcpkg_triplet_root/debug/lib/libiconv.a" ]]; then
+                    lib="$vcpkg_triplet_root/debug/lib/${lib##*/}"
+                fi
+                ;;
+        esac
         libs+=("$lib")
     done < <(find "$vcpkg_lib_dir" -maxdepth 1 -name 'lib*.a' \
         ! -name 'libgodot-cpp*.a' \

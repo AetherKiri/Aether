@@ -10,31 +10,30 @@ set(NNN_BUILD_TOOLS OFF CACHE BOOL "Do not embed diagnostic players" FORCE)
 set(BUILD_TESTING OFF)
 add_subdirectory("${AETHERKIRI_SYSTEMNNN_DIR}/platform/scene" "${CMAKE_CURRENT_BINARY_DIR}/emberfall")
 find_package(Freetype REQUIRED)
-if(CMAKE_SYSTEM_NAME STREQUAL "iOS" AND VCPKG_TARGET_TRIPLET)
-    # The pinned vcpkg wrapper prefers SDK iconv, while other dependencies expose
-    # GNU iconv.h. Select a matching header/library pair from the target prefix.
+set(_systemnnn_iconv Iconv::Iconv)
+if(CMAKE_SYSTEM_NAME STREQUAL "iOS" AND VCPKG_INSTALLED_DIR AND VCPKG_TARGET_TRIPLET)
+    # Match GNU iconv.h from the target prefix to GNU libraries without
+    # replacing the SDK iconv target used by other providers.
     set(_systemnnn_iconv_prefix "${VCPKG_INSTALLED_DIR}/${VCPKG_TARGET_TRIPLET}")
-    foreach(_systemnnn_iconv_file IN ITEMS include/iconv.h lib/libiconv.a lib/libcharset.a)
-        if(NOT EXISTS "${_systemnnn_iconv_prefix}/${_systemnnn_iconv_file}")
-            message(FATAL_ERROR "Missing target GNU iconv dependency: ${_systemnnn_iconv_file}")
-        endif()
-    endforeach()
+    set(_systemnnn_iconv_dir "${_systemnnn_iconv_prefix}/lib")
+    if(CMAKE_BUILD_TYPE STREQUAL "Debug" AND
+       EXISTS "${_systemnnn_iconv_prefix}/debug/lib/libiconv.a")
+        set(_systemnnn_iconv_dir "${_systemnnn_iconv_prefix}/debug/lib")
+    endif()
     file(STRINGS "${_systemnnn_iconv_prefix}/include/iconv.h" _systemnnn_iconv_version
         REGEX "^#define _LIBICONV_VERSION ")
-    if(NOT _systemnnn_iconv_version)
-        message(FATAL_ERROR "Expected GNU iconv header beside the target iconv archives")
+    if(NOT _systemnnn_iconv_version OR NOT EXISTS "${_systemnnn_iconv_dir}/libiconv.a" OR
+       NOT EXISTS "${_systemnnn_iconv_dir}/libcharset.a")
+        message(FATAL_ERROR "SystemNNN requires the matching GNU iconv header and archives from vcpkg")
     endif()
-    set(Iconv_IS_BUILT_IN FALSE CACHE BOOL "Use target GNU iconv" FORCE)
-    set(Iconv_INCLUDE_DIR "${_systemnnn_iconv_prefix}/include" CACHE PATH "Target GNU iconv headers" FORCE)
-    set(Iconv_LIBRARY "${_systemnnn_iconv_prefix}/lib/libiconv.a;${_systemnnn_iconv_prefix}/lib/libcharset.a"
-        CACHE STRING "Target GNU iconv and charset archives" FORCE)
-    if(TARGET Iconv::Iconv)
-        set_target_properties(Iconv::Iconv PROPERTIES
-            INTERFACE_INCLUDE_DIRECTORIES "${Iconv_INCLUDE_DIR}"
-            INTERFACE_LINK_LIBRARIES "${Iconv_LIBRARY}")
-    endif()
+    add_library(aether_systemnnn_iconv INTERFACE)
+    target_include_directories(aether_systemnnn_iconv INTERFACE "${_systemnnn_iconv_prefix}/include")
+    target_link_libraries(aether_systemnnn_iconv INTERFACE
+        "${_systemnnn_iconv_dir}/libiconv.a" "${_systemnnn_iconv_dir}/libcharset.a")
+    set(_systemnnn_iconv aether_systemnnn_iconv)
+else()
+    find_package(Iconv REQUIRED)
 endif()
-find_package(Iconv REQUIRED)
 find_package(nlohmann_json CONFIG REQUIRED)
 find_package(Threads REQUIRED)
 find_package(OpenAL CONFIG QUIET)
@@ -85,7 +84,7 @@ target_compile_features(aether_systemnnn_runtime PUBLIC cxx_std_17)
 set_target_properties(aether_systemnnn_runtime PROPERTIES POSITION_INDEPENDENT_CODE ON)
 target_include_directories(aether_systemnnn_runtime PUBLIC include PRIVATE ${FFMPEG_INCLUDE_DIRS})
 target_link_libraries(aether_systemnnn_runtime PUBLIC engine_api
-    PRIVATE emberfall-scene Freetype::Freetype Iconv::Iconv
+    PRIVATE emberfall-scene Freetype::Freetype ${_systemnnn_iconv}
     nlohmann_json::nlohmann_json Threads::Threads OpenAL::OpenAL ${_systemnnn_ffmpeg})
 set_property(TARGET aether_systemnnn_runtime PROPERTY AETHERKIRI_SYSTEMNNN_STATIC_TARGETS
     aether_systemnnn_runtime emberfall-scene emberfall-render nnn-script-core

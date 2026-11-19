@@ -21,7 +21,7 @@
 # Optional environment:
 #   R2_PUBLIC_BASE_URL    Public base URL used for absolute links in latest.json
 #   R2_PREFIX             Optional key prefix, e.g. staging
-#   R2_RETAIN_VERSIONS    Number of versioned directories to keep (default: 8,
+#   R2_RETAIN_VERSIONS    Number of versioned directories to keep (default: 5,
 #                         0 disables pruning)
 #   GITHUB_REPOSITORY     owner/repo, used for release_url
 #   RELEASE_PUBLISHED_AT  ISO-8601 release timestamp
@@ -40,7 +40,7 @@ apk_path="$1"
 }
 
 dry_run="${DRY_RUN:-0}"
-retain_versions="${R2_RETAIN_VERSIONS:-8}"
+retain_versions="${R2_RETAIN_VERSIONS:-5}"
 [[ "$retain_versions" =~ ^[0-9]+$ ]] || {
   echo "error: R2_RETAIN_VERSIONS must be a non-negative integer" >&2
   exit 1

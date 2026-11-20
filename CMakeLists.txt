@@ -11,6 +11,12 @@ foreach(_aetherkiri_link_policy CMP0156 CMP0179)
 endforeach()
 unset(_aetherkiri_link_policy)
 
+# Use vcpkg's Boost package config when embedded subprojects call find_package.
+# Set the policy before project() loads vcpkg's find_package wrapper.
+if(POLICY CMP0167)
+    cmake_policy(SET CMP0167 NEW)
+endif()
+
 find_program(CCACHE_PROGRAM ccache)
 
 if (CCACHE_PROGRAM)

@@ -131,7 +131,7 @@ func _run() -> void:
     assert(not app.game_virtual_menu_enabled)
     assert(is_equal_approx(app.game_virtual_keyboard_opacity, 0.65))
 
-    for language in ["zh_hans", "zh_hant", "en", "ja", "ko"]:
+    for language in ["zh_hans", "zh_hant", "en", "ja", "ko", "es"]:
         app.active_language = language
         assert(not String(app._t("settings.virtual_control_menu")).is_empty())
         assert(not String(app._t("settings.virtual_control_menu_desc")).is_empty())

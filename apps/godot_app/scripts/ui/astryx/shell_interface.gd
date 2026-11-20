@@ -56,7 +56,7 @@ func set_library_display(value: String) -> void:
     library_display = value
     if save_preferences() != OK:
         library_display = previous
-        view.show_notice(text("展示方式保存失败，请重试。", "Could not save display preference. Try again.", "表示設定を保存できませんでした。", "顯示方式儲存失敗，請重試。"))
+        view.show_notice(text("展示方式保存失败，请重试。", "Could not save display preference. Try again.", "表示設定を保存できませんでした。", "顯示方式儲存失敗，請重試。", "No se ha podido guardar la preferencia de vista. Vuelve a intentarlo."))
         return
     view.rebuild()
 
@@ -175,9 +175,9 @@ func _style_pending_modal() -> void:
 
 func mount_classic_switch(rows: Control) -> void:
     var row: Control = host._settings_action_row(
-        text("界面版本", "Interface", "インターフェイス", "介面版本"),
-        text("试用 Astryx 界面，随时可以切回。", "Try Astryx. Switch back at any time.", "Astryx を試す。いつでも元に戻せます。", "試用 Astryx 介面，隨時可以切回。"),
-        text("切换到 Astryx", "Switch to Astryx", "Astryx に切り替える", "切換至 Astryx"),
+        text("界面版本", "Interface", "インターフェイス", "介面版本", "Interfaz"),
+        text("试用 Astryx 界面，随时可以切回。", "Try Astryx. Switch back at any time.", "Astryx を試す。いつでも元に戻せます。", "試用 Astryx 介面，隨時可以切回。", "Prueba Astryx. Puedes volver cuando quieras."),
+        text("切换到 Astryx", "Switch to Astryx", "Astryx に切り替える", "切換至 Astryx", "Cambiar a Astryx"),
         func():
             if not host._request_settings_navigation(Callable(self, "set_enabled").bind(true)):
                 set_enabled(true)
@@ -249,7 +249,7 @@ func save_settings() -> bool:
     theme_mode = draft_theme
     background_effects = draft_background_effects
     if save_preferences() != OK:
-        view.show_notice(text("界面偏好保存失败，请重试。", "Could not save interface preferences. Try again.", "設定を保存できませんでした。", "介面偏好儲存失敗，請重試。"))
+        view.show_notice(text("界面偏好保存失败，请重试。", "Could not save interface preferences. Try again.", "設定を保存できませんでした。", "介面偏好儲存失敗，請重試。", "No se han podido guardar las preferencias de la interfaz. Vuelve a intentarlo."))
         theme_mode = previous
         background_effects = previous_effects
         return false
@@ -258,7 +258,7 @@ func save_settings() -> bool:
     if enabled and previous != theme_mode:
         _apply_app_icon()
     view.rebuild(true)
-    view.show_notice(text("更改已保存", "Changes saved", "変更を保存しました", "變更已儲存"))
+    view.show_notice(text("更改已保存", "Changes saved", "変更を保存しました", "變更已儲存", "Cambios guardados"))
     return true
 
 func discard_settings() -> void:
@@ -267,9 +267,10 @@ func discard_settings() -> void:
     host._begin_settings_edit()
     view.rebuild(true)
 
-func text(zh: String, en: String, ja: String, zh_hant: String) -> String:
+func text(zh: String, en: String, ja: String, zh_hant: String, es: String = "") -> String:
     match String(host.active_language):
         "zh_hans": return zh
         "zh_hant": return zh_hant
         "ja": return ja if not ja.is_empty() else en
+        "es": return es if not es.is_empty() else en
         _: return en

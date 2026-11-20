@@ -134,7 +134,7 @@ func _run() -> void:
     _expect(app.video_empty_icon.texture == app._load_ui_icon(app.ICON_VIDEO), "The empty video catalog uses the video icon")
     app._show_flash_library()
     _expect(app.video_empty_icon.texture == app._load_ui_icon(app.ICON_FLASH), "The empty Flash catalog uses the Flash icon after switching categories")
-    for language in [app.LANG_ZH_HANS, app.LANG_ZH_HANT, app.LANG_EN, app.LANG_JA, app.LANG_KO]:
+    for language in [app.LANG_ZH_HANS, app.LANG_ZH_HANT, app.LANG_EN, app.LANG_JA, app.LANG_KO, app.LANG_ES]:
         app.active_language = language
         app._refresh_language_texts()
         _expect(app.video_empty_title_label.text == app._t("flash.empty_title"), "Language refresh retains the Flash empty title: " + language)
@@ -153,7 +153,7 @@ func _run() -> void:
     _card("Flash").pressed.emit()
     _card("空文件夹").pressed.emit()
     _expect(app.video_empty_state.visible, "An empty Flash subfolder displays the empty state")
-    for language in [app.LANG_ZH_HANS, app.LANG_ZH_HANT, app.LANG_EN, app.LANG_JA, app.LANG_KO]:
+    for language in [app.LANG_ZH_HANS, app.LANG_ZH_HANT, app.LANG_EN, app.LANG_JA, app.LANG_KO, app.LANG_ES]:
         app.active_language = language
         app._refresh_language_texts()
         _expect(app.video_empty_title_label.text == app._t("flash.empty_folder_title"), "Empty Flash folders retain their localized label: " + language)
@@ -192,7 +192,7 @@ func _run() -> void:
     app._remove_video(loose)
     _expect(FileAccess.file_exists(loose) and app.flash_library.videos.size() == 1, "Removing Flash from the library preserves its original file")
     _expect(app.video_library.videos.size() == 1, "Flash removal does not alter the video catalog")
-    for language in [app.LANG_ZH_HANS, app.LANG_ZH_HANT, app.LANG_EN, app.LANG_JA, app.LANG_KO]:
+    for language in [app.LANG_ZH_HANS, app.LANG_ZH_HANT, app.LANG_EN, app.LANG_JA, app.LANG_KO, app.LANG_ES]:
         for key in ["nav.flash", "flash.import_file", "flash.import_folder", "flash.guide_body_ios", "flash.open_failed", "flash.refresh"]:
             _expect(app.UI_TEXT[language].has(key), "Flash string exists for " + language + ": " + key)
 

@@ -12339,12 +12339,14 @@ func _detect_game_runtime(path: String, startup_script: String) -> String:
     return _probe_game_runtime_kind(root, runtime_kind, startup_script)
 
 func _probe_game_runtime_kind(root: String, runtime_kind: String, startup_script: String = "") -> String:
-    if runtime_kind != RUNTIME_KIRIKIRI:
+    if player == null or not player.has_method("probe_runtime"):
         return runtime_kind
-    if player != null and player.has_method("probe_runtime"):
-        # Format detection stays in the optional private provider.
-        var qlie_min_score := 950 if startup_script.strip_edges().is_empty() else 700
-        if int(player.probe_runtime(RUNTIME_QLIE, root)) >= qlie_min_score:
+    # A verified QLIE startup takes priority over loose engine markers.
+    var qlie_score := int(player.probe_runtime(RUNTIME_QLIE, root))
+    if qlie_score >= 950:
+        return RUNTIME_QLIE
+    if runtime_kind == RUNTIME_KIRIKIRI:
+        if qlie_score >= 700 and not startup_script.strip_edges().is_empty():
             return RUNTIME_QLIE
         if int(player.probe_runtime(RUNTIME_SYSTEMC, root)) > 0:
             return RUNTIME_SYSTEMC

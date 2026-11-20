@@ -79,9 +79,17 @@ static func _mages_profile(root: String) -> String:
 
 static func save_engine(host: Node, game: Dictionary) -> String:
     var engine := String(game.get("engine", ""))
-    if engine.is_empty() or engine == "kirikiri":
+    var startup_script := String(game.get("startupScript", ""))
+    var has_startup_override := not startup_script.strip_edges().is_empty()
+    if engine != "qlie" and (engine.is_empty() or engine == "kirikiri" or has_startup_override):
         # Older QLIE entries can have the generic KiriKiri engine label.
-        var detected: String = host._game_runtime_kind(String(game.get("path", "")))
+        # An alternate startup can also be required to recognize the game.
+        var path := String(game.get("path", ""))
+        var detected: String
+        if has_startup_override and host.has_method("_game_runtime_kind_for_launch"):
+            detected = host._game_runtime_kind_for_launch(path, startup_script)
+        else:
+            detected = host._game_runtime_kind(path)
         if engine.is_empty() or detected == "qlie":
             return detected
     return engine

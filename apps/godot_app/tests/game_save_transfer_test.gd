@@ -20,12 +20,17 @@ class Host extends Node:
     var player := FakePlayer.new()
     var selected_game := {}
     var detected_engines := {}
+    var startup_overrides := {}
     func _game_display_title(game: Dictionary) -> String:
         return game.name
     func _game_runtime_root(path: String) -> String:
         return path
     func _game_runtime_kind(path: String) -> String:
         return String(detected_engines.get(path, "kirikiri"))
+    func _game_runtime_kind_for_launch(path: String, startup_script: String) -> String:
+        if not startup_script.is_empty() and startup_script == startup_overrides.get(path):
+            return "qlie"
+        return _game_runtime_kind(path)
 
 class Service extends "res://scripts/game_save_transfer.gd":
     var storage := ""
@@ -179,6 +184,21 @@ func run() -> void:
             var qlie_manifest = JSON.parse_string(qlie_zip.read_file(Archive.MANIFEST).get_string_from_utf8())
             check(qlie_manifest is Dictionary and qlie_manifest.get("engine") == "qlie", "Legacy library entries produce portable archives with the QLIE engine")
             qlie_zip.close()
+        host.player.result = '{"status":"presented"}'
+        await settle("")
+    host.detected_engines.erase(qlie_root)
+    qlie["startupScript"] = "Script/alternate.s"
+    host.startup_overrides[qlie_root] = qlie.startupScript
+    service.start("share", qlie)
+    if await settle("native"):
+        var override_zip := ZIPReader.new()
+        var override_opened := override_zip.open(host.player.path) == OK
+        check(override_opened, "QLIE games with an alternate startup reach the save transfer bridge")
+        if override_opened:
+            check(override_zip.read_file("main/story.svd").get_string_from_utf8() == "native save", "Save transfer uses the same bank as a QLIE launch with an alternate startup")
+            var override_manifest = JSON.parse_string(override_zip.read_file(Archive.MANIFEST).get_string_from_utf8())
+            check(override_manifest is Dictionary and override_manifest.get("engine") == "qlie", "The alternate-startup QLIE archive uses the QLIE engine label")
+            override_zip.close()
         host.player.result = '{"status":"presented"}'
         await settle("")
     await finish()

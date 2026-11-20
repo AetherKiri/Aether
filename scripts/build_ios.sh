@@ -66,7 +66,6 @@ FORCE_LOAD_PLUGIN_ARCHIVES=(
     "libpsdparse.a"
 )
 FORCE_LOAD_PLUGIN_SOURCES=(
-    "vcpkg_installed/$VCPKG_TRIPLET_DIR/lib/libSDL2.a"
     "packages/AetherKrkr/plugins/libkrkr2plugin.a"
     "packages/AetherKrkr/plugins/extkagparser/libextkagparser.a"
     "packages/AetherKrkr/plugins/kagparserex/libkagparserex.a"
@@ -294,6 +293,15 @@ EOF
     libtool -static -o "$output" "$object"
 }
 
+ios_vcpkg_library_dir() {
+    local triplet_root="$CMAKE_BUILD_DIR/vcpkg_installed/$1"
+    if [[ "$BUILD_TYPE_LOWER" == "debug" && -d "$triplet_root/debug/lib" ]]; then
+        printf '%s\n' "$triplet_root/debug/lib"
+    else
+        printf '%s\n' "$triplet_root/lib"
+    fi
+}
+
 isolate_ios_runtime_sdl() {
     local destination="$1"
     # Godot 4.7 embeds SDL3, whose SDL_InitSubSystem has a different return
@@ -308,7 +316,7 @@ isolate_ios_runtime_sdl() {
         brew install llvm
     fi
     python3 "$PROJECT_ROOT/tools/isolate_ios_sdl.py" \
-        --sdl-archive "$CMAKE_BUILD_DIR/vcpkg_installed/$VCPKG_TRIPLET_DIR/lib/libSDL2.a" \
+        --sdl-archive "$(ios_vcpkg_library_dir "$VCPKG_TRIPLET_DIR")/libSDL2.a" \
         --directory "$destination"
 }
 
@@ -316,7 +324,8 @@ combine_ios_static_extension() {
     local output="$1"
     local triplet="$2"
     local vcpkg_triplet_root="$CMAKE_BUILD_DIR/vcpkg_installed/$triplet"
-    local vcpkg_lib_dir="$vcpkg_triplet_root/lib"
+    local vcpkg_lib_dir
+    vcpkg_lib_dir="$(ios_vcpkg_library_dir "$triplet")"
     local cubism_package_root="${AETHERKIRI_INTERNAL_DIR:-$PROJECT_ROOT/packages/AetherInternal}"
     local cubism_core_lib="$cubism_package_root/third_party/cubism/Core/lib/ios/Release-iphoneos/libLive2DCubismCore.a"
     local godot_cpp_arch="arm64"
@@ -461,6 +470,7 @@ stage_force_load_plugin_archives() {
     local source
     local resolved
     mkdir -p "$destination"
+    cp -f "$(ios_vcpkg_library_dir "$VCPKG_TRIPLET_DIR")/libSDL2.a" "$destination/"
     for source in "${FORCE_LOAD_PLUGIN_SOURCES[@]}"; do
         resolved="$source"
         if [[ ! -f "$resolved" ]]; then

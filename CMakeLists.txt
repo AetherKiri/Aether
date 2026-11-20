@@ -99,13 +99,19 @@ function(aetherkiri_sanitize_openal_link)
     if(_aetherkiri_openal_raw_index EQUAL -1)
         return()
     endif()
-    list(TRANSFORM _aetherkiri_openal_interface REPLACE
-        "^-Wl,-framework,(.+)$" "LINKER:-framework,\\1")
-    # macOS pthreads live in libSystem; the bare -pthread driver flag would
-    # reach swiftc-driven links (which reject it) through this interface.
-    list(REMOVE_ITEM _aetherkiri_openal_interface "$<LINK_ONLY:-pthread>")
+    set(_aetherkiri_openal_libraries)
+    foreach(_item IN LISTS _aetherkiri_openal_interface)
+        if(_item MATCHES "^-Wl,-framework,(.+)$")
+            # CMake 3.28 parses LINKER: only in link options. Keep each
+            # framework paired with its flag for both C++ and Swift drivers.
+            target_link_options(OpenAL::OpenAL INTERFACE
+                "LINKER:SHELL:-framework ${CMAKE_MATCH_1}")
+        elseif(NOT _item STREQUAL "$<LINK_ONLY:-pthread>")
+            list(APPEND _aetherkiri_openal_libraries "${_item}")
+        endif()
+    endforeach()
     set_target_properties(OpenAL::OpenAL PROPERTIES
-        INTERFACE_LINK_LIBRARIES "${_aetherkiri_openal_interface}")
+        INTERFACE_LINK_LIBRARIES "${_aetherkiri_openal_libraries}")
 endfunction()
 
 if(ANDROID)

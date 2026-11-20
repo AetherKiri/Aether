@@ -9321,6 +9321,7 @@ public:
         desc.api_version = ENGINE_API_VERSION;
         desc.writable_path_utf8 = writable_utf8.get_data();
         desc.cache_path_utf8 = cache_utf8.get_data();
+        desc.reserved_u64[0] = ENGINE_CREATE_FEATURE_MOVIE_OPTIONS_V1;
 
         const engine_result_t result = engine_create(&desc, &handle_);
         last_result_ = ResultToString(result);
@@ -9826,12 +9827,12 @@ public:
         return result;
     }
 
-    int media_set_volume(int percent) {
-        if (media_ == nullptr || percent < 0 || percent > 100) {
-            return ENGINE_RESULT_INVALID_ARGUMENT;
-        }
-        const engine_result_t result = engine_media_set_volume(
-            media_, static_cast<uint32_t>(percent));
+    int configure_runtime_movie(int32_t level, bool use_attenuation, int64_t start_ms) {
+        engine_result_t result = use_attenuation
+            ? engine_media_set_attenuation(media_, level)
+            : engine_media_set_volume(media_, static_cast<uint32_t>(level));
+        if (result == ENGINE_RESULT_OK && start_ms > 0)
+            result = engine_media_seek(media_, start_ms);
         update_last_error(result);
         return result;
     }
@@ -11760,15 +11761,20 @@ private:
                 }
             } else if (name == "runtime_movie") {
                 const PackedStringArray fields = value.split("\t");
-                const bool valid = fields.size() == 3 &&
+                const bool extended = fields.size() == 4;
+                const bool valid = (extended || fields.size() == 3) &&
                     !fields[0].is_empty() && fields[1].is_valid_int() &&
                     (fields[2] == "0" || fields[2] == "1") &&
-                    fields[1].to_int() >= 0 && fields[1].to_int() <= 100;
+                    fields[1].to_int() >= (extended ? -10000 : 0) &&
+                    fields[1].to_int() <= (extended ? 0 : 100) &&
+                    (!extended || (fields[3].is_valid_int() &&
+                                   fields[3].to_int() >= 0 && fields[3].to_int() <= INT32_MAX));
                 if (!valid) {
                     submit_platform_response(
                         name, "result=error&message=invalid_movie_request");
                 } else if (!media_open(fields[0]) ||
-                           media_set_volume(static_cast<int>(fields[1].to_int())) !=
+                           configure_runtime_movie(static_cast<int32_t>(fields[1].to_int()),
+                                                   extended, extended ? fields[3].to_int() : 0) !=
                                ENGINE_RESULT_OK ||
                            media_play() != ENGINE_RESULT_OK) {
                     const String message = last_error_.replace("\n", " ");

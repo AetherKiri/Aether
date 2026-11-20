@@ -212,8 +212,12 @@ void TVPMoviePlayer::SetAudioBalance(long balance) {
 }
 
 void TVPMoviePlayer::SetAudioVolume(long volume) {
+    SetLinearAudioGain(volume / 100000.f);
+}
+
+void TVPMoviePlayer::SetLinearAudioGain(float gain) {
     if(auto *audio = m_pPlayer->GetAudioPlayer())
-        audio->GetOutputDevice()->SetVolume(volume / 100000.f);
+        audio->GetOutputDevice()->SetVolume(gain);
 }
 
 void TVPMoviePlayer::GetAudioVolume(long *volume) {

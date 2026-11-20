@@ -66,6 +66,7 @@ public:
     void GetAudioBalance(long *balance) override;
 
     void SetAudioVolume(long volume) override;
+    void SetLinearAudioGain(float gain);
 
     void GetAudioVolume(long *volume) override;
 

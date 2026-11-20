@@ -57,6 +57,13 @@ typedef enum engine_result_t {
   ENGINE_RESULT_INTERNAL_ERROR = -5
 } engine_result_t;
 
+/* When the caller sets this bit in engine_create_desc_t.reserved_u64[0],
+ * it accepts a four-field runtime_movie request: path, attenuation in
+ * hundredths of a dB (-10000 means silence), skippable (0/1), and initial
+ * position in milliseconds, separated by tabs. Three-field requests retain
+ * their original integer-percent volume. */
+#define ENGINE_CREATE_FEATURE_MOVIE_OPTIONS_V1 (UINT64_C(1) << 0)
+
 typedef struct engine_create_desc_t {
   uint32_t struct_size;
   uint32_t api_version;
@@ -468,6 +475,10 @@ ENGINE_API_EXPORT engine_result_t engine_media_play(
 /* Sets the standalone movie audio level from 0 (silent) to 100. */
 ENGINE_API_EXPORT engine_result_t engine_media_set_volume(
     engine_media_handle_t media, uint32_t percent);
+
+/* Sets standalone movie attenuation from -10000 (silent) to 0 (unity gain). */
+ENGINE_API_EXPORT engine_result_t engine_media_set_attenuation(
+    engine_media_handle_t media, int32_t hundredths_db);
 
 ENGINE_API_EXPORT engine_result_t engine_media_pause(
     engine_media_handle_t media);

@@ -809,6 +809,14 @@ engine_result_t engine_media_set_volume(engine_media_handle_t media,
                     });
 }
 
+engine_result_t engine_media_set_attenuation(engine_media_handle_t media,
+                                             int32_t hundredths_db) {
+  return RouteMedia(media, "legacy media player failed to set attenuation",
+                    [&](engine_media_handle_t legacy) {
+                      return engine_legacy_media_set_attenuation(legacy, hundredths_db);
+                    });
+}
+
 engine_result_t engine_media_pause(engine_media_handle_t media) {
   return RouteMedia(media, "legacy media player failed to pause media",
                     [](engine_media_handle_t legacy) {

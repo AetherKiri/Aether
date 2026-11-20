@@ -291,8 +291,10 @@ if [[ ! -f "$GODOT_EXPORT_TEMPLATE" ]]; then
 fi
 
 echo "==> Validating GDExtension in headless Godot"
+# Wait for background font/resource imports before shutting down the editor.
+# --editor --quit can tear down the scene tree while import workers still use it.
 LD_LIBRARY_PATH="$GODOT_BIN_DIR${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}" \
-    "$GODOT_BIN" --headless --path "$GODOT_APP_DIR" --editor --quit \
+    "$GODOT_BIN" --headless --path "$GODOT_APP_DIR" --import \
     2>&1 | tee "$CMAKE_BUILD_DIR/godot-editor.log"
 if grep -E 'SCRIPT ERROR:|^ERROR:' "$CMAKE_BUILD_DIR/godot-editor.log"; then
     echo "Error: Godot editor could not load the staged Linux runtime." >&2

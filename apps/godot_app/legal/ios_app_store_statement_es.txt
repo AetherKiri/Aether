@@ -1,0 +1,50 @@
+Permiso adicional y aviso de Aether para el App Store de Apple
+
+Versión: 2026-08-04
+Fecha de entrada en vigor: 4 de agosto de 2026
+
+1. Antecedentes
+
+Aether se distribuye bajo la GNU General Public License, versión 3 o (a tu elección) cualquier versión posterior («GPL»). Las condiciones aplicables al software distribuido a través del App Store de Apple pueden entrar en conflicto con los derechos concedidos por la GPL.
+
+2. Permiso adicional limitado
+
+Los titulares de los derechos de autor de Aether que aprueban expresamente este aviso no pretenden que dicho conflicto, por sí solo, impida una distribución a través del App Store que, en todo lo demás, cumpla la GPL. Al amparo de la sección 7 de la GPLv3, y solo en la medida en que cada titular de derechos de autor que lo apruebe sea titular de una contribución cubierta o esté autorizado para licenciarla, dicho titular permite que la contribución se transmita como parte de una aplicación oficial de Aether para iOS o macOS a través del App Store de Apple, con sujeción a la sección 7 de este aviso.
+
+Un titular de derechos de autor que apruebe este aviso no alegará una infracción de la GPL contra dicha distribución cuando la supuesta infracción se derive únicamente de un conflicto inevitable entre la GPL y las condiciones del App Store.
+
+3. Condiciones que siguen vigentes
+
+Este permiso solo se aplica cuando el distribuidor cumple la GPL en todos los demás aspectos, incluidas las obligaciones de:
+
+• proporcionar el Código Fuente Correspondiente completo de la versión distribuida;
+• proporcionar el texto de la licencia GPL y conservar los avisos aplicables de derechos de autor, atribución, modificación y licencia; y
+• cumplir las licencias y los avisos independientes de todos los componentes de terceros.
+
+El repositorio público del código fuente, el texto de la GPL y los avisos de terceros están disponibles en:
+
+https://github.com/AetherKiri/AetherKiri
+https://github.com/AetherKiri/AetherKiri/blob/main/LICENSE
+https://github.com/AetherKiri/AetherKiri/blob/main/THIRD_PARTY_LICENSES.md
+
+4. Alcance y derechos de terceros
+
+Este aviso solo vincula a un titular de derechos de autor que lo haya aprobado expresamente y solo respecto del material que dicho titular tenga derecho a licenciar. No concede, renuncia ni modifica derechos sobre material de proyectos de origen (upstream) o de terceros en nombre de ningún otro titular de derechos de autor. El distribuidor sigue siendo responsable de confirmar que cada componente de la compilación distribuida puede distribuirse legalmente a través del App Store y de obtener cualquier permiso adicional que sea necesario.
+
+5. Sin licencia sobre el contenido de los usuarios ni sobre marcas
+
+Este aviso no concede ningún derecho sobre novelas visuales, vídeos, subtítulos, imágenes, audio, fuentes tipográficas, marcas comerciales u otro contenido importado por los usuarios o proporcionado por terceros. No autoriza la infracción de derechos de autor, la elusión de medidas tecnológicas de protección ni ningún uso prohibido por la legislación aplicable.
+
+Apple no patrocina ni respalda Aether. Apple y App Store son marcas comerciales de Apple Inc. Este aviso no ofrece ninguna garantía y no sustituye ningún derecho imperativo de los consumidores.
+
+6. Relación con la GPL
+
+Este documento proporciona un permiso adicional limitado; no sustituye a la GPL. Los destinatarios pueden eliminar un permiso adicional de su copia en la medida en que lo permita la sección 7 de la GPLv3. Si una traducción entra en conflicto con el archivo COPYING.iOS en inglés de la raíz del repositorio, prevalecerá dicho archivo en inglés.
+
+7. Solo distribución oficial; los terceros no pueden ampararse en este aviso
+
+El permiso adicional para el App Store que otorga este aviso se concede únicamente para una versión oficial de Aether para iOS o macOS enviada por el responsable del mantenimiento del proyecto Aether o por un distribuidor autorizado expresamente y por escrito por un titular de derechos de autor que apruebe este aviso. No se concede para ninguna bifurcación (fork), compilación modificada, app con otra marca, envoltorio (wrapper) u otra app basada en Aether que envíe otra persona o entidad. Un distribuidor tercero no puede ampararse en este aviso y debe obtener por su cuenta todos los permisos necesarios de los titulares de derechos de autor correspondientes.
+
+Nada de lo dispuesto en la GPL o en este aviso concede a terceros derechos en virtud del derecho de marcas para usar el nombre, el icono, el logotipo u otros elementos de marca del proyecto Aether en una ficha del App Store, ni para dar a entender que una app derivada es una versión oficial de Aether.
+
+Esta sección solo limita el permiso adicional para el App Store que ofrece este aviso. No constituye una restricción adicional de los derechos ya concedidos por la GPL ni los revoca. Si la propia GPL permite una forma concreta de distribución sin necesidad de ampararse en este permiso adicional, este aviso no elimina ese derecho.

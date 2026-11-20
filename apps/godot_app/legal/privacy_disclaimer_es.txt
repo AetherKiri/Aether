@@ -1,0 +1,83 @@
+Política de privacidad, condiciones de uso y exención de responsabilidad de Aether
+
+Versión: 2026-07-27.4
+Fecha de entrada en vigor: 27 de julio de 2026
+
+Te damos la bienvenida a Aether. Aether es un entorno de ejecución de novelas visuales y una herramienta de gestión de contenido multimedia local de código abierto. Puede leer las novelas visuales, los vídeos locales y los subtítulos externos que importes. Lee detenidamente este documento, en especial los apartados sobre riesgos, responsabilidad y propiedad intelectual.
+
+Si eres menor de edad, revisa este documento con tu padre, tu madre o tu tutor legal y obtén su permiso antes de usar la app. Al seleccionar «Aceptar y continuar», confirmas que has leído, entendido y aceptado este documento. Si no estás de acuerdo, selecciona «Rechazar» y deja de usar la app.
+
+1. Política de privacidad
+
+1.1 Datos que trata la app
+
+Aether no requiere ninguna cuenta y no contiene publicidad, seguimiento de usuarios ni servicios de análisis gestionados por el desarrollador. Para ofrecer las funciones de biblioteca local, ejecución y reproducción, la app trata o almacena localmente en tu dispositivo la siguiente información:
+
+- Juegos, vídeos, subtítulos, imágenes de portada y archivos relacionados que selecciones o copies en la carpeta de la app.
+- Rutas de archivo, nombres visibles, referencias de portadas, marcas de tiempo del uso reciente, tiempo de juego acumulado y posiciones de reproducción de los vídeos.
+- Preferencias de idioma, interfaz, renderizado, compatibilidad y diagnóstico.
+- Partidas guardadas, cachés y archivos temporales necesarios para el funcionamiento.
+- Registros locales, datos de rendimiento, contexto de errores, capturas de pantalla o archivos de diagnóstico creados cuando se activan las funciones de diagnóstico. Los diagnósticos pueden incluir nombres de archivo, rutas, títulos de juegos, información de renderizado y contexto de errores. Revísalos antes de compartirlos.
+
+1.2 Uso de los datos
+
+Esta información se utiliza únicamente en tu dispositivo para mostrar tu biblioteca, ejecutar contenido compatible, restaurar los ajustes y las posiciones de reproducción, conservar el progreso de los juegos, solucionar errores y mejorar el funcionamiento local. El desarrollador no sube por iniciativa propia a ningún servidor del desarrollador los juegos, vídeos, subtítulos, partidas guardadas, registros ni otros archivos personales que importes.
+
+1.3 Acceso a la red y contenido externo
+
+Las funciones principales de biblioteca y de reproducción local pueden funcionar sin conexión. No obstante, los scripts de juego, el contenido multimedia o los enlaces externos que importes pueden solicitar recursos de red, y las interfaces de compatibilidad pueden intentar acceder a la red cuando así lo indique el contenido importado. Estas solicitudes las inicia el contenido que decides ejecutar y no significan que el desarrollador de Aether esté recopilando datos. Importa solo contenido de confianza. Eres responsable de los cargos por consumo de datos y de las prácticas de privacidad de los servicios externos.
+
+1.4 Compartir datos
+
+El desarrollador no vende ni comparte por iniciativa propia tus datos locales. Los datos solo salen de tu dispositivo cuando decides compartir, copiar o exportar archivos o diagnósticos. El destinatario que elijas trata esos datos conforme a sus propias prácticas de privacidad.
+
+Los componentes de código abierto que utiliza Aether realizan localmente las tareas de análisis, decodificación, renderizado y ejecución. El desarrollador no utiliza esos componentes para transmitir por iniciativa propia tu contenido a sus autores.
+
+1.5 Permisos de archivos y seguridad local
+
+En iOS, Aether lee el contenido que colocas en su carpeta de la app Archivos. En otras plataformas, lee las ubicaciones pertinentes después de que importes archivos o concedas el permiso de archivos correspondiente. Las funciones principales no requieren acceso a Contactos, Ubicación, Cámara, Micrófono ni al seguimiento publicitario.
+
+La función de compartir archivos de iOS puede permitir que se acceda a la carpeta de la app a través de la app Archivos o de un ordenador de confianza. Protege tu dispositivo, tus copias de seguridad y los archivos exportados. No ejecutes contenido desconocido, modificado o potencialmente malicioso.
+
+1.6 Conservación y eliminación
+
+Los datos permanecen en tu dispositivo hasta que eliminas los archivos correspondientes, quitas los registros de la biblioteca, borras los datos de la app o la desinstalas. Quitar un registro de la biblioteca puede no eliminar el archivo original; elimina los archivos originales desde la app Archivos o desde un gestor de archivos. Las copias, las copias de seguridad y los archivos compartidos en otros lugares no se eliminan automáticamente al desinstalar la app. Como el desarrollador no mantiene ningún servidor de datos de usuarios, normalmente no existe ninguna copia en poder del desarrollador en un servidor que haya que eliminar.
+
+Para dejar de usar la app o retirar tu decisión de usarla, deja de usarla y desinstálala. Los permisos de archivos del sistema se pueden revocar en los ajustes del dispositivo.
+
+2. Contenido del usuario y propiedad intelectual
+
+2.1 Aether no proporciona, vende ni concede licencias de novelas visuales, vídeos, subtítulos, imágenes, audio u otras obras de terceros, y no verifica el origen ni la situación de los derechos del contenido que importan los usuarios.
+
+2.2 Debes tener el derecho legal o la autorización necesaria para importar, copiar, ejecutar, reproducir, modificar o compartir contenido, y debes cumplir la legislación aplicable y las condiciones de licencia del titular del contenido.
+
+2.3 No puedes usar Aether para distribuir contenido que infrinja derechos, para la piratería, para eludir medidas tecnológicas de protección eficaces, para contenido ilícito o dañino, para atacar sistemas de red ni para ninguna otra actividad ilegal. La responsabilidad derivada del contenido o de la conducta del usuario recae en la persona responsable conforme a la legislación aplicable.
+
+2.4 Los scripts de juego son contenido ejecutable. Pueden leer o modificar archivos locales accesibles, crear partidas guardadas, abrir enlaces o realizar solicitudes de red. Aether no puede garantizar que todo el contenido de terceros sea seguro, lícito, completo o compatible con tu dispositivo.
+
+3. Software y licencias de código abierto
+
+3.1 Aether está en desarrollo activo. No garantiza la compatibilidad con todos los juegos, plugins, formatos multimedia o subtítulos, ni una equivalencia exacta con los gráficos, el audio, las partidas guardadas o el comportamiento de los scripts de la plataforma original.
+
+3.2 El código fuente de Aether se distribuye bajo la GNU GPL versión 3 o posterior, tal como se indica en el repositorio del proyecto. Los componentes de terceros siguen sujetos a sus propias licencias y avisos. Este documento no sustituye, restringe ni amplía los derechos concedidos por esas licencias.
+
+3.3 Los nombres de motores, los nombres de formatos, las marcas comerciales y las obras de terceros pertenecen a sus respectivos propietarios. Salvo que se indique expresamente, Aether no está patrocinado ni respaldado por los juegos, los desarrolladores de motores, los editores o Apple correspondientes, ni está afiliado a ellos.
+
+4. Riesgos y exención de responsabilidad
+
+4.1 El uso puede provocar fallos de inicio, errores de compatibilidad, gráficos o audio incorrectos, errores de sincronización de los subtítulos, un menor rendimiento, calentamiento, consumo de batería, cierres inesperados o daños en las partidas guardadas o en la configuración. Haz copias de seguridad independientes de los datos importantes.
+
+4.2 No importes ni ejecutes archivos de origen desconocido o de seguridad dudosa. El desarrollador de Aether no controla las pérdidas ni los conflictos causados por el contenido importado, los enlaces o servicios de terceros, los entornos de los dispositivos, las modificaciones no oficiales o un uso inadecuado.
+
+4.3 En la máxima medida permitida por la legislación aplicable, la app se proporciona «tal cual» y «según disponibilidad», sin garantías expresas ni implícitas de comerciabilidad, idoneidad para un fin determinado, disponibilidad ininterrumpida, seguridad total o funcionamiento sin errores. El desarrollador no es responsable de los daños indirectos, incidentales, especiales o consecuentes derivados del uso o de la imposibilidad de usar la app.
+
+4.4 Nada de lo dispuesto en este documento excluye la responsabilidad que no pueda excluirse legalmente ni limita los derechos imperativos de los consumidores.
+
+5. Actualizaciones y contacto
+
+Este documento puede actualizarse cuando cambien las funciones, las prácticas de tratamiento de datos o los requisitos legales. En caso de una actualización importante, la app puede mostrar la nueva versión y pedirte que vuelvas a revisarla. Si no aceptas el documento actualizado, deja de usar la app.
+
+Para consultas sobre privacidad o para presentar de buena fe una reclamación por considerar que la app o el material relacionado infringe tus derechos, ponte en contacto con el proyecto a través de su sistema público de incidencias e incluye los detalles necesarios:
+https://github.com/AetherKiri/AetherKiri/issues
+
+Al seleccionar «Aceptar y continuar», confirmas que has leído, entendido y aceptado este documento en su totalidad.

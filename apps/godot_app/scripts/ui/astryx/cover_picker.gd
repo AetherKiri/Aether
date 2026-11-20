@@ -23,8 +23,8 @@ func show_for(shell) -> void:
     dialog.add_child(stack)
     _sources()
 
-func _text(zh: String, en: String, ja: String, zh_hant: String) -> String:
-    return view._text(zh, en, ja, zh_hant)
+func _text(zh: String, en: String, ja: String, zh_hant: String, es: String = "") -> String:
+    return view._text(zh, en, ja, zh_hant, es)
 
 func _alive(token: int) -> bool:
     return is_instance_valid(dialog) and not dialog.is_queued_for_deletion() and host.modal_layer.visible and host.active_modal_dialog == dialog and generation == token
@@ -35,11 +35,11 @@ func _header(title: String, back: bool = false) -> void:
     var row: HBoxContainer = view._hbox(12)
     stack.add_child(row)
     if back:
-        row.add_child(_icon_button("back", _sources, _text("返回", "Back", "戻る", "返回"), "AstryxCoverBack"))
+        row.add_child(_icon_button("back", _sources, _text("返回", "Back", "戻る", "返回", "Atrás"), "AstryxCoverBack"))
     var label: Label = view._label(title, 20, false, true)
     label.name = "AstryxCoverDialogTitle"
     row.add_child(label)
-    row.add_child(_icon_button("close", _close, _text("关闭", "Close", "閉じる", "關閉"), "AstryxCoverClose"))
+    row.add_child(_icon_button("close", _close, _text("关闭", "Close", "閉じる", "關閉", "Cerrar"), "AstryxCoverClose"))
 
 func _icon_button(icon: String, action: Callable, label: String, name_value: String) -> Button:
     var button: Button = view._button("", action, "quiet", name_value)
@@ -57,13 +57,13 @@ func _close() -> void:
     host._dismiss_modal()
 
 func _sources() -> void:
-    _header(_text("选择封面来源", "Choose cover source", "カバーの取得元を選択", "選擇封面來源"))
+    _header(_text("选择封面来源", "Choose cover source", "カバーの取得元を選択", "選擇封面來源", "Elegir origen de la portada"))
     var sources := [
-        ["local", "folder", _text("本地搜索", "Browse local files", "ローカルを検索", "本機搜尋"), func(): view._dismiss_then(host._set_cover_for_selected)],
-        ["vndb", "search", _text("VNDB 搜索", "Search VNDB", "VNDB を検索", "VNDB 搜尋"), _vndb],
+        ["local", "folder", _text("本地搜索", "Browse local files", "ローカルを検索", "本機搜尋", "Explorar archivos locales"), func(): view._dismiss_then(host._set_cover_for_selected)],
+        ["vndb", "search", _text("VNDB 搜索", "Search VNDB", "VNDB を検索", "VNDB 搜尋", "Buscar en VNDB"), _vndb],
     ]
     if host._can_select_cover_photo():
-        sources.append(["photos", "photo", _text("相册搜索", "Browse photos", "写真を選択", "相簿搜尋"), func(): view._dismiss_then(host._select_cover_photo.bind(String(game.path)))])
+        sources.append(["photos", "photo", _text("相册搜索", "Browse photos", "写真を選択", "相簿搜尋", "Explorar fotos"), func(): view._dismiss_then(host._select_cover_photo.bind(String(game.path)))])
     host._mark_centered_safe_dialog(dialog, Vector2(460, 112 + sources.size() * 68))
     host._layout_safe_dialog(dialog, host._ui_safe_rect(view.get_viewport_rect().size))
     var options: VBoxContainer = view._vbox(12)
@@ -89,14 +89,14 @@ func _sources() -> void:
         row.add_child(view._icon("chevron_right", 20, "secondary"))
 
 func _vndb() -> void:
-    _header(_text("VNDB 搜索", "Search VNDB", "VNDB を検索", "VNDB 搜尋"), true)
+    _header(_text("VNDB 搜索", "Search VNDB", "VNDB を検索", "VNDB 搜尋", "Buscar en VNDB"), true)
     host._mark_centered_safe_dialog(dialog, Vector2(600, 620))
     host._layout_safe_dialog(dialog, host._ui_safe_rect(view.get_viewport_rect().size))
     var form: HBoxContainer = view._hbox(12)
     stack.add_child(form)
     var input := LineEdit.new()
     input.name = "AstryxCoverSearchInput"
-    input.placeholder_text = _text("输入游戏名称", "Enter a game title", "ゲーム名を入力", "輸入遊戲名稱")
+    input.placeholder_text = _text("输入游戏名称", "Enter a game title", "ゲーム名を入力", "輸入遊戲名稱", "Escribe el título de un juego")
     input.accessibility_name = input.placeholder_text
     input.text = host._game_display_title(game)
     input.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -112,7 +112,7 @@ func _vndb() -> void:
     var results: VBoxContainer = view._vbox(12)
     results.name = "AstryxCoverSearchResults"
     scroller.add_child(results)
-    var submit: Button = view._button(_text("搜索", "Search", "検索", "搜尋"), Callable(), "primary", "AstryxCoverSearch")
+    var submit: Button = view._button(_text("搜索", "Search", "検索", "搜尋", "Buscar"), Callable(), "primary", "AstryxCoverSearch")
     form.add_child(submit)
     submit.pressed.connect(func(): _search(input, status, results, submit))
     input.text_submitted.connect(func(_query): _search(input, status, results, submit))
@@ -176,17 +176,17 @@ func _search(input: LineEdit, status: Label, results: VBoxContainer, submit: But
         DisplayServer.virtual_keyboard_hide()
     view._clear(results)
     status.show()
-    status.text = _text("正在搜索…", "Searching…", "検索中…", "正在搜尋…")
+    status.text = _text("正在搜索…", "Searching…", "検索中…", "正在搜尋…", "Buscando…")
     submit.disabled = true
     var response: Dictionary = await _request(API_URL, {"filters": ["search", "=", query], "fields": "title,alttitle,image.url,image.thumbnail", "sort": "searchrank", "results": 20})
     if not _alive(token):
         return
     submit.disabled = false
     if response.error != OK:
-        status.text = _text("搜索失败，请检查网络后重试。", "Search failed. Check the connection and retry.", "検索できません。接続を確認して再試行してください。", "搜尋失敗，請檢查網路後重試。")
+        status.text = _text("搜索失败，请检查网络后重试。", "Search failed. Check the connection and retry.", "検索できません。接続を確認して再試行してください。", "搜尋失敗，請檢查網路後重試。", "Error en la búsqueda. Comprueba la conexión y vuelve a intentarlo.")
         return
     var rows := parse_rows(response.body)
-    status.text = _text("没有找到带封面的结果，请尝试其他名称。", "No covers found. Try another title.", "カバーが見つかりません。別の名前をお試しください。", "找不到附有封面的結果，請嘗試其他名稱。") if rows.is_empty() else _text("选择结果以设置封面。", "Choose a result to set its cover.", "結果を選択してカバーを設定します。", "選擇結果以設定封面。")
+    status.text = _text("没有找到带封面的结果，请尝试其他名称。", "No covers found. Try another title.", "カバーが見つかりません。別の名前をお試しください。", "找不到附有封面的結果，請嘗試其他名稱。", "No se han encontrado portadas. Prueba con otro título.") if rows.is_empty() else _text("选择结果以设置封面。", "Choose a result to set its cover.", "結果を選択してカバーを設定します。", "選擇結果以設定封面。", "Elige un resultado para usar su portada.")
     for row in rows:
         var button: Button = view._button("", Callable(), "secondary", "AstryxCoverResult_" + row.id)
         button.add_theme_stylebox_override("normal", view.design.box("surface", 12, "border", 1))
@@ -236,7 +236,7 @@ func _select_result(row: Dictionary, status: Label, results: VBoxContainer, subm
     for child in results.get_children():
         if child is Button:
             child.disabled = true
-    status.text = _text("正在下载封面…", "Downloading cover…", "カバーをダウンロード中…", "正在下載封面…")
+    status.text = _text("正在下载封面…", "Downloading cover…", "カバーをダウンロード中…", "正在下載封面…", "Descargando portada…")
     var response: Dictionary = await _request(row.url)
     if not _alive(token):
         return
@@ -247,6 +247,6 @@ func _select_result(row: Dictionary, status: Label, results: VBoxContainer, subm
         for child in results.get_children():
             if child is Button:
                 child.disabled = false
-        status.text = host._t("message.cover_save_failed") if image != null else _text("封面下载失败，请重试。", "Could not download the cover. Retry.", "カバーを取得できません。再試行してください。", "封面下載失敗，請重試。")
+        status.text = host._t("message.cover_save_failed") if image != null else _text("封面下载失败，请重试。", "Could not download the cover. Retry.", "カバーを取得できません。再試行してください。", "封面下載失敗，請重試。", "No se ha podido descargar la portada. Vuelve a intentarlo.")
         return
     view._dismiss_then(func(): host._show_detail(host.selected_game))

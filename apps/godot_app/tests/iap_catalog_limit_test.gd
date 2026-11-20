@@ -118,7 +118,7 @@ func _initialize() -> void:
     _expect(settings_action.size_flags_horizontal == Control.SIZE_SHRINK_END)
     _expect(settings_action.size_flags_vertical == Control.SIZE_SHRINK_CENTER)
 
-    for language in ["zh_hans", "zh_hant", "en", "ja", "ko"]:
+    for language in ["zh_hans", "zh_hant", "en", "ja", "ko", "es"]:
         app.active_language = language
         var coffee_url: String = app._coffee_sponsorship_url("Android")
         _expect(coffee_url == ("https://qr.alipay.com/fkx108053gol728ayzhec90" if language == "zh_hans" else "https://buymeacoffee.com/akitasummer"))

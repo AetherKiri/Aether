@@ -7,6 +7,7 @@ const EXPECTED_DOCUMENTS := {
     "en": ["res://legal/privacy_disclaimer_en.txt", "Privacy Policy"],
     "ja": ["res://legal/privacy_disclaimer_ja.txt", "プライバシーポリシー"],
     "ko": ["res://legal/privacy_disclaimer_ko.txt", "개인정보 처리방침"],
+    "es": ["res://legal/privacy_disclaimer_es.txt", "Política de privacidad"],
 }
 const EXPECTED_IOS_STATEMENTS := {
     "zh_hans": ["res://legal/ios_app_store_statement_zh_hans.txt", "有限额外许可", "第三方不得援引"],
@@ -14,6 +15,7 @@ const EXPECTED_IOS_STATEMENTS := {
     "en": ["res://legal/ios_app_store_statement_en.txt", "Limited additional permission", "no third-party reliance"],
     "ja": ["res://legal/ios_app_store_statement_ja.txt", "限定的な追加許諾", "第三者による援用を認めない"],
     "ko": ["res://legal/ios_app_store_statement_ko.txt", "제한적인 추가 허가", "제3자는 원용할 수 없음"],
+    "es": ["res://legal/ios_app_store_statement_es.txt", "Permiso adicional limitado", "los terceros no pueden ampararse en este aviso"],
 }
 
 func _initialize() -> void:

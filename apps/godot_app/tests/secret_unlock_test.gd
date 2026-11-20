@@ -56,7 +56,7 @@ func _initialize() -> void:
         and not app._secret_iap_unlock_active()
     ))
 
-    for language in ["zh_hans", "zh_hant", "en", "ja", "ko"]:
+    for language in ["zh_hans", "zh_hant", "en", "ja", "ko", "es"]:
         app.active_language = language
         assert(not String(app._t("secret.unlock.title")).is_empty())
         assert(not String(app._t("secret.unlock.body")).is_empty())

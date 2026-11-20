@@ -451,6 +451,15 @@ jobs:
           path: out/godot/android/release/Aether-release.apk
           retention-days: 7
 
+      - name: Upload Debug APK
+        if: ${{ !inputs.release_version }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: android-debug-apk
+          path: out/godot/android/debug/Aether-debug.apk
+          if-no-files-found: error
+          retention-days: 7
+
       - name: Report compiler cache statistics
         if: always() && !cancelled()
         run: |

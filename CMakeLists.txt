@@ -392,7 +392,7 @@ if(AETHERKIRI_ENABLE_MAGES AND
     # runtime submodules.
     add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/bridge/mages_runtime)
 endif()
-if(AETHERKIRI_ENABLE_CMVS AND BUILD_GODOT_EXTENSION AND
+if(AETHERKIRI_ENABLE_CMVS AND (BUILD_GODOT_EXTENSION OR ENABLE_TESTS) AND
    (APPLE OR ANDROID OR CMAKE_SYSTEM_NAME STREQUAL "Linux") AND NOT (WEB OR EMSCRIPTEN))
     add_subdirectory(packages/cmvs-rs/integrations/aether)
 endif()

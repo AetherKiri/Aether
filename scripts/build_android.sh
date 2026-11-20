@@ -101,7 +101,7 @@ ensure_android_rust() {
     local triple="$1"
     local cargo_dir
     local sysroot
-    local toolchain_bin
+    local toolchain_bin=""
     local candidate
 
     # An explicit CARGO override always wins; make sure CMake can see it.

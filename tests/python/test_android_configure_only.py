@@ -53,6 +53,35 @@ class AndroidConfigureOnlyTests(unittest.TestCase):
                                "--configure-only", "--jobs=4"], cwd=self.root,
                               env=self.env, text=True, capture_output=True)
 
+    def configure_rust_fallback(self, *installed):
+        self.env.pop("CARGO", None)
+        rustup = self.root / "rustup"
+        self.env["RUSTUP_HOME"] = str(rustup)
+        self.env["PROBE_SYSROOT"] = str(self.root / "active-sysroot")
+        self.tool("rustup", "exit 1")
+        self.tool("rustc", 'printf "%s\n" "$PROBE_SYSROOT"')
+        for name in installed:
+            toolchain = rustup / "toolchains" / name
+            (toolchain / "lib/rustlib/aarch64-linux-android").mkdir(parents=True)
+            (toolchain / "bin").mkdir()
+            cargo = toolchain / "bin/cargo"
+            cargo.write_text("#!/bin/sh\nexit 0\n")
+            cargo.chmod(0o755)
+
+    def test_rust_fallback_uses_installed_nonstable_toolchain(self):
+        self.configure_rust_fallback("1.92.0-local")
+        result = self.run_configure("debug")
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn("1.92.0-local/bin", result.stdout)
+        self.assertIn("Android arm64 Debug Config", self.log.read_text())
+
+    def test_missing_rust_target_reports_how_to_install_it(self):
+        self.configure_rust_fallback()
+        result = self.run_configure("debug")
+        self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
+        self.assertIn("rustup target add aarch64-linux-android", result.stderr)
+        self.assertFalse(self.log.exists())
+
     def test_both_presets_prepare_dependencies_without_export_or_build(self):
         for configuration in ("release", "debug"):
             result = self.run_configure(configuration)

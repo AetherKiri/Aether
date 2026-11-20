@@ -1,11 +1,11 @@
 # AliceSoft System 1–3 native runtime
 
-`packages/system3` pins the `aether` branch of
+`packages/AetherSystem3` pins the `aether` branch of
 [AetherKiri/system3-sdl2](https://github.com/AetherKiri/system3-sdl2).
 The fork’s `master` branch is reserved for upstream synchronization.
 
 ```sh
-git submodule update --init --recursive packages/system3
+git submodule update --init --recursive packages/AetherSystem3
 ```
 
 Import the complete DAT game directory into the visual-novel library. Detection

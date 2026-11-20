@@ -150,12 +150,12 @@ SWF 引用的本地相对路径资源从其所在目录读取，SharedObject 存
 | | `bridge/entisgls_runtime/` | 公开 EntisGLS / Cotopha provider 的构建接入。 |
 | | `bridge/n2system_runtime/` | 实验性 N2System provider 与桌面、移动端 NativeAOT 宿主桥接。 |
 | 引擎 | `packages/AetherKrkr/` | KiriKiri2 引擎运行时 submodule。 |
-| | `packages/OnscripterYuri/` | 公开 OnscripterYuri submodule。 |
+| | `packages/AetherONScripterYuri/` | 公开 OnscripterYuri submodule。 |
 | | `packages/AetherSiglus/` | 公开 siglus_rs submodule（保持只读）。 |
 | | `packages/ruffle/` | 固定版本的上游 Flash runtime submodule（保持只读）。 |
 | | `packages/AetherInternal/` | 可选私有运行时（含 Escude、SystemC）及 E-mote/Live2D 支持；公开构建不依赖它。 |
 | | `packages/AetherSoftPal/` | 可选私有原生 SoftPal 运行时 submodule。 |
-| | `packages/EntisGLS-SDL3/` | 公开 EntisGLS / Cotopha 运行时 submodule 及 provider。 |
+| | `packages/AetherEntisGLS/` | 公开 EntisGLS / Cotopha 运行时 submodule 及 provider。 |
 | | `packages/AetherN2System/` | 公开 NitroSharp / N2System 运行时 submodule。 |
 | 支撑 | `demos/aetherkiri-kag3/` | 内置 KAG3 Demo 源码。 |
 | | `tests/` | 单元测试、fixture 与可移植 probe profile。 |
@@ -185,7 +185,7 @@ SWF 引用的本地相对路径资源从其所在目录读取，SharedObject 存
 
 ```bash
 git submodule update --init \
-  packages/AetherKrkr packages/OnscripterYuri packages/psdfile \
+  packages/AetherKrkr packages/AetherONScripterYuri packages/psdfile \
   packages/AetherSiglus packages/AetherMinori packages/ruffle \
   packages/AetherN2System
 ./build.sh macos debug        # 或：macos release / ios debug --simulator /
@@ -205,6 +205,8 @@ GitHub 托管 runner 自动应用的重写一致：
 ```bash
 git config --global url."https://github.com/".insteadOf git@github.com:
 ```
+
+如果从引擎 submodule 改名前的 checkout 升级，先保存这些 submodule 里的本地修改，再用 `git submodule deinit` 取消初始化旧路径，然后更新 Aether。更新后运行 `git submodule sync --recursive`，并在新路径初始化需要的引擎。如果原构建目录还缓存着旧路径，请使用新的 CMake 构建目录。
 
 脚本会构建 native engine 与 Godot host library，将产物放到
 `apps/godot_app/bin/`，并在 Godot 可用时运行对应的导出 preset。Linux 导出

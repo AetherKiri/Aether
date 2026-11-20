@@ -174,12 +174,12 @@ supported by the Flash player.
 | | `bridge/entisgls_runtime/` | Build integration for the public EntisGLS / Cotopha provider. |
 | | `bridge/n2system_runtime/` | Experimental N2System provider and desktop/mobile NativeAOT host bridge. |
 | Engines | `packages/AetherKrkr/` | KiriKiri2 engine runtime submodule. |
-| | `packages/OnscripterYuri/` | Public OnscripterYuri submodule. |
+| | `packages/AetherONScripterYuri/` | Public OnscripterYuri submodule. |
 | | `packages/AetherSiglus/` | Public siglus_rs submodule (kept pristine). |
 | | `packages/ruffle/` | Pinned upstream Flash runtime submodule (kept pristine). |
 | | `packages/AetherInternal/` | Optional private runtimes, including Escude and SystemC, plus E-mote/Live2D support; public builds work without it. |
 | | `packages/AetherSoftPal/` | Optional private native SoftPal runtime submodule. |
-| | `packages/EntisGLS-SDL3/` | Public EntisGLS / Cotopha runtime submodule and provider. |
+| | `packages/AetherEntisGLS/` | Public EntisGLS / Cotopha runtime submodule and provider. |
 | | `packages/AetherN2System/` | Public NitroSharp / N2System runtime submodule. |
 | Support | `demos/aetherkiri-kag3/` | Source of the built-in KAG3 demo. |
 | | `tests/` | Unit tests, fixtures, and portable probe profiles. |
@@ -209,7 +209,7 @@ supported by the Flash player.
 
 ```bash
 git submodule update --init \
-  packages/AetherKrkr packages/OnscripterYuri packages/psdfile \
+  packages/AetherKrkr packages/AetherONScripterYuri packages/psdfile \
   packages/AetherSiglus packages/AetherMinori packages/ruffle \
   packages/AetherN2System
 ./build.sh macos debug        # or: macos release / ios debug --simulator /
@@ -232,6 +232,8 @@ apply automatically:
 ```bash
 git config --global url."https://github.com/".insteadOf git@github.com:
 ```
+
+If you are upgrading a checkout from before the runtime submodules were renamed, save any local changes in those submodules and deinitialize their old paths before updating Aether. Then run `git submodule sync --recursive` and initialize the new paths for the runtimes you use. Configure into a fresh CMake build directory if the old build directory still points to the previous paths.
 
 The scripts build the native engine and Godot host library, stage them under
 `apps/godot_app/bin/`, and run the matching Godot export preset when Godot is

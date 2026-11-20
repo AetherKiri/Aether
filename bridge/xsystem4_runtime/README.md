@@ -1,6 +1,6 @@
 # AliceSoft System 4 native runtime
 
-`packages/xsystem4` uses the dedicated
+`packages/AetherSystem4` uses the dedicated
 [`aether` branch](https://github.com/AetherKiri/xsystem4/tree/aether) of the public
 AetherKiri fork for native embedding hooks. The fork's default `master` branch
 is reserved for upstream synchronization. Aether pins an exact commit from
@@ -8,7 +8,7 @@ is reserved for upstream synchronization. Aether pins an exact commit from
 both with:
 
 ```sh
-git submodule update --init --recursive packages/xsystem4
+git submodule update --init --recursive packages/AetherSystem4
 ```
 
 Import the complete game directory into the visual-novel library. Detection

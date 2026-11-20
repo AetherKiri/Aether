@@ -1,12 +1,12 @@
 # AliceSoft System 3.5 / 3.9 native runtime
 
-`packages/xsystem35` pins the `aether` branch of
+`packages/AetherSystem35` pins the `aether` branch of
 [AetherKiri/xsystem35-sdl2](https://github.com/AetherKiri/xsystem35-sdl2).
 The fork's `master` branch is reserved for upstream synchronization. Initialize
 the package with:
 
 ```sh
-git submodule update --init packages/xsystem35
+git submodule update --init packages/AetherSystem35
 ```
 
 Import the complete game directory into the visual-novel library. Detection

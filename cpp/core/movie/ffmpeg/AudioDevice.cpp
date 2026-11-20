@@ -3,6 +3,7 @@
 #include "AudioCodec.h"
 #include "AEFactory.h"
 #include "AEAudioFormat.h"
+#include "WaveMixer.h"
 
 #ifdef TARGET_POSIX
 #include "linux/XTimeUtils.h"
@@ -55,6 +56,8 @@ bool CDVDAudio::Create(const DVDAudioFrame &audioframe, AVCodecID codec,
     if(!m_pAudioStream)
         return false;
     m_pAudioStream->SetPlaybackRate(m_playbackRate);
+    if(auto *buffer = m_pAudioStream->GetNativeImpl())
+        buffer->SetVolume(m_volume);
 
     m_sampeRate = audioframe.format.m_sampleRate;
     m_iBitsPerSample = audioframe.bits_per_sample;
@@ -148,12 +151,19 @@ void CDVDAudio::Drain() {
         m_pAudioStream->Drain(true);
 }
 
-// void CDVDAudio::SetVolume(float volume)
-// {
-//   CSingleLock lock (m_critSection);
-//   if (m_pAudioStream)
-//     m_pAudioStream->SetVolume(volume);
-// }
+void CDVDAudio::SetVolume(float volume) {
+    std::lock_guard<std::recursive_mutex> lock(m_critSection);
+    m_volume = volume;
+    if(m_pAudioStream) {
+        if(auto *buffer = m_pAudioStream->GetNativeImpl())
+            buffer->SetVolume(m_volume);
+    }
+}
+
+float CDVDAudio::GetVolume() {
+    std::lock_guard<std::recursive_mutex> lock(m_critSection);
+    return m_volume;
+}
 
 // void CDVDAudio::SetDynamicRangeCompression(long drc)
 // {

@@ -20,7 +20,8 @@ public:
 
     ~CDVDAudio();
 
-    // void SetVolume(float fVolume);
+    void SetVolume(float volume);
+    float GetVolume();
     // void SetDynamicRangeCompression(long drc);
     // float GetCurrentAttenuation();
     void Pause();
@@ -80,6 +81,7 @@ protected:
     double m_playbackRate;
     CAEChannelInfo m_channelLayout;
     bool m_bPaused;
+    float m_volume = 1.0f;
 
     std::atomic_bool m_bAbort{};
     CDVDClock *m_pClock;

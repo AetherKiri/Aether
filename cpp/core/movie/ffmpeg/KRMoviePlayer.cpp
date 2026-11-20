@@ -212,15 +212,13 @@ void TVPMoviePlayer::SetAudioBalance(long balance) {
 }
 
 void TVPMoviePlayer::SetAudioVolume(long volume) {
-    iTVPSoundBuffer *alsound = GetSoundDevice();
-    if(alsound)
-        alsound->SetVolume(volume / 100000.f);
+    if(auto *audio = m_pPlayer->GetAudioPlayer())
+        audio->GetOutputDevice()->SetVolume(volume / 100000.f);
 }
 
 void TVPMoviePlayer::GetAudioVolume(long *volume) {
-    iTVPSoundBuffer *alsound = GetSoundDevice();
-    if(alsound)
-        *volume = alsound->GetVolume() * 100000;
+    if(auto *audio = m_pPlayer->GetAudioPlayer())
+        *volume = audio->GetOutputDevice()->GetVolume() * 100000;
 }
 
 void TVPMoviePlayer::GetNumberOfAudioStream(unsigned long *streamCount) {

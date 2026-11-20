@@ -10750,23 +10750,37 @@ func _select_rfvp_launch_file(library_path: String, entry: String) -> void:
     _dismiss_modal(func(): _apply_selected_launch_file(library_path, library_path.path_join(entry)))
 
 func _show_launch_file_godot_dialog(library_path: String) -> void:
+    var android := OS.get_name() == "Android"
+    if android and DirAccess.open(library_path) == null:
+        if _ensure_android_storage_permission_for_path(library_path):
+            _show_system_alert(_t("message.path_missing"), _t("alert.warning_title"))
+        return
     var dialog := _create_file_dialog(
         _t("dialog.choose_launch_file"),
         FileDialog.FILE_MODE_OPEN_FILE,
         PackedStringArray(["*.exe,*.EXE,*.xp3,*.XP3,*.hcb,*.HCB;Visual novel launch file"])
     )
     dialog.show_hidden_files = true
-    if _game_runtime_kind(library_path) == "rfvp":
+    if android:
+        # Android's system picker returns a content URI. Launch entries are
+        # filesystem paths relative to the imported game folder.
         dialog.use_native_dialog = false
-    if DirAccess.dir_exists_absolute(library_path):
-        dialog.current_dir = library_path
+        dialog.root_subfolder = library_path
+    else:
+        if _game_runtime_kind(library_path) == "rfvp":
+            dialog.use_native_dialog = false
+        if DirAccess.dir_exists_absolute(library_path):
+            dialog.current_dir = library_path
     dialog.file_selected.connect(func(selected_path: String):
         _apply_selected_launch_file(library_path, selected_path)
         dialog.queue_free()
     )
     dialog.canceled.connect(func(): dialog.queue_free())
     add_child(dialog)
-    dialog.popup_centered(Vector2i(900, 640))
+    if android:
+        dialog.popup_centered_clamped(Vector2i(900, 640), 0.95)
+    else:
+        dialog.popup_centered(Vector2i(900, 640))
 
 func _apply_selected_launch_file(library_path: String, selected_path: String) -> void:
     if not GameLaunchEntry.is_supported_file(selected_path):

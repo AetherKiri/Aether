@@ -53,6 +53,20 @@ class AndroidConfigureOnlyTests(unittest.TestCase):
                                "--configure-only", "--jobs=4"], cwd=self.root,
                               env=self.env, text=True, capture_output=True)
 
+    def test_full_build_checks_apk_export_prerequisites_before_configure(self):
+        godot = self.tools / "godot"
+        self.env["GODOT_BIN"] = str(godot)
+        self.env["GODOT_TEMPLATE_DIR"] = str(self.root / "export-templates")
+        for expected in ("requires Godot at", "requires android_debug.apk and android_release.apk"):
+            with self.subTest(expected=expected):
+                result = subprocess.run(["bash", "build.sh", "android", "debug"],
+                                        cwd=self.root, env=self.env, text=True, capture_output=True)
+                self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
+                self.assertIn(expected, result.stderr)
+                self.assertFalse(self.log.exists())
+                self.assertNotIn("Android build output:", result.stdout)
+                self.tool("godot", "exit 0")
+
     def configure_rust_fallback(self, *installed):
         self.env.pop("CARGO", None)
         rustup = self.root / "rustup"

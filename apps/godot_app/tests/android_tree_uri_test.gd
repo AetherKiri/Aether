@@ -50,8 +50,6 @@ func _initialize() -> void:
             "Game.exe",
         "content://com.android.externalstorage.documents/tree/primary%3AGames/document/primary%3AGames%2F%E6%B8%B8%E6%88%8F%2B%20A%2Fpatch%2Fdata.xp3":
             "patch/data.xp3",
-        "content://com.coloros.filemanager.fileprovider/root/storage/emulated/0/Games/%E6%B8%B8%E6%88%8F%2B%20A/launch.hcb":
-            "launch.hcb",
         "content://com.android.providers.downloads.documents/document/raw%3A%2Fstorage%2Femulated%2F0%2FGames%2F%E6%B8%B8%E6%88%8F%2B%20A%2FGame.exe":
             "Game.exe",
         "file:///storage/emulated/0/Games/%E6%B8%B8%E6%88%8F%2B%20A/Game.exe":
@@ -62,6 +60,7 @@ func _initialize() -> void:
         "content://com.android.externalstorage.documents/document/primary%3AGames%2F%E6%B8%B8%E6%88%8F%2B%20A%2F..%2FOther%2FGame.exe":
             "",
         "content://com.example.provider/document/Game.exe": "",
+        "content://com.example.fileprovider/root/storage/emulated/0/Games/%E6%B8%B8%E6%88%8F%2B%20A/launch.hcb": "",
     }
     for uri in file_cases:
         var selected_path: String = app._android_launch_file_path(uri)

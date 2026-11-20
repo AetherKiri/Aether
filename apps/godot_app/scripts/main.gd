@@ -12237,7 +12237,6 @@ func _android_external_storage_path_from_tree_uri(path: String) -> String:
 func _android_launch_file_path(path: String) -> String:
     const EXTERNAL_STORAGE := "content://com.android.externalstorage.documents/"
     const DOWNLOADS := "content://com.android.providers.downloads.documents/document/"
-    const COLOROS := "content://com.coloros.filemanager.fileprovider/root/"
     if path.begins_with(EXTERNAL_STORAGE):
         # A document URI may be relative to a tree grant. Use the document ID,
         # not the ID of the tree that grants access.
@@ -12250,9 +12249,6 @@ func _android_launch_file_path(path: String) -> String:
         var document_id := path.trim_prefix(DOWNLOADS).uri_file_decode()
         if document_id.begins_with("raw:/"):
             return document_id.trim_prefix("raw:")
-    elif path.begins_with(COLOROS):
-        # ColorOS's picker can return a FileProvider URI rooted at /.
-        return "/" + path.trim_prefix(COLOROS).uri_file_decode()
     elif path.begins_with("file:///"):
         return path.trim_prefix("file://").uri_file_decode()
     return path

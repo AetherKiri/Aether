@@ -572,6 +572,7 @@ const UI_TEXT := {
         "message.android_storage_permission_required": "需要允许 Aether 访问文件系统后才能导入或启动外部游戏。请在系统弹窗或权限设置中授予文件访问权限，然后再试。",
         "message.android_video_storage_permission_required": "需要允许 Aether 访问文件系统后才能导入视频。请在系统弹窗或权限设置中授予文件访问权限，然后再试。",
         "message.path_missing": "游戏路径不存在",
+        "message.android_choose_local_game_folder": "此目录无法直接读取。请在文件选择器中从设备存储或 SD 卡选择完整游戏文件夹。",
         "message.launch_file_unsupported": "启动文件只支持 EXE、XP3 或 HCB",
         "message.launch_file_outside_game": "启动文件必须位于当前游戏目录内",
         "message.launch_file_missing": "启动文件不存在：%s",
@@ -1009,6 +1010,7 @@ const UI_TEXT := {
         "message.android_storage_permission_required": "需要允許 Aether 存取檔案系統後才能匯入或啟動外部遊戲。請在系統彈窗或權限設定中授予檔案存取權限，然後再試。",
         "message.android_video_storage_permission_required": "需要允許 Aether 存取檔案系統後才能匯入影片。請在系統彈窗或權限設定中授予檔案存取權限，然後再試。",
         "message.path_missing": "遊戲路徑不存在",
+        "message.android_choose_local_game_folder": "無法直接讀取此目錄。請在檔案選擇器中從裝置儲存空間或 SD 卡選擇完整遊戲資料夾。",
         "message.launch_file_unsupported": "啟動檔案僅支援 EXE、XP3 或 HCB",
         "message.launch_file_outside_game": "啟動檔案必須位於目前遊戲目錄內",
         "message.launch_file_missing": "啟動檔案不存在：%s",
@@ -1448,6 +1450,7 @@ You can find it any time under Settings → QQ Group.",
         "message.android_storage_permission_required": "Allow Aether to access the file system before importing or launching external games. Grant file access in the system prompt or permission settings, then try again.",
         "message.android_video_storage_permission_required": "Allow Aether to access the file system before importing videos. Grant file access in the system prompt or permission settings, then try again.",
         "message.path_missing": "Game path does not exist",
+        "message.android_choose_local_game_folder": "Aether cannot open this folder directly. In the file picker, select the complete game folder from device storage or an SD card.",
         "message.launch_file_unsupported": "The launch file must be an EXE, XP3 or HCB file",
         "message.launch_file_outside_game": "The launch file must be inside this game folder",
         "message.launch_file_missing": "Launch file does not exist: %s",
@@ -1852,6 +1855,7 @@ You can find it any time under Settings → QQ Group.",
         "message.android_storage_permission_required": "外部ゲームのインポートまたは起動には、Aether にファイルシステムへのアクセスを許可する必要があります。システムの権限ダイアログまたは設定でファイルアクセスを許可してから、もう一度お試しください。",
         "message.android_video_storage_permission_required": "動画をインポートするには、Aether にファイルシステムへのアクセスを許可する必要があります。システムの権限ダイアログまたは設定でファイルアクセスを許可してから、もう一度お試しください。",
         "message.path_missing": "ゲームパスが存在しません",
+        "message.android_choose_local_game_folder": "このフォルダーは直接開けません。ファイル選択画面で端末のストレージまたは SD カードから、ゲームフォルダー全体を選択してください。",
         "message.launch_file_unsupported": "起動ファイルは EXE、XP3 または HCB のみ対応しています",
         "message.launch_file_outside_game": "起動ファイルは現在のゲームフォルダー内にある必要があります",
         "message.launch_file_missing": "起動ファイルが存在しません：%s",
@@ -2256,6 +2260,7 @@ You can find it any time under Settings → QQ Group.",
         "message.android_storage_permission_required": "외부 게임을 가져오거나 실행하려면 Aether의 파일 시스템 접근을 허용해야 합니다. 시스템 권한 창 또는 권한 설정에서 파일 접근 권한을 허용한 뒤 다시 시도하세요.",
         "message.android_video_storage_permission_required": "비디오를 가져오려면 Aether의 파일 시스템 접근을 허용해야 합니다. 시스템 권한 창 또는 권한 설정에서 파일 접근 권한을 허용한 뒤 다시 시도하세요.",
         "message.path_missing": "게임 경로가 존재하지 않습니다",
+        "message.android_choose_local_game_folder": "이 폴더를 직접 열 수 없습니다. 파일 선택기에서 기기 저장소 또는 SD 카드의 전체 게임 폴더를 선택하세요.",
         "message.launch_file_unsupported": "실행 파일은 EXE, XP3 또는 HCB만 지원합니다",
         "message.launch_file_outside_game": "실행 파일은 현재 게임 폴더 안에 있어야 합니다",
         "message.launch_file_missing": "실행 파일이 존재하지 않습니다: %s",
@@ -2690,6 +2695,7 @@ You can find it any time under Settings → QQ Group.",
         "message.android_storage_permission_required": "Permite que Aether acceda al sistema de archivos antes de importar o iniciar juegos externos. Concede el acceso a los archivos en el aviso del sistema o en los ajustes de permisos y vuelve a intentarlo.",
         "message.android_video_storage_permission_required": "Permite que Aether acceda al sistema de archivos antes de importar vídeos. Concede el acceso a los archivos en el aviso del sistema o en los ajustes de permisos y vuelve a intentarlo.",
         "message.path_missing": "La ruta del juego no existe",
+        "message.android_choose_local_game_folder": "Aether no puede abrir esta carpeta directamente. Selecciona la carpeta completa del juego desde el almacenamiento del dispositivo o una tarjeta SD.",
         "message.launch_file_unsupported": "El archivo de inicio debe ser un archivo EXE, XP3 o HCB",
         "message.launch_file_outside_game": "El archivo de inicio debe estar dentro de la carpeta de este juego",
         "message.launch_file_missing": "El archivo de inicio no existe: %s",
@@ -12149,6 +12155,9 @@ func _games_by_library_entry(existing: Array[Dictionary], root: String) -> Dicti
 
 func _add_game_path(path: String) -> bool:
     var resolved_path := _resolve_game_path(path)
+    if resolved_path.begins_with("content://"):
+        _show_message(_t("message.android_choose_local_game_folder"))
+        return false
     if not _path_exists(resolved_path):
         _show_message(_t("message.path_missing"))
         return false

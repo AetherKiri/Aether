@@ -1,7 +1,7 @@
 # AliceSoft System 4 native runtime
 
 `packages/AetherSystem4` uses the dedicated
-[`aether` branch](https://github.com/AetherKiri/xsystem4/tree/aether) of the public
+[`aether` branch](https://github.com/AetherKiri/AetherSystem4/tree/aether) of the public
 AetherKiri fork for native embedding hooks. The fork's default `master` branch
 is reserved for upstream synchronization. Aether pins an exact commit from
 `aether`, including its recursive `subprojects/libsys4` dependency. Initialize

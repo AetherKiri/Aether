@@ -1,7 +1,7 @@
 # AliceSoft System 1–3 native runtime
 
 `packages/AetherSystem3` pins the `aether` branch of
-[AetherKiri/system3-sdl2](https://github.com/AetherKiri/system3-sdl2).
+[AetherKiri/system3-sdl2](https://github.com/AetherKiri/AetherSystem3).
 The fork’s `master` branch is reserved for upstream synchronization.
 
 ```sh

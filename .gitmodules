@@ -5,7 +5,7 @@
 	ignore = dirty
 [submodule "packages/OnscripterYuri"]
 	path = packages/AetherONScripterYuri
-	url = https://github.com/AetherKiri/OnscripterYuri.git
+	url = https://github.com/AetherKiri/AetherONScripterYuri.git
 	branch = aether-main
 	ignore = dirty
 [submodule "packages/psdfile"]
@@ -44,23 +44,23 @@
 	url = https://github.com/AetherKiri/AetherMAGES.git
 [submodule "packages/xsystem4"]
 	path = packages/AetherSystem4
-	url = https://github.com/AetherKiri/xsystem4.git
+	url = https://github.com/AetherKiri/AetherSystem4.git
 	branch = aether
 [submodule "packages/xsystem35"]
 	path = packages/AetherSystem35
-	url = https://github.com/AetherKiri/xsystem35-sdl2.git
+	url = https://github.com/AetherKiri/AetherSystem35.git
 	branch = aether
 [submodule "packages/system3"]
 	path = packages/AetherSystem3
-	url = https://github.com/AetherKiri/system3-sdl2.git
+	url = https://github.com/AetherKiri/AetherSystem3.git
 	branch = aether
 [submodule "packages/EntisGLS-SDL3"]
 	path = packages/AetherEntisGLS
-	url = https://github.com/AetherKiri/EntisGLS-SDL3.git
+	url = https://github.com/AetherKiri/AetherEntisGLS.git
 	branch = aether
 [submodule "packages/cmvs-rs"]
 	path = packages/AetherCMVSRs
-	url = git@github.com:AetherKiri/cmvs-rs.git
+	url = git@github.com:AetherKiri/AetherCMVSRs.git
 	branch = aether
 [submodule "packages/AetherLeafTtt"]
 	path = packages/AetherLeafTtt

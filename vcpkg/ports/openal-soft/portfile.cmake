@@ -47,6 +47,11 @@ if(VCPKG_TARGET_ARCHITECTURE STREQUAL "arm64")
     set(ALSOFT_CPUEXT_NEON ON)
 endif()
 
+if(VCPKG_TARGET_IS_ANDROID)
+    # CMake can discover the host libstdc++ modules while targeting the NDK's libc++.
+    list(APPEND FEATURE_OPTIONS -DALSOFT_ENABLE_MODULES=OFF -DCMAKE_CXX_SCAN_FOR_MODULES=OFF)
+endif()
+
 vcpkg_find_acquire_program(PKGCONFIG)
 
 vcpkg_cmake_configure(

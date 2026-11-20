@@ -6,6 +6,7 @@ import shutil
 import subprocess
 import tempfile
 import unittest
+import zipfile
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -66,6 +67,65 @@ class AndroidConfigureOnlyTests(unittest.TestCase):
                 self.assertFalse(self.log.exists())
                 self.assertNotIn("Android build output:", result.stdout)
                 self.tool("godot", "exit 0")
+
+    def test_full_build_replaces_old_apk_only_after_a_valid_export(self):
+        app = self.root / "apps/godot_app/android"
+        (app / "build").mkdir(parents=True)
+        (app / ".build_version").touch()
+        (app / "build/build.gradle").touch()
+        templates = self.root / "export-templates"
+        templates.mkdir()
+        for name in ("android_debug.apk", "android_release.apk"):
+            (templates / name).touch()
+        for tool in ("stage_tyrano_android", "stage_renpy_android", "stage_mobile_window_android",
+                     "stage_android_runtime_libraries"):
+            (self.tools / f"{tool}.py").touch()
+        self.env.update(GODOT_BIN=str(self.tools / "godot"), GODOT_TEMPLATE_DIR=str(templates),
+                        KEEP_ANDROID_DEBUG_SYMBOLS="1", AETHER_RENPY_RUNTIME_DIR=str(self.root))
+        self.tool("cmake", "exit 0")
+        output = self.root / "out/android/arm64-v8a/debug"
+        ndk = Path(self.env["ANDROID_NDK_HOME"])
+        for library in (output / "abi/libengine_api.so",
+                        output / "bridge/godot_extension/libaether_kiri_godot.so",
+                        output / "vcpkg_installed/arm64-android/lib/libSDL2.so",
+                        ndk / "toolchains/llvm/prebuilt/test/lib/linux/aarch64/libomp.so"):
+            library.parent.mkdir(parents=True, exist_ok=True)
+            library.write_bytes(b"\x7fELFfixture")
+        (output / "runtime-libraries-debug.txt").touch()
+        old_apk = self.root / "out/godot/android/debug/Aether-debug.apk"
+        old_apk.parent.mkdir(parents=True)
+        old_apk.write_bytes(b"previous build")
+        self.tool("godot", 'for arg do export_path="$arg"; done\n'
+                  'if [ -n "${PROBE_APK:-}" ]; then cp "$PROBE_APK" "$export_path"; fi')
+
+        def export():
+            return subprocess.run(["bash", "build.sh", "android", "debug"], cwd=self.root,
+                                  env=self.env, text=True, capture_output=True)
+
+        result = export()
+        self.assertNotEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn("did not produce a readable Android APK", result.stderr)
+        self.assertEqual(old_apk.read_bytes(), b"previous build")
+        self.assertEqual(list(old_apk.parent.glob(".aether-export.*")), [])
+
+        fixture = self.root / "fixture.apk"
+        self.env["PROBE_APK"] = str(fixture)
+        with zipfile.ZipFile(fixture, "w") as apk:
+            apk.writestr("AndroidManifest.xml", b"manifest")
+        result = export()
+        self.assertNotEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn("lib/arm64-v8a/libaether_kiri_godot.so", result.stderr)
+        self.assertEqual(old_apk.read_bytes(), b"previous build")
+        self.assertEqual(list(old_apk.parent.glob(".aether-export.*")), [])
+
+        with zipfile.ZipFile(fixture, "a") as apk:
+            for name in ("libaether_kiri_godot.so", "libengine_api.so", "libSDL2.so", "libomp.so"):
+                apk.writestr(f"lib/arm64-v8a/{name}", b"\x7fELFfixture")
+        result = export()
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn(str(old_apk), result.stdout)
+        self.assertEqual(old_apk.read_bytes(), fixture.read_bytes())
+        self.assertEqual(list(old_apk.parent.glob(".aether-export.*")), [])
 
     def configure_rust_fallback(self, *installed):
         self.env.pop("CARGO", None)

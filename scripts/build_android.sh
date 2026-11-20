@@ -478,7 +478,31 @@ if [[ "$(uname -m)" == "arm64" && -f "$macos_host_extension" &&
     # it imports the project; the exported Android libraries remain arm64.
     godot_export_command=(arch -x86_64 "$GODOT_BIN")
 fi
+# Export to a fresh directory so a zero exit without a new APK cannot pass.
+export_tmp_dir="$(mktemp -d "$(dirname "$export_path")/.aether-export.XXXXXXXX")"
+trap 'rm -rf -- "${export_tmp_dir:?}"' EXIT
+export_tmp_path="$export_tmp_dir/$(basename "$export_path")"
 "${godot_export_command[@]}" --headless --path "$GODOT_APP_DIR" \
-    "$export_mode" "$export_preset" "$export_path"
+    "$export_mode" "$export_preset" "$export_tmp_path"
+python3 - "$export_tmp_path" "$export_path" "${ABI_LIST[@]}" <<'PY'
+import os
+import sys
+from zipfile import BadZipFile, ZipFile
 
-echo "Android build output: $PROJECT_ROOT/out/godot/android/$BUILD_TYPE_LOWER"
+apk, destination, *abis = sys.argv[1:]
+required = {"AndroidManifest.xml"}
+for abi in abis:
+    required.update(f"lib/{abi}/{name}" for name in (
+        "libaether_kiri_godot.so", "libengine_api.so", "libSDL2.so", "libomp.so",
+    ))
+try:
+    with ZipFile(apk) as archive:
+        missing = required - {entry.filename for entry in archive.infolist() if entry.file_size}
+except (OSError, BadZipFile) as error:
+    sys.exit(f"Error: Godot did not produce a readable Android APK: {error}")
+if missing:
+    sys.exit(f"Error: Android APK is missing required entries: {', '.join(sorted(missing))}")
+os.replace(apk, destination)
+PY
+
+echo "Android build output: $export_path"

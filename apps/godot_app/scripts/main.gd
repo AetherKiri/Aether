@@ -10756,7 +10756,7 @@ func _show_launch_file_godot_dialog(library_path: String) -> void:
         PackedStringArray(["*.exe,*.EXE,*.xp3,*.XP3,*.hcb,*.HCB;Visual novel launch file"])
     )
     dialog.show_hidden_files = true
-    if _game_runtime_kind(library_path) == "rfvp":
+    if OS.get_name() != "Android" and _game_runtime_kind(library_path) == "rfvp":
         dialog.use_native_dialog = false
     if DirAccess.dir_exists_absolute(library_path):
         dialog.current_dir = library_path
@@ -10769,7 +10769,10 @@ func _show_launch_file_godot_dialog(library_path: String) -> void:
     dialog.popup_centered(Vector2i(900, 640))
 
 func _apply_selected_launch_file(library_path: String, selected_path: String) -> void:
-    if not GameLaunchEntry.is_supported_file(selected_path):
+    var filesystem_path := selected_path
+    if OS.get_name() == "Android":
+        filesystem_path = _android_launch_file_path(selected_path)
+    if not GameLaunchEntry.is_supported_file(filesystem_path):
         _show_system_alert(
             _t("message.launch_file_unsupported"),
             _t("alert.warning_title")
@@ -10777,7 +10780,7 @@ func _apply_selected_launch_file(library_path: String, selected_path: String) ->
         return
     var relative_path := GameLaunchEntry.relative_path_for_selection(
         library_path,
-        selected_path
+        filesystem_path
     )
     if relative_path.is_empty():
         _show_system_alert(
@@ -12229,14 +12232,36 @@ func _android_external_storage_path_from_tree_uri(path: String) -> String:
     var prefix := "content://com.android.externalstorage.documents/tree/"
     if not path.begins_with(prefix):
         return path
-    var document_id := path.substr(prefix.length()).uri_decode()
-    # ACTION_OPEN_DOCUMENT_TREE returns "<volume-id>:<relative-path>".
+    return _android_external_storage_path_from_document_id(path.substr(prefix.length()), path)
+
+func _android_launch_file_path(path: String) -> String:
+    const EXTERNAL_STORAGE := "content://com.android.externalstorage.documents/"
+    const DOWNLOADS := "content://com.android.providers.downloads.documents/document/"
+    if path.begins_with(EXTERNAL_STORAGE):
+        # A document URI may be relative to a tree grant. Use the document ID,
+        # not the ID of the tree that grants access.
+        var segments := path.trim_prefix(EXTERNAL_STORAGE).split("/")
+        if segments.size() == 2 and segments[0] == "document":
+            return _android_external_storage_path_from_document_id(segments[1], path)
+        if segments.size() == 4 and segments[0] == "tree" and segments[2] == "document":
+            return _android_external_storage_path_from_document_id(segments[3], path)
+    elif path.begins_with(DOWNLOADS):
+        var document_id := path.trim_prefix(DOWNLOADS).uri_file_decode()
+        if document_id.begins_with("raw:/"):
+            return document_id.trim_prefix("raw:")
+    elif path.begins_with("file:///"):
+        return path.trim_prefix("file://").uri_file_decode()
+    return path
+
+func _android_external_storage_path_from_document_id(encoded_id: String, fallback: String) -> String:
+    var document_id := encoded_id.uri_file_decode()
+    # External storage tree and file IDs both use "<volume-id>:<relative-path>".
     # ExternalStorageProvider uses "primary" for the primary shared volume,
     # "home" for the Documents root, and the volume UUID for removable
     # microSD/USB volumes.
     var separator := document_id.find(":")
     if separator <= 0:
-        return path
+        return fallback
     var volume_id := document_id.substr(0, separator)
     var relative_path := document_id.substr(separator + 1).trim_prefix("/")
     var volume_root := ""
@@ -12254,7 +12279,7 @@ func _android_external_storage_path_from_tree_uri(path: String) -> String:
         # Removable volumes are mounted under /storage/<UUID>.
         volume_root = "/storage".path_join(volume_id)
     else:
-        return path
+        return fallback
     if relative_path.is_empty():
         return volume_root
     return volume_root.path_join(relative_path)

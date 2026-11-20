@@ -306,6 +306,10 @@ public:
 
     virtual void PollForHost() {}
 
+    virtual bool SupportsFloatSoundBuffer(unsigned int channels) const {
+        return channels >= 1 && channels <= 2 && _spec.format == AUDIO_F32LSB;
+    }
+
     virtual tTVPSoundBuffer *CreateStream(tTVPWaveFormat &fmt, int bufcount) {
         SDL_AudioSpec spec;
         memset(&spec, 0, sizeof(spec));
@@ -675,7 +679,10 @@ public:
         alGenSources(1, &_alSource);
         alGenBuffers(_bufferCount, _bufferIds);
         alSourcef(_alSource, AL_GAIN, 1.0f);
-        if(desired.Channels == 1) {
+        if(desired.IsFloat && desired.BitsPerSample == 32) {
+            _alFormat = alGetEnumValue(desired.Channels == 1 ?
+                "AL_FORMAT_MONO_FLOAT32" : "AL_FORMAT_STEREO_FLOAT32");
+        } else if(desired.Channels == 1) {
             switch(desired.BitsPerSample) {
                 case 8:
                     _alFormat = AL_FORMAT_MONO8;
@@ -1048,7 +1055,16 @@ public:
         return true;
     }
 
+    bool SupportsFloatSoundBuffer(unsigned int channels) const override {
+        TVPEnsureALContext();
+        return channels >= 1 && channels <= 2 &&
+            alIsExtensionPresent("AL_EXT_FLOAT32") == AL_TRUE;
+    }
+
     tTVPSoundBuffer *CreateStream(tTVPWaveFormat &fmt, int bufcount) override {
+        if(fmt.IsFloat && (fmt.BitsPerSample != 32 ||
+                           !SupportsFloatSoundBuffer(fmt.Channels)))
+            return nullptr;
         tTVPSoundBuffer *s = new tTVPSoundBufferAL(fmt, bufcount);
         std::lock_guard<std::mutex> lk(_streams_mtx);
         _streams.emplace(s);
@@ -1219,6 +1235,10 @@ void TVPPollAudioRendererForHost() {
 
 iTVPSoundBuffer *TVPCreateSoundBuffer(tTVPWaveFormat &fmt, int bufcount) {
     return TVPAudioRenderer->CreateStream(fmt, bufcount);
+}
+
+bool TVPSupportsFloatSoundBuffer(unsigned int channels) {
+    return TVPAudioRenderer && TVPAudioRenderer->SupportsFloatSoundBuffer(channels);
 }
 
 #if 0

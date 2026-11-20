@@ -48,6 +48,9 @@ bool CDVDAudioCodecFFmpeg::Open(CDVDStreamInfo &hints,
 
     if(hints.codec == AV_CODEC_ID_DTS && allowdtshddecode)
         pCodec = avcodec_find_decoder_by_name("dcadec");
+    // MP2 synthesis can exceed full scale before the mixer applies volume.
+    if(hints.codec == AV_CODEC_ID_MP2)
+        pCodec = avcodec_find_decoder_by_name("mp2float");
 
     if(!pCodec)
         pCodec = avcodec_find_decoder(hints.codec);

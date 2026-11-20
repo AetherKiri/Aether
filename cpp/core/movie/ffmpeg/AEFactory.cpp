@@ -64,7 +64,7 @@ class CAEStreamAL : public IAEStream {
     unsigned int m_syncErrorTime = 0;
     Timer m_syncTimer;
     struct SwrContext *swr_ctx = nullptr;
-    AVSampleFormat swr_tgtFormat;
+    AVSampleFormat swr_tgtFormat = AV_SAMPLE_FMT_S16;
     unsigned int src_buffer_count = 0;
     unsigned int tgt_frameSize = 0;
     uint8_t *audio_buf = nullptr;
@@ -140,7 +140,6 @@ class CAEStreamAL : public IAEStream {
                 src_buffer_count = 1;
                 break;
         }
-        swr_tgtFormat = AV_SAMPLE_FMT_S16;
         AVChannelLayout channelLayout{};
         const int layoutResult =
             av_channel_layout_from_mask(&channelLayout, layout);
@@ -159,7 +158,7 @@ class CAEStreamAL : public IAEStream {
         }
         tgt_frameSize = av_get_bytes_per_sample(swr_tgtFormat) *
             m_format.m_channelLayout.Count();
-        return 16;
+        return 8 * av_get_bytes_per_sample(swr_tgtFormat);
     }
 
     void ResetTempoGraph() {
@@ -206,9 +205,9 @@ class CAEStreamAL : public IAEStream {
         char source_args[256];
         std::snprintf(
             source_args, sizeof(source_args),
-            "time_base=1/%u:sample_rate=%u:sample_fmt=s16:"
+            "time_base=1/%u:sample_rate=%u:sample_fmt=%s:"
             "channel_layout=0x%llx",
-            m_format.m_sampleRate, m_format.m_sampleRate,
+            m_format.m_sampleRate, m_format.m_sampleRate, av_get_sample_fmt_name(swr_tgtFormat),
             static_cast<unsigned long long>(layout));
         char tempo_args[64];
         std::snprintf(tempo_args, sizeof(tempo_args), "tempo=%.6f",
@@ -257,7 +256,7 @@ class CAEStreamAL : public IAEStream {
         AVFrame *input = av_frame_alloc();
         if(!input)
             return false;
-        input->format = AV_SAMPLE_FMT_S16;
+        input->format = swr_tgtFormat;
         input->sample_rate = m_format.m_sampleRate;
         input->nb_samples = static_cast<int>(frames);
         input->pts = tempo_input_pts;
@@ -289,7 +288,7 @@ class CAEStreamAL : public IAEStream {
                 av_frame_free(&output);
                 break;
             }
-            if(result < 0 || output->format != AV_SAMPLE_FMT_S16 ||
+            if(result < 0 || output->format != swr_tgtFormat ||
                av_sample_fmt_is_planar(
                    static_cast<AVSampleFormat>(output->format))) {
                 av_frame_free(&output);
@@ -335,6 +334,10 @@ public:
         tTVPWaveFormat format;
         format.SamplesPerSec = audioFormat.m_sampleRate;
         format.Channels = audioFormat.m_channelLayout.Count();
+        if((audioFormat.m_dataFormat == AE_FMT_FLOATP ||
+            audioFormat.m_dataFormat == AE_FMT_FLOAT) &&
+           TVPSupportsFloatSoundBuffer(format.Channels))
+            swr_tgtFormat = AV_SAMPLE_FMT_FLT;
         format.BitsPerSample = 0;
         switch(audioFormat.m_dataFormat) {
             case AE_FMT_S16LE:
@@ -350,7 +353,7 @@ public:
         format.TotalSamples = 0;
         format.TotalTime = 0;
         format.SpeakerConfig = 0;
-        format.IsFloat = false;
+        format.IsFloat = swr_tgtFormat == AV_SAMPLE_FMT_FLT;
         format.Seekable = false;
         m_impl = TVPCreateSoundBuffer(format, 8);
     }
@@ -395,6 +398,8 @@ public:
                 swr_tgtFormat, 0);
             av_fast_malloc(&audio_buf, &audio_buf_size, out_size);
             int len2 = swr_convert(swr_ctx, &audio_buf, out_count, in, frames);
+            if(len2 < 0)
+                return 0;
             if(len2 == out_count) {
                 av_log(nullptr, AV_LOG_WARNING,
                        "audio buffer is probably too small\n");

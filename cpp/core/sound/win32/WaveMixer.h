@@ -67,6 +67,7 @@ public:
 };
 
 iTVPSoundBuffer *TVPCreateSoundBuffer(tTVPWaveFormat &fmt, int bufcount);
+bool TVPSupportsFloatSoundBuffer(unsigned int channels);
 
 #if 0
 class TVPALSoundWrap : public iTVPSoundBuffer {

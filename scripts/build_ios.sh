@@ -394,6 +394,15 @@ combine_ios_static_extension() {
     fi
 
     while IFS= read -r lib; do
+        # Match the SystemNNN CMake target's GNU iconv pair in Debug.
+        case "${lib##*/}" in
+            libiconv.a|libcharset.a)
+                if [[ "$BUILD_TYPE_LOWER" == debug && "${AETHERKIRI_ENABLE_SYSTEMNNN:-ON}" == ON &&
+                      -f "$vcpkg_triplet_root/debug/lib/libiconv.a" ]]; then
+                    lib="$vcpkg_triplet_root/debug/lib/${lib##*/}"
+                fi
+                ;;
+        esac
         libs+=("$lib")
     done < <(find "$vcpkg_lib_dir" -maxdepth 1 -name 'lib*.a' \
         ! -name 'libgodot-cpp*.a' \
@@ -738,6 +747,8 @@ with_ios_only_gdextension() (
 echo "==> Building native engine and Godot extension"
 cmake_config_args=(
     -D "CMAKE_MAKE_PROGRAM=$CMAKE_MAKE_PROGRAM"
+    -D "AETHERKIRI_ENABLE_SYSTEMNNN=${AETHERKIRI_ENABLE_SYSTEMNNN:-ON}"
+    -D "AETHERKIRI_SYSTEMNNN_DIR=${AETHERKIRI_SYSTEMNNN_DIR:-$PROJECT_ROOT/packages/SystemNNN-Emberfall}"
     -D "AETHERKIRI_ENABLE_INTERNAL=${AETHERKIRI_ENABLE_INTERNAL:-ON}"
     -D "AETHERKIRI_ENABLE_WA2=${AETHERKIRI_ENABLE_WA2:-ON}"
     -D "AETHERKIRI_LEAFTTT_DIR=${AETHERKIRI_LEAFTTT_DIR:-$PROJECT_ROOT/packages/AetherLeafTtt}"
@@ -767,6 +778,12 @@ if [[ "${SKIP_VCPKG_INSTALL:-}" == "1" ]]; then
     cmake_config_args+=(
         -D "VCPKG_MANIFEST_INSTALL=OFF"
         -D "VCPKG_INSTALLED_DIR=$CMAKE_BUILD_DIR/vcpkg_installed"
+    )
+elif [[ "${CI:-}" == "true" && "$PACKAGE_IPA" == true && "$SIMULATOR" == false ]]; then
+    # Keep installed dependencies and downloaded sources while freeing port
+    # build trees and package staging before the native build and app link.
+    cmake_config_args+=(
+        -D 'VCPKG_INSTALL_OPTIONS=--clean-buildtrees-after-build;--clean-packages-after-build'
     )
 fi
 

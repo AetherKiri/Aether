@@ -397,6 +397,10 @@ if(TARGET aether_n2system_runtime)
         add_dependencies(aether_kiri_godot aether_n2system_stage)
     endif()
 endif()
+if(TARGET aether_systemnnn_runtime)
+    target_link_libraries(aether_kiri_godot PRIVATE aether_systemnnn_runtime)
+    target_compile_definitions(aether_kiri_godot PRIVATE AETHERKIRI_WITH_SYSTEMNNN=1)
+endif()
 if(TARGET aether_entisgls_runtime)
     target_link_libraries(aether_kiri_godot PRIVATE aether_entisgls_runtime)
     target_compile_definitions(aether_kiri_godot PRIVATE AETHERKIRI_WITH_ENTISGLS=1)
@@ -457,6 +461,26 @@ if(IOS)
             "$<TARGET_FILE:aether_n2system_runtime>"
             "$<TARGET_FILE:aether_n2system_native_host>")
     endif()
+    if(TARGET aether_systemnnn_runtime)
+        # Godot consumes one archive and cannot follow Emberfall target links.
+        get_target_property(_systemnnn_static_targets aether_systemnnn_runtime
+            AETHERKIRI_SYSTEMNNN_STATIC_TARGETS)
+        if(NOT _systemnnn_static_targets)
+            message(FATAL_ERROR "SystemNNN must expose AETHERKIRI_SYSTEMNNN_STATIC_TARGETS for iOS")
+        endif()
+        set(_systemnnn_archives "")
+        foreach(_systemnnn_target IN LISTS _systemnnn_static_targets)
+            list(APPEND _systemnnn_archives "$<TARGET_FILE:${_systemnnn_target}>")
+        endforeach()
+        list(APPEND AETHERKIRI_IOS_ARCHIVES ${_systemnnn_archives})
+        # A provider-only rebuild must also rerun the extension post-build merge.
+        set(_systemnnn_archive_anchor "${CMAKE_CURRENT_BINARY_DIR}/systemnnn_archive_anchor.cpp")
+        add_custom_command(OUTPUT "${_systemnnn_archive_anchor}"
+            COMMAND "${CMAKE_COMMAND}" -E touch "${_systemnnn_archive_anchor}"
+            DEPENDS ${_systemnnn_static_targets} ${_systemnnn_archives}
+            VERBATIM)
+        target_sources(aether_kiri_godot PRIVATE "${_systemnnn_archive_anchor}")
+    endif()
     get_property(_private_runtime_targets GLOBAL
         PROPERTY AETHERKIRI_PRIVATE_RUNTIME_TARGETS)
     foreach(_runtime_target IN LISTS _private_runtime_targets)
@@ -475,7 +499,7 @@ if(IOS)
         COMMAND "${AETHERKIRI_LIBTOOL_EXECUTABLE}" -static
             -o "${AETHERKIRI_MERGED_GODOT_ARCHIVE}"
             ${AETHERKIRI_IOS_ARCHIVES}
-        COMMAND "${CMAKE_COMMAND}" -E copy_if_different
+        COMMAND "${CMAKE_COMMAND}" -E rename
             "${AETHERKIRI_MERGED_GODOT_ARCHIVE}"
             "$<TARGET_FILE:aether_kiri_godot>"
         VERBATIM)
@@ -538,11 +562,11 @@ if(TARGET aether_rfvp_runtime)
     target_compile_definitions(aether_kiri_godot PRIVATE AETHERKIRI_WITH_RFVP=1)
 endif()
 if(TARGET krkr2plugin)
-    if(WEB OR EMSCRIPTEN)
+    if(WEB OR EMSCRIPTEN OR LINUX)
         # krkr2plugin has cyclic static dependencies with sub-plugin targets.
         # Force-load the archive by path exactly once; leave target-based
         # krkr2plugin links as normal archives so repeated dependency scans do
-        # not produce duplicate symbols under wasm-ld.
+        # not produce duplicate symbols under wasm-ld or the Linux linker.
         add_dependencies(aether_kiri_godot krkr2plugin)
         target_link_libraries(aether_kiri_godot PRIVATE
             "$<LINK_LIBRARY:WHOLE_ARCHIVE,$<TARGET_FILE:krkr2plugin>>"

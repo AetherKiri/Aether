@@ -1,0 +1,84 @@
+add_executable(systemnnn-provider-contract provider.cpp)
+target_link_libraries(systemnnn-provider-contract PRIVATE aether_systemnnn_runtime)
+target_compile_definitions(systemnnn-provider-contract PRIVATE EMBERFALL_ROOT="${AETHERKIRI_SYSTEMNNN_DIR}"
+    SYSTEMNNN_TEST_FONT="${CMAKE_SOURCE_DIR}/apps/godot_app/assets/fonts/aetherkiri-runtime-cjk.otf")
+add_test(NAME systemnnn-provider-contract COMMAND systemnnn-provider-contract)
+set_tests_properties(systemnnn-provider-contract PROPERTIES ENVIRONMENT "ALSOFT_DRIVERS=null")
+add_executable(systemnnn-text-contract "${CMAKE_SOURCE_DIR}/bridge/systemnnn_runtime/tests/systemnnn_text_test.cpp")
+target_include_directories(systemnnn-text-contract PRIVATE "${CMAKE_SOURCE_DIR}/bridge/systemnnn_runtime/src")
+target_link_libraries(systemnnn-text-contract PRIVATE aether_systemnnn_runtime emberfall-render)
+add_test(NAME systemnnn-text-contract COMMAND systemnnn-text-contract "${CMAKE_SOURCE_DIR}/apps/godot_app/assets/fonts/aetherkiri-runtime-cjk.otf")
+
+add_executable(systemnnn-startup-contract startup.cpp)
+target_include_directories(systemnnn-startup-contract PRIVATE "${CMAKE_SOURCE_DIR}/bridge/systemnnn_runtime/src")
+target_compile_definitions(systemnnn-startup-contract PRIVATE EMBERFALL_ROOT="${AETHERKIRI_SYSTEMNNN_DIR}")
+target_link_libraries(systemnnn-startup-contract PRIVATE aether_systemnnn_runtime emberfall-scene)
+add_test(NAME systemnnn-startup-contract COMMAND systemnnn-startup-contract)
+
+add_executable(systemnnn-progress-contract
+    "${CMAKE_SOURCE_DIR}/bridge/systemnnn_runtime/tests/systemnnn_progress_tests.cpp")
+# This fixture includes progress.cpp to inspect codec details independently.
+target_link_libraries(systemnnn-progress-contract PRIVATE emberfall-scene)
+add_test(NAME systemnnn-progress-contract COMMAND systemnnn-progress-contract)
+
+add_executable(systemnnn-audio-contract audio.cpp
+    "${CMAKE_SOURCE_DIR}/bridge/systemnnn_runtime/src/systemnnn_audio.cpp")
+target_include_directories(systemnnn-audio-contract PRIVATE "${CMAKE_SOURCE_DIR}/bridge/systemnnn_runtime/src")
+if(NOT TARGET OpenAL::OpenAL)
+    find_package(OpenAL CONFIG QUIET)
+    if(NOT TARGET OpenAL::OpenAL)
+        find_package(OpenAL REQUIRED)
+    endif()
+endif()
+find_package(Threads REQUIRED)
+target_link_libraries(systemnnn-audio-contract PRIVATE OpenAL::OpenAL Threads::Threads)
+add_test(NAME systemnnn-audio-contract COMMAND systemnnn-audio-contract)
+set_tests_properties(systemnnn-audio-contract PROPERTIES ENVIRONMENT "ALSOFT_DRIVERS=null" TIMEOUT 15)
+
+add_executable(systemnnn-presenter-contract "${CMAKE_SOURCE_DIR}/tests/systemnnn_presenter_test.cpp")
+target_include_directories(systemnnn-presenter-contract PRIVATE "${CMAKE_SOURCE_DIR}/bridge/systemnnn_runtime/src")
+target_link_libraries(systemnnn-presenter-contract PRIVATE aether_systemnnn_runtime emberfall-scene)
+add_test(NAME systemnnn-presenter-contract COMMAND systemnnn-presenter-contract
+    "${CMAKE_SOURCE_DIR}/apps/godot_app/assets/fonts/aetherkiri-runtime-cjk.otf")
+
+add_executable(systemnnn-native-panel-contract
+    "${CMAKE_SOURCE_DIR}/bridge/systemnnn_runtime/tests/systemnnn_native_panel_test.cpp")
+target_include_directories(systemnnn-native-panel-contract PRIVATE "${CMAKE_SOURCE_DIR}/bridge/systemnnn_runtime/src")
+add_test(NAME systemnnn-native-panel-contract COMMAND systemnnn-native-panel-contract)
+
+add_executable(systemnnn-minigame-contract
+    "${CMAKE_SOURCE_DIR}/bridge/systemnnn_runtime/tests/systemnnn_minigame_test.cpp"
+    "${CMAKE_SOURCE_DIR}/bridge/systemnnn_runtime/src/systemnnn_minigame.cpp")
+target_include_directories(systemnnn-minigame-contract PRIVATE "${CMAKE_SOURCE_DIR}/bridge/systemnnn_runtime/src")
+add_test(NAME systemnnn-minigame-contract COMMAND systemnnn-minigame-contract)
+
+add_executable(systemnnn-minigame-binding-contract
+    "${CMAKE_SOURCE_DIR}/bridge/systemnnn_runtime/tests/systemnnn_minigame_binding_test.cpp"
+    "${CMAKE_SOURCE_DIR}/bridge/systemnnn_runtime/src/systemnnn_minigame.cpp")
+target_link_libraries(systemnnn-minigame-binding-contract PRIVATE emberfall-scene)
+add_test(NAME systemnnn-minigame-binding-contract COMMAND systemnnn-minigame-binding-contract)
+
+add_executable(systemnnn-dialogue-reveal-contract
+    "${CMAKE_SOURCE_DIR}/bridge/systemnnn_runtime/tests/systemnnn_dialogue_reveal_test.cpp")
+target_include_directories(systemnnn-dialogue-reveal-contract PRIVATE "${CMAKE_SOURCE_DIR}/bridge/systemnnn_runtime/src")
+target_link_libraries(systemnnn-dialogue-reveal-contract PRIVATE nnn-script-core)
+add_test(NAME systemnnn-dialogue-reveal-contract COMMAND systemnnn-dialogue-reveal-contract)
+
+foreach(contract provider text startup progress audio presenter native-panel minigame minigame-binding dialogue-reveal)
+    set(target "systemnnn-${contract}-contract")
+    target_compile_features(${target} PRIVATE cxx_std_17)
+    # Keep assert-based and explicit checks active in every Release build.
+    if(MSVC)
+        target_compile_options(${target} PRIVATE /UNDEBUG /utf-8)
+    else()
+        target_compile_options(${target} PRIVATE -UNDEBUG)
+    endif()
+    set_tests_properties(${target} PROPERTIES TIMEOUT 120)
+    if(WIN32 AND (contract STREQUAL "provider" OR contract STREQUAL "text" OR contract STREQUAL "startup" OR contract STREQUAL "presenter"))
+        add_custom_command(TARGET ${target} POST_BUILD
+            COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                "$<TARGET_FILE:engine_api>" "$<TARGET_FILE_DIR:${target}>")
+    endif()
+endforeach()
+set_tests_properties(systemnnn-audio-contract PROPERTIES TIMEOUT 15)
+set_tests_properties(systemnnn-provider-contract PROPERTIES TIMEOUT 240)

@@ -7,6 +7,10 @@ class RuntimePlayer:
     var initialization_succeeds := true
     var initializations := 0
     var options: Dictionary = {}
+    var probe_scores: Dictionary = {}
+
+    func probe_runtime(runtime_id: String, _game_root: String) -> int:
+        return int(probe_scores.get(runtime_id, 0))
 
     func is_initialized() -> bool:
         return initialized
@@ -75,8 +79,9 @@ func _initialize() -> void:
         "user_dir": fixture.get_current_dir(),
     }))
     OS.unset_environment("AETHERKIRI_USER_DIR")
-    for runtime_kind in ["rfvp", "onscripter", "xsystem4", "cmvs", "n2system"]:
+    for runtime_kind in ["rfvp", "onscripter", "xsystem4", "cmvs", "n2system", "systemnnn"]:
         _check_reopen(runtime_kind)
+    _check_systemnnn_detection()
     if had_config:
         OS.set_environment("AETHERKIRI_TEST_CONFIG_JSON", old_config)
     else:
@@ -88,6 +93,20 @@ func _initialize() -> void:
     if failures == 0:
         print("RUNTIME_PLAYER_REOPEN_OK")
     quit(1 if failures else 0)
+
+func _check_systemnnn_detection() -> void:
+    var app := RuntimeApp.new()
+    var player := RuntimePlayer.new()
+    app.player = player
+    _expect(app._probe_game_runtime_kind("/game", "kirikiri") == "kirikiri", "An unavailable SystemNNN provider preserves fallback detection")
+    player.probe_scores["systemnnn"] = 100
+    _expect(app._probe_game_runtime_kind("/game", "kirikiri") == "systemnnn", "The registered SystemNNN probe identifies its game directory")
+    _expect(app._probe_game_runtime_kind("/game", "onscripter") == "onscripter", "An existing metadata selection takes priority")
+    _expect(not app._can_configure_launch_file({"path": "/game", "type": "Directory"}, "systemnnn"), "SystemNNN opens its game directory without a launch executable")
+    _expect(app._renderer_summary("backend=systemnnn") == "SystemNNN / Emberfall (Godot Texture)", "Label the SystemNNN renderer")
+    app.player = null
+    app.ui_motion.free()
+    app.free()
 
 func _check_reopen(runtime_kind: String) -> void:
     var app := RuntimeApp.new()

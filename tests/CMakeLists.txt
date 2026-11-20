@@ -26,6 +26,24 @@ set(KRKR2_TEXT_TRANSFORM_SOURCE
 
 add_subdirectory("${AETHERKIRI_KRKR_DIR}/tests/plugins"
     "${CMAKE_BINARY_DIR}/packages/AetherKrkr/tests/plugins")
+if(LINUX)
+    # Force-load registration objects once, as the Godot host does, while
+    # allowing the cyclic plugin dependencies to rescan the normal archive.
+    get_property(_krkr_plugin_tests DIRECTORY "${AETHERKIRI_KRKR_DIR}/tests/plugins"
+        PROPERTY BUILDSYSTEM_TARGETS)
+    foreach(_krkr_plugin_test IN LISTS _krkr_plugin_tests)
+        get_target_property(_krkr_plugin_test_type ${_krkr_plugin_test} TYPE)
+        if(NOT _krkr_plugin_test_type STREQUAL "EXECUTABLE")
+            continue()
+        endif()
+        set_property(TARGET ${_krkr_plugin_test}
+            PROPERTY LINK_LIBRARY_OVERRIDE_krkr2plugin DEFAULT)
+        get_target_property(_krkr_plugin_test_libraries ${_krkr_plugin_test} LINK_LIBRARIES)
+        set_property(TARGET ${_krkr_plugin_test} PROPERTY LINK_LIBRARIES
+            "$<LINK_LIBRARY:WHOLE_ARCHIVE,$<TARGET_FILE:krkr2plugin>>"
+            ${_krkr_plugin_test_libraries})
+    endforeach()
+endif()
 add_subdirectory("${AETHERKIRI_KRKR_DIR}/tests/tjs2"
     "${CMAKE_BINARY_DIR}/packages/AetherKrkr/tests/tjs2")
 add_subdirectory(unit-tests/engine_api)
@@ -41,6 +59,9 @@ if(TARGET aether_n2system_runtime)
 endif()
 if(TARGET aether_mages_runtime)
     add_subdirectory(unit-tests/mages_runtime)
+endif()
+if(TARGET aether_systemnnn_runtime)
+    add_subdirectory(systemnnn_native)
 endif()
 if(TARGET aether_xsystem4_runtime)
     add_executable(aether_xsystem4_native_contract xsystem4_native/contract.cpp)

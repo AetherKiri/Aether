@@ -53,6 +53,11 @@ func _init() -> void:
         "EntisGLS provider receives the archive root"
     )
     _expect_equal(
+        GameLaunchEntry.resolve_for_runtime({"path": root, GameLaunchEntry.FIELD: "game.exe"}, "systemnnn"),
+        root,
+        "SystemNNN provider receives the game directory"
+    )
+    _expect_equal(
         GameLaunchEntry.resolve_for_runtime({"path": root, GameLaunchEntry.FIELD: "AdvHD.exe"}, "advhd"),
         root,
         "AdvHD provider receives the game directory"

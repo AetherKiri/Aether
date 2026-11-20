@@ -197,7 +197,7 @@ git submodule update --init \
 硬依赖；Siglus 与 Minori 在无 Rust 工具链时会优雅降级，但检出必须存在；
 Flash 需要最新 stable Rust 和 Java）。设置 `AETHERKIRI_ENABLE_FLASH=OFF`
 可构建不包含 Flash 播放的版本。
-`AetherInternal`、`AetherSoftPal`、`tjs2Decompiler` 与 `rfvp` 为可选——见
+`AetherInternal`、`AetherELIQ`、`AetherSoftPal`、`tjs2Decompiler` 与 `rfvp` 为可选——见
 [可选组件](#可选组件)。`AetherKrkr`、`psdfile`、`AetherMinori` 在
 `.gitmodules` 中记录为 SSH URL；无 SSH 凭据时做一次 HTTPS 映射即可，与
 GitHub 托管 runner 自动应用的重写一致：
@@ -226,6 +226,11 @@ N2System submodule 固定到其 `aether` 接入分支上的提交。N2System 在
   不会静默产出不兼容组合。可信的 `Build` workflow 运行使用 `AETHERSECRET`
   只读 SSH 密钥；fork 与 Dependabot 运行走公开 fallback。可用
   `-DAETHERKIRI_ENABLE_INTERNAL=OFF` 显式验证公开 fallback。
+
+- **QLIE 运行时**——有私仓读取权限的维护者可用
+  `git submodule update --init packages/AetherELIQ` 初始化固定版本。启用默认运行时时，
+  CMake 在原生目标上检测到该包后会自动启用 QLIE。用 `AETHERKIRI_ELIQ_DIR`
+  指定本地检出，或用 `AETHERKIRI_ENABLE_QLIE=OFF` 禁用该运行时。
 
 - **SoftPal 运行时**——有私仓权限的维护者在原生构建前检出固定版本：
 

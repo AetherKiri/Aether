@@ -12112,8 +12112,8 @@ func _save_game_list(games: Array[Dictionary]) -> Error:
     file.flush()
     return file.get_error()
 
-func _scan_ios_games_dir(existing: Array[Dictionary]) -> Array[Dictionary]:
-    var root := ProjectSettings.globalize_path("user://Games")
+func _scan_ios_games_dir(existing: Array[Dictionary], games_root: String = "user://Games") -> Array[Dictionary]:
+    var root := ProjectSettings.globalize_path(games_root)
     DirAccess.make_dir_recursive_absolute(root)
     var by_entry := _games_by_library_entry(existing, root)
     var normalized_root := root.simplify_path().trim_suffix("/")
@@ -12132,7 +12132,7 @@ func _scan_ios_games_dir(existing: Array[Dictionary]) -> Array[Dictionary]:
         if not entry.begins_with("."):
             var path := root.path_join(entry)
             if (dir.current_is_dir() or entry.to_lower().ends_with(".xp3")) and not FileAccess.file_exists(path.path_join("aether-import-in-progress.json")):
-                var game: Dictionary = by_entry.get(entry, _game_info_from_path(path))
+                var game: Dictionary = by_entry[entry] if by_entry.has(entry) else _game_info_from_path(path)
                 game["path"] = path
                 next.append(game)
         entry = dir.get_next()

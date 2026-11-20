@@ -1,5 +1,6 @@
 #include "AEFactory.h"
 #include "AEStream.h"
+#include "AEStreamData.h"
 #include "WaveMixer.h"
 #include "Clock.h"
 
@@ -58,6 +59,7 @@ class CAEStreamAL : public IAEStream {
     double m_playbackStartPts = 0;
     tjs_uint m_playbackStartSample = 0;
     bool m_hasPts = false;
+    bool m_paused;
     double m_syncError = 0;
     unsigned int m_syncErrorTime = 0;
     Timer m_syncTimer;
@@ -327,7 +329,7 @@ class CAEStreamAL : public IAEStream {
 
 public:
     CAEStreamAL(AEAudioFormat &audioFormat, unsigned int options,
-                IAEClockCallback *clock) {
+                IAEClockCallback *clock) : m_paused((options & AESTREAM_PAUSED) != 0) {
         m_format = audioFormat;
         m_cbClock = clock;
         tTVPWaveFormat format;
@@ -407,7 +409,7 @@ public:
                 return 0;
         }
 
-        if(!m_impl->IsPlaying()) { // out of buffer
+        if(!m_paused && !m_impl->IsPlaying()) { // out of buffer
             m_impl->Play();
         }
 
@@ -466,9 +468,15 @@ public:
         return GetDelay();
     }
 
-    void Pause() override { m_impl->Pause(); }
+    void Pause() override {
+        m_paused = true;
+        m_impl->Pause();
+    }
 
-    void Resume() override { m_impl->Play(); }
+    void Resume() override {
+        m_paused = false;
+        m_impl->Play();
+    }
 
     bool IsSuspended() override { return !m_impl->IsPlaying(); }
 

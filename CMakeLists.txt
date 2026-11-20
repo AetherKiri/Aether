@@ -394,7 +394,7 @@ if(AETHERKIRI_ENABLE_MAGES AND
 endif()
 if(AETHERKIRI_ENABLE_CMVS AND BUILD_GODOT_EXTENSION AND
    (APPLE OR ANDROID OR CMAKE_SYSTEM_NAME STREQUAL "Linux") AND NOT (WEB OR EMSCRIPTEN))
-    add_subdirectory(packages/AetherCMVSRs/integrations/aether)
+    add_subdirectory(packages/AetherCMVS/integrations/aether)
 endif()
 # The Rust provider has targets for Linux, Apple, Android, and Emscripten.
 # Keep it out of unsupported native targets, but do not make Linux the only

@@ -59,8 +59,8 @@
 	url = https://github.com/AetherKiri/AetherEntisGLS.git
 	branch = aether
 [submodule "packages/cmvs-rs"]
-	path = packages/AetherCMVSRs
-	url = git@github.com:AetherKiri/AetherCMVSRs.git
+	path = packages/AetherCMVS
+	url = git@github.com:AetherKiri/AetherCMVS.git
 	branch = aether
 [submodule "packages/AetherLeafTtt"]
 	path = packages/AetherLeafTtt

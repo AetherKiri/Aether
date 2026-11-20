@@ -126,7 +126,7 @@ integration repository and the original upstream project.
 | OnscripterYuri | [AetherKiri/OnscripterYuri](https://github.com/AetherKiri/AetherONScripterYuri) | [YuriSizuku/OnscripterYuri](https://github.com/YuriSizuku/OnscripterYuri) |
 | Siglus | [AetherKiri/AetherSiglus](https://github.com/AetherKiri/AetherSiglus) | [xmoezzz/siglus_rs](https://github.com/xmoezzz/siglus_rs) |
 | MAGES / impacto | [AetherKiri/AetherMAGES](https://github.com/AetherKiri/AetherMAGES) | [CommitteeOfZero/impacto](https://github.com/CommitteeOfZero/impacto) |
-| CMVS | [AetherKiri/cmvs-rs](https://github.com/AetherKiri/AetherCMVSRs) | [Shizuku-in/cmvs-rs](https://github.com/Shizuku-in/cmvs-rs) |
+| CMVS | [AetherKiri/AetherCMVS](https://github.com/AetherKiri/AetherCMVS) | [Shizuku-in/cmvs-rs](https://github.com/Shizuku-in/cmvs-rs) |
 | AliceSoft System 4 | [AetherKiri/xsystem4](https://github.com/AetherKiri/AetherSystem4) | [nunuhara/xsystem4](https://github.com/nunuhara/xsystem4) |
 | AliceSoft System 3.5 / 3.9 | [AetherKiri/xsystem35-sdl2](https://github.com/AetherKiri/AetherSystem35) | [kichikuou/xsystem35-sdl2](https://github.com/kichikuou/xsystem35-sdl2) |
 | AliceSoft System 1–3 | [AetherKiri/system3-sdl2](https://github.com/AetherKiri/AetherSystem3) | [kichikuou/system3-sdl2](https://github.com/kichikuou/system3-sdl2) |

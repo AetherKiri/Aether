@@ -32,7 +32,7 @@ git submodule update --init --recursive --depth 1 \
     packages/AetherMAGES \
     packages/AetherN2System \
     packages/AetherMinori \
-    packages/AetherCMVSRs \
+    packages/AetherCMVS \
     packages/AetherEntisGLS \
     packages/AetherSiglus \
     packages/AetherONScripterYuri \

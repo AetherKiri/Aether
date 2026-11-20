@@ -75,7 +75,7 @@ func _run() -> void:
     assert(state.should_show(id, app.NOTICE_VERSION + 1, now))
 
     # All supported UI languages name both choices without falling back.
-    for language in ["zh_hans", "zh_hant", "en", "ja", "ko"]:
+    for language in ["zh_hans", "zh_hant", "en", "ja", "ko", "es"]:
         for key in ["notice.title", "notice.astryx_body", "notice.dismiss", "notice.dismiss_hint", "notice.skip_today", "notice.save_failed"]:
             assert(app.UI_TEXT[language].has(key))
 

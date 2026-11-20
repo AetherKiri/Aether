@@ -162,7 +162,7 @@ func _run() -> void:
     app.last_file_dialog.queue_free()
     _expect(app.video_library.sources.size() == 2 and app.video_list.get_child_count() == 2, "Both picker selections reach the persisted library")
 
-    for language in [app.LANG_ZH_HANS, app.LANG_ZH_HANT, app.LANG_EN, app.LANG_JA, app.LANG_KO]:
+    for language in [app.LANG_ZH_HANS, app.LANG_ZH_HANT, app.LANG_EN, app.LANG_JA, app.LANG_KO, app.LANG_ES]:
         app.active_language = language
         for key in ["video.folder", "video.import_folder", "video.parent_folder", "video.empty_folder_title", "video.remove_folder_body", "video.item_count"]:
             _expect(app.UI_TEXT[language].has(key), "Folder UI string exists for " + language + ": " + key)

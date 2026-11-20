@@ -225,7 +225,7 @@ func _initialize() -> void:
     assert(app._should_confirm_settings_navigation())
     app.shell_route = "library"
     assert(not app._should_confirm_settings_navigation())
-    for language in ["zh_hans", "zh_hant", "en", "ja", "ko"]:
+    for language in ["zh_hans", "zh_hant", "en", "ja", "ko", "es"]:
         app.active_language = language
         assert(not String(app._t("settings.unsaved_title")).is_empty())
         assert(not String(app._t("settings.unsaved_body")).is_empty())

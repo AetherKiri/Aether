@@ -496,7 +496,7 @@ func _navigation(bottom: bool) -> Control:
             elif event is InputEventMouseButton or event is InputEventScreenTouch:
                 toggle.set_meta("keyboard_activation", false)
         )
-        toggle.accessibility_name = _text("收起侧栏", "Collapse sidebar", "サイドバーを折りたたむ", "收合側欄") if sidebar_expanded else _text("展开侧栏", "Expand sidebar", "サイドバーを展開", "展開側欄")
+        toggle.accessibility_name = _text("收起侧栏", "Collapse sidebar", "サイドバーを折りたたむ", "收合側欄", "Contraer la barra lateral") if sidebar_expanded else _text("展开侧栏", "Expand sidebar", "サイドバーを展開", "展開側欄", "Expandir la barra lateral")
         toggle.tooltip_text = toggle.accessibility_name
         items.add_child(toggle)
         var brand := TextureRect.new()
@@ -630,9 +630,9 @@ func _focus_sidebar_toggle() -> void:
 func _nav_label(id: String) -> String:
     match id:
         "settings": return _t("settings.title")
-        "videos": return _text("视频", "Videos", "動画", "影片")
+        "videos": return _text("视频", "Videos", "動画", "影片", "Vídeos")
         "flash": return "Flash"
-        _: return _text("游戏库", "Games", "ゲーム", "遊戲庫")
+        _: return _text("游戏库", "Games", "ゲーム", "遊戲庫", "Juegos")
 
 func navigate(destination: String) -> void:
     match destination:
@@ -672,7 +672,7 @@ func _header(title: String, searchable: bool = false, action: Control = null) ->
         search.text = query
         search.placeholder_text = host._t("search.placeholder")
         if search.placeholder_text == "search.placeholder":
-            search.placeholder_text = _text("搜索游戏…", "Search games…", "ゲームを検索…", "搜尋遊戲…")
+            search.placeholder_text = _text("搜索游戏…", "Search games…", "ゲームを検索…", "搜尋遊戲…", "Buscar juegos…")
         search.accessibility_name = search.placeholder_text
         search.custom_minimum_size = Vector2(0 if phone else 260, 44)
         search.add_theme_stylebox_override("normal", design.box("", 10, "input_border", 1, Vector2(12, 10)))
@@ -730,8 +730,8 @@ func refresh_content(preserve_scroll: bool = false) -> void:
         _: _library_content()
     _restore_scroll.call_deferred(previous)
 
-func _text(zh: String, en: String, ja: String, zh_hant: String) -> String:
-    return controller.text(zh, en, ja, zh_hant)
+func _text(zh: String, en: String, ja: String, zh_hant: String, es: String = "") -> String:
+    return controller.text(zh, en, ja, zh_hant, es)
 
 func _t(key: String) -> String:
     return String(host._t(key))
@@ -752,7 +752,7 @@ func sync_dirty_state() -> void:
     if is_instance_valid(save_button):
         save_button.disabled = not controller.is_dirty()
         cancel_button.disabled = save_button.disabled
-        save_status.text = _text("有未保存的更改", "Unsaved changes", "未保存の変更", "有未儲存的變更") if controller.is_dirty() else _text("所有更改已保存", "All changes saved", "保存済み", "所有變更已儲存")
+        save_status.text = _text("有未保存的更改", "Unsaved changes", "未保存の変更", "有未儲存的變更", "Cambios sin guardar") if controller.is_dirty() else _text("所有更改已保存", "All changes saved", "保存済み", "所有變更已儲存", "Todos los cambios guardados")
 
 func sync_modal_style() -> void:
     if is_instance_valid(host.modal_layer) and host.modal_layer.visible:
@@ -797,15 +797,15 @@ func _dismiss_then(action: Callable) -> void:
     )
 
 func confirm_navigation(destination: Callable) -> void:
-    var stack := _dialog(_text("保存更改？", "Save changes?", "変更を保存しますか？", "儲存變更？"), _text("你的设置尚未保存。离开前可以保存，也可以放弃这次修改。", "You have unsaved settings. Save or discard them before leaving.", "設定が保存されていません。保存するか、変更を破棄して移動できます。", "你的設定尚未儲存。離開前可以儲存，也可以捨棄這次變更。"))
+    var stack := _dialog(_text("保存更改？", "Save changes?", "変更を保存しますか？", "儲存變更？", "¿Guardar los cambios?"), _text("你的设置尚未保存。离开前可以保存，也可以放弃这次修改。", "You have unsaved settings. Save or discard them before leaving.", "設定が保存されていません。保存するか、変更を破棄して移動できます。", "你的設定尚未儲存。離開前可以儲存，也可以捨棄這次變更。", "Tienes ajustes sin guardar. Guárdalos o descártalos antes de salir."))
     var actions: BoxContainer = _vbox(8) if phone else _hbox(8)
     stack.add_child(actions)
-    actions.add_child(_button(_text("继续编辑", "Keep editing", "編集を続ける", "繼續編輯"), func(): host._dismiss_modal(), "quiet", "AstryxKeepEditing"))
-    actions.add_child(_button(_text("放弃更改", "Discard", "破棄", "捨棄變更"), func():
+    actions.add_child(_button(_text("继续编辑", "Keep editing", "編集を続ける", "繼續編輯", "Seguir editando"), func(): host._dismiss_modal(), "quiet", "AstryxKeepEditing"))
+    actions.add_child(_button(_text("放弃更改", "Discard", "破棄", "捨棄變更", "Descartar"), func():
         controller.discard_settings()
         _dismiss_then(destination)
     , "secondary", "AstryxDiscard"))
-    var save := _button(_text("保存并离开", "Save and leave", "保存して移動", "儲存並離開"), func():
+    var save := _button(_text("保存并离开", "Save and leave", "保存して移動", "儲存並離開", "Guardar y salir"), func():
         if controller.save_settings():
             _dismiss_then(destination)
     , "primary", "AstryxSaveAndLeave")
@@ -851,7 +851,7 @@ func show_notice(message: String) -> void:
     var close := _button("", _dismiss_notice, "quiet", "AstryxDismissNotice")
     close.custom_minimum_size = Vector2(44, 44)
     close.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-    close.accessibility_name = _text("关闭提示", "Dismiss notification", "通知を閉じる", "關閉提示")
+    close.accessibility_name = _text("关闭提示", "Dismiss notification", "通知を閉じる", "關閉提示", "Cerrar notificación")
     close.tooltip_text = close.accessibility_name
     close.icon = load("res://assets/ui/astryx/close.svg")
     close.expand_icon = true
@@ -935,11 +935,11 @@ func style_external_modal(control: Control) -> void:
 
 func _group_label(id: String) -> String:
     match id:
-        "interface": return _text("界面", "Interface", "外観", "介面")
-        "render": return _text("画面", "Display", "画面", "畫面")
-        "compatibility": return _text("兼容性", "Compatibility", "互換性", "相容性")
-        "diagnostics": return _text("诊断", "Diagnostics", "診断", "診斷")
-        _: return _text("关于", "About", "情報", "關於")
+        "interface": return _text("界面", "Interface", "外観", "介面", "Interfaz")
+        "render": return _text("画面", "Display", "画面", "畫面", "Pantalla")
+        "compatibility": return _text("兼容性", "Compatibility", "互換性", "相容性", "Compatibilidad")
+        "diagnostics": return _text("诊断", "Diagnostics", "診断", "診斷", "Diagnóstico")
+        _: return _text("关于", "About", "情報", "關於", "Acerca de")
 
 func _build_settings() -> void:
     # Use the available page width, including changes to the global app rail.
@@ -1048,7 +1048,7 @@ func _settings_actions(parent: Control) -> void:
         controller.discard_settings()
     , "secondary", "AstryxCancelSettings")
     actions.add_child(cancel_button)
-    save_button = _button(_text("保存更改", "Save changes", "保存", "儲存變更"), func():
+    save_button = _button(_text("保存更改", "Save changes", "保存", "儲存變更", "Guardar cambios"), func():
         editing_setting = ""
         controller.save_settings()
     , "primary", "AstryxSaveSettings")
@@ -1060,7 +1060,7 @@ func _settings_content() -> void:
     content.add_child(heading)
     if settings_narrow:
         var back := _button("", handle_back, "quiet", "AstryxSettingsBack")
-        back.accessibility_name = _text("返回设置", "Back to settings", "設定に戻る", "返回設定")
+        back.accessibility_name = _text("返回设置", "Back to settings", "設定に戻る", "返回設定", "Volver a Ajustes")
         back.custom_minimum_size = Vector2(44, 44)
         back.icon = load("res://assets/ui/astryx/back.svg")
         back.expand_icon = true
@@ -1144,7 +1144,7 @@ func _setting_field(parent: Control, title: String, control: Control, descriptio
         summary.name = "AstryxSettingSummary_" + key
         summary.visible = editing_setting != key
         copy.add_child(summary)
-        header.add_child(_setting_link(_text("收起", "Close", "閉じる", "收合") if editing_setting == key else _text("编辑", "Edit", "編集", "編輯"), func():
+        header.add_child(_setting_link(_text("收起", "Close", "閉じる", "收合", "Cerrar") if editing_setting == key else _text("编辑", "Edit", "編集", "編輯", "Editar"), func():
             editing_setting = "" if editing_setting == key else key
             refresh_content(true)
         , "AstryxEdit_" + key))
@@ -1223,23 +1223,23 @@ func _toggle(parent: Control, title: String, description: String, key: String) -
     parent.add_child(_divider())
 
 func _interface_settings() -> void:
-    var fields := _section(_text("外观", "Appearance", "外観", "外觀"), _text("选择适合你的界面，让每一段故事都有舒适的开始。", "Make every story feel at home with an interface that suits you.", "あなたに合った外観で、心地よく物語を始めましょう。", "選擇適合你的介面，讓每一段故事都有舒適的開始。"))
+    var fields := _section(_text("外观", "Appearance", "外観", "外觀", "Apariencia"), _text("选择适合你的界面，让每一段故事都有舒适的开始。", "Make every story feel at home with an interface that suits you.", "あなたに合った外観で、心地よく物語を始めましょう。", "選擇適合你的介面，讓每一段故事都有舒適的開始。", "Elige una interfaz a tu gusto para que cada historia empiece con comodidad."))
     var themes := _theme_segment()
-    _field(fields, _text("主题", "Theme", "テーマ", "主題"), themes)
+    _field(fields, _text("主题", "Theme", "テーマ", "主題", "Tema"), themes)
     _toggle(fields, _t("settings.background_effects"), _t("settings.background_effects_desc"), "background_effects")
     var language_labels: Array = []
     for mode in host.LANGUAGE_MODES:
         language_labels.append(host._language_option_label(mode))
-    _field(fields, _text("界面语言", "Language", "表示言語", "介面語言"), _select("language", host.LANGUAGE_MODES, language_labels))
+    _field(fields, _text("界面语言", "Language", "表示言語", "介面語言", "Idioma"), _select("language", host.LANGUAGE_MODES, language_labels))
     var pad := _margin(0, 16, 0, 16)
     fields.add_child(pad)
     var switch_row := _hbox(16)
     pad.add_child(switch_row)
     var copy := _vbox(0)
-    copy.add_child(_label(_text("界面版本", "Interface", "インターフェイス", "介面版本"), 16, false, true))
+    copy.add_child(_label(_text("界面版本", "Interface", "インターフェイス", "介面版本", "Interfaz"), 16, false, true))
     copy.add_child(_label("Astryx", 14, true))
     switch_row.add_child(copy)
-    switch_row.add_child(_setting_link(_text("切换到经典界面", "Use classic interface", "クラシックに戻す", "切換至經典介面"), func():
+    switch_row.add_child(_setting_link(_text("切换到经典界面", "Use classic interface", "クラシックに戻す", "切換至經典介面", "Usar la interfaz clásica"), func():
         var destination := Callable(controller, "set_enabled").bind(false)
         if not controller.request_navigation(destination):
             destination.call()
@@ -1247,9 +1247,9 @@ func _interface_settings() -> void:
     fields.add_child(_divider())
     if OS.get_name() == "iOS":
         _field(fields, _t("settings.ui_scale"), _select("ios_ui_scale_mode", ["compact", "comfortable", "standard"], [_t("ui_scale.compact"), _t("ui_scale.comfortable"), _t("ui_scale.standard")]))
-    var controls := _section(_text("游戏控制", "Game controls", "ゲーム操作", "遊戲控制"), _text("按你的习惯调整游戏内的触控操作。", "Adjust touch controls to the way you play.", "プレイスタイルに合わせてタッチ操作を調整します。", "依照你的習慣調整遊戲內的觸控操作。"))
+    var controls := _section(_text("游戏控制", "Game controls", "ゲーム操作", "遊戲控制", "Controles del juego"), _text("按你的习惯调整游戏内的触控操作。", "Adjust touch controls to the way you play.", "プレイスタイルに合わせてタッチ操作を調整します。", "依照你的習慣調整遊戲內的觸控操作。", "Ajusta los controles táctiles a tu forma de jugar."))
     _toggle(controls, _t("settings.virtual_control_menu"), _t("settings.virtual_control_menu_desc"), "game_virtual_menu_enabled")
-    _field(controls, _text("虚拟键盘不透明度", "Virtual keyboard opacity", "仮想キーボードの不透明度", "虛擬鍵盤不透明度"), _opacity_slider())
+    _field(controls, _text("虚拟键盘不透明度", "Virtual keyboard opacity", "仮想キーボードの不透明度", "虛擬鍵盤不透明度", "Opacidad del teclado virtual"), _opacity_slider())
     if host._mobile_runtime():
         _toggle(controls, _t("settings.picture_in_picture"), _t("settings.picture_in_picture_desc"), "picture_in_picture_enabled")
         _toggle(controls, _t("settings.landscape"), _t("settings.landscape_desc"), "force_landscape")
@@ -1300,7 +1300,7 @@ func _opacity_slider() -> Control:
     return slider
 
 func _render_settings() -> void:
-    var fields := _section(_text("画面与渲染", "Graphics & rendering", "画面とレンダリング", "畫面與渲染"), _text("调整渲染方式、图像缩放和输出分辨率。", "Choose rendering, scaling and output resolution.", "描画方法、拡大処理、出力解像度を調整します。", "調整渲染方式、影像縮放與輸出解析度。"))
+    var fields := _section(_text("画面与渲染", "Graphics & rendering", "画面とレンダリング", "畫面與渲染", "Gráficos y renderizado"), _text("调整渲染方式、图像缩放和输出分辨率。", "Choose rendering, scaling and output resolution.", "描画方法、拡大処理、出力解像度を調整します。", "調整渲染方式、影像縮放與輸出解析度。", "Elige el renderizado, el escalado y la resolución de salida."))
     _field(fields, _t("settings.render_backend"), _select("backend", host.BACKENDS))
     _field(fields, _t("settings.surface_mode"), _select("surface_mode", ["game", "display"], ["Game Native", "Display Fit"]))
     var algorithms: Array = ["smooth", "linear", "nearest", "bicubic", "lanczos"]
@@ -1322,14 +1322,14 @@ func _render_settings() -> void:
         _field(enhancement, _t("settings.frame_enhancement_mode"), _select("frame_enhancement_mode", host.FRAME_ENHANCEMENT_PRESET_MODES, preset_labels))
     elif _value("frame_enhancement_kind") == "custom":
         _custom_chain(enhancement)
-    var fps := _section(_text("帧率", "Frame rate", "フレームレート", "幀率"), _text("在流畅度和功耗之间找到适合你的设置。", "Balance smooth playback and power use.", "滑らかさと消費電力を調整します。", "在流暢度與耗電量之間找到適合你的設定。"))
+    var fps := _section(_text("帧率", "Frame rate", "フレームレート", "幀率", "Frecuencia de fotogramas"), _text("在流畅度和功耗之间找到适合你的设置。", "Balance smooth playback and power use.", "滑らかさと消費電力を調整します。", "在流暢度與耗電量之間找到適合你的設定。", "Equilibra la fluidez y el consumo de energía."))
     _toggle(fps, _t("settings.fps_limit"), _t("settings.fps_limit_desc"), "fps_limit_enabled")
     if bool(_value("fps_limit_enabled")):
         var limits: Array = [30, 60, 90, 120, 144, 240]
         if _value("target_fps") not in limits:
             limits.append(_value("target_fps"))
             limits.sort()
-        _field(fps, _text("帧率上限", "Frame rate limit", "上限 FPS", "幀率上限"), _select("target_fps", limits))
+        _field(fps, _text("帧率上限", "Frame rate limit", "上限 FPS", "幀率上限", "Límite de FPS"), _select("target_fps", limits))
 
 func _custom_chain(parent: Control, game_override: bool = false) -> void:
     var chain: PackedStringArray = PackedStringArray(detail_edit_draft.frame_enhancement_custom_chain) if game_override else host._settings_draft_custom_chain()
@@ -1368,7 +1368,7 @@ func _custom_chain(parent: Control, game_override: bool = false) -> void:
         picker.tooltip_text = picker.get_item_text(picker.selected)
         if not phone:
             row.add_child(picker)
-        var remove := _setting_link(_text("移除", "Remove", "削除", "移除"), func():
+        var remove := _setting_link(_text("移除", "Remove", "削除", "移除", "Quitar"), func():
             var updated := chain.duplicate()
             updated.remove_at(index)
             _store_custom_chain(updated, game_override)
@@ -1377,7 +1377,7 @@ func _custom_chain(parent: Control, game_override: bool = false) -> void:
         row.add_child(remove)
         if phone:
             step.add_child(picker)
-    var add := _button(_text("添加步骤", "Add step", "手順を追加", "新增步驟"), func():
+    var add := _button(_text("添加步骤", "Add step", "手順を追加", "新增步驟", "Añadir paso"), func():
         var updated := chain.duplicate()
         updated.append(host.FRAME_ENHANCEMENT_ALGORITHMS[0])
         _store_custom_chain(updated, game_override)
@@ -1452,7 +1452,7 @@ func _save_detail_edit() -> void:
         var error: Error = host.GameTextConfig.save(root, runtime, host.selected_game,
             {detail_edit_key: detail_edit_draft[detail_edit_key]}, detail_font_import)
         if error != OK:
-            detail_edit_error = _text("无法保存游戏设置：", "Could not save game settings: ", "ゲーム設定を保存できません：", "無法儲存遊戲設定：") + error_string(error)
+            detail_edit_error = _text("无法保存游戏设置：", "Could not save game settings: ", "ゲーム設定を保存できません：", "無法儲存遊戲設定：", "No se han podido guardar los ajustes del juego: ") + error_string(error)
         else:
             _reset_detail_edit()
     else:
@@ -1463,7 +1463,7 @@ func _save_detail_edit() -> void:
                 patch.frame_enhancement_custom_chain = detail_edit_draft.frame_enhancement_custom_chain
         var error: Error = host._save_game_render_config(host.selected_game, patch)
         if error != OK:
-            detail_edit_error = _text("无法保存游戏配置：", "Could not save game settings: ", "ゲーム設定を保存できません：", "無法儲存遊戲設定：") + error_string(error)
+            detail_edit_error = _text("无法保存游戏配置：", "Could not save game settings: ", "ゲーム設定を保存できません：", "無法儲存遊戲設定：", "No se han podido guardar los ajustes del juego: ") + error_string(error)
         else:
             _reset_detail_edit()
     refresh_content.call_deferred(true)
@@ -1483,8 +1483,8 @@ func _detail_field(parent: Control, key: String, title: String, value: String, c
         var summary := _label(value, 14, true)
         summary.name = "AstryxGameName" if key == "name" else "AstryxSettingSummary_game_" + key
         copy.add_child(summary)
-        var edit := _setting_link(_text("编辑", "Edit", "編集", "編輯"), func(): _begin_detail_edit(key), "AstryxRenameGame" if key == "name" else "AstryxEdit_game_" + key)
-        edit.accessibility_name = _text("编辑", "Edit ", "編集：", "編輯") + title
+        var edit := _setting_link(_text("编辑", "Edit", "編集", "編輯", "Editar"), func(): _begin_detail_edit(key), "AstryxRenameGame" if key == "name" else "AstryxEdit_game_" + key)
+        edit.accessibility_name = _text("编辑", "Edit ", "編集：", "編輯", "Editar ") + title
         header.add_child(edit)
     control.name = "AstryxDetailEditor_" + key if control.name.is_empty() else control.name
     control.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -1498,10 +1498,10 @@ func _detail_field(parent: Control, key: String, title: String, value: String, c
         var actions := _hbox(8)
         actions.name = "AstryxDetailEditActions_" + key
         field.add_child(actions)
-        var save := _button(_text("保存", "Save", "保存", "儲存"), _save_detail_edit, "primary", "AstryxSaveDetail_" + key)
+        var save := _button(_text("保存", "Save", "保存", "儲存", "Guardar"), _save_detail_edit, "primary", "AstryxSaveDetail_" + key)
         save.disabled = key == "name" and String(detail_edit_draft.get("name", "")).strip_edges().is_empty()
         actions.add_child(save)
-        actions.add_child(_button(_text("取消", "Cancel", "キャンセル", "取消"), _cancel_detail_edit, "quiet", "AstryxCancelDetail_" + key))
+        actions.add_child(_button(_text("取消", "Cancel", "キャンセル", "取消", "Cancelar"), _cancel_detail_edit, "quiet", "AstryxCancelDetail_" + key))
     if divider:
         parent.add_child(_divider())
 
@@ -1511,7 +1511,7 @@ func _choose_detail_font() -> void:
         if generation != detail_edit_generation or detail_edit_key != "font_file":
             return
         if loaded.get("error", FAILED) != OK:
-            detail_edit_error = _text("无法读取字体，请选择有效的 TTF 或 OTF 文件（最大 32 MiB）。", "Choose a valid TTF or OTF font up to 32 MiB.", "有効な TTF / OTF フォントを選択してください（最大 32 MiB）。", "無法讀取字型，請選擇有效的 TTF 或 OTF 檔案（最大 32 MiB）。")
+            detail_edit_error = _text("无法读取字体，请选择有效的 TTF 或 OTF 文件（最大 32 MiB）。", "Choose a valid TTF or OTF font up to 32 MiB.", "有効な TTF / OTF フォントを選択してください（最大 32 MiB）。", "無法讀取字型，請選擇有效的 TTF 或 OTF 檔案（最大 32 MiB）。", "Elige una fuente TTF u OTF válida de 32 MiB como máximo.")
         else:
             detail_font_import = loaded
             detail_preview_font = loaded.font
@@ -1527,15 +1527,15 @@ func _detail_text_settings(parent: Control, game: Dictionary, runtime: String) -
     fields.name = "AstryxGameTextSettings"
     parent.add_child(fields)
     if loaded.error != OK:
-        fields.add_child(_label(_text("无法读取游戏文本设置：", "Cannot read game text settings: ", "テキスト設定を読み込めません：", "無法讀取遊戲文字設定：") + error_string(loaded.error), 14, true))
-    var automatic := _text("自动（游戏默认）", "Automatic (game default)", "自動（ゲームの既定値）", "自動（遊戲預設）")
+        fields.add_child(_label(_text("无法读取游戏文本设置：", "Cannot read game text settings: ", "テキスト設定を読み込めません：", "無法讀取遊戲文字設定：", "No se pueden leer los ajustes de texto del juego: ") + error_string(loaded.error), 14, true))
+    var automatic := _text("自动（游戏默认）", "Automatic (game default)", "自動（ゲームの既定値）", "自動（遊戲預設）", "Automática (predeterminada del juego)")
     if runtime == "entisgls":
         var margin := _margin(0, 16, 0, 16)
         fields.add_child(margin)
         var fixed := _vbox(4)
         margin.add_child(fixed)
-        fixed.add_child(_label(_text("文本编码", "Text encoding", "文字コード", "文字編碼"), 16, false, true))
-        fixed.add_child(_label(_text("引擎原生（无需转换）", "Engine native (no conversion)", "エンジン標準（変換不要）", "引擎原生（無需轉換）"), 14, true))
+        fixed.add_child(_label(_text("文本编码", "Text encoding", "文字コード", "文字編碼", "Codificación de texto"), 16, false, true))
+        fixed.add_child(_label(_text("引擎原生（无需转换）", "Engine native (no conversion)", "エンジン標準（変換不要）", "引擎原生（無需轉換）", "Nativa del motor (sin conversión)"), 14, true))
         fields.add_child(_divider())
     else:
         var values: Array = host.GameTextConfig.encodings(runtime)
@@ -1548,19 +1548,19 @@ func _detail_text_settings(parent: Control, game: Dictionary, runtime: String) -
             detail_edit_error = ""
         )
         var summary: String = automatic if loaded.text.encoding.is_empty() else loaded.text.encoding
-        _detail_field(fields, "encoding", _text("文本编码", "Text encoding", "文字コード", "文字編碼"), summary, picker)
+        _detail_field(fields, "encoding", _text("文本编码", "Text encoding", "文字コード", "文字編碼", "Codificación de texto"), summary, picker)
     var editor := _vbox(16)
     editor.name = "AstryxGameFontEditor"
     var current: String = detail_edit_draft.get("font_file", "") if detail_edit_key == "font_file" else loaded.text.font_file
     var caption: String = detail_font_import.get("name", "") if not detail_font_import.is_empty() else current.get_file()
-    var label := _label(caption if not caption.is_empty() else _text("默认字体", "Default font", "既定のフォント", "預設字型"), 14, true)
+    var label := _label(caption if not caption.is_empty() else _text("默认字体", "Default font", "既定のフォント", "預設字型", "Fuente predeterminada"), 14, true)
     label.name = "AstryxGameFontPath"
     label.tooltip_text = current
     editor.add_child(label)
     var buttons := _hbox(8)
     editor.add_child(buttons)
-    buttons.add_child(_button(_text("选择字体文件", "Choose font file", "フォントを選択", "選擇字型檔案"), _choose_detail_font, "secondary", "AstryxChooseGameFont"))
-    var reset := _button(_text("恢复默认", "Use default", "既定値に戻す", "還原預設值"), func():
+    buttons.add_child(_button(_text("选择字体文件", "Choose font file", "フォントを選択", "選擇字型檔案", "Elegir archivo de fuente"), _choose_detail_font, "secondary", "AstryxChooseGameFont"))
+    var reset := _button(_text("恢复默认", "Use default", "既定値に戻す", "還原預設值", "Usar la predeterminada"), func():
         detail_font_import.clear()
         detail_preview_font = null
         detail_edit_draft.font_file = ""
@@ -1574,12 +1574,12 @@ func _detail_text_settings(parent: Control, game: Dictionary, runtime: String) -
     if detail_preview_font != null:
         preview.add_theme_font_override("font", detail_preview_font)
     editor.add_child(preview)
-    editor.add_child(_label(_text("下次启动游戏时生效。", "Applies the next time this game starts.", "次回のゲーム起動時に適用されます。", "下次啟動遊戲時生效。"), 14, true))
-    _detail_field(fields, "font_file", _text("游戏字体", "Game font", "ゲームフォント", "遊戲字型"), loaded.text.font_file.get_file() if not loaded.text.font_file.is_empty() else _text("默认字体", "Default font", "既定のフォント", "預設字型"), editor, false)
+    editor.add_child(_label(_text("下次启动游戏时生效。", "Applies the next time this game starts.", "次回のゲーム起動時に適用されます。", "下次啟動遊戲時生效。", "Se aplica la próxima vez que se inicie este juego."), 14, true))
+    _detail_field(fields, "font_file", _text("游戏字体", "Game font", "ゲームフォント", "遊戲字型", "Fuente del juego"), loaded.text.font_file.get_file() if not loaded.text.font_file.is_empty() else _text("默认字体", "Default font", "既定のフォント", "預設字型", "Fuente predeterminada"), editor, false)
 
 func _game_render_select(key: String, options: Array, labels: Array, config: Dictionary, inherit: bool = true) -> OptionButton:
     var values := [""] + options if inherit else options.duplicate()
-    var captions := [_text("跟随系统", "Use app settings", "全体設定に従う", "跟隨系統")] + labels if inherit else labels.duplicate()
+    var captions := [_text("跟随系统", "Use app settings", "全体設定に従う", "跟隨系統", "Usar los ajustes de la app")] + labels if inherit else labels.duplicate()
     return _option("AstryxSetting_game_" + key, values, captions, config[key], func(value): _set_game_render_draft(key, value))
 
 func _game_render_settings(parent: Control, game: Dictionary) -> void:
@@ -1588,9 +1588,9 @@ func _game_render_settings(parent: Control, game: Dictionary) -> void:
     var config := saved.duplicate(true)
     if detail_edit_key in ["upscale_algorithm", "output_resolution", "frame_enhancement_kind"]:
         config.merge(detail_edit_draft, true)
-    parent.add_child(_label(_text("仅对这个游戏生效；跟随系统时使用全局设置。", "Applies to this game. Unspecified options use the app settings.", "このゲームのみに適用。未指定の項目は全体設定に従います。", "僅對此遊戲生效；跟隨系統時使用全域設定。"), 14, true))
+    parent.add_child(_label(_text("仅对这个游戏生效；跟随系统时使用全局设置。", "Applies to this game. Unspecified options use the app settings.", "このゲームのみに適用。未指定の項目は全体設定に従います。", "僅對此遊戲生效；跟隨系統時使用全域設定。", "Se aplica a este juego. Las opciones sin especificar usan los ajustes de la app."), 14, true))
     if loaded.error != OK:
-        parent.add_child(_label(_text("无法读取游戏配置，请检查文件格式或访问权限。", "Cannot read game settings. Check the file format or access permissions.", "ゲーム設定を読み込めません。形式やアクセス権を確認してください。", "無法讀取遊戲設定，請檢查檔案格式或存取權限。"), 14, true))
+        parent.add_child(_label(_text("无法读取游戏配置，请检查文件格式或访问权限。", "Cannot read game settings. Check the file format or access permissions.", "ゲーム設定を読み込めません。形式やアクセス権を確認してください。", "無法讀取遊戲設定，請檢查檔案格式或存取權限。", "No se pueden leer los ajustes del juego. Comprueba el formato del archivo o los permisos de acceso."), 14, true))
     var fields := _vbox(0)
     parent.add_child(fields)
     var algorithms: Array = ["smooth", "linear", "nearest", "bicubic", "lanczos"]
@@ -1609,11 +1609,11 @@ func _game_render_settings(parent: Control, game: Dictionary) -> void:
     enhancement.name = "AstryxGameEnhancementEditor"
     var kind := _game_render_select("frame_enhancement_kind", host.FRAME_ENHANCEMENT_KINDS, kind_labels, config)
     enhancement.add_child(kind)
-    var summary := _text("跟随系统", "Use app settings", "全体設定に従う", "跟隨系統") if String(saved.frame_enhancement_kind).is_empty() else _t("settings.frame_enhancement_kind." + String(saved.frame_enhancement_kind))
+    var summary := _text("跟随系统", "Use app settings", "全体設定に従う", "跟隨系統", "Usar los ajustes de la app") if String(saved.frame_enhancement_kind).is_empty() else _t("settings.frame_enhancement_kind." + String(saved.frame_enhancement_kind))
     if saved.frame_enhancement_kind == "preset":
         summary += " · " + _t("settings.frame_enhancement_mode." + String(saved.frame_enhancement_mode))
     elif saved.frame_enhancement_kind == "custom":
-        summary += " · " + _text("%d 个步骤", "%d steps", "%d ステップ", "%d 個步驟") % saved.frame_enhancement_custom_chain.size()
+        summary += " · " + _text("%d 个步骤", "%d steps", "%d ステップ", "%d 個步驟", "%d pasos") % saved.frame_enhancement_custom_chain.size()
     if detail_edit_key == "frame_enhancement_kind" and config.frame_enhancement_kind == "preset":
         var preset_labels: Array = []
         for preset in host.FRAME_ENHANCEMENT_PRESET_MODES:
@@ -1627,7 +1627,7 @@ func _game_render_settings(parent: Control, game: Dictionary) -> void:
     fields.get_child(-1).free()
 
 func _compatibility_settings() -> void:
-    var fields := _section(_text("运行时兼容性", "Runtime compatibility", "ランタイムの互換性", "執行階段相容性"), _t("settings.plugin_load_mode_desc"))
+    var fields := _section(_text("运行时兼容性", "Runtime compatibility", "ランタイムの互換性", "執行階段相容性", "Compatibilidad del entorno de ejecución"), _t("settings.plugin_load_mode_desc"))
     _field(fields, _t("settings.plugin_load_mode"), _select("plugin_load_mode", ["krkrsdl3", "aether_all"], [_t("settings.plugin_load.core"), _t("settings.plugin_load.all")]))
     _toggle(fields, _t("settings.mock"), _t("settings.mock_desc"), "mock_enabled")
     if host.player != null and host.player.has_method("is_text_translation_available") and host.player.is_text_translation_available():
@@ -1643,7 +1643,7 @@ func _compatibility_settings() -> void:
             ))
 
 func _diagnostic_settings() -> void:
-    var fields := _section(_text("诊断与日志", "Diagnostics & logs", "診断とログ", "診斷與日誌"), _text("在遇到问题时保留必要的信息。", "Keep useful information when something goes wrong.", "問題の調査に必要な情報を記録します。", "在遇到問題時保留必要的資訊。"))
+    var fields := _section(_text("诊断与日志", "Diagnostics & logs", "診断とログ", "診斷與日誌", "Diagnóstico y registros"), _text("在遇到问题时保留必要的信息。", "Keep useful information when something goes wrong.", "問題の調査に必要な情報を記録します。", "在遇到問題時保留必要的資訊。", "Conserva la información útil cuando algo falla."))
     var profiles: Array = []
     for profile in host.DIAGNOSTIC_PROFILES:
         profiles.append(_t("profile." + profile))
@@ -1697,7 +1697,7 @@ func _about_purchase(parent: Control, id: String, source: Control, title: String
     parent.add_child(source)
 
 func _about_settings() -> void:
-    var fields := _section("Aether", _text("让故事，再次抵达你。", "Let the story find you again.", "物語を、もう一度あなたへ。", "讓故事，再次抵達你。"))
+    var fields := _section("Aether", _text("让故事，再次抵达你。", "Let the story find you again.", "物語を、もう一度あなたへ。", "讓故事，再次抵達你。", "Deja que la historia vuelva a encontrarte."))
     var version := _label(host._application_version_text(), 16, true)
     version.autowrap_mode = TextServer.AUTOWRAP_OFF
     version.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
@@ -1705,7 +1705,7 @@ func _about_settings() -> void:
     version.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
     version.mouse_filter = Control.MOUSE_FILTER_STOP
     host._attach_secret_version_tap(version)
-    _about_row(fields, "version", _t("settings.version"), _text("当前安装的应用版本", "Currently installed app version", "インストール済みのバージョン", "目前安裝的應用程式版本"), version)
+    _about_row(fields, "version", _t("settings.version"), _text("当前安装的应用版本", "Currently installed app version", "インストール済みのバージョン", "目前安裝的應用程式版本", "Versión de la app instalada"), version)
     _about_row(fields, "legal", _t("settings.legal"), _t("settings.legal_desc"), _setting_link(_t("settings.legal_open"), func(): host._show_legal_agreement(false)))
     if host._apple_app_store_platform():
         _about_row(fields, "apple_notice", _t("settings.ios_statement"), _t("settings.ios_statement_desc"), _setting_link(_t("settings.ios_statement_open"), host._show_ios_additional_statement))
@@ -1764,7 +1764,7 @@ func _build_library() -> void:
         import_button.resized.connect(func():
             icon.position = Vector2(12, (import_button.size.y - 18) / 2))
     if media and is_instance_valid(search):
-        search.placeholder_text = _text("搜索文件…", "Search files…", "ファイルを検索…", "搜尋檔案…")
+        search.placeholder_text = _text("搜索文件…", "Search files…", "ファイルを検索…", "搜尋檔案…", "Buscar archivos…")
         search.accessibility_name = search.placeholder_text
     _scroll_into(page, 20 if phone else 24)
     _library_content()
@@ -1772,14 +1772,14 @@ func _build_library() -> void:
 func _library_display_switch() -> Control:
     var panel := PanelContainer.new()
     panel.name = "AstryxLibraryDisplay"
-    panel.accessibility_name = _text("展示方式", "Library display", "表示方法", "顯示方式")
+    panel.accessibility_name = _text("展示方式", "Library display", "表示方法", "顯示方式", "Vista de la biblioteca")
     panel.add_theme_stylebox_override("panel", design.box("subtle", 10))
     var group := HBoxContainer.new()
     group.add_theme_constant_override("separation", 0)
     panel.add_child(group)
     for mode in ["cards", "list"]:
         var selected: bool = controller.library_display == mode
-        var label := _text("卡片", "Cards", "カード", "卡片") if mode == "cards" else _text("列表", "List", "リスト", "清單")
+        var label := _text("卡片", "Cards", "カード", "卡片", "Tarjetas") if mode == "cards" else _text("列表", "List", "リスト", "清單", "Lista")
         var button := _button("" if phone else label, func():
             controller.set_library_display(mode)
         , "quiet", "AstryxDisplay_" + mode)
@@ -1826,12 +1826,12 @@ func _library_content() -> void:
     library_content_key = _library_key()
     var bar := _hbox(8)
     content.add_child(bar)
-    var all := _tab_button(_text("全部游戏", "All games", "すべて", "全部遊戲"), func():
+    var all := _tab_button(_text("全部游戏", "All games", "すべて", "全部遊戲", "Todos los juegos"), func():
         recent_only = false
         refresh_content()
     , not recent_only, "AstryxAllGames")
     bar.add_child(all)
-    bar.add_child(_tab_button(_text("最近游玩", "Recently played", "最近プレイ", "最近遊玩"), func():
+    bar.add_child(_tab_button(_text("最近游玩", "Recently played", "最近プレイ", "最近遊玩", "Jugados recientemente"), func():
         recent_only = true
         refresh_content()
     , recent_only, "AstryxRecentGames"))
@@ -1842,7 +1842,7 @@ func _library_content() -> void:
     if recent_only:
         games.sort_custom(func(a, b): return int(a.get("lastPlayed", 0)) > int(b.get("lastPlayed", 0)))
     var loading: bool = host._game_library_is_loading()
-    var count := _label(_t("home.loading_title") if loading else _text("%d 部游戏", "%d games", "%d 本", "%d 部遊戲") % games.size(), 12, true)
+    var count := _label(_t("home.loading_title") if loading else _text("%d 部游戏", "%d games", "%d 本", "%d 部遊戲", "%d juegos") % games.size(), 12, true)
     count.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
     count.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
     bar.add_child(count)
@@ -1852,7 +1852,7 @@ func _library_content() -> void:
         elif not query.is_empty():
             _empty(_t("search.no_results_title"), _t("search.no_results_help"), "search")
         elif recent_only:
-            _empty(_text("尚未开始游玩", "Your next story awaits", "まだプレイしていません", "尚未開始遊玩"), _text("开始一个游戏后，会在这里找到它。", "Games you play will appear here.", "プレイしたゲームはここに表示されます。", "開始遊戲後，就能在這裡找到它。"), "library")
+            _empty(_text("尚未开始游玩", "Your next story awaits", "まだプレイしていません", "尚未開始遊玩", "Tu próxima historia te espera"), _text("开始一个游戏后，会在这里找到它。", "Games you play will appear here.", "プレイしたゲームはここに表示されます。", "開始遊戲後，就能在這裡找到它。", "Los juegos a los que juegues aparecerán aquí."), "library")
         else:
             _empty(_t("home.empty_title"), host._empty_help_text(), "library", _button(_t("home.refresh" if host._library_uses_refresh_action() else "home.import"), _import, "primary", "AstryxEmptyLibraryAction"))
         return
@@ -1907,9 +1907,9 @@ func _game_history(game: Dictionary) -> VBoxContainer:
     history.name = "AstryxGameHistory"
     history.mouse_filter = Control.MOUSE_FILTER_IGNORE
     var duration: String = host._format_play_duration(int(game.get("playDurationSeconds", 0)))
-    history.add_child(_label(_text("已玩 %s", "Played %s", "プレイ時間 %s", "已玩 %s") % duration, 12, true))
+    history.add_child(_label(_text("已玩 %s", "Played %s", "プレイ時間 %s", "已玩 %s", "Tiempo jugado: %s") % duration, 12, true))
     var last_launch := int(game.get("lastPlayed", 0))
-    var recent := _text("尚未启动", "Not started yet", "未プレイ", "尚未啟動")
+    var recent := _text("尚未启动", "Not started yet", "未プレイ", "尚未啟動", "Aún sin iniciar")
     var full_date := ""
     if last_launch > 0:
         # Match the host's local-time conversion for stored Unix timestamps.
@@ -1919,7 +1919,7 @@ func _game_history(game: Dictionary) -> VBoxContainer:
         full_date = "%04d/%s" % [date.year, short_date]
         if date.year != Time.get_date_dict_from_system().year:
             short_date = full_date
-        recent = _text("最近启动 %s", "Last opened %s", "前回起動 %s", "最近啟動 %s") % short_date
+        recent = _text("最近启动 %s", "Last opened %s", "前回起動 %s", "最近啟動 %s", "Último inicio: %s") % short_date
     var label := _label(recent, 12, true)
     label.tooltip_text = full_date
     label.mouse_filter = Control.MOUSE_FILTER_PASS
@@ -2050,7 +2050,7 @@ func _media_breadcrumbs(library) -> Control:
             crumbs.append({"label": segment, "path": path})
     var trail := HFlowContainer.new()
     trail.name = "AstryxBreadcrumbs"
-    trail.accessibility_name = _text("文件夹路径", "Folder path", "フォルダーのパス", "資料夾路徑")
+    trail.accessibility_name = _text("文件夹路径", "Folder path", "フォルダーのパス", "資料夾路徑", "Ruta de la carpeta")
     trail.size_flags_horizontal = Control.SIZE_EXPAND_FILL
     trail.add_theme_constant_override("h_separation", 4)
     trail.add_theme_constant_override("v_separation", 0)
@@ -2109,7 +2109,7 @@ func _media_content() -> void:
     for entry in entries:
         if host.VideoLibrary.is_directory(entry):
             folder_count += 1
-    content.add_child(_label(_text("%d 个文件夹 · %d 个文件", "%d folders · %d files", "%d フォルダー · %d ファイル", "%d 個資料夾 · %d 個檔案") % [folder_count, entries.size() - folder_count], 12, true))
+    content.add_child(_label(_text("%d 个文件夹 · %d 个文件", "%d folders · %d files", "%d フォルダー · %d ファイル", "%d 個資料夾 · %d 個檔案", "%d carpetas · %d archivos") % [folder_count, entries.size() - folder_count], 12, true))
     if entries.is_empty():
         _empty(_t("search.no_results_title") if not query.is_empty() else host._media_text("video.empty_folder_title" if library.can_go_up() else "video.empty_title"), _t("search.no_results_help") if not query.is_empty() else host._video_empty_help_text(), "flash" if route == "flash" else "video", _button(host._media_text("video.refresh" if host._library_uses_refresh_action() else "video.import"), _import, "primary", "AstryxEmptyLibraryAction") if query.is_empty() else null)
         return
@@ -2158,10 +2158,10 @@ func _media_content() -> void:
         actions.size_flags_horizontal = Control.SIZE_SHRINK_END
         actions.size_flags_vertical = Control.SIZE_SHRINK_CENTER
         row.add_child(actions)
-        var open_label: String = host._media_text("video.open_folder") if folder else _text("播放", "Play", "再生", "播放")
+        var open_label: String = host._media_text("video.open_folder") if folder else _text("播放", "Play", "再生", "播放", "Reproducir")
         actions.add_child(_media_action("chevron_right" if folder else "play", open_label + " " + name_value, open, "AstryxPlayMedia"))
         if library.can_remove(item):
-            actions.add_child(_media_action("delete", _text("删除", "Delete", "削除", "刪除") + " " + name_value, func(): host._confirm_remove_video(item), "AstryxDeleteMedia"))
+            actions.add_child(_media_action("delete", _text("删除", "Delete", "削除", "刪除", "Eliminar") + " " + name_value, func(): host._confirm_remove_video(item), "AstryxDeleteMedia"))
 
 func _build_detail() -> void:
     # A separate layer keeps the cover wash behind the header and scrollport.
@@ -2201,7 +2201,7 @@ func _build_detail() -> void:
     # Reserve the arrow explicitly so a short, content-sized button cannot hide it.
     var text_width := back.get_theme_font("font").get_string_size(back.text, HORIZONTAL_ALIGNMENT_LEFT, -1, back.get_theme_font_size("font_size")).x
     back.custom_minimum_size.x = text_width + 20 + 8 + 24
-    back.accessibility_name = _text("返回游戏库", "Back to games", "ゲーム一覧に戻る", "返回遊戲庫")
+    back.accessibility_name = _text("返回游戏库", "Back to games", "ゲーム一覧に戻る", "返回遊戲庫", "Volver a los juegos")
     pad.add_child(back)
     page.add_child(_divider())
     _scroll_into(page, 20 if phone else 24)
@@ -2243,41 +2243,41 @@ func _detail_content() -> void:
     var heading := _vbox(8)
     info.add_child(heading)
     heading.add_child(_label(host._game_display_title(game), 34, false, true))
-    _field(info, _text("游玩记录", "Play history", "プレイ履歴", "遊玩紀錄"), _label("%s · %s" % [host._last_played_label(game), host._format_play_duration(int(game.get("playDurationSeconds", 0)))], 14, true))
+    _field(info, _text("游玩记录", "Play history", "プレイ履歴", "遊玩紀錄", "Historial de juego"), _label("%s · %s" % [host._last_played_label(game), host._format_play_duration(int(game.get("playDurationSeconds", 0)))], 14, true))
     var actions := _vbox(8)
     info.add_child(actions)
-    var launch := _button(_text("开始游戏", "Start game", "ゲームを開始", "開始遊戲"), host._start_selected_game, "primary", "AstryxLaunchGame")
+    var launch := _button(_text("开始游戏", "Start game", "ゲームを開始", "開始遊戲", "Iniciar juego"), host._start_selected_game, "primary", "AstryxLaunchGame")
     launch.icon = load("res://assets/ui/astryx/play.svg")
     launch.icon_alignment = HORIZONTAL_ALIGNMENT_LEFT
     launch.expand_icon = true
     launch.add_theme_constant_override("icon_max_width", 20)
     launch.size_flags_horizontal = Control.SIZE_EXPAND_FILL
     actions.add_child(launch)
-    var rows := _collapsible(info, "information", _text("游戏信息", "Game information", "ゲーム情報", "遊戲資訊"))
+    var rows := _collapsible(info, "information", _text("游戏信息", "Game information", "ゲーム情報", "遊戲資訊", "Información del juego"))
     if rows.visible:
         _detail_information(rows, game, runtime)
-    var rendering := _collapsible(info, "rendering", _text("画面与渲染", "Graphics & rendering", "画面とレンダリング", "畫面與渲染"))
+    var rendering := _collapsible(info, "rendering", _text("画面与渲染", "Graphics & rendering", "画面とレンダリング", "畫面與渲染", "Gráficos y renderizado"))
     if rendering.visible:
         _game_render_settings(rendering, game)
-    var saves := _collapsible(info, "saves", _text("存档", "Saves", "セーブデータ", "存檔"))
+    var saves := _collapsible(info, "saves", _text("存档", "Saves", "セーブデータ", "存檔", "Partidas guardadas"))
     if saves.visible:
         _detail_save_actions(saves, game)
-    var cache_section := _collapsible(info, "cache", _text("缓存", "Cache", "キャッシュ", "快取"))
+    var cache_section := _collapsible(info, "cache", _text("缓存", "Cache", "キャッシュ", "快取", "Caché"))
     if cache_section.visible:
         _detail_cache_actions(cache_section, game, runtime)
-    var cover_section := _collapsible(info, "cover", _text("封面", "Cover", "カバー", "封面"))
+    var cover_section := _collapsible(info, "cover", _text("封面", "Cover", "カバー", "封面", "Portada"))
     if cover_section.visible:
         _detail_cover_actions(cover_section, game)
     info.add_child(_divider())
 
 func _detail_cache_actions(section: Control, game: Dictionary, runtime: String) -> void:
-    var usage := _label(_text("正在计算…", "Calculating…", "計算中…", "正在計算…"), 14, true)
+    var usage := _label(_text("正在计算…", "Calculating…", "計算中…", "正在計算…", "Calculando…"), 14, true)
     var usage_ref: WeakRef = weakref(usage)
     var locations: PackedStringArray = host._game_cache_paths(game, runtime)
-    var clear_button := _button(_text("清除", "Clear", "消去", "清除"), func():
+    var clear_button := _button(_text("清除", "Clear", "消去", "清除", "Borrar"), func():
         if host.game_storage_busy or host.game_running:
             return
-        usage.text = _text("正在清除…", "Clearing…", "消去中…", "正在清除…")
+        usage.text = _text("正在清除…", "Clearing…", "消去中…", "正在清除…", "Borrando…")
         host._clear_game_cache(game, func(result: Dictionary):
             var label = usage_ref.get_ref()
             if label != null:
@@ -2285,8 +2285,8 @@ func _detail_cache_actions(section: Control, game: Dictionary, runtime: String) 
         )
     , "secondary", "AstryxClearGameCache")
     clear_button.disabled = host.game_running or host.game_storage_busy
-    _field(section, _text("缓存占用", "Cache storage", "キャッシュ使用量", "快取用量"), clear_button,
-        _text("可安全清除，运行时会重新生成；不影响存档。", "Can be regenerated. Clearing it does not delete saves.", "再生成できます。セーブデータは削除しません。", "可安全清除，執行時會重新產生；不影響存檔。"))
+    _field(section, _text("缓存占用", "Cache storage", "キャッシュ使用量", "快取用量", "Espacio de la caché"), clear_button,
+        _text("可安全清除，运行时会重新生成；不影响存档。", "Can be regenerated. Clearing it does not delete saves.", "再生成できます。セーブデータは削除しません。", "可安全清除，執行時會重新產生；不影響存檔。", "Se puede regenerar. Borrarla no elimina las partidas guardadas."))
     section.add_child(usage)
     host._game_cache_jobs().submit(preload("res://scripts/game_cache.gd").measure.bind(locations), func(result: Dictionary):
         var label = usage_ref.get_ref()
@@ -2304,9 +2304,9 @@ func _save_transfer():
 
 func _detail_save_actions(section: Control, game: Dictionary) -> void:
     var transfer = _save_transfer()
-    section.add_child(_label(_text("仅处理当前游戏的存档。", "Only this game's saves are included.", "このゲームのセーブデータのみを扱います。", "僅處理目前遊戲的存檔。"), 14, true))
+    section.add_child(_label(_text("仅处理当前游戏的存档。", "Only this game's saves are included.", "このゲームのセーブデータのみを扱います。", "僅處理目前遊戲的存檔。", "Solo se incluyen las partidas guardadas de este juego."), 14, true))
     var snapshot := game.duplicate(true)
-    var export_button := _button(_text("导出存档", "Export saves", "セーブを書き出す", "匯出存檔"), func(): transfer.start("share", snapshot), "secondary", "AstryxExportSaves")
+    var export_button := _button(_text("导出存档", "Export saves", "セーブを書き出す", "匯出存檔", "Exportar partidas guardadas"), func(): transfer.start("share", snapshot), "secondary", "AstryxExportSaves")
     export_button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
     export_button.disabled = transfer.busy
     section.add_child(export_button)
@@ -2318,32 +2318,32 @@ func _detail_save_actions(section: Control, game: Dictionary) -> void:
         toggle.configure(sync.enabled(snapshot), design, _reduced_motion())
         toggle.disabled = sync.busy or host.game_running
         toggle.toggled.connect(func(value: bool): sync.set_enabled(snapshot, value))
-        _field(section, _text("iCloud 自动同步", "Automatic iCloud sync", "iCloud 自動同期", "iCloud 自動同步"), toggle,
-            _text("开启时用 iCloud 中此游戏的存档替换本地存档。游戏运行时每秒检查变化，退出时再次同步。", "Enabling replaces local saves with this game's iCloud saves. Changes are checked every second while playing and again on exit.", "有効にすると、このゲームの iCloud セーブでローカルを置き換えます。プレイ中は毎秒、終了時にも同期します。", "開啟時以 iCloud 中此遊戲的存檔取代本機存檔。遊戲執行時每秒檢查變更，離開時再次同步。"))
+        _field(section, _text("iCloud 自动同步", "Automatic iCloud sync", "iCloud 自動同期", "iCloud 自動同步", "Sincronización automática con iCloud"), toggle,
+            _text("开启时用 iCloud 中此游戏的存档替换本地存档。游戏运行时每秒检查变化，退出时再次同步。", "Enabling replaces local saves with this game's iCloud saves. Changes are checked every second while playing and again on exit.", "有効にすると、このゲームの iCloud セーブでローカルを置き換えます。プレイ中は毎秒、終了時にも同期します。", "開啟時以 iCloud 中此遊戲的存檔取代本機存檔。遊戲執行時每秒檢查變更，離開時再次同步。", "Al activarla, las partidas guardadas locales se sustituyen por las de este juego en iCloud. Los cambios se comprueban cada segundo durante el juego y de nuevo al salir."))
         if sync.busy:
-            section.add_child(_label(_text("正在同步存档…", "Syncing saves…", "同期しています…", "正在同步存檔…"), 14, true))
+            section.add_child(_label(_text("正在同步存档…", "Syncing saves…", "同期しています…", "正在同步存檔…", "Sincronizando partidas guardadas…"), 14, true))
     elif OS.get_name() == "macOS":
-        var upload := _button(_text("上传至 iCloud", "Upload to iCloud", "iCloud にアップロード", "上傳至 iCloud"), func(): transfer.start("upload", snapshot), "secondary", "AstryxUploadSaves")
+        var upload := _button(_text("上传至 iCloud", "Upload to iCloud", "iCloud にアップロード", "上傳至 iCloud", "Subir a iCloud"), func(): transfer.start("upload", snapshot), "secondary", "AstryxUploadSaves")
         upload.size_flags_horizontal = Control.SIZE_EXPAND_FILL
         upload.disabled = transfer.busy
         section.add_child(upload)
-        var download := _button(_text("从 iCloud 同步", "Sync from iCloud", "iCloud から同期", "從 iCloud 同步"), func(): _confirm_save_sync(snapshot), "secondary", "AstryxDownloadSaves")
+        var download := _button(_text("从 iCloud 同步", "Sync from iCloud", "iCloud から同期", "從 iCloud 同步", "Sincronizar desde iCloud"), func(): _confirm_save_sync(snapshot), "secondary", "AstryxDownloadSaves")
         download.size_flags_horizontal = Control.SIZE_EXPAND_FILL
         download.disabled = transfer.busy
         section.add_child(download)
-        section.add_child(_label(_text("首次使用时，选择 iCloud Drive 中的同一个存档文件夹。不同游戏按名字分开保存。", "On each device, select the same iCloud Drive saves folder on first use. Games are stored separately by name.", "初回に各端末で同じ iCloud Drive フォルダーを選びます。ゲーム名ごとに保存します。", "首次使用時，選擇 iCloud Drive 中的同一個存檔資料夾。不同遊戲依名稱分開儲存。"), 12, true))
+        section.add_child(_label(_text("首次使用时，选择 iCloud Drive 中的同一个存档文件夹。不同游戏按名字分开保存。", "On each device, select the same iCloud Drive saves folder on first use. Games are stored separately by name.", "初回に各端末で同じ iCloud Drive フォルダーを選びます。ゲーム名ごとに保存します。", "首次使用時，選擇 iCloud Drive 中的同一個存檔資料夾。不同遊戲依名稱分開儲存。", "En cada dispositivo, elige la misma carpeta de partidas guardadas de iCloud Drive la primera vez. Los juegos se guardan por separado según su nombre."), 12, true))
     if transfer.busy:
-        section.add_child(_label(_text("正在处理存档…", "Working on saves…", "セーブデータを処理しています…", "正在處理存檔…"), 14, true))
+        section.add_child(_label(_text("正在处理存档…", "Working on saves…", "セーブデータを処理しています…", "正在處理存檔…", "Procesando partidas guardadas…"), 14, true))
 
 func _confirm_save_sync(game: Dictionary) -> void:
-    var stack := _dialog(_text("同步当前游戏的存档？", "Sync this game's saves?", "このゲームのセーブを同期しますか？", "同步目前遊戲的存檔？"),
-        _text("只同步「%s」的存档。游戏名和引擎必须一致；覆盖同名文件前，会自动备份本地存档。", "Sync saves for “%s” only. The game name and engine must match. Local saves are backed up before replacing matching files.", "「%s」のセーブだけを同期します。ゲーム名とエンジンを確認し、同名ファイルを置き換える前にバックアップします。", "僅同步「%s」的存檔。遊戲名稱與引擎必須一致；覆寫同名檔案前，會自動備份本機存檔。") % host._game_display_title(game))
+    var stack := _dialog(_text("同步当前游戏的存档？", "Sync this game's saves?", "このゲームのセーブを同期しますか？", "同步目前遊戲的存檔？", "¿Sincronizar las partidas guardadas de este juego?"),
+        _text("只同步「%s」的存档。游戏名和引擎必须一致；覆盖同名文件前，会自动备份本地存档。", "Sync saves for “%s” only. The game name and engine must match. Local saves are backed up before replacing matching files.", "「%s」のセーブだけを同期します。ゲーム名とエンジンを確認し、同名ファイルを置き換える前にバックアップします。", "僅同步「%s」的存檔。遊戲名稱與引擎必須一致；覆寫同名檔案前，會自動備份本機存檔。", "Solo se sincronizarán las partidas guardadas de «%s». El nombre del juego y el motor deben coincidir. Antes de sustituir los archivos coincidentes se hace una copia de seguridad de las partidas guardadas locales.") % host._game_display_title(game))
     var actions := _hbox(12)
     actions.alignment = BoxContainer.ALIGNMENT_END
     stack.add_child(actions)
     var cancel := _button(_t("dialog.cancel"), func(): host._dismiss_modal(), "secondary", "AstryxCancelSaveSync")
     actions.add_child(cancel)
-    actions.add_child(_button(_text("同步", "Sync", "同期", "同步"), func(): _dismiss_then(func(): _save_transfer().start("download", game)), "primary", "AstryxConfirmSaveSync"))
+    actions.add_child(_button(_text("同步", "Sync", "同期", "同步", "Sincronizar"), func(): _dismiss_then(func(): _save_transfer().start("download", game)), "primary", "AstryxConfirmSaveSync"))
     cancel.grab_focus()
 
 func _resize_detail_cover() -> void:
@@ -2374,7 +2374,7 @@ func _resize_detail_cover() -> void:
 func _detail_information(rows: Control, game: Dictionary, runtime: String) -> void:
     var input := LineEdit.new()
     input.name = "AstryxGameNameInput"
-    input.accessibility_name = _text("游戏名字", "Game name", "ゲーム名", "遊戲名稱")
+    input.accessibility_name = _text("游戏名字", "Game name", "ゲーム名", "遊戲名稱", "Nombre del juego")
     input.text = String(detail_edit_draft.get("name", "")) if detail_edit_key == "name" else host._game_display_title(game)
     input.custom_minimum_size.y = 44
     input.text_changed.connect(func(value: String):
@@ -2395,10 +2395,10 @@ func _detail_information(rows: Control, game: Dictionary, runtime: String) -> vo
     launch_copy.name = "Description"
     launch_copy.size_flags_vertical = Control.SIZE_SHRINK_CENTER
     launch_row.add_child(launch_copy)
-    launch_copy.add_child(_label(_text("启动文件", "Launch file", "起動ファイル", "啟動檔案"), 16, false, true))
+    launch_copy.add_child(_label(_text("启动文件", "Launch file", "起動ファイル", "啟動檔案", "Archivo de inicio"), 16, false, true))
     launch_copy.add_child(_label(host._game_launch_entry_label(game), 14, true))
     if host._can_configure_launch_file(game, runtime):
-        var set_launch := _setting_link(_text("设置", "Set", "設定", "設定"), host._set_launch_file_for_selected, "AstryxSetLaunchFile")
+        var set_launch := _setting_link(_text("设置", "Set", "設定", "設定", "Establecer"), host._set_launch_file_for_selected, "AstryxSetLaunchFile")
         set_launch.accessibility_name = _t("detail.set_launch_file")
         set_launch.size_flags_horizontal = Control.SIZE_SHRINK_END
         set_launch.size_flags_vertical = Control.SIZE_SHRINK_CENTER
@@ -2408,20 +2408,20 @@ func _detail_information(rows: Control, game: Dictionary, runtime: String) -> vo
             reset_launch.size_flags_horizontal = Control.SIZE_SHRINK_END
             rows.add_child(reset_launch)
     rows.add_child(_label(String(game.get("path", "")), 12, true))
-    var remove := _button(_text("删除游戏", "Delete game", "ゲームを削除", "刪除遊戲"), host._confirm_remove_selected, "secondary", "AstryxRemoveGame")
+    var remove := _button(_text("删除游戏", "Delete game", "ゲームを削除", "刪除遊戲", "Eliminar juego"), host._confirm_remove_selected, "secondary", "AstryxRemoveGame")
     remove.size_flags_horizontal = Control.SIZE_EXPAND_FILL
     rows.add_child(remove)
 
 func _detail_cover_actions(cover_section: Control, game: Dictionary) -> void:
     var cover_path: String = host._resolve_cover_path(game)
-    var location := _label(cover_path if not cover_path.is_empty() else _text("未设置封面", "No cover set", "カバー未設定", "尚未設定封面"), 14, true)
+    var location := _label(cover_path if not cover_path.is_empty() else _text("未设置封面", "No cover set", "カバー未設定", "尚未設定封面", "Sin portada"), 14, true)
     location.name = "AstryxCoverPath"
     location.autowrap_mode = TextServer.AUTOWRAP_OFF
     location.clip_text = true
     location.max_lines_visible = 1
     location.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
     location.tooltip_text = cover_path
-    location.accessibility_name = _text("封面文件：", "Cover file: ", "カバーファイル：", "封面檔案：") + location.text
+    location.accessibility_name = _text("封面文件：", "Cover file: ", "カバーファイル：", "封面檔案：", "Archivo de portada: ") + location.text
     location.mouse_filter = Control.MOUSE_FILTER_PASS
     cover_section.add_child(location)
     var cover_actions := _vbox(12)
@@ -2432,7 +2432,7 @@ func _detail_cover_actions(cover_section: Control, game: Dictionary) -> void:
     cover_actions.add_child(set_cover)
     if not cover_path.is_empty():
         # Remove the cover association, preserving the user's source image.
-        var clear_cover := _button(_text("清除封面", "Clear cover", "カバーをクリア", "清除封面"), _confirm_clear_cover, "secondary", "AstryxClearCover")
+        var clear_cover := _button(_text("清除封面", "Clear cover", "カバーをクリア", "清除封面", "Quitar portada"), _confirm_clear_cover, "secondary", "AstryxClearCover")
         clear_cover.size_flags_horizontal = Control.SIZE_EXPAND_FILL
         cover_actions.add_child(clear_cover)
 
@@ -2440,14 +2440,14 @@ func _confirm_clear_cover() -> void:
     var path := String(host.selected_game.get("path", ""))
     if path.is_empty():
         return
-    var stack := _dialog(_text("清除封面？", "Clear cover?", "カバーをクリアしますか？", "清除封面？"),
-        _text("清除此游戏的封面设置？原始图片文件会保留。", "Clear this game's cover? The original image file will be kept.", "このゲームのカバー設定をクリアしますか？元の画像ファイルは保持されます。", "清除此遊戲的封面設定？原始圖片檔案會保留。"))
+    var stack := _dialog(_text("清除封面？", "Clear cover?", "カバーをクリアしますか？", "清除封面？", "¿Quitar la portada?"),
+        _text("清除此游戏的封面设置？原始图片文件会保留。", "Clear this game's cover? The original image file will be kept.", "このゲームのカバー設定をクリアしますか？元の画像ファイルは保持されます。", "清除此遊戲的封面設定？原始圖片檔案會保留。", "¿Quitar la portada de este juego? El archivo de imagen original se conservará."))
     var actions := _hbox(12)
     actions.alignment = BoxContainer.ALIGNMENT_END
     stack.add_child(actions)
     var cancel := _button(_t("dialog.cancel"), func(): host._dismiss_modal(), "secondary", "AstryxCancelClearCover")
     actions.add_child(cancel)
-    actions.add_child(_button(_text("清除", "Clear", "クリア", "清除"), func():
+    actions.add_child(_button(_text("清除", "Clear", "クリア", "清除", "Quitar"), func():
         _dismiss_then(func():
             if String(host.selected_game.get("path", "")) == path:
                 host._clear_cover_for_selected()
@@ -2487,7 +2487,7 @@ func _collapsible(parent: Control, id: String, title: String) -> VBoxContainer:
         trigger.add_theme_stylebox_override(state, style)
     trigger.size_flags_horizontal = Control.SIZE_EXPAND_FILL
     trigger.accessibility_name = title
-    trigger.accessibility_description = _text("折叠", "Collapse", "折りたたむ", "摺疊") if expanded else _text("展开", "Expand", "展開", "展開")
+    trigger.accessibility_description = _text("折叠", "Collapse", "折りたたむ", "摺疊", "Contraer") if expanded else _text("展开", "Expand", "展開", "展開", "Expandir")
     group.add_child(trigger)
     var body := _vbox(12)
     body.name = "AstryxDetailBody_" + id

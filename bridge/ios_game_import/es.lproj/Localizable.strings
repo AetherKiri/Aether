@@ -1,0 +1,10 @@
+"import.title" = "Enviar a novelas visuales de Aether";
+"import.cancel" = "Cancelar";
+"import.done" = "OK";
+"import.preparing" = "Recibiendo la carpeta del juego…";
+"import.cancelling" = "Cancelando…";
+"import.failed" = "No se ha podido completar la importación.";
+"import.open_aether" = "Abre Aether para añadir a Games las carpetas ya recibidas.";
+"import.received" = "Carpetas recibidas: %d. Abre Aether para añadirlas automáticamente a Games.";
+"import.unsupported" = "Selecciona una carpeta de juego completa o un archivo XP3.";
+"import.group_unavailable" = "La carpeta de importación compartida no está disponible. Instala una versión de Aether que tenga activada la función de importación de juegos.";

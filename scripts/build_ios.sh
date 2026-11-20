@@ -49,6 +49,20 @@ fi
 
 GODOT_BIN="${GODOT_BIN:-/Applications/Godot.app/Contents/MacOS/Godot}"
 GODOT_EXPORT_TEMPLATE="${GODOT_EXPORT_TEMPLATE:-$HOME/Library/Application Support/Godot/export_templates/4.7.2.stable/ios.zip}"
+if [[ "$PACKAGE_IPA" == true ]]; then
+    if [[ "$SIMULATOR" == true ]]; then
+        echo "Error: --package-ipa requires an iOS device build." >&2
+        exit 1
+    fi
+    if [[ ! -x "$GODOT_BIN" ]]; then
+        echo "Error: --package-ipa requires Godot at $GODOT_BIN. Set GODOT_BIN to the editor executable." >&2
+        exit 1
+    fi
+    if [[ ! -f "$GODOT_EXPORT_TEMPLATE" ]]; then
+        echo "Error: --package-ipa requires the Godot iOS export template at $GODOT_EXPORT_TEMPLATE." >&2
+        exit 1
+    fi
+fi
 GODOT_APP_DIR="$PROJECT_ROOT/apps/godot_app"
 GODOT_BIN_DIR="$GODOT_APP_DIR/bin/$GODOT_TRIPLET_DIR"
 RUNTIME_CJK_FONT_SOURCE="$GODOT_APP_DIR/assets/fonts/aetherkiri-runtime-cjk.otf"
@@ -840,10 +854,8 @@ else
         --project "$PROJECT_ROOT/out/godot/ios/$BUILD_TYPE_LOWER/Aether.xcodeproj" --runtime "$RENPY_BUNDLE_DIR"
     python3 "$PROJECT_ROOT/tools/stage_ios_game_import.py" \
         --project "$PROJECT_ROOT/out/godot/ios/$BUILD_TYPE_LOWER/Aether.xcodeproj"
-    if [[ "$PACKAGE_IPA" == true && "$SIMULATOR" == false ]]; then
+    if [[ "$PACKAGE_IPA" == true ]]; then
         package_ios_unsigned_ipa "$PROJECT_ROOT/out/godot/ios/$BUILD_TYPE_LOWER" "$BUILD_TYPE_LOWER"
-    elif [[ "$PACKAGE_IPA" == true && "$SIMULATOR" == true ]]; then
-        echo "[WARN] --package-ipa is ignored when building for simulator."
     fi
 fi
 

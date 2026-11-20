@@ -1,11 +1,43 @@
 extends SceneTree
 
 const GameLaunchEntry = preload("res://scripts/game_launch_entry.gd")
+const ProbeConfig = preload("res://scripts/probe_config.gd")
+
+class ProbePlayer extends RefCounted:
+    var qlie_score := 0
+    var selected_runtime := ""
+    var runtime_result := OK
+
+    func probe_runtime(runtime: String, _root: String) -> int:
+        return qlie_score if runtime == "qlie" else 0
+
+    func set_engine_option(key: String, value: String) -> int:
+        if key == "runtime":
+            selected_runtime = value
+        return runtime_result
 
 var failures := 0
 
+func _check_probe_launch(root: String) -> void:
+    var player := ProbePlayer.new()
+    var config := {"startup_script": "Script/intro.s"}
+    var launch := ProbeConfig.configure_native_launch(player, config, root)
+    _expect_equal(launch.get("startup_script"), root.path_join("Script/intro.s"), "Probe filesystem startup")
+    player.qlie_score = 700
+    launch = ProbeConfig.configure_native_launch(player, config, root)
+    _expect_equal(launch.get("startup_script"), "Script/intro.s", "Probe QLIE archive startup")
+    _expect_equal(player.selected_runtime, "qlie", "Probe selects verified QLIE with an alternate startup")
+    config["engine_options"] = {"runtime": "kirikiri"}
+    launch = ProbeConfig.configure_native_launch(player, config, root)
+    _expect_equal(launch.get("startup_script"), root.path_join("Script/intro.s"), "Probe respects explicit non-QLIE runtime")
+    _expect_equal(player.selected_runtime, "kirikiri", "Probe selects explicitly requested runtime")
+    player.runtime_result = ERR_UNAVAILABLE
+    launch = ProbeConfig.configure_native_launch(player, config, root)
+    _expect_equal(str(launch.get("ok")), "false", "Probe propagates runtime selection failure")
+
 func _init() -> void:
     var root := "/Users/test/游戏/NOBLE☆WORKS"
+    _check_probe_launch(root)
     var exe_path := root.path_join("开始游戏.exe")
     _expect_equal(
         GameLaunchEntry.resolve_for_runtime({"path": root, GameLaunchEntry.FIELD: "cmvs32_CHS.exe"}, "cmvs"),

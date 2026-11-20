@@ -1,6 +1,7 @@
 extends RefCounted
 
 const DEBUG_REQUEST_PATH := "user://aetherkiri-probe-request.json"
+const GameLaunchEntry := preload("res://scripts/game_launch_entry.gd")
 
 static var _debug_request_consumed := false
 static var _debug_request_config: Dictionary = {}
@@ -101,6 +102,19 @@ static func require_game_path(config: Dictionary) -> String:
     if value.is_empty():
         printerr("game path is not configured; set AETHERKIRI_SMOKE_GAME or game_path in AETHERKIRI_TEST_CONFIG")
     return value
+
+static func configure_native_launch(player: Object, config: Dictionary, root: String) -> Dictionary:
+    var options: Variant = config.get("engine_options", {})
+    var option_runtime := String(options.get("runtime", "")) if options is Dictionary else ""
+    var runtime := string_value(config, "runtime", option_runtime).strip_edges().to_lower()
+    var startup := string_value(config, "startup_script", "").strip_edges()
+    if runtime.is_empty() or runtime == "auto":
+        # An explicit archive entry also supports QLIE games without startup.s.
+        if not startup.is_empty() and int(player.probe_runtime("qlie", root)) >= 700:
+            runtime = "qlie"
+    if not runtime.is_empty() and int(player.set_engine_option("runtime", runtime)) != OK:
+        return {"ok": false}
+    return {"ok": true, "startup_script": GameLaunchEntry.resolve_startup_script(runtime, root, startup)}
 
 static func backend(config: Dictionary, env_name: String = "AETHERKIRI_RENDER_BACKEND") -> String:
     var value := OS.get_environment(env_name)

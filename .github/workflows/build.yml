@@ -1403,7 +1403,7 @@ jobs:
             ccache clang libclang-dev zlib1g-dev libgl1-mesa-dev libglu1-mesa-dev libegl-dev libgles-dev \
             libx11-dev libxrandr-dev libxinerama-dev libxcursor-dev libxi-dev \
             libxext-dev libxfixes-dev libxrender-dev libxss-dev libxtst-dev \
-            libwayland-dev libxkbcommon-dev \
+            libwayland-dev libxkbcommon-dev libdecor-0-dev \
             libasound2-dev libpulse-dev libudev-dev libdbus-1-dev
 
       - name: Resolve native compiler cache key

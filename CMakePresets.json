@@ -35,8 +35,7 @@
       "inherits": "Windows Config",
       "binaryDir": "${sourceDir}/out/windows/debug",
       "cacheVariables": {
-        "CMAKE_BUILD_TYPE": "Debug",
-        "VCPKG_BUILD_TYPE": "debug"
+        "CMAKE_BUILD_TYPE": "Debug"
       }
     },
     {
@@ -44,8 +43,7 @@
       "inherits": "Windows Config",
       "binaryDir": "${sourceDir}/out/windows/release",
       "cacheVariables": {
-        "CMAKE_BUILD_TYPE": "Release",
-        "VCPKG_BUILD_TYPE": "release"
+        "CMAKE_BUILD_TYPE": "Release"
       }
     },
     {
@@ -58,7 +56,6 @@
         "CMAKE_C_COMPILER": "i686-w64-mingw32-gcc",
         "CMAKE_CXX_COMPILER": "i686-w64-mingw32-g++",
         "CMAKE_RC_COMPILER": "i686-w64-mingw32-windres",
-        "VCPKG_BUILD_TYPE": "release",
         "CMAKE_EXPORT_COMPILE_COMMANDS": true
       },
       "condition": {
@@ -90,8 +87,7 @@
       "inherits": "Linux Config",
       "binaryDir": "${sourceDir}/out/linux/debug",
       "cacheVariables": {
-        "CMAKE_BUILD_TYPE": "Debug",
-        "VCPKG_BUILD_TYPE": "debug"
+        "CMAKE_BUILD_TYPE": "Debug"
       }
     },
     {
@@ -99,8 +95,7 @@
       "inherits": "Linux Config",
       "binaryDir": "${sourceDir}/out/linux/release",
       "cacheVariables": {
-        "CMAKE_BUILD_TYPE": "Release",
-        "VCPKG_BUILD_TYPE": "release"
+        "CMAKE_BUILD_TYPE": "Release"
       }
     },
     {
@@ -147,7 +142,6 @@
       "binaryDir": "${sourceDir}/out/macos/debug",
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "Debug",
-        "VCPKG_BUILD_TYPE": "debug",
         "CMAKE_C_FLAGS_DEBUG": "-Og -g",
         "CMAKE_CXX_FLAGS_DEBUG": "-Og -g"
       }
@@ -157,8 +151,7 @@
       "inherits": "MacOS Config",
       "binaryDir": "${sourceDir}/out/macos/release",
       "cacheVariables": {
-        "CMAKE_BUILD_TYPE": "Release",
-        "VCPKG_BUILD_TYPE": "release"
+        "CMAKE_BUILD_TYPE": "Release"
       }
     },
     {
@@ -167,7 +160,6 @@
       "binaryDir": "${sourceDir}/out/macos-x64/debug",
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "Debug",
-        "VCPKG_BUILD_TYPE": "debug",
         "CMAKE_OSX_ARCHITECTURES": "x86_64",
         "CMAKE_Swift_COMPILER_TARGET": "x86_64-apple-macosx13.0",
         "VCPKG_TARGET_TRIPLET": "x64-osx",
@@ -181,7 +173,6 @@
       "binaryDir": "${sourceDir}/out/macos-x64/release",
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "Release",
-        "VCPKG_BUILD_TYPE": "release",
         "CMAKE_OSX_ARCHITECTURES": "x86_64",
         "CMAKE_Swift_COMPILER_TARGET": "x86_64-apple-macosx13.0",
         "VCPKG_TARGET_TRIPLET": "x64-osx"
@@ -217,7 +208,6 @@
       "binaryDir": "${sourceDir}/out/ios/debug",
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "Debug",
-        "VCPKG_BUILD_TYPE": "debug",
         "CMAKE_C_FLAGS_DEBUG": "-Og -g",
         "CMAKE_CXX_FLAGS_DEBUG": "-Og -g"
       }
@@ -228,7 +218,6 @@
       "binaryDir": "${sourceDir}/out/ios-simulator/debug",
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "Debug",
-        "VCPKG_BUILD_TYPE": "debug",
         "CMAKE_OSX_SYSROOT": "iphonesimulator",
         "CMAKE_Swift_COMPILER_TARGET": "arm64-apple-ios16.0-simulator",
         "VCPKG_TARGET_TRIPLET": "arm64-ios-simulator"
@@ -240,7 +229,6 @@
       "binaryDir": "${sourceDir}/out/ios-simulator-x64/debug",
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "Debug",
-        "VCPKG_BUILD_TYPE": "debug",
         "CMAKE_OSX_ARCHITECTURES": "x86_64",
         "CMAKE_OSX_SYSROOT": "iphonesimulator",
         "CMAKE_Swift_COMPILER_TARGET": "x86_64-apple-ios16.0-simulator",
@@ -252,8 +240,7 @@
       "inherits": "iOS Config",
       "binaryDir": "${sourceDir}/out/ios/release",
       "cacheVariables": {
-        "CMAKE_BUILD_TYPE": "Release",
-        "VCPKG_BUILD_TYPE": "release"
+        "CMAKE_BUILD_TYPE": "Release"
       }
     },
     {
@@ -280,7 +267,6 @@
       "binaryDir": "${sourceDir}/out/android/arm64-v8a/debug",
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "Debug",
-        "VCPKG_BUILD_TYPE": "debug",
         "CMAKE_C_FLAGS_DEBUG": "-Og -g",
         "CMAKE_CXX_FLAGS_DEBUG": "-Og -g"
       }
@@ -290,8 +276,7 @@
       "inherits": "Android arm64 Config",
       "binaryDir": "${sourceDir}/out/android/arm64-v8a/release",
       "cacheVariables": {
-        "CMAKE_BUILD_TYPE": "Release",
-        "VCPKG_BUILD_TYPE": "release"
+        "CMAKE_BUILD_TYPE": "Release"
       }
     },
     {
@@ -302,7 +287,6 @@
         "WEB": true,
         "VCPKG_TARGET_TRIPLET": "wasm32-emscripten",
         "VCPKG_OVERLAY_TRIPLETS": "${sourceDir}/vcpkg/triplets",
-        "VCPKG_BUILD_TYPE": "release",
         "CMAKE_POSITION_INDEPENDENT_CODE": true,
         "CMAKE_C_FLAGS": "-fPIC -pthread -msimd128",
         "CMAKE_CXX_FLAGS": "-fPIC -pthread -msimd128",

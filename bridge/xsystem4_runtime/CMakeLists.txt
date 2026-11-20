@@ -1,9 +1,9 @@
 cmake_minimum_required(VERSION 3.28)
 if(NOT DEFINED AETHERKIRI_XSYSTEM4_DIR)
-    get_filename_component(AETHERKIRI_XSYSTEM4_DIR "${CMAKE_CURRENT_LIST_DIR}/../../packages/xsystem4" ABSOLUTE)
+    get_filename_component(AETHERKIRI_XSYSTEM4_DIR "${CMAKE_CURRENT_LIST_DIR}/../../packages/AetherSystem4" ABSOLUTE)
 endif()
 if(NOT EXISTS "${AETHERKIRI_XSYSTEM4_DIR}/src/embedded.c")
-    message(FATAL_ERROR "Initialize packages/xsystem4 and its libsys4 submodule")
+    message(FATAL_ERROR "Initialize packages/AetherSystem4 and its libsys4 submodule")
 endif()
 
 find_package(SDL2 CONFIG REQUIRED)

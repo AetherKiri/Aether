@@ -32,15 +32,15 @@ git submodule update --init --recursive --depth 1 \
     packages/AetherMAGES \
     packages/AetherN2System \
     packages/AetherMinori \
-    packages/cmvs-rs \
-    packages/EntisGLS-SDL3 \
+    packages/AetherCMVS \
+    packages/AetherEntisGLS \
     packages/AetherSiglus \
-    packages/OnscripterYuri \
+    packages/AetherONScripterYuri \
     packages/psdfile \
     packages/ruffle \
-    packages/xsystem4 \
-    packages/xsystem35 \
-    packages/system3 \
+    packages/AetherSystem4 \
+    packages/AetherSystem35 \
+    packages/AetherSystem3 \
     packages/rfvp \
     packages/tjs2Decompiler
 

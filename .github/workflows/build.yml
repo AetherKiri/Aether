@@ -155,17 +155,17 @@ jobs:
       - name: Initialize public runtime packages
         if: env.AETHERKIRI_WITH_INTERNAL != 'true'
         run: |
-          git submodule update --init --depth 1 packages/OnscripterYuri
+          git submodule update --init --depth 1 packages/AetherONScripterYuri
           git submodule update --init --recursive --depth 1 packages/psdfile
           git submodule update --init --depth 1 packages/AetherSiglus
           git submodule update --init --depth 1 packages/AetherMinori
-          git -c url.https://github.com/.insteadOf=git@github.com: submodule update --init --depth 1 packages/cmvs-rs
-          git submodule update --init --depth 1 packages/EntisGLS-SDL3
+          git -c url.https://github.com/.insteadOf=git@github.com: submodule update --init --depth 1 packages/AetherCMVS
+          git submodule update --init --depth 1 packages/AetherEntisGLS
           git submodule update --init --depth 1 packages/AetherKrkr
           git submodule update --init --depth 1 packages/AetherMAGES
           git submodule update --init --recursive --depth 1 packages/AetherN2System
           git submodule update --init --depth 1 packages/ruffle
-          git submodule update --init --recursive --depth 1 packages/xsystem4 packages/xsystem35 packages/system3
+          git submodule update --init --recursive --depth 1 packages/AetherSystem4 packages/AetherSystem35 packages/AetherSystem3
 
       - name: Set application release version
         if: env.AETHERKIRI_RELEASE_VERSION != ''
@@ -563,18 +563,18 @@ jobs:
       - name: Initialize public runtime packages
         if: env.AETHERKIRI_WITH_INTERNAL != 'true'
         run: |
-          git submodule update --init --depth 1 packages/OnscripterYuri
+          git submodule update --init --depth 1 packages/AetherONScripterYuri
           git submodule update --init --recursive --depth 1 packages/psdfile
           git submodule update --init --depth 1 packages/AetherSiglus
           git submodule update --init --depth 1 packages/AetherMinori
-          git -c url.https://github.com/.insteadOf=git@github.com: submodule update --init --depth 1 packages/cmvs-rs
-          git submodule update --init --depth 1 packages/EntisGLS-SDL3
+          git -c url.https://github.com/.insteadOf=git@github.com: submodule update --init --depth 1 packages/AetherCMVS
+          git submodule update --init --depth 1 packages/AetherEntisGLS
           git submodule update --init --depth 1 packages/AetherKrkr
           git submodule update --init --depth 1 packages/AetherMAGES
           git submodule update --init --recursive --depth 1 packages/AetherN2System
           git submodule update --init --depth 1 packages/rfvp
           git submodule update --init --depth 1 packages/ruffle
-          git submodule update --init --recursive --depth 1 packages/xsystem4 packages/xsystem35 packages/system3
+          git submodule update --init --recursive --depth 1 packages/AetherSystem4 packages/AetherSystem35 packages/AetherSystem3
 
       - name: Set application release version
         if: env.AETHERKIRI_RELEASE_VERSION != ''
@@ -934,18 +934,18 @@ jobs:
       - name: Initialize public runtime packages
         if: env.AETHERKIRI_WITH_INTERNAL != 'true'
         run: |
-          git submodule update --init --depth 1 packages/OnscripterYuri
+          git submodule update --init --depth 1 packages/AetherONScripterYuri
           git submodule update --init --recursive --depth 1 packages/psdfile
           git submodule update --init --depth 1 packages/AetherSiglus
           git submodule update --init --depth 1 packages/AetherMinori
-          git -c url.https://github.com/.insteadOf=git@github.com: submodule update --init --depth 1 packages/cmvs-rs
-          git submodule update --init --depth 1 packages/EntisGLS-SDL3
+          git -c url.https://github.com/.insteadOf=git@github.com: submodule update --init --depth 1 packages/AetherCMVS
+          git submodule update --init --depth 1 packages/AetherEntisGLS
           git submodule update --init --depth 1 packages/AetherKrkr
           git submodule update --init --depth 1 packages/AetherMAGES
           git submodule update --init --recursive --depth 1 packages/AetherN2System
           git submodule update --init --depth 1 packages/rfvp
           git submodule update --init --depth 1 packages/ruffle
-          git submodule update --init --recursive --depth 1 packages/xsystem4 packages/xsystem35 packages/system3
+          git submodule update --init --recursive --depth 1 packages/AetherSystem4 packages/AetherSystem35 packages/AetherSystem3
 
       - name: Set application release version
         if: env.AETHERKIRI_RELEASE_VERSION != ''
@@ -1359,17 +1359,17 @@ jobs:
       - name: Initialize public runtime packages
         if: env.AETHERKIRI_WITH_INTERNAL != 'true'
         run: |
-          git submodule update --init --depth 1 packages/OnscripterYuri
+          git submodule update --init --depth 1 packages/AetherONScripterYuri
           git submodule update --init --recursive --depth 1 packages/psdfile
           git submodule update --init --depth 1 packages/AetherSiglus
           git submodule update --init --depth 1 packages/AetherMinori
-          git -c url.https://github.com/.insteadOf=git@github.com: submodule update --init --depth 1 packages/cmvs-rs
-          git submodule update --init --depth 1 packages/EntisGLS-SDL3
+          git -c url.https://github.com/.insteadOf=git@github.com: submodule update --init --depth 1 packages/AetherCMVS
+          git submodule update --init --depth 1 packages/AetherEntisGLS
           git submodule update --init --depth 1 packages/AetherKrkr
           git submodule update --init --depth 1 packages/AetherMAGES
           git submodule update --init --recursive --depth 1 packages/AetherN2System
           git submodule update --init --depth 1 packages/ruffle
-          git submodule update --init --recursive --depth 1 packages/xsystem4 packages/xsystem35 packages/system3
+          git submodule update --init --recursive --depth 1 packages/AetherSystem4 packages/AetherSystem35 packages/AetherSystem3
 
       - name: Verify private runtime packages
         if: env.AETHERKIRI_WITH_INTERNAL == 'true'

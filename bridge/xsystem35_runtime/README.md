@@ -1,12 +1,12 @@
 # AliceSoft System 3.5 / 3.9 native runtime
 
-`packages/xsystem35` pins the `aether` branch of
-[AetherKiri/xsystem35-sdl2](https://github.com/AetherKiri/xsystem35-sdl2).
+`packages/AetherSystem35` pins the `aether` branch of
+[AetherKiri/xsystem35-sdl2](https://github.com/AetherKiri/AetherSystem35).
 The fork's `master` branch is reserved for upstream synchronization. Initialize
 the package with:
 
 ```sh
-git submodule update --init packages/xsystem35
+git submodule update --init packages/AetherSystem35
 ```
 
 Import the complete game directory into the visual-novel library. Detection
@@ -63,7 +63,7 @@ rectangles so the software renderer does not blit enormous negative rectangles.
 run through Aether’s separate [system3-sdl2 native runtime](../system3_runtime/README.md). In particular,
 the supplied Chinese Rance4.1 and Rance4.2 builds use DAT; upstream's supported
 Rance4.1/4.2 releases are the newer ALD editions. See the
-[upstream compatibility table](https://github.com/AetherKiri/xsystem35-sdl2/blob/master/game_compatibility.md).
+[upstream compatibility table](https://github.com/AetherKiri/AetherSystem35/blob/master/game_compatibility.md).
 
 ## Validation
 

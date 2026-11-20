@@ -32,6 +32,11 @@ set(IMPACTO_EMBEDDED ON)
 # the impacto library (static or a desktop shared image) instead of shipping
 # a separate libatrac9.so/.dylib the host packaging would have to stage.
 set(LIBATRAC9_BUILD_SHARED OFF)
+if(ANDROID)
+    # Impacto's bundled libraries use headers. CMake 4.5 can otherwise
+    # auto-discover the host's libstdc++ modules when targeting Android.
+    set(CMAKE_CXX_SCAN_FOR_MODULES OFF)
+endif()
 add_subdirectory("${MAGES_HOST_SOURCE}" "${CMAKE_BINARY_DIR}/aethermages-impacto")
 
 # LibAtrac9 enables IPO (LTO) when the toolchain supports it. Bitcode members

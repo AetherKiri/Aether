@@ -83,7 +83,7 @@ Copyright (c) 2022-2023 YuriSizuku.
 The source files integrated by AetherKiri are licensed under the GNU General
 Public License, either version 2 or (at your option) any later version. The
 upstream license text and per-file copyright notices are preserved in
-`packages/OnscripterYuri/`. AetherKiri distributes the combined work under
+`packages/AetherONScripterYuri/`. AetherKiri distributes the combined work under
 GPL-3.0-or-later.
 
 ----------------------------------------------------------------------------

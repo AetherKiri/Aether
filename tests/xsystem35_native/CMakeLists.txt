@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.28)
 project(AetherXsystem35NativeProbe LANGUAGES C CXX)
 get_filename_component(AETHER_ROOT "${CMAKE_CURRENT_LIST_DIR}/../.." ABSOLUTE)
-set(AETHERKIRI_XSYSTEM35_DIR "${AETHER_ROOT}/packages/xsystem35")
+set(AETHERKIRI_XSYSTEM35_DIR "${AETHER_ROOT}/packages/AetherSystem35")
 add_subdirectory("${AETHER_ROOT}/bridge/xsystem35_runtime" "${CMAKE_CURRENT_BINARY_DIR}/runtime")
 find_package(SDL2_image CONFIG REQUIRED)
 find_package(nlohmann_json CONFIG REQUIRED)

@@ -13104,7 +13104,7 @@ func _start_selected_game_after_iap() -> void:
             and not _switch_runtime_player(RUNTIME_KIRIKIRI)
         ):
             return
-        _start_selected_game_after_entitlements()
+        _start_selected_game_after_entitlements(selected_runtime_kind if selected_runtime_kind == RUNTIME_QLIE else "")
         return
 
     # StoreKit lives on the KiriKiri host. Return to that host before probing
@@ -13161,18 +13161,21 @@ func _game_save_sync() -> Node:
         add_child(sync)
     return sync
 
-func _start_selected_game_after_entitlements() -> void:
+func _start_selected_game_after_entitlements(verified_runtime: String = "") -> void:
     if game_storage_busy:
         return
     var game := selected_game.duplicate(true)
+    if verified_runtime == RUNTIME_QLIE:
+        game["engine"] = verified_runtime
     _game_save_sync().prepare_start(game, func():
         if String(selected_game.get("path", "")) == String(game.get("path", "")):
-            _start_selected_game_after_save_sync()
+            var same_startup := String(selected_game.get("startupScript", "")) == String(game.get("startupScript", ""))
+            _start_selected_game_after_save_sync(verified_runtime if same_startup else "")
         else:
             _game_save_sync().stop()
     )
 
-func _start_selected_game_after_save_sync() -> void:
+func _start_selected_game_after_save_sync(verified_runtime: String = "") -> void:
     var library_path := String(selected_game.get("path", ""))
     if library_path.is_empty():
         return
@@ -13180,7 +13183,9 @@ func _start_selected_game_after_save_sync() -> void:
         return
     if not _mount_web_game(selected_game):
         return
-    active_runtime_kind = _game_runtime_kind_for_launch(library_path, String(selected_game.get("startupScript", "")))
+    active_runtime_kind = verified_runtime
+    if active_runtime_kind.is_empty():
+        active_runtime_kind = _game_runtime_kind_for_launch(library_path, String(selected_game.get("startupScript", "")))
     if active_runtime_kind == RUNTIME_TYRANO:
         _open_tyrano_game(selected_game)
         return

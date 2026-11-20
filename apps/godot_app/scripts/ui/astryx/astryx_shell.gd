@@ -2395,9 +2395,16 @@ func _detail_information(rows: Control, game: Dictionary, runtime: String) -> vo
     launch_copy.name = "Description"
     launch_copy.size_flags_vertical = Control.SIZE_SHRINK_CENTER
     launch_row.add_child(launch_copy)
-    launch_copy.add_child(_label(_text("启动文件", "Launch file", "起動ファイル", "啟動檔案", "Archivo de inicio"), 16, false, true))
-    launch_copy.add_child(_label(host._game_launch_entry_label(game), 14, true))
-    if host._can_configure_launch_file(game, runtime):
+    var launch_title := _t("detail.qlie_startup") if runtime == "qlie" else _text("启动文件", "Launch file", "起動ファイル", "啟動檔案", "Archivo de inicio")
+    launch_copy.add_child(_label(launch_title, 16, false, true))
+    launch_copy.add_child(_label(host._game_launch_entry_label(game, runtime), 14, true))
+    if runtime == "qlie" and OS.get_name() != "Web":
+        var edit_startup := _setting_link(_t("detail.qlie_startup"),
+            host._show_qlie_startup_dialog.bind(String(game.get("path", ""))), "AstryxQlieStartup")
+        edit_startup.size_flags_horizontal = Control.SIZE_SHRINK_END
+        edit_startup.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+        launch_row.add_child(edit_startup)
+    elif host._can_configure_launch_file(game, runtime):
         var set_launch := _setting_link(_text("设置", "Set", "設定", "設定", "Establecer"), host._set_launch_file_for_selected, "AstryxSetLaunchFile")
         set_launch.accessibility_name = _t("detail.set_launch_file")
         set_launch.size_flags_horizontal = Control.SIZE_SHRINK_END

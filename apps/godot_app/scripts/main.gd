@@ -514,6 +514,9 @@ const UI_TEXT := {
         "detail.launch_entry": "启动入口：%s",
         "detail.default_launch_entry": "游戏目录（自动检测）",
         "detail.set_launch_file": "切换启动文件",
+        "detail.qlie_startup": "QLIE 启动脚本",
+        "detail.qlie_startup_hint": "请输入包内相对路径，例如 Script/intro.s。留空使用 startup.s。",
+        "detail.qlie_startup_invalid": "请输入有效的包内相对路径。",
         "detail.script_encoding": "脚本编码",
         "detail.reset_launch_file": "恢复目录自动检测",
         "detail.rfvp_encoding": "RFVP 文本编码",
@@ -950,6 +953,9 @@ const UI_TEXT := {
         "detail.launch_entry": "啟動入口：%s",
         "detail.default_launch_entry": "遊戲目錄（自動偵測）",
         "detail.set_launch_file": "切換啟動檔案",
+        "detail.qlie_startup": "QLIE 啟動指令碼",
+        "detail.qlie_startup_hint": "請輸入封包內相對路徑，例如 Script/intro.s。留空使用 startup.s。",
+        "detail.qlie_startup_invalid": "請輸入有效的封包內相對路徑。",
         "detail.script_encoding": "腳本編碼",
         "detail.reset_launch_file": "恢復目錄自動偵測",
         "detail.rfvp_encoding": "RFVP 文字編碼",
@@ -1384,6 +1390,9 @@ You can find it any time under Settings → QQ Group.",
         "detail.launch_entry": "Launch entry: %s",
         "detail.default_launch_entry": "Game folder (auto-detect)",
         "detail.set_launch_file": "Change Launch File",
+        "detail.qlie_startup": "QLIE startup script",
+        "detail.qlie_startup_hint": "Enter a path inside the game archive, such as Script/intro.s. Leave blank to use startup.s.",
+        "detail.qlie_startup_invalid": "Enter a valid relative path inside the archive.",
         "detail.script_encoding": "Script encoding",
         "detail.reset_launch_file": "Restore Folder Auto-detect",
         "detail.rfvp_encoding": "RFVP Text Encoding",
@@ -1787,6 +1796,9 @@ You can find it any time under Settings → QQ Group.",
         "detail.launch_entry": "起動エントリ：%s",
         "detail.default_launch_entry": "ゲームフォルダー（自動検出）",
         "detail.set_launch_file": "起動ファイルを変更",
+        "detail.qlie_startup": "QLIE 起動スクリプト",
+        "detail.qlie_startup_hint": "アーカイブ内の相対パス（例：Script/intro.s）を入力してください。空欄の場合は startup.s を使います。",
+        "detail.qlie_startup_invalid": "アーカイブ内の有効な相対パスを入力してください。",
         "detail.script_encoding": "スクリプトの文字コード",
         "detail.reset_launch_file": "フォルダーの自動検出に戻す",
         "detail.rfvp_encoding": "RFVP 文字エンコーディング",
@@ -2188,6 +2200,9 @@ You can find it any time under Settings → QQ Group.",
         "detail.launch_entry": "실행 진입점: %s",
         "detail.default_launch_entry": "게임 폴더(자동 감지)",
         "detail.set_launch_file": "실행 파일 변경",
+        "detail.qlie_startup": "QLIE 시작 스크립트",
+        "detail.qlie_startup_hint": "Script/intro.s처럼 아카이브 내부의 상대 경로를 입력하세요. 비워 두면 startup.s를 사용합니다.",
+        "detail.qlie_startup_invalid": "아카이브 내부의 올바른 상대 경로를 입력하세요.",
         "detail.script_encoding": "스크립트 인코딩",
         "detail.reset_launch_file": "폴더 자동 감지 복원",
         "detail.rfvp_encoding": "RFVP 텍스트 인코딩",
@@ -2617,6 +2632,9 @@ You can find it any time under Settings → QQ Group.",
         "detail.launch_entry": "Entrada de inicio: %s",
         "detail.default_launch_entry": "Carpeta del juego (detección automática)",
         "detail.set_launch_file": "Cambiar archivo de inicio",
+        "detail.qlie_startup": "Script de inicio de QLIE",
+        "detail.qlie_startup_hint": "Introduce una ruta dentro del archivo, como Script/intro.s. Déjala vacía para usar startup.s.",
+        "detail.qlie_startup_invalid": "Introduce una ruta relativa válida dentro del archivo.",
         "detail.script_encoding": "Codificación de los scripts",
         "detail.reset_launch_file": "Restaurar la detección automática de la carpeta",
         "detail.rfvp_encoding": "Codificación de texto de RFVP",
@@ -9591,7 +9609,12 @@ func _detail_tools(game: Dictionary) -> FlowContainer:
             })
         )
         tools.add_child(encoding)
-    if _can_configure_launch_file(game):
+    if detail_runtime == RUNTIME_QLIE and OS.get_name() != "Web":
+        var edit_startup := _icon_action_button(ICON_PLAY, _t("detail.qlie_startup"),
+            _show_qlie_startup_dialog.bind(String(game.get("path", ""))))
+        _reveal_icon_action_label_on_hover(edit_startup, _t("detail.qlie_startup"))
+        tools.add_child(edit_startup)
+    elif _can_configure_launch_file(game, detail_runtime):
         var set_launch := _icon_action_button(ICON_PLAY, _t("detail.set_launch_file"), func(): _set_launch_file_for_selected())
         _reveal_icon_action_label_on_hover(set_launch, _t("detail.set_launch_file"))
         tools.add_child(set_launch)
@@ -9599,7 +9622,7 @@ func _detail_tools(game: Dictionary) -> FlowContainer:
             var reset_launch := _icon_action_button(ICON_REFRESH, _t("detail.reset_launch_file"), func(): _reset_launch_file_for_selected())
             _reveal_icon_action_label_on_hover(reset_launch, _t("detail.reset_launch_file"))
             tools.add_child(reset_launch)
-    if _game_runtime_kind(String(game.get("path", ""))) == "rfvp":
+    if detail_runtime == "rfvp":
         var set_encoding := _icon_action_button(ICON_SETTINGS, _t("detail.rfvp_encoding"), func(): _show_rfvp_encoding_dialog())
         _reveal_icon_action_label_on_hover(set_encoding, _t("detail.rfvp_encoding"))
         tools.add_child(set_encoding)
@@ -10695,11 +10718,50 @@ func _record_selected_cover(library_path: String, cover_path: String) -> void:
             break
     CoverIndex.save_index(index)
 
-func _game_launch_entry_label(game: Dictionary) -> String:
+func _game_launch_entry_label(game: Dictionary, runtime: String = "") -> String:
+    if runtime == RUNTIME_QLIE or String(game.get("engine", "")) == RUNTIME_QLIE:
+        var script_path := String(game.get(GameLaunchEntry.STARTUP_SCRIPT_FIELD, ""))
+        return "startup.s" if script_path.is_empty() else script_path
     var relative_path := GameLaunchEntry.configured_relative_path(game)
     if relative_path.is_empty():
         return _t("detail.default_launch_entry")
     return relative_path
+
+func _show_qlie_startup_dialog(library_path: String) -> void:
+    if library_path.is_empty() or library_path != String(selected_game.get("path", "")):
+        return
+    var dialog := _modal_dialog(Vector2(520, 300))
+    var box := _modal_stack(dialog, _t("detail.qlie_startup"), ICON_PLAY)
+    box.add_child(_dialog_body_label(_t("detail.qlie_startup_hint")))
+    var input := LineEdit.new()
+    input.text = String(selected_game.get(GameLaunchEntry.STARTUP_SCRIPT_FIELD, ""))
+    input.placeholder_text = "startup.s"
+    input.accessibility_name = _t("detail.qlie_startup")
+    input.custom_minimum_size.y = 48
+    ui_widgets.line_edit(input)
+    box.add_child(input)
+    var error := _dialog_body_label(_t("detail.qlie_startup_invalid"))
+    error.hide()
+    box.add_child(error)
+    var save := _pill_button(_t("settings.save"))
+    save.size_flags_horizontal = Control.SIZE_SHRINK_END
+    var commit := func():
+        var entry := GameLaunchEntry.normalize_qlie_startup_script(input.text)
+        if not input.text.strip_edges().is_empty() and entry.is_empty():
+            error.show()
+            return
+        _dismiss_modal(func():
+            _update_game(library_path, {GameLaunchEntry.STARTUP_SCRIPT_FIELD: entry, "engine": RUNTIME_QLIE})
+            _show_detail(selected_game)
+        )
+    save.pressed.connect(commit)
+    input.text_submitted.connect(func(_text: String): commit.call())
+    input.text_changed.connect(func(_text: String): error.hide())
+    box.add_child(save)
+    var cancel := _secondary_dialog_button(_t("dialog.cancel"))
+    cancel.size_flags_horizontal = Control.SIZE_SHRINK_END
+    cancel.pressed.connect(func(): _dismiss_modal())
+    box.add_child(cancel)
 
 func _can_configure_launch_file(game: Dictionary, runtime: String = "") -> bool:
     return OS.get_name() != "Web" \
@@ -12381,6 +12443,9 @@ func _probe_game_runtime_kind(root: String, runtime_kind: String, startup_script
             return RUNTIME_MAGES
         if int(player.probe_runtime(RUNTIME_N2SYSTEM, root)) > 0:
             return RUNTIME_N2SYSTEM
+        if qlie_score >= 700:
+            # The packs are mounted, but this installation needs a custom startup script.
+            return RUNTIME_QLIE
     return runtime_kind
 
 func _backfill_game_metadata(games: Array[Dictionary]) -> bool:

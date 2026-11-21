@@ -483,7 +483,7 @@ if(IOS)
             "$<TARGET_FILE:sp_vm_core>")
     endif()
     add_custom_command(TARGET aether_kiri_godot POST_BUILD
-        COMMAND "${AETHERKIRI_LIBTOOL_EXECUTABLE}" -static
+        COMMAND "${AETHERKIRI_LIBTOOL_EXECUTABLE}" -static -no_warning_for_no_symbols
             -o "${AETHERKIRI_MERGED_GODOT_ARCHIVE}"
             ${AETHERKIRI_IOS_ARCHIVES}
         COMMAND "${CMAKE_COMMAND}" -E copy_if_different

@@ -28,7 +28,6 @@ function(aetherkiri_prepare_rfvp root rfvp_dir output)
         "GIT_CEILING_DIRECTORIES=${CMAKE_CURRENT_BINARY_DIR}"
         "${GIT_EXECUTABLE}" apply "${warning_patch}"
         WORKING_DIRECTORY "${output}" COMMAND_ERROR_IS_FATAL ANY)
-    set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${warning_patch}")
     file(COPY "${rfvp_dir}/LICENSE" "${rfvp_dir}/README.md"
          DESTINATION "${output}")
     file(WRITE "${output}/Cargo.toml"

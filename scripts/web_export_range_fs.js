@@ -1,5 +1,7 @@
 /* AETHERKIRI_RANGE_FS */
 (function () {
+// The optimized Web export can omit Emscripten's internal errno table.
+var ERRNO_CODES = { EINVAL: 28, EIO: 29, ENOENT: 44, EPERM: 63 };
 var userFsSyncTimer = 0;
 var userFsSyncRunning = false;
 var userFsSyncQueued = false;
@@ -291,9 +293,9 @@ try { FS.unmount(mountPoint); } catch (e) {}
 } else {
 FS.mkdirTree(mountPoint);
 }
-FS.mount(AetherKiriRangeFS, { baseUrl: opts && opts.baseUrl || "", files: manifest && manifest.files || [] }, mountPoint);
+var root = FS.mount(AetherKiriRangeFS, { baseUrl: opts && opts.baseUrl || "", files: manifest && manifest.files || [] }, mountPoint);
 AetherKiriRangeFS.mounted[mountPoint] = true;
-seedSavedata(mountPoint, manifest);
+seedSavedata(mountPoint, manifest, root);
 return true;
 };
 Module["aetherKiriMountHttpGame"] = function (mountPoint, baseUrl, manifestJson) {
@@ -337,7 +339,7 @@ if (!path || FS.analyzePath(path).exists) return;
 FS.mkdirTree(path);
 }
 
-function seedSavedata(mountPoint, manifest) {
+function seedSavedata(mountPoint, manifest, root) {
 try {
 var files = manifest && manifest.files || [];
 if (!Array.isArray(files) || files.length === 0) return;
@@ -367,6 +369,19 @@ copied++;
 if (copied > 0) {
 console.log("AetherKiri seeded savedata files:", copied, "skipped:", skipped, "target:", targetRoot);
 scheduleUserFsSync("seed savedata");
+}
+// Engines open savedata relative to the game. Expose the persistent bank
+// after seeding so reads above still see the original files on the range mount.
+var names = Object.keys(root.contents).filter(function (name) {
+return name.toLowerCase() === "savedata" && FS.isDir(root.contents[name].mode);
+});
+if (!root.contents.savedata) names.push("savedata");
+var linkMode = 0o120777;
+for (var name of names) {
+var link = root.contents[name] || AetherKiriRangeFS.createNode(root, name, linkMode, 0, null);
+link.mode = linkMode;
+link.size = targetRoot.length;
+link.node_ops = { getattr: AetherKiriRangeFS.node_ops.getattr, readlink: function () { return targetRoot; } };
 }
 } catch (e) {
 console.warn("AetherKiri savedata seed failed:", e);

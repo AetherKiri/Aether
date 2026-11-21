@@ -109,6 +109,9 @@ if(ANDROID)
 endif()
 
 if(WEB OR EMSCRIPTEN)
+    # The Web triplet supplies GNU libiconv for writable game text encodings.
+    # FindIconv's libc probe only checks UTF-8 and would drop the archive.
+    set(Iconv_IS_BUILT_IN FALSE)
     add_compile_options(
         -fPIC
         -pthread

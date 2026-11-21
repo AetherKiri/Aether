@@ -318,6 +318,13 @@ endif()
 add_subdirectory(bridge/game_hooks)
 if(AETHERKIRI_ENABLE_KRKR2)
     add_subdirectory(${AETHERKIRI_KRKR_DIR})
+    # PSD's vendored parser uses multicharacter literals for its FourCC tags.
+    foreach(psd_target psdparse psdfile)
+        if(TARGET ${psd_target})
+            target_compile_options(${psd_target} PRIVATE
+                "$<$<COMPILE_LANG_AND_ID:CXX,GNU>:-Wno-multichar>")
+        endif()
+    endforeach()
 endif()
 
 # AetherInternal contributes sources to public targets but does not own the

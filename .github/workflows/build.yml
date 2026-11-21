@@ -526,6 +526,8 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
         with:
           targets: aarch64-apple-ios
+          # rust-objcopy needs the matching LLVM dylib on Apple runners.
+          components: llvm-tools
 
       - name: Resolve private runtime dependency cache
         id: private-runtime-cache-key
@@ -897,6 +899,8 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
         with:
           targets: aarch64-apple-darwin
+          # rust-objcopy needs the matching LLVM dylib on Apple runners.
+          components: llvm-tools
 
       - name: Resolve private runtime dependency cache
         id: private-runtime-cache-key

@@ -2,9 +2,25 @@
 
 include(CMakeFindDependencyMacro)
 
-# The exported libgdiplus::libgdiplus target references TIFF::TIFF in its
-# link interface, so it must be defined before the targets are loaded.
-find_dependency(TIFF)
+find_dependency(PkgConfig)
+pkg_check_modules(GDIPLUS_GLIB REQUIRED IMPORTED_TARGET glib-2.0>=2.2.3)
+pkg_check_modules(GDIPLUS_CAIRO REQUIRED IMPORTED_TARGET cairo>=1.6.4)
+pkg_check_modules(GDIPLUS_FONTCONFIG REQUIRED IMPORTED_TARGET fontconfig)
+pkg_check_modules(GDIPLUS_FREETYPE REQUIRED IMPORTED_TARGET freetype2)
+if(@WITH_PANGO@)
+    pkg_check_modules(GDIPLUS_PANGO REQUIRED IMPORTED_TARGET pango>=1.10 pangocairo>=1.10)
+endif()
+if(@HAVE_LIBEXIF@)
+    pkg_check_modules(GDIPLUS_LIBEXIF REQUIRED IMPORTED_TARGET libexif)
+endif()
+
+find_dependency(PNG)
+if(@HAVE_LIBJPEG@)
+    find_dependency(JPEG)
+endif()
+if(@HAVE_LIBTIFF@)
+    find_dependency(TIFF)
+endif()
 
 if(@WITH_X11@)
     find_dependency(X11 COMPONENTS Xrender)

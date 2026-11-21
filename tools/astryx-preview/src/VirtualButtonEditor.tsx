@@ -9,7 +9,6 @@ import {
 import { Dialog } from "@astryxdesign/core/Dialog";
 import { Button } from "@astryxdesign/core/Button";
 import { Selector } from "@astryxdesign/core/Selector";
-import { Slider } from "@astryxdesign/core/Slider";
 import { TextInput } from "@astryxdesign/core/TextInput";
 import { Text } from "@astryxdesign/core/Text";
 import { Icon } from "@astryxdesign/core/Icon";
@@ -29,7 +28,7 @@ import {
   clamp,
   glyphs,
   keyOptions,
-  mouse,
+  firstProfile,
   resolve,
   type Box,
   type Cap,
@@ -65,16 +64,7 @@ const options = keyOptions.map((value) => ({
   label: actionNames[value] ?? value,
 }));
 
-export function VirtualButtonEditor({
-  scope,
-  backdrop,
-  initial,
-  global,
-  dark,
-  opacity,
-  onClose,
-  onSave,
-}: Props) {
+function useLandscapePreview() {
   useEffect(() => {
     if (window.parent === window) return;
     const message = (open: boolean) =>
@@ -85,31 +75,131 @@ export function VirtualButtonEditor({
     message(true);
     return () => message(false);
   }, []);
-  const [book, setBook] = useState(() => structuredClone(initial));
-  const [selected, select] = useState("");
-  const [manage, setManage] = useState(false);
-  const [collapsed, setCollapsed] = useState(false);
-  const [board, setBoard] = useState<HTMLDivElement | null>(null);
+}
+
+function useBoardSize(board: HTMLDivElement | null) {
   const [size, setSize] = useState({ w: 844, h: 390 });
-  const drag = useRef<Drag | null>(null);
   useLayoutEffect(() => {
     if (!board) return;
-    const measure = () => {
-      drag.current = null;
+    const measure = () =>
       setSize({ w: board.clientWidth, h: board.clientHeight });
-    };
     const observer = new ResizeObserver(measure);
     measure();
     observer.observe(board);
     return () => observer.disconnect();
   }, [board]);
+  return size;
+}
+
+function GamepadKeys({
+  profile,
+  w,
+  h,
+  opacity,
+  selected,
+  start,
+  select,
+  inputMode = "mouse",
+}: {
+  profile: Profile;
+  w: number;
+  h: number;
+  opacity: number;
+  selected?: string;
+  start?: (e: PointerEvent, cap: Cap) => void;
+  select?: (id: string) => void;
+  inputMode?: string;
+}) {
+  return profile.buttons
+    .filter(
+      (cap) =>
+        inputMode !== "mouse_only" &&
+        (inputMode !== "touch" ||
+          !["mouse_left", "mouse_right"].includes(cap.action)),
+    )
+    .map((cap) => {
+      const b = buttonBox(cap, w, h),
+        isPad = cap.action === "pad";
+      return (
+        <button
+          type="button"
+          key={cap.id}
+          className={"pad-cap" + (isPad ? " pad-disc" : "")}
+          aria-label={actionNames[cap.action] ?? cap.action}
+          aria-pressed={
+            selected === undefined ? undefined : cap.id === selected
+          }
+          style={
+            {
+              left: b.x,
+              top: b.y,
+              width: b.d,
+              height: b.d,
+              fontSize: Math.round(
+                (cap.scale ?? 1) *
+                  (isPad
+                    ? 24
+                    : (glyphs[cap.action] ?? cap.action).length > 2
+                      ? 14
+                      : 17),
+              ),
+              "--cap-opacity": opacity,
+            } as CSSProperties
+          }
+          onPointerDown={start && ((e) => start(e, cap))}
+          onClick={select && (() => select(cap.id))}
+        >
+          {isPad ? (
+            (profile.pad_mode === "wasd"
+              ? ["W", "A", "S", "D"]
+              : ["↑", "←", "↓", "→"]
+            ).map((l, i) => (
+              <span key={i} data-dir={i}>
+                {l}
+              </span>
+            ))
+          ) : cap.action === "mouse_left" || cap.action === "mouse_right" ? (
+            <img
+              alt=""
+              draggable={false}
+              className="pad-mouse"
+              src={cap.action === "mouse_left" ? leftMouse : rightMouse}
+            />
+          ) : (
+            (glyphs[cap.action] ?? cap.action)
+          )}
+        </button>
+      );
+    });
+}
+
+export function VirtualButtonEditor({
+  scope,
+  backdrop,
+  initial,
+  global,
+  dark,
+  opacity,
+  onClose,
+  onSave,
+}: Props) {
+  useLandscapePreview();
+  const [book, setBook] = useState(() => structuredClone(initial));
+  const [selected, select] = useState("");
+  const [manage, setManage] = useState(false);
+  const [collapsed, setCollapsed] = useState(false);
+  const [board, setBoard] = useState<HTMLDivElement | null>(null);
+  const drag = useRef<Drag | null>(null);
+  const size = useBoardSize(board);
   const { w, h } = size;
+  useLayoutEffect(() => {
+    drag.current = null;
+  }, [w, h]);
   const current = resolve(book, global);
   const active = current.buttons.find((b) => b.id === selected);
   const owned = book.profiles.some((p) => p.id === book.active);
   const choices = [
     ...(global ? [{ value: "inherit", label: "跟随全局" }] : []),
-    { value: "mouse", label: "Mouse" },
     ...(global?.profiles ?? []).map((p) => ({
       value: p.id,
       label: "全局 · " + p.name,
@@ -117,15 +207,16 @@ export function VirtualButtonEditor({
     ...book.profiles.map((p) => ({ value: p.id, label: p.name })),
   ];
   function copyProfile(source: Profile, items: Profile[]): Profile {
-    let n = items.length + 1;
-    while (items.some((p) => p.name === "方案 " + n)) n++;
+    const available = [...(global?.profiles ?? []), ...items];
+    let n = available.length + 1;
+    while (available.some((p) => p.name === "方案" + n)) n++;
     return {
       ...structuredClone(source),
       id: (global ? "g-" : "p-") + crypto.randomUUID(),
-      name: "方案 " + n,
+      name: "方案" + n,
     };
   }
-  // The source can be a built-in or a profile belonging to a different scope.
+  // Editing an inherited layout creates a copy for the current game.
   function edit(change: (p: Profile) => Profile, forceCopy = false) {
     setBook((prev) => {
       const source = resolve(prev, global);
@@ -133,7 +224,7 @@ export function VirtualButtonEditor({
       if (index < 0 || forceCopy) {
         if (prev.profiles.length >= 32) return prev;
         const p = change(copyProfile(source, prev.profiles));
-        return { active: p.id, profiles: [...prev.profiles, p] };
+        return { ...prev, active: p.id, profiles: [...prev.profiles, p] };
       }
       return {
         ...prev,
@@ -233,59 +324,15 @@ export function VirtualButtonEditor({
           onPointerCancel={release}
           onLostPointerCapture={release}
         >
-          {current.buttons.map((cap) => {
-            const b = buttonBox(cap, w, h),
-              isPad = cap.action === "pad";
-            return (
-              <button
-                type="button"
-                key={cap.id}
-                className={"pad-cap" + (isPad ? " pad-disc" : "")}
-                aria-label={actionNames[cap.action] ?? cap.action}
-                aria-pressed={cap.id === selected}
-                style={
-                  {
-                    left: b.x,
-                    top: b.y,
-                    width: b.d,
-                    height: b.d,
-                    fontSize: Math.round(
-                      (cap.scale ?? 1) *
-                        (isPad
-                          ? 24
-                          : (glyphs[cap.action] ?? cap.action).length > 2
-                            ? 14
-                            : 17),
-                    ),
-                    "--cap-opacity": current.opacity ?? opacity,
-                  } as CSSProperties
-                }
-                onPointerDown={(e) => start(e, cap)}
-                onClick={() => select(cap.id)}
-              >
-                {isPad ? (
-                  (current.pad_mode === "wasd"
-                    ? ["W", "A", "S", "D"]
-                    : ["↑", "←", "↓", "→"]
-                  ).map((l, i) => (
-                    <span key={i} data-dir={i}>
-                      {l}
-                    </span>
-                  ))
-                ) : cap.action === "mouse_left" ||
-                  cap.action === "mouse_right" ? (
-                  <img
-                    alt=""
-                    draggable={false}
-                    className="pad-mouse"
-                    src={cap.action === "mouse_left" ? leftMouse : rightMouse}
-                  />
-                ) : (
-                  (glyphs[cap.action] ?? cap.action)
-                )}
-              </button>
-            );
-          })}
+          <GamepadKeys
+            profile={current}
+            w={w}
+            h={h}
+            opacity={opacity}
+            selected={selected}
+            start={start}
+            select={select}
+          />
           {active && selectedBox && (
             <button
               type="button"
@@ -434,36 +481,31 @@ export function VirtualButtonEditor({
                         }
                       />
                     )}
-                    <Slider
-                      label="按键不透明度"
-                      min={20}
-                      max={100}
-                      step={5}
-                      value={Math.round((current.opacity ?? opacity) * 100)}
-                      formatValue={(v) => v + "%"}
-                      onChange={(v: number) =>
-                        edit((p) => ({ ...p, opacity: v / 100 }))
-                      }
-                    />
                     <HStack gap={2} wrap="wrap">
                       <Button
                         label="恢复默认布局"
                         isDisabled={!editable}
                         onClick={() => {
-                          edit((p) => ({ ...mouse, id: p.id, name: p.name }));
+                          edit((p) => ({
+                            ...firstProfile(),
+                            id: p.id,
+                            name: p.name,
+                          }));
                           select("");
                         }}
                       />
-                      {owned && (
+                      {owned && (global || book.profiles.length > 1) && (
                         <Button
                           label="删除方案"
                           variant="ghost"
                           onClick={() => {
+                            const profiles = book.profiles.filter(
+                              (p) => p.id !== book.active,
+                            );
                             setBook({
-                              active: global ? "" : "mouse",
-                              profiles: book.profiles.filter(
-                                (p) => p.id !== book.active,
-                              ),
+                              ...book,
+                              active: profiles[0]?.id ?? "",
+                              profiles,
                             });
                             select("");
                           }}
@@ -500,6 +542,132 @@ export function VirtualButtonEditor({
             </>
           )}
         </section>
+      </div>
+    </Dialog>
+  );
+}
+
+export function VirtualButtonGamePreview({
+  initial,
+  global,
+  opacity,
+  backdrop,
+  onClose,
+}: Pick<Props, "initial" | "global" | "opacity" | "backdrop" | "onClose">) {
+  useLandscapePreview();
+  const profiles = [...(global?.profiles ?? []), ...initial.profiles];
+  const [index, setIndex] = useState(() =>
+    profiles.findIndex((p) => p.id === resolve(initial, global).id),
+  );
+  const [board, setBoard] = useState<HTMLDivElement | null>(null);
+  const { w, h } = useBoardSize(board);
+  const [menu, setMenu] = useState(false);
+  const [selector, showSelector] = useState(true);
+  const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const [inputMode, setInputMode] = useState<"mouse" | "touch" | "mouse_only">(
+    "mouse",
+  );
+  function reveal() {
+    clearTimeout(timer.current);
+    showSelector(true);
+    timer.current = setTimeout(() => showSelector(false), 3000);
+  }
+  useEffect(() => {
+    reveal();
+    return () => clearTimeout(timer.current);
+  }, []);
+  return (
+    <Dialog
+      isOpen
+      variant="fullscreen"
+      padding={0}
+      purpose="form"
+      aria-label="游戏按键预览"
+      onOpenChange={(open) => {
+        if (!open) onClose();
+      }}
+    >
+      <div className="pad-editor pad-runtime">
+        {backdrop && (
+          <img
+            className="pad-backdrop"
+            src={backdrop}
+            alt=""
+            draggable={false}
+          />
+        )}
+        <div className="pad-board" ref={setBoard}>
+          {!menu && (
+            <GamepadKeys
+              profile={profiles[index]}
+              w={w}
+              h={h}
+              opacity={opacity}
+              inputMode={inputMode}
+            />
+          )}
+          {!menu && selector && (
+            <div
+              className="pad-runtime-profile"
+              style={{ opacity }}
+              onPointerDown={() => clearTimeout(timer.current)}
+              onPointerUp={reveal}
+              onPointerCancel={reveal}
+              onPointerLeave={reveal}
+            >
+              <Button
+                label={profiles[index].name}
+                variant="secondary"
+                onClick={() => {
+                  setIndex((i) => (i + 1) % profiles.length);
+                  reveal();
+                }}
+              />
+            </div>
+          )}
+          <div className="pad-runtime-menu">
+            <Button
+              label="游戏菜单"
+              variant="secondary"
+              isIconOnly
+              icon={<Icon icon={AdjustmentsHorizontalIcon} />}
+              onClick={() => {
+                setMenu(!menu);
+                if (menu) reveal();
+              }}
+            />
+            {menu && (
+              <div className="pad-runtime-options">
+                <Button
+                  label="虚拟按键"
+                  onClick={() => {
+                    setMenu(false);
+                    reveal();
+                  }}
+                />
+                <Button
+                  label={
+                    {
+                      mouse: "鼠标模式",
+                      touch: "触屏模式",
+                      mouse_only: "纯鼠标模式",
+                    }[inputMode]
+                  }
+                  onClick={() =>
+                    setInputMode((m) =>
+                      m === "mouse"
+                        ? "touch"
+                        : m === "touch"
+                          ? "mouse_only"
+                          : "mouse",
+                    )
+                  }
+                />
+                <Button label="返回游戏详情" onClick={onClose} />
+              </div>
+            )}
+          </div>
+        </div>
       </div>
     </Dialog>
   );

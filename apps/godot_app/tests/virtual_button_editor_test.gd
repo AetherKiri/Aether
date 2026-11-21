@@ -125,8 +125,8 @@ func _run() -> void:
         return
     check(app.orientation == DisplayServer.SCREEN_SENSOR_LANDSCAPE, "Opening the editor requests landscape")
     check(
-        e.board.profile.id == "mouse" and e.board.profile.buttons.size() == Layouts.mouse().buttons.size(),
-        "Fresh layout uses the Mouse controls"
+        e.book.profiles.size() == 1 and e.board.profile == Layouts.first_profile("方案%d") and e.identity.text == "方案1",
+        "A fresh editor opens directly on editable Layout 1 with the original controls"
     )
     var viewport_rect: Rect2 = e.get_global_rect()
     check(e.board.get_global_rect().is_equal_approx(viewport_rect), "The editable playfield covers the entire safe area")
@@ -134,9 +134,16 @@ func _run() -> void:
     check(
         e.floating.size.y <= 70 and e.floating.size.x < viewport_rect.size.x * 0.8, "The idle tools float in one compact row"
     )
+    await capture("virtual-buttons-phone")
     var original_pad: Rect2 = e.board.rect_for("pad")
     click(e, "PadOptions")
     await settle()
+    var picker: OptionButton = e.find_child("PadProfiles", true, false)
+    check(picker.item_count == 1 and picker.get_item_text(0) == "方案1", "There is one real starting layout")
+    check(
+        e.find_child("PadProfileName", true, false) != null and e.find_children("*", "Slider", true, false).is_empty(),
+        "The initial profile is editable and options contain no opacity slider"
+    )
     check(e.board.rect_for("pad").is_equal_approx(original_pad), "Opening options leaves the game controls in place")
     click(e, "PadFold")
     await settle()
@@ -202,7 +209,6 @@ func _run() -> void:
     board._gui_input(touch(1, pad_grip - Vector2(12, 12), false))
     check(board.rect_for("pad").size.x < pad.size.x - 8, "Direction pad resizes as a single control")
     await settle()
-    await capture("virtual-buttons-phone")
     click(e, "PadDone")
     await settle()
     check(app.orientation == DisplayServer.SCREEN_SENSOR_PORTRAIT, "Done restores the entry orientation")
@@ -210,7 +216,10 @@ func _run() -> void:
     var global_profile := Layouts.effective(shared)
     check(
         (
-            global_profile.name == "Keyboard"
+            shared.profiles.size() == 1
+            and shared.active == "p-default"
+            and not global_profile.has("opacity")
+            and global_profile.name == "Keyboard"
             and global_profile.pad_mode == "arrows"
             and global_profile.buttons.back().action == "Shift"
         ),
@@ -230,7 +239,12 @@ func _run() -> void:
     click(e, "PadNew")
     click(e, "PadNew")
     check(
-        e.book.profiles.size() == 2 and e.book.profiles[0].id != e.book.profiles[1].id,
+        (
+            e.book.profiles.size() == 2
+            and e.book.profiles[0].id != e.book.profiles[1].id
+            and e.book.profiles[0].name == "方案2"
+            and e.book.profiles[1].name == "方案3"
+        ),
         "Games can own multiple independent named profiles"
     )
     var local_id: String = e.book.profiles[0].id
@@ -245,9 +259,21 @@ func _run() -> void:
     click(e, "PadDone")
     await settle()
     check(
-        app._virtual_button_profile(game.path).id == local_id and app._virtual_button_profile().id == global_profile.id,
+        (
+            app._virtual_button_layouts(game.path).active == local_id
+            and app._virtual_button_layouts().active == global_profile.id
+        ),
         "Only this game activates its local layout"
     )
+    var game_book: Dictionary = app._virtual_button_layouts(game.path)
+    var other_game := folder.path_join("other")
+    DirAccess.make_dir_recursive_absolute(other_game)
+    var other_book: Dictionary = app._virtual_button_layouts(other_game)
+    check(
+        other_book.profiles == shared.profiles and other_book.active == shared.active,
+        "A second game sees only global layouts"
+    )
+    await _cycle_layouts(game_book, shared)
     var contents: Dictionary = Layouts.CONFIG.read(game.path).document
     check(
         contents.keep == 42 and contents.virtual_buttons.profiles.size() == 2,
@@ -276,7 +302,11 @@ func _run() -> void:
     choose(editor().find_child("PadProfiles", true, false), "")
     click(editor(), "PadDone")
     await settle()
-    check(app._virtual_button_profile(game.path) == global_profile, "Selecting Follow global resumes inheritance")
+    check(
+        Layouts.effective(app._virtual_button_layouts(game.path)) == global_profile,
+        "Selecting Follow global resumes inheritance"
+    )
+    _migrate_layouts(folder)
     _game_input(global_profile)
     _mouse_binding(contents.virtual_buttons.profiles[0])
     app.queue_free()
@@ -284,6 +314,95 @@ func _run() -> void:
     fixture = null
     print("Virtual button editor failures: %d" % failures)
     quit(0 if failures == 0 else 1)
+
+
+func _cycle_layouts(book: Dictionary, shared: Dictionary) -> void:
+    var controls := Controls.new()
+    root.add_child(controls)
+    controls.setup(DesignTokens.new())
+    controls.set_keyboard_controls_opacity(0.37)
+    controls.set_layout_profiles(book)
+    controls.layout(Vector2(844, 390), Rect2(0, 0, 844, 390))
+    controls.set_enabled(true)
+    controls.show_virtual_controls()
+    var keys := []
+    var clicks := []
+    controls.key_event_requested.connect(func(down, code, _mods): keys.append([down, code]))
+    controls.pointer_button_requested.connect(func(down, button, _mods, _pos): clicks.append([down, button]))
+    check(
+        controls.profile_button.visible and controls.profile_button.text == "方案2",
+        "The selector starts on the game's active profile"
+    )
+    var mouse_cap: Button = controls._caps[controls._profile.buttons.back().id]
+    var point := mouse_cap.get_global_rect().get_center()
+    controls.routes_pointer(touch(0, point, true))
+    var selector_point := controls.profile_button.get_global_rect().get_center()
+    for pressed in [true, false]:
+        var event := InputEventMouseButton.new()
+        event.button_index = MOUSE_BUTTON_LEFT
+        event.position = selector_point
+        event.global_position = selector_point
+        event.pressed = pressed
+        root.push_input(event, true)
+    check(
+        clicks == [[true, 1], [false, 1]] and controls.profile_button.text == "方案3", "Cycling releases a held mouse button"
+    )
+    controls.routes_pointer(touch(0, point, false))
+    check(clicks.size() == 2, "The lifted old finger cannot activate the next layout")
+    for pressed in [true, false]:
+        Input.parse_input_event(touch(0, selector_point, pressed))
+        await process_frame
+    check(controls.profile_button.text == "Keyboard", "A touch on the center selector advances exactly one profile")
+    var shift_cap: Button = controls._caps[controls._profile.buttons.back().id]
+    var shift_point := shift_cap.get_global_rect().get_center()
+    controls.routes_pointer(touch(1, shift_point, true))
+    controls.profile_button.pressed.emit()
+    controls.routes_pointer(touch(1, shift_point, false))
+    check(
+        keys == [[true, 16], [false, 16]] and controls.profile_button.text == "方案2",
+        "The global Shift binding works and releases on wraparound"
+    )
+    check(is_equal_approx(controls.enter_button.self_modulate.a, 0.37), "Every layout honors the global opacity")
+    check(controls.input_mode() == Controls.INPUT_MODE_MOUSE, "Changing layout keeps pointer mode")
+    controls.set_layout_profiles(shared)
+    controls.profile_button.pressed.emit()
+    check(controls.profile_button.text == "Keyboard" and shared.active == "p-default", "A single layout remains active")
+    controls.menu_button.pressed.emit()
+    check(controls.input_mode_button.is_visible_in_tree(), "The game menu exposes pointer modes")
+    controls.input_mode_button.pressed.emit()
+    check(controls.is_touch_mode(), "Touch mode can be selected independently")
+    controls.queue_free()
+
+
+func _migrate_layouts(folder: String) -> void:
+    var saved := Layouts.first_profile()
+    saved.id = "p-legacy"
+    saved.name = "Keyboard"
+    saved.opacity = 0.2
+    saved.pad_mode = "arrows"
+    var path := folder.path_join("legacy.json")
+    Layouts.CONFIG.write_document(path, {"active": "mouse", "profiles": [saved]})
+    var result := Layouts.load_global(path, "方案%d")
+    check(
+        result.error == OK and result.book.active == "p-default" and result.book.profiles.size() == 2,
+        "Older books retain both their active built-in mapping and saved layouts"
+    )
+    check(
+        (
+            result.book.profiles[0] == Layouts.first_profile("方案%d")
+            and result.book.profiles[1].pad_mode == "arrows"
+            and not result.book.profiles[1].has("opacity")
+        ),
+        "Old opacity is ignored without changing bindings"
+    )
+    check(
+        Layouts.save_global(result.book, path) == OK and Layouts.load_global(path).book == result.book,
+        "The migration is stable across saves"
+    )
+    var local := Layouts._loaded({"active": "mouse", "profiles": []}, true)
+    check(local.error == OK and local.book.active == "p-default", "An old explicit game mapping stays pinned")
+    var blank := Layouts._loaded({"active": "mouse", "profiles": []}, false, OK, "方案%d")
+    check(blank.book == Layouts.empty_book(false, "方案%d"), "A legacy empty book becomes editable Layout 1")
 
 
 func _game_input(profile: Dictionary) -> void:

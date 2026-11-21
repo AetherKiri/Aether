@@ -1229,21 +1229,9 @@ func _switch_row(parent: Control, title: String, description: String, toggle: Bu
     row.add_child(toggle)
 
 func _virtual_button_row(parent: Control, game: Dictionary = {}) -> void:
-    var library_path: String = game.get("path", "")
-    var global_book: Dictionary = BUTTON_EDITOR.Layouts.load_global(host._virtual_button_global_path()).book
-    var local := global_book
-    if not game.is_empty():
-        local = BUTTON_EDITOR.Layouts.load_game(host._game_runtime_root(library_path)).book
-    var profile := BUTTON_EDITOR.Layouts.effective(local, global_book if not game.is_empty() else {})
     var row := _hbox(12)
     parent.add_child(row)
-    var copy := _vbox(2)
-    row.add_child(copy)
-    copy.add_child(_label(BUTTON_EDITOR.caption(self, "layout"), 16, false, true))
-    var title: String = profile.name
-    if not game.is_empty() and (local.active == "" or (local.active != "mouse" and local.active != profile.id)):
-        title = "%s · %s" % [BUTTON_EDITOR.caption(self, "inherit"), title]
-    copy.add_child(_label(title, 14, true))
+    row.add_child(_label(BUTTON_EDITOR.caption(self, "layout"), 16, false, true))
     var edit := _button(BUTTON_EDITOR.caption(self, "edit"),
         func(): BUTTON_EDITOR.new().open(self, game.duplicate(true)),
         "secondary", "AstryxEditVirtualButtons")

@@ -8,10 +8,10 @@ import {
   type CSSProperties,
   type ReactNode,
 } from "react";
-import { VirtualButtonEditor } from "./VirtualButtonEditor";
+import { VirtualButtonEditor, VirtualButtonGamePreview } from "./VirtualButtonEditor";
 import {
   emptyProfiles,
-  resolve as resolveButtons,
+  loadProfileBooks,
   type Profiles,
 } from "./virtualButtons";
 import appIcon from "../../../apps/godot_app/assets/icons/astryx/icon.png";
@@ -504,32 +504,20 @@ export function App() {
     }
   });
   const [selected, setSelected] = useState(games[0]);
+  const [gameplayPreview, setGameplayPreview] = useState(false);
   const [buttonScope, setButtonScope] = useState<string | null>(null);
   const [buttonBooks, setButtonBooks] = useState<Record<string, Profiles>>(() => {
     try {
-      const books: Record<string, Profiles> = JSON.parse(localStorage.getItem("aether-virtual-buttons") || "{}") ?? {};
-      for (const book of Object.values(books)) {
-        for (const profile of book.profiles) {
-          profile.buttons = profile.buttons.filter(button => button.action !== "direction_mode");
-        }
-      }
-      return books;
+      return loadProfileBooks(localStorage.getItem("aether-virtual-buttons") || "{}");
     } catch {
       return {};
     }
   });
   const globalButtons = buttonBooks[""] ?? emptyProfiles(false);
   function buttonRow(scope: string) {
-    const book = buttonBooks[scope] ?? emptyProfiles(!!scope);
-    const label = scope && !book.active
-      ? "跟随全局 · " + resolveButtons(globalButtons).name
-      : resolveButtons(book, scope ? globalButtons : undefined).name;
     return (
       <HStack gap={4} hAlign="between" vAlign="center" style={settingsRowPadding}>
-        <VStack gap={1}>
-          <Text weight="semibold">虚拟按钮布局</Text>
-          <Text color="secondary">{label}</Text>
-        </VStack>
+        <Text weight="semibold">虚拟按钮布局</Text>
         <Button label="编辑布局" variant="secondary" onClick={() => setButtonScope(scope)} />
       </HStack>
     );
@@ -1927,9 +1915,7 @@ export function App() {
                     variant="primary"
                     size="lg"
                     icon={<Icon icon={PlayIcon} />}
-                    onClick={() =>
-                      setNotice("Godot 中会通过游戏原有运行时启动。")
-                    }
+                    onClick={() => setGameplayPreview(true)}
                   />
                 </VStack>
                 <CollapsibleGroup
@@ -2359,6 +2345,15 @@ export function App() {
               )
             }
           />
+          {gameplayPreview && (
+            <VirtualButtonGamePreview
+              initial={buttonBooks[selected.name] ?? emptyProfiles(true)}
+              global={globalButtons}
+              backdrop={coversFor(selected)[0]}
+              opacity={saved.opacity / 100}
+              onClose={() => setGameplayPreview(false)}
+            />
+          )}
           {buttonScope !== null && (
             <VirtualButtonEditor
               scope={buttonScope ? titleFor(selected) : "全局布局"}
@@ -2366,7 +2361,7 @@ export function App() {
               initial={buttonBooks[buttonScope] ?? emptyProfiles(!!buttonScope)}
               global={buttonScope ? globalButtons : undefined}
               dark={draft.theme === "dark"}
-              opacity={draft.opacity / 100}
+              opacity={saved.opacity / 100}
               onClose={() => setButtonScope(null)}
               onSave={(book) => {
                 const books = { ...buttonBooks, [buttonScope]: book };

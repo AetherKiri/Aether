@@ -314,6 +314,7 @@ const UI_TEXT := {
         "settings.ui_scale_desc": "调整 iPhone 和 iPad 上的界面大小，保存后立即生效",
         "settings.virtual_control_menu": "游戏内控制菜单",
         "settings.virtual_control_menu_desc": "在游戏画面右上角显示虚拟控制菜单按钮",
+        "virtual_buttons.number": "方案%d",
         "import.progress": "正在导入 %s · %s",
         "import.complete": "已导入 Games：%s",
         "import.failed": "导入失败：%s",
@@ -750,6 +751,7 @@ const UI_TEXT := {
         "settings.ui_scale_desc": "調整 iPhone 和 iPad 上的介面大小，儲存後立即生效",
         "settings.virtual_control_menu": "遊戲內控制選單",
         "settings.virtual_control_menu_desc": "在遊戲畫面右上角顯示虛擬控制選單按鈕",
+        "virtual_buttons.number": "方案%d",
         "import.progress": "正在匯入 %s · %s",
         "import.complete": "已匯入 Games：%s",
         "import.failed": "匯入失敗：%s",
@@ -1184,6 +1186,7 @@ You can find it any time under Settings → QQ Group.",
         "settings.ui_scale_desc": "Adjust the interface size on iPhone and iPad; applies immediately after saving",
         "settings.virtual_control_menu": "In-Game Controls Menu",
         "settings.virtual_control_menu_desc": "Show the virtual-controls menu button at the top-right of the game view",
+        "virtual_buttons.number": "Layout %d",
         "import.progress": "Importing %s · %s",
         "import.complete": "Added to Games: %s",
         "import.failed": "Import failed: %s",
@@ -1587,6 +1590,7 @@ You can find it any time under Settings → QQ Group.",
         "settings.ui_scale_desc": "iPhone と iPad の UI サイズを調整します。保存後すぐに反映されます",
         "settings.virtual_control_menu": "ゲーム内コントロールメニュー",
         "settings.virtual_control_menu_desc": "ゲーム画面の右上に仮想コントロールメニューボタンを表示します",
+        "virtual_buttons.number": "レイアウト%d",
         "import.progress": "%s をインポート中 · %s",
         "import.complete": "Games に追加しました：%s",
         "import.failed": "インポートに失敗しました：%s",
@@ -1988,6 +1992,7 @@ You can find it any time under Settings → QQ Group.",
         "settings.ui_scale_desc": "iPhone 및 iPad의 인터페이스 크기를 조절하며 저장 후 즉시 적용됩니다",
         "settings.virtual_control_menu": "게임 내 컨트롤 메뉴",
         "settings.virtual_control_menu_desc": "게임 화면 오른쪽 위에 가상 컨트롤 메뉴 버튼을 표시합니다",
+        "virtual_buttons.number": "레이아웃 %d",
         "import.progress": "%s 가져오는 중 · %s",
         "import.complete": "Games에 추가됨: %s",
         "import.failed": "가져오기 실패: %s",
@@ -2420,6 +2425,7 @@ You can find it any time under Settings → QQ Group.",
         "settings.ui_scale_desc": "Ajusta el tamaño de la interfaz en iPhone y iPad; se aplica nada más guardar",
         "settings.virtual_control_menu": "Menú de controles en el juego",
         "settings.virtual_control_menu_desc": "Muestra el botón del menú de controles virtuales en la esquina superior derecha de la vista del juego",
+        "virtual_buttons.number": "Diseño %d",
         "import.progress": "Importando %s · %s",
         "import.complete": "Añadido a Games: %s",
         "import.failed": "Error al importar: %s",
@@ -3640,7 +3646,7 @@ func _build_ui() -> void:
     game_virtual_controls = GameVirtualControls.new()
     add_child(game_virtual_controls)
     game_virtual_controls.setup(ui_tokens)
-    game_virtual_controls.set_layout_profile(_virtual_button_profile())
+    game_virtual_controls.set_layout_profiles(_virtual_button_layouts())
     game_virtual_controls.set_input_mode(game_virtual_input_mode)
     _apply_game_virtual_control_preferences()
     game_virtual_controls.key_event_requested.connect(
@@ -17529,7 +17535,7 @@ func _on_open_game() -> void:
 
     _load_game_render_overrides(path)
     if game_virtual_controls != null:
-        game_virtual_controls.set_layout_profile(_virtual_button_profile(game_render_root))
+        game_virtual_controls.set_layout_profiles(_virtual_button_layouts(game_render_root))
     var detected_runtime := _game_runtime_kind(path)
     if not _switch_runtime_player(detected_runtime):
         render_errors += 1
@@ -19016,12 +19022,16 @@ func _restore_virtual_button_orientation(previous: int) -> void:
 func _virtual_button_global_path() -> String:
     return VirtualButtonLayouts.GLOBAL_PATH
 
-func _virtual_button_profile(game_path_value: String = "") -> Dictionary:
-    var global_book: Dictionary = VirtualButtonLayouts.load_global(_virtual_button_global_path()).book
+func _virtual_button_layouts(game_path_value: String = "", default_pad_mode: String = "wasd") -> Dictionary:
+    var shared: Dictionary = VirtualButtonLayouts.load_global(
+        _virtual_button_global_path(), _t("virtual_buttons.number"), default_pad_mode).book
     if game_path_value.is_empty():
-        return VirtualButtonLayouts.effective(global_book)
-    var root := _game_runtime_root(game_path_value)
-    return VirtualButtonLayouts.effective(VirtualButtonLayouts.load_game(root).book, global_book)
+        return shared
+    var local: Dictionary = VirtualButtonLayouts.load_game(_game_runtime_root(game_path_value)).book
+    return {
+        "active": VirtualButtonLayouts.effective(local, shared).id,
+        "profiles": shared.profiles + local.profiles,
+    }
 
 func _sync_game_virtual_controls() -> void:
     if game_virtual_controls == null:

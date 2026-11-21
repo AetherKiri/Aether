@@ -16,7 +16,6 @@ var resize_visual: Panel
 var design
 var profile: Dictionary
 var selected := ""
-var default_opacity := 1.0
 var contact := IDLE
 var resizing := false
 var start := Vector2.ZERO
@@ -32,7 +31,6 @@ func setup(preview_parent: Control, tokens, opacity: float) -> void:
     preview.set_enabled(true)
     preview.show_virtual_controls()
     preview.set_process(false)
-    default_opacity = opacity
     clip_contents = true
     mouse_filter = Control.MOUSE_FILTER_STOP
     var handle_style: StyleBoxFlat = design.box("focus", 9, "", 2)

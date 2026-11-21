@@ -11,7 +11,6 @@ const COPY := {
     "profile": ["布局方案", "Layout profile", "レイアウト", "佈局方案", "Perfil"],
     "new": ["新建方案", "New profile", "新規作成", "新增方案", "Crear perfil"],
     "name": ["方案名称", "Profile name", "レイアウト名", "方案名稱", "Nombre del perfil"],
-    "number": ["方案 %d", "Layout %d", "レイアウト %d", "方案 %d", "Diseño %d"],
     "options": ["方案选项", "Options", "オプション", "方案選項", "Opciones"],
     "hide": ["收起", "Hide options", "閉じる", "收起", "Ocultar"],
     "reset": ["恢复默认布局", "Reset layout", "初期配置に戻す", "恢復預設佈局", "Restablecer diseño"],
@@ -21,7 +20,6 @@ const COPY := {
     "binding": ["触发按键", "Binding", "割り当て", "觸發按鍵", "Asignación"],
     "fold": ["收起工具栏", "Hide toolbar", "ツールバーを閉じる", "收起工具列", "Ocultar barra"],
     "unfold": ["展开工具栏", "Show toolbar", "ツールバーを開く", "展開工具列", "Mostrar barra"],
-    "opacity": ["按键不透明度", "Button opacity", "ボタンの不透明度", "按鍵不透明度", "Opacidad de botones"],
     "done": ["完成", "Done", "完了", "完成", "Listo"],
     "cancel": ["取消", "Cancel", "キャンセル", "取消", "Cancelar"],
     "pad": ["方向键", "Directional pad", "方向パッド", "方向鍵", "Cruceta"],
@@ -87,7 +85,7 @@ func open(view, game: Dictionary) -> void:
     var host = shell.host
     is_game = not game.is_empty()
     game_root = host._game_runtime_root(String(game.get("path", ""))) if is_game else ""
-    var shared := Layouts.load_global(host._virtual_button_global_path())
+    var shared := Layouts.load_global(host._virtual_button_global_path(), host._t("virtual_buttons.number"))
     var local := Layouts.load_game(game_root) if is_game else shared
     if shared.error != OK or local.error != OK or (is_game and game_root.is_empty()):
         shell.show_notice(_word("read_error"))
@@ -281,7 +279,13 @@ func _editable() -> Dictionary:
     var own := _owned()
     if not own.is_empty():
         return own
-    return Layouts.copy_profile(book, _current(), is_game, _word("number"))
+    return _copy_current()
+
+
+func _copy_current() -> Dictionary:
+    return Layouts.copy_profile(
+        book, _current(), is_game, shell.host._t("virtual_buttons.number"), globals if is_game else {}
+    )
 
 
 func _choose(id: String) -> void:
@@ -292,7 +296,7 @@ func _choose(id: String) -> void:
 
 
 func _new() -> void:
-    if not Layouts.copy_profile(book, _current(), is_game, _word("number")).is_empty():
+    if not _copy_current().is_empty():
         selected = ""
         managing = true
         _refresh()
@@ -372,8 +376,8 @@ func _profiles() -> void:
     profile_bar.visible = managing
     if not managing:
         return
-    var ids := ["mouse"]
-    var labels := ["Mouse"]
+    var ids := []
+    var labels := []
     if is_game:
         ids.push_front("")
         labels.push_front(_word("inherit"))
@@ -424,58 +428,25 @@ func _options() -> void:
             func():
                 var edited := _editable()
                 if not edited.is_empty():
-                    edited.buttons = Layouts.mouse().buttons
+                    edited.buttons = Layouts.first_profile().buttons
                     edited.pad_mode = "wasd"
-                    edited.erase("opacity")
                     selected = ""
                     _refresh(),
             "secondary",
             "Reset"
         )
     )
-    if not own.is_empty():
+    if not own.is_empty() and (is_game or book.profiles.size() > 1):
         names.add_child(
             _button(
                 "remove",
                 func():
                     book.profiles.erase(own)
-                    _choose("" if is_game else "mouse"),
+                    _choose("" if book.profiles.is_empty() else book.profiles[0].id),
                 "quiet",
                 "Remove"
             )
         )
-    var opacity_row: HBoxContainer = shell._hbox(10)
-    options_box.add_child(opacity_row)
-    var label: Label = shell._label(_word("opacity"), 13, true)
-    label.autowrap_mode = TextServer.AUTOWRAP_OFF
-    label.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
-    opacity_row.add_child(label)
-    var slider := HSlider.new()
-    slider.name = "PadOpacity"
-    slider.min_value = 20
-    slider.max_value = 100
-    slider.step = 5
-    slider.value = roundi(float(p.get("opacity", board.default_opacity)) * 100)
-    slider.accessibility_name = _word("opacity")
-    slider.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-    slider.custom_minimum_size.y = 32
-    opacity_row.add_child(slider)
-    var percent: Label = shell._label("%d%%" % slider.value, 13)
-    percent.custom_minimum_size.x = 42
-    percent.size_flags_horizontal = Control.SIZE_SHRINK_END
-    opacity_row.add_child(percent)
-    slider.value_changed.connect(
-        func(value):
-            var was_shared := _owned().is_empty()
-            var edited := _editable()
-            if not edited.is_empty():
-                edited.opacity = value / 100.0
-                percent.text = "%d%%" % value
-                if was_shared:
-                    _profiles()
-                _redraw()
-    )
-    slider.drag_ended.connect(func(_changed): _options.call_deferred())
 
 
 func _tools() -> void:
@@ -501,7 +472,9 @@ func _save() -> void:
     for p in book.profiles:
         p.name = p.name.strip_edges()
     var path: String = shell.host._virtual_button_global_path()
-    var latest := Layouts.load_game(game_root) if is_game else Layouts.load_global(path)
+    var latest := (
+        Layouts.load_game(game_root) if is_game else Layouts.load_global(path, shell.host._t("virtual_buttons.number"))
+    )
     var error: Error = latest.error
     if error == OK and latest.book != initial:
         error = ERR_BUSY

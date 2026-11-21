@@ -10,6 +10,7 @@ const MOUSE_ICONS := {
     "mouse_right": preload("res://assets/ui/virtual_controls/mouse_right.svg"),
 }
 const GAME_FIELD := "virtual_buttons"
+const BOOK_VERSION := 2
 const MAX_PROFILES := 32
 const MAX_BUTTONS := 64
 const MIN_SCALE := 0.65
@@ -42,15 +43,18 @@ static func key_name(code: int) -> String:
     return String(named) if named != null else String.chr(code)
 
 
-static func mouse() -> Dictionary:
+static func first_profile(name_format: String = "Layout %d", pad_mode: String = "wasd") -> Dictionary:
     var buttons := []
     for id in CATALOG.data.mouse_buttons:
         buttons.append({"id": id, "action": id})
-    return {"id": "mouse", "name": "Mouse", "pad_mode": "wasd", "buttons": buttons}
+    return {"id": "p-default", "name": name_format % 1, "pad_mode": pad_mode, "buttons": buttons}
 
 
-static func empty_book(game: bool) -> Dictionary:
-    return {"active": "" if game else "mouse", "profiles": []}
+static func empty_book(game: bool, name_format: String = "Layout %d", pad_mode: String = "wasd") -> Dictionary:
+    if game:
+        return {"version": BOOK_VERSION, "active": "", "profiles": []}
+    var first := first_profile(name_format, pad_mode)
+    return {"version": BOOK_VERSION, "active": first.id, "profiles": [first]}
 
 
 static func profile_in(book: Dictionary, id: String) -> Dictionary:
@@ -62,28 +66,28 @@ static func profile_in(book: Dictionary, id: String) -> Dictionary:
 
 static func effective(book: Dictionary, global_book: Dictionary = {}) -> Dictionary:
     var id: String = book.active
-    if id == "mouse":
-        return mouse()
     var profile := profile_in(book, id)
     if not profile.is_empty():
         return profile
     if not global_book.is_empty():
         profile = profile_in(global_book, id)
         return profile if not profile.is_empty() else effective(global_book)
-    return mouse()
+    return book.profiles[0]
 
 
 static func new_id(prefix: String) -> String:
     return prefix + Crypto.new().generate_random_bytes(12).hex_encode()
 
 
-static func copy_profile(book: Dictionary, source: Dictionary, game: bool, name_format: String) -> Dictionary:
+static func copy_profile(
+    book: Dictionary, source: Dictionary, game: bool, name_format: String, shared: Dictionary = {}
+) -> Dictionary:
     if book.profiles.size() >= MAX_PROFILES:
         return {}
     var copy := source.duplicate(true)
     copy.id = new_id("g-" if game else "p-")
     var names := []
-    for profile in book.profiles:
+    for profile in shared.get("profiles", []) + book.profiles:
         names.append(profile.name)
     var n: int = names.size() + 1
     while (name_format % n) in names:
@@ -101,9 +105,10 @@ static func _number_between(value, lo: float, hi: float) -> bool:
 static func valid_book(value, game: bool) -> bool:
     if (
         not value is Dictionary
+        or value.get("version") != BOOK_VERSION
         or not value.get("active") is String
         or not value.get("profiles") is Array
-        or value.profiles.size() > MAX_PROFILES
+        or value.profiles.size() > MAX_PROFILES + (0 if game else 1)
     ):
         return false
     var allowed := actions()
@@ -112,13 +117,12 @@ static func valid_book(value, game: bool) -> bool:
         if not p is Dictionary or not p.get("id") is String or not p.id.begins_with("g-" if game else "p-") or ids.has(p.id):
             return false
         if (
-            not p.get("name") is String
+            p.has("opacity")
+            or not p.get("name") is String
             or p.name.strip_edges().is_empty()
             or p.name.length() > 48
             or p.get("pad_mode") not in ["wasd", "arrows"]
         ):
-            return false
-        if p.has("opacity") and not _number_between(p.opacity, 0.2, 1):
             return false
         if not p.get("buttons") is Array or p.buttons.size() > MAX_BUTTONS:
             return false
@@ -142,32 +146,48 @@ static func valid_book(value, game: bool) -> bool:
             caps[b.id] = true
         if not caps.has("pad"):
             return false
-    return (
-        value.active == "mouse" or ids.has(value.active) or (game and (value.active == "" or value.active.begins_with("p-")))
-    )
+    return ids.has(value.active) or (game and (value.active == "" or value.active.begins_with("p-")))
 
 
-static func _loaded(value, game: bool, error: Error = OK) -> Dictionary:
-    # Early editor previews stored the direction-mode handle as a gameplay key.
-    if value is Dictionary and value.get("profiles") is Array:
+static func _loaded(
+    value, game: bool, error: Error = OK, name_format: String = "Layout %d", pad_mode: String = "wasd"
+) -> Dictionary:
+    if error == OK and value is Dictionary and value.get("profiles") is Array:
         for p in value.profiles:
             if p is Dictionary and p.get("buttons") is Array:
+                p.erase("opacity")
                 p.buttons = p.buttons.filter(func(b): return not (b is Dictionary and b.get("action") == "direction_mode"))
+        # Earlier books stored their built-in layout outside the editable list.
+        if not value.has("version"):
+            if not game and not value.profiles.any(func(p): return p is Dictionary and p.get("id") == "p-default"):
+                var first := first_profile(name_format, pad_mode)
+                var names: Array = value.profiles.map(func(p): return p.get("name", "") if p is Dictionary else "")
+                var n := 1
+                while (name_format % n) in names:
+                    n += 1
+                first.name = name_format % n
+                value.profiles.push_front(first)
+            if value.get("active") == "mouse":
+                value.active = "p-default"
+        if value.get("version", BOOK_VERSION) == BOOK_VERSION:
+            value.version = BOOK_VERSION
     if error == OK and not valid_book(value, game):
         error = ERR_INVALID_DATA
-    return {"book": value if error == OK else empty_book(game), "error": error}
+    return {"book": value if error == OK else empty_book(game, name_format, pad_mode), "error": error}
 
 
-static func load_global(path: String = GLOBAL_PATH) -> Dictionary:
-    var blank := empty_book(false)
+static func load_global(
+    path: String = GLOBAL_PATH, name_format: String = "Layout %d", pad_mode: String = "wasd"
+) -> Dictionary:
+    var blank := empty_book(false, name_format, pad_mode)
     if not FileAccess.file_exists(path):
-        return _loaded(blank, false)
+        return {"book": blank, "error": OK}
     var file := FileAccess.open(path, FileAccess.READ)
     if file == null:
-        return _loaded(blank, false, FileAccess.get_open_error())
+        return {"book": blank, "error": FileAccess.get_open_error()}
     if file.get_length() > 1024 * 1024:
-        return _loaded(blank, false, ERR_INVALID_DATA)
-    return _loaded(JSON.parse_string(file.get_as_text()), false)
+        return {"book": blank, "error": ERR_INVALID_DATA}
+    return _loaded(JSON.parse_string(file.get_as_text()), false, OK, name_format, pad_mode)
 
 
 static func save_global(book: Dictionary, path: String = GLOBAL_PATH) -> Error:

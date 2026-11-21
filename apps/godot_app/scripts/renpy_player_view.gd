@@ -51,7 +51,7 @@ func open_entry(value: Dictionary) -> String:
     controls_viewport.set_enabled(false)
     overlay_event_sequence = 0
     entry = value.duplicate(true)
-    controls.set_layout_profile(host._virtual_button_profile(String(entry.get("path", ""))))
+    controls.set_layout_profiles(host._virtual_button_layouts(String(entry.get("path", ""))))
     var root := ProjectSettings.globalize_path(host._game_runtime_root(String(entry.get("path", ""))))
     var relative := Metadata.renpy_game_directory(root)
     if relative.is_empty():

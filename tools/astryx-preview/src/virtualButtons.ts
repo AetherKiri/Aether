@@ -12,25 +12,63 @@ export type Profile = {
   name: string;
   pad_mode: "wasd" | "arrows";
   buttons: Cap[];
-  opacity?: number;
 };
-export type Profiles = { active: string; profiles: Profile[] };
-export const mouse: Profile = {
-  id: "mouse",
-  name: "Mouse",
+export type Profiles = {
+  version?: number;
+  active: string;
+  profiles: Profile[];
+};
+export const firstProfile = (): Profile => ({
+  id: "p-default",
+  name: "方案1",
   pad_mode: "wasd",
   buttons: catalog.mouse_buttons.map((id) => ({ id, action: id })),
-};
-export const emptyProfiles = (game: boolean): Profiles => ({
-  active: game ? "" : "mouse",
-  profiles: [],
 });
+
+export function emptyProfiles(game: boolean): Profiles {
+  if (game) return { version: 2, active: "", profiles: [] };
+  const first = firstProfile();
+  return { version: 2, active: first.id, profiles: [first] };
+}
+
+export function loadProfileBooks(json: string): Record<string, Profiles> {
+  const books: Record<string, Profiles> = JSON.parse(json) ?? {};
+  for (const [scope, book] of Object.entries(books)) {
+    if (
+      !book ||
+      !Array.isArray(book.profiles) ||
+      !book.profiles.every((p) => p && Array.isArray(p.buttons))
+    ) {
+      delete books[scope];
+      continue;
+    }
+    for (const profile of book.profiles) {
+      delete (profile as Profile & { opacity?: number }).opacity;
+      profile.buttons = profile.buttons.filter(
+        (button) => button.action !== "direction_mode",
+      );
+    }
+    if (!book.version) {
+      if (!scope && !book.profiles.some((p) => p.id === "p-default")) {
+        const first = firstProfile();
+        let n = 1;
+        while (book.profiles.some((p) => p.name === "方案" + n)) n++;
+        first.name = "方案" + n;
+        book.profiles.unshift(first);
+      }
+      if (book.active === "mouse") book.active = "p-default";
+      book.version = 2;
+    }
+    if (!scope && !book.profiles.length) books[scope] = emptyProfiles(false);
+  }
+  return books;
+}
+
 export function resolve(book: Profiles, global?: Profiles): Profile {
-  if (book.active === "mouse") return mouse;
   return (
     book.profiles.find((p) => p.id === book.active) ??
     global?.profiles.find((p) => p.id === book.active) ??
-    (global ? resolve(global) : mouse)
+    (global ? resolve(global) : (book.profiles[0] ?? firstProfile()))
   );
 }
 export const keyOptions = [

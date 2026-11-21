@@ -77,12 +77,8 @@ func setup(app) -> void:
         if DisplayServer.has_feature(DisplayServer.FEATURE_VIRTUAL_KEYBOARD):
             DisplayServer.virtual_keyboard_show("")
     )
-    var profile: Dictionary = host._virtual_button_profile()
-    # Flash's built-in pad historically sends arrows. Custom profiles specify
-    # their own mode and a separately bound W must still reach the movie as W.
-    if profile.id == "mouse":
-        profile.pad_mode = "arrows"
-    controls.set_layout_profile(profile)
+    # Flash movies traditionally use arrows until the user saves a layout.
+    controls.set_layout_profiles(host._virtual_button_layouts("", "arrows"))
     resized.connect(_layout)
     _layout()
 

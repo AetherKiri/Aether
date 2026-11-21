@@ -21,6 +21,14 @@ function(aetherkiri_prepare_rfvp root rfvp_dir output)
              DESTINATION "${output}/crates"
              PATTERN "target" EXCLUDE PATTERN "fonts" EXCLUDE)
     endforeach()
+    # Backport xmoezzz/rfvp#62 to the pinned engine used by the host overlay.
+    find_package(Git REQUIRED)
+    set(warning_patch "${CMAKE_CURRENT_FUNCTION_LIST_DIR}/upstream-warning-cleanup.patch")
+    execute_process(COMMAND "${CMAKE_COMMAND}" -E env
+        "GIT_CEILING_DIRECTORIES=${CMAKE_CURRENT_BINARY_DIR}"
+        "${GIT_EXECUTABLE}" apply "${warning_patch}"
+        WORKING_DIRECTORY "${output}" COMMAND_ERROR_IS_FATAL ANY)
+    set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${warning_patch}")
     file(COPY "${rfvp_dir}/LICENSE" "${rfvp_dir}/README.md"
          DESTINATION "${output}")
     file(WRITE "${output}/Cargo.toml"
@@ -36,6 +44,9 @@ function(aetherkiri_prepare_rfvp root rfvp_dir output)
     set(src "${output}/crates/rfvp/src")
     rfvp_replace("${output}/crates/rfvp/Cargo.toml"
         "crate-type = [\"rlib\", \"cdylib\"]" "crate-type = [\"rlib\", \"staticlib\"]")
+    # The generated workspace defines the build profiles for its member crates.
+    rfvp_replace("${output}/crates/rfvp/Cargo.toml"
+        "[profile.test]\ninherits = \"release\"\n" "")
     file(COPY "${CMAKE_CURRENT_FUNCTION_LIST_DIR}/../rust/aetherkiri_host.rs" DESTINATION "${src}")
     file(COPY "${CMAKE_CURRENT_FUNCTION_LIST_DIR}/../rust/input_host.rs" DESTINATION "${src}")
     file(APPEND "${src}/lib.rs" "\npub mod aetherkiri_host;\n")

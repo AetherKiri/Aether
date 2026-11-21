@@ -1,0 +1,295 @@
+diff --git a/crates/na_mpeg2_decoder/src/video/bitreader.rs b/crates/na_mpeg2_decoder/src/video/bitreader.rs
+index 849ba8e..403a6e6 100644
+--- a/crates/na_mpeg2_decoder/src/video/bitreader.rs
++++ b/crates/na_mpeg2_decoder/src/video/bitreader.rs
+@@ -22,16 +22,6 @@ impl<'a> GetBits<'a> {
+         self.size_in_bits as i32 - self.bit_pos as i32
+     }
+ 
+-    #[inline]
+-    pub fn bits_count(&self) -> usize {
+-        self.bit_pos
+-    }
+-
+-    #[inline]
+-    pub fn align(&mut self) {
+-        self.bit_pos = (self.bit_pos + 7) & !7;
+-    }
+-
+     #[inline]
+     pub fn skip_bits(&mut self, n: usize) {
+         self.bit_pos = self.bit_pos.saturating_add(n);
+@@ -69,11 +59,6 @@ impl<'a> GetBits<'a> {
+         val
+     }
+ 
+-    #[inline]
+-    pub fn show_bits_long(&self, n: usize) -> u32 {
+-        self.show_bits(n)
+-    }
+-
+     #[inline]
+     pub fn get_bits(&mut self, n: usize) -> u32 {
+         let v = self.show_bits(n);
+diff --git a/crates/na_mpeg2_decoder/src/video/decoder.rs b/crates/na_mpeg2_decoder/src/video/decoder.rs
+index 89a88c8..0ce5c8e 100644
+--- a/crates/na_mpeg2_decoder/src/video/decoder.rs
++++ b/crates/na_mpeg2_decoder/src/video/decoder.rs
+@@ -11,13 +11,12 @@ use super::tables::{
+ };
+ use super::vlc::{get_rl_vlc, get_vlc2};
+ use super::vlctables::{
+-    get_vlcs, has_cbp, is_intra, is_quant, mb_type_mv_2_mv_dir, MB_TYPE_16x16, MB_TYPE_16x8,
++    get_vlcs, has_cbp, is_intra, is_quant, mb_type_mv_2_mv_dir, MB_TYPE_16X16, MB_TYPE_16X8,
+     MB_TYPE_BACKWARD_MV, MB_TYPE_BIDIR_MV, MB_TYPE_CBP, MB_TYPE_FORWARD_MV, MB_TYPE_INTERLACED,
+     MB_TYPE_INTRA, MB_TYPE_QUANT, MB_TYPE_SKIP, MB_TYPE_ZERO_MV, MV_DIR_BACKWARD, MV_DIR_FORWARD,
+ };
+ 
+ const PICT_TOP_FIELD: i32 = 1;
+-const PICT_BOTTOM_FIELD: i32 = 2;
+ const PICT_FRAME: i32 = 3;
+ 
+ const PICT_TYPE_I: i32 = 1;
+@@ -685,7 +684,7 @@ impl Decoder {
+                 self.mb_intra = false;
+                 self.mv_dir = MV_DIR_FORWARD;
+                 self.mv_type = MV_TYPE_16X16;
+-                self.cur_mb_type = MB_TYPE_SKIP | MB_TYPE_FORWARD_MV | MB_TYPE_16x16;
++                self.cur_mb_type = MB_TYPE_SKIP | MB_TYPE_FORWARD_MV | MB_TYPE_16X16;
+             } else {
+                 let prev_mb_type = if self.mb_x > 0 {
+                     self.mb_types[self.mb_x - 1 + self.mb_y * self.mb_width]
+@@ -838,7 +837,7 @@ impl Decoder {
+                 match motion_type {
+                     MT_FRAME => {
+                         if self.picture_structure == PICT_FRAME {
+-                            mb_type |= MB_TYPE_16x16;
++                            mb_type |= MB_TYPE_16X16;
+                             self.mv_type = MV_TYPE_16X16;
+                             for dir in 0..2 {
+                                 if has_mv_dir(mb_type, dir) {
+@@ -865,7 +864,7 @@ impl Decoder {
+                                 }
+                             }
+                         } else {
+-                            mb_type |= MB_TYPE_16x8 | MB_TYPE_INTERLACED;
++                            mb_type |= MB_TYPE_16X8 | MB_TYPE_INTERLACED;
+                             self.mv_type = MV_TYPE_16X8;
+                             for dir in 0..2 {
+                                 if has_mv_dir(mb_type, dir) {
+@@ -889,7 +888,7 @@ impl Decoder {
+                     MT_FIELD => {
+                         self.mv_type = MV_TYPE_FIELD;
+                         if self.picture_structure == PICT_FRAME {
+-                            mb_type |= MB_TYPE_16x8 | MB_TYPE_INTERLACED;
++                            mb_type |= MB_TYPE_16X8 | MB_TYPE_INTERLACED;
+                             for dir in 0..2 {
+                                 if has_mv_dir(mb_type, dir) {
+                                     for j in 0..2 {
+@@ -914,7 +913,7 @@ impl Decoder {
+                                 }
+                             }
+                         } else {
+-                            mb_type |= MB_TYPE_16x16 | MB_TYPE_INTERLACED;
++                            mb_type |= MB_TYPE_16X16 | MB_TYPE_INTERLACED;
+                             for dir in 0..2 {
+                                 if has_mv_dir(mb_type, dir) {
+                                     self.field_select[dir][0] = gb.get_bits1() as i32;
+@@ -968,7 +967,7 @@ impl Decoder {
+                                 self.mv[dir][1][0] = mx;
+                                 self.mv[dir][1][1] = my;
+                                 if self.picture_structure == PICT_FRAME {
+-                                    mb_type |= MB_TYPE_16x16 | MB_TYPE_INTERLACED;
++                                    mb_type |= MB_TYPE_16X16 | MB_TYPE_INTERLACED;
+                                     let mut m = if self.top_field_first { 1 } else { 3 };
+                                     self.mv[dir][2][0] =
+                                         ((mx * m + if mx > 0 { 1 } else { 0 }) >> 1) + dmx;
+@@ -980,7 +979,7 @@ impl Decoder {
+                                     self.mv[dir][3][1] =
+                                         ((my * m + if my > 0 { 1 } else { 0 }) >> 1) + dmy + 1;
+                                 } else {
+-                                    mb_type |= MB_TYPE_16x16;
++                                    mb_type |= MB_TYPE_16X16;
+                                     self.mv[dir][2][0] =
+                                         ((mx + if mx > 0 { 1 } else { 0 }) >> 1) + dmx;
+                                     self.mv[dir][2][1] =
+@@ -1623,14 +1622,6 @@ impl Decoder {
+         }
+     }
+ 
+-    fn scan_table(&self) -> &[u8; 64] {
+-        if self.alternate_scan {
+-            &FF_ALTERNATE_VERTICAL_SCAN
+-        } else {
+-            &FF_ZIGZAG_DIRECT
+-        }
+-    }
+-
+     fn block_component(&self, n: usize) -> usize {
+         match self.pix_fmt {
+             PixelFormat::Yuv420p => {
+diff --git a/crates/na_mpeg2_decoder/src/video/mod.rs b/crates/na_mpeg2_decoder/src/video/mod.rs
+index 4b1097e..8215ea0 100644
+--- a/crates/na_mpeg2_decoder/src/video/mod.rs
++++ b/crates/na_mpeg2_decoder/src/video/mod.rs
+@@ -4,7 +4,6 @@ mod error;
+ mod frame;
+ mod idct;
+ mod motion;
+-mod startcode;
+ mod tables;
+ mod utils;
+ mod videodsp;
+diff --git a/crates/na_mpeg2_decoder/src/video/startcode.rs b/crates/na_mpeg2_decoder/src/video/startcode.rs
+deleted file mode 100644
+index e0a0026..0000000
+--- a/crates/na_mpeg2_decoder/src/video/startcode.rs
++++ /dev/null
+@@ -1,46 +0,0 @@
+-/// Equivalent to `avpriv_find_start_code()`.
+-///
+-/// - `state` must be preserved across calls.
+-/// - Returns the index in `data` to continue from.
+-/// - Updates `state` to the last 4 bytes (big-endian) observed.
+-pub fn find_start_code(data: &[u8], state: &mut u32) -> usize {
+-    let end = data.len();
+-    if end == 0 {
+-        return 0;
+-    }
+-
+-    let mut p: usize = 0;
+-
+-    for _ in 0..3 {
+-        let tmp = (*state) << 8;
+-        *state = tmp.wrapping_add(data[p] as u32);
+-        p += 1;
+-        if tmp == 0x100 || p == end {
+-            return p;
+-        }
+-    }
+-
+-    while p < end {
+-        let b_1 = data[p - 1];
+-        if b_1 > 1 {
+-            p += 3;
+-        } else if data[p - 2] != 0 {
+-            p += 2;
+-        } else if (data[p - 3] | (b_1.wrapping_sub(1))) != 0 {
+-            p += 1;
+-        } else {
+-            p += 1;
+-            break;
+-        }
+-    }
+-
+-    let p2 = std::cmp::min(p, end);
+-    let p_rb = p2.saturating_sub(4);
+-    let mut v: u32 = 0;
+-    for i in 0..4 {
+-        v = (v << 8) | data.get(p_rb + i).copied().unwrap_or(0) as u32;
+-    }
+-    *state = v;
+-
+-    p_rb + 4
+-}
+diff --git a/crates/na_mpeg2_decoder/src/video/vlc.rs b/crates/na_mpeg2_decoder/src/video/vlc.rs
+index f8c7051..5312970 100644
+--- a/crates/na_mpeg2_decoder/src/video/vlc.rs
++++ b/crates/na_mpeg2_decoder/src/video/vlc.rs
+@@ -43,7 +43,7 @@ fn build_table(vlc: &mut Vlc, table_nb_bits: i32, codes: &mut [VlcCode]) -> Resu
+     let mut i = 0usize;
+     while i < codes.len() {
+         let mut n = codes[i].bits as i32;
+-        let mut code = codes[i].code;
++        let code = codes[i].code;
+         let symbol = codes[i].symbol;
+ 
+         if n <= table_nb_bits {
+diff --git a/crates/na_mpeg2_decoder/src/video/vlctables.rs b/crates/na_mpeg2_decoder/src/video/vlctables.rs
+index 268d6ee..19bb7dc 100644
+--- a/crates/na_mpeg2_decoder/src/video/vlctables.rs
++++ b/crates/na_mpeg2_decoder/src/video/vlctables.rs
+@@ -1,7 +1,7 @@
+ use std::sync::OnceLock;
+ 
+ use super::tables::*;
+-use super::vlc::{RlVlcElem, Vlc, VlcElem};
++use super::vlc::{RlVlcElem, Vlc};
+ 
+ pub const DC_VLC_BITS: i32 = 9;
+ pub const MV_VLC_BITS: i32 = 8;
+@@ -23,8 +23,8 @@ pub const MB_TYPE_BACKWARD_MV: i16 = 0x0008;
+ pub const MB_TYPE_BIDIR_MV: i16 = 0x0010;
+ pub const MB_TYPE_QUANT: i16 = 0x0020;
+ 
+-pub const MB_TYPE_16x16: i16 = 0x0040;
+-pub const MB_TYPE_16x8: i16 = 0x0080;
++pub const MB_TYPE_16X16: i16 = 0x0040;
++pub const MB_TYPE_16X8: i16 = 0x0080;
+ pub const MB_TYPE_INTERLACED: i16 = 0x0100;
+ pub const MB_TYPE_SKIP: i16 = 0x0200;
+ 
+@@ -165,11 +165,11 @@ fn build() -> Mpeg12Vlcs {
+ 
+     const PTYPE2MB_TYPE: [i16; 7] = [
+         MB_TYPE_INTRA,
+-        MB_TYPE_FORWARD_MV | MB_TYPE_CBP | MB_TYPE_ZERO_MV | MB_TYPE_16x16,
++        MB_TYPE_FORWARD_MV | MB_TYPE_CBP | MB_TYPE_ZERO_MV | MB_TYPE_16X16,
+         MB_TYPE_FORWARD_MV,
+         MB_TYPE_FORWARD_MV | MB_TYPE_CBP,
+         MB_TYPE_QUANT | MB_TYPE_INTRA,
+-        MB_TYPE_QUANT | MB_TYPE_FORWARD_MV | MB_TYPE_CBP | MB_TYPE_ZERO_MV | MB_TYPE_16x16,
++        MB_TYPE_QUANT | MB_TYPE_FORWARD_MV | MB_TYPE_CBP | MB_TYPE_ZERO_MV | MB_TYPE_16X16,
+         MB_TYPE_QUANT | MB_TYPE_FORWARD_MV | MB_TYPE_CBP,
+     ];
+ 
+diff --git a/crates/rfvp/Cargo.toml b/crates/rfvp/Cargo.toml
+index ac4df25..891af55 100644
+--- a/crates/rfvp/Cargo.toml
++++ b/crates/rfvp/Cargo.toml
+@@ -3,7 +3,6 @@ name = "rfvp"
+ version = "0.7.0"
+ edition = "2021"
+ default-run = "rfvp"
+-homepage = "https://github.com/xmoezzz/rfvp"
+ description = "A Non-Official Rust cross-platform implementation of the FVP engine"
+ repository = "https://github.com/xmoezzz/rfvp"
+ readme = "../../README.md"
+diff --git a/crates/rfvp/src/subsystem/anzu_scene.rs b/crates/rfvp/src/subsystem/anzu_scene.rs
+index 61c7b48..097a580 100644
+--- a/crates/rfvp/src/subsystem/anzu_scene.rs
++++ b/crates/rfvp/src/subsystem/anzu_scene.rs
+@@ -1,4 +1,3 @@
+-use crate::script::Variant;
+ #[cfg(feature = "no_std")]
+ use alloc::{
+     boxed::Box,
+diff --git a/crates/rfvp/src/utils/ani.rs b/crates/rfvp/src/utils/ani.rs
+index 62a0ed4..0dc36be 100644
+--- a/crates/rfvp/src/utils/ani.rs
++++ b/crates/rfvp/src/utils/ani.rs
+@@ -1,11 +1,15 @@
++#[cfg(feature = "cursor-ani")]
+ use std::{
+     fmt,
+     io::{Error as IoError, Read, Seek},
+ };
+ 
++#[cfg(feature = "cursor-ani")]
+ use crate::platform_time::{Duration, Instant};
+ 
++#[cfg(feature = "cursor-ani")]
+ use bitflags::bitflags;
++#[cfg(feature = "cursor-ani")]
+ use byteorder::{LittleEndian, ReadBytesExt};
+ #[cfg(feature = "cursor-ani")]
+ use ico::IconDir;
+@@ -296,7 +300,7 @@ impl CursorBundle {
+     pub fn reset(&mut self) {}
+ }
+ 
+-#[cfg(feature = "cursor-ani")]
++#[cfg(all(test, feature = "cursor-ani"))]
+ mod tests {
+     use super::*;
+     use std::path::Path;

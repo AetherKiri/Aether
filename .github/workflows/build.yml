@@ -158,17 +158,17 @@ jobs:
       - name: Initialize public runtime packages
         if: env.AETHERKIRI_WITH_INTERNAL != 'true'
         run: |
-          git submodule update --init --depth 1 packages/OnscripterYuri
+          git submodule update --init --depth 1 packages/AetherONScripterYuri
           git submodule update --init --recursive --depth 1 packages/psdfile
           git submodule update --init --depth 1 packages/AetherSiglus
           git submodule update --init --depth 1 packages/AetherMinori
-          git -c url.https://github.com/.insteadOf=git@github.com: submodule update --init --depth 1 packages/cmvs-rs
-          git submodule update --init --depth 1 packages/EntisGLS-SDL3
+          git -c url.https://github.com/.insteadOf=git@github.com: submodule update --init --depth 1 packages/AetherCMVS
+          git submodule update --init --depth 1 packages/AetherEntisGLS
           git submodule update --init --depth 1 packages/AetherKrkr
           git submodule update --init --depth 1 packages/AetherMAGES
           git submodule update --init --recursive --depth 1 packages/AetherN2System
           git submodule update --init --depth 1 packages/ruffle
-          git submodule update --init --recursive --depth 1 packages/xsystem4 packages/xsystem35 packages/system3
+          git submodule update --init --recursive --depth 1 packages/AetherSystem4 packages/AetherSystem35 packages/AetherSystem3
 
       - name: Set application release version
         if: env.AETHERKIRI_RELEASE_VERSION != ''
@@ -457,6 +457,15 @@ jobs:
           path: out/godot/android/release/Aether-release.apk
           retention-days: 7
 
+      - name: Upload Debug APK
+        if: ${{ !inputs.release_version }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: android-debug-apk
+          path: out/godot/android/debug/Aether-debug.apk
+          if-no-files-found: error
+          retention-days: 7
+
       - name: Report compiler cache statistics
         if: always() && !cancelled()
         run: |
@@ -561,18 +570,18 @@ jobs:
       - name: Initialize public runtime packages
         if: env.AETHERKIRI_WITH_INTERNAL != 'true'
         run: |
-          git submodule update --init --depth 1 packages/OnscripterYuri
+          git submodule update --init --depth 1 packages/AetherONScripterYuri
           git submodule update --init --recursive --depth 1 packages/psdfile
           git submodule update --init --depth 1 packages/AetherSiglus
           git submodule update --init --depth 1 packages/AetherMinori
-          git -c url.https://github.com/.insteadOf=git@github.com: submodule update --init --depth 1 packages/cmvs-rs
-          git submodule update --init --depth 1 packages/EntisGLS-SDL3
+          git -c url.https://github.com/.insteadOf=git@github.com: submodule update --init --depth 1 packages/AetherCMVS
+          git submodule update --init --depth 1 packages/AetherEntisGLS
           git submodule update --init --depth 1 packages/AetherKrkr
           git submodule update --init --depth 1 packages/AetherMAGES
           git submodule update --init --recursive --depth 1 packages/AetherN2System
           git submodule update --init --depth 1 packages/rfvp
           git submodule update --init --depth 1 packages/ruffle
-          git submodule update --init --recursive --depth 1 packages/xsystem4 packages/xsystem35 packages/system3
+          git submodule update --init --recursive --depth 1 packages/AetherSystem4 packages/AetherSystem35 packages/AetherSystem3
 
       - name: Set application release version
         if: env.AETHERKIRI_RELEASE_VERSION != ''
@@ -606,6 +615,7 @@ jobs:
       - name: Test iOS game import and extension packaging
         run: |
           python3 -m unittest discover -s tests/python -p test_ios_ipa_packaging.py -v
+          python3 -m unittest discover -s tests/python -p test_ios_build_tools.py -v
           python3 -m unittest discover -s tests/python -p test_ios_game_import.py -v
           python3 -m unittest discover -s tests/python -p test_renpy_packaging.py -v
 
@@ -632,22 +642,26 @@ jobs:
       - name: Install Godot export tools
         run: |
           set -euo pipefail
-          mkdir -p .godot "${RUNNER_TEMP}/godot-templates"
+          mkdir -p .godot
           curl --fail --location --retry 5 --retry-delay 5 --retry-all-errors \
             -o "${RUNNER_TEMP}/godot-macos.zip" \
             "https://github.com/godotengine/godot-builds/releases/download/${GODOT_RELEASE}/Godot_v${GODOT_RELEASE}_macos.universal.zip"
           unzip -tq "${RUNNER_TEMP}/godot-macos.zip"
           unzip -q "${RUNNER_TEMP}/godot-macos.zip" -d .godot
           chmod +x ".godot/Godot.app/Contents/MacOS/Godot"
+          rm -f "${RUNNER_TEMP}/godot-macos.zip"
 
           curl --fail --location --retry 5 --retry-delay 5 --retry-all-errors \
             -o "${RUNNER_TEMP}/godot-export-templates.tpz" \
             "https://github.com/godotengine/godot-builds/releases/download/${GODOT_RELEASE}/Godot_v${GODOT_RELEASE}_export_templates.tpz"
           unzip -tq "${RUNNER_TEMP}/godot-export-templates.tpz"
-          unzip -q "${RUNNER_TEMP}/godot-export-templates.tpz" -d "${RUNNER_TEMP}/godot-templates"
           template_dir="${HOME}/Library/Application Support/Godot/export_templates/${GODOT_TEMPLATE_VERSION}"
           mkdir -p "${template_dir}"
-          cp -a "${RUNNER_TEMP}/godot-templates/templates/." "${template_dir}/"
+          # iOS only needs ios.zip. Extracting every platform twice and retaining
+          # the download exhausts disk while packaging the all-runtime Debug IPA.
+          unzip -p "${RUNNER_TEMP}/godot-export-templates.tpz" templates/ios.zip > "${template_dir}/ios.zip"
+          unzip -tq "${template_dir}/ios.zip"
+          rm -f "${RUNNER_TEMP}/godot-export-templates.tpz"
 
           echo "GODOT_BIN=${GITHUB_WORKSPACE}/.godot/Godot.app/Contents/MacOS/Godot" >> "$GITHUB_ENV"
           echo "GODOT_EXPORT_TEMPLATE=${template_dir}/ios.zip" >> "$GITHUB_ENV"
@@ -931,18 +945,18 @@ jobs:
       - name: Initialize public runtime packages
         if: env.AETHERKIRI_WITH_INTERNAL != 'true'
         run: |
-          git submodule update --init --depth 1 packages/OnscripterYuri
+          git submodule update --init --depth 1 packages/AetherONScripterYuri
           git submodule update --init --recursive --depth 1 packages/psdfile
           git submodule update --init --depth 1 packages/AetherSiglus
           git submodule update --init --depth 1 packages/AetherMinori
-          git -c url.https://github.com/.insteadOf=git@github.com: submodule update --init --depth 1 packages/cmvs-rs
-          git submodule update --init --depth 1 packages/EntisGLS-SDL3
+          git -c url.https://github.com/.insteadOf=git@github.com: submodule update --init --depth 1 packages/AetherCMVS
+          git submodule update --init --depth 1 packages/AetherEntisGLS
           git submodule update --init --depth 1 packages/AetherKrkr
           git submodule update --init --depth 1 packages/AetherMAGES
           git submodule update --init --recursive --depth 1 packages/AetherN2System
           git submodule update --init --depth 1 packages/rfvp
           git submodule update --init --depth 1 packages/ruffle
-          git submodule update --init --recursive --depth 1 packages/xsystem4 packages/xsystem35 packages/system3
+          git submodule update --init --recursive --depth 1 packages/AetherSystem4 packages/AetherSystem35 packages/AetherSystem3
 
       - name: Set application release version
         if: env.AETHERKIRI_RELEASE_VERSION != ''
@@ -1131,6 +1145,7 @@ jobs:
           ALSOFT_DRIVERS: 'null'
         run: |
           set -euo pipefail
+          python3 -m unittest discover -s tests/python -p 'test_runtime_selection.py' -v
           # Reuse Debug objects with the existing standalone-test link configuration.
           # Explicitly enable suites whose cached defaults were OFF for the app.
           test_build_dir="${GITHUB_WORKSPACE}/out/macos/debug"
@@ -1165,6 +1180,7 @@ jobs:
           inventory_file="${RUNNER_TEMP}/aetherkiri-test-inventory.json"
           ctest --test-dir "$test_build_dir" --show-only=json-v1 > "$inventory_file"
           required_suites=(
+            --require-executable cmvs-provider-test
             --require-executable siglus-runtime-jpeg
             --require-executable mages-runtime-provider
             --require-executable mages-host-events
@@ -1364,17 +1380,17 @@ jobs:
       - name: Initialize public runtime packages
         if: env.AETHERKIRI_WITH_INTERNAL != 'true'
         run: |
-          git submodule update --init --depth 1 packages/OnscripterYuri
+          git submodule update --init --depth 1 packages/AetherONScripterYuri
           git submodule update --init --recursive --depth 1 packages/psdfile
           git submodule update --init --depth 1 packages/AetherSiglus
           git submodule update --init --depth 1 packages/AetherMinori
-          git -c url.https://github.com/.insteadOf=git@github.com: submodule update --init --depth 1 packages/cmvs-rs
-          git submodule update --init --depth 1 packages/EntisGLS-SDL3
+          git -c url.https://github.com/.insteadOf=git@github.com: submodule update --init --depth 1 packages/AetherCMVS
+          git submodule update --init --depth 1 packages/AetherEntisGLS
           git submodule update --init --depth 1 packages/AetherKrkr
           git submodule update --init --depth 1 packages/AetherMAGES
           git submodule update --init --recursive --depth 1 packages/AetherN2System
           git submodule update --init --depth 1 packages/ruffle
-          git submodule update --init --recursive --depth 1 packages/xsystem4 packages/xsystem35 packages/system3
+          git submodule update --init --recursive --depth 1 packages/AetherSystem4 packages/AetherSystem35 packages/AetherSystem3
 
       - name: Verify private runtime packages
         if: env.AETHERKIRI_WITH_INTERNAL == 'true'

@@ -1205,6 +1205,14 @@ func _option(node_name: String, options: Array, labels: Array, current, changed:
     return select
 
 func _toggle(parent: Control, title: String, description: String, key: String) -> void:
+    var toggle = SWITCH.new()
+    toggle.name = "AstryxSetting_" + key
+    toggle.configure(bool(_value(key)), design, _reduced_motion())
+    toggle.toggled.connect(func(value: bool): _set_value(key, value))
+    _switch_row(parent, title, description, toggle)
+    parent.add_child(_divider())
+
+func _switch_row(parent: Control, title: String, description: String, toggle: Button) -> void:
     var pad := _margin(0, 16, 0, 16)
     parent.add_child(pad)
     var row := _hbox(20)
@@ -1214,13 +1222,10 @@ func _toggle(parent: Control, title: String, description: String, key: String) -
     if not description.is_empty():
         copy.add_child(_label(description, 14, true))
     row.add_child(copy)
-    var toggle = SWITCH.new()
-    toggle.name = "AstryxSetting_" + key
     toggle.accessibility_name = title
-    toggle.configure(bool(_value(key)), design, _reduced_motion())
-    toggle.toggled.connect(func(value: bool): _set_value(key, value))
+    toggle.size_flags_horizontal = Control.SIZE_SHRINK_END
+    toggle.size_flags_vertical = Control.SIZE_SHRINK_CENTER
     row.add_child(toggle)
-    parent.add_child(_divider())
 
 func _interface_settings() -> void:
     var fields := _section(_text("外观", "Appearance", "外観", "外觀", "Apariencia"), _text("选择适合你的界面，让每一段故事都有舒适的开始。", "Make every story feel at home with an interface that suits you.", "あなたに合った外観で、心地よく物語を始めましょう。", "選擇適合你的介面，讓每一段故事都有舒適的開始。", "Elige una interfaz a tu gusto para que cada historia empiece con comodidad."))
@@ -2318,8 +2323,8 @@ func _detail_save_actions(section: Control, game: Dictionary) -> void:
         toggle.configure(sync.enabled(snapshot), design, _reduced_motion())
         toggle.disabled = sync.busy or host.game_running
         toggle.toggled.connect(func(value: bool): sync.set_enabled(snapshot, value))
-        _field(section, _text("iCloud 自动同步", "Automatic iCloud sync", "iCloud 自動同期", "iCloud 自動同步", "Sincronización automática con iCloud"), toggle,
-            _text("开启时用 iCloud 中此游戏的存档替换本地存档。游戏运行时每秒检查变化，退出时再次同步。", "Enabling replaces local saves with this game's iCloud saves. Changes are checked every second while playing and again on exit.", "有効にすると、このゲームの iCloud セーブでローカルを置き換えます。プレイ中は毎秒、終了時にも同期します。", "開啟時以 iCloud 中此遊戲的存檔取代本機存檔。遊戲執行時每秒檢查變更，離開時再次同步。", "Al activarla, las partidas guardadas locales se sustituyen por las de este juego en iCloud. Los cambios se comprueban cada segundo durante el juego y de nuevo al salir."))
+        _switch_row(section, _text("iCloud 自动同步", "Automatic iCloud sync", "iCloud 自動同期", "iCloud 自動同步", "Sincronización automática con iCloud"),
+            _text("开启时用 iCloud 中此游戏的存档替换本地存档。游戏运行时每秒检查变化，退出时再次同步。", "Enabling replaces local saves with this game's iCloud saves. Changes are checked every second while playing and again on exit.", "有効にすると、このゲームの iCloud セーブでローカルを置き換えます。プレイ中は毎秒、終了時にも同期します。", "開啟時以 iCloud 中此遊戲的存檔取代本機存檔。遊戲執行時每秒檢查變更，離開時再次同步。", "Al activarla, las partidas guardadas locales se sustituyen por las de este juego en iCloud. Los cambios se comprueban cada segundo durante el juego y de nuevo al salir."), toggle)
         if sync.busy:
             section.add_child(_label(_text("正在同步存档…", "Syncing saves…", "同期しています…", "正在同步存檔…", "Sincronizando partidas guardadas…"), 14, true))
     elif OS.get_name() == "macOS":

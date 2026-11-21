@@ -73,7 +73,7 @@ Godot App Shell
   视频、鉴赏和通关后附加篇章。参见[支持范围与验证方法](doc/systemc_runtime.md)。
 - 通过公开 EntisGLS / Cotopha Runtime 在桌面端运行传统 CSX 脚本并读取 NOA
   资源，存档位于游戏目录的 `savedata/`。参见
-  [接入范围与验证说明](https://github.com/AetherKiri/EntisGLS-SDL3/blob/aether/aether_runtime/README.md)。
+  [接入范围与验证说明](https://github.com/AetherKiri/AetherEntisGLS/blob/aether/aether_runtime/README.md)。
 - 通过公开 [AetherN2System](https://github.com/AetherKiri/AetherN2System) submodule 实验性接入桌面、Android 和 iOS 的 NitroSharp / N2System 运行时，提供游戏目录识别、进程内 NativeAOT 宿主、普通及压缩 NPA 归档读取，以及早期 NPS/PAK 安装格式兼容。打包包含文字、音频和视频所需的原生依赖。Android 已完成真机启动与渲染验证；iOS 仅完成编译验证，尚未进行真机运行测试。持久化存读档可恢复脚本执行、对话、场景及媒体状态，优先写入游戏目录的 `savedata/AetherN2System/` 并按游戏和配置隔离，目录不可写时回退到应用存储；已有应用存档会迁入且不覆盖本地存档。支持公共设置、缩略图及原作存档菜单的说明文件。旧版游戏可使用触摸和键盘操作的存读档菜单，F5/F9 用于快速存档和读档；存档采用 Aether 自有格式。部分旧版系统菜单操作尚未实现，具体游戏兼容性仍在完善。Web 尚未支持。
 - 覆盖 macOS、iOS/iPadOS、Android、Web 与 Linux 的导出配置。
 - 独立的 Flash 分类，使用原生 Ruffle 播放，支持声音、键鼠、触摸以及视觉小说的虚拟按钮。
@@ -103,14 +103,14 @@ Aether 使用了以下引擎 fork。表中分别提供 Aether 接入仓库和原
 
 | 引擎 | Aether fork | 原版仓库 |
 | --- | --- | --- |
-| OnscripterYuri | [AetherKiri/OnscripterYuri](https://github.com/AetherKiri/OnscripterYuri) | [YuriSizuku/OnscripterYuri](https://github.com/YuriSizuku/OnscripterYuri) |
+| OnscripterYuri | [AetherKiri/OnscripterYuri](https://github.com/AetherKiri/AetherONScripterYuri) | [YuriSizuku/OnscripterYuri](https://github.com/YuriSizuku/OnscripterYuri) |
 | Siglus | [AetherKiri/AetherSiglus](https://github.com/AetherKiri/AetherSiglus) | [xmoezzz/siglus_rs](https://github.com/xmoezzz/siglus_rs) |
 | MAGES / impacto | [AetherKiri/AetherMAGES](https://github.com/AetherKiri/AetherMAGES) | [CommitteeOfZero/impacto](https://github.com/CommitteeOfZero/impacto) |
-| CMVS | [AetherKiri/cmvs-rs](https://github.com/AetherKiri/cmvs-rs) | [Shizuku-in/cmvs-rs](https://github.com/Shizuku-in/cmvs-rs) |
-| AliceSoft System 4 | [AetherKiri/xsystem4](https://github.com/AetherKiri/xsystem4) | [nunuhara/xsystem4](https://github.com/nunuhara/xsystem4) |
-| AliceSoft System 3.5 / 3.9 | [AetherKiri/xsystem35-sdl2](https://github.com/AetherKiri/xsystem35-sdl2) | [kichikuou/xsystem35-sdl2](https://github.com/kichikuou/xsystem35-sdl2) |
-| AliceSoft System 1–3 | [AetherKiri/system3-sdl2](https://github.com/AetherKiri/system3-sdl2) | [kichikuou/system3-sdl2](https://github.com/kichikuou/system3-sdl2) |
-| EntisGLS / Cotopha | [AetherKiri/EntisGLS-SDL3](https://github.com/AetherKiri/EntisGLS-SDL3) | [nL6DHZc3RhMnC/EntisGLS-SDL3](https://github.com/nL6DHZc3RhMnC/EntisGLS-SDL3) |
+| CMVS | [AetherKiri/AetherCMVS](https://github.com/AetherKiri/AetherCMVS) | [Shizuku-in/cmvs-rs](https://github.com/Shizuku-in/cmvs-rs) |
+| AliceSoft System 4 | [AetherKiri/xsystem4](https://github.com/AetherKiri/AetherSystem4) | [nunuhara/xsystem4](https://github.com/nunuhara/xsystem4) |
+| AliceSoft System 3.5 / 3.9 | [AetherKiri/xsystem35-sdl2](https://github.com/AetherKiri/AetherSystem35) | [kichikuou/xsystem35-sdl2](https://github.com/kichikuou/xsystem35-sdl2) |
+| AliceSoft System 1–3 | [AetherKiri/system3-sdl2](https://github.com/AetherKiri/AetherSystem3) | [kichikuou/system3-sdl2](https://github.com/kichikuou/system3-sdl2) |
+| EntisGLS / Cotopha | [AetherKiri/EntisGLS-SDL3](https://github.com/AetherKiri/AetherEntisGLS) | [nL6DHZc3RhMnC/EntisGLS-SDL3](https://github.com/nL6DHZc3RhMnC/EntisGLS-SDL3) |
 | N2System / NitroSharp | [AetherKiri/AetherN2System](https://github.com/AetherKiri/AetherN2System) | [CommitteeOfZero/nitrosharp](https://github.com/CommitteeOfZero/nitrosharp) |
 
 ## Flash 播放
@@ -150,12 +150,12 @@ SWF 引用的本地相对路径资源从其所在目录读取，SharedObject 存
 | | `bridge/entisgls_runtime/` | 公开 EntisGLS / Cotopha provider 的构建接入。 |
 | | `bridge/n2system_runtime/` | 实验性 N2System provider 与桌面、移动端 NativeAOT 宿主桥接。 |
 | 引擎 | `packages/AetherKrkr/` | KiriKiri2 引擎运行时 submodule。 |
-| | `packages/OnscripterYuri/` | 公开 OnscripterYuri submodule。 |
+| | `packages/AetherONScripterYuri/` | 公开 OnscripterYuri submodule。 |
 | | `packages/AetherSiglus/` | 公开 siglus_rs submodule（保持只读）。 |
 | | `packages/ruffle/` | 固定版本的上游 Flash runtime submodule（保持只读）。 |
 | | `packages/AetherInternal/` | 可选私有运行时（含 Escude、SystemC）及 E-mote/Live2D 支持；公开构建不依赖它。 |
 | | `packages/AetherSoftPal/` | 可选私有原生 SoftPal 运行时 submodule。 |
-| | `packages/EntisGLS-SDL3/` | 公开 EntisGLS / Cotopha 运行时 submodule 及 provider。 |
+| | `packages/AetherEntisGLS/` | 公开 EntisGLS / Cotopha 运行时 submodule 及 provider。 |
 | | `packages/AetherN2System/` | 公开 NitroSharp / N2System 运行时 submodule。 |
 | 支撑 | `demos/aetherkiri-kag3/` | 内置 KAG3 Demo 源码。 |
 | | `tests/` | 单元测试、fixture 与可移植 probe profile。 |
@@ -185,7 +185,7 @@ SWF 引用的本地相对路径资源从其所在目录读取，SharedObject 存
 
 ```bash
 git submodule update --init \
-  packages/AetherKrkr packages/OnscripterYuri packages/psdfile \
+  packages/AetherKrkr packages/AetherONScripterYuri packages/psdfile \
   packages/AetherSiglus packages/AetherMinori packages/ruffle \
   packages/AetherN2System
 ./build.sh macos debug        # 或：macos release / ios debug --simulator /
@@ -205,6 +205,8 @@ GitHub 托管 runner 自动应用的重写一致：
 ```bash
 git config --global url."https://github.com/".insteadOf git@github.com:
 ```
+
+如果从引擎 submodule 改名前的 checkout 升级，先保存这些 submodule 里的本地修改，再用 `git submodule deinit` 取消初始化旧路径，然后更新 Aether。更新后运行 `git submodule sync --recursive`，并在新路径初始化需要的引擎。如果原构建目录还缓存着旧路径，请使用新的 CMake 构建目录。
 
 脚本会构建 native engine 与 Godot host library，将产物放到
 `apps/godot_app/bin/`，并在 Godot 可用时运行对应的导出 preset。Linux 导出

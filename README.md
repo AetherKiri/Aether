@@ -81,7 +81,7 @@ and **Debug CPU** is a diagnostic fallback only.
   See [scope and validation](doc/systemc_runtime.md).
 - Public EntisGLS / Cotopha desktop runtime for traditional CSX scripts and NOA
   resources, with game-local `savedata/`. See the
-  [provider scope and validation](https://github.com/AetherKiri/EntisGLS-SDL3/blob/aether/aether_runtime/README.md).
+  [provider scope and validation](https://github.com/AetherKiri/AetherEntisGLS/blob/aether/aether_runtime/README.md).
 - Experimental NitroSharp / N2System runtime for desktop, Android, and iOS through the public [AetherN2System](https://github.com/AetherKiri/AetherN2System) submodule, with game-directory detection, an in-process NativeAOT host, plain and compressed NPA archives, and early NPS/PAK installations. Packaging includes native text, audio and video dependencies. Android startup and rendering have been tested on a device; iOS has compile verification only and has not been tested on a device. Persistent saves restore script execution, dialogue, scene and media state, with separate game/profile storage under the game’s `savedata/AetherN2System/` directory, shared settings, thumbnails and authored save-menu metadata. Read-only game directories fall back to app storage; existing app-private saves migrate without overwriting game-local saves. Legacy games can use the touch and keyboard save menu; F5/F9 provide quicksave and quickload. Saves use Aether’s own format. Some legacy system-menu operations remain unimplemented; individual game compatibility is still evolving. Web is not supported.
 - Export presets for macOS, iOS/iPadOS, Android, Web, and Linux.
 - A separate Flash library powered by native Ruffle, with sound, keyboard,
@@ -123,14 +123,14 @@ integration repository and the original upstream project.
 
 | Engine | Aether fork | Original repository |
 | --- | --- | --- |
-| OnscripterYuri | [AetherKiri/OnscripterYuri](https://github.com/AetherKiri/OnscripterYuri) | [YuriSizuku/OnscripterYuri](https://github.com/YuriSizuku/OnscripterYuri) |
+| OnscripterYuri | [AetherKiri/OnscripterYuri](https://github.com/AetherKiri/AetherONScripterYuri) | [YuriSizuku/OnscripterYuri](https://github.com/YuriSizuku/OnscripterYuri) |
 | Siglus | [AetherKiri/AetherSiglus](https://github.com/AetherKiri/AetherSiglus) | [xmoezzz/siglus_rs](https://github.com/xmoezzz/siglus_rs) |
 | MAGES / impacto | [AetherKiri/AetherMAGES](https://github.com/AetherKiri/AetherMAGES) | [CommitteeOfZero/impacto](https://github.com/CommitteeOfZero/impacto) |
-| CMVS | [AetherKiri/cmvs-rs](https://github.com/AetherKiri/cmvs-rs) | [Shizuku-in/cmvs-rs](https://github.com/Shizuku-in/cmvs-rs) |
-| AliceSoft System 4 | [AetherKiri/xsystem4](https://github.com/AetherKiri/xsystem4) | [nunuhara/xsystem4](https://github.com/nunuhara/xsystem4) |
-| AliceSoft System 3.5 / 3.9 | [AetherKiri/xsystem35-sdl2](https://github.com/AetherKiri/xsystem35-sdl2) | [kichikuou/xsystem35-sdl2](https://github.com/kichikuou/xsystem35-sdl2) |
-| AliceSoft System 1–3 | [AetherKiri/system3-sdl2](https://github.com/AetherKiri/system3-sdl2) | [kichikuou/system3-sdl2](https://github.com/kichikuou/system3-sdl2) |
-| EntisGLS / Cotopha | [AetherKiri/EntisGLS-SDL3](https://github.com/AetherKiri/EntisGLS-SDL3) | [nL6DHZc3RhMnC/EntisGLS-SDL3](https://github.com/nL6DHZc3RhMnC/EntisGLS-SDL3) |
+| CMVS | [AetherKiri/AetherCMVS](https://github.com/AetherKiri/AetherCMVS) | [Shizuku-in/cmvs-rs](https://github.com/Shizuku-in/cmvs-rs) |
+| AliceSoft System 4 | [AetherKiri/xsystem4](https://github.com/AetherKiri/AetherSystem4) | [nunuhara/xsystem4](https://github.com/nunuhara/xsystem4) |
+| AliceSoft System 3.5 / 3.9 | [AetherKiri/xsystem35-sdl2](https://github.com/AetherKiri/AetherSystem35) | [kichikuou/xsystem35-sdl2](https://github.com/kichikuou/xsystem35-sdl2) |
+| AliceSoft System 1–3 | [AetherKiri/system3-sdl2](https://github.com/AetherKiri/AetherSystem3) | [kichikuou/system3-sdl2](https://github.com/kichikuou/system3-sdl2) |
+| EntisGLS / Cotopha | [AetherKiri/EntisGLS-SDL3](https://github.com/AetherKiri/AetherEntisGLS) | [nL6DHZc3RhMnC/EntisGLS-SDL3](https://github.com/nL6DHZc3RhMnC/EntisGLS-SDL3) |
 | N2System / NitroSharp | [AetherKiri/AetherN2System](https://github.com/AetherKiri/AetherN2System) | [CommitteeOfZero/nitrosharp](https://github.com/CommitteeOfZero/nitrosharp) |
 
 ## Flash Library
@@ -174,12 +174,12 @@ supported by the Flash player.
 | | `bridge/entisgls_runtime/` | Build integration for the public EntisGLS / Cotopha provider. |
 | | `bridge/n2system_runtime/` | Experimental N2System provider and desktop/mobile NativeAOT host bridge. |
 | Engines | `packages/AetherKrkr/` | KiriKiri2 engine runtime submodule. |
-| | `packages/OnscripterYuri/` | Public OnscripterYuri submodule. |
+| | `packages/AetherONScripterYuri/` | Public OnscripterYuri submodule. |
 | | `packages/AetherSiglus/` | Public siglus_rs submodule (kept pristine). |
 | | `packages/ruffle/` | Pinned upstream Flash runtime submodule (kept pristine). |
 | | `packages/AetherInternal/` | Optional private runtimes, including Escude and SystemC, plus E-mote/Live2D support; public builds work without it. |
 | | `packages/AetherSoftPal/` | Optional private native SoftPal runtime submodule. |
-| | `packages/EntisGLS-SDL3/` | Public EntisGLS / Cotopha runtime submodule and provider. |
+| | `packages/AetherEntisGLS/` | Public EntisGLS / Cotopha runtime submodule and provider. |
 | | `packages/AetherN2System/` | Public NitroSharp / N2System runtime submodule. |
 | Support | `demos/aetherkiri-kag3/` | Source of the built-in KAG3 demo. |
 | | `tests/` | Unit tests, fixtures, and portable probe profiles. |
@@ -209,7 +209,7 @@ supported by the Flash player.
 
 ```bash
 git submodule update --init \
-  packages/AetherKrkr packages/OnscripterYuri packages/psdfile \
+  packages/AetherKrkr packages/AetherONScripterYuri packages/psdfile \
   packages/AetherSiglus packages/AetherMinori packages/ruffle \
   packages/AetherN2System
 ./build.sh macos debug        # or: macos release / ios debug --simulator /
@@ -232,6 +232,8 @@ apply automatically:
 ```bash
 git config --global url."https://github.com/".insteadOf git@github.com:
 ```
+
+If you are upgrading a checkout from before the runtime submodules were renamed, save any local changes in those submodules and deinitialize their old paths before updating Aether. Then run `git submodule sync --recursive` and initialize the new paths for the runtimes you use. Configure into a fresh CMake build directory if the old build directory still points to the previous paths.
 
 The scripts build the native engine and Godot host library, stage them under
 `apps/godot_app/bin/`, and run the matching Godot export preset when Godot is

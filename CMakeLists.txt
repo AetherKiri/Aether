@@ -207,16 +207,16 @@ set(AETHERKIRI_LEAFTTT_DIR
 # to iterate on a runtime without committing a gitlink bump (same pattern as
 # AETHERKIRI_INTERNAL_DIR).
 set(AETHERKIRI_ONSCRIPTERYURI_DIR
-    "${CMAKE_CURRENT_SOURCE_DIR}/packages/OnscripterYuri"
+    "${CMAKE_CURRENT_SOURCE_DIR}/packages/AetherONScripterYuri"
     CACHE PATH "path to an OnscripterYuri runtime checkout")
 set(AETHERKIRI_SYSTEM3_DIR
-    "${CMAKE_CURRENT_SOURCE_DIR}/packages/system3"
+    "${CMAKE_CURRENT_SOURCE_DIR}/packages/AetherSystem3"
     CACHE PATH "path to a system3 runtime checkout")
 set(AETHERKIRI_XSYSTEM35_DIR
-    "${CMAKE_CURRENT_SOURCE_DIR}/packages/xsystem35"
+    "${CMAKE_CURRENT_SOURCE_DIR}/packages/AetherSystem35"
     CACHE PATH "path to an xsystem35 runtime checkout")
 set(AETHERKIRI_XSYSTEM4_DIR
-    "${CMAKE_CURRENT_SOURCE_DIR}/packages/xsystem4"
+    "${CMAKE_CURRENT_SOURCE_DIR}/packages/AetherSystem4"
     CACHE PATH "path to an xsystem4 runtime checkout")
 set(AETHERKIRI_SIGLUS_DIR
     "${CMAKE_CURRENT_SOURCE_DIR}/packages/AetherSiglus"
@@ -225,7 +225,7 @@ set(AETHERKIRI_MINORI_DIR
     "${CMAKE_CURRENT_SOURCE_DIR}/packages/AetherMinori"
     CACHE PATH "path to an AetherMinori runtime checkout")
 set(AETHERKIRI_ENTISGLS_DIR
-    "${CMAKE_CURRENT_SOURCE_DIR}/packages/EntisGLS-SDL3"
+    "${CMAKE_CURRENT_SOURCE_DIR}/packages/AetherEntisGLS"
     CACHE PATH "path to the EntisGLS-SDL3 aether branch checkout")
 set(AETHERKIRI_N2SYSTEM_DIR
     "${CMAKE_CURRENT_SOURCE_DIR}/packages/AetherN2System"
@@ -440,9 +440,9 @@ if(AETHERKIRI_ENABLE_MAGES AND
     # runtime submodules.
     add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/bridge/mages_runtime)
 endif()
-if(AETHERKIRI_ENABLE_CMVS AND BUILD_GODOT_EXTENSION AND
+if(AETHERKIRI_ENABLE_CMVS AND (BUILD_GODOT_EXTENSION OR ENABLE_TESTS) AND
    (APPLE OR ANDROID OR CMAKE_SYSTEM_NAME STREQUAL "Linux") AND NOT (WEB OR EMSCRIPTEN))
-    add_subdirectory(packages/cmvs-rs/integrations/aether)
+    add_subdirectory(packages/AetherCMVS/integrations/aether)
 endif()
 # The Rust provider has targets for Linux, Apple, Android, and Emscripten.
 # Keep it out of unsupported native targets, but do not make Linux the only

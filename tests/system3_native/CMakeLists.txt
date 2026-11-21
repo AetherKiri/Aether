@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.28)
 project(AetherSystem3NativeProbe LANGUAGES C CXX)
 get_filename_component(AETHER_ROOT "${CMAKE_CURRENT_LIST_DIR}/../.." ABSOLUTE)
-set(AETHERKIRI_SYSTEM3_DIR "${AETHER_ROOT}/packages/system3")
+set(AETHERKIRI_SYSTEM3_DIR "${AETHER_ROOT}/packages/AetherSystem3")
 add_subdirectory("${AETHER_ROOT}/bridge/system3_runtime" "${CMAKE_CURRENT_BINARY_DIR}/runtime")
 find_package(nlohmann_json CONFIG REQUIRED)
 find_package(SDL2_image CONFIG REQUIRED)

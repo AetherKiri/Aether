@@ -17,7 +17,7 @@ set(ONSCRIPTER_YURI_SOURCE_DIR
 if(NOT EXISTS "${ONSCRIPTER_YURI_SOURCE_DIR}/ONScripter.cpp")
     message(FATAL_ERROR
         "OnscripterYuri submodule is unavailable. Run "
-        "`git submodule update --init packages/OnscripterYuri`.")
+        "`git submodule update --init packages/AetherONScripterYuri`.")
 endif()
 
 include(cmake/PrepareOnscripterYuriSources.cmake)

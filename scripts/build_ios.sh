@@ -316,6 +316,21 @@ ios_vcpkg_library_dir() {
     fi
 }
 
+resolve_ios_sdl2_archive() {
+    local lib_dir
+    lib_dir="$(ios_vcpkg_library_dir "$1")"
+    # SDL2's Apple static target uses a "d" postfix in Debug. Keep using
+    # the archive from the dependency directory selected for this build.
+    if [[ "$lib_dir" == */debug/lib && -f "$lib_dir/libSDL2d.a" ]]; then
+        printf '%s\n' "$lib_dir/libSDL2d.a"
+    elif [[ -f "$lib_dir/libSDL2.a" ]]; then
+        printf '%s\n' "$lib_dir/libSDL2.a"
+    else
+        echo "Error: missing SDL2 static archive in $lib_dir (expected libSDL2.a or Debug libSDL2d.a)." >&2
+        return 1
+    fi
+}
+
 isolate_ios_runtime_sdl() {
     local destination="$1"
     # Godot 4.7 embeds SDL3, whose SDL_InitSubSystem has a different return
@@ -330,7 +345,7 @@ isolate_ios_runtime_sdl() {
         brew install llvm
     fi
     python3 "$PROJECT_ROOT/tools/isolate_ios_sdl.py" \
-        --sdl-archive "$(ios_vcpkg_library_dir "$VCPKG_TRIPLET_DIR")/libSDL2.a" \
+        --sdl-archive "$IOS_SDL2_ARCHIVE" \
         --directory "$destination"
 }
 
@@ -421,6 +436,7 @@ combine_ios_static_extension() {
     done < <(find "$vcpkg_lib_dir" -maxdepth 1 -name 'lib*.a' \
         ! -name 'libgodot-cpp*.a' \
         ! -name 'libSDL2main.a' \
+        ! -name 'libSDL2maind.a' \
         ! -name 'libSDL3.a' | sort)
 
     # Some vcpkg ports (e.g. tiff on iOS) install static libraries as
@@ -484,7 +500,8 @@ stage_force_load_plugin_archives() {
     local source
     local resolved
     mkdir -p "$destination"
-    cp -f "$(ios_vcpkg_library_dir "$VCPKG_TRIPLET_DIR")/libSDL2.a" "$destination/"
+    # Xcode force-loads this canonical filename for every configuration.
+    cp -f "$IOS_SDL2_ARCHIVE" "$destination/libSDL2.a"
     for source in "${FORCE_LOAD_PLUGIN_SOURCES[@]}"; do
         resolved="$source"
         if [[ ! -f "$resolved" ]]; then
@@ -795,6 +812,7 @@ if [[ "${SKIP_VCPKG_INSTALL:-}" == "1" ]]; then
 fi
 
 cmake --preset "$CMAKE_CONFIG_PRESET" --fresh "${cmake_config_args[@]}"
+IOS_SDL2_ARCHIVE="$(resolve_ios_sdl2_archive "$VCPKG_TRIPLET_DIR")"
 cmake --build --preset "$CMAKE_BUILD_PRESET" -- -j"$PARALLEL_JOBS"
 
 mkdir -p "$GODOT_BIN_DIR"

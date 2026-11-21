@@ -472,7 +472,7 @@ if(IOS)
             "$<TARGET_FILE:sp_vm_core>")
     endif()
     add_custom_command(TARGET aether_kiri_godot POST_BUILD
-        COMMAND "${AETHERKIRI_LIBTOOL_EXECUTABLE}" -static
+        COMMAND "${AETHERKIRI_LIBTOOL_EXECUTABLE}" -static -no_warning_for_no_symbols
             -o "${AETHERKIRI_MERGED_GODOT_ARCHIVE}"
             ${AETHERKIRI_IOS_ARCHIVES}
         COMMAND "${CMAKE_COMMAND}" -E copy_if_different
@@ -563,10 +563,12 @@ target_link_libraries(aether_kiri_godot PRIVATE
 # registries stay empty, and every game texture fails with
 # "No loader for texture" / "using fallback" (red placeholder stripes on the
 # MO8 PC layout). Force-link the whole archive so the registrations run.
-# macOS builds impacto as a shared library, where the problem cannot occur.
-if(NOT APPLE)
-    set_property(TARGET aether_kiri_godot
-        PROPERTY LINK_LIBRARY_OVERRIDE_impacto WHOLE_ARCHIVE)
+if(TARGET impacto)
+    get_target_property(impacto_type impacto TYPE)
+    if(impacto_type STREQUAL "STATIC_LIBRARY")
+        set_property(TARGET aether_kiri_godot
+            PROPERTY LINK_LIBRARY_OVERRIDE_impacto WHOLE_ARCHIVE)
+    endif()
 endif()
 
 set(AETHERKIRI_EXTENSION_RPATH "@loader_path")

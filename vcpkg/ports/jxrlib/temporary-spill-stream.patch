@@ -1,0 +1,103 @@
+--- a/image/encode/strenc.c
++++ b/image/encode/strenc.c
+@@ -432,24 +432,19 @@
+ #if defined(_WINDOWS_) || defined(UNDER_CE)  // tmpnam does not exist in VS2005 WinCE CRT
+         TCHAR szPath[MAX_PATH];
+         DWORD cSize, j, k;
++        char *pFilename;
+ #endif
+-        char * pFilename;
+ 
+         pSC->ppWStream = (struct WMPStream **)malloc(pSC->cNumBitIO * sizeof(struct WMPStream *));
+         if(pSC->ppWStream == NULL) return ICERR_ERROR;
+         memset(pSC->ppWStream, 0, pSC->cNumBitIO * sizeof(struct WMPStream *));
+ 
++#if defined(_WINDOWS_) || defined(UNDER_CE)
+         if (pSC->cmbHeight * pSC->cmbWidth * pSC->WMISCP.cChannel >= MAX_MEMORY_SIZE_IN_WORDS) {
+-#ifdef _WINDOWS_
+-            pSC->ppTempFile = (TCHAR **)malloc(pSC->cNumBitIO * sizeof(TCHAR *));
++            pSC->ppTempFile = (TCHAR **)calloc(pSC->cNumBitIO, sizeof(TCHAR *));
+             if(pSC->ppTempFile == NULL) return ICERR_ERROR;
+-            memset(pSC->ppTempFile, 0, pSC->cNumBitIO * sizeof(TCHAR *)); 
+-#else
+-            pSC->ppTempFile = (char **)malloc(pSC->cNumBitIO * sizeof(char *));
+-            if(pSC->ppTempFile == NULL) return ICERR_ERROR;
+-            memset(pSC->ppTempFile, 0, pSC->cNumBitIO * sizeof(char *));
++        }
+ #endif
+-        }
+ 
+         for(i = 0; i < pSC->cNumBitIO; i ++){
+             if (pSC->cmbHeight * pSC->cmbWidth * pSC->WMISCP.cChannel >= MAX_MEMORY_SIZE_IN_WORDS) {
+@@ -478,15 +473,10 @@
+                     pFilename[cSize] = '\0';
+                 }
+ 
+-#else //DPK needs to support ANSI 
+-                pSC->ppTempFile[i] = (char *)malloc(FILENAME_MAX * sizeof(char));
+-                if(pSC->ppTempFile[i] == NULL) return ICERR_ERROR;
+-
+-                if ((pFilename = tmpnam(NULL)) == NULL)
+-                    return ICERR_ERROR;                
+-                strcpy(pSC->ppTempFile[i], pFilename);
++                if(CreateWS_File(pSC->ppWStream + i, pFilename, "w+b") != ICERR_OK) return ICERR_ERROR;
++#else
++                if(CreateWS_File(pSC->ppWStream + i, NULL, NULL) != ICERR_OK) return ICERR_ERROR;
+ #endif
+-                if(CreateWS_File(pSC->ppWStream + i, pFilename, "w+b") != ICERR_OK) return ICERR_ERROR;                
+ 
+             }
+             else {
+@@ -700,18 +690,14 @@
+ 			}
+         }
+ 
++#if defined(_WINDOWS_) || defined(UNDER_CE)
+         if (pSC->cmbHeight * pSC->cmbWidth * pSC->WMISCP.cChannel >= MAX_MEMORY_SIZE_IN_WORDS){           
+             for(i = 0; i < pSC->cNumBitIO; i ++){
+                 if(pSC->ppWStream && pSC->ppWStream[i]){
+                     if((*(pSC->ppWStream + i))->state.file.pFile){
+                         fclose((*(pSC->ppWStream + i))->state.file.pFile);
+-#ifdef _WINDOWS_
+                         if(DeleteFileA((LPCSTR)pSC->ppTempFile[i]) == 0)
+                             return ICERR_ERROR;
+-#else
+-                        if (remove(pSC->ppTempFile[i]) == -1)
+-                            return ICERR_ERROR;
+-#endif
+                     }
+ 
+                     if (*(pSC->ppWStream + i))
+@@ -726,7 +712,9 @@
+             if(pSC->ppTempFile)
+                 free(pSC->ppTempFile);
+         }
+-        else{
++        else
++#endif
++        {
+             for(i = 0; i < pSC->cNumBitIO; i ++){
+                 if(pSC->ppWStream && pSC->ppWStream[i])
+                     pSC->ppWStream[i]->Close(pSC->ppWStream + i);
+--- a/image/sys/strcodec.c
++++ b/image/sys/strcodec.c
+@@ -284,8 +284,17 @@
+ #ifdef WIN32
+     FailIf(0 != fopen_s(&pWS->state.file.pFile, szFilename, szMode), WMP_errFileIO);
+ #else
+-    pWS->state.file.pFile = fopen(szFilename, szMode);
+-    FailIf(NULL == pWS->state.file.pFile, WMP_errFileIO);
++    if (szFilename == NULL) {
++        // Encoder spill streams are removed automatically when closed.
++        pWS->state.file.pFile = tmpfile();
++        if (pWS->state.file.pFile == NULL) {
++            WMPFree((void**)ppWS);
++            return WMP_errFileIO;
++        }
++    } else {
++        pWS->state.file.pFile = fopen(szFilename, szMode);
++        FailIf(NULL == pWS->state.file.pFile, WMP_errFileIO);
++    }
+ #endif
+ 
+ Cleanup:    

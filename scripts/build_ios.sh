@@ -452,7 +452,7 @@ combine_ios_static_extension() {
 
     local tmp
     tmp="$(mktemp /tmp/aetherkiri-ios-static.XXXXXX).a"
-    libtool -static -o "$tmp" "${existing_libs[@]}"
+    libtool -static -no_warning_for_no_symbols -o "$tmp" "${existing_libs[@]}"
     mv "$tmp" "$output"
 }
 
@@ -560,6 +560,12 @@ patch_ios_export_project() {
     fi
 
     if [[ -f "$project_file" ]]; then
+        # Import the template header through a bridging header so its include guard
+        # is processed as an include, including when Swift precompiles the bridge.
+        if grep -Fq '"Aether/dummy.h"' "$project_file"; then
+            echo '#import "dummy.h"' > "$export_root/Aether/Aether-Bridging-Header.h"
+            perl -pi -e 's{(SWIFT_OBJC_BRIDGING_HEADER"? = ")Aether/dummy\.h"}{$1Aether/Aether-Bridging-Header.h"}g' "$project_file"
+        fi
         FLAGS="$flags" perl -0pi -e 's/("?OTHER_LDFLAGS"?) = "[^"]*";/$1 . " = \"" . $ENV{FLAGS} . "\";"/eg' "$project_file"
         # Automatic signing archives with a development identity first, then
         # Xcode re-signs the exported archive for App Store distribution.
@@ -601,6 +607,9 @@ from pathlib import Path
 path = Path(sys.argv[1])
 with path.open('rb') as stream:
     plist = plistlib.load(stream)
+# Godot emits an empty camera purpose even when its camera module is disabled.
+if plist.get('NSCameraUsageDescription') == '':
+    del plist['NSCameraUsageDescription']
 modes = plist.setdefault('UIBackgroundModes', [])
 if 'audio' not in modes:
     modes.append('audio')
@@ -642,6 +651,7 @@ package_ios_unsigned_ipa() {
         -scheme Aether \
         -configuration "$config_cap" \
         -sdk iphoneos \
+        -destination "generic/platform=iOS" \
         -derivedDataPath "$derived_data_dir" \
         CODE_SIGN_IDENTITY="" \
         CODE_SIGNING_REQUIRED=NO \
@@ -731,7 +741,9 @@ with_ios_only_gdextension() (
         --project "$GODOT_APP_DIR" --configuration "$BUILD_TYPE_LOWER" \
         --gdextension "$gdextension_file"
 
-    "$GODOT_BIN" --headless --path "$GODOT_APP_DIR" \
+    # The macOS editor cannot load the iOS archive. Recovery mode skips
+    # editor-side loading without removing target extensions from the export.
+    "$GODOT_BIN" --headless --recovery-mode --path "$GODOT_APP_DIR" \
         "$EXPORT_MODE" "$EXPORT_PRESET" "$PROJECT_ROOT/out/godot/ios/$BUILD_TYPE_LOWER/Aether.xcodeproj"
 )
 

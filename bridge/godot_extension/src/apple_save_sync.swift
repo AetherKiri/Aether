@@ -25,7 +25,7 @@ private final class AetherCloudSaveSync: @unchecked Sendable {
 #if os(iOS)
         let background = AetherSaveSyncBackgroundTask()
 #endif
-        worker.async {
+        worker.async { [self] in
 #if os(iOS)
             defer { background.finish() }
 #endif

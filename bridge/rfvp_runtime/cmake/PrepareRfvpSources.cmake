@@ -16,7 +16,7 @@ function(aetherkiri_prepare_rfvp root rfvp_dir output)
         message(FATAL_ERROR "Refusing to refresh rfvp sources outside its build directory")
     endif()
     file(REMOVE_RECURSE "${output}/crates")
-    foreach(crate rfvp rfvp-bitmap na_wmv_player na_mpeg2_decoder anzu-hal)
+    foreach(crate rfvp rfvp-bitmap na_wmv_player na_mpeg2_decoder anzu-hal game-network)
         file(COPY "${rfvp_dir}/crates/${crate}"
              DESTINATION "${output}/crates"
              PATTERN "target" EXCLUDE PATTERN "fonts" EXCLUDE)
@@ -36,6 +36,9 @@ function(aetherkiri_prepare_rfvp root rfvp_dir output)
     set(src "${output}/crates/rfvp/src")
     rfvp_replace("${output}/crates/rfvp/Cargo.toml"
         "crate-type = [\"rlib\", \"cdylib\"]" "crate-type = [\"rlib\", \"staticlib\"]")
+    # The generated workspace defines the build profiles for its member crates.
+    rfvp_replace("${output}/crates/rfvp/Cargo.toml"
+        "[profile.test]\ninherits = \"release\"\n" "")
     file(COPY "${CMAKE_CURRENT_FUNCTION_LIST_DIR}/../rust/aetherkiri_host.rs" DESTINATION "${src}")
     file(COPY "${CMAKE_CURRENT_FUNCTION_LIST_DIR}/../rust/input_host.rs" DESTINATION "${src}")
     file(APPEND "${src}/lib.rs" "\npub mod aetherkiri_host;\n")

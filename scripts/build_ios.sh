@@ -601,6 +601,9 @@ from pathlib import Path
 path = Path(sys.argv[1])
 with path.open('rb') as stream:
     plist = plistlib.load(stream)
+# Godot emits an empty camera purpose even when its camera module is disabled.
+if plist.get('NSCameraUsageDescription') == '':
+    del plist['NSCameraUsageDescription']
 modes = plist.setdefault('UIBackgroundModes', [])
 if 'audio' not in modes:
     modes.append('audio')

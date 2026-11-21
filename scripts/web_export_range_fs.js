@@ -355,6 +355,7 @@ if (!sub || /(^|\/)\.\.?($|\/)/.test(sub)) {
 skipped++;
 continue;
 }
+try {
 var dest = targetRoot + "/" + sub;
 if (FS.analyzePath(dest).exists) {
 skipped++;
@@ -365,6 +366,10 @@ if (slash > 0) ensureDirectory(dest.slice(0, slash));
 var data = FS.readFile(mountPoint + "/" + rel);
 FS.writeFile(dest, data);
 copied++;
+} catch (error) {
+skipped++;
+console.warn("AetherKiri could not import savedata file:", rel, error);
+}
 }
 if (copied > 0) {
 console.log("AetherKiri seeded savedata files:", copied, "skipped:", skipped, "target:", targetRoot);

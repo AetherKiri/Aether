@@ -49,6 +49,16 @@ require(process.argv[1])().then(runtime => {
     assert.equal(fs.analyzePath('/webgames/second/savedata/slot').exists, false);
     fs.writeFile('/webgames/second/savedata/slot', 'separate');
     assert.equal(read('/webgames/first/savedata/slot'), 'checkpoint');
+    const incomplete = [gameFile,
+        {path: 'savedata/old', size: 4, memfsPath: '/unavailable'},
+        {path: 'savedata/good', size: 4, memfsPath: '/original'}];
+    mount('third', incomplete);
+    assert.equal(read('/webgames/third/savedata/good'), 'seed');
+    fs.writeFile('/webgames/third/savedata/current', 'new');
+    fs.writeFile('/unavailable', 'back');
+    mount('third', incomplete);
+    assert.equal(read('/webgames/third/savedata/old'), 'back');
+    assert.equal(read('/webgames/third/savedata/current'), 'new');
 }).catch(error => { console.error(error); process.exitCode = 1; });
 """, str(module)], check=True)
 

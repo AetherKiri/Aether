@@ -240,6 +240,11 @@ else
         # Silicon, so select its Rosetta slice for this native build.
         godot_export_command=(arch -x86_64 "$GODOT_BIN")
     fi
+    if [[ "$BUILD_TYPE_LOWER" == "release" ]]; then
+        # The export editor would load the Debug extension even for a Release
+        # export. Export the staged Release library without loading Debug code.
+        godot_export_command+=(--recovery-mode)
+    fi
     mkdir -p "$GODOT_EXPORT_ROOT"
     rm -rf "$GODOT_EXPORT_APP"
     "${godot_export_command[@]}" --headless --path "$GODOT_APP_DIR" \

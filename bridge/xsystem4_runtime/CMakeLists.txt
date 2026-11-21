@@ -114,6 +114,10 @@ target_link_libraries(sys4 PRIVATE
 target_link_libraries(sys4 PRIVATE $<IF:$<TARGET_EXISTS:SDL2::SDL2>,SDL2::SDL2,SDL2::SDL2-static>)
 set_target_properties(sys4 PROPERTIES POSITION_INDEPENDENT_CODE ON)
 if(APPLE)
+    # The INI lexer's 64 KiB scratch buffer is defined in one translation unit.
+    # A common symbol lets ld infer an alignment larger than the Mach-O segment.
+    set_property(SOURCE "${CMAKE_CURRENT_BINARY_DIR}/libsys4/ini_lexer.yy.c"
+        TARGET_DIRECTORY sys4 APPEND PROPERTY COMPILE_OPTIONS -fno-common)
     find_library(core_foundation CoreFoundation REQUIRED)
     # The GDExtension's mixed Swift/C++ link needs driver-neutral framework
     # paths, rather than libsys4's standalone clang flag spelling.

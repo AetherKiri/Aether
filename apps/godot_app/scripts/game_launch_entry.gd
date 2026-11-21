@@ -3,6 +3,7 @@ extends RefCounted
 const Metadata = preload("res://scripts/game_metadata.gd")
 
 const FIELD := "launchFile"
+const STARTUP_SCRIPT_FIELD := "startupScript"
 const SUPPORTED_EXTENSIONS := ["exe", "xp3", "hcb"]
 const DIRECTORY_RUNTIME_KINDS := [
     "advhd",
@@ -12,6 +13,7 @@ const DIRECTORY_RUNTIME_KINDS := [
     "escude",
     "entisgls",
     "catsystem2",
+    "qlie",
     "mages",
     "n2system",
     "minori",
@@ -106,6 +108,23 @@ static func resolve_for_runtime(
             if not hcb.is_empty():
                 return root.path_join(hcb)
     return resolve(game)
+
+
+static func normalize_qlie_startup_script(entry: String) -> String:
+    var relative := _normalize_path(entry.strip_edges())
+    if relative.is_empty() or relative.begins_with("/") or relative.contains(":"):
+        return ""
+    for component in relative.split("/"):
+        if component.is_empty() or component == "." or component == "..":
+            return ""
+    return relative
+
+
+static func resolve_startup_script(runtime_kind: String, root: String, entry: String) -> String:
+    # QLIE resolves logical entries through its game archive.
+    if runtime_kind == "qlie" or entry.is_empty() or entry.begins_with("/"):
+        return entry
+    return root.path_join(entry)
 
 
 static func runtime_uses_directory(runtime_kind: String) -> bool:

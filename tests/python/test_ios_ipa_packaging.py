@@ -65,6 +65,27 @@ os.execv(os.environ['IPA_REAL_ZIP'], [os.environ['IPA_REAL_ZIP'], *sys.argv[1:]]
                                '\npackage_ios_unsigned_ipa "$1" debug', "ipa-test", str(self.export)],
                               env=self.env, capture_output=True, text=True)
 
+    def test_explicit_packaging_checks_prerequisites_before_building(self):
+        scripts = self.root / "scripts"
+        scripts.mkdir()
+        script = scripts / "build_ios.sh"
+        shutil.copyfile(REPO / "scripts/build_ios.sh", script)
+        godot = self.bin / "godot"
+        env = dict(self.env, GODOT_BIN=str(godot),
+                   GODOT_EXPORT_TEMPLATE=str(self.root / "missing-ios.zip"))
+        for args, expected in [(["--simulator"], "requires an iOS device build"),
+                               ([], "requires Godot at"),
+                               ([], "requires the Godot iOS export template")]:
+            with self.subTest(expected=expected):
+                if expected.endswith("export template"):
+                    godot.write_text("#!/bin/sh\nexit 0\n")
+                    godot.chmod(0o755)
+                result = subprocess.run(["bash", str(script), "debug", "--package-ipa", *args],
+                                        cwd=self.root, env=env, capture_output=True, text=True)
+                self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
+                self.assertIn(expected, result.stderr)
+                self.assertFalse((self.root / "out").exists())
+
     def test_ci_packages_existing_bundle_without_copy_and_frees_xcode_objects(self):
         result = self.package()
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)

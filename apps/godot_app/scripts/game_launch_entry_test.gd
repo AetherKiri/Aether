@@ -1,11 +1,68 @@
 extends SceneTree
 
 const GameLaunchEntry = preload("res://scripts/game_launch_entry.gd")
+const ProbeConfig = preload("res://scripts/probe_config.gd")
+const Main = preload("res://scripts/main.gd")
+
+class ProbePlayer extends RefCounted:
+    var qlie_score := 0
+    var selected_runtime := ""
+    var runtime_result := OK
+    var other_runtime := ""
+
+    func probe_runtime(runtime: String, _root: String) -> int:
+        if runtime == "qlie":
+            return qlie_score
+        return 100 if runtime == other_runtime else 0
+
+    func set_engine_option(key: String, value: String) -> int:
+        if key == "runtime":
+            selected_runtime = value
+        return runtime_result
 
 var failures := 0
 
+func _check_probe_launch(root: String) -> void:
+    var player := ProbePlayer.new()
+    var config := {"startup_script": "Script/intro.s"}
+    var launch := ProbeConfig.configure_native_launch(player, config, root)
+    _expect_equal(launch.get("startup_script"), root.path_join("Script/intro.s"), "Probe filesystem startup")
+    player.qlie_score = 700
+    launch = ProbeConfig.configure_native_launch(player, config, root)
+    _expect_equal(launch.get("startup_script"), "Script/intro.s", "Probe QLIE archive startup")
+    _expect_equal(player.selected_runtime, "qlie", "Probe selects verified QLIE with an alternate startup")
+    config["engine_options"] = {"runtime": "kirikiri"}
+    launch = ProbeConfig.configure_native_launch(player, config, root)
+    _expect_equal(launch.get("startup_script"), root.path_join("Script/intro.s"), "Probe respects explicit non-QLIE runtime")
+    _expect_equal(player.selected_runtime, "kirikiri", "Probe selects explicitly requested runtime")
+    player.runtime_result = ERR_UNAVAILABLE
+    launch = ProbeConfig.configure_native_launch(player, config, root)
+    _expect_equal(str(launch.get("ok")), "false", "Probe propagates runtime selection failure")
+
+func _check_qlie_library(root: String) -> void:
+    var app := Main.new()
+    var player := ProbePlayer.new()
+    app.player = player
+    player.qlie_score = 700
+    _expect_equal(app._probe_game_runtime_kind(root, "kirikiri"), "qlie", "Alternate-only QLIE can be imported without a script already configured")
+    player.other_runtime = "yuris"
+    _expect_equal(app._probe_game_runtime_kind(root, "kirikiri"), "yuris", "Partial QLIE recognition preserves other verified providers")
+    _expect_equal(app._probe_game_runtime_kind(root, "onscripter"), "onscripter", "Partial QLIE recognition preserves loose engine detection")
+    player.qlie_score = 950
+    _expect_equal(app._probe_game_runtime_kind(root, "onscripter"), "qlie", "QLIE with a default startup takes precedence")
+    _expect_equal(app._game_launch_entry_label({}, "qlie"), "startup.s", "QLIE detail shows the default startup")
+    _expect_equal(app._game_launch_entry_label({"startupScript": "Script/別.s"}, "qlie"), "Script/別.s", "QLIE detail shows a configured archive entry")
+    _expect_equal(GameLaunchEntry.normalize_qlie_startup_script(" Script\\別.s "), "Script/別.s", "QLIE startup accepts Windows separators and Unicode")
+    for invalid in ["../intro.s", "Script/../intro.s", "Script//intro.s", "/intro.s", "C:\\intro.s", "res://intro.s"]:
+        _expect_equal(GameLaunchEntry.normalize_qlie_startup_script(invalid), "", "QLIE startup rejects " + invalid)
+    app.player = null
+    app.ui_motion.free()
+    app.free()
+
 func _init() -> void:
     var root := "/Users/test/游戏/NOBLE☆WORKS"
+    _check_probe_launch(root)
+    _check_qlie_library(root)
     var exe_path := root.path_join("开始游戏.exe")
     _expect_equal(
         GameLaunchEntry.resolve_for_runtime({"path": root, GameLaunchEntry.FIELD: "cmvs32_CHS.exe"}, "cmvs"),
@@ -47,6 +104,21 @@ func _init() -> void:
     _expect_equal(GameLaunchEntry.rfvp_encoding(original_without_encoding), "sjis", "no unrelated script encoding copied")
 
     _expect_equal(GameLaunchEntry.resolve({"path": root}), root, "default directory entry")
+    _expect_equal(
+        GameLaunchEntry.resolve_for_runtime({"path": root, GameLaunchEntry.FIELD: "Config.exe"}, "qlie"),
+        root,
+        "QLIE uses the game directory even with a saved launcher"
+    )
+    _expect_equal(
+        GameLaunchEntry.resolve_startup_script("qlie", root, "Script/intro.s"),
+        "Script/intro.s",
+        "QLIE startup overrides retain archive-relative names"
+    )
+    _expect_equal(
+        GameLaunchEntry.resolve_startup_script("entisgls", root, "intro.txt"),
+        root.path_join("intro.txt"),
+        "Filesystem startup overrides remain relative to the game directory"
+    )
     _expect_equal(
         GameLaunchEntry.resolve_for_runtime({"path": root, GameLaunchEntry.FIELD: "game.exe"}, "entisgls"),
         root,

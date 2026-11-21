@@ -21,6 +21,22 @@ unset(_aetherkiri_n2system_default)
 option(AETHERKIRI_ENABLE_RFVP "Enable the experimental RFVP runtime" OFF)
 option(AETHERKIRI_ENABLE_SOFTPAL_RUNTIME "Enable the SoftPal runtime" OFF)
 
+# QLIE is available on native product builds with the private package.
+set(_aetherkiri_qlie_default OFF)
+if(AETHERKIRI_RUNTIMES_DEFAULT AND BUILD_GODOT_EXTENSION AND NOT (WEB OR EMSCRIPTEN))
+    if(EXISTS "${AETHERKIRI_ELIQ_DIR}/cmake/AetherELIQConfig.cmake")
+        set(_aetherkiri_qlie_default ON)
+    endif()
+endif()
+if(NOT "$ENV{AETHERKIRI_ENABLE_QLIE}" STREQUAL "")
+    set(_aetherkiri_qlie_default "$ENV{AETHERKIRI_ENABLE_QLIE}")
+endif()
+option(AETHERKIRI_ENABLE_QLIE "Enable the AetherELIQ QLIE runtime" ${_aetherkiri_qlie_default})
+unset(_aetherkiri_qlie_default)
+if(AETHERKIRI_ENABLE_QLIE AND (WEB OR EMSCRIPTEN))
+    message(FATAL_ERROR "QLIE requires a native target. Disable AETHERKIRI_ENABLE_QLIE for Web.")
+endif()
+
 # WA2 has an independent provider target and does not require KiriKiri.
 foreach(_aetherkiri_runtime IN ITEMS ARTEMIS_RUNTIME CATSYSTEM2)
     if(AETHERKIRI_ENABLE_${_aetherkiri_runtime} AND NOT AETHERKIRI_ENABLE_KRKR2)
@@ -33,7 +49,7 @@ set(_aetherkiri_enabled_runtimes "")
 foreach(_aetherkiri_runtime IN ITEMS
         KRKR2 ARTEMIS_RUNTIME CATSYSTEM2 WA2 ONSCRIPTER SYSTEM3 XSYSTEM35
         XSYSTEM4 SIGLUS MAGES CMVS MINORI ENTISGLS BGI SYSTEMC ESCUDE YURIS ADVHD
-        FLASH TYRANO RENPY N2SYSTEM RFVP SOFTPAL_RUNTIME)
+        FLASH TYRANO RENPY N2SYSTEM RFVP SOFTPAL_RUNTIME QLIE)
     if(AETHERKIRI_ENABLE_${_aetherkiri_runtime})
         list(APPEND _aetherkiri_enabled_runtimes ${_aetherkiri_runtime})
     endif()

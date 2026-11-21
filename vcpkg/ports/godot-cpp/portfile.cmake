@@ -12,10 +12,11 @@ vcpkg_from_github(
 
 vcpkg_find_acquire_program(PYTHON3)
 
-if(NOT DEFINED VCPKG_BUILD_TYPE OR VCPKG_BUILD_TYPE STREQUAL "release")
-    set(_godotcpp_target "template_release")
-else()
+if(TARGET_TRIPLET STREQUAL "x64-windows-aether-debug" OR
+   VCPKG_BUILD_TYPE STREQUAL "debug")
     set(_godotcpp_target "template_debug")
+else()
+    set(_godotcpp_target "template_release")
 endif()
 
 vcpkg_cmake_configure(
@@ -25,10 +26,8 @@ vcpkg_cmake_configure(
         "-DGODOTCPP_DISABLE_EXCEPTIONS=OFF"
         "-DGODOTCPP_API_VERSION=4.7"
         "-DGODOTCPP_TARGET=${_godotcpp_target}"
-        # godot-cpp's windows.cmake defaults to the static CRT (/MT) and the
-        # template_debug target. The x64-windows-static-md triplet uses the
-        # dynamic CRT (/MD), so disable static CPP to match, and build the
-        # release template for release installs.
+        # Both Windows product presets use the dynamic CRT (/MD), including
+        # the Godot debug template. Disable godot-cpp's static CRT default.
         "-DGODOTCPP_USE_STATIC_CPP=OFF"
 )
 

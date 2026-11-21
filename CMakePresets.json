@@ -36,7 +36,10 @@
       "binaryDir": "${sourceDir}/out/windows/debug",
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "Debug",
-        "VCPKG_BUILD_TYPE": "debug"
+        "CMAKE_MSVC_RUNTIME_LIBRARY": "MultiThreadedDLL",
+        "CMAKE_MAP_IMPORTED_CONFIG_DEBUG": "Release;None;",
+        "VCPKG_TARGET_TRIPLET": "x64-windows-aether-debug",
+        "VCPKG_BUILD_TYPE": "release"
       }
     },
     {

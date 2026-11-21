@@ -101,7 +101,7 @@ ensure_android_rust() {
     local triple="$1"
     local cargo_dir
     local sysroot
-    local toolchain_bin
+    local toolchain_bin=""
     local candidate
 
     # An explicit CARGO override always wins; make sure CMake can see it.
@@ -211,6 +211,14 @@ export ANDROID_NDK_HOME="$ANDROID_NDK_HOME_RESOLVED"
 export ANDROID_NDK="$ANDROID_NDK_HOME_RESOLVED"
 
 if [[ "$CONFIGURE_ONLY" != true ]]; then
+    if [[ ! -x "$GODOT_BIN" ]]; then
+        echo "Error: Android APK export requires Godot at $GODOT_BIN. Set GODOT_BIN to the editor executable." >&2
+        exit 1
+    fi
+    if [[ ! -f "$GODOT_TEMPLATE_DIR/android_debug.apk" || ! -f "$GODOT_TEMPLATE_DIR/android_release.apk" ]]; then
+        echo "Error: Android APK export requires android_debug.apk and android_release.apk in $GODOT_TEMPLATE_DIR." >&2
+        exit 1
+    fi
     # The Android export uses a custom Gradle build template (minSdk 26 lives in
     # export_presets.cfg). The template is generated content and gitignored;
     # materialize it from the installed Godot export templates when missing.
@@ -453,31 +461,48 @@ if [[ "$CONFIGURE_ONLY" == true ]]; then
     exit 0
 fi
 
-if [[ ! -x "$GODOT_BIN" ]]; then
-    echo "Warning: Godot not found at $GODOT_BIN; native libraries were staged only." >&2
-elif [[ ! -f "$GODOT_TEMPLATE_DIR/android_debug.apk" || ! -f "$GODOT_TEMPLATE_DIR/android_release.apk" ]]; then
-    echo "Warning: Godot Android export templates are missing in $GODOT_TEMPLATE_DIR; native libraries were staged only." >&2
-    echo "         Expected android_debug.apk and android_release.apk." >&2
-else
-    echo "==> Exporting Godot Android APK"
-    mkdir -p "$PROJECT_ROOT/out/godot/android/$BUILD_TYPE_LOWER"
-    export_path="$PROJECT_ROOT/out/godot/android/$BUILD_TYPE_LOWER/Aether-$BUILD_TYPE_LOWER.apk"
-    export_preset="Android ${BUILD_TYPE_CAP}"
-    export_mode="--export-debug"
-    if [[ "$BUILD_TYPE_LOWER" == "release" ]]; then
-        export_mode="--export-release"
-    fi
-    godot_export_command=("$GODOT_BIN")
-    macos_host_extension="$GODOT_APP_DIR/bin/macos/$BUILD_TYPE_LOWER/libaether_kiri_godot.dylib"
-    if [[ "$(uname -m)" == "arm64" && -f "$macos_host_extension" &&
-          "$(lipo -archs "$macos_host_extension" 2>/dev/null || true)" == "x86_64" ]]; then
-        # This private native host extension is currently x86_64-only. Match
-        # the editor process to the staged host extension while
-        # it imports the project; the exported Android libraries remain arm64.
-        godot_export_command=(arch -x86_64 "$GODOT_BIN")
-    fi
-    "${godot_export_command[@]}" --headless --path "$GODOT_APP_DIR" \
-        "$export_mode" "$export_preset" "$export_path"
+echo "==> Exporting Godot Android APK"
+mkdir -p "$PROJECT_ROOT/out/godot/android/$BUILD_TYPE_LOWER"
+export_path="$PROJECT_ROOT/out/godot/android/$BUILD_TYPE_LOWER/Aether-$BUILD_TYPE_LOWER.apk"
+export_preset="Android ${BUILD_TYPE_CAP}"
+export_mode="--export-debug"
+if [[ "$BUILD_TYPE_LOWER" == "release" ]]; then
+    export_mode="--export-release"
 fi
+godot_export_command=("$GODOT_BIN")
+macos_host_extension="$GODOT_APP_DIR/bin/macos/$BUILD_TYPE_LOWER/libaether_kiri_godot.dylib"
+if [[ "$(uname -m)" == "arm64" && -f "$macos_host_extension" &&
+      "$(lipo -archs "$macos_host_extension" 2>/dev/null || true)" == "x86_64" ]]; then
+    # This private native host extension is currently x86_64-only. Match
+    # the editor process to the staged host extension while
+    # it imports the project; the exported Android libraries remain arm64.
+    godot_export_command=(arch -x86_64 "$GODOT_BIN")
+fi
+# Export to a fresh directory so a zero exit without a new APK cannot pass.
+export_tmp_dir="$(mktemp -d "$(dirname "$export_path")/.aether-export.XXXXXXXX")"
+trap 'rm -rf -- "${export_tmp_dir:?}"' EXIT
+export_tmp_path="$export_tmp_dir/$(basename "$export_path")"
+"${godot_export_command[@]}" --headless --path "$GODOT_APP_DIR" \
+    "$export_mode" "$export_preset" "$export_tmp_path"
+python3 - "$export_tmp_path" "$export_path" "${ABI_LIST[@]}" <<'PY'
+import os
+import sys
+from zipfile import BadZipFile, ZipFile
 
-echo "Android build output: $PROJECT_ROOT/out/godot/android/$BUILD_TYPE_LOWER"
+apk, destination, *abis = sys.argv[1:]
+required = {"AndroidManifest.xml"}
+for abi in abis:
+    required.update(f"lib/{abi}/{name}" for name in (
+        "libaether_kiri_godot.so", "libengine_api.so", "libSDL2.so", "libomp.so",
+    ))
+try:
+    with ZipFile(apk) as archive:
+        missing = required - {entry.filename for entry in archive.infolist() if entry.file_size}
+except (OSError, BadZipFile) as error:
+    sys.exit(f"Error: Godot did not produce a readable Android APK: {error}")
+if missing:
+    sys.exit(f"Error: Android APK is missing required entries: {', '.join(sorted(missing))}")
+os.replace(apk, destination)
+PY
+
+echo "Android build output: $export_path"

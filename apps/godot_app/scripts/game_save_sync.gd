@@ -1,6 +1,7 @@
 extends Node
 
 const Config := preload("res://scripts/game_render_config.gd")
+const Locations := preload("res://scripts/game_save_locations.gd")
 var host
 var busy := false
 var pending: Dictionary = {}
@@ -50,9 +51,14 @@ func _notice(message: String) -> void:
 
 func _native(operation: String, game: Dictionary = {}) -> bool:
     var player = host.player
-    return player != null and player.has_method("native_cloud_save_sync_begin") and \
-        player.native_cloud_save_sync_begin(operation, _root(game).path_join("savedata") if not game.is_empty() else "", \
-            _root(game).get_file() if not game.is_empty() else "")
+    if player == null or not player.has_method("native_cloud_save_sync_begin"):
+        return false
+    if game.is_empty():
+        return player.native_cloud_save_sync_begin(operation, "", "")
+    var root := _root(game)
+    var engine := Locations.save_engine(host, game)
+    var saves := Locations.qlie_save_dir(root) if engine == "qlie" else Locations.game_root_save_dir(root, engine)
+    return not saves.is_empty() and player.native_cloud_save_sync_begin(operation, saves, root.get_file())
 
 func set_enabled(game: Dictionary, value: bool) -> void:
     if busy or _running() or host.game_storage_busy or not supported():

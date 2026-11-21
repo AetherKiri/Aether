@@ -53,6 +53,19 @@ func _initialize() -> void:
         _fail("missing requested surface did not fall back to the frame")
         return
 
+    # QLIE consumes coordinates on the requested surface. A wide mobile
+    # surface has side bars around the 16:9 frame.
+    var qlie_frame := Vector2(1280, 720)
+    var qlie_surface := GameInputMapping.input_surface_size(
+        "qlie", qlie_frame, Vector2(2000, 900)
+    )
+    var qlie_click := GameInputMapping.map_point_to_surface(
+        Vector2(500, 225), Rect2(0, 0, 2000, 900), qlie_frame, qlie_surface
+    )
+    if not qlie_click.is_equal_approx(Vector2(500, 225)):
+        _fail("QLIE tap lost its requested surface coordinates: %s" % qlie_click)
+        return
+
     var advhd_surface := GameInputMapping.input_surface_size(
         "advhd", Vector2(1280, 720), requested_surface
     )

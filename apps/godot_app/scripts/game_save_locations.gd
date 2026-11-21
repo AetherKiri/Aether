@@ -77,10 +77,46 @@ static func _mages_profile(root: String) -> String:
                 return profile[0]
     return ""
 
+static func save_engine(host: Node, game: Dictionary) -> String:
+    var engine := String(game.get("engine", ""))
+    var startup_script := String(game.get("startupScript", ""))
+    var has_startup_override := not startup_script.strip_edges().is_empty()
+    if engine != "qlie" and (engine.is_empty() or engine == "kirikiri" or has_startup_override):
+        # Older QLIE entries can have the generic KiriKiri engine label.
+        # An alternate startup can also be required to recognize the game.
+        var path := String(game.get("path", ""))
+        var detected: String
+        if has_startup_override and host.has_method("_game_runtime_kind_for_launch"):
+            detected = host._game_runtime_kind_for_launch(path, startup_script)
+        else:
+            detected = host._game_runtime_kind(path)
+        if engine.is_empty() or detected == "qlie":
+            return detected
+    return engine
+
+static func game_root_save_dir(root: String, engine: String) -> String:
+    return root.path_join("SaveData" if engine == "qlie" else "savedata")
+
+static func qlie_save_dir(root: String, user_root: String = "") -> String:
+    if root.is_empty():
+        return ""
+    root = ProjectSettings.globalize_path(root).simplify_path().trim_suffix("/")
+    var local := game_root_save_dir(root, "qlie")
+    if not DirAccess.dir_exists_absolute(root):
+        return local
+    var base := ProjectSettings.globalize_path("user://").trim_suffix("/") if user_root.is_empty() else user_root
+    var identity := root
+    if root.begins_with(base + "/"):
+        identity = "user://" + root.substr(base.length() + 1)
+    var fallback := base.path_join("qlie_saves").path_join(identity.sha256_text()).path_join("SaveData")
+    return preload("res://scripts/game_save_storage.gd").with_writable_fallback(local, fallback)
+
 static func resolve(root: String, engine: String, game: Dictionary, user_root: String = "") -> Dictionary:
     root = ProjectSettings.globalize_path(root).simplify_path().trim_suffix("/")
     var base := ProjectSettings.globalize_path("user://").trim_suffix("/") if user_root.is_empty() else user_root
-    var local := root.path_join("savedata")
+    var local := qlie_save_dir(root, base) if engine == "qlie" else game_root_save_dir(root, engine)
+    if local.is_empty():
+        return {}
     var banks := {"main": _bank(local)}
     match engine:
         "renpy":

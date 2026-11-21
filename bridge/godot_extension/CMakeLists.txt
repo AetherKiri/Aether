@@ -339,6 +339,15 @@ if(TARGET aether_krkr2_runtime)
     target_compile_definitions(aether_kiri_godot PRIVATE
         AETHERKIRI_WITH_KRKR2=1)
 endif()
+
+# QLIE can also link krkr2core directly. Keep that link after the runtime
+# glue so its Linux RESCAN group retains the core modules' dependencies.
+if(AETHERKIRI_ENABLE_QLIE)
+    aethereliq_extend_qlie(aether_kiri_godot "${CMAKE_SOURCE_DIR}")
+    aetherkiri_sanitize_openal_link()
+    target_compile_definitions(aether_kiri_godot PRIVATE AETHERKIRI_WITH_QLIE=1)
+endif()
+
 if(TARGET aether_onscripter_runtime)
     target_link_libraries(aether_kiri_godot PRIVATE
         aether_onscripter_runtime)

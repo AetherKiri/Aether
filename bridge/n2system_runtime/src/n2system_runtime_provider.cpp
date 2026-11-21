@@ -219,7 +219,7 @@ engine_result_t Tick(void* opaque, uint32_t delta) {
     const int status = runtime->Call([&] { return api.status(runtime->instance); });
     if(status < 0) return Result(runtime, -1);
     if(status >= 2) {
-        runtime->error = "N2System requested termination";
+        runtime->error = "N2System runtime requested termination";
         return ENGINE_RESULT_INVALID_STATE;
     }
     return ENGINE_RESULT_OK;

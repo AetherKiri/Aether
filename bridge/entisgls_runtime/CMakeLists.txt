@@ -19,3 +19,8 @@ foreach(entis_target study_sdl_platform legacy_foundation)
         endif()
     endforeach()
 endforeach()
+
+# The iOS Entis renderer uses the SDK's OpenGL ES backend.
+if(IOS)
+    target_compile_definitions(study_sdl_platform INTERFACE GLES_SILENCE_DEPRECATION)
+endif()

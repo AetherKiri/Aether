@@ -678,6 +678,14 @@ func _run() -> void:
         _fail("a virtual-key touch was misclassified as a trackpad click")
         return
 
+    if _key_events != [
+        {"pressed": true, "key_code": 0x1b, "modifiers": 0},
+        {"pressed": false, "key_code": 0x1b, "modifiers": 0},
+    ]:
+        _fail("a raw touch on the virtual Escape button did not deliver exactly one keystroke")
+        return
+    _key_events.clear()
+
     var tap_position := (
         safe_rect.position + safe_rect.size * Vector2(0.55, 0.28)
     )

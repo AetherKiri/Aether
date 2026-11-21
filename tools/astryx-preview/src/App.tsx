@@ -8,6 +8,12 @@ import {
   type CSSProperties,
   type ReactNode,
 } from "react";
+import { VirtualButtonEditor } from "./VirtualButtonEditor";
+import {
+  emptyProfiles,
+  resolve as resolveButtons,
+  type Profiles,
+} from "./virtualButtons";
 import appIcon from "../../../apps/godot_app/assets/icons/astryx/icon.png";
 import darkAppIcon from "../../../apps/godot_app/assets/icons/astryx/dark/icon.png";
 import { Theme } from "@astryxdesign/core/theme";
@@ -498,6 +504,36 @@ export function App() {
     }
   });
   const [selected, setSelected] = useState(games[0]);
+  const [buttonScope, setButtonScope] = useState<string | null>(null);
+  const [buttonBooks, setButtonBooks] = useState<Record<string, Profiles>>(() => {
+    try {
+      const books: Record<string, Profiles> = JSON.parse(localStorage.getItem("aether-virtual-buttons") || "{}") ?? {};
+      for (const book of Object.values(books)) {
+        for (const profile of book.profiles) {
+          profile.buttons = profile.buttons.filter(button => button.action !== "direction_mode");
+        }
+      }
+      return books;
+    } catch {
+      return {};
+    }
+  });
+  const globalButtons = buttonBooks[""] ?? emptyProfiles(false);
+  function buttonRow(scope: string) {
+    const book = buttonBooks[scope] ?? emptyProfiles(!!scope);
+    const label = scope && !book.active
+      ? "跟随全局 · " + resolveButtons(globalButtons).name
+      : resolveButtons(book, scope ? globalButtons : undefined).name;
+    return (
+      <HStack gap={4} hAlign="between" vAlign="center" style={settingsRowPadding}>
+        <VStack gap={1}>
+          <Text weight="semibold">虚拟按钮布局</Text>
+          <Text color="secondary">{label}</Text>
+        </VStack>
+        <Button label="编辑布局" variant="secondary" onClick={() => setButtonScope(scope)} />
+      </HStack>
+    );
+  }
   const [gameRendering, setGameRendering] = useState<
     Record<string, GameRendering>
   >({});
@@ -1464,6 +1500,8 @@ export function App() {
                           "keyboard",
                           "在游戏中显示快捷菜单与键盘入口。",
                         )}
+                        {buttonRow("")}
+                        <Divider />
                         {settingRow(
                           "opacity",
                           "虚拟键盘不透明度",
@@ -1984,6 +2022,10 @@ export function App() {
                     {gameRenderSettings()}
                   </Collapsible>
                   <Divider />
+                  <Collapsible value="virtual_buttons" trigger={<Heading level={3}>游戏控制</Heading>}>
+                    {buttonRow(selected.name)}
+                  </Collapsible>
+                  <Divider />
                   <Collapsible
                     value="saves"
                     trigger={<Heading level={3}>存档</Heading>}
@@ -2317,6 +2359,23 @@ export function App() {
               )
             }
           />
+          {buttonScope !== null && (
+            <VirtualButtonEditor
+              scope={buttonScope ? titleFor(selected) : "全局布局"}
+              backdrop={buttonScope ? coversFor(selected)[0] : undefined}
+              initial={buttonBooks[buttonScope] ?? emptyProfiles(!!buttonScope)}
+              global={buttonScope ? globalButtons : undefined}
+              dark={draft.theme === "dark"}
+              opacity={draft.opacity / 100}
+              onClose={() => setButtonScope(null)}
+              onSave={(book) => {
+                const books = { ...buttonBooks, [buttonScope]: book };
+                localStorage.setItem("aether-virtual-buttons", JSON.stringify(books));
+                setButtonBooks(books);
+                setButtonScope(null);
+              }}
+            />
+          )}
           <Dialog
             isOpen={pending !== null}
             onOpenChange={(open) => !open && setPending(null)}

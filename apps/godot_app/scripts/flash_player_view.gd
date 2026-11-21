@@ -77,10 +77,12 @@ func setup(app) -> void:
         if DisplayServer.has_feature(DisplayServer.FEATURE_VIRTUAL_KEYBOARD):
             DisplayServer.virtual_keyboard_show("")
     )
-    controls.w_button.text = "↑"
-    controls.a_button.text = "←"
-    controls.s_button.text = "↓"
-    controls.d_button.text = "→"
+    var profile: Dictionary = host._virtual_button_profile()
+    # Flash's built-in pad historically sends arrows. Custom profiles specify
+    # their own mode and a separately bound W must still reach the movie as W.
+    if profile.id == "mouse":
+        profile.pad_mode = "arrows"
+    controls.set_layout_profile(profile)
     resized.connect(_layout)
     _layout()
 
@@ -138,11 +140,7 @@ func _restart() -> void:
         _playback_error(error)
 
 func _virtual_key(pressed: bool, code: int, modifiers: int) -> void:
-    var arrows := {87: 38, 65: 37, 83: 40, 68: 39}
-    if arrows.has(code):
-        _send(1 if pressed else 2, Vector2.ZERO, int(arrows[code]))
-    else:
-        _send(1 if pressed else 2, Vector2.ZERO, code, host._virtual_key_unicode(pressed, code, modifiers))
+    _send(1 if pressed else 2, Vector2.ZERO, code, host._virtual_key_unicode(pressed, code, modifiers))
 
 func set_paused(value: bool) -> void:
     if value:
@@ -212,6 +210,8 @@ func _input(event: InputEvent) -> void:
     if not visible or native == null:
         return
     if controls.routes_pointer(event):
+        if controls.cap_input_handled:
+            get_viewport().set_input_as_handled()
         return
     if event is InputEventKey:
         var unicode: int = event.unicode if event.pressed and not event.ctrl_pressed and not event.meta_pressed else 0

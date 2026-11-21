@@ -84,6 +84,7 @@ const CoverIndex = preload("res://scripts/cover_index.gd")
 const GameCoverConfig = preload("res://scripts/game_cover_config.gd")
 const VNDBCoverResolver = preload("res://scripts/vndb_cover_resolver.gd")
 const GameInputMapping = preload("res://scripts/game_input_mapping.gd")
+const VirtualButtonLayouts := preload("res://scripts/virtual_button_layout.gd")
 const GameVirtualControls = preload("res://scripts/game_virtual_controls.gd")
 const DiagnosticSession = preload("res://scripts/diagnostic_session.gd")
 const DiagnosticLocalization = preload("res://scripts/diagnostic_localization.gd")
@@ -2716,6 +2717,8 @@ const POINTER_MOD_LEFT := 0x08
 const POINTER_MOD_RIGHT := 0x10
 const POINTER_MOD_MIDDLE := 0x20
 const POINTER_MOD_CANCEL := 1 << 30
+const KEY_MOD_SHIFT := 0x01
+const KEY_MOD_ALT := 0x02
 const KEY_MOD_CONTROL := 0x04
 const RUNTIME_KIRIKIRI := "kirikiri"
 const RUNTIME_ONSCRIPTER := "onscripter"
@@ -3637,6 +3640,7 @@ func _build_ui() -> void:
     game_virtual_controls = GameVirtualControls.new()
     add_child(game_virtual_controls)
     game_virtual_controls.setup(ui_tokens)
+    game_virtual_controls.set_layout_profile(_virtual_button_profile())
     game_virtual_controls.set_input_mode(game_virtual_input_mode)
     _apply_game_virtual_control_preferences()
     game_virtual_controls.key_event_requested.connect(
@@ -5616,6 +5620,9 @@ func _mark_legal_safe_dialog(dialog: Control, first_use: bool, statement: bool) 
 func _layout_safe_dialog(dialog: Control, safe_rect: Rect2) -> void:
     var kind := String(dialog.get_meta("aether_safe_dialog_kind", ""))
     if kind.is_empty():
+        return
+    if kind == "fullscreen":
+        _set_control_rect(dialog, safe_rect)
         return
     if kind == "centered":
         var preferred := Vector2(dialog.get_meta("aether_safe_dialog_size", Vector2(560, 320)))
@@ -17521,6 +17528,8 @@ func _on_open_game() -> void:
         return
 
     _load_game_render_overrides(path)
+    if game_virtual_controls != null:
+        game_virtual_controls.set_layout_profile(_virtual_button_profile(game_render_root))
     var detected_runtime := _game_runtime_kind(path)
     if not _switch_runtime_player(detected_runtime):
         render_errors += 1
@@ -18766,6 +18775,8 @@ func _input(event: InputEvent) -> void:
         game_virtual_controls != null
         and game_virtual_controls.routes_pointer(event)
     ):
+        if game_virtual_controls.cap_input_handled:
+            get_viewport().set_input_as_handled()
         return
     # Platform dialogs are real Godot Controls, matching CDialog's host-owned
     # modal. Leave their events unhandled so LineEdit/Button GUI dispatch owns
@@ -18991,6 +19002,27 @@ func _sync_runtime_cursor() -> void:
     if not game_running:
         runtime_cursor_state.reset()
 
+func _begin_virtual_button_orientation() -> int:
+    if not _mobile_runtime():
+        return -1
+    var previous := DisplayServer.screen_get_orientation()
+    DisplayServer.screen_set_orientation(DisplayServer.SCREEN_SENSOR_LANDSCAPE)
+    return previous
+
+func _restore_virtual_button_orientation(previous: int) -> void:
+    if previous >= 0:
+        DisplayServer.screen_set_orientation(previous as DisplayServer.ScreenOrientation)
+
+func _virtual_button_global_path() -> String:
+    return VirtualButtonLayouts.GLOBAL_PATH
+
+func _virtual_button_profile(game_path_value: String = "") -> Dictionary:
+    var global_book: Dictionary = VirtualButtonLayouts.load_global(_virtual_button_global_path()).book
+    if game_path_value.is_empty():
+        return VirtualButtonLayouts.effective(global_book)
+    var root := _game_runtime_root(game_path_value)
+    return VirtualButtonLayouts.effective(VirtualButtonLayouts.load_game(root).book, global_book)
+
 func _sync_game_virtual_controls() -> void:
     if game_virtual_controls == null:
         return
@@ -19061,10 +19093,10 @@ func _virtual_key_unicode(
     key_code: int,
     modifiers: int
 ) -> int:
-    if not pressed or (modifiers & KEY_MOD_CONTROL) != 0:
+    if not pressed or (modifiers & (KEY_MOD_CONTROL | KEY_MOD_ALT)) != 0:
         return 0
     if key_code >= 0x41 and key_code <= 0x5A:
-        return key_code + 0x20
+        return key_code if modifiers & KEY_MOD_SHIFT else key_code + 0x20
     if key_code >= 0x30 and key_code <= 0x39:
         return key_code
     if key_code == 0x20:

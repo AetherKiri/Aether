@@ -1,0 +1,192 @@
+.pad-editor {
+  position: relative;
+  isolation: isolate;
+  width: 100dvw;
+  height: 100dvh;
+  overflow: hidden;
+  background: linear-gradient(160deg, #12151a, #454b53);
+  color: var(--pad-text);
+}
+.pad-backdrop {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  opacity: 0.55;
+  pointer-events: none;
+}
+.pad-board {
+  position: absolute;
+  inset: env(safe-area-inset-top, 0px) env(safe-area-inset-right, 0px)
+    env(safe-area-inset-bottom, 0px) env(safe-area-inset-left, 0px);
+  overflow: hidden;
+  touch-action: none;
+  user-select: none;
+  background-image:
+    linear-gradient(#ffffff0a 1px, transparent 1px),
+    linear-gradient(90deg, #ffffff0a 1px, transparent 1px),
+    linear-gradient(#ffffff12 1px, transparent 1px),
+    linear-gradient(90deg, #ffffff12 1px, transparent 1px);
+  background-size:
+    32px 32px,
+    32px 32px,
+    128px 128px,
+    128px 128px;
+}
+.pad-float {
+  position: absolute;
+  z-index: 3;
+  top: max(8px, env(safe-area-inset-top));
+  left: 50%;
+  transform: translateX(-50%);
+  width: max-content;
+  max-width: calc(100% - 24px);
+  box-sizing: border-box;
+  max-height: calc(100% - 24px);
+  overflow: auto;
+  overscroll-behavior: contain;
+  padding: 6px;
+  border: 1px solid var(--pad-border);
+  border-radius: 18px;
+  background: color-mix(in srgb, var(--pad-surface) 95%, transparent);
+  backdrop-filter: blur(16px);
+  box-shadow: 0 3px 14px #0003;
+}
+.pad-folded {
+  left: auto;
+  right: max(8px, env(safe-area-inset-right));
+  transform: none;
+  border-radius: 16px;
+}
+.pad-bar,
+.pad-profiles,
+.pad-tools,
+.pad-options {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+.pad-identity {
+  display: grid;
+  min-width: 64px;
+  max-width: 130px;
+  min-height: 36px;
+  align-content: center;
+}
+.pad-identity > * {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.pad-manager,
+.pad-tools {
+  border-top: 1px solid var(--pad-border);
+  margin: 6px 2px 0;
+  padding: 7px 4px 2px;
+}
+.pad-profiles > div:first-child,
+.pad-tools > div:first-child {
+  min-width: 0;
+  flex: 1;
+}
+.pad-options {
+  display: grid;
+  gap: 6px;
+  margin-top: 7px;
+}
+.pad-cap,
+.pad-handle {
+  transform: translate(-50%, -50%);
+  position: absolute;
+  display: grid;
+  place-items: center;
+  touch-action: none;
+  font-family: inherit;
+  padding: 0;
+  line-height: 1;
+  cursor: grab;
+}
+.pad-cap {
+  box-sizing: border-box;
+  border-radius: 50%;
+  background: rgba(77, 79, 84, 0.58);
+  color: rgba(240, 242, 247, 0.84);
+  border: 2px solid rgba(209, 214, 224, 0.72);
+  opacity: var(--cap-opacity);
+  font-weight: 500;
+  text-shadow: 0 1px 2px #0009;
+}
+.pad-cap[aria-pressed="true"] {
+  z-index: 1;
+  outline: 3px solid var(--pad-focus);
+  outline-offset: 2px;
+}
+.pad-disc {
+  background: rgba(79, 82, 87, 0.46);
+}
+.pad-disc::before {
+  content: "";
+  width: 34%;
+  height: 34%;
+  box-sizing: border-box;
+  border-radius: 50%;
+  background: rgba(107, 110, 115, 0.46);
+  border: 2px solid rgba(209, 214, 224, 0.72);
+}
+.pad-disc span {
+  position: absolute;
+  transform: translate(-50%, -50%);
+}
+.pad-disc [data-dir="0"] {
+  top: 20%;
+  left: 50%;
+}
+.pad-disc [data-dir="1"] {
+  top: 50%;
+  left: 20%;
+}
+.pad-disc [data-dir="2"] {
+  top: 80%;
+  left: 50%;
+}
+.pad-disc [data-dir="3"] {
+  top: 50%;
+  left: 80%;
+}
+.pad-handle {
+  z-index: 2;
+  width: 32px;
+  height: 32px;
+  border: 2px solid white;
+  border-radius: 9px;
+  background: var(--pad-focus);
+  color: white;
+  cursor: pointer;
+  font-size: 19px;
+}
+.pad-mouse {
+  width: 46%;
+  height: 60%;
+  object-fit: contain;
+  pointer-events: none;
+}
+@media (orientation: portrait) {
+  .pad-editor {
+    position: absolute;
+    left: 100dvw;
+    top: 0;
+    width: 100dvh;
+    height: 100dvw;
+    transform-origin: top left;
+    transform: rotate(90deg);
+  }
+  .pad-board {
+    inset: env(safe-area-inset-right, 0px) env(safe-area-inset-bottom, 0px)
+      env(safe-area-inset-left, 0px) env(safe-area-inset-top, 0px);
+  }
+}
+
+.pad-grip {
+  cursor: nwse-resize;
+}

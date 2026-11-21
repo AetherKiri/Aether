@@ -263,10 +263,11 @@ class StandaloneMediaPlayer final : public KRMovie::TVPMoviePlayer {
       return false;
     }
     const ttstr path(path_utf8);
+    const auto native_path = std::filesystem::u8path(path_utf8);
     IStream* stream = nullptr;
     std::error_code local_file_error;
     const bool is_local_file =
-        std::filesystem::is_regular_file(path_utf8, local_file_error);
+        std::filesystem::is_regular_file(native_path, local_file_error);
     if (is_local_file) {
       try {
         // Standalone media paths come from the host file picker/library and
@@ -290,7 +291,7 @@ class StandaloneMediaPlayer final : public KRMovie::TVPMoviePlayer {
     }
     uint64_t size = 0;
     std::error_code file_size_error;
-    const auto native_size = std::filesystem::file_size(path_utf8,
+    const auto native_size = std::filesystem::file_size(native_path,
                                                         file_size_error);
     if (!file_size_error) {
       size = static_cast<uint64_t>(native_size);

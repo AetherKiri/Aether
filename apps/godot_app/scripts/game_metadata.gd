@@ -18,6 +18,7 @@ const RUNTIME_XSYSTEM35 := "xsystem35"
 const RUNTIME_SYSTEM3 := "system3"
 const RUNTIME_YURIS := "yuris"
 const RUNTIME_SYSTEMC := "systemc"
+const RUNTIME_EXHIBIT := "exhibit"
 
 static func inspect(path: String) -> Dictionary:
     var root := path
@@ -78,6 +79,10 @@ static func inspect(path: String) -> Dictionary:
     elif is_cmvs_directory(root):
         result.engine = RUNTIME_CMVS
         result.signals.append("cmvs-ps2a-cpz")
+    elif files.has("exhibit.ini") and (_has_extension(files, "rld") or
+            _has_extension(_file_names(root.path_join("rld")), "rld")):
+        result.engine = RUNTIME_EXHIBIT
+        result.signals.append("exhibit-ini-rld")
     elif not hcb.is_empty():
         result.engine = RUNTIME_RFVP
         result.signals.append("fvp-hcb")

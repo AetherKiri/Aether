@@ -30,5 +30,8 @@ func _init() -> void:
     assert(policy.leave() == {"vsync": 2, "max_fps": 45})
     assert(policy.enter("exhibit", "macOS", "metal", 1, 0, 120.0) == {"vsync": 0, "max_fps": 60})
     assert(policy.leave() == {"vsync": 1, "max_fps": 0})
+    assert(policy.enter("systemc", "macOS", "metal", 1, 0, 120.0) == {"vsync": 0, "max_fps": 60})
+    assert(policy.leave() == {"vsync": 1, "max_fps": 0})
+    assert(policy.enter("systemc", "iOS", "metal", 1, 0, 120.0).is_empty())
     print("Game frame pacing lifecycle regression passed")
     quit(0)

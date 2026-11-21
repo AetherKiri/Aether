@@ -7,7 +7,7 @@ var saved: Dictionary = {}
 
 func enter(runtime: String, platform: String, driver: String, vsync: int,
         max_fps: int, refresh_hz: float) -> Dictionary:
-    if not saved.is_empty() or runtime not in ["yuris", "bgi", "exhibit"] or platform != "macOS" or driver != "metal":
+    if not saved.is_empty() or runtime not in ["yuris", "bgi", "systemc", "exhibit"] or platform != "macOS" or driver != "metal":
         return {}
     if vsync == DisplayServer.VSYNC_DISABLED:
         return {}

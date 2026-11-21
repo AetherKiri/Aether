@@ -148,6 +148,8 @@ set(AETHERKIRI_OBFUSCATION_BUILD_ID "local" CACHE STRING
     "non-secret identifier mixed into deterministic obfuscation output")
 option(AETHERKIRI_ENABLE_INTERNAL
        "enable optional private AetherInternal packages when available" ON)
+set(AETHERKIRI_EXHIBIT_DIR "${CMAKE_CURRENT_SOURCE_DIR}/packages/AetherExHIBIT"
+    CACHE PATH "Path to the AetherExHIBIT package")
 set(AETHERKIRI_SOFTPAL_DIR
     "${CMAKE_CURRENT_SOURCE_DIR}/packages/AetherSoftPal"
     CACHE PATH "path to an AetherSoftPal package checkout")
@@ -402,6 +404,14 @@ endif()
 if(AETHERKIRI_ENABLE_MINORI AND BUILD_GODOT_EXTENSION AND
     (LINUX OR APPLE OR ANDROID OR EMSCRIPTEN))
     add_subdirectory(${AETHERKIRI_MINORI_DIR})
+endif()
+if(AETHERKIRI_ENABLE_EXHIBIT AND (BUILD_GODOT_EXTENSION OR ENABLE_TESTS))
+    if(EXISTS "${AETHERKIRI_EXHIBIT_DIR}/integrations/aether/CMakeLists.txt")
+        add_subdirectory("${AETHERKIRI_EXHIBIT_DIR}" packages/exhibit-core)
+        add_subdirectory("${AETHERKIRI_EXHIBIT_DIR}/integrations/aether" bridge/exhibit)
+    else()
+        message(STATUS "ExHIBIT package unavailable in this checkout")
+    endif()
 endif()
 if(AETHERKIRI_ENABLE_ENTISGLS AND (BUILD_GODOT_EXTENSION OR ENABLE_TESTS) AND
    NOT (WEB OR EMSCRIPTEN))

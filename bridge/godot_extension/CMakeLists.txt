@@ -318,6 +318,11 @@ if(AETHERKIRI_ENABLE_WA2)
     target_compile_definitions(aether_kiri_godot PRIVATE AETHERKIRI_WITH_WA2=1)
 endif()
 
+if(TARGET aether_exhibit_provider)
+    target_link_libraries(aether_kiri_godot PRIVATE aether_exhibit_provider)
+    target_compile_definitions(aether_kiri_godot PRIVATE AETHERKIRI_WITH_EXHIBIT=1)
+endif()
+
 if(AETHERKIRI_ENABLE_SOFTPAL_RUNTIME)
     # The provider registers alongside the other independent runtimes in the
     # Godot host. Its private sources stay in the AetherSoftPal submodule.

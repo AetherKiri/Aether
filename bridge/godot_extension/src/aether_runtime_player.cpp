@@ -2,6 +2,9 @@
 #include "runtime_host_extension.h"
 #include "engine_options.h"
 #include "engine_runtime_provider.h"
+#if defined(AETHERKIRI_WITH_EXHIBIT)
+#include "exhibit_runtime_provider.h"
+#endif
 #if defined(AETHERKIRI_WITH_WA2)
 extern "C" void AetherInternalRegisterWa2Runtime(void);
 #endif
@@ -14490,6 +14493,9 @@ void InitializeAetherRuntime(ModuleInitializationLevel level) {
 #endif
 #if defined(AETHERKIRI_WITH_RFVP)
     aetherkiri::rfvp::RegisterRuntimeProvider();
+#endif
+#if defined(AETHERKIRI_WITH_EXHIBIT)
+    aetherkiri::exhibit::RegisterRuntimeProvider();
 #endif
 #if defined(AETHERKIRI_WITH_SOFTPAL)
     AetherSoftPalRegisterRuntime();

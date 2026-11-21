@@ -1,12 +1,14 @@
 extends RefCounted
 
 const ProbeConfig = preload("res://scripts/probe_config.gd")
+const FrameMetrics = preload("res://scripts/probe_frame_metrics.gd")
 
 # Explicit opt-in device regression runner. It never saves screenshots and
 # writes engine saves only beneath a separate, seeded regression directory.
 var app: Node
 var config: Dictionary
 var snapshots: Dictionary = {}
+var frame_regions: Dictionary = {}
 var report: Array[Dictionary] = []
 var last_state: Dictionary = {}
 var started_ms := Time.get_ticks_msec()
@@ -197,6 +199,66 @@ func check_frame(action: Dictionary, label: String) -> bool:
         return false
     return true
 
+func region_digest(image: Image, rect: Rect2i) -> String:
+    var hash := HashingContext.new()
+    hash.start(HashingContext.HASH_SHA256)
+    hash.update(image.get_region(rect).get_data())
+    return hash.finish().hex_encode()
+
+func watch_frame_region(action: Dictionary, label: String) -> bool:
+    var diagnostics: CanvasLayer = app.perf_layer
+    var visible := diagnostics.visible
+    diagnostics.visible = false
+    var passed := await sample_frame_region(action, label)
+    diagnostics.visible = visible
+    return passed
+
+func sample_frame_region(action: Dictionary, label: String) -> bool:
+    var frames := int(action.get("frames", 1))
+    var same := String(action.get("matches", ""))
+    var different := String(action.get("differs_from", ""))
+    var reference := same if not same.is_empty() else different
+    var expected: Dictionary = frame_regions.get(reference, {})
+    var coords: Array = action.get("rect", expected.get("rect", []))
+    if frames < 1 or frames > 240 or coords.size() != 4 or (not reference.is_empty() and expected.is_empty()) or (not same.is_empty() and not different.is_empty()):
+        record({"event": "failed", "label": label, "reason": "invalid frame region or reference"})
+        return false
+    var region := Rect2i(int(coords[0]), int(coords[1]), int(coords[2]), int(coords[3]))
+    var measured := {}
+    for i in range(frames):
+        await RenderingServer.frame_post_draw
+        if not app.game_running or app.viewport.texture == null:
+            record({"event": "failed", "label": label, "reason": "presentation unavailable", "frame": i})
+            return false
+        var frame: Dictionary = app.player.read_frame_rgba()
+        var size := Vector2i(int(frame.get("width", 0)), int(frame.get("height", 0)))
+        var output: Image = app.get_viewport().get_texture().get_image()
+        if not region.has_area() or not Rect2i(Vector2i.ZERO, size).encloses(region) or output == null or output.is_empty():
+            record({"event": "failed", "label": label, "reason": "frame region outside the image", "frame": i})
+            return false
+        var source := Image.create_from_data(size.x, size.y, false, Image.FORMAT_RGBA8, frame.rgba)
+        var scale: Vector2 = Vector2(output.get_size()) / app.get_viewport().get_visible_rect().size
+        var first: Vector2 = app._map_surface_point_to_viewport(Vector2(region.position)) * scale
+        var last: Vector2 = app._map_surface_point_to_viewport(Vector2(region.end)) * scale
+        var presented := Rect2i(Vector2i(first.floor()), Vector2i(last.ceil()) - Vector2i(first.floor()))
+        if not presented.has_area() or not Rect2i(Vector2i.ZERO, output.get_size()).encloses(presented):
+            record({"event": "failed", "label": label, "reason": "frame region outside the viewport", "frame": i})
+            return false
+        measured = {"rect": coords, "source": region_digest(source, region),
+            "presented": region_digest(output, presented), "viewport_rect":
+            [presented.position.x, presented.position.y, presented.size.x, presented.size.y],
+            "viewport_size": [output.get_width(), output.get_height()]}
+        if not reference.is_empty():
+            var source_matches: bool = measured.source == expected.source
+            var presented_matches: bool = measured.presented == expected.presented
+            if source_matches != different.is_empty() or presented_matches != different.is_empty():
+                record({"event": "failed", "label": label, "reason": "frame region comparison",
+                    "frame": i, "reference": reference, "observed": measured})
+                return false
+    frame_regions[label] = measured
+    record({"event": "frame_region", "label": label, "frames": frames, "last": measured})
+    return true
+
 func advance(frames: int) -> bool:
     for i in range(maxi(1, frames)):
         # Once a natural exit has returned to the shell, the engine handle is
@@ -205,6 +267,59 @@ func advance(frames: int) -> bool:
             await app.get_tree().process_frame
         elif not await app._probe_advance(1):
             return false
+    return true
+
+func measure_frame_pacing(action: Dictionary, label: String) -> bool:
+    var frames := int(action.get("frames", 180))
+    var target := float(action.get("minimum_fps", 30))
+    if not app.game_running or frames < 2 or frames > 3600 or not is_finite(target) or target <= 0:
+        record({"event": "failed", "label": label, "reason": "invalid frame pacing sample"})
+        return false
+    var inputs := {}
+    for event in action.get("key_events", []):
+        if not event is Dictionary or not event.has("frame") or not event.has("pressed") or int(event.get("key_code", 0)) <= 0:
+            record({"event": "failed", "label": label, "reason": "invalid frame pacing key event"})
+            return false
+        var frame := int(event.frame)
+        if frame < 0 or frame >= frames:
+            record({"event": "failed", "label": label, "reason": "frame pacing key event outside sample"})
+            return false
+        if not inputs.has(frame):
+            inputs[frame] = []
+        inputs[frame].append(event)
+    var source_serial: Variant = state().get("frame_serial")
+    var intervals := []
+    intervals.resize(frames)
+    # Exclude the JSON snapshot and report writes. Sample normal library ticks
+    # without requesting extra rendering or downloading texture pixels.
+    await app.get_tree().process_frame
+    var started := Time.get_unix_time_from_system()
+    var previous := Time.get_ticks_usec()
+    for i in range(frames):
+        if inputs.has(i):
+            for event in inputs[i]:
+                if app.player.send_key_event(bool(event.pressed), int(event.key_code), 0, 0) != app.ENGINE_RESULT_OK:
+                    record({"event": "failed", "label": label, "reason": "frame pacing key event rejected"})
+                    return false
+        await app.get_tree().process_frame
+        var now := Time.get_ticks_usec()
+        intervals[i] = (now - previous) / 1000.0
+        previous = now
+    var ended := Time.get_unix_time_from_system()
+    var metrics := FrameMetrics.summarize(intervals, target)
+    var overruns := []
+    for i in range(frames):
+        if intervals[i] > 1000.0 / target and overruns.size() < 32:
+            overruns.append({"frame": i, "interval_ms": intervals[i]})
+    metrics["over_budget_samples"] = overruns
+    var final_state := state()
+    if source_serial != null and final_state.has("frame_serial"):
+        metrics["source_frames"] = int(final_state.frame_serial) - int(source_serial)
+    record({"event": "frame_pacing", "label": label, "metrics": metrics,
+        "start_unix": started, "end_unix": ended, "pid": OS.get_process_id()})
+    if not app.game_running or (action.has("minimum_fps") and not metrics.meets_frame_budget):
+        record({"event": "failed", "label": label, "reason": "frame pacing target missed or playback ended"})
+        return false
     return true
 
 func wait_for(conditions: Array, timeout_ms: int, stable_frames: int = 1, alternatives: Array = []) -> bool:
@@ -487,6 +602,12 @@ func run(game_path: String) -> int:
         elif kind == "frame":
             if not await check_frame(action, label):
                 return 1
+        elif kind == "frame_pacing":
+            if not await measure_frame_pacing(action, label):
+                return 1
+        elif kind == "frame_region":
+            if not await watch_frame_region(action, label):
+                return 1
         elif kind == "wait":
             if not await wait_for(action.get("until", []), int(action.get("timeout_ms", 15000)), int(action.get("stable_frames", 3)), action.get("until_any", [])):
                 record({"event": "failed", "label": label, "reason": "timeout", "state": last_state, "error": app.player.get_last_error()})
@@ -551,6 +672,32 @@ func run(game_path: String) -> int:
             if not await advance(2):
                 return 1
             app.player.send_pointer_event(app.POINTER_UP, 0, target.x, target.y, 0.0, 0.0, 0)
+        elif kind == "key_until":
+            var wanted: Array = action.get("until", [])
+            var allowed: Array = action.get("only_when", [])
+            var deadline := Time.get_ticks_msec() + int(action.get("timeout_ms", 30000))
+            var attempts := 0
+            var key_code := int(action.get("key_code", 13))
+            if wanted.is_empty():
+                record({"event": "failed", "label": label, "reason": "key_until requires an observation"})
+                return 1
+            while Time.get_ticks_msec() < deadline:
+                var observation := state()
+                if conditions_match(observation, wanted, snapshots):
+                    break
+                if conditions_match(observation, allowed, snapshots):
+                    if app.player.send_key_event(true, key_code, 0, 0) != app.ENGINE_RESULT_OK or \
+                            app.player.send_key_event(false, key_code, 0, 0) != app.ENGINE_RESULT_OK:
+                        record({"event": "failed", "label": label, "reason": "key event rejected"})
+                        return 1
+                    attempts += 1
+                if not await advance(clampi(int(action.get("interval_frames", 6)), 1, 120)):
+                    return 1
+            if not conditions_match(state(), wanted, snapshots):
+                record({"event": "failed", "label": label, "reason": "key_until timed out",
+                    "attempts": attempts, "state": last_state})
+                return 2
+            record({"event": "input", "label": label, "kind": kind, "attempts": attempts})
         elif kind == "key":
             var key := int(action.get("key_code", 13))
             app.player.send_key_event(true, key, 0, 0)

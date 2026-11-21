@@ -70,3 +70,7 @@
 	path = packages/AetherN2System
 	url = https://github.com/AetherKiri/AetherN2System.git
 	branch = aether
+[submodule "packages/AetherExHIBIT"]
+	path = packages/AetherExHIBIT
+	url = git@github.com:AetherKiri/AetherExHIBIT.git
+	branch = main

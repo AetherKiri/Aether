@@ -1532,6 +1532,7 @@ jobs:
         env:
           LD_LIBRARY_PATH: ${{ github.workspace }}/apps/godot_app/bin/linux/debug
         run: |
+          python3 -m unittest discover -s tests/python -p test_linux_vcpkg_cache_migration.py -v
           python3 -m unittest discover -s tests/python -p test_renpy_host.py
           python3 -m unittest discover -s tests/python -p test_runtime_submodule_initialization.py -v
           for test in android_tree_uri video_library_folders video_library_ui video_import_permissions flash_library tyrano_library tyrano_asar renpy_library xsystem4_library xsystem35_library system3_library rfvp_import; do

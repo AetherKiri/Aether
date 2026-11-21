@@ -68,6 +68,11 @@ else()
     set(CMAKE_TOOLCHAIN_FILE $ENV{VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake)
 endif()
 
+if(LINUX)
+    include(cmake/MigrateLinuxVcpkgCache.cmake)
+    aetherkiri_migrate_linux_vcpkg_cache()
+endif()
+
 project(AetherKiri)
 
 if(APPLE AND NOT IOS)

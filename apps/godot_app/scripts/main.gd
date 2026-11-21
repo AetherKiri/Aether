@@ -13929,6 +13929,10 @@ func _on_runtime_platform_request(operation: String, argument: String) -> void:
     if operation == "runtime_end":
         call_deferred("_return_to_library_after_runtime_exit")
         return
+    if operation == "runtime_screenshot_game":
+        if not active_game_path.is_empty():
+            call_deferred("_save_requested_game_screenshot", active_game_path)
+        return
     if operation == "runtime_open_url":
         if argument.begins_with("https://") or argument.begins_with("http://"):
             OS.shell_open(argument)
@@ -14367,6 +14371,51 @@ func _show_minori_select(argument: String) -> void:
     var first_button := box.get_child(0) as Button
     if first_button != null:
         first_button.grab_focus()
+
+func _save_requested_game_screenshot(requested_game: String) -> void:
+    if requested_game != active_game_path or player == null:
+        return
+    var frame: Dictionary = player.read_frame_rgba()
+    var width := int(frame.get("width", 0))
+    var height := int(frame.get("height", 0))
+    var pixels: PackedByteArray = frame.get("rgba", PackedByteArray())
+    var image: Image
+    if width > 0 and height > 0 and pixels.size() == width * height * 4:
+        image = Image.create_from_data(width, height, false, Image.FORMAT_RGBA8, pixels)
+    elif viewport.texture != null:
+        image = viewport.texture.get_image()
+    if image == null or image.is_empty():
+        _append_log("Could not capture the game frame")
+        return
+    var directory := _game_runtime_root(requested_game).path_join("savedata/screenshot")
+    if DirAccess.make_dir_recursive_absolute(directory) != OK:
+        _append_log("Could not create the screenshot directory")
+        return
+    var now := Time.get_datetime_dict_from_system()
+    var milliseconds := int(Time.get_unix_time_from_system() * 1000.0) % 1000
+    var stem := "%04d%02d%02d_%02d%02d%02d%03d" % [now.year, now.month, now.day, now.hour, now.minute, now.second, milliseconds]
+    var suffix := 0
+    while true:
+        var filename := (stem if suffix == 0 else "%s_%d" % [stem, suffix]) + ".png"
+        var path := directory.path_join(filename)
+        suffix += 1
+        if FileAccess.file_exists(path):
+            continue
+        var lock_path := directory.path_join("." + filename + ".lock")
+        var reserved := DirAccess.make_dir_absolute(lock_path)
+        if reserved == ERR_ALREADY_EXISTS or (reserved != OK and DirAccess.dir_exists_absolute(lock_path)):
+            continue
+        if reserved != OK:
+            _append_log("Could not reserve the screenshot filename")
+            return
+        if FileAccess.file_exists(path):
+            DirAccess.remove_absolute(lock_path)
+            continue
+        var error := image.save_png(path)
+        DirAccess.remove_absolute(lock_path)
+        if error != OK:
+            _append_log("Could not save the game screenshot: %s" % error_string(error))
+        return
 
 func _show_runtime_form(specification: Dictionary) -> void:
     if modal_layer == null or player == null:

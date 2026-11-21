@@ -1,4 +1,6 @@
 #include "renpy_native.h"
+// The SDL host still restores Ren'Py's OpenGL context around each step.
+#define GL_SILENCE_DEPRECATION
 #import <AppKit/AppKit.h>
 #include <dlfcn.h>
 #include <cstdlib>

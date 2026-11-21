@@ -171,6 +171,12 @@
       "name": "vcpkg-cmake",
       "host": true
     },
+    {
+      "name": "wayland",
+      "host": true,
+      "features": ["scanner"],
+      "platform": "linux & !android"
+    },
     "zstd"
   ],
   "overrides": [

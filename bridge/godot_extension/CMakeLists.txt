@@ -447,20 +447,26 @@ if(IOS)
         list(APPEND AETHERKIRI_IOS_ARCHIVES
             "$<TARGET_FILE:aether_minori_runtime>")
     endif()
+    set(_runtime_targets_to_bundle)
     if(TARGET aether_n2system_runtime)
-        # Static-library dependencies are otherwise only ordered by Ninja.
-        # Recreate the extension archive when managed code alone changes so
-        # its post-build merge cannot keep the previous NativeAOT image.
-        set(_n2_archive_anchor "${CMAKE_CURRENT_BINARY_DIR}/n2system_archive_anchor.cpp")
-        add_custom_command(OUTPUT "${_n2_archive_anchor}"
-            COMMAND "${CMAKE_COMMAND}" -E touch "${_n2_archive_anchor}"
-            DEPENDS aether_n2system_runtime "$<TARGET_FILE:aether_n2system_runtime>"
-                "$<TARGET_FILE:aether_n2system_native_host>"
+        list(APPEND _runtime_targets_to_bundle aether_n2system_runtime aether_n2system_native_host)
+    endif()
+    if(TARGET aether_exhibit_provider)
+        list(APPEND _runtime_targets_to_bundle aether_exhibit_provider aether_exhibit_core)
+    endif()
+    if(_runtime_targets_to_bundle)
+        set(_runtime_archives)
+        foreach(_target IN LISTS _runtime_targets_to_bundle)
+            list(APPEND _runtime_archives "$<TARGET_FILE:${_target}>")
+        endforeach()
+        # Recreate the merged extension when a runtime archive is rebuilt on its own.
+        set(_archive_anchor "${CMAKE_CURRENT_BINARY_DIR}/runtime_archive_anchor.cpp")
+        add_custom_command(OUTPUT "${_archive_anchor}"
+            COMMAND "${CMAKE_COMMAND}" -E touch "${_archive_anchor}"
+            DEPENDS ${_runtime_targets_to_bundle} ${_runtime_archives}
             VERBATIM)
-        target_sources(aether_kiri_godot PRIVATE "${_n2_archive_anchor}")
-        list(APPEND AETHERKIRI_IOS_ARCHIVES
-            "$<TARGET_FILE:aether_n2system_runtime>"
-            "$<TARGET_FILE:aether_n2system_native_host>")
+        target_sources(aether_kiri_godot PRIVATE "${_archive_anchor}")
+        list(APPEND AETHERKIRI_IOS_ARCHIVES ${_runtime_archives})
     endif()
     get_property(_private_runtime_targets GLOBAL
         PROPERTY AETHERKIRI_PRIVATE_RUNTIME_TARGETS)

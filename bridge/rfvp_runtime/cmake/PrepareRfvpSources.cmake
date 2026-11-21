@@ -16,18 +16,11 @@ function(aetherkiri_prepare_rfvp root rfvp_dir output)
         message(FATAL_ERROR "Refusing to refresh rfvp sources outside its build directory")
     endif()
     file(REMOVE_RECURSE "${output}/crates")
-    foreach(crate rfvp rfvp-bitmap na_wmv_player na_mpeg2_decoder anzu-hal)
+    foreach(crate rfvp rfvp-bitmap na_wmv_player na_mpeg2_decoder anzu-hal game-network)
         file(COPY "${rfvp_dir}/crates/${crate}"
              DESTINATION "${output}/crates"
              PATTERN "target" EXCLUDE PATTERN "fonts" EXCLUDE)
     endforeach()
-    # Backport xmoezzz/rfvp#62 to the pinned engine used by the host overlay.
-    find_package(Git REQUIRED)
-    set(warning_patch "${CMAKE_CURRENT_FUNCTION_LIST_DIR}/upstream-warning-cleanup.patch")
-    execute_process(COMMAND "${CMAKE_COMMAND}" -E env
-        "GIT_CEILING_DIRECTORIES=${CMAKE_CURRENT_BINARY_DIR}"
-        "${GIT_EXECUTABLE}" apply "${warning_patch}"
-        WORKING_DIRECTORY "${output}" COMMAND_ERROR_IS_FATAL ANY)
     file(COPY "${rfvp_dir}/LICENSE" "${rfvp_dir}/README.md"
          DESTINATION "${output}")
     file(WRITE "${output}/Cargo.toml"

@@ -672,6 +672,32 @@ func run(game_path: String) -> int:
             if not await advance(2):
                 return 1
             app.player.send_pointer_event(app.POINTER_UP, 0, target.x, target.y, 0.0, 0.0, 0)
+        elif kind == "key_until":
+            var wanted: Array = action.get("until", [])
+            var allowed: Array = action.get("only_when", [])
+            var deadline := Time.get_ticks_msec() + int(action.get("timeout_ms", 30000))
+            var attempts := 0
+            var key_code := int(action.get("key_code", 13))
+            if wanted.is_empty():
+                record({"event": "failed", "label": label, "reason": "key_until requires an observation"})
+                return 1
+            while Time.get_ticks_msec() < deadline:
+                var observation := state()
+                if conditions_match(observation, wanted, snapshots):
+                    break
+                if conditions_match(observation, allowed, snapshots):
+                    if app.player.send_key_event(true, key_code, 0, 0) != app.ENGINE_RESULT_OK or \
+                            app.player.send_key_event(false, key_code, 0, 0) != app.ENGINE_RESULT_OK:
+                        record({"event": "failed", "label": label, "reason": "key event rejected"})
+                        return 1
+                    attempts += 1
+                if not await advance(clampi(int(action.get("interval_frames", 6)), 1, 120)):
+                    return 1
+            if not conditions_match(state(), wanted, snapshots):
+                record({"event": "failed", "label": label, "reason": "key_until timed out",
+                    "attempts": attempts, "state": last_state})
+                return 2
+            record({"event": "input", "label": label, "kind": kind, "attempts": attempts})
         elif kind == "key":
             var key := int(action.get("key_code", 13))
             app.player.send_key_event(true, key, 0, 0)

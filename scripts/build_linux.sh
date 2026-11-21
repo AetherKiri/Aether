@@ -20,6 +20,8 @@ GODOT_EXPORT_TEMPLATE="${GODOT_EXPORT_TEMPLATE:-$GODOT_TEMPLATE_DIR/$GODOT_TEMPL
 CMAKE_CONFIG_PRESET="Linux ${BUILD_TYPE_CAP} Config"
 CMAKE_BUILD_PRESET="Linux ${BUILD_TYPE_CAP} Build"
 CMAKE_BUILD_DIR="$PROJECT_ROOT/out/linux/$BUILD_TYPE_LOWER"
+# Both Linux triplets build release-only dependencies, regardless of the app configuration.
+VCPKG_RUNTIME_DIR="$PROJECT_ROOT/out/linux/vcpkg_installed/$AETHERKIRI_LINUX_TRIPLET/lib"
 GODOT_BIN_DIR="$GODOT_APP_DIR/bin/linux/$BUILD_TYPE_LOWER"
 GODOT_EXPORT_PRESET="Linux ${BUILD_TYPE_CAP}"
 if [[ "$AETHERKIRI_LINUX_ARCH" == "arm64" ]]; then
@@ -106,7 +108,7 @@ export CMAKE_MAKE_PROGRAM="$NINJA_BIN"
 
 stage_vcpkg_runtime_libraries() {
     local source_library="$1"
-    local runtime_dir="$CMAKE_BUILD_DIR/vcpkg_installed/$AETHERKIRI_LINUX_TRIPLET/lib"
+    local runtime_dir="$VCPKG_RUNTIME_DIR"
     local resolved_library
 
     if [[ ! -d "$runtime_dir" ]]; then
@@ -150,7 +152,7 @@ stage_all_vcpkg_runtime_libraries() {
 }
 
 stage_n2system_runtime_libraries() {
-    local runtime_dir="$CMAKE_BUILD_DIR/vcpkg_installed/$AETHERKIRI_LINUX_TRIPLET/lib"
+    local runtime_dir="$VCPKG_RUNTIME_DIR"
     local destination="$GODOT_BIN_DIR/n2system-runtime"
     local previous_count=-1 current_count library dependency
     while true; do
@@ -241,7 +243,7 @@ stage_release_extension_for_editor_scan() {
 }
 
 echo "==> Building Linux engine and Godot extension"
-cmake --preset "$CMAKE_CONFIG_PRESET" \
+cmake --preset "$CMAKE_CONFIG_PRESET" --fresh \
     -D "CMAKE_MAKE_PROGRAM=$CMAKE_MAKE_PROGRAM" \
     -D "AETHERKIRI_ENABLE_INTERNAL=${AETHERKIRI_ENABLE_INTERNAL:-ON}" \
     -D "AETHERKIRI_ENABLE_WA2=${AETHERKIRI_ENABLE_WA2:-ON}" \

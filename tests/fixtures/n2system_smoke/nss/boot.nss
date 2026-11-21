@@ -8,4 +8,5 @@ chapter main
     Delete("background");
     CreateColor("background", 1, 0, 0, 320, 180, "GREEN");
     WaitKey();
+    Exit();
 }

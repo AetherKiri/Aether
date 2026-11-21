@@ -1946,6 +1946,7 @@ var active_subtitle_index := 0
 var video_progress_data := {}
 var video_progress_save_accum := 0.0
 var app_lifecycle_paused := false
+var game_window_focused := true
 var render_errors := 0
 var last_renderer_info_logged := ""
 var last_texture_size := Vector2i.ZERO
@@ -13917,6 +13918,9 @@ func _process(delta: float) -> void:
         if cached_startup_state == STARTUP_SUCCEEDED or startup_poll_accum >= STARTUP_POLL_INTERVAL:
             startup_poll_accum = 0.0
             cached_startup_state = player.get_startup_state()
+            if cached_startup_state == STARTUP_SUCCEEDED and startup_state != STARTUP_SUCCEEDED:
+                if active_runtime_kind == RUNTIME_NEXAS and not game_window_focused:
+                    player.set_engine_option("nexas.window_focused", "0")
             startup_state = cached_startup_state
             _sync_game_virtual_controls()
         if startup_state == STARTUP_SUCCEEDED:
@@ -14466,6 +14470,15 @@ func _notification(what: int) -> void:
         _queue_settings_relayout_after_resize()
         _queue_detail_relayout_after_resize()
         return
+    if what == NOTIFICATION_APPLICATION_FOCUS_OUT or what == NOTIFICATION_APPLICATION_FOCUS_IN:
+        var focused := what == NOTIFICATION_APPLICATION_FOCUS_IN
+        if game_window_focused != focused:
+            game_window_focused = focused
+            if player != null and game_running and cached_startup_state == STARTUP_SUCCEEDED and active_runtime_kind == RUNTIME_NEXAS:
+                player.set_engine_option("nexas.window_focused", "1" if focused else "0")
+                if focused:
+                    var held := int(Input.is_physical_key_pressed(KEY_F2)) | (int(Input.is_physical_key_pressed(KEY_CTRL)) << 1)
+                    player.set_engine_option("nexas.focus_held_keys", str(held))
     if player == null:
         return
     if what == NOTIFICATION_APPLICATION_PAUSED or what == NOTIFICATION_APPLICATION_FOCUS_OUT:

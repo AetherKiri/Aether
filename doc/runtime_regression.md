@@ -101,10 +101,26 @@ when normal library playback owns the engine ticks.
 ```
 
 Actions are `move`, `click`, `tap`, `two_finger_tap`, `virtual_mouse_click`,
-`virtual_key`, `key`, `wait`, `snapshot`, `assert`, and `reopen`. Pointer
+`virtual_key`, `key`, `wait`, `snapshot`, `assert`, `frame_region`, `frame_pacing`, and `reopen`. Pointer
 coordinates use the source frame's pixels. A click can select a visible, enabled
 button with a partial `button` dictionary instead of coordinates, or use
 `point_from` to find a saved rectangle (`x`, `y`, `w`, `h`).
+
+A `frame_pacing` action measures normal playback over 2–3600 host frame
+intervals (180 by default). The result includes average and minimum FPS,
+the worst frame interval, 1% low FPS and the minimum one-second rolling FPS.
+Providers that expose a frame serial also report how many source frames they
+produced. Set `"minimum_fps": 30` to fail the case if any sampled interval
+exceeds the frame budget. Setup and snapshot collection take place outside
+the timed sample. Optional `key_events` take a zero-based `frame`, a
+`key_code` and a Boolean `pressed` so the sample can include input-driven
+scene changes.
+
+`frame_region` records the SHA-256 of a source rectangle and its displayed
+viewport region after presentation. Supply a `label` and `rect` as
+`[x, y, width, height]`. A later action can name that label in `matches`
+or `differs_from` and check every displayed frame in a sequence with `frames`
+(1–240). Region readback runs separately from frame pacing measurements.
 
 `tap` converts the target from source-frame pixels to viewport coordinates and
 passes a press and release through the app's normal ScreenTouch handler. This

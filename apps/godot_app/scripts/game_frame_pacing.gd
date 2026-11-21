@@ -1,13 +1,13 @@
 extends RefCounted
 
-# Keep the host policy local to a running CPU-rendered YU-RIS/BGI session. On
+# Keep the host policy local to a running CPU-rendered game session. On
 # macOS Metal, adaptive/mailbox also enable CAMetalLayer display sync; a
 # missed drawable deadline can otherwise halve the input/update cadence.
 var saved: Dictionary = {}
 
 func enter(runtime: String, platform: String, driver: String, vsync: int,
         max_fps: int, refresh_hz: float) -> Dictionary:
-    if not saved.is_empty() or runtime not in ["yuris", "bgi"] or platform != "macOS" or driver != "metal":
+    if not saved.is_empty() or runtime not in ["yuris", "bgi", "systemc"] or platform != "macOS" or driver != "metal":
         return {}
     if vsync == DisplayServer.VSYNC_DISABLED:
         return {}

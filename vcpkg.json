@@ -82,10 +82,7 @@
       "name": "libgdiplus",
       "platform": "!windows & !emscripten"
     },
-    {
-      "name": "libiconv",
-      "platform": "!emscripten"
-    },
+    "libiconv",
     "libjpeg-turbo",
     "liblzma",
     "lua",

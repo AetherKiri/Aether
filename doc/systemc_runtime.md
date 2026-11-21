@@ -82,13 +82,13 @@ extension workflow are documented in the private package's
 
 ## Build integration
 
-`AETHERKIRI_ENABLE_SYSTEMC` defaults to ON when Internal is available. Native
-unit tests use `AETHERKIRI_BUILD_SYSTEMC_TESTS`; the complete Godot application
-links the SDK factory already owned by the native KiriKiri host. No second SDK
-copy is introduced into the ABI library. Builds without the private SDK can run
-static-content profiles; animated E-mote content reports the missing capability.
+Windows, Linux, macOS, Android, iOS and Web product builds include SystemC
+by default when AetherInternal is present. Importing a compatible game
+directory selects the provider automatically. Set `AETHERKIRI_ENABLE_SYSTEMC=OFF`
+for a build that omits it. Native unit tests use `AETHERKIRI_BUILD_SYSTEMC_TESTS`.
 
-Only macOS arm64 was built and exercised for this change. Other platforms and
-older macOS releases have not been validated. The installed private macOS SDK
-archive currently reports a deployment target newer than the application's
-minimum, so the successful local build does not establish that minimum OS floor.
+On Web, the imported game's `savedata/` resolves to its own persistent browser
+storage. Existing saves are imported on first mount and can be loaded after
+reopening the page. E-mote animation uses the SDK supplied for each platform.
+The installed macOS SDK declares a newer deployment target than the application's
+minimum. Full-game testing used macOS arm64 Debug.

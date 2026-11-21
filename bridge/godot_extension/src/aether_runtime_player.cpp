@@ -11623,12 +11623,25 @@ public:
             return Ref<Texture2D>();
         }
 
-        if ((!runtime_host_ || !runtime_host_->HasComposite()) &&
-            frame_texture_.is_valid() && desc.frame_serial == frame_texture_serial_) {
-            if (frame_texture_backend_ == "minori_movie") {
-                frame_texture_backend_ = "image_texture";
+        const bool has_composite = runtime_host_ && runtime_host_->HasComposite();
+        const bool prefer_rd_texture =
+            normalized_backend == ENGINE_RENDERER_GODOT_NATIVE ||
+            normalized_backend == ENGINE_RENDERER_GPU_BRIDGE;
+        if (!has_composite && !last_upload_had_composite_ &&
+            desc.frame_serial == frame_texture_serial_) {
+            if (prefer_rd_texture && frame_texture_backend_ == "rendering_device" &&
+                frame_rd_texture_.is_valid() && frame_rd_rid_.is_valid() &&
+                frame_rd_width_ == desc.width && frame_rd_height_ == desc.height) {
+                return frame_rd_texture_;
             }
-            return frame_texture_;
+            if (frame_texture_.is_valid() &&
+                frame_texture_->get_width() == static_cast<int32_t>(desc.width) &&
+                frame_texture_->get_height() == static_cast<int32_t>(desc.height)) {
+                if (frame_texture_backend_ == "minori_movie") {
+                    frame_texture_backend_ = "image_texture";
+                }
+                return frame_texture_;
+            }
         }
 
         const size_t size =
@@ -11650,13 +11663,11 @@ public:
         ForceOpaqueAlpha(frame_rgba_buffer_, desc.stride_bytes, desc.width,
                          desc.height);
 
-        const bool prefer_rd_texture =
-            normalized_backend == ENGINE_RENDERER_GODOT_NATIVE ||
-            normalized_backend == ENGINE_RENDERER_GPU_BRIDGE;
         if (prefer_rd_texture) {
             Ref<Texture2D> rd_texture = update_rd_texture(desc, frame_rgba_buffer_);
             if (rd_texture.is_valid()) {
                 frame_texture_.unref();
+                last_upload_had_composite_ = has_composite;
                 frame_texture_serial_ = desc.frame_serial;
                 frame_texture_backend_ = "rendering_device";
                 return rd_texture;
@@ -11681,6 +11692,7 @@ public:
         } else {
             frame_texture_->update(image);
         }
+        last_upload_had_composite_ = has_composite;
         frame_texture_serial_ = desc.frame_serial;
         if (!prefer_rd_texture) {
             frame_texture_backend_ = "image_texture";
@@ -14302,6 +14314,7 @@ private:
         runtime_tick_quantizer_;
     bool artemis_logical_frame_pacing_ = false;
     Ref<ImageTexture> frame_texture_;
+    bool last_upload_had_composite_ = false;
     // Keep the last provider-owned native texture alive across a transient
     // native-frame query failure. Artemis otherwise falls through to the CPU
     // compatibility frame for one tick, producing a visible stale-pose flash.

@@ -27,7 +27,7 @@ func _run() -> void:
     player = ClassDB.instantiate("AetherRuntimePlayer")
     root.add_child(player as Node)
     _expect(int(player.probe_runtime("n2system", game_dir)) > 0, "Register and probe N2System")
-    for cycle in range(2):
+    for cycle in range(3):
         var writable := fixture.get_current_dir().path_join("cycle%d" % cycle)
         DirAccess.make_dir_recursive_absolute(writable)
         if not _expect(player.initialize_engine(writable, writable.path_join("cache")), "Initialize engine"):
@@ -70,6 +70,16 @@ func _run() -> void:
         if not await _wait_color(Color8(0, 128, 0)):
             break
         _expect(String(player.get_renderer_info()).contains("n2system"), "Report the N2System renderer")
+        if cycle == 1:
+            _expect(player.tick(1.0 / 60.0) == 0, "Reach the final input barrier")
+            _expect(player.send_key_event(true, 13, 0, 0) == 0, "Trigger script Exit")
+            var exit_result := 0
+            for frame in range(60):
+                exit_result = int(player.tick(1.0 / 60.0))
+                if exit_result != 0:
+                    break
+                await process_frame
+            _expect(exit_result != 0 and String(player.get_last_error()).contains("runtime requested termination"), "Report a normal game exit to the library")
         player.destroy_engine()
         _expect(not player.is_initialized(), "Destroy before reopening")
     player.destroy_engine()

@@ -58,6 +58,7 @@ file(GLOB_RECURSE rfvp_inputs CONFIGURE_DEPENDS
     "${AETHERKIRI_RFVP_DIR}/crates/rfvp/tests/*.rs"
     "${AETHERKIRI_RFVP_DIR}/crates/*/Cargo.toml")
 list(APPEND rfvp_inputs "${CMAKE_CURRENT_SOURCE_DIR}/Cargo.lock"
+    "${CMAKE_CURRENT_SOURCE_DIR}/cmake/upstream-warning-cleanup.patch"
     "${CMAKE_CURRENT_SOURCE_DIR}/cmake/PrepareRfvpSources.cmake"
     "${AETHERKIRI_RFVP_PROJECT_ROOT}/apps/godot_app/assets/fonts/aetherkiri-runtime-cjk.otf")
 set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS ${rfvp_inputs})

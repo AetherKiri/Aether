@@ -4,8 +4,6 @@ import android.app.Activity;
 import android.content.pm.PackageManager;
 import android.os.Build;
 import android.util.Log;
-import android.util.Rational;
-import android.view.View;
 import android.view.Window;
 import android.view.WindowManager;
 import androidx.core.view.WindowCompat;
@@ -47,12 +45,13 @@ public final class MobileWindow {
             }
             // System bars must work even on devices without PiP support.
             if (!isSupported(activity)) return;
-            View content = activity.findViewById(android.R.id.content);
-            int width = content == null ? 0 : content.getWidth();
-            int height = content == null ? 0 : content.getHeight();
-            Rational aspect = width > 0 && height > 0 ? new Rational(width, height) : new Rational(16, 9);
             try {
-                ((GodotActivity) activity).updatePiPParams(gameActive && enabled, aspect);
+                // Godot 4.7 also sends any explicit ratio as the expanded PiP
+                // ratio. Android rejects a normal ratio for expanded PiP on
+                // devices that support it, preventing automatic entry. Let the
+                // system choose its default ratio; Godot still supplies the
+                // source bounds and handles Home on older Android versions.
+                ((GodotActivity) activity).updatePiPParams(gameActive && enabled, null);
             } catch (IllegalArgumentException | IllegalStateException error) {
                 Log.w("AetherPiP", "Picture in Picture is unavailable", error);
             }

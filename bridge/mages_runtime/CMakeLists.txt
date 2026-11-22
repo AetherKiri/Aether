@@ -32,6 +32,8 @@ set(IMPACTO_EMBEDDED ON)
 # the impacto library (static or a desktop shared image) instead of shipping
 # a separate libatrac9.so/.dylib the host packaging would have to stage.
 set(LIBATRAC9_BUILD_SHARED OFF)
+# Apple's mobile archive tooling needs native objects in the embedded codec.
+set(LIBATRAC9_ENABLE_IPO OFF)
 if(ANDROID)
     # Impacto's bundled libraries use headers. CMake 4.5 can otherwise
     # auto-discover the host's libstdc++ modules when targeting Android.
@@ -39,10 +41,7 @@ if(ANDROID)
 endif()
 add_subdirectory("${MAGES_HOST_SOURCE}" "${CMAKE_BINARY_DIR}/aethermages-impacto")
 
-# LibAtrac9 enables IPO (LTO) when the toolchain supports it. Bitcode members
-# would survive into the merged iOS extension archive where llvm-objcopy (the
-# host's SDL2 symbol isolation pass) rejects them as invalid object files. The decoder
-# is small; disabling LTO has no measurable cost.
+# Existing FetchContent trees may still contain the earlier codec patch.
 if(TARGET atrac9)
     set_property(TARGET atrac9 PROPERTY INTERPROCEDURAL_OPTIMIZATION FALSE)
 endif()

@@ -87,7 +87,9 @@ class IOSRuntimeFrameworkTests(unittest.TestCase):
         godot = self.root / "fake-godot"
         godot.write_text('''#!/usr/bin/env python3
 import os
+import sys
 from pathlib import Path
+assert '--recovery-mode' in sys.argv[1:]
 text = (Path(os.environ["GODOT_APP_DIR"]) / "aether_kiri.gdextension").read_text()
 assert 'res://bin/ios/debug/AetherEntisGLS.framework' in text
 assert 'macos.debug' not in text

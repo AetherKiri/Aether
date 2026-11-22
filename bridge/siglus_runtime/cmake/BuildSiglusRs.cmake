@@ -270,9 +270,12 @@ function(aetherkiri_add_siglus_rs imported_target)
     endif()
     list(PREPEND SIGLUS_PATH_PREFIX "PATH=${siglus_full_path}")
 
-    # Rust and cc-rs native dependencies must use the same macOS minimum as
-    # the embedding application, including x86_64 builds made on Apple Silicon.
-    if(APPLE AND NOT IOS AND CMAKE_OSX_DEPLOYMENT_TARGET
+    # Rust and cc-rs native dependencies must use the embedding application's
+    # deployment target instead of the active SDK's default.
+    if(IOS AND CMAKE_OSX_DEPLOYMENT_TARGET AND rust_triple MATCHES "-apple-ios(-sim)?$")
+        list(APPEND SIGLUS_PATH_PREFIX
+            "IPHONEOS_DEPLOYMENT_TARGET=${CMAKE_OSX_DEPLOYMENT_TARGET}")
+    elseif(APPLE AND NOT IOS AND CMAKE_OSX_DEPLOYMENT_TARGET
             AND rust_triple MATCHES "-apple-darwin$")
         list(APPEND SIGLUS_PATH_PREFIX
             "MACOSX_DEPLOYMENT_TARGET=${CMAKE_OSX_DEPLOYMENT_TARGET}")

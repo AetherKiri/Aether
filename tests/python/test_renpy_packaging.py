@@ -18,6 +18,17 @@ def module(name):
 
 
 class RenpyPackagingTests(unittest.TestCase):
+    def test_ios_review_adapter_preserves_method_and_rejects_sdk_drift(self):
+        adapt = module("build_renpy_ios").adapt_review_request
+        original = "- (void) requestReview {\n    [SKStoreReviewController requestReview];\n}\n"
+        self.assertEqual(adapt(original),
+                         "extern void AetherRenpyRequestReview(void);\n"
+                         "- (void) requestReview {\n    AetherRenpyRequestReview();\n}\n")
+        for unsupported in ("", original + original):
+            with self.subTest(unsupported=unsupported):
+                with self.assertRaisesRegex(ValueError, "Unexpected Renios"):
+                    adapt(unsupported)
+
     def test_android_keeps_the_generated_activity_and_stages_outside_export_cleanup(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory); build = root / "build"; runtime = root / "runtime"

@@ -11,6 +11,12 @@ foreach(_aetherkiri_link_policy CMP0156 CMP0179)
 endforeach()
 unset(_aetherkiri_link_policy)
 
+# Use vcpkg's Boost package config when embedded subprojects call find_package.
+# Set the policy before project() loads vcpkg's find_package wrapper.
+if(POLICY CMP0167)
+    cmake_policy(SET CMP0167 NEW)
+endif()
+
 find_program(CCACHE_PROGRAM ccache)
 
 if (CCACHE_PROGRAM)
@@ -64,6 +70,11 @@ elseif(NOT DEFINED CMAKE_TOOLCHAIN_FILE AND "$ENV{CMAKE_TOOLCHAIN_FILE}" STREQUA
     elseif(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/.devtools/vcpkg/scripts/buildsystems/vcpkg.cmake")
         set(CMAKE_TOOLCHAIN_FILE "${CMAKE_CURRENT_SOURCE_DIR}/.devtools/vcpkg/scripts/buildsystems/vcpkg.cmake")
     endif()
+endif()
+
+if(LINUX)
+    include(cmake/MigrateLinuxVcpkgCache.cmake)
+    aetherkiri_migrate_linux_vcpkg_cache()
 endif()
 
 project(AetherKiri)
@@ -357,11 +368,24 @@ endif()
 # Godot is the product app shell on the wired platforms. This native build
 # produces engine libraries and the GDExtension host, not standalone launchers.
 
+if(IOS AND AETHERKIRI_ENABLE_ENTISGLS)
+    # FreeType, PNG and game hooks must resolve the same directory-scoped
+    # imported target; separate copies produce duplicate iOS link inputs.
+    find_package(ZLIB REQUIRED)
+endif()
+add_subdirectory(bridge/game_hooks)
+
 # The krkr2 engine repository defines the engine targets (external/, core/,
 # plugins/); its integration glue stays in bridge/krkr2_runtime.
-add_subdirectory(bridge/game_hooks)
 if(AETHERKIRI_ENABLE_KRKR2)
     add_subdirectory(${AETHERKIRI_KRKR_DIR})
+    # PSD's vendored parser uses multicharacter literals for its FourCC tags.
+    foreach(psd_target psdparse psdfile)
+        if(TARGET ${psd_target})
+            target_compile_options(${psd_target} PRIVATE
+                "$<$<COMPILE_LANG_AND_ID:CXX,GNU>:-Wno-multichar>")
+        endif()
+    endforeach()
 endif()
 
 # AetherInternal contributes sources to public targets but does not own the

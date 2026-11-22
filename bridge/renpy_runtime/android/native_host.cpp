@@ -25,6 +25,7 @@ namespace {
     std::vector<std::string> input;
     std::string error, sdk_root;
     bool stopping = false, running = false, closing = false;
+    bool initialization_failed = false;
 
     std::string utf8(JNIEnv *env, jstring value) {
         if(!value)
@@ -90,6 +91,8 @@ aether_renpy_android_main(int, char **) {
                 request = std::move(requests.front());
                 requests.pop_front();
                 running = true;
+                if(!initialized)
+                    sdk_root = request.sdk;
                 closing = false;
                 input.clear();
             }
@@ -99,7 +102,6 @@ aether_renpy_android_main(int, char **) {
         if(stop)
             break;
         if(!initialized) {
-            sdk_root = request.sdk;
             setenv("ANDROID_PRIVATE", sdk_root.c_str(), 1);
             setenv("ANDROID_PUBLIC", sdk_root.c_str(), 1);
             setenv("ANDROID_OLD_PUBLIC", sdk_root.c_str(), 1);
@@ -115,11 +117,30 @@ aether_renpy_android_main(int, char **) {
             init_librenpy();
             PyImport_AppendInittab("androidembed", PyInit_androidembed);
             PyImport_AppendInittab("greenlet._greenlet", PyInit__greenlet);
-            wchar_t *path = Py_DecodeLocale(
-                (sdk_root + "/lib/python3.12").c_str(), nullptr);
-            Py_SetPath(path);
+            PyConfig config;
+            PyConfig_InitPythonConfig(&config);
+            config.install_signal_handlers = 0;
+            config.module_search_paths_set = 1;
+            const std::string stdlib = sdk_root + "/lib/python3.12";
+            wchar_t *path = Py_DecodeLocale(stdlib.c_str(), nullptr);
+            PyStatus status = path
+                ? PyWideStringList_Append(&config.module_search_paths, path)
+                : PyStatus_Error("Could not decode the Ren'Py standard library path");
             PyMem_RawFree(path);
-            Py_InitializeEx(0);
+            if(!PyStatus_Exception(status))
+                status = Py_InitializeFromConfig(&config);
+            PyConfig_Clear(&config);
+            if(PyStatus_Exception(status)) {
+                std::lock_guard<std::mutex> lock(mutex);
+                error = "Could not initialize the native Ren'Py interpreter";
+                __android_log_write(ANDROID_LOG_ERROR, "AetherRenpy",
+                                    status.err_msg ? status.err_msg : error.c_str());
+                initialization_failed = true;
+                running = false;
+                closing = false;
+                requests.clear();
+                continue;
+            }
             initialized = true;
         }
         const std::string bridge =
@@ -174,6 +195,8 @@ aether_renpy_android_main(int, char **) {
 extern "C" JNIEXPORT jstring JNICALL Java_org_aether_renpy_RenpyHost_nativeOpen(
     JNIEnv *env, jclass, jstring sdk, jstring manifest, jstring bootstrap) {
     std::lock_guard<std::mutex> lock(mutex);
+    if(initialization_failed)
+        return env->NewStringUTF(error.c_str());
     if(stopping || !requests.empty() || (running && !closing))
         return env->NewStringUTF("A Ren'Py session is already running");
     if(!sdk_root.empty() && sdk_root != utf8(env, sdk))

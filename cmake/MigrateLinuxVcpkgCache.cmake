@@ -1,0 +1,32 @@
+function(aetherkiri_migrate_linux_vcpkg_cache)
+    set(linux_output "${CMAKE_SOURCE_DIR}/out/linux")
+    if(NOT VCPKG_INSTALLED_DIR STREQUAL "${linux_output}/vcpkg_installed")
+        return()
+    endif()
+
+    # Presets set the new install root, but CMake can still reuse cached paths
+    # from either of the old per-configuration installs.
+    get_cmake_property(cache_entries CACHE_VARIABLES)
+    set(migrating FALSE)
+    foreach(entry IN LISTS cache_entries)
+        get_property(value CACHE "${entry}" PROPERTY VALUE)
+        foreach(config debug release)
+            set(old_root "${linux_output}/${config}/vcpkg_installed")
+            string(FIND "${value}" "${old_root}/" old_path)
+            if(value STREQUAL old_root OR NOT old_path EQUAL -1)
+                unset("${entry}" CACHE)
+                set(migrating TRUE)
+                break()
+            endif()
+        endforeach()
+    endforeach()
+
+    if(migrating)
+        # Recheck pkg-config queries whose cached metadata may have changed.
+        foreach(entry IN LISTS cache_entries)
+            if(entry MATCHES "^__pkg_config_checked_")
+                unset("${entry}" CACHE)
+            endif()
+        endforeach()
+    endif()
+endfunction()

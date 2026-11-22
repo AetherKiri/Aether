@@ -1947,6 +1947,7 @@ var video_progress_data := {}
 var video_progress_save_accum := 0.0
 var app_lifecycle_paused := false
 var game_window_focused := true
+var nexas_desktop_pointer := Vector2.INF
 var render_errors := 0
 var last_renderer_info_logged := ""
 var last_texture_size := Vector2i.ZERO
@@ -14662,6 +14663,7 @@ func _on_open_game() -> void:
         render_errors += 1
         return
     active_runtime_kind = detected_runtime
+    nexas_desktop_pointer = Vector2.INF
     if GameLaunchEntry.runtime_uses_directory(detected_runtime):
         path = _game_runtime_root(path)
         game_path.text = path
@@ -14975,8 +14977,8 @@ func _game_input_content_size() -> Vector2:
     return Vector2(maxi(1, last_texture_size.x), maxi(1, last_texture_size.y))
 
 func _game_input_surface_size() -> Vector2:
-    # ONS and Minori consume coordinates in their published content space.
-    if active_runtime_kind in [RUNTIME_ONSCRIPTER, RUNTIME_MINORI]:
+    # These runtimes consume pointer coordinates in their source frame.
+    if active_runtime_kind in [RUNTIME_ONSCRIPTER, RUNTIME_MINORI, RUNTIME_NEXAS]:
         return _game_input_content_size()
     if current_surface_size.x > 0 and current_surface_size.y > 0:
         return Vector2(current_surface_size)
@@ -15007,6 +15009,8 @@ func _update_frame() -> void:
             last_source_texture_size = last_texture_size
         _sync_game_surface_to_texture(last_source_texture_size)
         _layout_game_viewport(get_viewport_rect().size)
+        if active_runtime_kind == RUNTIME_NEXAS:
+            _sample_nexas_desktop_pointer()
         if not auto_probe_clicks.is_empty() and not auto_probe_running and not auto_probe_done:
             auto_probe_running = true
             call_deferred("_run_auto_probe")
@@ -16669,10 +16673,21 @@ func _send_touch_secondary_click(pointer_id: int, mapped: Vector2) -> void:
 func _touch_engine_pointer_id(pointer_id: int) -> int:
     return TOUCH_POINTER_ID_OFFSET + pointer_id
 
+func _sample_nexas_desktop_pointer() -> void:
+    if _is_touch_platform() or DisplayServer.get_name() == "headless" or not game_window_focused or not _can_forward_game_input():
+        return
+    # The Classic software cursor uses the current client position, including
+    # when a stationary mouse starts outside the image or the window moves.
+    var mapped := _map_viewport_point(get_viewport().get_mouse_position(), not active_mouse_buttons.is_empty())
+    if mapped.floor() != nexas_desktop_pointer:
+        _send_game_pointer_event(POINTER_MOVE, 0, mapped.x, mapped.y, 0.0, 0.0, 0)
+
 func _send_game_pointer_event(event_type: int, pointer_id: int, x: float, y: float, delta_x: float, delta_y: float, button: int, modifiers: int = 0) -> void:
     if _is_touch_platform() and event_type == POINTER_DOWN and button == 0:
         game_text_input_reopen_requested = true
     var result := int(player.send_pointer_event(event_type, pointer_id, x, y, delta_x, delta_y, button, modifiers))
+    if result == ENGINE_RESULT_OK and active_runtime_kind == RUNTIME_NEXAS and pointer_id == 0:
+        nexas_desktop_pointer = Vector2(x, y).floor()
     if _android_input_debug_enabled():
         print("android_input fwd type=%d pid=%d x=%.1f y=%.1f dx=%.1f dy=%.1f button=%d mods=%d result=%d" % [
             event_type,

@@ -7,8 +7,9 @@ const RUNTIME_RFVP := "rfvp"
 const RUNTIME_ARTEMIS := "artemis"
 const RUNTIME_SIGLUS := "siglus"
 const RUNTIME_CATSYSTEM2 := "catsystem2"
+const RUNTIME_NEXAS := "nexas"
 
-static func inspect(path: String) -> Dictionary:
+static func inspect(path: String, probe_runtime: Callable = Callable()) -> Dictionary:
     var root := path
     if FileAccess.file_exists(root):
         root = root.get_base_dir()
@@ -76,6 +77,13 @@ static func inspect(path: String) -> Dictionary:
     ):
         result.engine = RUNTIME_SIGLUS
         result.signals.append("siglus-marker")
+    elif (
+        probe_runtime.is_valid()
+        and _has_extension(files, "pac")
+        and int(probe_runtime.call(RUNTIME_NEXAS, root)) > 0
+    ):
+        result.engine = RUNTIME_NEXAS
+        result.signals.append("nexas-provider")
     else:
         result.signals.append("kirikiri-xp3-or-default")
 

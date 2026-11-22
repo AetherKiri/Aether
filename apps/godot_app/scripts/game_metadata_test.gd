@@ -61,6 +61,20 @@ func _init() -> void:
     _expect_equal(String(kirikiri.engine), "kirikiri", "KiriKiri remains default")
     _expect_equal(String(kirikiri.launchFile), "data.xp3", "KiriKiri archive preferred")
 
+    var pac_root := fixture_root.path_join("pac_game")
+    DirAccess.make_dir_recursive_absolute(pac_root)
+    _write(pac_root.path_join("Script.PAC"), "package fixture")
+    _write(pac_root.path_join("launcher.exe"), "launcher")
+    var confirmed := func(runtime: String, directory: String) -> int:
+        return 100 if runtime == "nexas" and directory == pac_root else 0
+    var nexas := GameMetadata.inspect(pac_root.path_join("launcher.exe"), confirmed)
+    _expect_equal(String(nexas.engine), "nexas", "Provider recognizes the game directory")
+    _expect_equal(String(nexas.launchFile), "", "NeXAS opens the directory")
+    _expect_true(Array(nexas.signals).has("nexas-provider"), "NeXAS probe signal")
+    var rejected := func(_runtime: String, _directory: String) -> int: return 0
+    _expect_equal(String(GameMetadata.inspect(pac_root, rejected).engine), "kirikiri", "Unrecognized PAC")
+    _expect_equal(String(GameMetadata.inspect(pac_root).engine), "kirikiri", "Unavailable provider")
+
     var exe_only_root := fixture_root.path_join("kirikiri_exe_only")
     DirAccess.make_dir_recursive_absolute(exe_only_root)
     _write(exe_only_root.path_join("game.exe"), "launcher")

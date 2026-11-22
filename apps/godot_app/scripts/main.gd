@@ -9160,6 +9160,8 @@ func _apply_selected_cover(library_path: String, cover_path: String) -> void:
     _show_detail(selected_game)
 
 func _game_launch_entry_label(game: Dictionary) -> String:
+    if String(game.get("engine", "")) == RUNTIME_NEXAS:
+        return _t("detail.default_launch_entry")
     var relative_path := GameLaunchEntry.configured_relative_path(game)
     if relative_path.is_empty():
         return _t("detail.default_launch_entry")
@@ -9168,7 +9170,7 @@ func _game_launch_entry_label(game: Dictionary) -> String:
 func _can_configure_launch_file(game: Dictionary) -> bool:
     return OS.get_name() != "Web" \
         and not builtin_demo.is_game(game) \
-        and _game_runtime_kind(String(game.get("path", ""))) != RUNTIME_ONSCRIPTER \
+        and _game_runtime_kind(String(game.get("path", ""))) not in [RUNTIME_ONSCRIPTER, RUNTIME_NEXAS] \
         and String(game.get("type", "Directory")).to_lower() == "directory"
 
 func _set_launch_file_for_selected() -> void:
@@ -10660,12 +10662,16 @@ func _web_game_entry_available(game: Dictionary) -> bool:
     ]
     return _web_eval_string(source) == "1"
 
+func _inspect_library_metadata(path: String) -> Dictionary:
+    var probe := Callable(player, "probe_runtime") if is_instance_valid(player) else Callable()
+    return GameMetadata.inspect(path, probe)
+
 func _game_info_from_path(path: String) -> Dictionary:
     var name := path.get_file()
     if name.to_lower().ends_with(".xp3"):
         name = name.substr(0, name.length() - 4)
     var default_cover_path := _discover_default_cover_path(path)
-    var metadata := GameMetadata.inspect(path)
+    var metadata := _inspect_library_metadata(path)
     var detected_title := String(metadata.get("title", ""))
     var detected_engine := String(metadata.get("engine", RUNTIME_KIRIKIRI))
     return {
@@ -10715,7 +10721,7 @@ func _backfill_game_metadata(games: Array[Dictionary]) -> bool:
         var path := String(game.get("path", ""))
         if path.is_empty() or builtin_demo.is_game(game):
             continue
-        var metadata := GameMetadata.inspect(path)
+        var metadata := _inspect_library_metadata(path)
         var engine := String(metadata.get("engine", RUNTIME_KIRIKIRI))
         if String(game.get("engine", "")).is_empty() or String(game.get("engine", "")) == RUNTIME_KIRIKIRI:
             if String(game.get("engine", "")) != engine:
@@ -10728,10 +10734,14 @@ func _backfill_game_metadata(games: Array[Dictionary]) -> bool:
                 if String(game.get("name", "")).is_empty():
                     game["name"] = title
                 changed = true
-        for key in ["titleCandidates", "metadataSignals", "launchFile"]:
-            var value = metadata.get(key, null)
-            if value != null and JSON.stringify(game.get(key, null)) != JSON.stringify(value):
-                game[key] = value
+        if GameLaunchEntry.backfill(game, metadata):
+            changed = true
+        var fields := {"titleCandidates": metadata.titleCandidates}
+        if String(game.get("engine", "")) == engine:
+            fields["metadataSignals"] = metadata.signals
+        for key in fields:
+            if JSON.stringify(game.get(key, null)) != JSON.stringify(fields[key]):
+                game[key] = fields[key]
                 changed = true
     return changed
 

@@ -1,6 +1,7 @@
 extends RefCounted
 
 const SaveStorage := preload("res://scripts/game_save_storage.gd")
+const LaunchEntry := preload("res://scripts/game_launch_entry.gd")
 const LOCAL_WRITABLE_RUNTIMES := ["system3", "xsystem35", "xsystem4", "mages", "minori"]
 ## Keep this mapping aligned with runtime storage contracts. Never scan the
 ## whole application user directory: it contains other games and credentials.
@@ -214,12 +215,11 @@ static func _rfvp_bank(root: String, game: Dictionary, base: String) -> Dictiona
     var config := preload("res://scripts/game_text_config.gd").read(root, "rfvp", game)
     if config.error != OK:
         return {}
-    var encoding: String = config.text.encoding
-    if encoding.is_empty() or encoding.to_upper() == "AUTO":
-        var override_value := OS.get_environment("AETHERKIRI_RFVP_ENCODING").strip_edges().to_lower()
-        if override_value in ["sjis", "gbk", "utf8"]:
-            encoding = override_value
-    var nls := "GBK" if encoding.to_upper() in ["GBK", "CP936"] else "UTF8" if encoding.to_upper() in ["UTF-8", "UTF8"] else "ShiftJIS"
+    var override_value := OS.get_environment("AETHERKIRI_RFVP_ENCODING")
+    if not String(config.document.get("text", {}).get("encoding", "")).is_empty():
+        override_value = "" # Native Open gives the explicit game setting priority.
+    var encoding := LaunchEntry.rfvp_encoding({LaunchEntry.RFVP_ENCODING_FIELD: config.text.encoding}, override_value)
+    var nls: String = LaunchEntry.RFVP_SAVE_NLS[encoding]
     var portable := PackedByteArray([0])
     portable.append_array(script.substr(resolved_root.length() + 1).to_utf8_buffer())
     portable.append(0)

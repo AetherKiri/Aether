@@ -28,8 +28,8 @@ GameTextSettings GameTextSettings::Load(const std::filesystem::path& directory,
         const std::vector<std::string> encodings = engine == "entisgls"
             ? std::vector<std::string>{""}
             : engine == "onscripter" || engine == "rfvp"
-                ? std::vector<std::string>{"", "CP932", "GBK", "UTF-8"}
-                : std::vector<std::string>{"", "CP932", "GBK", "GB18030", "BIG5", "UTF-8"};
+                ? std::vector<std::string>{"", "CP932", "GBK", "BIG5", "CP949", "UTF-8"}
+                : std::vector<std::string>{"", "CP932", "GBK", "GB18030", "BIG5", "CP949", "UTF-8"};
         if(std::find(encodings.begin(), encodings.end(), result.encoding) == encodings.end())
             throw std::runtime_error("unsupported text encoding for " + engine + ": " + result.encoding);
         auto name = text.value("font_file", std::string{});

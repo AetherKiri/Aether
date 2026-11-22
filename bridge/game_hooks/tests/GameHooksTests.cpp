@@ -125,6 +125,7 @@ TEST_CASE("byte-text engines share canonical encodings and aliases") {
                 {"CP932", "CP932"}, {"shift-jis", "CP932"}, {"shift_jis", "CP932"},
                 {"sJiS", "CP932"}, {"shiftjis", "CP932"}, {"GBK", "GBK"},
                 {"cp936", "GBK"}, {"gb2312", "GBK"}, {"gb18030", "GB18030"},
+                {"cp949", "CP949"}, {"windows-949", "CP949"}, {"uhc", "CP949"},
                 {"BIG5", "BIG5"}, {"cp950", "BIG5"}, {"big-5", "BIG5"},
                 {"utf8", "UTF-8"}, {"Utf-8", "UTF-8"}}) {
             CAPTURE(engine, input);

@@ -6,7 +6,7 @@ const SaveStorage := preload("res://scripts/game_save_storage.gd")
 # break WA(1)'s queued-load ordering and publish camera motion intermittently.
 const DEFAULT_WORKER_STEP_BUDGET := 65536
 const SCRIPT_ENCODING_FIELD := "yurisScriptEncoding"
-const SCRIPT_ENCODINGS := ["AUTO", "CP932", "GBK", "BIG5", "UTF-8"]
+const SCRIPT_ENCODINGS := ["AUTO"] + preload("res://scripts/game_text_config.gd").BYTE_ENCODINGS
 const MIGRATION_MARKER := ".aether-yuris-migrated"
 
 static func user_directory(base: String, project_root: String) -> String:
@@ -31,17 +31,15 @@ static func script_encoding(game: Dictionary, override: String = "") -> String:
     return "AUTO" if saved.is_empty() else saved
 
 static func normalize_encoding(value: String) -> String:
-    match value.strip_edges().to_upper().replace("_", "-"):
-        "AUTO":
-            return "AUTO"
-        "CP932", "SJIS", "SHIFT-JIS", "SHIFTJIS":
-            return "CP932"
-        "GBK", "CP936":
-            return "GBK"
-        "BIG5", "CP950":
-            return "BIG5"
-        "UTF8", "UTF-8":
-            return "UTF-8"
+    var encoding := value.strip_edges().to_upper().replace("_", "-")
+    if encoding in SCRIPT_ENCODINGS:
+        return encoding
+    match encoding:
+        "SJIS", "SHIFT-JIS", "SHIFTJIS": return "CP932"
+        "CP936": return "GBK"
+        "UHC", "WINDOWS-949": return "CP949"
+        "BIG-5", "CP950": return "BIG5"
+        "UTF8": return "UTF-8"
     return ""
 
 static func worker_step_budget(override: String = "") -> int:

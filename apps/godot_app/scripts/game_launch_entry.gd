@@ -42,15 +42,21 @@ const YURIS_USER_STARTUP_CANDIDATES := [
     "data/script/userscript/start.yst",
 ]
 const RFVP_ENCODING_FIELD := "rfvpEncoding"
-const RFVP_ENCODINGS := ["sjis", "gbk", "utf8"]
+# Rust hashes the Nls enum name with the script path to locate save data.
+const RFVP_SAVE_NLS := {"sjis": "ShiftJIS", "gbk": "GBK", "big5": "Big5", "cp949": "Cp949", "utf8": "UTF8"}
 
 
 static func rfvp_encoding(game: Dictionary, override_value: String = "") -> String:
-    var override_encoding := override_value.strip_edges().to_lower()
-    if RFVP_ENCODINGS.has(override_encoding):
-        return override_encoding
-    var saved := String(game.get(RFVP_ENCODING_FIELD, "sjis")).strip_edges().to_lower()
-    return saved if RFVP_ENCODINGS.has(saved) else "sjis"
+    for requested: String in [override_value, String(game.get(RFVP_ENCODING_FIELD, ""))]:
+        var value := requested.strip_edges().to_lower()
+        match value:
+            "cp932", "shift-jis": value = "sjis"
+            "cp936": value = "gbk"
+            "cp950": value = "big5"
+            "utf-8": value = "utf8"
+        if value in RFVP_SAVE_NLS:
+            return value
+    return "sjis"
 
 
 static func backfill(game: Dictionary, metadata: Dictionary) -> bool:

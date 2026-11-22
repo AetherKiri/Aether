@@ -194,8 +194,17 @@ function textEncodings(runtime: string) {
   return runtime === "EntisGLS"
     ? [""]
     : ["ONScripter Yuri", "RFVP"].includes(runtime)
-      ? ["", "CP932", "GBK", "UTF-8"]
-      : ["", "CP932", "GBK", "GB18030", "BIG5", "UTF-8"];
+      ? ["", "CP932", "GBK", "BIG5", "CP949", "UTF-8"]
+      : ["", "CP932", "GBK", "GB18030", "BIG5", "CP949", "UTF-8"];
+}
+function textEncodingLabel(value: string) {
+  switch (value) {
+    case "": return "自动（游戏默认）";
+    case "CP932": return "CP932 / Shift-JIS";
+    case "BIG5": return "繁体中文（Big5 / CP950）";
+    case "CP949": return "韩语（CP949）";
+    default: return value;
+  }
 }
 type GameRendering = Record<keyof typeof renderChoices, string> & {
   customChain: string[];
@@ -1141,7 +1150,7 @@ export function App() {
           detailField(
             "encoding",
             "文本编码",
-            saved.encoding || "自动（游戏默认）",
+            textEncodingLabel(saved.encoding),
             <Selector
               label="文本编码"
               isLabelHidden
@@ -1149,10 +1158,7 @@ export function App() {
               value={draft.encoding}
               options={textEncodings(selected.runtime).map((value) => ({
                 value,
-                label:
-                  value === "CP932"
-                    ? "CP932 / Shift-JIS"
-                    : value || "自动（游戏默认）",
+                label: textEncodingLabel(value),
               }))}
               onChange={(encoding) =>
                 setDetailEdit((edit) =>

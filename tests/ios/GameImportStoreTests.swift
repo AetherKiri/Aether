@@ -12,6 +12,7 @@ import Foundation
         try fm.createDirectory(at: source.appendingPathComponent("savedata"), withIntermediateDirectories: true)
         try fm.createDirectory(at: source.appendingPathComponent("近月/GameData"), withIntermediateDirectories: true)
         try fm.createDirectory(at: source.appendingPathComponent("近月/DLL"), withIntermediateDirectories: true)
+        try fm.createDirectory(at: source.appendingPathComponent("恋剑/koiken-translation"), withIntermediateDirectories: true)
         let files = [
             "savedata/slot01.sav": Data([0, 1, 2, 255]),
             ".patch": Data("补丁".utf8),
@@ -19,7 +20,11 @@ import Foundation
             "近月/GameData/Data0.Pack": Data([0, 1, 2]),
             "近月/DLL/key.fkey": Data([3, 4, 5]),
             "近月/原版.exe": Data([0x4d, 0x5a, 0, 6]),
-            "近月/汉化 (2).EXE": Data([0x4d, 0x5a, 0, 7, 0xbe, 0xba, 0xfe, 0xca])
+            "近月/汉化 (2).EXE": Data([0x4d, 0x5a, 0, 7, 0xbe, 0xba, 0xfe, 0xca]),
+            "恋剑/汉化.EXE": Data([0x4d, 0x5a, 0, 8]),
+            "恋剑/我爱.拔月脸": Data([0x4d, 0x5a, 0, 9]),
+            "恋剑/koiken-translation/manifest.tsv": Data("AETHER-KOIKEN-TRANSLATION\t1\r\n".utf8),
+            "恋剑/koiken-translation/1.bin": Data([0x8b, 0xa4, 0x81, 0x97, 0xbc, 0xf2])
         ]
         for (path, bytes) in files { try bytes.write(to: source.appendingPathComponent(path)) }
         // An extension only queues a bookmark. No hidden directory or game copy.

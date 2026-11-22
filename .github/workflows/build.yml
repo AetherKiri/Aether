@@ -103,7 +103,7 @@ jobs:
           persist-credentials: false
 
       - name: Set up .NET for N2System NativeAOT
-        uses: actions/setup-dotnet@v5
+        uses: actions/setup-dotnet@v6
         with:
           dotnet-version: '10.0.x'
 
@@ -513,7 +513,7 @@ jobs:
           persist-credentials: false
 
       - name: Set up .NET for N2System NativeAOT
-        uses: actions/setup-dotnet@v5
+        uses: actions/setup-dotnet@v6
         with:
           dotnet-version: '10.0.x'
 
@@ -872,7 +872,7 @@ jobs:
           xcrun --sdk iphoneos --show-sdk-version
 
       - name: Set up .NET for N2System NativeAOT
-        uses: actions/setup-dotnet@v5
+        uses: actions/setup-dotnet@v6
         with:
           dotnet-version: '10.0.x'
 
@@ -1340,7 +1340,7 @@ jobs:
         run: test "$(uname -m)" = '${{ matrix.machine }}'
 
       - name: Set up .NET for N2System NativeAOT
-        uses: actions/setup-dotnet@v5
+        uses: actions/setup-dotnet@v6
         with:
           dotnet-version: '10.0.x'
 

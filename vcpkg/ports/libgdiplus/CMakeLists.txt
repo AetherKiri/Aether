@@ -22,50 +22,23 @@ endif()
 # 查找核心依赖
 find_package(PkgConfig REQUIRED)
 
-pkg_check_modules(GLIB REQUIRED glib-2.0>=2.2.3)
-pkg_check_modules(CAIRO REQUIRED cairo>=1.6.4)
-pkg_check_modules(FONTCONFIG REQUIRED fontconfig)
-pkg_check_modules(FREETYPE REQUIRED freetype2)
+pkg_check_modules(GDIPLUS_GLIB REQUIRED IMPORTED_TARGET glib-2.0>=2.2.3)
+pkg_check_modules(GDIPLUS_CAIRO REQUIRED IMPORTED_TARGET cairo>=1.6.4)
+pkg_check_modules(GDIPLUS_FONTCONFIG REQUIRED IMPORTED_TARGET fontconfig)
+pkg_check_modules(GDIPLUS_FREETYPE REQUIRED IMPORTED_TARGET freetype2)
 
-if(NOT GLIB_FOUND)
-    message(FATAL_ERROR "glib-2.0 not found")
-endif()
-
-if(NOT CAIRO_FOUND)
-    message(FATAL_ERROR "cairo not found")
-endif()
-
-if(NOT FONTCONFIG_FOUND)
-    message(FATAL_ERROR "fontconfig not found")
-endif()
-
-if(NOT FREETYPE_FOUND)
-    message(FATAL_ERROR "freetype2 not found")
-endif()
-
+include(CMakePushCheckState)
 include(CheckSymbolExists)
-list(APPEND CMAKE_REQUIRED_INCLUDES ${FONTCONFIG_INCLUDE_DIRS})
-list(APPEND CMAKE_REQUIRED_LIBRARIES ${FONTCONFIG_LIBRARIES})
-
-# version 3.31+
-#list(APPEND CMAKE_REQUIRED_LINK_DIRECTORIES ${FONTCONFIG_LIBRARY_DIRS})
-foreach (FONTCONFIG_LIBRARY_DIR ${FONTCONFIG_LIBRARY_DIRS})
-    if(MSVC)
-        list(APPEND CMAKE_REQUIRED_LINK_OPTIONS "/LIBPATH:${FONTCONFIG_LIBRARY_DIR}")
-    else()
-        list(APPEND CMAKE_REQUIRED_LINK_OPTIONS "-L${FONTCONFIG_LIBRARY_DIR}")
-    endif()
-endforeach()
-
+cmake_push_check_state(RESET)
+set(CMAKE_REQUIRED_LIBRARIES PkgConfig::GDIPLUS_FONTCONFIG)
 check_symbol_exists(FcFini "fontconfig/fontconfig.h" HAVE_FCFINI)
+cmake_pop_check_state()
 
 # Pango可选支持
 if(WITH_PANGO)
-    pkg_check_modules(PANGO REQUIRED pango>=1.10 pangocairo>=1.10)
+    pkg_check_modules(GDIPLUS_PANGO REQUIRED IMPORTED_TARGET pango>=1.10 pangocairo>=1.10)
     set(USE_PANGO_RENDERING ON)
-    list(APPEND GDIPLUS_LIBS ${PANGO_LIBRARIES})
-    list(APPEND GDIPLUS_CFLAGS ${PANGO_CFLAGS})
-    target_include_directories(${PROJECT_NAME} PUBLIC ${PANGO_INCLUDE_DIRS})
+    list(APPEND GDIPLUS_LIBS PkgConfig::GDIPLUS_PANGO)
 endif()
 
 # 图像编解码库
@@ -73,8 +46,7 @@ endif()
 find_package(JPEG)
 if(JPEG_FOUND)
     set(HAVE_LIBJPEG ON)
-    list(APPEND GDIPLUS_LIBS ${JPEG_LIBRARIES})
-    target_include_directories(${PROJECT_NAME} PUBLIC ${JPEG_INCLUDE_DIRS})
+    list(APPEND GDIPLUS_LIBS JPEG::JPEG)
 else()
     message(WARNING "JPEG support disabled")
 endif()
@@ -83,12 +55,7 @@ endif()
 find_package(TIFF)
 if(TIFF_FOUND)
     set(HAVE_LIBTIFF ON)
-    # Keep the TIFF::TIFF target reference in the link interface. The
-    # installed libgdiplus-config.cmake calls find_dependency(TIFF) before
-    # loading the exported targets, so consumers get TIFF::TIFF together
-    # with its full transitive dependency chain (lzma, zstd, webp, ...).
-    list(APPEND GDIPLUS_LIBS ${TIFF_LIBRARIES})
-    target_include_directories(${PROJECT_NAME} PUBLIC ${TIFF_INCLUDE_DIRS})
+    list(APPEND GDIPLUS_LIBS TIFF::TIFF)
 else()
     message(WARNING "TIFF support disabled")
 endif()
@@ -107,7 +74,7 @@ endif()
 ## PNG
 find_package(PNG REQUIRED)
 set(HAVE_LIBPNG ON)
-list(APPEND GDIPLUS_LIBS ${PNG_LIBRARIES})
+list(APPEND GDIPLUS_LIBS PNG::PNG)
 
 # X11支持
 if(WITH_X11)
@@ -120,10 +87,10 @@ endif()
 
 # libexif支持
 if(WITH_LIBEXIF)
-    pkg_check_modules(LIBEXIF libexif)
-    if(LIBEXIF_FOUND)
+    pkg_check_modules(GDIPLUS_LIBEXIF IMPORTED_TARGET libexif)
+    if(GDIPLUS_LIBEXIF_FOUND)
         set(HAVE_LIBEXIF ON)
-        list(APPEND GDIPLUS_LIBS ${LIBEXIF_LIBRARIES})
+        list(APPEND GDIPLUS_LIBS PkgConfig::GDIPLUS_LIBEXIF)
     else()
         message(WARNING "EXIF support disabled")
     endif()
@@ -139,6 +106,7 @@ elseif(APPLE)
     set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -no-cpp-precomp")
     if(NOT CMAKE_SYSTEM_NAME STREQUAL "iOS")
         set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} -flat_namespace -undefined suppress")
+        list(APPEND GDIPLUS_LIBS "-framework IOKit")
     endif()
 #elseif(LINUX)
 #    find_package(Threads REQUIRED)
@@ -191,28 +159,13 @@ target_sources(${PROJECT_NAME}
         src/wmfcodec.c
 )
 
-# 合并所有依赖
-target_include_directories(${PROJECT_NAME} PUBLIC
-    ${GLIB_INCLUDE_DIRS}
-    ${CAIRO_INCLUDE_DIRS}
-    ${FONTCONFIG_INCLUDE_DIRS}
-    ${FREETYPE_INCLUDE_DIRS}
-    ${PNG_INCLUDE_DIRS}
-)
-
+# Export dependency targets, not paths into the vcpkg tree used to build this package.
 target_link_libraries(${PROJECT_NAME} PUBLIC
-    ${GLIB_LIBRARIES}
-    ${CAIRO_LIBRARIES}
-    ${FONTCONFIG_LIBRARIES}
-    ${FREETYPE_LIBRARIES}
+    PkgConfig::GDIPLUS_GLIB
+    PkgConfig::GDIPLUS_CAIRO
+    PkgConfig::GDIPLUS_FONTCONFIG
+    PkgConfig::GDIPLUS_FREETYPE
     ${GDIPLUS_LIBS}
-)
-
-target_link_directories(${PROJECT_NAME} PUBLIC
-    ${GLIB_LIBRARY_DIRS}
-    ${CAIRO_LIBRARY_DIRS}
-    ${FONTCONFIG_LIBRARY_DIRS}
-    ${FREETYPE_LIBRARY_DIRS}
 )
 
 target_include_directories(${PROJECT_NAME}

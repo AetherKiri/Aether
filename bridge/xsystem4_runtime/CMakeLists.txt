@@ -15,10 +15,12 @@ find_package(unofficial-libffi CONFIG REQUIRED)
 find_package(uchardet CONFIG REQUIRED)
 find_package(libjpeg-turbo CONFIG REQUIRED)
 find_package(FFMPEG REQUIRED)
-if(APPLE)
-    list(REMOVE_ITEM FFMPEG_LIBRARIES "-pthread")
-endif()
 find_package(Threads REQUIRED)
+if(APPLE)
+    # Keep any debug/optimized qualifier attached to a link item. The
+    # Threads target supplies the platform's thread flags, if needed.
+    list(TRANSFORM FFMPEG_LIBRARIES REPLACE "^-pthread$" "Threads::Threads")
+endif()
 find_package(FLEX REQUIRED)
 find_package(BISON REQUIRED)
 set(CMAKE_DISABLE_FIND_PACKAGE_libdeflate TRUE)
@@ -93,11 +95,29 @@ file(WRITE "${generated}/cg.c" "#include \"tga_compat.h\"\n${cg_source}")
 get_target_property(sys4_sources sys4 SOURCES)
 list(FILTER sys4_sources EXCLUDE REGEX "(^|/)src/cg\\.c$")
 set_property(TARGET sys4 PROPERTY SOURCES "${sys4_sources};${generated}/cg.c")
+# Preserve libsys4's ALD optimization workaround on Clang as well as GCC.
+set(ald_path "${AETHERKIRI_XSYSTEM4_DIR}/subprojects/libsys4/src/ald.c")
+set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${ald_path}")
+file(READ "${ald_path}" ald_source)
+set(ald_gcc_attribute "static int __attribute__((optimize(\"O0\"))) _ald_get")
+string(FIND "${ald_source}" "${ald_gcc_attribute}" ald_attribute_pos)
+if(CMAKE_C_COMPILER_ID MATCHES "Clang" AND NOT ald_attribute_pos EQUAL -1)
+    string(REPLACE "${ald_gcc_attribute}" "static int __attribute__((optnone)) _ald_get"
+        ald_source "${ald_source}")
+    file(CONFIGURE OUTPUT "${generated}/ald.c" CONTENT "${ald_source}" @ONLY)
+    get_target_property(sys4_sources sys4 SOURCES)
+    list(FILTER sys4_sources EXCLUDE REGEX "(^|/)src/ald\\.c$")
+    set_property(TARGET sys4 PROPERTY SOURCES "${sys4_sources};${generated}/ald.c")
+endif()
 target_link_libraries(sys4 PRIVATE
     $<IF:$<TARGET_EXISTS:SDL2_image::SDL2_image>,SDL2_image::SDL2_image,SDL2_image::SDL2_image-static>)
 target_link_libraries(sys4 PRIVATE $<IF:$<TARGET_EXISTS:SDL2::SDL2>,SDL2::SDL2,SDL2::SDL2-static>)
 set_target_properties(sys4 PROPERTIES POSITION_INDEPENDENT_CODE ON)
 if(APPLE)
+    # The INI lexer's 64 KiB scratch buffer is defined in one translation unit.
+    # A common symbol lets ld infer an alignment larger than the Mach-O segment.
+    set_property(SOURCE "${CMAKE_CURRENT_BINARY_DIR}/libsys4/ini_lexer.yy.c"
+        TARGET_DIRECTORY sys4 APPEND PROPERTY COMPILE_OPTIONS -fno-common)
     find_library(core_foundation CoreFoundation REQUIRED)
     # The GDExtension's mixed Swift/C++ link needs driver-neutral framework
     # paths, rather than libsys4's standalone clang flag spelling.
@@ -127,6 +147,9 @@ target_compile_features(aether_xsystem4_runtime PRIVATE cxx_std_17)
 target_compile_definitions(aether_xsystem4_runtime PRIVATE _DEFAULT_SOURCE XSYSTEM4_EMBEDDED SDL_MAIN_HANDLED XSYS4_DATA_DIR="" VCS_TAG="aether")
 if(APPLE)
     target_compile_definitions(aether_xsystem4_runtime PRIVATE GL_SILENCE_DEPRECATION)
+    if(IOS)
+        target_compile_definitions(aether_xsystem4_runtime PRIVATE GLES_SILENCE_DEPRECATION)
+    endif()
 endif()
 target_include_directories(aether_xsystem4_runtime PUBLIC "${CMAKE_CURRENT_LIST_DIR}/include" PRIVATE
     "${CMAKE_CURRENT_LIST_DIR}/../../abi/include" "${AETHERKIRI_XSYSTEM4_DIR}/include" "${generated}" ${FFMPEG_INCLUDE_DIRS})

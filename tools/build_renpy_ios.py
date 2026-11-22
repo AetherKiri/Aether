@@ -15,6 +15,8 @@ import subprocess
 import zipfile
 
 REPO = Path(__file__).resolve().parents[1]
+# Match the deployment target of the Aether iOS app.
+IOS_MIN_VERSION = "16.0"
 LIBRARIES = ("renpython", "renpy", "python3.12", "assimp", "avformat", "avcodec",
              "swscale", "swresample", "avutil", "SDL2_image", "SDL2", "avif", "aom",
              "yuv", "turbojpeg", "png16", "webp", "sharpyuv", "harfbuzz", "brotlidec",
@@ -29,6 +31,15 @@ FRAMEWORKS = ("MetalANGLE", "UIKit", "Foundation", "CoreMotion", "GameController
 
 def run(command):
     subprocess.run(list(map(str, command)), check=True)
+
+
+def adapt_review_request(source):
+    # Adapt the pinned Renios prototype in the build output, not the SDK ZIP.
+    old = '    [SKStoreReviewController requestReview];'
+    if source.count(old) != 1:
+        raise ValueError("Unexpected Renios StoreKit review implementation")
+    return 'extern void AetherRenpyRequestReview(void);\n' + source.replace(
+        old, '    AetherRenpyRequestReview();')
 
 
 def main():
@@ -103,9 +114,12 @@ def main():
         prototype_sources = {}
         for name in ("Log.m", "VideoPlayer.m", "IAPHelper.m"):
             source = output / name
-            source.write_bytes(archive.read("renios/prototype/" + name))
+            contents = archive.read("renios/prototype/" + name)
+            if name == "IAPHelper.m":
+                contents = adapt_review_request(contents.decode("utf-8")).encode("utf-8")
+            source.write_bytes(contents)
             prototype_sources[name] = source
-    target = f"{args.arch}-apple-ios13.0" + ("" if args.device else "-simulator")
+    target = f"{args.arch}-apple-ios{IOS_MIN_VERSION}" + ("" if args.device else "-simulator")
     apple_sdk = "iphoneos" if args.device else "iphonesimulator"
     sdkroot = subprocess.check_output(["xcrun", "--sdk", apple_sdk, "--show-sdk-path"], text=True).strip()
     compiler = ["xcrun", "clang++", "-target", target, "-isysroot", sdkroot, "-O2"]
@@ -121,14 +135,18 @@ def main():
     framework.mkdir(parents=True, exist_ok=True)
     (framework / "Info.plist").write_bytes(plistlib.dumps({"CFBundleIdentifier":"org.aether.renpy.runtime",
         "CFBundleName":"AetherRenpy", "CFBundleExecutable":"AetherRenpy", "CFBundlePackageType":"FMWK",
-        "CFBundleVersion":"8.5.3", "CFBundleShortVersionString":"8.5.3", "MinimumOSVersion":"13.0",
+        "CFBundleVersion":"8.5.3", "CFBundleShortVersionString":"8.5.3", "MinimumOSVersion": IOS_MIN_VERSION,
         "CFBundleSupportedPlatforms":["iPhoneOS" if args.device else "iPhoneSimulator"]}))
-    link = compiler + ["-dynamiclib", "-install_name", "@rpath/AetherRenpy.framework/AetherRenpy", "-Wl,-rpath,@loader_path/..",
+    link = ["xcrun", "--sdk", apple_sdk, "swiftc", "-target", target, "-sdk", sdkroot,
+        "-swift-version", "6", "-O", "-parse-as-library", "-emit-library", "-module-name", "AetherRenpy",
+        REPO / "bridge/renpy_runtime/ios_review.swift",
+        "-Xlinker", "-install_name", "-Xlinker", "@rpath/AetherRenpy.framework/AetherRenpy",
+        "-Xlinker", "-rpath", "-Xlinker", "@loader_path/..",
         "-o", framework / "AetherRenpy", *objects, "-L" + str(libraries), "-F" + str(output / "Frameworks")]
     link += ["-l" + name for name in LIBRARIES]
     for name in FRAMEWORKS:
         link += ["-framework", name]
-    run(link + ["-liconv", "-lresolv", "-lc++"])
+    run(link + ["-lc++", "-liconv", "-lresolv"])
     runtime = output / "renpy-runtime"
     for name in ("renpy", "lib/python3.12"):
         shutil.copytree(sdk / name, runtime / name, copy_function=clone, dirs_exist_ok=True,
@@ -160,7 +178,7 @@ def main():
         shutil.copy2(sdk / "sdk-fonts/SourceHanSansLite.ttf", app / "font.ttf")
         (app / "Info.plist").write_bytes(plistlib.dumps({"CFBundleIdentifier":"org.aether.tests.renpy.ios",
             "CFBundleName":"Aether Renpy Native Test", "CFBundleExecutable":"RenpyNativeSmoke", "CFBundlePackageType":"APPL",
-            "CFBundleVersion":"1", "CFBundleShortVersionString":"1.0", "MinimumOSVersion":"13.0", "UIDeviceFamily":[1, 2],
+            "CFBundleVersion":"1", "CFBundleShortVersionString":"1.0", "MinimumOSVersion": IOS_MIN_VERSION, "UIDeviceFamily":[1, 2],
             "UIRequiresFullScreen":True, "UIApplicationSupportsIndirectInputEvents":True,
             "UISupportedInterfaceOrientations":["UIInterfaceOrientationLandscapeLeft", "UIInterfaceOrientationLandscapeRight"]}))
         run(compiler + ["-fobjc-arc", "-std=c++17", "-I" + str(REPO / "bridge/godot_extension/src"),

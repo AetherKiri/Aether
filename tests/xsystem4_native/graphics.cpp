@@ -1,3 +1,8 @@
+#if defined(__APPLE__)
+// Exercise the same GL context as the embedded engine.
+#define GL_SILENCE_DEPRECATION
+#define GLES_SILENCE_DEPRECATION
+#endif
 #include "offscreen_context.h"
 #include <array>
 #include <cstdio>

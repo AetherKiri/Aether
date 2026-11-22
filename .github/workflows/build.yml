@@ -530,6 +530,8 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
         with:
           targets: aarch64-apple-ios
+          # rust-objcopy needs the matching LLVM dylib on Apple runners.
+          components: llvm-tools
 
       - name: Resolve private runtime dependency cache
         id: private-runtime-cache-key
@@ -628,7 +630,15 @@ jobs:
 
       - name: Install Build Systems
         run: |
-          brew install cmake ninja pkg-config autoconf automake autoconf-archive libtool gettext coreutils bison nasm ccache mono
+          missing=()
+          for formula in cmake ninja pkgconf autoconf automake autoconf-archive libtool gettext coreutils bison nasm ccache mono; do
+            if ! brew list --versions "$formula" >/dev/null; then
+              missing+=("$formula")
+            fi
+          done
+          if ((${#missing[@]})); then
+            brew install "${missing[@]}"
+          fi
           echo "$(brew --prefix gettext)/bin" >> $GITHUB_PATH
           echo "$(brew --prefix bison)/bin" >> $GITHUB_PATH
           rustup target add aarch64-apple-ios aarch64-apple-ios-sim x86_64-apple-ios
@@ -902,6 +912,8 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
         with:
           targets: aarch64-apple-darwin
+          # rust-objcopy needs the matching LLVM dylib on Apple runners.
+          components: llvm-tools
 
       - name: Resolve private runtime dependency cache
         id: private-runtime-cache-key
@@ -995,7 +1007,15 @@ jobs:
 
       - name: Install Build Systems
         run: |
-          brew install cmake ninja pkg-config autoconf automake autoconf-archive libtool gettext coreutils bison nasm ccache mono
+          missing=()
+          for formula in cmake ninja pkgconf autoconf automake autoconf-archive libtool gettext coreutils bison nasm ccache mono; do
+            if ! brew list --versions "$formula" >/dev/null; then
+              missing+=("$formula")
+            fi
+          done
+          if ((${#missing[@]})); then
+            brew install "${missing[@]}"
+          fi
           echo "$(brew --prefix gettext)/bin" >> $GITHUB_PATH
           echo "$(brew --prefix bison)/bin" >> $GITHUB_PATH
           rustup target add aarch64-apple-darwin
@@ -1403,7 +1423,7 @@ jobs:
             ccache clang libclang-dev zlib1g-dev libgl1-mesa-dev libglu1-mesa-dev libegl-dev libgles-dev \
             libx11-dev libxrandr-dev libxinerama-dev libxcursor-dev libxi-dev \
             libxext-dev libxfixes-dev libxrender-dev libxss-dev libxtst-dev \
-            libwayland-dev libxkbcommon-dev \
+            libwayland-dev libxkbcommon-dev libdecor-0-dev \
             libasound2-dev libpulse-dev libudev-dev libdbus-1-dev
 
       - name: Resolve native compiler cache key
@@ -1541,6 +1561,7 @@ jobs:
         env:
           LD_LIBRARY_PATH: ${{ github.workspace }}/apps/godot_app/bin/linux/debug
         run: |
+          python3 -m unittest discover -s tests/python -p test_linux_vcpkg_cache_migration.py -v
           python3 -m unittest discover -s tests/python -p test_renpy_host.py
           python3 -m unittest discover -s tests/python -p test_runtime_submodule_initialization.py -v
           for test in android_tree_uri video_library_folders video_library_ui video_import_permissions flash_library tyrano_library tyrano_asar renpy_library xsystem4_library xsystem35_library system3_library rfvp_import; do

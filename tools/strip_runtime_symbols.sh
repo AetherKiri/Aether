@@ -29,6 +29,11 @@ strip_macho() {
     local binary
     for binary in "$@"; do
         require_regular_file "$binary"
+        # Staged Mach-O binaries are re-signed after stripping. Remove the
+        # old signature first so strip does not leave it invalid in place.
+        if codesign --display "$binary" >/dev/null 2>&1; then
+            codesign --remove-signature "$binary"
+        fi
         if [[ "$strip_mode" == "executable" ]]; then
             "$strip_tool" "$binary"
         else

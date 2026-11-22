@@ -13,6 +13,7 @@ const TyranoPlayerView = preload("res://scripts/tyrano_player_view.gd")
 const RenpyPlayerView = preload("res://scripts/renpy_player_view.gd")
 const RuntimeDisplayState = preload("res://scripts/runtime_display_state.gd")
 const QLIE_FONT_CHOOSER_REQUEST := "qlie_font_chooser"
+const RuntimeDisplaySettings = preload("res://scripts/runtime_display_settings.gd")
 const RuntimeCursorState = preload("res://scripts/runtime_cursor_state.gd")
 const GameLibraryStorage = preload("res://scripts/game_library_storage.gd")
 const VIDEO_LIST_FILE := "user://aetherkiri_videos.json"
@@ -2766,6 +2767,7 @@ const RUNTIME_MAGES := "mages"
 const RUNTIME_N2SYSTEM := "n2system"
 const RUNTIME_YURIS := "yuris"
 const RUNTIME_SYSTEMC := "systemc"
+const RUNTIME_EXHIBIT := "exhibit"
 const RUNTIME_PLAYER_CLASS := "AetherRuntimePlayer"
 const ONSCRIPTER_SCRIPT_MARKERS := [
     "0.txt",
@@ -2839,6 +2841,7 @@ var restart_notice: Label
 var viewport: TextureRect
 var softpal_aspect_mode := 1
 var runtime_display_state = RuntimeDisplayState.new()
+var runtime_display_settings = RuntimeDisplaySettings.new()
 var runtime_cursor_state = RuntimeCursorState.new()
 var runtime_pointer_in_window := true
 var perf: Label
@@ -12525,6 +12528,9 @@ func _probe_game_runtime_kind(root: String, runtime_kind: String, startup_script
     var qlie_score := int(player.probe_runtime(RUNTIME_QLIE, root))
     if qlie_score >= QLIE_VERIFIED_STARTUP_SCORE:
         return RUNTIME_QLIE
+    # Format detection stays in the optional private provider.
+    if int(player.probe_runtime(RUNTIME_EXHIBIT, root)) > 0:
+        return RUNTIME_EXHIBIT
     if runtime_kind == RUNTIME_KIRIKIRI:
         if qlie_score >= 700 and not startup_script.strip_edges().is_empty():
             return RUNTIME_QLIE
@@ -13455,6 +13461,8 @@ func _begin_active_game_session(path: String) -> Dictionary:
     if not active_game_path.is_empty():
         _finalize_active_game_session()
     active_game_path = path
+    if active_runtime_kind == RUNTIME_EXHIBIT:
+        runtime_display_settings.begin_game(get_window(), path, not _is_touch_platform(), _on_runtime_platform_request)
     active_game_started_msec = _play_session_now_msec()
     active_game_paused_msec = 0
     play_duration_checkpoint_elapsed = 0.0
@@ -13523,6 +13531,7 @@ func _return_to_library_after_runtime_exit() -> void:
     _clear_game_input_capture()
     _finalize_active_game_session()
     game_running = false
+    runtime_display_settings.end_game()
     runtime_display_state.reset(get_window())
     softpal_aspect_mode = 1
     _sync_debug_console_state()
@@ -13989,6 +13998,7 @@ func _switch_runtime_player(runtime_kind: String) -> bool:
         RUNTIME_XSYSTEM35,
         RUNTIME_SYSTEM3,
         RUNTIME_SYSTEMC,
+        RUNTIME_EXHIBIT,
         RUNTIME_YURIS,
         RUNTIME_ADVHD,
         RUNTIME_ESCUDE,
@@ -14036,6 +14046,8 @@ func _switch_runtime_player(runtime_kind: String) -> bool:
         if normalized == RUNTIME_XSYSTEM35
         else "AliceSoft System 4"
         if normalized == RUNTIME_XSYSTEM4
+        else "ExHIBIT"
+        if normalized == RUNTIME_EXHIBIT
         else "SystemC"
         if normalized == RUNTIME_SYSTEMC
         else "YU-RIS"
@@ -14102,6 +14114,17 @@ func _on_runtime_platform_request(operation: String, argument: String) -> void:
         return
     if operation == "runtime_end":
         call_deferred("_return_to_library_after_runtime_exit")
+        return
+    if operation == "runtime_screenshot_game":
+        if not active_game_path.is_empty():
+            call_deferred("_save_requested_game_screenshot", active_game_path)
+        return
+    if operation == "runtime_open_url":
+        if argument.begins_with("https://") or argument.begins_with("http://"):
+            OS.shell_open(argument)
+        return
+    if operation == "runtime_display_settings":
+        runtime_display_settings.open(self, last_texture_size, _effective_language_code(), runtime_display_state.aspect_mode)
         return
     if runtime_display_state.apply(operation, argument, get_window(), not _is_touch_platform()):
         softpal_aspect_mode = runtime_display_state.aspect_mode
@@ -14568,6 +14591,51 @@ func _show_minori_select(argument: String) -> void:
     if first_button != null:
         first_button.grab_focus()
 
+func _save_requested_game_screenshot(requested_game: String) -> void:
+    if requested_game != active_game_path or player == null:
+        return
+    var frame: Dictionary = player.read_frame_rgba()
+    var width := int(frame.get("width", 0))
+    var height := int(frame.get("height", 0))
+    var pixels: PackedByteArray = frame.get("rgba", PackedByteArray())
+    var image: Image
+    if width > 0 and height > 0 and pixels.size() == width * height * 4:
+        image = Image.create_from_data(width, height, false, Image.FORMAT_RGBA8, pixels)
+    elif viewport.texture != null:
+        image = viewport.texture.get_image()
+    if image == null or image.is_empty():
+        _append_log("Could not capture the game frame")
+        return
+    var directory := _game_runtime_root(requested_game).path_join("savedata/screenshot")
+    if DirAccess.make_dir_recursive_absolute(directory) != OK:
+        _append_log("Could not create the screenshot directory")
+        return
+    var now := Time.get_datetime_dict_from_system()
+    var milliseconds := int(Time.get_unix_time_from_system() * 1000.0) % 1000
+    var stem := "%04d%02d%02d_%02d%02d%02d%03d" % [now.year, now.month, now.day, now.hour, now.minute, now.second, milliseconds]
+    var suffix := 0
+    while true:
+        var filename := (stem if suffix == 0 else "%s_%d" % [stem, suffix]) + ".png"
+        var path := directory.path_join(filename)
+        suffix += 1
+        if FileAccess.file_exists(path):
+            continue
+        var lock_path := directory.path_join("." + filename + ".lock")
+        var reserved := DirAccess.make_dir_absolute(lock_path)
+        if reserved == ERR_ALREADY_EXISTS or (reserved != OK and DirAccess.dir_exists_absolute(lock_path)):
+            continue
+        if reserved != OK:
+            _append_log("Could not reserve the screenshot filename")
+            return
+        if FileAccess.file_exists(path):
+            DirAccess.remove_absolute(lock_path)
+            continue
+        var error := image.save_png(path)
+        DirAccess.remove_absolute(lock_path)
+        if error != OK:
+            _append_log("Could not save the game screenshot: %s" % error_string(error))
+        return
+
 func _show_runtime_form(specification: Dictionary) -> void:
     if modal_layer == null or player == null:
         return
@@ -14834,6 +14902,7 @@ func _ensure_player_initialized() -> bool:
         RUNTIME_XSYSTEM35,
         RUNTIME_SYSTEM3,
         RUNTIME_SYSTEMC,
+        RUNTIME_EXHIBIT,
         RUNTIME_YURIS,
         RUNTIME_ADVHD,
         RUNTIME_ESCUDE,
@@ -14861,6 +14930,7 @@ func _ensure_player_initialized() -> bool:
         if current_player_runtime_kind == RUNTIME_XSYSTEM35
         else "AliceSoft System 4"
         if current_player_runtime_kind == RUNTIME_XSYSTEM4
+        else "ExHIBIT" if current_player_runtime_kind == RUNTIME_EXHIBIT
         else "SystemC" if current_player_runtime_kind == RUNTIME_SYSTEMC
         else "YU-RIS" if current_player_runtime_kind == RUNTIME_YURIS
         else "OnscripterYuri"
@@ -16907,6 +16977,7 @@ func _process(delta: float) -> void:
                 game_running = false
                 _set_game_runtime_frame_pacing(false)
                 _discard_qlie_font_chooser()
+                runtime_display_settings.end_game()
                 runtime_display_state.reset(get_window())
                 softpal_aspect_mode = 1
                 _sync_game_virtual_controls()

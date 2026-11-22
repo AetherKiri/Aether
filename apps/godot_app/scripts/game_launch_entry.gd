@@ -9,6 +9,7 @@ const DIRECTORY_RUNTIME_KINDS := [
     "advhd",
     "renpy",
     "artemis",
+    "exhibit",
     "bgi",
     "escude",
     "entisgls",

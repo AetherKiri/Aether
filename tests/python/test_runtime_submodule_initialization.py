@@ -44,7 +44,8 @@ class RuntimeSubmoduleInitializationTests(unittest.TestCase):
                 "assert data.endswith(b'\\n')\n"
                 "assert os.name == 'nt' or key.stat().st_mode & 0o777 == 0o600\n"
                 "with open(os.environ['GIT_CALL_LOG'], 'a') as output:\n"
-                "    output.write(json.dumps(sys.argv[1:]) + '\\n')\n",
+                "    output.write(json.dumps(sys.argv[1:]) + '\\n')\n"
+                "if 'rev-parse' in sys.argv: print('12' * 20)\n",
                 encoding="utf-8",
             )
             git.chmod(0o755)
@@ -56,14 +57,21 @@ class RuntimeSubmoduleInitializationTests(unittest.TestCase):
                 AETHER_INTERNAL_DEPLOY_KEY=original.decode(),
                 AETHER_ELIQ_DEPLOY_KEY=original.decode(),
                 AETHER_SOFTPAL_DEPLOY_KEY=original.decode().replace("\n", "\r\n"),
+                AETHER_EXHIBIT_DEPLOY_KEY=original.decode(),
                 AETHER_LEAFTTT_DEPLOY_KEY="\ufeff" + original.decode().replace("\n", "\r\n").rstrip("\r\n"),
             )
-            subprocess.run(initializer_command(temporary), env=environment, check=True)
+            provider = temporary / "packages/AetherExHIBIT/integrations/aether"
+            provider.mkdir(parents=True)
+            (provider / "CMakeLists.txt").touch()
+            subprocess.run(initializer_command(temporary), env=environment, cwd=temporary, check=True)
             calls = [json.loads(line) for line in log.read_text().splitlines()]
             self.assertFalse(any(temporary.glob("aether-submodules.*")))
 
-        initialized = {argument for call in calls for argument in call if argument.startswith("packages/")}
+        initialized = {argument for call in calls if call[:2] == ["submodule", "update"]
+                       for argument in call if argument.startswith("packages/")}
         self.assertEqual(initialized, expected)
+        self.assertIn(["-C", "packages/AetherExHIBIT", "rev-parse", "HEAD"], calls)
+        self.assertIn(["rev-parse", "HEAD:packages/AetherExHIBIT"], calls)
         for runtime in expected - {"packages/AetherSoftPal"}:
             with self.subTest(runtime=runtime):
                 self.assertTrue(any(
@@ -77,6 +85,7 @@ class RuntimeSubmoduleInitializationTests(unittest.TestCase):
             environment = dict(os.environ, RUNNER_TEMP=Path(directory).as_posix(),
                                AETHER_INTERNAL_DEPLOY_KEY="invalid-test-key",
                                AETHER_SOFTPAL_DEPLOY_KEY="invalid-test-key",
+                               AETHER_EXHIBIT_DEPLOY_KEY="invalid-test-key",
                                AETHER_LEAFTTT_DEPLOY_KEY="invalid-test-key",
                                AETHER_ELIQ_DEPLOY_KEY="invalid-test-key")
             result = subprocess.run([BASH, SCRIPT.as_posix()], env=environment, capture_output=True, text=True)

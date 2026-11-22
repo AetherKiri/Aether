@@ -2,6 +2,7 @@
 #include "engine_options.h"
 
 #include <algorithm>
+#include <array>
 #include <atomic>
 #include <chrono>
 #include <cctype>
@@ -9,6 +10,7 @@
 #include <deque>
 #include <exception>
 #include <functional>
+#include <future>
 #include <memory>
 #include <mutex>
 #include <new>
@@ -93,6 +95,7 @@ struct DispatchHandle {
   engine_runtime_fragment_shader_host_v1_t fragment_shader_host{};
   engine_runtime_media_host_v1_t media_host{};
   std::unordered_set<engine_media_handle_t> provider_media_handles;
+  std::array<std::future<void>, 2> retiring_media;
   StartupThread startup_thread;
   uint32_t startup_state = ENGINE_STARTUP_STATE_IDLE;
   std::deque<std::string> startup_logs;
@@ -483,6 +486,29 @@ engine_result_t HostMediaDestroy(void* user_data, engine_media_handle_t media) {
   const auto result = LegacyServices()->media_destroy(media);
   SetLegacyError(handle, result, "runtime media host failed to close media");
   return result;
+}
+
+engine_result_t HostMediaRetire(void* user_data, engine_media_handle_t media) {
+  auto* handle = static_cast<DispatchHandle*>(user_data);
+  if (!handle) return ENGINE_RESULT_INVALID_ARGUMENT;
+  if (!media) return ENGINE_RESULT_OK;
+  std::lock_guard<std::recursive_mutex> guard(handle->mutex);
+  if (!handle->provider_media_handles.count(media)) return ENGINE_RESULT_INVALID_ARGUMENT;
+  const auto* services = LegacyServices();
+  for (auto& worker : handle->retiring_media) {
+    if (worker.valid() && worker.wait_for(std::chrono::seconds(0)) != std::future_status::ready) continue;
+    // Silence the old track before the next scene appears. No new provider
+    // calls can reach this handle once ownership has moved to the worker.
+    if (services->media_set_volume) services->media_set_volume(media, 0);
+    try {
+      worker = std::async(std::launch::async, [services, media] { services->media_destroy(media); });
+    } catch (const std::exception&) {
+      break;
+    }
+    handle->provider_media_handles.erase(media);
+    return ENGINE_RESULT_OK;
+  }
+  return HostMediaDestroy(user_data, media);
 }
 
 template <typename Callback>
@@ -889,6 +915,7 @@ engine_result_t engine_create(const engine_create_desc_t* desc,
   handle->media_host.user_data = handle;
   handle->media_host.open = HostMediaOpen;
   handle->media_host.destroy = HostMediaDestroy;
+  handle->media_host.retire = HostMediaRetire;
   handle->media_host.play = HostMediaPlay;
   handle->media_host.pause = HostMediaPause;
   handle->media_host.seek = HostMediaSeek;
@@ -1023,6 +1050,9 @@ engine_result_t engine_destroy(engine_handle_t public_handle) {
     LegacyServices()->media_destroy(media);
   }
   handle->provider_media_handles.clear();
+  for (auto& worker : handle->retiring_media) {
+    if (worker.valid()) worker.wait();
+  }
   for (const auto media : owned_media) {
     LegacyServices()->media_destroy(media);
   }

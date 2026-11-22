@@ -29,6 +29,8 @@ on:
         required: false
       AETHER_ELIQ_DEPLOY_KEY:
         required: false
+      AETHER_EXHIBIT_DEPLOY_KEY:
+        required: false
       AETHERID:
         required: false
       ANDROID_RELEASE_KEYSTORE_BASE64:
@@ -103,7 +105,7 @@ jobs:
           persist-credentials: false
 
       - name: Set up .NET for N2System NativeAOT
-        uses: actions/setup-dotnet@v5
+        uses: actions/setup-dotnet@v6
         with:
           dotnet-version: '10.0.x'
 
@@ -114,6 +116,7 @@ jobs:
           AETHER_SOFTPAL_DEPLOY_KEY: ${{ secrets.AETHER_SOFTPAL_DEPLOY_KEY }}
           AETHER_LEAFTTT_DEPLOY_KEY: ${{ secrets.AETHER_LEAFTTT_DEPLOY_KEY }}
           AETHER_ELIQ_DEPLOY_KEY: ${{ secrets.AETHER_ELIQ_DEPLOY_KEY }}
+          AETHER_EXHIBIT_DEPLOY_KEY: ${{ secrets.AETHER_EXHIBIT_DEPLOY_KEY }}
         run: .github/scripts/initialize-private-runtime-submodules.sh
 
       - name: Set up Rust for native runtimes
@@ -516,7 +519,7 @@ jobs:
           persist-credentials: false
 
       - name: Set up .NET for N2System NativeAOT
-        uses: actions/setup-dotnet@v5
+        uses: actions/setup-dotnet@v6
         with:
           dotnet-version: '10.0.x'
 
@@ -527,6 +530,7 @@ jobs:
           AETHER_SOFTPAL_DEPLOY_KEY: ${{ secrets.AETHER_SOFTPAL_DEPLOY_KEY }}
           AETHER_LEAFTTT_DEPLOY_KEY: ${{ secrets.AETHER_LEAFTTT_DEPLOY_KEY }}
           AETHER_ELIQ_DEPLOY_KEY: ${{ secrets.AETHER_ELIQ_DEPLOY_KEY }}
+          AETHER_EXHIBIT_DEPLOY_KEY: ${{ secrets.AETHER_EXHIBIT_DEPLOY_KEY }}
         run: .github/scripts/initialize-private-runtime-submodules.sh
 
       - name: Set up Rust for native runtimes
@@ -878,7 +882,7 @@ jobs:
           xcrun --sdk iphoneos --show-sdk-version
 
       - name: Set up .NET for N2System NativeAOT
-        uses: actions/setup-dotnet@v5
+        uses: actions/setup-dotnet@v6
         with:
           dotnet-version: '10.0.x'
 
@@ -902,6 +906,7 @@ jobs:
           AETHER_SOFTPAL_DEPLOY_KEY: ${{ secrets.AETHER_SOFTPAL_DEPLOY_KEY }}
           AETHER_LEAFTTT_DEPLOY_KEY: ${{ secrets.AETHER_LEAFTTT_DEPLOY_KEY }}
           AETHER_ELIQ_DEPLOY_KEY: ${{ secrets.AETHER_ELIQ_DEPLOY_KEY }}
+          AETHER_EXHIBIT_DEPLOY_KEY: ${{ secrets.AETHER_EXHIBIT_DEPLOY_KEY }}
         run: .github/scripts/initialize-private-runtime-submodules.sh
 
       - name: Set up Rust for native runtimes
@@ -1199,6 +1204,9 @@ jobs:
               --require-executable aether_systemc_native_ui_tests
               --require-executable aether_systemc_metadata_tests
               --require-executable aether_systemc_effects_tests
+              --require-executable exhibit-runtime-test
+              --require-executable exhibit-game-test
+              --require-executable exhibit-save-test
               --require-executable aether_escude_tests
               --require-executable aether_yuris_compiled_tests
               --require-executable aether_yuris_provider_tests
@@ -1352,7 +1360,7 @@ jobs:
         run: test "$(uname -m)" = '${{ matrix.machine }}'
 
       - name: Set up .NET for N2System NativeAOT
-        uses: actions/setup-dotnet@v5
+        uses: actions/setup-dotnet@v6
         with:
           dotnet-version: '10.0.x'
 
@@ -1369,6 +1377,7 @@ jobs:
           AETHER_SOFTPAL_DEPLOY_KEY: ${{ secrets.AETHER_SOFTPAL_DEPLOY_KEY }}
           AETHER_LEAFTTT_DEPLOY_KEY: ${{ secrets.AETHER_LEAFTTT_DEPLOY_KEY }}
           AETHER_ELIQ_DEPLOY_KEY: ${{ secrets.AETHER_ELIQ_DEPLOY_KEY }}
+          AETHER_EXHIBIT_DEPLOY_KEY: ${{ secrets.AETHER_EXHIBIT_DEPLOY_KEY }}
         run: .github/scripts/initialize-private-runtime-submodules.sh
 
       - name: Set up Java for Flash

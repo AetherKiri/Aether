@@ -100,7 +100,11 @@ typedef struct engine_runtime_media_host_v1_t {
                                      size_t out_pixels_size,
                                      engine_frame_desc_t* out_frame_desc);
   uint64_t reserved_u64[4];
-  void* reserved_ptr[4];
+  /* Stops presenting a decoder immediately and lets the host join its workers
+   * away from the presentation thread. Ownership transfers on success. Older
+   * hosts leave this optional slot null and providers use destroy instead. */
+  engine_result_t (*retire)(void* user_data, engine_media_handle_t media);
+  void* reserved_ptr[3];
 } engine_runtime_media_host_v1_t;
 
 typedef struct engine_runtime_host_v1_t {

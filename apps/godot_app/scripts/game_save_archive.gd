@@ -6,7 +6,7 @@ const MAX_FILE := 128 * 1024 * 1024
 const MAX_TOTAL := 1024 * 1024 * 1024
 const MAX_FILES := 10000
 const CHUNK := 1024 * 1024
-const IGNORED := [".DS_Store", "Thumbs.db", "desktop.ini", "krkr.console.log"]
+const IGNORED := [".DS_Store", "Thumbs.db", "desktop.ini", "krkr.console.log", ".aether-local-bank-v1"]
 
 static func identity(name: String) -> String:
     return name.strip_edges()

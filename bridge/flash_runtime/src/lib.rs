@@ -5,7 +5,6 @@ use ruffle_core::backend::audio::{
 };
 use ruffle_core::backend::log::{LogBackend, NullLogBackend};
 use ruffle_core::backend::navigator::{NullExecutor, NullNavigatorBackend};
-use ruffle_core::backend::storage::StorageBackend;
 use ruffle_core::backend::ui::FontDefinition;
 use ruffle_core::events::{
     KeyDescriptor, KeyLocation, LogicalKey, MouseButton, MouseWheelDelta, NamedKey, PhysicalKey,
@@ -15,13 +14,14 @@ use ruffle_core::font::{DefaultFont, FontFileData};
 use ruffle_core::{FloatDuration, Player, PlayerBuilder, impl_audio_mixer_backend};
 use ruffle_render_wgpu::{backend::WgpuRenderBackend, target::TextureTarget, wgpu};
 use ruffle_video_software::backend::SoftwareVideoBackend;
-use sha2::{Digest, Sha256};
+mod storage;
+use storage::Storage;
 use std::{
     any::Any,
     cell::RefCell,
     ffi::{CStr, CString, c_char},
     panic::{AssertUnwindSafe, catch_unwind},
-    path::{Path, PathBuf},
+    path::Path,
     ptr,
     sync::{Arc, Mutex},
     time::Duration,
@@ -55,31 +55,6 @@ impl AudioBackend for Audio {
     fn pause(&mut self) {}
     fn set_frame_rate(&mut self, _: f64) {}
 }
-struct Storage(PathBuf);
-impl Storage {
-    fn path(&self, name: &str) -> PathBuf {
-        self.0
-            .join(format!("{:x}.sol", Sha256::digest(name.as_bytes())))
-    }
-}
-impl StorageBackend for Storage {
-    fn get(&self, name: &str) -> Option<Vec<u8>> {
-        std::fs::read(self.path(name)).ok()
-    }
-    fn put(&mut self, name: &str, value: &[u8]) -> bool {
-        if std::fs::create_dir_all(&self.0).is_err() {
-            return false;
-        }
-        let path = self.path(name);
-        let pending = path.with_extension("tmp");
-        std::fs::write(&pending, value)
-            .and_then(|_| std::fs::rename(pending, path))
-            .is_ok()
-    }
-    fn remove_key(&mut self, name: &str) {
-        let _ = std::fs::remove_file(self.path(name));
-    }
-}
 pub struct Flash {
     player: Arc<Mutex<Player>>,
     executor: NullExecutor,
@@ -88,17 +63,19 @@ pub struct Flash {
     height: u32,
 }
 impl Flash {
-    fn open(path: &Path, storage: &Path) -> Result<Self, String> {
-        Self::open_with_log(path, storage, NullLogBackend::new())
+    fn open(path: &Path, storage: &Path, legacy: Option<&Path>) -> Result<Self, String> {
+        Self::open_with_log(path, storage, legacy, NullLogBackend::new())
     }
 
     fn open_with_log(
         path: &Path,
         storage: &Path,
+        legacy: Option<&Path>,
         log: impl 'static + LogBackend,
     ) -> Result<Self, String> {
         let movie =
             ruffle_core::tag_utils::movie_from_path(path, None).map_err(|e| e.to_string())?;
+        let storage = Storage::new(storage, legacy, movie.url()).map_err(|e| e.to_string())?;
         let w = movie.width().to_pixels().max(1.0);
         let h = movie.height().to_pixels().max(1.0);
         let scale = (1920.0 / w).min(1080.0 / h).min(1.0);
@@ -124,7 +101,7 @@ impl Flash {
             .with_log(log)
             .with_video(SoftwareVideoBackend::new())
             .with_navigator(navigator)
-            .with_storage(Box::new(Storage(storage.to_path_buf())))
+            .with_storage(Box::new(storage))
             .with_movie(movie)
             .with_default_font(true)
             .with_autoplay(true)
@@ -152,6 +129,7 @@ pub extern "C" fn aether_flash_error() -> *const c_char {
 pub unsafe extern "C" fn aether_flash_open(
     path: *const c_char,
     storage: *const c_char,
+    legacy_storage: *const c_char,
 ) -> *mut Flash {
     guarded(|| {
         if path.is_null() || storage.is_null() {
@@ -163,9 +141,18 @@ pub unsafe extern "C" fn aether_flash_open(
         let storage = unsafe { CStr::from_ptr(storage) }
             .to_str()
             .map_err(|e| e.to_string())?;
+        let legacy = if legacy_storage.is_null() {
+            None
+        } else {
+            let path = unsafe { CStr::from_ptr(legacy_storage) }
+                .to_str()
+                .map_err(|e| e.to_string())?;
+            (!path.is_empty()).then(|| Path::new(path))
+        };
         Ok(Box::into_raw(Box::new(Flash::open(
             Path::new(path),
             Path::new(storage),
+            legacy,
         )?)))
     })
 }

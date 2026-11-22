@@ -81,6 +81,7 @@ struct Runtime {
     engine_runtime_host_v1_t host{};
     std::string config_root;
     std::string writable, font, encoding = "sjis", renderer = "auto", error;
+    bool game_local_saves = false;
     uint64_t read_serial = 0;
     bool opened = false;
     Runtime() : core(aether_rfvp_new(GpuCallbacks())) {}
@@ -129,7 +130,7 @@ engine_result_t Open(void* p, const char* path, const char* startup) {
         const auto encoding = settings.encoding.empty() ? r.encoding
             : settings.encoding == "CP932" ? "sjis" : settings.encoding == "UTF-8" ? "utf8" : "gbk";
         result = r.result(aether_rfvp_open(r.core, path, startup,
-            r.writable.c_str(), font.c_str(), encoding.c_str(), r.renderer.c_str()));
+            r.writable.c_str(), font.c_str(), encoding.c_str(), r.renderer.c_str(), r.game_local_saves));
     } catch(const std::exception& error) {
         r.error = error.what();
         return ENGINE_RESULT_IO_ERROR;
@@ -157,6 +158,12 @@ engine_result_t Option(void* p, const engine_option_t* option) {
     if (key == "rfvp_config_root") {
         if (r.opened && r.config_root != value) return ENGINE_RESULT_INVALID_STATE;
         r.config_root = value;
+        return ENGINE_RESULT_OK;
+    }
+    if (key == "aether.game_local_saves") {
+        if (value != "0" && value != "1") return ENGINE_RESULT_INVALID_ARGUMENT;
+        if (r.opened && r.game_local_saves != (value == "1")) return ENGINE_RESULT_INVALID_STATE;
+        r.game_local_saves = value == "1";
         return ENGINE_RESULT_OK;
     }
     if (key == "default_font" || key == "rfvp_encoding" ||

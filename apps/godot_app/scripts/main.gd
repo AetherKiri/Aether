@@ -2725,6 +2725,7 @@ const RUNTIME_CMVS := "cmvs"
 const RUNTIME_SOFTPAL := "softpal"
 const RUNTIME_CATSYSTEM2 := "catsystem2"
 const RUNTIME_SIGLUS := "siglus"
+const RUNTIME_RFVP := "rfvp"
 const RUNTIME_RENPY := "renpy"
 const RUNTIME_XSYSTEM4 := "xsystem4"
 const RUNTIME_XSYSTEM35 := "xsystem35"
@@ -13808,6 +13809,8 @@ func _switch_runtime_player(runtime_kind: String) -> bool:
     if normalized not in [
         RUNTIME_ONSCRIPTER,
         RUNTIME_MINORI,
+        RUNTIME_SOFTPAL,
+        RUNTIME_RFVP,
         RUNTIME_CMVS,
         RUNTIME_CATSYSTEM2,
         RUNTIME_SIGLUS,
@@ -14613,11 +14616,14 @@ func _complete_runtime_dialog(result: int, input: LineEdit) -> void:
             ]
         )
 
-func _ensure_player_initialized() -> bool:
+func _ensure_player_initialized(launch_root: String = "") -> bool:
     if player == null:
         return false
     var user_dir := OS.get_user_data_dir()
     var cache_dir := user_dir.path_join("cache")
+    var wa2_flags := ""
+    var local_provider_saves := not launch_root.is_empty() and cli_probe_script.is_empty() \
+        and current_player_runtime_kind in [RUNTIME_RFVP, RUNTIME_SOFTPAL]
     if cli_probe_script == "res://scripts/runtime_regression_probe.gd":
         user_dir = RuntimeRegressionProbe.writable_root(ProbeConfig.load())
         if user_dir.is_empty():
@@ -14628,6 +14634,23 @@ func _ensure_player_initialized() -> bool:
         # Other probes may supply their own disposable replay directory.
         user_dir = ProbeConfig.string_value(ProbeConfig.load(), "user_dir", user_dir)
         cache_dir = user_dir.path_join("cache")
+    elif not launch_root.is_empty() and current_player_runtime_kind in preload("res://scripts/game_save_locations.gd").LOCAL_WRITABLE_RUNTIMES:
+        var storage := preload("res://scripts/game_save_locations.gd").prepare_native_writable_root(
+            launch_root, current_player_runtime_kind, user_dir)
+        if not String(storage.error).is_empty():
+            var message := "Cannot prepare game-local saves: " + String(storage.error)
+            _append_log(message)
+            _show_message(message)
+            return false
+        user_dir = String(storage.path)
+    elif not launch_root.is_empty() and current_player_runtime_kind == RUNTIME_WA2:
+        var flags := preload("res://scripts/game_save_locations.gd").prepare_wa2_flags(launch_root, user_dir)
+        if not String(flags.error).is_empty():
+            var message := "Cannot prepare WA2 system flags: " + String(flags.error)
+            _append_log(message)
+            _show_message(message)
+            return false
+        wa2_flags = String(flags.path)
     elif current_player_runtime_kind == RUNTIME_SYSTEMC:
         var library_path := String(selected_game.get("path", ""))
         if not library_path.is_empty():
@@ -14653,7 +14676,9 @@ func _ensure_player_initialized() -> bool:
             cache_dir = preload("res://scripts/game_cache.gd").directory(OS.get_user_data_dir(), game_root)
     if player.is_initialized():
         if String(player.get_meta("aether_user_directory", "")) == user_dir \
-            and String(player.get_meta("aether_cache_directory", "")) == cache_dir:
+            and String(player.get_meta("aether_cache_directory", "")) == cache_dir \
+            and String(player.get_meta("aether_wa2_flags_directory", "")) == wa2_flags \
+            and bool(player.get_meta("aether_local_provider_saves", false)) == local_provider_saves:
             return true
         _stop_wa2_audio()
         player.destroy_engine()
@@ -14668,11 +14693,15 @@ func _ensure_player_initialized() -> bool:
         return false
     player.set_meta("aether_user_directory", user_dir)
     player.set_meta("aether_cache_directory", cache_dir)
+    player.set_meta("aether_wa2_flags_directory", wa2_flags)
+    player.set_meta("aether_local_provider_saves", local_provider_saves)
 
     var runtime_id := "auto"
     if current_player_runtime_kind in [
         RUNTIME_ONSCRIPTER,
         RUNTIME_MINORI,
+        RUNTIME_SOFTPAL,
+        RUNTIME_RFVP,
         RUNTIME_CMVS,
         RUNTIME_CATSYSTEM2,
         RUNTIME_SIGLUS,
@@ -14700,6 +14729,15 @@ func _ensure_player_initialized() -> bool:
         ])
         _cleanup_softpal_platform_ui()
         _stop_wa2_audio()
+        player.destroy_engine()
+        return false
+
+    if local_provider_saves and int(player.set_engine_option("aether.game_local_saves", "1")) != ENGINE_RESULT_OK:
+        _append_log("Cannot configure game-local saves: " + String(player.get_last_error()))
+        player.destroy_engine()
+        return false
+    if not wa2_flags.is_empty() and int(player.set_engine_option("wa2.system_flags_dir", wa2_flags)) != ENGINE_RESULT_OK:
+        _append_log("Cannot configure game-local WA2 system flags: " + String(player.get_last_error()))
         player.destroy_engine()
         return false
 
@@ -17609,7 +17647,7 @@ func _on_open_game() -> void:
         auto_probe_clicks = remembered_button_positions.duplicate()
         device_probe_enabled = device_probe_enabled or not auto_probe_clicks.is_empty()
 
-    if not _ensure_player_initialized():
+    if not _ensure_player_initialized(_game_runtime_root(path)):
         _clear_game_render_overrides()
         return
 

@@ -1520,9 +1520,11 @@ engine_result_t engine_set_option(engine_handle_t public_handle,
     SetProviderError(handle, result, "runtime provider rejected option");
     return result;
   }
-  if (handle->backend == BackendKind::kUndecided && LegacyServices() == nullptr) {
-    // Provider-only hosts queue startup options until game detection creates
-    // the provider. SelectBackendLocked validates and applies them before Open.
+  if (handle->backend == BackendKind::kUndecided &&
+      (LegacyServices() == nullptr || key == "aether.game_local_saves" ||
+       key == "wa2.system_flags_dir")) {
+    // Replay provider-only save options before Open even in builds that also
+    // ship the legacy KiriKiri runtime, which cannot validate these keys.
     handle->last_error.clear();
     SetThreadError(nullptr);
     return ENGINE_RESULT_OK;

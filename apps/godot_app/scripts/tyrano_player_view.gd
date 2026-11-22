@@ -109,11 +109,7 @@ func _layout() -> void:
         native.set_rect(_content_rect(), get_viewport_rect().size)
 
 static func storage_path(root: String) -> String:
-    var identity := root.simplify_path()
-    var user_root := ProjectSettings.globalize_path("user://").trim_suffix("/")
-    if identity.begins_with(user_root + "/"):
-        identity = "user://" + identity.substr(user_root.length() + 1)
-    return ProjectSettings.globalize_path("user://tyrano_saves").path_join(identity.sha256_text()).path_join("local_storage.json")
+    return root.path_join("savedata/tyranoscript/local_storage.json")
 
 func open_entry(value: Dictionary) -> String:
     entry = value.duplicate(true)
@@ -145,7 +141,10 @@ func open_entry(value: Dictionary) -> String:
 
 func _open_html(path: String) -> String:
     var root := ProjectSettings.globalize_path(host._game_runtime_root(String(entry.get("path", ""))))
-    if not native.open(path, storage_path(root)):
+    var bank := preload("res://scripts/game_save_locations.gd").prepare_tyrano(root)
+    if not String(bank.error).is_empty():
+        return host._t("tyrano.open_failed", [bank.error])
+    if not native.open(path, String(bank.path).path_join("local_storage.json")):
         return host._t("tyrano.open_failed", [native.get_error()])
     _layout()
     return ""

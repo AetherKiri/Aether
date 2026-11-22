@@ -28,7 +28,7 @@ impl Movie {
 
     fn open_path(path: &Path, storage: &Path) -> Self {
         let log = TestLog::default();
-        let flash = Flash::open_with_log(path, storage, log.clone()).unwrap();
+        let flash = Flash::open_with_log(path, storage, None, log.clone()).unwrap();
         let pixels = vec![0; flash.width as usize * flash.height as usize * 4];
         let mut movie = Self {
             handle: Box::into_raw(Box::new(flash)),
@@ -235,13 +235,13 @@ fn native_playback_input_audio_and_storage() {
         let movie = Movie::open("avm1/shared_object", &storage);
         assert!(movie.traced("No data found. Initializing..."));
     }
-    assert!(std::fs::read_dir(&storage).unwrap().any(|entry| {
-        entry
-            .unwrap()
-            .path()
-            .extension()
-            .is_some_and(|ext| ext == "sol")
-    }));
+    assert!(
+        std::fs::read_dir(&storage).unwrap().any(|entry| {
+            let object = entry.unwrap().path().join("object.sol");
+            std::fs::metadata(object).is_ok_and(|file| file.is_file() && file.len() > 0)
+        }),
+        "The SWF must write its SharedObject to the local bank"
+    );
     {
         let movie = Movie::open("avm1/shared_object", &storage);
         assert!(

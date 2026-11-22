@@ -111,17 +111,175 @@ impl Drop for RootsGuard {
         *ROOTS.lock().unwrap() = None;
     }
 }
+fn save_identity(game: &Path, script: &Path, nls: Nls) -> String {
+    let identity = format!("{}\0{}\0{nls:?}", game.display(), script.display());
+    let hash = identity.bytes().fold(0xcbf29ce484222325u64, |h, b| {
+        (h ^ b as u64).wrapping_mul(0x100000001b3)
+    });
+    format!("{hash:016x}")
+}
+
+// Check each bank component before traversing it. A missing directory is
+// different from a directory redirected by a link or an I/O error.
+fn save_directory_exists(path: &Path) -> Result<bool> {
+    match fs::symlink_metadata(path) {
+        Ok(info) => {
+            ensure!(
+                info.is_dir(),
+                "Unsafe RFVP save directory: {}",
+                path.display()
+            );
+            Ok(true)
+        }
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(false),
+        Err(error) => Err(error).with_context(|| format!("Inspect {}", path.display())),
+    }
+}
+
+fn prepare_game_local_saves(
+    game: &Path,
+    script: &Path,
+    nls: Nls,
+    legacy: &Path,
+) -> Result<PathBuf> {
+    let relative = script
+        .strip_prefix(game)
+        .context("RFVP save script is outside the game directory")?;
+    let component = relative.to_string_lossy().replace('\\', "/");
+    let name = save_identity(Path::new(""), Path::new(&component), nls);
+    let parent = game.join("savedata");
+    let engine = parent.join("rfvp");
+    for dir in [&parent, &engine] {
+        if !save_directory_exists(dir)? {
+            fs::create_dir(dir).with_context(|| format!("Create {}", dir.display()))?;
+        }
+    }
+    let bank = engine.join(name);
+    if save_directory_exists(&bank)? && fs::read_dir(&bank)?.next().transpose()?.is_some() {
+        let slot_dir = bank.join("save");
+        if save_directory_exists(&slot_dir)? {
+            for entry in fs::read_dir(&slot_dir)? {
+                let entry = entry?;
+                ensure!(
+                    !entry.file_type()?.is_symlink(),
+                    "Symbolic link in RFVP save bank: {}",
+                    entry.path().display()
+                );
+            }
+        } else {
+            fs::create_dir(&slot_dir)?;
+        }
+        return Ok(bank);
+    }
+    let timestamp = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)?
+        .as_nanos();
+    let stage = engine.join(format!(
+        ".aether-rfvp-stage-{}-{timestamp}",
+        std::process::id()
+    ));
+    fs::create_dir(&stage)?;
+    let result = (|| -> Result<()> {
+        let target = stage.join("save");
+        fs::create_dir(&target)?;
+        if save_directory_exists(legacy)? {
+            let source = legacy.join("save");
+            if save_directory_exists(&source)? {
+                for entry in fs::read_dir(&source)? {
+                    let entry = entry?;
+                    if entry.file_type()?.is_file() {
+                        fs::copy(entry.path(), target.join(entry.file_name()))?;
+                    }
+                }
+            }
+        }
+        fs::write(
+            stage.join(".aether-local-bank-v1"),
+            b"Aether game-local save bank 1\n",
+        )?;
+        if save_directory_exists(&bank)? {
+            fs::remove_dir(&bank)?;
+        }
+        fs::rename(&stage, &bank)?;
+        Ok(())
+    })();
+    if let Err(error) = result {
+        let _ = fs::remove_dir_all(&stage);
+        return Err(error).with_context(|| format!("Migrate RFVP saves to {}", bank.display()));
+    }
+    Ok(bank)
+}
+
+#[cfg(test)]
+mod save_migration_tests {
+    use super::*;
+
+    #[test]
+    fn host_rfvp_migrates_only_the_matching_save_bank() -> Result<()> {
+        struct Fixture(PathBuf);
+        impl Drop for Fixture {
+            fn drop(&mut self) {
+                let _ = fs::remove_dir_all(&self.0);
+            }
+        }
+        let stamp = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)?
+            .as_nanos();
+        let base = std::env::temp_dir().join(format!("aether-rfvp-save-{}-{stamp}", std::process::id()));
+        fs::create_dir(&base)?;
+        let _fixture = Fixture(base.clone());
+        let game = base.join("installed");
+        let script = game.join("scenario/story.hcb");
+        fs::create_dir_all(game.join("scenario"))?;
+        fs::write(&script, b"script fixture")?;
+        let nls = Nls::from_str("sjis")?;
+        let legacy = base.join("app/rfvp").join(save_identity(&game, &script, nls));
+        fs::create_dir_all(legacy.join("save"))?;
+        fs::write(legacy.join("save/rfvp_global.bin"), b"previous progress")?;
+        fs::write(legacy.join("not-a-save.txt"), b"do not migrate")?;
+
+        let obstruction = game.join("savedata");
+        fs::write(&obstruction, b"not a directory")?;
+        assert!(prepare_game_local_saves(&game, &script, nls, &legacy).is_err());
+        assert_eq!(fs::read(legacy.join("save/rfvp_global.bin"))?, b"previous progress");
+        fs::remove_file(obstruction)?;
+
+        let bank = prepare_game_local_saves(&game, &script, nls, &legacy)?;
+        let progress = bank.join("save/rfvp_global.bin");
+        assert_eq!(fs::read(&progress)?, b"previous progress");
+        assert!(!bank.join("not-a-save.txt").exists());
+        fs::write(&progress, b"local progress")?;
+        assert_eq!(prepare_game_local_saves(&game, &script, nls, &legacy)?, bank);
+        assert_eq!(fs::read(&progress)?, b"local progress");
+        assert_eq!(fs::read(legacy.join("save/rfvp_global.bin"))?, b"previous progress");
+
+        let moved = base.join("moved");
+        let relative_bank = bank.strip_prefix(&game)?.to_owned();
+        fs::rename(&game, &moved)?;
+        let reopened = prepare_game_local_saves(&moved, &moved.join("scenario/story.hcb"), nls, &legacy)?;
+        assert_eq!(reopened, moved.join(relative_bank));
+        assert_eq!(fs::read(reopened.join("save/rfvp_global.bin"))?, b"local progress");
+        Ok(())
+    }
+}
+
 impl RootsGuard {
-    fn install(game: &Path, script: &Path, nls: Nls, writable: &Path) -> Result<Self> {
+    fn install(
+        game: &Path,
+        script: &Path,
+        nls: Nls,
+        writable: &Path,
+        game_local_saves: bool,
+    ) -> Result<Self> {
         let mut roots = ROOTS.lock().unwrap();
         ensure!(roots.is_none(), "Only one rfvp game may be open at a time");
-        // Stable path identity, not DefaultHasher's implementation-dependent hash.
-        let identity = format!("{}\0{}\0{nls:?}", game.display(), script.display());
-        let hash = identity.bytes().fold(0xcbf29ce484222325u64, |h, b| {
-            (h ^ b as u64).wrapping_mul(0x100000001b3)
-        });
-        let saves = writable.join("rfvp").join(format!("{hash:016x}"));
-        fs::create_dir_all(saves.join("save"))?;
+        let legacy = writable.join("rfvp").join(save_identity(game, script, nls));
+        let saves = if game_local_saves {
+            prepare_game_local_saves(game, script, nls, &legacy)?
+        } else {
+            fs::create_dir_all(legacy.join("save"))?;
+            legacy
+        };
         *roots = Some((game.to_owned(), saves));
         Ok(Self)
     }
@@ -262,6 +420,7 @@ impl Core {
         path: &Path,
         startup: &str,
         writable: &Path,
+        game_local_saves: bool,
         font: &str,
         nls: Nls,
         gpu: Option<HostGpuCallbacks>,
@@ -273,7 +432,7 @@ impl Core {
         );
         let (root, script) = script_path(path, startup)?;
         let parser = parse(&script, nls)?;
-        let roots = RootsGuard::install(&root, &script, nls, writable)?;
+        let roots = RootsGuard::install(&root, &script, nls, writable, game_local_saves)?;
         crate::subsystem::components::syscalls::legacy::reset_host_state();
         crate::subsystem::components::syscalls::utils::take_pending_exit_dialog_request();
         let mut storage = Box::<GameData>::new_uninit();
@@ -548,6 +707,7 @@ pub unsafe extern "C" fn aether_rfvp_open(
     font: *const c_char,
     encoding: *const c_char,
     renderer: *const c_char,
+    game_local_saves: u32,
 ) -> i32 {
     call(p, |s| {
         ensure!(s.core.is_none(), "Close the current game before reopening");
@@ -562,6 +722,7 @@ pub unsafe extern "C" fn aether_rfvp_open(
             Path::new(string(path)?),
             string(script)?,
             Path::new(string(writable)?),
+            game_local_saves != 0,
             string(font)?,
             Nls::from_str(string(encoding)?)?,
             gpu,

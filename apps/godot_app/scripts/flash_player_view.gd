@@ -116,7 +116,11 @@ func open_entry(value: Dictionary) -> String:
     if not native.is_supported():
         return host._t("flash.unavailable")
     native.playback_error.connect(_playback_error)
-    if not native.open(String(entry.path), ProjectSettings.globalize_path("user://flash_saves")):
+    var path := ProjectSettings.globalize_path(String(entry.path))
+    var bank := preload("res://scripts/game_save_storage.gd").require_local_bank(path.get_base_dir(), "savedata/flash")
+    if not String(bank.error).is_empty():
+        return host._t("flash.open_failed", [bank.error])
+    if not native.open(path, String(bank.path), ProjectSettings.globalize_path("user://flash_saves")):
         return host._t("flash.open_failed", [native.get_error()])
     if host.runtime_default_font_path.is_empty():
         host._stage_runtime_fonts()

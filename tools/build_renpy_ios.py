@@ -33,6 +33,15 @@ def run(command):
     subprocess.run(list(map(str, command)), check=True)
 
 
+def adapt_review_request(source):
+    # Adapt the pinned Renios prototype in the build output, not the SDK ZIP.
+    old = '    [SKStoreReviewController requestReview];'
+    if source.count(old) != 1:
+        raise ValueError("Unexpected Renios StoreKit review implementation")
+    return 'extern void AetherRenpyRequestReview(void);\n' + source.replace(
+        old, '    AetherRenpyRequestReview();')
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--sdk", type=Path, required=True)
@@ -105,7 +114,10 @@ def main():
         prototype_sources = {}
         for name in ("Log.m", "VideoPlayer.m", "IAPHelper.m"):
             source = output / name
-            source.write_bytes(archive.read("renios/prototype/" + name))
+            contents = archive.read("renios/prototype/" + name)
+            if name == "IAPHelper.m":
+                contents = adapt_review_request(contents.decode("utf-8")).encode("utf-8")
+            source.write_bytes(contents)
             prototype_sources[name] = source
     target = f"{args.arch}-apple-ios{IOS_MIN_VERSION}" + ("" if args.device else "-simulator")
     apple_sdk = "iphoneos" if args.device else "iphonesimulator"
@@ -125,12 +137,16 @@ def main():
         "CFBundleName":"AetherRenpy", "CFBundleExecutable":"AetherRenpy", "CFBundlePackageType":"FMWK",
         "CFBundleVersion":"8.5.3", "CFBundleShortVersionString":"8.5.3", "MinimumOSVersion": IOS_MIN_VERSION,
         "CFBundleSupportedPlatforms":["iPhoneOS" if args.device else "iPhoneSimulator"]}))
-    link = compiler + ["-dynamiclib", "-install_name", "@rpath/AetherRenpy.framework/AetherRenpy", "-Wl,-rpath,@loader_path/..",
+    link = ["xcrun", "--sdk", apple_sdk, "swiftc", "-target", target, "-sdk", sdkroot,
+        "-swift-version", "6", "-O", "-parse-as-library", "-emit-library", "-module-name", "AetherRenpy",
+        REPO / "bridge/renpy_runtime/ios_review.swift",
+        "-Xlinker", "-install_name", "-Xlinker", "@rpath/AetherRenpy.framework/AetherRenpy",
+        "-Xlinker", "-rpath", "-Xlinker", "@loader_path/..",
         "-o", framework / "AetherRenpy", *objects, "-L" + str(libraries), "-F" + str(output / "Frameworks")]
     link += ["-l" + name for name in LIBRARIES]
     for name in FRAMEWORKS:
         link += ["-framework", name]
-    run(link + ["-liconv", "-lresolv"])
+    run(link + ["-lc++", "-liconv", "-lresolv"])
     runtime = output / "renpy-runtime"
     for name in ("renpy", "lib/python3.12"):
         shutil.copytree(sdk / name, runtime / name, copy_function=clone, dirs_exist_ok=True,

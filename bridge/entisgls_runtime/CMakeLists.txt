@@ -1,6 +1,11 @@
 if(NOT EXISTS "${AETHERKIRI_ENTISGLS_DIR}/aether_runtime/CMakeLists.txt")
     message(FATAL_ERROR "Initialize packages/AetherEntisGLS on its aether branch, or disable AETHERKIRI_ENABLE_ENTISGLS")
 endif()
+if(IOS AND NOT TARGET z)
+    # Map upstream's bare z link items to the shared vcpkg archive rather
+    # than also pulling in the SDK's system zlib.
+    add_library(z ALIAS ZLIB::ZLIB)
+endif()
 set(AETHER_ENTISGLS_HOST_ROOT "${CMAKE_SOURCE_DIR}")
 add_subdirectory("${AETHERKIRI_ENTISGLS_DIR}/aether_runtime"
     "${CMAKE_CURRENT_BINARY_DIR}/runtime")

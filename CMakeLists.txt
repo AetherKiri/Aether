@@ -320,9 +320,15 @@ endif()
 # Godot is the product app shell on the wired platforms. This native build
 # produces engine libraries and the GDExtension host, not standalone launchers.
 
+if(IOS AND AETHERKIRI_ENABLE_ENTISGLS)
+    # FreeType, PNG and game hooks must resolve the same directory-scoped
+    # imported target; separate copies produce duplicate iOS link inputs.
+    find_package(ZLIB REQUIRED)
+endif()
+add_subdirectory(bridge/game_hooks)
+
 # The krkr2 engine repository defines the engine targets (external/, core/,
 # plugins/); its integration glue stays in bridge/krkr2_runtime.
-add_subdirectory(bridge/game_hooks)
 if(AETHERKIRI_ENABLE_KRKR2)
     add_subdirectory(${AETHERKIRI_KRKR_DIR})
     # PSD's vendored parser uses multicharacter literals for its FourCC tags.

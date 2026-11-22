@@ -21,6 +21,12 @@ function(aetherkiri_prepare_rfvp root rfvp_dir output)
              DESTINATION "${output}/crates"
              PATTERN "target" EXCLUDE PATTERN "fonts" EXCLUDE)
     endforeach()
+    # Remove unused private helpers from the pinned embedded source copy.
+    find_package(Git REQUIRED)
+    execute_process(COMMAND "${CMAKE_COMMAND}" -E env
+        "GIT_CEILING_DIRECTORIES=${CMAKE_CURRENT_BINARY_DIR}"
+        "${GIT_EXECUTABLE}" apply "${CMAKE_CURRENT_FUNCTION_LIST_DIR}/unused-embedded-helpers.patch"
+        WORKING_DIRECTORY "${output}" COMMAND_ERROR_IS_FATAL ANY)
     file(COPY "${rfvp_dir}/LICENSE" "${rfvp_dir}/README.md"
          DESTINATION "${output}")
     file(WRITE "${output}/Cargo.toml"
@@ -34,6 +40,45 @@ function(aetherkiri_prepare_rfvp root rfvp_dir output)
             "#[unsafe(export_name = \"aether_rfvp_wmv2_decoder_${symbol}\")]\npub unsafe extern \"C\" fn wmv2_decoder_${symbol}")
     endforeach()
     set(src "${output}/crates/rfvp/src")
+    # Keep the script-visible names and generated syscall metadata intact;
+    # only rename the Rust implementation type.
+    rfvp_replace("${src}/subsystem/components/syscalls/utils.rs"
+        "pub struct nullsub_2;\nimpl Syscaller for nullsub_2 {"
+        "pub struct Nullsub2;\nimpl Syscaller for Nullsub2 {")
+    rfvp_replace("${src}/subsystem/world.rs"
+        "    nullsub_2, Debmess, DissolveWait, ExitDialog, TitleMenu, UnimplementedNamed,"
+        "    Debmess, DissolveWait, ExitDialog, Nullsub2, TitleMenu, UnimplementedNamed,")
+    rfvp_replace("${src}/subsystem/world.rs" "Box::new(nullsub_2)" "Box::new(Nullsub2)")
+    # iOS and other hosts without system font search paths return an empty
+    # list, just as before, without compiling an unused mutable binding.
+    set(font_search_platforms "not(target_arch = \"wasm32\"), any(target_os = \"windows\", target_os = \"macos\", target_os = \"linux\", target_os = \"android\")")
+    rfvp_replace("${src}/subsystem/resources/text_manager.rs"
+        "#[cfg(all(not(feature = \"no_std\"), not(target_arch = \"wasm32\")))]\nfn system_font_dirs()"
+        "#[cfg(all(not(feature = \"no_std\"), ${font_search_platforms}))]\nfn system_font_dirs()")
+    rfvp_replace("${src}/subsystem/resources/text_manager.rs"
+        "#[cfg(all(not(feature = \"no_std\"), target_arch = \"wasm32\"))]\nfn system_font_dirs()"
+        "#[cfg(all(not(feature = \"no_std\"), not(all(${font_search_platforms}))))]\nfn system_font_dirs()")
+    # Only the desktop hosts register scheduler callbacks or consume these
+    # pending window settings. Keep their APIs in those configurations.
+    rfvp_replace("${src}/subsystem/scheduler.rs"
+        "    pub(crate) fn add_system("
+        "    #[cfg(all(not(feature = \"no_std\"), feature = \"gpu-render\"))]\n    pub(crate) fn add_system(")
+    rfvp_replace("${src}/subsystem/resources/window.rs"
+        "    pub(crate) fn set_dimensions("
+        "    #[cfg(all(not(feature = \"no_std\"), any(feature = \"gpu-render\", feature = \"soft-render-desktop\", feature = \"rfvp-os\")))]\n    pub(crate) fn set_dimensions(")
+    rfvp_replace("${src}/subsystem/resources/window.rs"
+        "    pub(crate) fn reset_future_settings("
+        "    #[cfg(all(not(feature = \"no_std\"), any(feature = \"gpu-render\", feature = \"soft-render-desktop\")))]\n    pub(crate) fn reset_future_settings(")
+    # These private helpers and the shadow input field have no callers across
+    # the pinned upstream feature sets. Remove them instead of hiding lints.
+    rfvp_replace("${src}/platform_random.rs"
+        "\npub fn range_f32(start: f32, end: f32) -> f32 {\n    if !(end > start) {\n        return start;\n    }\n    start + (end - start) * next_f32()\n}\n" "")
+    rfvp_replace("${src}/subsystem/components/syscalls/legacy.rs"
+        "fn variant_truthy(arg: &Variant) -> bool {\n    match arg {\n        Variant::Nil => false,\n        Variant::Int(v) => *v != 0,\n        _ => true,\n    }\n}\n\n" "")
+    rfvp_replace("${src}/subsystem/resources/text_manager.rs"
+        "fn fontitem_char_count(it: &FontItem) -> usize {\n    match it {\n        FontItem::Font(_) => 1,\n        FontItem::RubyFont(_ruby, base) => base.len(),\n        FontItem::SpecialUnit(_) => 1,\n        FontItem::Wait(_) => 0,\n    }\n}\n\n" "")
+    rfvp_replace("${src}/subsystem/resources/input_manager.rs" "    current_event: PressItem,\n" "")
+    rfvp_replace("${src}/subsystem/resources/input_manager.rs" "            current_event: PressItem::default(),\n" "")
     rfvp_replace("${output}/crates/rfvp/Cargo.toml"
         "crate-type = [\"rlib\", \"cdylib\"]" "crate-type = [\"rlib\", \"staticlib\"]")
     # The generated workspace defines the build profiles for its member crates.

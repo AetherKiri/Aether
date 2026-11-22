@@ -1,0 +1,360 @@
+--- a/crates/rfvp/src/subsystem/anzu_scene.rs
++++ b/crates/rfvp/src/subsystem/anzu_scene.rs
+@@ -184,6 +184,4 @@
+         game_data.motion_manager.tick_dissolve(ms);
+         game_data.motion_manager.tick_dissolve2(ms);
+     }
+-
+-    fn update_prim(&mut self, _game_data: &mut GameData, _elapsed: u64) {}
+ }
+--- a/crates/rfvp/src/subsystem/resources/motion_manager/alpha.rs
++++ b/crates/rfvp/src/subsystem/resources/motion_manager/alpha.rs
+@@ -69,28 +69,12 @@
+         self.running
+     }
+
+-    pub fn is_reverse(&self) -> bool {
+-        self.reverse
+-    }
+-
+     pub fn get_src_alpha(&self) -> u8 {
+         self.src_alpha
+     }
+
+     pub fn get_dst_alpha(&self) -> u8 {
+         self.dst_alpha
+-    }
+-
+-    pub fn get_duration(&self) -> i32 {
+-        self.duration
+-    }
+-
+-    pub fn get_elapsed(&self) -> i32 {
+-        self.elapsed
+-    }
+-
+-    pub fn get_anm_type(&self) -> AlphaMotionType {
+-        self.anm_type.clone()
+     }
+
+     pub fn set_id(&mut self, id: u16) {
+--- a/crates/rfvp/src/subsystem/resources/motion_manager/dissolve2.rs
++++ b/crates/rfvp/src/subsystem/resources/motion_manager/dissolve2.rs
+@@ -65,19 +65,6 @@
+
+     pub(crate) fn is_transitioning(&self) -> bool {
+         self.mode == 2 || self.mode == 3
+-    }
+-
+-    pub(crate) fn is_active(&self) -> bool {
+-        self.mode != 0
+-    }
+-
+-    pub(crate) fn reset(&mut self) {
+-        self.mode = 0;
+-        self.color_id = 0;
+-        self.duration_ms = 1;
+-        self.elapsed_ms = 0;
+-        self.alpha = 0.0;
+-        self.pending_fade_out = false;
+     }
+
+     pub(crate) fn start_hold(&mut self, color_id: u32) {
+--- a/crates/rfvp/src/subsystem/resources/motion_manager/snow.rs
++++ b/crates/rfvp/src/subsystem/resources/motion_manager/snow.rs
+@@ -16,12 +16,6 @@
+     pub x: f32,
+     /// float at offset +12: y
+     pub y: f32,
+-}
+-
+-impl SnowFlake {
+-    pub fn new() -> Self {
+-        Self::default()
+-    }
+ }
+
+ #[derive(Debug, Clone)]
+--- a/crates/rfvp/src/subsystem/resources/motion_manager/v3d.rs
++++ b/crates/rfvp/src/subsystem/resources/motion_manager/v3d.rs
+@@ -67,44 +67,20 @@
+         }
+     }
+
+-    pub fn get_src_x(&self) -> i32 {
+-        self.src_x
+-    }
+-
+     pub fn get_dst_x(&self) -> i32 {
+         self.dst_x
+     }
+
+-    pub fn get_src_y(&self) -> i32 {
+-        self.src_y
+-    }
+-
+     pub fn get_dst_y(&self) -> i32 {
+         self.dst_y
+     }
+
+-    pub fn get_src_z(&self) -> i32 {
+-        self.src_z
+-    }
+-
+     pub fn get_dst_z(&self) -> i32 {
+         self.dst_z
+     }
+
+-    pub fn get_duration(&self) -> i32 {
+-        self.duration
+-    }
+-
+-    pub fn get_elapsed(&self) -> i32 {
+-        self.elapsed
+-    }
+-
+     pub fn get_type(&self) -> V3dMotionType {
+         self.typ.clone()
+-    }
+-
+-    pub fn get_reverse(&self) -> bool {
+-        self.reverse
+     }
+
+     pub fn get_paused(&self) -> bool {
+--- a/crates/rfvp/src/subsystem/resources/text_manager.rs
++++ b/crates/rfvp/src/subsystem/resources/text_manager.rs
+@@ -337,10 +337,6 @@
+         }
+     }
+
+-    fn primary(&self) -> &Font {
+-        &self.primary
+-    }
+-
+     fn for_char(&self, ch: char) -> &Font {
+         // The original engine selects one HFONT for the text style and asks GDI
+         // to rasterize every glyph with that face. Therefore the selected primary
+@@ -2216,27 +2212,6 @@
+         )
+     }
+
+-    fn gaiji_draw_bounds(
+-        &self,
+-        gb: &crate::subsystem::resources::graph_buff::GraphBuff,
+-        x: i32,
+-        y: i32,
+-        _outline: u8,
+-        _shadow_dist: u8,
+-    ) -> RectI32 {
+-        let Some((mw, mh, ox, oy, _mask)) = gb.export_alpha_mask() else {
+-            return RectI32::default();
+-        };
+-        let gx = x + ox as i32;
+-        let gy = y + oy as i32;
+-        RectI32 {
+-            x: gx,
+-            y: gy,
+-            w: mw as i32,
+-            h: mh as i32,
+-        }
+-    }
+-
+     fn gaiji_draw_bounds_scaled(
+         &self,
+         gb: &crate::subsystem::resources::graph_buff::GraphBuff,
+@@ -2407,88 +2382,6 @@
+         adv
+     }
+
+-    fn draw_gaiji_unit(
+-        &self,
+-        buf: &mut [u8],
+-        bw: u32,
+-        bh: u32,
+-        gb: &crate::subsystem::resources::graph_buff::GraphBuff,
+-        x: i32,
+-        y: i32,
+-        color: &ColorItem,
+-        _outline: u8,
+-        _outline_color: &ColorItem,
+-        _shadow_dist: u8,
+-        _shadow_color: &ColorItem,
+-        clip_max_x: i32,
+-        do_draw: bool,
+-    ) -> i32 {
+-        let Some((mw, mh, ox, oy, mask)) = gb.export_alpha_mask() else {
+-            return gb.get_width() as i32;
+-        };
+-
+-        let gx = x + ox as i32;
+-        let gy = y + oy as i32;
+-        let mw_usize = mw as usize;
+-        let mh_usize = mh as usize;
+-        let adv = gb.get_width() as i32;
+-
+-        if !do_draw {
+-            return adv;
+-        }
+-
+-        Self::draw_glyph_mask(
+-            buf, bw, bh, gx, gy, &mask, mw_usize, mh_usize, color, clip_max_x,
+-        );
+-        adv
+-    }
+-
+-    fn draw_string_unit(
+-        &self,
+-        buf: &mut [u8],
+-        bw: u32,
+-        bh: u32,
+-        fonts: &FontFallbackSet,
+-        size: f32,
+-        gaiji: &GaijiManager,
+-        size_slot: u8,
+-        x: i32,
+-        y: i32,
+-        s: &str,
+-        color: &ColorItem,
+-        outline: u8,
+-        outline_color: &ColorItem,
+-        shadow_dist: u8,
+-        shadow_color: &ColorItem,
+-        clip_max_x: i32,
+-        do_draw: bool,
+-    ) -> i32 {
+-        let mut pen_x = x;
+-        for ch in s.chars() {
+-            let adv = self.draw_char(
+-                buf,
+-                bw,
+-                bh,
+-                fonts,
+-                size,
+-                gaiji,
+-                size_slot,
+-                pen_x,
+-                y,
+-                ch,
+-                color,
+-                outline,
+-                outline_color,
+-                shadow_dist,
+-                shadow_color,
+-                clip_max_x,
+-                do_draw,
+-            );
+-            pen_x += adv;
+-        }
+-        pen_x - x
+-    }
+-
+     fn trim_reveal_rect_to_alpha(src: &[u8], bw: u32, bh: u32, rect: RectI32) -> RectI32 {
+         let rect = rect.clamp_to_buffer(bw, bh);
+         if rect.is_empty() {
+@@ -2585,13 +2478,6 @@
+             let end = start + len;
+             dst[start..end].copy_from_slice(&src[start..end]);
+         }
+-    }
+-
+-    fn clear_visible_surface(&mut self) {
+-        if !self.pixel_buffer.is_empty() {
+-            self.pixel_buffer.fill(0);
+-        }
+-        self.applied_visible_chars = 0;
+     }
+
+     fn apply_reveal_delta_to_current_target(&mut self) {
+@@ -2639,11 +2525,6 @@
+             consumed_cols = item_end;
+         }
+         self.applied_visible_chars = target_visible;
+-    }
+-
+-    fn rebuild_visible_surface_from_cache(&mut self) {
+-        self.clear_visible_surface();
+-        self.apply_reveal_delta_to_current_target();
+     }
+
+     fn rasterize_full(&mut self, fonts: &FontEnumerator, gaiji: &GaijiManager) -> Result<()> {
+--- a/crates/rfvp/src/subsystem/resources/texture.rs
++++ b/crates/rfvp/src/subsystem/resources/texture.rs
+@@ -572,34 +572,6 @@
+
+         img.save(out_path)?;
+         Ok(())
+-    }
+-
+-    #[cfg(not(target_os = "vita"))]
+-    fn as_24bit_texture(&self, index: usize) -> Result<ImageBuffer<image::Rgb<u8>, Vec<u8>>> {
+-        let slice = &self.slices[index];
+-        let mut img = ImageBuffer::new(self.width as u32, self.height as u32);
+-
+-        for (x, y, pixel) in img.enumerate_pixels_mut() {
+-            #[cfg(feature = "no_std")]
+-            let mut pixel = pixel;
+-            let index = (y * self.width as u32 + x) as usize * 3;
+-            let r = slice[index + 2];
+-            let g = slice[index + 1];
+-            let b = slice[index + 0];
+-            *pixel = image::Rgb([r, g, b]);
+-        }
+-
+-        Ok(img)
+-    }
+-
+-    #[cfg(target_os = "vita")]
+-    fn as_24bit_texture(&self, index: usize) -> Result<ImageBuffer<image::Rgb<u8>, Vec<u8>>> {
+-        let mut pixels = self.frame_bytes(index, 3)?.to_vec();
+-        for pixel in pixels.chunks_exact_mut(3) {
+-            pixel.swap(0, 2);
+-        }
+-        ImageBuffer::from_raw(self.width as u32, self.height as u32, pixels)
+-            .ok_or_else(|| anyhow::anyhow!("invalid RGB image dimensions"))
+     }
+
+     #[cfg(not(target_os = "vita"))]
+--- a/crates/rfvp/src/subsystem/resources/time.rs
++++ b/crates/rfvp/src/subsystem/resources/time.rs
+@@ -70,7 +70,6 @@
+ }
+
+ mod timer {
+-    use crate::platform_time::Duration;
+     #[cfg(feature = "no_std")]
+     use alloc::string::{String, ToString};
+
+@@ -221,12 +220,6 @@
+             self.timers.get_mut(name).ok_or(Error::TimerDoesNotExist)
+         }
+
+-        pub(crate) fn add_delta_duration(&mut self, delta_duration: Duration) {
+-            let delta = delta_duration.as_secs_f32();
+-            self.timers.values_mut().for_each(|timer| {
+-                timer.add_delta_duration(delta);
+-            })
+-        }
+     }
+ }
+
+--- a/crates/rfvp/src/vm_worker/native.rs
++++ b/crates/rfvp/src/vm_worker/native.rs
+@@ -37,9 +37,6 @@
+     /// This event exists to wake the VM so scripts can react immediately
+     /// without waiting for the next frame.
+     InputSignal,
+-
+-    /// Terminate the VM thread.
+-    Stop,
+ }
+
+ /// A lightweight VM worker that runs the coroutine-based VM on a dedicated OS thread.
+@@ -71,7 +68,6 @@
+
+                 while let Ok(ev) = rx.recv() {
+                     match ev {
+-                        EngineEvent::Stop => break,
+                         EngineEvent::Frame { frame_ms } => {
+                             // Tick the VM with a short critical section.
+                             // The main thread should avoid holding the write lock during AboutToWait.

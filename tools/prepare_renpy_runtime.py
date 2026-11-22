@@ -64,6 +64,8 @@ def main():
     fingerprint.update((args.platform + "/" + args.arch).encode())
     inputs = [*REPO.glob("tools/*renpy*.py"), *REPO.glob("bridge/renpy_runtime/ios_sdl_adapter.mm"),
               *REPO.glob("bridge/renpy_runtime/android/**/*.cpp"), *REPO.glob("bridge/renpy_runtime/android/**/*.java")]
+    if args.platform.startswith("ios"):
+        inputs.append(REPO / "bridge/renpy_runtime/ios_review.swift")
     for file in sorted(inputs):
         fingerprint.update(file.relative_to(REPO).as_posix().encode()); fingerprint.update(file.read_bytes())
     identity = fingerprint.hexdigest()

@@ -19382,7 +19382,16 @@ func _is_game_pointer_event(event: InputEvent) -> bool:
 func _handle_game_pointer_event(event: InputEvent) -> bool:
     # Input callbacks only enqueue events; _process owns engine ticking and frame updates.
     _trace_input_received()
-    if event is InputEventMouseButton:
+    if event is InputEventPanGesture:
+        var pan := event as InputEventPanGesture
+        var mapped := _map_viewport_point(pan.position)
+        if mapped.x < 0.0 or mapped.y < 0.0:
+            _trace_input_outside()
+            return false
+        # Godot reports a downward pan as positive. The runtime ABI uses wheel-up as positive.
+        _send_game_pointer_event(POINTER_SCROLL, 0, mapped.x, mapped.y, -pan.delta.x, -pan.delta.y, 0)
+        return true
+    elif event is InputEventMouseButton:
         var mouse_button := event as InputEventMouseButton
         if _is_touch_platform() and mouse_button.device == INPUT_DEVICE_ID_EMULATION:
             # Godot emits the emulated mouse event before the corresponding
@@ -19405,10 +19414,15 @@ func _handle_game_pointer_event(event: InputEvent) -> bool:
         if mapped.x < 0.0 or mapped.y < 0.0:
             _trace_input_outside()
             return false
-        var event_type := POINTER_DOWN if mouse_button.pressed else POINTER_UP
         if is_scroll:
-            event_type = POINTER_SCROLL
-        elif mouse_button.pressed:
+            if mouse_button.pressed:
+                var amount := mouse_button.factor if mouse_button.factor > 0.0 else 1.0
+                if mouse_button.button_index == MOUSE_BUTTON_WHEEL_DOWN:
+                    amount = -amount
+                _send_game_pointer_event(POINTER_SCROLL, 0, mapped.x, mapped.y, 0.0, amount, 0)
+            return true
+        var event_type := POINTER_DOWN if mouse_button.pressed else POINTER_UP
+        if mouse_button.pressed:
             active_mouse_buttons[mouse_button.button_index] = mapped
             _remember_button_position(mapped)
         else:
@@ -19423,7 +19437,7 @@ func _handle_game_pointer_event(event: InputEvent) -> bool:
             mapped.x,
             mapped.y,
             0.0,
-            1.0 if mouse_button.button_index == MOUSE_BUTTON_WHEEL_UP else -1.0,
+            0.0,
             button
         )
         if event_type == POINTER_DOWN:

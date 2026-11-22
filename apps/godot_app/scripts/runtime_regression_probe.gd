@@ -638,6 +638,32 @@ func run(game_path: String) -> int:
         elif kind == "two_finger_tap":
             if not two_finger_tap(action, label):
                 return 1
+        elif kind == "pan" or kind == "wheel":
+            var source := point(action)
+            var size: Vector2i = app.player.get_frame_source_size()
+            if not Rect2(Vector2.ZERO, Vector2(size)).has_point(source):
+                record({"event": "failed", "label": label, "reason": "missing scroll target"})
+                return 1
+            var position: Vector2 = app._map_surface_point_to_viewport(source)
+            var forwarded := int(app.input_total_forwarded)
+            var dy := float(action.get("dy", 1.0))
+            if kind == "pan":
+                var pan := InputEventPanGesture.new()
+                pan.position = position
+                pan.delta = Vector2(float(action.get("dx", 0.0)), dy)
+                app._input(pan)
+            else:
+                var wheel := InputEventMouseButton.new()
+                wheel.position = position
+                wheel.button_index = MOUSE_BUTTON_WHEEL_DOWN if dy > 0.0 else MOUSE_BUTTON_WHEEL_UP
+                wheel.factor = absf(dy)
+                wheel.pressed = true
+                app._input(wheel)
+                wheel.pressed = false
+                app._input(wheel)
+            if int(app.input_total_forwarded) != forwarded + 1:
+                record({"event": "failed", "label": label, "reason": "expected one forwarded scroll"})
+                return 1
         elif kind == "move":
             var pos := point(action)
             app.player.send_pointer_event(app.POINTER_MOVE, 0, pos.x, pos.y, 0.0, 0.0, 0)

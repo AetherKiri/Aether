@@ -2,6 +2,14 @@ extends RefCounted
 
 const TEXT := {
     "zh_hans": {
+        "cache.storage": "存储",
+        "cache.title": "游戏缓存",
+        "cache.clear_all": "清除全部缓存",
+        "cache.clear": "清除",
+        "cache.description": "可重新生成的游戏资源与封面缩略图。清除不会删除游戏、存档或设置。",
+        "cache.calculating": "正在计算…",
+        "cache.clearing": "正在清除…",
+
         "settings.section.diagnostics": "诊断",
         "settings.section.compatibility": "兼容性",
         "settings.section.advanced": "高级开发工具",
@@ -98,6 +106,14 @@ const TEXT := {
         "debug.result.unavailable": "当前没有活动的诊断会话",
     },
     "zh_hant": {
+        "cache.storage": "儲存空間",
+        "cache.title": "遊戲快取",
+        "cache.clear_all": "清除全部快取",
+        "cache.clear": "清除",
+        "cache.description": "可重新產生的遊戲資源與封面縮圖。清除不會刪除遊戲、存檔或設定。",
+        "cache.calculating": "正在計算…",
+        "cache.clearing": "正在清除…",
+
         "settings.section.diagnostics": "診斷", "settings.section.compatibility": "相容性", "settings.section.advanced": "進階開發工具",
         "settings.diagnostic_profile": "診斷模式", "settings.diagnostic_profile_desc": "統一控制要收集的證據範圍；Baseline 開銷低，Full 開銷高且僅建議短時間使用",
         "settings.debug_overlay": "除錯浮動資訊", "settings.debug_overlay_desc": "在遊戲畫面上顯示簡要或詳細的即時效能摘要",
@@ -127,6 +143,14 @@ const TEXT := {
         "debug.result.marked": "問題已標記：%s（將繼續收集後 5 秒）", "debug.result.marker_limit": "此工作階段已達到 %s 個問題標記上限", "debug.result.snapshot": "狀態快照已儲存：%s", "debug.result.screenshot": "截圖已儲存：%s", "debug.result.exported": "診斷包已匯出：%s", "debug.result.copied": "診斷摘要已複製", "debug.result.slow_armed": "正在等待下一個超過門檻的慢幀", "debug.result.self_check": "自我檢查：%s", "debug.result.unavailable": "目前沒有作用中的診斷工作階段",
     },
     "en": {
+        "cache.storage": "Storage",
+        "cache.title": "Game cache",
+        "cache.clear_all": "Clear all cache",
+        "cache.clear": "Clear",
+        "cache.description": "Regenerable game resources and cover thumbnails. Games, saves and settings are kept.",
+        "cache.calculating": "Calculating…",
+        "cache.clearing": "Clearing…",
+
         "settings.section.diagnostics": "Diagnostics", "settings.section.compatibility": "Compatibility", "settings.section.advanced": "Advanced Developer Tools",
         "settings.diagnostic_profile": "Diagnostic Mode", "settings.diagnostic_profile_desc": "Controls the evidence collected as one profile. Baseline is low overhead; Full is expensive and intended for short runs.",
         "settings.debug_overlay": "Debug Overlay", "settings.debug_overlay_desc": "Show a compact or detailed live performance summary over the game",
@@ -156,6 +180,14 @@ const TEXT := {
         "debug.result.marked": "Issue marked: %s (collecting 5 seconds after it)", "debug.result.marker_limit": "This session has reached its %s issue-marker limit", "debug.result.snapshot": "State snapshot saved: %s", "debug.result.screenshot": "Screenshot saved: %s", "debug.result.exported": "Diagnostic bundle exported: %s", "debug.result.copied": "Diagnostic summary copied", "debug.result.slow_armed": "Waiting for the next frame above the slow threshold", "debug.result.self_check": "Self-check: %s", "debug.result.unavailable": "No active diagnostic session",
     },
     "ja": {
+        "cache.storage": "ストレージ",
+        "cache.title": "ゲームキャッシュ",
+        "cache.clear_all": "すべて消去",
+        "cache.clear": "消去",
+        "cache.description": "再生成可能なゲームリソースとカバーのサムネイルです。ゲーム、セーブ、設定は削除されません。",
+        "cache.calculating": "計算中…",
+        "cache.clearing": "消去中…",
+
         "settings.section.diagnostics": "診断", "settings.section.compatibility": "互換性", "settings.section.advanced": "高度な開発ツール",
         "settings.diagnostic_profile": "診断モード", "settings.diagnostic_profile_desc": "収集する証拠の範囲を一括指定します。Baseline は低負荷、Full は高負荷で短時間の使用向けです。",
         "settings.debug_overlay": "デバッグオーバーレイ", "settings.debug_overlay_desc": "ゲーム画面に簡易または詳細なリアルタイム性能情報を表示します",
@@ -185,6 +217,14 @@ const TEXT := {
         "debug.result.marked": "問題をマークしました：%s（後 5 秒を収集中）", "debug.result.marker_limit": "このセッションは問題マーカーの上限 %s 件に達しました", "debug.result.snapshot": "状態を保存しました：%s", "debug.result.screenshot": "スクリーンショットを保存しました：%s", "debug.result.exported": "診断パッケージを書き出しました：%s", "debug.result.copied": "診断概要をコピーしました", "debug.result.slow_armed": "しきい値を超える次のフレームを待機中", "debug.result.self_check": "セルフチェック：%s", "debug.result.unavailable": "有効な診断セッションがありません",
     },
     "ko": {
+        "cache.storage": "저장 공간",
+        "cache.title": "게임 캐시",
+        "cache.clear_all": "모든 캐시 삭제",
+        "cache.clear": "삭제",
+        "cache.description": "다시 생성할 수 있는 게임 리소스와 표지 썸네일입니다. 게임, 저장 데이터 및 설정은 유지됩니다.",
+        "cache.calculating": "계산 중…",
+        "cache.clearing": "삭제 중…",
+
         "settings.section.diagnostics": "진단", "settings.section.compatibility": "호환성", "settings.section.advanced": "고급 개발 도구",
         "settings.diagnostic_profile": "진단 모드", "settings.diagnostic_profile_desc": "수집할 증거 범위를 한 프로필로 제어합니다. Baseline은 저비용이며 Full은 고비용 단기 실행용입니다.",
         "settings.debug_overlay": "디버그 오버레이", "settings.debug_overlay_desc": "게임 화면에 간단하거나 자세한 실시간 성능 요약을 표시합니다",
@@ -214,6 +254,14 @@ const TEXT := {
         "debug.result.marked": "문제를 표시했습니다: %s(이후 5초 수집 중)", "debug.result.marker_limit": "이 세션은 문제 표시 한도 %s개에 도달했습니다", "debug.result.snapshot": "상태 스냅샷 저장: %s", "debug.result.screenshot": "스크린샷 저장: %s", "debug.result.exported": "진단 패키지 내보냄: %s", "debug.result.copied": "진단 요약을 복사했습니다", "debug.result.slow_armed": "임계값을 넘는 다음 프레임을 기다리는 중", "debug.result.self_check": "자체 검사: %s", "debug.result.unavailable": "활성 진단 세션이 없습니다",
     },
     "es": {
+        "cache.storage": "Almacenamiento",
+        "cache.title": "Caché de juegos",
+        "cache.clear_all": "Borrar toda la caché",
+        "cache.clear": "Borrar",
+        "cache.description": "Recursos de juegos y miniaturas que se pueden regenerar. Se conservan los juegos, las partidas y los ajustes.",
+        "cache.calculating": "Calculando…",
+        "cache.clearing": "Borrando…",
+
         "settings.section.diagnostics": "Diagnóstico", "settings.section.compatibility": "Compatibilidad", "settings.section.advanced": "Herramientas avanzadas para desarrolladores",
         "settings.diagnostic_profile": "Modo de diagnóstico", "settings.diagnostic_profile_desc": "Controla en un solo perfil los datos que se recopilan. Baseline tiene poco impacto; Full es costoso y está pensado para sesiones cortas.",
         "settings.debug_overlay": "Superposición de depuración", "settings.debug_overlay_desc": "Muestra sobre el juego un resumen breve o detallado del rendimiento en tiempo real",

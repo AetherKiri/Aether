@@ -873,7 +873,7 @@ struct Runtime::Impl final : EmbeddedMovieHost {
             return {};
         }
         const std::string cache_key =
-            StableGameDirectoryName(fs::u8path(game_root) / requested);
+            StableGameDirectoryName(requested);
         const fs::path extracted = media_cache / (cache_key + extension);
         error_code.clear();
         if (fs::is_regular_file(extracted, error_code) &&

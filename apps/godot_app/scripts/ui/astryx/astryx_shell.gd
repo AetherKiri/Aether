@@ -12,7 +12,7 @@ const NAV := [
     ["videos", "video", "nav.videos"], ["flash", "flash", "nav.flash"],
     ["settings", "settings", "settings.title"],
 ]
-const GROUPS := ["interface", "render", "compatibility", "diagnostics", "about"]
+const GROUPS := ["interface", "render", "compatibility", "storage", "diagnostics", "about"]
 var controller
 var host
 var design
@@ -939,6 +939,7 @@ func _group_label(id: String) -> String:
         "render": return _text("画面", "Display", "画面", "畫面", "Pantalla")
         "compatibility": return _text("兼容性", "Compatibility", "互換性", "相容性", "Compatibilidad")
         "diagnostics": return _text("诊断", "Diagnostics", "診断", "診斷", "Diagnóstico")
+        "storage": return _t("cache.storage")
         _: return _text("关于", "About", "情報", "關於", "Acerca de")
 
 func _build_settings() -> void:
@@ -972,7 +973,7 @@ func _build_settings() -> void:
                 var separator := _margin(0, 8, 0, 8)
                 items.add_child(separator)
                 separator.add_child(_divider())
-            var button := _settings_menu_item(_group_label(id), id, func():
+            var button := _settings_menu_item(_group_label(id), "folder" if id == "storage" else id, func():
                 section = id
                 settings_detail = true
                 editing_setting = ""
@@ -1076,6 +1077,7 @@ func _settings_content() -> void:
         "render": _render_settings()
         "compatibility": _compatibility_settings()
         "diagnostics": _diagnostic_settings()
+        "storage": _storage_settings()
         "about": _about_settings()
 
 func _section(title: String, description: String) -> VBoxContainer:
@@ -2276,28 +2278,31 @@ func _detail_content() -> void:
     info.add_child(_divider())
 
 func _detail_cache_actions(section: Control, game: Dictionary, runtime: String) -> void:
-    var usage := _label(_text("正在计算…", "Calculating…", "計算中…", "正在計算…", "Calculando…"), 14, true)
-    var usage_ref: WeakRef = weakref(usage)
-    var locations: PackedStringArray = host._game_cache_paths(game, runtime)
-    var clear_button := _button(_text("清除", "Clear", "消去", "清除", "Borrar"), func():
-        if host.game_storage_busy or host.game_running:
-            return
-        usage.text = _text("正在清除…", "Clearing…", "消去中…", "正在清除…", "Borrando…")
-        host._clear_game_cache(game, func(result: Dictionary):
-            var label = usage_ref.get_ref()
-            if label != null:
-                label.text = "0 B" if int(result.error) == OK else error_string(int(result.error))
-        )
-    , "secondary", "AstryxClearGameCache")
-    clear_button.disabled = host.game_running or host.game_storage_busy
-    _field(section, _text("缓存占用", "Cache storage", "キャッシュ使用量", "快取用量", "Espacio de la caché"), clear_button,
-        _text("可安全清除，运行时会重新生成；不影响存档。", "Can be regenerated. Clearing it does not delete saves.", "再生成できます。セーブデータは削除しません。", "可安全清除，執行時會重新產生；不影響存檔。", "Se puede regenerar. Borrarla no elimina las partidas guardadas."))
-    section.add_child(usage)
-    host._game_cache_jobs().submit(preload("res://scripts/game_cache.gd").measure.bind(locations), func(result: Dictionary):
-        var label = usage_ref.get_ref()
-        if label != null:
-            label.text = String.humanize_size(int(result.bytes)) if int(result.error) == OK else error_string(int(result.error))
-    )
+    _cache_actions(section, host._game_cache_paths(game, runtime), func(done: Callable): host._clear_game_cache(game, done), false)
+
+func _storage_settings() -> void:
+    var fields := _section(_t("cache.title"), _t("cache.description"))
+    _cache_actions(fields, host._all_cache_paths(), host._clear_all_cache, true)
+
+func _cache_actions(section: Control, locations: PackedStringArray, clear_action: Callable, all_games: bool) -> void:
+    var pad := _margin(0, 16, 0, 16)
+    section.add_child(pad)
+    var row := _hbox(16)
+    pad.add_child(row)
+    var copy := _vbox(4)
+    copy.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+    row.add_child(copy)
+    copy.add_child(_label(_t("cache.title"), 16, false, true))
+    var usage := _label("", 14, true)
+    usage.name = "AstryxCacheUsage"
+    copy.add_child(usage)
+    if not all_games:
+        copy.add_child(_label(_text("可重新生成，不影响存档。", "Can be regenerated. Saves are kept.", "再生成できます。セーブは保持します。", "可重新產生，不影響存檔。", "Se puede regenerar. Se conservan las partidas."), 12, true))
+    var button := _button(_t("cache.clear_all" if all_games else "cache.clear"), Callable(), "secondary", "AstryxClearAllCache" if all_games else "AstryxClearGameCache")
+    button.size_flags_horizontal = Control.SIZE_SHRINK_END
+    button.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+    row.add_child(button)
+    host._bind_cache_controls(usage, button, locations, clear_action)
 
 func _save_transfer():
     var transfer = host.get_node_or_null("GameSaveTransfer")

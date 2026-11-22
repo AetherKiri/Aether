@@ -93,7 +93,7 @@ func _check_migration(base: String) -> void:
     _expect(not FileAccess.file_exists(result.path_join("save00002.sd")), "Never import another game's slots")
     _expect(not DirAccess.dir_exists_absolute(result.path_join("cache")), "Never migrate extracted resources")
     _expect(FileAccess.get_file_as_string(game.path_join("save/gsd.sd")) == "original Windows data", "Keep Windows saves intact")
-    _expect(Options.cache_directory(host, game) == legacy.path_join("cache"), "Cache stays in application storage")
+    _expect(Options.cache_directory(host, game) == preload("res://scripts/game_cache.gd").directory(host, game), "Cache stays in application storage")
     _expect(Options.user_directory(host, game + "/") == result, "Normalize trailing separator")
     _expect(Options.user_directory(host, game + "/../日本語 中文") == result, "Normalize relative path segments")
     DirAccess.remove_absolute(result.path_join("save00001.sd"))
@@ -156,6 +156,7 @@ func _check_player_paths(base: String) -> void:
         var legacy: String = Options.legacy_user_directory(host, game)
         _expect(not DirAccess.dir_exists_absolute(legacy), "Unique player fixture cannot touch an existing store")
         created.append(legacy)
+        created.append(Options.cache_directory(host, game))
     app.selected_game = {"path": first.path_join("game.exe")}
     _expect(app._ensure_player_initialized(), "Normal executable launch initializes")
     _expect(player.opens.back().user == first.path_join("savedata"), "Pass game-local saves to the actual player")

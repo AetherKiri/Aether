@@ -6573,6 +6573,9 @@ func _rebuild_settings_view() -> void:
     _add_settings_row(diagnostic_rows, _settings_row(_t("settings.debug_overlay"), _t("settings.debug_overlay_desc"), _debug_overlay_select(), stack_settings_controls))
     _add_settings_row(diagnostic_rows, _settings_toggle_row(_t("settings.error_dialog_logs"), _t("settings.error_dialog_logs_desc"), _settings_draft_bool("error_dialog_logs", error_dialog_logs), "error_dialog_logs"))
 
+    var storage_rows := _settings_section(flow, _t("cache.storage"), animate_page, 0.15, ICON_SETTINGS)
+    _add_settings_row(storage_rows, _settings_cache_row())
+
     var advanced_rows := _settings_section(flow, _t("settings.section.advanced"), animate_page, 0.16, ICON_SETTINGS)
     var advanced_disclosure = AetherDisclosure.new()
     advanced_disclosure.setup(ui_tokens, ui_motion, _t("settings.advanced_desc"), _load_ui_icon(ICON_CHEVRON_RIGHT), advanced_tool_expanded)
@@ -6595,7 +6598,7 @@ func _rebuild_settings_view() -> void:
             ui_motion.cascade_children(advanced_content, 0.03, 0.04, 12)
     )
 
-    var groups: Array = [interface_rows, render_rows, compatibility_rows, diagnostic_rows, advanced_rows]
+    var groups: Array = [interface_rows, render_rows, compatibility_rows, diagnostic_rows, storage_rows, advanced_rows]
     if _iap_supported_platform():
         var purchase_rows := _settings_section(flow, _t("settings.section.purchases"), animate_page, 0.20, ICON_ADD)
         _add_settings_row(purchase_rows, _settings_iap_product_row())
@@ -8198,6 +8201,17 @@ func _settings_row(title: String, subtitle: String, control: Control, stack_cont
 func _settings_toggle_row(title: String, subtitle: String, initial: bool, key: String) -> Control:
     var toggle := _settings_switch(initial, key)
     return _settings_row(title, subtitle, toggle, false)
+
+func _settings_cache_row() -> Control:
+    var button := _pill_button(_t("cache.clear_all"))
+    button.name = "ClearAllCache"
+    var row := _settings_row(_t("cache.title"), _t("cache.description"), button)
+    var usage := Label.new()
+    usage.name = "CacheUsage"
+    usage.add_theme_font_size_override("font_size", 14)
+    row.get_meta("row_labels").add_child(usage)
+    _bind_cache_controls(usage, button, _all_cache_paths(), _clear_all_cache)
+    return row
 
 func _settings_block(title: String, subtitle: String, control: Control, stack_control: bool = false) -> Control:
     return _settings_row(title, subtitle, control, stack_control)
@@ -12054,6 +12068,14 @@ func _load_game_list() -> Array[Dictionary]:
             var resolved_path := _resolve_game_path(String(item.get("path", "")))
             if not resolved_path.is_empty() and _path_exists(resolved_path) and _web_game_entry_available(item):
                 var game: Dictionary = item.duplicate(true)
+                if resolved_path != String(item.path):
+                    var old_root := String(item.path)
+                    if FileAccess.file_exists(resolved_path) and resolved_path.get_base_dir() != ProjectSettings.globalize_path("user://Games"):
+                        old_root = old_root.get_base_dir()
+                    var previous := PackedStringArray(game.get("cacheLegacyRoots", []))
+                    if old_root not in previous:
+                        previous.append(old_root)
+                    game["cacheLegacyRoots"] = previous
                 game["path"] = resolved_path
                 games.append(game)
     return games
@@ -12673,14 +12695,28 @@ func _game_cache_paths(game: Dictionary, runtime: String = "") -> PackedStringAr
     var path := String(game.get("path", ""))
     if runtime.is_empty():
         runtime = _game_runtime_kind(path)
-    return preload("res://scripts/game_cache.gd").paths(OS.get_user_data_dir(), _game_cache_identity(path), runtime)
+    return preload("res://scripts/game_cache.gd").paths(_cache_storage_base(), _game_cache_identity(path), runtime, PackedStringArray(game.get("cacheLegacyRoots", [])))
+
+func _cache_storage_base() -> String:
+    return OS.get_user_data_dir()
+
+func _all_cache_paths() -> PackedStringArray:
+    var locations := preload("res://scripts/game_cache.gd").all_paths(_cache_storage_base())
+    for game in known_games:
+        locations.append_array(_game_cache_paths(game, String(game.get("engine", RUNTIME_KIRIKIRI))))
+    return locations
+
+func _prepare_game_cache(game: Dictionary, runtime: String) -> Dictionary:
+    return preload("res://scripts/game_cache.gd").prepare(_cache_storage_base(), _game_cache_identity(String(game.get("path", ""))), runtime, PackedStringArray(game.get("cacheLegacyRoots", [])))
 
 func _game_cache_identity(path: String) -> String:
+    if path.is_empty():
+        return ""
     var resolved := _resolve_game_path(path)
     # Standalone archives in Games must not share a cache with one another.
-    if FileAccess.file_exists(resolved) and resolved.get_base_dir() == ProjectSettings.globalize_path("user://Games"):
-        return resolved
-    return _game_runtime_root(path)
+    if FileAccess.file_exists(resolved) and (resolved.get_extension().to_lower() == "xp3" or resolved.get_base_dir() == ProjectSettings.globalize_path("user://Games")):
+        return ProjectSettings.globalize_path(resolved)
+    return ProjectSettings.globalize_path(_game_runtime_root(path))
 
 func _game_cache_jobs() -> Node:
     var jobs := get_node_or_null("GameCacheJobs")
@@ -12691,17 +12727,44 @@ func _game_cache_jobs() -> Node:
     return jobs
 
 func _clear_game_cache(game: Dictionary, done: Callable) -> void:
+    _clear_cache_locations(_game_cache_paths(game), done)
+
+func _clear_all_cache(done: Callable) -> void:
+    _clear_cache_locations(_all_cache_paths(), done)
+
+func _clear_cache_locations(locations: PackedStringArray, done: Callable) -> void:
     if game_storage_busy or game_running or _is_tyrano_active() or _is_renpy_active():
+        if done.is_valid():
+            done.call({"error": ERR_BUSY, "bytes": 0})
         return
     game_storage_busy = true
     if player != null and player.is_initialized():
         _stop_wa2_audio()
         player.destroy_engine()
-    _game_cache_jobs().submit(preload("res://scripts/game_cache.gd").clear.bind(_game_cache_paths(game)), func(result: Dictionary):
+    _game_cache_jobs().submit(preload("res://scripts/game_cache.gd").clear.bind(locations), func(result: Dictionary):
         game_storage_busy = false
         if done.is_valid():
             done.call(result)
     )
+
+func _bind_cache_controls(usage: Label, button: Button, locations: PackedStringArray, clear_action: Callable) -> void:
+    var usage_ref: WeakRef = weakref(usage)
+    var button_ref: WeakRef = weakref(button)
+    usage.text = _t("cache.calculating")
+    button.disabled = true
+    var finished := func(result: Dictionary):
+        var label = usage_ref.get_ref()
+        var control = button_ref.get_ref()
+        if label != null:
+            label.text = String.humanize_size(int(result.get("bytes", 0))) if int(result.error) == OK else error_string(int(result.error))
+        if control != null:
+            control.disabled = game_storage_busy or game_running
+    button.pressed.connect(func():
+        usage.text = _t("cache.clearing")
+        button.disabled = true
+        clear_action.call(finished)
+    )
+    _game_cache_jobs().submit(preload("res://scripts/game_cache.gd").measure.bind(locations), finished)
 
 func _remove_game(path: String) -> void:
     if game_storage_busy or game_running or _is_tyrano_active() or _is_renpy_active():
@@ -14668,24 +14731,25 @@ func _ensure_player_initialized(launch_root: String = "") -> bool:
         if not library_path.is_empty():
             var options = preload("res://scripts/systemc_engine_options.gd")
             var game_root := _game_runtime_root(library_path)
-            cache_dir = options.cache_directory(user_dir, game_root)
             user_dir = options.user_directory(user_dir, game_root)
     elif current_player_runtime_kind == RUNTIME_ESCUDE:
         var game_root := _game_runtime_root(String(selected_game.get("path", "")))
         if not game_root.is_empty():
-            cache_dir = cache_dir.path_join("escude").path_join(game_root.sha256_text())
             user_dir = game_root.path_join("savedata")
     elif current_player_runtime_kind == RUNTIME_YURIS:
         var library_path := String(selected_game.get("path", ""))
         if not library_path.is_empty():
             var options = preload("res://scripts/yuris_engine_options.gd")
             var game_root := _game_runtime_root(library_path)
-            cache_dir = options.cache_directory(user_dir, game_root)
             user_dir = options.user_directory(user_dir, game_root)
     if cli_probe_script.is_empty():
         var game_root := _game_cache_identity(String(selected_game.get("path", "")))
         if not game_root.is_empty():
-            cache_dir = preload("res://scripts/game_cache.gd").directory(OS.get_user_data_dir(), game_root)
+            var prepared := _prepare_game_cache(selected_game, current_player_runtime_kind)
+            if int(prepared.error) != OK:
+                _append_log("Cannot prepare game cache: " + error_string(int(prepared.error)))
+                return false
+            cache_dir = String(prepared.path)
     if player.is_initialized():
         if String(player.get_meta("aether_user_directory", "")) == user_dir \
             and String(player.get_meta("aether_cache_directory", "")) == cache_dir \

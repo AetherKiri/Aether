@@ -13,6 +13,9 @@ class TestHost:
     var removal_requested := ""
     var game_removal_requested := ""
     var text_runtime := ""
+    var cache_base := ""
+    func _cache_storage_base() -> String:
+        return cache_base
     var removal_platform := "macOS"
     func _game_removal_platform() -> String:
         return removal_platform
@@ -786,6 +789,7 @@ func _run() -> void:
     _write(base.path_join("Opening Movie.mp4"))
     DirAccess.make_dir_recursive_absolute(base.path_join("动画收藏/待整理"))
     app = TestHost.new()
+    app.cache_base = base.path_join("host-data")
     app.active_language = app.LANG_ZH_HANS
     app.language_mode = app.LANG_ZH_HANS
     app.known_games = [{"name": "Aether Demo", "path": base.path_join("game"), "type": "Directory", "coverPath": ProjectSettings.globalize_path("res://../../tools/astryx-preview/public/demo-cover.svg")}]
@@ -993,6 +997,16 @@ func _run() -> void:
     await _check_game_information_actions()
     await _check_detail_geometry()
     _expect(_button("AstryxClearGameCache") != null, "Game details expose cache cleanup")
+    var game_cache := preload("res://scripts/game_cache.gd").directory(app.cache_base, app._game_cache_identity(String(app.selected_game.path)))
+    _write(game_cache.path_join("audio.bin"))
+    _write(app.selected_game.path.path_join("savedata/test-slot"))
+    controller.view.refresh_content(true)
+    await _settle()
+    var cache_usage := controller.view.find_child("AstryxCacheUsage", true, false) as Label
+    _expect(cache_usage != null and cache_usage.text == String.humanize_size(FileAccess.get_file_as_bytes(game_cache.path_join("audio.bin")).size()), "Details show actual cache bytes after the asynchronous scan")
+    await _click("AstryxClearGameCache")
+    _expect(not FileAccess.file_exists(game_cache.path_join("audio.bin")), "Details really remove the game's cache")
+    _expect(FileAccess.file_exists(app.selected_game.path.path_join("savedata/test-slot")), "Game cache cleanup preserves saves")
     await _click("AstryxDetailSection_rendering")
     _expect(controller.view.find_child("AstryxDetailBody_rendering", true, false).visible, "Game detail accordion expands")
     await _exercise_game_render_settings()
@@ -1106,10 +1120,19 @@ func _run() -> void:
     _expect(controller.view.find_child("AstryxSetting_backend", true, false).is_visible_in_tree(), "Phone renderer editor is usable")
     _check_settings_geometry()
     _check_scrollbar()
-    for category in ["compatibility", "diagnostics", "about"]:
+    for category in ["compatibility", "storage", "diagnostics", "about"]:
         await _click("AstryxSettingsBack")
         await _click("AstryxSection_" + category)
         _check_settings_geometry()
+        if category == "storage":
+            _write(app.cache_base.path_join("cache/abandoned-engine/audio.bin"))
+            controller.view.refresh_content(true)
+            await _settle()
+            var clear_all := _button("AstryxClearAllCache")
+            var global_usage := controller.view.find_child("AstryxCacheUsage", true, false) as Label
+            _expect(clear_all != null and global_usage != null and clear_all.get_global_rect().position.x > global_usage.get_global_rect().position.x, "Storage shows usage on the left and cleanup on the right")
+            await _click("AstryxClearAllCache")
+            _expect(not FileAccess.file_exists(app.cache_base.path_join("cache/abandoned-engine/audio.bin")), "Global cleanup removes orphaned engine caches")
         if category == "about":
             _check_about_rows()
             await _capture("astryx-godot-iphone-about-dark")

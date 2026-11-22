@@ -1,4 +1,5 @@
 #include "AetherGameHooks.h"
+#include "AetherResourceCache.h"
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers.hpp>
 #include <fstream>
@@ -47,7 +48,31 @@ TEST_CASE("aether.lua registers binary overrides and explicit settings") {
     hooks.Load(f.root, "bgi");
     CHECK_FALSE(hooks.Active());
     CHECK(hooks.Files().empty());
-    CHECK_FALSE(fs::exists(cache));
+    CHECK(fs::exists(cache));
+}
+TEST_CASE("resource caches survive reopening and repair truncated or changed files") {
+    Fixture f;
+    f.Write("aether.lua", "aether.add_file('script.bin', 'first')");
+    GameHooks first; first.Load(f.root, "yuris");
+    const auto path = first.CacheDirectory(f.root / "cache");
+    const auto time = fs::last_write_time(path / "script.bin");
+    GameHooks reopened; reopened.Load(f.root, "yuris");
+    CHECK(reopened.CacheDirectory(f.root / "cache") == path);
+    CHECK(bool(fs::last_write_time(path / "script.bin") == time));
+    f.Write(fs::relative(path / "script.bin", f.root).string(), "bad");
+    GameHooks repair; repair.Load(f.root, "yuris");
+    CHECK(repair.CacheDirectory(f.root / "cache") == path);
+    CHECK(fs::file_size(path / "script.bin") == 5);
+    f.Write("aether.lua", "aether.add_file('script.bin', 'other')");
+    GameHooks changed; changed.Load(f.root, "yuris");
+    CHECK(changed.CacheDirectory(f.root / "cache") != path);
+    const auto audio = aether::cache::Materialize(f.root / "cache/media", {1, 2, 3}, ".ogg");
+    CHECK(aether::cache::Materialize(f.root / "cache/media", {1, 2, 3}, ".ogg") == audio);
+    CHECK(aether::cache::Materialize(f.root / "cache/media", {1, 2, 4}, ".ogg") != audio);
+    f.Write(fs::relative(audio, f.root).string(), "bad");
+    aether::cache::Materialize(f.root / "cache/media", {1, 2, 3}, ".ogg");
+    std::ifstream input(audio, std::ios::binary);
+    CHECK(std::vector<uint8_t>(std::istreambuf_iterator<char>(input), {}) == std::vector<uint8_t>{1, 2, 3});
 }
 TEST_CASE("script failures discard partially registered resources") {
     Fixture f;

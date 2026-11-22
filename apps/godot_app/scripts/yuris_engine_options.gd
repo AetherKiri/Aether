@@ -21,7 +21,7 @@ static func legacy_user_directory(base: String, project_root: String) -> String:
 
 static func cache_directory(base: String, project_root: String) -> String:
     # Extracted resources are disposable and must not travel with game saves.
-    return legacy_user_directory(base, project_root).path_join("cache")
+    return preload("res://scripts/game_cache.gd").directory(base, project_root)
 
 static func script_encoding(game: Dictionary, override: String = "") -> String:
     var requested := normalize_encoding(override)

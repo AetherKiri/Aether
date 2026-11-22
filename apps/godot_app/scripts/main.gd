@@ -12166,11 +12166,17 @@ func _scan_ios_games_dir(existing: Array[Dictionary], games_root: String = "user
                 var stored_path := String(game.get("path", "")).simplify_path()
                 var stored_engine := String(game.get("engine", ""))
                 var qlie_root := ""
-                if dir.current_is_dir() and not dir.is_link(entry) and (
-                    game.is_empty() or stored_path != path.simplify_path()
-                    or stored_engine.is_empty() or stored_engine == RUNTIME_KIRIKIRI
-                ):
-                    qlie_root = _ios_imported_qlie_child(path)
+                if dir.current_is_dir() and not dir.is_link(entry):
+                    var cached_fallback := stored_path == path.simplify_path() and (
+                        stored_engine.is_empty() or stored_engine == RUNTIME_KIRIKIRI
+                    )
+                    # A manual copy in Files can complete after the first scan.
+                    # Retry the native probe on cached fallback entries.
+                    if cached_fallback and player != null and player.has_method("probe_runtime") \
+                            and int(player.probe_runtime(RUNTIME_QLIE, path)) >= QLIE_VERIFIED_STARTUP_SCORE:
+                        qlie_root = path
+                    elif game.is_empty() or stored_path != path.simplify_path() or cached_fallback:
+                        qlie_root = _ios_imported_qlie_child(path)
                 if not qlie_root.is_empty():
                     if stored_path == path.simplify_path():
                         # Keep user metadata when migrating an existing wrapper record.

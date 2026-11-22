@@ -34,6 +34,7 @@ func _run() -> void:
     var mixed := games.path_join("Mixed startup")
     var game_data_only := games.path_join("GameData only")
     var in_progress := games.path_join("Import with marker")
+    var delayed := games.path_join("近月延迟到齐")
     for path in [child, direct, direct.path_join("Nested"), ambiguous.path_join("A"), ambiguous.path_join("B"),
             deep.path_join("Intermediate/Leaf"), other_engine.path_join("Child"), mixed.path_join("Complete"),
             in_progress.path_join("Payload")]:
@@ -70,6 +71,22 @@ func _run() -> void:
     var now_ambiguous: Array[Dictionary] = app._scan_ios_games_dir(rescanned, games)
     _expect(app._games_by_library_entry(now_ambiguous, games).get(wrapper.get_file(), {}).get("path") == wrapper,
         "A wrapper that becomes ambiguous is no longer collapsed")
+
+    # Files can expose a folder before a manual copy has finished. The library
+    # may already have saved the fallback engine and a Windows config utility.
+    DirAccess.make_dir_recursive_absolute(delayed)
+    _write_file(delayed.path_join("Config.exe"), "MZ".to_ascii_buffer())
+    var incomplete := app._scan_ios_games_dir([], games)
+    var incomplete_record: Dictionary = app._games_by_library_entry(incomplete, games)[delayed.get_file()]
+    _expect(incomplete_record.get("engine") == "kirikiri", "An incomplete copy starts with fallback engine metadata")
+    incomplete_record["title"] = "用户标题"
+    incomplete_record["lastPlayed"] = 321
+    _write_game(delayed, "startup.s")
+    var recovered: Dictionary = app._games_by_library_entry(app._scan_ios_games_dir(incomplete, games), games)[delayed.get_file()]
+    _expect(recovered.get("path") == delayed and recovered.get("engine") == "qlie", "A complete direct copy repairs the cached fallback engine")
+    _expect(recovered.get("launchFile") == "", "A recovered direct QLIE entry uses its directory")
+    _expect(recovered.get("title") == "用户标题" and recovered.get("lastPlayed") == 321,
+        "Repairing the inferred engine preserves user metadata")
 
     var startup := String(imported.get("startupScript", ""))
     var runtime: String = app._game_runtime_kind_for_launch(String(imported.get("path", "")), startup)
@@ -144,6 +161,36 @@ func _test_tsuki_import(app: Main, test_root: String, fixture_generator: String)
             _expect(logs.contains("Tsuki translation skipped:") and logs.contains("index checksum"), "Corrupt Tsuki overlay logs its rejection")
         var original_save := launch_path.path_join("SaveData/Original.svd")
         _expect(FileAccess.file_exists(original_save) == not should_mount, "Only the original startup writes Original.svd")
+    app.player.destroy_engine()
+    # Reproduce a pre-existing fallback record using the complete native
+    # Tsuki fixture after the resource files arrive in the direct import.
+    var delayed := games.path_join("近月 Direct Import")
+    _expect(DirAccess.make_dir_recursive_absolute(delayed) == OK, "Create direct import before files arrive")
+    var incomplete := app._scan_ios_games_dir([], games)
+    var earlier: Dictionary = app._games_by_library_entry(incomplete, games).get(delayed.get_file(), {})
+    _expect(earlier.get("engine") == "kirikiri", "Tsuki direct import initially has fallback metadata")
+    var source := games.path_join("Wrapped Tsuki/近月")
+    var source_dir := DirAccess.open(source)
+    _expect(source_dir != null, "Open complete native Tsuki fixture")
+    if source_dir == null:
+        return
+    for name in source_dir.get_files() + source_dir.get_directories():
+        _expect(DirAccess.rename_absolute(source.path_join(name), delayed.path_join(name)) == OK,
+            "Complete direct import with " + name)
+    var recovered: Dictionary = app._games_by_library_entry(app._scan_ios_games_dir(incomplete, games), games).get(delayed.get_file(), {})
+    _expect(recovered.get("engine") == "qlie", "Refresh recovers the Tsuki provider for the completed direct import")
+    var launch_path := LaunchEntry.resolve_for_runtime(recovered, String(recovered.get("engine", "")))
+    _expect(launch_path == delayed, "Launch the direct Tsuki import from its directory")
+    _expect(app.player.initialize_engine(test_root, test_root.path_join("cache")), "Initialize Tsuki player after rescan")
+    _expect(app.player.set_engine_option("runtime", "qlie") == OK, "Select the repaired game's provider")
+    _expect(app._configure_qlie_save_directory("qlie", launch_path), "Set the repaired game's save path")
+    if launch_path == delayed:
+        _expect(app.player.open_game(launch_path, false, "") == OK, "Open the completed direct Tsuki import")
+        _expect(app.player.tick(0.016) == OK, "Tick the translated script")
+        _expect(String(app.player.drain_startup_logs()).contains("Tsuki translation mounted: 7 resources"),
+            "The recovered direct import mounts its translation")
+        _expect(not FileAccess.file_exists(launch_path.path_join("SaveData/Original.svd")),
+            "The recovered direct import runs translated startup")
     app.player.destroy_engine()
     if failures == starting_failures:
         print("qlie_tsuki_import_test: PASS")

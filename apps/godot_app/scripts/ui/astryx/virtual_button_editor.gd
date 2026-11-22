@@ -89,7 +89,7 @@ func open(view, game: Dictionary) -> void:
     var local := Layouts.load_game(game_root) if is_game else shared
     if shared.error != OK or local.error != OK or (is_game and game_root.is_empty()):
         shell.show_notice(_word("read_error"))
-        free()
+        queue_free()
         return
     globals = shared.book
     initial = local.book

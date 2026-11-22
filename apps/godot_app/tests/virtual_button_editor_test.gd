@@ -309,6 +309,18 @@ func _run() -> void:
     _migrate_layouts(folder)
     _game_input(global_profile)
     _mouse_binding(contents.virtual_buttons.profiles[0])
+
+    Layouts.CONFIG.write_document(app.fixture_path, {})
+    var rejected = controller.view.BUTTON_EDITOR.new()
+    rejected.open(controller.view, {})
+    await settle()
+    var notice := controller.view.find_child("AstryxNoticeMessage", true, false) as Label
+    check(not is_instance_valid(rejected), "An editor with an unreadable layout is freed")
+    check(
+        editor() == null and notice != null and notice.text == "无法读取布局",
+        "An invalid layout shows the read error without opening a modal"
+    )
+
     app.queue_free()
     await process_frame
     fixture = null

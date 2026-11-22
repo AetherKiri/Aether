@@ -5421,6 +5421,18 @@ func _apply_shell_runtime_settings() -> void:
 func _configure_mobile_window() -> void:
     if not _mobile_runtime():
         return
+    if OS.get_name() == "Android":
+        var runtime: Object = Engine.get_singleton("AndroidRuntime")
+        if runtime == null:
+            return
+        var activity = runtime.getActivity()
+        if activity == null:
+            return
+        var window_api = JavaClassWrapper.wrap("org.aether.mobile.MobileWindow")
+        if window_api != null:
+            var background := Color.BLACK if mobile_window_game_active else _mobile_shell_background()
+            window_api.configure(activity, mobile_window_game_active, picture_in_picture_enabled, "#" + background.to_html(false))
+        return
     if mobile_window == null and is_inside_tree() and ClassDB.class_exists("AetherMobileWindow"):
         mobile_window = ClassDB.instantiate("AetherMobileWindow") as Node
         add_child(mobile_window)

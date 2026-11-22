@@ -8,6 +8,7 @@ vcpkg_from_github(
     HEAD_REF "master"
     PATCHES
         "packagable.patch"
+        "include-allocation-functions.patch"
 )
 
 vcpkg_find_acquire_program(PYTHON3)

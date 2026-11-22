@@ -1,0 +1,10 @@
+diff --git a/src/godot.cpp b/src/godot.cpp
+--- a/src/godot.cpp
++++ b/src/godot.cpp
+@@ -42,5 +42,6 @@
+ #include <godot_cpp/core/error_macros.hpp>
+
+ #include <stdio.h>
++#include <stdlib.h>
+
+ namespace godot {

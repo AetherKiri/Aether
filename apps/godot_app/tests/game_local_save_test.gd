@@ -106,6 +106,29 @@ func _check_blocked_and_wa2(base: String, app: String) -> void:
     Locations.prepare_wa2_flags(game, app)
     _expect(not FileAccess.file_exists(flags), "A completed bank does not resurrect deleted saves")
 
+func _check_rfvp_alias(base: String, app: String) -> void:
+    # Creating a symlink on Windows can require Developer Mode or elevated privileges.
+    if OS.get_name() not in ["Linux", "macOS"]:
+        return
+    var game := base.path_join("rfvp")
+    var story := {"launchFile": "input.hcb", "rfvpEncoding": "sjis"}
+    var alias := {"launchFile": "alias.hcb", "rfvpEncoding": "sjis"}
+    _write(game.path_join("input.hcb"), "synthetic script")
+    _write(base.path_join("outside.hcb"), "outside the game")
+    var directory := DirAccess.open(game)
+    _expect(directory.create_link("input.hcb", game.path_join("alias.hcb")) == OK, "Create a relative HCB alias")
+    _expect(directory.create_link("../outside.hcb", game.path_join("outside.hcb")) == OK, "Create an out-of-game HCB alias")
+    var direct := Locations.resolve(game, "rfvp", story, app, true)
+    _expect(not direct.is_empty(), "Resolve the original RFVP save bank")
+    if direct.is_empty():
+        return
+    var bank := String(direct.main.path)
+    _expect(bank == game.path_join("savedata/rfvp/03039d9aee24b3a8"), "Match the native provider's portable save identity")
+    _write(bank.path_join("save/slot.sav"), "current progress")
+    _expect(Locations.resolve(game, "rfvp", alias, app) == direct, "HCB alias exports from the real script bank")
+    _expect(Locations.prepare_import(game, "rfvp", alias, app) == "", "HCB alias imports into the existing bank without another launch")
+    _expect(Locations.resolve(game, "rfvp", {"launchFile": "outside.hcb"}, app).is_empty(), "An out-of-game HCB alias has no save bank")
+
 func _initialize() -> void:
     var temp := DirAccess.create_temp("aether-game-local-saves")
     if temp == null:
@@ -117,6 +140,7 @@ func _initialize() -> void:
     _check_native(base, app)
     _check_tyrano(base, app)
     _check_blocked_and_wa2(base, app)
+    _check_rfvp_alias(base, app)
     if failures == 0:
         print("Game-local save migration checks passed")
     quit(0 if failures == 0 else 1)

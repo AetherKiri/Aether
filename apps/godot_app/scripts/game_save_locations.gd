@@ -168,6 +168,33 @@ static func prepare_tyrano(root: String, user_root: String = "") -> Dictionary:
         root, "savedata/tyranoscript", tyrano_legacy_directory(root, base),
         {"local_storage.json": ["local_storage.json.bak", "local_storage.json"]})
 
+# Resolve links before hashing, as the RFVP host does for a selected HCB.
+# Resolve the parent first so relative link targets and ".." are interpreted
+# from the actual directory, not the spelling of the path used to reach it.
+static func _rfvp_resolve_path(path: String, links_left: int = 40) -> String:
+    var parent := path.get_base_dir()
+    if parent.is_empty() or parent == path or path.get_file().is_empty():
+        return path
+    parent = _rfvp_resolve_path(parent, links_left)
+    if parent.is_empty():
+        return ""
+    var name := path.get_file()
+    if name == ".":
+        return parent
+    if name == "..":
+        return parent.get_base_dir()
+    var directory := DirAccess.open(parent)
+    if directory == null:
+        return ""
+    if not directory.is_link(name):
+        return parent.path_join(name)
+    if links_left == 0:
+        return ""
+    var target := directory.read_link(name)
+    if target.is_empty():
+        return ""
+    return _rfvp_resolve_path(target if target.is_absolute_path() else parent.path_join(target), links_left - 1)
+
 static func _rfvp_bank(root: String, game: Dictionary, base: String) -> Dictionary:
     var launch := String(game.get("startupScript", "")).strip_edges()
     if launch.is_empty():
@@ -179,6 +206,11 @@ static func _rfvp_bank(root: String, game: Dictionary, base: String) -> Dictiona
     var script := (launch if launch.is_absolute_path() else root.path_join(launch)).simplify_path()
     if not script.begins_with(root + "/") or not FileAccess.file_exists(script):
         return {}
+    var resolved_root := _rfvp_resolve_path(root)
+    script = _rfvp_resolve_path(script)
+    if resolved_root.is_empty() or not script.begins_with(resolved_root + "/") \
+            or script.get_extension().to_lower() != "hcb" or not FileAccess.file_exists(script):
+        return {}
     var config := preload("res://scripts/game_text_config.gd").read(root, "rfvp", game)
     if config.error != OK:
         return {}
@@ -189,10 +221,10 @@ static func _rfvp_bank(root: String, game: Dictionary, base: String) -> Dictiona
             encoding = override_value
     var nls := "GBK" if encoding.to_upper() in ["GBK", "CP936"] else "UTF8" if encoding.to_upper() in ["UTF-8", "UTF8"] else "ShiftJIS"
     var portable := PackedByteArray([0])
-    portable.append_array(script.substr(root.length() + 1).to_utf8_buffer())
+    portable.append_array(script.substr(resolved_root.length() + 1).to_utf8_buffer())
     portable.append(0)
     portable.append_array(nls.to_utf8_buffer())
-    var legacy := root.to_utf8_buffer()
+    var legacy := resolved_root.to_utf8_buffer()
     legacy.append(0)
     legacy.append_array(script.to_utf8_buffer())
     legacy.append(0)

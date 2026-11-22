@@ -192,8 +192,36 @@ func _test_tsuki_import(app: Main, test_root: String, fixture_generator: String)
         _expect(not FileAccess.file_exists(launch_path.path_join("SaveData/Original.svd")),
             "The recovered direct import runs translated startup")
     app.player.destroy_engine()
+    if launch_path != delayed:
+        return
+    var patch := delayed.path_join("任意 修改版.EXE")
+    var held_patch := test_root.path_join("patch-on-hold.EXE")
+    _expect(DirAccess.rename_absolute(patch, held_patch) == OK, "Temporarily remove the synthetic translation EXE")
+    _test_tsuki_fallback(app, test_root, delayed, "no compatible translation EXE found")
+    _expect(DirAccess.rename_absolute(held_patch, patch) == OK, "Restore the synthetic translation EXE")
+    var pack := delayed.path_join("gAMeDaTa/DATA4.PACK")
+    _expect(DirAccess.rename_absolute(pack, test_root.path_join("missing-pack.bin")) == OK,
+        "Simulate a missing original pack while leaving startup available")
+    _test_tsuki_fallback(app, test_root, delayed, "required original game resources are missing")
     if failures == starting_failures:
         print("qlie_tsuki_import_test: PASS")
+
+func _test_tsuki_fallback(app: Main, test_root: String, launch_path: String, reason: String) -> void:
+    var save_dir := test_root.path_join("fallback-save")
+    var marker := save_dir.path_join("Original.svd")
+    if FileAccess.file_exists(marker):
+        _expect(DirAccess.remove_absolute(marker) == OK, "Clear previous synthetic save marker")
+    _expect(app.player.initialize_engine(test_root, test_root.path_join("cache")), "Initialize fallback provider")
+    _expect(app.player.set_engine_option("runtime", "qlie") == OK, "Select fallback QLIE runtime")
+    _expect(app.player.set_engine_option("qlie.save_directory", save_dir) == OK, "Set isolated fallback save directory")
+    if int(app.player.open_game(launch_path, false, "")) == OK:
+        _expect(app.player.tick(0.016) == OK, "Tick original startup")
+        var logs := String(app.player.drain_startup_logs())
+        _expect(logs.contains(reason) and not logs.contains("Tsuki translation mounted"), "Explain fallback: " + logs)
+        _expect(FileAccess.file_exists(marker), "Original startup writes its save marker")
+    else:
+        _expect(false, "Fallback should open the remaining startup: " + String(app.player.get_last_error()))
+    app.player.destroy_engine()
 
 func _write_game(path: String, startup: String) -> void:
     var packs := path.path_join("gAMeDaTa")

@@ -13214,6 +13214,14 @@ private:
                         "&error_response=-1&error_message="
                         "In%20App%20Billing%20is%20unavailable");
                 }
+            } else if (name == "qlie_font_chooser") {
+                if (has_connections("platform_request")) {
+                    emit_signal("platform_request", name, value);
+                } else {
+                    // A QLIE script waits for the picker result. An empty path
+                    // cancels it when the Godot host has no picker listener.
+                    submit_platform_response(name, String());
+                }
             } else if (name == "text_input") {
                 show_runtime_text_input(value);
             } else if (name == "presentation_sprite") {

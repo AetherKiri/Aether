@@ -10,7 +10,17 @@ import Foundation
         let incoming = root.appendingPathComponent("shared/Incoming")
         let games = root.appendingPathComponent("Documents/Games")
         try fm.createDirectory(at: source.appendingPathComponent("savedata"), withIntermediateDirectories: true)
-        let files = ["savedata/slot01.sav": Data([0, 1, 2, 255]), ".patch": Data("补丁".utf8), "data.xp3": Data(repeating: 42, count: 2_500_000)]
+        try fm.createDirectory(at: source.appendingPathComponent("近月/GameData"), withIntermediateDirectories: true)
+        try fm.createDirectory(at: source.appendingPathComponent("近月/DLL"), withIntermediateDirectories: true)
+        let files = [
+            "savedata/slot01.sav": Data([0, 1, 2, 255]),
+            ".patch": Data("补丁".utf8),
+            "data.xp3": Data(repeating: 42, count: 2_500_000),
+            "近月/GameData/Data0.Pack": Data([0, 1, 2]),
+            "近月/DLL/key.fkey": Data([3, 4, 5]),
+            "近月/原版.exe": Data([0x4d, 0x5a, 0, 6]),
+            "近月/汉化 (2).EXE": Data([0x4d, 0x5a, 0, 7, 0xbe, 0xba, 0xfe, 0xca])
+        ]
         for (path, bytes) in files { try bytes.write(to: source.appendingPathComponent(path)) }
         // An extension only queues a bookmark. No hidden directory or game copy.
         let job = try GameImportStore.receive(source, into: incoming)

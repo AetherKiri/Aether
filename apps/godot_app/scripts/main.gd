@@ -12,6 +12,7 @@ const FlashPlayerView = preload("res://scripts/flash_player_view.gd")
 const TyranoPlayerView = preload("res://scripts/tyrano_player_view.gd")
 const RenpyPlayerView = preload("res://scripts/renpy_player_view.gd")
 const RuntimeDisplayState = preload("res://scripts/runtime_display_state.gd")
+const QLIE_FONT_CHOOSER_REQUEST := "qlie_font_chooser"
 const RuntimeCursorState = preload("res://scripts/runtime_cursor_state.gd")
 const GameLibraryStorage = preload("res://scripts/game_library_storage.gd")
 const VIDEO_LIST_FILE := "user://aetherkiri_videos.json"
@@ -2755,6 +2756,7 @@ const RUNTIME_XSYSTEM35 := "xsystem35"
 const RUNTIME_SYSTEM3 := "system3"
 const RUNTIME_WA2 := "wa2"
 const RUNTIME_QLIE := "qlie"
+const QLIE_VERIFIED_STARTUP_SCORE := 950
 const RUNTIME_BGI := "bgi"
 const RUNTIME_ADVHD := "advhd"
 const RUNTIME_ESCUDE := "escude"
@@ -3033,6 +3035,9 @@ var native_cover_file_picker_pending := false
 var native_cover_file_picker_is_photo := false
 var native_cover_file_picker_library_path := ""
 var native_font_file_picker_callback := Callable()
+var qlie_font_dialog: FileDialog
+var qlie_font_request_serial := 0
+var qlie_font_request_pending := false
 var native_translation_model_file_picker_pending := false
 var active_game_path := ""
 var active_game_started_msec := 0
@@ -10568,8 +10573,7 @@ func _offer_scrape_after_add(game: Dictionary) -> void:
     )
     buttons.add_child(yes)
 
-func _choose_game_font(callback: Callable) -> void:
-    var path := String(selected_game.get("path", ""))
+func _game_font_picker_title() -> String:
     var title := "Choose game font"
     match active_language:
         LANG_ZH_HANS: title = "选择游戏字体"
@@ -10577,17 +10581,34 @@ func _choose_game_font(callback: Callable) -> void:
         LANG_JA: title = "ゲームフォントを選択"
         LANG_KO: title = "게임 글꼴 선택"
         LANG_ES: title = "Elegir fuente del juego"
+    return title
+
+func _open_game_font_picker(path: String, destination: String, callback: Callable) -> FileDialog:
+    var title := _game_font_picker_title()
     if OS.get_name() in ["iOS", "macOS"] and player != null and player.has_method("native_font_file_picker_open"):
-        if bool(player.native_font_file_picker_open(title, path, ProjectSettings.globalize_path("user://font_import"))):
+        if not native_font_file_picker_callback.is_valid() \
+                and bool(player.native_font_file_picker_open(title, path, ProjectSettings.globalize_path(destination))):
             native_font_file_picker_callback = callback
-            return
+            return null
     var dialog := _create_file_dialog(title, FileDialog.FILE_MODE_OPEN_FILE, PackedStringArray(["*.ttf,*.otf;Fonts"]))
-    dialog.current_dir = path
-    dialog.file_selected.connect(func(font_path: String):
-        callback.call(GameTextConfig.load_font(font_path))
-    )
+    if DirAccess.dir_exists_absolute(path):
+        dialog.current_dir = path
+    dialog.file_selected.connect(func(font_path: String): callback.call(font_path, OK))
+    dialog.canceled.connect(func(): callback.call("", OK))
     add_child(dialog)
     dialog.popup_centered(Vector2i(900, 640))
+    return dialog
+
+func _choose_game_font(callback: Callable) -> void:
+    _open_game_font_picker(String(selected_game.get("path", "")), "user://font_import",
+        func(path: String, error: Error) -> void:
+            if error != OK:
+                callback.call({"error": error})
+                return
+            if path.is_empty():
+                return
+            callback.call(GameTextConfig.load_font(path))
+    )
 
 func _poll_native_font_file_picker() -> void:
     if not native_font_file_picker_callback.is_valid() or player == null:
@@ -10599,17 +10620,17 @@ func _poll_native_font_file_picker() -> void:
     native_font_file_picker_callback = Callable()
     var result = JSON.parse_string(json)
     if not result is Dictionary:
-        callback.call({"error": ERR_PARSE_ERROR})
-        return
-    if result.get("status") == "selected":
+        callback.call("", ERR_PARSE_ERROR)
+    elif result.get("status") == "selected":
         var path := String(result.get("path", ""))
-        var loaded := GameTextConfig.load_font(path)
+        callback.call(path, OK)
         if path.begins_with(ProjectSettings.globalize_path("user://font_import").trim_suffix("/") + "/"):
             DirAccess.remove_absolute(path)
             DirAccess.remove_absolute(path.get_base_dir())
-        callback.call(loaded)
     elif result.get("status") == "error":
-        callback.call({"error": ERR_FILE_CANT_READ})
+        callback.call("", ERR_FILE_CANT_READ)
+    else:
+        callback.call("", OK)
 
 func _read_game_text_config(game: Dictionary, runtime: String = "") -> Dictionary:
     if runtime.is_empty():
@@ -12141,11 +12162,62 @@ func _scan_ios_games_dir(existing: Array[Dictionary], games_root: String = "user
         if not entry.begins_with("."):
             var path := root.path_join(entry)
             if (dir.current_is_dir() or entry.to_lower().ends_with(".xp3")) and not FileAccess.file_exists(path.path_join("aether-import-in-progress.json")):
-                var game: Dictionary = by_entry[entry] if by_entry.has(entry) else _game_info_from_path(path)
+                var game: Dictionary = by_entry.get(entry, {})
+                var stored_path := String(game.get("path", "")).simplify_path()
+                var stored_engine := String(game.get("engine", ""))
+                var qlie_root := ""
+                if dir.current_is_dir() and not dir.is_link(entry) and (
+                    game.is_empty() or stored_path != path.simplify_path()
+                    or stored_engine.is_empty() or stored_engine == RUNTIME_KIRIKIRI
+                ):
+                    qlie_root = _ios_imported_qlie_child(path)
+                if not qlie_root.is_empty():
+                    if stored_path == path.simplify_path():
+                        # Keep user metadata when migrating an existing wrapper record.
+                        game = game.duplicate(true)
+                    elif stored_path != qlie_root.simplify_path():
+                        game = _game_info_from_path(qlie_root)
+                    path = qlie_root
+                    game["engine"] = RUNTIME_QLIE
+                    game[GameLaunchEntry.FIELD] = ""
+                elif game.is_empty() or stored_path != path.simplify_path():
+                    game = _game_info_from_path(path)
                 game["path"] = path
                 next.append(game)
         entry = dir.get_next()
     return _dedupe_games(next)
+
+func _ios_imported_qlie_child(path: String) -> String:
+    if player == null or not player.has_method("probe_runtime"):
+        return ""
+    var directory := DirAccess.open(path)
+    if directory == null:
+        return ""
+    # Keep installs with their own launcher or archive at the selected root.
+    for name in directory.get_files():
+        if name.get_extension().to_lower() in ["exe", "xp3"]:
+            return ""
+    var match_path := ""
+    var match_score := 0
+    for name in directory.get_directories():
+        if name.begins_with(".") or directory.is_link(name):
+            continue
+        var child := path.path_join(name)
+        var score := int(player.probe_runtime(RUNTIME_QLIE, child))
+        if score <= 0:
+            continue
+        if not match_path.is_empty():
+            return ""
+        match_path = child
+        match_score = score
+    if match_score < QLIE_VERIFIED_STARTUP_SCORE:
+        return ""
+    # Keep roots that have their own engine markers or loose KiriKiri startup.
+    if GameMetadata.inspect(path).get("engine", RUNTIME_KIRIKIRI) != RUNTIME_KIRIKIRI:
+        return ""
+    if FileAccess.file_exists(path.path_join("startup.tjs")) or FileAccess.file_exists(path.path_join("data/startup.tjs")):
+        return ""
+    return match_path
 
 func _games_by_library_entry(existing: Array[Dictionary], root: String) -> Dictionary:
     var by_entry := {}
@@ -12153,7 +12225,13 @@ func _games_by_library_entry(existing: Array[Dictionary], root: String) -> Dicti
     for game in existing:
         var existing_path := String(game.get("path", "")).simplify_path()
         if existing_path.begins_with(normalized_root + "/"):
-            by_entry[existing_path.get_file()] = game
+            var relative_path := existing_path.substr(normalized_root.length() + 1)
+            if relative_path.get_slice_count("/") == 1:
+                by_entry[relative_path] = game
+            elif relative_path.get_slice_count("/") == 2 and game.get("engine", "") == RUNTIME_QLIE:
+                var entry := relative_path.get_slice("/", 0)
+                if not by_entry.has(entry):
+                    by_entry[entry] = game
     return by_entry
 
 func _add_game_path(path: String) -> bool:
@@ -12439,7 +12517,7 @@ func _probe_game_runtime_kind(root: String, runtime_kind: String, startup_script
         return runtime_kind
     # A verified QLIE startup takes priority over loose engine markers.
     var qlie_score := int(player.probe_runtime(RUNTIME_QLIE, root))
-    if qlie_score >= 950:
+    if qlie_score >= QLIE_VERIFIED_STARTUP_SCORE:
         return RUNTIME_QLIE
     if runtime_kind == RUNTIME_KIRIKIRI:
         if qlie_score >= 700 and not startup_script.strip_edges().is_empty():
@@ -13463,7 +13541,7 @@ func _return_to_library_after_runtime_exit() -> void:
         game_view.visible = false
     if player != null:
         player.release_frame_texture()
-        _cleanup_softpal_platform_ui()
+        _cleanup_runtime_platform_ui()
         _stop_wa2_audio()
         player.destroy_engine()
     last_texture_size = Vector2i.ZERO
@@ -13932,7 +14010,7 @@ func _switch_runtime_player(runtime_kind: String) -> bool:
         # Runtime implementations live behind one stable Godot-facing player.
         # Recreate only its engine handle so UI signals, frame effects, and
         # platform services do not need one Node implementation per backend.
-        _cleanup_softpal_platform_ui()
+        _cleanup_runtime_platform_ui()
         _stop_wa2_audio()
         player.destroy_engine()
         current_player_runtime_kind = normalized
@@ -14013,6 +14091,9 @@ func _on_runtime_platform_request(operation: String, argument: String) -> void:
     if player == null:
         return
     _trace_runtime_platform_request("received", operation, argument)
+    if operation == QLIE_FONT_CHOOSER_REQUEST:
+        _show_qlie_font_chooser()
+        return
     if operation == "runtime_end":
         call_deferred("_return_to_library_after_runtime_exit")
         return
@@ -14182,7 +14263,40 @@ func _release_softpal_name_editor() -> void:
     softpal_name_input_layer = null
     softpal_name_input = null
 
-func _cleanup_softpal_platform_ui() -> void:
+func _show_qlie_font_chooser() -> void:
+    if qlie_font_request_pending:
+        return
+    qlie_font_request_pending = true
+    qlie_font_request_serial += 1
+    var request_serial := qlie_font_request_serial
+    if DisplayServer.get_name() == "headless":
+        _finish_qlie_font_chooser("", OK, request_serial)
+        return
+    # Apple's scoped document picker copies the font into app-owned storage.
+    # Keep that copy available for the QLIE runtime and its saved settings.
+    qlie_font_dialog = _open_game_font_picker(game_render_root, "user://qlie_fonts",
+        _finish_qlie_font_chooser.bind(request_serial))
+
+func _finish_qlie_font_chooser(path: String, error: Error, request_serial: int) -> void:
+    if not qlie_font_request_pending or request_serial != qlie_font_request_serial:
+        return
+    qlie_font_request_pending = false
+    qlie_font_dialog = null
+    if player == null:
+        return
+    var selected_path := ""
+    if error == OK and not path.is_empty() and GameTextConfig.load_font(path).error == OK:
+        selected_path = ProjectSettings.globalize_path(path)
+    player.submit_platform_response(QLIE_FONT_CHOOSER_REQUEST, selected_path)
+
+func _discard_qlie_font_chooser() -> void:
+    qlie_font_request_pending = false
+    if is_instance_valid(qlie_font_dialog):
+        qlie_font_dialog.queue_free()
+    qlie_font_dialog = null
+
+func _cleanup_runtime_platform_ui() -> void:
+    _discard_qlie_font_chooser()
     _release_softpal_name_editor()
     if not softpal_original_window_title.is_empty():
         get_window().title = softpal_original_window_title
@@ -14729,7 +14843,7 @@ func _ensure_player_initialized() -> bool:
             player.get_last_result(),
             player.get_last_error(),
         ])
-        _cleanup_softpal_platform_ui()
+        _cleanup_runtime_platform_ui()
         _stop_wa2_audio()
         player.destroy_engine()
         return false
@@ -16549,7 +16663,7 @@ func _probe_cleanup_and_quit(code: int, record_cleanup: Callable = Callable()) -
         viewport.visible = false
         await get_tree().process_frame
         player.release_frame_texture()
-        _cleanup_softpal_platform_ui()
+        _cleanup_runtime_platform_ui()
         _stop_wa2_audio()
         player.destroy_engine()
     if record_cleanup.is_valid():
@@ -16786,6 +16900,7 @@ func _process(delta: float) -> void:
                     perf_log_file.flush()
                 game_running = false
                 _set_game_runtime_frame_pacing(false)
+                _discard_qlie_font_chooser()
                 runtime_display_state.reset(get_window())
                 softpal_aspect_mode = 1
                 _sync_game_virtual_controls()
@@ -17367,7 +17482,7 @@ func _notification(what: int) -> void:
         viewport.texture = null
         frame_upscale_source_texture = null
         player.release_frame_texture()
-        _cleanup_softpal_platform_ui()
+        _cleanup_runtime_platform_ui()
         _stop_wa2_audio()
         player.destroy_engine()
 

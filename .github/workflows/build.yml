@@ -1583,6 +1583,22 @@ jobs:
           ctest --test-dir out/linux/debug -R '^aethereliq-' \
             --no-tests=error --output-on-failure --parallel 2
 
+      - name: Run native QLIE library import test
+        if: env.AETHERKIRI_WITH_INTERNAL == 'true'
+        env:
+          AETHERELIQ_PROVIDER_TESTS: ${{ github.workspace }}/out/linux/debug/aethereliq-provider-tests
+          ALSOFT_DRIVERS: "null"
+          LD_LIBRARY_PATH: ${{ github.workspace }}/apps/godot_app/bin/linux/debug
+        run: |
+          timeout 60 "$GODOT_BIN" --headless --path apps/godot_app \
+            --script res://tests/qlie_import_root_test.gd \
+            2>&1 | tee "$RUNNER_TEMP/qlie_import_root.log"
+          grep -Fx 'qlie_tsuki_import_test: PASS' "$RUNNER_TEMP/qlie_import_root.log"
+          grep -Fx 'qlie_import_root_test: PASS' "$RUNNER_TEMP/qlie_import_root.log"
+          if grep -E 'SCRIPT ERROR:|^ERROR:' "$RUNNER_TEMP/qlie_import_root.log"; then
+            exit 1
+          fi
+
       - name: Run OnscripterYuri Godot smoke test
         env:
           AETHERKIRI_SMOKE_GAME: ${{ github.workspace }}/tests/fixtures/onscripter_smoke

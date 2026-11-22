@@ -85,6 +85,7 @@ const CoverIndex = preload("res://scripts/cover_index.gd")
 const GameCoverConfig = preload("res://scripts/game_cover_config.gd")
 const VNDBCoverResolver = preload("res://scripts/vndb_cover_resolver.gd")
 const GameInputMapping = preload("res://scripts/game_input_mapping.gd")
+const VirtualButtonLayouts := preload("res://scripts/virtual_button_layout.gd")
 const GameVirtualControls = preload("res://scripts/game_virtual_controls.gd")
 const DiagnosticSession = preload("res://scripts/diagnostic_session.gd")
 const DiagnosticLocalization = preload("res://scripts/diagnostic_localization.gd")
@@ -314,6 +315,7 @@ const UI_TEXT := {
         "settings.ui_scale_desc": "调整 iPhone 和 iPad 上的界面大小，保存后立即生效",
         "settings.virtual_control_menu": "游戏内控制菜单",
         "settings.virtual_control_menu_desc": "在游戏画面右上角显示虚拟控制菜单按钮",
+        "virtual_buttons.number": "方案%d",
         "import.progress": "正在导入 %s · %s",
         "import.complete": "已导入 Games：%s",
         "import.failed": "导入失败：%s",
@@ -752,6 +754,7 @@ const UI_TEXT := {
         "settings.ui_scale_desc": "調整 iPhone 和 iPad 上的介面大小，儲存後立即生效",
         "settings.virtual_control_menu": "遊戲內控制選單",
         "settings.virtual_control_menu_desc": "在遊戲畫面右上角顯示虛擬控制選單按鈕",
+        "virtual_buttons.number": "方案%d",
         "import.progress": "正在匯入 %s · %s",
         "import.complete": "已匯入 Games：%s",
         "import.failed": "匯入失敗：%s",
@@ -1188,6 +1191,7 @@ You can find it any time under Settings → QQ Group.",
         "settings.ui_scale_desc": "Adjust the interface size on iPhone and iPad; applies immediately after saving",
         "settings.virtual_control_menu": "In-Game Controls Menu",
         "settings.virtual_control_menu_desc": "Show the virtual-controls menu button at the top-right of the game view",
+        "virtual_buttons.number": "Layout %d",
         "import.progress": "Importing %s · %s",
         "import.complete": "Added to Games: %s",
         "import.failed": "Import failed: %s",
@@ -1593,6 +1597,7 @@ You can find it any time under Settings → QQ Group.",
         "settings.ui_scale_desc": "iPhone と iPad の UI サイズを調整します。保存後すぐに反映されます",
         "settings.virtual_control_menu": "ゲーム内コントロールメニュー",
         "settings.virtual_control_menu_desc": "ゲーム画面の右上に仮想コントロールメニューボタンを表示します",
+        "virtual_buttons.number": "レイアウト%d",
         "import.progress": "%s をインポート中 · %s",
         "import.complete": "Games に追加しました：%s",
         "import.failed": "インポートに失敗しました：%s",
@@ -1996,6 +2001,7 @@ You can find it any time under Settings → QQ Group.",
         "settings.ui_scale_desc": "iPhone 및 iPad의 인터페이스 크기를 조절하며 저장 후 즉시 적용됩니다",
         "settings.virtual_control_menu": "게임 내 컨트롤 메뉴",
         "settings.virtual_control_menu_desc": "게임 화면 오른쪽 위에 가상 컨트롤 메뉴 버튼을 표시합니다",
+        "virtual_buttons.number": "레이아웃 %d",
         "import.progress": "%s 가져오는 중 · %s",
         "import.complete": "Games에 추가됨: %s",
         "import.failed": "가져오기 실패: %s",
@@ -2430,6 +2436,7 @@ You can find it any time under Settings → QQ Group.",
         "settings.ui_scale_desc": "Ajusta el tamaño de la interfaz en iPhone y iPad; se aplica nada más guardar",
         "settings.virtual_control_menu": "Menú de controles en el juego",
         "settings.virtual_control_menu_desc": "Muestra el botón del menú de controles virtuales en la esquina superior derecha de la vista del juego",
+        "virtual_buttons.number": "Diseño %d",
         "import.progress": "Importando %s · %s",
         "import.complete": "Añadido a Games: %s",
         "import.failed": "Error al importar: %s",
@@ -2729,6 +2736,8 @@ const POINTER_MOD_LEFT := 0x08
 const POINTER_MOD_RIGHT := 0x10
 const POINTER_MOD_MIDDLE := 0x20
 const POINTER_MOD_CANCEL := 1 << 30
+const KEY_MOD_SHIFT := 0x01
+const KEY_MOD_ALT := 0x02
 const KEY_MOD_CONTROL := 0x04
 const RUNTIME_KIRIKIRI := "kirikiri"
 const RUNTIME_ONSCRIPTER := "onscripter"
@@ -3653,6 +3662,7 @@ func _build_ui() -> void:
     game_virtual_controls = GameVirtualControls.new()
     add_child(game_virtual_controls)
     game_virtual_controls.setup(ui_tokens)
+    game_virtual_controls.set_layout_profiles(_virtual_button_layouts())
     game_virtual_controls.set_input_mode(game_virtual_input_mode)
     _apply_game_virtual_control_preferences()
     game_virtual_controls.key_event_requested.connect(
@@ -5643,6 +5653,9 @@ func _mark_legal_safe_dialog(dialog: Control, first_use: bool, statement: bool) 
 func _layout_safe_dialog(dialog: Control, safe_rect: Rect2) -> void:
     var kind := String(dialog.get_meta("aether_safe_dialog_kind", ""))
     if kind.is_empty():
+        return
+    if kind == "fullscreen":
+        _set_control_rect(dialog, safe_rect)
         return
     if kind == "centered":
         var preferred := Vector2(dialog.get_meta("aether_safe_dialog_size", Vector2(560, 320)))
@@ -17690,6 +17703,8 @@ func _on_open_game() -> void:
         return
 
     _load_game_render_overrides(path)
+    if game_virtual_controls != null:
+        game_virtual_controls.set_layout_profiles(_virtual_button_layouts(game_render_root))
     var detected_runtime := _game_runtime_kind(path)
     if not _switch_runtime_player(detected_runtime):
         render_errors += 1
@@ -18935,6 +18950,8 @@ func _input(event: InputEvent) -> void:
         game_virtual_controls != null
         and game_virtual_controls.routes_pointer(event)
     ):
+        if game_virtual_controls.cap_input_handled:
+            get_viewport().set_input_as_handled()
         return
     # Platform dialogs are real Godot Controls, matching CDialog's host-owned
     # modal. Leave their events unhandled so LineEdit/Button GUI dispatch owns
@@ -19160,6 +19177,31 @@ func _sync_runtime_cursor() -> void:
     if not game_running:
         runtime_cursor_state.reset()
 
+func _begin_virtual_button_orientation() -> int:
+    if not _mobile_runtime():
+        return -1
+    var previous := DisplayServer.screen_get_orientation()
+    DisplayServer.screen_set_orientation(DisplayServer.SCREEN_SENSOR_LANDSCAPE)
+    return previous
+
+func _restore_virtual_button_orientation(previous: int) -> void:
+    if previous >= 0:
+        DisplayServer.screen_set_orientation(previous as DisplayServer.ScreenOrientation)
+
+func _virtual_button_global_path() -> String:
+    return VirtualButtonLayouts.GLOBAL_PATH
+
+func _virtual_button_layouts(game_path_value: String = "", default_pad_mode: String = "wasd") -> Dictionary:
+    var shared: Dictionary = VirtualButtonLayouts.load_global(
+        _virtual_button_global_path(), _t("virtual_buttons.number"), default_pad_mode).book
+    if game_path_value.is_empty():
+        return shared
+    var local: Dictionary = VirtualButtonLayouts.load_game(_game_runtime_root(game_path_value)).book
+    return {
+        "active": VirtualButtonLayouts.effective(local, shared).id,
+        "profiles": shared.profiles + local.profiles,
+    }
+
 func _sync_game_virtual_controls() -> void:
     if game_virtual_controls == null:
         return
@@ -19230,10 +19272,10 @@ func _virtual_key_unicode(
     key_code: int,
     modifiers: int
 ) -> int:
-    if not pressed or (modifiers & KEY_MOD_CONTROL) != 0:
+    if not pressed or (modifiers & (KEY_MOD_CONTROL | KEY_MOD_ALT)) != 0:
         return 0
     if key_code >= 0x41 and key_code <= 0x5A:
-        return key_code + 0x20
+        return key_code if modifiers & KEY_MOD_SHIFT else key_code + 0x20
     if key_code >= 0x30 and key_code <= 0x39:
         return key_code
     if key_code == 0x20:

@@ -1,5 +1,6 @@
 extends Control
 ## Native presenter for the React/Astryx reference. Runtime operations stay in the host.
+const BUTTON_EDITOR := preload("res://scripts/ui/astryx/virtual_button_editor.gd")
 const DESIGN := preload("res://scripts/ui/astryx/astryx_theme.gd")
 const SWITCH := preload("res://scripts/ui/astryx/astryx_switch.gd")
 const SCROLL := preload("res://scripts/ui/astryx/astryx_scroll.gd")
@@ -55,7 +56,7 @@ var notice: PanelContainer
 var notice_layer: MarginContainer
 var notice_tween: Tween
 var external_modal_id := 0
-var expanded_details := {"information": true, "rendering": false, "saves": true, "cache": true, "cover": false}
+var expanded_details := {"information": true, "rendering": false, "virtual_buttons": false, "saves": true, "cache": true, "cover": false}
 var layout_root: Control
 var library_content_key := ""
 var cached_library: Dictionary = {}
@@ -1227,6 +1228,17 @@ func _switch_row(parent: Control, title: String, description: String, toggle: Bu
     toggle.size_flags_vertical = Control.SIZE_SHRINK_CENTER
     row.add_child(toggle)
 
+func _virtual_button_row(parent: Control, game: Dictionary = {}) -> void:
+    var row := _hbox(12)
+    parent.add_child(row)
+    row.add_child(_label(BUTTON_EDITOR.caption(self, "layout"), 16, false, true))
+    var edit := _button(BUTTON_EDITOR.caption(self, "edit"),
+        func(): BUTTON_EDITOR.new().open(self, game.duplicate(true)),
+        "secondary", "AstryxEditVirtualButtons")
+    row.add_child(edit)
+    if game.is_empty():
+        parent.add_child(_divider())
+
 func _interface_settings() -> void:
     var fields := _section(_text("外观", "Appearance", "外観", "外觀", "Apariencia"), _text("选择适合你的界面，让每一段故事都有舒适的开始。", "Make every story feel at home with an interface that suits you.", "あなたに合った外観で、心地よく物語を始めましょう。", "選擇適合你的介面，讓每一段故事都有舒適的開始。", "Elige una interfaz a tu gusto para que cada historia empiece con comodidad."))
     var themes := _theme_segment()
@@ -1254,6 +1266,7 @@ func _interface_settings() -> void:
         _field(fields, _t("settings.ui_scale"), _select("ios_ui_scale_mode", ["compact", "comfortable", "standard"], [_t("ui_scale.compact"), _t("ui_scale.comfortable"), _t("ui_scale.standard")]))
     var controls := _section(_text("游戏控制", "Game controls", "ゲーム操作", "遊戲控制", "Controles del juego"), _text("按你的习惯调整游戏内的触控操作。", "Adjust touch controls to the way you play.", "プレイスタイルに合わせてタッチ操作を調整します。", "依照你的習慣調整遊戲內的觸控操作。", "Ajusta los controles táctiles a tu forma de jugar."))
     _toggle(controls, _t("settings.virtual_control_menu"), _t("settings.virtual_control_menu_desc"), "game_virtual_menu_enabled")
+    _virtual_button_row(controls)
     _field(controls, _text("虚拟键盘不透明度", "Virtual keyboard opacity", "仮想キーボードの不透明度", "虛擬鍵盤不透明度", "Opacidad del teclado virtual"), _opacity_slider())
     if host._mobile_runtime():
         _toggle(controls, _t("settings.picture_in_picture"), _t("settings.picture_in_picture_desc"), "picture_in_picture_enabled")
@@ -2264,6 +2277,9 @@ func _detail_content() -> void:
     var rendering := _collapsible(info, "rendering", _text("画面与渲染", "Graphics & rendering", "画面とレンダリング", "畫面與渲染", "Gráficos y renderizado"))
     if rendering.visible:
         _game_render_settings(rendering, game)
+    var input := _collapsible(info, "virtual_buttons", _text("游戏控制", "Game controls", "ゲーム操作", "遊戲控制", "Controles del juego"))
+    if input.visible:
+        _virtual_button_row(input, game)
     var saves := _collapsible(info, "saves", _text("存档", "Saves", "セーブデータ", "存檔", "Partidas guardadas"))
     if saves.visible:
         _detail_save_actions(saves, game)

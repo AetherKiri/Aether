@@ -8,6 +8,12 @@ import {
   type CSSProperties,
   type ReactNode,
 } from "react";
+import { VirtualButtonEditor, VirtualButtonGamePreview } from "./VirtualButtonEditor";
+import {
+  emptyProfiles,
+  loadProfileBooks,
+  type Profiles,
+} from "./virtualButtons";
 import appIcon from "../../../apps/godot_app/assets/icons/astryx/icon.png";
 import darkAppIcon from "../../../apps/godot_app/assets/icons/astryx/dark/icon.png";
 import { Theme } from "@astryxdesign/core/theme";
@@ -507,6 +513,24 @@ export function App() {
     }
   });
   const [selected, setSelected] = useState(games[0]);
+  const [gameplayPreview, setGameplayPreview] = useState(false);
+  const [buttonScope, setButtonScope] = useState<string | null>(null);
+  const [buttonBooks, setButtonBooks] = useState<Record<string, Profiles>>(() => {
+    try {
+      return loadProfileBooks(localStorage.getItem("aether-virtual-buttons") || "{}");
+    } catch {
+      return {};
+    }
+  });
+  const globalButtons = buttonBooks[""] ?? emptyProfiles(false);
+  function buttonRow(scope: string) {
+    return (
+      <HStack gap={4} hAlign="between" vAlign="center" style={settingsRowPadding}>
+        <Text weight="semibold">虚拟按钮布局</Text>
+        <Button label="编辑布局" variant="secondary" onClick={() => setButtonScope(scope)} />
+      </HStack>
+    );
+  }
   const [gameRendering, setGameRendering] = useState<
     Record<string, GameRendering>
   >({});
@@ -1470,6 +1494,8 @@ export function App() {
                           "keyboard",
                           "在游戏中显示快捷菜单与键盘入口。",
                         )}
+                        {buttonRow("")}
+                        <Divider />
                         {settingRow(
                           "opacity",
                           "虚拟键盘不透明度",
@@ -1895,9 +1921,7 @@ export function App() {
                     variant="primary"
                     size="lg"
                     icon={<Icon icon={PlayIcon} />}
-                    onClick={() =>
-                      setNotice("Godot 中会通过游戏原有运行时启动。")
-                    }
+                    onClick={() => setGameplayPreview(true)}
                   />
                 </VStack>
                 <CollapsibleGroup
@@ -1988,6 +2012,10 @@ export function App() {
                     trigger={<Heading level={3}>画面与渲染</Heading>}
                   >
                     {gameRenderSettings()}
+                  </Collapsible>
+                  <Divider />
+                  <Collapsible value="virtual_buttons" trigger={<Heading level={3}>游戏控制</Heading>}>
+                    {buttonRow(selected.name)}
                   </Collapsible>
                   <Divider />
                   <Collapsible
@@ -2323,6 +2351,32 @@ export function App() {
               )
             }
           />
+          {gameplayPreview && (
+            <VirtualButtonGamePreview
+              initial={buttonBooks[selected.name] ?? emptyProfiles(true)}
+              global={globalButtons}
+              backdrop={coversFor(selected)[0]}
+              opacity={saved.opacity / 100}
+              onClose={() => setGameplayPreview(false)}
+            />
+          )}
+          {buttonScope !== null && (
+            <VirtualButtonEditor
+              scope={buttonScope ? titleFor(selected) : "全局布局"}
+              backdrop={buttonScope ? coversFor(selected)[0] : undefined}
+              initial={buttonBooks[buttonScope] ?? emptyProfiles(!!buttonScope)}
+              global={buttonScope ? globalButtons : undefined}
+              dark={draft.theme === "dark"}
+              opacity={saved.opacity / 100}
+              onClose={() => setButtonScope(null)}
+              onSave={(book) => {
+                const books = { ...buttonBooks, [buttonScope]: book };
+                localStorage.setItem("aether-virtual-buttons", JSON.stringify(books));
+                setButtonBooks(books);
+                setButtonScope(null);
+              }}
+            />
+          )}
           <Dialog
             isOpen={pending !== null}
             onOpenChange={(open) => !open && setPending(null)}

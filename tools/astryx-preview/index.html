@@ -70,13 +70,15 @@
   </main>
   <script>
     let device = "tablet";
+    let editingLandscape = false;
     const frame = document.querySelector("#frame");
     function resize() {
-      const [w, h] = {
+      let [w, h] = {
         phone: [393, 852],
         portrait: [834, 1194],
         tablet: [1194, 834],
       }[device];
+      if (editingLandscape && h > w) [w, h] = [h, w];
       frame.style.width = w + "px";
       frame.style.height = h + "px";
       frame.style.transform = `translate(-50%,-50%) scale(${Math.min((innerWidth - 48) / w, (innerHeight - 100) / h, 1)})`;
@@ -91,6 +93,15 @@
           resize();
         }),
     );
+    addEventListener("message", (event) => {
+      if (
+        event.origin !== location.origin ||
+        event.source !== frame.contentWindow ||
+        event.data?.type !== "aether-layout-landscape"
+      ) return;
+      editingLandscape = event.data.open === true;
+      resize();
+    });
     addEventListener("resize", resize);
     resize();
   </script>

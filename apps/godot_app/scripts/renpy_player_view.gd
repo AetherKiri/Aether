@@ -51,6 +51,7 @@ func open_entry(value: Dictionary) -> String:
     controls_viewport.set_enabled(false)
     overlay_event_sequence = 0
     entry = value.duplicate(true)
+    controls.set_layout_profiles(host._virtual_button_layouts(String(entry.get("path", ""))))
     var root := ProjectSettings.globalize_path(host._game_runtime_root(String(entry.get("path", ""))))
     var relative := Metadata.renpy_game_directory(root)
     if relative.is_empty():
@@ -113,10 +114,13 @@ func _send_engine_input(value: Dictionary) -> void:
     if native == null or not ready_received or closing or lifecycle_paused:
         return
     if value.type == "key":
-        var names := {13: "enter", 17: "ctrl", 27: "esc", 32: "space",
-            33: "pgup", 34: "pgdn", 37: "left", 38: "up", 39: "right", 40: "down"}
-        value.key = names.get(int(value.code), String.chr(int(value.code)).to_lower())
-        value.mod = 192 if int(value.get("modifiers", 0)) & 4 else 0
+        var code := int(value.code)
+        var modifiers := int(value.get("modifiers", 0))
+        value.key = controls.Layouts.key_name(code).to_lower()
+        value.mod = (3 if modifiers & 1 else 0) | (768 if modifiers & 2 else 0) | (192 if modifiers & 4 else 0)
+        var character: int = host._virtual_key_unicode(value.pressed, code, modifiers)
+        if character > 0:
+            value.text = String.chr(character)
     elif value.type == "scroll":
         value.type = "button"
         value.button = 4 if float(value.delta) > 0 else 5

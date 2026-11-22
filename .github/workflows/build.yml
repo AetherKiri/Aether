@@ -1145,6 +1145,8 @@ jobs:
           "$GODOT_BIN" --headless --path apps/godot_app \
             --script res://tests/astryx_mobile_input_test.gd
           "$GODOT_BIN" --headless --path apps/godot_app \
+            --script res://tests/virtual_button_editor_test.gd
+          "$GODOT_BIN" --headless --path apps/godot_app \
             --script res://tests/astryx_navigation_test.gd
           "$GODOT_BIN" --headless --path apps/godot_app \
             --script res://tests/library_startup_test.gd

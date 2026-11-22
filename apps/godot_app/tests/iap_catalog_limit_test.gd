@@ -22,6 +22,7 @@ class RuntimeAccessApp:
     var runtime_kind := RUNTIME_SOFTPAL
     var enforce_beta_access := true
     var launched := false
+    var launch_runtime := ""
     var denied := false
 
     func _game_runtime_kind(_path: String) -> String:
@@ -33,8 +34,9 @@ class RuntimeAccessApp:
     func _iap_supported_platform() -> bool:
         return true
 
-    func _start_selected_game_after_entitlements() -> void:
+    func _start_selected_game_after_entitlements(verified_runtime: String = "") -> void:
         launched = true
+        launch_runtime = verified_runtime
 
     func _show_system_alert(_message: String, _title: String = "Aether") -> void:
         denied = true
@@ -145,7 +147,7 @@ func _check_runtime_launch_access() -> void:
     # Force the Apple Release policy even when running with the debug editor.
     # Only Minori performs the coffee entitlement round trip. KiriKiri and its
     # WHITE ALBUM2 provider both launch without a coffee transaction.
-    for runtime_kind in ["softpal", "minori", "kirikiri", "wa2", "advhd", "yuris"]:
+    for runtime_kind in ["softpal", "minori", "kirikiri", "wa2", "advhd", "yuris", "qlie"]:
         for enforce in [true, false]:
             for entitled in [true, false]:
                 var app = RuntimeAccessApp.new()
@@ -169,6 +171,7 @@ func _check_runtime_launch_access() -> void:
                 else:
                     _expect(coffee_player.requested_products.is_empty())
                     _expect(app.launched)
+                    _expect(app.launch_runtime == ("qlie" if runtime_kind == "qlie" else ""))
                     _expect(not app.denied)
                     _expect(app.iap_pending_beta_check_id == 0)
                     _expect(app.iap_pending_beta_game.is_empty())

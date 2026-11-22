@@ -122,7 +122,7 @@ Required for normal development:
 
 - macOS with Xcode command line tools for macOS/iOS builds.
 - CMake 3.28+ and Ninja.
-- Godot 4.6.3 stable at `/Applications/Godot.app`, or set `GODOT_BIN`.
+- Godot 4.7 stable at `/Applications/Godot.app`, or set `GODOT_BIN`.
 - Godot export templates for the platforms you build.
 - vcpkg in `.devtools/vcpkg` or `VCPKG_ROOT`.
 
@@ -190,6 +190,17 @@ Clean a platform build:
 ```
 
 ## Platform Build And Launch
+
+Windows x64 Debug from source in an x64 Visual Studio Developer PowerShell with CMake, Ninja, vcpkg and Godot 4.7.2 installed. Initialize the public build dependencies described in the [README](../README.md#build) first. The QLIE step requires access to the private AetherELIQ package.
+
+```powershell
+git submodule update --init packages/AetherELIQ
+cmake --preset "Windows Debug Config" -DAETHERKIRI_ENABLE_QLIE=ON
+cmake --build --preset "Windows Debug Build" --target aether_kiri_godot
+& "C:/path/to/Godot_v4.7.2-stable_win64_console.exe" --path apps/godot_app --rendering-method gl_compatibility
+```
+
+Import the game folder from the library UI. For a QLIE pack with a custom entry, set **QLIE startup script** in the game details to the path inside the archive. [Start-AetherUI.ps1](../scripts/Start-AetherUI.ps1) is a WHITE ALBUM2 launcher.
 
 macOS debug:
 

@@ -16,6 +16,18 @@ static func prefer_local(
         return legacy
     return local
 
+static func with_writable_fallback(local: String, fallback: String) -> String:
+    # Once selected, keep the fallback even if the game's volume later
+    # becomes writable. Otherwise the game can appear to lose newer saves.
+    var marker := fallback.get_base_dir().path_join(".aether-save-bank")
+    if not FileAccess.file_exists(marker) and _directory_is_writable(local):
+        return local
+    if not _directory_is_writable(fallback):
+        return ""
+    if not _migrate_legacy_files(local, fallback, ".aether-save-bank", [], marker):
+        return ""
+    return fallback
+
 static func _directory_is_writable(directory: String) -> bool:
     if DirAccess.make_dir_recursive_absolute(directory) != OK:
         return false
@@ -27,9 +39,10 @@ static func _directory_is_writable(directory: String) -> bool:
     return DirAccess.remove_absolute(path) == OK
 
 static func _migrate_legacy_files(
-    source: String, destination: String, migration_marker: String, excluded_directories: Array[String]
+    source: String, destination: String, migration_marker: String, excluded_directories: Array[String],
+    marker_path: String = ""
 ) -> bool:
-    var marker := destination.path_join(migration_marker)
+    var marker := destination.path_join(migration_marker) if marker_path.is_empty() else marker_path
     if FileAccess.file_exists(marker):
         return true
     var copied: Array[String] = []

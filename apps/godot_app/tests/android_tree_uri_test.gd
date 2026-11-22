@@ -1,9 +1,13 @@
 extends SceneTree
 
-const MAIN_SCRIPT := preload("res://scripts/main.gd")
+class ImportApp extends "res://scripts/main.gd":
+    var import_message := ""
+
+    func _show_message(message: String) -> void:
+        import_message = message
 
 func _initialize() -> void:
-    var app = MAIN_SCRIPT.new()
+    var app := ImportApp.new()
     var cases := {
         "content://com.android.externalstorage.documents/tree/primary%3AGames%2FMyGame":
             "/storage/emulated/0/Games/MyGame",
@@ -38,6 +42,13 @@ func _initialize() -> void:
     var unsupported := "content://com.android.providers.downloads.documents/tree/raw%3A%2Fstorage%2Femulated%2F0%2FDownload%2FGame"
     if app._android_external_storage_path_from_tree_uri(unsupported) != unsupported:
         push_error("Non-ExternalStorageProvider tree URIs must remain untouched")
+        app.ui_motion.free()
+        app.free()
+        quit(1)
+        return
+
+    if app._add_game_path(unsupported) or app.import_message != app._t("message.android_choose_local_game_folder"):
+        push_error("Unsupported document provider should prompt for a local game folder")
         app.ui_motion.free()
         app.free()
         quit(1)

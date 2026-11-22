@@ -12,6 +12,7 @@ const FlashPlayerView = preload("res://scripts/flash_player_view.gd")
 const TyranoPlayerView = preload("res://scripts/tyrano_player_view.gd")
 const RenpyPlayerView = preload("res://scripts/renpy_player_view.gd")
 const RuntimeDisplayState = preload("res://scripts/runtime_display_state.gd")
+const QLIE_FONT_CHOOSER_REQUEST := "qlie_font_chooser"
 const RuntimeDisplaySettings = preload("res://scripts/runtime_display_settings.gd")
 const RuntimeCursorState = preload("res://scripts/runtime_cursor_state.gd")
 const GameLibraryStorage = preload("res://scripts/game_library_storage.gd")
@@ -81,6 +82,7 @@ const ProbeFrameMetrics = preload("res://scripts/probe_frame_metrics.gd")
 const RuntimeRegressionProbe = preload("res://scripts/runtime_regression_probe.gd")
 const RuntimeFormDialog = preload("res://scripts/runtime_form_dialog.gd")
 const GameMetadata = preload("res://scripts/game_metadata.gd")
+const GameSaveLocations = preload("res://scripts/game_save_locations.gd")
 const CoverIndex = preload("res://scripts/cover_index.gd")
 const GameCoverConfig = preload("res://scripts/game_cover_config.gd")
 const VNDBCoverResolver = preload("res://scripts/vndb_cover_resolver.gd")
@@ -514,6 +516,9 @@ const UI_TEXT := {
         "detail.launch_entry": "启动入口：%s",
         "detail.default_launch_entry": "游戏目录（自动检测）",
         "detail.set_launch_file": "切换启动文件",
+        "detail.qlie_startup": "QLIE 启动脚本",
+        "detail.qlie_startup_hint": "请输入包内相对路径，例如 Script/intro.s。留空使用 startup.s。",
+        "detail.qlie_startup_invalid": "请输入有效的包内相对路径。",
         "detail.script_encoding": "脚本编码",
         "detail.reset_launch_file": "恢复目录自动检测",
         "detail.rfvp_encoding": "RFVP 文本编码",
@@ -569,6 +574,7 @@ const UI_TEXT := {
         "message.android_storage_permission_required": "需要允许 Aether 访问文件系统后才能导入或启动外部游戏。请在系统弹窗或权限设置中授予文件访问权限，然后再试。",
         "message.android_video_storage_permission_required": "需要允许 Aether 访问文件系统后才能导入视频。请在系统弹窗或权限设置中授予文件访问权限，然后再试。",
         "message.path_missing": "游戏路径不存在",
+        "message.android_choose_local_game_folder": "此目录无法直接读取。请在文件选择器中从设备存储或 SD 卡选择完整游戏文件夹。",
         "message.launch_file_unsupported": "启动文件只支持 EXE、XP3 或 HCB",
         "message.launch_file_outside_game": "启动文件必须位于当前游戏目录内",
         "message.launch_file_missing": "启动文件不存在：%s",
@@ -950,6 +956,9 @@ const UI_TEXT := {
         "detail.launch_entry": "啟動入口：%s",
         "detail.default_launch_entry": "遊戲目錄（自動偵測）",
         "detail.set_launch_file": "切換啟動檔案",
+        "detail.qlie_startup": "QLIE 啟動指令碼",
+        "detail.qlie_startup_hint": "請輸入封包內相對路徑，例如 Script/intro.s。留空使用 startup.s。",
+        "detail.qlie_startup_invalid": "請輸入有效的封包內相對路徑。",
         "detail.script_encoding": "腳本編碼",
         "detail.reset_launch_file": "恢復目錄自動偵測",
         "detail.rfvp_encoding": "RFVP 文字編碼",
@@ -1003,6 +1012,7 @@ const UI_TEXT := {
         "message.android_storage_permission_required": "需要允許 Aether 存取檔案系統後才能匯入或啟動外部遊戲。請在系統彈窗或權限設定中授予檔案存取權限，然後再試。",
         "message.android_video_storage_permission_required": "需要允許 Aether 存取檔案系統後才能匯入影片。請在系統彈窗或權限設定中授予檔案存取權限，然後再試。",
         "message.path_missing": "遊戲路徑不存在",
+        "message.android_choose_local_game_folder": "無法直接讀取此目錄。請在檔案選擇器中從裝置儲存空間或 SD 卡選擇完整遊戲資料夾。",
         "message.launch_file_unsupported": "啟動檔案僅支援 EXE、XP3 或 HCB",
         "message.launch_file_outside_game": "啟動檔案必須位於目前遊戲目錄內",
         "message.launch_file_missing": "啟動檔案不存在：%s",
@@ -1384,6 +1394,9 @@ You can find it any time under Settings → QQ Group.",
         "detail.launch_entry": "Launch entry: %s",
         "detail.default_launch_entry": "Game folder (auto-detect)",
         "detail.set_launch_file": "Change Launch File",
+        "detail.qlie_startup": "QLIE startup script",
+        "detail.qlie_startup_hint": "Enter a path inside the game archive, such as Script/intro.s. Leave blank to use startup.s.",
+        "detail.qlie_startup_invalid": "Enter a valid relative path inside the archive.",
         "detail.script_encoding": "Script encoding",
         "detail.reset_launch_file": "Restore Folder Auto-detect",
         "detail.rfvp_encoding": "RFVP Text Encoding",
@@ -1439,6 +1452,7 @@ You can find it any time under Settings → QQ Group.",
         "message.android_storage_permission_required": "Allow Aether to access the file system before importing or launching external games. Grant file access in the system prompt or permission settings, then try again.",
         "message.android_video_storage_permission_required": "Allow Aether to access the file system before importing videos. Grant file access in the system prompt or permission settings, then try again.",
         "message.path_missing": "Game path does not exist",
+        "message.android_choose_local_game_folder": "Aether cannot open this folder directly. In the file picker, select the complete game folder from device storage or an SD card.",
         "message.launch_file_unsupported": "The launch file must be an EXE, XP3 or HCB file",
         "message.launch_file_outside_game": "The launch file must be inside this game folder",
         "message.launch_file_missing": "Launch file does not exist: %s",
@@ -1787,6 +1801,9 @@ You can find it any time under Settings → QQ Group.",
         "detail.launch_entry": "起動エントリ：%s",
         "detail.default_launch_entry": "ゲームフォルダー（自動検出）",
         "detail.set_launch_file": "起動ファイルを変更",
+        "detail.qlie_startup": "QLIE 起動スクリプト",
+        "detail.qlie_startup_hint": "アーカイブ内の相対パス（例：Script/intro.s）を入力してください。空欄の場合は startup.s を使います。",
+        "detail.qlie_startup_invalid": "アーカイブ内の有効な相対パスを入力してください。",
         "detail.script_encoding": "スクリプトの文字コード",
         "detail.reset_launch_file": "フォルダーの自動検出に戻す",
         "detail.rfvp_encoding": "RFVP 文字エンコーディング",
@@ -1840,6 +1857,7 @@ You can find it any time under Settings → QQ Group.",
         "message.android_storage_permission_required": "外部ゲームのインポートまたは起動には、Aether にファイルシステムへのアクセスを許可する必要があります。システムの権限ダイアログまたは設定でファイルアクセスを許可してから、もう一度お試しください。",
         "message.android_video_storage_permission_required": "動画をインポートするには、Aether にファイルシステムへのアクセスを許可する必要があります。システムの権限ダイアログまたは設定でファイルアクセスを許可してから、もう一度お試しください。",
         "message.path_missing": "ゲームパスが存在しません",
+        "message.android_choose_local_game_folder": "このフォルダーは直接開けません。ファイル選択画面で端末のストレージまたは SD カードから、ゲームフォルダー全体を選択してください。",
         "message.launch_file_unsupported": "起動ファイルは EXE、XP3 または HCB のみ対応しています",
         "message.launch_file_outside_game": "起動ファイルは現在のゲームフォルダー内にある必要があります",
         "message.launch_file_missing": "起動ファイルが存在しません：%s",
@@ -2188,6 +2206,9 @@ You can find it any time under Settings → QQ Group.",
         "detail.launch_entry": "실행 진입점: %s",
         "detail.default_launch_entry": "게임 폴더(자동 감지)",
         "detail.set_launch_file": "실행 파일 변경",
+        "detail.qlie_startup": "QLIE 시작 스크립트",
+        "detail.qlie_startup_hint": "Script/intro.s처럼 아카이브 내부의 상대 경로를 입력하세요. 비워 두면 startup.s를 사용합니다.",
+        "detail.qlie_startup_invalid": "아카이브 내부의 올바른 상대 경로를 입력하세요.",
         "detail.script_encoding": "스크립트 인코딩",
         "detail.reset_launch_file": "폴더 자동 감지 복원",
         "detail.rfvp_encoding": "RFVP 텍스트 인코딩",
@@ -2241,6 +2262,7 @@ You can find it any time under Settings → QQ Group.",
         "message.android_storage_permission_required": "외부 게임을 가져오거나 실행하려면 Aether의 파일 시스템 접근을 허용해야 합니다. 시스템 권한 창 또는 권한 설정에서 파일 접근 권한을 허용한 뒤 다시 시도하세요.",
         "message.android_video_storage_permission_required": "비디오를 가져오려면 Aether의 파일 시스템 접근을 허용해야 합니다. 시스템 권한 창 또는 권한 설정에서 파일 접근 권한을 허용한 뒤 다시 시도하세요.",
         "message.path_missing": "게임 경로가 존재하지 않습니다",
+        "message.android_choose_local_game_folder": "이 폴더를 직접 열 수 없습니다. 파일 선택기에서 기기 저장소 또는 SD 카드의 전체 게임 폴더를 선택하세요.",
         "message.launch_file_unsupported": "실행 파일은 EXE, XP3 또는 HCB만 지원합니다",
         "message.launch_file_outside_game": "실행 파일은 현재 게임 폴더 안에 있어야 합니다",
         "message.launch_file_missing": "실행 파일이 존재하지 않습니다: %s",
@@ -2617,6 +2639,9 @@ You can find it any time under Settings → QQ Group.",
         "detail.launch_entry": "Entrada de inicio: %s",
         "detail.default_launch_entry": "Carpeta del juego (detección automática)",
         "detail.set_launch_file": "Cambiar archivo de inicio",
+        "detail.qlie_startup": "Script de inicio de QLIE",
+        "detail.qlie_startup_hint": "Introduce una ruta dentro del archivo, como Script/intro.s. Déjala vacía para usar startup.s.",
+        "detail.qlie_startup_invalid": "Introduce una ruta relativa válida dentro del archivo.",
         "detail.script_encoding": "Codificación de los scripts",
         "detail.reset_launch_file": "Restaurar la detección automática de la carpeta",
         "detail.rfvp_encoding": "Codificación de texto de RFVP",
@@ -2672,6 +2697,7 @@ You can find it any time under Settings → QQ Group.",
         "message.android_storage_permission_required": "Permite que Aether acceda al sistema de archivos antes de importar o iniciar juegos externos. Concede el acceso a los archivos en el aviso del sistema o en los ajustes de permisos y vuelve a intentarlo.",
         "message.android_video_storage_permission_required": "Permite que Aether acceda al sistema de archivos antes de importar vídeos. Concede el acceso a los archivos en el aviso del sistema o en los ajustes de permisos y vuelve a intentarlo.",
         "message.path_missing": "La ruta del juego no existe",
+        "message.android_choose_local_game_folder": "Aether no puede abrir esta carpeta directamente. Selecciona la carpeta completa del juego desde el almacenamiento del dispositivo o una tarjeta SD.",
         "message.launch_file_unsupported": "El archivo de inicio debe ser un archivo EXE, XP3 o HCB",
         "message.launch_file_outside_game": "El archivo de inicio debe estar dentro de la carpeta de este juego",
         "message.launch_file_missing": "El archivo de inicio no existe: %s",
@@ -2730,6 +2756,8 @@ const RUNTIME_XSYSTEM4 := "xsystem4"
 const RUNTIME_XSYSTEM35 := "xsystem35"
 const RUNTIME_SYSTEM3 := "system3"
 const RUNTIME_WA2 := "wa2"
+const RUNTIME_QLIE := "qlie"
+const QLIE_VERIFIED_STARTUP_SCORE := 950
 const RUNTIME_BGI := "bgi"
 const RUNTIME_ADVHD := "advhd"
 const RUNTIME_ESCUDE := "escude"
@@ -3010,6 +3038,9 @@ var native_cover_file_picker_pending := false
 var native_cover_file_picker_is_photo := false
 var native_cover_file_picker_library_path := ""
 var native_font_file_picker_callback := Callable()
+var qlie_font_dialog: FileDialog
+var qlie_font_request_serial := 0
+var qlie_font_request_pending := false
 var native_translation_model_file_picker_pending := false
 var active_game_path := ""
 var active_game_started_msec := 0
@@ -3287,6 +3318,7 @@ const GAME_VIRTUAL_KEYBOARD_OPACITY_STEP := 0.05
 const TOUCH_SECONDARY_TAP_WINDOW_MS := 180
 const TOUCH_SECONDARY_QUARANTINE_MS := 320
 const TOUCH_SINGLE_TAP_DELAY_MS := 90
+const QLIE_TOUCH_TAP_MAX_MS := 350
 const TOUCH_CLICK_HOLD_MS := 48
 const ARTEMIS_INPUT_TRACE_DELAYS_MS := [0, 80, 240, 800]
 const INPUT_DEVICE_ID_EMULATION := -1
@@ -9603,7 +9635,12 @@ func _detail_tools(game: Dictionary) -> FlowContainer:
             })
         )
         tools.add_child(encoding)
-    if _can_configure_launch_file(game):
+    if detail_runtime == RUNTIME_QLIE and OS.get_name() != "Web":
+        var edit_startup := _icon_action_button(ICON_PLAY, _t("detail.qlie_startup"),
+            _show_qlie_startup_dialog.bind(String(game.get("path", ""))))
+        _reveal_icon_action_label_on_hover(edit_startup, _t("detail.qlie_startup"))
+        tools.add_child(edit_startup)
+    elif _can_configure_launch_file(game, detail_runtime):
         var set_launch := _icon_action_button(ICON_PLAY, _t("detail.set_launch_file"), func(): _set_launch_file_for_selected())
         _reveal_icon_action_label_on_hover(set_launch, _t("detail.set_launch_file"))
         tools.add_child(set_launch)
@@ -9611,7 +9648,7 @@ func _detail_tools(game: Dictionary) -> FlowContainer:
             var reset_launch := _icon_action_button(ICON_REFRESH, _t("detail.reset_launch_file"), func(): _reset_launch_file_for_selected())
             _reveal_icon_action_label_on_hover(reset_launch, _t("detail.reset_launch_file"))
             tools.add_child(reset_launch)
-    if _game_runtime_kind(String(game.get("path", ""))) == "rfvp":
+    if detail_runtime == "rfvp":
         var set_encoding := _icon_action_button(ICON_SETTINGS, _t("detail.rfvp_encoding"), func(): _show_rfvp_encoding_dialog())
         _reveal_icon_action_label_on_hover(set_encoding, _t("detail.rfvp_encoding"))
         tools.add_child(set_encoding)
@@ -10551,8 +10588,7 @@ func _offer_scrape_after_add(game: Dictionary) -> void:
     )
     buttons.add_child(yes)
 
-func _choose_game_font(callback: Callable) -> void:
-    var path := String(selected_game.get("path", ""))
+func _game_font_picker_title() -> String:
     var title := "Choose game font"
     match active_language:
         LANG_ZH_HANS: title = "选择游戏字体"
@@ -10560,17 +10596,34 @@ func _choose_game_font(callback: Callable) -> void:
         LANG_JA: title = "ゲームフォントを選択"
         LANG_KO: title = "게임 글꼴 선택"
         LANG_ES: title = "Elegir fuente del juego"
+    return title
+
+func _open_game_font_picker(path: String, destination: String, callback: Callable) -> FileDialog:
+    var title := _game_font_picker_title()
     if OS.get_name() in ["iOS", "macOS"] and player != null and player.has_method("native_font_file_picker_open"):
-        if bool(player.native_font_file_picker_open(title, path, ProjectSettings.globalize_path("user://font_import"))):
+        if not native_font_file_picker_callback.is_valid() \
+                and bool(player.native_font_file_picker_open(title, path, ProjectSettings.globalize_path(destination))):
             native_font_file_picker_callback = callback
-            return
+            return null
     var dialog := _create_file_dialog(title, FileDialog.FILE_MODE_OPEN_FILE, PackedStringArray(["*.ttf,*.otf;Fonts"]))
-    dialog.current_dir = path
-    dialog.file_selected.connect(func(font_path: String):
-        callback.call(GameTextConfig.load_font(font_path))
-    )
+    if DirAccess.dir_exists_absolute(path):
+        dialog.current_dir = path
+    dialog.file_selected.connect(func(font_path: String): callback.call(font_path, OK))
+    dialog.canceled.connect(func(): callback.call("", OK))
     add_child(dialog)
     dialog.popup_centered(Vector2i(900, 640))
+    return dialog
+
+func _choose_game_font(callback: Callable) -> void:
+    _open_game_font_picker(String(selected_game.get("path", "")), "user://font_import",
+        func(path: String, error: Error) -> void:
+            if error != OK:
+                callback.call({"error": error})
+                return
+            if path.is_empty():
+                return
+            callback.call(GameTextConfig.load_font(path))
+    )
 
 func _poll_native_font_file_picker() -> void:
     if not native_font_file_picker_callback.is_valid() or player == null:
@@ -10582,17 +10635,17 @@ func _poll_native_font_file_picker() -> void:
     native_font_file_picker_callback = Callable()
     var result = JSON.parse_string(json)
     if not result is Dictionary:
-        callback.call({"error": ERR_PARSE_ERROR})
-        return
-    if result.get("status") == "selected":
+        callback.call("", ERR_PARSE_ERROR)
+    elif result.get("status") == "selected":
         var path := String(result.get("path", ""))
-        var loaded := GameTextConfig.load_font(path)
+        callback.call(path, OK)
         if path.begins_with(ProjectSettings.globalize_path("user://font_import").trim_suffix("/") + "/"):
             DirAccess.remove_absolute(path)
             DirAccess.remove_absolute(path.get_base_dir())
-        callback.call(loaded)
     elif result.get("status") == "error":
-        callback.call({"error": ERR_FILE_CANT_READ})
+        callback.call("", ERR_FILE_CANT_READ)
+    else:
+        callback.call("", OK)
 
 func _read_game_text_config(game: Dictionary, runtime: String = "") -> Dictionary:
     if runtime.is_empty():
@@ -10707,16 +10760,55 @@ func _record_selected_cover(library_path: String, cover_path: String) -> void:
             break
     CoverIndex.save_index(index)
 
-func _game_launch_entry_label(game: Dictionary) -> String:
+func _game_launch_entry_label(game: Dictionary, runtime: String = "") -> String:
+    if runtime == RUNTIME_QLIE or String(game.get("engine", "")) == RUNTIME_QLIE:
+        var script_path := String(game.get(GameLaunchEntry.STARTUP_SCRIPT_FIELD, ""))
+        return "startup.s" if script_path.is_empty() else script_path
     var relative_path := GameLaunchEntry.configured_relative_path(game)
     if relative_path.is_empty():
         return _t("detail.default_launch_entry")
     return relative_path
 
+func _show_qlie_startup_dialog(library_path: String) -> void:
+    if library_path.is_empty() or library_path != String(selected_game.get("path", "")):
+        return
+    var dialog := _modal_dialog(Vector2(520, 300))
+    var box := _modal_stack(dialog, _t("detail.qlie_startup"), ICON_PLAY)
+    box.add_child(_dialog_body_label(_t("detail.qlie_startup_hint")))
+    var input := LineEdit.new()
+    input.text = String(selected_game.get(GameLaunchEntry.STARTUP_SCRIPT_FIELD, ""))
+    input.placeholder_text = "startup.s"
+    input.accessibility_name = _t("detail.qlie_startup")
+    input.custom_minimum_size.y = 48
+    ui_widgets.line_edit(input)
+    box.add_child(input)
+    var error := _dialog_body_label(_t("detail.qlie_startup_invalid"))
+    error.hide()
+    box.add_child(error)
+    var save := _pill_button(_t("settings.save"))
+    save.size_flags_horizontal = Control.SIZE_SHRINK_END
+    var commit := func():
+        var entry := GameLaunchEntry.normalize_qlie_startup_script(input.text)
+        if not input.text.strip_edges().is_empty() and entry.is_empty():
+            error.show()
+            return
+        _dismiss_modal(func():
+            _update_game(library_path, {GameLaunchEntry.STARTUP_SCRIPT_FIELD: entry, "engine": RUNTIME_QLIE})
+            _show_detail(selected_game)
+        )
+    save.pressed.connect(commit)
+    input.text_submitted.connect(func(_text: String): commit.call())
+    input.text_changed.connect(func(_text: String): error.hide())
+    box.add_child(save)
+    var cancel := _secondary_dialog_button(_t("dialog.cancel"))
+    cancel.size_flags_horizontal = Control.SIZE_SHRINK_END
+    cancel.pressed.connect(func(): _dismiss_modal())
+    box.add_child(cancel)
+
 func _can_configure_launch_file(game: Dictionary, runtime: String = "") -> bool:
     return OS.get_name() != "Web" \
         and not builtin_demo.is_game(game) \
-        and (runtime if not runtime.is_empty() else _game_runtime_kind(String(game.get("path", "")))) not in [RUNTIME_ONSCRIPTER, RUNTIME_N2SYSTEM, RUNTIME_XSYSTEM4, RUNTIME_XSYSTEM35, RUNTIME_SYSTEM3] \
+        and (runtime if not runtime.is_empty() else _game_runtime_kind(String(game.get("path", "")))) not in [RUNTIME_ONSCRIPTER, RUNTIME_N2SYSTEM, RUNTIME_XSYSTEM4, RUNTIME_XSYSTEM35, RUNTIME_SYSTEM3, RUNTIME_QLIE] \
         and String(game.get("type", "Directory")).to_lower() == "directory"
 
 func _set_launch_file_for_selected() -> void:
@@ -12065,8 +12157,8 @@ func _save_game_list(games: Array[Dictionary]) -> Error:
     file.flush()
     return file.get_error()
 
-func _scan_ios_games_dir(existing: Array[Dictionary]) -> Array[Dictionary]:
-    var root := ProjectSettings.globalize_path("user://Games")
+func _scan_ios_games_dir(existing: Array[Dictionary], games_root: String = "user://Games") -> Array[Dictionary]:
+    var root := ProjectSettings.globalize_path(games_root)
     DirAccess.make_dir_recursive_absolute(root)
     var by_entry := _games_by_library_entry(existing, root)
     var normalized_root := root.simplify_path().trim_suffix("/")
@@ -12085,11 +12177,68 @@ func _scan_ios_games_dir(existing: Array[Dictionary]) -> Array[Dictionary]:
         if not entry.begins_with("."):
             var path := root.path_join(entry)
             if (dir.current_is_dir() or entry.to_lower().ends_with(".xp3")) and not FileAccess.file_exists(path.path_join("aether-import-in-progress.json")):
-                var game: Dictionary = by_entry.get(entry, _game_info_from_path(path))
+                var game: Dictionary = by_entry.get(entry, {})
+                var stored_path := String(game.get("path", "")).simplify_path()
+                var stored_engine := String(game.get("engine", ""))
+                var qlie_root := ""
+                if dir.current_is_dir() and not dir.is_link(entry):
+                    var cached_fallback := stored_path == path.simplify_path() and (
+                        stored_engine.is_empty() or stored_engine == RUNTIME_KIRIKIRI
+                    )
+                    # A manual copy in Files can complete after the first scan.
+                    # Retry the native probe on cached fallback entries.
+                    if cached_fallback and player != null and player.has_method("probe_runtime") \
+                            and int(player.probe_runtime(RUNTIME_QLIE, path)) >= QLIE_VERIFIED_STARTUP_SCORE:
+                        qlie_root = path
+                    elif game.is_empty() or stored_path != path.simplify_path() or cached_fallback:
+                        qlie_root = _ios_imported_qlie_child(path)
+                if not qlie_root.is_empty():
+                    if stored_path == path.simplify_path():
+                        # Keep user metadata when migrating an existing wrapper record.
+                        game = game.duplicate(true)
+                    elif stored_path != qlie_root.simplify_path():
+                        game = _game_info_from_path(qlie_root)
+                    path = qlie_root
+                    game["engine"] = RUNTIME_QLIE
+                    game[GameLaunchEntry.FIELD] = ""
+                elif game.is_empty() or stored_path != path.simplify_path():
+                    game = _game_info_from_path(path)
                 game["path"] = path
                 next.append(game)
         entry = dir.get_next()
     return _dedupe_games(next)
+
+func _ios_imported_qlie_child(path: String) -> String:
+    if player == null or not player.has_method("probe_runtime"):
+        return ""
+    var directory := DirAccess.open(path)
+    if directory == null:
+        return ""
+    # Keep installs with their own launcher or archive at the selected root.
+    for name in directory.get_files():
+        if name.get_extension().to_lower() in ["exe", "xp3"]:
+            return ""
+    var match_path := ""
+    var match_score := 0
+    for name in directory.get_directories():
+        if name.begins_with(".") or directory.is_link(name):
+            continue
+        var child := path.path_join(name)
+        var score := int(player.probe_runtime(RUNTIME_QLIE, child))
+        if score <= 0:
+            continue
+        if not match_path.is_empty():
+            return ""
+        match_path = child
+        match_score = score
+    if match_score < QLIE_VERIFIED_STARTUP_SCORE:
+        return ""
+    # Keep roots that have their own engine markers or loose KiriKiri startup.
+    if GameMetadata.inspect(path).get("engine", RUNTIME_KIRIKIRI) != RUNTIME_KIRIKIRI:
+        return ""
+    if FileAccess.file_exists(path.path_join("startup.tjs")) or FileAccess.file_exists(path.path_join("data/startup.tjs")):
+        return ""
+    return match_path
 
 func _games_by_library_entry(existing: Array[Dictionary], root: String) -> Dictionary:
     var by_entry := {}
@@ -12097,11 +12246,20 @@ func _games_by_library_entry(existing: Array[Dictionary], root: String) -> Dicti
     for game in existing:
         var existing_path := String(game.get("path", "")).simplify_path()
         if existing_path.begins_with(normalized_root + "/"):
-            by_entry[existing_path.get_file()] = game
+            var relative_path := existing_path.substr(normalized_root.length() + 1)
+            if relative_path.get_slice_count("/") == 1:
+                by_entry[relative_path] = game
+            elif relative_path.get_slice_count("/") == 2 and game.get("engine", "") == RUNTIME_QLIE:
+                var entry := relative_path.get_slice("/", 0)
+                if not by_entry.has(entry):
+                    by_entry[entry] = game
     return by_entry
 
 func _add_game_path(path: String) -> bool:
     var resolved_path := _resolve_game_path(path)
+    if resolved_path.begins_with("content://"):
+        _show_message(_t("message.android_choose_local_game_folder"))
+        return false
     if not _path_exists(resolved_path):
         _show_message(_t("message.path_missing"))
         return false
@@ -12221,7 +12379,7 @@ func _path_exists(path: String) -> bool:
     return DirAccess.dir_exists_absolute(candidate) or FileAccess.file_exists(candidate)
 
 func _resolve_game_path(path: String) -> String:
-    var normalized := path.strip_edges()
+    var normalized := path if path.is_absolute_path() or path.begins_with("content://") else path.strip_edges()
     if normalized.is_empty():
         return normalized
     if OS.get_name() == "Android":
@@ -12361,19 +12519,33 @@ func _game_runtime_root(path: String) -> String:
     return resolved
 
 func _game_runtime_kind(path: String) -> String:
+    return _detect_game_runtime(path, "")
+
+func _game_runtime_kind_for_launch(path: String, startup_script: String) -> String:
+    if startup_script.strip_edges().is_empty():
+        return _game_runtime_kind(path)
+    return _detect_game_runtime(path, startup_script)
+
+func _detect_game_runtime(path: String, startup_script: String) -> String:
     var root := _game_runtime_root(path)
     var runtime_kind := String(
         GameMetadata.inspect(root).get("engine", RUNTIME_KIRIKIRI)
     )
-    return _probe_game_runtime_kind(root, runtime_kind)
+    return _probe_game_runtime_kind(root, runtime_kind, startup_script)
 
-func _probe_game_runtime_kind(root: String, runtime_kind: String) -> String:
-    if runtime_kind != RUNTIME_KIRIKIRI:
+func _probe_game_runtime_kind(root: String, runtime_kind: String, startup_script: String = "") -> String:
+    if player == null or not player.has_method("probe_runtime"):
         return runtime_kind
-    if player != null and player.has_method("probe_runtime"):
-        # Format detection stays in the optional private provider.
-        if int(player.probe_runtime(RUNTIME_EXHIBIT, root)) > 0:
-            return RUNTIME_EXHIBIT
+    # A verified QLIE startup takes priority over loose engine markers.
+    var qlie_score := int(player.probe_runtime(RUNTIME_QLIE, root))
+    if qlie_score >= QLIE_VERIFIED_STARTUP_SCORE:
+        return RUNTIME_QLIE
+    # Format detection stays in the optional private provider.
+    if int(player.probe_runtime(RUNTIME_EXHIBIT, root)) > 0:
+        return RUNTIME_EXHIBIT
+    if runtime_kind == RUNTIME_KIRIKIRI:
+        if qlie_score >= 700 and not startup_script.strip_edges().is_empty():
+            return RUNTIME_QLIE
         if int(player.probe_runtime(RUNTIME_SYSTEMC, root)) > 0:
             return RUNTIME_SYSTEMC
         if int(player.probe_runtime(RUNTIME_ESCUDE, root)) >= 90:
@@ -12407,6 +12579,9 @@ func _probe_game_runtime_kind(root: String, runtime_kind: String) -> String:
             return RUNTIME_MAGES
         if int(player.probe_runtime(RUNTIME_N2SYSTEM, root)) > 0:
             return RUNTIME_N2SYSTEM
+        if qlie_score >= 700:
+            # The packs are mounted, but this installation needs a custom startup script.
+            return RUNTIME_QLIE
     return runtime_kind
 
 func _backfill_game_metadata(games: Array[Dictionary]) -> bool:
@@ -13109,10 +13284,10 @@ func _finish_launch_transition() -> void:
     shell_root.pivot_offset = Vector2.ZERO
 
 func _start_selected_game_after_iap() -> void:
-    var library_path := String(selected_game.get("path", "")).strip_edges()
+    var library_path := String(selected_game.get("path", ""))
     if library_path.is_empty():
         return
-    var selected_runtime_kind := _game_runtime_kind(library_path)
+    var selected_runtime_kind := _game_runtime_kind_for_launch(library_path, String(selected_game.get("startupScript", "")))
     if selected_runtime_kind == RUNTIME_RENPY:
         _start_selected_game_after_entitlements()
         return
@@ -13130,7 +13305,7 @@ func _start_selected_game_after_iap() -> void:
             and not _switch_runtime_player(RUNTIME_KIRIKIRI)
         ):
             return
-        _start_selected_game_after_entitlements()
+        _start_selected_game_after_entitlements(selected_runtime_kind if selected_runtime_kind == RUNTIME_QLIE else "")
         return
 
     # StoreKit lives on the KiriKiri host. Return to that host before probing
@@ -13187,18 +13362,21 @@ func _game_save_sync() -> Node:
         add_child(sync)
     return sync
 
-func _start_selected_game_after_entitlements() -> void:
+func _start_selected_game_after_entitlements(verified_runtime: String = "") -> void:
     if game_storage_busy:
         return
     var game := selected_game.duplicate(true)
+    if verified_runtime == RUNTIME_QLIE:
+        game["engine"] = verified_runtime
     _game_save_sync().prepare_start(game, func():
         if String(selected_game.get("path", "")) == String(game.get("path", "")):
-            _start_selected_game_after_save_sync()
+            var same_startup := String(selected_game.get("startupScript", "")) == String(game.get("startupScript", ""))
+            _start_selected_game_after_save_sync(verified_runtime if same_startup else "")
         else:
             _game_save_sync().stop()
     )
 
-func _start_selected_game_after_save_sync() -> void:
+func _start_selected_game_after_save_sync(verified_runtime: String = "") -> void:
     var library_path := String(selected_game.get("path", ""))
     if library_path.is_empty():
         return
@@ -13206,7 +13384,9 @@ func _start_selected_game_after_save_sync() -> void:
         return
     if not _mount_web_game(selected_game):
         return
-    active_runtime_kind = _game_runtime_kind(library_path)
+    active_runtime_kind = verified_runtime
+    if active_runtime_kind.is_empty():
+        active_runtime_kind = _game_runtime_kind_for_launch(library_path, String(selected_game.get("startupScript", "")))
     if active_runtime_kind == RUNTIME_TYRANO:
         _open_tyrano_game(selected_game)
         return
@@ -13276,7 +13456,7 @@ func _start_selected_game_after_save_sync() -> void:
     _set_translation_loading_notice(_translation_model_configured())
     _show_loading_overlay(true)
     restart_notice.visible = true
-    _on_open_game()
+    _on_open_game(active_runtime_kind)
     if game_running:
         _begin_launch_transition()
     else:
@@ -13388,7 +13568,7 @@ func _return_to_library_after_runtime_exit() -> void:
         game_view.visible = false
     if player != null:
         player.release_frame_texture()
-        _cleanup_softpal_platform_ui()
+        _cleanup_runtime_platform_ui()
         _stop_wa2_audio()
         player.destroy_engine()
     last_texture_size = Vector2i.ZERO
@@ -13836,6 +14016,7 @@ func _switch_runtime_player(runtime_kind: String) -> bool:
         RUNTIME_ESCUDE,
         RUNTIME_ENTISGLS,
         RUNTIME_WA2,
+        RUNTIME_QLIE,
     ]:
         normalized = RUNTIME_KIRIKIRI
     # Returning to the library keeps the player Node but destroys its engine.
@@ -13857,7 +14038,7 @@ func _switch_runtime_player(runtime_kind: String) -> bool:
         # Runtime implementations live behind one stable Godot-facing player.
         # Recreate only its engine handle so UI signals, frame effects, and
         # platform services do not need one Node implementation per backend.
-        _cleanup_softpal_platform_ui()
+        _cleanup_runtime_platform_ui()
         _stop_wa2_audio()
         player.destroy_engine()
         current_player_runtime_kind = normalized
@@ -13899,6 +14080,8 @@ func _switch_runtime_player(runtime_kind: String) -> bool:
         if normalized == RUNTIME_MAGES
         else "N2System / NitroSharp"
         if normalized == RUNTIME_N2SYSTEM
+        else "QLIE"
+        if normalized == RUNTIME_QLIE
         else "EntisGLS / Cotopha"
         if normalized == RUNTIME_ENTISGLS
         else "ADV Player HD"
@@ -13938,6 +14121,9 @@ func _on_runtime_platform_request(operation: String, argument: String) -> void:
     if player == null:
         return
     _trace_runtime_platform_request("received", operation, argument)
+    if operation == QLIE_FONT_CHOOSER_REQUEST:
+        _show_qlie_font_chooser()
+        return
     if operation == "runtime_end":
         call_deferred("_return_to_library_after_runtime_exit")
         return
@@ -14118,7 +14304,40 @@ func _release_softpal_name_editor() -> void:
     softpal_name_input_layer = null
     softpal_name_input = null
 
-func _cleanup_softpal_platform_ui() -> void:
+func _show_qlie_font_chooser() -> void:
+    if qlie_font_request_pending:
+        return
+    qlie_font_request_pending = true
+    qlie_font_request_serial += 1
+    var request_serial := qlie_font_request_serial
+    if DisplayServer.get_name() == "headless":
+        _finish_qlie_font_chooser("", OK, request_serial)
+        return
+    # Apple's scoped document picker copies the font into app-owned storage.
+    # Keep that copy available for the QLIE runtime and its saved settings.
+    qlie_font_dialog = _open_game_font_picker(game_render_root, "user://qlie_fonts",
+        _finish_qlie_font_chooser.bind(request_serial))
+
+func _finish_qlie_font_chooser(path: String, error: Error, request_serial: int) -> void:
+    if not qlie_font_request_pending or request_serial != qlie_font_request_serial:
+        return
+    qlie_font_request_pending = false
+    qlie_font_dialog = null
+    if player == null:
+        return
+    var selected_path := ""
+    if error == OK and not path.is_empty() and GameTextConfig.load_font(path).error == OK:
+        selected_path = ProjectSettings.globalize_path(path)
+    player.submit_platform_response(QLIE_FONT_CHOOSER_REQUEST, selected_path)
+
+func _discard_qlie_font_chooser() -> void:
+    qlie_font_request_pending = false
+    if is_instance_valid(qlie_font_dialog):
+        qlie_font_dialog.queue_free()
+    qlie_font_dialog = null
+
+func _cleanup_runtime_platform_ui() -> void:
+    _discard_qlie_font_chooser()
     _release_softpal_name_editor()
     if not softpal_original_window_title.is_empty():
         get_window().title = softpal_original_window_title
@@ -14701,6 +14920,7 @@ func _ensure_player_initialized() -> bool:
         RUNTIME_ESCUDE,
         RUNTIME_ENTISGLS,
         RUNTIME_WA2,
+        RUNTIME_QLIE,
     ]:
         runtime_id = current_player_runtime_kind
     var runtime_result := int(player.set_engine_option("runtime", runtime_id))
@@ -14710,7 +14930,7 @@ func _ensure_player_initialized() -> bool:
             player.get_last_result(),
             player.get_last_error(),
         ])
-        _cleanup_softpal_platform_ui()
+        _cleanup_runtime_platform_ui()
         _stop_wa2_audio()
         player.destroy_engine()
         return false
@@ -14739,6 +14959,8 @@ func _ensure_player_initialized() -> bool:
         if current_player_runtime_kind == RUNTIME_BGI
         else "N2System / NitroSharp"
         if current_player_runtime_kind == RUNTIME_N2SYSTEM
+        else "QLIE"
+        if current_player_runtime_kind == RUNTIME_QLIE
         else "EntisGLS / Cotopha"
         if current_player_runtime_kind == RUNTIME_ENTISGLS
         else "ADV Player HD"
@@ -14943,12 +15165,15 @@ func _android_path_needs_storage_permission(path: String) -> bool:
         return false
     if normalized.begins_with("content://"):
         return true
-    if normalized.begins_with("/sdcard"):
-        return true
-    if not normalized.begins_with("/storage/emulated/"):
+    var app_data := ProjectSettings.globalize_path("user://").trim_suffix("/")
+    if normalized == app_data or normalized.begins_with(app_data + "/"):
         return false
-    var package_path := "/storage/emulated/0/Android/data/org.github.krkr2.aetherkiri/"
-    return not normalized.begins_with(package_path)
+    if normalized == "/sdcard" or normalized.begins_with("/sdcard/"):
+        return true
+    if not normalized.begins_with("/storage/"):
+        return false
+    var package_path := "/storage/emulated/0/Android/data/org.github.krkr2.aetherkiri"
+    return normalized != package_path and not normalized.begins_with(package_path + "/")
 
 func _android_has_external_storage_permission() -> bool:
     if OS.get_name() != "Android":
@@ -15421,7 +15646,8 @@ func _prepare_cli_probe_view(config: Dictionary) -> void:
     _fit_full_rects()
 
 func _probe_open_game(config: Dictionary, target_game_path: String, backend_env: String) -> bool:
-    var runtime_kind := _game_runtime_kind(target_game_path)
+    var startup_script := ProbeConfig.string_value(config, "startup_script", "").strip_edges()
+    var runtime_kind := _game_runtime_kind_for_launch(target_game_path, startup_script)
     if not _switch_runtime_player(runtime_kind):
         _write_probe_marker("probe_open_game runtime_switch_failed kind=%s" % runtime_kind)
         return false
@@ -15450,9 +15676,9 @@ func _probe_open_game(config: Dictionary, target_game_path: String, backend_env:
         return false
     current_surface_size = surface_size
     game_path.text = target_game_path
-    var startup_script := ProbeConfig.string_value(config, "startup_script", "").strip_edges()
-    if not startup_script.is_empty() and not startup_script.begins_with("/"):
-        startup_script = target_game_path.path_join(startup_script)
+    if not _configure_qlie_save_directory(runtime_kind, target_game_path):
+        return false
+    startup_script = GameLaunchEntry.resolve_startup_script(runtime_kind, target_game_path, startup_script)
     var result: int = int(player.open_game(target_game_path, true, startup_script))
     if result != ENGINE_RESULT_OK:
         _write_probe_marker("probe_open_game failed error=%s" % player.get_last_error())
@@ -16525,7 +16751,7 @@ func _probe_cleanup_and_quit(code: int, record_cleanup: Callable = Callable()) -
         viewport.visible = false
         await get_tree().process_frame
         player.release_frame_texture()
-        _cleanup_softpal_platform_ui()
+        _cleanup_runtime_platform_ui()
         _stop_wa2_audio()
         player.destroy_engine()
     if record_cleanup.is_valid():
@@ -16762,6 +16988,7 @@ func _process(delta: float) -> void:
                     perf_log_file.flush()
                 game_running = false
                 _set_game_runtime_frame_pacing(false)
+                _discard_qlie_font_chooser()
                 runtime_display_settings.end_game()
                 runtime_display_state.reset(get_window())
                 softpal_aspect_mode = 1
@@ -17344,7 +17571,7 @@ func _notification(what: int) -> void:
         viewport.texture = null
         frame_upscale_source_texture = null
         player.release_frame_texture()
-        _cleanup_softpal_platform_ui()
+        _cleanup_runtime_platform_ui()
         _stop_wa2_audio()
         player.destroy_engine()
 
@@ -17587,10 +17814,19 @@ func _renderer_summary(renderer: String) -> String:
     return summary
 
 
-func _on_open_game() -> void:
+func _configure_qlie_save_directory(runtime_kind: String, path: String) -> bool:
+    if runtime_kind != RUNTIME_QLIE:
+        return true
+    var save_dir := GameSaveLocations.qlie_save_dir(path)
+    if not save_dir.is_empty() and int(player.set_engine_option("qlie.save_directory", save_dir)) == ENGINE_RESULT_OK:
+        return true
+    _append_log("QLIE save directory unavailable: %s" % path)
+    return false
+
+func _on_open_game(detected_runtime: String = "") -> void:
     if not _require_legal_documents_for_media():
         return
-    var requested_path := game_path.text.strip_edges()
+    var requested_path := game_path.text
     var path := _resolve_game_path(requested_path)
     if path != requested_path:
         _write_probe_marker("open_game remapped_path=%s requested=%s" % [path, requested_path])
@@ -17603,7 +17839,8 @@ func _on_open_game() -> void:
         return
 
     _load_game_render_overrides(path)
-    var detected_runtime := _game_runtime_kind(path)
+    if detected_runtime.is_empty():
+        detected_runtime = _game_runtime_kind_for_launch(path, String(selected_game.get("startupScript", "")))
     if not _switch_runtime_player(detected_runtime):
         render_errors += 1
         _clear_game_render_overrides()
@@ -17625,6 +17862,11 @@ func _on_open_game() -> void:
         _clear_game_render_overrides()
         return
 
+    if not _configure_qlie_save_directory(detected_runtime, path):
+        render_errors += 1
+        _clear_game_render_overrides()
+        return
+
     ProjectSettings.set_setting(GAME_PATH_KEY, path)
     _apply_backend(false)
     _apply_engine_options()
@@ -17641,8 +17883,7 @@ func _on_open_game() -> void:
     var startup_script := String(selected_game.get("startupScript", "")).strip_edges()
     if startup_script.is_empty() and detected_runtime == RUNTIME_ENTISGLS:
         startup_script = GameLaunchEntry.configured_relative_path(selected_game)
-    if not startup_script.is_empty() and not startup_script.begins_with("/"):
-        startup_script = path.path_join(startup_script)
+    startup_script = GameLaunchEntry.resolve_startup_script(detected_runtime, path, startup_script)
     if startup_script.is_empty() and detected_runtime == RUNTIME_YURIS:
         startup_script = GameLaunchEntry.default_yuris_startup_script(path)
         if not startup_script.is_empty():
@@ -19384,8 +19625,18 @@ func _handle_game_pointer_event(event: InputEvent) -> bool:
             _clear_pending_touch_if_matches(pointer_id)
             _trace_input_throttled()
             return true
+        var qlie_tap_only := active_runtime_kind == RUNTIME_QLIE
         if pointer_id == pending_touch_index:
-            var pending_up_mapped := _map_viewport_point(touch.position, true)
+            var pending_up_mapped := _map_viewport_point(touch.position, not qlie_tap_only)
+            if qlie_tap_only and (
+                touch.canceled
+                or Time.get_ticks_msec() - pending_touch_down_msec >= QLIE_TOUCH_TAP_MAX_MS
+                or pending_up_mapped.x < 0.0 or pending_up_mapped.y < 0.0
+                or pending_up_mapped.distance_to(pending_touch_mapped) >= _touch_drag_distance_threshold()
+            ):
+                _clear_pending_touch()
+                _trace_input_throttled()
+                return true
             if pending_up_mapped.x < 0.0 or pending_up_mapped.y < 0.0:
                 pending_up_mapped = pending_touch_mapped
             if pending_touch_quarantined:
@@ -19418,7 +19669,9 @@ func _handle_game_pointer_event(event: InputEvent) -> bool:
         dragging_touch_points.erase(pointer_id)
         last_forwarded_touch_move_msec_by_id.erase(pointer_id)
         if GameInputMapping.touch_drag_is_cursor_only(active_runtime_kind):
-            if not dragged:
+            # A forced flush has already promoted this contact to cursor-only
+            # tracking. For QLIE, only a still-pending contact can be a tap.
+            if not dragged and not qlie_tap_only:
                 _set_pending_touch(pointer_id, down_mapped)
                 _send_pending_touch_click(pointer_id, mapped)
             # Cursor-only holds never sent DOWN, so they must not send UP.
@@ -19438,10 +19691,16 @@ func _handle_game_pointer_event(event: InputEvent) -> bool:
             _trace_input_throttled()
             return true
         if pointer_id == pending_touch_index:
-            var pending_drag_mapped := _map_viewport_point(drag.position, true)
-            if pending_drag_mapped.x < 0.0 or pending_drag_mapped.y < 0.0:
+            # Clamping can hide a QLIE drag that leaves the game near its edge.
+            var qlie_tap_only := active_runtime_kind == RUNTIME_QLIE
+            var pending_drag_mapped := _map_viewport_point(drag.position, not qlie_tap_only)
+            var outside := pending_drag_mapped.x < 0.0 or pending_drag_mapped.y < 0.0
+            if outside and not qlie_tap_only:
                 pending_drag_mapped = pending_touch_mapped
-            if pending_drag_mapped.distance_to(pending_touch_mapped) < drag_distance_threshold:
+            if (
+                not (qlie_tap_only and outside)
+                and pending_drag_mapped.distance_to(pending_touch_mapped) < drag_distance_threshold
+            ):
                 _trace_input_move_suppressed()
                 return true
             _flush_pending_touch_press(true)
@@ -19567,8 +19826,8 @@ func _flush_pending_touch_press(force: bool = false) -> bool:
         return false
     var cursor_only := GameInputMapping.touch_drag_is_cursor_only(active_runtime_kind)
     if cursor_only and not force:
-        # A stationary hold can still become either a tap or a two-finger
-        # gesture. Sending DOWN on a timer would advance BGI before release.
+        # Wait for release to classify the tap. A timer-triggered DOWN would
+        # activate a control while the contact can still become a drag.
         return false
     if not force and now - pending_touch_down_msec < TOUCH_SINGLE_TAP_DELAY_MS:
         return false

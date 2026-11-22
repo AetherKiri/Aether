@@ -8,6 +8,9 @@
 #if defined(AETHERKIRI_WITH_WA2)
 extern "C" void AetherInternalRegisterWa2Runtime(void);
 #endif
+#if defined(AETHERKIRI_WITH_QLIE)
+extern "C" void AetherInternalRegisterQlieRuntime(void);
+#endif
 #if defined(AETHERKIRI_HOST_FLASH)
 #include "flash_player.h"
 #endif
@@ -199,6 +202,7 @@ void aether_native_launch_file_picker_free_string(char *value);
 
 #if defined(__ANDROID__)
 #include <jni.h>
+#include <android/api-level.h>
 #include <android/log.h>
 
 extern JNIEnv* krkr_GetJNIEnv();
@@ -1249,28 +1253,7 @@ jobject AndroidGetGodotActivityLocal(JNIEnv *env) {
 }
 
 int AndroidGetSdkInt() {
-    JNIEnv *env = krkr_GetJNIEnv();
-    if (env == nullptr) {
-        return 0;
-    }
-
-    jclass version_class = env->FindClass("android/os/Build$VERSION");
-    if (version_class == nullptr) {
-        AndroidClearJniException(env);
-        return 0;
-    }
-
-    jfieldID sdk_int = env->GetStaticFieldID(version_class, "SDK_INT", "I");
-    if (sdk_int == nullptr) {
-        AndroidClearJniException(env);
-        env->DeleteLocalRef(version_class);
-        return 0;
-    }
-
-    const int result = env->GetStaticIntField(version_class, sdk_int);
-    AndroidClearJniException(env);
-    env->DeleteLocalRef(version_class);
-    return result;
+    return android_get_device_api_level();
 }
 
 bool AndroidHasRuntimePermission(const char *permission) {
@@ -1405,29 +1388,16 @@ bool AndroidRequestRuntimeStoragePermissions() {
 }
 
 bool AndroidHasExternalStoragePermission() {
-    const AndroidGodotStoragePermissionState godot_state =
-        AndroidGetGodotStoragePermissionState();
-    if (godot_state.read || godot_state.write || godot_state.manage) {
-        AK_ANDROID_LOGI("storage permission effective granted via Godot OS");
-        return true;
-    }
-
     const int sdk = AndroidGetSdkInt();
     if (sdk > 0 && sdk < 23) {
         return true;
     }
     if (sdk > 0 && sdk < 30) {
-        AK_ANDROID_LOGI(
-            "storage permission state sdk=%d read=%d write=%d effective_read=0",
-            sdk, godot_state.read ? 1 : 0, godot_state.write ? 1 : 0);
-        return false;
-    }
-    if (sdk <= 0) {
-        AK_ANDROID_LOGW(
-            "storage permission state unavailable: Android SDK/JNI not ready");
-        return false;
+        const auto state = AndroidGetGodotStoragePermissionState();
+        return state.read || state.write;
     }
 
+    // Legacy file permissions do not grant raw access to game archives on API 30+.
     const int java_result = AndroidHasExternalStoragePermissionViaGodotJava();
     if (java_result >= 0) {
         return java_result != 0;
@@ -1587,9 +1557,7 @@ bool AndroidStartSettingsIntent(JNIEnv *env, jobject context, const char *action
 }
 
 bool AndroidRequestExternalStoragePermission() {
-    const AndroidGodotStoragePermissionState before =
-        AndroidGetGodotStoragePermissionState();
-    if (before.read || before.write || before.manage) {
+    if (AndroidHasExternalStoragePermission()) {
         AK_ANDROID_LOGI("storage permission already granted");
         return true;
     }
@@ -1598,27 +1566,14 @@ bool AndroidRequestExternalStoragePermission() {
     // the current Godot instance. This is important on Android 6-9, where
     // the extension may be loaded as an ELF dependency and JNI_OnLoad is not
     // guaranteed to have run for engine_api.so yet.
-    OS *os = OS::get_singleton();
-    if (os != nullptr) {
-        const bool dispatched = os->request_permissions();
-        AK_ANDROID_LOGI(
-            "storage permission request via Godot OS dispatched=%d",
-            dispatched ? 1 : 0);
-        if (dispatched) {
-            const int sdk = AndroidGetSdkInt();
-            if (sdk <= 0 || sdk < 30) {
-                return true;
-            }
-        }
-    }
-
     const int sdk = AndroidGetSdkInt();
     AK_ANDROID_LOGI("storage permission request sdk=%d", sdk);
     if (sdk > 0 && sdk < 30) {
-        return false;
-    }
-    if (AndroidHasExternalStoragePermission()) {
-        return true;
+        OS *os = OS::get_singleton();
+        if (os != nullptr && os->request_permissions()) {
+            return true;
+        }
+        return AndroidRequestRuntimeStoragePermissions();
     }
 
     if (AndroidRequestExternalStoragePermissionViaGodotJava()) {
@@ -13262,6 +13217,14 @@ private:
                         "&error_response=-1&error_message="
                         "In%20App%20Billing%20is%20unavailable");
                 }
+            } else if (name == "qlie_font_chooser") {
+                if (has_connections("platform_request")) {
+                    emit_signal("platform_request", name, value);
+                } else {
+                    // A QLIE script waits for the picker result. An empty path
+                    // cancels it when the Godot host has no picker listener.
+                    submit_platform_response(name, String());
+                }
             } else if (name == "text_input") {
                 show_runtime_text_input(value);
             } else if (name == "presentation_sprite") {
@@ -14457,6 +14420,9 @@ void InitializeAetherRuntime(ModuleInitializationLevel level) {
     }
 #if defined(AETHERKIRI_WITH_WA2)
     AetherInternalRegisterWa2Runtime();
+#endif
+#if defined(AETHERKIRI_WITH_QLIE)
+    AetherInternalRegisterQlieRuntime();
 #endif
 #if defined(AETHERKIRI_INTERNAL_FRAME_EFFECTS)
     RegisterAetherInternalFrameEffects();

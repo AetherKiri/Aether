@@ -55,6 +55,7 @@ class RuntimeSubmoduleInitializationTests(unittest.TestCase):
                 RUNNER_TEMP=temporary.as_posix(),
                 GIT_CALL_LOG=str(log),
                 AETHER_INTERNAL_DEPLOY_KEY=original.decode(),
+                AETHER_ELIQ_DEPLOY_KEY=original.decode(),
                 AETHER_SOFTPAL_DEPLOY_KEY=original.decode().replace("\n", "\r\n"),
                 AETHER_EXHIBIT_DEPLOY_KEY=original.decode(),
                 AETHER_LEAFTTT_DEPLOY_KEY="\ufeff" + original.decode().replace("\n", "\r\n").rstrip("\r\n"),
@@ -85,7 +86,8 @@ class RuntimeSubmoduleInitializationTests(unittest.TestCase):
                                AETHER_INTERNAL_DEPLOY_KEY="invalid-test-key",
                                AETHER_SOFTPAL_DEPLOY_KEY="invalid-test-key",
                                AETHER_EXHIBIT_DEPLOY_KEY="invalid-test-key",
-                               AETHER_LEAFTTT_DEPLOY_KEY="invalid-test-key")
+                               AETHER_LEAFTTT_DEPLOY_KEY="invalid-test-key",
+                               AETHER_ELIQ_DEPLOY_KEY="invalid-test-key")
             result = subprocess.run([BASH, SCRIPT.as_posix()], env=environment, capture_output=True, text=True)
             self.assertNotEqual(result.returncode, 0)
             self.assertIn("Invalid private deploy key: internal", result.stderr)

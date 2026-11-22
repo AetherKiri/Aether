@@ -9,8 +9,8 @@ param(
 $ErrorActionPreference = "Stop"
 $aetherRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
 $projectPath = Join-Path $aetherRoot "apps/godot_app"
-$extensionPath = Join-Path $projectPath "bin/windows/release/aether_kiri_godot.dll"
-if (!(Test-Path -LiteralPath $extensionPath -PathType Leaf)) { throw "Build the Release aether_kiri_godot target before starting this UI." }
+$extensionPath = Join-Path $projectPath "bin/windows/debug/aether_kiri_godot.dll"
+if (!(Test-Path -LiteralPath $extensionPath -PathType Leaf)) { throw "Build the Windows Debug aether_kiri_godot target before starting this UI with the Godot editor executable." }
 $godotPath = (Resolve-Path -LiteralPath $GodotExe).Path
 $gamePath = (Resolve-Path -LiteralPath $GameRoot).Path
 if (!(Test-Path -LiteralPath (Join-Path $gamePath "script.pak") -PathType Leaf)) { throw "GameRoot must contain the installed game script.pak." }

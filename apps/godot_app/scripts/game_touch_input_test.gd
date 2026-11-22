@@ -106,16 +106,95 @@ func _initialize() -> void:
         _check(recorder.events.back()[0] == shell.POINTER_UP,
             "%s lost its held-button release" % runtime_kind)
 
+    _test_qlie_touch(shell, recorder, point)
+
     shell.free()
     print("game_touch_input_test: %s (%d checks, %d failures)" % [
         "PASS" if failures == 0 else "FAIL", checks, failures])
     quit(0 if failures == 0 else 1)
 
-func _touch(shell: Node, id: int, point: Vector2, pressed: bool) -> void:
+func _test_qlie_touch(shell: TouchShell, recorder: RecordingPlayer, point: Vector2) -> void:
+    _reset(shell, recorder)
+    shell.active_runtime_kind = "qlie"
+    var finger := 7
+    var pointer_id := shell._touch_engine_pointer_id(finger)
+    var jitter := Vector2(2, 1)
+    var far_point := point + Vector2(100, 30)
+    _touch(shell, finger, point, true)
+    shell.pending_touch_down_msec -= shell.TOUCH_SINGLE_TAP_DELAY_MS
+    shell._flush_pending_touch_press_if_ready()
+    _drag(shell, finger, point + jitter, jitter)
+    _check(recorder.events.is_empty(), "QLIE tap sent pointer events before release")
+    _touch(shell, finger, point + jitter, false)
+    _touch(shell, finger, point + jitter, false)
+    _release_pending(shell)
+    _check(recorder.events == [
+        [shell.POINTER_MOVE, pointer_id, point, Vector2.ZERO, 0, 0],
+        [shell.POINTER_DOWN, pointer_id, point, Vector2.ZERO, 0, 0],
+        [shell.POINTER_UP, pointer_id, point, Vector2.ZERO, 0, 0],
+    ], "QLIE tap must position the cursor and activate exactly once after release")
+
+    _reset(shell, recorder)
+    _touch(shell, finger, point, true)
+    shell.pending_touch_down_msec -= shell.QLIE_TOUCH_TAP_MAX_MS
+    shell._flush_pending_touch_press_if_ready()
+    _check(recorder.events.is_empty(), "QLIE hold activated before release")
+    _touch(shell, finger, point, false)
+    _release_pending(shell)
+    _check(recorder.events.is_empty(), "QLIE hold activated on release")
+
+    _reset(shell, recorder)
+    _touch(shell, finger, point, true)
+    _drag(shell, finger, far_point, far_point - point)
+    _drag(shell, finger, point, point - far_point)
+    _touch(shell, finger, point, false)
+    _release_pending(shell)
+    _check(recorder.events == [
+        [shell.POINTER_MOVE, pointer_id, point, Vector2.ZERO, 0, 0],
+        [shell.POINTER_MOVE, pointer_id, far_point, far_point - point, 0, 0],
+        [shell.POINTER_MOVE, pointer_id, point, point - far_point, 0, 0],
+    ], "QLIE drag must only move the cursor, including when it returns to its origin")
+
+    _reset(shell, recorder)
+    _touch(shell, finger, point, true)
+    _touch(shell, finger, far_point, false)
+    _release_pending(shell)
+    _check(recorder.events.is_empty(), "QLIE release outside tap tolerance activated without a drag event")
+
+    _reset(shell, recorder)
+    _touch(shell, finger, point, true)
+    _touch(shell, finger, point, false, true)
+    _release_pending(shell)
+    _check(recorder.events.is_empty(), "QLIE cancelled tap activated")
+
+    _reset(shell, recorder)
+    var frame_size := Vector2i(480, 240)
+    shell.last_source_texture_size = frame_size
+    shell.current_surface_size = frame_size
+    shell.viewport.texture = ImageTexture.create_from_image(
+        Image.create_empty(frame_size.x, frame_size.y, false, Image.FORMAT_RGBA8)
+    )
+    shell.viewport.size = Vector2(frame_size)
+    var edge_point := Vector2(2, 120)
+    var outside_point := Vector2(-2, 120)
+    _touch(shell, finger, edge_point, true)
+    _touch(shell, finger, outside_point, false)
+    _check(recorder.events.is_empty(), "QLIE tap released outside the game activated")
+    _touch(shell, finger, edge_point, true)
+    _drag(shell, finger, outside_point, outside_point - edge_point)
+    _touch(shell, finger, edge_point, false)
+    _release_pending(shell)
+    _check(recorder.events == [[shell.POINTER_MOVE, pointer_id, edge_point, Vector2.ZERO, 0, 0]],
+        "QLIE drag outside the frame and back must stay cursor-only")
+    _check(shell.active_touch_points.is_empty() and shell.pending_touch_index == -1,
+        "QLIE touch gestures left a captured finger")
+
+func _touch(shell: Node, id: int, point: Vector2, pressed: bool, canceled: bool = false) -> void:
     var event := InputEventScreenTouch.new()
     event.index = id
     event.position = point
     event.pressed = pressed
+    event.canceled = canceled
     _check(shell._handle_game_pointer_event(event), "touch event was not handled")
 
 func _drag(shell: Node, id: int, point: Vector2, relative: Vector2) -> void:

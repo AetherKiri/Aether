@@ -222,7 +222,7 @@ These public runtime submodules are used by the default build
 degrade gracefully without a Rust toolchain, but the checkouts must be
 present; Flash requires current stable Rust and Java). Set
 `AETHERKIRI_ENABLE_FLASH=OFF` to build without Flash playback.
-`AetherInternal`, `AetherSoftPal`, `tjs2Decompiler`, and `rfvp` are
+`AetherInternal`, `AetherELIQ`, `AetherSoftPal`, `tjs2Decompiler`, and `rfvp` are
 optional — see [Optional Components](#optional-components). `AetherKrkr`,
 `psdfile`, and
 `AetherMinori` are recorded with SSH URLs in `.gitmodules`; without SSH
@@ -259,6 +259,13 @@ The N2System submodule pins a commit from its `aether` integration branch. N2Sys
   combination. Trusted runs of the `Build` workflow use the `AETHERSECRET`
   read-only SSH key; fork and Dependabot runs use the public fallback. Use
   `-DAETHERKIRI_ENABLE_INTERNAL=OFF` to test the public fallback explicitly.
+
+- **QLIE runtime** — initialize `packages/AetherELIQ` with
+  `git submodule update --init packages/AetherELIQ` for native builds. It
+  is enabled by default when the package is present and default runtimes are
+  enabled. Set `AETHERKIRI_ELIQ_DIR` to use a local checkout or
+  `AETHERKIRI_ENABLE_QLIE=OFF` to omit the provider. Trusted native builds
+  use the `AETHER_ELIQ_DEPLOY_KEY` read-only key. Web builds omit QLIE.
 
 - **SoftPal runtime** — maintainers with access to the private provider can
   initialize its pinned submodule before a native build:

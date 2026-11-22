@@ -1,12 +1,17 @@
 extends SceneTree
 
-const MAIN_SCRIPT = preload("res://scripts/main.gd")
+class ScanApp extends "res://scripts/main.gd":
+    var discovered_paths: Array[String] = []
+
+    func _game_info_from_path(path: String) -> Dictionary:
+        discovered_paths.append(path)
+        return {"path": path, "name": path.get_file()}
 
 func _init() -> void:
     call_deferred("_run")
 
 func _run() -> void:
-    var app = MAIN_SCRIPT.new()
+    var app := ScanApp.new()
     var test_name := "aether-cover-test-%d" % Time.get_ticks_usec()
     var test_root := ProjectSettings.globalize_path("user://").path_join(test_name)
     if DirAccess.make_dir_recursive_absolute(test_root) != OK:
@@ -42,7 +47,8 @@ func _run() -> void:
         _fail(app, test_root, "old iOS container path was not migrated")
         return
 
-    var game_root := test_root.path_join("Game")
+    var library_root := test_root.path_join("Library")
+    var game_root := library_root.path_join("Game")
     DirAccess.make_dir_recursive_absolute(game_root)
     var default_background := game_root.path_join("背景.png")
     if not _write_image(default_background):
@@ -67,14 +73,25 @@ func _run() -> void:
         _fail(app, test_root, "resolved default background did not load")
         return
     games[0]["title"] = "A customized display title"
-    var indexed_games: Dictionary = app._games_by_library_entry(games, test_root)
+    var indexed_games: Dictionary = app._games_by_library_entry(games, library_root)
     if not indexed_games.has("Game") \
             or String(indexed_games["Game"].get("coverPath", "")) != "game://背景.png":
         _fail(app, test_root, "iOS rescan did not preserve metadata by directory entry")
         return
 
+    games[0]["engine"] = "qlie"
+    games[0]["startupScript"] = "Script/alternate.s"
+    var new_root := library_root.path_join("New game")
+    DirAccess.make_dir_recursive_absolute(new_root)
+    var scanned: Array[Dictionary] = app._scan_ios_games_dir(games, library_root)
+    var by_entry := app._games_by_library_entry(scanned, library_root)
+    if app.discovered_paths != [new_root] or by_entry.get("Game", {}).get("startupScript") != "Script/alternate.s":
+        _fail(app, test_root, "iOS rescan must probe only new entries and retain the existing QLIE startup")
+        return
+
     _remove_tree(test_root)
     app.cover_texture_cache.clear()
+    app.ui_motion.free()
     app.free()
     print("cover_persistence_test: PASS")
     quit(0)
@@ -97,6 +114,7 @@ func _remove_tree(path: String) -> void:
 func _fail(app, test_root: String, message: String) -> void:
     _remove_tree(test_root)
     app.cover_texture_cache.clear()
+    app.ui_motion.free()
     app.free()
     push_error("cover_persistence_test: %s" % message)
     quit(1)

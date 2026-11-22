@@ -115,7 +115,7 @@ Godot 实验性的独立渲染线程模式、
 
 - macOS 和 Xcode command line tools，用于 macOS/iOS 构建。
 - CMake 3.28+ 和 Ninja。
-- Godot 4.6.3 stable，默认路径 `/Applications/Godot.app`，也可以设置 `GODOT_BIN`。
+- Godot 4.7 stable，默认路径 `/Applications/Godot.app`，也可以设置 `GODOT_BIN`。
 - 对应平台的 Godot export templates。
 - `.devtools/vcpkg` 或 `VCPKG_ROOT`。
 
@@ -182,6 +182,17 @@ Web 还需要：
 ```
 
 ## 平台构建和启动
+
+Windows x64 源码版请在 Visual Studio 的 x64 开发者 PowerShell 中构建。安装 CMake、Ninja、vcpkg 和 Godot 4.7.2，先按 [README](../README.zh-CN.md#构建) 初始化公开构建依赖。启用 QLIE 需要 AetherELIQ 私有仓库的读取权限。
+
+```powershell
+git submodule update --init packages/AetherELIQ
+cmake --preset "Windows Debug Config" -DAETHERKIRI_ENABLE_QLIE=ON
+cmake --build --preset "Windows Debug Build" --target aether_kiri_godot
+& "C:/path/to/Godot_v4.7.2-stable_win64_console.exe" --path apps/godot_app --rendering-method gl_compatibility
+```
+
+在游戏库中导入游戏目录。若 QLIE 游戏使用自定义入口，在游戏详情的 **QLIE 启动脚本** 中填写包内路径。[Start-AetherUI.ps1](../scripts/Start-AetherUI.ps1) 是 WHITE ALBUM2 启动脚本。
 
 macOS Debug：
 

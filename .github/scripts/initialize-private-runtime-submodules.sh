@@ -5,6 +5,7 @@ set -euo pipefail
 : "${AETHER_SOFTPAL_DEPLOY_KEY:?Missing AetherSoftPal CI deploy key}"
 : "${AETHER_EXHIBIT_DEPLOY_KEY:?Missing AetherExHIBIT CI deploy key}"
 : "${AETHER_LEAFTTT_DEPLOY_KEY:?Missing AetherLeafTtt CI deploy key}"
+: "${AETHER_ELIQ_DEPLOY_KEY:?Missing AetherELIQ CI deploy key}"
 
 key_dir="$(mktemp -d "${RUNNER_TEMP:-/tmp}/aether-submodules.XXXXXX")"
 trap 'rm -rf "$key_dir"' EXIT
@@ -24,6 +25,7 @@ write_deploy_key internal "$AETHER_INTERNAL_DEPLOY_KEY"
 write_deploy_key softpal "$AETHER_SOFTPAL_DEPLOY_KEY"
 write_deploy_key leafttt "$AETHER_LEAFTTT_DEPLOY_KEY"
 write_deploy_key exhibit "$AETHER_EXHIBIT_DEPLOY_KEY"
+write_deploy_key eliq "$AETHER_ELIQ_DEPLOY_KEY"
 
 # GitHub associates each deploy key with one private repository. The existing
 # key fetches the remaining runtimes. Each additional private repo has its own key.
@@ -56,3 +58,6 @@ export GIT_SSH_COMMAND="ssh -i $key_dir/exhibit -o IdentitiesOnly=yes -o StrictH
 git submodule update --init --recursive --depth 1 packages/AetherExHIBIT
 test -f packages/AetherExHIBIT/integrations/aether/CMakeLists.txt
 test "$(git -C packages/AetherExHIBIT rev-parse HEAD)" = "$(git rev-parse HEAD:packages/AetherExHIBIT)"
+
+GIT_SSH_COMMAND="ssh -i $key_dir/eliq -o IdentitiesOnly=yes -o StrictHostKeyChecking=accept-new" \
+    git submodule update --init --recursive --depth 1 packages/AetherELIQ

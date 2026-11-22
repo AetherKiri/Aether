@@ -48,9 +48,19 @@ private final class AetherCloudSaveSync: @unchecked Sendable {
                 }
                 let local = URL(fileURLWithPath: path, isDirectory: true)
 #if os(iOS)
-                let games = fm.urls(for: .documentDirectory, in: .userDomainMask)[0].appendingPathComponent("Games").resolvingSymlinksInPath().path
-                guard local.lastPathComponent == "savedata", local.resolvingSymlinksInPath().path.hasPrefix(games + "/"),
-                      local.deletingLastPathComponent().resolvingSymlinksInPath().path != games else { throw AetherSaveSyncStore.failure("Each game must have its own folder inside Games before enabling save sync.") }
+                let documents = fm.urls(for: .documentDirectory, in: .userDomainMask)[0]
+                let games = documents.appendingPathComponent("Games").resolvingSymlinksInPath().path
+                let fallbackRoot = documents.appendingPathComponent("qlie_saves").resolvingSymlinksInPath().path
+                let resolved = local.resolvingSymlinksInPath()
+                let parent = resolved.deletingLastPathComponent()
+                let insideGame = ["savedata", "SaveData"].contains(local.lastPathComponent)
+                    && parent.path.hasPrefix(games + "/")
+                let insideQlieBank = local.lastPathComponent == "SaveData"
+                    && parent.deletingLastPathComponent().path == fallbackRoot
+                    && parent.lastPathComponent.range(of: "^[0-9a-f]{64}$", options: .regularExpression) != nil
+                guard insideGame || insideQlieBank else {
+                    throw AetherSaveSyncStore.failure("The game must have its own save folder before enabling save sync.")
+                }
 #endif
                 let remote = container.appendingPathComponent("Documents/Games", isDirectory: true)
                     .appendingPathComponent(game, isDirectory: true).appendingPathComponent("savedata", isDirectory: true)

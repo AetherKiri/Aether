@@ -88,5 +88,77 @@ shutil.copyfile(pathlib.Path(os.environ['GODOT_TEST_FIXTURES']) / source,
         self.assertFalse((self.root / "github-env").exists())
 
 
+@unittest.skipUnless(shutil.which("bash"), "requires bash")
+class IOSSDLArchiveTests(unittest.TestCase):
+    def stage(self, root, build_type, triplet):
+        # Run the production staging and isolation functions, recording the
+        # source passed to the LLVM wrapper without needing Apple tools.
+        script = (REPO / "scripts/build_ios.sh").read_text()
+        start = script.index("\nios_vcpkg_library_dir() {")
+        end = script.index("\ncombine_ios_static_extension() {", start)
+        stage_start = script.index("\nstage_force_load_plugin_archives() {")
+        stage_end = script.index("\nverify_exported_simulator_template_arch() {", stage_start)
+        invocation = r"""
+set -euo pipefail
+PROJECT_ROOT="$1"
+CMAKE_BUILD_DIR="$2"
+BUILD_TYPE_LOWER="$3"
+VCPKG_TRIPLET_DIR="$4"
+FORCE_LOAD_PLUGIN_SOURCES=("absent-optional-plugin.a")
+llvm-objcopy() { :; }
+python3() { printf '%s\n' "$@"; }
+"""
+        return subprocess.run(
+            ["bash", "-c", invocation + script[start:end] + script[stage_start:stage_end] + """
+IOS_SDL2_ARCHIVE="$(resolve_ios_sdl2_archive "$VCPKG_TRIPLET_DIR")"
+stage_force_load_plugin_archives "$CMAKE_BUILD_DIR/staged"
+isolate_ios_runtime_sdl "$CMAKE_BUILD_DIR/staged"
+""", "ios-sdl-test", str(REPO), str(root), build_type, triplet],
+            capture_output=True, text=True,
+        )
+
+    def test_staging_and_isolation_use_same_sdl2_source(self):
+        for build_type, triplet, debug_archives, selected in [
+            ("debug", "arm64-ios", ("libSDL2d.a",), "debug/lib/libSDL2d.a"),
+            ("debug", "arm64-ios-simulator", ("libSDL2.a",), "debug/lib/libSDL2.a"),
+            ("debug", "x64-ios-simulator", (), "lib/libSDL2.a"),
+            ("release", "arm64-ios", ("libSDL2d.a",), "lib/libSDL2.a"),
+        ]:
+            with self.subTest(build_type=build_type, triplet=triplet), \
+                    tempfile.TemporaryDirectory(prefix="aether ios sdl ") as temporary:
+                root = Path(temporary)
+                installed = root / "vcpkg_installed" / triplet
+                names = ["lib/libSDL2.a", *(f"debug/lib/{name}" for name in debug_archives)]
+                for name in names:
+                    archive = installed / name
+                    archive.parent.mkdir(parents=True, exist_ok=True)
+                    archive.write_text(name)
+                result = self.stage(root, build_type, triplet)
+                self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+                staged = root / "staged"
+                self.assertEqual(list(staged.iterdir()), [staged / "libSDL2.a"])
+                self.assertEqual((staged / "libSDL2.a").read_text(), selected)
+                self.assertEqual(result.stdout.splitlines(), [
+                    str(REPO / "tools/isolate_ios_sdl.py"),
+                    "--sdl-archive", str(installed / selected),
+                    "--directory", str(staged),
+                ])
+
+    def test_missing_sdl2_reports_selected_library_directory(self):
+        with tempfile.TemporaryDirectory(prefix="aether ios sdl ") as temporary:
+            root = Path(temporary)
+            lib_dir = root / "vcpkg_installed/arm64-ios/debug/lib"
+            lib_dir.mkdir(parents=True)
+            (lib_dir / "libSDL2maind.a").touch()
+            release_dir = lib_dir.parent.parent / "lib"
+            release_dir.mkdir()
+            (release_dir / "libSDL2.a").touch()
+            result = self.stage(root, "debug", "arm64-ios")
+            self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
+            self.assertIn("missing SDL2 static archive", result.stderr)
+            self.assertIn(str(lib_dir), result.stderr)
+            self.assertFalse((root / "staged").exists())
+
+
 if __name__ == "__main__":
     unittest.main()

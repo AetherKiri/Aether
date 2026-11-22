@@ -27,6 +27,8 @@ on:
         required: false
       AETHER_LEAFTTT_DEPLOY_KEY:
         required: false
+      AETHER_ELIQ_DEPLOY_KEY:
+        required: false
       AETHER_EXHIBIT_DEPLOY_KEY:
         required: false
       AETHERID:
@@ -113,6 +115,7 @@ jobs:
           AETHER_INTERNAL_DEPLOY_KEY: ${{ secrets.AETHERSECRET }}
           AETHER_SOFTPAL_DEPLOY_KEY: ${{ secrets.AETHER_SOFTPAL_DEPLOY_KEY }}
           AETHER_LEAFTTT_DEPLOY_KEY: ${{ secrets.AETHER_LEAFTTT_DEPLOY_KEY }}
+          AETHER_ELIQ_DEPLOY_KEY: ${{ secrets.AETHER_ELIQ_DEPLOY_KEY }}
           AETHER_EXHIBIT_DEPLOY_KEY: ${{ secrets.AETHER_EXHIBIT_DEPLOY_KEY }}
         run: .github/scripts/initialize-private-runtime-submodules.sh
 
@@ -184,6 +187,9 @@ jobs:
         run: |
           set -euo pipefail
           test -f packages/AetherInternal/cmake/AetherInternalConfig.cmake
+          test -f packages/AetherELIQ/cmake/AetherELIQConfig.cmake
+          test "$(git -C packages/AetherELIQ rev-parse HEAD)" = \
+            "$(git rev-parse HEAD:packages/AetherELIQ)"
           test -f packages/AetherSoftPal/cmake/AetherSoftPalConfig.cmake
           test "$(git -C packages/AetherSoftPal rev-parse HEAD)" = \
             "$(git rev-parse HEAD:packages/AetherSoftPal)"
@@ -523,6 +529,7 @@ jobs:
           AETHER_INTERNAL_DEPLOY_KEY: ${{ secrets.AETHERSECRET }}
           AETHER_SOFTPAL_DEPLOY_KEY: ${{ secrets.AETHER_SOFTPAL_DEPLOY_KEY }}
           AETHER_LEAFTTT_DEPLOY_KEY: ${{ secrets.AETHER_LEAFTTT_DEPLOY_KEY }}
+          AETHER_ELIQ_DEPLOY_KEY: ${{ secrets.AETHER_ELIQ_DEPLOY_KEY }}
           AETHER_EXHIBIT_DEPLOY_KEY: ${{ secrets.AETHER_EXHIBIT_DEPLOY_KEY }}
         run: .github/scripts/initialize-private-runtime-submodules.sh
 
@@ -623,6 +630,9 @@ jobs:
         run: |
           set -euo pipefail
           test -f packages/AetherInternal/cmake/AetherInternalConfig.cmake
+          test -f packages/AetherELIQ/cmake/AetherELIQConfig.cmake
+          test "$(git -C packages/AetherELIQ rev-parse HEAD)" = \
+            "$(git rev-parse HEAD:packages/AetherELIQ)"
           test -f packages/AetherSoftPal/cmake/AetherSoftPalConfig.cmake
           test "$(git -C packages/AetherSoftPal rev-parse HEAD)" = \
             "$(git rev-parse HEAD:packages/AetherSoftPal)"
@@ -905,6 +915,7 @@ jobs:
           AETHER_INTERNAL_DEPLOY_KEY: ${{ secrets.AETHERSECRET }}
           AETHER_SOFTPAL_DEPLOY_KEY: ${{ secrets.AETHER_SOFTPAL_DEPLOY_KEY }}
           AETHER_LEAFTTT_DEPLOY_KEY: ${{ secrets.AETHER_LEAFTTT_DEPLOY_KEY }}
+          AETHER_ELIQ_DEPLOY_KEY: ${{ secrets.AETHER_ELIQ_DEPLOY_KEY }}
           AETHER_EXHIBIT_DEPLOY_KEY: ${{ secrets.AETHER_EXHIBIT_DEPLOY_KEY }}
         run: .github/scripts/initialize-private-runtime-submodules.sh
 
@@ -1000,6 +1011,9 @@ jobs:
         run: |
           set -euo pipefail
           test -f packages/AetherInternal/cmake/AetherInternalConfig.cmake
+          test -f packages/AetherELIQ/cmake/AetherELIQConfig.cmake
+          test "$(git -C packages/AetherELIQ rev-parse HEAD)" = \
+            "$(git rev-parse HEAD:packages/AetherELIQ)"
           test -f packages/AetherSoftPal/cmake/AetherSoftPalConfig.cmake
           test "$(git -C packages/AetherSoftPal rev-parse HEAD)" = \
             "$(git rev-parse HEAD:packages/AetherSoftPal)"
@@ -1167,6 +1181,8 @@ jobs:
             -D BUILD_TOOLS=ON \
             -D BUILD_ENGINE_API=OFF \
             -D BUILD_GODOT_EXTENSION=OFF \
+            -D AETHERKIRI_ENABLE_QLIE=OFF \
+            -D AETHERKIRI_BUILD_QLIE_TESTS="$AETHERKIRI_WITH_INTERNAL" \
             -D AETHERKIRI_BUILD_ENTISGLS_TESTS=ON \
             -D AETHERKIRI_BUILD_SYSTEMC_TESTS=ON \
             -D AETHERKIRI_BUILD_ESCUDE_TESTS=ON \
@@ -1216,6 +1232,10 @@ jobs:
               --require-executable aether_yuris_provider_tests
               --require-executable bgi-runtime-vm
               --require-executable bgi-runtime-provider
+              --require-executable aethereliq-runtime-tests
+              --require-executable aethereliq-audio-tests
+              --require-executable aethereliq-render-tests
+              --require-executable aethereliq-provider-tests
             )
           fi
           python3 tools/check_ctest_inventory.py "$inventory_file" "${required_suites[@]}"
@@ -1376,6 +1396,7 @@ jobs:
           AETHER_INTERNAL_DEPLOY_KEY: ${{ secrets.AETHERSECRET }}
           AETHER_SOFTPAL_DEPLOY_KEY: ${{ secrets.AETHER_SOFTPAL_DEPLOY_KEY }}
           AETHER_LEAFTTT_DEPLOY_KEY: ${{ secrets.AETHER_LEAFTTT_DEPLOY_KEY }}
+          AETHER_ELIQ_DEPLOY_KEY: ${{ secrets.AETHER_ELIQ_DEPLOY_KEY }}
           AETHER_EXHIBIT_DEPLOY_KEY: ${{ secrets.AETHER_EXHIBIT_DEPLOY_KEY }}
         run: .github/scripts/initialize-private-runtime-submodules.sh
 
@@ -1405,6 +1426,9 @@ jobs:
         run: |
           set -euo pipefail
           test -f packages/AetherInternal/cmake/AetherInternalConfig.cmake
+          test -f packages/AetherELIQ/cmake/AetherELIQConfig.cmake
+          test "$(git -C packages/AetherELIQ rev-parse HEAD)" = \
+            "$(git rev-parse HEAD:packages/AetherELIQ)"
           test -f packages/AetherSoftPal/cmake/AetherSoftPalConfig.cmake
           for package in AetherInternal AetherSoftPal; do
             test "$(git -C "packages/$package" rev-parse HEAD)" = \
@@ -1578,11 +1602,32 @@ jobs:
         if: env.AETHERKIRI_WITH_INTERNAL == 'true'
         run: |
           cmake -S . -B out/linux/debug \
-            -D ENABLE_TESTS=ON -D VCPKG_MANIFEST_INSTALL=OFF
+            -D ENABLE_TESTS=ON -D AETHERKIRI_BUILD_QLIE_TESTS=ON \
+            -D VCPKG_MANIFEST_INSTALL=OFF
           cmake --build out/linux/debug --parallel 2 \
-            --target bgi-runtime-vm bgi-runtime-provider
+            --target bgi-runtime-vm bgi-runtime-provider \
+              aethereliq-runtime-tests aethereliq-audio-tests \
+              aethereliq-render-tests aethereliq-provider-tests
           ctest --test-dir out/linux/debug/packages/AetherInternal/tests/bgi_runtime \
             --no-tests=error --parallel 2
+          ctest --test-dir out/linux/debug -R '^aethereliq-' \
+            --no-tests=error --output-on-failure --parallel 2
+
+      - name: Run native QLIE library import test
+        if: env.AETHERKIRI_WITH_INTERNAL == 'true'
+        env:
+          AETHERELIQ_PROVIDER_TESTS: ${{ github.workspace }}/out/linux/debug/aethereliq-provider-tests
+          ALSOFT_DRIVERS: "null"
+          LD_LIBRARY_PATH: ${{ github.workspace }}/apps/godot_app/bin/linux/debug
+        run: |
+          timeout 60 "$GODOT_BIN" --headless --path apps/godot_app \
+            --script res://tests/qlie_import_root_test.gd \
+            2>&1 | tee "$RUNNER_TEMP/qlie_import_root.log"
+          grep -Fx 'qlie_tsuki_import_test: PASS' "$RUNNER_TEMP/qlie_import_root.log"
+          grep -Fx 'qlie_import_root_test: PASS' "$RUNNER_TEMP/qlie_import_root.log"
+          if grep -E 'SCRIPT ERROR:|^ERROR:' "$RUNNER_TEMP/qlie_import_root.log"; then
+            exit 1
+          fi
 
       - name: Run OnscripterYuri Godot smoke test
         env:

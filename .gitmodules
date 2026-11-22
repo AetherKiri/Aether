@@ -3,6 +3,10 @@
 	url = git@github.com:AetherKiri/AetherInternal.git
 	branch = main
 	ignore = dirty
+[submodule "packages/AetherELIQ"]
+	path = packages/AetherELIQ
+	url = git@github.com:AetherKiri/AetherELIQ.git
+	branch = main
 [submodule "packages/OnscripterYuri"]
 	path = packages/AetherONScripterYuri
 	url = https://github.com/AetherKiri/AetherONScripterYuri.git

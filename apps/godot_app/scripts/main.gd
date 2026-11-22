@@ -2941,7 +2941,7 @@ var home_filtered_video_count := 0
 # collect according to the debug profile, while the floating performance
 # panel remains an explicit opt-in from Settings (or a legacy config value).
 var show_perf_monitor := false
-var diagnostic_profile := "baseline" if OS.is_debug_build() else "off"
+var diagnostic_profile := "off"
 var debug_overlay_mode := "off"
 var lock_landscape := false
 var game_runtime_shell_orientation := DisplayServer.SCREEN_SENSOR
@@ -4789,7 +4789,7 @@ func _load_shell_settings() -> void:
     show_perf_monitor = debug_overlay_mode != "off"
     diagnostic_profile = String(cfg.get_value("diagnostics", "profile", diagnostic_profile))
     if not diagnostic_profile in DIAGNOSTIC_PROFILES:
-        diagnostic_profile = "baseline" if OS.is_debug_build() else "off"
+        diagnostic_profile = "off"
     frame_limit_enabled = bool(cfg.get_value("rendering", "fps_limit_enabled", frame_limit_enabled))
     target_fps = int(cfg.get_value("rendering", "target_fps", target_fps))
     lock_landscape = bool(cfg.get_value("rendering", "force_landscape", lock_landscape))
@@ -5134,7 +5134,7 @@ func _apply_settings_snapshot(snapshot: Dictionary) -> void:
     )
     diagnostic_profile = String(snapshot.get("diagnostic_profile", diagnostic_profile))
     if not diagnostic_profile in DIAGNOSTIC_PROFILES:
-        diagnostic_profile = "baseline" if OS.is_debug_build() else "off"
+        diagnostic_profile = "off"
     debug_overlay_mode = String(snapshot.get("debug_overlay_mode", debug_overlay_mode))
     if not debug_overlay_mode in DEBUG_OVERLAY_MODES:
         debug_overlay_mode = "off"

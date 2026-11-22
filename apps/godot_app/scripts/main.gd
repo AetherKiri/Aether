@@ -517,6 +517,8 @@ const UI_TEXT := {
         "detail.script_encoding": "脚本编码",
         "detail.reset_launch_file": "恢复目录自动检测",
         "detail.rfvp_encoding": "RFVP 文本编码",
+        "detail.encoding_big5": "繁体中文（Big5 / CP950）",
+        "detail.encoding_cp949": "韩语（CP949）",
         "detail.rfvp_encoding_value": "文本编码：%s",
         "detail.set_cover": "设置封面",
         "detail.delete_cover": "删除封面",
@@ -953,6 +955,8 @@ const UI_TEXT := {
         "detail.script_encoding": "腳本編碼",
         "detail.reset_launch_file": "恢復目錄自動偵測",
         "detail.rfvp_encoding": "RFVP 文字編碼",
+        "detail.encoding_big5": "繁體中文（Big5 / CP950）",
+        "detail.encoding_cp949": "韓語（CP949）",
         "detail.rfvp_encoding_value": "文字編碼：%s",
         "detail.set_cover": "設定封面",
         "detail.rename": "重新命名",
@@ -1387,6 +1391,8 @@ You can find it any time under Settings → QQ Group.",
         "detail.script_encoding": "Script encoding",
         "detail.reset_launch_file": "Restore Folder Auto-detect",
         "detail.rfvp_encoding": "RFVP Text Encoding",
+        "detail.encoding_big5": "Traditional Chinese (Big5 / CP950)",
+        "detail.encoding_cp949": "Korean (CP949)",
         "detail.rfvp_encoding_value": "Text encoding: %s",
         "detail.set_cover": "Set Cover",
         "detail.delete_cover": "Delete Cover",
@@ -1790,6 +1796,8 @@ You can find it any time under Settings → QQ Group.",
         "detail.script_encoding": "スクリプトの文字コード",
         "detail.reset_launch_file": "フォルダーの自動検出に戻す",
         "detail.rfvp_encoding": "RFVP 文字エンコーディング",
+        "detail.encoding_big5": "繁体字中国語（Big5 / CP950）",
+        "detail.encoding_cp949": "韓国語（CP949）",
         "detail.rfvp_encoding_value": "文字エンコーディング：%s",
         "detail.set_cover": "カバーを設定",
         "detail.rename": "名前を変更",
@@ -2191,6 +2199,8 @@ You can find it any time under Settings → QQ Group.",
         "detail.script_encoding": "스크립트 인코딩",
         "detail.reset_launch_file": "폴더 자동 감지 복원",
         "detail.rfvp_encoding": "RFVP 텍스트 인코딩",
+        "detail.encoding_big5": "중국어 번체 (Big5 / CP950)",
+        "detail.encoding_cp949": "한국어 (CP949)",
         "detail.rfvp_encoding_value": "텍스트 인코딩: %s",
         "detail.set_cover": "표지 설정",
         "detail.rename": "이름 변경",
@@ -2620,6 +2630,8 @@ You can find it any time under Settings → QQ Group.",
         "detail.script_encoding": "Codificación de los scripts",
         "detail.reset_launch_file": "Restaurar la detección automática de la carpeta",
         "detail.rfvp_encoding": "Codificación de texto de RFVP",
+        "detail.encoding_big5": "Chino tradicional (Big5 / CP950)",
+        "detail.encoding_cp949": "Coreano (CP949)",
         "detail.rfvp_encoding_value": "Codificación de texto: %s",
         "detail.set_cover": "Establecer portada",
         "detail.delete_cover": "Eliminar portada",
@@ -5275,9 +5287,8 @@ func _apply_engine_options() -> void:
         var selected_root := _game_runtime_root(String(selected_game.get("path", "")))
         player.set_engine_option("rfvp_config_root", game_render_root if not game_render_root.is_empty() else selected_root)
         var encoding := _game_text_encoding(selected_game, "rfvp")
-        var legacy_value := "gbk" if encoding == "GBK" else "utf8" if encoding == "UTF-8" else "sjis"
         player.set_engine_option("rfvp_encoding", GameLaunchEntry.rfvp_encoding(
-            {"rfvpEncoding": legacy_value}, _runtime_string("AETHERKIRI_RFVP_ENCODING", "")))
+            {"rfvpEncoding": encoding}, _runtime_string("AETHERKIRI_RFVP_ENCODING", "")))
     if current_player_runtime_kind == RUNTIME_WA2:
         if not runtime_default_font_path.is_empty():
             player.set_engine_option("wa2.font_path", runtime_default_font_path)
@@ -9590,18 +9601,19 @@ func _detail_tools(game: Dictionary) -> FlowContainer:
     tools.add_theme_constant_override("v_separation", 8)
     tools.add_child(_detail_launch_button())
     var detail_runtime := _game_runtime_kind(String(game.get("path", "")))
-    if detail_runtime in [RUNTIME_YURIS, RUNTIME_SYSTEMC]:
-        var encoding_options = preload("res://scripts/systemc_engine_options.gd") if detail_runtime == RUNTIME_SYSTEMC else preload("res://scripts/yuris_engine_options.gd")
+    var encodings := GameTextConfig.encodings(detail_runtime)
+    if encodings.size() > 1 and detail_runtime != "rfvp":
         var encoding := OptionButton.new()
         encoding.custom_minimum_size = Vector2(190, 44)
         encoding.tooltip_text = _t("detail.script_encoding")
-        for value: String in encoding_options.SCRIPT_ENCODINGS:
-            encoding.add_item(_t("detail.script_encoding") + ": " + value)
-        encoding.select(encoding_options.SCRIPT_ENCODINGS.find(encoding_options.script_encoding(game)))
+        for value: String in encodings:
+            encoding.add_item(_t("detail.script_encoding") + ": " + _game_encoding_label(value))
+        var selected: String = _read_game_text_config(game, detail_runtime).text.encoding
+        encoding.select(maxi(0, encodings.find(selected)))
         encoding.item_selected.connect(func(index: int):
-            _update_game(String(game.get("path", "")), {
-                encoding_options.SCRIPT_ENCODING_FIELD: encoding_options.SCRIPT_ENCODINGS[index]
-            })
+            if not _save_classic_game_encoding(game, detail_runtime, encodings[index]):
+                var saved: String = _read_game_text_config(game, detail_runtime).text.encoding
+                encoding.select(maxi(0, encodings.find(saved)))
         )
         tools.add_child(encoding)
     if _can_configure_launch_file(game):
@@ -10903,18 +10915,53 @@ func _reset_launch_file_for_selected() -> void:
     _update_game(library_path, {GameLaunchEntry.FIELD: ""})
     _show_detail(selected_game)
 
+func _game_encoding_label(value: String) -> String:
+    match value:
+        "": return "AUTO"
+        "CP932": return "CP932 / Shift-JIS"
+        "BIG5": return _t("detail.encoding_big5")
+        "CP949": return _t("detail.encoding_cp949")
+    return value
+
+func _save_classic_game_encoding(game: Dictionary, runtime: String, value: String) -> bool:
+    var path := String(game.get("path", ""))
+    var root := _game_runtime_root(path)
+    var legacy := {}
+    match runtime:
+        "yuris": legacy["yurisScriptEncoding"] = value if not value.is_empty() else "AUTO"
+        "systemc": legacy["systemcScriptEncoding"] = value if not value.is_empty() else "AUTO"
+        "rfvp": legacy[GameLaunchEntry.RFVP_ENCODING_FIELD] = GameLaunchEntry.rfvp_encoding({"rfvpEncoding": value})
+    var error := GameTextConfig.save(root, runtime, game, {"encoding": value})
+    if error != OK:
+        # Older read-only imports keep their library setting when the game has no explicit override.
+        var saved := _read_game_text_config(game, runtime)
+        if legacy.is_empty() or saved.error != OK or saved.document.get("text", {}).has("encoding"):
+            _show_system_alert(error_string(error), _t("detail.script_encoding"))
+            return false
+    if not legacy.is_empty():
+        _update_game(path, legacy)
+    return true
+
 func _show_rfvp_encoding_dialog() -> void:
     var library_path := String(selected_game.get("path", ""))
     if library_path.is_empty():
         return
-    var dialog := _modal_dialog(Vector2(520, 380))
+    var dialog := _modal_dialog(Vector2(520, 520))
     var box := _modal_stack(dialog, _t("detail.rfvp_encoding"), ICON_SETTINGS)
-    box.add_child(_dialog_body_label(_t("detail.rfvp_encoding_value", [GameLaunchEntry.rfvp_encoding(selected_game).to_upper()])))
-    for choice in [["sjis", "Shift-JIS"], ["gbk", "GBK"], ["utf8", "UTF-8"]]:
-        var button := _secondary_dialog_button(choice[1])
+    var selected: String = _read_game_text_config(selected_game, "rfvp").text.encoding
+    box.add_child(_dialog_body_label(_t("detail.rfvp_encoding_value", [_game_encoding_label(selected)])))
+    var scroll := ScrollContainer.new()
+    scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+    scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
+    box.add_child(scroll)
+    var choices := VBoxContainer.new()
+    choices.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+    scroll.add_child(choices)
+    for value: String in GameTextConfig.encodings("rfvp"):
+        var button := _secondary_dialog_button(_game_encoding_label(value))
         button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-        button.pressed.connect(_set_rfvp_encoding_for_selected.bind(library_path, choice[0]))
-        box.add_child(button)
+        button.pressed.connect(_set_rfvp_encoding_for_selected.bind(library_path, value))
+        choices.add_child(button)
     var cancel := _secondary_dialog_button(_t("dialog.cancel"))
     cancel.size_flags_horizontal = Control.SIZE_SHRINK_END
     cancel.pressed.connect(func(): _dismiss_modal())
@@ -10922,8 +10969,10 @@ func _show_rfvp_encoding_dialog() -> void:
 
 func _set_rfvp_encoding_for_selected(library_path: String, encoding: String) -> void:
     _dismiss_modal(func():
-        _update_game(library_path, {GameLaunchEntry.RFVP_ENCODING_FIELD: encoding})
-        _show_detail(selected_game)
+        var game := selected_game if String(selected_game.get("path", "")) == library_path else {"path": library_path}
+        var value := GameTextConfig.legacy_encoding({"rfvpEncoding": encoding}, "rfvp")
+        if _save_classic_game_encoding(game, "rfvp", value):
+            _show_detail(selected_game)
     )
 
 func _rename_selected_game() -> void:

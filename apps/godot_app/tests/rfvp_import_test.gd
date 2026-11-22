@@ -69,6 +69,12 @@ func _init() -> void:
     app._set_rfvp_encoding_for_selected(root, "gbk")
     _expect(app.selected_game.launchFile == ".Story.hcb")
     _expect(app.selected_game.rfvpEncoding == "gbk")
+    for encoding: String in ["CP949", "BIG5"]:
+        app._set_rfvp_encoding_for_selected(root, encoding)
+        _expect(app._read_game_text_config(app.selected_game, "rfvp").text.encoding == encoding)
+        _expect(Launch.rfvp_encoding(app.selected_game) == encoding.to_lower())
+    DirAccess.remove_absolute(root.path_join("aether_config.json"))
+
 
     # Resetting the launch file keeps an empty automatic choice in the
     # library. Resolve it when opening instead of sending the directory to

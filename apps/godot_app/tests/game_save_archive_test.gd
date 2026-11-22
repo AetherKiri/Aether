@@ -113,6 +113,12 @@ func _initialize() -> void:
     put(root.path_join("rfvp/aether_config.json"), '{"text":{"encoding":"CP932"}}'.to_utf8_buffer())
     var sjis := Locations.resolve(root.path_join("rfvp"), "rfvp", {"launchFile": "story.hcb"}, user)
     check(gbk.main.path != sjis.main.path, "RFVP follows the configured encoding's actual save bank")
+    # Portable RFVP banks hash a NUL, the relative HCB, another NUL and the Rust Nls name.
+    var portable_banks := {"CP949": "6aca65af097f6fa2", "BIG5": "eac11d7a62ab7600"}
+    for encoding: String in portable_banks:
+        put(root.path_join("rfvp/aether_config.json"), JSON.stringify({"text": {"encoding": encoding}}).to_utf8_buffer())
+        var bank := Locations.resolve(root.path_join("rfvp"), "rfvp", {"launchFile": "story.hcb"}, user)
+        check(bank.main.path == root.path_join("rfvp/savedata/rfvp").path_join(portable_banks[encoding]), "RFVP save bank uses the Rust encoding name")
     var allowed_bank := {"main": {"path": root.path_join("wa2"), "files": ["save_00.sav"]}}
     put(root.path_join("wa2/save_00.sav"), bytes)
     put(root.path_join("wa2/game.dat"), "private assets".to_utf8_buffer())

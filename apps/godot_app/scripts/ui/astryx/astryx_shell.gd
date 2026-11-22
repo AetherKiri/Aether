@@ -1546,13 +1546,13 @@ func _detail_text_settings(parent: Control, game: Dictionary, runtime: String) -
         var values: Array = host.GameTextConfig.encodings(runtime)
         var labels: Array = []
         for value in values:
-            labels.append(automatic if String(value).is_empty() else "CP932 / Shift-JIS" if value == "CP932" else value)
+            labels.append(automatic if String(value).is_empty() else host._game_encoding_label(value))
         var selected: String = detail_edit_draft.get("encoding", "") if detail_edit_key == "encoding" else loaded.text.encoding
         var picker := _option("AstryxSetting_game_encoding", values, labels, selected, func(value):
             detail_edit_draft.encoding = value
             detail_edit_error = ""
         )
-        var summary: String = automatic if loaded.text.encoding.is_empty() else loaded.text.encoding
+        var summary: String = automatic if loaded.text.encoding.is_empty() else host._game_encoding_label(loaded.text.encoding)
         _detail_field(fields, "encoding", _text("文本编码", "Text encoding", "文字コード", "文字編碼", "Codificación de texto"), summary, picker)
     var editor := _vbox(16)
     editor.name = "AstryxGameFontEditor"

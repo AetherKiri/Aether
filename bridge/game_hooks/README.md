@@ -85,7 +85,7 @@ script-requested font families for this session, retaining the requested size
 and style. Closing the session restores native font selection.
 
 BGI, YU-RIS compiled scripts, ADVHD legacy scripts, SoftPal, CatSystem2 scenes,
-Escude ACPX scripts and SystemC share all five explicit byte-text encodings:
+Escude ACPX scripts and SystemC share the following explicit byte-text encodings:
 
 | Canonical name | Aliases (ASCII case-insensitive) |
 | --- | --- |
@@ -93,6 +93,7 @@ Escude ACPX scripts and SystemC share all five explicit byte-text encodings:
 | `GBK` | `CP936`, `GB2312` |
 | `GB18030` | — |
 | `BIG5` | `CP950`, `Big-5` |
+| `CP949` | `Windows-949`, `UHC` |
 | `UTF-8` | `UTF8` |
 
 GB18030 four-byte characters and UTF-8 multibyte characters are consumed whole.

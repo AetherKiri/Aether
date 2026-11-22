@@ -1,7 +1,7 @@
 extends RefCounted
 
 const SCRIPT_ENCODING_FIELD := "systemcScriptEncoding"
-const SCRIPT_ENCODINGS := ["AUTO", "CP932", "GBK", "UTF-8"]
+const SCRIPT_ENCODINGS := ["AUTO"] + preload("res://scripts/game_text_config.gd").BYTE_ENCODINGS
 
 static func script_encoding(game: Dictionary, override: String = "") -> String:
     var requested := override.strip_edges().to_upper()

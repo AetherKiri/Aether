@@ -187,10 +187,11 @@ struct GameHooks::Script {
             if(encoding == "SJIS" || encoding == "SHIFT-JIS" || encoding == "SHIFT_JIS" || encoding == "SHIFTJIS") encoding = "CP932";
             if(encoding == "CP936" || encoding == "GB2312") encoding = "GBK";
             if(encoding == "CP950" || encoding == "BIG-5") encoding = "BIG5";
+            if(encoding == "WINDOWS-949" || encoding == "UHC") encoding = "CP949";
             if(encoding == "UTF8") encoding = "UTF-8";
             if(encoding != "CP932" && encoding != "GBK" && encoding != "GB18030" &&
-               encoding != "BIG5" && encoding != "UTF-8")
-                throw std::runtime_error("unsupported text encoding; expected CP932, GBK, GB18030, BIG5 or UTF-8");
+               encoding != "BIG5" && encoding != "CP949" && encoding != "UTF-8")
+                throw std::runtime_error("unsupported text encoding; expected CP932, GBK, GB18030, BIG5, CP949 or UTF-8");
             output.encoding_ = std::move(encoding);
             return 0;
         }

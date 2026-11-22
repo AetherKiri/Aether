@@ -128,7 +128,7 @@ engine_result_t Open(void* p, const char* path, const char* startup) {
         const auto settings = aether::text::GameTextSettings::Load(game_root, "rfvp");
         const auto font = settings.font.empty() ? r.font : settings.font.u8string();
         const auto encoding = settings.encoding.empty() ? r.encoding
-            : settings.encoding == "CP932" ? "sjis" : settings.encoding == "UTF-8" ? "utf8" : "gbk";
+            : settings.encoding;
         result = r.result(aether_rfvp_open(r.core, path, startup,
             r.writable.c_str(), font.c_str(), encoding.c_str(), r.renderer.c_str(), r.game_local_saves));
     } catch(const std::exception& error) {
@@ -177,8 +177,8 @@ engine_result_t Option(void* p, const engine_option_t* option) {
         }
         if (key == "default_font") r.font = value;
         else if (key == "rfvp_encoding") {
-            if (value != "sjis" && value != "gbk" && value != "utf8") {
-                r.error = "rfvp_encoding must be sjis, gbk or utf8";
+            if (value != "sjis" && value != "gbk" && value != "big5" && value != "cp949" && value != "utf8") {
+                r.error = "rfvp_encoding must be sjis, gbk, big5, cp949 or utf8";
                 return ENGINE_RESULT_INVALID_ARGUMENT;
             }
             r.encoding = value;

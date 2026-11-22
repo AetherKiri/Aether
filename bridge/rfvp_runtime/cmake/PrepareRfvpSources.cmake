@@ -21,11 +21,12 @@ function(aetherkiri_prepare_rfvp root rfvp_dir output)
              DESTINATION "${output}/crates"
              PATTERN "target" EXCLUDE PATTERN "fonts" EXCLUDE)
     endforeach()
-    # Remove unused private helpers from the pinned embedded source copy.
+    # Apply the embedded host adaptations to the pinned source copy.
     find_package(Git REQUIRED)
     execute_process(COMMAND "${CMAKE_COMMAND}" -E env
         "GIT_CEILING_DIRECTORIES=${CMAKE_CURRENT_BINARY_DIR}"
         "${GIT_EXECUTABLE}" apply "${CMAKE_CURRENT_FUNCTION_LIST_DIR}/unused-embedded-helpers.patch"
+            "${CMAKE_CURRENT_FUNCTION_LIST_DIR}/east-asian-encodings.patch"
         WORKING_DIRECTORY "${output}" COMMAND_ERROR_IS_FATAL ANY)
     file(COPY "${rfvp_dir}/LICENSE" "${rfvp_dir}/README.md"
          DESTINATION "${output}")

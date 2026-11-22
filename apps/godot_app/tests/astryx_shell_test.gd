@@ -525,9 +525,16 @@ func _exercise_game_text_settings() -> void:
     await _click("AstryxCancelDetail_encoding")
     _expect(FileAccess.get_file_as_string(config_path) == before, "Cancelling encoding leaves the config unchanged")
     await _click("AstryxEdit_game_encoding")
-    await _select_value("AstryxSetting_game_encoding", "GBK")
-    await _click("AstryxSaveDetail_encoding")
-    _expect(app._read_game_text_config(game).text.encoding == "GBK", "Saving encoding reaches the game's JSON file")
+    for encoding in ["BIG5", "CP949"]:
+        var picker := controller.view.find_child("AstryxSetting_game_encoding", true, false) as OptionButton
+        var label: String = app._game_encoding_label(encoding)
+        _expect(label != encoding, "Encoding label includes the language")
+        await _select_value("AstryxSetting_game_encoding", encoding)
+        _expect(picker.get_item_text(picker.selected) == label, "Picker names the language and code page")
+        await _click("AstryxSaveDetail_encoding")
+        _expect(app._read_game_text_config(game).text.encoding == encoding, "Saving " + encoding + " reaches the game's JSON file")
+        if encoding == "BIG5":
+            await _click("AstryxEdit_game_encoding")
     await _click("AstryxEdit_game_font_file")
     await _click("AstryxChooseGameFont")
     var stale_callback := app.font_callback
@@ -554,7 +561,7 @@ func _exercise_game_text_settings() -> void:
         await _capture("astryx-godot-%s-game-font" % sample[1])
     await _click("AstryxSaveDetail_font_file")
     var selected: Dictionary = app._read_game_text_config(game).text
-    _expect(selected.encoding == "GBK" and selected.font_file.ends_with("Figtree-Regular.ttf"), "Font save preserves the independent encoding")
+    _expect(selected.encoding == "CP949" and selected.font_file.ends_with("Figtree-Regular.ttf"), "Font save preserves the independent encoding")
     _expect(not app.GameTextConfig.font_path(game.path, selected.font_file).is_empty(), "Font Save imports a usable file into the game")
     await _click("AstryxEdit_game_font_file")
     await _click("AstryxResetGameFont")

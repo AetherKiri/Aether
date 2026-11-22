@@ -159,7 +159,8 @@ func _check_player_paths(base: String) -> void:
     app.selected_game = {"path": first.path_join("game.exe")}
     _expect(app._ensure_player_initialized(), "Normal executable launch initializes")
     _expect(player.opens.back().user == first.path_join("savedata"), "Pass game-local saves to the actual player")
-    _expect(player.opens.back().cache == Options.cache_directory(host, first), "Pass separate application cache to the player")
+    var expected_cache: String = preload("res://scripts/game_cache.gd").directory(host, first)
+    _expect(player.opens.back().cache == expected_cache, "Pass the separate per-game application cache to the player")
     _expect(app._ensure_player_initialized() and player.opens.size() == 1, "Reuse the same game's initialized engine")
     app.selected_game = {"path": second}
     _expect(app._ensure_player_initialized(), "Switch to second game")

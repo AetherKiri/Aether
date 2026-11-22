@@ -73,19 +73,13 @@ ZIP contains `main/<relative-save-file>` and `aether-save.json` with the game na
 engine, format version, file lengths and SHA-256 hashes. It contains no absolute
 host paths. Save locations come from the current host, never from archive input.
 
-The resolver supports the game-local `savedata` convention and the established
-Ren'Py, TyranoScript, YU-RIS, SystemC, Siglus, ONScripter, CatSystem2, BGI,
-System4/3.5/3, RFVP, MAGES and WA2 locations. RFVP follows the configured encoding;
-MAGES selects only the detected title's profile. Cache/font-cache folders and
-known non-save metadata are
-excluded; root-level engines use explicit file allowlists.
+Aether writes new System 1–3, System 3.5/3.9, System 4, MAGES, RFVP, SoftPal, Minori and TyranoScript progress beneath `savedata/` in the game folder. RFVP separates scripts and encodings; MAGES separates profiles. WA2 keeps its existing slots in the game root and stores global flags in `savedata/wa2/`. Flash stores SharedObjects next to the SWF under `savedata/flash/`. A Flash folder may hold objects shared by several SWFs, so this folder is not offered as a single-game save archive.
 
-Legacy Minori saves share an application-wide directory without a reliable game
-owner, and SoftPal save-bank identities are not yet exposed to the shell.
-Those cases return an explicit unsupported-location message instead of copying
-shared application data. Engine-specific custom save-path overrides outside the
-mapped banks require an additional resolver; they must not fall back to scanning
-the whole game or user-data directory.
+When the game next opens, Aether copies identifiable old saves into the new location without replacing an existing local bank or deleting the originals. Flash migrates each old object when the game requests it. The game folder must be writable for these engines; when preparation fails, Aether leaves the old files intact rather than writing a new save in the old location. Move or copy the whole game folder after migration to keep its local saves.
+
+Older Minori saves are shared and do not name their game. If they all belong to the selected game and the local save folder is empty, open the game's **Saves** section and choose **Recover Legacy Saves**. Aether copies recognized slots and the shared system file only after you confirm. If only an old `system.dat` remains, keep it as a backup; Aether cannot identify its game or safely offer automatic recovery.
+
+Save archives use the current game bank, not the entire game or application data directory. The resolver can read some identifiable legacy banks before the first launch; downloads write to the game folder. Launch and close SoftPal or RFVP once before syncing so the provider can migrate any legacy bank. Cache, font-cache folders, and migration markers are not part of the archive.
 
 Archives are bounded to 10,000 files, 128 MiB per file and 1 GiB total. Import
 checks the ZIP directory before decompression and rejects traversal, symlinks,
@@ -99,6 +93,7 @@ later exports after 24 hours. Cloud staging files are removed when finished.
 
 Run with the repository's Godot binary and `--headless --path apps/godot_app`:
 
+- `--script res://tests/game_local_save_test.gd`: migration, portable saves, explicit Minori recovery, and protection of existing local saves.
 - `--script res://tests/game_save_archive_test.gd`: round trips, identity checks,
   traversal/link rejection, backup and partial-write rollback, engine banks.
 - `--script res://tests/game_cache_test.gd`: cache size, isolation, savedata

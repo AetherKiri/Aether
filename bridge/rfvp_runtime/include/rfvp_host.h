@@ -50,7 +50,7 @@ void aether_rfvp_free(void* runtime);
 int32_t aether_rfvp_probe(const char* path);
 int32_t aether_rfvp_open(void* runtime, const char* path, const char* script,
     const char* writable, const char* font, const char* encoding,
-    const char* renderer);
+    const char* renderer, uint32_t game_local_saves);
 int32_t aether_rfvp_tick(void* runtime, uint32_t delta_ms);
 int32_t aether_rfvp_pause(void* runtime, uint32_t paused);
 int32_t aether_rfvp_input(void* runtime, uint32_t kind, double x, double y,

@@ -12,7 +12,7 @@
 
 #if defined(AETHERKIRI_WITH_FLASH)
 extern "C" {
-void *aether_flash_open(const char *, const char *);
+void *aether_flash_open(const char *, const char *, const char *);
 void aether_flash_close(void *);
 const char *aether_flash_error();
 uint32_t aether_flash_width(const void *);
@@ -41,7 +41,7 @@ class AetherFlashPlayer : public Node {
 protected:
     static void _bind_methods() {
         ClassDB::bind_method(D_METHOD("is_supported"), &AetherFlashPlayer::is_supported);
-        ClassDB::bind_method(D_METHOD("open", "path", "storage"), &AetherFlashPlayer::open);
+        ClassDB::bind_method(D_METHOD("open", "path", "storage", "legacy_storage"), &AetherFlashPlayer::open, DEFVAL(String()));
         ClassDB::bind_method(D_METHOD("close"), &AetherFlashPlayer::close);
         ClassDB::bind_method(D_METHOD("get_texture"), &AetherFlashPlayer::get_texture);
         ClassDB::bind_method(D_METHOD("get_error"), &AetherFlashPlayer::get_error);
@@ -59,11 +59,11 @@ public:
         return false;
 #endif
     }
-    bool open(const String &path, const String &storage) {
+    bool open(const String &path, const String &storage, const String &legacy_storage) {
         close();
         error_ = "";
 #if defined(AETHERKIRI_WITH_FLASH)
-        handle_ = aether_flash_open(path.utf8().get_data(), storage.utf8().get_data());
+        handle_ = aether_flash_open(path.utf8().get_data(), storage.utf8().get_data(), legacy_storage.utf8().get_data());
         if (!handle_) { error_ = String::utf8(aether_flash_error()); return false; }
         width_ = aether_flash_width(handle_);
         height_ = aether_flash_height(handle_);

@@ -59,6 +59,22 @@ func _refresh() -> void:
     if shell != null and is_instance_valid(shell.view) and shell.enabled and shell.view.route == "detail":
         shell.view.rebuild(true)
 
+func recover_minori_legacy(game: Dictionary) -> void:
+    if busy or host.game_running:
+        return
+    var path := String(game.get("path", ""))
+    var engine := String(game.get("engine", ""))
+    if engine.is_empty():
+        engine = host._game_runtime_kind(path)
+    if path.is_empty() or engine != "minori":
+        return
+    var result := Locations.recover_minori_legacy(host._game_runtime_root(path), OS.get_user_data_dir())
+    if not String(result.error).is_empty():
+        _notice(_text("无法恢复旧版存档。恢复要求游戏的本地存档目录为空：%s", "Could not recover the legacy saves. Recovery requires an empty game-local save folder: %s", "旧セーブを復元できませんでした。復元には空のゲーム内セーブフォルダーが必要です：%s", "No se pudieron recuperar las partidas antiguas. La carpeta de guardado del juego debe estar vacía: %s") % result.error)
+        return
+    _notice(_text("旧版存档已复制到游戏目录，原文件仍保留。", "Legacy saves were copied into the game folder. The originals were kept.", "旧セーブをゲームフォルダーにコピーしました。元のファイルは残っています。", "Se copiaron las partidas antiguas a la carpeta del juego. Se conservaron los archivos originales."))
+    _refresh()
+
 func start(action: String, game: Dictionary) -> void:
     if busy or host.game_running:
         return
@@ -71,7 +87,16 @@ func start(action: String, game: Dictionary) -> void:
     game_engine = String(snapshot.get("engine", ""))
     if game_engine.is_empty():
         game_engine = host._game_runtime_kind(String(snapshot.get("path", "")))
-    banks = Locations.resolve(root, game_engine, snapshot)
+    if action == "download":
+        var preparation := Locations.prepare_import(root, game_engine, snapshot, OS.get_user_data_dir())
+        if preparation == "launch_required":
+            _notice(_text("请先启动一次此游戏并退出，让引擎完成旧存档迁移，再同步。", "Launch and close this game once so it can migrate its old saves before syncing.", "旧セーブの移行のため、一度ゲームを起動して終了してから同期してください。", "Abre y cierra el juego una vez para migrar las partidas antiguas antes de sincronizar."))
+            return
+        if not preparation.is_empty():
+            _notice(_text("无法准备游戏目录中的存档：%s", "Could not prepare saves in the game folder: %s", "ゲームフォルダー内のセーブデータを準備できませんでした：%s", "No se pudieron preparar las partidas en la carpeta del juego: %s") % preparation)
+            return
+    # Download must never write into a pre-migration application bank.
+    banks = Locations.resolve(root, game_engine, snapshot, "", action == "download")
     if banks.is_empty():
         _notice(_text("无法确定此游戏的独立存档目录，未读取其他游戏的存档。", "This game's separate save folder could not be identified.", "このゲーム専用のセーブフォルダーを特定できませんでした。", "No se ha podido identificar la carpeta de partidas guardadas propia de este juego."))
         return

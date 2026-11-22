@@ -1528,16 +1528,19 @@ jobs:
             exit 1
           fi
 
-      - name: Run game save archive and transfer tests
+      - name: Run game save migration, archive, and transfer tests
         env:
           LD_LIBRARY_PATH: ${{ github.workspace }}/apps/godot_app/bin/linux/debug
         run: |
           set -euo pipefail
-          for suite in archive transfer; do
-            log="$RUNNER_TEMP/game-save-${suite}.log"
+          for suite in game_save_archive game_save_transfer game_local_save; do
+            log="$RUNNER_TEMP/${suite}.log"
             timeout 60 "$GODOT_BIN" --headless --path apps/godot_app \
-              --script "res://tests/game_save_${suite}_test.gd" 2>&1 | tee "$log"
-            grep -Fx "Save ${suite} failures: 0" "$log"
+              --script "res://tests/${suite}_test.gd" 2>&1 | tee "$log"
+            case "$suite" in
+              game_local_save) grep -Fx 'Game-local save migration checks passed' "$log" ;;
+              *) grep -Fx "Save ${suite#game_save_} failures: 0" "$log" ;;
+            esac
             if grep -E 'SCRIPT ERROR:|^ERROR:' "$log"; then
               exit 1
             fi

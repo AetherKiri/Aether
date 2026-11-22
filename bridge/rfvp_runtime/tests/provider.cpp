@@ -37,13 +37,13 @@ struct Instance {
     void ok(engine_result_t code) {
         if (code != ENGINE_RESULT_OK) throw std::runtime_error(provider->get_last_error(value));
     }
-    engine_result_t open_result(const fs::path& path) {
+    engine_result_t open_result(const fs::path& path, const char* startup_script = nullptr) {
         // Match engine_open_game_async: macOS gives std::thread a much smaller
         // stack than main(). Tick, input and destruction stay on the host thread.
         engine_result_t result = ENGINE_RESULT_INTERNAL_ERROR;
         const auto utf8 = path.u8string();
         std::thread startup([&] {
-            result = provider->open_game(value, utf8.c_str(), nullptr);
+            result = provider->open_game(value, utf8.c_str(), startup_script);
         });
         startup.join();
         return result;
@@ -188,6 +188,39 @@ int main(int argc, char** argv) {
             check(reopened.pixels()[(200 * 1024 + 200) * 4] < 40, "save survives close and reopen");
         }
         check(fs::is_directory(scratch / "rfvp"), "host save root used");
+        {
+            fs::path legacy_slot;
+            for (const auto& entry : fs::recursive_directory_iterator(scratch / "rfvp")) {
+                if (entry.path().filename() == "rfvp_s000.bin") legacy_slot = entry.path();
+            }
+            check(!legacy_slot.empty(), "real legacy slot is available for migration");
+            Instance migrated(scratch);
+            engine_option_t option{};
+            option.key_utf8 = "aether.game_local_saves";
+            option.value_utf8 = "1";
+            migrated.ok(provider->set_option(migrated.value, &option));
+            option.key_utf8 = "rfvp_encoding";
+            option.value_utf8 = "sjis";
+            migrated.ok(provider->set_option(migrated.value, &option));
+#ifndef _WIN32
+            fs::create_symlink(fixture.filename(), scratch / "alias.hcb");
+            migrated.ok(migrated.open_result(scratch, "alias.hcb"));
+#else
+            migrated.open(fixture);
+#endif
+            fs::path local_slot;
+            for (const auto& entry : fs::recursive_directory_iterator(scratch / "savedata" / "rfvp")) {
+                if (entry.path().filename() == "rfvp_s000.bin") local_slot = entry.path();
+            }
+            check(local_slot == scratch / "savedata/rfvp/03039d9aee24b3a8/save/rfvp_s000.bin",
+                  "the selected HCB uses the real script's portable save identity");
+            check(fs::is_regular_file(legacy_slot) &&
+                      fs::file_size(local_slot) == fs::file_size(legacy_slot),
+                  "the actual provider copies its legacy slot into the game without removing the source");
+            migrated.step(2);
+            migrated.key(120); migrated.step(80);
+            check(migrated.pixels()[(200 * 1024 + 200) * 4] < 40, "the provider loads the migrated gameplay state");
+        }
         {
             const auto fade_fixture = scratch / "fade.hcb";
             write_input_fixture(fade_fixture, true);

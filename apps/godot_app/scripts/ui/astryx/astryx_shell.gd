@@ -2309,6 +2309,13 @@ func _save_transfer():
 
 func _detail_save_actions(section: Control, game: Dictionary) -> void:
     var transfer = _save_transfer()
+    var engine := String(game.get("engine", ""))
+    if (engine.is_empty() or engine == "minori") and preload("res://scripts/game_save_locations.gd").has_minori_legacy():
+        if engine == "minori" or host._game_runtime_kind(String(game.get("path", ""))) == "minori":
+            var recover := _button(_text("恢复旧版存档", "Recover Legacy Saves", "旧セーブを復元", "復原舊版存檔", "Recuperar partidas antiguas"), func(): _confirm_minori_recovery(game.duplicate(true)), "secondary", "AstryxRecoverMinoriSaves")
+            recover.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+            recover.disabled = transfer.busy
+            section.add_child(recover)
     section.add_child(_label(_text("仅处理当前游戏的存档。", "Only this game's saves are included.", "このゲームのセーブデータのみを扱います。", "僅處理目前遊戲的存檔。", "Solo se incluyen las partidas guardadas de este juego."), 14, true))
     var snapshot := game.duplicate(true)
     var export_button := _button(_text("导出存档", "Export saves", "セーブを書き出す", "匯出存檔", "Exportar partidas guardadas"), func(): transfer.start("share", snapshot), "secondary", "AstryxExportSaves")
@@ -2339,6 +2346,17 @@ func _detail_save_actions(section: Control, game: Dictionary) -> void:
         section.add_child(_label(_text("首次使用时，选择 iCloud Drive 中的同一个存档文件夹。不同游戏按名字分开保存。", "On each device, select the same iCloud Drive saves folder on first use. Games are stored separately by name.", "初回に各端末で同じ iCloud Drive フォルダーを選びます。ゲーム名ごとに保存します。", "首次使用時，選擇 iCloud Drive 中的同一個存檔資料夾。不同遊戲依名稱分開儲存。", "En cada dispositivo, elige la misma carpeta de partidas guardadas de iCloud Drive la primera vez. Los juegos se guardan por separado según su nombre."), 12, true))
     if transfer.busy:
         section.add_child(_label(_text("正在处理存档…", "Working on saves…", "セーブデータを処理しています…", "正在處理存檔…", "Procesando partidas guardadas…"), 14, true))
+
+func _confirm_minori_recovery(game: Dictionary) -> void:
+    var stack := _dialog(_text("恢复旧版存档？", "Recover legacy saves?", "旧セーブを復元しますか？", "復原舊版存檔？", "¿Recuperar partidas antiguas?"),
+        _text("旧版 Minori 存档没有游戏标识。请仅在确认旧档（包括全局进度）都属于「%s」时继续。已有本地存档不会被覆盖。", "Older Minori saves do not identify their game. Continue only if the old saves, including global progress, all belong to “%s”. Existing local saves will not be replaced.", "旧版の Minori セーブにはゲーム識別情報がありません。共通進行データも含め、すべて「%s」のデータであることを確認してください。既存のセーブは上書きしません。", "舊版 Minori 存檔沒有遊戲標識。請只在確認舊檔（含全域進度）都屬於「%s」時繼續。現有本機存檔不會被覆蓋。", "Las partidas antiguas de Minori no identifican el juego. Continúa solo si todas pertenecen a «%s», incluido el progreso global. No se sustituirán las partidas locales.") % host._game_display_title(game))
+    var actions := _hbox(12)
+    actions.alignment = BoxContainer.ALIGNMENT_END
+    stack.add_child(actions)
+    var cancel := _button(_t("dialog.cancel"), func(): host._dismiss_modal(), "secondary", "AstryxCancelMinoriRecovery")
+    actions.add_child(cancel)
+    actions.add_child(_button(_text("确认恢复", "Recover", "復元する", "確認復原", "Recuperar"), func(): _dismiss_then(func(): _save_transfer().recover_minori_legacy(game)), "primary", "AstryxConfirmMinoriRecovery"))
+    cancel.grab_focus()
 
 func _confirm_save_sync(game: Dictionary) -> void:
     var stack := _dialog(_text("同步当前游戏的存档？", "Sync this game's saves?", "このゲームのセーブを同期しますか？", "同步目前遊戲的存檔？", "¿Sincronizar las partidas guardadas de este juego?"),

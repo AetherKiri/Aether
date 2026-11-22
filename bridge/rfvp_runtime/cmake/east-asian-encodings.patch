@@ -1,0 +1,51 @@
+--- a/crates/rfvp/src/script/parser.rs
++++ b/crates/rfvp/src/script/parser.rs
+@@ -42,6 +42,10 @@
+     ShiftJIS = 0,
+     GBK = 1,
+     UTF8 = 2,
++    #[cfg(not(feature = "psx"))]
++    Big5 = 3,
++    #[cfg(not(feature = "psx"))]
++    Cp949 = 4,
+ }
+ 
+ impl FromStr for Nls {
+@@ -51,9 +55,14 @@
+         match s.to_ascii_lowercase().as_str() {
+-            "sjis" | "shiftjis" | "shift_jis" | "shift-jis" => Ok(Nls::ShiftJIS),
++            "cp932" | "sjis" | "shiftjis" | "shift_jis" | "shift-jis" => Ok(Nls::ShiftJIS),
+             "gbk" | "gb2312" | "gb18030" => Ok(Nls::GBK),
++            #[cfg(not(feature = "psx"))]
++            "big5" | "cp950" => Ok(Nls::Big5),
++            #[cfg(not(feature = "psx"))]
++            "cp949" | "uhc" | "windows-949" => Ok(Nls::Cp949),
+             "utf8" | "utf-8" => Ok(Nls::UTF8),
+             _ => Err(anyhow::anyhow!(
+-                "unknown NLS '{}', valid values: sjis, gbk, utf8",
++                "unknown NLS '{}', valid values: sjis, gbk, utf8{}",
+-                s
++                s,
++                if cfg!(feature = "psx") { "" } else { ", big5, cp949" }
+             )),
+         }
+--- a/crates/rfvp/src/text_codec.rs
++++ b/crates/rfvp/src/text_codec.rs
+@@ -16,6 +16,8 @@
+         let encoding = match nls {
+             Nls::ShiftJIS => encoding_rs::SHIFT_JIS,
+             Nls::GBK => encoding_rs::GBK,
++            Nls::Big5 => encoding_rs::BIG5,
++            Nls::Cp949 => encoding_rs::EUC_KR,
+             Nls::UTF8 => encoding_rs::UTF_8,
+         };
+         let (text, _, errors) = encoding.decode(bytes);
+@@ -39,6 +41,8 @@
+         match nls {
+             Nls::ShiftJIS => encoding_rs::SHIFT_JIS.encode(text).0.into_owned(),
+             Nls::GBK => encoding_rs::GBK.encode(text).0.into_owned(),
++            Nls::Big5 => encoding_rs::BIG5.encode(text).0.into_owned(),
++            Nls::Cp949 => encoding_rs::EUC_KR.encode(text).0.into_owned(),
+             Nls::UTF8 => text.as_bytes().to_vec(),
+         }
+     }

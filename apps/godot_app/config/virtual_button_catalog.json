@@ -1,0 +1,8 @@
+{
+  "mouse_buttons": ["pad", "Esc", "Ctrl", "1", "2", "3", "4", "Space", "Enter", "mouse_left", "mouse_right", "wheel_up", "wheel_down"],
+  "key_codes": {
+    "Shift": 16, "Ctrl": 17, "Alt": 18, "Space": 32, "Enter": 13, "Esc": 27,
+    "Tab": 9, "Backspace": 8, "Left": 37, "Up": 38, "Right": 39, "Down": 40,
+    "Home": 36, "End": 35, "PageUp": 33, "PageDown": 34, "Insert": 45, "Delete": 46
+  }
+}

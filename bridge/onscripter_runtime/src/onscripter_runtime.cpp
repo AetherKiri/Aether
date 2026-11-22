@@ -49,8 +49,7 @@
 #include "ONScripter.h"
 #undef protected
 #undef private
-#include "gbk2utf16.h"
-#include "sjis2utf16.h"
+#include "onscripter_encoding.h"
 
 #undef SDL_FreeSurface
 
@@ -1179,18 +1178,9 @@ struct Runtime::Impl final : EmbeddedMovieHost {
     void configure_encoding(const std::string& selected_encoding) {
         // ONScripter Yuri uses one process-wide converter. Replace it before
         // each embedded session so a later game may choose another encoding.
-        if (coding2utf16 != nullptr) {
-            delete coding2utf16;
-            coding2utf16 = nullptr;
-        }
-        if (selected_encoding == "sjis" || selected_encoding == "shift-jis" ||
-            selected_encoding == "shift_jis") {
-            coding2utf16 = new SJIS2UTF16();
-        } else {
-            auto *converter = new GBK2UTF16();
-            converter->force_utf8 = selected_encoding == "utf8" || selected_encoding == "utf-8";
-            coding2utf16 = converter;
-        }
+        auto next = MakeOnsEncoding(selected_encoding);
+        delete coding2utf16;
+        coding2utf16 = next.release();
     }
 
     std::string load_game_options(const fs::path &root) {
@@ -1201,6 +1191,8 @@ struct Runtime::Impl final : EmbeddedMovieHost {
             if (value == "--enc:sjis") selected = "sjis";
             else if (value == "--enc:utf8") selected = "utf8";
             else if (value == "--enc:gbk") selected = "gbk";
+            else if (value == "--enc:big5") selected = "big5";
+            else if (value == "--enc:cp949") selected = "cp949";
         }
         return selected;
     }
@@ -1234,9 +1226,9 @@ struct Runtime::Impl final : EmbeddedMovieHost {
                                     SDL_HINT_OVERRIDE);
 #endif
             const auto text_settings = aether::text::GameTextSettings::Load(root, "onscripter");
-            const auto selected_encoding = text_settings.encoding.empty() ? load_game_options(root)
-                : text_settings.encoding == "CP932" ? "sjis"
-                : text_settings.encoding == "UTF-8" ? "utf8" : "gbk";
+            auto selected_encoding = text_settings.encoding.empty() ? load_game_options(root) : text_settings.encoding;
+            std::transform(selected_encoding.begin(), selected_encoding.end(), selected_encoding.begin(),
+                [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
             configure_encoding(selected_encoding);
             ons = new (static_cast<void *>(&::ons)) ONScripter();
             g_translation_ons.store(ons, std::memory_order_release);

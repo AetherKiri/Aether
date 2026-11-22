@@ -33,7 +33,7 @@ the small generated workspace, not all upstream console and tool packages.
   resource packs/subdirectories. The library selects the HCB launch entry.
   Direct HCB selection also works; explicitly select one if several exist.
 - Original Japanese scripts default to Shift-JIS. The game's detail page offers
-  a persistent script-encoding choice (Shift-JIS, GBK or UTF-8). Choose the
+  a persistent script-encoding choice (Shift-JIS, GBK, Big5, CP949 or UTF-8). Choose the
   encoding of the actual HCB, not the desired display language. The developer
   override `AETHERKIRI_RFVP_ENCODING` remains available. Metadata refresh preserves
   manually selected launch files, including the empty auto-detect choice.

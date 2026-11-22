@@ -85,6 +85,7 @@ const CoverIndex = preload("res://scripts/cover_index.gd")
 const GameCoverConfig = preload("res://scripts/game_cover_config.gd")
 const VNDBCoverResolver = preload("res://scripts/vndb_cover_resolver.gd")
 const GameInputMapping = preload("res://scripts/game_input_mapping.gd")
+const VirtualButtonLayouts := preload("res://scripts/virtual_button_layout.gd")
 const GameVirtualControls = preload("res://scripts/game_virtual_controls.gd")
 const DiagnosticSession = preload("res://scripts/diagnostic_session.gd")
 const DiagnosticLocalization = preload("res://scripts/diagnostic_localization.gd")
@@ -314,6 +315,7 @@ const UI_TEXT := {
         "settings.ui_scale_desc": "调整 iPhone 和 iPad 上的界面大小，保存后立即生效",
         "settings.virtual_control_menu": "游戏内控制菜单",
         "settings.virtual_control_menu_desc": "在游戏画面右上角显示虚拟控制菜单按钮",
+        "virtual_buttons.number": "方案%d",
         "import.progress": "正在导入 %s · %s",
         "import.complete": "已导入 Games：%s",
         "import.failed": "导入失败：%s",
@@ -517,6 +519,8 @@ const UI_TEXT := {
         "detail.script_encoding": "脚本编码",
         "detail.reset_launch_file": "恢复目录自动检测",
         "detail.rfvp_encoding": "RFVP 文本编码",
+        "detail.encoding_big5": "繁体中文（Big5 / CP950）",
+        "detail.encoding_cp949": "韩语（CP949）",
         "detail.rfvp_encoding_value": "文本编码：%s",
         "detail.set_cover": "设置封面",
         "detail.delete_cover": "删除封面",
@@ -750,6 +754,7 @@ const UI_TEXT := {
         "settings.ui_scale_desc": "調整 iPhone 和 iPad 上的介面大小，儲存後立即生效",
         "settings.virtual_control_menu": "遊戲內控制選單",
         "settings.virtual_control_menu_desc": "在遊戲畫面右上角顯示虛擬控制選單按鈕",
+        "virtual_buttons.number": "方案%d",
         "import.progress": "正在匯入 %s · %s",
         "import.complete": "已匯入 Games：%s",
         "import.failed": "匯入失敗：%s",
@@ -953,6 +958,8 @@ const UI_TEXT := {
         "detail.script_encoding": "腳本編碼",
         "detail.reset_launch_file": "恢復目錄自動偵測",
         "detail.rfvp_encoding": "RFVP 文字編碼",
+        "detail.encoding_big5": "繁體中文（Big5 / CP950）",
+        "detail.encoding_cp949": "韓語（CP949）",
         "detail.rfvp_encoding_value": "文字編碼：%s",
         "detail.set_cover": "設定封面",
         "detail.rename": "重新命名",
@@ -1184,6 +1191,7 @@ You can find it any time under Settings → QQ Group.",
         "settings.ui_scale_desc": "Adjust the interface size on iPhone and iPad; applies immediately after saving",
         "settings.virtual_control_menu": "In-Game Controls Menu",
         "settings.virtual_control_menu_desc": "Show the virtual-controls menu button at the top-right of the game view",
+        "virtual_buttons.number": "Layout %d",
         "import.progress": "Importing %s · %s",
         "import.complete": "Added to Games: %s",
         "import.failed": "Import failed: %s",
@@ -1387,6 +1395,8 @@ You can find it any time under Settings → QQ Group.",
         "detail.script_encoding": "Script encoding",
         "detail.reset_launch_file": "Restore Folder Auto-detect",
         "detail.rfvp_encoding": "RFVP Text Encoding",
+        "detail.encoding_big5": "Traditional Chinese (Big5 / CP950)",
+        "detail.encoding_cp949": "Korean (CP949)",
         "detail.rfvp_encoding_value": "Text encoding: %s",
         "detail.set_cover": "Set Cover",
         "detail.delete_cover": "Delete Cover",
@@ -1587,6 +1597,7 @@ You can find it any time under Settings → QQ Group.",
         "settings.ui_scale_desc": "iPhone と iPad の UI サイズを調整します。保存後すぐに反映されます",
         "settings.virtual_control_menu": "ゲーム内コントロールメニュー",
         "settings.virtual_control_menu_desc": "ゲーム画面の右上に仮想コントロールメニューボタンを表示します",
+        "virtual_buttons.number": "レイアウト%d",
         "import.progress": "%s をインポート中 · %s",
         "import.complete": "Games に追加しました：%s",
         "import.failed": "インポートに失敗しました：%s",
@@ -1790,6 +1801,8 @@ You can find it any time under Settings → QQ Group.",
         "detail.script_encoding": "スクリプトの文字コード",
         "detail.reset_launch_file": "フォルダーの自動検出に戻す",
         "detail.rfvp_encoding": "RFVP 文字エンコーディング",
+        "detail.encoding_big5": "繁体字中国語（Big5 / CP950）",
+        "detail.encoding_cp949": "韓国語（CP949）",
         "detail.rfvp_encoding_value": "文字エンコーディング：%s",
         "detail.set_cover": "カバーを設定",
         "detail.rename": "名前を変更",
@@ -1988,6 +2001,7 @@ You can find it any time under Settings → QQ Group.",
         "settings.ui_scale_desc": "iPhone 및 iPad의 인터페이스 크기를 조절하며 저장 후 즉시 적용됩니다",
         "settings.virtual_control_menu": "게임 내 컨트롤 메뉴",
         "settings.virtual_control_menu_desc": "게임 화면 오른쪽 위에 가상 컨트롤 메뉴 버튼을 표시합니다",
+        "virtual_buttons.number": "레이아웃 %d",
         "import.progress": "%s 가져오는 중 · %s",
         "import.complete": "Games에 추가됨: %s",
         "import.failed": "가져오기 실패: %s",
@@ -2191,6 +2205,8 @@ You can find it any time under Settings → QQ Group.",
         "detail.script_encoding": "스크립트 인코딩",
         "detail.reset_launch_file": "폴더 자동 감지 복원",
         "detail.rfvp_encoding": "RFVP 텍스트 인코딩",
+        "detail.encoding_big5": "중국어 번체 (Big5 / CP950)",
+        "detail.encoding_cp949": "한국어 (CP949)",
         "detail.rfvp_encoding_value": "텍스트 인코딩: %s",
         "detail.set_cover": "표지 설정",
         "detail.rename": "이름 변경",
@@ -2420,6 +2436,7 @@ You can find it any time under Settings → QQ Group.",
         "settings.ui_scale_desc": "Ajusta el tamaño de la interfaz en iPhone y iPad; se aplica nada más guardar",
         "settings.virtual_control_menu": "Menú de controles en el juego",
         "settings.virtual_control_menu_desc": "Muestra el botón del menú de controles virtuales en la esquina superior derecha de la vista del juego",
+        "virtual_buttons.number": "Diseño %d",
         "import.progress": "Importando %s · %s",
         "import.complete": "Añadido a Games: %s",
         "import.failed": "Error al importar: %s",
@@ -2620,6 +2637,8 @@ You can find it any time under Settings → QQ Group.",
         "detail.script_encoding": "Codificación de los scripts",
         "detail.reset_launch_file": "Restaurar la detección automática de la carpeta",
         "detail.rfvp_encoding": "Codificación de texto de RFVP",
+        "detail.encoding_big5": "Chino tradicional (Big5 / CP950)",
+        "detail.encoding_cp949": "Coreano (CP949)",
         "detail.rfvp_encoding_value": "Codificación de texto: %s",
         "detail.set_cover": "Establecer portada",
         "detail.delete_cover": "Eliminar portada",
@@ -2717,6 +2736,8 @@ const POINTER_MOD_LEFT := 0x08
 const POINTER_MOD_RIGHT := 0x10
 const POINTER_MOD_MIDDLE := 0x20
 const POINTER_MOD_CANCEL := 1 << 30
+const KEY_MOD_SHIFT := 0x01
+const KEY_MOD_ALT := 0x02
 const KEY_MOD_CONTROL := 0x04
 const RUNTIME_KIRIKIRI := "kirikiri"
 const RUNTIME_ONSCRIPTER := "onscripter"
@@ -3641,6 +3662,7 @@ func _build_ui() -> void:
     game_virtual_controls = GameVirtualControls.new()
     add_child(game_virtual_controls)
     game_virtual_controls.setup(ui_tokens)
+    game_virtual_controls.set_layout_profiles(_virtual_button_layouts())
     game_virtual_controls.set_input_mode(game_virtual_input_mode)
     _apply_game_virtual_control_preferences()
     game_virtual_controls.key_event_requested.connect(
@@ -5275,9 +5297,8 @@ func _apply_engine_options() -> void:
         var selected_root := _game_runtime_root(String(selected_game.get("path", "")))
         player.set_engine_option("rfvp_config_root", game_render_root if not game_render_root.is_empty() else selected_root)
         var encoding := _game_text_encoding(selected_game, "rfvp")
-        var legacy_value := "gbk" if encoding == "GBK" else "utf8" if encoding == "UTF-8" else "sjis"
         player.set_engine_option("rfvp_encoding", GameLaunchEntry.rfvp_encoding(
-            {"rfvpEncoding": legacy_value}, _runtime_string("AETHERKIRI_RFVP_ENCODING", "")))
+            {"rfvpEncoding": encoding}, _runtime_string("AETHERKIRI_RFVP_ENCODING", "")))
     if current_player_runtime_kind == RUNTIME_WA2:
         if not runtime_default_font_path.is_empty():
             player.set_engine_option("wa2.font_path", runtime_default_font_path)
@@ -5632,6 +5653,9 @@ func _mark_legal_safe_dialog(dialog: Control, first_use: bool, statement: bool) 
 func _layout_safe_dialog(dialog: Control, safe_rect: Rect2) -> void:
     var kind := String(dialog.get_meta("aether_safe_dialog_kind", ""))
     if kind.is_empty():
+        return
+    if kind == "fullscreen":
+        _set_control_rect(dialog, safe_rect)
         return
     if kind == "centered":
         var preferred := Vector2(dialog.get_meta("aether_safe_dialog_size", Vector2(560, 320)))
@@ -9604,18 +9628,19 @@ func _detail_tools(game: Dictionary) -> FlowContainer:
     tools.add_theme_constant_override("v_separation", 8)
     tools.add_child(_detail_launch_button())
     var detail_runtime := _game_runtime_kind(String(game.get("path", "")))
-    if detail_runtime in [RUNTIME_YURIS, RUNTIME_SYSTEMC]:
-        var encoding_options = preload("res://scripts/systemc_engine_options.gd") if detail_runtime == RUNTIME_SYSTEMC else preload("res://scripts/yuris_engine_options.gd")
+    var encodings := GameTextConfig.encodings(detail_runtime)
+    if encodings.size() > 1 and detail_runtime != "rfvp":
         var encoding := OptionButton.new()
         encoding.custom_minimum_size = Vector2(190, 44)
         encoding.tooltip_text = _t("detail.script_encoding")
-        for value: String in encoding_options.SCRIPT_ENCODINGS:
-            encoding.add_item(_t("detail.script_encoding") + ": " + value)
-        encoding.select(encoding_options.SCRIPT_ENCODINGS.find(encoding_options.script_encoding(game)))
+        for value: String in encodings:
+            encoding.add_item(_t("detail.script_encoding") + ": " + _game_encoding_label(value))
+        var selected: String = _read_game_text_config(game, detail_runtime).text.encoding
+        encoding.select(maxi(0, encodings.find(selected)))
         encoding.item_selected.connect(func(index: int):
-            _update_game(String(game.get("path", "")), {
-                encoding_options.SCRIPT_ENCODING_FIELD: encoding_options.SCRIPT_ENCODINGS[index]
-            })
+            if not _save_classic_game_encoding(game, detail_runtime, encodings[index]):
+                var saved: String = _read_game_text_config(game, detail_runtime).text.encoding
+                encoding.select(maxi(0, encodings.find(saved)))
         )
         tools.add_child(encoding)
     if _can_configure_launch_file(game):
@@ -10917,18 +10942,53 @@ func _reset_launch_file_for_selected() -> void:
     _update_game(library_path, {GameLaunchEntry.FIELD: ""})
     _show_detail(selected_game)
 
+func _game_encoding_label(value: String) -> String:
+    match value:
+        "": return "AUTO"
+        "CP932": return "CP932 / Shift-JIS"
+        "BIG5": return _t("detail.encoding_big5")
+        "CP949": return _t("detail.encoding_cp949")
+    return value
+
+func _save_classic_game_encoding(game: Dictionary, runtime: String, value: String) -> bool:
+    var path := String(game.get("path", ""))
+    var root := _game_runtime_root(path)
+    var legacy := {}
+    match runtime:
+        "yuris": legacy["yurisScriptEncoding"] = value if not value.is_empty() else "AUTO"
+        "systemc": legacy["systemcScriptEncoding"] = value if not value.is_empty() else "AUTO"
+        "rfvp": legacy[GameLaunchEntry.RFVP_ENCODING_FIELD] = GameLaunchEntry.rfvp_encoding({"rfvpEncoding": value})
+    var error := GameTextConfig.save(root, runtime, game, {"encoding": value})
+    if error != OK:
+        # Older read-only imports keep their library setting when the game has no explicit override.
+        var saved := _read_game_text_config(game, runtime)
+        if legacy.is_empty() or saved.error != OK or saved.document.get("text", {}).has("encoding"):
+            _show_system_alert(error_string(error), _t("detail.script_encoding"))
+            return false
+    if not legacy.is_empty():
+        _update_game(path, legacy)
+    return true
+
 func _show_rfvp_encoding_dialog() -> void:
     var library_path := String(selected_game.get("path", ""))
     if library_path.is_empty():
         return
-    var dialog := _modal_dialog(Vector2(520, 380))
+    var dialog := _modal_dialog(Vector2(520, 520))
     var box := _modal_stack(dialog, _t("detail.rfvp_encoding"), ICON_SETTINGS)
-    box.add_child(_dialog_body_label(_t("detail.rfvp_encoding_value", [GameLaunchEntry.rfvp_encoding(selected_game).to_upper()])))
-    for choice in [["sjis", "Shift-JIS"], ["gbk", "GBK"], ["utf8", "UTF-8"]]:
-        var button := _secondary_dialog_button(choice[1])
+    var selected: String = _read_game_text_config(selected_game, "rfvp").text.encoding
+    box.add_child(_dialog_body_label(_t("detail.rfvp_encoding_value", [_game_encoding_label(selected)])))
+    var scroll := ScrollContainer.new()
+    scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+    scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
+    box.add_child(scroll)
+    var choices := VBoxContainer.new()
+    choices.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+    scroll.add_child(choices)
+    for value: String in GameTextConfig.encodings("rfvp"):
+        var button := _secondary_dialog_button(_game_encoding_label(value))
         button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-        button.pressed.connect(_set_rfvp_encoding_for_selected.bind(library_path, choice[0]))
-        box.add_child(button)
+        button.pressed.connect(_set_rfvp_encoding_for_selected.bind(library_path, value))
+        choices.add_child(button)
     var cancel := _secondary_dialog_button(_t("dialog.cancel"))
     cancel.size_flags_horizontal = Control.SIZE_SHRINK_END
     cancel.pressed.connect(func(): _dismiss_modal())
@@ -10936,8 +10996,10 @@ func _show_rfvp_encoding_dialog() -> void:
 
 func _set_rfvp_encoding_for_selected(library_path: String, encoding: String) -> void:
     _dismiss_modal(func():
-        _update_game(library_path, {GameLaunchEntry.RFVP_ENCODING_FIELD: encoding})
-        _show_detail(selected_game)
+        var game := selected_game if String(selected_game.get("path", "")) == library_path else {"path": library_path}
+        var value := GameTextConfig.legacy_encoding({"rfvpEncoding": encoding}, "rfvp")
+        if _save_classic_game_encoding(game, "rfvp", value):
+            _show_detail(selected_game)
     )
 
 func _rename_selected_game() -> void:
@@ -17705,6 +17767,8 @@ func _on_open_game() -> void:
         return
 
     _load_game_render_overrides(path)
+    if game_virtual_controls != null:
+        game_virtual_controls.set_layout_profiles(_virtual_button_layouts(game_render_root))
     var detected_runtime := _game_runtime_kind(path)
     if not _switch_runtime_player(detected_runtime):
         render_errors += 1
@@ -18950,6 +19014,8 @@ func _input(event: InputEvent) -> void:
         game_virtual_controls != null
         and game_virtual_controls.routes_pointer(event)
     ):
+        if game_virtual_controls.cap_input_handled:
+            get_viewport().set_input_as_handled()
         return
     # Platform dialogs are real Godot Controls, matching CDialog's host-owned
     # modal. Leave their events unhandled so LineEdit/Button GUI dispatch owns
@@ -19175,6 +19241,31 @@ func _sync_runtime_cursor() -> void:
     if not game_running:
         runtime_cursor_state.reset()
 
+func _begin_virtual_button_orientation() -> int:
+    if not _mobile_runtime():
+        return -1
+    var previous := DisplayServer.screen_get_orientation()
+    DisplayServer.screen_set_orientation(DisplayServer.SCREEN_SENSOR_LANDSCAPE)
+    return previous
+
+func _restore_virtual_button_orientation(previous: int) -> void:
+    if previous >= 0:
+        DisplayServer.screen_set_orientation(previous as DisplayServer.ScreenOrientation)
+
+func _virtual_button_global_path() -> String:
+    return VirtualButtonLayouts.GLOBAL_PATH
+
+func _virtual_button_layouts(game_path_value: String = "", default_pad_mode: String = "wasd") -> Dictionary:
+    var shared: Dictionary = VirtualButtonLayouts.load_global(
+        _virtual_button_global_path(), _t("virtual_buttons.number"), default_pad_mode).book
+    if game_path_value.is_empty():
+        return shared
+    var local: Dictionary = VirtualButtonLayouts.load_game(_game_runtime_root(game_path_value)).book
+    return {
+        "active": VirtualButtonLayouts.effective(local, shared).id,
+        "profiles": shared.profiles + local.profiles,
+    }
+
 func _sync_game_virtual_controls() -> void:
     if game_virtual_controls == null:
         return
@@ -19245,10 +19336,10 @@ func _virtual_key_unicode(
     key_code: int,
     modifiers: int
 ) -> int:
-    if not pressed or (modifiers & KEY_MOD_CONTROL) != 0:
+    if not pressed or (modifiers & (KEY_MOD_CONTROL | KEY_MOD_ALT)) != 0:
         return 0
     if key_code >= 0x41 and key_code <= 0x5A:
-        return key_code + 0x20
+        return key_code if modifiers & KEY_MOD_SHIFT else key_code + 0x20
     if key_code >= 0x30 and key_code <= 0x39:
         return key_code
     if key_code == 0x20:

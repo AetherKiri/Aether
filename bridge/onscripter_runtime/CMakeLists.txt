@@ -4,6 +4,7 @@ project(aether_onscripter_runtime LANGUAGES CXX)
 
 find_package(BZip2 REQUIRED)
 find_package(JPEG REQUIRED)
+find_package(Iconv REQUIRED)
 find_package(Lua REQUIRED)
 find_package(SDL2 CONFIG REQUIRED)
 find_package(SDL2_image CONFIG REQUIRED)
@@ -67,6 +68,7 @@ set(ONSCRIPTER_YURI_SOURCES
 )
 
 add_library(aether_onscripter_runtime STATIC
+    src/onscripter_encoding.cpp
     src/onscripter_runtime.cpp
     src/onscripter_runtime_provider.cpp
     src/onscripter_save_storage.cpp
@@ -129,6 +131,7 @@ target_link_libraries(aether_onscripter_runtime
         $<IF:$<TARGET_EXISTS:SDL2_ttf::SDL2_ttf>,SDL2_ttf::SDL2_ttf,SDL2_ttf::SDL2_ttf-static>
         BZip2::BZip2
         JPEG::JPEG
+        Iconv::Iconv
         ${LUA_LIBRARIES}
 )
 

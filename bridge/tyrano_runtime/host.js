@@ -133,11 +133,19 @@
         window.jQuery(event.target).trigger("tap");
     }, true);
     function key(code, pressed) {
-        const names = {13: "Enter", 27: "Escape", 32: " ", 17: "Control", 33: "PageUp", 34: "PageDown",
-            37: "ArrowLeft", 38: "ArrowUp", 39: "ArrowRight", 40: "ArrowDown"};
+        const names = {8: "Backspace", 9: "Tab", 13: "Enter", 16: "Shift", 17: "Control", 18: "Alt", 27: "Escape", 32: " ",
+            33: "PageUp", 34: "PageDown", 35: "End", 36: "Home", 37: "ArrowLeft", 38: "ArrowUp", 39: "ArrowRight",
+            40: "ArrowDown", 45: "Insert", 46: "Delete"};
+        const modifier = vk => code === vk ? pressed : held.has(vk);
+        const letter = code >= 65 && code <= 90;
+        const digit = code >= 48 && code <= 57;
+        const character = String.fromCharCode(code);
+        const keyName = names[code] || (code >= 112 && code <= 123 ? "F" + (code - 111) :
+            letter && !modifier(16) ? character.toLowerCase() : character);
+        const location = {16: "ShiftLeft", 17: "ControlLeft", 18: "AltLeft", 32: "Space"};
         const event = new KeyboardEvent(pressed ? "keydown" : "keyup", {
-            key: names[code] || String.fromCharCode(code), code: code === 32 ? "Space" : names[code],
-            bubbles: true, cancelable: true, ctrlKey: code === 17 ? pressed : held.has(17),
+            key: keyName, code: location[code] || (letter ? "Key" + character : digit ? "Digit" + character : keyName),
+            bubbles: true, cancelable: true, ctrlKey: modifier(17), shiftKey: modifier(16), altKey: modifier(18),
         });
         Object.defineProperty(event, "keyCode", {get: () => code});
         Object.defineProperty(event, "which", {get: () => code});

@@ -135,7 +135,7 @@ Lua API。引擎探测和部分启动配置仍可能早于 hook 执行；当前�
 **编码与字体**
 
 BGI、YU-RIS 编译脚本、ADVHD 旧版脚本、SoftPal、CatSystem2 场景、Escude ACPX
-和 SystemC 统一支持以下五个标准值，名称不区分 ASCII 大小写：
+和 SystemC 统一支持以下标准值，名称不区分 ASCII 大小写：
 
 | 标准值 | 兼容别名 |
 | --- | --- |
@@ -143,10 +143,11 @@ BGI、YU-RIS 编译脚本、ADVHD 旧版脚本、SoftPal、CatSystem2 场景、E
 | `GBK` | `CP936`、`GB2312` |
 | `GB18030` | — |
 | `BIG5` | `CP950`、`Big-5` |
+| `CP949` | `Windows-949`、`UHC` |
 | `UTF-8` | `UTF8` |
 
 例如 `aether.set_encoding("GB18030")` 在上述引擎中选择同一编码；GB18030
-四字节字符和 UTF-8 多字节字符会按完整字符处理。未知名称会列出这五个标准值并
+四字节字符和 UTF-8 多字节字符会按完整字符处理。未知名称会列出支持的标准值并
 终止加载。未调用时保留原有选择和检测逻辑。
 
 格式本身的 Unicode 约定保持不变：现代 ADVHD 脚本保留原生 UTF-8；EntisGLS

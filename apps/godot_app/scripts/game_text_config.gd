@@ -2,6 +2,7 @@ extends RefCounted
 ## Per-game text settings, shared by the detail editor and native startup.
 const Config = preload("res://scripts/game_render_config.gd")
 const ENGINES := ["onscripter", "yuris", "systemc", "rfvp", "bgi", "advhd", "escude", "softpal", "catsystem2", "entisgls"]
+const BYTE_ENCODINGS := ["CP932", "GBK", "GB18030", "BIG5", "CP949", "UTF-8"]
 const FONT_LIMIT := 32 * 1024 * 1024
 const FONT_DIRECTORY := "aether_fonts"
 
@@ -9,8 +10,8 @@ static func encodings(runtime: String) -> Array:
     if runtime == "entisgls" or runtime not in ENGINES:
         return [""]
     if runtime in ["onscripter", "rfvp"]:
-        return ["", "CP932", "GBK", "UTF-8"]
-    return ["", "CP932", "GBK", "GB18030", "BIG5", "UTF-8"]
+        return ["", "CP932", "GBK", "BIG5", "CP949", "UTF-8"]
+    return [""] + BYTE_ENCODINGS
 
 static func legacy_encoding(game: Dictionary, runtime: String) -> String:
     var value := ""
@@ -23,7 +24,8 @@ static func legacy_encoding(game: Dictionary, runtime: String) -> String:
         "UTF8", "UTF-8": return "UTF-8"
         "GBK", "CP936": return "GBK"
         "GB18030": return "GB18030"
-        "BIG5", "CP950": return "BIG5"
+        "BIG5", "BIG-5", "CP950": return "BIG5"
+        "CP949", "UHC", "WINDOWS-949": return "CP949"
     return ""
 
 static func valid_font_path(relative: String) -> bool:

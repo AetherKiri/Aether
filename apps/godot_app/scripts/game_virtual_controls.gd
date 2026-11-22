@@ -13,20 +13,17 @@ signal keyboard_requested
 signal virtual_controls_requested
 signal input_mode_changed(mode: String)
 signal menu_open_changed(open: bool)
+signal layout_profile_changed
 
-const VK_RETURN := 0x0D
+const Layouts := preload("res://scripts/virtual_button_layout.gd")
+const VK_SHIFT := 0x10
 const VK_CONTROL := 0x11
-const VK_ESCAPE := 0x1B
-const VK_SPACE := 0x20
-const VK_1 := 0x31
-const VK_2 := 0x32
-const VK_3 := 0x33
-const VK_4 := 0x34
+const VK_ALT := 0x12
 const VK_A := 0x41
 const VK_D := 0x44
 const VK_S := 0x53
 const VK_W := 0x57
-const MOD_CONTROL := 0x04
+const WASD_ARROWS := {VK_W: 0x26, VK_A: 0x25, VK_S: 0x28, VK_D: 0x27}
 const POINTER_MOD_RIGHT := 0x10
 const OVERLAY_LAYER := 120
 const BUTTON_MIN_SIZE := 44.0
@@ -47,7 +44,7 @@ const INPUT_MODE_MOUSE := "mouse"
 const INPUT_MODE_TOUCH := "touch"
 const INPUT_MODE_MOUSE_ONLY := "mouse_only"
 const INPUT_MODES := [INPUT_MODE_MOUSE, INPUT_MODE_TOUCH, INPUT_MODE_MOUSE_ONLY]
-const INPUT_MODE_HIDE_DELAY_MSEC := 3000
+const PROFILE_HIDE_DELAY_MSEC := 3000
 const KEYBOARD_CONTROLS_OPACITY_MIN := 0.2
 const KEYBOARD_CONTROLS_OPACITY_MAX := 1.0
 
@@ -62,6 +59,7 @@ var menu_button: Button
 var keyboard_button: Button
 var virtual_controls_button: Button
 var input_mode_button: Button
+var profile_button: Button
 var escape_button: Button
 var control_button: Button
 var w_button: Button
@@ -79,6 +77,17 @@ var cursor_handle: Control
 var dpad_backdrop: Panel
 var dpad_center: Panel
 
+var _profiles: Array = []
+var _profile_index := 0
+var _profile: Dictionary
+var _caps := {} # Stable layout id -> Button (including fixed Mouse slots).
+var _active_caps := {}
+var _cap_pointers := {}
+var _arrows := false
+var cap_input_handled := false
+const MOUSE_CONTACT := -2
+
+var _layout_preview := false
 var _root: Control
 var _tokens
 var _enabled := false
@@ -112,7 +121,7 @@ var _menu_drag_grab_offset_y := 0.0
 var _menu_drag_moved := false
 var _menu_y_ratio := 0.0
 var _input_mode := INPUT_MODE_MOUSE
-var _input_mode_hide_at_msec := 0
+var _profile_hide_at_msec := 0
 var _mouse_mode_blocked_touch_indices := {}
 var _held_scroll_direction := 0.0
 var _scroll_next_repeat_msec := 0
@@ -123,7 +132,7 @@ var _dpad_travel_radius := 0.0
 var _dpad_vector := Vector2.ZERO
 var _dpad_held_keys := {}
 
-func setup(tokens) -> void:
+func setup(tokens, preview_parent: Control = null) -> void:
     if _root != null:
         return
     name = "GameVirtualControls"
@@ -134,14 +143,21 @@ func setup(tokens) -> void:
     _root.name = "Root"
     _root.set_anchors_preset(Control.PRESET_FULL_RECT)
     _root.mouse_filter = Control.MOUSE_FILTER_IGNORE
-    add_child(_root)
+    _layout_preview = preview_parent != null
+    if _layout_preview:
+        # Render the actual game controls below the editor's input surface.
+        _root.mouse_behavior_recursive = Control.MOUSE_BEHAVIOR_DISABLED
+        _root.focus_behavior_recursive = Control.FOCUS_BEHAVIOR_DISABLED
+        preview_parent.add_child(_root)
+    else:
+        add_child(_root)
 
     menu_button = _create_action_button("MenuButton", "Menu")
     keyboard_button = _create_action_button("KeyboardButton", "Keyboard")
     virtual_controls_button = _create_action_button(
         "VirtualControlsButton", "Control Pad"
     )
-    virtual_controls_button.tooltip_text = "Show controls and mode selector"
+    virtual_controls_button.tooltip_text = "Show controls and layout selector"
     menu_button.pressed.connect(_toggle_menu)
     keyboard_button.pressed.connect(_request_keyboard)
     virtual_controls_button.pressed.connect(show_virtual_controls)
@@ -156,13 +172,21 @@ func setup(tokens) -> void:
 
     input_mode_button = _create_action_button("InputModeButton", "")
     input_mode_button.pressed.connect(_toggle_input_mode)
-    input_mode_button.button_down.connect(_show_input_mode_selector)
-    input_mode_button.button_up.connect(_show_input_mode_selector)
     _root.add_child(input_mode_button)
-    _panel_controls.append(input_mode_button)
     _interactive_controls.append(input_mode_button)
-    _apply_input_mode_style(input_mode_button)
+    _apply_menu_option_style(input_mode_button)
     _sync_input_mode_presentation()
+
+    profile_button = _create_action_button("ProfileButton", "")
+    profile_button.clip_text = true
+    profile_button.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+    profile_button.pressed.connect(_cycle_profile)
+    profile_button.button_down.connect(_show_profile_selector)
+    profile_button.button_up.connect(_show_profile_selector)
+    _root.add_child(profile_button)
+    _panel_controls.append(profile_button)
+    _interactive_controls.append(profile_button)
+    _apply_profile_button_style(profile_button)
 
     dpad_backdrop = _create_decorative_panel(
         "DpadBackdrop",
@@ -180,8 +204,8 @@ func setup(tokens) -> void:
     _root.add_child(dpad_center)
     _panel_controls.append(dpad_center)
 
-    escape_button = _add_key_button("EscapeButton", "Esc", VK_ESCAPE)
-    control_button = _add_key_button("ControlButton", "Ctrl", VK_CONTROL)
+    escape_button = _add_cap("Esc", "EscapeButton")
+    control_button = _add_cap("Ctrl", "ControlButton")
     w_button = _add_key_button("WButton", "W", VK_W)
     a_button = _add_key_button("AButton", "A", VK_A)
     s_button = _add_key_button("SButton", "S", VK_S)
@@ -195,27 +219,14 @@ func setup(tokens) -> void:
         direction_button.set_pressed_no_signal(false)
         direction_button.mouse_filter = Control.MOUSE_FILTER_IGNORE
         _interactive_controls.erase(direction_button)
-    for index in range(4):
-        var digit := _add_key_button(
-            "Digit%dButton" % (index + 1),
-            str(index + 1),
-            VK_1 + index
-        )
-        digit_buttons.append(digit)
-    enter_button = _add_key_button("EnterButton", "Enter", VK_RETURN, true)
-    space_button = _add_key_button("SpaceButton", "Space", VK_SPACE, true)
-
-    mouse_left_button = _add_mouse_button("MouseLeftButton", "", 0, 0)
-    mouse_right_button = _add_mouse_button(
-        "MouseRightButton", "", 1, POINTER_MOD_RIGHT
-    )
-    _attach_mouse_icon(mouse_left_button, true)
-    _attach_mouse_icon(mouse_right_button, false)
-
-    scroll_up_button = _add_scroll_button("ScrollUpButton", "▲", 1.0)
-    scroll_down_button = _add_scroll_button("ScrollDownButton", "▼", -1.0)
-    scroll_up_button.tooltip_text = "Scroll up (hold to repeat)"
-    scroll_down_button.tooltip_text = "Scroll down (hold to repeat)"
+    for number in range(1, 5):
+        digit_buttons.append(_add_cap(str(number), "Digit%dButton" % number))
+    enter_button = _add_cap("Enter", "EnterButton")
+    space_button = _add_cap("Space", "SpaceButton")
+    mouse_left_button = _add_cap("mouse_left", "MouseLeftButton")
+    mouse_right_button = _add_cap("mouse_right", "MouseRightButton")
+    scroll_up_button = _add_cap("wheel_up", "ScrollUpButton")
+    scroll_down_button = _add_cap("wheel_down", "ScrollDownButton")
 
     cursor_handle = Control.new()
     cursor_handle.name = "MouseCursor"
@@ -227,7 +238,7 @@ func setup(tokens) -> void:
     _interactive_controls.append(menu_button)
     _interactive_controls.append(keyboard_button)
     _interactive_controls.append(virtual_controls_button)
-    _apply_keyboard_controls_opacity()
+    set_layout_profiles(Layouts.empty_book(false))
     set_enabled(false)
 
 func set_enabled(enabled: bool) -> void:
@@ -311,7 +322,7 @@ func set_input_mode(mode: String, notify: bool = false) -> void:
     _mouse_mode_blocked_touch_indices.clear()
     _input_mode = normalized
     _sync_input_mode_presentation()
-    _show_input_mode_selector()
+    _show_profile_selector()
     _sync_visibility()
     if notify:
         input_mode_changed.emit(_input_mode)
@@ -321,17 +332,21 @@ func show_virtual_controls() -> void:
         return
     _menu_open = false
     _panel_open = true
-    _show_input_mode_selector()
+    _show_profile_selector()
     _sync_visibility()
     virtual_controls_requested.emit()
 
 func release_all() -> void:
+    _cap_pointers.clear()
+    for cap in _active_caps.keys():
+        _cap_up(cap)
     _cancel_scroll_hold()
     _dpad_touch_index = -1
     _dpad_mouse_dragging = false
     _reset_dpad()
-    for key_variant in _held_keys.keys().duplicate():
-        _release_key(int(key_variant))
+    for key_variant in _held_keys.keys():
+        _held_keys.erase(key_variant)
+        key_event_requested.emit(false, int(key_variant), _key_modifiers())
     for mouse_variant in _held_mouse_buttons.keys().duplicate():
         var state: Dictionary = _held_mouse_buttons[mouse_variant]
         _release_mouse_button(
@@ -339,7 +354,7 @@ func release_all() -> void:
             int(state.get("modifiers", 0))
         )
 
-func layout(_window_size: Vector2, safe_rect: Rect2) -> void:
+func layout(_window_size: Vector2, safe_rect: Rect2, preview_geometry: Dictionary = {}) -> void:
     if _root == null:
         return
     _safe_rect = safe_rect
@@ -348,7 +363,6 @@ func layout(_window_size: Vector2, safe_rect: Rect2) -> void:
     var gap := clampf(diameter * 0.13, 6.0, 9.0)
     var margin := clampf(diameter * 0.2, 9.0, 14.0)
     var safe_end := safe_rect.end
-    var key_size := Vector2(diameter, diameter)
 
     # Keep the edge affordance close to the 40 px standard-button token from
     # DESIGN.md instead of scaling it up with the larger virtual key caps.
@@ -363,24 +377,34 @@ func layout(_window_size: Vector2, safe_rect: Rect2) -> void:
 
     _layout_menu_options(diameter, gap)
 
-    escape_button.position = safe_rect.position + Vector2(margin, margin)
-    escape_button.size = key_size
-
     var mode_size := Vector2(
         clampf(safe_rect.size.x * 0.22, 132.0, 168.0),
         clampf(diameter * 0.72, 40.0, 48.0)
     )
-    input_mode_button.position = Vector2(
+    profile_button.position = Vector2(
         safe_rect.get_center().x - mode_size.x * 0.5,
         safe_rect.position.y + margin
     )
-    input_mode_button.size = mode_size
+    profile_button.size = mode_size
 
-    var dpad_diameter := clampf(short_edge * 0.36, 118.0, 210.0)
-    var dpad_origin := Vector2(
-        safe_rect.position.x + margin,
-        safe_end.y - margin - dpad_diameter
-    )
+    var homes := Layouts.mouse_geometry(safe_rect.size)
+    var pad_rect := Rect2()
+    var geometry := _profile if preview_geometry.is_empty() else preview_geometry
+    for cap in geometry.buttons:
+        var rect := Layouts.button_rect(cap, safe_rect.size, homes)
+        rect.position += safe_rect.position
+        if cap.id == "pad":
+            pad_rect = rect
+        else:
+            var button: Button = _caps[cap.id]
+            button.position = rect.position
+            button.size = rect.size
+            var base_points := 14 if button.text.length() > 2 else 17
+            button.add_theme_font_size_override("font_size", roundi(base_points * float(cap.get("scale", 1))))
+            if cap.action in ["mouse_left", "mouse_right"]:
+                _layout_mouse_icon(button)
+    var dpad_origin := pad_rect.position
+    var dpad_diameter := pad_rect.size.x
     dpad_backdrop.position = dpad_origin
     dpad_backdrop.size = Vector2.ONE * dpad_diameter
 
@@ -395,8 +419,10 @@ func layout(_window_size: Vector2, safe_rect: Rect2) -> void:
         - direction_size * 0.5
     d_button.position = dpad_center_position + Vector2(direction_offset, 0) \
         - direction_size * 0.5
+    var base_diameter := (homes.pad as Rect2).size.x
     for button in [w_button, a_button, s_button, d_button]:
         button.size = direction_size
+        button.add_theme_font_size_override("font_size", roundi(24.0 * dpad_diameter / base_diameter))
 
     var center_size := dpad_diameter * 0.34
     dpad_center.size = Vector2.ONE * center_size
@@ -405,58 +431,6 @@ func layout(_window_size: Vector2, safe_rect: Rect2) -> void:
     )
     _dpad_travel_radius = (dpad_diameter - center_size) * 0.5
     _position_dpad_center()
-
-    var digit_x := menu_button.position.x - diameter - gap
-    var digit_top := safe_rect.position.y + margin + diameter * 0.24
-    for index in range(digit_buttons.size()):
-        digit_buttons[index].position = Vector2(
-            digit_x,
-            digit_top + index * (diameter + gap)
-        )
-        digit_buttons[index].size = key_size
-
-    var bottom_y := safe_end.y - margin - diameter
-    control_button.position = Vector2(
-        dpad_origin.x + dpad_diameter + gap,
-        bottom_y
-    )
-    control_button.size = key_size
-
-    var action_diameter := diameter * 1.12
-    var action_size := Vector2.ONE * action_diameter
-    var action_left := digit_x - action_diameter * 2.0 - gap * 2.0
-    var mouse_y := bottom_y - action_diameter - gap
-    mouse_left_button.position = Vector2(action_left, mouse_y)
-    mouse_right_button.position = Vector2(action_left + action_diameter + gap, mouse_y)
-    space_button.position = Vector2(action_left, bottom_y)
-    enter_button.position = Vector2(action_left + action_diameter + gap, bottom_y)
-    for action_button in [
-        mouse_left_button,
-        mouse_right_button,
-        space_button,
-        enter_button,
-    ]:
-        action_button.size = action_size
-    _layout_mouse_icon(mouse_left_button)
-    _layout_mouse_icon(mouse_right_button)
-
-    var scroll_stack_height := diameter * 2.0 + gap
-    var desired_scroll_top := (
-        safe_rect.position.y
-        + (safe_rect.size.y - scroll_stack_height) * 0.46
-    )
-    var scroll_min_y := escape_button.get_rect().end.y + gap
-    var scroll_max_y := dpad_origin.y - gap - scroll_stack_height
-    var scroll_top := clampf(
-        desired_scroll_top,
-        scroll_min_y,
-        maxf(scroll_min_y, scroll_max_y)
-    )
-    var scroll_x := safe_rect.position.x + margin
-    scroll_up_button.position = Vector2(scroll_x, scroll_top)
-    scroll_up_button.size = key_size
-    scroll_down_button.position = Vector2(scroll_x, scroll_top + diameter + gap)
-    scroll_down_button.size = key_size
 
     if not _cursor_initialized:
         cursor_handle.position = safe_rect.get_center() - CURSOR_HOTSPOT
@@ -478,8 +452,13 @@ func owns_viewport_pointer(event: InputEvent) -> bool:
     )
 
 func routes_pointer(event: InputEvent) -> bool:
+    cap_input_handled = false
     if not _enabled or _root == null:
         return false
+
+    if _panel_open and _route_cap_pointer(event):
+        cap_input_handled = true
+        return true
 
     if event is InputEventScreenTouch:
         var touch := event as InputEventScreenTouch
@@ -697,37 +676,194 @@ func _add_key_button(
     wide: bool = false
 ) -> Button:
     var button := _create_control_button(node_name, label, wide)
-    button.button_down.connect(_press_key.bind(key_code))
-    button.button_up.connect(_release_key.bind(key_code))
+    button.button_down.connect(func(): _press_key(_direction_code(key_code)))
+    button.button_up.connect(func(): _release_key(_direction_code(key_code)))
     _root.add_child(button)
     _panel_controls.append(button)
     _interactive_controls.append(button)
     return button
 
-func _add_mouse_button(
-    node_name: String,
-    label: String,
-    button_code: int,
-    modifiers: int
-) -> Button:
-    var button := _create_control_button(node_name, label, true)
-    button.button_down.connect(_press_mouse_button.bind(button_code, modifiers))
-    button.button_up.connect(_release_mouse_button.bind(button_code, modifiers))
+func _add_cap(id: String, node_name: String) -> Button:
+    var button := _create_control_button(node_name, "", true)
+    # Track contacts ourselves so two fingers can hold different keys. The
+    # GUI still blocks input behind the overlay but emits no duplicate click.
+    button.button_mask = 0
+    button.toggle_mode = true
+    button.set_meta("cap_id", id)
+    button.button_down.connect(_cap_down.bind(button))
+    button.button_up.connect(_cap_up.bind(button))
     _root.add_child(button)
-    _panel_controls.append(button)
     _interactive_controls.append(button)
+    _panel_controls.append(button)
+    _caps[id] = button
     return button
 
-func _add_scroll_button(node_name: String, label: String, delta_y: float) -> Button:
-    var button := _create_control_button(node_name, label, true)
-    button.set_meta("scroll_delta_y", delta_y)
-    button.button_down.connect(_press_scroll.bind(delta_y))
-    button.button_up.connect(_release_scroll.bind(delta_y))
-    button.add_theme_font_size_override("font_size", 18)
-    _root.add_child(button)
-    _panel_controls.append(button)
-    _interactive_controls.append(button)
-    return button
+func set_layout_profiles(book: Dictionary) -> void:
+    _profiles = book.profiles if not book.profiles.is_empty() else [Layouts.first_profile()]
+    _profile_index = 0
+    for i in _profiles.size():
+        if _profiles[i].id == book.active:
+            _profile_index = i
+            break
+    _activate_profile(_profile_index)
+
+func _cycle_profile() -> void:
+    if not _enabled or not _panel_open:
+        return
+    if _profiles.size() > 1:
+        _activate_profile((_profile_index + 1) % _profiles.size())
+    _show_profile_selector()
+
+func _activate_profile(index: int) -> void:
+    for contact in _cap_pointers:
+        if contact >= 0:
+            _mouse_mode_blocked_touch_indices[contact] = true
+    if _dpad_touch_index >= 0:
+        _mouse_mode_blocked_touch_indices[_dpad_touch_index] = true
+    _profile_index = index
+    set_layout_profile(_profiles[index])
+
+func set_layout_profile(profile: Dictionary) -> void:
+    release_all()
+    _profile = profile.duplicate(true)
+    profile_button.text = profile.name
+    profile_button.accessibility_name = profile.name
+    profile_button.tooltip_text = profile.name
+    _arrows = profile.pad_mode == "arrows"
+    var present := {}
+    for cap in profile.buttons:
+        if cap.id == "pad":
+            continue
+        present[cap.id] = true
+        var button: Button = _caps.get(cap.id)
+        if button == null:
+            button = _add_cap(cap.id, "CustomButton")
+        _configure_cap(button, cap.action)
+    for id in _caps.keys():
+        if present.has(id):
+            continue
+        var button: Button = _caps[id]
+        button.set_meta("action", "")
+        if id not in Layouts.CATALOG.data.mouse_buttons:
+            _interactive_controls.erase(button)
+            _panel_controls.erase(button)
+            _caps.erase(id)
+            _root.remove_child(button)
+            button.queue_free()
+    for system_control in [cursor_handle, profile_button, input_mode_button, menu_button, keyboard_button, virtual_controls_button]:
+        system_control.move_to_front()
+    _sync_direction_labels()
+    _apply_keyboard_controls_opacity()
+    _sync_visibility()
+    if _safe_rect.has_area():
+        layout(_safe_rect.size, _safe_rect)
+    layout_profile_changed.emit()
+
+func _configure_cap(button: Button, action: String) -> void:
+    button.set_meta("action", action)
+    button.accessibility_name = action
+    button.tooltip_text = action
+    button.text = Layouts.GLYPHS.get(action, action)
+    button.clip_text = true
+    button.add_theme_font_size_override("font_size", 14 if button.text.length() > 2 else 17)
+    var mouse_icon := button.get_node_or_null("MouseIcon") as Control
+    if action in ["mouse_left", "mouse_right"]:
+        button.text = ""
+        if mouse_icon == null:
+            _attach_mouse_icon(button, action == "mouse_left")
+        else:
+            (mouse_icon as TextureRect).texture = Layouts.MOUSE_ICONS[action]
+            mouse_icon.show()
+    elif mouse_icon != null:
+        mouse_icon.hide()
+    if action in ["wheel_up", "wheel_down"]:
+        button.set_meta("scroll_delta_y", 1.0 if action == "wheel_up" else -1.0)
+
+func _system_control_at(point: Vector2) -> bool:
+    for control in [menu_button, profile_button, input_mode_button, keyboard_button, virtual_controls_button]:
+        if control.visible and control.get_global_rect().has_point(point):
+            return true
+    return false
+
+func _cap_at(point: Vector2) -> Button:
+    if _system_control_at(point):
+        return null
+    # Last drawn cap wins where the user deliberately overlaps buttons.
+    for i in range(_interactive_controls.size() - 1, -1, -1):
+        var cap := _interactive_controls[i] as Button
+        if cap != null and cap.has_meta("cap_id") and cap.visible and cap.get_global_rect().has_point(point):
+            return cap
+    return null
+
+func _route_cap_pointer(event: InputEvent) -> bool:
+    var contact := MOUSE_CONTACT
+    if event is InputEventScreenDrag:
+        return _cap_pointers.has(event.index)
+    if event is InputEventMouseMotion:
+        return _cap_pointers.has(contact)
+    if event is InputEventScreenTouch:
+        contact = event.index
+    elif not (event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT):
+        return false
+    if event is InputEventMouseButton and event.device == INPUT_DEVICE_ID_EMULATION:
+        if _cursor_mouse_dragging or _dpad_mouse_dragging or _menu_mouse_dragging:
+            return false
+        return _cap_at(event.position) != null
+    if not event.pressed:
+        var held: Button = _cap_pointers.get(contact)
+        if held == null:
+            return false
+        _cap_pointers.erase(contact)
+        if held not in _cap_pointers.values():
+            _cap_up(held)
+        return true
+    if _cap_pointers.has(contact):
+        return true
+    var button := _cap_at(event.position)
+    if button == null:
+        return false
+    if event is InputEventScreenTouch:
+        _cancel_cursor_tap_for_additional_touch(contact)
+        if _cap_pointers.get(MOUSE_CONTACT) == button:
+            _cap_pointers.erase(MOUSE_CONTACT)
+    _cap_pointers[contact] = button
+    _cap_down(button)
+    return true
+
+func _cap_down(button: Button) -> void:
+    if not _enabled or not _panel_open or not button.visible or _active_caps.has(button):
+        return
+    var action: String = button.get_meta("action")
+    var already_held := action in _active_caps.values()
+    _active_caps[button] = action
+    button.set_pressed_no_signal(true)
+    if not already_held:
+        _send_cap_action(action, true)
+
+func _cap_up(button: Button) -> void:
+    if not _active_caps.has(button):
+        return
+    var action: String = _active_caps[button]
+    _active_caps.erase(button)
+    button.set_pressed_no_signal(false)
+    if action not in _active_caps.values():
+        _send_cap_action(action, false)
+
+func _send_cap_action(action: String, down: bool) -> void:
+    match action:
+        "wheel_up", "wheel_down":
+            var direction := 1.0 if action == "wheel_up" else -1.0
+            if down: _press_scroll(direction)
+            else: _release_scroll(direction)
+        "mouse_left", "mouse_right":
+            var index := 0 if action == "mouse_left" else 1
+            var modifier := 0 if index == 0 else POINTER_MOD_RIGHT
+            if down: _press_mouse_button(index, modifier)
+            else: _release_mouse_button(index, modifier)
+        _:
+            var code := Layouts.key_code(action)
+            if down: _press_key(code)
+            else: _release_key(code)
 
 func _create_control_button(node_name: String, label: String, wide: bool) -> Button:
     var button := Button.new()
@@ -794,7 +930,7 @@ func _apply_dpad_button_style(button: Button) -> void:
     button.add_theme_font_size_override("font_size", 24)
 
 func _dpad_contains_point(screen_position: Vector2) -> bool:
-    if dpad_backdrop == null or not dpad_backdrop.is_visible_in_tree():
+    if dpad_backdrop == null or not dpad_backdrop.is_visible_in_tree() or _system_control_at(screen_position):
         return false
     var backdrop_rect := dpad_backdrop.get_global_rect()
     return screen_position.distance_to(backdrop_rect.get_center()) \
@@ -822,13 +958,13 @@ func _set_dpad_keys(direction_vector: Vector2) -> void:
     if direction_vector.length() >= DPAD_DEAD_ZONE_RATIO:
         var direction := direction_vector.normalized()
         if direction.y <= -DPAD_DIRECTION_AXIS_THRESHOLD:
-            desired[VK_W] = true
+            desired[_direction_code(VK_W)] = true
         if direction.x <= -DPAD_DIRECTION_AXIS_THRESHOLD:
-            desired[VK_A] = true
+            desired[_direction_code(VK_A)] = true
         if direction.y >= DPAD_DIRECTION_AXIS_THRESHOLD:
-            desired[VK_S] = true
+            desired[_direction_code(VK_S)] = true
         if direction.x >= DPAD_DIRECTION_AXIS_THRESHOLD:
-            desired[VK_D] = true
+            desired[_direction_code(VK_D)] = true
 
     for key_variant in _dpad_held_keys.keys().duplicate():
         var key_code := int(key_variant)
@@ -844,13 +980,24 @@ func _set_dpad_keys(direction_vector: Vector2) -> void:
 
 func _sync_dpad_button_highlights(desired: Dictionary) -> void:
     if w_button != null:
-        w_button.set_pressed_no_signal(desired.has(VK_W))
+        w_button.set_pressed_no_signal(desired.has(_direction_code(VK_W)))
     if a_button != null:
-        a_button.set_pressed_no_signal(desired.has(VK_A))
+        a_button.set_pressed_no_signal(desired.has(_direction_code(VK_A)))
     if s_button != null:
-        s_button.set_pressed_no_signal(desired.has(VK_S))
+        s_button.set_pressed_no_signal(desired.has(_direction_code(VK_S)))
     if d_button != null:
-        d_button.set_pressed_no_signal(desired.has(VK_D))
+        d_button.set_pressed_no_signal(desired.has(_direction_code(VK_D)))
+
+func _direction_code(wasd: int) -> int:
+    if not _arrows:
+        return wasd
+    return WASD_ARROWS[wasd]
+
+func _sync_direction_labels() -> void:
+    w_button.text = "↑" if _arrows else "W"
+    a_button.text = "←" if _arrows else "A"
+    s_button.text = "↓" if _arrows else "S"
+    d_button.text = "→" if _arrows else "D"
 
 func _reset_dpad() -> void:
     _set_dpad_keys(Vector2.ZERO)
@@ -955,19 +1102,17 @@ func _layout_edge_menu_icon() -> void:
 func _layout_menu_options(diameter: float, gap: float) -> void:
     var option_size := Vector2(maxf(108.0, diameter * 2.15), menu_button.size.y)
     var option_x := menu_button.position.x - option_size.x - gap
-    var options_height := option_size.y * 2.0 + gap
+    var options_height := option_size.y * 3.0 + gap * 2.0
     var options_top := clampf(
         menu_button.position.y,
         _safe_rect.position.y,
         _safe_rect.end.y - options_height
     )
-    keyboard_button.position = Vector2(option_x, options_top)
-    keyboard_button.size = option_size
-    virtual_controls_button.position = Vector2(
-        option_x,
-        options_top + option_size.y + gap
-    )
-    virtual_controls_button.size = option_size
+    var option_y := options_top
+    for button in [keyboard_button, virtual_controls_button, input_mode_button]:
+        button.position = Vector2(option_x, option_y)
+        button.size = option_size
+        option_y += option_size.y + gap
 
 func _apply_menu_option_style(button: Button) -> void:
     button.add_theme_font_size_override("font_size", 13)
@@ -985,7 +1130,7 @@ func _apply_menu_option_style(button: Button) -> void:
             _button_style(fill, _tokens.separator, false, 10)
         )
 
-func _apply_input_mode_style(button: Button) -> void:
+func _apply_profile_button_style(button: Button) -> void:
     button.add_theme_font_size_override("font_size", 13)
     button.add_theme_stylebox_override(
         "normal",
@@ -1005,94 +1150,18 @@ func _apply_input_mode_style(button: Button) -> void:
     )
 
 func _attach_mouse_icon(button: Button, highlights_left: bool) -> void:
-    var icon := Control.new()
+    var icon := TextureRect.new()
     icon.name = "MouseIcon"
+    icon.texture = Layouts.MOUSE_ICONS["mouse_left" if highlights_left else "mouse_right"]
+    icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+    icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
     icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
-    icon.set_meta("highlights_left", highlights_left)
     button.add_child(icon)
 
-    var base := Panel.new()
-    base.name = "Base"
-    base.mouse_filter = Control.MOUSE_FILTER_IGNORE
-    var base_style := StyleBoxFlat.new()
-    base_style.bg_color = Color(0.84, 0.85, 0.87, 0.82)
-    base_style.corner_radius_top_left = 12
-    base_style.corner_radius_top_right = 12
-    base_style.corner_radius_bottom_left = 7
-    base_style.corner_radius_bottom_right = 7
-    base.add_theme_stylebox_override("panel", base_style)
-    icon.add_child(base)
-
-    var highlight := Panel.new()
-    highlight.name = "Highlight"
-    highlight.mouse_filter = Control.MOUSE_FILTER_IGNORE
-    var highlight_style := StyleBoxFlat.new()
-    highlight_style.bg_color = Color(0.31, 0.60, 1.0, 0.95)
-    highlight.add_theme_stylebox_override("panel", highlight_style)
-    icon.add_child(highlight)
-
-    var shell := Panel.new()
-    shell.name = "Shell"
-    shell.mouse_filter = Control.MOUSE_FILTER_IGNORE
-    var shell_style := StyleBoxFlat.new()
-    shell_style.bg_color = Color.TRANSPARENT
-    shell_style.border_color = Color(0.22, 0.23, 0.25, 0.92)
-    shell_style.set_border_width_all(2)
-    shell_style.corner_radius_top_left = 12
-    shell_style.corner_radius_top_right = 12
-    shell_style.corner_radius_bottom_left = 7
-    shell_style.corner_radius_bottom_right = 7
-    shell.add_theme_stylebox_override("panel", shell_style)
-    icon.add_child(shell)
-
-    var divider := ColorRect.new()
-    divider.name = "Divider"
-    divider.color = Color(0.22, 0.23, 0.25, 0.9)
-    divider.mouse_filter = Control.MOUSE_FILTER_IGNORE
-    icon.add_child(divider)
-
-    var wheel := Panel.new()
-    wheel.name = "Wheel"
-    wheel.mouse_filter = Control.MOUSE_FILTER_IGNORE
-    wheel.add_theme_stylebox_override(
-        "panel",
-        _button_style(
-            Color(0.72, 0.74, 0.77, 1.0),
-            Color(0.22, 0.23, 0.25, 0.9),
-            true,
-            1
-        )
-    )
-    icon.add_child(wheel)
-
 func _layout_mouse_icon(button: Button) -> void:
-    var icon := button.get_node_or_null("MouseIcon") as Control
-    if icon == null:
-        return
-    var icon_size := Vector2(button.size.x * 0.46, button.size.y * 0.60)
-    icon.position = (button.size - icon_size) * 0.5
-    icon.size = icon_size
-
-    var highlight := icon.get_node("Highlight") as Panel
-    var base := icon.get_node("Base") as Panel
-    var shell := icon.get_node("Shell") as Panel
-    var divider := icon.get_node("Divider") as ColorRect
-    var wheel := icon.get_node("Wheel") as Panel
-    var highlights_left := bool(icon.get_meta("highlights_left", true))
-    var top_height := icon_size.y * 0.46
-    base.position = Vector2.ZERO
-    base.size = icon_size
-    highlight.position = Vector2(
-        2 if highlights_left else icon_size.x * 0.5,
-        2
-    )
-    highlight.size = Vector2(icon_size.x * 0.5 - 2, top_height - 2)
-    shell.position = Vector2.ZERO
-    shell.size = icon_size
-    divider.position = Vector2(icon_size.x * 0.5 - 0.75, 1)
-    divider.size = Vector2(1.5, top_height)
-    wheel.position = Vector2(icon_size.x * 0.5 - 2.0, icon_size.y * 0.1)
-    wheel.size = Vector2(4.0, icon_size.y * 0.22)
+    var icon := button.get_node("MouseIcon") as TextureRect
+    icon.size = button.size * Vector2(0.46, 0.60)
+    icon.position = (button.size - icon.size) * 0.5
 
 func _attach_pointer_visual(pointer: Control) -> void:
     pointer.set_meta("visual_style", "computer_use")
@@ -1204,27 +1273,27 @@ func _request_keyboard() -> void:
     keyboard_requested.emit()
 
 func _toggle_input_mode() -> void:
-    if not _enabled or not _panel_open:
+    if not _enabled or not (_menu_open or _panel_open):
         return
     var next_index := (INPUT_MODES.find(_input_mode) + 1) % INPUT_MODES.size()
     set_input_mode(INPUT_MODES[next_index], true)
 
-func _show_input_mode_selector() -> void:
+func _show_profile_selector() -> void:
     if not _enabled or not _menu_button_enabled or not _panel_open:
         return
-    _input_mode_hide_at_msec = Time.get_ticks_msec() + INPUT_MODE_HIDE_DELAY_MSEC
-    input_mode_button.show()
+    _profile_hide_at_msec = Time.get_ticks_msec() + PROFILE_HIDE_DELAY_MSEC
+    profile_button.show()
 
-func _advance_input_mode_visibility(now_msec: int) -> void:
-    if not _enabled or not _panel_open or _input_mode_hide_at_msec == 0:
+func _advance_profile_visibility(now_msec: int) -> void:
+    if not _enabled or not _panel_open or _profile_hide_at_msec == 0:
         return
-    if input_mode_button.button_pressed:
-        _input_mode_hide_at_msec = now_msec + INPUT_MODE_HIDE_DELAY_MSEC
-    elif now_msec >= _input_mode_hide_at_msec:
-        _input_mode_hide_at_msec = 0
+    if profile_button.button_pressed:
+        _profile_hide_at_msec = now_msec + PROFILE_HIDE_DELAY_MSEC
+    elif now_msec >= _profile_hide_at_msec:
+        _profile_hide_at_msec = 0
         # Fully hide the button so its old bounds also stop intercepting input
         # on Godot and native game surfaces. Control Pad reveals it again.
-        input_mode_button.hide()
+        profile_button.hide()
 
 func _sync_input_mode_presentation() -> void:
     if input_mode_button == null:
@@ -1239,26 +1308,28 @@ func _sync_input_mode_presentation() -> void:
         _:
             input_mode_button.text = "Mode: Mouse"
             input_mode_button.tooltip_text = "Virtual mouse mode"
-    input_mode_button.tooltip_text += "\nHides after 3 seconds. Reopen Control Pad to change modes."
     input_mode_button.set_meta("input_mode", _input_mode)
 
 func _sync_visibility() -> void:
     if menu_button == null:
         return
     var controls_visible := _enabled and _menu_button_enabled
-    menu_button.visible = controls_visible
+    menu_button.visible = controls_visible and not _layout_preview
+    input_mode_button.visible = controls_visible and _menu_open
     keyboard_button.visible = controls_visible and _menu_open
     virtual_controls_button.visible = controls_visible and _menu_open
     var panel_visible := controls_visible and _panel_open
     var mouse_only := _input_mode == INPUT_MODE_MOUSE_ONLY
     var show_virtual_mouse := panel_visible and not is_touch_mode()
     for control in _panel_controls:
-        if control == input_mode_button:
-            control.visible = panel_visible and _input_mode_hide_at_msec > 0
+        if control == profile_button:
+            control.visible = panel_visible and not _layout_preview and _profile_hide_at_msec > 0
         elif control == cursor_handle:
-            control.visible = show_virtual_mouse
-        elif control == mouse_left_button or control == mouse_right_button:
-            control.visible = show_virtual_mouse and not mouse_only
+            control.visible = show_virtual_mouse and not _layout_preview
+        elif control.has_meta("cap_id"):
+            var action: String = control.get_meta("action", "")
+            var mouse_key := action in ["mouse_left", "mouse_right"]
+            control.visible = panel_visible and not mouse_only and not action.is_empty() and (not mouse_key or show_virtual_mouse)
         else:
             control.visible = panel_visible and not mouse_only
     var menu_visible := controls_visible and _menu_open
@@ -1272,21 +1343,28 @@ func _apply_keyboard_controls_opacity() -> void:
         # key caps are intentionally subdued.
         var opacity := 1.0 if control == cursor_handle else _keyboard_controls_opacity
         control.self_modulate = Color(1.0, 1.0, 1.0, opacity)
+        if control.has_meta("cap_id"):
+            var icon := control.get_node_or_null("MouseIcon") as TextureRect
+            if icon != null:
+                icon.self_modulate.a = opacity
 
 func _press_key(key_code: int) -> void:
-    if not _enabled or not _panel_open or _held_keys.has(key_code):
+    if not _enabled or not _panel_open:
         return
-    _held_keys[key_code] = true
-    key_event_requested.emit(
-        true,
-        key_code,
-        MOD_CONTROL if key_code == VK_CONTROL else 0
-    )
+    _held_keys[key_code] = int(_held_keys.get(key_code, 0)) + 1
+    if _held_keys[key_code] == 1:
+        key_event_requested.emit(true, key_code, _key_modifiers())
 
 func _release_key(key_code: int) -> void:
-    if not _held_keys.erase(key_code):
+    if not _held_keys.has(key_code):
         return
-    key_event_requested.emit(false, key_code, 0)
+    _held_keys[key_code] -= 1
+    if _held_keys[key_code] <= 0:
+        _held_keys.erase(key_code)
+        key_event_requested.emit(false, key_code, _key_modifiers())
+
+func _key_modifiers() -> int:
+    return int(_held_keys.has(VK_SHIFT)) | (int(_held_keys.has(VK_ALT)) << 1) | (int(_held_keys.has(VK_CONTROL)) << 2)
 
 func _press_mouse_button(button: int, modifiers: int) -> void:
     if not _enabled or not _panel_open or _held_mouse_buttons.has(modifiers):
@@ -1333,7 +1411,7 @@ func _cancel_scroll_hold() -> void:
 func _process(_delta: float) -> void:
     var now_msec := Time.get_ticks_msec()
     _advance_scroll_hold(now_msec)
-    _advance_input_mode_visibility(now_msec)
+    _advance_profile_visibility(now_msec)
 
 func _advance_scroll_hold(now_msec: int) -> void:
     if (

@@ -66,6 +66,8 @@ func _run() -> void:
     _expect(Config.read(root_a, "yuris", legacy).text.encoding == "", "Explicit empty encoding supersedes legacy metadata")
     for engine in Config.ENGINES:
         _write(path, "{}")
+        if engine != "entisgls":
+            _expect("CP949" in Config.encodings(engine) and "BIG5" in Config.encodings(engine), engine + " offers Korean and Traditional Chinese")
         for encoding in Config.encodings(engine):
             _expect(Config.save(root_a, engine, {}, {"encoding": encoding}) == OK, engine + " supports " + encoding)
             _expect(Config.read(root_a, engine).text.encoding == encoding, "Selected encoding survives reload")
@@ -103,9 +105,10 @@ func _run() -> void:
     host.runtime_font_dir_path = "/app/fonts"
     host.current_player_runtime_kind = "rfvp"
     host.selected_game = legacy
-    _expect(Config.save(root_a, "rfvp", legacy, {"encoding": "GBK"}) == OK, "RFVP explicit encoding fixture")
-    host._apply_engine_options()
-    _expect(player.options.rfvp_encoding == "gbk" and player.options.rfvp_config_root == root_a, "RFVP startup receives selected library root and encoding")
+    for encoding in ["GBK", "BIG5", "CP949"]:
+        _expect(Config.save(root_a, "rfvp", legacy, {"encoding": encoding}) == OK, "RFVP explicit encoding fixture")
+        host._apply_engine_options()
+        _expect(player.options.rfvp_encoding == encoding.to_lower() and player.options.rfvp_config_root == root_a, "RFVP startup receives " + encoding)
     _expect(player.options.default_font == "/app/default.ttf", "Startup receives the base font fallback")
     host.game_running = true
     player.options.clear()

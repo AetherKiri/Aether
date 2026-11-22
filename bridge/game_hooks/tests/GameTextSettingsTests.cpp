@@ -44,10 +44,10 @@ int main() {
         for(const std::string engine : {"onscripter", "yuris", "systemc", "rfvp", "bgi", "advhd", "escude", "softpal", "catsystem2", "entisgls"}) {
             fs::remove(first.root / "aether_config.json");
             Check(GameTextSettings::Load(first.root, engine).font.empty(), "missing config must inherit");
-            for(const std::string encoding : {"", "CP932", "GBK", "GB18030", "BIG5", "UTF-8"}) {
+            for(const std::string encoding : {"", "CP932", "GBK", "GB18030", "BIG5", "CP949", "UTF-8"}) {
                 first.Config(encoding, "字体/自定义.OTF");
                 const bool supported = engine == "entisgls" ? encoding.empty()
-                    : (engine == "onscripter" || engine == "rfvp") ? encoding != "BIG5" && encoding != "GB18030" : true;
+                    : (engine == "onscripter" || engine == "rfvp") ? encoding != "GB18030" : true;
                 if(!supported) { Reject([&] { GameTextSettings::Load(first.root, engine); }); continue; }
                 const auto settings = GameTextSettings::Load(first.root, engine);
                 Check(settings.encoding == encoding && settings.font == selected_font, "engine capability/Unicode font path mismatch");

@@ -182,11 +182,13 @@ func _run() -> void:
         or controls.is_panel_open()
         or not controls.keyboard_button.visible
         or not controls.virtual_controls_button.visible
+        or not controls.input_mode_button.visible
     ):
         _fail("Menu did not expose keyboard and virtual-control choices")
         return
     if (
         not safe_rect.encloses(controls.keyboard_button.get_global_rect())
+        or not safe_rect.encloses(controls.input_mode_button.get_global_rect())
         or not safe_rect.encloses(
             controls.virtual_controls_button.get_global_rect()
         )
@@ -227,7 +229,7 @@ func _run() -> void:
         controls.enter_button, controls.space_button,
         controls.mouse_left_button, controls.mouse_right_button,
         controls.scroll_up_button, controls.scroll_down_button,
-        controls.cursor_handle, controls.input_mode_button,
+        controls.cursor_handle, controls.profile_button,
     ]
     required_controls.append_array(controls.digit_buttons)
     for control in required_controls:
@@ -620,7 +622,7 @@ func _run() -> void:
         _fail("mouse-only mode did not retain the shared virtual pointer")
         return
     for control in required_controls + [controls.dpad_backdrop, controls.dpad_center]:
-        if control != controls.cursor_handle and control != controls.input_mode_button and control.visible:
+        if control != controls.cursor_handle and control != controls.profile_button and control.visible:
             _fail("mouse-only mode still displays a pad control: %s" % control.name)
             return
 
@@ -677,6 +679,14 @@ func _run() -> void:
     if not _pointer_buttons.is_empty():
         _fail("a virtual-key touch was misclassified as a trackpad click")
         return
+
+    if _key_events != [
+        {"pressed": true, "key_code": 0x1b, "modifiers": 0},
+        {"pressed": false, "key_code": 0x1b, "modifiers": 0},
+    ]:
+        _fail("a raw touch on the virtual Escape button did not deliver exactly one keystroke")
+        return
+    _key_events.clear()
 
     var tap_position := (
         safe_rect.position + safe_rect.size * Vector2(0.55, 0.28)
@@ -938,32 +948,32 @@ func _run() -> void:
         controls.set_input_mode(mode)
         controls.show_virtual_controls()
         var opened_msec := Time.get_ticks_msec()
-        controls._advance_input_mode_visibility(opened_msec + 1000)
-        if not controls.input_mode_button.visible:
-            _fail("mode selector disappeared before its idle delay")
+        controls._advance_profile_visibility(opened_msec + 1000)
+        if not controls.profile_button.visible:
+            _fail("layout selector disappeared before its idle delay")
             return
-        controls._advance_input_mode_visibility(
-            opened_msec + GameVirtualControls.INPUT_MODE_HIDE_DELAY_MSEC + 1
+        controls._advance_profile_visibility(
+            opened_msec + GameVirtualControls.PROFILE_HIDE_DELAY_MSEC + 1
         )
         controls.set_enabled(true)
         controls.layout(Vector2(844, 390), safe_rect)
-        if controls.input_mode_button.visible:
-            _fail("mode selector did not remain hidden after idle/layout refresh")
+        if controls.profile_button.visible:
+            _fail("layout selector did not remain hidden after idle/layout refresh")
             return
         if controls.is_touch_mode():
-            var mode_point: Vector2 = controls.input_mode_button.get_global_rect().get_center()
+            var mode_point: Vector2 = controls.profile_button.get_global_rect().get_center()
             for region in controls.pointer_regions():
                 if region.has_point(mode_point):
-                    _fail("native overlay still captures the hidden mode selector")
+                    _fail("native overlay still captures the hidden layout selector")
                     return
             direct_touch.position = mode_point
             if controls.routes_pointer(direct_touch):
-                _fail("hidden mode selector still intercepts direct game touches")
+                _fail("hidden layout selector still intercepts direct game touches")
                 return
         controls.menu_button.emit_signal("pressed")
         controls.virtual_controls_button.emit_signal("pressed")
-        if not controls.input_mode_button.visible or controls.input_mode() != mode:
-            _fail("Control Pad did not restore the mode selector with its selected mode")
+        if not controls.profile_button.visible or controls.input_mode() != mode:
+            _fail("Control Pad did not restore the layout selector with its selected mode")
             return
 
     controls.set_input_mode(GameVirtualControls.INPUT_MODE_MOUSE)
@@ -993,11 +1003,11 @@ func _run() -> void:
     native_controls.set_enabled(true)
     native_controls.set_virtual_controls(true)
     native_controls._draw_pending = 0
-    native_controls.controls._advance_input_mode_visibility(
-        Time.get_ticks_msec() + GameVirtualControls.INPUT_MODE_HIDE_DELAY_MSEC + 1
+    native_controls.controls._advance_profile_visibility(
+        Time.get_ticks_msec() + GameVirtualControls.PROFILE_HIDE_DELAY_MSEC + 1
     )
-    if native_controls.controls.input_mode_button.visible or native_controls._draw_pending == 0:
-        _fail("mode idle hiding did not invalidate the native game overlay")
+    if native_controls.controls.profile_button.visible or native_controls._draw_pending == 0:
+        _fail("layout selector idle hiding did not invalidate the native game overlay")
         return
     native_controls.free()
     native_host.free()

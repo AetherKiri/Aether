@@ -25,7 +25,7 @@ public:
     // Byte-text engines share this complete set. Unicode-only formats may
     // explicitly pass an empty list to reject a global byte encoding override.
     void RequireEncoding(const std::vector<std::string>& supported =
-        {"CP932", "GBK", "GB18030", "BIG5", "UTF-8"}) const;
+        {"CP932", "GBK", "GB18030", "BIG5", "CP949", "UTF-8"}) const;
 
     // For engines whose resource consumers require a native file path. The
     // caller owns this cache directory; original game files are never written.

@@ -7,6 +7,7 @@ func _initialize() -> void:
 
 func _run() -> void:
     var app = MAIN_SCRIPT.new()
+    app.add_child(app.ui_motion) # This fixture runs without Main._ready().
     var snapshot: Dictionary = app._current_settings_snapshot()
 
     assert(app.game_virtual_menu_enabled)

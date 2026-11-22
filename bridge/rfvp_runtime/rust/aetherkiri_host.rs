@@ -950,6 +950,20 @@ mod host_syscall_contract_tests {
     }
 
     #[test]
+    fn host_encoding_decodes_script_and_encodes_save_strings() {
+        use crate::{script::parser::Nls, text_codec};
+
+        for (encoding, bytes, text) in [
+            ("cp949", &b"\xc7\xd1\xb1\xdb\x81\x41"[..], "한글갂"),
+            ("big5", &b"\xc1\x63\xc5\xe9"[..], "繁體"),
+        ] {
+            let nls = encoding.parse::<Nls>().unwrap();
+            assert_eq!(text_codec::decode(nls, bytes), (text.to_owned(), false));
+            assert_eq!(text_codec::encode(nls, text), bytes);
+        }
+    }
+
+    #[test]
     fn tile_minus_one_uses_volatile_color_and_color_set_rejects_signed_ids() {
         let mut game = game();
         // The host suite runs serially; restore global state even if an assertion fails.

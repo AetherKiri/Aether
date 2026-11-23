@@ -5243,7 +5243,11 @@ func _apply_engine_options() -> void:
     var effective_plugin_trace := plugin_trace or effective_diagnostic_profile in ["plugin", "full"] or _runtime_flag("AETHERKIRI_PLUGIN_TRACE", false)
     var effective_trace_log := trace_log or effective_diagnostic_profile == "full" or _runtime_flag("AETHERKIRI_TRACE_LOG", false)
     var effective_input_trace := input_trace_enabled or effective_diagnostic_profile in ["input", "full"]
-    player.set_engine_option("fps_limit", str(target_fps) if frame_limit_enabled else "0")
+    var runtime_limit := target_fps if frame_limit_enabled else 0
+    player.set_engine_option("fps_limit", str(runtime_limit))
+    if active_runtime_kind == "advhd" and not game_frame_pacing.saved.is_empty():
+        Engine.max_fps = game_frame_pacing.frame_limit(active_runtime_kind,
+            DisplayServer.screen_get_refresh_rate(), runtime_limit)
     player.set_engine_option("plugin_load_mode", effective_plugin_load_mode)
     player.set_engine_option("plugin_trace", "1" if effective_plugin_trace else "0")
     player.set_engine_option("mock_enabled", "1" if mock_enabled else "0")
@@ -5552,7 +5556,7 @@ func _set_game_runtime_frame_pacing(active: bool) -> void:
         policy = game_frame_pacing.enter(active_runtime_kind, OS.get_name(),
             RenderingServer.get_current_rendering_driver_name(),
             DisplayServer.window_get_vsync_mode(), Engine.max_fps,
-            DisplayServer.screen_get_refresh_rate())
+            DisplayServer.screen_get_refresh_rate(), target_fps if frame_limit_enabled else 0)
     else:
         policy = game_frame_pacing.leave()
     if not policy.is_empty():

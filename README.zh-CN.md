@@ -404,3 +404,6 @@ Aether 以 GPL-3.0-or-later 分发（`LICENSE`）；第三方授权声明保留�
 `COPYING.iOS`：仅供 Aether 官方 iOS/macOS 版本或版权持有人书面授权的发布者
 使用；第三方分支及衍生 App 不得援引，该许可不代表其他版权持有人授予上游或
 第三方材料的权利，也不撤销 GPL 已授予的权利。
+
+Aether 应用图标的使用权限见
+[Aether-Branding 版权声明](https://github.com/AetherKiri/Aether-Branding/blob/main/COPYRIGHT.md)。

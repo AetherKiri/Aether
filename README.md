@@ -453,3 +453,6 @@ release, or a distributor they authorize in writing; third-party forks and
 derivative apps may not rely on that permission, which neither grants rights
 in upstream or third-party material on behalf of other copyright holders nor
 revokes rights already granted by the GPL.
+
+The Aether app icons are covered by the
+[Aether-Branding copyright notice](https://github.com/AetherKiri/Aether-Branding/blob/main/COPYRIGHT.md).

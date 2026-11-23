@@ -88,6 +88,37 @@ func capture(name_value: String) -> void:
         root.get_texture().get_image().save_png(out.path_join(name_value + ".png"))
 
 
+func check_layout_row(peer_name: String) -> void:
+    var row := controller.view.find_child("AstryxVirtualButtonRow", true, false) as MarginContainer
+    var link := controller.view.find_child("AstryxEditVirtualButtons", true, false) as Button
+    var peer := controller.view.find_child(peer_name, true, false) as Button
+    check(row != null and link != null and peer != null, "Layout and adjacent edit rows exist")
+    if row == null or link == null or peer == null:
+        return
+    check(
+        row.get_theme_constant("margin_top") == 16 and row.get_theme_constant("margin_bottom") == 16,
+        "The layout action uses the same vertical padding as other settings"
+    )
+    var labels := row.find_children("*", "Label", true, false)
+    check(
+        (
+            labels.size() == 1
+            and absf(link.get_global_rect().get_center().y - labels[0].get_global_rect().get_center().y) <= 0.5
+        ),
+        "The single title and its action share a center line"
+    )
+    check(
+        (
+            link.get_theme_font("font") == peer.get_theme_font("font")
+            and link.get_theme_font_size("font_size") == peer.get_theme_font_size("font_size")
+            and link.alignment == peer.alignment
+            and link.custom_minimum_size == peer.custom_minimum_size
+            and is_equal_approx(link.get_global_rect().end.x, peer.get_global_rect().end.x)
+        ),
+        "The edit link matches the neighboring link's font, touch target and trailing edge"
+    )
+
+
 func _run() -> void:
     create_timer(45).timeout.connect(
         func():
@@ -116,6 +147,7 @@ func _run() -> void:
     if controller.view.settings_narrow and not controller.view.settings_detail:
         click(controller.view, "AstryxSection_interface")
         await settle()
+    check_layout_row("AstryxEdit_game_virtual_keyboard_opacity")
     click(controller.view, "AstryxEditVirtualButtons")
     await settle()
     var e = editor()
@@ -231,6 +263,7 @@ func _run() -> void:
     await settle()
     click(controller.view, "AstryxDetailSection_virtual_buttons")
     await settle()
+    check_layout_row("AstryxRenameGame")
     click(controller.view, "AstryxEditVirtualButtons")
     await settle()
     e = editor()
@@ -376,13 +409,52 @@ func _cycle_layouts(book: Dictionary, shared: Dictionary) -> void:
     )
     check(is_equal_approx(controls.enter_button.self_modulate.a, 0.37), "Every layout honors the global opacity")
     check(controls.input_mode() == Controls.INPUT_MODE_MOUSE, "Changing layout keeps pointer mode")
+    var layout_rect := controls.profile_button.get_global_rect()
+    var mode_rect := controls.input_mode_button.get_global_rect()
+    check(
+        (
+            layout_rect.size == mode_rect.size
+            and layout_rect.position.y == mode_rect.position.y
+            and mode_rect.position.x - layout_rect.end.x == Controls.SELECTOR_GAP
+        ),
+        "Both pad selectors have equal separate touch targets"
+    )
+    var server := TextServerManager.get_primary_interface()
+    for selector: Button in [controls.profile_button, controls.input_mode_button]:
+        var faces := selector.get_theme_font("font").get_rids()
+        for character in "方案自定义繁體漢字":
+            check(
+                faces.any(func(face): return server.font_get_glyph_index(face, 14, character.unicode_at(0), 0) > 0),
+                "The packaged selector font covers " + character
+            )
+    for pressed in [true, false]:
+        Input.parse_input_event(touch(0, mode_rect.get_center(), pressed))
+        await process_frame
+    check(controls.is_touch_mode() and controls.profile_button.text == "方案2", "Tapping Mode keeps the active layout")
+    controls.profile_button.pressed.emit()
+    check(controls.is_touch_mode() and controls.profile_button.text == "方案3", "Cycling the layout keeps touch mode")
+    controls.menu_button.pressed.emit()
+    check(
+        (
+            controls.virtual_controls_button.visible
+            and not controls.input_mode_button.visible
+            and not controls.profile_button.visible
+        ),
+        "The edge menu opens Control Pad and leaves both selectors inside it"
+    )
+    controls.virtual_controls_button.pressed.emit()
+    check(
+        (
+            controls.profile_button.visible
+            and controls.input_mode_button.visible
+            and controls.is_touch_mode()
+            and controls.profile_button.text == "方案3"
+        ),
+        "Reopening Control Pad restores both choices"
+    )
     controls.set_layout_profiles(shared)
     controls.profile_button.pressed.emit()
     check(controls.profile_button.text == "Keyboard" and shared.active == "p-default", "A single layout remains active")
-    controls.menu_button.pressed.emit()
-    check(controls.input_mode_button.is_visible_in_tree(), "The game menu exposes pointer modes")
-    controls.input_mode_button.pressed.emit()
-    check(controls.is_touch_mode(), "Touch mode can be selected independently")
     controls.queue_free()
 
 

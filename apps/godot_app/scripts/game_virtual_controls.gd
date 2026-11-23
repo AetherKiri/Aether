@@ -44,7 +44,10 @@ const INPUT_MODE_MOUSE := "mouse"
 const INPUT_MODE_TOUCH := "touch"
 const INPUT_MODE_MOUSE_ONLY := "mouse_only"
 const INPUT_MODES := [INPUT_MODE_MOUSE, INPUT_MODE_TOUCH, INPUT_MODE_MOUSE_ONLY]
-const PROFILE_HIDE_DELAY_MSEC := 3000
+const SELECTOR_HIDE_DELAY_MSEC := 3000
+const SELECTOR_GAP := 8.0
+const SELECTOR_MAX_WIDTH := 120.0
+const SELECTOR_FONT := preload("res://assets/fonts/aetherkiri-runtime-cjk.otf")
 const KEYBOARD_CONTROLS_OPACITY_MIN := 0.2
 const KEYBOARD_CONTROLS_OPACITY_MAX := 1.0
 
@@ -121,7 +124,7 @@ var _menu_drag_grab_offset_y := 0.0
 var _menu_drag_moved := false
 var _menu_y_ratio := 0.0
 var _input_mode := INPUT_MODE_MOUSE
-var _profile_hide_at_msec := 0
+var _selector_hide_at_msec := 0
 var _mouse_mode_blocked_touch_indices := {}
 var _held_scroll_direction := 0.0
 var _scroll_next_repeat_msec := 0
@@ -157,7 +160,7 @@ func setup(tokens, preview_parent: Control = null) -> void:
     virtual_controls_button = _create_action_button(
         "VirtualControlsButton", "Control Pad"
     )
-    virtual_controls_button.tooltip_text = "Show controls and layout selector"
+    virtual_controls_button.tooltip_text = "Show controls, layout and input mode"
     menu_button.pressed.connect(_toggle_menu)
     keyboard_button.pressed.connect(_request_keyboard)
     virtual_controls_button.pressed.connect(show_virtual_controls)
@@ -170,23 +173,9 @@ func setup(tokens, preview_parent: Control = null) -> void:
     _apply_menu_option_style(keyboard_button)
     _apply_menu_option_style(virtual_controls_button)
 
-    input_mode_button = _create_action_button("InputModeButton", "")
-    input_mode_button.pressed.connect(_toggle_input_mode)
-    _root.add_child(input_mode_button)
-    _interactive_controls.append(input_mode_button)
-    _apply_menu_option_style(input_mode_button)
+    profile_button = _create_pad_selector("ProfileButton", _cycle_profile)
+    input_mode_button = _create_pad_selector("InputModeButton", _toggle_input_mode)
     _sync_input_mode_presentation()
-
-    profile_button = _create_action_button("ProfileButton", "")
-    profile_button.clip_text = true
-    profile_button.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
-    profile_button.pressed.connect(_cycle_profile)
-    profile_button.button_down.connect(_show_profile_selector)
-    profile_button.button_up.connect(_show_profile_selector)
-    _root.add_child(profile_button)
-    _panel_controls.append(profile_button)
-    _interactive_controls.append(profile_button)
-    _apply_profile_button_style(profile_button)
 
     dpad_backdrop = _create_decorative_panel(
         "DpadBackdrop",
@@ -323,7 +312,7 @@ func set_input_mode(mode: String, notify: bool = false) -> void:
     _mouse_mode_blocked_touch_indices.clear()
     _input_mode = normalized
     _sync_input_mode_presentation()
-    _show_profile_selector()
+    _show_pad_selectors()
     _sync_visibility()
     if notify:
         input_mode_changed.emit(_input_mode)
@@ -333,7 +322,7 @@ func show_virtual_controls() -> void:
         return
     _menu_open = false
     _panel_open = true
-    _show_profile_selector()
+    _show_pad_selectors()
     _sync_visibility()
     virtual_controls_requested.emit()
 
@@ -378,17 +367,23 @@ func layout(_window_size: Vector2, safe_rect: Rect2, preview_geometry: Dictionar
 
     _layout_menu_options(diameter, gap)
 
-    var mode_size := Vector2(
-        clampf(safe_rect.size.x * 0.22, 132.0, 168.0),
-        clampf(diameter * 0.72, 40.0, 48.0)
-    )
-    profile_button.position = Vector2(
-        safe_rect.get_center().x - mode_size.x * 0.5,
-        safe_rect.position.y + margin
-    )
-    profile_button.size = mode_size
-
     var homes := Layouts.mouse_geometry(safe_rect.size)
+    # Reserve space for Esc and the first digit. On narrow screens shorten the
+    # user-defined name first so the three input modes are still distinguishable.
+    var left_limit: float = homes["Esc"].end.x + gap
+    var right_limit: float = homes["1"].position.x - gap
+    var row_width := clampf(
+        right_limit - left_limit,
+        2.0 * BUTTON_MIN_SIZE + SELECTOR_GAP,
+        2.0 * SELECTOR_MAX_WIDTH + SELECTOR_GAP
+    )
+    var mode_width := minf(SELECTOR_MAX_WIDTH, row_width - SELECTOR_GAP - BUTTON_MIN_SIZE)
+    var row_x := clampf((safe_rect.size.x - row_width) * 0.5, left_limit, maxf(left_limit, right_limit - row_width))
+    profile_button.position = safe_rect.position + Vector2(row_x, margin)
+    profile_button.size = Vector2(row_width - SELECTOR_GAP - mode_width, BUTTON_MIN_SIZE)
+    input_mode_button.position = profile_button.position + Vector2(profile_button.size.x + SELECTOR_GAP, 0)
+    input_mode_button.size = Vector2(mode_width, BUTTON_MIN_SIZE)
+
     var pad_rect := Rect2()
     var geometry := _profile if preview_geometry.is_empty() else preview_geometry
     for cap in geometry.buttons:
@@ -713,7 +708,7 @@ func _cycle_profile() -> void:
         return
     if _profiles.size() > 1:
         _activate_profile((_profile_index + 1) % _profiles.size())
-    _show_profile_selector()
+    _show_pad_selectors()
 
 func _activate_profile(index: int) -> void:
     for contact in _cap_pointers:
@@ -1103,14 +1098,14 @@ func _layout_edge_menu_icon() -> void:
 func _layout_menu_options(diameter: float, gap: float) -> void:
     var option_size := Vector2(maxf(108.0, diameter * 2.15), menu_button.size.y)
     var option_x := menu_button.position.x - option_size.x - gap
-    var options_height := option_size.y * 3.0 + gap * 2.0
+    var options_height := option_size.y * 2.0 + gap
     var options_top := clampf(
         menu_button.position.y,
         _safe_rect.position.y,
         _safe_rect.end.y - options_height
     )
     var option_y := options_top
-    for button in [keyboard_button, virtual_controls_button, input_mode_button]:
+    for button in [keyboard_button, virtual_controls_button]:
         button.position = Vector2(option_x, option_y)
         button.size = option_size
         option_y += option_size.y + gap
@@ -1131,8 +1126,19 @@ func _apply_menu_option_style(button: Button) -> void:
             _button_style(fill, _tokens.separator, false, 10)
         )
 
-func _apply_profile_button_style(button: Button) -> void:
+func _create_pad_selector(node_name: String, action: Callable) -> Button:
+    var button := _create_action_button(node_name, "")
+    button.clip_text = true
+    button.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+    # The game's CanvasLayer does not inherit the launcher's CJK font fallback.
+    button.add_theme_font_override("font", SELECTOR_FONT)
     button.add_theme_font_size_override("font_size", 13)
+    button.pressed.connect(action)
+    button.button_down.connect(_show_pad_selectors)
+    button.button_up.connect(_show_pad_selectors)
+    _root.add_child(button)
+    _panel_controls.append(button)
+    _interactive_controls.append(button)
     button.add_theme_stylebox_override(
         "normal",
         _button_style(Color(0.08, 0.10, 0.12, 0.88), REFERENCE_BORDER, false)
@@ -1149,6 +1155,7 @@ func _apply_profile_button_style(button: Button) -> void:
             false
         )
     )
+    return button
 
 func _attach_mouse_icon(button: Button, highlights_left: bool) -> void:
     var icon := TextureRect.new()
@@ -1274,27 +1281,28 @@ func _request_keyboard() -> void:
     keyboard_requested.emit()
 
 func _toggle_input_mode() -> void:
-    if not _enabled or not (_menu_open or _panel_open):
+    if not _enabled or not _panel_open:
         return
     var next_index := (INPUT_MODES.find(_input_mode) + 1) % INPUT_MODES.size()
     set_input_mode(INPUT_MODES[next_index], true)
 
-func _show_profile_selector() -> void:
-    if not _enabled or not _menu_button_enabled or not _panel_open:
+func _show_pad_selectors() -> void:
+    if _layout_preview or not _enabled or not _menu_button_enabled or not _panel_open:
         return
-    _profile_hide_at_msec = Time.get_ticks_msec() + PROFILE_HIDE_DELAY_MSEC
+    _selector_hide_at_msec = Time.get_ticks_msec() + SELECTOR_HIDE_DELAY_MSEC
     profile_button.show()
+    input_mode_button.show()
 
-func _advance_profile_visibility(now_msec: int) -> void:
-    if not _enabled or not _panel_open or _profile_hide_at_msec == 0:
+func _advance_selector_visibility(now_msec: int) -> void:
+    if not _enabled or not _panel_open or _selector_hide_at_msec == 0:
         return
-    if profile_button.button_pressed:
-        _profile_hide_at_msec = now_msec + PROFILE_HIDE_DELAY_MSEC
-    elif now_msec >= _profile_hide_at_msec:
-        _profile_hide_at_msec = 0
-        # Fully hide the button so its old bounds also stop intercepting input
-        # on Godot and native game surfaces. Control Pad reveals it again.
+    if profile_button.button_pressed or input_mode_button.button_pressed:
+        _selector_hide_at_msec = now_msec + SELECTOR_HIDE_DELAY_MSEC
+    elif now_msec >= _selector_hide_at_msec:
+        _selector_hide_at_msec = 0
+        # Idle selectors relinquish both hit regions to the game.
         profile_button.hide()
+        input_mode_button.hide()
 
 func _sync_input_mode_presentation() -> void:
     if input_mode_button == null:
@@ -1316,15 +1324,14 @@ func _sync_visibility() -> void:
         return
     var controls_visible := _enabled and _menu_button_enabled
     menu_button.visible = controls_visible and not _layout_preview
-    input_mode_button.visible = controls_visible and _menu_open
     keyboard_button.visible = controls_visible and _menu_open
     virtual_controls_button.visible = controls_visible and _menu_open
     var panel_visible := controls_visible and _panel_open
     var mouse_only := _input_mode == INPUT_MODE_MOUSE_ONLY
     var show_virtual_mouse := panel_visible and not is_touch_mode()
     for control in _panel_controls:
-        if control == profile_button:
-            control.visible = panel_visible and not _layout_preview and _profile_hide_at_msec > 0
+        if control == profile_button or control == input_mode_button:
+            control.visible = panel_visible and not _layout_preview and _selector_hide_at_msec > 0
         elif control == cursor_handle:
             control.visible = show_virtual_mouse and not _layout_preview
         elif control.has_meta("cap_id"):
@@ -1412,7 +1419,7 @@ func _cancel_scroll_hold() -> void:
 func _process(_delta: float) -> void:
     var now_msec := Time.get_ticks_msec()
     _advance_scroll_hold(now_msec)
-    _advance_profile_visibility(now_msec)
+    _advance_selector_visibility(now_msec)
 
 func _advance_scroll_hold(now_msec: int) -> void:
     if (

@@ -28,6 +28,7 @@ import {
   clamp,
   glyphs,
   keyOptions,
+  mouseGeometry,
   firstProfile,
   resolve,
   type Box,
@@ -561,21 +562,29 @@ export function VirtualButtonGamePreview({
   );
   const [board, setBoard] = useState<HTMLDivElement | null>(null);
   const { w, h } = useBoardSize(board);
-  const [menu, setMenu] = useState(false);
-  const [selector, showSelector] = useState(true);
+  const [panel, setPanel] = useState<"game" | "menu" | "pad">("game");
+  const [selector, showSelector] = useState(false);
   const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const [inputMode, setInputMode] = useState<"mouse" | "touch" | "mouse_only">(
     "mouse",
+  );
+  const homes = mouseGeometry(w, h);
+  const keyGap = clamp(homes.Esc.d * 0.13, 6, 9);
+  const leftLimit = homes.Esc.x + homes.Esc.d / 2 + keyGap;
+  const rightLimit = homes["1"].x - homes["1"].d / 2 - keyGap;
+  const rowWidth = clamp(rightLimit - leftLimit, 96, 248);
+  const modeWidth = Math.min(120, rowWidth - 8 - 44);
+  const rowLeft = clamp(
+    (w - rowWidth) / 2,
+    leftLimit,
+    Math.max(leftLimit, rightLimit - rowWidth),
   );
   function reveal() {
     clearTimeout(timer.current);
     showSelector(true);
     timer.current = setTimeout(() => showSelector(false), 3000);
   }
-  useEffect(() => {
-    reveal();
-    return () => clearTimeout(timer.current);
-  }, []);
+  useEffect(() => () => clearTimeout(timer.current), []);
   return (
     <Dialog
       isOpen
@@ -597,7 +606,7 @@ export function VirtualButtonGamePreview({
           />
         )}
         <div className="pad-board" ref={setBoard}>
-          {!menu && (
+          {panel === "pad" && (
             <GamepadKeys
               profile={profiles[index]}
               w={w}
@@ -606,10 +615,17 @@ export function VirtualButtonGamePreview({
               inputMode={inputMode}
             />
           )}
-          {!menu && selector && (
+          {panel === "pad" && selector && (
             <div
-              className="pad-runtime-profile"
-              style={{ opacity }}
+              className="pad-runtime-selectors"
+              role="group"
+              aria-label="控制面板"
+              style={{
+                opacity,
+                left: rowLeft,
+                width: rowWidth,
+                gridTemplateColumns: `minmax(0, 1fr) ${modeWidth}px`,
+              }}
               onPointerDown={() => clearTimeout(timer.current)}
               onPointerUp={reveal}
               onPointerCancel={reveal}
@@ -623,6 +639,26 @@ export function VirtualButtonGamePreview({
                   reveal();
                 }}
               />
+              <Button
+                label={
+                  {
+                    mouse: "鼠标模式",
+                    touch: "触屏模式",
+                    mouse_only: "纯鼠标模式",
+                  }[inputMode]
+                }
+                variant="secondary"
+                onClick={() => {
+                  setInputMode((mode) =>
+                    mode === "mouse"
+                      ? "touch"
+                      : mode === "touch"
+                        ? "mouse_only"
+                        : "mouse",
+                  );
+                  reveal();
+                }}
+              />
             </div>
           )}
           <div className="pad-runtime-menu">
@@ -632,36 +668,18 @@ export function VirtualButtonGamePreview({
               isIconOnly
               icon={<Icon icon={AdjustmentsHorizontalIcon} />}
               onClick={() => {
-                setMenu(!menu);
-                if (menu) reveal();
+                clearTimeout(timer.current);
+                setPanel(panel === "menu" ? "game" : "menu");
               }}
             />
-            {menu && (
+            {panel === "menu" && (
               <div className="pad-runtime-options">
                 <Button
                   label="虚拟按键"
                   onClick={() => {
-                    setMenu(false);
+                    setPanel("pad");
                     reveal();
                   }}
-                />
-                <Button
-                  label={
-                    {
-                      mouse: "鼠标模式",
-                      touch: "触屏模式",
-                      mouse_only: "纯鼠标模式",
-                    }[inputMode]
-                  }
-                  onClick={() =>
-                    setInputMode((m) =>
-                      m === "mouse"
-                        ? "touch"
-                        : m === "touch"
-                          ? "mouse_only"
-                          : "mouse",
-                    )
-                  }
                 />
                 <Button label="返回游戏详情" onClick={onClose} />
               </div>

@@ -35,7 +35,7 @@ func setup(host) -> void:
     controls.menu_open_changed.connect(func(_open): invalidate())
     controls.virtual_controls_requested.connect(invalidate)
     # Idle hiding happens without an input event, so publish a fresh native
-    # overlay frame and hit regions when the layout selector disappears.
+    # overlay frame and hit regions when the two pad selectors hide together.
     controls.profile_button.visibility_changed.connect(invalidate)
     controls.layout_profile_changed.connect(invalidate)
     controls.input_mode_changed.connect(func(mode):

@@ -1231,15 +1231,10 @@ func _switch_row(parent: Control, title: String, description: String, toggle: Bu
     row.add_child(toggle)
 
 func _virtual_button_row(parent: Control, game: Dictionary = {}) -> void:
-    var row := _hbox(12)
-    parent.add_child(row)
-    row.add_child(_label(BUTTON_EDITOR.caption(self, "layout"), 16, false, true))
-    var edit := _button(BUTTON_EDITOR.caption(self, "edit"),
+    var edit := _setting_link(BUTTON_EDITOR.caption(self, "edit"),
         func(): BUTTON_EDITOR.new().open(self, game.duplicate(true)),
-        "secondary", "AstryxEditVirtualButtons")
-    row.add_child(edit)
-    if game.is_empty():
-        parent.add_child(_divider())
+        "AstryxEditVirtualButtons")
+    _action_row(parent, BUTTON_EDITOR.caption(self, "layout"), "", edit, "AstryxVirtualButtonRow", game.is_empty())
 
 func _interface_settings() -> void:
     var fields := _section(_text("外观", "Appearance", "外観", "外觀", "Apariencia"), _text("选择适合你的界面，让每一段故事都有舒适的开始。", "Make every story feel at home with an interface that suits you.", "あなたに合った外観で、心地よく物語を始めましょう。", "選擇適合你的介面，讓每一段故事都有舒適的開始。", "Elige una interfaz a tu gusto para que cada historia empiece con comodidad."))
@@ -1685,8 +1680,12 @@ func _diagnostic_settings() -> void:
         advanced.add_child(_divider())
 
 func _about_row(parent: Control, id: String, title: String, description: String, control: Control) -> void:
+    control.name = "AstryxAbout_" + id
+    _action_row(parent, title, description, control, "AstryxAboutRow_" + id)
+
+func _action_row(parent: Control, title: String, description: String, control: Control, row_name: String, divider: bool = true) -> void:
     var pad := _margin(0, 16, 0, 16)
-    pad.name = "AstryxAboutRow_" + id
+    pad.name = row_name
     parent.add_child(pad)
     var row := _hbox(16)
     pad.add_child(row)
@@ -1697,11 +1696,11 @@ func _about_row(parent: Control, id: String, title: String, description: String,
     copy.add_child(_label(title, 16, false, true))
     if not description.is_empty():
         copy.add_child(_label(description, 14, true))
-    control.name = "AstryxAbout_" + id
     control.size_flags_horizontal = Control.SIZE_SHRINK_END
     control.size_flags_vertical = Control.SIZE_SHRINK_CENTER
     row.add_child(control)
-    parent.add_child(_divider())
+    if divider:
+        parent.add_child(_divider())
 
 func _about_purchase(parent: Control, id: String, source: Control, title: String, description: String, status: String) -> void:
     # Retain the host's purchase state, price and callbacks, only replace its row.

@@ -182,13 +182,13 @@ func _run() -> void:
         or controls.is_panel_open()
         or not controls.keyboard_button.visible
         or not controls.virtual_controls_button.visible
-        or not controls.input_mode_button.visible
+        or controls.input_mode_button.visible
+        or controls.profile_button.visible
     ):
         _fail("Menu did not expose keyboard and virtual-control choices")
         return
     if (
         not safe_rect.encloses(controls.keyboard_button.get_global_rect())
-        or not safe_rect.encloses(controls.input_mode_button.get_global_rect())
         or not safe_rect.encloses(
             controls.virtual_controls_button.get_global_rect()
         )
@@ -229,13 +229,30 @@ func _run() -> void:
         controls.enter_button, controls.space_button,
         controls.mouse_left_button, controls.mouse_right_button,
         controls.scroll_up_button, controls.scroll_down_button,
-        controls.cursor_handle, controls.profile_button,
+        controls.cursor_handle, controls.profile_button, controls.input_mode_button,
     ]
     required_controls.append_array(controls.digit_buttons)
     for control in required_controls:
         if not control.visible or not safe_rect.encloses(control.get_global_rect()):
             _fail("required control is hidden or outside safe area: %s" % control.name)
             return
+    var portrait := Rect2(0, 24, 393, 794)
+    controls.layout(Vector2(393, 852), portrait)
+    var layout_rect: Rect2 = controls.profile_button.get_global_rect()
+    var mode_rect: Rect2 = controls.input_mode_button.get_global_rect()
+    var mode_font: Font = controls.input_mode_button.get_theme_font("font")
+    var mode_size: int = controls.input_mode_button.get_theme_font_size("font_size")
+    var mode_padding: Vector2 = controls.input_mode_button.get_theme_stylebox("normal").get_minimum_size()
+    var longest_mode := mode_font.get_string_size("Mode: Mouse only", HORIZONTAL_ALIGNMENT_LEFT, -1, mode_size)
+    if (
+        layout_rect.position.x <= controls.escape_button.get_global_rect().end.x
+        or mode_rect.end.x >= controls.digit_buttons[0].get_global_rect().position.x
+        or mode_rect.position.x - layout_rect.end.x != GameVirtualControls.SELECTOR_GAP
+        or longest_mode.x + mode_padding.x > mode_rect.size.x
+    ):
+        _fail("portrait selectors overlap the keys or clip the current input mode")
+        return
+    controls.layout(Vector2(844, 390), safe_rect)
     if (
         controls.input_mode() != GameVirtualControls.INPUT_MODE_MOUSE
         or controls.is_touch_mode()
@@ -622,7 +639,7 @@ func _run() -> void:
         _fail("mouse-only mode did not retain the shared virtual pointer")
         return
     for control in required_controls + [controls.dpad_backdrop, controls.dpad_center]:
-        if control != controls.cursor_handle and control != controls.profile_button and control.visible:
+        if control.visible and control not in [controls.cursor_handle, controls.profile_button, controls.input_mode_button]:
             _fail("mouse-only mode still displays a pad control: %s" % control.name)
             return
 
@@ -948,31 +965,32 @@ func _run() -> void:
         controls.set_input_mode(mode)
         controls.show_virtual_controls()
         var opened_msec := Time.get_ticks_msec()
-        controls._advance_profile_visibility(opened_msec + 1000)
-        if not controls.profile_button.visible:
+        controls._advance_selector_visibility(opened_msec + 1000)
+        if not (controls.profile_button.visible and controls.input_mode_button.visible):
             _fail("layout selector disappeared before its idle delay")
             return
-        controls._advance_profile_visibility(
-            opened_msec + GameVirtualControls.PROFILE_HIDE_DELAY_MSEC + 1
+        controls._advance_selector_visibility(
+            opened_msec + GameVirtualControls.SELECTOR_HIDE_DELAY_MSEC + 1
         )
         controls.set_enabled(true)
         controls.layout(Vector2(844, 390), safe_rect)
-        if controls.profile_button.visible:
+        if controls.profile_button.visible or controls.input_mode_button.visible:
             _fail("layout selector did not remain hidden after idle/layout refresh")
             return
         if controls.is_touch_mode():
-            var mode_point: Vector2 = controls.profile_button.get_global_rect().get_center()
-            for region in controls.pointer_regions():
-                if region.has_point(mode_point):
-                    _fail("native overlay still captures the hidden layout selector")
+            for selector: Button in [controls.profile_button, controls.input_mode_button]:
+                var point := selector.get_global_rect().get_center()
+                for region in controls.pointer_regions():
+                    if region.has_point(point):
+                        _fail("native overlay still captures a hidden pad selector")
+                        return
+                direct_touch.position = point
+                if controls.routes_pointer(direct_touch):
+                    _fail("hidden pad selector still intercepts direct game touches")
                     return
-            direct_touch.position = mode_point
-            if controls.routes_pointer(direct_touch):
-                _fail("hidden layout selector still intercepts direct game touches")
-                return
         controls.menu_button.emit_signal("pressed")
         controls.virtual_controls_button.emit_signal("pressed")
-        if not controls.profile_button.visible or controls.input_mode() != mode:
+        if not (controls.profile_button.visible and controls.input_mode_button.visible) or controls.input_mode() != mode:
             _fail("Control Pad did not restore the layout selector with its selected mode")
             return
 
@@ -1003,10 +1021,10 @@ func _run() -> void:
     native_controls.set_enabled(true)
     native_controls.set_virtual_controls(true)
     native_controls._draw_pending = 0
-    native_controls.controls._advance_profile_visibility(
-        Time.get_ticks_msec() + GameVirtualControls.PROFILE_HIDE_DELAY_MSEC + 1
+    native_controls.controls._advance_selector_visibility(
+        Time.get_ticks_msec() + GameVirtualControls.SELECTOR_HIDE_DELAY_MSEC + 1
     )
-    if native_controls.controls.profile_button.visible or native_controls._draw_pending == 0:
+    if native_controls.controls.profile_button.visible or native_controls.controls.input_mode_button.visible or native_controls._draw_pending == 0:
         _fail("layout selector idle hiding did not invalidate the native game overlay")
         return
     native_controls.free()

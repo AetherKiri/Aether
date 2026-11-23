@@ -13149,17 +13149,18 @@ func _clear_hero_state() -> void:
     hero_source_texture = null
     detail_hero_cover = null
 
-func _load_cover_texture(game: Dictionary, target_size: Vector2i = Vector2i.ZERO, radius: int = 0) -> Texture2D:
+func _load_cover_texture(game: Dictionary, target_size: Vector2i = Vector2i.ZERO, radius: int = 0, mipmaps: bool = false) -> Texture2D:
     var cover_path := _resolve_cover_path(game)
     if cover_path.is_empty() or not FileAccess.file_exists(cover_path):
         return null
     var modified := FileAccess.get_modified_time(cover_path)
-    var cache_key := "%s|%d|%dx%d|%d" % [
+    var cache_key := "%s|%d|%dx%d|%d|%s" % [
         cover_path,
         modified,
         target_size.x,
         target_size.y,
         radius,
+        mipmaps,
     ]
     if cover_texture_cache.has(cache_key):
         return cover_texture_cache.get(cache_key)
@@ -13170,6 +13171,8 @@ func _load_cover_texture(game: Dictionary, target_size: Vector2i = Vector2i.ZERO
         image = _cover_image_for_card(image, target_size, radius)
     else:
         image.convert(Image.FORMAT_RGBA8)
+    if mipmaps:
+        image.generate_mipmaps()
     var texture := ImageTexture.create_from_image(image)
     cover_texture_cache[cache_key] = texture
     return texture

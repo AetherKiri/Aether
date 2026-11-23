@@ -45,9 +45,9 @@ class NavigationHost extends Suite.TestHost:
         classic_cards += 1
         return super._game_card(game)
 
-    func _load_cover_texture(game: Dictionary, target_size: Vector2i = Vector2i.ZERO, radius: int = 0) -> Texture2D:
+    func _load_cover_texture(game: Dictionary, target_size: Vector2i = Vector2i.ZERO, radius: int = 0, mipmaps: bool = false) -> Texture2D:
         cover_loads += 1
-        return super._load_cover_texture(game, target_size, radius)
+        return super._load_cover_texture(game, target_size, radius, mipmaps)
 
 var host: NavigationHost
 var controller: Suite.TestController
@@ -291,7 +291,25 @@ func _check_detail_entry() -> void:
     await _settle()
     _expect(host.shell_route == "library" and _first_game().get_instance_id() == library_id,
         "System Back from details restores the cached library")
-    host._show_detail(host.known_games[0])
+    var imported_game: Dictionary = host.known_games[0].duplicate()
+    imported_game["engine"] = "advhd"
+    var probes := host.runtime_probes
+    host._open_game_detail_with_iap(imported_game)
+    await _settle()
+    _expect(host.runtime_probes == probes, "An identified game opens without scanning the game directory")
+    var cover := controller.view.detail_cover as Control
+    var info := _button("AstryxDetailSection_information")
+    var cache := _button("AstryxClearGameCache")
+    var loads := host.cover_loads
+    var was_open: bool = controller.view.expanded_details.information
+    info.pressed.emit()
+    _expect(controller.view.expanded_details.information != was_open, "The selected detail section toggles")
+    _button("AstryxDetailSection_information").pressed.emit()
+    await _settle()
+    _expect(controller.view.expanded_details.information == was_open, "The same section can be reopened")
+    _expect(host.runtime_probes == probes and host.cover_loads == loads, "Toggling does not inspect archives or reload the cover")
+    _expect(is_instance_valid(cover) and controller.view.detail_cover == cover and is_instance_valid(cache) and _button("AstryxClearGameCache") == cache,
+        "Unrelated cover and cache controls survive the toggle")
     controller.set_enabled(false, false)
     _expect(host.detail_view.is_visible_in_tree() and host.detail_scroll.get_child_count() > 0,
         "Switching to classic builds and shows its detail page on demand")

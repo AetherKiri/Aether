@@ -524,11 +524,19 @@ export function App() {
   });
   const globalButtons = buttonBooks[""] ?? emptyProfiles(false);
   function buttonRow(scope: string) {
-    return (
-      <HStack gap={4} hAlign="between" vAlign="center" style={settingsRowPadding}>
-        <Text weight="semibold">虚拟按钮布局</Text>
-        <Button label="编辑布局" variant="secondary" onClick={() => setButtonScope(scope)} />
-      </HStack>
+    return actionRow(
+      "虚拟按钮布局",
+      "",
+      <Link
+        href="#"
+        onClick={(event) => {
+          event.preventDefault();
+          setButtonScope(scope);
+        }}
+      >
+        编辑布局
+      </Link>,
+      scope === "",
     );
   }
   const [gameRendering, setGameRendering] = useState<
@@ -898,21 +906,28 @@ export function App() {
       </VStack>
     );
   }
-  function aboutRow(label: string, description: string, control: ReactNode) {
+  function actionRow(
+    label: string,
+    description: string,
+    control: ReactNode,
+    divider = true,
+  ) {
     return (
       <VStack gap={0}>
         <HStack gap={4} vAlign="center" style={settingsRowPadding}>
           <StackItem size="fill">
             <VStack gap={1}>
               <Text weight="semibold">{label}</Text>
-              <Text type="supporting" color="secondary">
-                {description}
-              </Text>
+              {description && (
+                <Text type="supporting" color="secondary">
+                  {description}
+                </Text>
+              )}
             </VStack>
           </StackItem>
           <StackItem size="static">{control}</StackItem>
         </HStack>
-        <Divider />
+        {divider && <Divider />}
       </VStack>
     );
   }
@@ -922,7 +937,7 @@ export function App() {
     action: string,
     message: string,
   ) {
-    return aboutRow(
+    return actionRow(
       label,
       description,
       <Link
@@ -1495,7 +1510,6 @@ export function App() {
                           "在游戏中显示快捷菜单与键盘入口。",
                         )}
                         {buttonRow("")}
-                        <Divider />
                         {settingRow(
                           "opacity",
                           "虚拟键盘不透明度",
@@ -1624,7 +1638,7 @@ export function App() {
                         title="Aether"
                         description="让故事，再次抵达你。"
                       >
-                        {aboutRow(
+                        {actionRow(
                           "版本",
                           "当前安装的应用版本",
                           <Text color="secondary">1.1.1</Text>,
@@ -2015,7 +2029,9 @@ export function App() {
                   </Collapsible>
                   <Divider />
                   <Collapsible value="virtual_buttons" trigger={<Heading level={3}>游戏控制</Heading>}>
-                    {buttonRow(selected.name)}
+                    <VStack gap={0} style={detailSectionPadding}>
+                      {buttonRow(selected.name)}
+                    </VStack>
                   </Collapsible>
                   <Divider />
                   <Collapsible

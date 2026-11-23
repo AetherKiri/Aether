@@ -3,7 +3,7 @@
 #include "LayerBitmapIntf.h"
 #include "FreeType.h"
 #include "FontBaseline.h"
-#if _WIN32
+#ifdef _MSC_VER
 #include <corecrt_math_defines.h>
 #else
 #ifndef _USE_MATH_DEFINES

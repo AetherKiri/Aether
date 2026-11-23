@@ -54,10 +54,15 @@
 
 #ifdef WIN32
 #include <io.h>
+#ifndef S_IFLNK
+#define S_IFLNK 0120000
+#endif
+#ifndef __MINGW32__
 // posix io api
 inline unsigned int lseek64(int fileHandle, __int64 offset, int origin) {
     return _lseeki64(fileHandle, offset, origin);
 }
+#endif
 // extern void *valloc(int n);
 // extern void vfree(void *p);
 // }

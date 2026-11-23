@@ -22,7 +22,7 @@ endif()
 
 set(GEN_CODE_BINARY_DIR ${CMAKE_CURRENT_BINARY_DIR}/gen)
 
-if(WINDOWS)
+if(WINDOWS AND MSVC)
     target_compile_options(${PROJECT_NAME} PRIVATE "/FS")
 endif()
 

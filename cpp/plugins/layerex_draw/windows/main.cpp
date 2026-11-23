@@ -1,7 +1,7 @@
 #define NCB_MODULE_NAME TJS_W("layerExDraw.dll")
 
 #include "ncbind.hpp"
-#include "layerExDraw.hpp"
+#include "LayerExDraw.hpp"
 
 /**
  * ログ出力用
@@ -367,6 +367,10 @@ public:
 
 template <typename T>
 struct MatrixConvertor : public GdipTypeConvertor<T> {
+    using typename GdipTypeConvertor<T>::GdipClassP;
+    using typename GdipTypeConvertor<T>::WrapperT;
+    using typename GdipTypeConvertor<T>::AdaptorT;
+    using GdipTypeConvertor<T>::result;
     void operator()(GdipClassP &dst, const tTJSVariant &src) {
         WrapperT *obj;
         if(src.Type() == tvtObject) {

@@ -1,6 +1,7 @@
 #ifndef _layerExText_hpp_
 #define _layerExText_hpp_
 #include <windows.h>
+#include <objidl.h>
 #include <gdiplus.h>
 using namespace Gdiplus;
 

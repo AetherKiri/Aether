@@ -14,7 +14,11 @@
 #include <ctime>
 
 #ifdef _WIN32
+#ifdef _MSC_VER
 #include <corecrt_math_defines.h>
+#else
+#include <cmath>
+#endif
 #ifndef TJS_NO_MASK_MATHERR
 #include <cfloat>
 #endif

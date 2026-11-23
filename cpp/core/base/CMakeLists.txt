@@ -79,6 +79,12 @@ target_link_libraries(${PROJECT_NAME} PRIVATE
     unofficial::minizip::minizip
 )
 
+if(MINGW)
+    # The static libarchive and unrar imports omit these Windows dependencies.
+    find_package(LibLZMA REQUIRED)
+    target_link_libraries(${PROJECT_NAME} PRIVATE LibLZMA::LibLZMA powrprof)
+endif()
+
 if(APPLE)
     # The static libarchive package on macOS requires libb2 for RAR5 checksum
     # support, but FindLibArchive does not propagate that dependency.

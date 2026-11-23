@@ -1209,6 +1209,8 @@ void TVPInitDirectSound(int freq) {
 }
 
 void TVPUninitDirectSound() {
+    if(!TVPAudioRenderer)
+        return;
     delete TVPAudioRenderer;
     TVPAudioRenderer = nullptr;
     TVPALContext = nullptr;

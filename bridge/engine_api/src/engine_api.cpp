@@ -669,6 +669,7 @@ inline int ToStateValue(EngineState state) {
 
 std::recursive_mutex g_registry_mutex;
 std::unordered_set<engine_handle_t> g_live_handles;
+size_t g_destroying_handles = 0;
 thread_local std::string g_thread_error;
 engine_handle_t g_runtime_owner = nullptr;
 bool g_runtime_active = false;
@@ -2127,6 +2128,7 @@ engine_result_t engine_destroy(engine_handle_t handle) {
     impl->state = ToStateValue(EngineState::kDestroyed);
     ClearHandleErrorLocked(impl);
     g_live_handles.erase(handle);
+    ++g_destroying_handles;
   }
 
   if (startup_worker.joinable()) {
@@ -2211,6 +2213,15 @@ engine_result_t engine_destroy(engine_handle_t handle) {
     g_runtime_started_once = false;
   }
 
+  {
+    std::lock_guard<std::recursive_mutex> registry_guard(g_registry_mutex);
+    --g_destroying_handles;
+    if (g_live_handles.empty() && g_destroying_handles == 0) {
+      // Standalone movies initialize the shared audio renderer even when the
+      // handle never starts a KiriKiri session. Join it before the DLL unloads.
+      TVPUninitDirectSound();
+    }
+  }
   delete impl;
   SetThreadError(nullptr);
   return ENGINE_RESULT_OK;

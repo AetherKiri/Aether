@@ -14,7 +14,7 @@ func _init() -> void:
     var first := Options.user_directory("/host", "/games/first")
     assert(first == Options.user_directory("/host", "/games/other/../first"))
     assert(first != Options.user_directory("/host", "/games/second"))
-    assert(Options.cache_directory("/host", "/games/first") == first.path_join("cache"))
+    assert(Options.cache_directory("/host", "/games/first") == preload("res://scripts/game_cache.gd").directory("/host", "/games/first"))
     assert(Launch.runtime_uses_directory("systemc"))
     assert(Launch.resolve_for_runtime({"path": "/games/first", "launchFile": "game.exe"}, "systemc") == "/games/first")
     assert(Mapping.input_surface_size("systemc", Vector2(800, 600), Vector2(1920, 1080)) == Vector2(800, 600))

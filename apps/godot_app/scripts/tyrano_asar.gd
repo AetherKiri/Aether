@@ -119,7 +119,9 @@ func prepare(cache_root: String) -> Dictionary:
             fingerprint += ":%s:%s" % [relative, _digest(external)]
             if not error.is_empty():
                 return {"error": error}
-    var parent := cache_root.path_join(source.sha256_text())
+    # The host already isolates each game. A source container's absolute path
+    # changes on iOS updates, while its name and content remain the same.
+    var parent := cache_root.path_join(source.get_file().sha256_text())
     var destination := parent.path_join(fingerprint.sha256_text())
     var project := destination.path_join("project")
     if FileAccess.file_exists(destination.path_join("complete")):

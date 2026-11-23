@@ -1,4 +1,5 @@
 #include "AetherGameHooks.h"
+#include "AetherResourceCache.h"
 #include "AetherGameTextSettings.h"
 #include "AetherGb18030.h"
 #include <lua.hpp>
@@ -11,7 +12,6 @@
 #include <fstream>
 #include <limits>
 #include <memory>
-#include <random>
 #include <stdexcept>
 #include <string_view>
 
@@ -320,29 +320,25 @@ void GameHooks::Materialize(const std::filesystem::path& directory) const {
     std::filesystem::create_directories(directory);
     for(const auto& [name, bytes] : files_) {
         const auto path = directory / std::filesystem::u8path(name);
-        std::filesystem::create_directories(path.parent_path());
-        std::ofstream output(path, std::ios::binary | std::ios::trunc);
-        if(!output.write(reinterpret_cast<const char*>(bytes.data()), bytes.size()))
-            throw std::runtime_error("aether.lua: cannot write resource cache");
+        aether::cache::Write(path, bytes);
     }
 }
 
 struct GameHooks::Cache {
     std::filesystem::path path;
-    ~Cache() { std::error_code ignored; std::filesystem::remove_all(path, ignored); }
 };
 std::filesystem::path GameHooks::CacheDirectory(const std::filesystem::path& parent) const {
     if(files_.empty()) return {};
     if(cache_) return cache_->path;
     if(parent.empty()) throw std::runtime_error("aether.lua: resource overlay requires a host cache directory");
     std::filesystem::create_directories(parent);
-    std::random_device random;
     auto cache = std::make_shared<Cache>();
-    for(int attempt = 0; attempt < 32; ++attempt) {
-        const auto candidate = parent / ("aether-lua-" + std::to_string(random()) + "-" + std::to_string(random()));
-        if(std::filesystem::create_directory(candidate)) { cache->path = candidate; break; }
+    std::string manifest;
+    for (const auto& [name, bytes] : files_) {
+        manifest += name; manifest += '\0';
+        manifest += aether::cache::Digest(bytes); manifest += '\0';
     }
-    if(cache->path.empty()) throw std::runtime_error("aether.lua: cannot create resource cache");
+    cache->path = parent / "aether-lua" / aether::cache::Digest(Bytes(manifest.begin(), manifest.end()));
     Materialize(cache->path);
     cache_ = std::move(cache);
     return cache_->path;

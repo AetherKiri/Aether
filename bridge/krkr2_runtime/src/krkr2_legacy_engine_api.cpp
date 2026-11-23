@@ -150,6 +150,7 @@ extern "C" uint32_t TVPHostCopyTextInputText(char* out_buffer,
                                                uint32_t buffer_size);
 
 struct engine_handle_s {
+  std::string cache_directory;
   std::recursive_mutex mutex;
   std::string last_error;
   int state = 0;
@@ -1786,6 +1787,7 @@ engine_result_t DispatchInputEventNow(engine_handle_s* impl,
 engine_result_t OpenGameCore(engine_handle_t handle,
                              engine_handle_s* impl,
                              const char* game_root_path_utf8) {
+  TVPSetTemporaryDirectory(ttstr(impl->cache_directory.c_str()));
   if (game_root_path_utf8 == nullptr || game_root_path_utf8[0] == '\0') {
     return ENGINE_RESULT_INVALID_ARGUMENT;
   }
@@ -2073,6 +2075,10 @@ engine_result_t engine_create(const engine_create_desc_t* desc,
   impl->state = ToStateValue(EngineState::kCreated);
   impl->owner_thread = std::this_thread::get_id();
   impl->runtime_owner = false;
+  if (desc->cache_path_utf8 && *desc->cache_path_utf8) {
+    impl->cache_directory = desc->cache_path_utf8;
+    if (impl->cache_directory.back() != '/') impl->cache_directory += '/';
+  }
 
   auto handle = reinterpret_cast<engine_handle_t>(impl);
   {

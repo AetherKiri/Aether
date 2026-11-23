@@ -71,9 +71,15 @@ func open_entry(value: Dictionary) -> String:
         greenlet = sdk.path_join("lib/python3.12/site-packages")
     if sdk.is_empty() or not FileAccess.file_exists(sdk.path_join("renpy.py")) or not FileAccess.file_exists(greenlet.path_join("greenlet/__init__.py")):
         return host._t("renpy.runtime_missing")
-    session_directory = ProjectSettings.globalize_path("user://renpy_sessions").path_join("%d-%d" % [OS.get_process_id(), Time.get_ticks_usec()])
+    var prepared: Dictionary = host._prepare_game_cache(entry, "renpy")
+    if int(prepared.error) != OK:
+        return host._t("renpy.session_failed")
+    session_directory = String(prepared.path).path_join("renpy/session")
     if DirAccess.make_dir_recursive_absolute(session_directory) != OK:
         return host._t("renpy.session_failed")
+    for stale in ["state.json", "command.json", "command.tmp"]:
+        if FileAccess.file_exists(session_directory.path_join(stale)):
+            DirAccess.remove_absolute(session_directory.path_join(stale))
     for file_name in ["host.py", "overlay.rpy", "embedded.py"]:
         var file := FileAccess.open(session_directory.path_join(file_name), FileAccess.WRITE)
         if file == null:

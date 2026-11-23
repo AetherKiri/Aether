@@ -1,0 +1,35 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <title>Aether Orbits</title>
+  <defs>
+    <linearGradient id="aether-icon-mark-dark-orbit-left" gradientUnits="userSpaceOnUse" x1="0" y1="448" x2="0" y2="725">
+      <stop offset="0" stop-color="#1C1C1C" stop-opacity="0.73" />
+      <stop offset="0.1516" stop-color="#1C1C1C" stop-opacity="0.78" />
+      <stop offset="0.296" stop-color="#1C1C1C" stop-opacity="0.82" />
+      <stop offset="0.4404" stop-color="#1C1C1C" stop-opacity="0.78" />
+      <stop offset="0.5848" stop-color="#1C1C1C" stop-opacity="0.7" />
+      <stop offset="0.7292" stop-color="#1C1C1C" stop-opacity="0.58" />
+      <stop offset="0.8736" stop-color="#1C1C1C" stop-opacity="0.4" />
+      <stop offset="0.9458" stop-color="#1C1C1C" stop-opacity="0.25" />
+      <stop offset="0.9819" stop-color="#1C1C1C" stop-opacity="0.105" />
+      <stop offset="1" stop-color="#1C1C1C" stop-opacity="0" />
+    </linearGradient>
+    <linearGradient id="aether-icon-mark-dark-orbit-right" gradientUnits="userSpaceOnUse" x1="1160" y1="760" x2="787" y2="1044">
+      <stop offset="0" stop-color="#1C1C1C" stop-opacity="0.8" />
+      <stop offset="0.025" stop-color="#1C1C1C" stop-opacity="0.79" />
+      <stop offset="0.065" stop-color="#1C1C1C" stop-opacity="0.75" />
+      <stop offset="0.138" stop-color="#1C1C1C" stop-opacity="0.7" />
+      <stop offset="0.24" stop-color="#1C1C1C" stop-opacity="0.67" />
+      <stop offset="0.37" stop-color="#1C1C1C" stop-opacity="0.62" />
+      <stop offset="0.536" stop-color="#1C1C1C" stop-opacity="0.55" />
+      <stop offset="0.683" stop-color="#1C1C1C" stop-opacity="0.46" />
+      <stop offset="0.799" stop-color="#1C1C1C" stop-opacity="0.35" />
+      <stop offset="0.927" stop-color="#1C1C1C" stop-opacity="0.2" />
+      <stop offset="0.975" stop-color="#1C1C1C" stop-opacity="0.06" />
+      <stop offset="1" stop-color="#1C1C1C" stop-opacity="0" />
+    </linearGradient>
+  </defs>
+  <g id="aether-icon-mark-dark-symbol" transform="translate(-0.8 7.2) scale(0.8)" fill-rule="evenodd">
+    <path id="aether-icon-mark-dark-orbit-left-shape" fill="url(#aether-icon-mark-dark-orbit-left)" d="M240.50 721.62 C167.20 697.36 116.14 647.84 116.02 600.88 C115.89 553.77 161.71 498.74 238.21 454.11 L248.92 447.86 257.46 449.64 C262.16 450.61 266.00 451.71 266.00 452.08 C266.00 452.44 261.97 455.30 257.04 458.42 C213.13 486.25 178.26 524.73 167.00 557.93 C159.65 579.30 160.95 595.85 171.44 617.50 C189.26 654.23 233.25 688.24 287.25 707.05 C292.61 708.92 296.99 710.68 296.99 710.97 C296.97 711.75 272.79 721.02 270.81 721.01 C269.89 721.00 265.39 721.90 260.81 722.99 C250.59 725.44 252.42 725.57 240.50 721.62 Z" />
+    <path id="aether-icon-mark-dark-orbit-right-shape" fill="url(#aether-icon-mark-dark-orbit-right)" d="M790.25 1041.75 C788.58 1039.64 788.95 1034.24 790.82 1033.49 C791.74 1033.12 805.10 1028.32 820.50 1022.82 C1008.37 955.68 1111.24 887.32 1135.97 813.21 C1149.43 772.86 1136.39 739.94 1088.94 694.50 C1073.46 679.67 1073.44 679.36 1088.64 688.64 C1158.34 731.21 1182.51 787.69 1154.95 843.61 C1123.60 907.21 1034.20 967.06 906.00 1010.28 C874.91 1020.76 829.54 1034.23 806.03 1039.96 C791.82 1043.42 791.60 1043.45 790.25 1041.75 Z" />
+  </g>
+</svg>

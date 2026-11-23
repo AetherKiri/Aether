@@ -67,7 +67,7 @@ public final class AppIcon {
                     activity.setTaskDescription(new ActivityManager.TaskDescription(
                         manager.getApplicationLabel(activity.getApplicationInfo()).toString(),
                         BitmapFactory.decodeResource(activity.getResources(), resource),
-                        astryx && dark ? 0xff000000 : 0xfff1f1f1));
+                        astryx && dark ? 0xff292c35 : 0xfffafafb));
                 }
             } catch (PackageManager.NameNotFoundException | RuntimeException error) {
                 Log.w("AetherAppIcon", "Could not switch the launcher icon", error);

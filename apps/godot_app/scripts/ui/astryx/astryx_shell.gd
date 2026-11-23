@@ -1425,7 +1425,7 @@ func _begin_detail_edit(key: String) -> void:
     detail_edit_error = ""
     detail_edit_draft = {"name": host._game_display_title(host.selected_game)} if key == "name" else host._read_game_render_config(host.selected_game).rendering.duplicate(true)
     if key in ["encoding", "font_file"]:
-        var loaded: Dictionary = host._read_game_text_config(host.selected_game)
+        var loaded: Dictionary = host._read_game_text_config(host.selected_game, _detail_runtime(host.selected_game))
         detail_edit_draft = loaded.text.duplicate(true)
         if loaded.error != OK:
             detail_edit_error = error_string(loaded.error)
@@ -1462,7 +1462,7 @@ func _save_detail_edit() -> void:
         _reset_detail_edit()
         host._update_game(path, {"title": value})
     elif detail_edit_key in ["encoding", "font_file"]:
-        var runtime: String = host._game_runtime_kind(detail_edit_path)
+        var runtime := _detail_runtime(host.selected_game)
         var root: String = host._game_runtime_root(detail_edit_path)
         var error: Error = host.GameTextConfig.save(root, runtime, host.selected_game,
             {detail_edit_key: detail_edit_draft[detail_edit_key]}, detail_font_import)
@@ -2199,7 +2199,8 @@ func _build_detail() -> void:
     detail_backdrop.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
     var material := SHADERS.material(SHADERS.image())
     material.set_shader_parameter("radius", 0.0 if phone else 28.0)
-    material.set_shader_parameter("blur", 4.5)
+    # A 120px backdrop at level 2.5 has the same blur footprint as 480px at 4.5.
+    material.set_shader_parameter("blur", 2.5)
     material.set_shader_parameter("zoom", 1.25)
     material.set_shader_parameter("fade_bottom", 0.85)
     material.set_shader_parameter("fade_color", design.color("surface"))
@@ -2226,17 +2227,24 @@ func _build_detail() -> void:
     _scroll_into(page, 20 if phone else 24)
     _detail_content()
 
+func _detail_runtime(game: Dictionary) -> String:
+    # Older library entries can carry the generic KiriKiri fallback for a game
+    # that only a native provider can identify.
+    var engine := String(game.get("engine", ""))
+    if engine.is_empty() or engine == host.RUNTIME_KIRIKIRI:
+        return host._game_runtime_kind(String(game.get("path", "")))
+    return engine
+
 func _detail_content() -> void:
     var game: Dictionary = host.selected_game
     if not detail_edit_path.is_empty() and detail_edit_path != String(game.get("path", "")):
         _reset_detail_edit()
-    var texture: Texture2D = host._load_cover_texture(game, Vector2i(480, 480), 0) if not game.is_empty() else null
-    detail_backdrop.texture = host._mipmapped_texture(texture) if texture != null else null
+    var texture: Texture2D = host._load_cover_texture(game, Vector2i(120, 120), 0, true) if not game.is_empty() else null
+    detail_backdrop.texture = texture
     detail_backdrop.visible = texture != null
     if game.is_empty():
         return
-    # Share the archive probe across text, launch and legacy-cache fields.
-    var runtime: String = host._game_runtime_kind(String(game.get("path", "")))
+    var runtime := _detail_runtime(game)
     var narrow := _content_width() < 660
     detail_layout = _vbox(20) if narrow else _hbox(20)
     detail_layout.set_meta("narrow", narrow)
@@ -2272,24 +2280,12 @@ func _detail_content() -> void:
     launch.add_theme_constant_override("icon_max_width", 20)
     launch.size_flags_horizontal = Control.SIZE_EXPAND_FILL
     actions.add_child(launch)
-    var rows := _collapsible(info, "information", _text("游戏信息", "Game information", "ゲーム情報", "遊戲資訊", "Información del juego"))
-    if rows.visible:
-        _detail_information(rows, game, runtime)
-    var rendering := _collapsible(info, "rendering", _text("画面与渲染", "Graphics & rendering", "画面とレンダリング", "畫面與渲染", "Gráficos y renderizado"))
-    if rendering.visible:
-        _game_render_settings(rendering, game)
-    var input := _collapsible(info, "virtual_buttons", _text("游戏控制", "Game controls", "ゲーム操作", "遊戲控制", "Controles del juego"))
-    if input.visible:
-        _virtual_button_row(input, game)
-    var saves := _collapsible(info, "saves", _text("存档", "Saves", "セーブデータ", "存檔", "Partidas guardadas"))
-    if saves.visible:
-        _detail_save_actions(saves, game)
-    var cache_section := _collapsible(info, "cache", _text("缓存", "Cache", "キャッシュ", "快取", "Caché"))
-    if cache_section.visible:
-        _detail_cache_actions(cache_section, game, runtime)
-    var cover_section := _collapsible(info, "cover", _text("封面", "Cover", "カバー", "封面", "Portada"))
-    if cover_section.visible:
-        _detail_cover_actions(cover_section, game)
+    _collapsible(info, "information", _text("游戏信息", "Game information", "ゲーム情報", "遊戲資訊", "Información del juego"), _detail_information.bind(game, runtime))
+    _collapsible(info, "rendering", _text("画面与渲染", "Graphics & rendering", "画面とレンダリング", "畫面與渲染", "Gráficos y renderizado"), _game_render_settings.bind(game))
+    _collapsible(info, "virtual_buttons", _text("游戏控制", "Game controls", "ゲーム操作", "遊戲控制", "Controles del juego"), _virtual_button_row.bind(game))
+    _collapsible(info, "saves", _text("存档", "Saves", "セーブデータ", "存檔", "Partidas guardadas"), _detail_save_actions.bind(game, runtime))
+    _collapsible(info, "cache", _text("缓存", "Cache", "キャッシュ", "快取", "Caché"), _detail_cache_actions.bind(game, runtime))
+    _collapsible(info, "cover", _text("封面", "Cover", "カバー", "封面", "Portada"), _detail_cover_actions.bind(game))
     info.add_child(_divider())
 
 func _detail_cache_actions(section: Control, game: Dictionary, runtime: String) -> void:
@@ -2327,15 +2323,13 @@ func _save_transfer():
         host.add_child(transfer)
     return transfer
 
-func _detail_save_actions(section: Control, game: Dictionary) -> void:
+func _detail_save_actions(section: Control, game: Dictionary, runtime: String) -> void:
     var transfer = _save_transfer()
-    var engine := String(game.get("engine", ""))
-    if (engine.is_empty() or engine == "minori") and preload("res://scripts/game_save_locations.gd").has_minori_legacy():
-        if engine == "minori" or host._game_runtime_kind(String(game.get("path", ""))) == "minori":
-            var recover := _button(_text("恢复旧版存档", "Recover Legacy Saves", "旧セーブを復元", "復原舊版存檔", "Recuperar partidas antiguas"), func(): _confirm_minori_recovery(game.duplicate(true)), "secondary", "AstryxRecoverMinoriSaves")
-            recover.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-            recover.disabled = transfer.busy
-            section.add_child(recover)
+    if runtime == "minori" and preload("res://scripts/game_save_locations.gd").has_minori_legacy():
+        var recover := _button(_text("恢复旧版存档", "Recover Legacy Saves", "旧セーブを復元", "復原舊版存檔", "Recuperar partidas antiguas"), func(): _confirm_minori_recovery(game.duplicate(true)), "secondary", "AstryxRecoverMinoriSaves")
+        recover.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+        recover.disabled = transfer.busy
+        section.add_child(recover)
     section.add_child(_label(_text("仅处理当前游戏的存档。", "Only this game's saves are included.", "このゲームのセーブデータのみを扱います。", "僅處理目前遊戲的存檔。", "Solo se incluyen las partidas guardadas de este juego."), 14, true))
     var snapshot := game.duplicate(true)
     var export_button := _button(_text("导出存档", "Export saves", "セーブを書き出す", "匯出存檔", "Exportar partidas guardadas"), func(): transfer.start("share", snapshot), "secondary", "AstryxExportSaves")
@@ -2504,18 +2498,11 @@ func _confirm_clear_cover() -> void:
 func _show_cover_sources() -> void:
     COVER_PICKER.new().show_for(self)
 
-func _collapsible(parent: Control, id: String, title: String) -> VBoxContainer:
+func _collapsible(parent: Control, id: String, title: String, populate: Callable) -> void:
     var group := _vbox(12)
     parent.add_child(group)
     group.add_child(_divider())
-    var expanded: bool = expanded_details[id]
-    var trigger := _button(title, func():
-        expanded_details[id] = not expanded_details[id]
-        if not expanded_details[id] and ((id == "information" and detail_edit_key in ["name", "encoding", "font_file"]) or (id == "rendering" and detail_edit_key in ["upscale_algorithm", "output_resolution", "frame_enhancement_kind"])):
-            _reset_detail_edit()
-        refresh_content(true)
-    , "quiet", "AstryxDetailSection_" + id)
-    trigger.icon = load("res://assets/ui/astryx/chevron_%s.svg" % ("up" if expanded else "down"))
+    var trigger := _button(title, Callable(), "quiet", "AstryxDetailSection_" + id)
     trigger.icon_alignment = HORIZONTAL_ALIGNMENT_RIGHT
     trigger.expand_icon = true
     trigger.add_theme_constant_override("icon_max_width", 18)
@@ -2530,10 +2517,22 @@ func _collapsible(parent: Control, id: String, title: String) -> VBoxContainer:
         trigger.add_theme_stylebox_override(state, style)
     trigger.size_flags_horizontal = Control.SIZE_EXPAND_FILL
     trigger.accessibility_name = title
-    trigger.accessibility_description = _text("折叠", "Collapse", "折りたたむ", "摺疊", "Contraer") if expanded else _text("展开", "Expand", "展開", "展開", "Expandir")
     group.add_child(trigger)
     var body := _vbox(12)
     body.name = "AstryxDetailBody_" + id
-    body.visible = expanded
     group.add_child(body)
-    return body
+    var set_expanded := func(expanded: bool):
+        body.visible = expanded
+        trigger.icon = load("res://assets/ui/astryx/chevron_%s.svg" % ("up" if expanded else "down"))
+        trigger.accessibility_description = _text("折叠", "Collapse", "折りたたむ", "摺疊", "Contraer") if expanded else _text("展开", "Expand", "展開", "展開", "Expandir")
+        if expanded:
+            populate.call(body)
+        else:
+            _clear(body)
+    set_expanded.call(expanded_details[id])
+    trigger.pressed.connect(func():
+        expanded_details[id] = not body.visible
+        if not expanded_details[id] and ((id == "information" and detail_edit_key in ["name", "encoding", "font_file"]) or (id == "rendering" and detail_edit_key in ["upscale_algorithm", "output_resolution", "frame_enhancement_kind"])):
+            _reset_detail_edit()
+        set_expanded.call(expanded_details[id])
+    )

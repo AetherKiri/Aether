@@ -192,6 +192,7 @@ func _frames(count: int) -> void:
         await process_frame
 
 func _capture(label: String) -> void:
+    app.queue_redraw()
     await RenderingServer.frame_post_draw
     var image := root.get_texture().get_image()
     image.save_png(output_dir.path_join(label + ".png"))

@@ -151,7 +151,7 @@ func check_frame(action: Dictionary, label: String) -> bool:
         return false
     # Read the actual Godot output after presentation as well as the provider
     # pixels. Only numerical evidence and hashes are saved, never images.
-    app.viewport.queue_redraw()
+    app.queue_redraw()
     await RenderingServer.frame_post_draw
     var frame: Dictionary = app.player.read_frame_rgba()
     var frame_source := str(action.get("frame_source", "provider"))
@@ -227,7 +227,7 @@ func sample_frame_region(action: Dictionary, label: String) -> bool:
     var region := Rect2i(int(coords[0]), int(coords[1]), int(coords[2]), int(coords[3]))
     var measured := {}
     for i in range(frames):
-        app.viewport.queue_redraw()
+        app.queue_redraw()
         await RenderingServer.frame_post_draw
         if not app.game_running or app.viewport.texture == null:
             record({"event": "failed", "label": label, "reason": "presentation unavailable", "frame": i})
@@ -295,6 +295,7 @@ func measure_frame_pacing(action: Dictionary, label: String) -> bool:
     # Exclude the JSON snapshot and report writes. Sample normal library ticks
     # without requesting extra rendering or downloading texture pixels.
     await app.get_tree().process_frame
+    var presented_before := Engine.get_frames_drawn()
     var started := Time.get_unix_time_from_system()
     var previous := Time.get_ticks_usec()
     for i in range(frames):
@@ -309,6 +310,7 @@ func measure_frame_pacing(action: Dictionary, label: String) -> bool:
         previous = now
     var ended := Time.get_unix_time_from_system()
     var metrics := FrameMetrics.summarize(intervals, target)
+    metrics["presented_frames"] = Engine.get_frames_drawn() - presented_before
     var overruns := []
     for i in range(frames):
         if intervals[i] > 1000.0 / target and overruns.size() < 32:

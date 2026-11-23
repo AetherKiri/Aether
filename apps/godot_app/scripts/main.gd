@@ -94,6 +94,9 @@ const BuiltinDemo = preload("res://scripts/builtin_demo.gd")
 const GameLaunchEntry = preload("res://scripts/game_launch_entry.gd")
 const GameFramePacing = preload("res://scripts/game_frame_pacing.gd")
 var game_frame_pacing := GameFramePacing.new()
+var active_poll_usec := OS.low_processor_usage_mode_sleep_usec
+var last_layout_window_size := Vector2(-1, -1)
+var last_layout_safe_rect := Rect2()
 const VideoSubtitles = preload("res://scripts/video_subtitles.gd")
 const VideoLibrary = preload("res://scripts/video_library.gd")
 const AetherDesignTokens = preload("res://scripts/ui/aether_design_tokens.gd")
@@ -4372,13 +4375,13 @@ func _follow_nav_pills() -> void:
     if nav_pill_drag.get("active", false) or ui_motion.reduced_motion:
         return
     if shell_nav_indicator != null and is_instance_valid(shell_nav_indicator) \
-            and shell_nav_indicator.visible and shell_sidebar != null and is_instance_valid(shell_sidebar) and shell_sidebar.visible:
+            and shell_nav_indicator.is_visible_in_tree():
         var goal = _nav_pill_goal(shell_nav_indicator, [shell_dashboard_button, shell_library_button, shell_video_button, shell_flash_button, shell_settings_button], false)
         if goal != null:
             ui_motion.spring_property(shell_nav_indicator, "position", goal["pos"], 0.30, 1.0)
             ui_motion.spring_property(shell_nav_indicator, "size", goal["size"], 0.18, 1.0)
     if shell_compact_indicator != null and is_instance_valid(shell_compact_indicator) \
-            and shell_compact_indicator.visible and shell_compact_header != null and is_instance_valid(shell_compact_header) and shell_compact_header.visible:
+            and shell_compact_indicator.is_visible_in_tree():
         var goal_compact = _nav_pill_goal(shell_compact_indicator, [shell_compact_dashboard_button, shell_compact_library_button, shell_compact_video_button, shell_compact_flash_button, shell_compact_settings_button], true)
         if goal_compact != null:
             ui_motion.spring_property(shell_compact_indicator, "position", goal_compact["pos"], 0.30, 1.0)
@@ -5747,9 +5750,13 @@ func _video_controls_panel_rect(
         Vector2(safe_rect.size.x, panel_height + bottom_inset)
     )
 
-func _fit_full_rects() -> void:
+func _fit_full_rects(only_if_changed: bool = false) -> void:
     var window_size := get_viewport_rect().size
     var safe_rect := _ui_safe_rect(window_size)
+    if only_if_changed and window_size == last_layout_window_size and safe_rect == last_layout_safe_rect:
+        return
+    last_layout_window_size = window_size
+    last_layout_safe_rect = safe_rect
     anchor_left = 0.0
     anchor_top = 0.0
     anchor_right = 0.0
@@ -7177,9 +7184,9 @@ func _build_loading_panel() -> void:
 
     if not ui_motion.reduced_motion:
         # Clockwise motion; the refresh glyph is mirrored so it agrees.
-        var spinner_tween := loading_spinner.create_tween().set_loops()
+        var spinner_tween := ui_motion.loop_while_visible(loading_spinner)
         spinner_tween.tween_property(loading_spinner, "rotation", LOADING_SPINNER_ROTATION, 1.4).from(0.0).set_trans(Tween.TRANS_LINEAR)
-        var ring_tween := loading_ring.create_tween().set_loops()
+        var ring_tween := ui_motion.loop_while_visible(loading_ring)
         ring_tween.tween_property(loading_ring, "rotation", TAU, 0.9).from(0.0).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
 
     if with_log:
@@ -9613,7 +9620,7 @@ func _detail_launch_button() -> Button:
     # Idle nudge: the play glyph hops every few seconds to invite a launch.
     var icon := start.get_node_or_null(start.get_meta("pill_icon_path", NodePath(""))) as Control
     if icon != null and not ui_motion.reduced_motion:
-        var loop := icon.create_tween().set_loops()
+        var loop := ui_motion.loop_while_visible(icon)
         loop.tween_interval(3.0)
         loop.tween_callback(func():
             if is_instance_valid(icon) and not start.is_hovered():
@@ -16800,6 +16807,10 @@ func _exit_tree() -> void:
     _stop_wa2_audio()
 
 func _process(delta: float) -> void:
+    if OS.low_processor_usage_mode:
+        var delay := game_frame_pacing.polling_delay_usec(Engine.get_frames_drawn(), active_poll_usec)
+        if delay != OS.low_processor_usage_mode_sleep_usec:
+            OS.low_processor_usage_mode_sleep_usec = delay
     _process_active_game_session(delta)
     if not game_running:
         if is_instance_valid(wa2_audio_host) and wa2_audio_host.runtime != null:
@@ -16812,7 +16823,7 @@ func _process(delta: float) -> void:
     _poll_native_cover_file_picker()
     _poll_native_font_file_picker()
     _poll_native_translation_model_file_picker()
-    _fit_full_rects()
+    _fit_full_rects(true)
     _follow_nav_pills()
     _process_backdrop(delta)
     _process_shell_scroll_physics(delta)
@@ -16848,7 +16859,8 @@ func _process(delta: float) -> void:
             if cached_startup_state == STARTUP_SUCCEEDED and previous_startup_state != STARTUP_SUCCEEDED:
                 _configure_mobile_window()
             startup_state = cached_startup_state
-            _sync_game_virtual_controls()
+            if startup_state != previous_startup_state:
+                _sync_game_virtual_controls()
         if startup_state == STARTUP_SUCCEEDED:
             if (
                 _translation_model_configured()
@@ -16948,7 +16960,6 @@ func _process(delta: float) -> void:
                     ])
                 if active_runtime_kind == RUNTIME_WA2 and is_instance_valid(wa2_audio_host):
                     wa2_audio_host.poll(delta)
-                _sync_game_text_input_state()
                 var update_start := Time.get_ticks_usec()
                 var frame_rendered_this_tick := true
                 if player.has_method("frame_rendered_this_tick"):
@@ -20394,7 +20405,7 @@ func _brand_mark(extent: float) -> Control:
     mark.add_child(glyph)
     mark.resized.connect(func(): mark.pivot_offset = mark.size * 0.5)
     if not ui_motion.reduced_motion:
-        var spin := twin.create_tween().set_loops()
+        var spin := ui_motion.loop_while_visible(twin)
         spin.tween_property(twin, "rotation", 0.26 + PI * 0.5, 2.4).set_delay(4.0).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_IN_OUT)
         spin.tween_property(twin, "rotation", 0.26, 0.0)
     return mark
@@ -20524,7 +20535,7 @@ func _empty_state_panel(icon_path: String, title_text: String, body_text: String
         sleeves[i].rotation = angles[i]
     if not ui_motion.reduced_motion:
         for i in range(2):
-            var fan := sleeves[i].create_tween().set_loops()
+            var fan := ui_motion.loop_while_visible(sleeves[i])
             fan.tween_property(sleeves[i], "rotation", angles[i] * 1.5, 1.8).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
             fan.tween_property(sleeves[i], "rotation", angles[i], 1.8).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
         ui_motion.breathe(sleeves[2], 0.03, 3.6)
@@ -21031,7 +21042,7 @@ func _settings_hero(compact: bool) -> PanelContainer:
     var glyph := gear.get_child(0) as Control
     if glyph != null and not ui_motion.reduced_motion:
         glyph.resized.connect(func(): glyph.pivot_offset = glyph.size * 0.5)
-        var spin := glyph.create_tween().set_loops()
+        var spin := ui_motion.loop_while_visible(glyph)
         spin.tween_property(glyph, "rotation", TAU, 14.0).from(0.0)
     ui_motion.bind_hover(hero, func(active: bool):
         if active:
@@ -21796,7 +21807,7 @@ func _dash_rings(diameter: float, width: float, specs: Array, animate: bool) -> 
     _dash_when_ready(rings, func():
         if ui_motion.reduced_motion:
             return
-        var spin_tween := rings.create_tween().set_loops()
+        var spin_tween := ui_motion.loop_while_visible(rings)
         spin_tween.tween_method(func(v: float):
             state["spin"] = v
             rings.queue_redraw()
@@ -21888,7 +21899,7 @@ func _dash_aurora() -> Control:
     _dash_when_ready(layer, func():
         if ui_motion.reduced_motion:
             return
-        var tween := layer.create_tween().set_loops()
+        var tween := ui_motion.loop_while_visible(layer)
         tween.tween_method(func(v: float):
             state["t"] = v
             var focus: Vector2 = state["focus"]
@@ -22165,7 +22176,7 @@ func _dash_day_column(titles: Array, level: float, day_name: String, is_today: b
                 capsule.queue_redraw()
             , 0.0, goal, 1.1).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
         if is_today and not ui_motion.reduced_motion:
-            var loop := capsule.create_tween().set_loops()
+            var loop := ui_motion.loop_while_visible(capsule)
             loop.tween_method(func(v: float):
                 state["t"] = v
                 capsule.queue_redraw()

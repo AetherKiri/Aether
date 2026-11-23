@@ -244,7 +244,6 @@ func setup(tokens, preview_parent: Control = null) -> void:
 func set_enabled(enabled: bool) -> void:
     if _enabled == enabled:
         visible = enabled and _menu_button_enabled
-        _sync_visibility()
         return
     _enabled = enabled
     if not enabled:
@@ -266,7 +265,6 @@ func set_enabled(enabled: bool) -> void:
 func set_menu_button_enabled(enabled: bool) -> void:
     if _menu_button_enabled == enabled:
         visible = _enabled and enabled
-        _sync_visibility()
         return
     _menu_button_enabled = enabled
     if not enabled:
@@ -287,11 +285,14 @@ func is_menu_button_enabled() -> bool:
     return _menu_button_enabled
 
 func set_keyboard_controls_opacity(opacity: float) -> void:
-    _keyboard_controls_opacity = clampf(
+    var value := clampf(
         opacity,
         KEYBOARD_CONTROLS_OPACITY_MIN,
         KEYBOARD_CONTROLS_OPACITY_MAX
     )
+    if _keyboard_controls_opacity == value:
+        return
+    _keyboard_controls_opacity = value
     _apply_keyboard_controls_opacity()
 
 func keyboard_controls_opacity() -> float:

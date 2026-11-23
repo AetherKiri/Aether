@@ -16,6 +16,8 @@ class Glyph:
     var angular_speed := 0.0
     var outline := PackedVector2Array()
 
+const GLYPH_INTERVAL := 1.0 / 30.0
+var glyph_accum := 0.0
 var glyphs: Array[Glyph] = []
 var random := RandomNumberGenerator.new()
 var tint := Color.BLACK
@@ -87,7 +89,11 @@ func _spawn(glyph: Glyph) -> void:
         glyph.outline[index] *= glyph.radius
 
 func _process(delta: float) -> void:
-    var step := minf(delta, 0.05)
+    glyph_accum += minf(delta, 0.05)
+    if glyph_accum < GLYPH_INTERVAL:
+        return
+    var step := floorf(glyph_accum / GLYPH_INTERVAL) * GLYPH_INTERVAL
+    glyph_accum -= step
     elapsed += step
     for glyph in glyphs:
         glyph.angle = wrapf(glyph.angle + glyph.angular_speed * step, -PI, PI)

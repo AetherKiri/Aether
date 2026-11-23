@@ -23,6 +23,7 @@ config/custom_user_dir_name.windows="Godot/app_userdata/AetherKiri"
 config/use_custom_user_dir.linux=true
 config/custom_user_dir_name.linux="godot/app_userdata/AetherKiri"
 run/main_scene="res://scenes/main.tscn"
+run/low_processor_mode=true
 config/features=PackedStringArray("4.7")
 config/quit_on_go_back=false
 boot_splash/show_image=false

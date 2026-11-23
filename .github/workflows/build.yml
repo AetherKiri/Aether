@@ -692,6 +692,15 @@ jobs:
           ccache --cleanup
           ccache -z
 
+      - name: Check out the public vcpkg registry
+        uses: actions/checkout@v7
+        with:
+          repository: microsoft/vcpkg
+          path: .devtools/vcpkg
+          # Manifest overrides may refer to port trees older than the baseline.
+          fetch-depth: 0
+          persist-credentials: false
+
       - name: Bootstrap vcpkg
         run: python3 .github/scripts/bootstrap-ci-vcpkg.py .devtools/vcpkg
 
@@ -1067,6 +1076,15 @@ jobs:
           ccache --set-config=compiler_check=content
           ccache --cleanup
           ccache -z
+
+      - name: Check out the public vcpkg registry
+        uses: actions/checkout@v7
+        with:
+          repository: microsoft/vcpkg
+          path: .devtools/vcpkg
+          # Manifest overrides may refer to port trees older than the baseline.
+          fetch-depth: 0
+          persist-credentials: false
 
       - name: Bootstrap vcpkg
         run: python3 .github/scripts/bootstrap-ci-vcpkg.py .devtools/vcpkg

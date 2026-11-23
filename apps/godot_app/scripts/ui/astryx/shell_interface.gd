@@ -108,7 +108,11 @@ func _process(delta: float) -> void:
     if not is_instance_valid(view):
         return
     backdrop.visible = host.shell_root.visible
-    backdrop.color = view.design.color("surface" if view.phone else "canvas")
+    # The classic shader requests redraws for TIME even behind this opaque layer.
+    host.bg_rect.visible = not backdrop.visible
+    var color: Color = view.design.color("surface" if view.phone else "canvas")
+    if backdrop.color != color:
+        backdrop.color = color
     _sync_safe_top_cover()
     elapsed += delta
     if elapsed < 0.15:
@@ -212,6 +216,7 @@ func set_enabled(value: bool, persist: bool = true) -> void:
             view.hide()
         if is_instance_valid(backdrop):
             backdrop.hide()
+        host.bg_rect.show()
         host.shell_content.show()
         host._rebuild_game_cards()
         host._rebuild_video_cards()

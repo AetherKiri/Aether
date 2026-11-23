@@ -20,6 +20,7 @@ const HERO_DURATION := 0.50
 const HERO_MIN_ARC := 24.0
 const HERO_MAX_ARC := 96.0
 const CASCADE_OFFSET := 26.0
+const VISIBILITY_LOOPS := &"aether_visibility_loops"
 
 var reduced_motion := false
 # Touch platforms have no hover: hover-driven effects run on press instead.
@@ -103,6 +104,8 @@ func spring_property(
             finished.call()
         return
     var current = owner.get_indexed(path)
+    if current == target and not active_springs.has(key) and not finished.is_valid():
+        return
     var velocity = _zero_like(current)
     if active_springs.has(key):
         velocity = active_springs[key].get("velocity", velocity)
@@ -617,13 +620,37 @@ func count_up(label: Label, from_value: int, to_value: int, formatter: Callable,
     ).set_trans(Tween.TRANS_EXPO).set_ease(Tween.EASE_OUT)
     tween.tween_callback(func(): _finish_tween_key(key))
 
+# Bound tweens stop when a node leaves the tree, but otherwise keep running
+# even when an ancestor hides the whole page.
+func loop_while_visible(item: CanvasItem) -> Tween:
+    var tween := item.create_tween().set_loops()
+    if not item.has_meta(VISIBILITY_LOOPS):
+        item.set_meta(VISIBILITY_LOOPS, [])
+        item.visibility_changed.connect(_sync_visibility_loops.bind(item))
+        item.tree_entered.connect(_sync_visibility_loops.bind(item))
+    var loops: Array = item.get_meta(VISIBILITY_LOOPS)
+    loops.append(tween)
+    _sync_visibility_loops(item)
+    return tween
+
+func _sync_visibility_loops(item: CanvasItem) -> void:
+    var loops: Array = item.get_meta(VISIBILITY_LOOPS)
+    for index in range(loops.size() - 1, -1, -1):
+        var tween: Tween = loops[index]
+        if not tween.is_valid():
+            loops.remove_at(index)
+        elif item.is_inside_tree() and item.is_visible_in_tree():
+            tween.play()
+        else:
+            tween.pause()
+
 # Endless opacity pulse for status dots and live indicators.
 func pulse(item: CanvasItem, low: float = 0.35, period: float = 2.0) -> Tween:
     if item == null or not is_instance_valid(item) or reduced_motion:
         return null
     var key := _tween_key(item, "pulse")
     _stop_tween_key(key)
-    var tween := item.create_tween().set_loops()
+    var tween := loop_while_visible(item)
     active_tweens[key] = tween
     tween.tween_property(item, "modulate:a", low, period * 0.5).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
     tween.tween_property(item, "modulate:a", 1.0, period * 0.5).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
@@ -635,7 +662,7 @@ func breathe(control: Control, amount: float = 0.04, period: float = 2.8) -> Twe
     _update_pivot(control)
     var key := _tween_key(control, "breathe")
     _stop_tween_key(key)
-    var tween := control.create_tween().set_loops()
+    var tween := loop_while_visible(control)
     active_tweens[key] = tween
     tween.tween_property(control, "scale", Vector2.ONE * (1.0 + amount), period * 0.5).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
     tween.tween_property(control, "scale", REST_SCALE, period * 0.5).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)

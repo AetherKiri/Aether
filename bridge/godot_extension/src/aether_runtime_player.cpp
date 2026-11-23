@@ -3290,6 +3290,12 @@ void main() {
     return g_gpu_pipeline_state->blend2_pipeline.is_valid();
 }
 
+void WarmSceneFilterPipeline() {
+    if (RenderingDevice *rd = MainRenderingDevice()) {
+        EnsureBlend2Pipeline(rd);
+    }
+}
+
 bool EnsureBlend3Pipeline(RenderingDevice *rd) {
     if(rd == nullptr) return false;
     if(g_gpu_pipeline_state == nullptr) {
@@ -10807,6 +10813,13 @@ public:
         frame_rendered_this_tick_ = false;
         if (!game_open_) {
             artemis_logical_frame_pacing_ = false;
+        } else if (SupportsGodotRenderingDeviceGpu() &&
+                   (normalized_runtime == "advhd" ||
+                    (normalized_runtime == "auto" &&
+                     engine_probe_runtime_provider("advhd", path_utf8.get_data()) > 0))) {
+            // Compile the first scene's blur before it shares a frame with image decoding.
+            RenderingServer::get_singleton()->call_on_render_thread(
+                callable_mp_static(&WarmSceneFilterPipeline));
         }
         update_last_error(result);
         AndroidBridgeLog("event=open_game_result result=%s error=%s game_open=%d",

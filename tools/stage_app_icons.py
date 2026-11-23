@@ -3,13 +3,17 @@
 import argparse
 import copy
 import hashlib
+import json
 from pathlib import Path
 import plistlib
 import shutil
+import subprocess
 import xml.etree.ElementTree as ET
 
 ROOT = Path(__file__).resolve().parents[1]
 ASSETS = ROOT / "apps/godot_app/assets"
+COMPOSER = ROOT / "tools/branding/AetherAppIcon.icon"
+IOS_ALTERNATES = {"Classic": ASSETS / "icons", "AstryxDark": ASSETS / "icons/astryx/dark"}
 ANDROID = "http://schemas.android.com/apk/res/android"
 
 
@@ -60,43 +64,90 @@ def stage_android_icons(build, application):
             '</adaptive-icon>\n')
 
 
-def stage_ios_icons(project):
+def stage_composer_icons(export):
+    files = {}
+    for name in (COMPOSER.stem, *IOS_ALTERNATES):
+        path = Path("AetherAppIcons") / f"{name}.icon"
+        shutil.copytree(COMPOSER, export / path, dirs_exist_ok=True)
+        files[path] = "folder.iconcomposer.icon"
+        if name == "AstryxDark":
+            # Keep the saved Astryx dark selection as the default appearance
+            # of this alternate. Icon Composer still handles system effects.
+            manifest = export / path / "icon.json"
+            icon = json.loads(manifest.read_text())
+            layers = [layer for group in icon["groups"] for layer in group["layers"]]
+            for entry in (icon, *layers):
+                fills = entry["fill-specializations"]
+                dark = next(fill["value"] for fill in fills if fill.get("appearance") == "dark")
+                entry["fill-specializations"] = [
+                    {"value": dark}, *(fill for fill in fills if "appearance" in fill)
+                ]
+            manifest.write_text(json.dumps(icon, indent=2) + "\n")
+    return files
+
+
+def stage_legacy_ios_icons(export):
+    # Keep the legacy loose images for Xcode versions without Icon Composer.
+    sizes = {"60@2x": 120, "60@3x": 180, "76@2x": 152, "83.5@2x": 167,
+             "40@2x": 80, "40@3x": 120, "29@2x": 58, "29@3x": 87}
+    files = {}
+    for name, source in IOS_ALTERNATES.items():
+        for suffix, size in sizes.items():
+            path = Path("AetherAlternateIcons") / f"Aether{name}{suffix}.png"
+            target = export / path
+            target.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copyfile(source / f"icon_{size}x{size}.png", target)
+            files[path] = "image.png"
+    return files
+
+
+def stage_ios_icons(project, *, liquid_glass):
     from stage_ios_game_import import app_target, configurations, read_project, write_project, write_plist
+
     data = read_project(project)
     objects = data["objects"]
     _, app = app_target(data)
     export = project.parent
-    # Use explicit alternate image files, so this also works with Godot exports
-    # whose primary icon catalog was generated before Xcode's alternate assets.
-    sizes = {"60@2x": 120, "60@3x": 180, "76@2x": 152, "83.5@2x": 167,
-             "40@2x": 80, "40@3x": 120, "29@2x": 58, "29@3x": 87}
-    variants = {"Classic": ASSETS / "icons", "AstryxDark": ASSETS / "icons/astryx/dark"}
-    icons = {f"Aether{variant}{suffix}.png": source / f"icon_{size}x{size}.png"
-             for variant, source in variants.items() for suffix, size in sizes.items()}
+    files = stage_composer_icons(export) if liquid_glass else stage_legacy_ios_icons(export)
+
     for config in configurations(objects, app):
-        info_path = export / config["buildSettings"]["INFOPLIST_FILE"].strip('"')
+        settings = config["buildSettings"]
+        if liquid_glass:
+            settings["ASSETCATALOG_COMPILER_APPICON_NAME"] = COMPOSER.stem
+            settings["ASSETCATALOG_COMPILER_ALTERNATE_APPICON_NAMES"] = " ".join(IOS_ALTERNATES)
+        info_path = export / settings["INFOPLIST_FILE"].strip('"')
         info = plistlib.loads(info_path.read_bytes())
         for key, suffixes in (
             ("CFBundleIcons", ["60", "40", "29"]),
             ("CFBundleIcons~ipad", ["76", "83.5", "60", "40", "29"]),
         ):
-            alternates = info.setdefault(key, {}).setdefault("CFBundleAlternateIcons", {})
-            for variant in variants:
-                alternates[variant] = {"CFBundleIconFiles": [f"Aether{variant}{s}" for s in suffixes],
-                                       "UIPrerenderedIcon": False}
+            if liquid_glass:
+                # actool emits the declarations and backward-compatible images
+                # for both device families from the three .icon packages.
+                family = info.get(key, {})
+                family.pop("CFBundlePrimaryIcon", None)
+                alternates = family.get("CFBundleAlternateIcons", {})
+                for name in IOS_ALTERNATES:
+                    alternates.pop(name, None)
+                if not alternates:
+                    family.pop("CFBundleAlternateIcons", None)
+                if not family:
+                    info.pop(key, None)
+            else:
+                alternates = info.setdefault(key, {}).setdefault("CFBundleAlternateIcons", {})
+                for name in IOS_ALTERNATES:
+                    alternates[name] = {"CFBundleIconFiles": [f"Aether{name}{s}" for s in suffixes],
+                                        "UIPrerenderedIcon": False}
         write_plist(info_path, info)
+
     resource_phase = next(objects[p] for p in app["buildPhases"]
                           if objects[p]["isa"] == "PBXResourcesBuildPhase")
     root_group = objects[objects[data["rootObject"]]["mainGroup"]]
-    for filename, source in icons.items():
-        path = Path("AetherAlternateIcons") / filename
-        target = export / path
-        target.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copyfile(source, target)
-        ref = hashlib.sha256(("AetherAppIcon/ref/" + filename).encode()).hexdigest()[:24].upper()
-        build = hashlib.sha256(("AetherAppIcon/build/" + filename).encode()).hexdigest()[:24].upper()
-        objects[ref] = {"isa": "PBXFileReference", "lastKnownFileType": "image.png",
-                        "path": str(path), "sourceTree": "SOURCE_ROOT"}
+    for path, file_type in files.items():
+        ref = hashlib.sha256(("AetherAppIcon/ref/" + path.name).encode()).hexdigest()[:24].upper()
+        build = hashlib.sha256(("AetherAppIcon/build/" + path.name).encode()).hexdigest()[:24].upper()
+        objects[ref] = {"isa": "PBXFileReference", "lastKnownFileType": file_type,
+                        "path": path.as_posix(), "sourceTree": "SOURCE_ROOT"}
         objects[build] = {"isa": "PBXBuildFile", "fileRef": ref}
         if build not in resource_phase["files"]:
             resource_phase["files"].append(build)
@@ -105,7 +156,13 @@ def stage_ios_icons(project):
     write_project(project, data)
 
 
+def supports_icon_composer():
+    version = plistlib.loads(subprocess.check_output(["xcrun", "actool", "--version"]))
+    short_version = version["com.apple.actool.version"]["short-bundle-version"]
+    return int(short_version.split(".", 1)[0]) >= 26
+
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--ios-project", type=Path, required=True)
-    stage_ios_icons(parser.parse_args().ios_project)
+    stage_ios_icons(parser.parse_args().ios_project, liquid_glass=supports_icon_composer())

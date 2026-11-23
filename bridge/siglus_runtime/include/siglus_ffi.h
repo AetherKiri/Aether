@@ -56,6 +56,7 @@ int32_t siglus_register_jpeg_decoder(siglus_jpeg_decode_fn decoder);
  * with siglus_ak_destroy. scale_factor > 0 selects the logical pixel density;
  * non-finite or non-positive values fall back to 1.0. */
 void *siglus_ak_create(float scale_factor);
+int32_t siglus_ak_set_cache_path(void *handle, const char *path);
 
 /* Builds the offscreen renderer and boots the scene VM synchronously.
  * Returns SIGLUS_AK_OK, or a negative code with details from

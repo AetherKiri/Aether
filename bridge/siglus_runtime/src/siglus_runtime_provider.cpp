@@ -247,6 +247,8 @@ namespace aetherkiri::siglus {
                 runtime->error = "siglus_ak_create failed";
                 return ENGINE_RESULT_INTERNAL_ERROR;
             }
+            if (desc->cache_path_utf8 && *desc->cache_path_utf8)
+                siglus_ak_set_cache_path(runtime->ak, desc->cache_path_utf8);
             *out_runtime = runtime.release();
             return ENGINE_RESULT_OK;
         }

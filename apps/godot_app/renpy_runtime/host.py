@@ -708,6 +708,12 @@ def main():
     source = Path(_manifest["game"]).resolve(strict=True)
     game_root = Path(_manifest.get("root", source.parent)).resolve(strict=True)
     project = _session / "project"
+    # The host reuses one per-game session directory. Recover a mirror left by
+    # a killed process; persistent saves and compiled statement IDs live outside it.
+    if project.is_symlink():
+        project.unlink()
+    elif project.exists():
+        shutil.rmtree(project)
     _compiled_projects = []
     exit_code = 1
     failed = False

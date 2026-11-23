@@ -132,7 +132,10 @@ func open_entry(value: Dictionary) -> String:
         if not archive.open(root.path_join(launch)):
             return host._t("tyrano.open_failed", [archive.error])
         preparation = Thread.new()
-        var cache := ProjectSettings.globalize_path("user://tyrano_cache")
+        var prepared: Dictionary = host._prepare_game_cache(entry, "tyranoscript")
+        if int(prepared.error) != OK:
+            return host._t("tyrano.open_failed", [error_string(int(prepared.error))])
+        var cache := String(prepared.path).path_join("tyrano")
         if preparation.start(archive.prepare.bind(cache)) != OK:
             preparation = null
             archive = null

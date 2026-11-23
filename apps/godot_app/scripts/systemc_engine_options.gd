@@ -14,4 +14,4 @@ static func user_directory(base: String, game_root: String) -> String:
     return base.path_join("systemc_games").path_join(game_root.simplify_path().sha256_text().substr(0, 24))
 
 static func cache_directory(base: String, game_root: String) -> String:
-    return user_directory(base, game_root).path_join("cache")
+    return preload("res://scripts/game_cache.gd").directory(base, game_root)

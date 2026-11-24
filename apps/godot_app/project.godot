@@ -46,8 +46,9 @@ window/ios/hide_home_indicator=false
 
 [editor]
 
-; Importing the staged fonts concurrently can notify the Linux editor's scene tree from a worker.
+; Serialize font imports on desktop hosts whose headless editor can crash during reimport.
 import/use_multiple_threads.linux=false
+import/use_multiple_threads.macos=false
 
 [editor_plugins]
 

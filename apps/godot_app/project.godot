@@ -44,6 +44,11 @@ window/handheld/orientation=6
 window/ios/hide_status_bar=false
 window/ios/hide_home_indicator=false
 
+[editor]
+
+; Importing the staged fonts concurrently can notify the Linux editor's scene tree from a worker.
+import/use_multiple_threads.linux=false
+
 [editor_plugins]
 
 enabled=PackedStringArray()

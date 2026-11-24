@@ -120,6 +120,8 @@ endif()
 # stream, the same cross-platform output path the siglus runtime uses.
 target_link_libraries(aether_mages_runtime PRIVATE
     OpenAL::OpenAL
+    # Shared with KiriKiri2: one process-wide default output follower.
+    aether_openal_device_follower
 )
 
 if(AETHERKIRI_INTERNAL_ENABLED AND COMMAND aetherinternal_extend_mages)

@@ -75,6 +75,8 @@ target_link_libraries(aether_siglus_runtime PUBLIC
 # SDL audio consumer alongside the krkrsdl3/ONS hosts.
 target_link_libraries(aether_siglus_runtime PRIVATE
     OpenAL::OpenAL
+    # Shared with KiriKiri2: one process-wide default output follower.
+    aether_openal_device_follower
     $<IF:$<TARGET_EXISTS:libjpeg-turbo::turbojpeg>,libjpeg-turbo::turbojpeg,libjpeg-turbo::turbojpeg-static>
 )
 

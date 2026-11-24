@@ -28,6 +28,8 @@ add_subdirectory("${AETHERKIRI_KRKR_DIR}/tests/plugins"
     "${CMAKE_BINARY_DIR}/packages/AetherKrkr/tests/plugins")
 add_subdirectory("${AETHERKIRI_KRKR_DIR}/tests/tjs2"
     "${CMAKE_BINARY_DIR}/packages/AetherKrkr/tests/tjs2")
+add_subdirectory("${AETHERKIRI_KRKR_DIR}/tests/sound"
+    "${CMAKE_BINARY_DIR}/packages/AetherKrkr/tests/sound")
 add_subdirectory(unit-tests/engine_api)
 add_subdirectory(mobile_window)
 if(AETHERKIRI_INTERNAL_ENABLED)

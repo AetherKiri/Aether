@@ -44,6 +44,12 @@ window/handheld/orientation=6
 window/ios/hide_status_bar=false
 window/ios/hide_home_indicator=false
 
+[editor]
+
+; Serialize font imports on desktop hosts whose headless editor can crash during reimport.
+import/use_multiple_threads.linux=false
+import/use_multiple_threads.macos=false
+
 [editor_plugins]
 
 enabled=PackedStringArray()

@@ -17628,7 +17628,9 @@ func _mobile_window_owns_lifecycle() -> bool:
         and mobile_window.handles_game_lifecycle()
 
 func _pause_game_for_lifecycle(reason: String) -> void:
-    _game_save_sync().flush()
+    var sync := get_node_or_null("GameSaveSync")
+    if sync != null:
+        sync.flush()
     game_text_input_suspended = true
     _deactivate_game_text_input()
     if not _is_touch_platform():

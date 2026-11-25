@@ -35,14 +35,16 @@ before the new host is enabled for normal ONS playback.
 ## ONScripter in Godot
 
 Godot builds for macOS, iOS/iPadOS, Android, and Linux open ONS sessions
-through `RuntimeSession` by default when ONS is built. Godot drives the session through
-`engine_*`, present frames, and provide its platform services. Both session
-paths use the same ONS provider and game save locations.
+through `RuntimeSession` when ONS native host support is built. The existing
+**Settings → Graphics & Rendering → Render Pipeline** selector defaults to
+**Native**. Runtimes without a native host implementation use their existing
+Godot host under this selection. Choose **Godot** to use the existing host
+for all runtimes. The selection applies to the next launch.
 
-In **Settings → Compatibility**, **Use Legacy ONS Host** switches ONS games to
-the original session path on the next launch. For local regression runs, set
-`AETHERKIRI_ONS_LEGACY_HOST=1` to force the legacy path or `0` to force the
-native path. Renderer diagnostics report `session_host=native` or
+Both choices continue to present frames with the Godot Native renderer and
+use the same ONS provider and save locations. Local probes select **Native**
+with the existing backend value `Godot Native` and **Godot** with the value
+`Godot`. Renderer diagnostics report `session_host=native` or
 `session_host=legacy`. Regression probes expose the same value as
 `host.engine_host`.
 

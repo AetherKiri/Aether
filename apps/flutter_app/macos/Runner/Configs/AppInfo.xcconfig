@@ -1,0 +1,24 @@
+// Application-level settings for the Runner target.
+//
+// This may be replaced with something auto-generated from metadata (e.g., pubspec.yaml) in the
+// future. If not, the values below would default to using the project name when this becomes a
+// 'flutter create' template.
+
+// The application's name. By default this is also the title of the Flutter window.
+PRODUCT_NAME = Aether ONS Preview
+
+// The application's bundle identifier
+PRODUCT_BUNDLE_IDENTIFIER = org.github.krkr2.aether-ons-preview
+
+// The copyright displayed in application information
+PRODUCT_COPYRIGHT = Copyright © 2026 org.github.krkr2. All rights reserved.
+
+AETHER_ROOT = $(SRCROOT)/../../..
+AETHER_NATIVE_LIB_DIR = $(SRCROOT)/../build/aether_native
+HEADER_SEARCH_PATHS = $(inherited) "$(AETHER_ROOT)/abi/include" "$(AETHER_ROOT)/bridge/native_host/include"
+LIBRARY_SEARCH_PATHS = $(inherited) "$(AETHER_NATIVE_LIB_DIR)"
+OTHER_LDFLAGS = $(inherited) -laether_native_host -lengine_api
+SWIFT_OBJC_BRIDGING_HEADER = Runner/AetherNativePlayer.h
+CLANG_CXX_LANGUAGE_STANDARD = c++17
+MACOSX_DEPLOYMENT_TARGET = 13.0
+ARCHS = arm64

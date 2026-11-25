@@ -34,7 +34,6 @@ static func inspect(path: String) -> Dictionary:
     if root.is_empty() or not DirAccess.dir_exists_absolute(root):
         return result
 
-    var candidates: PackedStringArray = []
     var files := _file_names(root)
     var tyrano_entry := tyrano_entry_file(root)
     var renpy_directory := renpy_game_directory(root)
@@ -43,27 +42,9 @@ static func inspect(path: String) -> Dictionary:
         result.engine = RUNTIME_TYRANO
         result.launchFile = tyrano_entry
         result.signals.append("tyranoscript-asar-project" if tyrano_entry.ends_with(".asar") else "tyranoscript-web-project")
-        var config: String
-        if tyrano_entry.ends_with(".asar"):
-            var archive := TyranoAsar.new()
-            if archive.open(root.path_join(tyrano_entry)):
-                config = archive.read_text("data/system/Config.tjs")
-        else:
-            config = _read_text(root.path_join(tyrano_entry).get_base_dir().path_join("data/system/Config.tjs"))
-        var title_pattern := RegEx.new()
-        title_pattern.compile('(?m)^\\s*;?System\\.title\\s*=\\s*"([^"\\r\\n]+)"')
-        var title_match := title_pattern.search(config)
-        if title_match != null:
-            candidates.append(title_match.get_string(1))
     elif not renpy_directory.is_empty():
         result.engine = RUNTIME_RENPY
         result.signals.append("renpy-game-directory")
-        var options := _read_text(root.path_join(renpy_directory).path_join("options.rpy"))
-        var pattern := RegEx.new()
-        pattern.compile('(?m)^\\s*define\\s+config\\.name\\s*=\\s*_?\\(?\\s*"([^"\\r\\n]+)"')
-        var title_match := pattern.search(options)
-        if title_match != null:
-            candidates.append(title_match.get_string(1))
     elif is_n2system_directory(root):
         result.engine = RUNTIME_N2SYSTEM
         result.signals.append("n2system-profile-or-npa")
@@ -126,9 +107,6 @@ static func inspect(path: String) -> Dictionary:
             and _value_after(ini, "BOOT").to_lower().ends_with(".iet")
         ):
             result.signals.append("artemis-pfs-boot")
-        var save_path := _value_after(ini, "SAVEPATH")
-        if not save_path.is_empty():
-            candidates.append(save_path.replace("\\\\", "/").get_file())
     elif _has_extension(files, "pfs") and not _has_extension(files, "xp3"):
         # A number of Artemis releases keep system.ini inside root.pfs rather
         # than beside the archive.  There is no loose marker for the metadata
@@ -163,12 +141,48 @@ static func inspect(path: String) -> Dictionary:
         var launch := _first_file(root, [".exe", ".xp3"])
         if not launch.is_empty():
             result.launchFile = launch
+    return with_title_metadata(root, result, renpy_directory, true)
+
+static func with_title_metadata(
+    root: String, result: Dictionary, renpy_directory: String = "", record_content_signals: bool = false
+) -> Dictionary:
+    result.title = ""
+    result.titleCandidates = PackedStringArray()
+    if root.is_empty() or not DirAccess.dir_exists_absolute(root):
+        return result
+    var candidates: PackedStringArray = []
+    if result.engine == RUNTIME_TYRANO:
+        var tyrano_entry := String(result.launchFile)
+        var config: String
+        if tyrano_entry.ends_with(".asar"):
+            var archive := TyranoAsar.new()
+            if archive.open(root.path_join(tyrano_entry)):
+                config = archive.read_text("data/system/Config.tjs")
+        else:
+            config = _read_text(root.path_join(tyrano_entry).get_base_dir().path_join("data/system/Config.tjs"))
+        var title_pattern := RegEx.new()
+        title_pattern.compile('(?m)^\\s*;?System\\.title\\s*=\\s*"([^"\\r\\n]+)"')
+        var title_match := title_pattern.search(config)
+        if title_match != null:
+            candidates.append(title_match.get_string(1))
+    elif result.engine == RUNTIME_RENPY:
+        var options := _read_text(root.path_join(renpy_directory).path_join("options.rpy"))
+        var pattern := RegEx.new()
+        pattern.compile('(?m)^\\s*define\\s+config\\.name\\s*=\\s*_?\\(?\\s*"([^"\\r\\n]+)"')
+        var title_match := pattern.search(options)
+        if title_match != null:
+            candidates.append(title_match.get_string(1))
+    elif result.engine == RUNTIME_ARTEMIS and result.signals.has("artemis-system-ini"):
+        var save_path := _value_after(_read_text(root.path_join("system.ini")), "SAVEPATH")
+        if not save_path.is_empty():
+            candidates.append(save_path.replace("\\\\", "/").get_file())
     for marker in ["README.md", "title.ini", "title.ks", "startup.tjs", "config.tjs"]:
         var marker_path := root.path_join(marker)
         if FileAccess.file_exists(marker_path):
             var text := _read_text(marker_path)
             candidates.append_array(_extract_title_candidates(text))
-            result.signals.append("content:" + marker)
+            if record_content_signals:
+                result.signals.append("content:" + marker)
     candidates.append_array(_title_from_path(root))
     candidates = _unique_nonempty(candidates)
     result.titleCandidates = candidates

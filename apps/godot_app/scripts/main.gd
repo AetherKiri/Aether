@@ -402,6 +402,10 @@ const UI_TEXT := {
         "settings.target_fps_desc": "限制 C++ 引擎 tick/render 频率；可选 60–144 FPS",
         "settings.plugin_load_mode": "插件加载模式",
         "settings.ons_legacy_host": "使用旧版 ONS 宿主",
+        "settings.game_detection": "游戏识别方式",
+        "settings.game_detection_desc": "用于导入和启动游戏。更改后，下次识别时生效。",
+        "settings.game_detection_native": "原生",
+        "settings.game_detection_legacy": "旧版 Godot",
         "settings.ons_legacy_host_desc": "下次启动 ONS 游戏时生效。关闭此项将使用新的原生宿主。",
         "settings.plugin_load_mode_desc": "核心模式只加载常用兼容插件；完整模式保留旧版全量注册",
         "settings.plugin_trace": "插件调用追踪",
@@ -843,6 +847,10 @@ const UI_TEXT := {
         "settings.target_fps_desc": "限制 C++ 引擎 tick/render 頻率；可選 60–144 FPS",
         "settings.plugin_load_mode": "外掛載入模式",
         "settings.ons_legacy_host": "使用舊版 ONS 宿主",
+        "settings.game_detection": "遊戲識別方式",
+        "settings.game_detection_desc": "適用於匯入和啟動遊戲。變更後在下次識別時生效。",
+        "settings.game_detection_native": "原生",
+        "settings.game_detection_legacy": "舊版 Godot",
         "settings.ons_legacy_host_desc": "下次啟動 ONS 遊戲時生效。關閉此項將使用新的原生宿主。",
         "settings.plugin_load_mode_desc": "核心模式只載入常用相容外掛；完整模式保留舊版全量註冊",
         "settings.plugin_trace": "外掛呼叫追蹤",
@@ -1282,6 +1290,10 @@ You can find it any time under Settings → QQ Group.",
         "settings.target_fps_desc": "Limit the C++ engine tick/render rate; choose 60–144 FPS",
         "settings.plugin_load_mode": "Plugin Load Mode",
         "settings.ons_legacy_host": "Use Legacy ONS Host",
+        "settings.game_detection": "Game Detection",
+        "settings.game_detection_desc": "Applies the next time a game is identified for import or launch.",
+        "settings.game_detection_native": "Native",
+        "settings.game_detection_legacy": "Legacy Godot",
         "settings.ons_legacy_host_desc": "Applies the next time you open an ONS game. Turn this off to use the new native host.",
         "settings.plugin_load_mode_desc": "Core mode loads common compatibility plugins only; Full mode keeps the legacy registration path",
         "settings.plugin_trace": "Plugin Call Trace",
@@ -1690,6 +1702,10 @@ You can find it any time under Settings → QQ Group.",
         "settings.target_fps_desc": "C++ エンジンの tick/render 頻度を 60～144 FPS から選択します",
         "settings.plugin_load_mode": "プラグイン読み込みモード",
         "settings.ons_legacy_host": "従来の ONS ホストを使用",
+        "settings.game_detection": "ゲームの識別方法",
+        "settings.game_detection_desc": "インポートや起動時の次回のゲーム識別から適用されます。",
+        "settings.game_detection_native": "ネイティブ",
+        "settings.game_detection_legacy": "従来の Godot",
         "settings.ons_legacy_host_desc": "次回 ONS ゲームを起動するときに適用されます。オフにすると新しいネイティブホストを使用します。",
         "settings.plugin_load_mode_desc": "コアモードは一般的な互換プラグインのみ、完全モードは従来の全登録経路を使用します",
         "settings.plugin_trace": "プラグイン呼び出し追跡",
@@ -2096,6 +2112,10 @@ You can find it any time under Settings → QQ Group.",
         "settings.target_fps_desc": "C++ 엔진 tick/render 빈도를 60–144 FPS에서 선택합니다",
         "settings.plugin_load_mode": "플러그인 로드 모드",
         "settings.ons_legacy_host": "기존 ONS 호스트 사용",
+        "settings.game_detection": "게임 인식 방식",
+        "settings.game_detection_desc": "다음 게임 가져오기 또는 실행 시 적용됩니다.",
+        "settings.game_detection_native": "네이티브",
+        "settings.game_detection_legacy": "기존 Godot",
         "settings.ons_legacy_host_desc": "다음에 ONS 게임을 실행할 때 적용됩니다. 끄면 새 네이티브 호스트를 사용합니다.",
         "settings.plugin_load_mode_desc": "핵심 모드는 일반 호환 플러그인만 로드하고 전체 모드는 기존 전체 등록 방식을 유지합니다",
         "settings.plugin_trace": "플러그인 호출 추적",
@@ -2533,6 +2553,10 @@ You can find it any time under Settings → QQ Group.",
         "settings.target_fps_desc": "Limita la frecuencia de tick y renderizado del motor C++; elige entre 60 y 144 FPS",
         "settings.plugin_load_mode": "Modo de carga de plugins",
         "settings.ons_legacy_host": "Usar el host anterior de ONS",
+        "settings.game_detection": "Detección de juegos",
+        "settings.game_detection_desc": "Se aplica la próxima vez que se detecte un juego para importarlo o iniciarlo.",
+        "settings.game_detection_native": "Nativa",
+        "settings.game_detection_legacy": "Godot anterior",
         "settings.ons_legacy_host_desc": "Se aplica al abrir el próximo juego de ONS. Desactívalo para usar el nuevo host nativo.",
         "settings.plugin_load_mode_desc": "El modo básico solo carga los plugins de compatibilidad habituales; el modo completo mantiene la ruta de registro heredada",
         "settings.plugin_trace": "Traza de llamadas a plugins",
@@ -2834,6 +2858,7 @@ const SETTINGS_DRAFT_KEYS := [
     "force_landscape",
     "plugin_load_mode",
     "ons_legacy_host",
+    "game_detection_mode",
     "mock_enabled",
     "error_dialog_logs",
     "text_translation_model_path",
@@ -2966,7 +2991,7 @@ var vndb_cover_queue: Array[Dictionary] = []
 var vndb_cover_busy := false
 var known_videos: Array[Dictionary] = []
 var video_library := VideoLibrary.new(VIDEO_LIST_FILE, VIDEO_HIDDEN_FILE)
-var flash_library := VideoLibrary.new(FLASH_LIST_FILE, FLASH_HIDDEN_FILE, ["swf"])
+var flash_library := VideoLibrary.new(FLASH_LIST_FILE, FLASH_HIDDEN_FILE, ["swf"], _is_flash_game_file)
 var flash_view
 var tyrano_view
 var renpy_view
@@ -2990,6 +3015,7 @@ var target_fps := 80
 var plugin_trace := false
 var plugin_load_mode := "krkrsdl3"
 var ons_legacy_host := false
+var game_detection_mode := "native"
 var mock_enabled := true
 var console_log_file := false
 var trace_log := false
@@ -4717,6 +4743,7 @@ func _layout_shell(window_size: Vector2) -> void:
     shell_content.offset_bottom = -dock_height if compact else 0.0
 
 func _load_shell_settings() -> void:
+    game_detection_mode = "native" if AppUpdater.is_prerelease(_application_version_text()) else "legacy"
     var cfg := ConfigFile.new()
     var env_style := _runtime_string("AETHERKIRI_STYLE_MODE", "")
     var env_translation_model_path := _runtime_string(
@@ -4855,6 +4882,9 @@ func _load_shell_settings() -> void:
         plugin_load_mode = "krkrsdl3"
     mock_enabled = bool(cfg.get_value("developer", "mock_enabled", mock_enabled))
     ons_legacy_host = bool(cfg.get_value("compatibility", "ons_legacy_host", false))
+    var saved_detection_mode := String(cfg.get_value("compatibility", "game_detection_mode", ""))
+    if saved_detection_mode in ["native", "legacy"]:
+        game_detection_mode = saved_detection_mode
     error_dialog_logs = bool(cfg.get_value("developer", "error_dialog_logs", error_dialog_logs))
     legal_accepted_version = String(cfg.get_value("legal", "accepted_version", ""))
     legal_accepted_at = int(cfg.get_value("legal", "accepted_at", 0))
@@ -4942,6 +4972,7 @@ func _save_shell_settings() -> void:
     )
     cfg.set_value("developer", "plugin_load_mode", plugin_load_mode)
     cfg.set_value("compatibility", "ons_legacy_host", ons_legacy_host)
+    cfg.set_value("compatibility", "game_detection_mode", game_detection_mode)
     cfg.set_value("developer", "mock_enabled", mock_enabled)
     cfg.set_value("developer", "error_dialog_logs", error_dialog_logs)
     cfg.set_value("legal", "accepted_version", legal_accepted_version)
@@ -4995,6 +5026,7 @@ func _current_settings_snapshot() -> Dictionary:
         "force_landscape": lock_landscape,
         "plugin_load_mode": plugin_load_mode,
         "ons_legacy_host": ons_legacy_host,
+        "game_detection_mode": game_detection_mode,
         "mock_enabled": mock_enabled,
         "error_dialog_logs": error_dialog_logs,
         "text_translation_model_path": text_translation_model_path,
@@ -5191,6 +5223,7 @@ func _apply_settings_snapshot(snapshot: Dictionary) -> void:
         plugin_load_mode = "krkrsdl3"
     mock_enabled = bool(snapshot.get("mock_enabled", mock_enabled))
     ons_legacy_host = bool(snapshot.get("ons_legacy_host", ons_legacy_host))
+    game_detection_mode = String(snapshot.get("game_detection_mode", game_detection_mode))
     error_dialog_logs = bool(snapshot.get("error_dialog_logs", error_dialog_logs))
     text_translation_model_path = String(snapshot.get(
         "text_translation_model_path", text_translation_model_path
@@ -6602,6 +6635,10 @@ func _rebuild_settings_view() -> void:
         _add_settings_row(render_rows, _settings_toggle_row(_t("settings.landscape"), _t("settings.landscape_desc"), _settings_draft_bool("force_landscape", lock_landscape), "landscape"))
 
     var compatibility_rows := _settings_section(flow, _t("settings.section.compatibility"), animate_page, 0.12, ICON_PLUGIN)
+    if player != null and player.has_method("inspect_game"):
+        _add_settings_row(compatibility_rows, _settings_row(
+            _t("settings.game_detection"), _t("settings.game_detection_desc"), _game_detection_segment(), stack_settings_controls
+        ))
     _add_settings_row(compatibility_rows, _settings_row(_t("settings.plugin_load_mode"), _t("settings.plugin_load_mode_desc"), _plugin_load_mode_select(), stack_settings_controls))
     if player != null and player.has_method("has_ons_native_host") and player.has_ons_native_host():
         _add_settings_row(compatibility_rows, _settings_toggle_row(
@@ -8866,6 +8903,18 @@ func _debug_overlay_select() -> Control:
         _set_settings_draft_value("debug_overlay_mode", String(select.get_item_metadata(index)))
     )
     return select
+
+func _game_detection_segment() -> Control:
+    var segment = AetherSegmentedControl.new()
+    segment.setup(
+        ui_tokens, ui_motion,
+        PackedStringArray([_t("settings.game_detection_native"), _t("settings.game_detection_legacy")]),
+        0 if _settings_draft_string("game_detection_mode", game_detection_mode) == "native" else 1
+    )
+    segment.item_selected.connect(func(index: int):
+        _set_settings_draft_value("game_detection_mode", "native" if index == 0 else "legacy")
+    )
+    return segment
 
 func _backend_segment() -> Control:
     var draft_backend := _normalize_backend_name(_settings_draft_string("backend", selected_backend))
@@ -12452,13 +12501,9 @@ func _game_info_from_path(path: String) -> Dictionary:
     if name.to_lower().ends_with(".xp3"):
         name = name.substr(0, name.length() - 4)
     var default_cover_path := _discover_default_cover_path(path)
-    var metadata := GameMetadata.inspect(path)
+    var metadata := _inspect_game_metadata(path, _game_runtime_root(path))
     var detected_title := String(metadata.get("title", ""))
     var detected_engine := String(metadata.get("engine", RUNTIME_KIRIKIRI))
-    # Optional providers own their format detection. Persist that result at
-    # import as well as launch so directory runtimes never display a guessed
-    # Windows configuration utility as their startup file.
-    detected_engine = _probe_game_runtime_kind(_game_runtime_root(path), detected_engine)
     return {
         "name": detected_title if not detected_title.is_empty() else name,
         "path": path,
@@ -12481,8 +12526,37 @@ func _game_runtime_root(path: String) -> String:
         return resolved.get_base_dir()
     return resolved
 
+func _uses_native_game_detection() -> bool:
+    return game_detection_mode == "native" and player != null and player.has_method("inspect_game")
+
+func _inspect_game_metadata(path: String, probe_root: String = "") -> Dictionary:
+    if _uses_native_game_detection():
+        var metadata: Dictionary = player.inspect_game(path, probe_root)
+        return GameMetadata.with_title_metadata(String(metadata.root), metadata, String(metadata.renpyDirectory))
+    var metadata := GameMetadata.inspect(path)
+    if not probe_root.is_empty():
+        metadata.engine = _probe_game_runtime_kind(probe_root, String(metadata.engine))
+    return metadata
+
+func _tyrano_entry_file(root: String) -> String:
+    if _uses_native_game_detection():
+        return String(player.inspect_special_game(root, RUNTIME_TYRANO))
+    return GameMetadata.tyrano_entry_file(root)
+
+func _renpy_game_directory(root: String) -> String:
+    if _uses_native_game_detection():
+        return String(player.inspect_special_game(root, RUNTIME_RENPY))
+    return GameMetadata.renpy_game_directory(root)
+
+func _is_flash_game_file(path: String) -> bool:
+    if _uses_native_game_detection():
+        return not String(player.inspect_special_game(path, "flash")).is_empty()
+    return FileAccess.file_exists(path) and path.get_extension().to_lower() == "swf"
+
 func _game_runtime_kind(path: String) -> String:
     var root := _game_runtime_root(path)
+    if _uses_native_game_detection():
+        return String(player.inspect_game(root, root).engine)
     var runtime_kind := String(
         GameMetadata.inspect(root).get("engine", RUNTIME_KIRIKIRI)
     )
@@ -12543,7 +12617,7 @@ func _backfill_game_metadata(games: Array[Dictionary]) -> bool:
                 and game.has("titleCandidates") and game.has("launchFile"):
             continue
         var configured_path := GameLaunchEntry.resolve(game)
-        var metadata := GameMetadata.inspect(configured_path if FileAccess.file_exists(configured_path) else path)
+        var metadata := _inspect_game_metadata(configured_path if FileAccess.file_exists(configured_path) else path)
         var engine := String(metadata.get("engine", RUNTIME_KIRIKIRI))
         if String(game.get("engine", "")).is_empty() or String(game.get("engine", "")) == RUNTIME_KIRIKIRI:
             if String(game.get("engine", "")) != engine:

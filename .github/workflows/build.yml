@@ -1158,6 +1158,14 @@ jobs:
               --script res://scripts/smoke_test.gd
           done
 
+      - name: Compare native and legacy game detection
+        run: |
+          set -euo pipefail
+          log="$RUNNER_TEMP/game-detection-parity.log"
+          "$GODOT_BIN" --headless --path apps/godot_app \
+            --script res://tests/game_detection_parity_test.gd 2>&1 | tee "$log"
+          grep -E '^game_detection_parity_test: [0-9]+ filesystem cases, [0-9]+ provider cases, 0 failures$' "$log"
+
       - name: Test Astryx UI and session statistics
         run: |
           set -euo pipefail
@@ -1220,6 +1228,7 @@ jobs:
           ctest --test-dir "$test_build_dir" --show-only=json-v1 > "$inventory_file"
           required_suites=(
             --require-executable aether-native-host-onscripter
+            --require-executable aether-game-detection-test
             --require-executable cmvs-provider-test
             --require-executable siglus-runtime-jpeg
             --require-executable mages-runtime-provider
@@ -1628,6 +1637,16 @@ jobs:
             AETHERKIRI_ONS_LEGACY_HOST="$legacy" timeout 120 "$GODOT_BIN" --headless \
               --path apps/godot_app --script res://scripts/smoke_test.gd
           done
+
+      - name: Compare native and legacy game detection
+        env:
+          LD_LIBRARY_PATH: ${{ github.workspace }}/apps/godot_app/bin/linux/debug
+        run: |
+          set -euo pipefail
+          log="$RUNNER_TEMP/game-detection-parity.log"
+          "$GODOT_BIN" --headless --path apps/godot_app \
+            --script res://tests/game_detection_parity_test.gd 2>&1 | tee "$log"
+          grep -E '^game_detection_parity_test: [0-9]+ filesystem cases, [0-9]+ provider cases, 0 failures$' "$log"
 
       - name: Verify and package Linux applications
         env:

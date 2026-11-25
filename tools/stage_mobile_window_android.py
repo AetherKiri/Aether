@@ -16,8 +16,10 @@ def stage(build: Path):
         target = build / java.relative_to(source)
         target.parent.mkdir(parents=True, exist_ok=True)
         shutil.copyfile(java, target)
-    # JavaClassWrapper calls these methods by name, including in release builds.
-    (build / "aether_mobile_window.pro").write_text("-keep class org.aether.mobile.** { *; }\n")
+    # Godot's JavaClassWrapper and engine_api's exported JNI binding use these names.
+    (build / "aether_mobile_window.pro").write_text(
+        "-keep class org.aether.mobile.** { *; }\n"
+        "-keep class org.github.krkr2.aetherkiri.EngineBridge { *; }\n")
     (build / "aether_mobile_window.gradle").write_text(
         "android.buildTypes.configureEach { proguardFile file('aether_mobile_window.pro') }\n")
     include = "apply from: 'aether_mobile_window.gradle'"
@@ -38,6 +40,7 @@ def stage(build: Path):
     application = tree.find("application")
     if application is None:
         raise ValueError("Android template has no application")
+    application.set(f"{{{android}}}name", "org.github.krkr2.aetherkiri.EngineBridge")
     authority = "${applicationId}.aether.saves"
     provider = next((item for item in application.findall("provider") if item.get(f"{{{android}}}authorities") == authority), None)
     if provider is None:

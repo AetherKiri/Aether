@@ -43,8 +43,7 @@ extern "C" void AetherInternalRegisterWa2Runtime(void);
 #if defined(AETHERKIRI_WITH_ONSCRIPTER)
 #include "onscripter_runtime.h"
 #endif
-#if defined(AETHERKIRI_WITH_ONS_NATIVE_HOST) && defined(__arm64__)
-#define AETHERKIRI_ONS_NATIVE_HOST_AVAILABLE 1
+#if defined(AETHERKIRI_WITH_ONS_NATIVE_HOST)
 #include "aether/native_host/runtime_session.h"
 #endif
 #if defined(AETHERKIRI_WITH_SIGLUS)
@@ -10252,7 +10251,7 @@ public:
     }
 
     bool has_ons_native_host() const {
-#if defined(AETHERKIRI_ONS_NATIVE_HOST_AVAILABLE)
+#if defined(AETHERKIRI_WITH_ONS_NATIVE_HOST)
         return true;
 #else
         return false;
@@ -10263,7 +10262,7 @@ public:
         if (handle_ == nullptr) {
             return "";
         }
-#if defined(AETHERKIRI_ONS_NATIVE_HOST_AVAILABLE)
+#if defined(AETHERKIRI_WITH_ONS_NATIVE_HOST)
         if (ons_session_.handle() != nullptr) {
             return "native";
         }
@@ -10357,7 +10356,7 @@ public:
         mages_cache_path_ = cache_path;
 
         engine_result_t result;
-#if defined(AETHERKIRI_ONS_NATIVE_HOST_AVAILABLE)
+#if defined(AETHERKIRI_WITH_ONS_NATIVE_HOST)
         if (use_ons_native_host) {
             result = ons_session_.Create(desc);
             handle_ = ons_session_.handle();
@@ -10417,7 +10416,7 @@ public:
         }
         release_frame_texture();
         engine_result_t result;
-#if defined(AETHERKIRI_ONS_NATIVE_HOST_AVAILABLE)
+#if defined(AETHERKIRI_WITH_ONS_NATIVE_HOST)
         if (ons_session_.handle() != nullptr) {
             result = ons_session_.Close();
         } else
@@ -14403,7 +14402,7 @@ private:
 #endif
     }
 
-#if defined(AETHERKIRI_ONS_NATIVE_HOST_AVAILABLE)
+#if defined(AETHERKIRI_WITH_ONS_NATIVE_HOST)
     aether::native_host::RuntimeSession ons_session_;
 #endif
     engine_handle_t handle_ = nullptr;

@@ -443,8 +443,12 @@ jobs:
       - name: Verify exported APKs
         run: |
           set -euo pipefail
-          test -f out/godot/android/release/Aether-release.apk
+          release_apk=out/godot/android/release/Aether-release.apk
+          test -f "$release_apk"
           test -f out/godot/android/debug/Aether-debug.apk
+          grep -Fq -- '-DAETHERKIRI_WITH_ONS_NATIVE_HOST=1' \
+            out/android/arm64-v8a/release/compile_commands.json
+          unzip -p "$release_apk" lib/arm64-v8a/libaether_kiri_godot.so > /dev/null
 
       - name: Upload Release APK
         if: success()
@@ -750,6 +754,8 @@ jobs:
             out/godot/ios/release/Aether-Release-Unsigned.ipa \
             Payload/Aether.app/Aether > "$release_binary"
           test -s "$release_binary"
+          archive_members="$(xcrun ar -t apps/godot_app/bin/ios/release/libaether_kiri_godot.a)"
+          grep -Fx 'runtime_session.cpp.o' <<< "$archive_members"
           exported_symbols="$(xcrun nm -gjU "$release_binary")"
           if grep -E '^_engine_' <<< "$exported_symbols"; then
             echo "The private engine C ABI remains dynamically exported." >&2
@@ -1146,9 +1152,11 @@ jobs:
           AETHERKIRI_SMOKE_GAME: ${{ github.workspace }}/tests/fixtures/onscripter_smoke
         run: |
           set -euo pipefail
-          "$GODOT_BIN" --headless \
-            --path apps/godot_app \
-            --script res://scripts/smoke_test.gd
+          for legacy in 0 1; do
+            AETHERKIRI_ONS_LEGACY_HOST="$legacy" "$GODOT_BIN" --headless \
+              --path apps/godot_app \
+              --script res://scripts/smoke_test.gd
+          done
 
       - name: Test Astryx UI and session statistics
         run: |
@@ -1615,8 +1623,11 @@ jobs:
           AETHERKIRI_SMOKE_GAME: ${{ github.workspace }}/tests/fixtures/onscripter_smoke
           LD_LIBRARY_PATH: ${{ github.workspace }}/apps/godot_app/bin/linux/debug
         run: |
-          timeout 120 "$GODOT_BIN" --headless \
-            --path apps/godot_app --script res://scripts/smoke_test.gd
+          set -euo pipefail
+          for legacy in 0 1; do
+            AETHERKIRI_ONS_LEGACY_HOST="$legacy" timeout 120 "$GODOT_BIN" --headless \
+              --path apps/godot_app --script res://scripts/smoke_test.gd
+          done
 
       - name: Verify and package Linux applications
         env:

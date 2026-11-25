@@ -96,10 +96,29 @@ func _initialize() -> void:
 
     var user_dir := OS.get_user_data_dir()
     var cache_dir := user_dir.path_join("cache")
-    if not player.initialize_engine(user_dir, cache_dir):
+    var legacy_host_override := OS.get_environment("AETHERKIRI_ONS_LEGACY_HOST")
+    var check_ons_host := is_onscripter and legacy_host_override in ["0", "1"]
+    var use_native_host := check_ons_host and legacy_host_override == "0"
+    if use_native_host and not (player.has_method("has_ons_native_host") and player.has_ons_native_host()):
+        printerr("ONS native host is unavailable")
+        quit(1)
+        return
+
+    var initialized: bool = player.initialize_engine(user_dir, cache_dir, true) \
+        if use_native_host else player.initialize_engine(user_dir, cache_dir)
+    if not initialized:
         printerr("initialize_engine failed: %s" % player.get_last_error())
         quit(1)
         return
+    if check_ons_host:
+        var expected_host := "native" if use_native_host else "legacy"
+        var actual_host: String = player.get_engine_host()
+        if actual_host != expected_host:
+            printerr("ONS host expected=%s actual=%s" % [expected_host, actual_host])
+            player.destroy_engine()
+            quit(1)
+            return
+        print("ONS session host: %s" % actual_host)
 
     var media_path := OS.get_environment("AETHERKIRI_SMOKE_MEDIA").strip_edges()
     if not await _smoke_media_bridge(player, media_path):

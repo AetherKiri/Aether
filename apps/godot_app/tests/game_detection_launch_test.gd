@@ -97,14 +97,14 @@ func _run() -> void:
         app._exit_game_for_go_back()
         await process_frame
 
-    var host_before: bool = app.ons_legacy_host
+    var backend_before: String = app.selected_backend
     app._begin_settings_edit()
     var segment = app._game_detection_segment()
     app.add_child(segment)
     segment.item_selected.emit(0 if args[2] == "native" else 1)
     app._save_settings_draft()
     _expect(app.game_detection_mode == args[2], "Apply the compatibility setting")
-    _expect(app.ons_legacy_host == host_before, "Keep ONS host choice independent")
+    _expect(app.selected_backend == backend_before, "Keep Render Pipeline selection independent")
     var settings := ConfigFile.new()
     _expect(settings.load("user://aetherkiri_settings.cfg") == OK, "Write compatibility settings")
     _expect(settings.get_value("compatibility", "game_detection_mode", "") == args[2], "Persist the selected mode")

@@ -3,7 +3,7 @@
 Game import and launch in the Godot shell use the detector selected under
 **Settings → Compatibility → Game Detection**. Alpha builds default to Native.
 The saved choice takes effect on the next detection and is independent of the
-ONS host setting. Launch continues through the existing player selection and
+Render Pipeline selection. Launch continues through the existing player selection and
 `GameLaunchEntry` code. In particular, a detected file is an import hint and
 the library can still store a different user-selected entry.
 
@@ -92,7 +92,7 @@ implementations are unnecessary for verifying score handling.
   started an ONS game through the existing player and produced a frame. The
   file-picker callback retained a manually chosen XP3 in both modes. The
   existing KiriKiri player opened that archive and produced a frame. Changing
-  the detector left the ONS host preference intact.
+  the detector left the Render Pipeline selection intact.
 - The repository's macOS and Linux CI jobs run the Godot parity suite. The
   local results above describe the tested macOS build and fixture inputs.
 - The existing mocked `runtime_player_reopen_test.gd` reported the same 18

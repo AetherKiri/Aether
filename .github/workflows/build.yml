@@ -1152,8 +1152,9 @@ jobs:
           AETHERKIRI_SMOKE_GAME: ${{ github.workspace }}/tests/fixtures/onscripter_smoke
         run: |
           set -euo pipefail
-          for legacy in 0 1; do
-            AETHERKIRI_ONS_LEGACY_HOST="$legacy" "$GODOT_BIN" --headless \
+          "$GODOT_BIN" --headless --path apps/godot_app --script res://tests/playback_backend_test.gd
+          for backend in "Godot Native" "Godot"; do
+            AETHERKIRI_RENDER_BACKEND="$backend" "$GODOT_BIN" --headless \
               --path apps/godot_app \
               --script res://scripts/smoke_test.gd
           done
@@ -1633,8 +1634,9 @@ jobs:
           LD_LIBRARY_PATH: ${{ github.workspace }}/apps/godot_app/bin/linux/debug
         run: |
           set -euo pipefail
-          for legacy in 0 1; do
-            AETHERKIRI_ONS_LEGACY_HOST="$legacy" timeout 120 "$GODOT_BIN" --headless \
+          "$GODOT_BIN" --headless --path apps/godot_app --script res://tests/playback_backend_test.gd
+          for backend in "Godot Native" "Godot"; do
+            AETHERKIRI_RENDER_BACKEND="$backend" timeout 120 "$GODOT_BIN" --headless \
               --path apps/godot_app --script res://scripts/smoke_test.gd
           done
 

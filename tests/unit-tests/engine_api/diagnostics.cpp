@@ -533,8 +533,6 @@ TEST_CASE("primary click queue gate preserves every secondary pointer edge") {
 }
 
 TEST_CASE("CatSystem2 and Artemis ignore beta access") {
-  REQUIRE(engine_register_runtime_provider(&kArtemisGateProvider) ==
-          ENGINE_RESULT_OK);
   REQUIRE(engine_register_runtime_provider(&kCatSystem2GateProvider) ==
           ENGINE_RESULT_OK);
 
@@ -555,17 +553,24 @@ TEST_CASE("CatSystem2 and Artemis ignore beta access") {
                              "first.iet") == ENGINE_RESULT_OK);
   }
 
-  // Artemis is a released provider and must stay available in Release builds
-  // without a coffee entitlement or beta_runtime_allowed override.
   Handle artemis_handle;
   engine_option_t artemis_runtime_option{};
   artemis_runtime_option.key_utf8 = "runtime";
   artemis_runtime_option.value_utf8 = "artemis";
+#if defined(AETHERKIRI_ENABLE_ARTEMIS_RUNTIME)
+  // Enabled builds allow Artemis without a beta access override.
+  REQUIRE(engine_register_runtime_provider(&kArtemisGateProvider) ==
+          ENGINE_RESULT_OK);
   REQUIRE(engine_set_option(artemis_handle.value, &artemis_runtime_option) ==
           ENGINE_RESULT_OK);
   REQUIRE(engine_open_game(artemis_handle.value, ".artemis-debug-gate-test",
                            "first.iet") == ENGINE_RESULT_OK);
-
+#else
+  REQUIRE(engine_register_runtime_provider(&kArtemisGateProvider) ==
+          ENGINE_RESULT_NOT_SUPPORTED);
+  REQUIRE(engine_set_option(artemis_handle.value, &artemis_runtime_option) ==
+          ENGINE_RESULT_NOT_SUPPORTED);
+#endif
 }
 
 TEST_CASE("RFVP is available without beta access") {

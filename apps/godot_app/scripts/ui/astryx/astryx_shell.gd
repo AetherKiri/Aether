@@ -1316,7 +1316,13 @@ func _opacity_slider() -> Control:
 
 func _render_settings() -> void:
     var fields := _section(_text("画面与渲染", "Graphics & rendering", "画面とレンダリング", "畫面與渲染", "Gráficos y renderizado"), _text("调整渲染方式、图像缩放和输出分辨率。", "Choose rendering, scaling and output resolution.", "描画方法、拡大処理、出力解像度を調整します。", "調整渲染方式、影像縮放與輸出解析度。", "Elige el renderizado, el escalado y la resolución de salida."))
-    _field(fields, _t("settings.render_backend"), _select("backend", host.BACKENDS))
+    var backend_labels: Array = []
+    for backend: String in host.BACKENDS:
+        backend_labels.append(host.PlaybackBackend.label(backend))
+    _field(
+        fields, _t("settings.render_backend"), _select("backend", host.BACKENDS, backend_labels),
+        _t("settings.render_backend_desc")
+    )
     _field(fields, _t("settings.surface_mode"), _select("surface_mode", ["game", "display"], ["Game Native", "Display Fit"]))
     var algorithms: Array = ["smooth", "linear", "nearest", "bicubic", "lanczos"]
     var algorithm_labels: Array = ["Smooth", "Linear", "Nearest", "Bicubic", "Lanczos"]
@@ -1643,6 +1649,11 @@ func _game_render_settings(parent: Control, game: Dictionary) -> void:
 
 func _compatibility_settings() -> void:
     var fields := _section(_text("运行时兼容性", "Runtime compatibility", "ランタイムの互換性", "執行階段相容性", "Compatibilidad del entorno de ejecución"), _t("settings.plugin_load_mode_desc"))
+    if host.player != null and host.player.has_method("inspect_game"):
+        var game_detection := _select(
+            "game_detection_override", host.GAME_DETECTION_OVERRIDES, host._game_detection_labels()
+        )
+        _field(fields, _t("settings.game_detection"), game_detection, _t("settings.game_detection_desc"))
     _field(fields, _t("settings.plugin_load_mode"), _select("plugin_load_mode", ["krkrsdl3", "aether_all"], [_t("settings.plugin_load.core"), _t("settings.plugin_load.all")]))
     _toggle(fields, _t("settings.mock"), _t("settings.mock_desc"), "mock_enabled")
     if host.player != null and host.player.has_method("is_text_translation_available") and host.player.is_text_translation_available():

@@ -16,19 +16,17 @@ if(AETHERKIRI_INTERNAL_ENABLED AND
         "${CMAKE_SOURCE_DIR}/bridge/krkr2_runtime/src/artemis_lua_symbol_prefix.h")
 endif()
 
-# The krkr2 engine test suites live in the engine repository (issue #241
-# Phase 2); this checkout owns their wiring. The runtime-neutral transform
-# hook TU is compiled directly into those standalone krkr2 tests, so pass
-# its path down to them. Out-of-tree sources need an explicit binary
-# directory; keep it mirroring the engine submodule location.
-set(KRKR2_TEXT_TRANSFORM_SOURCE
-    "${CMAKE_SOURCE_DIR}/abi/src/TextTransform.cpp")
-
-add_subdirectory("${AETHERKIRI_KRKR_DIR}/tests/plugins"
-    "${CMAKE_BINARY_DIR}/packages/AetherKrkr/tests/plugins")
-add_subdirectory("${AETHERKIRI_KRKR_DIR}/tests/tjs2"
-    "${CMAKE_BINARY_DIR}/packages/AetherKrkr/tests/tjs2")
+# The standalone KiriKiri tests compile the runtime-neutral transform hook.
+if(TARGET krkr2core)
+    set(KRKR2_TEXT_TRANSFORM_SOURCE
+        "${CMAKE_SOURCE_DIR}/abi/src/TextTransform.cpp")
+    add_subdirectory("${AETHERKIRI_KRKR_DIR}/tests/plugins"
+        "${CMAKE_BINARY_DIR}/packages/AetherKrkr/tests/plugins")
+    add_subdirectory("${AETHERKIRI_KRKR_DIR}/tests/tjs2"
+        "${CMAKE_BINARY_DIR}/packages/AetherKrkr/tests/tjs2")
+endif()
 add_subdirectory(unit-tests/engine_api)
+add_subdirectory(unit-tests/game_detection)
 add_subdirectory(mobile_window)
 if(AETHERKIRI_INTERNAL_ENABLED)
     aetherinternal_add_runtime_tests("${CMAKE_SOURCE_DIR}")

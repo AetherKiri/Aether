@@ -153,6 +153,7 @@ endif()
 option(BUILD_TOOLS "build tools execute build(exclude android ios)" ON)
 option(BUILD_ENGINE_API "build engine_api bridge shared library" ON)
 option(BUILD_GODOT_EXTENSION "build Godot GDExtension host library" ON)
+option(BUILD_NATIVE_HOST "build the standalone native runtime host library" OFF)
 option(BUILD_GPU_BRIDGE "build legacy external GPU bridge renderer" OFF)
 option(AETHERKIRI_ENABLE_CODE_OBFUSCATION
        "obfuscate private Internal translation units in release builds" OFF)
@@ -383,7 +384,7 @@ endif()
 # krkr2core/krkr2plugin linkage; the Godot extension host links the glue and
 # installs its engine_legacy_* surface into engine_api through the legacy
 # services table (Phase 2d link flip — engine_api itself never links it).
-if(BUILD_ENGINE_API OR AETHERKIRI_BUILD_NATIVE_RUNTIME_TESTS OR AETHERKIRI_ENABLE_RFVP)
+if(BUILD_ENGINE_API OR BUILD_NATIVE_HOST OR AETHERKIRI_BUILD_NATIVE_RUNTIME_TESTS OR AETHERKIRI_ENABLE_RFVP)
     if(AETHERKIRI_ENABLE_KRKR2)
         add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/bridge/krkr2_runtime)
     endif()
@@ -392,8 +393,19 @@ endif()
 
 
 if(AETHERKIRI_ENABLE_ONSCRIPTER AND
-   (BUILD_GODOT_EXTENSION OR AETHERKIRI_BUILD_NATIVE_ONSCRIPTER_TESTS))
+   (BUILD_GODOT_EXTENSION OR BUILD_NATIVE_HOST OR AETHERKIRI_BUILD_NATIVE_ONSCRIPTER_TESTS))
     add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/bridge/onscripter_runtime)
+endif()
+set(AETHERKIRI_ONS_NATIVE_HOST_FOR_GODOT OFF)
+if(BUILD_GODOT_EXTENSION AND TARGET aether_onscripter_runtime AND
+   CMAKE_SYSTEM_NAME MATCHES "^(Darwin|iOS|Android|Linux)$")
+    set(AETHERKIRI_ONS_NATIVE_HOST_FOR_GODOT ON)
+endif()
+if(BUILD_GODOT_EXTENSION OR BUILD_NATIVE_HOST OR AETHERKIRI_BUILD_NATIVE_RUNTIME_TESTS)
+    add_subdirectory(bridge/game_detection)
+endif()
+if(BUILD_NATIVE_HOST OR AETHERKIRI_ONS_NATIVE_HOST_FOR_GODOT)
+    add_subdirectory(bridge/native_host)
 endif()
 if(AETHERKIRI_ENABLE_SYSTEM3 AND (BUILD_GODOT_EXTENSION OR ENABLE_TESTS) AND
    (APPLE OR ANDROID OR UNIX) AND NOT (WEB OR EMSCRIPTEN))

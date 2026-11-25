@@ -39,3 +39,13 @@ target_link_libraries(onscripter-runtime-provider PRIVATE
 )
 
 catch_discover_tests(onscripter-runtime-provider)
+
+if(TARGET aether_native_host)
+    add_executable(aether-native-host-onscripter native_host.cpp)
+    target_compile_definitions(aether-native-host-onscripter PRIVATE
+        AETHER_TEST_RUNTIME_FONT="${CMAKE_SOURCE_DIR}/apps/godot_app/assets/fonts/aetherkiri-runtime-cjk.otf")
+    target_link_libraries(aether-native-host-onscripter PRIVATE
+        aether_native_host Catch2::Catch2WithMain)
+    catch_discover_tests(aether-native-host-onscripter PROPERTIES
+        ENVIRONMENT "SDL_AUDIODRIVER=dummy" TIMEOUT 30)
+endif()

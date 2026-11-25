@@ -37,8 +37,9 @@ func _initialize() -> void:
 
 func _run() -> void:
     var args := OS.get_cmdline_user_args()
-    if args.size() != 4 or not args[0].is_valid_filename():
-        printerr("Pass a disposable user directory ID, expected mode, next mode and ONS game root")
+    if args.size() != 4 or not args[0].is_valid_filename() \
+            or args[1] not in ["native", "legacy"] or args[2] not in TestApp.GAME_DETECTION_OVERRIDES:
+        printerr("Pass a disposable user directory ID, expected mode, next override and ONS game root")
         quit(2)
         return
     var data_name := "%s/%s" % ["aether-detection-tests", args[0]]
@@ -55,7 +56,7 @@ func _run() -> void:
     root.add_child(app)
     await process_frame
     await process_frame
-    _expect(app.game_detection_mode == args[1], "Read the selected detection mode after process startup")
+    _expect(app._game_detection_mode() == args[1], "Read the selected detection mode after process startup")
     _expect(app._uses_native_game_detection() == (args[1] == "native"), "Use the requested detector")
 
     var game := args[3]
@@ -101,13 +102,13 @@ func _run() -> void:
     app._begin_settings_edit()
     var segment = app._game_detection_segment()
     app.add_child(segment)
-    segment.item_selected.emit(0 if args[2] == "native" else 1)
+    segment.item_selected.emit(app.GAME_DETECTION_OVERRIDES.find(args[2]))
     app._save_settings_draft()
-    _expect(app.game_detection_mode == args[2], "Apply the compatibility setting")
+    _expect(app.game_detection_override == args[2], "Apply the compatibility setting")
     _expect(app.selected_backend == backend_before, "Keep Render Pipeline selection independent")
     var settings := ConfigFile.new()
     _expect(settings.load("user://aetherkiri_settings.cfg") == OK, "Write compatibility settings")
-    _expect(settings.get_value("compatibility", "game_detection_mode", "") == args[2], "Persist the selected mode")
+    _expect(settings.get_value("compatibility", "game_detection_override", "auto") == args[2], "Persist only an explicit choice")
 
     app.player.destroy_engine()
     app.queue_free()

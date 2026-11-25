@@ -117,7 +117,7 @@ func _initialize() -> void:
     _write_hcb(hidden_hcb.path_join(".Story.hcb"), 7)
     _compare(app, hidden_hcb, "rfvp", "RFVP hidden-only fallback")
     for mode in ["legacy", "native"]:
-        app.game_detection_mode = mode
+        app.game_detection_override = mode
         var game := {"path": hcb, "launchFile": ".Hidden.hcb"}
         var games: Array[Dictionary] = [game]
         app._backfill_game_metadata(games)
@@ -144,7 +144,7 @@ func _initialize() -> void:
     var swf := flash.path_join("movie.SwF")
     _compare(app, swf, "kirikiri", "SWF in the visual-novel context")
     for mode in ["legacy", "native"]:
-        app.game_detection_mode = mode
+        app.game_detection_override = mode
         var matches := FileLibrary.list_directory(flash, ["swf"], app._is_flash_game_file)
         _expect(matches.size() == 1 and String(matches[0].path) == swf, mode + " Flash library selection")
         _expect(not app._is_flash_game_file(flash.path_join("movie.swc")), mode + " excludes SWC")
@@ -163,6 +163,7 @@ func _initialize() -> void:
         if direct != "kirikiri":
             _expect(mock.calls == 0, "legacy does not probe a recognized runtime")
     app.player = null
+    _check_detection_settings(app)
     app.ui_motion.free()
     app.free()
     player.free()
@@ -171,15 +172,69 @@ func _initialize() -> void:
     quit(0 if failures == 0 else 1)
 
 
+func _check_detection_settings(app) -> void:
+    var user_dir_name := fixture.get_current_dir().get_file()
+    var settings_key := "application/config/custom_user_dir_name"
+    ProjectSettings.set_setting(settings_key, user_dir_name)
+    ProjectSettings.set_setting(settings_key + "." + OS.get_name().to_lower(), user_dir_name)
+    var user_dir := OS.get_user_data_dir()
+    _expect(user_dir.get_file() == user_dir_name, "Isolate game detection preferences")
+    if user_dir.get_file() != user_dir_name:
+        return
+    DirAccess.make_dir_recursive_absolute(user_dir)
+
+    var version_env := "AETHERKIRI_SIMULATE_VERSION"
+    OS.set_environment(version_env, "1.2.2-alpha.1")
+    app._load_shell_settings()
+    _expect(app._game_detection_mode() == "native", "Automatic uses native detection on Alpha")
+    app._begin_settings_edit()
+    app._set_settings_draft_value("mock_enabled", not app.mock_enabled)
+    app._save_settings_draft()
+
+    var config := ConfigFile.new()
+    _expect(config.load(app.SETTINGS_FILE) == OK, "Save the unrelated settings change")
+    _expect(not config.has_section_key("compatibility", "game_detection_override"), "Unrelated saves omit the automatic default")
+    config.set_value("compatibility", "game_detection_mode", "native")
+    _expect(config.save(app.SETTINGS_FILE) == OK, "Stage an old draft's saved detection default")
+
+    OS.set_environment(version_env, "1.2.2")
+    app._load_shell_settings()
+    _expect(app._game_detection_mode() == "legacy", "A stable release uses legacy detection after an automatic Alpha default")
+    _save_detection_override(app, "legacy")
+
+    OS.set_environment(version_env, "1.2.3-alpha.1")
+    app._load_shell_settings()
+    _expect(app._game_detection_mode() == "legacy", "An explicit legacy choice survives an upgrade to Alpha")
+    _save_detection_override(app, "native")
+
+    OS.set_environment(version_env, "1.2.3")
+    app._load_shell_settings()
+    _expect(app._game_detection_mode() == "native", "An explicit native choice survives an upgrade to stable")
+    _save_detection_override(app, "auto")
+    app._load_shell_settings()
+    _expect(app._game_detection_mode() == "legacy", "Returning to Automatic clears the override after reload")
+    config = ConfigFile.new()
+    _expect(config.load(app.SETTINGS_FILE) == OK, "Reload the settings after resetting the override")
+    _expect(not config.has_section_key("compatibility", "game_detection_override"), "Automatic removes the saved override")
+    DirAccess.remove_absolute(ProjectSettings.globalize_path(app.SETTINGS_FILE))
+    DirAccess.remove_absolute(user_dir)
+
+
+func _save_detection_override(app, choice: String) -> void:
+    app._begin_settings_edit()
+    app._set_settings_draft_value("game_detection_override", choice)
+    app._save_settings_draft()
+
+
 func _compare(app, path: String, expected: String, label: String) -> void:
     checked += 1
-    app.game_detection_mode = "legacy"
+    app.game_detection_override = "legacy"
     var legacy: Dictionary = app._inspect_game_metadata(path)
     var root_path: String = app._game_runtime_root(path)
     var legacy_kind: String = app._game_runtime_kind(path)
     var legacy_tyrano = app._tyrano_entry_file(root_path)
     var legacy_renpy = app._renpy_game_directory(root_path)
-    app.game_detection_mode = "native"
+    app.game_detection_override = "native"
     var native: Dictionary = app._inspect_game_metadata(path)
     if expected != "same":
         _expect(legacy.engine == expected, "%s legacy expected=%s actual=%s" % [label, expected, legacy.engine])

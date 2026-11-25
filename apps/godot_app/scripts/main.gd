@@ -403,7 +403,8 @@ const UI_TEXT := {
         "settings.target_fps_desc": "限制 C++ 引擎 tick/render 频率；可选 60–144 FPS",
         "settings.plugin_load_mode": "插件加载模式",
         "settings.game_detection": "游戏识别方式",
-        "settings.game_detection_desc": "用于导入和启动游戏。更改后，下次识别时生效。",
+        "settings.game_detection_desc": "自动模式在预发布版使用原生识别，在正式版使用旧版 Godot。下次识别时生效。",
+        "settings.game_detection_auto": "自动",
         "settings.game_detection_native": "原生",
         "settings.game_detection_legacy": "旧版 Godot",
         "settings.plugin_load_mode_desc": "核心模式只加载常用兼容插件；完整模式保留旧版全量注册",
@@ -846,7 +847,8 @@ const UI_TEXT := {
         "settings.target_fps_desc": "限制 C++ 引擎 tick/render 頻率；可選 60–144 FPS",
         "settings.plugin_load_mode": "外掛載入模式",
         "settings.game_detection": "遊戲識別方式",
-        "settings.game_detection_desc": "適用於匯入和啟動遊戲。變更後在下次識別時生效。",
+        "settings.game_detection_desc": "自動模式在預發行版使用原生識別，在正式版使用舊版 Godot。下次識別時生效。",
+        "settings.game_detection_auto": "自動",
         "settings.game_detection_native": "原生",
         "settings.game_detection_legacy": "舊版 Godot",
         "settings.plugin_load_mode_desc": "核心模式只載入常用相容外掛；完整模式保留舊版全量註冊",
@@ -1287,7 +1289,8 @@ You can find it any time under Settings → QQ Group.",
         "settings.target_fps_desc": "Limit the C++ engine tick/render rate; choose 60–144 FPS",
         "settings.plugin_load_mode": "Plugin Load Mode",
         "settings.game_detection": "Game Detection",
-        "settings.game_detection_desc": "Applies the next time a game is identified for import or launch.",
+        "settings.game_detection_desc": "Automatic uses native detection in prerelease builds and legacy Godot detection in stable builds. Applies on the next game detection.",
+        "settings.game_detection_auto": "Automatic",
         "settings.game_detection_native": "Native",
         "settings.game_detection_legacy": "Legacy Godot",
         "settings.plugin_load_mode_desc": "Core mode loads common compatibility plugins only; Full mode keeps the legacy registration path",
@@ -1697,7 +1700,8 @@ You can find it any time under Settings → QQ Group.",
         "settings.target_fps_desc": "C++ エンジンの tick/render 頻度を 60～144 FPS から選択します",
         "settings.plugin_load_mode": "プラグイン読み込みモード",
         "settings.game_detection": "ゲームの識別方法",
-        "settings.game_detection_desc": "インポートや起動時の次回のゲーム識別から適用されます。",
+        "settings.game_detection_desc": "自動モードではプレリリース版でネイティブ識別、正式版で従来の Godot 識別を使います。次回の識別時から適用されます。",
+        "settings.game_detection_auto": "自動",
         "settings.game_detection_native": "ネイティブ",
         "settings.game_detection_legacy": "従来の Godot",
         "settings.plugin_load_mode_desc": "コアモードは一般的な互換プラグインのみ、完全モードは従来の全登録経路を使用します",
@@ -2105,7 +2109,8 @@ You can find it any time under Settings → QQ Group.",
         "settings.target_fps_desc": "C++ 엔진 tick/render 빈도를 60–144 FPS에서 선택합니다",
         "settings.plugin_load_mode": "플러그인 로드 모드",
         "settings.game_detection": "게임 인식 방식",
-        "settings.game_detection_desc": "다음 게임 가져오기 또는 실행 시 적용됩니다.",
+        "settings.game_detection_desc": "자동 모드는 시험판에서 네이티브 감지를, 정식판에서 기존 Godot 감지를 사용합니다. 다음 게임 감지부터 적용됩니다.",
+        "settings.game_detection_auto": "자동",
         "settings.game_detection_native": "네이티브",
         "settings.game_detection_legacy": "기존 Godot",
         "settings.plugin_load_mode_desc": "핵심 모드는 일반 호환 플러그인만 로드하고 전체 모드는 기존 전체 등록 방식을 유지합니다",
@@ -2544,7 +2549,8 @@ You can find it any time under Settings → QQ Group.",
         "settings.target_fps_desc": "Limita la frecuencia de tick y renderizado del motor C++; elige entre 60 y 144 FPS",
         "settings.plugin_load_mode": "Modo de carga de plugins",
         "settings.game_detection": "Detección de juegos",
-        "settings.game_detection_desc": "Se aplica la próxima vez que se detecte un juego para importarlo o iniciarlo.",
+        "settings.game_detection_desc": "El modo automático usa la detección nativa en versiones preliminares y la de Godot anterior en versiones estables. Se aplica en la próxima detección.",
+        "settings.game_detection_auto": "Automático",
         "settings.game_detection_native": "Nativa",
         "settings.game_detection_legacy": "Godot anterior",
         "settings.plugin_load_mode_desc": "El modo básico solo carga los plugins de compatibilidad habituales; el modo completo mantiene la ruta de registro heredada",
@@ -2791,6 +2797,7 @@ const RUNTIME_YURIS := "yuris"
 const RUNTIME_SYSTEMC := "systemc"
 const RUNTIME_EXHIBIT := "exhibit"
 const RUNTIME_PLAYER_CLASS := "AetherRuntimePlayer"
+const GAME_DETECTION_OVERRIDES := ["auto", "native", "legacy"]
 const ONSCRIPTER_SCRIPT_MARKERS := [
     "0.txt",
     "00.txt",
@@ -2846,7 +2853,7 @@ const SETTINGS_DRAFT_KEYS := [
     "target_fps",
     "force_landscape",
     "plugin_load_mode",
-    "game_detection_mode",
+    "game_detection_override",
     "mock_enabled",
     "error_dialog_logs",
     "text_translation_model_path",
@@ -3002,7 +3009,7 @@ var frame_limit_enabled := false
 var target_fps := 80
 var plugin_trace := false
 var plugin_load_mode := "krkrsdl3"
-var game_detection_mode := "native"
+var game_detection_override := "auto"
 var mock_enabled := true
 var console_log_file := false
 var trace_log := false
@@ -4730,7 +4737,7 @@ func _layout_shell(window_size: Vector2) -> void:
     shell_content.offset_bottom = -dock_height if compact else 0.0
 
 func _load_shell_settings() -> void:
-    game_detection_mode = "native" if AppUpdater.is_prerelease(_application_version_text()) else "legacy"
+    game_detection_override = "auto"
     var cfg := ConfigFile.new()
     var env_style := _runtime_string("AETHERKIRI_STYLE_MODE", "")
     var env_translation_model_path := _runtime_string(
@@ -4868,9 +4875,10 @@ func _load_shell_settings() -> void:
     if not plugin_load_mode in ["krkrsdl3", "aether_all"]:
         plugin_load_mode = "krkrsdl3"
     mock_enabled = bool(cfg.get_value("developer", "mock_enabled", mock_enabled))
-    var saved_detection_mode := String(cfg.get_value("compatibility", "game_detection_mode", ""))
-    if saved_detection_mode in ["native", "legacy"]:
-        game_detection_mode = saved_detection_mode
+    # The old draft saved resolved defaults alongside explicit choices.
+    var saved_detection_override := String(cfg.get_value("compatibility", "game_detection_override", "auto"))
+    if saved_detection_override in GAME_DETECTION_OVERRIDES:
+        game_detection_override = saved_detection_override
     error_dialog_logs = bool(cfg.get_value("developer", "error_dialog_logs", error_dialog_logs))
     legal_accepted_version = String(cfg.get_value("legal", "accepted_version", ""))
     legal_accepted_at = int(cfg.get_value("legal", "accepted_at", 0))
@@ -4961,7 +4969,8 @@ func _save_shell_settings() -> void:
         game_virtual_keyboard_opacity
     )
     cfg.set_value("developer", "plugin_load_mode", plugin_load_mode)
-    cfg.set_value("compatibility", "game_detection_mode", game_detection_mode)
+    if game_detection_override != "auto":
+        cfg.set_value("compatibility", "game_detection_override", game_detection_override)
     cfg.set_value("developer", "mock_enabled", mock_enabled)
     cfg.set_value("developer", "error_dialog_logs", error_dialog_logs)
     cfg.set_value("legal", "accepted_version", legal_accepted_version)
@@ -5014,7 +5023,7 @@ func _current_settings_snapshot() -> Dictionary:
         "target_fps": target_fps,
         "force_landscape": lock_landscape,
         "plugin_load_mode": plugin_load_mode,
-        "game_detection_mode": game_detection_mode,
+        "game_detection_override": game_detection_override,
         "mock_enabled": mock_enabled,
         "error_dialog_logs": error_dialog_logs,
         "text_translation_model_path": text_translation_model_path,
@@ -5210,7 +5219,7 @@ func _apply_settings_snapshot(snapshot: Dictionary) -> void:
     if not plugin_load_mode in ["krkrsdl3", "aether_all"]:
         plugin_load_mode = "krkrsdl3"
     mock_enabled = bool(snapshot.get("mock_enabled", mock_enabled))
-    game_detection_mode = String(snapshot.get("game_detection_mode", game_detection_mode))
+    game_detection_override = String(snapshot.get("game_detection_override", game_detection_override))
     error_dialog_logs = bool(snapshot.get("error_dialog_logs", error_dialog_logs))
     text_translation_model_path = String(snapshot.get(
         "text_translation_model_path", text_translation_model_path
@@ -8886,15 +8895,18 @@ func _debug_overlay_select() -> Control:
     )
     return select
 
+func _game_detection_labels() -> Array:
+    return GAME_DETECTION_OVERRIDES.map(func(mode: String): return _t("settings.game_detection_" + mode))
+
 func _game_detection_segment() -> Control:
     var segment = AetherSegmentedControl.new()
+    var draft_override := _settings_draft_string("game_detection_override", game_detection_override)
     segment.setup(
-        ui_tokens, ui_motion,
-        PackedStringArray([_t("settings.game_detection_native"), _t("settings.game_detection_legacy")]),
-        0 if _settings_draft_string("game_detection_mode", game_detection_mode) == "native" else 1
+        ui_tokens, ui_motion, PackedStringArray(_game_detection_labels()),
+        GAME_DETECTION_OVERRIDES.find(draft_override)
     )
     segment.item_selected.connect(func(index: int):
-        _set_settings_draft_value("game_detection_mode", "native" if index == 0 else "legacy")
+        _set_settings_draft_value("game_detection_override", GAME_DETECTION_OVERRIDES[index])
     )
     return segment
 
@@ -12505,8 +12517,13 @@ func _game_runtime_root(path: String) -> String:
         return resolved.get_base_dir()
     return resolved
 
+func _game_detection_mode() -> String:
+    if game_detection_override != "auto":
+        return game_detection_override
+    return "native" if AppUpdater.is_prerelease(_application_version_text()) else "legacy"
+
 func _uses_native_game_detection() -> bool:
-    return game_detection_mode == "native" and player != null and player.has_method("inspect_game")
+    return _game_detection_mode() == "native" and player != null and player.has_method("inspect_game")
 
 func _inspect_game_metadata(path: String, probe_root: String = "") -> Dictionary:
     if _uses_native_game_detection():

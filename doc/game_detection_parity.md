@@ -1,9 +1,12 @@
 # Native game detection parity
 
 Game import and launch in the Godot shell use the detector selected under
-**Settings → Compatibility → Game Detection**. Alpha builds default to Native.
-The saved choice takes effect on the next detection and is independent of the
-Render Pipeline selection. Launch continues through the existing player selection and
+**Settings → Compatibility → Game Detection**. **Automatic** uses Native on
+prerelease builds and Legacy Godot on stable builds. Only explicit **Native**
+and **Legacy Godot** selections are saved. Choosing **Automatic** clears the
+override, and older draft settings that stored only the resolved mode are
+treated as Automatic. The choice takes effect on the next detection and is
+independent of the Render Pipeline selection. Launch continues through the existing player selection and
 `GameLaunchEntry` code. In particular, a detected file is an import hint and
 the library can still store a different user-selected entry.
 
@@ -93,8 +96,12 @@ implementations are unnecessary for verifying score handling.
   file-picker callback retained a manually chosen XP3 in both modes. The
   existing KiriKiri player opened that archive and produced a frame. Changing
   the detector left the Render Pipeline selection intact.
-- The repository's macOS and Linux CI jobs run the Godot parity suite. The
-  local results above describe the tested macOS build and fixture inputs.
+- The Godot parity suite also simulates upgrades between prerelease and stable
+  builds. It verifies that unrelated settings saves omit the default, a draft's
+  saved default does not override stable behavior, explicit choices survive
+  upgrades, and returning to Automatic clears the saved choice.
+- The repository's macOS and Linux CI jobs run the Godot parity and settings
+  suite. The local results above describe the tested macOS build and fixtures.
 - The existing mocked `runtime_player_reopen_test.gd` reported the same 18
   failures on base commit `03eab283` and on this change. The import and launch
   test above uses the real ONS and KiriKiri players.

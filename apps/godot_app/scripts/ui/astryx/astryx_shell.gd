@@ -1319,7 +1319,10 @@ func _render_settings() -> void:
     var backend_labels: Array = []
     for backend: String in host.BACKENDS:
         backend_labels.append(host.PlaybackBackend.label(backend))
-    _field(fields, _t("settings.render_backend"), _select("backend", host.BACKENDS, backend_labels))
+    _field(
+        fields, _t("settings.render_backend"), _select("backend", host.BACKENDS, backend_labels),
+        _t("settings.render_backend_desc")
+    )
     _field(fields, _t("settings.surface_mode"), _select("surface_mode", ["game", "display"], ["Game Native", "Display Fit"]))
     var algorithms: Array = ["smooth", "linear", "nearest", "bicubic", "lanczos"]
     var algorithm_labels: Array = ["Smooth", "Linear", "Nearest", "Bicubic", "Lanczos"]

@@ -43,6 +43,10 @@ extern "C" void AetherInternalRegisterWa2Runtime(void);
 #if defined(AETHERKIRI_WITH_ONSCRIPTER)
 #include "onscripter_runtime.h"
 #endif
+#if defined(AETHERKIRI_WITH_ONS_NATIVE_HOST) && defined(__arm64__)
+#define AETHERKIRI_ONS_NATIVE_HOST_AVAILABLE 1
+#include "aether/native_host/runtime_session.h"
+#endif
 #if defined(AETHERKIRI_WITH_SIGLUS)
 #include "siglus_runtime.h"
 #endif
@@ -10247,7 +10251,28 @@ public:
         destroy_engine();
     }
 
-    bool initialize_engine(const String &writable_path, const String &cache_path) {
+    bool has_ons_native_host() const {
+#if defined(AETHERKIRI_ONS_NATIVE_HOST_AVAILABLE)
+        return true;
+#else
+        return false;
+#endif
+    }
+
+    String get_engine_host() const {
+        if (handle_ == nullptr) {
+            return "";
+        }
+#if defined(AETHERKIRI_ONS_NATIVE_HOST_AVAILABLE)
+        if (ons_session_.handle() != nullptr) {
+            return "native";
+        }
+#endif
+        return "legacy";
+    }
+
+    bool initialize_engine(const String &writable_path, const String &cache_path,
+                           bool use_ons_native_host = false) {
         if (handle_ != nullptr) {
             AndroidBridgeLog("event=initialize_engine_already_initialized runtime=%s",
                              runtime_id_.utf8().get_data());
@@ -10331,7 +10356,16 @@ public:
         desc.cache_path_utf8 = cache_utf8.get_data();
         mages_cache_path_ = cache_path;
 
-        const engine_result_t result = engine_create(&desc, &handle_);
+        engine_result_t result;
+#if defined(AETHERKIRI_ONS_NATIVE_HOST_AVAILABLE)
+        if (use_ons_native_host) {
+            result = ons_session_.Create(desc);
+            handle_ = ons_session_.handle();
+        } else
+#endif
+        {
+            result = engine_create(&desc, &handle_);
+        }
         last_result_ = ResultToString(result);
         last_error_ = LastError(handle_);
         if (result == ENGINE_RESULT_OK) {
@@ -10382,7 +10416,15 @@ public:
             return;
         }
         release_frame_texture();
-        const engine_result_t result = engine_destroy(handle_);
+        engine_result_t result;
+#if defined(AETHERKIRI_ONS_NATIVE_HOST_AVAILABLE)
+        if (ons_session_.handle() != nullptr) {
+            result = ons_session_.Close();
+        } else
+#endif
+        {
+            result = engine_destroy(handle_);
+        }
         BridgeFlush();
         if (result != ENGINE_RESULT_OK) {
             last_result_ = ResultToString(result);
@@ -11307,6 +11349,9 @@ public:
             godot_info = " godot_method=" + server->get_current_rendering_method() +
                          " godot_driver=" + server->get_current_rendering_driver_name() +
                          " rd_gpu=" + String(SupportsGodotRenderingDeviceGpu() ? "1" : "0");
+        }
+        if (runtime_id_ == "onscripter") {
+            godot_info += " session_host=" + get_engine_host();
         }
         godot_info += " source_query_ms=" + String::num(source_query_ms_, 6) +
                       " present_copy_ms=" + String::num(present_copy_ms_, 6);
@@ -13041,8 +13086,13 @@ void main() {
 
 protected:
     static void _bind_methods() {
-        ClassDB::bind_method(D_METHOD("initialize_engine", "writable_path", "cache_path"),
-                             &AetherRuntimePlayer::initialize_engine);
+        ClassDB::bind_method(D_METHOD("initialize_engine", "writable_path", "cache_path",
+                                      "use_ons_native_host"),
+                             &AetherRuntimePlayer::initialize_engine, DEFVAL(false));
+        ClassDB::bind_method(D_METHOD("has_ons_native_host"),
+                             &AetherRuntimePlayer::has_ons_native_host);
+        ClassDB::bind_method(D_METHOD("get_engine_host"),
+                             &AetherRuntimePlayer::get_engine_host);
         ClassDB::bind_method(D_METHOD("destroy_engine"),
                              &AetherRuntimePlayer::destroy_engine);
         ClassDB::bind_method(D_METHOD("is_initialized"),
@@ -14353,6 +14403,9 @@ private:
 #endif
     }
 
+#if defined(AETHERKIRI_ONS_NATIVE_HOST_AVAILABLE)
+    aether::native_host::RuntimeSession ons_session_;
+#endif
     engine_handle_t handle_ = nullptr;
     engine_media_handle_t media_ = nullptr;
     std::size_t plugin_debug_buffer_capacity_ = 64u * 1024u;

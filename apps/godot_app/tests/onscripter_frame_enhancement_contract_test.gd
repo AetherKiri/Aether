@@ -9,6 +9,7 @@ func _initialize() -> void:
 
     var user_dir := OS.get_user_data_dir()
     assert(player.initialize_engine(user_dir, user_dir.path_join("cache")))
+    assert(player.get_engine_host() == "legacy")
     assert(int(player.set_engine_option("runtime", "onscripter")) == 0)
 
     assert(player.has_method("is_frame_enhancement_built"))
@@ -39,6 +40,13 @@ func _initialize() -> void:
     assert(int(status.get("target_height", 0)) == 1080)
 
     player.destroy_engine()
+    assert(player.get_engine_host().is_empty())
+    if player.has_ons_native_host():
+        assert(player.initialize_engine(user_dir, user_dir.path_join("cache"), true))
+        assert(player.get_engine_host() == "native")
+        assert(int(player.set_engine_option("runtime", "onscripter")) == 0)
+        player.destroy_engine()
+        assert(player.get_engine_host().is_empty())
     player.queue_free()
     print("ONSCRIPTER_FRAME_ENHANCEMENT_CONTRACT_OK")
     quit(0)

@@ -31,3 +31,17 @@ keyboard input, and reopening within the same process. ONS script movies still
 require the media services currently installed by the Godot host via the
 KiriKiri integration. Movie playback needs its own native-host validation
 before the new host is enabled for normal ONS playback.
+
+## ONScripter in the macOS Godot app
+
+The arm64 macOS Godot build opens ONS sessions through `RuntimeSession` by
+default when ONS is built. Godot continues to drive the session through
+`engine_*`, present frames, and provide its platform services. Both session
+paths use the same ONS provider and game save locations.
+
+In **Settings → Compatibility**, **Use Legacy ONS Host** switches ONS games to
+the original session path on the next launch. For local regression runs, set
+`AETHERKIRI_ONS_LEGACY_HOST=1` to force the legacy path or `0` to force the
+native path. Renderer diagnostics report `session_host=native` or
+`session_host=legacy`. Regression probes expose the same value as
+`host.engine_host`.

@@ -401,6 +401,8 @@ const UI_TEXT := {
         "settings.target_fps": "目标帧率",
         "settings.target_fps_desc": "限制 C++ 引擎 tick/render 频率；可选 60–144 FPS",
         "settings.plugin_load_mode": "插件加载模式",
+        "settings.ons_legacy_host": "使用旧版 ONS 宿主",
+        "settings.ons_legacy_host_desc": "下次启动 ONS 游戏时生效。关闭此项将使用新的原生宿主。",
         "settings.plugin_load_mode_desc": "核心模式只加载常用兼容插件；完整模式保留旧版全量注册",
         "settings.plugin_trace": "插件调用追踪",
         "settings.plugin_trace_desc": "将所有插件原生调用记录到 plugin_trace.log 用于调试",
@@ -840,6 +842,8 @@ const UI_TEXT := {
         "settings.target_fps": "目標幀率",
         "settings.target_fps_desc": "限制 C++ 引擎 tick/render 頻率；可選 60–144 FPS",
         "settings.plugin_load_mode": "外掛載入模式",
+        "settings.ons_legacy_host": "使用舊版 ONS 宿主",
+        "settings.ons_legacy_host_desc": "下次啟動 ONS 遊戲時生效。關閉此項將使用新的原生宿主。",
         "settings.plugin_load_mode_desc": "核心模式只載入常用相容外掛；完整模式保留舊版全量註冊",
         "settings.plugin_trace": "外掛呼叫追蹤",
         "settings.plugin_trace_desc": "將所有外掛原生呼叫記錄到 plugin_trace.log 以便除錯",
@@ -1277,6 +1281,8 @@ You can find it any time under Settings → QQ Group.",
         "settings.target_fps": "Target FPS",
         "settings.target_fps_desc": "Limit the C++ engine tick/render rate; choose 60–144 FPS",
         "settings.plugin_load_mode": "Plugin Load Mode",
+        "settings.ons_legacy_host": "Use Legacy ONS Host",
+        "settings.ons_legacy_host_desc": "Applies the next time you open an ONS game. Turn this off to use the new native host.",
         "settings.plugin_load_mode_desc": "Core mode loads common compatibility plugins only; Full mode keeps the legacy registration path",
         "settings.plugin_trace": "Plugin Call Trace",
         "settings.plugin_trace_desc": "Write all native plugin calls to plugin_trace.log for debugging",
@@ -1683,6 +1689,8 @@ You can find it any time under Settings → QQ Group.",
         "settings.target_fps": "目標 FPS",
         "settings.target_fps_desc": "C++ エンジンの tick/render 頻度を 60～144 FPS から選択します",
         "settings.plugin_load_mode": "プラグイン読み込みモード",
+        "settings.ons_legacy_host": "従来の ONS ホストを使用",
+        "settings.ons_legacy_host_desc": "次回 ONS ゲームを起動するときに適用されます。オフにすると新しいネイティブホストを使用します。",
         "settings.plugin_load_mode_desc": "コアモードは一般的な互換プラグインのみ、完全モードは従来の全登録経路を使用します",
         "settings.plugin_trace": "プラグイン呼び出し追跡",
         "settings.plugin_trace_desc": "すべてのネイティブプラグイン呼び出しを plugin_trace.log に記録します",
@@ -2087,6 +2095,8 @@ You can find it any time under Settings → QQ Group.",
         "settings.target_fps": "목표 FPS",
         "settings.target_fps_desc": "C++ 엔진 tick/render 빈도를 60–144 FPS에서 선택합니다",
         "settings.plugin_load_mode": "플러그인 로드 모드",
+        "settings.ons_legacy_host": "기존 ONS 호스트 사용",
+        "settings.ons_legacy_host_desc": "다음에 ONS 게임을 실행할 때 적용됩니다. 끄면 새 네이티브 호스트를 사용합니다.",
         "settings.plugin_load_mode_desc": "핵심 모드는 일반 호환 플러그인만 로드하고 전체 모드는 기존 전체 등록 방식을 유지합니다",
         "settings.plugin_trace": "플러그인 호출 추적",
         "settings.plugin_trace_desc": "모든 네이티브 플러그인 호출을 plugin_trace.log에 기록합니다",
@@ -2522,6 +2532,8 @@ You can find it any time under Settings → QQ Group.",
         "settings.target_fps": "FPS objetivo",
         "settings.target_fps_desc": "Limita la frecuencia de tick y renderizado del motor C++; elige entre 60 y 144 FPS",
         "settings.plugin_load_mode": "Modo de carga de plugins",
+        "settings.ons_legacy_host": "Usar el host anterior de ONS",
+        "settings.ons_legacy_host_desc": "Se aplica al abrir el próximo juego de ONS. Desactívalo para usar el nuevo host nativo.",
         "settings.plugin_load_mode_desc": "El modo básico solo carga los plugins de compatibilidad habituales; el modo completo mantiene la ruta de registro heredada",
         "settings.plugin_trace": "Traza de llamadas a plugins",
         "settings.plugin_trace_desc": "Escribe todas las llamadas a plugins nativos en plugin_trace.log para depurar",
@@ -2821,6 +2833,7 @@ const SETTINGS_DRAFT_KEYS := [
     "target_fps",
     "force_landscape",
     "plugin_load_mode",
+    "ons_legacy_host",
     "mock_enabled",
     "error_dialog_logs",
     "text_translation_model_path",
@@ -2976,6 +2989,7 @@ var frame_limit_enabled := false
 var target_fps := 80
 var plugin_trace := false
 var plugin_load_mode := "krkrsdl3"
+var ons_legacy_host := false
 var mock_enabled := true
 var console_log_file := false
 var trace_log := false
@@ -4840,6 +4854,7 @@ func _load_shell_settings() -> void:
     if not plugin_load_mode in ["krkrsdl3", "aether_all"]:
         plugin_load_mode = "krkrsdl3"
     mock_enabled = bool(cfg.get_value("developer", "mock_enabled", mock_enabled))
+    ons_legacy_host = bool(cfg.get_value("compatibility", "ons_legacy_host", false))
     error_dialog_logs = bool(cfg.get_value("developer", "error_dialog_logs", error_dialog_logs))
     legal_accepted_version = String(cfg.get_value("legal", "accepted_version", ""))
     legal_accepted_at = int(cfg.get_value("legal", "accepted_at", 0))
@@ -4926,6 +4941,7 @@ func _save_shell_settings() -> void:
         game_virtual_keyboard_opacity
     )
     cfg.set_value("developer", "plugin_load_mode", plugin_load_mode)
+    cfg.set_value("compatibility", "ons_legacy_host", ons_legacy_host)
     cfg.set_value("developer", "mock_enabled", mock_enabled)
     cfg.set_value("developer", "error_dialog_logs", error_dialog_logs)
     cfg.set_value("legal", "accepted_version", legal_accepted_version)
@@ -4978,6 +4994,7 @@ func _current_settings_snapshot() -> Dictionary:
         "target_fps": target_fps,
         "force_landscape": lock_landscape,
         "plugin_load_mode": plugin_load_mode,
+        "ons_legacy_host": ons_legacy_host,
         "mock_enabled": mock_enabled,
         "error_dialog_logs": error_dialog_logs,
         "text_translation_model_path": text_translation_model_path,
@@ -5173,6 +5190,7 @@ func _apply_settings_snapshot(snapshot: Dictionary) -> void:
     if not plugin_load_mode in ["krkrsdl3", "aether_all"]:
         plugin_load_mode = "krkrsdl3"
     mock_enabled = bool(snapshot.get("mock_enabled", mock_enabled))
+    ons_legacy_host = bool(snapshot.get("ons_legacy_host", ons_legacy_host))
     error_dialog_logs = bool(snapshot.get("error_dialog_logs", error_dialog_logs))
     text_translation_model_path = String(snapshot.get(
         "text_translation_model_path", text_translation_model_path
@@ -6585,6 +6603,11 @@ func _rebuild_settings_view() -> void:
 
     var compatibility_rows := _settings_section(flow, _t("settings.section.compatibility"), animate_page, 0.12, ICON_PLUGIN)
     _add_settings_row(compatibility_rows, _settings_row(_t("settings.plugin_load_mode"), _t("settings.plugin_load_mode_desc"), _plugin_load_mode_select(), stack_settings_controls))
+    if player != null and player.has_method("has_ons_native_host") and player.has_ons_native_host():
+        _add_settings_row(compatibility_rows, _settings_toggle_row(
+            _t("settings.ons_legacy_host"), _t("settings.ons_legacy_host_desc"),
+            _settings_draft_bool("ons_legacy_host", ons_legacy_host), "ons_legacy_host"
+        ))
     if player != null and player.has_method("is_text_translation_available") and player.is_text_translation_available():
         _add_settings_row(compatibility_rows, _settings_action_row(
             _t("settings.translation_model"),
@@ -8869,6 +8892,8 @@ func _on_setting_toggle(key: String, value: bool) -> void:
         _set_settings_draft_value("force_landscape", value)
     elif key == "mock":
         _set_settings_draft_value("mock_enabled", value)
+    elif key == "ons_legacy_host":
+        _set_settings_draft_value("ons_legacy_host", value)
     elif key == "error_dialog_logs":
         _set_settings_draft_value("error_dialog_logs", value)
     elif key == "include_prerelease":
@@ -14773,6 +14798,11 @@ func _ensure_player_initialized(launch_root: String = "") -> bool:
     var user_dir := OS.get_user_data_dir()
     var cache_dir := user_dir.path_join("cache")
     var wa2_flags := ""
+    var has_ons_native_host: bool = current_player_runtime_kind == RUNTIME_ONSCRIPTER \
+        and player.has_method("has_ons_native_host") and player.has_ons_native_host()
+    var use_ons_native_host := has_ons_native_host and not _runtime_flag(
+        "AETHERKIRI_ONS_LEGACY_HOST", ons_legacy_host
+    )
     var local_provider_saves := not launch_root.is_empty() and cli_probe_script.is_empty() \
         and current_player_runtime_kind in [RUNTIME_RFVP, RUNTIME_SOFTPAL]
     if cli_probe_script == "res://scripts/runtime_regression_probe.gd":
@@ -14830,12 +14860,15 @@ func _ensure_player_initialized(launch_root: String = "") -> bool:
         if String(player.get_meta("aether_user_directory", "")) == user_dir \
             and String(player.get_meta("aether_cache_directory", "")) == cache_dir \
             and String(player.get_meta("aether_wa2_flags_directory", "")) == wa2_flags \
-            and bool(player.get_meta("aether_local_provider_saves", false)) == local_provider_saves:
+            and bool(player.get_meta("aether_local_provider_saves", false)) == local_provider_saves \
+            and bool(player.get_meta("aether_ons_native_host", false)) == use_ons_native_host:
             return true
         _stop_wa2_audio()
         player.destroy_engine()
     DirAccess.make_dir_recursive_absolute(cache_dir)
-    if not player.initialize_engine(user_dir, cache_dir):
+    var initialized: bool = player.initialize_engine(user_dir, cache_dir, true) \
+        if use_ons_native_host else player.initialize_engine(user_dir, cache_dir)
+    if not initialized:
         render_errors += 1
         var init_error_message := "Engine init failed: %s %s" % [
             player.get_last_result(),
@@ -14847,6 +14880,7 @@ func _ensure_player_initialized(launch_root: String = "") -> bool:
     player.set_meta("aether_cache_directory", cache_dir)
     player.set_meta("aether_wa2_flags_directory", wa2_flags)
     player.set_meta("aether_local_provider_saves", local_provider_saves)
+    player.set_meta("aether_ons_native_host", use_ons_native_host)
 
     var runtime_id := "auto"
     if current_player_runtime_kind in [
@@ -14888,6 +14922,11 @@ func _ensure_player_initialized(launch_root: String = "") -> bool:
         _append_log("Cannot configure game-local saves: " + String(player.get_last_error()))
         player.destroy_engine()
         return false
+    if has_ons_native_host:
+        var message := "ONS host requested=%s actual=%s" % [
+            "native" if use_ons_native_host else "legacy", player.get_engine_host(),
+        ]
+        _append_log(message)
     if not wa2_flags.is_empty() and int(player.set_engine_option("wa2.system_flags_dir", wa2_flags)) != ENGINE_RESULT_OK:
         _append_log("Cannot configure game-local WA2 system flags: " + String(player.get_last_error()))
         player.destroy_engine()

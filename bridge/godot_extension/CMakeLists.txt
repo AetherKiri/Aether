@@ -349,6 +349,12 @@ if(TARGET aether_onscripter_runtime)
         aether_onscripter_runtime)
     target_compile_definitions(aether_kiri_godot PRIVATE
         AETHERKIRI_WITH_ONSCRIPTER=1)
+    if(TARGET aether_native_host AND NOT BUILD_NATIVE_HOST_SHARED AND
+       CMAKE_SYSTEM_NAME STREQUAL "Darwin")
+        target_link_libraries(aether_kiri_godot PRIVATE aether_native_host)
+        target_compile_definitions(aether_kiri_godot PRIVATE
+            AETHERKIRI_WITH_ONS_NATIVE_HOST=1)
+    endif()
 endif()
 if(TARGET aether_system3_runtime)
     target_link_libraries(aether_kiri_godot PRIVATE aether_system3_runtime)

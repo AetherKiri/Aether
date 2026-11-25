@@ -341,7 +341,7 @@ const UI_TEXT := {
         "language.ko": "한국어",
         "language.es": "Español",
         "settings.render_backend": "渲染管线",
-        "settings.render_backend_desc": "保存后生效；运行中切换需重启当前游戏",
+        "settings.render_backend_desc": "宿主选项均使用 Godot 渲染。自动宿主仅在预发布版为受支持的游戏启用原生预览。下次启动游戏时生效。",
         "settings.surface_mode": "画布尺寸",
         "settings.surface_mode_desc": "Game Native 按游戏基准画布运行；Display Fit 按设备显示尺寸运行",
         "settings.upscale": "缩放算法",
@@ -780,7 +780,7 @@ const UI_TEXT := {
         "language.ko": "한국어",
         "language.es": "Español",
         "settings.render_backend": "渲染管線",
-        "settings.render_backend_desc": "儲存後生效；執行中切換需重新啟動目前遊戲",
+        "settings.render_backend_desc": "宿主選項均使用 Godot 繪圖。自動宿主只在預發行版本為支援的遊戲啟用原生預覽。下次啟動遊戲時生效。",
         "settings.surface_mode": "畫布尺寸",
         "settings.surface_mode_desc": "Game Native 依遊戲基準畫布執行；Display Fit 依裝置顯示尺寸執行",
         "settings.upscale": "縮放演算法",
@@ -1217,7 +1217,7 @@ You can find it any time under Settings → QQ Group.",
         "language.ko": "한국어",
         "language.es": "Español",
         "settings.render_backend": "Render Pipeline",
-        "settings.render_backend_desc": "Applies after saving; switching during play requires restarting the current game",
+        "settings.render_backend_desc": "Host choices use the Godot renderer. Automatic Host uses the native preview for supported games in prerelease builds. Applies on the next game launch.",
         "settings.surface_mode": "Canvas Size",
         "settings.surface_mode_desc": "Game Native uses the game's base canvas; Display Fit uses the device display size",
         "settings.upscale": "Scaling",
@@ -1623,7 +1623,7 @@ You can find it any time under Settings → QQ Group.",
         "language.ko": "한국어",
         "language.es": "Español",
         "settings.render_backend": "レンダリングパイプライン",
-        "settings.render_backend_desc": "保存後に反映されます。実行中の切り替えは現在のゲームの再起動が必要です",
+        "settings.render_backend_desc": "ホストの選択にかかわらず Godot レンダラーを使います。自動ホストはプレリリース版の対応ゲームでネイティブプレビューを使います。次回起動時に反映されます。",
         "settings.surface_mode": "キャンバスサイズ",
         "settings.surface_mode_desc": "Game Native はゲーム基準のキャンバス、Display Fit はデバイス表示サイズで実行します",
         "settings.upscale": "スケーリング",
@@ -2027,7 +2027,7 @@ You can find it any time under Settings → QQ Group.",
         "language.ko": "한국어",
         "language.es": "Español",
         "settings.render_backend": "렌더링 파이프라인",
-        "settings.render_backend_desc": "저장 후 적용됩니다. 실행 중 변경하려면 현재 게임을 다시 시작해야 합니다",
+        "settings.render_backend_desc": "호스트 옵션은 Godot 렌더러를 사용합니다. 자동 호스트는 시험판에서 지원되는 게임에 네이티브 미리보기를 사용합니다. 다음 게임 실행 시 적용됩니다.",
         "settings.surface_mode": "캔버스 크기",
         "settings.surface_mode_desc": "Game Native는 게임 기준 캔버스를 사용하고 Display Fit은 장치 표시 크기를 사용합니다",
         "settings.upscale": "스케일링",
@@ -2462,7 +2462,7 @@ You can find it any time under Settings → QQ Group.",
         "language.ko": "한국어",
         "language.es": "Español",
         "settings.render_backend": "Método de renderizado",
-        "settings.render_backend_desc": "Se aplica al guardar; si lo cambias durante una partida, tendrás que reiniciar el juego actual",
+        "settings.render_backend_desc": "Las opciones de host usan el renderizador de Godot. El host automático usa la vista previa nativa en juegos compatibles con versiones preliminares. Se aplica al volver a iniciar el juego.",
         "settings.surface_mode": "Tamaño del lienzo",
         "settings.surface_mode_desc": "Game Native usa el lienzo base del juego; Display Fit usa el tamaño de la pantalla del dispositivo",
         "settings.upscale": "Escalado",
@@ -3089,7 +3089,7 @@ var current_player_runtime_kind := RUNTIME_KIRIKIRI
 var builtin_demo = BuiltinDemo.new()
 var runtime_default_font_path := ""
 var runtime_font_dir_path := ""
-var selected_backend := "Godot Native"
+var selected_backend := PlaybackBackend.AUTOMATIC
 var upscale_algorithm := "bicubic"
 var frame_upscale_active := false
 var frame_upscale_source_texture: Texture2D
@@ -4873,6 +4873,8 @@ func _normalize_backend_name(value: String) -> String:
     if key == "gpubridge":
         return "GPU Bridge"
     if key in ["native", "godotnative"]:
+        return PlaybackBackend.AUTOMATIC
+    if key == "nativesession":
         return PlaybackBackend.NATIVE
     if key == "godot":
         return PlaybackBackend.GODOT
@@ -4945,7 +4947,7 @@ func _save_shell_settings() -> void:
     _apply_frame_enhancement_settings()
     _apply_shell_runtime_settings()
     if diagnostic_session != null:
-        diagnostic_session.apply_preference(diagnostic_profile, player, selected_backend)
+        diagnostic_session.apply_preference(diagnostic_profile, player, PlaybackBackend.renderer(selected_backend))
         diagnostic_session.set_game_active(game_running)
     _sync_debug_console_state()
     dirty_settings = false
@@ -5134,7 +5136,7 @@ func _apply_settings_snapshot(snapshot: Dictionary) -> void:
 
     selected_backend = _normalize_backend_name(String(snapshot.get("backend", selected_backend)))
     if not selected_backend in BACKENDS:
-        selected_backend = "Godot Native"
+        selected_backend = PlaybackBackend.AUTOMATIC
 
     upscale_algorithm = String(snapshot.get("upscale_algorithm", upscale_algorithm))
     if not upscale_algorithm in ["smooth", "nearest", "linear", "bicubic", "lanczos", "metalfx_spatial"]:
@@ -5207,8 +5209,8 @@ func _save_settings_draft() -> void:
             backend.select(backend_index)
         if player != null and player.is_initialized():
             if game_running:
-                restart_notice.text = "Restart current game session to apply renderer."
-                _append_log("Renderer change queued: %s" % selected_backend)
+                restart_notice.text = "Restart the game to apply playback settings."
+                _append_log("Playback settings change queued: %s" % PlaybackBackend.label(selected_backend))
             else:
                 _apply_backend(true)
 
@@ -8849,7 +8851,7 @@ func _debug_overlay_select() -> Control:
 
 func _backend_segment() -> Control:
     var draft_backend := _normalize_backend_name(_settings_draft_string("backend", selected_backend))
-    var choices := [PlaybackBackend.NATIVE, PlaybackBackend.GODOT, "Debug CPU"]
+    var choices := [PlaybackBackend.AUTOMATIC, PlaybackBackend.NATIVE, PlaybackBackend.GODOT, "Debug CPU"]
     var labels := PackedStringArray()
     for choice: String in choices:
         labels.append(PlaybackBackend.label(choice))
@@ -13614,7 +13616,7 @@ func _ready() -> void:
 
     selected_backend = _normalize_backend_name(_runtime_string(
         "AETHERKIRI_BACKEND",
-        ProjectSettings.get_setting(SETTINGS_KEY, "Godot Native")
+        ProjectSettings.get_setting(SETTINGS_KEY, PlaybackBackend.AUTOMATIC)
     ))
     _load_shell_settings()
     _apply_host_frame_rate_limit()
@@ -13624,7 +13626,7 @@ func _ready() -> void:
     if not env_backend.is_empty():
         selected_backend = _normalize_backend_name(env_backend)
     if not selected_backend in BACKENDS:
-        selected_backend = "Godot Native"
+        selected_backend = PlaybackBackend.AUTOMATIC
 
     if ui_motion.get_parent() == null:
         add_child(ui_motion)
@@ -13656,7 +13658,7 @@ func _ready() -> void:
     _setup_debug_console()
 
     for item in BACKENDS:
-        backend.add_item(item)
+        backend.add_item(PlaybackBackend.label(item))
 
     var index := BACKENDS.find(selected_backend)
     backend.select(max(index, 0))
@@ -13762,7 +13764,7 @@ func _format_monitor_bytes(value: int) -> String:
 func _diagnostic_marker_context() -> Dictionary:
     var memory := _runtime_memory_snapshot()
     var plugins := {}
-    var renderer := selected_backend
+    var renderer := PlaybackBackend.renderer(selected_backend)
     if player != null and player.is_initialized():
         var renderer_info := String(player.get_renderer_info())
         if not renderer_info.is_empty():
@@ -13802,7 +13804,7 @@ func _debug_console_snapshot() -> Dictionary:
     var session: Dictionary = diagnostic_session.status_snapshot() if diagnostic_session != null else {}
     var memory: Dictionary = _runtime_memory_snapshot()
     var plugins: Dictionary = {}
-    var renderer: String = selected_backend
+    var renderer: String = PlaybackBackend.renderer(selected_backend)
     var texture_backend: String = "-"
     if player != null and player.is_initialized():
         var renderer_info := String(player.get_renderer_info())
@@ -13903,7 +13905,7 @@ func _on_debug_copy_summary_requested() -> void:
     if diagnostic_session == null or not diagnostic_session.active:
         debug_console.show_result(_t("debug.result.unavailable"), true)
         return
-    DisplayServer.clipboard_set(diagnostic_session.summary_text({"renderer": selected_backend, "errors": render_errors}))
+    DisplayServer.clipboard_set(diagnostic_session.summary_text({"renderer": PlaybackBackend.renderer(selected_backend), "errors": render_errors}))
     debug_console.show_result(_t("debug.result.copied"))
 
 func _on_debug_slow_frame_requested() -> void:
@@ -13989,7 +13991,7 @@ func _switch_runtime_player(runtime_kind: String) -> bool:
         and current_player_runtime_kind == normalized
         and player.is_initialized()
         and bool(player.get_meta("aether_ons_native_host", false))
-            == PlaybackBackend.uses_native_host(selected_backend, normalized, player)
+            == _uses_native_session(normalized)
     ):
         return true
     if game_running:
@@ -14015,7 +14017,7 @@ func _switch_runtime_player(runtime_kind: String) -> bool:
     if diagnostic_session != null:
         if diagnostic_session.active:
             diagnostic_session.finish()
-        diagnostic_session.start(player, selected_backend)
+        diagnostic_session.start(player, PlaybackBackend.renderer(selected_backend))
     _append_log("Runtime selected: %s" % (
         "AliceSoft System 1/2/3"
         if normalized == RUNTIME_SYSTEM3
@@ -14771,15 +14773,18 @@ func _complete_runtime_dialog(result: int, input: LineEdit) -> void:
             ]
         )
 
+func _uses_native_session(runtime_kind: String) -> bool:
+    return PlaybackBackend.uses_native_host(
+        selected_backend, runtime_kind, player, AppUpdater.is_prerelease(_application_version_text())
+    )
+
 func _ensure_player_initialized(launch_root: String = "") -> bool:
     if player == null:
         return false
     var user_dir := OS.get_user_data_dir()
     var cache_dir := user_dir.path_join("cache")
     var wa2_flags := ""
-    var use_ons_native_host := PlaybackBackend.uses_native_host(
-        selected_backend, current_player_runtime_kind, player
-    )
+    var use_ons_native_host := _uses_native_session(current_player_runtime_kind)
     var local_provider_saves := not launch_root.is_empty() and cli_probe_script.is_empty() \
         and current_player_runtime_kind in [RUNTIME_RFVP, RUNTIME_SOFTPAL]
     if cli_probe_script == "res://scripts/runtime_regression_probe.gd":
@@ -14947,7 +14952,7 @@ func _finish_ready_after_first_frame() -> void:
         _apply_backend(false)
         _apply_engine_options()
         _apply_frame_enhancement_settings()
-        diagnostic_session.start(player, selected_backend)
+        diagnostic_session.start(player, PlaybackBackend.renderer(selected_backend))
         _sync_debug_console_state()
     if not cli_probe_script.is_empty():
         if not engine_initialized:
@@ -15612,7 +15617,7 @@ func _prepare_cli_probe_view(config: Dictionary) -> void:
 func _probe_open_game(config: Dictionary, target_game_path: String, backend_env: String) -> bool:
     selected_backend = _normalize_backend_name(ProbeConfig.backend(config, backend_env))
     if not selected_backend in BACKENDS:
-        selected_backend = PlaybackBackend.NATIVE
+        selected_backend = PlaybackBackend.AUTOMATIC
     var runtime_kind := _game_runtime_kind(target_game_path)
     if not _switch_runtime_player(runtime_kind):
         _write_probe_marker("probe_open_game runtime_switch_failed kind=%s" % runtime_kind)
@@ -17050,7 +17055,7 @@ func _process(delta: float) -> void:
         if (perf_panel == null or not perf_panel.visible) and not verbose_render_log:
             return
         var frame_ms := delta * 1000.0
-        var renderer: String = selected_backend
+        var renderer: String = PlaybackBackend.renderer(selected_backend)
         if game_running and startup_state == STARTUP_SUCCEEDED:
             renderer = String(player.get_renderer_info())
         var renderer_summary := _renderer_summary(renderer)
@@ -17695,8 +17700,8 @@ func _on_backend_selected(index: int) -> void:
     selected_backend = BACKENDS[index]
     ProjectSettings.set_setting(SETTINGS_KEY, selected_backend)
     if game_running:
-        restart_notice.text = "Restart current game session to apply renderer."
-        _append_log("Renderer change queued: %s" % selected_backend)
+        restart_notice.text = "Restart the game to apply playback settings."
+        _append_log("Playback settings change queued: %s" % PlaybackBackend.label(selected_backend))
         return
     _apply_backend(true)
 
@@ -17715,7 +17720,7 @@ func _apply_backend(log_selection: bool) -> void:
         return
     restart_notice.text = ""
     if log_selection:
-        _append_log("Renderer selected: %s" % selected_backend)
+        _append_log("Renderer selected: %s" % session_backend)
     if selected_backend == "GPU Bridge":
         _append_log("GPU Bridge imports the native GPU render target for display.")
     if selected_backend == "Debug CPU":
@@ -17755,8 +17760,8 @@ func _renderer_value(renderer: String, key: String) -> String:
 
 func _renderer_summary(renderer: String) -> String:
     if renderer.is_empty():
-        return selected_backend
-    var summary := selected_backend
+        return PlaybackBackend.renderer(selected_backend)
+    var summary := PlaybackBackend.renderer(selected_backend)
     if renderer.contains("backend=onscripter_yuri"):
         summary = "OnscripterYuri (Godot Texture)"
     elif renderer.contains("backend=system3"):
@@ -17830,7 +17835,7 @@ func _on_open_game() -> void:
     if diagnostic_session != null:
         # A natural in-game exit destroys the reusable native engine handle.
         # Start diagnostics again when the next title recreates that handle.
-        diagnostic_session.start(player, selected_backend)
+        diagnostic_session.start(player, PlaybackBackend.renderer(selected_backend))
     _sync_player_surface_size(true)
     cached_startup_state = STARTUP_RUNNING
     startup_poll_accum = STARTUP_POLL_INTERVAL
@@ -17875,7 +17880,8 @@ func _on_open_game() -> void:
         diagnostic_session.set_game_active(true)
         diagnostic_session.record("godot", "lifecycle", "info", "game_open_requested", 0, {
             "path": path,
-            "backend": selected_backend,
+            "backend": PlaybackBackend.renderer(selected_backend),
+            "session_host": player.get_engine_host() if player.has_method("get_engine_host") else "",
             "async": async_open,
         })
     _sync_debug_console_state()
@@ -17898,12 +17904,11 @@ func _on_open_game() -> void:
     startup_click_stream_done = false
     last_renderer_info_logged = ""
     restart_notice.text = "Starting..."
-    _append_log("Game launch requested with backend: %s" % PlaybackBackend.label(selected_backend))
     if player.has_method("get_engine_host"):
-        _append_log("Session host requested=%s actual=%s" % [
-            "native" if selected_backend == PlaybackBackend.NATIVE else "legacy",
-            player.get_engine_host(),
+        _append_log("Session host selection=%s actual=%s" % [
+            PlaybackBackend.label(selected_backend), player.get_engine_host(),
         ])
+    _append_log("Game launch renderer: %s" % _renderer_summary(String(player.get_renderer_info())))
     _append_log("Surface mode: %s target=%dx%d texture=%dx%d" % [
         render_surface_mode,
         current_surface_size.x,

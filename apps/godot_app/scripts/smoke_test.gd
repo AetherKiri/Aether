@@ -2,6 +2,7 @@ extends SceneTree
 
 const ProbeConfig = preload("res://scripts/probe_config.gd")
 const PlaybackBackend = preload("res://scripts/playback_backend.gd")
+const AppUpdater = preload("res://scripts/app_updater.gd")
 const ONSCRIPTER_SCRIPT_MARKERS := [
     "0.txt",
     "00.txt",
@@ -100,7 +101,12 @@ func _initialize() -> void:
     var backend := ProbeConfig.backend(config)
     var check_ons_host := is_onscripter and OS.has_environment("AETHERKIRI_RENDER_BACKEND") \
         and backend in [PlaybackBackend.NATIVE, PlaybackBackend.GODOT]
-    var use_native_host := PlaybackBackend.uses_native_host(backend, "onscripter" if is_onscripter else "", player)
+    var version := OS.get_environment("AETHERKIRI_SIMULATE_VERSION").strip_edges()
+    if version.is_empty():
+        version = String(ProjectSettings.get_setting("application/config/version", ""))
+    var use_native_host := PlaybackBackend.uses_native_host(
+        backend, "onscripter" if is_onscripter else "", player, AppUpdater.is_prerelease(version)
+    )
     if check_ons_host and backend == PlaybackBackend.NATIVE and not use_native_host:
         printerr("ONS native host is unavailable")
         quit(1)

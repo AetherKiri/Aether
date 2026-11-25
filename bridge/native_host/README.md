@@ -1,13 +1,15 @@
 # Native runtime host
 
 `aether_native_host` is a C++ library for frontend adapters. It owns one native
-host session at a time and registers ONScripterYuri when that provider is built.
+engine session handle at a time and registers ONScripterYuri when that provider
+is built.
 
 Create a `RuntimeSession` with an `engine_create_desc_t`, configure and open the
 game through the existing engine API, then call `Close()` to release the handle
 before starting another session. The handle returned by `handle()` is borrowed.
-The caller serializes session operations on its host thread. Frame presentation
-is implemented by the frontend adapter.
+The caller serializes session operations on its host thread. This stage moves
+session creation and teardown. The Godot adapter still drives ticks, input,
+frame reads, audio, and platform services.
 
 ## macOS arm64 contract test
 
@@ -27,27 +29,32 @@ ctest --test-dir out/native-host -R '^Native host plays and reopens' \
 ```
 
 This test exercises asynchronous startup, RGBA frame delivery, pause and resume,
-keyboard input, and reopening within the same process. ONS script movies still
-require the media services currently installed by the Godot host via the
-KiriKiri integration. Movie playback needs its own native-host validation
-before the new host is enabled for normal ONS playback.
+keyboard input, and reopening within the same process. ONS script movies use
+media services installed by the Godot adapter via the KiriKiri integration.
+Script movie playback on the preview path still needs validation.
 
 ## ONScripter in Godot
 
-Godot builds for macOS, iOS/iPadOS, Android, and Linux open ONS sessions
-through `RuntimeSession` when ONS native host support is built. The existing
-**Settings → Graphics & Rendering → Render Pipeline** selector defaults to
-**Native**. Runtimes without a native host implementation use their existing
-Godot host under this selection. Choose **Godot** to use the existing host
-for all runtimes. The selection applies to the next launch.
+The existing **Settings → Graphics & Rendering → Render Pipeline** selector
+temporarily also selects the session host. The choices below all use the Godot
+Native renderer and the same ONS provider and save locations. Changes apply
+on the next game launch.
 
-Both choices continue to present frames with the Godot Native renderer and
-use the same ONS provider and save locations. Local probes select **Native**
-with the existing backend value `Godot Native` and **Godot** with the value
-`Godot`. Renderer diagnostics report `session_host=native` or
-`session_host=legacy`. Regression probes expose the same value as
-`host.engine_host`.
+| Selection | Session host |
+| --- | --- |
+| **Automatic Host** | Prerelease builds use the native session preview for ONS when the implementation is available. Stable builds and games without a supported native host use the existing Godot session. |
+| **Native Host (Preview)** | Explicitly opts into the ONS preview. Falls back to the existing Godot session if native support is unavailable. |
+| **Godot Host** | Always uses the existing Godot session. |
 
-CI runs the same ONS Godot smoke fixture with both host selections on macOS
-and Linux x86_64/arm64. The iOS and Android jobs verify that their Release
-builds include the native host. Device playback is covered in platform testing.
+Existing `Godot Native` settings select **Automatic Host**. Local probes can
+force **Native Host (Preview)** with `Native Session` and **Godot Host** with
+`Godot`. Launch logs report the session host separately from the renderer.
+Regression probes report the host as `host.engine_host`. A future dedicated
+**Execution Host** setting can leave Render Pipeline to renderer selection.
+
+| Platform | Playback verification in this change |
+| --- | --- |
+| macOS arm64 | Local Godot playback and reopening with both hosts. CI also runs the ONS smoke fixture with both selections. |
+| Linux x86_64 / arm64 | CI runs the headless ONS smoke fixture with both selections. |
+| iOS / iPadOS | CI checks the native session implementation and builds the IPA. Playback on a physical device is pending. |
+| Android | CI checks the native session implementation and packages the Godot extension in the APK. Playback on a physical device is pending. |

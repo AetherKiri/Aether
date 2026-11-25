@@ -17905,9 +17905,7 @@ func _on_open_game() -> void:
     last_renderer_info_logged = ""
     restart_notice.text = "Starting..."
     if player.has_method("get_engine_host"):
-        _append_log("Session host selection=%s actual=%s" % [
-            PlaybackBackend.label(selected_backend), player.get_engine_host(),
-        ])
+        _append_log("Session host: %s" % player.get_engine_host())
     _append_log("Game launch renderer: %s" % _renderer_summary(String(player.get_renderer_info())))
     _append_log("Surface mode: %s target=%dx%d texture=%dx%d" % [
         render_surface_mode,

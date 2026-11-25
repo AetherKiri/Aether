@@ -1,5 +1,6 @@
 #include "engine_api.h"
 #include "runtime_host_extension.h"
+#include "game_detection_adapter.h"
 #include "engine_options.h"
 #include "engine_runtime_provider.h"
 #if defined(AETHERKIRI_WITH_EXHIBIT)
@@ -13075,6 +13076,14 @@ void main() {
 #endif
     }
 
+    Dictionary inspect_game(const String &path, const String &probe_root) const {
+        return aether::godot_host::InspectGame(path, probe_root);
+    }
+
+    String inspect_special_game(const String &path, const String &runtime) const {
+        return aether::godot_host::InspectSpecialGame(path, runtime);
+    }
+
     int64_t probe_runtime(const String &runtime_id,
                           const String &game_root_path) const {
         const CharString runtime_utf8 = runtime_id.utf8();
@@ -13279,6 +13288,10 @@ protected:
         ClassDB::bind_method(
             D_METHOD("native_launch_file_picker_take_result_json"),
             &AetherRuntimePlayer::native_launch_file_picker_take_result_json);
+        ClassDB::bind_method(D_METHOD("inspect_game", "path", "probe_root"),
+                             &AetherRuntimePlayer::inspect_game, DEFVAL(String()));
+        ClassDB::bind_method(D_METHOD("inspect_special_game", "path", "runtime"),
+                             &AetherRuntimePlayer::inspect_special_game);
         ClassDB::bind_method(D_METHOD("probe_runtime", "runtime_id", "game_root_path"),
                              &AetherRuntimePlayer::probe_runtime);
         ADD_SIGNAL(MethodInfo(

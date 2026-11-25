@@ -402,6 +402,11 @@ const UI_TEXT := {
         "settings.target_fps": "目标帧率",
         "settings.target_fps_desc": "限制 C++ 引擎 tick/render 频率；可选 60–144 FPS",
         "settings.plugin_load_mode": "插件加载模式",
+        "settings.game_detection": "游戏识别方式",
+        "settings.game_detection_desc": "自动模式在预发布版使用原生识别，在正式版使用旧版 Godot。下次识别时生效。",
+        "settings.game_detection_auto": "自动",
+        "settings.game_detection_native": "原生",
+        "settings.game_detection_legacy": "旧版 Godot",
         "settings.plugin_load_mode_desc": "核心模式只加载常用兼容插件；完整模式保留旧版全量注册",
         "settings.plugin_trace": "插件调用追踪",
         "settings.plugin_trace_desc": "将所有插件原生调用记录到 plugin_trace.log 用于调试",
@@ -841,6 +846,11 @@ const UI_TEXT := {
         "settings.target_fps": "目標幀率",
         "settings.target_fps_desc": "限制 C++ 引擎 tick/render 頻率；可選 60–144 FPS",
         "settings.plugin_load_mode": "外掛載入模式",
+        "settings.game_detection": "遊戲識別方式",
+        "settings.game_detection_desc": "自動模式在預發行版使用原生識別，在正式版使用舊版 Godot。下次識別時生效。",
+        "settings.game_detection_auto": "自動",
+        "settings.game_detection_native": "原生",
+        "settings.game_detection_legacy": "舊版 Godot",
         "settings.plugin_load_mode_desc": "核心模式只載入常用相容外掛；完整模式保留舊版全量註冊",
         "settings.plugin_trace": "外掛呼叫追蹤",
         "settings.plugin_trace_desc": "將所有外掛原生呼叫記錄到 plugin_trace.log 以便除錯",
@@ -1278,6 +1288,11 @@ You can find it any time under Settings → QQ Group.",
         "settings.target_fps": "Target FPS",
         "settings.target_fps_desc": "Limit the C++ engine tick/render rate; choose 60–144 FPS",
         "settings.plugin_load_mode": "Plugin Load Mode",
+        "settings.game_detection": "Game Detection",
+        "settings.game_detection_desc": "Automatic uses native detection in prerelease builds and legacy Godot detection in stable builds. Applies on the next game detection.",
+        "settings.game_detection_auto": "Automatic",
+        "settings.game_detection_native": "Native",
+        "settings.game_detection_legacy": "Legacy Godot",
         "settings.plugin_load_mode_desc": "Core mode loads common compatibility plugins only; Full mode keeps the legacy registration path",
         "settings.plugin_trace": "Plugin Call Trace",
         "settings.plugin_trace_desc": "Write all native plugin calls to plugin_trace.log for debugging",
@@ -1684,6 +1699,11 @@ You can find it any time under Settings → QQ Group.",
         "settings.target_fps": "目標 FPS",
         "settings.target_fps_desc": "C++ エンジンの tick/render 頻度を 60～144 FPS から選択します",
         "settings.plugin_load_mode": "プラグイン読み込みモード",
+        "settings.game_detection": "ゲームの識別方法",
+        "settings.game_detection_desc": "自動モードではプレリリース版でネイティブ識別、正式版で従来の Godot 識別を使います。次回の識別時から適用されます。",
+        "settings.game_detection_auto": "自動",
+        "settings.game_detection_native": "ネイティブ",
+        "settings.game_detection_legacy": "従来の Godot",
         "settings.plugin_load_mode_desc": "コアモードは一般的な互換プラグインのみ、完全モードは従来の全登録経路を使用します",
         "settings.plugin_trace": "プラグイン呼び出し追跡",
         "settings.plugin_trace_desc": "すべてのネイティブプラグイン呼び出しを plugin_trace.log に記録します",
@@ -2088,6 +2108,11 @@ You can find it any time under Settings → QQ Group.",
         "settings.target_fps": "목표 FPS",
         "settings.target_fps_desc": "C++ 엔진 tick/render 빈도를 60–144 FPS에서 선택합니다",
         "settings.plugin_load_mode": "플러그인 로드 모드",
+        "settings.game_detection": "게임 인식 방식",
+        "settings.game_detection_desc": "자동 모드는 시험판에서 네이티브 감지를, 정식판에서 기존 Godot 감지를 사용합니다. 다음 게임 감지부터 적용됩니다.",
+        "settings.game_detection_auto": "자동",
+        "settings.game_detection_native": "네이티브",
+        "settings.game_detection_legacy": "기존 Godot",
         "settings.plugin_load_mode_desc": "핵심 모드는 일반 호환 플러그인만 로드하고 전체 모드는 기존 전체 등록 방식을 유지합니다",
         "settings.plugin_trace": "플러그인 호출 추적",
         "settings.plugin_trace_desc": "모든 네이티브 플러그인 호출을 plugin_trace.log에 기록합니다",
@@ -2523,6 +2548,11 @@ You can find it any time under Settings → QQ Group.",
         "settings.target_fps": "FPS objetivo",
         "settings.target_fps_desc": "Limita la frecuencia de tick y renderizado del motor C++; elige entre 60 y 144 FPS",
         "settings.plugin_load_mode": "Modo de carga de plugins",
+        "settings.game_detection": "Detección de juegos",
+        "settings.game_detection_desc": "El modo automático usa la detección nativa en versiones preliminares y la de Godot anterior en versiones estables. Se aplica en la próxima detección.",
+        "settings.game_detection_auto": "Automático",
+        "settings.game_detection_native": "Nativa",
+        "settings.game_detection_legacy": "Godot anterior",
         "settings.plugin_load_mode_desc": "El modo básico solo carga los plugins de compatibilidad habituales; el modo completo mantiene la ruta de registro heredada",
         "settings.plugin_trace": "Traza de llamadas a plugins",
         "settings.plugin_trace_desc": "Escribe todas las llamadas a plugins nativos en plugin_trace.log para depurar",
@@ -2767,6 +2797,7 @@ const RUNTIME_YURIS := "yuris"
 const RUNTIME_SYSTEMC := "systemc"
 const RUNTIME_EXHIBIT := "exhibit"
 const RUNTIME_PLAYER_CLASS := "AetherRuntimePlayer"
+const GAME_DETECTION_OVERRIDES := ["auto", "native", "legacy"]
 const ONSCRIPTER_SCRIPT_MARKERS := [
     "0.txt",
     "00.txt",
@@ -2822,6 +2853,7 @@ const SETTINGS_DRAFT_KEYS := [
     "target_fps",
     "force_landscape",
     "plugin_load_mode",
+    "game_detection_override",
     "mock_enabled",
     "error_dialog_logs",
     "text_translation_model_path",
@@ -2954,7 +2986,7 @@ var vndb_cover_queue: Array[Dictionary] = []
 var vndb_cover_busy := false
 var known_videos: Array[Dictionary] = []
 var video_library := VideoLibrary.new(VIDEO_LIST_FILE, VIDEO_HIDDEN_FILE)
-var flash_library := VideoLibrary.new(FLASH_LIST_FILE, FLASH_HIDDEN_FILE, ["swf"])
+var flash_library := VideoLibrary.new(FLASH_LIST_FILE, FLASH_HIDDEN_FILE, ["swf"], _is_flash_game_file)
 var flash_view
 var tyrano_view
 var renpy_view
@@ -2977,6 +3009,7 @@ var frame_limit_enabled := false
 var target_fps := 80
 var plugin_trace := false
 var plugin_load_mode := "krkrsdl3"
+var game_detection_override := "auto"
 var mock_enabled := true
 var console_log_file := false
 var trace_log := false
@@ -4704,6 +4737,7 @@ func _layout_shell(window_size: Vector2) -> void:
     shell_content.offset_bottom = -dock_height if compact else 0.0
 
 func _load_shell_settings() -> void:
+    game_detection_override = "auto"
     var cfg := ConfigFile.new()
     var env_style := _runtime_string("AETHERKIRI_STYLE_MODE", "")
     var env_translation_model_path := _runtime_string(
@@ -4841,6 +4875,10 @@ func _load_shell_settings() -> void:
     if not plugin_load_mode in ["krkrsdl3", "aether_all"]:
         plugin_load_mode = "krkrsdl3"
     mock_enabled = bool(cfg.get_value("developer", "mock_enabled", mock_enabled))
+    # The old draft saved resolved defaults alongside explicit choices.
+    var saved_detection_override := String(cfg.get_value("compatibility", "game_detection_override", "auto"))
+    if saved_detection_override in GAME_DETECTION_OVERRIDES:
+        game_detection_override = saved_detection_override
     error_dialog_logs = bool(cfg.get_value("developer", "error_dialog_logs", error_dialog_logs))
     legal_accepted_version = String(cfg.get_value("legal", "accepted_version", ""))
     legal_accepted_at = int(cfg.get_value("legal", "accepted_at", 0))
@@ -4931,6 +4969,8 @@ func _save_shell_settings() -> void:
         game_virtual_keyboard_opacity
     )
     cfg.set_value("developer", "plugin_load_mode", plugin_load_mode)
+    if game_detection_override != "auto":
+        cfg.set_value("compatibility", "game_detection_override", game_detection_override)
     cfg.set_value("developer", "mock_enabled", mock_enabled)
     cfg.set_value("developer", "error_dialog_logs", error_dialog_logs)
     cfg.set_value("legal", "accepted_version", legal_accepted_version)
@@ -4983,6 +5023,7 @@ func _current_settings_snapshot() -> Dictionary:
         "target_fps": target_fps,
         "force_landscape": lock_landscape,
         "plugin_load_mode": plugin_load_mode,
+        "game_detection_override": game_detection_override,
         "mock_enabled": mock_enabled,
         "error_dialog_logs": error_dialog_logs,
         "text_translation_model_path": text_translation_model_path,
@@ -5178,6 +5219,7 @@ func _apply_settings_snapshot(snapshot: Dictionary) -> void:
     if not plugin_load_mode in ["krkrsdl3", "aether_all"]:
         plugin_load_mode = "krkrsdl3"
     mock_enabled = bool(snapshot.get("mock_enabled", mock_enabled))
+    game_detection_override = String(snapshot.get("game_detection_override", game_detection_override))
     error_dialog_logs = bool(snapshot.get("error_dialog_logs", error_dialog_logs))
     text_translation_model_path = String(snapshot.get(
         "text_translation_model_path", text_translation_model_path
@@ -6589,6 +6631,10 @@ func _rebuild_settings_view() -> void:
         _add_settings_row(render_rows, _settings_toggle_row(_t("settings.landscape"), _t("settings.landscape_desc"), _settings_draft_bool("force_landscape", lock_landscape), "landscape"))
 
     var compatibility_rows := _settings_section(flow, _t("settings.section.compatibility"), animate_page, 0.12, ICON_PLUGIN)
+    if player != null and player.has_method("inspect_game"):
+        _add_settings_row(compatibility_rows, _settings_row(
+            _t("settings.game_detection"), _t("settings.game_detection_desc"), _game_detection_segment(), stack_settings_controls
+        ))
     _add_settings_row(compatibility_rows, _settings_row(_t("settings.plugin_load_mode"), _t("settings.plugin_load_mode_desc"), _plugin_load_mode_select(), stack_settings_controls))
     if player != null and player.has_method("is_text_translation_available") and player.is_text_translation_available():
         _add_settings_row(compatibility_rows, _settings_action_row(
@@ -8848,6 +8894,21 @@ func _debug_overlay_select() -> Control:
         _set_settings_draft_value("debug_overlay_mode", String(select.get_item_metadata(index)))
     )
     return select
+
+func _game_detection_labels() -> Array:
+    return GAME_DETECTION_OVERRIDES.map(func(mode: String): return _t("settings.game_detection_" + mode))
+
+func _game_detection_segment() -> Control:
+    var segment = AetherSegmentedControl.new()
+    var draft_override := _settings_draft_string("game_detection_override", game_detection_override)
+    segment.setup(
+        ui_tokens, ui_motion, PackedStringArray(_game_detection_labels()),
+        GAME_DETECTION_OVERRIDES.find(draft_override)
+    )
+    segment.item_selected.connect(func(index: int):
+        _set_settings_draft_value("game_detection_override", GAME_DETECTION_OVERRIDES[index])
+    )
+    return segment
 
 func _backend_segment() -> Control:
     var draft_backend := _normalize_backend_name(_settings_draft_string("backend", selected_backend))
@@ -12431,13 +12492,9 @@ func _game_info_from_path(path: String) -> Dictionary:
     if name.to_lower().ends_with(".xp3"):
         name = name.substr(0, name.length() - 4)
     var default_cover_path := _discover_default_cover_path(path)
-    var metadata := GameMetadata.inspect(path)
+    var metadata := _inspect_game_metadata(path, _game_runtime_root(path))
     var detected_title := String(metadata.get("title", ""))
     var detected_engine := String(metadata.get("engine", RUNTIME_KIRIKIRI))
-    # Optional providers own their format detection. Persist that result at
-    # import as well as launch so directory runtimes never display a guessed
-    # Windows configuration utility as their startup file.
-    detected_engine = _probe_game_runtime_kind(_game_runtime_root(path), detected_engine)
     return {
         "name": detected_title if not detected_title.is_empty() else name,
         "path": path,
@@ -12460,8 +12517,42 @@ func _game_runtime_root(path: String) -> String:
         return resolved.get_base_dir()
     return resolved
 
+func _game_detection_mode() -> String:
+    if game_detection_override != "auto":
+        return game_detection_override
+    return "native" if AppUpdater.is_prerelease(_application_version_text()) else "legacy"
+
+func _uses_native_game_detection() -> bool:
+    return _game_detection_mode() == "native" and player != null and player.has_method("inspect_game")
+
+func _inspect_game_metadata(path: String, probe_root: String = "") -> Dictionary:
+    if _uses_native_game_detection():
+        var metadata: Dictionary = player.inspect_game(path, probe_root)
+        return GameMetadata.with_title_metadata(String(metadata.root), metadata, String(metadata.renpyDirectory))
+    var metadata := GameMetadata.inspect(path)
+    if not probe_root.is_empty():
+        metadata.engine = _probe_game_runtime_kind(probe_root, String(metadata.engine))
+    return metadata
+
+func _tyrano_entry_file(root: String) -> String:
+    if _uses_native_game_detection():
+        return String(player.inspect_special_game(root, RUNTIME_TYRANO))
+    return GameMetadata.tyrano_entry_file(root)
+
+func _renpy_game_directory(root: String) -> String:
+    if _uses_native_game_detection():
+        return String(player.inspect_special_game(root, RUNTIME_RENPY))
+    return GameMetadata.renpy_game_directory(root)
+
+func _is_flash_game_file(path: String) -> bool:
+    if _uses_native_game_detection():
+        return not String(player.inspect_special_game(path, "flash")).is_empty()
+    return FileAccess.file_exists(path) and path.get_extension().to_lower() == "swf"
+
 func _game_runtime_kind(path: String) -> String:
     var root := _game_runtime_root(path)
+    if _uses_native_game_detection():
+        return String(player.inspect_game(root, root).engine)
     var runtime_kind := String(
         GameMetadata.inspect(root).get("engine", RUNTIME_KIRIKIRI)
     )
@@ -12522,7 +12613,7 @@ func _backfill_game_metadata(games: Array[Dictionary]) -> bool:
                 and game.has("titleCandidates") and game.has("launchFile"):
             continue
         var configured_path := GameLaunchEntry.resolve(game)
-        var metadata := GameMetadata.inspect(configured_path if FileAccess.file_exists(configured_path) else path)
+        var metadata := _inspect_game_metadata(configured_path if FileAccess.file_exists(configured_path) else path)
         var engine := String(metadata.get("engine", RUNTIME_KIRIKIRI))
         if String(game.get("engine", "")).is_empty() or String(game.get("engine", "")) == RUNTIME_KIRIKIRI:
             if String(game.get("engine", "")) != engine:

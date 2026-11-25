@@ -115,7 +115,7 @@ func open_entry(value: Dictionary) -> String:
     entry = value.duplicate(true)
     controls.set_layout_profiles(host._virtual_button_layouts(String(entry.get("path", ""))))
     var root := ProjectSettings.globalize_path(host._game_runtime_root(String(entry.get("path", ""))))
-    var launch := Metadata.tyrano_entry_file(root)
+    var launch := String(host._tyrano_entry_file(root))
     if launch.is_empty():
         return host._t("tyrano.invalid_project")
     if not ClassDB.class_exists("AetherTyranoPlayer"):

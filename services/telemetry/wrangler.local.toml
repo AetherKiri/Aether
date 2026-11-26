@@ -1,0 +1,19 @@
+name = "aether-telemetry-local"
+main = "worker/index.mjs"
+compatibility_date = "2026-11-24"
+send_metrics = false
+
+[observability]
+enabled = false
+
+[vars]
+TELEMETRY_ORIGIN_URL = "http://127.0.0.1:8080"
+TELEMETRY_LOCAL_HTTP = "true"
+# Public fixture for localhost only. Production uses a Worker secret.
+TELEMETRY_ORIGIN_SECRET = "local-dev-only-aether-telemetry-v1-test"
+
+[[d1_databases]]
+binding = "TELEMETRY_DB"
+database_name = "aether-telemetry-local"
+database_id = "00000000-0000-0000-0000-000000000001"
+migrations_dir = "migrations"

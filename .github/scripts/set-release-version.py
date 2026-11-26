@@ -43,7 +43,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--build-number",
         default="1",
-        help="Positive integer used for Android versionCode and Apple CFBundleVersion",
+        help="Positive integer used for app build metadata, Android versionCode and Apple CFBundleVersion",
     )
     parser.add_argument(
         "--project-root",
@@ -91,6 +91,13 @@ def main() -> None:
         project_file,
         r'^config/version="[^"]*"$',
         f'config/version="{version}"',
+        1,
+        check=args.check,
+    )
+    replace_exact(
+        project_file,
+        r'^config/build_number="[0-9]+"$',
+        f'config/build_number="{build_number}"',
         1,
         check=args.check,
     )

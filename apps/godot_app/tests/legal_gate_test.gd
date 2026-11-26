@@ -11,6 +11,8 @@ func _initialize() -> void:
     assert(app._next_required_legal_document("macOS") == "privacy")
 
     app.legal_accepted_version = "2026-07-27.4"
+    assert(app._next_required_legal_document("macOS") == "privacy")
+    app.legal_accepted_version = MAIN_SCRIPT.LEGAL_AGREEMENT_VERSION
     assert(app._next_required_legal_document("macOS") == "ios_statement")
     assert(app._next_required_legal_document("iOS") == "ios_statement")
     assert(app._ios_statement_required("macOS"))

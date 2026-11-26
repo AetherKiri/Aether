@@ -1,6 +1,9 @@
 extends Control
 
 signal closed
+signal launch_requested
+signal game_ready
+signal playback_failed(error_code: String)
 
 const VirtualControls := preload("res://scripts/game_virtual_controls.gd")
 
@@ -105,6 +108,7 @@ func _layout() -> void:
     controls.layout(size, Rect2(safe.position + Vector2(0, 56), Vector2(safe.size.x, maxf(0, safe.size.y - 56))))
 
 func open_entry(value: Dictionary) -> String:
+    launch_requested.emit()
     entry = value.duplicate(true)
     toolbar.get_node("Title").text = String(entry.get("name", "Flash"))
     if not ClassDB.class_exists("AetherFlashPlayer"):
@@ -126,6 +130,7 @@ func open_entry(value: Dictionary) -> String:
         native.set_default_font(host.runtime_default_font_path)
     surface.texture = native.get_texture()
     controls.set_enabled(true)
+    game_ready.emit()
     return ""
 
 func _restart() -> void:
@@ -137,7 +142,7 @@ func _restart() -> void:
     var error := open_entry(entry)
     set_paused(false)
     if not error.is_empty():
-        _playback_error(error)
+        _playback_error(error, "view_load_failed")
 
 func _virtual_key(pressed: bool, code: int, modifiers: int) -> void:
     _send(1 if pressed else 2, Vector2.ZERO, code, host._virtual_key_unicode(pressed, code, modifiers))
@@ -164,7 +169,8 @@ func close() -> void:
     closed.emit()
     queue_free()
 
-func _playback_error(message: String) -> void:
+func _playback_error(message: String, error_code: String = "view_runtime_failed") -> void:
+    playback_failed.emit(error_code)
     close()
     host._show_message(message)
 

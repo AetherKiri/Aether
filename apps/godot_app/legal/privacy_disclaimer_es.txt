@@ -1,7 +1,7 @@
 Política de privacidad, condiciones de uso y exención de responsabilidad de Aether
 
-Versión: 2026-07-27.4
-Fecha de entrada en vigor: 27 de julio de 2026
+Versión: 2026-11-26
+Fecha de entrada en vigor: 26 de noviembre de 2026
 
 Te damos la bienvenida a Aether. Aether es un entorno de ejecución de novelas visuales y una herramienta de gestión de contenido multimedia local de código abierto. Puede leer las novelas visuales, los vídeos locales y los subtítulos externos que importes. Lee detenidamente este documento, en especial los apartados sobre riesgos, responsabilidad y propiedad intelectual.
 
@@ -11,7 +11,7 @@ Si eres menor de edad, revisa este documento con tu padre, tu madre o tu tutor l
 
 1.1 Datos que trata la app
 
-Aether no requiere ninguna cuenta y no contiene publicidad, seguimiento de usuarios ni servicios de análisis gestionados por el desarrollador. Para ofrecer las funciones de biblioteca local, ejecución y reproducción, la app trata o almacena localmente en tu dispositivo la siguiente información:
+Aether no requiere ninguna cuenta y no incluye publicidad ni seguimiento publicitario. Para ofrecer las funciones de biblioteca local, ejecución y reproducción, la app trata o almacena localmente en tu dispositivo la siguiente información:
 
 - Juegos, vídeos, subtítulos, imágenes de portada y archivos relacionados que selecciones o copies en la carpeta de la app.
 - Rutas de archivo, nombres visibles, referencias de portadas, marcas de tiempo del uso reciente, tiempo de juego acumulado y posiciones de reproducción de los vídeos.
@@ -21,7 +21,7 @@ Aether no requiere ninguna cuenta y no contiene publicidad, seguimiento de usuar
 
 1.2 Uso de los datos
 
-Esta información se utiliza únicamente en tu dispositivo para mostrar tu biblioteca, ejecutar contenido compatible, restaurar los ajustes y las posiciones de reproducción, conservar el progreso de los juegos, solucionar errores y mejorar el funcionamiento local. El desarrollador no sube por iniciativa propia a ningún servidor del desarrollador los juegos, vídeos, subtítulos, partidas guardadas, registros ni otros archivos personales que importes.
+Salvo en el caso de la telemetría opcional descrita en el apartado 1.7, la app utiliza esta información únicamente en tu dispositivo para mostrar tu biblioteca, ejecutar contenido compatible, restaurar los ajustes y las posiciones de reproducción, conservar el progreso de los juegos, solucionar errores y mejorar el funcionamiento local. El desarrollador no sube por iniciativa propia a ningún servidor del desarrollador los juegos, vídeos, subtítulos, partidas guardadas, registros ni otros archivos personales que importes.
 
 1.3 Acceso a la red y contenido externo
 
@@ -29,7 +29,7 @@ Las funciones principales de biblioteca y de reproducción local pueden funciona
 
 1.4 Compartir datos
 
-El desarrollador no vende ni comparte por iniciativa propia tus datos locales. Los datos solo salen de tu dispositivo cuando decides compartir, copiar o exportar archivos o diagnósticos. El destinatario que elijas trata esos datos conforme a sus propias prácticas de privacidad.
+El desarrollador no vende tus datos. Cuando compartes o exportas archivos o diagnósticos, el destinatario que elijas trata esos datos conforme a sus propias prácticas de privacidad. El apartado 1.7 indica quién recibe la telemetría opcional.
 
 Los componentes de código abierto que utiliza Aether realizan localmente las tareas de análisis, decodificación, renderizado y ejecución. El desarrollador no utiliza esos componentes para transmitir por iniciativa propia tu contenido a sus autores.
 
@@ -41,9 +41,23 @@ La función de compartir archivos de iOS puede permitir que se acceda a la carpe
 
 1.6 Conservación y eliminación
 
-Los datos permanecen en tu dispositivo hasta que eliminas los archivos correspondientes, quitas los registros de la biblioteca, borras los datos de la app o la desinstalas. Quitar un registro de la biblioteca puede no eliminar el archivo original; elimina los archivos originales desde la app Archivos o desde un gestor de archivos. Las copias, las copias de seguridad y los archivos compartidos en otros lugares no se eliminan automáticamente al desinstalar la app. Como el desarrollador no mantiene ningún servidor de datos de usuarios, normalmente no existe ninguna copia en poder del desarrollador en un servidor que haya que eliminar.
+Los datos permanecen en tu dispositivo hasta que eliminas los archivos correspondientes, quitas los registros de la biblioteca, borras los datos de la app o la desinstalas. Quitar un registro de la biblioteca puede no eliminar el archivo original; elimina los archivos originales desde la app Archivos o desde un gestor de archivos. Las copias, las copias de seguridad y los archivos compartidos en otros lugares no se eliminan automáticamente al desinstalar la app.
 
 Para dejar de usar la app o retirar tu decisión de usarla, deja de usarla y desinstálala. Los permisos de archivos del sistema se pueden revocar en los ajustes del dispositivo.
+
+1.7 Telemetría opcional de uso y compatibilidad
+
+La telemetría está desactivada de forma predeterminada. Aceptar este documento no la activa. Si la compilación admite la telemetría, puedes activarla en Ajustes → Privacidad. Tu elección no afecta a las funciones principales. Si cambia el aviso de telemetría, es posible que tengas que volver a activarla.
+
+- Para conocer el uso de la app, un ID de instalación aleatorio vincula los eventos de una misma instalación y permite medir el número de aperturas y el tiempo de uso en primer plano.
+- Para evaluar la compatibilidad de los dispositivos, el sistema operativo, la arquitectura del procesador, el intervalo de capacidad de memoria y la familia de la tarjeta gráfica ayudan a identificar los grupos de dispositivos afectados.
+- Para detectar regresiones, la versión, la compilación y el canal de distribución ayudan a identificar los problemas introducidos en determinadas versiones.
+- Para evaluar la compatibilidad de los juegos se usan el motor, el resultado del inicio, el tiempo de juego en primer plano y los nombres visibles exactos de aquellos juegos a los que jugaste o que no se pudieron iniciar. Si el juego no proporciona un título, el nombre visible puede ser el de un archivo o una carpeta local. Los nombres que no superan la validación se omiten.
+- Para investigar el rendimiento y los fallos se usan la frecuencia de imagen, el pico de memoria, el tiempo de carga y códigos de error predefinidos. El dato de memoria es el máximo observado en las muestras y su significado depende de la plataforma. En la web se mide la capacidad de memoria lineal de WebAssembly.
+
+Los datos enviados excluyen rutas completas de archivos, URL, registros sin procesar, capturas de pantalla, partidas guardadas y contenido de archivos. El equipo de Aether recibe los datos mediante Cloudflare Workers y guarda los registros de eventos sin procesar en Cloudflare D1. Una tarea que se ejecuta cada hora elimina de la base de datos activa los registros que ya tienen 90 días de antigüedad. El historial de recuperación gestionado por Cloudflare tiene su propio plazo de conservación y puede contener registros eliminados hasta que venza ese plazo. Cloudflare recibe tu dirección IP como parte de la conexión de red. Aether no incluye la dirección IP en los datos enviados ni la guarda junto a los eventos. El equipo utiliza los datos para los fines descritos, sin usarlos para publicidad ni venderlos.
+
+Puedes desactivar el envío en cualquier momento en Ajustes → Privacidad. Al hacerlo, se detienen inmediatamente la recogida y el envío y se eliminan el ID de instalación local y los datos pendientes de envío. Los eventos ya recibidos caducan al concluir el plazo de conservación indicado. Para solicitudes de privacidad, usa el contacto del apartado 5 y evita incluir información sensible en incidencias públicas.
 
 2. Contenido del usuario y propiedad intelectual
 

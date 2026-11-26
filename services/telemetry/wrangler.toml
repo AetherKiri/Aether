@@ -1,0 +1,35 @@
+name = "aether-telemetry"
+main = "worker/container.mjs"
+compatibility_date = "2026-11-24"
+preview_urls = false
+logpush = false
+
+[observability]
+enabled = false
+
+[triggers]
+crons = ["17 * * * *"]
+
+[[d1_databases]]
+binding = "TELEMETRY_DB"
+database_name = "aether-telemetry"
+database_id = "REPLACE_WITH_D1_DATABASE_ID"
+migrations_dir = "migrations"
+
+[[containers]]
+class_name = "TelemetryValidator"
+scheduling_policy = "durable_object"
+
+[containers.images.base]
+dockerfile = "./Dockerfile"
+
+[containers.observability.logs]
+enabled = false
+
+[[durable_objects.bindings]]
+name = "TELEMETRY_VALIDATOR"
+class_name = "TelemetryValidator"
+
+[exports.TelemetryValidator]
+type = "durable-object"
+storage = "sqlite"

@@ -417,6 +417,9 @@ jobs:
           perl -0pi -e 's/(name="Android Release".*?package\/signed=)false/${1}true/s' apps/godot_app/export_presets.cfg
 
       - name: Build Android Release
+        env:
+          AETHER_TELEMETRY_ENDPOINT: ${{ inputs.release_version && vars.AETHER_TELEMETRY_ENDPOINT || '' }}
+          AETHER_TELEMETRY_CHANNEL: ${{ inputs.release_version && (vars.AETHER_TELEMETRY_CHANNEL || 'github_release') || '' }}
         run: |
           set -euo pipefail
           chmod +x ./build.sh
@@ -714,6 +717,9 @@ jobs:
         run: bash .github/scripts/configure-vcpkg-binary-cache.sh "$VCPKG_ROOT/vcpkg"
 
       - name: Build iOS Release
+        env:
+          AETHER_TELEMETRY_ENDPOINT: ${{ inputs.release_version && vars.AETHER_TELEMETRY_ENDPOINT || '' }}
+          AETHER_TELEMETRY_CHANNEL: ${{ inputs.release_version && vars.AETHER_TELEMETRY_CHANNEL || '' }}
         run: |
           set -euo pipefail
           chmod +x ./build.sh
@@ -1110,6 +1116,9 @@ jobs:
             ${{ runner.os }}-vcpkg-downloads-
 
       - name: Build macOS Release
+        env:
+          AETHER_TELEMETRY_ENDPOINT: ${{ inputs.release_version && vars.AETHER_TELEMETRY_ENDPOINT || '' }}
+          AETHER_TELEMETRY_CHANNEL: ${{ inputs.release_version && vars.AETHER_TELEMETRY_CHANNEL || '' }}
         run: |
           set -euo pipefail
           chmod +x ./build.sh
@@ -1177,6 +1186,12 @@ jobs:
             --script res://tests/astryx_localization_test.gd
           "$GODOT_BIN" --headless --path apps/godot_app \
             --script res://tests/play_duration_test.gd
+          "$GODOT_BIN" --headless --path apps/godot_app \
+            --script res://tests/telemetry_test.gd
+          "$GODOT_BIN" --headless --path apps/godot_app \
+            --script res://tests/telemetry_playback_test.gd
+          "$GODOT_BIN" --headless --path apps/godot_app \
+            --script res://tests/telemetry_settings_test.gd
           "$GODOT_BIN" --headless --path apps/godot_app \
             --script res://tests/astryx_mobile_input_test.gd
           "$GODOT_BIN" --headless --path apps/godot_app \
@@ -1536,6 +1551,9 @@ jobs:
             --github-env "$GITHUB_ENV"
 
       - name: Build Linux Release
+        env:
+          AETHER_TELEMETRY_ENDPOINT: ${{ inputs.release_version && vars.AETHER_TELEMETRY_ENDPOINT || '' }}
+          AETHER_TELEMETRY_CHANNEL: ${{ inputs.release_version && (vars.AETHER_TELEMETRY_CHANNEL || 'github_release') || '' }}
         run: |
           ./build.sh linux release --jobs=2
           if [[ "$AETHERKIRI_WITH_INTERNAL" == "true" ]]; then

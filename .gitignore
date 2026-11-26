@@ -52,6 +52,8 @@ latest_log_path.txt
 
 apps/godot_app/.godot/
 apps/godot_app/.godot
+# Temporary telemetry configuration used by recovery-mode Godot exports.
+apps/godot_app/config/telemetry_export.json
 apps/godot_app/mages_runtime/
 plugin_trace.log
 __pycache__/

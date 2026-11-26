@@ -1,0 +1,37 @@
+name: Telemetry Service
+
+on:
+  pull_request:
+    paths:
+      - 'services/telemetry/**'
+      - '.github/workflows/telemetry.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'services/telemetry/**'
+      - '.github/workflows/telemetry.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  integration:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: services/telemetry
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+      - name: Install Wrangler
+        run: npm install --global wrangler@4.168.0
+      - name: Test the Worker, Java validator, and local D1
+        run: python3 tests/integration.py

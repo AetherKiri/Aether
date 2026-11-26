@@ -27,7 +27,11 @@ func _initialize() -> void:
         assert(path == String(expected[0]))
         var text := String(app._load_legal_document())
         assert(text.contains(String(expected[1])))
-        assert(text.contains("2026-07-27.4"))
+        assert(text.contains(MAIN_SCRIPT.LEGAL_AGREEMENT_VERSION))
+        assert(text.contains("Cloudflare Workers"))
+        assert(text.contains("Cloudflare D1"))
+        assert(text.contains("90"))
+        assert(text.contains("→"))
         assert(text.length() > 1000)
         var statement_expected: Array = EXPECTED_IOS_STATEMENTS[language]
         var statement_path := String(app._ios_statement_document_path())

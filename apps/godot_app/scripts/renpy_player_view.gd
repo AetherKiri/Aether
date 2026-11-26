@@ -36,6 +36,7 @@ func _probe_enabled() -> bool:
     return OS.is_debug_build()
 
 func open_entry(value: Dictionary) -> String:
+    launch_requested.emit()
     state = {}
     commands.clear()
     sequence = 0
@@ -250,12 +251,15 @@ func _process(delta: float) -> void:
     elif closing and closing_elapsed > 5.0:
         _finish()
     elif not ready_received and startup_elapsed > 60.0:
-        _fail(host._t("renpy.startup_timeout"))
+        _fail(host._t("renpy.startup_timeout"), "load_timeout")
 
-func _fail(message: String) -> void:
+func _fail(message: String, error_code: String = "") -> void:
     if error_reported:
         return
     error_reported = true
+    if error_code.is_empty():
+        error_code = "view_runtime_failed" if ready_received else "view_load_failed"
+    playback_failed.emit(error_code)
     closing = true
     restart_requested = false
     set_process(false)

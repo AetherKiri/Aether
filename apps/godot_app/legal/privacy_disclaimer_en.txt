@@ -1,7 +1,7 @@
 Aether Privacy Policy, Terms of Use, and Disclaimer
 
-Version: 2026-07-27.4
-Effective date: July 27, 2026
+Version: 2026-11-26
+Effective date: November 26, 2026
 
 Welcome to Aether. Aether is an open-source visual-novel runtime and local media management tool. It can read visual novels, local videos, and external subtitles that you import. Please read this document carefully, especially the sections about risk, liability, and intellectual property.
 
@@ -11,7 +11,7 @@ If you are a minor, review this document with a parent or guardian and obtain th
 
 1.1 Data processed by the app
 
-Aether does not require an account and contains no advertising, user tracking, or developer-operated analytics service. To provide local library, runtime, and playback features, the app processes or stores the following information locally on your device:
+Aether requires no account and has no advertising or advertising tracking. To provide local library, runtime, and playback features, the app processes or stores the following information locally on your device:
 
 - Games, videos, subtitles, cover images, and related files that you select or copy into the app’s directory.
 - File paths, display names, cover references, recent-use timestamps, accumulated play time, and video playback positions.
@@ -21,7 +21,7 @@ Aether does not require an account and contains no advertising, user tracking, o
 
 1.2 Use of data
 
-This information is used only on your device to display your library, run compatible content, restore settings and playback positions, preserve game progress, troubleshoot errors, and improve local operation. The developer does not proactively upload your imported games, videos, subtitles, saves, logs, or other personal files to a developer server.
+Except for the optional telemetry described in section 1.7, the app uses this information only on your device to display your library, run compatible content, restore settings and playback positions, preserve game progress, troubleshoot errors, and improve local operation. The developer does not proactively upload your imported games, videos, subtitles, saves, logs, or other personal files to a developer server.
 
 1.3 Network access and external content
 
@@ -29,7 +29,7 @@ The core library and local playback functions can operate offline. However, impo
 
 1.4 Sharing
 
-The developer does not proactively sell or share your local data. Data leaves your device only when you choose to share, copy, or export files or diagnostics. The recipient you select handles that data under its own privacy practices.
+The developer does not sell your data. When you share or export files or diagnostics, the recipient you select handles the data under its own privacy practices. Section 1.7 describes who receives optional telemetry.
 
 Open-source components used by Aether perform parsing, decoding, rendering, and runtime work locally. The developer does not use those components to proactively transmit your content to their authors.
 
@@ -41,9 +41,23 @@ iOS file sharing may allow the app directory to be accessed through the Files ap
 
 1.6 Retention and deletion
 
-Data remains on your device until you delete the corresponding files, remove library records, clear app data, or uninstall the app. Removing a library record may not delete the original file; delete original files through the Files app or a file manager. Copies, backups, and files shared elsewhere are not automatically deleted when the app is uninstalled. Because the developer does not maintain a user-data server, there is normally no developer-held server copy to delete.
+Data remains on your device until you delete the corresponding files, remove library records, clear app data, or uninstall the app. Removing a library record may not delete the original file; delete original files through the Files app or a file manager. Copies, backups, and files shared elsewhere are not automatically deleted when the app is uninstalled.
 
 To stop using the app or withdraw your decision to use it, stop use and uninstall it. System file permissions can be revoked in device settings.
+
+1.7 Optional usage and compatibility telemetry
+
+Telemetry is off by default. Agreeing to this document does not enable it. If the build supports telemetry, you can choose to enable it in Settings → Privacy. Your choice has no effect on core functionality. A change to the telemetry notice may require you to opt in again.
+
+- App usage: a random installation ID links events from the same installation so the team can measure app launches and time spent in the foreground.
+- Device compatibility: operating system, processor architecture, memory capacity range, and graphics card family help identify affected device groups.
+- Release regressions: app version, build, and release channel help identify problems introduced in particular releases.
+- Game compatibility: game engine, launch outcome, foreground play time, and the exact displayed titles of games played or that failed to start help identify affected games. If no title is available from the game, the displayed name may be the name of a local file or folder. Titles that fail validation are omitted.
+- Performance and failures: frame rate, peak memory use, loading time, and predefined error codes help diagnose slowdowns and failures. The memory metric is the highest sampled value and varies by platform. On the web, it measures WebAssembly linear memory capacity.
+
+Telemetry payloads exclude full file paths, URLs, raw logs, screenshots, saves, and file contents. The Aether team receives telemetry via Cloudflare Workers and stores raw event records in Cloudflare D1. An hourly job removes records from the live database once they are 90 days old. Cloudflare’s managed recovery history has its own retention period and may contain deleted records until that period ends. Cloudflare receives your IP address as part of the network connection. Aether does not include it in the telemetry payload or store it with telemetry events. The team uses the data for the purposes described above, without advertising or sale.
+
+Turn off sharing at any time in Settings → Privacy. This immediately stops collection and sending and clears the local installation ID and any unsent telemetry. Events already received expire under the retention period above. Use the contact in section 5 for privacy requests, and avoid including sensitive information in public issues.
 
 2. User Content and Intellectual Property
 

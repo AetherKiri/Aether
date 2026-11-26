@@ -743,7 +743,12 @@ with_ios_only_gdextension() (
 
     # The macOS editor cannot load the iOS archive. Recovery mode skips
     # editor-side loading without removing target extensions from the export.
-    "$GODOT_BIN" --headless --recovery-mode --path "$GODOT_APP_DIR" \
+    telemetry_channel_default="debug"
+    if [[ "$BUILD_TYPE_LOWER" == "release" ]]; then
+        telemetry_channel_default="apple_release"
+    fi
+    python3 "$PROJECT_ROOT/scripts/export_with_telemetry_config.py" "$GODOT_APP_DIR" "$telemetry_channel_default" \
+        "$GODOT_BIN" --headless --recovery-mode --path "$GODOT_APP_DIR" \
         "$EXPORT_MODE" "$EXPORT_PRESET" "$PROJECT_ROOT/out/godot/ios/$BUILD_TYPE_LOWER/Aether.xcodeproj"
 )
 

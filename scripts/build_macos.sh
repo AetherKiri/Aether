@@ -243,7 +243,8 @@ else
     if [[ "$BUILD_TYPE_LOWER" == "release" ]]; then
         # The export editor would load the Debug extension even for a Release
         # export. Export the staged Release library without loading Debug code.
-        godot_export_command+=(--recovery-mode)
+        godot_export_command=(python3 "$PROJECT_ROOT/scripts/export_with_telemetry_config.py" \
+            "$GODOT_APP_DIR" apple_release "${godot_export_command[@]}" --recovery-mode)
     fi
     mkdir -p "$GODOT_EXPORT_ROOT"
     rm -rf "$GODOT_EXPORT_APP"

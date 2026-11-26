@@ -2,6 +2,9 @@
 
 #include "engine_api.h"
 
+#include <string>
+#include <vector>
+
 namespace aether::native_host {
 
 // Owns an engine ABI handle. One native host session may be active in the
@@ -14,6 +17,10 @@ public:
 
     RuntimeSession(const RuntimeSession &) = delete;
     RuntimeSession &operator=(const RuntimeSession &) = delete;
+
+    // Register linked providers before a frontend takes its routing snapshot.
+    // The returned IDs are the runtime implementations this host can run.
+    static std::vector<std::string> RegisterProviders();
 
     engine_result_t Create(const engine_create_desc_t &description);
     engine_result_t Close();

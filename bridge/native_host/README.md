@@ -11,6 +11,29 @@ The caller serializes session operations on its host thread. This stage moves
 session creation and teardown. The Godot adapter still drives ticks, input,
 frame reads, audio, and platform services.
 
+## Shared launch routing
+
+`aether_launch_router` builds without a UI SDK. Call `ResolveLaunch` with
+the game path, source, selected entry, startup script, host preference, and
+release channel. Pass the capabilities of the running build. Standalone
+frontends using `RuntimeSession` can call `RegisterProviders()` before
+collecting registered IDs with `RegisteredLaunchProviders()`.
+
+The result includes the detected and launch runtime IDs, target player,
+game root, final entry, engine option, startup script, provider status and
+host decision. Dedicated TyranoScript and Ren’Py entries are relative to the
+returned root. The Flash entry is a full SWF path. The `deferred` Provider
+status leaves engine-level `auto` dispatch to the ABI as before. A missing
+explicit Provider blocks the launch. A missing native session selects the
+same runtime’s existing host and records `native_session_unavailable`.
+
+Godot supplies virtual filesystem access and passes its legacy detector as
+an override when the user selects it. It handles file access authorization,
+save sync, and actual player startup. The independent route tests run in
+the game detection CTest suite. macOS and Linux Godot CI also launch ONS in
+both hosts, open a manually selected XP3, and launch a synthetic System3 game
+through the existing Godot host.
+
 ## macOS arm64 contract test
 
 From the repository root, set `VCPKG_ROOT` to a vcpkg checkout and run:

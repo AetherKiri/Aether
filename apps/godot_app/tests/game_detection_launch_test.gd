@@ -24,9 +24,12 @@ class TestApp extends "res://scripts/main.gd":
     func _show_detail(_game: Dictionary, _source: Control = null) -> void:
         pass
 
-    func _on_open_game() -> void:
+    func _show_system_alert(message: String, _title: String = "Aether") -> void:
+        printerr(message)
+
+    func _on_open_game(route: Dictionary = {}) -> void:
         captured_path = game_path.text
-        super._on_open_game()
+        super._on_open_game(route)
 
 var failures := 0
 
@@ -72,6 +75,16 @@ func _run() -> void:
         app._start_selected_game_after_iap()
         _expect(await _started_and_presented(app, "onscripter"), "The existing ONS player starts and presents a frame")
         _expect(app.captured_path == game, "The directory route opens the selected game root")
+        var expected_host := OS.get_environment("AETHERKIRI_EXPECT_ONS_HOST")
+        if not expected_host.is_empty():
+            _expect(app.player.get_engine_host() == expected_host, "ONS uses the requested host")
+        app._exit_game_for_go_back()
+        await process_frame
+        app.selected_game = entry
+        app._start_selected_game_after_iap()
+        _expect(await _started_and_presented(app, "onscripter"), "ONS reopens after returning to the library")
+        if not expected_host.is_empty():
+            _expect(app.player.get_engine_host() == expected_host, "Reopening retains the routed host")
         app._exit_game_for_go_back()
         await process_frame
 
@@ -98,6 +111,9 @@ func _run() -> void:
         app._exit_game_for_go_back()
         await process_frame
 
+    if OS.get_environment("AETHERKIRI_EXPECT_SYSTEM3") == "1":
+        await _check_system3_route(app, args[1])
+
     var backend_before: String = app.selected_backend
     app._begin_settings_edit()
     var segment = app._game_detection_segment()
@@ -115,6 +131,57 @@ func _run() -> void:
     await process_frame
     print("game_detection_launch_test: %s -> %s, %d failures" % [args[1], args[2], failures])
     quit(0 if failures == 0 else 1)
+
+
+func _check_system3_route(app, mode: String) -> void:
+    var game_root := ProjectSettings.globalize_path("user://system3-" + mode)
+    DirAccess.make_dir_recursive_absolute(game_root)
+    # Same synthetic DRI layout as the System3 native provider contract.
+    var archive := PackedByteArray()
+    archive.resize(768)
+    archive[0] = 2
+    archive[2] = 3
+    archive[4] = 4
+    archive[256] = 1
+    archive[257] = 1
+    var page := PackedByteArray([2, 0])
+    page.append_array("'Router test'A@".to_utf8_buffer())
+    page.append_array(PackedByteArray([2, 0]))
+    for i in page.size():
+        archive[512 + i] = page[i]
+    var archive_file := FileAccess.open(game_root.path_join("ADISK.DAT"), FileAccess.WRITE)
+    _expect(archive_file != null, "Create the synthetic System3 archive")
+    if archive_file == null:
+        return
+    archive_file.store_buffer(archive)
+    archive_file.close()
+    _expect(FileAccess.open(game_root.path_join("ACG.DAT"), FileAccess.WRITE) != null, "Stage the graphics marker")
+    var config := FileAccess.open(game_root.path_join("system3.ini"), FileAccess.WRITE)
+    _expect(config != null, "Stage the System3 variant configuration")
+    if config == null:
+        return
+    config.store_string("[config]\ngame=system3_generic\nencoding=utf8\n")
+    config.close()
+
+    _expect(app._add_game_path(game_root), "Import the System3 fixture")
+    for item in app._load_game_list():
+        if item.path != game_root:
+            continue
+        app.selected_game = item
+        var route: Dictionary = app._resolve_launch(item)
+        _expect(route.get("provider_status") == "registered", "System3 is registered in this build")
+        _expect(route.get("engine_option") == "system3", "Route System3 to its explicit Provider")
+        _expect(route.get("entry") == game_root, "Use the System3 directory entry")
+        _expect(route.get("host") == "legacy", "System3 uses its existing Godot host")
+        if app.selected_backend == app.PlaybackBackend.NATIVE:
+            _expect(route.get("reason") == "native_session_unavailable", "Explain the System3 fallback")
+        app._start_selected_game_after_iap()
+        _expect(await _started_and_presented(app, "system3"), "The System3 Provider opens and presents a frame")
+        if app.game_running:
+            app._exit_game_for_go_back()
+            await process_frame
+        return
+    _expect(false, "Find the imported System3 game")
 
 
 func _started_and_presented(app, runtime: String) -> bool:

@@ -585,6 +585,7 @@ const UI_TEXT := {
         "message.launch_file_unsupported": "启动文件只支持 EXE、XP3 或 HCB",
         "message.launch_file_outside_game": "启动文件必须位于当前游戏目录内",
         "message.launch_file_missing": "启动文件不存在：%s",
+        "message.launch_provider_missing": "当前构建未包含运行时：%s",
         "message.cover_file_missing": "无法读取所选封面图片：%s",
         "message.photo_picker_unavailable": "相册暂时无法打开，请稍后重试。",
         "message.cover_save_failed": "封面保存失败，请检查游戏目录及其配置文件。",
@@ -1027,6 +1028,7 @@ const UI_TEXT := {
         "message.launch_file_unsupported": "啟動檔案僅支援 EXE、XP3 或 HCB",
         "message.launch_file_outside_game": "啟動檔案必須位於目前遊戲目錄內",
         "message.launch_file_missing": "啟動檔案不存在：%s",
+        "message.launch_provider_missing": "目前版本未包含執行階段：%s",
         "message.cover_file_missing": "無法讀取所選封面圖片：%s",
         "message.photo_picker_unavailable": "相簿暫時無法開啟，請稍後再試。",
         "message.cover_save_failed": "封面儲存失敗，請檢查遊戲目錄及其設定檔。",
@@ -1471,6 +1473,7 @@ You can find it any time under Settings → QQ Group.",
         "message.launch_file_unsupported": "The launch file must be an EXE, XP3 or HCB file",
         "message.launch_file_outside_game": "The launch file must be inside this game folder",
         "message.launch_file_missing": "Launch file does not exist: %s",
+        "message.launch_provider_missing": "This build does not include the %s runtime.",
         "message.cover_file_missing": "Could not read the selected cover image: %s",
         "message.photo_picker_unavailable": "The photo picker is unavailable. Please try again.",
         "message.cover_save_failed": "Could not save the cover. Check the game folder and its configuration file.",
@@ -1880,6 +1883,7 @@ You can find it any time under Settings → QQ Group.",
         "message.launch_file_unsupported": "起動ファイルは EXE、XP3 または HCB のみ対応しています",
         "message.launch_file_outside_game": "起動ファイルは現在のゲームフォルダー内にある必要があります",
         "message.launch_file_missing": "起動ファイルが存在しません：%s",
+        "message.launch_provider_missing": "このビルドには %s ランタイムが含まれていません。",
         "message.cover_file_missing": "選択したカバー画像を読み込めません：%s",
         "message.photo_picker_unavailable": "写真を開けません。もう一度お試しください。",
         "message.cover_save_failed": "カバーを保存できません。ゲームフォルダーと設定ファイルを確認してください。",
@@ -2289,6 +2293,7 @@ You can find it any time under Settings → QQ Group.",
         "message.launch_file_unsupported": "실행 파일은 EXE, XP3 또는 HCB만 지원합니다",
         "message.launch_file_outside_game": "실행 파일은 현재 게임 폴더 안에 있어야 합니다",
         "message.launch_file_missing": "실행 파일이 존재하지 않습니다: %s",
+        "message.launch_provider_missing": "이 빌드에는 %s 런타임이 포함되어 있지 않습니다.",
         "message.cover_file_missing": "선택한 표지 이미지를 읽을 수 없습니다: %s",
         "message.photo_picker_unavailable": "사진 선택기를 열 수 없습니다. 다시 시도해 주세요.",
         "message.cover_save_failed": "표지를 저장할 수 없습니다. 게임 폴더와 설정 파일을 확인해 주세요.",
@@ -2728,6 +2733,7 @@ You can find it any time under Settings → QQ Group.",
         "message.launch_file_unsupported": "El archivo de inicio debe ser un archivo EXE, XP3 o HCB",
         "message.launch_file_outside_game": "El archivo de inicio debe estar dentro de la carpeta de este juego",
         "message.launch_file_missing": "El archivo de inicio no existe: %s",
+        "message.launch_provider_missing": "Esta compilación no incluye el runtime %s.",
         "message.cover_file_missing": "No se ha podido leer la imagen de portada seleccionada: %s",
         "message.photo_picker_unavailable": "El selector de fotos no está disponible. Vuelve a intentarlo.",
         "message.cover_save_failed": "No se ha podido guardar la portada. Comprueba la carpeta del juego y su archivo de configuración.",
@@ -11557,7 +11563,7 @@ func _is_flash_active() -> bool:
 func _is_tyrano_active() -> bool:
     return is_instance_valid(tyrano_view) and tyrano_view.visible
 
-func _open_tyrano_game(game: Dictionary) -> void:
+func _open_tyrano_game(game: Dictionary, route: Dictionary) -> void:
     if _is_tyrano_active():
         return
     _reset_shell_scroll_drag()
@@ -11575,7 +11581,7 @@ func _open_tyrano_game(game: Dictionary) -> void:
         shell_root.visible = true
         _refresh_games()
     )
-    var error: String = tyrano_view.open_entry(game)
+    var error: String = tyrano_view.open_entry(game, route)
     if not error.is_empty():
         tyrano_view.close()
         _show_message(error)
@@ -11586,7 +11592,7 @@ func _open_tyrano_game(game: Dictionary) -> void:
 func _is_renpy_active() -> bool:
     return is_instance_valid(renpy_view) and renpy_view.visible
 
-func _open_renpy_player(entry: Dictionary) -> void:
+func _open_renpy_player(entry: Dictionary, route: Dictionary) -> void:
     if _is_renpy_active():
         return
     _reset_shell_scroll_drag()
@@ -11608,7 +11614,7 @@ func _open_renpy_player(entry: Dictionary) -> void:
         shell_root.visible = true
         _refresh_games()
     )
-    var error: String = renpy_view.open_entry(entry)
+    var error: String = renpy_view.open_entry(entry, route)
     if not error.is_empty():
         renpy_view.close()
         _show_message(error)
@@ -11618,6 +11624,9 @@ func _open_renpy_player(entry: Dictionary) -> void:
 
 func _open_flash_player(entry: Dictionary) -> void:
     if _is_flash_active() or not _require_legal_documents_for_media():
+        return
+    var route := _resolve_launch(entry, "flash")
+    if not _check_launch_route(route):
         return
     _reset_shell_scroll_drag()
     flash_view = FlashPlayerView.new()
@@ -11629,7 +11638,7 @@ func _open_flash_player(entry: Dictionary) -> void:
         shell_root.visible = true
         _refresh_file_library()
     )
-    var error: String = flash_view.open_entry(entry)
+    var error: String = flash_view.open_entry(entry, route)
     if not error.is_empty():
         flash_view.close()
         _show_message(error)
@@ -13433,6 +13442,63 @@ func _start_selected_game_after_entitlements() -> void:
             _game_save_sync().stop()
     )
 
+func _resolve_launch(game: Dictionary, source: String = "library") -> Dictionary:
+    var path := String(game.get("path", ""))
+    var request := {
+        "source": source,
+        "path": path if _path_exists(path) else _resolve_game_path(path),
+        "selected_file": String(game.get(GameLaunchEntry.FIELD, "")),
+        "startup_script": String(game.get("startupScript", "")),
+        "host_preference": PlaybackBackend.host_preference(selected_backend),
+        "prerelease": AppUpdater.is_prerelease(_application_version_text()),
+    }
+    if player == null or not player.has_method("resolve_game_launch"):
+        return {"host": "unavailable", "reason": "player_unavailable", "player": "runtime"}
+    if _uses_native_game_detection():
+        return player.resolve_game_launch(request)
+    return player.resolve_game_launch(request, _legacy_launch_runtime, _legacy_launch_special_entry)
+
+func _legacy_launch_runtime(root: String) -> String:
+    return _probe_game_runtime_kind(root, String(GameMetadata.inspect(root).get("engine", RUNTIME_KIRIKIRI)))
+
+func _legacy_launch_special_entry(root: String, runtime: String) -> String:
+    return (GameMetadata.renpy_game_directory(root) if runtime == RUNTIME_RENPY
+        else GameMetadata.tyrano_entry_file(root))
+
+func _check_launch_route(route: Dictionary) -> bool:
+    var kind := String(route.get("runtime", ""))
+    var host := String(route.get("host", "unavailable"))
+    var reason := String(route.get("reason", ""))
+    _write_probe_marker("launch_route runtime=%s host=%s requested_native=%s reason=%s provider=%s" % [
+        kind, host, route.get("native_requested", false), reason, route.get("provider_status", ""),
+    ])
+    if host != "unavailable":
+        return true
+    var message := ""
+    match reason:
+        "empty_path":
+            _append_log("Game path is empty.")
+            return false
+        "unsupported_entry":
+            message = _t("message.launch_file_unsupported")
+        "entry_outside_game":
+            message = _t("message.launch_file_outside_game")
+        "entry_missing":
+            message = _t("message.launch_file_missing", [route.error_entry])
+        "provider_missing":
+            message = _t("message.launch_provider_missing", [kind])
+        "invalid_project":
+            message = _t("renpy.invalid_project" if kind == RUNTIME_RENPY else "tyrano.invalid_project")
+        _:
+            match String(route.get("player", "")):
+                "tyranoscript": message = _t("tyrano.unavailable")
+                "renpy": message = _t("renpy.unavailable")
+                "flash": message = _t("flash.unavailable")
+                _: message = _t("alert.runtime_class_missing")
+    _append_log(message)
+    _show_system_alert(message, _t("alert.warning_title"))
+    return false
+
 func _start_selected_game_after_save_sync() -> void:
     var library_path := String(selected_game.get("path", ""))
     if library_path.is_empty():
@@ -13441,54 +13507,18 @@ func _start_selected_game_after_save_sync() -> void:
         return
     if not _mount_web_game(selected_game):
         return
-    active_runtime_kind = _game_runtime_kind(library_path)
-    if active_runtime_kind == RUNTIME_TYRANO:
-        _open_tyrano_game(selected_game)
+    var route := _resolve_launch(selected_game)
+    if not _check_launch_route(route):
         return
-    if active_runtime_kind == RUNTIME_RENPY:
-        _open_renpy_player(selected_game)
-        return
-    if not _switch_runtime_player(active_runtime_kind):
-        return
-    var launch_uses_directory := GameLaunchEntry.runtime_uses_directory(
-        active_runtime_kind
-    )
-    var raw_launch_file := String(selected_game.get(GameLaunchEntry.FIELD, "")).strip_edges()
-    if (
-        not launch_uses_directory
-        and not raw_launch_file.is_empty()
-        and not GameLaunchEntry.is_supported_file(raw_launch_file)
-    ):
-        _show_system_alert(
-            _t("message.launch_file_unsupported"),
-            _t("alert.warning_title")
-        )
-        return
-    var relative_launch_file := GameLaunchEntry.configured_relative_path(selected_game)
-    if (
-        not launch_uses_directory
-        and not raw_launch_file.is_empty()
-        and relative_launch_file.is_empty()
-    ):
-        _show_system_alert(
-            _t("message.launch_file_outside_game"),
-            _t("alert.warning_title")
-        )
-        return
-    var launch_path := GameLaunchEntry.resolve_for_runtime(
-        selected_game,
-        active_runtime_kind
-    )
-    if (
-        not launch_uses_directory
-        and not relative_launch_file.is_empty()
-        and not FileAccess.file_exists(launch_path)
-    ):
-        _show_system_alert(
-            _t("message.launch_file_missing", [relative_launch_file]),
-            _t("alert.warning_title")
-        )
-        return
+    active_runtime_kind = String(route.runtime)
+    match String(route.player):
+        "tyranoscript":
+            _open_tyrano_game(selected_game, route)
+            return
+        "renpy":
+            _open_renpy_player(selected_game, route)
+            return
+    var launch_path := String(route.entry)
     _set_game_runtime_orientation(true)
     # A launch may supply an explicit script without changing the saved library
     # record (for example a section regression). Updating play statistics must
@@ -13511,7 +13541,7 @@ func _start_selected_game_after_save_sync() -> void:
     _set_translation_loading_notice(_translation_model_configured())
     _show_loading_overlay(true)
     restart_notice.visible = true
-    _on_open_game()
+    _on_open_game(route)
     if game_running:
         _begin_launch_transition()
     else:
@@ -14050,31 +14080,10 @@ func _create_runtime_player(runtime_kind: String = RUNTIME_KIRIKIRI) -> bool:
     add_child(instance as Node)
     return true
 
-func _switch_runtime_player(runtime_kind: String) -> bool:
-    var normalized := runtime_kind
-    if normalized not in [
-        RUNTIME_ONSCRIPTER,
-        RUNTIME_MINORI,
-        RUNTIME_SOFTPAL,
-        RUNTIME_RFVP,
-        RUNTIME_CMVS,
-        RUNTIME_CATSYSTEM2,
-        RUNTIME_SIGLUS,
-        RUNTIME_BGI,
-        RUNTIME_MAGES,
-        RUNTIME_N2SYSTEM,
-        RUNTIME_XSYSTEM4,
-        RUNTIME_XSYSTEM35,
-        RUNTIME_SYSTEM3,
-        RUNTIME_SYSTEMC,
-        RUNTIME_EXHIBIT,
-        RUNTIME_YURIS,
-        RUNTIME_ADVHD,
-        RUNTIME_ESCUDE,
-        RUNTIME_ENTISGLS,
-        RUNTIME_WA2,
-    ]:
-        normalized = RUNTIME_KIRIKIRI
+func _switch_runtime_player(runtime_kind: String, route: Dictionary = {}) -> bool:
+    var engine_option := String(route.get("engine_option", "auto"))
+    var normalized := RUNTIME_KIRIKIRI if engine_option == "auto" else runtime_kind
+    var use_native_session: bool = route.get("host", "") == "native"
     # Returning to the library keeps the player Node but destroys its engine.
     # Recreate that handle before callers apply any pre-open runtime options.
     if (
@@ -14082,7 +14091,7 @@ func _switch_runtime_player(runtime_kind: String) -> bool:
         and current_player_runtime_kind == normalized
         and player.is_initialized()
         and bool(player.get_meta("aether_ons_native_host", false))
-            == _uses_native_session(normalized)
+            == use_native_session
     ):
         return true
     if game_running:
@@ -14100,7 +14109,8 @@ func _switch_runtime_player(runtime_kind: String) -> bool:
         _stop_wa2_audio()
         player.destroy_engine()
         current_player_runtime_kind = normalized
-    if not _ensure_player_initialized():
+    var initialization := route if not route.is_empty() else {"host": "legacy", "engine_option": "auto"}
+    if not _ensure_player_initialized("", initialization):
         return false
     _apply_backend(false)
     _apply_engine_options()
@@ -14864,18 +14874,14 @@ func _complete_runtime_dialog(result: int, input: LineEdit) -> void:
             ]
         )
 
-func _uses_native_session(runtime_kind: String) -> bool:
-    return PlaybackBackend.uses_native_host(
-        selected_backend, runtime_kind, player, AppUpdater.is_prerelease(_application_version_text())
-    )
-
-func _ensure_player_initialized(launch_root: String = "") -> bool:
+func _ensure_player_initialized(launch_root: String = "", route: Dictionary = {}) -> bool:
     if player == null:
         return false
     var user_dir := OS.get_user_data_dir()
     var cache_dir := user_dir.path_join("cache")
     var wa2_flags := ""
-    var use_ons_native_host := _uses_native_session(current_player_runtime_kind)
+    var use_ons_native_host: bool = bool(player.get_meta("aether_ons_native_host", false)) \
+        if route.is_empty() else route.get("host", "") == "native"
     var local_provider_saves := not launch_root.is_empty() and cli_probe_script.is_empty() \
         and current_player_runtime_kind in [RUNTIME_RFVP, RUNTIME_SOFTPAL]
     if cli_probe_script == "res://scripts/runtime_regression_probe.gd":
@@ -14955,30 +14961,8 @@ func _ensure_player_initialized(launch_root: String = "") -> bool:
     player.set_meta("aether_local_provider_saves", local_provider_saves)
     player.set_meta("aether_ons_native_host", use_ons_native_host)
 
-    var runtime_id := "auto"
-    if current_player_runtime_kind in [
-        RUNTIME_ONSCRIPTER,
-        RUNTIME_MINORI,
-        RUNTIME_SOFTPAL,
-        RUNTIME_RFVP,
-        RUNTIME_CMVS,
-        RUNTIME_CATSYSTEM2,
-        RUNTIME_SIGLUS,
-        RUNTIME_BGI,
-        RUNTIME_MAGES,
-        RUNTIME_N2SYSTEM,
-        RUNTIME_XSYSTEM4,
-        RUNTIME_XSYSTEM35,
-        RUNTIME_SYSTEM3,
-        RUNTIME_SYSTEMC,
-        RUNTIME_EXHIBIT,
-        RUNTIME_YURIS,
-        RUNTIME_ADVHD,
-        RUNTIME_ESCUDE,
-        RUNTIME_ENTISGLS,
-        RUNTIME_WA2,
-    ]:
-        runtime_id = current_player_runtime_kind
+    var runtime_id := String(route.get("engine_option", player.get_meta("aether_engine_option", "auto")))
+    player.set_meta("aether_engine_option", runtime_id)
     var runtime_result := int(player.set_engine_option("runtime", runtime_id))
     if runtime_result != ENGINE_RESULT_OK:
         render_errors += 1
@@ -15709,15 +15693,21 @@ func _probe_open_game(config: Dictionary, target_game_path: String, backend_env:
     selected_backend = _normalize_backend_name(ProbeConfig.backend(config, backend_env))
     if not selected_backend in BACKENDS:
         selected_backend = PlaybackBackend.AUTOMATIC
-    var runtime_kind := _game_runtime_kind(target_game_path)
-    if not _switch_runtime_player(runtime_kind):
+    var route := _resolve_launch({
+        "path": target_game_path,
+        "startupScript": ProbeConfig.string_value(config, "startup_script", ""),
+    }, "probe")
+    if String(route.host) == "unavailable":
+        _write_probe_marker("probe_open_game route_unavailable reason=%s" % route.reason)
+        return false
+    var runtime_kind := String(route.runtime)
+    if not _switch_runtime_player(runtime_kind, route):
         _write_probe_marker("probe_open_game runtime_switch_failed kind=%s" % runtime_kind)
         return false
     # CLI probes bypass _on_open_game(), so keep the input mapper in the same
     # runtime coordinate space as the player selected above.
     active_runtime_kind = runtime_kind
-    if GameLaunchEntry.runtime_uses_directory(runtime_kind):
-        target_game_path = _game_runtime_root(target_game_path)
+    target_game_path = String(route.entry)
     _write_probe_marker("probe_open_game backend=%s target=%s" % [selected_backend, target_game_path])
     _apply_backend(false)
     var fps_limit := ProbeConfig.int_value(config, "fps_limit", _runtime_int("AETHERKIRI_PROBE_FPS_LIMIT", 0))
@@ -15735,10 +15725,7 @@ func _probe_open_game(config: Dictionary, target_game_path: String, backend_env:
         return false
     current_surface_size = surface_size
     game_path.text = target_game_path
-    var startup_script := ProbeConfig.string_value(config, "startup_script", "").strip_edges()
-    if not startup_script.is_empty() and not startup_script.begins_with("/"):
-        startup_script = target_game_path.path_join(startup_script)
-    var result: int = int(player.open_game(target_game_path, true, startup_script))
+    var result: int = int(player.open_game(target_game_path, true, String(route.startup_script)))
     if result != ENGINE_RESULT_OK:
         _write_probe_marker("probe_open_game failed error=%s" % player.get_last_error())
         printerr("open_game failed: %s" % player.get_last_error())
@@ -17879,33 +17866,29 @@ func _renderer_summary(renderer: String) -> String:
     return summary
 
 
-func _on_open_game() -> void:
+func _on_open_game(route: Dictionary = {}) -> void:
     if not _require_legal_documents_for_media():
         return
-    var requested_path := game_path.text.strip_edges()
-    var path := _resolve_game_path(requested_path)
-    if path != requested_path:
-        _write_probe_marker("open_game remapped_path=%s requested=%s" % [path, requested_path])
-        _append_log("Remapped iOS game path: %s" % path)
-        game_path.text = path
+    if route.is_empty():
+        var game := selected_game.duplicate()
+        game["path"] = game_path.text
+        route = _resolve_launch(game, "direct")
+        if not _check_launch_route(route):
+            render_errors += 1
+            return
+    var path := String(route.entry)
+    var detected_runtime := String(route.runtime)
+    game_path.text = path
     _write_probe_marker("open_game path=%s" % path)
-    if path.is_empty():
-        render_errors += 1
-        _append_log("Game path is empty.")
-        return
 
     _load_game_render_overrides(path)
     if game_virtual_controls != null:
         game_virtual_controls.set_layout_profiles(_virtual_button_layouts(game_render_root))
-    var detected_runtime := _game_runtime_kind(path)
-    if not _switch_runtime_player(detected_runtime):
+    if not _switch_runtime_player(detected_runtime, route):
         render_errors += 1
         _clear_game_render_overrides()
         return
     active_runtime_kind = detected_runtime
-    if GameLaunchEntry.runtime_uses_directory(detected_runtime):
-        path = _game_runtime_root(path)
-        game_path.text = path
     _load_button_position_memory(path)
     if (
         detected_runtime == RUNTIME_ONSCRIPTER
@@ -17915,7 +17898,7 @@ func _on_open_game() -> void:
         auto_probe_clicks = remembered_button_positions.duplicate()
         device_probe_enabled = device_probe_enabled or not auto_probe_clicks.is_empty()
 
-    if not _ensure_player_initialized(_game_runtime_root(path)):
+    if not _ensure_player_initialized(String(route.root), route):
         _clear_game_render_overrides()
         return
 
@@ -17932,16 +17915,7 @@ func _on_open_game() -> void:
     startup_poll_accum = STARTUP_POLL_INTERVAL
 
     var async_open := OS.get_environment("AETHERKIRI_SYNC_OPEN") != "1"
-    var startup_script := String(selected_game.get("startupScript", "")).strip_edges()
-    if startup_script.is_empty() and detected_runtime == RUNTIME_ENTISGLS:
-        startup_script = GameLaunchEntry.configured_relative_path(selected_game)
-    if not startup_script.is_empty() and not startup_script.begins_with("/"):
-        startup_script = path.path_join(startup_script)
-    if startup_script.is_empty() and detected_runtime == RUNTIME_YURIS:
-        startup_script = GameLaunchEntry.default_yuris_startup_script(path)
-        if not startup_script.is_empty():
-            _append_log("YU-RIS startup entry: %s" % startup_script)
-    var result: int = int(player.open_game(path, async_open, startup_script))
+    var result: int = int(player.open_game(path, async_open, String(route.startup_script)))
     if result != ENGINE_RESULT_OK:
         render_errors += 1
         cached_startup_state = STARTUP_FAILED
@@ -17996,7 +17970,9 @@ func _on_open_game() -> void:
     last_renderer_info_logged = ""
     restart_notice.text = "Starting..."
     if player.has_method("get_engine_host"):
-        _append_log("Session host: %s" % player.get_engine_host())
+        _append_log("Session host: %s (native requested=%s, selected=%s, reason=%s)" % [
+            player.get_engine_host(), route.native_requested, route.host, route.reason,
+        ])
     _append_log("Game launch renderer: %s" % _renderer_summary(String(player.get_renderer_info())))
     _append_log("Surface mode: %s target=%dx%d texture=%dx%d" % [
         render_surface_mode,

@@ -111,13 +111,17 @@ func _layout() -> void:
 static func storage_path(root: String) -> String:
     return root.path_join("savedata/tyranoscript/local_storage.json")
 
-func open_entry(value: Dictionary) -> String:
+func open_entry(value: Dictionary, route: Dictionary = {}) -> String:
     entry = value.duplicate(true)
     controls.set_layout_profiles(host._virtual_button_layouts(String(entry.get("path", ""))))
-    var root := ProjectSettings.globalize_path(host._game_runtime_root(String(entry.get("path", ""))))
-    var launch := String(host._tyrano_entry_file(root))
-    if launch.is_empty():
+    if route.is_empty():
+        route = host._resolve_launch(entry)
+    if String(route.get("player", "")) != "tyranoscript" or route.get("reason", "") == "invalid_project":
         return host._t("tyrano.invalid_project")
+    if String(route.get("host", "")) != "dedicated":
+        return host._t("tyrano.unavailable")
+    var root := String(route.root)
+    var launch := String(route.entry)
     if not ClassDB.class_exists("AetherTyranoPlayer"):
         return host._t("tyrano.unavailable")
     native = ClassDB.instantiate("AetherTyranoPlayer")

@@ -1,4 +1,5 @@
 #include "aether/game_detection.h"
+#include "path_utils.h"
 
 #include "engine_runtime_provider.h"
 #include <nlohmann/json.hpp>
@@ -11,39 +12,11 @@ namespace aether::game_detection {
 namespace {
 
 using namespace std::string_view_literals;
+using namespace paths;
 using Json = nlohmann::json;
 using Names = std::vector<std::string>;
 constexpr size_t kMaxText = 1024 * 1024;
 constexpr uint64_t kMaxAsarBytes = 32ull * 1024 * 1024 * 1024;
-
-std::string Join(const std::string &base, std::string_view relative) {
-    if (base.empty() || base.back() == '/' || base.back() == '\\') {
-        return base + std::string(relative);
-    }
-    return base + "/" + std::string(relative);
-}
-
-std::string_view FileName(std::string_view path) {
-    const auto slash = path.find_last_of("/\\");
-    return slash == path.npos ? path : path.substr(slash + 1);
-}
-
-std::string Parent(std::string_view path) {
-    const auto slash = path.find_last_of("/\\");
-    if (slash == path.npos) {
-        return {};
-    }
-    const auto scheme = path.find("://");
-    const bool root = slash == 0 || path[slash - 1] == ':' ||
-                      (scheme != path.npos && slash == scheme + 2);
-    return std::string(path.substr(0, slash + root));
-}
-
-std::string_view Extension(std::string_view name) {
-    name = FileName(name);
-    const auto dot = name.rfind('.');
-    return dot == name.npos ? ""sv : name.substr(dot + 1);
-}
 
 bool StartsWith(std::string_view value, std::string_view prefix) {
     return value.substr(0, prefix.size()) == prefix;
@@ -71,16 +44,6 @@ Names FileNames(const Files &files, const std::string &root) {
         }
     }
     return names;
-}
-
-std::string_view Trim(std::string_view text) {
-    while (!text.empty() && static_cast<unsigned char>(text.front()) <= 32) {
-        text.remove_prefix(1);
-    }
-    while (!text.empty() && static_cast<unsigned char>(text.back()) <= 32) {
-        text.remove_suffix(1);
-    }
-    return text;
 }
 
 std::string ValueAfter(const Files &files, std::string_view text, std::string_view key) {
@@ -525,6 +488,10 @@ std::string RenpyDirectory(const Files &files, const std::string &root) {
         }
     }
     return {};
+}
+
+std::string HcbEntry(const Files &files, const std::string &root) {
+    return HcbLaunchFile(files, root, root);
 }
 
 Result Inspect(const Files &files, const std::string &path) {

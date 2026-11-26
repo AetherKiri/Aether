@@ -35,7 +35,7 @@ static func runtime_root() -> String:
 func _probe_enabled() -> bool:
     return OS.is_debug_build()
 
-func open_entry(value: Dictionary) -> String:
+func open_entry(value: Dictionary, route: Dictionary = {}) -> String:
     state = {}
     commands.clear()
     sequence = 0
@@ -52,10 +52,14 @@ func open_entry(value: Dictionary) -> String:
     overlay_event_sequence = 0
     entry = value.duplicate(true)
     controls.set_layout_profiles(host._virtual_button_layouts(String(entry.get("path", ""))))
-    var root := ProjectSettings.globalize_path(host._game_runtime_root(String(entry.get("path", ""))))
-    var relative := String(host._renpy_game_directory(root))
-    if relative.is_empty():
+    if route.is_empty():
+        route = host._resolve_launch(entry)
+    if String(route.get("player", "")) != "renpy" or route.get("reason", "") == "invalid_project":
         return host._t("renpy.invalid_project")
+    if String(route.get("host", "")) != "dedicated":
+        return host._t("renpy.unavailable")
+    var root := String(route.root)
+    var relative := String(route.entry)
     if not ClassDB.class_exists("AetherRenpyNativePlayer"):
         return host._t("renpy.unavailable")
     native = ClassDB.instantiate("AetherRenpyNativePlayer")

@@ -104,9 +104,17 @@ func _initialize() -> void:
     var version := OS.get_environment("AETHERKIRI_SIMULATE_VERSION").strip_edges()
     if version.is_empty():
         version = String(ProjectSettings.get_setting("application/config/version", ""))
-    var use_native_host := PlaybackBackend.uses_native_host(
-        backend, "onscripter" if is_onscripter else "", player, AppUpdater.is_prerelease(version)
-    )
+    var route: Dictionary = player.resolve_game_launch({
+        "source": "probe",
+        "path": game_path,
+        "host_preference": PlaybackBackend.host_preference(backend),
+        "prerelease": AppUpdater.is_prerelease(version),
+    })
+    if String(route.host) == "unavailable":
+        printerr("Smoke game cannot be routed: %s" % route.reason)
+        quit(1)
+        return
+    var use_native_host: bool = route.host == "native"
     if check_ons_host and backend == PlaybackBackend.NATIVE and not use_native_host:
         printerr("ONS native host is unavailable")
         quit(1)
@@ -136,6 +144,7 @@ func _initialize() -> void:
 
     player.set_render_backend(PlaybackBackend.renderer(backend))
     if is_onscripter:
+        player.set_engine_option("runtime", String(route.engine_option))
         var runtime_font := ProjectSettings.globalize_path(
             "res://assets/fonts/aetherkiri-runtime-cjk.otf"
         )

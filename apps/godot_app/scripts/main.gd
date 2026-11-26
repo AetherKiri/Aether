@@ -3076,6 +3076,7 @@ var native_cover_file_picker_is_photo := false
 var native_cover_file_picker_library_path := ""
 var native_font_file_picker_callback := Callable()
 var native_translation_model_file_picker_pending := false
+var pending_library_play_path := ""
 var active_game_path := ""
 var active_game_started_msec := 0
 var active_game_paused_msec := 0
@@ -13501,7 +13502,7 @@ func _check_launch_route(route: Dictionary) -> bool:
 
 func _start_selected_game_after_save_sync() -> void:
     var library_path := String(selected_game.get("path", ""))
-    if library_path.is_empty():
+    if library_path.is_empty() or game_running:
         return
     if not _ensure_android_storage_permission_for_path(library_path):
         return
@@ -13520,14 +13521,8 @@ func _start_selected_game_after_save_sync() -> void:
             return
     var launch_path := String(route.entry)
     _set_game_runtime_orientation(true)
-    # A launch may supply an explicit script without changing the saved library
-    # record (for example a section regression). Updating play statistics must
-    # preserve that entry for this launch.
-    var requested_startup_script := String(selected_game.get("startupScript", ""))
-    var played_game := _begin_active_game_session(library_path)
-    if not played_game.is_empty():
-        selected_game = played_game
-        selected_game["startupScript"] = requested_startup_script
+    if active_runtime_kind == RUNTIME_EXHIBIT:
+        runtime_display_settings.begin_game(get_window(), library_path, not _is_touch_platform(), _on_runtime_platform_request)
     game_path.text = launch_path
     _write_probe_marker("library_launch root=%s entry=%s" % [library_path, launch_path])
     _set_game_background(true)
@@ -13543,13 +13538,25 @@ func _start_selected_game_after_save_sync() -> void:
     restart_notice.visible = true
     _on_open_game(route)
     if game_running:
+        pending_library_play_path = library_path
         _begin_launch_transition()
     else:
+        if active_runtime_kind == RUNTIME_EXHIBIT:
+            runtime_display_settings.end_game()
         _hide_loading_overlay()
         _set_game_runtime_orientation(false)
         _set_game_background(false)
         viewport.visible = false
         game_view.visible = false
+
+func _record_library_play_after_startup() -> void:
+    if pending_library_play_path.is_empty():
+        return
+    var path := pending_library_play_path
+    pending_library_play_path = ""
+    var played_game := _begin_active_game_session(path)
+    if not played_game.is_empty() and String(selected_game.get("path", "")) == path:
+        selected_game["lastPlayed"] = played_game["lastPlayed"]
 
 func _play_session_now_msec() -> int:
     return Time.get_ticks_msec()
@@ -13558,8 +13565,6 @@ func _begin_active_game_session(path: String) -> Dictionary:
     if not active_game_path.is_empty():
         _finalize_active_game_session()
     active_game_path = path
-    if active_runtime_kind == RUNTIME_EXHIBIT:
-        runtime_display_settings.begin_game(get_window(), path, not _is_touch_platform(), _on_runtime_platform_request)
     active_game_started_msec = _play_session_now_msec()
     active_game_paused_msec = 0
     play_duration_checkpoint_elapsed = 0.0
@@ -13601,6 +13606,7 @@ func _resume_active_game_session() -> void:
     active_game_paused_msec = 0
 
 func _finalize_active_game_session() -> void:
+    pending_library_play_path = ""
     _clear_game_render_overrides()
     _checkpoint_active_game_session()
     active_game_path = ""
@@ -16980,6 +16986,7 @@ func _process(delta: float) -> void:
                     TEXT_TRANSLATION_DISABLED,
                 ]:
                     _set_translation_loading_notice(false)
+            _record_library_play_after_startup()
             restart_notice.text = ""
             if loading_panel != null and loading_panel.visible:
                 _hide_loading_overlay(func():

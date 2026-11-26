@@ -4,6 +4,20 @@ const ShellInterface = preload("res://scripts/ui/astryx/shell_interface.gd")
 
 class TestApp extends "res://scripts/main.gd":
     var captured_path := ""
+    var fail_runtime_switch := false
+    var play_clock_msec := 1000
+    var launch_message := ""
+
+    func _play_session_now_msec() -> int:
+        return play_clock_msec
+
+    func _switch_runtime_player(runtime_kind: String, route: Dictionary = {}) -> bool:
+        if fail_runtime_switch:
+            return false
+        return super._switch_runtime_player(runtime_kind, route)
+
+    func _show_message(message: String) -> void:
+        launch_message = message
 
     func _configure_runtime_diagnostics() -> void:
         diagnostic_profile = "off"
@@ -72,21 +86,45 @@ func _run() -> void:
     _expect(entry.get("launchFile") == "", "Directory runtime retains automatic entry")
     if not entry.is_empty():
         app.selected_game = entry
-        app._start_selected_game_after_iap()
+        app.fail_runtime_switch = true
+        app._start_selected_game_after_save_sync()
+        app.fail_runtime_switch = false
+        _expect(not app.game_running, "A synchronous runtime switch failure leaves the game closed")
+        _expect_unplayed(app, game, "Synchronous startup failure")
+
+        app._start_selected_game_after_save_sync()
+        _expect(app.game_running, "The cancellable ONS startup request is accepted")
+        app._exit_game_for_go_back()
+        await process_frame
+        _expect_unplayed(app, game, "Canceling before startup completes")
+
+        app._start_selected_game_after_save_sync()
+        _expect(app.game_running, "The ONS startup request is accepted")
+        _expect(app.active_game_path.is_empty(), "A queued startup does not start the play timer")
+        app.play_clock_msec += 5000
         _expect(await _started_and_presented(app, "onscripter"), "The existing ONS player starts and presents a frame")
+        _expect(app.active_game_path == game, "A successful ONS launch starts a play session")
+        _expect(app.active_game_started_msec == app.play_clock_msec, "The play clock starts after loading")
+        _expect(int(_game_record(app, game).get("lastPlayed", 0)) > 0, "Successful startup marks the game played")
         _expect(app.captured_path == game, "The directory route opens the selected game root")
         var expected_host := OS.get_environment("AETHERKIRI_EXPECT_ONS_HOST")
         if not expected_host.is_empty():
             _expect(app.player.get_engine_host() == expected_host, "ONS uses the requested host")
+        app.play_clock_msec += 2500
         app._exit_game_for_go_back()
         await process_frame
+        _expect(int(_game_record(app, game).get("playDurationSeconds", 0)) == 2,
+            "Exit records play time without counting the loading interval")
         app.selected_game = entry
         app._start_selected_game_after_iap()
         _expect(await _started_and_presented(app, "onscripter"), "ONS reopens after returning to the library")
         if not expected_host.is_empty():
             _expect(app.player.get_engine_host() == expected_host, "Reopening retains the routed host")
+        _expect(app.active_game_started_msec == app.play_clock_msec, "Reopening starts a fresh play session")
+        app.play_clock_msec += 1000
         app._exit_game_for_go_back()
         await process_frame
+        _expect(int(_game_record(app, game).get("playDurationSeconds", 0)) == 3, "Reopening adds only the new play time")
 
     # Exercise the file-picker callback and the actual KiriKiri player using
     # the bundled, redistributable KAG3 archive.
@@ -153,7 +191,7 @@ func _check_system3_route(app, mode: String) -> void:
     _expect(archive_file != null, "Create the synthetic System3 archive")
     if archive_file == null:
         return
-    archive_file.store_buffer(archive)
+    archive_file.store_string("invalid DRI archive")
     archive_file.close()
     _expect(FileAccess.open(game_root.path_join("ACG.DAT"), FileAccess.WRITE) != null, "Stage the graphics marker")
     var config := FileAccess.open(game_root.path_join("system3.ini"), FileAccess.WRITE)
@@ -175,6 +213,22 @@ func _check_system3_route(app, mode: String) -> void:
         _expect(route.get("host") == "legacy", "System3 uses its existing Godot host")
         if app.selected_backend == app.PlaybackBackend.NATIVE:
             _expect(route.get("reason") == "native_session_unavailable", "Explain the System3 fallback")
+        app._start_selected_game_after_save_sync()
+        _expect(app.game_running, "The malformed System3 archive reaches asynchronous startup")
+        var deadline := Time.get_ticks_msec() + 8000
+        while app.game_running and Time.get_ticks_msec() < deadline:
+            await process_frame
+        _expect(not app.game_running and app.launch_message.begins_with("Startup failed:"),
+            "Asynchronous failure returns to the library")
+        _expect_unplayed(app, game_root, "Asynchronous startup failure")
+
+        archive_file = FileAccess.open(game_root.path_join("ADISK.DAT"), FileAccess.WRITE)
+        _expect(archive_file != null, "Replace the malformed archive with the playable fixture")
+        if archive_file == null:
+            return
+        archive_file.store_buffer(archive)
+        archive_file.close()
+        app.selected_game = item
         app._start_selected_game_after_iap()
         _expect(await _started_and_presented(app, "system3"), "The System3 Provider opens and presents a frame")
         if app.game_running:
@@ -182,6 +236,24 @@ func _check_system3_route(app, mode: String) -> void:
             await process_frame
         return
     _expect(false, "Find the imported System3 game")
+
+
+func _game_record(app, path: String) -> Dictionary:
+    for item in app._load_game_list():
+        if item.path == path:
+            return item
+    return {}
+
+
+func _expect_unplayed(app, path: String, context: String) -> void:
+    _expect(app.active_game_path.is_empty() and app.active_game_started_msec == 0,
+        context + " leaves no active play session")
+    app.play_clock_msec += 31000
+    app._process_active_game_session(31.0)
+    var record := _game_record(app, path)
+    _expect(not record.is_empty() and int(record.get("lastPlayed", 0)) == 0
+        and int(record.get("playDurationSeconds", 0)) == 0,
+        context + " does not update the library after waiting")
 
 
 func _started_and_presented(app, runtime: String) -> bool:

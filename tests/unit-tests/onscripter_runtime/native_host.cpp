@@ -60,9 +60,10 @@ bool FrameHasShade(engine_handle_t engine, uint8_t shade, uint64_t &serial) {
     return pixels[center] == shade && pixels[center + 1] == shade && pixels[center + 2] == shade;
 }
 
-#if defined(AETHER_TEST_SYSTEM3) || defined(AETHER_TEST_XSYSTEM35)
+#if defined(AETHER_TEST_SYSTEM3) || defined(AETHER_TEST_XSYSTEM35) || \
+    defined(AETHER_TEST_WA2) || defined(AETHER_TEST_MINORI) || defined(AETHER_TEST_N2SYSTEM)
 void StartProvider(RuntimeSession &session, const engine_create_desc_t &description,
-               const std::string &path, const char *runtime, uint32_t expected) {
+                   const std::string &path, const char *runtime, uint32_t expected) {
     REQUIRE(session.Create(description) == ENGINE_RESULT_OK);
     RuntimeSession competing;
     REQUIRE(competing.Create(description) == ENGINE_RESULT_INVALID_STATE);
@@ -83,7 +84,6 @@ void StartProvider(RuntimeSession &session, const engine_create_desc_t &descript
     INFO(engine_get_last_error(engine));
     REQUIRE(state == expected);
 }
-
 #endif
 
 #if defined(AETHER_TEST_SYSTEM3)
@@ -186,6 +186,27 @@ void ExerciseXSystem35(RuntimeSession &session, const engine_create_desc_t &desc
 }
 #endif
 
+#if defined(AETHER_TEST_N2SYSTEM)
+void ExerciseN2System(RuntimeSession &session, const engine_create_desc_t &description) {
+    StartProvider(session, description, AETHER_TEST_N2SYSTEM_GAME, "n2system", ENGINE_STARTUP_STATE_SUCCEEDED);
+    const auto engine = session.handle();
+    engine_frame_desc_t frame{};
+    frame.struct_size = sizeof(frame);
+    REQUIRE(WaitFor([&] {
+        REQUIRE(engine_tick(engine, 5) == ENGINE_RESULT_OK);
+        return engine_get_frame_desc(engine, &frame) == ENGINE_RESULT_OK && frame.frame_serial > 0;
+    }));
+    REQUIRE(frame.width == 320);
+    REQUIRE(frame.height == 180);
+    REQUIRE(frame.pixel_format == ENGINE_PIXEL_FORMAT_RGBA8888);
+    std::vector<uint8_t> pixels(static_cast<size_t>(frame.stride_bytes) * frame.height);
+    REQUIRE(engine_read_frame_rgba(engine, pixels.data(), pixels.size()) == ENGINE_RESULT_OK);
+    REQUIRE(engine_pause(engine) == ENGINE_RESULT_OK);
+    REQUIRE(engine_resume(engine) == ENGINE_RESULT_OK);
+    REQUIRE(session.Close() == ENGINE_RESULT_OK);
+}
+#endif
+
 } // namespace
 
 TEST_CASE("Native host plays and reopens an ONScripter game through the engine ABI") {
@@ -269,6 +290,30 @@ TEST_CASE("Native host plays and reopens an ONScripter game through the engine A
         if (visit == 0) {
             REQUIRE(std::find(supported.begin(), supported.end(), "xsystem35") != supported.end());
             ExerciseXSystem35(session, description, directory.path);
+        }
+#endif
+#if defined(AETHER_TEST_WA2) || defined(AETHER_TEST_MINORI) || defined(AETHER_TEST_N2SYSTEM)
+        if (visit == 0) {
+#if defined(AETHER_TEST_WA2)
+            REQUIRE(std::find(supported.begin(), supported.end(), "wa2") != supported.end());
+            const auto empty_wa2 = directory.path / "wa2-game";
+            REQUIRE(fs::create_directory(empty_wa2));
+            // WA2 can open its fallback UI without retail game files.
+            StartProvider(session, description, empty_wa2.u8string(), "wa2", ENGINE_STARTUP_STATE_SUCCEEDED);
+            REQUIRE(engine_tick(session.handle(), 16) == ENGINE_RESULT_OK);
+            REQUIRE(engine_pause(session.handle()) == ENGINE_RESULT_OK);
+            REQUIRE(engine_resume(session.handle()) == ENGINE_RESULT_OK);
+            REQUIRE(session.Close() == ENGINE_RESULT_OK);
+#endif
+#if defined(AETHER_TEST_MINORI)
+            REQUIRE(std::find(supported.begin(), supported.end(), "minori") != supported.end());
+            StartProvider(session, description, writable_path, "minori", ENGINE_STARTUP_STATE_FAILED);
+            REQUIRE(session.Close() == ENGINE_RESULT_OK);
+#endif
+#if defined(AETHER_TEST_N2SYSTEM)
+            REQUIRE(std::find(supported.begin(), supported.end(), "n2system") != supported.end());
+            ExerciseN2System(session, description);
+#endif
         }
 #endif
     }

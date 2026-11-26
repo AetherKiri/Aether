@@ -30,9 +30,19 @@ func _run() -> void:
     for cycle in range(3):
         var writable := fixture.get_current_dir().path_join("cycle%d" % cycle)
         DirAccess.make_dir_recursive_absolute(writable)
-        if not _expect(player.initialize_engine(writable, writable.path_join("cache")), "Initialize engine"):
+        var native := cycle != 1
+        var route: Dictionary = player.resolve_game_launch({
+            "path": game_dir,
+            "host_preference": "native" if native else "legacy",
+        })
+        var expected_host := "native" if native else "legacy"
+        if not _expect(route.get("engine_option") == "n2system" and route.get("host") == expected_host,
+                "Route N2System to the selected session host"):
             break
-        _expect(player.set_engine_option("runtime", "n2system") == 0, "Select the N2System provider")
+        if not _expect(player.initialize_engine(writable, writable.path_join("cache"), native), "Initialize engine"):
+            break
+        _expect(player.get_engine_host() == expected_host, "Use the routed N2System host")
+        _expect(player.set_engine_option("runtime", String(route.engine_option)) == 0, "Select the N2System provider")
         # Deliberately use a larger presentation size: hit testing follows
         # the profile's logical size, and the runtime must not create a window.
         _expect(player.set_surface_size(1280, 720) == 0, "Set presentation surface")

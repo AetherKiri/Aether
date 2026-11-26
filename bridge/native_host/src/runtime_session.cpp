@@ -12,6 +12,16 @@
 #include "xsystem35_runtime_provider.h"
 #endif
 
+#if defined(AETHER_NATIVE_HOST_WITH_N2SYSTEM)
+#include "n2system_runtime.h"
+#endif
+#if defined(AETHER_NATIVE_HOST_WITH_WA2)
+extern "C" void AetherInternalRegisterWa2Runtime();
+#endif
+#if defined(AETHER_NATIVE_HOST_WITH_MINORI)
+extern "C" engine_result_t aetherkiri_minori_register_runtime_provider();
+#endif
+
 #include <algorithm>
 #include <atomic>
 #include <utility>
@@ -29,6 +39,10 @@ RuntimeSession::~RuntimeSession() {
 
 std::vector<std::string> RuntimeSession::RegisterProviders() {
     std::vector<std::string> candidates;
+#if defined(AETHER_NATIVE_HOST_WITH_WA2)
+    AetherInternalRegisterWa2Runtime();
+    candidates.emplace_back("wa2");
+#endif
 #if defined(AETHER_NATIVE_HOST_WITH_ONSCRIPTER)
     aetherkiri::onscripter::RegisterRuntimeProvider();
     candidates.emplace_back("onscripter");
@@ -41,6 +55,15 @@ std::vector<std::string> RuntimeSession::RegisterProviders() {
 #if defined(AETHER_NATIVE_HOST_WITH_XSYSTEM35)
     if (aetherkiri_xsystem35_register_runtime_provider() == ENGINE_RESULT_OK) {
         candidates.emplace_back("xsystem35");
+    }
+#endif
+#if defined(AETHER_NATIVE_HOST_WITH_N2SYSTEM)
+    aetherkiri::n2system::RegisterRuntimeProvider();
+    candidates.emplace_back("n2system");
+#endif
+#if defined(AETHER_NATIVE_HOST_WITH_MINORI)
+    if (aetherkiri_minori_register_runtime_provider() == ENGINE_RESULT_OK) {
+        candidates.emplace_back("minori");
     }
 #endif
     const auto registered = RegisteredLaunchProviders();

@@ -50,8 +50,32 @@ if(TARGET aether_native_host)
     if(TARGET aether_xsystem35_runtime)
         target_compile_definitions(aether-native-host-onscripter PRIVATE AETHER_TEST_XSYSTEM35)
     endif()
+    if(TARGET aetherkiri_wa2_runtime)
+        target_compile_definitions(aether-native-host-onscripter PRIVATE AETHER_TEST_WA2)
+    endif()
+    if(TARGET aether_minori_runtime)
+        target_compile_definitions(aether-native-host-onscripter PRIVATE AETHER_TEST_MINORI)
+    endif()
+    if(TARGET aether_n2system_runtime)
+        find_package(Python3 REQUIRED COMPONENTS Interpreter)
+        # The provider loads the NativeAOT bundle beside the consumer binary.
+        # Stage it from the existing manifest on both first build and rebuild.
+        cmake_policy(PUSH)
+        cmake_policy(SET CMP0112 NEW)
+        add_custom_target(aether_native_host_test_n2system
+            COMMAND "${Python3_EXECUTABLE}" "${CMAKE_SOURCE_DIR}/tools/stage_n2system_runtime.py"
+                --manifest "${CMAKE_BINARY_DIR}/n2system-runtime-publish.txt"
+                --destination "$<TARGET_FILE_DIR:aether-native-host-onscripter>/n2system-runtime"
+            DEPENDS aether_n2system_host
+            VERBATIM)
+        cmake_policy(POP)
+        add_dependencies(aether-native-host-onscripter aether_native_host_test_n2system)
+        target_compile_definitions(aether-native-host-onscripter PRIVATE
+            AETHER_TEST_N2SYSTEM
+            AETHER_TEST_N2SYSTEM_GAME="${CMAKE_SOURCE_DIR}/tests/fixtures/n2system_smoke")
+    endif()
     target_link_libraries(aether-native-host-onscripter PRIVATE
         aether_native_host Catch2::Catch2WithMain)
     catch_discover_tests(aether-native-host-onscripter PROPERTIES
-        ENVIRONMENT "SDL_AUDIODRIVER=dummy" TIMEOUT 30)
+        ENVIRONMENT "SDL_AUDIODRIVER=dummy;ALSOFT_DRIVERS=null" TIMEOUT 30)
 endif()

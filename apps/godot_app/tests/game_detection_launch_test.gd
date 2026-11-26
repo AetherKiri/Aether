@@ -276,8 +276,8 @@ func _check_system3_route(app, mode: String) -> void:
 func _check_xsystem35_route(app, mode: String) -> void:
     var game_root := ProjectSettings.globalize_path("user://xsystem35-" + mode)
     DirAccess.make_dir_recursive_absolute(game_root)
-    # The minimal ALD page used by the XSystem35 Provider contract, with a
-    # 640x480 RGB world and a wait loop.
+    # Minimal ALD page: set up a 640x480 world, load slot 1 (LD), write it on
+    # the first launch (QD), then enter the fixture's wait loop.
     var archive := PackedByteArray()
     archive.resize(1024)
     archive[0] = 1
@@ -286,7 +286,7 @@ func _check_xsystem35_route(app, mode: String) -> void:
     archive[256] = 1
     archive[257] = 2
     archive[512] = 16
-    var page := "53333530100000002600000000000000575702807f01e07f587f59437f417f401a000000".hex_decode()
+    var page := "53333530100000002e00000000000000575702807f01e07f587f4c44417f5144417f59437f417f4022000000".hex_decode()
     archive[516] = page.size()
     for i in page.size():
         archive[528 + i] = page[i]
@@ -313,6 +313,44 @@ func _check_xsystem35_route(app, mode: String) -> void:
     if app.game_running:
         app._exit_game_for_go_back()
         await process_frame
+
+    var saves_root := game_root.path_join("savedata/xsystem35")
+    var saved_slot := ""
+    for bank in DirAccess.get_directories_at(saves_root):
+        var bank_path := saves_root.path_join(bank)
+        for name in DirAccess.get_files_at(bank_path):
+            if name.get_extension().to_lower() == "asd":
+                saved_slot = bank_path.path_join(name)
+                break
+        if not saved_slot.is_empty():
+            break
+    _expect(not saved_slot.is_empty(), "XSystem35 writes its normal save slot")
+    if saved_slot.is_empty():
+        return
+    var slot := FileAccess.open(saved_slot, FileAccess.READ_WRITE)
+    _expect(slot != null, "Mark the existing XSystem35 slot")
+    if slot == null:
+        return
+    # The loader reads the stored fields and ignores bytes past the end of
+    # the save. A trailing byte distinguishes loading from a fresh write.
+    slot.seek_end()
+    slot.store_8(0x58)
+    slot.close()
+    var saved_data := FileAccess.get_file_as_bytes(saved_slot)
+
+    var initial_backend: String = app.selected_backend
+    var native_selected := expected_host == "native"
+    app.selected_backend = app.PlaybackBackend.GODOT if native_selected else app.PlaybackBackend.NATIVE
+    app.selected_game = fixture
+    app._start_selected_game_after_iap()
+    _expect(await _started_and_presented(app, "xsystem35"), "XSystem35 reopens on the other host")
+    _expect(app.player.get_engine_host() == ("legacy" if native_selected else "native"), "Use the other host")
+    if app.game_running:
+        app._exit_game_for_go_back()
+        await process_frame
+    app.selected_backend = initial_backend
+    _expect(FileAccess.get_file_as_bytes(saved_slot) == saved_data,
+        "The other XSystem35 host loads the same save without rewriting it")
 
 
 func _game_record(app, path: String) -> Dictionary:

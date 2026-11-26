@@ -310,7 +310,8 @@ func _start_post(body: String, generation: int, token: int) -> Error:
     add_child(request)
     _request = request
     request.request_completed.connect(_post_completed.bind(generation, token), CONNECT_ONE_SHOT)
-    var err := request.request(_endpoint, ["Content-Type: application/json"], HTTPClient.METHOD_POST, body)
+    var headers := ["Content-Type: application/json", "User-Agent: Aether-Telemetry/1 (+https://github.com/AetherKiri/Aether)"]
+    var err := request.request(_endpoint, headers, HTTPClient.METHOD_POST, body)
     if err != OK:
         request.queue_free()
         _request = null

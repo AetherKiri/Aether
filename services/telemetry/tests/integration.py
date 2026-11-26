@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Exercise the local Worker, Java validator, and emulated D1 as one service."""
+"""Exercise the local TypeScript Worker and emulated D1 as one service."""
 
 import contextlib
 import http.client
@@ -14,7 +14,6 @@ import uuid
 
 ROOT = Path(__file__).resolve().parents[1]
 WRANGLER = os.environ.get("WRANGLER", "wrangler")
-SECRET = "local-dev-only-aether-telemetry-v1-test"
 DAY_MS = 86_400_000
 INSTALL_ID = "041f2997-0dc3-4030-881c-6df7203e8c20"
 
@@ -81,7 +80,7 @@ def body(*events):
     return json.dumps({"schema_version": 1, "events": events}, ensure_ascii=False, separators=(",", ":")).encode()
 
 
-def run_cases(edge_port, java_port, sql, report):
+def run_cases(edge_port, sql, report):
     json_headers = {"Content-Type": "application/json; charset=UTF-8"}
     path = "/v1/events"
     start = event("app_start", launch_count=1)
@@ -110,18 +109,14 @@ def run_cases(edge_port, java_port, sql, report):
     assert headers["access-control-allow-headers"] == "Content-Type"
     assert request(edge_port, "OPTIONS", path, headers={**preflight, "Access-Control-Request-Headers": "authorization"})[0] == 400
 
-    assert request(java_port, "POST", "/internal/v1/validate", body(start), json_headers)[0] == 401
-    assert request(java_port, "POST", "/internal/v1/validate", body(start), {**json_headers, "Authorization": "Bearer wrong"})[0] == 401
     post(body(start), 415, {"Content-Type": "text/plain"})
     post(body(start), 415, {**json_headers, "Content-Encoding": "gzip"})
     post(b" " * 65_537, 413)
     chunks = [b" " * 16_384] * 4 + [b" "]
     assert request(edge_port, "POST", path, iter(chunks), json_headers, chunked=True)[0] == 413
-    assert request(java_port, "POST", "/internal/v1/validate", iter(chunks),
-                   {**json_headers, "Authorization": f"Bearer {SECRET}"}, chunked=True)[0] == 413
 
     malformed = [
-        b"{", b"[]", b"{}", b'{"schema_version":1,"events":[]}',
+        b"{", b"[]", b"{}", b'{"schema_version":1,"events":[]}', b"\xef\xbb\xbf" + body(start),
         b'{"schema_version":2,"events":[{}]}', b'{"schema_version":1.0,"events":[{}]}',
         b'{"schema_version":1,"schema_version":1,"events":[{}]}',
         b'{"schema_version":1,"events":[{"kind":"app_start","k\\u0069nd":"app_usage"}]}',
@@ -201,15 +196,10 @@ def run_cases(edge_port, java_port, sql, report):
 
 def main():
     with tempfile.TemporaryDirectory(prefix="aether-telemetry-test-") as scratch:
-        env = {**os.environ, "TELEMETRY_BUILD_DIR": f"{scratch}/java", "TELEMETRY_ORIGIN_SECRET": SECRET,
-               "WRANGLER_SEND_METRICS": "false", "WRANGLER_LOG_PATH": f"{scratch}/wrangler.log"}
-        java_port, edge_port = local_port(), local_port()
-        while edge_port == java_port:
-            edge_port = local_port()
-        env.update(TELEMETRY_BIND="127.0.0.1", TELEMETRY_PORT=str(java_port))
+        env = {**os.environ, "WRANGLER_SEND_METRICS": "false", "WRANGLER_LOG_PATH": f"{scratch}/wrangler.log"}
+        edge_port = local_port()
         cfg = ("--config", "wrangler.local.toml")
         db = ("TELEMETRY_DB", *cfg, "--local", "--persist-to", f"{scratch}/d1")
-        run("./java/build.sh", env=env)
         run(WRANGLER, "d1", "migrations", "apply", *db, env=env)
 
         def execute(*options):
@@ -224,13 +214,11 @@ def main():
             return execute("--file", f"queries/{name}.sql")
 
         args = (WRANGLER, "dev", *cfg, "--local", "--persist-to", f"{scratch}/d1",
-                "--ip", "127.0.0.1", "--port", str(edge_port), "--test-scheduled", "--log-level", "error",
-                "--var", f"TELEMETRY_ORIGIN_URL:http://127.0.0.1:{java_port}")
-        with server(("./java/run.sh",), env) as java, server(args, env) as edge:
-            ready(java, java_port, "/health", 204)
+                "--ip", "127.0.0.1", "--port", str(edge_port), "--test-scheduled", "--log-level", "error")
+        with server(args, env) as edge:
             ready(edge, edge_port, "/v1/events", 405)
-            run_cases(edge_port, java_port, sql, report)
-    print("Telemetry integration passed (HTTP, strict validation, D1 idempotency, 90-day pruning, and storage failure).")
+            run_cases(edge_port, sql, report)
+    print("Telemetry integration passed (TypeScript Worker, D1 idempotency, 90-day pruning, and storage failure).")
 
 
 if __name__ == "__main__":

@@ -24,14 +24,16 @@ jobs:
         working-directory: services/telemetry
     steps:
       - uses: actions/checkout@v7
-      - uses: actions/setup-java@v6
-        with:
-          distribution: temurin
-          java-version: '21'
       - uses: actions/setup-node@v6
         with:
           node-version: '24'
-      - name: Install Wrangler
-        run: npm install --global wrangler@4.168.0
-      - name: Test the Worker, Java validator, and local D1
-        run: python3 tests/integration.py
+      - name: Install Wrangler and TypeScript
+        run: npm install --global wrangler@4.168.0 typescript@6.0.3
+      - name: Generate Worker types and type-check
+        run: |
+          wrangler types
+          tsc --project tsconfig.json
+      - name: Test the TypeScript Worker and local D1
+        run: |
+          node --test tests/edge.test.mjs
+          python3 tests/integration.py

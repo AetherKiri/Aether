@@ -121,7 +121,8 @@ godot::String InspectSpecialGame(const godot::String &path, const godot::String 
     return {};
 }
 
-godot::Dictionary ResolveGameLaunch(const godot::Dictionary &request, bool has_native_ons_session,
+godot::Dictionary ResolveGameLaunch(const godot::Dictionary &request,
+                                    const std::vector<std::string> &native_sessions,
                                     const godot::Callable &legacy_inspect,
                                     const godot::Callable &legacy_special_entry) {
     namespace routing = aether::native_host;
@@ -141,7 +142,7 @@ godot::Dictionary ResolveGameLaunch(const godot::Dictionary &request, bool has_n
     routing::LaunchCapabilities capabilities;
     capabilities.common_player = true;
     capabilities.providers = routing::RegisteredLaunchProviders();
-    if (has_native_ons_session) capabilities.native_sessions.emplace_back("onscripter");
+    capabilities.native_sessions = native_sessions;
     if (ClassDBSingleton::get_singleton()->class_exists("AetherTyranoPlayer")) capabilities.dedicated_players.emplace_back("tyranoscript");
     if (ClassDBSingleton::get_singleton()->class_exists("AetherRenpyNativePlayer")) capabilities.dedicated_players.emplace_back("renpy");
     if (ClassDBSingleton::get_singleton()->class_exists("AetherFlashPlayer")) capabilities.dedicated_players.emplace_back("flash");

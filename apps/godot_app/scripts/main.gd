@@ -14096,7 +14096,7 @@ func _switch_runtime_player(runtime_kind: String, route: Dictionary = {}) -> boo
         player != null
         and current_player_runtime_kind == normalized
         and player.is_initialized()
-        and bool(player.get_meta("aether_ons_native_host", false))
+        and bool(player.get_meta("aether_native_host", false))
             == use_native_session
     ):
         return true
@@ -14886,7 +14886,7 @@ func _ensure_player_initialized(launch_root: String = "", route: Dictionary = {}
     var user_dir := OS.get_user_data_dir()
     var cache_dir := user_dir.path_join("cache")
     var wa2_flags := ""
-    var use_ons_native_host: bool = bool(player.get_meta("aether_ons_native_host", false)) \
+    var use_native_host: bool = bool(player.get_meta("aether_native_host", false)) \
         if route.is_empty() else route.get("host", "") == "native"
     var local_provider_saves := not launch_root.is_empty() and cli_probe_script.is_empty() \
         and current_player_runtime_kind in [RUNTIME_RFVP, RUNTIME_SOFTPAL]
@@ -14946,13 +14946,13 @@ func _ensure_player_initialized(launch_root: String = "", route: Dictionary = {}
             and String(player.get_meta("aether_cache_directory", "")) == cache_dir \
             and String(player.get_meta("aether_wa2_flags_directory", "")) == wa2_flags \
             and bool(player.get_meta("aether_local_provider_saves", false)) == local_provider_saves \
-            and bool(player.get_meta("aether_ons_native_host", false)) == use_ons_native_host:
+            and bool(player.get_meta("aether_native_host", false)) == use_native_host:
             return true
         _stop_wa2_audio()
         player.destroy_engine()
     DirAccess.make_dir_recursive_absolute(cache_dir)
     var initialized: bool = player.initialize_engine(user_dir, cache_dir, true) \
-        if use_ons_native_host else player.initialize_engine(user_dir, cache_dir)
+        if use_native_host else player.initialize_engine(user_dir, cache_dir)
     if not initialized:
         render_errors += 1
         var init_error_message := "Engine init failed: %s %s" % [
@@ -14965,7 +14965,7 @@ func _ensure_player_initialized(launch_root: String = "", route: Dictionary = {}
     player.set_meta("aether_cache_directory", cache_dir)
     player.set_meta("aether_wa2_flags_directory", wa2_flags)
     player.set_meta("aether_local_provider_saves", local_provider_saves)
-    player.set_meta("aether_ons_native_host", use_ons_native_host)
+    player.set_meta("aether_native_host", use_native_host)
 
     var runtime_id := String(route.get("engine_option", player.get_meta("aether_engine_option", "auto")))
     player.set_meta("aether_engine_option", runtime_id)

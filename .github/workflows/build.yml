@@ -446,7 +446,7 @@ jobs:
           release_apk=out/godot/android/release/Aether-release.apk
           test -f "$release_apk"
           test -f out/godot/android/debug/Aether-debug.apk
-          grep -Fq -- '-DAETHERKIRI_WITH_ONS_NATIVE_HOST=1' \
+          grep -Fq -- '-DAETHERKIRI_WITH_NATIVE_HOST=1' \
             out/android/arm64-v8a/release/compile_commands.json
           unzip -p "$release_apk" lib/arm64-v8a/libaether_kiri_godot.so > /dev/null
 
@@ -722,6 +722,8 @@ jobs:
           ./build.sh ios release --jobs=4 --package-ipa 2>&1 | tee "${RUNNER_TEMP}/ios-release-build.log"
           grep -Fx 'AETHERKIRI_ENABLE_RFVP:BOOL=ON' out/ios/release/CMakeCache.txt
           test -s out/ios/release/bridge/rfvp_runtime/libaether_rfvp_runtime.a
+          grep -Fq -- '-DAETHERKIRI_WITH_NATIVE_HOST=1' \
+            out/ios/release/compile_commands.json
           if [[ "$AETHERKIRI_WITH_INTERNAL" == "true" ]]; then
             grep -Fx 'AETHERKIRI_ENABLE_SOFTPAL_RUNTIME:BOOL=ON' \
               out/ios/release/CMakeCache.txt
@@ -812,6 +814,8 @@ jobs:
           ./build.sh ios debug --jobs=4 --package-ipa 2>&1 | tee "${RUNNER_TEMP}/ios-debug-build.log"
           grep -Fx 'AETHERKIRI_ENABLE_RFVP:BOOL=ON' out/ios/debug/CMakeCache.txt
           test -s out/ios/debug/bridge/rfvp_runtime/libaether_rfvp_runtime.a
+          grep -Fq -- '-DAETHERKIRI_WITH_NATIVE_HOST=1' \
+            out/ios/debug/compile_commands.json
           if grep -E "SCRIPT ERROR|Failed to load script|Can't open GDExtension|Can't open dynamic library" "${RUNNER_TEMP}/ios-debug-build.log"; then
             echo "Godot iOS debug export logged script or GDExtension load errors." >&2
             exit 1
@@ -1170,7 +1174,7 @@ jobs:
           cp -R tests/fixtures/onscripter_smoke "$fixture/native"
           cp -R tests/fixtures/onscripter_smoke "$fixture/legacy"
           export AETHERKIRI_SIMULATE_VERSION=1.2.2-alpha.1
-          export AETHERKIRI_EXPECT_SYSTEM3=1
+          export AETHERKIRI_EXPECT_SYSTEM3=1 AETHERKIRI_EXPECT_XSYSTEM35=1
           export SDL_AUDIODRIVER=dummy
           AETHERKIRI_BACKEND="Native Session" AETHERKIRI_EXPECT_ONS_HOST=native \
             "$GODOT_BIN" --headless --path apps/godot_app --script res://tests/game_detection_launch_test.gd \
@@ -1178,6 +1182,16 @@ jobs:
           AETHERKIRI_BACKEND=Godot AETHERKIRI_EXPECT_ONS_HOST=legacy \
             "$GODOT_BIN" --headless --path apps/godot_app --script res://tests/game_detection_launch_test.gd \
               -- "${fixture##*/}" legacy native "$fixture/legacy"
+
+      - name: Test N2System session hosts and WA2 audio
+        env:
+          ALSOFT_DRIVERS: 'null'
+        run: |
+          set -euo pipefail
+          "$GODOT_BIN" --headless --path apps/godot_app \
+            --script res://tests/n2system_runtime_smoke.gd
+          "$GODOT_BIN" --headless --path apps/godot_app \
+            --script res://tests/wa2_audio_host_test.gd
 
       - name: Test Astryx UI and session statistics
         run: |
@@ -1218,6 +1232,8 @@ jobs:
             -D BUILD_GODOT_EXTENSION=OFF \
             -D BUILD_NATIVE_HOST=ON \
             -D AETHERKIRI_ENABLE_ONSCRIPTER=ON \
+            -D AETHERKIRI_ENABLE_SYSTEM3=ON \
+            -D AETHERKIRI_ENABLE_XSYSTEM35=ON \
             -D AETHERKIRI_BUILD_ENTISGLS_TESTS=ON \
             -D AETHERKIRI_BUILD_SYSTEMC_TESTS=ON \
             -D AETHERKIRI_BUILD_ESCUDE_TESTS=ON \
@@ -1665,7 +1681,7 @@ jobs:
           cp -R tests/fixtures/onscripter_smoke "$fixture/native"
           cp -R tests/fixtures/onscripter_smoke "$fixture/legacy"
           export AETHERKIRI_SIMULATE_VERSION=1.2.2-alpha.1
-          export AETHERKIRI_EXPECT_SYSTEM3=1
+          export AETHERKIRI_EXPECT_SYSTEM3=1 AETHERKIRI_EXPECT_XSYSTEM35=1
           export SDL_AUDIODRIVER=dummy
           AETHERKIRI_BACKEND="Native Session" AETHERKIRI_EXPECT_ONS_HOST=native \
             "$GODOT_BIN" --headless --path apps/godot_app --script res://tests/game_detection_launch_test.gd \

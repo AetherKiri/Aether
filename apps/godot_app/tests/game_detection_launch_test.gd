@@ -152,6 +152,9 @@ func _run() -> void:
     if OS.get_environment("AETHERKIRI_EXPECT_SYSTEM3") == "1":
         await _check_system3_route(app, args[1])
 
+    if OS.get_environment("AETHERKIRI_EXPECT_XSYSTEM35") == "1":
+        await _check_xsystem35_route(app, args[1])
+
     var backend_before: String = app.selected_backend
     app._begin_settings_edit()
     var segment = app._game_detection_segment()
@@ -182,8 +185,9 @@ func _check_system3_route(app, mode: String) -> void:
     archive[4] = 4
     archive[256] = 1
     archive[257] = 1
-    var page := PackedByteArray([2, 0])
-    page.append_array("'Router test'A@".to_utf8_buffer())
+    # L 1 loads the prior slot and resumes after Q 1; on a fresh run Q writes it.
+    var page := PackedByteArray([2, 0, 0x4c, 0x41, 0x7f, 0x51, 0x41, 0x7f])
+    page.append_array(("'Router 中文 " + mode + "'A@").to_utf8_buffer())
     page.append_array(PackedByteArray([2, 0]))
     for i in page.size():
         archive[512 + i] = page[i]
@@ -210,9 +214,8 @@ func _check_system3_route(app, mode: String) -> void:
         _expect(route.get("provider_status") == "registered", "System3 is registered in this build")
         _expect(route.get("engine_option") == "system3", "Route System3 to its explicit Provider")
         _expect(route.get("entry") == game_root, "Use the System3 directory entry")
-        _expect(route.get("host") == "legacy", "System3 uses its existing Godot host")
-        if app.selected_backend == app.PlaybackBackend.NATIVE:
-            _expect(route.get("reason") == "native_session_unavailable", "Explain the System3 fallback")
+        var expected_host := OS.get_environment("AETHERKIRI_EXPECT_ONS_HOST")
+        _expect(route.get("host") == expected_host, "System3 follows the selected host")
         app._start_selected_game_after_save_sync()
         _expect(app.game_running, "The malformed System3 archive reaches asynchronous startup")
         var deadline := Time.get_ticks_msec() + 8000
@@ -231,11 +234,123 @@ func _check_system3_route(app, mode: String) -> void:
         app.selected_game = item
         app._start_selected_game_after_iap()
         _expect(await _started_and_presented(app, "system3"), "The System3 Provider opens and presents a frame")
+        _expect(app.player.get_engine_host() == expected_host, "System3 uses the routed host")
         if app.game_running:
             app._exit_game_for_go_back()
             await process_frame
+
+        var saves_root := game_root.path_join("savedata/system3")
+        var saved_slot := ""
+        for bank in DirAccess.get_directories_at(saves_root):
+            var candidate := saves_root.path_join(bank).path_join("ASLEEP_A.DAT")
+            var bytes := FileAccess.get_file_as_bytes(candidate)
+            if bytes.size() > 112 and bytes[0] == 0x54:
+                saved_slot = candidate
+                # The loader skips the descriptive header. Mark the slot to
+                # distinguish loading it from running Q again and overwriting it.
+                var slot := FileAccess.open(candidate, FileAccess.READ_WRITE)
+                if slot != null:
+                    slot.store_8(0x58)
+                    slot.close()
+                    break
+        _expect(not saved_slot.is_empty(), "System3 writes its normal save slot")
+
+        var initial_backend: String = app.selected_backend
+        var native_selected := expected_host == "native"
+        app.selected_backend = app.PlaybackBackend.GODOT if native_selected else app.PlaybackBackend.NATIVE
+        app.selected_game = item
+        app._start_selected_game_after_iap()
+        _expect(await _started_and_presented(app, "system3"), "System3 reopens on the other host")
+        _expect(app.player.get_engine_host() == ("legacy" if native_selected else "native"), "Use the other host")
+        if app.game_running:
+            app._exit_game_for_go_back()
+            await process_frame
+        app.selected_backend = initial_backend
+        var reloaded_slot := FileAccess.get_file_as_bytes(saved_slot)
+        _expect(not reloaded_slot.is_empty() and reloaded_slot[0] == 0x58,
+            "The other host loads the same slot rather than rewriting it")
         return
     _expect(false, "Find the imported System3 game")
+
+
+func _check_xsystem35_route(app, mode: String) -> void:
+    var game_root := ProjectSettings.globalize_path("user://xsystem35-" + mode)
+    DirAccess.make_dir_recursive_absolute(game_root)
+    # Minimal ALD page: set up a 640x480 world, load slot 1 (LD), write it on
+    # the first launch (QD), then enter the fixture's wait loop.
+    var archive := PackedByteArray()
+    archive.resize(1024)
+    archive[0] = 1
+    archive[3] = 2
+    archive[6] = 2
+    archive[256] = 1
+    archive[257] = 2
+    archive[512] = 16
+    var page := "53333530100000002e00000000000000575702807f01e07f587f4c44417f5144417f59437f417f4022000000".hex_decode()
+    archive[516] = page.size()
+    for i in page.size():
+        archive[528 + i] = page[i]
+    var file := FileAccess.open(game_root.path_join("ADISK.ALD"), FileAccess.WRITE)
+    _expect(file != null, "Create the synthetic XSystem35 archive")
+    if file == null:
+        return
+    file.store_buffer(archive)
+    file.close()
+
+    _expect(app._add_game_path(game_root), "Import the XSystem35 fixture")
+    var fixture := _game_record(app, game_root)
+    _expect(not fixture.is_empty(), "Find the imported XSystem35 game")
+    if fixture.is_empty():
+        return
+    app.selected_game = fixture
+    var route: Dictionary = app._resolve_launch(fixture)
+    var expected_host := OS.get_environment("AETHERKIRI_EXPECT_ONS_HOST")
+    _expect(route.get("engine_option") == "xsystem35", "Route XSystem35 to its existing Provider")
+    _expect(route.get("host") == expected_host, "Route XSystem35 to the selected host")
+    app._start_selected_game_after_iap()
+    _expect(await _started_and_presented(app, "xsystem35"), "XSystem35 opens and presents a frame")
+    _expect(app.player.get_engine_host() == expected_host, "XSystem35 uses the routed host")
+    if app.game_running:
+        app._exit_game_for_go_back()
+        await process_frame
+
+    var saves_root := game_root.path_join("savedata/xsystem35")
+    var saved_slot := ""
+    for bank in DirAccess.get_directories_at(saves_root):
+        var bank_path := saves_root.path_join(bank)
+        for name in DirAccess.get_files_at(bank_path):
+            if name.get_extension().to_lower() == "asd":
+                saved_slot = bank_path.path_join(name)
+                break
+        if not saved_slot.is_empty():
+            break
+    _expect(not saved_slot.is_empty(), "XSystem35 writes its normal save slot")
+    if saved_slot.is_empty():
+        return
+    var slot := FileAccess.open(saved_slot, FileAccess.READ_WRITE)
+    _expect(slot != null, "Mark the existing XSystem35 slot")
+    if slot == null:
+        return
+    # The loader reads the stored fields and ignores bytes past the end of
+    # the save. A trailing byte distinguishes loading from a fresh write.
+    slot.seek_end()
+    slot.store_8(0x58)
+    slot.close()
+    var saved_data := FileAccess.get_file_as_bytes(saved_slot)
+
+    var initial_backend: String = app.selected_backend
+    var native_selected := expected_host == "native"
+    app.selected_backend = app.PlaybackBackend.GODOT if native_selected else app.PlaybackBackend.NATIVE
+    app.selected_game = fixture
+    app._start_selected_game_after_iap()
+    _expect(await _started_and_presented(app, "xsystem35"), "XSystem35 reopens on the other host")
+    _expect(app.player.get_engine_host() == ("legacy" if native_selected else "native"), "Use the other host")
+    if app.game_running:
+        app._exit_game_for_go_back()
+        await process_frame
+    app.selected_backend = initial_backend
+    _expect(FileAccess.get_file_as_bytes(saved_slot) == saved_data,
+        "The other XSystem35 host loads the same save without rewriting it")
 
 
 func _game_record(app, path: String) -> Dictionary:

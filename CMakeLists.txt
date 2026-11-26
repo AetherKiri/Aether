@@ -396,22 +396,14 @@ if(AETHERKIRI_ENABLE_ONSCRIPTER AND
    (BUILD_GODOT_EXTENSION OR BUILD_NATIVE_HOST OR AETHERKIRI_BUILD_NATIVE_ONSCRIPTER_TESTS))
     add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/bridge/onscripter_runtime)
 endif()
-set(AETHERKIRI_ONS_NATIVE_HOST_FOR_GODOT OFF)
-if(BUILD_GODOT_EXTENSION AND TARGET aether_onscripter_runtime AND
-   CMAKE_SYSTEM_NAME MATCHES "^(Darwin|iOS|Android|Linux)$")
-    set(AETHERKIRI_ONS_NATIVE_HOST_FOR_GODOT ON)
-endif()
 if(BUILD_GODOT_EXTENSION OR BUILD_NATIVE_HOST OR AETHERKIRI_BUILD_NATIVE_RUNTIME_TESTS)
     add_subdirectory(bridge/game_detection)
 endif()
-if(TARGET aether_game_detection)
-    add_subdirectory(bridge/native_host)
-endif()
-if(AETHERKIRI_ENABLE_SYSTEM3 AND (BUILD_GODOT_EXTENSION OR ENABLE_TESTS) AND
+if(AETHERKIRI_ENABLE_SYSTEM3 AND (BUILD_GODOT_EXTENSION OR BUILD_NATIVE_HOST OR ENABLE_TESTS) AND
    (APPLE OR ANDROID OR UNIX) AND NOT (WEB OR EMSCRIPTEN))
     add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/bridge/system3_runtime)
 endif()
-if(AETHERKIRI_ENABLE_XSYSTEM35 AND (BUILD_GODOT_EXTENSION OR ENABLE_TESTS) AND
+if(AETHERKIRI_ENABLE_XSYSTEM35 AND (BUILD_GODOT_EXTENSION OR BUILD_NATIVE_HOST OR ENABLE_TESTS) AND
    (APPLE OR ANDROID OR UNIX) AND NOT (WEB OR EMSCRIPTEN))
     add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/bridge/xsystem35_runtime)
 endif()
@@ -440,7 +432,7 @@ endif()
 # The Rust provider has targets for Linux, Apple, Android, and Emscripten.
 # Keep it out of unsupported native targets, but do not make Linux the only
 # product platform that can register Minori.
-if(AETHERKIRI_ENABLE_MINORI AND BUILD_GODOT_EXTENSION AND
+if(AETHERKIRI_ENABLE_MINORI AND (BUILD_GODOT_EXTENSION OR BUILD_NATIVE_HOST) AND
     (LINUX OR APPLE OR ANDROID OR EMSCRIPTEN))
     add_subdirectory(${AETHERKIRI_MINORI_DIR})
 endif()
@@ -457,7 +449,7 @@ if(AETHERKIRI_ENABLE_ENTISGLS AND (BUILD_GODOT_EXTENSION OR ENABLE_TESTS) AND
     option(AETHERKIRI_BUILD_ENTISGLS_TESTS "Build asset-free EntisGLS regression tests" ${ENABLE_TESTS})
     add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/bridge/entisgls_runtime)
 endif()
-if(AETHERKIRI_ENABLE_N2SYSTEM AND (BUILD_GODOT_EXTENSION OR ENABLE_TESTS))
+if(AETHERKIRI_ENABLE_N2SYSTEM AND (BUILD_GODOT_EXTENSION OR BUILD_NATIVE_HOST OR ENABLE_TESTS))
     add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/bridge/n2system_runtime)
 endif()
 if(AETHERKIRI_INTERNAL_ENABLED)
@@ -474,6 +466,32 @@ endif()
 file(GENERATE OUTPUT "${CMAKE_BINARY_DIR}/n2system-runtime-publish.txt"
     CONTENT "${_n2_publish}\n")
 unset(_n2_publish)
+if(AETHERKIRI_ENABLE_WA2 AND (BUILD_GODOT_EXTENSION OR BUILD_NATIVE_HOST))
+    if(NOT TARGET engine_api)
+        message(FATAL_ERROR "The WA2 runtime requires the engine_api target")
+    endif()
+    add_library(aetherkiri_wa2_runtime STATIC)
+    target_compile_features(aetherkiri_wa2_runtime PRIVATE cxx_std_17)
+    target_include_directories(aetherkiri_wa2_runtime PRIVATE "${CMAKE_SOURCE_DIR}/abi/include")
+    target_link_libraries(aetherkiri_wa2_runtime PRIVATE engine_api)
+    aether_leafttt_add_wa2_sources(aetherkiri_wa2_runtime)
+    if(MSVC)
+        set_property(TARGET aetherkiri_wa2_runtime PROPERTY
+            MSVC_RUNTIME_LIBRARY "MultiThreadedDLL")
+        target_compile_options(aetherkiri_wa2_runtime PRIVATE /U_DEBUG)
+    endif()
+endif()
+
+set(AETHERKIRI_NATIVE_HOST_FOR_GODOT OFF)
+if(BUILD_GODOT_EXTENSION AND
+   (TARGET aether_onscripter_runtime OR TARGET aether_system3_runtime OR TARGET aether_xsystem35_runtime OR
+    TARGET aetherkiri_wa2_runtime OR TARGET aether_minori_runtime OR TARGET aether_n2system_runtime) AND
+   CMAKE_SYSTEM_NAME MATCHES "^(Darwin|iOS|Android|Linux)$")
+    set(AETHERKIRI_NATIVE_HOST_FOR_GODOT ON)
+endif()
+if(TARGET aether_game_detection)
+    add_subdirectory(bridge/native_host)
+endif()
 if(BUILD_GODOT_EXTENSION)
     add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/bridge/godot_extension)
 endif()

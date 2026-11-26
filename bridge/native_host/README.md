@@ -2,7 +2,7 @@
 
 `aether_native_host` is a C++ library for frontend adapters. It owns one native
 engine session handle at a time and registers the linked providers that support
-shared sessions. ONScripterYuri and AliceSoft System 1–3 share this path.
+shared sessions. ONScripterYuri, AliceSoft System 1–3 and XSystem 3.5/3.9 share this path.
 
 Create a `RuntimeSession` with an `engine_create_desc_t`, configure and open the
 game through the existing engine API, then call `Close()` to release the handle

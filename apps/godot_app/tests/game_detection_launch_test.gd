@@ -152,6 +152,9 @@ func _run() -> void:
     if OS.get_environment("AETHERKIRI_EXPECT_SYSTEM3") == "1":
         await _check_system3_route(app, args[1])
 
+    if OS.get_environment("AETHERKIRI_EXPECT_XSYSTEM35") == "1":
+        await _check_xsystem35_route(app, args[1])
+
     var backend_before: String = app.selected_backend
     app._begin_settings_edit()
     var segment = app._game_detection_segment()
@@ -268,6 +271,48 @@ func _check_system3_route(app, mode: String) -> void:
             "The other host loads the same slot rather than rewriting it")
         return
     _expect(false, "Find the imported System3 game")
+
+
+func _check_xsystem35_route(app, mode: String) -> void:
+    var game_root := ProjectSettings.globalize_path("user://xsystem35-" + mode)
+    DirAccess.make_dir_recursive_absolute(game_root)
+    # The minimal ALD page used by the XSystem35 Provider contract, with a
+    # 640x480 RGB world and a wait loop.
+    var archive := PackedByteArray()
+    archive.resize(1024)
+    archive[0] = 1
+    archive[3] = 2
+    archive[6] = 2
+    archive[256] = 1
+    archive[257] = 2
+    archive[512] = 16
+    var page := "53333530100000002600000000000000575702807f01e07f587f59437f417f401a000000".hex_decode()
+    archive[516] = page.size()
+    for i in page.size():
+        archive[528 + i] = page[i]
+    var file := FileAccess.open(game_root.path_join("ADISK.ALD"), FileAccess.WRITE)
+    _expect(file != null, "Create the synthetic XSystem35 archive")
+    if file == null:
+        return
+    file.store_buffer(archive)
+    file.close()
+
+    _expect(app._add_game_path(game_root), "Import the XSystem35 fixture")
+    var fixture := _game_record(app, game_root)
+    _expect(not fixture.is_empty(), "Find the imported XSystem35 game")
+    if fixture.is_empty():
+        return
+    app.selected_game = fixture
+    var route: Dictionary = app._resolve_launch(fixture)
+    var expected_host := OS.get_environment("AETHERKIRI_EXPECT_ONS_HOST")
+    _expect(route.get("engine_option") == "xsystem35", "Route XSystem35 to its existing Provider")
+    _expect(route.get("host") == expected_host, "Route XSystem35 to the selected host")
+    app._start_selected_game_after_iap()
+    _expect(await _started_and_presented(app, "xsystem35"), "XSystem35 opens and presents a frame")
+    _expect(app.player.get_engine_host() == expected_host, "XSystem35 uses the routed host")
+    if app.game_running:
+        app._exit_game_for_go_back()
+        await process_frame
 
 
 func _game_record(app, path: String) -> Dictionary:

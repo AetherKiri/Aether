@@ -1170,7 +1170,7 @@ jobs:
           cp -R tests/fixtures/onscripter_smoke "$fixture/native"
           cp -R tests/fixtures/onscripter_smoke "$fixture/legacy"
           export AETHERKIRI_SIMULATE_VERSION=1.2.2-alpha.1
-          export AETHERKIRI_EXPECT_SYSTEM3=1
+          export AETHERKIRI_EXPECT_SYSTEM3=1 AETHERKIRI_EXPECT_XSYSTEM35=1
           export SDL_AUDIODRIVER=dummy
           AETHERKIRI_BACKEND="Native Session" AETHERKIRI_EXPECT_ONS_HOST=native \
             "$GODOT_BIN" --headless --path apps/godot_app --script res://tests/game_detection_launch_test.gd \
@@ -1219,6 +1219,7 @@ jobs:
             -D BUILD_NATIVE_HOST=ON \
             -D AETHERKIRI_ENABLE_ONSCRIPTER=ON \
             -D AETHERKIRI_ENABLE_SYSTEM3=ON \
+            -D AETHERKIRI_ENABLE_XSYSTEM35=ON \
             -D AETHERKIRI_BUILD_ENTISGLS_TESTS=ON \
             -D AETHERKIRI_BUILD_SYSTEMC_TESTS=ON \
             -D AETHERKIRI_BUILD_ESCUDE_TESTS=ON \
@@ -1666,7 +1667,7 @@ jobs:
           cp -R tests/fixtures/onscripter_smoke "$fixture/native"
           cp -R tests/fixtures/onscripter_smoke "$fixture/legacy"
           export AETHERKIRI_SIMULATE_VERSION=1.2.2-alpha.1
-          export AETHERKIRI_EXPECT_SYSTEM3=1
+          export AETHERKIRI_EXPECT_SYSTEM3=1 AETHERKIRI_EXPECT_XSYSTEM35=1
           export SDL_AUDIODRIVER=dummy
           AETHERKIRI_BACKEND="Native Session" AETHERKIRI_EXPECT_ONS_HOST=native \
             "$GODOT_BIN" --headless --path apps/godot_app --script res://tests/game_detection_launch_test.gd \

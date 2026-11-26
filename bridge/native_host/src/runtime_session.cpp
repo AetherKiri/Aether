@@ -8,6 +8,9 @@
 #if defined(AETHER_NATIVE_HOST_WITH_SYSTEM3)
 #include "system3_runtime_provider.h"
 #endif
+#if defined(AETHER_NATIVE_HOST_WITH_XSYSTEM35)
+#include "xsystem35_runtime_provider.h"
+#endif
 
 #include <algorithm>
 #include <atomic>
@@ -33,6 +36,11 @@ std::vector<std::string> RuntimeSession::RegisterProviders() {
 #if defined(AETHER_NATIVE_HOST_WITH_SYSTEM3)
     if (aetherkiri_system3_register_runtime_provider() == ENGINE_RESULT_OK) {
         candidates.emplace_back("system3");
+    }
+#endif
+#if defined(AETHER_NATIVE_HOST_WITH_XSYSTEM35)
+    if (aetherkiri_xsystem35_register_runtime_provider() == ENGINE_RESULT_OK) {
+        candidates.emplace_back("xsystem35");
     }
 #endif
     const auto registered = RegisteredLaunchProviders();

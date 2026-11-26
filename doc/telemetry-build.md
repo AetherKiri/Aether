@@ -16,6 +16,7 @@ The endpoint and channel are fixed when the resource pack is exported. Standard 
 
 | Distribution | Default channel |
 | --- | --- |
+| Release-mode test packages from trusted pull requests and opted-in manual Build runs | `github_test` |
 | Tagged CI releases for Android and Linux (x86-64 and ARM64) | `github_release` |
 | macOS and iOS/iPadOS release exports | `apple_release` |
 | Web release exports | `self_hosted` |
@@ -25,4 +26,21 @@ The endpoint and channel are fixed when the resource pack is exported. Standard 
 
 Apple release builds share a resource pack between Store and sideload distributions. Their channel describes the original export. To label independently built artifacts, pass a different channel to each export.
 
-For tagged GitHub releases, configure `AETHER_TELEMETRY_ENDPOINT` and optionally `AETHER_TELEMETRY_CHANNEL` under **Settings → Secrets and variables → Actions → Variables**. Regular CI and tagged debug artifacts have no endpoint. The version-update script sets the app’s SemVer and numeric build number in the Godot project and updates the corresponding Apple and Android package metadata. The channel is independent of SemVer, including any prerelease suffix.
+## GitHub test packages
+
+Configure `AETHER_TELEMETRY_ENDPOINT` under **Settings → Secrets and variables → Actions → Variables**. The **Build** workflow embeds the endpoint and the `github_test` channel in release-mode packages and the Android debug APK for the same-repository `feat/opt-in-telemetry` pull request, including while it is a draft. To test another branch, select it under **Actions → Build → Run workflow** and enable **Embed and verify the telemetry endpoint in test packages**. The jobs fail if the endpoint is missing or invalid, or if the exported APK or Godot resource pack contains different settings. Other PRs, fork or bot PRs, regular pushes, manual builds with the switch off, and other debug exports have no endpoint.
+
+Download a package under **Artifacts** on the completed **Build** run for the commit you want to test.
+
+| Platform | Artifact |
+| --- | --- |
+| Android | `android-release-apk` |
+| iOS/iPadOS | `ios-release-unsigned-ipa` (requires signing for installation) |
+| macOS | `macos-release-app` |
+| Linux | `linux-release-x86_64-app` or `linux-release-arm64-app` |
+
+After installing the package, opt in to telemetry in the app, then launch or restart it. Ingestion events from these builds carry `channel=github_test`. Windows and Web have local export presets. Set the endpoint and `AETHER_TELEMETRY_CHANNEL=github_test` in the exporter environment for a local test build on those platforms.
+
+## Tagged GitHub releases
+
+Tagged builds use the same `AETHER_TELEMETRY_ENDPOINT` variable and may set `AETHER_TELEMETRY_CHANNEL` to override the platform default. The version-update script sets the app’s SemVer and numeric build number in the Godot project and updates the corresponding Apple and Android package metadata. The channel is independent of SemVer, including any prerelease suffix.

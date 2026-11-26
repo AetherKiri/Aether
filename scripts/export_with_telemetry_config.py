@@ -16,10 +16,7 @@ ENDPOINT = re.compile(rf"https://({DNS_LABEL}(?:\.{DNS_LABEL})*)(?::([0-9]{{1,5}
 CHANNEL = re.compile(r"[a-z0-9][a-z0-9_-]{0,39}")
 
 
-def get_endpoint():
-    value = os.environ.get("AETHER_TELEMETRY_ENDPOINT", "")
-    if not value:
-        return ""
+def normalize_endpoint(value):
     match = ENDPOINT.fullmatch(value) if len(value) <= 512 else None
     if match:
         host, port_text = match.groups()
@@ -27,8 +24,15 @@ def get_endpoint():
         if len(host) <= 253 and 1 <= port <= 65535:
             authority = host.lower() if port == 443 else f"{host.lower()}:{port}"
             return f"https://{authority}/v1/events"
-    print("AETHER_TELEMETRY_ENDPOINT is invalid. This export cannot send telemetry.", file=sys.stderr)
     return ""
+
+
+def get_endpoint():
+    value = os.environ.get("AETHER_TELEMETRY_ENDPOINT", "")
+    endpoint = normalize_endpoint(value)
+    if value and not endpoint:
+        print("AETHER_TELEMETRY_ENDPOINT is invalid. This export cannot send telemetry.", file=sys.stderr)
+    return endpoint
 
 
 def main():

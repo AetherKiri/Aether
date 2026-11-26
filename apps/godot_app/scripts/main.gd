@@ -488,7 +488,7 @@ const UI_TEXT := {
         "settings.legal_open": "阅读协议",
         "settings.section.privacy": "隐私",
         "settings.telemetry": "发送使用与兼容性数据",
-        "settings.telemetry_desc": "开启后，Aether 团队会收到以下数据（通过 Cloudflare Workers 和 D1 处理）：\n• 使用情况：随机安装标识、应用启动次数及前台使用时长。\n• 设备兼容性：操作系统、处理器架构、内存容量范围、显卡系列。\n• 版本回归排查：应用版本、构建版本和发布渠道。\n• 游戏兼容性：游戏引擎、启动结果、前台游玩时长和启动失败或游玩的确切游戏显示名称。如果缺少游戏标题，显示名称可能是本地文件名或文件夹名。\n• 性能与故障排查：帧率、内存峰值、加载时间和错误代码。\n\n不会发送完整路径、网址、日志或文件内容。此选项默认关闭，立即生效，无需保存其他设置。随时在设置 → 隐私关闭，即可停止收集和发送，并删除本地安装标识及未发送的数据。",
+        "settings.telemetry_desc": "开启后，Aether 团队会收到以下数据，用于改进应用和排查问题。\n• 使用情况：随机安装 ID、启动次数和前台使用时长，帮助了解应用使用情况。\n• 设备兼容性：系统、处理器架构、内存范围和显卡系列，帮助定位受影响的设备。\n• 版本问题：应用版本、构建号和发布渠道，帮助找出引入问题的版本。\n• 游戏兼容性：引擎、启动结果、前台游玩时长，以及玩过或启动失败的游戏显示名称，帮助定位受影响的游戏。\n• 性能与故障：帧率、内存峰值、加载时间和错误码，帮助排查卡顿和故障。\n\n游戏没有标题时，显示名称可能是文件名或文件夹名。不会发送完整路径、网址、日志或文件内容。\n\n分享默认关闭。你可以随时关闭分享，停止收集和发送，并清除设备上的安装 ID 和未发送数据。",
         "settings.telemetry_unavailable": "此版本未配置数据接收服务，无法启用。",
         "settings.telemetry_enable_error": "无法开启数据收集。此选项仍处于关闭状态。",
         "settings.telemetry_revoke_error": "本次运行已停止收集，但无法保存关闭状态。请重试。",
@@ -945,7 +945,7 @@ const UI_TEXT := {
         "settings.legal_open": "閱讀協議",
         "settings.section.privacy": "隱私權",
         "settings.telemetry": "傳送使用與相容性資料",
-        "settings.telemetry_desc": "開啟後，Aether 團隊會收到下列資料（透過 Cloudflare Workers 和 D1 處理）：\n• 使用情形：隨機安裝識別碼、應用程式啟動次數及前景使用時間。\n• 裝置相容性：作業系統、處理器架構、記憶體容量範圍、顯示卡系列。\n• 版本問題排查：應用程式版本、組建版本和發行管道。\n• 遊戲相容性：遊戲類型、啟動結果、遊玩時間及啟動失敗或遊玩過的遊戲完整顯示名稱。若缺少遊戲標題，顯示名稱可能是本機檔案或資料夾的名稱。\n• 效能與故障排查：畫面更新率、記憶體用量峰值、載入時間和錯誤碼。\n\n不會傳送完整路徑、網址、日誌或檔案內容。此選項預設關閉，立即生效，無需儲存其他設定。隨時在設定 → 隱私權關閉，即可停止收集與傳送，並刪除本機安裝識別碼和未傳送的資料。",
+        "settings.telemetry_desc": "開啟後，Aether 團隊會收到以下資料，用於改善應用程式和排查問題。\n• 使用情形：隨機安裝 ID、啟動次數及前景使用時間，協助了解應用程式的使用情形。\n• 裝置相容性：作業系統、處理器架構、記憶體範圍和顯示卡系列，協助找出受影響的裝置。\n• 版本問題：應用程式版本、組建號碼和發行管道，協助找出引入問題的版本。\n• 遊戲相容性：引擎、啟動結果、前景遊玩時間，以及玩過或啟動失敗的遊戲顯示名稱，協助找出受影響的遊戲。\n• 效能與故障：畫面更新率、記憶體用量峰值、載入時間和錯誤碼，協助排查卡頓和故障。\n\n遊戲沒有標題時，顯示名稱可能是檔案或資料夾名稱。不會傳送完整路徑、網址、日誌或檔案內容。\n\n分享預設關閉。你可以隨時關閉分享，停止收集和傳送，並清除裝置上的安裝 ID 和未傳送的資料。",
         "settings.telemetry_unavailable": "此版本未設定資料接收服務，無法啟用。",
         "settings.telemetry_enable_error": "無法開啟資料收集。此選項仍處於關閉狀態。",
         "settings.telemetry_revoke_error": "本次執行已停止收集，但無法儲存關閉狀態。請重試。",
@@ -1400,7 +1400,7 @@ You can find it any time under Settings → QQ Group.",
         "settings.legal_open": "Read",
         "settings.section.privacy": "Privacy",
         "settings.telemetry": "Share usage and compatibility data",
-        "settings.telemetry_desc": "If you turn this on, Aether sends these data to the Aether team via Cloudflare Workers and D1.\n• App usage includes a random installation ID, app launches, and time spent in the foreground.\n• Device compatibility uses the operating system, processor architecture, memory range, and graphics card family.\n• App version, build, and release channel help identify regressions.\n• Game compatibility uses the game engine, launch outcome, time played, and exact displayed titles of games played or that failed to start. If a title is missing, the displayed name can be a local file or folder name.\n• Frame rate, peak memory use, load time, and error codes help diagnose slowdowns and failures.\n\nThe app excludes full paths, URLs, logs, and file contents. Sharing starts off. Changes apply immediately. Return to Settings → Privacy at any time to stop collection and sending, and remove the local installation ID and unsent data.",
+        "settings.telemetry_desc": "If you turn sharing on, the Aether team receives the following data to improve the app and diagnose problems.\n• App usage: A random installation ID, launch counts, and time in the foreground help us understand how the app is used.\n• Device compatibility: The operating system, processor architecture, memory range, and graphics family help identify affected devices.\n• Release issues: The app version, build number, and release channel help identify which version introduced a problem.\n• Game compatibility: The engine, launch outcome, time played in the foreground, and displayed titles of games played or that failed to launch help identify affected games.\n• Performance and failures: Frame rate, peak memory use, loading time, and error codes help diagnose slowdowns and failures.\n\nIf a game has no title, its displayed title may be a file or folder name. The app excludes full paths, URLs, logs, and file contents.\n\nSharing is off by default. You can turn it off anytime to stop collection and sending and clear the installation ID and unsent data from this device.",
         "settings.telemetry_unavailable": "This build has no telemetry service configured.",
         "settings.telemetry_enable_error": "Couldn’t turn on data sharing. The setting is still off.",
         "settings.telemetry_revoke_error": "Data sharing stopped for this session, but the app couldn’t save your choice. Try again.",
@@ -1824,7 +1824,7 @@ You can find it any time under Settings → QQ Group.",
         "settings.legal_open": "読む",
         "settings.section.privacy": "プライバシー",
         "settings.telemetry": "利用状況と互換性データを送信",
-        "settings.telemetry_desc": "有効にすると、以下のデータが Cloudflare Workers と D1 を通じて Aether チームに送信されます。\n• アプリの利用状況：ランダムなインストール ID、アプリの起動回数、フォアグラウンドでの利用時間。\n• 端末の互換性：OS、CPU アーキテクチャ、メモリ容量の範囲、GPU の系列。\n• バージョン更新による不具合の調査：アプリのバージョン、ビルド、配信チャンネル。\n• ゲームの互換性：ゲームエンジン、起動結果、プレイ時間、遊んだゲームや起動に失敗したゲームの表示名そのもの。タイトルがない場合、端末上のファイル名やフォルダ名が表示名になることがあります。\n• パフォーマンスと不具合の調査：フレームレート、最大メモリ使用量、読み込み時間、エラーコード。\n\n完全なパス、URL、ログ、ファイルの内容は送信されません。初期状態ではオフで、変更はすぐに反映されます。設定 → プライバシーからいつでもオフにでき、収集と送信が停止し、端末内のインストール ID と未送信データが削除されます。",
+        "settings.telemetry_desc": "共有を有効にすると、Aether チームはアプリの改善と問題の調査のために以下のデータを受け取ります。\n• アプリの利用状況：ランダムなインストール ID、起動回数、フォアグラウンドでの利用時間から、利用状況を把握します。\n• 端末の互換性：OS、CPU アーキテクチャ、メモリ容量の範囲、GPU の系列から、影響を受ける端末を特定します。\n• バージョンの問題：アプリのバージョン、ビルド番号、配信チャンネルから、問題が発生したバージョンを特定します。\n• ゲームの互換性：エンジン、起動結果、フォアグラウンドでのプレイ時間、遊んだゲームや起動に失敗したゲームの表示名から、影響を受けるゲームを特定します。\n• パフォーマンスと不具合：フレームレート、最大メモリ使用量、読み込み時間、エラーコードから、動作の遅延や不具合を調査します。\n\nゲームにタイトルがない場合、ファイル名やフォルダ名が表示名になることがあります。完全なパス、URL、ログ、ファイルの内容は送信されません。\n\n共有は初期状態でオフです。いつでも共有をオフにでき、収集と送信が停止し、端末内のインストール ID と未送信データが削除されます。",
         "settings.telemetry_unavailable": "このビルドではデータの送信先が設定されていません。",
         "settings.telemetry_enable_error": "データの送信を有効にできませんでした。設定はオフのままです。",
         "settings.telemetry_revoke_error": "今回の利用中のデータ送信は停止しましたが、設定を保存できませんでした。もう一度お試しください。",
@@ -2246,7 +2246,7 @@ You can find it any time under Settings → QQ Group.",
         "settings.legal_open": "읽기",
         "settings.section.privacy": "개인정보",
         "settings.telemetry": "사용 및 호환성 데이터 공유",
-        "settings.telemetry_desc": "이 옵션을 켜면 다음 데이터가 Cloudflare Workers와 D1을 통해 Aether 팀으로 전송됩니다.\n• 앱 사용 현황은 무작위 설치 ID, 앱 실행 횟수, 앱을 화면에 띄워 사용한 시간으로 파악합니다.\n• 기기 호환성은 운영체제, 프로세서 아키텍처, 메모리 용량 범위, 그래픽 카드 계열로 확인합니다.\n• 앱 버전, 빌드, 배포 채널은 업데이트 후 생긴 문제를 파악하는 데 사용합니다.\n• 게임 호환성은 게임 엔진, 실행 결과, 플레이 시간, 플레이했거나 실행에 실패한 게임의 정확한 표시 이름으로 확인합니다. 게임 제목이 없으면 로컬 파일 또는 폴더 이름이 표시 이름일 수 있습니다.\n• 프레임률, 최대 메모리 사용량, 로딩 시간, 오류 코드는 성능 저하와 오류를 조사하는 데 사용합니다.\n\n전체 경로, URL, 로그, 파일 내용은 전송하지 않습니다. 기본값은 꺼짐이며 변경 사항은 즉시 적용됩니다. 설정 → 개인정보에서 언제든지 끌 수 있습니다. 끄면 수집과 전송을 중단하고 로컬 설치 ID와 전송하지 않은 데이터를 삭제합니다.",
+        "settings.telemetry_desc": "공유를 켜면 Aether 팀은 앱을 개선하고 문제를 조사하기 위해 다음 데이터를 받습니다.\n• 앱 사용 현황: 무작위 설치 ID, 실행 횟수, 앱을 화면에 띄워 사용한 시간으로 사용 현황을 파악합니다.\n• 기기 호환성: 운영체제, 프로세서 아키텍처, 메모리 용량 범위, 그래픽 카드 계열로 문제가 발생한 기기를 파악합니다.\n• 버전 문제: 앱 버전, 빌드 번호, 배포 채널로 문제가 발생한 버전을 찾습니다.\n• 게임 호환성: 게임 엔진, 실행 결과, 게임을 화면에 띄워 플레이한 시간, 플레이했거나 실행에 실패한 게임의 표시 이름으로 문제가 발생한 게임을 찾습니다.\n• 성능 및 오류: 프레임률, 최대 메모리 사용량, 로딩 시간, 오류 코드로 성능 저하와 오류를 조사합니다.\n\n게임에 제목이 없으면 파일 또는 폴더 이름이 표시 이름일 수 있습니다. 전체 경로, URL, 로그, 파일 내용은 전송하지 않습니다.\n\n공유는 기본적으로 꺼져 있습니다. 언제든 공유를 끄면 수집과 전송을 중단하고 기기의 설치 ID와 전송하지 않은 데이터를 삭제합니다.",
         "settings.telemetry_unavailable": "이 빌드에는 데이터 수신 서비스가 설정되어 있지 않습니다.",
         "settings.telemetry_enable_error": "데이터 공유를 켤 수 없습니다. 설정은 꺼진 상태입니다.",
         "settings.telemetry_revoke_error": "이번 실행 중에는 데이터 공유를 중단했지만 설정을 저장하지 못했습니다. 다시 시도해 주세요.",
@@ -2699,7 +2699,7 @@ You can find it any time under Settings → QQ Group.",
         "settings.legal_open": "Leer",
         "settings.section.privacy": "Privacidad",
         "settings.telemetry": "Compartir datos de uso y compatibilidad",
-        "settings.telemetry_desc": "Si activas esta opción, Aether envía estos datos al equipo de Aether mediante Cloudflare Workers y D1.\n• Para conocer el uso de la app se envían un ID de instalación aleatorio, el número de aperturas y el tiempo de uso en primer plano.\n• Para comprobar la compatibilidad del dispositivo se envían el sistema operativo, la arquitectura del procesador, el intervalo de memoria y la familia de la tarjeta gráfica.\n• La versión, la compilación y el canal de distribución ayudan a detectar fallos introducidos en nuevas versiones.\n• Para comprobar la compatibilidad de los juegos se envían el motor, el resultado del inicio, el tiempo de juego y el nombre visible exacto de los juegos iniciados o que no se pudieron abrir. Si falta el título, el nombre visible puede ser el de un archivo o una carpeta local.\n• La frecuencia de imagen, el pico de memoria, el tiempo de carga y los códigos de error ayudan a investigar problemas de rendimiento y fallos.\n\nNo se envían rutas completas, URL, registros ni contenido de archivos. La opción está desactivada de forma predeterminada y los cambios se aplican al instante. Puedes desactivarla en cualquier momento en Ajustes → Privacidad para detener la recogida y el envío, y eliminar el ID de instalación local y los datos pendientes de envío.",
+        "settings.telemetry_desc": "Si activas el envío, el equipo de Aether recibe estos datos para mejorar la app e investigar problemas.\n• Uso de la app: Un ID de instalación aleatorio, el número de aperturas y el tiempo de uso en primer plano ayudan a conocer cómo se usa la app.\n• Compatibilidad de dispositivos: El sistema operativo, la arquitectura del procesador, el intervalo de memoria y la familia de la tarjeta gráfica ayudan a identificar los dispositivos afectados.\n• Problemas de versión: La versión, el número de compilación y el canal de distribución ayudan a identificar en qué versión apareció un problema.\n• Compatibilidad de juegos: El motor, el resultado del inicio, el tiempo de juego en primer plano y los nombres visibles de los juegos abiertos o que no se pudieron iniciar ayudan a identificar los juegos afectados.\n• Rendimiento y fallos: La frecuencia de imagen, el pico de memoria, el tiempo de carga y los códigos de error ayudan a investigar lentitud y fallos.\n\nSi un juego no tiene título, el nombre visible puede ser el de un archivo o una carpeta. La app no envía rutas completas, URL, registros ni contenido de archivos.\n\nEl envío está desactivado de forma predeterminada. Puedes desactivarlo en cualquier momento para detener la recogida y el envío y borrar el ID de instalación y los datos pendientes de este dispositivo.",
         "settings.telemetry_unavailable": "Esta compilación no tiene configurado un servicio de recepción de datos.",
         "settings.telemetry_enable_error": "No se pudo activar el envío de datos. La opción sigue desactivada.",
         "settings.telemetry_revoke_error": "Se detuvo el envío de datos en esta sesión, pero no se pudo guardar tu elección. Inténtalo de nuevo.",
@@ -8463,20 +8463,62 @@ func _settings_telemetry_row() -> Control:
     var toggle = AetherSwitch.new()
     toggle.name = "TelemetryConsentSwitch"
     toggle.setup(ui_tokens, ui_motion, telemetry_enabled)
-    var row := _settings_row(_t("settings.telemetry"), _t("settings.telemetry_desc"), toggle)
-    var title: Label = row.get_meta("row_title")
+    var panel := _settings_row_shell(settings_compact_layout)
+    var stack := VBoxContainer.new()
+    stack.add_theme_constant_override("separation", 10)
+    panel.add_child(stack)
+    var header := HBoxContainer.new()
+    header.name = "TelemetryConsentHeader"
+    header.add_theme_constant_override("separation", 12)
+    stack.add_child(header)
+    var title := Label.new()
+    title.text = _t("settings.telemetry")
     title.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-    var labels: VBoxContainer = row.get_meta("row_labels")
-    var status := Label.new()
-    status.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-    status.add_theme_font_size_override("font_size", 12)
-    status.add_theme_color_override("font_color", ui_tokens.text_secondary)
-    labels.add_child(status)
+    title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+    title.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+    title.add_theme_font_override("font", DISPLAY_FONT)
+    title.add_theme_font_size_override("font_size", 15)
+    title.add_theme_color_override("font_color", ui_tokens.text_primary)
+    header.add_child(title)
+    panel.set_meta("row_title", title)
+    toggle.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+    header.add_child(toggle)
+    var status := _dialog_body_label("", 12)
+    stack.add_child(status)
     var retry := _pill_button(_t("settings.telemetry_retry_disable"))
     retry.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
-    labels.add_child(retry)
+    stack.add_child(retry)
+    stack.add_child(_telemetry_disclosure(func(text: String) -> Label: return _dialog_body_label(text, 13)))
     _bind_telemetry_switch(toggle, status, retry, func(value: bool): toggle._sync(value, true))
-    return row
+    return panel
+
+func _telemetry_disclosure(make_label: Callable, include_optional_intro: bool = false) -> VBoxContainer:
+    var disclosure := VBoxContainer.new()
+    disclosure.name = "TelemetryDisclosure"
+    disclosure.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+    disclosure.add_theme_constant_override("separation", 9)
+    if include_optional_intro:
+        disclosure.add_child(make_label.call(_t("notice.telemetry_optional")))
+    var copy := _t("settings.telemetry_desc").split("\n\n", false)
+    for paragraph in copy:
+        var lines := VBoxContainer.new()
+        lines.add_theme_constant_override("separation", 4)
+        disclosure.add_child(lines)
+        for line in paragraph.split("\n", false):
+            if not line.begins_with("• "):
+                lines.add_child(make_label.call(line))
+                continue
+            # Keep the marker out of the text so wrapping cannot orphan it.
+            var item := HBoxContainer.new()
+            item.add_theme_constant_override("separation", 6)
+            lines.add_child(item)
+            var bullet: Label = make_label.call("•")
+            bullet.autowrap_mode = TextServer.AUTOWRAP_OFF
+            bullet.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
+            bullet.size_flags_vertical = Control.SIZE_SHRINK_BEGIN
+            item.add_child(bullet)
+            item.add_child(make_label.call(line.substr(2)))
+    return disclosure
 
 func _bind_telemetry_switch(toggle: Button, status: Label, retry: Button, sync_switch: Callable) -> void:
     toggle.accessibility_name = _t("settings.telemetry")
@@ -21753,7 +21795,7 @@ func _show_telemetry_consent_notice() -> void:
     scroll.focus_mode = Control.FOCUS_ALL
     box.add_child(scroll)
     scroll.grab_focus()
-    var body := _dialog_body_label(_t("notice.telemetry_optional") + "\n\n" + _t("settings.telemetry_desc"), 14)
+    var body := _telemetry_disclosure(func(text: String) -> Label: return _dialog_body_label(text, 14), true)
     body.name = "TelemetryConsentNoticeDisclosure"
     scroll.add_child(body)
     var status := _dialog_body_label("", 13)

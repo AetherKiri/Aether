@@ -63,6 +63,29 @@ func _settle() -> void:
     for _i in range(6):
         await process_frame
 
+func _expect_disclosure(root_node: Node, app: TestHost) -> void:
+    var labels := root_node.find_children("*", "Label", true, false)
+    var visible_text := PackedStringArray()
+    for label: Label in labels:
+        visible_text.append(label.text)
+    var items := app._t("settings.telemetry_desc").split("\n", false)
+    for item in items:
+        _expect(visible_text.has(item.trim_prefix("• ")), "Disclosure presents each paragraph or list item separately")
+    _expect(visible_text.count("•") == 5, "Each of the five data categories has its own anchored bullet")
+
+func _expect_switch_layout(toggle: Button, app: TestHost) -> void:
+    var header := toggle.get_parent() as HBoxContainer
+    _expect(header != null and header.name == "TelemetryConsentHeader", "Switch is in a horizontal title row")
+    if header == null:
+        return
+    var title := header.get_child(0) as Label
+    _expect(title != null and title.text == app._t("settings.telemetry") and title.get_index() < toggle.get_index(),
+        "Switch sits after the localized title")
+    var copy := header.get_parent().get_node_or_null("TelemetryDisclosure") as VBoxContainer
+    _expect(copy != null and copy.get_index() > header.get_index(), "Disclosure uses the full width below the title and switch")
+    if copy != null:
+        _expect_disclosure(copy, app)
+
 func _run() -> void:
     var base := "user://telemetry-settings-test-%s" % Time.get_ticks_usec()
     if DirAccess.make_dir_absolute(base) != OK:
@@ -97,6 +120,8 @@ func _run() -> void:
         "Classic Settings shows a disabled switch when no service is configured")
     _expect(status != null and status.is_visible_in_tree() and status.text.contains("no telemetry service"),
         "The unavailable state is explained in the current language")
+    if classic != null:
+        _expect_switch_layout(classic, app)
 
     app.endpoint = ENDPOINT
     controller.set_enabled(true, false)
@@ -111,6 +136,7 @@ func _run() -> void:
     _expect(astryx != null and astryx.is_visible_in_tree() and not astryx.disabled and not astryx.button_pressed,
         "Astryx shows the configured switch off by default")
     if astryx != null:
+        _expect_switch_layout(astryx, app)
         astryx.button_pressed = true
     _expect(app.telemetry_enabled and FileAccess.file_exists(collector.id_path), "Explicit opt-in enables the collector immediately")
     _expect(FileAccess.file_exists(app.preference_path) and not app.dirty_settings, "Opt-in persists separately from ordinary settings")
@@ -196,8 +222,10 @@ func _exercise_startup_notice(app: TestHost, restarted: TestHost, collector: Tes
         "The startup notice appears before the existing announcement")
     if dialog == null:
         return
-    var disclosure := dialog.find_child("TelemetryConsentNoticeDisclosure", true, false) as Label
-    _expect(disclosure != null and disclosure.text.contains(app._t("settings.telemetry_desc")), "The notice discloses the Settings data categories")
+    var disclosure := dialog.find_child("TelemetryConsentNoticeDisclosure", true, false) as VBoxContainer
+    _expect(disclosure != null, "The notice discloses the Settings data categories")
+    if disclosure != null:
+        _expect_disclosure(disclosure, app)
     app._handle_go_back_request()
     await create_timer(0.3).timeout
     _expect(app.announcement_offered and app._should_offer_telemetry_at_startup() and not FileAccess.file_exists(app.preference_path),

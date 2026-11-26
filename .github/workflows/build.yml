@@ -8,6 +8,11 @@ on:
     paths-ignore:
       - 'doc/**'
   workflow_dispatch:
+    inputs:
+      telemetry_test:
+        description: Embed and verify the telemetry endpoint in test packages
+        type: boolean
+        default: false
   workflow_call:
     inputs:
       release_version:
@@ -74,6 +79,15 @@ env:
   AETHERKIRI_RELEASE_VERSION: ${{ inputs.release_version || '' }}
   AETHERKIRI_BUILD_NUMBER: ${{ inputs.release_build_number || github.run_number }}
   AETHERKIRI_BUILD_ATTEMPT: ${{ github.run_attempt }}
+  # Automatically enable telemetry test packages for the telemetry feature PR.
+  # Other branches can opt in through a manual Build run.
+  AETHERKIRI_TELEMETRY_TEST: >-
+    ${{ !inputs.release_version && !endsWith(github.actor, '[bot]') &&
+        ((github.event_name == 'pull_request' && github.head_ref == 'feat/opt-in-telemetry' &&
+          github.event.pull_request.head.repo.full_name == github.repository &&
+          github.event.pull_request.user.type == 'User' &&
+          !endsWith(github.event.pull_request.user.login, '[bot]')) ||
+         (github.event_name == 'workflow_dispatch' && inputs.telemetry_test && github.ref_type == 'branch')) }}
   AETHER_IOS_BUNDLE_ID: ${{ secrets.AETHERID || 'com.liuyu.aether.aether' }}
   AETHER_APP_BUNDLE_ID: ${{ secrets.AETHERID || 'com.liuyu.aether.aether' }}
 
@@ -418,15 +432,21 @@ jobs:
 
       - name: Build Android Release
         env:
-          AETHER_TELEMETRY_ENDPOINT: ${{ inputs.release_version && vars.AETHER_TELEMETRY_ENDPOINT || '' }}
-          AETHER_TELEMETRY_CHANNEL: ${{ inputs.release_version && (vars.AETHER_TELEMETRY_CHANNEL || 'github_release') || '' }}
+          AETHER_TELEMETRY_ENDPOINT: ${{ (env.AETHERKIRI_TELEMETRY_TEST == 'true' || inputs.release_version) && vars.AETHER_TELEMETRY_ENDPOINT || '' }}
+          AETHER_TELEMETRY_CHANNEL: ${{ env.AETHERKIRI_TELEMETRY_TEST == 'true' && 'github_test' || inputs.release_version && (vars.AETHER_TELEMETRY_CHANNEL || 'github_release') || '' }}
         run: |
           set -euo pipefail
           chmod +x ./build.sh
           export CMAKE_C_COMPILER_LAUNCHER=ccache
           export CMAKE_CXX_COMPILER_LAUNCHER=ccache
           export NDK_CCACHE=ccache
+          if [[ "$AETHERKIRI_TELEMETRY_TEST" == "true" ]]; then
+            python3 scripts/verify_exported_telemetry.py
+          fi
           ./build.sh android release --jobs=4
+          if [[ "$AETHERKIRI_TELEMETRY_TEST" == "true" ]]; then
+            python3 scripts/verify_exported_telemetry.py out/godot/android/release/Aether-release.apk
+          fi
           if [[ "$AETHERKIRI_WITH_INTERNAL" == "true" ]]; then
             grep -Fx 'AETHERKIRI_ENABLE_SOFTPAL_RUNTIME:BOOL=ON' \
               out/android/arm64-v8a/release/CMakeCache.txt
@@ -435,6 +455,9 @@ jobs:
           fi
 
       - name: Build Android Debug
+        env:
+          AETHER_TELEMETRY_ENDPOINT: ${{ env.AETHERKIRI_TELEMETRY_TEST == 'true' && vars.AETHER_TELEMETRY_ENDPOINT || '' }}
+          AETHER_TELEMETRY_CHANNEL: ${{ env.AETHERKIRI_TELEMETRY_TEST == 'true' && 'github_test' || '' }}
         run: |
           set -euo pipefail
           chmod +x ./build.sh
@@ -442,6 +465,9 @@ jobs:
           export CMAKE_CXX_COMPILER_LAUNCHER=ccache
           export NDK_CCACHE=ccache
           ./build.sh android debug --jobs=4
+          if [[ "$AETHERKIRI_TELEMETRY_TEST" == "true" ]]; then
+            python3 scripts/verify_exported_telemetry.py out/godot/android/debug/Aether-debug.apk
+          fi
 
       - name: Verify exported APKs
         run: |
@@ -718,14 +744,20 @@ jobs:
 
       - name: Build iOS Release
         env:
-          AETHER_TELEMETRY_ENDPOINT: ${{ inputs.release_version && vars.AETHER_TELEMETRY_ENDPOINT || '' }}
-          AETHER_TELEMETRY_CHANNEL: ${{ inputs.release_version && vars.AETHER_TELEMETRY_CHANNEL || '' }}
+          AETHER_TELEMETRY_ENDPOINT: ${{ (env.AETHERKIRI_TELEMETRY_TEST == 'true' || inputs.release_version) && vars.AETHER_TELEMETRY_ENDPOINT || '' }}
+          AETHER_TELEMETRY_CHANNEL: ${{ env.AETHERKIRI_TELEMETRY_TEST == 'true' && 'github_test' || inputs.release_version && vars.AETHER_TELEMETRY_CHANNEL || '' }}
         run: |
           set -euo pipefail
           chmod +x ./build.sh
           export CMAKE_C_COMPILER_LAUNCHER=ccache
           export CMAKE_CXX_COMPILER_LAUNCHER=ccache
+          if [[ "$AETHERKIRI_TELEMETRY_TEST" == "true" ]]; then
+            python3 scripts/verify_exported_telemetry.py
+          fi
           ./build.sh ios release --jobs=4 --package-ipa 2>&1 | tee "${RUNNER_TEMP}/ios-release-build.log"
+          if [[ "$AETHERKIRI_TELEMETRY_TEST" == "true" ]]; then
+            python3 scripts/verify_exported_telemetry.py out/godot/ios/release/Aether-Release-Unsigned.ipa
+          fi
           grep -Fx 'AETHERKIRI_ENABLE_RFVP:BOOL=ON' out/ios/release/CMakeCache.txt
           test -s out/ios/release/bridge/rfvp_runtime/libaether_rfvp_runtime.a
           if [[ "$AETHERKIRI_WITH_INTERNAL" == "true" ]]; then
@@ -1117,14 +1149,20 @@ jobs:
 
       - name: Build macOS Release
         env:
-          AETHER_TELEMETRY_ENDPOINT: ${{ inputs.release_version && vars.AETHER_TELEMETRY_ENDPOINT || '' }}
-          AETHER_TELEMETRY_CHANNEL: ${{ inputs.release_version && vars.AETHER_TELEMETRY_CHANNEL || '' }}
+          AETHER_TELEMETRY_ENDPOINT: ${{ (env.AETHERKIRI_TELEMETRY_TEST == 'true' || inputs.release_version) && vars.AETHER_TELEMETRY_ENDPOINT || '' }}
+          AETHER_TELEMETRY_CHANNEL: ${{ env.AETHERKIRI_TELEMETRY_TEST == 'true' && 'github_test' || inputs.release_version && vars.AETHER_TELEMETRY_CHANNEL || '' }}
         run: |
           set -euo pipefail
           chmod +x ./build.sh
           export CMAKE_C_COMPILER_LAUNCHER=ccache
           export CMAKE_CXX_COMPILER_LAUNCHER=ccache
+          if [[ "$AETHERKIRI_TELEMETRY_TEST" == "true" ]]; then
+            python3 scripts/verify_exported_telemetry.py
+          fi
           ./build.sh macos release --jobs=4
+          if [[ "$AETHERKIRI_TELEMETRY_TEST" == "true" ]]; then
+            python3 scripts/verify_exported_telemetry.py out/godot/macos/release/Aether.app/Contents/Resources/Aether.pck
+          fi
           grep -Fx 'AETHERKIRI_ENABLE_RFVP:BOOL=ON' out/macos/release/CMakeCache.txt
           test -s out/macos/release/bridge/rfvp_runtime/libaether_rfvp_runtime.a
           if [[ "$AETHERKIRI_WITH_INTERNAL" == "true" ]]; then
@@ -1552,10 +1590,16 @@ jobs:
 
       - name: Build Linux Release
         env:
-          AETHER_TELEMETRY_ENDPOINT: ${{ inputs.release_version && vars.AETHER_TELEMETRY_ENDPOINT || '' }}
-          AETHER_TELEMETRY_CHANNEL: ${{ inputs.release_version && (vars.AETHER_TELEMETRY_CHANNEL || 'github_release') || '' }}
+          AETHER_TELEMETRY_ENDPOINT: ${{ (env.AETHERKIRI_TELEMETRY_TEST == 'true' || inputs.release_version) && vars.AETHER_TELEMETRY_ENDPOINT || '' }}
+          AETHER_TELEMETRY_CHANNEL: ${{ env.AETHERKIRI_TELEMETRY_TEST == 'true' && 'github_test' || inputs.release_version && (vars.AETHER_TELEMETRY_CHANNEL || 'github_release') || '' }}
         run: |
+          if [[ "$AETHERKIRI_TELEMETRY_TEST" == "true" ]]; then
+            python3 scripts/verify_exported_telemetry.py
+          fi
           ./build.sh linux release --jobs=2
+          if [[ "$AETHERKIRI_TELEMETRY_TEST" == "true" ]]; then
+            python3 scripts/verify_exported_telemetry.py out/godot/linux/release/AetherKiri.pck
+          fi
           if [[ "$AETHERKIRI_WITH_INTERNAL" == "true" ]]; then
             grep -Fx 'AETHERKIRI_ENABLE_SOFTPAL_RUNTIME:BOOL=ON' \
               out/linux/release/CMakeCache.txt

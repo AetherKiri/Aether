@@ -1697,15 +1697,25 @@ func _privacy_settings() -> void:
     var toggle = SWITCH.new()
     toggle.name = "AstryxTelemetryConsentSwitch"
     toggle.configure(host.telemetry_enabled, design, _reduced_motion())
-    _action_row(content, _t("settings.telemetry"), _t("settings.telemetry_desc"), toggle, "AstryxTelemetryConsentRow", false)
-    var pad := _margin(0, 0, 0, 16)
+    var pad := _margin(0, 16, 0, 16)
+    pad.name = "AstryxTelemetryConsentRow"
     content.add_child(pad)
-    var messages := _vbox(4)
-    pad.add_child(messages)
+    var stack := _vbox(10)
+    pad.add_child(stack)
+    var header := _hbox(12)
+    header.name = "TelemetryConsentHeader"
+    stack.add_child(header)
+    var title := _label(_t("settings.telemetry"), 16, false, true)
+    title.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+    header.add_child(title)
+    toggle.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+    header.add_child(toggle)
     var status := _label("", 14, true)
-    messages.add_child(status)
+    stack.add_child(status)
     var retry := _button(_t("settings.telemetry_retry_disable"), Callable())
-    messages.add_child(retry)
+    retry.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
+    stack.add_child(retry)
+    stack.add_child(host._telemetry_disclosure(func(text: String) -> Label: return _label(text, 14, true)))
     host._bind_telemetry_switch(toggle, status, retry, func(value: bool): toggle._change(value))
 
 func _about_row(parent: Control, id: String, title: String, description: String, control: Control) -> void:

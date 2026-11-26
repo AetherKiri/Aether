@@ -10,6 +10,14 @@ const LABELS := {
     "ko": ["화면 설정", "모니터", "창 크기", "창 크기 조절 허용", "창 비율 고정", "게임 화면", "늘이기", "비율 유지", "원본 크기", "채우고 자르기", "적용", "취소"],
     "es": ["Configuración de pantalla", "Monitor", "Tamaño de la ventana", "Permitir cambiar el tamaño", "Fijar proporciones de la ventana", "Imagen del juego", "Estirar", "Ajustar", "Tamaño original", "Rellenar y recortar", "Aplicar", "Cancelar"],
 }
+const SHORTCUT_LABELS := {
+    "en": "Keyboard shortcuts",
+    "zh_hans": "快捷键配置",
+    "zh_hant": "快捷鍵配置",
+    "ja": "ショートカット設定",
+    "ko": "단축키 설정",
+    "es": "Atajos de teclado",
+}
 
 var config_path := CONFIG_PATH
 var dialog: ConfirmationDialog
@@ -66,7 +74,7 @@ func end_game() -> void:
     _aspect_ratio = 0.0
     _on_request = Callable()
 
-func open(parent: Node, game_size: Vector2i, language: String = "en", current_aspect: int = -1) -> void:
+func open(parent: Node, game_size: Vector2i, language: String = "en", current_aspect: int = -1, shortcuts: Callable = Callable()) -> void:
     if not is_instance_valid(_window) or not is_instance_valid(parent):
         return
     if is_instance_valid(dialog):
@@ -84,6 +92,13 @@ func open(parent: Node, game_size: Vector2i, language: String = "en", current_as
     dialog.transient = true
     dialog.get_ok_button().text = labels[10]
     dialog.get_cancel_button().text = labels[11]
+    if shortcuts.is_valid():
+        dialog.add_button(SHORTCUT_LABELS.get(code, SHORTCUT_LABELS.get(code.get_slice("_", 0), SHORTCUT_LABELS.en)), true, "shortcuts")
+        dialog.custom_action.connect(func(id: StringName) -> void:
+            if id == &"shortcuts":
+                _close()
+                shortcuts.call()
+        )
     var rows := VBoxContainer.new()
     rows.add_theme_constant_override("separation", 10)
     dialog.add_child(rows)

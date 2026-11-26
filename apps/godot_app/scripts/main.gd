@@ -14189,7 +14189,15 @@ func _on_runtime_platform_request(operation: String, argument: String) -> void:
             OS.shell_open(argument)
         return
     if operation == "runtime_display_settings":
-        runtime_display_settings.open(self, last_texture_size, _effective_language_code(), runtime_display_state.aspect_mode)
+        var shortcuts := Callable()
+        if active_runtime_kind == RUNTIME_EXHIBIT:
+            shortcuts = func() -> void:
+                if player != null and active_runtime_kind == RUNTIME_EXHIBIT and game_running:
+                    player.submit_platform_response("exhibit_shortcut_editor", "")
+        runtime_display_settings.open(self, last_texture_size, _effective_language_code(), runtime_display_state.aspect_mode, shortcuts)
+        return
+    if operation == "exhibit_shortcut_file":
+        call_deferred("_choose_exhibit_shortcut_file", argument == "import")
         return
     if runtime_display_state.apply(operation, argument, get_window(), not _is_touch_platform()):
         softpal_aspect_mode = runtime_display_state.aspect_mode
@@ -14667,6 +14675,26 @@ func _save_requested_game_screenshot(requested_game: String) -> void:
         if error != OK:
             _append_log("Could not save the game screenshot: %s" % error_string(error))
         return
+
+func _choose_exhibit_shortcut_file(importing: bool) -> void:
+    if player == null or active_runtime_kind != RUNTIME_EXHIBIT or not game_running:
+        return
+    var game_path := active_game_path
+    var picker := FileDialog.new()
+    picker.use_native_dialog = true
+    picker.access = FileDialog.ACCESS_FILESYSTEM
+    picker.file_mode = FileDialog.FILE_MODE_OPEN_FILE if importing else FileDialog.FILE_MODE_SAVE_FILE
+    picker.filters = PackedStringArray(["*.rnf ; RNF"])
+    if not importing:
+        picker.current_file = "shortcut.user.rnf"
+    add_child(picker)
+    var finish := func(path: String) -> void:
+        if player != null and game_running and active_runtime_kind == RUNTIME_EXHIBIT and active_game_path == game_path:
+            player.submit_platform_response("exhibit_shortcut_file", path)
+        picker.queue_free()
+    picker.file_selected.connect(finish)
+    picker.canceled.connect(finish.bind(""))
+    picker.popup_centered_ratio(0.8)
 
 func _show_runtime_form(specification: Dictionary) -> void:
     if modal_layer == null or player == null:

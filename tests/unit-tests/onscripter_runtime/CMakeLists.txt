@@ -44,6 +44,9 @@ if(TARGET aether_native_host)
     add_executable(aether-native-host-onscripter native_host.cpp)
     target_compile_definitions(aether-native-host-onscripter PRIVATE
         AETHER_TEST_RUNTIME_FONT="${CMAKE_SOURCE_DIR}/apps/godot_app/assets/fonts/aetherkiri-runtime-cjk.otf")
+    if(TARGET aether_system3_runtime)
+        target_compile_definitions(aether-native-host-onscripter PRIVATE AETHER_TEST_SYSTEM3)
+    endif()
     target_link_libraries(aether-native-host-onscripter PRIVATE
         aether_native_host Catch2::Catch2WithMain)
     catch_discover_tests(aether-native-host-onscripter PROPERTIES

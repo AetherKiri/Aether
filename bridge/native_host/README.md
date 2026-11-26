@@ -1,8 +1,8 @@
 # Native runtime host
 
 `aether_native_host` is a C++ library for frontend adapters. It owns one native
-engine session handle at a time and registers ONScripterYuri when that provider
-is built.
+engine session handle at a time and registers the linked providers that support
+shared sessions. ONScripterYuri and AliceSoft System 1–3 share this path.
 
 Create a `RuntimeSession` with an `engine_create_desc_t`, configure and open the
 game through the existing engine API, then call `Close()` to release the handle
@@ -32,7 +32,7 @@ an override when the user selects it. It handles file access authorization,
 save sync, and actual player startup. The independent route tests run in
 the game detection CTest suite. macOS and Linux Godot CI also launch ONS in
 both hosts, open a manually selected XP3, and launch a synthetic System3 game
-through the existing Godot host.
+through both session hosts and reopen its save on the other host.
 
 ## macOS arm64 contract test
 

@@ -4,7 +4,7 @@ target_include_directories(aether_launch_router PUBLIC "${CMAKE_CURRENT_SOURCE_D
 target_include_directories(aether_launch_router PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/../game_detection/src")
 target_link_libraries(aether_launch_router PUBLIC aether_game_detection PRIVATE engine_api)
 
-if(NOT BUILD_NATIVE_HOST AND NOT AETHERKIRI_ONS_NATIVE_HOST_FOR_GODOT)
+if(NOT BUILD_NATIVE_HOST AND NOT AETHERKIRI_NATIVE_HOST_FOR_GODOT)
     return()
 endif()
 
@@ -16,4 +16,9 @@ target_link_libraries(aether_native_host PUBLIC engine_api aether_launch_router)
 if(TARGET aether_onscripter_runtime)
     target_compile_definitions(aether_native_host PRIVATE AETHER_NATIVE_HOST_WITH_ONSCRIPTER)
     target_link_libraries(aether_native_host PRIVATE aether_onscripter_runtime)
+endif()
+
+if(TARGET aether_system3_runtime)
+    target_compile_definitions(aether_native_host PRIVATE AETHER_NATIVE_HOST_WITH_SYSTEM3)
+    target_link_libraries(aether_native_host PRIVATE aether_system3_runtime)
 endif()

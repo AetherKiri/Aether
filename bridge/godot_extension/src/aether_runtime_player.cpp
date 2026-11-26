@@ -44,7 +44,7 @@ extern "C" void AetherInternalRegisterWa2Runtime(void);
 #if defined(AETHERKIRI_WITH_ONSCRIPTER)
 #include "onscripter_runtime.h"
 #endif
-#if defined(AETHERKIRI_WITH_ONS_NATIVE_HOST)
+#if defined(AETHERKIRI_WITH_NATIVE_HOST)
 #include "aether/native_host/runtime_session.h"
 #endif
 #if defined(AETHERKIRI_WITH_SIGLUS)
@@ -10251,20 +10251,34 @@ public:
         destroy_engine();
     }
 
+    PackedStringArray get_native_session_runtimes() const {
+        PackedStringArray ids;
+        for (const auto &runtime : native_session_runtimes()) {
+            ids.append(String::utf8(runtime.c_str()));
+        }
+        return ids;
+    }
+
     bool has_ons_native_host() const {
-#if defined(AETHERKIRI_WITH_ONS_NATIVE_HOST)
-        return true;
+        return get_native_session_runtimes().has("onscripter");
+    }
+
+    static const std::vector<std::string> &native_session_runtimes() {
+#if defined(AETHERKIRI_WITH_NATIVE_HOST)
+        // The extension registers Providers in its existing order at startup.
+        static const auto ids = aether::native_host::RuntimeSession::RegisterProviders();
 #else
-        return false;
+        static const std::vector<std::string> ids;
 #endif
+        return ids;
     }
 
     String get_engine_host() const {
         if (handle_ == nullptr) {
             return "";
         }
-#if defined(AETHERKIRI_WITH_ONS_NATIVE_HOST)
-        if (ons_session_.handle() != nullptr) {
+#if defined(AETHERKIRI_WITH_NATIVE_HOST)
+        if (native_session_.handle() != nullptr) {
             return "native";
         }
 #endif
@@ -10272,7 +10286,7 @@ public:
     }
 
     bool initialize_engine(const String &writable_path, const String &cache_path,
-                           bool use_ons_native_host = false) {
+                           bool use_native_host = false) {
         if (handle_ != nullptr) {
             AndroidBridgeLog("event=initialize_engine_already_initialized runtime=%s",
                              runtime_id_.utf8().get_data());
@@ -10357,10 +10371,10 @@ public:
         mages_cache_path_ = cache_path;
 
         engine_result_t result;
-#if defined(AETHERKIRI_WITH_ONS_NATIVE_HOST)
-        if (use_ons_native_host) {
-            result = ons_session_.Create(desc);
-            handle_ = ons_session_.handle();
+#if defined(AETHERKIRI_WITH_NATIVE_HOST)
+        if (use_native_host) {
+            result = native_session_.Create(desc);
+            handle_ = native_session_.handle();
         } else
 #endif
         {
@@ -10417,20 +10431,20 @@ public:
         }
         release_frame_texture();
         engine_result_t result;
-#if defined(AETHERKIRI_WITH_ONS_NATIVE_HOST)
-        if (ons_session_.handle() != nullptr) {
-            result = ons_session_.Close();
+#if defined(AETHERKIRI_WITH_NATIVE_HOST)
+        if (native_session_.handle() != nullptr) {
+            result = native_session_.Close();
         } else
 #endif
         {
             result = engine_destroy(handle_);
         }
         BridgeFlush();
+        handle_ = nullptr;
         if (result != ENGINE_RESULT_OK) {
             last_result_ = ResultToString(result);
-            last_error_ = LastError(handle_);
+            last_error_ = LastError(nullptr);
         }
-        handle_ = nullptr;
         runtime_response_tick_pending_ = false;
         game_open_ = false;
         runtime_id_ = "auto";
@@ -13086,7 +13100,7 @@ void main() {
 
     Dictionary resolve_game_launch(const Dictionary &request, const Callable &legacy_inspect,
                                    const Callable &legacy_special_entry) const {
-        return aether::godot_host::ResolveGameLaunch(request, has_ons_native_host(),
+        return aether::godot_host::ResolveGameLaunch(request, native_session_runtimes(),
                                                    legacy_inspect, legacy_special_entry);
     }
 
@@ -13101,8 +13115,10 @@ void main() {
 protected:
     static void _bind_methods() {
         ClassDB::bind_method(D_METHOD("initialize_engine", "writable_path", "cache_path",
-                                      "use_ons_native_host"),
+                                      "use_native_host"),
                              &AetherRuntimePlayer::initialize_engine, DEFVAL(false));
+        ClassDB::bind_method(D_METHOD("get_native_session_runtimes"),
+                             &AetherRuntimePlayer::get_native_session_runtimes);
         ClassDB::bind_method(D_METHOD("has_ons_native_host"),
                              &AetherRuntimePlayer::has_ons_native_host);
         ClassDB::bind_method(D_METHOD("get_engine_host"),
@@ -14423,8 +14439,8 @@ private:
 #endif
     }
 
-#if defined(AETHERKIRI_WITH_ONS_NATIVE_HOST)
-    aether::native_host::RuntimeSession ons_session_;
+#if defined(AETHERKIRI_WITH_NATIVE_HOST)
+    aether::native_host::RuntimeSession native_session_;
 #endif
     engine_handle_t handle_ = nullptr;
     engine_media_handle_t media_ = nullptr;

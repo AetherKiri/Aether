@@ -60,6 +60,79 @@ bool FrameHasShade(engine_handle_t engine, uint8_t shade, uint64_t &serial) {
     return pixels[center] == shade && pixels[center + 1] == shade && pixels[center + 2] == shade;
 }
 
+#if defined(AETHER_TEST_SYSTEM3)
+void ExerciseSystem3(RuntimeSession &session, const engine_create_desc_t &description,
+                     const fs::path &root) {
+    const auto game = root / "system3-game";
+    REQUIRE(fs::create_directory(game));
+    const auto path = game.u8string();
+    std::ofstream(game / "ACG.DAT") << "graphics marker";
+    std::ofstream(game / "system3.ini") << "[config]\ngame=system3_generic\nencoding=utf8\n";
+    auto startup = [&](uint32_t expected) {
+        REQUIRE(session.Create(description) == ENGINE_RESULT_OK);
+        RuntimeSession competing;
+        REQUIRE(competing.Create(description) == ENGINE_RESULT_INVALID_STATE);
+        const auto engine = session.handle();
+        engine_option_t option{};
+        option.key_utf8 = "runtime";
+        option.value_utf8 = "system3";
+        REQUIRE(engine_set_option(engine, &option) == ENGINE_RESULT_OK);
+        option.key_utf8 = "default_font";
+        option.value_utf8 = AETHER_TEST_RUNTIME_FONT;
+        REQUIRE(engine_set_option(engine, &option) == ENGINE_RESULT_OK);
+        REQUIRE(engine_open_game_async(engine, path.c_str(), nullptr) == ENGINE_RESULT_OK);
+        uint32_t state = ENGINE_STARTUP_STATE_IDLE;
+        REQUIRE(WaitFor([&] {
+            REQUIRE(engine_get_startup_state(engine, &state) == ENGINE_RESULT_OK);
+            return state == ENGINE_STARTUP_STATE_SUCCEEDED || state == ENGINE_STARTUP_STATE_FAILED;
+        }));
+        INFO(engine_get_last_error(engine));
+        REQUIRE(state == expected);
+    };
+    std::ofstream(game / "ADISK.DAT") << "invalid archive";
+    startup(ENGINE_STARTUP_STATE_FAILED);
+    REQUIRE(session.Close() == ENGINE_RESULT_OK);
+
+    std::vector<uint8_t> archive(768);
+    archive[0] = 2;
+    archive[2] = 3;
+    archive[4] = 4;
+    archive[256] = 1;
+    archive[257] = 1;
+    const std::string page = std::string("\x02\x00", 2) + "'中文测试'A@\x02";
+    std::copy(page.begin(), page.end(), archive.begin() + 512);
+    std::ofstream stream(game / "ADISK.DAT", std::ios::binary);
+    stream.write(reinterpret_cast<const char *>(archive.data()), archive.size());
+    stream.close();
+    REQUIRE(stream.good());
+    startup(ENGINE_STARTUP_STATE_SUCCEEDED);
+
+    const auto engine = session.handle();
+    REQUIRE(engine_pause(engine) == ENGINE_RESULT_OK);
+    REQUIRE(engine_resume(engine) == ENGINE_RESULT_OK);
+    engine_frame_desc_t frame{};
+    frame.struct_size = sizeof(frame);
+    REQUIRE(WaitFor([&] {
+        REQUIRE(engine_tick(engine, 5) == ENGINE_RESULT_OK);
+        return engine_get_frame_desc(engine, &frame) == ENGINE_RESULT_OK && frame.frame_serial > 0;
+    }));
+    REQUIRE(frame.width == 640);
+    REQUIRE(frame.height == 400);
+    REQUIRE(frame.pixel_format == ENGINE_PIXEL_FORMAT_RGBA8888);
+    std::vector<uint8_t> pixels(static_cast<size_t>(frame.stride_bytes) * frame.height);
+    REQUIRE(engine_read_frame_rgba(engine, pixels.data(), pixels.size()) == ENGINE_RESULT_OK);
+    engine_input_event_t input{};
+    input.struct_size = sizeof(input);
+    input.x = 320;
+    input.y = 200;
+    input.type = ENGINE_INPUT_EVENT_POINTER_DOWN;
+    REQUIRE(engine_send_input(engine, &input) == ENGINE_RESULT_OK);
+    input.type = ENGINE_INPUT_EVENT_POINTER_UP;
+    REQUIRE(engine_send_input(engine, &input) == ENGINE_RESULT_OK);
+    REQUIRE(session.Close() == ENGINE_RESULT_OK);
+}
+#endif
+
 } // namespace
 
 TEST_CASE("Native host plays and reopens an ONScripter game through the engine ABI") {
@@ -133,5 +206,11 @@ TEST_CASE("Native host plays and reopens an ONScripter game through the engine A
         REQUIRE(black_frame > white_frame);
         REQUIRE(session.Close() == ENGINE_RESULT_OK);
         REQUIRE(session.handle() == nullptr);
+#if defined(AETHER_TEST_SYSTEM3)
+        if (visit == 0) {
+            REQUIRE(std::find(supported.begin(), supported.end(), "system3") != supported.end());
+            ExerciseSystem3(session, description, directory.path);
+        }
+#endif
     }
 }

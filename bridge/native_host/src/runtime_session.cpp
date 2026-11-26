@@ -1,9 +1,15 @@
 #include "aether/native_host/runtime_session.h"
+#include "aether/native_host/launch_router.h"
 
 #if defined(AETHER_NATIVE_HOST_WITH_ONSCRIPTER)
 #include "onscripter_runtime.h"
 #endif
 
+#if defined(AETHER_NATIVE_HOST_WITH_SYSTEM3)
+#include "system3_runtime_provider.h"
+#endif
+
+#include <algorithm>
 #include <atomic>
 #include <utility>
 
@@ -19,12 +25,21 @@ RuntimeSession::~RuntimeSession() {
 }
 
 std::vector<std::string> RuntimeSession::RegisterProviders() {
+    std::vector<std::string> candidates;
 #if defined(AETHER_NATIVE_HOST_WITH_ONSCRIPTER)
     aetherkiri::onscripter::RegisterRuntimeProvider();
-    return {"onscripter"};
-#else
-    return {};
+    candidates.emplace_back("onscripter");
 #endif
+#if defined(AETHER_NATIVE_HOST_WITH_SYSTEM3)
+    if (aetherkiri_system3_register_runtime_provider() == ENGINE_RESULT_OK) {
+        candidates.emplace_back("system3");
+    }
+#endif
+    const auto registered = RegisteredLaunchProviders();
+    candidates.erase(std::remove_if(candidates.begin(), candidates.end(), [&](const auto &runtime) {
+        return std::find(registered.begin(), registered.end(), runtime) == registered.end();
+    }), candidates.end());
+    return candidates;
 }
 
 engine_result_t RuntimeSession::Create(const engine_create_desc_t &description) {

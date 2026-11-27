@@ -34,6 +34,9 @@ func _initialize() -> void:
     var cases := [
         ["empty", "kirikiri", {}],
         ["launcher-only", "kirikiri", {"Game.EXE": ""}],
+        ["systemnnn", "systemnnn", {"Game.EXE": "", "SPT/SYS.SPT": ""}],
+        ["systemnnn-executable-entry", "systemnnn", {"Game.EXE": "", "spt/sys.spt": ""}, "Game.EXE"],
+        ["systemnnn-incomplete", "kirikiri", {"sys.spt": "", "spt/story.spt": ""}],
         ["xp3-enumeration", "kirikiri", {"last.xp3": "", "first.xp3": "", "launcher.exe": ""}],
         ["xp3-preference", "kirikiri", {"launch.exe": "", "patch.xp3": "", "DATA.XP3": ""}],
         ["loose-scripts", "kirikiri", {"data/Startup.tjs": "", "data.xp3": "", "README.md": "title=Loose fixture"}],

@@ -118,6 +118,14 @@ bool Command(cJSON *json) {
         return false;
     if(action == "capture")
         Capture(String(json, "name", "frame"));
+    else if(action == "option") {
+        auto key = String(json, "key");
+        auto value = String(json, "value");
+        engine_option_t option{};
+        option.key_utf8 = key.c_str();
+        option.value_utf8 = value.c_str();
+        Check(provider->set_option(player, &option));
+    }
     else if(action == "pause")
         Check(provider->pause(player));
     else if(action == "resume")

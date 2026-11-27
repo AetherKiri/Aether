@@ -551,7 +551,12 @@ Result Inspect(const Files &files, const std::string &path) {
         result.renpy_directory = renpy;
     } else if (IsN2Directory(files, root)) {
         Match(result, "n2system", "n2system-profile-or-npa");
-    } else if ((Has(names, "system40.ini") || Has(names, "alicestart.ini")) && HasExtension(names, "ain")) {
+    } else if (((Has(names, "system40.ini") || Has(names, "alicestart.ini")) && HasExtension(names, "ain")) ||
+               (Has(names, "alicestart2.ini") && Has(names, "haru_c.ain")) ||
+               (Has(names, "alicestart.chs") && Has(names, "chs.tbl") &&
+                (HasExtension(names, "ain") || std::any_of(names.begin(), names.end(), [](const auto &name) {
+                    return name != "alicestart.chs" && EndsWith(name, ".chs");
+                })))) {
         Match(result, "xsystem4", "system4-ain-ini");
     } else if (Has(names, "adisk.ald") || std::any_of(names.begin(), names.end(), [](const auto &name) {
                    return EndsWith(name, "sa.ald");

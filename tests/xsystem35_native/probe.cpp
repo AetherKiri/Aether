@@ -122,6 +122,14 @@ bool Command(const Json &json) {
         return false;
     if(action == "capture")
         Capture(String(json, "name", "frame"));
+    else if(action == "option") {
+        const auto key = json.value("key", std::string());
+        const auto value = json.value("value", std::string());
+        engine_option_t option{};
+        option.key_utf8 = key.c_str();
+        option.value_utf8 = value.c_str();
+        Check(provider->set_option(player, &option));
+    }
     else if(action == "pause")
         Check(provider->pause(player));
     else if(action == "resume")

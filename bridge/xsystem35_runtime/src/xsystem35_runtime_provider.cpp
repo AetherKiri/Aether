@@ -1,9 +1,12 @@
 #include "xsystem35_runtime_provider.h"
 extern "C" {
 #include "embedded.h"
+#include "xsystem35_main.h"
 #include <SDL_mixer.h>
 }
 #include <algorithm>
+#include <charconv>
+#include <cstdlib>
 #include <atomic>
 #include <chrono>
 #include <condition_variable>
@@ -147,6 +150,7 @@ namespace aetherkiri::xsystem35 {
             std::string writable, root, saves, font, error, encoding = "auto",
                                                             selected_encoding;
             std::mutex mutex, input_mutex;
+            std::atomic<bool> report_modifier_state{ false };
             std::condition_variable condition;
             std::thread worker;
             std::atomic<bool> stopping{ false }, paused{ false };
@@ -298,6 +302,7 @@ namespace aetherkiri::xsystem35 {
                 {
                     std::lock_guard<std::mutex> guard(mutex);
                     session_font = font;
+                    hooks.fixed_encoding = encoding != "auto";
                 }
                 const int result = xsystem35_host_run(
                     &hooks, root.c_str(), saves.c_str(), session_font.c_str());
@@ -476,6 +481,30 @@ namespace aetherkiri::xsystem35 {
                     return ENGINE_RESULT_INVALID_ARGUMENT;
                 std::lock_guard<std::mutex> guard(self.mutex);
                 self.encoding = value;
+                return ENGINE_RESULT_OK;
+            }
+            if(key == "modifier_state") {
+                if(value != "0" && value != "1") return ENGINE_RESULT_INVALID_ARGUMENT;
+                self.report_modifier_state = value == "1";
+                return ENGINE_RESULT_OK;
+            }
+            if(key.rfind("modifier_", 0) == 0 || key == "gamepad_config") {
+                if(active_runtime.load() != p) return ENGINE_RESULT_INVALID_STATE;
+            }
+            if(key == "modifier_action" || key == "gamepad_config") {
+                if(value.empty()) return ENGINE_RESULT_INVALID_ARGUMENT;
+                if(key == "gamepad_config")
+                    xsystem35_set_gamepad_config_json(value.c_str());
+                else
+                    xsystem35_modifier_apply_action(value.c_str());
+                return ENGINE_RESULT_OK;
+            }
+            if(key == "modifier_lock_mask") {
+                int mask = 0;
+                auto parsed = std::from_chars(value.data(), value.data() + value.size(), mask);
+                if(parsed.ec != std::errc{} || parsed.ptr != value.data() + value.size() || mask < 0)
+                    return ENGINE_RESULT_INVALID_ARGUMENT;
+                xsystem35_modifier_set_locks(mask);
                 return ENGINE_RESULT_OK;
             }
             if(key == "fps_limit") {
@@ -701,6 +730,11 @@ namespace aetherkiri::xsystem35 {
             if(!p)
                 return ENGINE_RESULT_INVALID_ARGUMENT;
             auto &self = *static_cast<Runtime *>(p);
+            if(self.report_modifier_state) {
+                if(active_runtime.load() != p) return ENGINE_RESULT_INVALID_STATE;
+                std::unique_ptr<char, decltype(&std::free)> state(xsystem35_modifier_live_state(), &std::free);
+                return Copy(state ? state.get() : "{}", out, size, written);
+            }
             std::lock_guard<std::mutex> guard(self.mutex);
             return Copy("runtime=xsystem35 native-library frames=" +
                             std::to_string(self.serial.load()) + " encoding=" +

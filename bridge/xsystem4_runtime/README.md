@@ -4,8 +4,7 @@
 [`aether` branch](https://github.com/AetherKiri/AetherSystem4/tree/aether) of the public
 AetherKiri fork for native embedding hooks. The fork's default `master` branch
 is reserved for upstream synchronization. Aether pins an exact commit from
-`aether`, including its recursive `subprojects/libsys4` dependency. Initialize
-both with:
+`aether`, including the matching libsys4 sources. Initialize the engine with
 
 ```sh
 git submodule update --init --recursive packages/AetherSystem4
@@ -219,3 +218,10 @@ clicks with Chinese names/text, backgrounds and characters using Metal
 presentation. All six native CTests passed. Battle/3D flows, save/load,
 full-game completion and other platforms remain unverified. Imported game
 assets are unchanged and are not included in this repository.
+
+
+## Gamepad and runtime controls
+
+The host accepts gamepad mappings through `gamepad_config` and running-game actions through `modifier_action`. Setting `modifier_state` to `1` returns the engine's live JSON through `get_plugin_debug_info`. Set it to `0` to read runtime diagnostics.
+
+Use `modifier_lock_mask.<game ID>` for game-specific locks, `modifier_ctrl_skip` for held Ctrl, and `modifier_font_scale` or `modifier_scrollbar_scale` for percentage sizes.

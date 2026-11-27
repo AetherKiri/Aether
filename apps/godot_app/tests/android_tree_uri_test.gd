@@ -3,14 +3,15 @@ extends SceneTree
 const MAIN_SCRIPT := preload("res://scripts/main.gd")
 
 class AndroidApp extends MAIN_SCRIPT:
-    var primary_storage_root := "/storage/emulated/0"
+    var primary_storage_root: String
 
     func _android_primary_storage_root() -> String:
         return primary_storage_root
 
 func _initialize() -> void:
     var app := AndroidApp.new()
-    for root in ["/storage/emulated/0", "/storage/emulated/10"]:
+    # The picker IDs must resolve relative to the root provided by Android.
+    for root in ["/test/shared-storage", "/test/profile/shared-storage"]:
         app.primary_storage_root = root
         if not _check_picker_paths(app, root):
             app.ui_motion.free()
@@ -25,6 +26,8 @@ func _initialize() -> void:
 
 func _check_picker_paths(app: AndroidApp, root: String) -> bool:
     var cases := {
+        "content://com.android.externalstorage.documents/tree/primary%3AGames":
+            root.path_join("Games"),
         "content://com.android.externalstorage.documents/tree/primary%3AGames%2FMyGame":
             root.path_join("Games/MyGame"),
         "content://com.android.externalstorage.documents/tree/primary%3A":
@@ -52,7 +55,8 @@ func _check_picker_paths(app: AndroidApp, root: String) -> bool:
 
     # Other document providers do not expose a real filesystem path. Leave
     # their URIs untouched so callers can reject them explicitly.
-    var unsupported := "content://com.android.providers.downloads.documents/tree/raw%3A%2Fstorage%2Femulated%2F0%2FDownload%2FGame"
+    var download_id := "raw:" + root.path_join("Download/Game")
+    var unsupported := "content://com.android.providers.downloads.documents/tree/" + download_id.uri_encode()
     if app._android_external_storage_path_from_tree_uri(unsupported) != unsupported:
         push_error("Non-ExternalStorageProvider tree URIs must remain untouched")
         return false
@@ -74,7 +78,7 @@ func _check_picker_paths(app: AndroidApp, root: String) -> bool:
         "content://com.android.externalstorage.documents/document/primary%3AGames%2F%E6%B8%B8%E6%88%8F%2B%20A%2F..%2FOther%2FGame.exe":
             "",
         "content://com.example.provider/document/Game.exe": "",
-        "content://com.example.fileprovider/root/storage/emulated/0/Games/%E6%B8%B8%E6%88%8F%2B%20A/launch.hcb": "",
+        "content://com.example.fileprovider/root" + root + "/Games/%E6%B8%B8%E6%88%8F%2B%20A/launch.hcb": "",
     }
     for uri in file_cases:
         var selected_path: String = app._android_launch_file_path(uri)

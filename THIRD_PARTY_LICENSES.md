@@ -55,16 +55,14 @@ SOFTWARE.
 SystemNNN / Emberfall
 ----------------------------------------------------------------------------
 Upstream: https://github.com/PorisRora/SystemNNN-Emberfall
-Integration fork: https://github.com/AetherKiri/SystemNNN-Emberfall
+Integration fork: https://github.com/AetherKiri/AetherSystemNNN
 Copyright © 2026 PorisRora.
 
-Emberfall-owned code is declared GPL-2.0-only in the upstream README and
-THIRD_PARTY_NOTICES.md. Its original license and dependency notices remain in
-packages/SystemNNN-Emberfall/LICENSE and THIRD_PARTY_NOTICES.md. This attribution
-does not relicense Emberfall or grant permission to combine it with GPL-3.0
-components. The incompatible license declarations and product FFmpeg Bink 2
-feature require resolution before distributing combined binaries, including
-public CI artifacts. See doc/systemnnn_runtime.md for the build configuration.
+The original author authorized AetherSystemNNN to distribute the Emberfall-owned
+code in its `aether` branch under GPL-3.0-or-later. The license and third-party
+notices are in `packages/AetherSystemNNN/LICENSE` and
+`packages/AetherSystemNNN/THIRD_PARTY_NOTICES.md`. See
+`doc/systemnnn_runtime.md` for the Aether build configuration.
 
 ----------------------------------------------------------------------------
 AetherN2System / NitroSharp

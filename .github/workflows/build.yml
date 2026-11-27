@@ -71,7 +71,7 @@ env:
   # Only main publishes shared caches. Branches, PRs and release tags restore
   # main's snapshots without uploading copies scoped to their own ref.
   AETHERKIRI_VCPKG_CACHE_WRITE: ${{ github.ref == 'refs/heads/main' && github.actor != 'dependabot[bot]' }}
-  # Release artifacts exclude Emberfall pending redistribution clearance.
+  # PR Debug builds exercise SystemNNN. Release builds keep it disabled.
   AETHERKIRI_ENABLE_SYSTEMNNN: 'OFF'
   AETHERKIRI_RELEASE_VERSION: ${{ inputs.release_version || '' }}
   AETHERKIRI_BUILD_NUMBER: ${{ inputs.release_build_number || github.run_number }}
@@ -169,7 +169,7 @@ jobs:
           git submodule update --init --depth 1 packages/AetherKrkr
           git submodule update --init --depth 1 packages/AetherMAGES
           git submodule update --init --recursive --depth 1 packages/AetherN2System
-          git submodule update --init --recursive --depth 1 packages/SystemNNN-Emberfall
+          git submodule update --init --recursive --depth 1 packages/AetherSystemNNN
           git submodule update --init --depth 1 packages/ruffle
           git submodule update --init --recursive --depth 1 packages/AetherSystem4 packages/AetherSystem35 packages/AetherSystem3
 
@@ -589,7 +589,7 @@ jobs:
           git submodule update --init --depth 1 packages/AetherKrkr
           git submodule update --init --depth 1 packages/AetherMAGES
           git submodule update --init --recursive --depth 1 packages/AetherN2System
-          git submodule update --init --recursive --depth 1 packages/SystemNNN-Emberfall
+          git submodule update --init --recursive --depth 1 packages/AetherSystemNNN
           git submodule update --init --depth 1 packages/rfvp
           git submodule update --init --depth 1 packages/ruffle
           git submodule update --init --recursive --depth 1 packages/AetherSystem4 packages/AetherSystem35 packages/AetherSystem3
@@ -987,7 +987,7 @@ jobs:
           git submodule update --init --depth 1 packages/AetherKrkr
           git submodule update --init --depth 1 packages/AetherMAGES
           git submodule update --init --recursive --depth 1 packages/AetherN2System
-          git submodule update --init --recursive --depth 1 packages/SystemNNN-Emberfall
+          git submodule update --init --recursive --depth 1 packages/AetherSystemNNN
           git submodule update --init --depth 1 packages/rfvp
           git submodule update --init --depth 1 packages/ruffle
           git submodule update --init --recursive --depth 1 packages/AetherSystem4 packages/AetherSystem35 packages/AetherSystem3
@@ -1460,7 +1460,7 @@ jobs:
           git submodule update --init --depth 1 packages/AetherKrkr
           git submodule update --init --depth 1 packages/AetherMAGES
           git submodule update --init --recursive --depth 1 packages/AetherN2System
-          git submodule update --init --recursive --depth 1 packages/SystemNNN-Emberfall
+          git submodule update --init --recursive --depth 1 packages/AetherSystemNNN
           git submodule update --init --depth 1 packages/ruffle
           git submodule update --init --recursive --depth 1 packages/AetherSystem4 packages/AetherSystem35 packages/AetherSystem3
 

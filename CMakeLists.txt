@@ -202,8 +202,8 @@ set(AETHERKIRI_ENTISGLS_DIR
     "${CMAKE_CURRENT_SOURCE_DIR}/packages/AetherEntisGLS"
     CACHE PATH "path to the EntisGLS-SDL3 aether branch checkout")
 set(AETHERKIRI_SYSTEMNNN_DIR
-    "${CMAKE_CURRENT_SOURCE_DIR}/packages/SystemNNN-Emberfall"
-    CACHE PATH "path to a SystemNNN-Emberfall runtime checkout")
+    "${CMAKE_CURRENT_SOURCE_DIR}/packages/AetherSystemNNN"
+    CACHE PATH "path to an AetherSystemNNN runtime checkout")
 set(AETHERKIRI_N2SYSTEM_DIR
     "${CMAKE_CURRENT_SOURCE_DIR}/packages/AetherN2System"
     CACHE PATH "path to an AetherN2System runtime checkout")

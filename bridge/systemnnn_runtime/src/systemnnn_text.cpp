@@ -366,8 +366,7 @@ void TextRenderer::draw(emberfall::render::MessagePlane& plane, std::u32string_v
                         int x, int y, int size, int max_width, std::uint32_t color) const {
     std::lock_guard<std::mutex> lock(impl_->mutex);
     if (!impl_->face || size <= 0 || size > 4096 || !plane.width || !plane.height || !(color >> 24)) return;
-    if (plane.width > std::numeric_limits<std::size_t>::max() / 4 ||
-        plane.stride < static_cast<std::size_t>(plane.width) * 4 ||
+    if (plane.stride / 4 < plane.width ||
         plane.height > std::numeric_limits<std::size_t>::max() / plane.stride ||
         plane.rgba.size() < plane.stride * plane.height) return;
     FT_Face face = impl_->face;

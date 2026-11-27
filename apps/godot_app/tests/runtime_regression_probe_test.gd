@@ -49,7 +49,7 @@ class FakeHost:
     func _probe_wait_startup(_config: Dictionary) -> bool:
         return true
 
-    func _ensure_player_initialized() -> bool:
+    func _ensure_player_initialized(_root: String = "", _route: Dictionary = {}) -> bool:
         eager_initializations += 1
         return true
 

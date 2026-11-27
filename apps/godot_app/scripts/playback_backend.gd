@@ -20,7 +20,8 @@ static func renderer(selection: String) -> String:
     return GODOT_RENDERER if selection in [NATIVE, GODOT] else selection
 
 
-static func uses_native_host(selection: String, runtime: String, player: Object, prerelease: bool) -> bool:
-    var preview_requested := selection == NATIVE or (selection == AUTOMATIC and prerelease)
-    return preview_requested and runtime == "onscripter" and player != null \
-        and player.has_method("has_ons_native_host") and player.has_ons_native_host()
+static func host_preference(selection: String) -> String:
+    match selection:
+        AUTOMATIC: return "automatic"
+        NATIVE: return "native"
+    return "legacy"

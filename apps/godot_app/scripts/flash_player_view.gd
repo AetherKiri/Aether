@@ -104,9 +104,13 @@ func _layout() -> void:
     # Overlay the header without resizing the movie or moving the virtual menu.
     controls.layout(size, Rect2(safe.position + Vector2(0, 56), Vector2(safe.size.x, maxf(0, safe.size.y - 56))))
 
-func open_entry(value: Dictionary) -> String:
+func open_entry(value: Dictionary, route: Dictionary = {}) -> String:
     entry = value.duplicate(true)
     toolbar.get_node("Title").text = String(entry.get("name", "Flash"))
+    if route.is_empty():
+        route = host._resolve_launch(entry, "flash")
+    if String(route.get("host", "")) != "dedicated":
+        return host._t("flash.unavailable")
     if not ClassDB.class_exists("AetherFlashPlayer"):
         return host._t("flash.unavailable")
     native = ClassDB.instantiate("AetherFlashPlayer")
@@ -114,7 +118,7 @@ func open_entry(value: Dictionary) -> String:
     if not native.is_supported():
         return host._t("flash.unavailable")
     native.playback_error.connect(_playback_error)
-    var path := ProjectSettings.globalize_path(String(entry.path))
+    var path := String(route.entry)
     var bank := preload("res://scripts/game_save_storage.gd").require_local_bank(path.get_base_dir(), "savedata/flash")
     if not String(bank.error).is_empty():
         return host._t("flash.open_failed", [bank.error])

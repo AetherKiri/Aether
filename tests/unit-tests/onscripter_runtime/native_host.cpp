@@ -1,7 +1,9 @@
 #include <catch2/catch_test_macros.hpp>
 
+#include "aether/native_host/launch_router.h"
 #include "aether/native_host/runtime_session.h"
 
+#include <algorithm>
 #include <chrono>
 #include <filesystem>
 #include <fstream>
@@ -90,6 +92,10 @@ TEST_CASE("Native host plays and reopens an ONScripter game through the engine A
     description.writable_path_utf8 = writable_path.c_str();
     description.cache_path_utf8 = writable_path.c_str();
 
+    const auto supported = RuntimeSession::RegisterProviders();
+    const auto registered = aether::native_host::RegisteredLaunchProviders();
+    REQUIRE(std::find(supported.begin(), supported.end(), "onscripter") != supported.end());
+    REQUIRE(std::find(registered.begin(), registered.end(), "onscripter") != registered.end());
     RuntimeSession session;
     auto invalid_description = description;
     invalid_description.struct_size = 0;

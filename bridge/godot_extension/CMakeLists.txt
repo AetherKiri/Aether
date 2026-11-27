@@ -335,7 +335,7 @@ endif()
 if(TARGET engine_api)
     target_link_libraries(aether_kiri_godot PRIVATE engine_api)
 endif()
-target_link_libraries(aether_kiri_godot PRIVATE spdlog::spdlog aether_game_detection)
+target_link_libraries(aether_kiri_godot PRIVATE spdlog::spdlog aether_launch_router)
 if(TARGET aether_krkr2_runtime)
     # Phase 2d link flip: the KiriKiri runtime glue is linked by the Godot
     # extension host (not engine_api). The extension installs the legacy
@@ -453,7 +453,7 @@ if(IOS)
         list(APPEND AETHERKIRI_IOS_ARCHIVES
             "$<TARGET_FILE:aether_minori_runtime>")
     endif()
-    set(_runtime_targets_to_bundle aether_game_detection)
+    set(_runtime_targets_to_bundle aether_game_detection aether_launch_router)
     if(AETHERKIRI_ONS_NATIVE_HOST_FOR_GODOT AND NOT BUILD_NATIVE_HOST_SHARED)
         list(APPEND _runtime_targets_to_bundle aether_native_host)
     endif()

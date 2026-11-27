@@ -404,7 +404,7 @@ endif()
 if(BUILD_GODOT_EXTENSION OR BUILD_NATIVE_HOST OR AETHERKIRI_BUILD_NATIVE_RUNTIME_TESTS)
     add_subdirectory(bridge/game_detection)
 endif()
-if(BUILD_NATIVE_HOST OR AETHERKIRI_ONS_NATIVE_HOST_FOR_GODOT)
+if(TARGET aether_game_detection)
     add_subdirectory(bridge/native_host)
 endif()
 if(AETHERKIRI_ENABLE_SYSTEM3 AND (BUILD_GODOT_EXTENSION OR ENABLE_TESTS) AND

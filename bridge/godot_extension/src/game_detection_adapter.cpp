@@ -1,6 +1,8 @@
 #include "game_detection_adapter.h"
 
-#include "aether/game_detection.h"
+#include "aether/native_host/launch_router.h"
+#include <godot_cpp/classes/project_settings.hpp>
+#include <godot_cpp/classes/class_db_singleton.hpp>
 #include <godot_cpp/classes/dir_access.hpp>
 #include <godot_cpp/classes/file_access.hpp>
 #include <godot_cpp/variant/packed_string_array.hpp>
@@ -117,6 +119,67 @@ godot::String InspectSpecialGame(const godot::String &path, const godot::String 
         return ToGodot(detection::InspectFlash(files, utf8).launch_file);
     }
     return {};
+}
+
+godot::Dictionary ResolveGameLaunch(const godot::Dictionary &request, bool has_native_ons_session,
+                                    const godot::Callable &legacy_inspect,
+                                    const godot::Callable &legacy_special_entry) {
+    namespace routing = aether::native_host;
+    const String source = request.get("source", "library");
+    const String preference = request.get("host_preference", "automatic");
+    routing::LaunchRequest launch;
+    if (source == "direct") launch.source = routing::LaunchSource::Direct;
+    else if (source == "probe") launch.source = routing::LaunchSource::Probe;
+    else if (source == "flash") launch.source = routing::LaunchSource::Flash;
+    if (preference == "native") launch.host = routing::HostPreference::Native;
+    else if (preference == "legacy") launch.host = routing::HostPreference::Legacy;
+    launch.path = ToUtf8(request.get("path", String()));
+    launch.selected_file = ToUtf8(request.get("selected_file", String()));
+    launch.startup_script = ToUtf8(request.get("startup_script", String()));
+    launch.prerelease = request.get("prerelease", false);
+
+    routing::LaunchCapabilities capabilities;
+    capabilities.common_player = true;
+    capabilities.providers = routing::RegisteredLaunchProviders();
+    if (has_native_ons_session) capabilities.native_sessions.emplace_back("onscripter");
+    if (ClassDBSingleton::get_singleton()->class_exists("AetherTyranoPlayer")) capabilities.dedicated_players.emplace_back("tyranoscript");
+    if (ClassDBSingleton::get_singleton()->class_exists("AetherRenpyNativePlayer")) capabilities.dedicated_players.emplace_back("renpy");
+    if (ClassDBSingleton::get_singleton()->class_exists("AetherFlashPlayer")) capabilities.dedicated_players.emplace_back("flash");
+
+    const GodotFiles files;
+    routing::LaunchEnvironment environment{files, capabilities, {}, {}, {}};
+    environment.globalize = [](const std::string &path) {
+        return ToUtf8(ProjectSettings::get_singleton()->globalize_path(ToGodot(path)));
+    };
+    if (legacy_inspect.is_valid()) {
+        environment.inspect = [&](const std::string &root) {
+            detection::Result result;
+            result.root = root;
+            result.engine = ToUtf8(String(legacy_inspect.call(ToGodot(root))));
+            return result;
+        };
+    }
+    if (legacy_special_entry.is_valid()) {
+        environment.special_entry = [&](const std::string &path, const std::string &runtime) {
+            return ToUtf8(String(legacy_special_entry.call(ToGodot(path), ToGodot(runtime))));
+        };
+    }
+
+    const auto route = routing::ResolveLaunch(environment, launch);
+    Dictionary result;
+    result["detected_runtime"] = ToGodot(route.detected_runtime);
+    result["runtime"] = ToGodot(route.runtime);
+    result["engine_option"] = ToGodot(route.engine_option);
+    result["player"] = ToGodot(route.player);
+    result["root"] = ToGodot(route.root);
+    result["entry"] = ToGodot(route.entry);
+    result["startup_script"] = ToGodot(route.startup_script);
+    result["provider_status"] = routing::ProviderStatusName(route.provider);
+    result["native_requested"] = route.native_requested;
+    result["host"] = routing::LaunchHostName(route.host);
+    result["reason"] = routing::LaunchReasonName(route.reason);
+    result["error_entry"] = ToGodot(route.error_entry);
+    return result;
 }
 
 } // namespace aether::godot_host

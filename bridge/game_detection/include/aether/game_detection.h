@@ -54,6 +54,7 @@ Result Inspect(const Files &files, const std::string &path);
 Result InspectFlash(const Files &files, const std::string &path);
 std::string TyranoEntry(const Files &files, const std::string &root);
 std::string RenpyDirectory(const Files &files, const std::string &root);
+std::string HcbEntry(const Files &files, const std::string &root);
 
 void ApplyProviderProbes(Result &result, const std::string &root,
                          const ProviderProbe &probe);

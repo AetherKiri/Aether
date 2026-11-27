@@ -122,6 +122,14 @@ func _initialize() -> void:
         var games: Array[Dictionary] = [game]
         app._backfill_game_metadata(games)
         _expect(game.launchFile == ".Hidden.hcb", mode + " metadata backfill preserves the chosen HCB")
+        var selected_route: Dictionary = app._resolve_launch(game)
+        _expect(selected_route.entry == hcb.path_join(".Hidden.hcb"), mode + " routes the chosen HCB")
+        var auto_route: Dictionary = app._resolve_launch({"path": hcb})
+        _expect(auto_route.entry == hcb.path_join("Visible.HCB"), mode + " automatically routes the visible HCB")
+        var hidden_route: Dictionary = app._resolve_launch({"path": hidden_hcb})
+        _expect(hidden_route.entry == hidden_hcb.path_join(".Story.hcb"), mode + " routes the hidden-only HCB")
+        var dedicated: Dictionary = app._resolve_launch({"path": _make_case("route-renpy-" + mode, {"game/test.rpy": ""})})
+        _expect(dedicated.player == "renpy" and dedicated.entry == "game", mode + " resolves the Ren'Py player entry")
     _compare(app, _make_case("invalid-hcb", {"script.hcb": "not bytecode"}), "kirikiri", "RFVP invalid header")
 
     var asar := _make_case("tyrano-asar", {"game/script.rpy": ""})

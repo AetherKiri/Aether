@@ -13084,6 +13084,12 @@ void main() {
         return aether::godot_host::InspectSpecialGame(path, runtime);
     }
 
+    Dictionary resolve_game_launch(const Dictionary &request, const Callable &legacy_inspect,
+                                   const Callable &legacy_special_entry) const {
+        return aether::godot_host::ResolveGameLaunch(request, has_ons_native_host(),
+                                                   legacy_inspect, legacy_special_entry);
+    }
+
     int64_t probe_runtime(const String &runtime_id,
                           const String &game_root_path) const {
         const CharString runtime_utf8 = runtime_id.utf8();
@@ -13292,6 +13298,8 @@ protected:
                              &AetherRuntimePlayer::inspect_game, DEFVAL(String()));
         ClassDB::bind_method(D_METHOD("inspect_special_game", "path", "runtime"),
                              &AetherRuntimePlayer::inspect_special_game);
+        ClassDB::bind_method(D_METHOD("resolve_game_launch", "request", "legacy_inspect", "legacy_special_entry"),
+                             &AetherRuntimePlayer::resolve_game_launch, DEFVAL(Callable()), DEFVAL(Callable()));
         ClassDB::bind_method(D_METHOD("probe_runtime", "runtime_id", "game_root_path"),
                              &AetherRuntimePlayer::probe_runtime);
         ADD_SIGNAL(MethodInfo(

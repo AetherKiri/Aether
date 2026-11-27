@@ -18,14 +18,21 @@ RuntimeSession::~RuntimeSession() {
     Close();
 }
 
+std::vector<std::string> RuntimeSession::RegisterProviders() {
+#if defined(AETHER_NATIVE_HOST_WITH_ONSCRIPTER)
+    aetherkiri::onscripter::RegisterRuntimeProvider();
+    return {"onscripter"};
+#else
+    return {};
+#endif
+}
+
 engine_result_t RuntimeSession::Create(const engine_create_desc_t &description) {
     if (session_active.exchange(true)) {
         return ENGINE_RESULT_INVALID_STATE;
     }
 
-#if defined(AETHER_NATIVE_HOST_WITH_ONSCRIPTER)
-    aetherkiri::onscripter::RegisterRuntimeProvider();
-#endif
+    RegisterProviders();
     const auto result = engine_create(&description, &handle_);
     if (result != ENGINE_RESULT_OK) {
         session_active.store(false);

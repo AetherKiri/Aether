@@ -30,6 +30,8 @@ class RecordingPlayer extends Node:
         opened.append({"path": path, "algorithm": algorithm, "native": native_output,
             "mode": mode, "enabled": enabled, "chain": chain.duplicate(), "surface": surface})
         return open_result
+    func get_renderer_info() -> String:
+        return ""
     func get_last_result() -> String:
         return "recorded failure"
     func get_last_error() -> String:
@@ -45,11 +47,13 @@ class LaunchHost:
         pass
     func _require_legal_documents_for_media() -> bool:
         return true
-    func _game_runtime_kind(_path: String) -> String:
-        return RUNTIME_KIRIKIRI
-    func _switch_runtime_player(_kind: String) -> bool:
+    func _resolve_launch(game: Dictionary, _source: String = "library") -> Dictionary:
+        var path := String(game.path)
+        return {"runtime": RUNTIME_KIRIKIRI, "host": "legacy", "native_requested": false,
+            "entry": path, "root": path, "reason": "", "startup_script": ""}
+    func _switch_runtime_player(_kind: String, _route: Dictionary = {}) -> bool:
         return switch_ok
-    func _ensure_player_initialized() -> bool:
+    func _ensure_player_initialized(_root: String = "", _route: Dictionary = {}) -> bool:
         return initialize_ok
     func _load_button_position_memory(_path: String) -> void:
         pass

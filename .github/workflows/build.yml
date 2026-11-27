@@ -1159,13 +1159,25 @@ jobs:
               --script res://scripts/smoke_test.gd
           done
 
-      - name: Compare native and legacy game detection
+      - name: Verify game detection and shared launch routing
         run: |
           set -euo pipefail
           log="$RUNNER_TEMP/game-detection-parity.log"
           "$GODOT_BIN" --headless --path apps/godot_app \
             --script res://tests/game_detection_parity_test.gd 2>&1 | tee "$log"
           grep -E '^game_detection_parity_test: [0-9]+ filesystem cases, [0-9]+ provider cases, 0 failures$' "$log"
+          fixture="$(mktemp -d "$RUNNER_TEMP/launch-routing.XXXXXX")"
+          cp -R tests/fixtures/onscripter_smoke "$fixture/native"
+          cp -R tests/fixtures/onscripter_smoke "$fixture/legacy"
+          export AETHERKIRI_SIMULATE_VERSION=1.2.2-alpha.1
+          export AETHERKIRI_EXPECT_SYSTEM3=1
+          export SDL_AUDIODRIVER=dummy
+          AETHERKIRI_BACKEND="Native Session" AETHERKIRI_EXPECT_ONS_HOST=native \
+            "$GODOT_BIN" --headless --path apps/godot_app --script res://tests/game_detection_launch_test.gd \
+              -- "${fixture##*/}" native legacy "$fixture/native"
+          AETHERKIRI_BACKEND=Godot AETHERKIRI_EXPECT_ONS_HOST=legacy \
+            "$GODOT_BIN" --headless --path apps/godot_app --script res://tests/game_detection_launch_test.gd \
+              -- "${fixture##*/}" legacy native "$fixture/legacy"
 
       - name: Test Astryx UI and session statistics
         run: |
@@ -1640,7 +1652,7 @@ jobs:
               --path apps/godot_app --script res://scripts/smoke_test.gd
           done
 
-      - name: Compare native and legacy game detection
+      - name: Verify game detection and shared launch routing
         env:
           LD_LIBRARY_PATH: ${{ github.workspace }}/apps/godot_app/bin/linux/debug
         run: |
@@ -1649,6 +1661,18 @@ jobs:
           "$GODOT_BIN" --headless --path apps/godot_app \
             --script res://tests/game_detection_parity_test.gd 2>&1 | tee "$log"
           grep -E '^game_detection_parity_test: [0-9]+ filesystem cases, [0-9]+ provider cases, 0 failures$' "$log"
+          fixture="$(mktemp -d "$RUNNER_TEMP/launch-routing.XXXXXX")"
+          cp -R tests/fixtures/onscripter_smoke "$fixture/native"
+          cp -R tests/fixtures/onscripter_smoke "$fixture/legacy"
+          export AETHERKIRI_SIMULATE_VERSION=1.2.2-alpha.1
+          export AETHERKIRI_EXPECT_SYSTEM3=1
+          export SDL_AUDIODRIVER=dummy
+          AETHERKIRI_BACKEND="Native Session" AETHERKIRI_EXPECT_ONS_HOST=native \
+            "$GODOT_BIN" --headless --path apps/godot_app --script res://tests/game_detection_launch_test.gd \
+              -- "${fixture##*/}" native legacy "$fixture/native"
+          AETHERKIRI_BACKEND=Godot AETHERKIRI_EXPECT_ONS_HOST=legacy \
+            "$GODOT_BIN" --headless --path apps/godot_app --script res://tests/game_detection_launch_test.gd \
+              -- "${fixture##*/}" legacy native "$fixture/legacy"
 
       - name: Verify and package Linux applications
         env:

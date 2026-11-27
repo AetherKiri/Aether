@@ -1,7 +1,7 @@
 function(aetherkiri_prepare_onscripter_yuri_sources
          upstream_dir generated_dir out_base_source out_sound_source
          out_command_source out_event_source out_parser_source
-         out_parallel_source)
+         out_parallel_source out_script_handler_source)
     file(MAKE_DIRECTORY "${generated_dir}")
 
     file(READ "${upstream_dir}/ONScripter.cpp" base_source)
@@ -592,6 +592,26 @@ int ScriptParser::readEffect( EffectLink *effect )
 
     set(generated_parser "${generated_dir}/ScriptParser.cpp")
     file(WRITE "${generated_parser}" "${parser_source}")
+
+    file(READ "${upstream_dir}/ScriptHandler.cpp" script_handler_source)
+    set(nscript_open_original [=[
+    else if ((fp = fopen("nscript.dat", "rb")) != NULL){
+]=])
+    set(nscript_open_embedded [=[
+    else if ((fp = aetherkiri_onscripter_open_redirected_script(archive_path)) != NULL ||
+             (fp = fopen("nscript.dat", "rb")) != NULL){
+]=])
+    string(FIND "${script_handler_source}" "${nscript_open_original}"
+           nscript_open_position)
+    if(nscript_open_position EQUAL -1)
+        message(FATAL_ERROR
+            "OnscripterYuri script lookup changed; update the embedded-host overlay.")
+    endif()
+    string(REPLACE "${nscript_open_original}" "${nscript_open_embedded}"
+           script_handler_source "${script_handler_source}")
+    set(generated_script_handler "${generated_dir}/ScriptHandler.cpp")
+    file(WRITE "${generated_script_handler}" "${script_handler_source}")
+    set(${out_script_handler_source} "${generated_script_handler}" PARENT_SCOPE)
 
     file(READ "${upstream_dir}/Parallel.cpp" parallel_source)
     set(parallel_detach_original [=[

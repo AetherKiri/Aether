@@ -40,6 +40,17 @@ bool WaitFor(Predicate ready) {
     return false;
 }
 
+void RequireStarted(engine_handle_t engine) {
+    uint32_t state = ENGINE_STARTUP_STATE_IDLE;
+    REQUIRE(WaitFor([&] {
+        REQUIRE(engine_get_startup_state(engine, &state) == ENGINE_RESULT_OK);
+        return state == ENGINE_STARTUP_STATE_SUCCEEDED ||
+               state == ENGINE_STARTUP_STATE_FAILED;
+    }));
+    INFO(engine_get_last_error(engine));
+    REQUIRE(state == ENGINE_STARTUP_STATE_SUCCEEDED);
+}
+
 bool FrameHasShade(engine_handle_t engine, uint8_t shade, uint64_t &serial) {
     REQUIRE(engine_tick(engine, 5) == ENGINE_RESULT_OK);
     engine_frame_desc_t frame{};
@@ -100,14 +111,7 @@ TEST_CASE("Native host plays and reopens an ONScripter game through the engine A
         option.value_utf8 = AETHER_TEST_RUNTIME_FONT;
         REQUIRE(engine_set_option(engine, &option) == ENGINE_RESULT_OK);
         REQUIRE(engine_open_game_async(engine, game_path.c_str(), nullptr) == ENGINE_RESULT_OK);
-        uint32_t startup_state = ENGINE_STARTUP_STATE_IDLE;
-        REQUIRE(WaitFor([&] {
-            REQUIRE(engine_get_startup_state(engine, &startup_state) == ENGINE_RESULT_OK);
-            return startup_state == ENGINE_STARTUP_STATE_SUCCEEDED ||
-                   startup_state == ENGINE_STARTUP_STATE_FAILED;
-        }));
-        INFO(engine_get_last_error(engine));
-        REQUIRE(startup_state == ENGINE_STARTUP_STATE_SUCCEEDED);
+        RequireStarted(engine);
 
         uint64_t white_frame = 0;
         REQUIRE(WaitFor([&] { return FrameHasShade(engine, 255, white_frame); }));
@@ -128,4 +132,69 @@ TEST_CASE("Native host plays and reopens an ONScripter game through the engine A
         REQUIRE(session.Close() == ENGINE_RESULT_OK);
         REQUIRE(session.handle() == nullptr);
     }
+}
+
+TEST_CASE("ONScripter opens the script named by a Windows patch redirect") {
+    TestDirectory directory;
+    const fs::path game = directory.path / "game";
+    const fs::path localized = game / "localized";
+    REQUIRE(fs::create_directories(localized));
+
+    const auto write_script = [](const fs::path &path, const char *color,
+                                 bool encrypted) {
+        std::string script = "*define\ngame\n*start\nbg \"";
+        script += color;
+        script += "\",1\nclick\nend\n";
+        if (encrypted) {
+            for (char &byte : script) {
+                byte = static_cast<char>(static_cast<unsigned char>(byte) ^ 0x84);
+            }
+        }
+        std::ofstream file(path, std::ios::binary);
+        file.write(script.data(), script.size());
+        file.close();
+        REQUIRE(file.good());
+    };
+    write_script(game / "nscript.dat", "#404040", true);
+    write_script(localized / "nscript.dat", "white", true);
+
+    std::string redirect = "localized";
+    uint8_t shade = 255;
+    SECTION("Uses the directory referenced by the patch") {}
+    SECTION("Keeps the root script when the patch names a missing directory") {
+        redirect = "missing";
+        shade = 0x40;
+    }
+    SECTION("Keeps an explicitly supplied plaintext script") {
+        write_script(game / "0.txt", "#808080", false);
+        shade = 0x80;
+    }
+    {
+        constexpr char signature[] = "MZ\0CreateFileA redirect %s -> %s\0";
+        std::ofstream file(game / "nscript_patch.dll", std::ios::binary);
+        file.write(signature, sizeof(signature) - 1);
+        file << redirect << '\\' << '\0';
+        file.close();
+        REQUIRE(file.good());
+    }
+
+    const std::string writable = directory.path.u8string();
+    engine_create_desc_t description{};
+    description.struct_size = sizeof(description);
+    description.api_version = ENGINE_API_VERSION;
+    description.writable_path_utf8 = writable.c_str();
+    description.cache_path_utf8 = writable.c_str();
+    RuntimeSession session;
+    REQUIRE(session.Create(description) == ENGINE_RESULT_OK);
+    const auto engine = session.handle();
+    const engine_option_t runtime{"runtime", "onscripter"};
+    const engine_option_t font{"default_font", AETHER_TEST_RUNTIME_FONT};
+    REQUIRE(engine_set_option(engine, &runtime) == ENGINE_RESULT_OK);
+    REQUIRE(engine_set_option(engine, &font) == ENGINE_RESULT_OK);
+    REQUIRE(engine_open_game_async(engine, game.u8string().c_str(), nullptr) == ENGINE_RESULT_OK);
+    RequireStarted(engine);
+
+    uint64_t serial = 0;
+    REQUIRE(WaitFor([&] { return FrameHasShade(engine, shade, serial); }));
+    REQUIRE(session.Close() == ENGINE_RESULT_OK);
 }

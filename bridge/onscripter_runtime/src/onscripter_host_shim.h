@@ -4,6 +4,7 @@
 // `end` command and several fatal-error paths. The embedded host converts that
 // process exit into a C++ exception which is contained by the runtime thread.
 #include <SDL.h>
+#include <cstdio>
 #include <cstdlib>
 
 extern "C" [[noreturn]] void aetherkiri_onscripter_host_exit(
@@ -25,6 +26,8 @@ extern "C" void aetherkiri_onscripter_configure_video(
 extern "C" void aetherkiri_onscripter_transform_text(char *buffer,
                                                        size_t capacity);
 extern "C" void aetherkiri_onscripter_prefetch_text(const char *script);
+extern "C" std::FILE *aetherkiri_onscripter_open_redirected_script(
+    const char *archive_path);
 
 #define exit(code) aetherkiri_onscripter_host_exit((code), __FILE__, __LINE__)
 #define SDL_FreeSurface aetherkiri_onscripter_free_surface

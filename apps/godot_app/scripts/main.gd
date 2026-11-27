@@ -11158,7 +11158,7 @@ func _on_refresh_or_import() -> void:
         _show_web_import_picker()
         return
     if OS.get_name() == "Android":
-        _android_storage_permission_log("add_game_click target=/storage/emulated/0")
+        _android_storage_permission_log("add_game_click")
     if not _ensure_android_storage_permission_for_import():
         return
     _show_import_picker()
@@ -11715,7 +11715,7 @@ func _open_video_import_dialog() -> void:
             )
             return
     if home_library_mode == "flash":
-        if not _ensure_android_storage_permission_for_path("/storage/emulated/0", message_key):
+        if not _ensure_android_storage_permission_for_path(_android_primary_storage_root(), message_key):
             return
     elif not _ensure_android_storage_permission_for_import(true):
         return
@@ -12410,6 +12410,12 @@ func _android_external_storage_path_from_tree_uri(path: String) -> String:
         return path
     return _android_external_storage_path_from_document_id(path.substr(prefix.length()), path)
 
+func _android_primary_storage_root() -> String:
+    if OS.get_name() != "Android":
+        return ""
+    # Godot maps the shared desktop directory to Android's primary storage root.
+    return OS.get_system_dir(OS.SYSTEM_DIR_DESKTOP, true)
+
 func _android_launch_file_path(path: String) -> String:
     const EXTERNAL_STORAGE := "content://com.android.externalstorage.documents/"
     const DOWNLOADS := "content://com.android.providers.downloads.documents/document/"
@@ -12441,10 +12447,12 @@ func _android_external_storage_path_from_document_id(encoded_id: String, fallbac
     var volume_id := document_id.substr(0, separator)
     var relative_path := document_id.substr(separator + 1).trim_prefix("/")
     var volume_root := ""
-    if volume_id == "primary":
-        volume_root = "/storage/emulated/0"
-    elif volume_id == "home":
-        volume_root = "/storage/emulated/0/Documents"
+    if volume_id == "primary" or volume_id == "home":
+        volume_root = _android_primary_storage_root()
+        if volume_root.is_empty():
+            return fallback
+        if volume_id == "home":
+            volume_root = volume_root.path_join("Documents")
     elif (
         not volume_id.is_empty()
         and not volume_id.contains("/")
@@ -15175,7 +15183,7 @@ func _ensure_android_storage_permission_for_import(video_import: bool = false) -
         if video_import
         else "message.android_storage_permission_required"
     )
-    return _ensure_android_storage_permission_for_path("/storage/emulated/0", message_key)
+    return _ensure_android_storage_permission_for_path(_android_primary_storage_root(), message_key)
 
 func _ensure_android_storage_permission_for_path(
     path: String,
@@ -15260,15 +15268,20 @@ func _android_path_needs_storage_permission(path: String) -> bool:
         return true
     if not normalized.begins_with("/storage/emulated/"):
         return false
-    var package_path := "/storage/emulated/0/Android/data/org.github.krkr2.aetherkiri/"
-    return not normalized.begins_with(package_path)
+    var app_external_files := OS.get_system_dir(OS.SYSTEM_DIR_DESKTOP, false)
+    if app_external_files.is_empty():
+        return true
+    var app_external_root := app_external_files.get_base_dir()
+    return normalized != app_external_root and not normalized.begins_with(app_external_root + "/")
 
 func _android_has_external_storage_permission() -> bool:
     if OS.get_name() != "Android":
         return true
     if player != null and player.has_method("android_has_external_storage_permission"):
         return bool(player.android_has_external_storage_permission())
-    for root in ["/storage/emulated/0", "/sdcard"]:
+    for root in [_android_primary_storage_root(), "/sdcard"]:
+        if root.is_empty():
+            continue
         var dir := DirAccess.open(root)
         if dir != null:
             return true

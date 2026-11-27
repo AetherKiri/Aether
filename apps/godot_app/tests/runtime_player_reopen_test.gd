@@ -113,10 +113,9 @@ func _check_reopen(runtime_kind: String) -> void:
     var player := RuntimePlayer.new()
     app.player = player
     app.cli_probe_script = "res://scripts/gui_render_probe.gd"
-    app.current_player_runtime_kind = (
-        app.RUNTIME_KIRIKIRI if runtime_kind == "rfvp" else runtime_kind
-    )
+    app.current_player_runtime_kind = runtime_kind
     _expect(app._ensure_player_initialized(), "Initialize the app's first engine")
+    _expect(player.options.get("runtime", "") == runtime_kind, "Select the provider on first initialization")
     _expect(app._switch_runtime_player(runtime_kind), "Reuse the initialized engine")
     _expect(player.initializations == 1, "An initialized engine is reused")
     _expect(app.backend_applications == 0, "Reuse preserves the active renderer")
@@ -128,9 +127,7 @@ func _check_reopen(runtime_kind: String) -> void:
         _expect(app._switch_runtime_player(runtime_kind), "Reopen after returning to the library")
         _expect(player.is_initialized(), "Recreate the handle before launch options")
         _expect(player.initializations == launch + 2, "Initialize once per reopened session")
-        _expect(player.options.get("runtime", "") == (
-            "auto" if runtime_kind == "rfvp" else runtime_kind
-        ), "Restore runtime selection after recreation")
+        _expect(player.options.get("runtime", "") == runtime_kind, "Restore runtime selection after recreation")
         _expect(player.set_engine_option("rfvp_encoding", "gbk") == 0, "Pre-open options have an initialized engine")
         _expect(app.backend_applications == launch + 1, "Restore the renderer after recreation")
         _expect(app.option_applications == launch + 1, "Restore engine options after recreation")

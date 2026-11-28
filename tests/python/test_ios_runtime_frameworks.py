@@ -86,11 +86,15 @@ class IOSRuntimeFrameworkTests(unittest.TestCase):
         (self.root / "runtime-frameworks-debug.txt").write_text(self.manifest.read_text())
         godot = self.root / "fake-godot"
         godot.write_text('''#!/usr/bin/env python3
+import json
 import os
 import sys
 from pathlib import Path
 assert '--recovery-mode' in sys.argv[1:]
-text = (Path(os.environ["GODOT_APP_DIR"]) / "aether_kiri.gdextension").read_text()
+project = Path(os.environ["GODOT_APP_DIR"])
+text = (project / "aether_kiri.gdextension").read_text()
+config = json.loads((project / "config/telemetry_export.json").read_text())
+assert config == {"channel": "ios_preview", "endpoint": "https://example.test/v1/events"}, config
 assert 'res://bin/ios/debug/AetherEntisGLS.framework' in text
 assert 'macos.debug' not in text
 Path(os.environ["EXPORT_REACHED"]).touch()
@@ -100,7 +104,8 @@ raise SystemExit(int(os.environ["EXPORT_RESULT"]))
         marker = self.root / "export-reached"
         env = dict(os.environ, PROJECT_ROOT=str(repo), GODOT_APP_DIR=str(self.project),
                    CMAKE_BUILD_DIR=str(self.root), BUILD_TYPE_LOWER="debug", GODOT_BIN=str(godot),
-                   EXPORT_MODE="--export-debug", EXPORT_PRESET="iOS Debug", EXPORT_REACHED=str(marker))
+                   EXPORT_MODE="--export-debug", EXPORT_PRESET="iOS Debug", EXPORT_REACHED=str(marker),
+                   AETHER_TELEMETRY_ENDPOINT="https://Example.Test:443", AETHER_TELEMETRY_CHANNEL="ios_preview")
         for exit_code in (0, 23):
             with self.subTest(exit_code=exit_code):
                 marker.unlink(missing_ok=True)
@@ -110,6 +115,7 @@ raise SystemExit(int(os.environ["EXPORT_RESULT"]))
                 self.assertEqual(result.returncode, exit_code, result.stdout + result.stderr)
                 self.assertTrue(marker.exists(), "exporter must see the staged framework")
                 self.assertEqual(self.extension.read_text(), original)
+                self.assertFalse((self.project / "config/telemetry_export.json").exists())
 
 
 if __name__ == "__main__":

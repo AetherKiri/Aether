@@ -16,6 +16,7 @@ game_path=""
 
 config/name="Aether"
 config/version="1.2.2-alpha.3"
+config/build_number="8501"
 config/use_custom_user_dir.macos=true
 config/custom_user_dir_name.macos="Godot/app_userdata/AetherKiri"
 config/use_custom_user_dir.windows=true
@@ -52,7 +53,7 @@ import/use_multiple_threads.macos=false
 
 [editor_plugins]
 
-enabled=PackedStringArray()
+enabled=PackedStringArray("res://addons/telemetry_export/plugin.cfg")
 
 [rendering]
 

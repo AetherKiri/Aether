@@ -1,0 +1,13 @@
+name = "aether-telemetry-local"
+main = "worker/index.ts"
+compatibility_date = "2026-11-24"
+send_metrics = false
+
+[observability]
+enabled = false
+
+[[d1_databases]]
+binding = "TELEMETRY_DB"
+database_name = "aether-telemetry-local"
+database_id = "00000000-0000-0000-0000-000000000001"
+migrations_dir = "migrations"

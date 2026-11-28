@@ -203,6 +203,7 @@ fi
 
 plutil -create xml1 "$entitlements_path"
 /usr/libexec/PlistBuddy -c 'Add :com.apple.security.app-sandbox bool true' "$entitlements_path"
+/usr/libexec/PlistBuddy -c 'Add :com.apple.security.network.client bool true' "$entitlements_path"
 /usr/libexec/PlistBuddy -c 'Add :com.apple.security.files.user-selected.read-write bool true' "$entitlements_path"
 /usr/libexec/PlistBuddy -c 'Add :com.apple.security.files.bookmarks.app-scope bool true' "$entitlements_path"
 /usr/libexec/PlistBuddy -c "Add :com.apple.application-identifier string $team_id.$bundle_id" "$entitlements_path"

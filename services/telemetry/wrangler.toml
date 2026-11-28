@@ -1,0 +1,23 @@
+name = "aether-telemetry"
+main = "worker/index.ts"
+compatibility_date = "2026-11-24"
+workers_dev = true
+preview_urls = false
+logpush = false
+
+[observability]
+enabled = false
+
+[triggers]
+crons = ["17 * * * *"]
+
+[[ratelimits]]
+name = "TELEMETRY_RATE_LIMIT"
+namespace_id = "2026112601"
+simple = { limit = 60, period = 10 }
+
+[[d1_databases]]
+binding = "TELEMETRY_DB"
+database_name = "aether-telemetry"
+database_id = "92657a3a-ffb7-40c0-a983-a50adec8e146"
+migrations_dir = "migrations"

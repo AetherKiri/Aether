@@ -1,0 +1,39 @@
+name: Telemetry Service
+
+on:
+  pull_request:
+    paths:
+      - 'services/telemetry/**'
+      - '.github/workflows/telemetry.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'services/telemetry/**'
+      - '.github/workflows/telemetry.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  integration:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: services/telemetry
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+      - name: Install Wrangler and TypeScript
+        run: npm install --global wrangler@4.168.0 typescript@6.0.3
+      - name: Generate Worker types and type-check
+        run: |
+          wrangler types
+          tsc --project tsconfig.json
+      - name: Test the TypeScript Worker and local D1
+        run: |
+          node --test tests/edge.test.mjs
+          python3 tests/integration.py

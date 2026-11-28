@@ -13,7 +13,7 @@ const NAV := [
     ["videos", "video", "nav.videos"], ["flash", "flash", "nav.flash"],
     ["settings", "settings", "settings.title"],
 ]
-const GROUPS := ["interface", "render", "compatibility", "storage", "diagnostics", "about"]
+const GROUPS := ["interface", "render", "compatibility", "storage", "diagnostics", "privacy", "about"]
 var controller
 var host
 var design
@@ -941,6 +941,7 @@ func _group_label(id: String) -> String:
         "compatibility": return _text("兼容性", "Compatibility", "互換性", "相容性", "Compatibilidad")
         "diagnostics": return _text("诊断", "Diagnostics", "診断", "診斷", "Diagnóstico")
         "storage": return _t("cache.storage")
+        "privacy": return _t("settings.section.privacy")
         _: return _text("关于", "About", "情報", "關於", "Acerca de")
 
 func _build_settings() -> void:
@@ -969,12 +970,13 @@ func _build_settings() -> void:
         heading_pad.add_child(_label(_t("settings.title"), 24, false, true))
         var items := _vbox(8)
         navigation.add_child(items)
+        var icons := {"storage": "folder", "privacy": "diagnostics"}
         for id in GROUPS:
             if id == "about":
                 var separator := _margin(0, 8, 0, 8)
                 items.add_child(separator)
                 separator.add_child(_divider())
-            var button := _settings_menu_item(_group_label(id), "folder" if id == "storage" else id, func():
+            var button := _settings_menu_item(_group_label(id), icons.get(id, id), func():
                 section = id
                 settings_detail = true
                 editing_setting = ""
@@ -1079,6 +1081,7 @@ func _settings_content() -> void:
         "compatibility": _compatibility_settings()
         "diagnostics": _diagnostic_settings()
         "storage": _storage_settings()
+        "privacy": _privacy_settings()
         "about": _about_settings()
 
 func _section(title: String, description: String) -> VBoxContainer:
@@ -1689,6 +1692,31 @@ func _diagnostic_settings() -> void:
         toggle.toggled.connect(func(value: bool): host._set_advanced_tool(entry[0], value))
         row.add_child(toggle)
         advanced.add_child(_divider())
+
+func _privacy_settings() -> void:
+    var toggle = SWITCH.new()
+    toggle.name = "AstryxTelemetryConsentSwitch"
+    toggle.configure(host.telemetry_enabled, design, _reduced_motion())
+    var pad := _margin(0, 16, 0, 16)
+    pad.name = "AstryxTelemetryConsentRow"
+    content.add_child(pad)
+    var stack := _vbox(10)
+    pad.add_child(stack)
+    var header := _hbox(12)
+    header.name = "TelemetryConsentHeader"
+    stack.add_child(header)
+    var title := _label(_t("settings.telemetry"), 16, false, true)
+    title.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+    header.add_child(title)
+    toggle.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+    header.add_child(toggle)
+    var status := _label("", 14, true)
+    stack.add_child(status)
+    var retry := _button(_t("settings.telemetry_retry_disable"), Callable())
+    retry.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
+    stack.add_child(retry)
+    stack.add_child(host._telemetry_disclosure(func(text: String) -> Label: return _label(text, 14, true)))
+    host._bind_telemetry_switch(toggle, status, retry, func(value: bool): toggle._change(value))
 
 func _about_row(parent: Control, id: String, title: String, description: String, control: Control) -> void:
     control.name = "AstryxAbout_" + id

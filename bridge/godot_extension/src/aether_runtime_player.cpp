@@ -1,5 +1,6 @@
 #include "engine_api.h"
 #include "runtime_host_extension.h"
+#include "telemetry_memory.h"
 #include "game_detection_adapter.h"
 #include "engine_options.h"
 #include "engine_runtime_provider.h"
@@ -11358,6 +11359,10 @@ public:
         return String::utf8(buffer) + godot_info + GetGodotGpuBridgeDebugInfo();
     }
 
+    int64_t get_telemetry_memory_bytes() const {
+        return aether_telemetry_memory_bytes();
+    }
+
     Dictionary get_memory_stats() {
         Dictionary output;
         if (handle_ == nullptr) {
@@ -13182,6 +13187,8 @@ protected:
                              &AetherRuntimePlayer::get_renderer_info);
         ClassDB::bind_method(D_METHOD("get_memory_stats"),
                              &AetherRuntimePlayer::get_memory_stats);
+        ClassDB::bind_method(D_METHOD("get_telemetry_memory_bytes"),
+                             &AetherRuntimePlayer::get_telemetry_memory_bytes);
         ClassDB::bind_method(D_METHOD("get_plugin_debug_info"),
                              &AetherRuntimePlayer::get_plugin_debug_info);
         ClassDB::bind_method(D_METHOD("get_frame_texture_backend"),

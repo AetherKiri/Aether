@@ -160,6 +160,20 @@ supported by the Flash player.
 | Linux | `x86_64` or `arm64` | GitHub Release archive; build from source via `./build.sh linux release` |
 | Windows | Build from source | Native targets compile locally |
 
+## Optional Telemetry
+
+Telemetry is off by default. Builds configured with a telemetry service ask for consent at startup. If you choose **Decline and don’t ask again**, you can still change your choice from **Settings → Privacy**. Turning telemetry off stops collection and transmission and clears the local installation ID and queued events.
+
+| Data | Purpose |
+| --- | --- |
+| Random installation ID, launches, foreground duration | Measure active installations and app usage |
+| OS, architecture, RAM range, GPU family | Diagnose platform and hardware compatibility issues |
+| App version, build, release channel | Identify regressions in specific builds and distributions |
+| Engine, launch outcome, play duration, corresponding game title | Measure startup success rates and investigate game compatibility |
+| FPS, sampled peak memory, load time, error codes | Diagnose performance and runtime failures |
+
+Aether sends the title displayed in the library, which can be the basename of a file or folder. Uploads exclude full paths, accounts, saves, and logs. Raw events have a 90-day retention period. Hardware and performance fields depend on platform and browser support. See the [telemetry service](services/telemetry/README.md) for deployment and local testing and the [build instructions](doc/telemetry-build.md) for client packaging.
+
 ## Repository Layout
 
 | Area | Path | Purpose |

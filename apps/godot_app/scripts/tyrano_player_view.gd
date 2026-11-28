@@ -1,7 +1,9 @@
 extends Control
 
 signal closed
+signal launch_requested
 signal game_ready
+signal playback_failed(error_code: String)
 
 const NativeControls = preload("res://scripts/native_game_controls.gd")
 const Metadata = preload("res://scripts/game_metadata.gd")
@@ -112,6 +114,7 @@ static func storage_path(root: String) -> String:
     return root.path_join("savedata/tyranoscript/local_storage.json")
 
 func open_entry(value: Dictionary) -> String:
+    launch_requested.emit()
     entry = value.duplicate(true)
     controls.set_layout_profiles(host._virtual_button_layouts(String(entry.get("path", ""))))
     var root := ProjectSettings.globalize_path(host._game_runtime_root(String(entry.get("path", ""))))
@@ -175,6 +178,7 @@ func _event(event: Dictionary) -> void:
                 controls_viewport.pointer_input(value)
                 controls_visible = controls.is_panel_open()
         "error":
+            playback_failed.emit("view_runtime_failed" if ready_received else "view_load_failed")
             var message: String = host._t("tyrano.open_failed", [String(event.get("value", ""))])
             close()
             host._show_message(message)
@@ -193,6 +197,7 @@ func _restart() -> void:
         native = null
     var message := open_entry(entry)
     if not message.is_empty():
+        playback_failed.emit("view_load_failed")
         close()
         host._show_message(message)
 
@@ -220,12 +225,14 @@ func _process(delta: float) -> void:
         archive = null
         var message: String = host._t("tyrano.open_failed", [result.error]) if result.has("error") else _open_html(result.entry)
         if not message.is_empty():
+            playback_failed.emit("view_load_failed")
             close()
             host._show_message(message)
         return
     if native != null and not ready_received:
         startup_elapsed += delta
         if startup_elapsed > 30.0:
+            playback_failed.emit("load_timeout")
             close()
             host._show_message(host._t("tyrano.startup_timeout"))
 

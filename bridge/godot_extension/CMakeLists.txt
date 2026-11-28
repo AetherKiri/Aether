@@ -102,6 +102,7 @@ set(AETHERKIRI_GODOT_SOURCES
     src/aether_runtime_player.cpp
     src/game_detection_adapter.cpp
     src/frame_effect_host.cpp
+    src/telemetry_memory.cpp
     src/presentation/RuntimePresentationSprite.cpp
 )
 foreach(_aetherkiri_host_runtime IN ITEMS FLASH TYRANO RENPY)

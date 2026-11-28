@@ -15,6 +15,8 @@ const RenpyPlayerView = preload("res://scripts/renpy_player_view.gd")
 const RuntimeDisplayState = preload("res://scripts/runtime_display_state.gd")
 const RuntimeDisplaySettings = preload("res://scripts/runtime_display_settings.gd")
 const RuntimeCursorState = preload("res://scripts/runtime_cursor_state.gd")
+const Telemetry = preload("res://scripts/telemetry.gd")
+const TelemetryBuild = preload("res://telemetry_build.gd")
 const GameLibraryStorage = preload("res://scripts/game_library_storage.gd")
 const VIDEO_LIST_FILE := "user://aetherkiri_videos.json"
 const VIDEO_PROGRESS_FILE := "user://aetherkiri_video_progress.json"
@@ -53,8 +55,11 @@ const IAP_DETAIL_AUTHORIZATION_TTL_MS := 30000
 const SECRET_UNLOCK_TAP_TARGET := 20
 const SECRET_UNLOCK_TAP_WINDOW_MSEC := 6000
 const SECRET_UNLOCK_COFFEE_SEC := 30 * 24 * 60 * 60
-const LEGAL_AGREEMENT_VERSION := "2026-07-27.4"
+const LEGAL_AGREEMENT_VERSION := "2026-11-26"
 const IOS_STATEMENT_VERSION := "2026-08-04"
+const TELEMETRY_PREFERENCE_FILE := "user://telemetry_preferences.cfg"
+# An updated collection notice requires a new explicit opt-in.
+const TELEMETRY_NOTICE_VERSION := 1
 const LEGAL_AGREEMENT_ZH_HANS := "res://legal/privacy_disclaimer_zh_hans.txt"
 const LEGAL_AGREEMENT_ZH_HANT := "res://legal/privacy_disclaimer_zh_hant.txt"
 const LEGAL_AGREEMENT_EN := "res://legal/privacy_disclaimer_en.txt"
@@ -481,6 +486,19 @@ const UI_TEXT := {
         "settings.legal": "隐私与免责协议",
         "settings.legal_desc": "查看当前版本的隐私政策、使用规则、风险提示与免责声明",
         "settings.legal_open": "阅读协议",
+        "settings.section.privacy": "隐私",
+        "settings.telemetry": "发送使用与兼容性数据",
+        "settings.telemetry_desc": "开启后，Aether 团队会收到以下数据，用于改进应用和排查问题。\n• 使用情况：随机安装 ID、启动次数和前台使用时长，帮助了解应用使用情况。\n• 设备兼容性：系统、处理器架构、内存范围和显卡系列，帮助定位受影响的设备。\n• 版本问题：应用版本、构建号和发布渠道，帮助找出引入问题的版本。\n• 游戏兼容性：引擎、启动结果、前台游玩时长，以及玩过或启动失败的游戏显示名称，帮助定位受影响的游戏。\n• 性能与故障：帧率、内存峰值、加载时间和错误码，帮助排查卡顿和故障。\n\n游戏没有标题时，显示名称可能是文件名或文件夹名。不会发送完整路径、网址、日志或文件内容。\n\n分享默认关闭。你可以随时关闭分享，停止收集和发送，并清除设备上的安装 ID 和未发送数据。",
+        "settings.telemetry_unavailable": "此版本未配置数据接收服务，无法启用。",
+        "settings.telemetry_enable_error": "无法开启数据收集。此选项仍处于关闭状态。",
+        "settings.telemetry_revoke_error": "本次运行已停止收集，但无法保存关闭状态。请重试。",
+        "settings.telemetry_cleanup_error": "已停止收集并清除待发送数据，但无法删除本地安装标识。",
+        "settings.telemetry_retry_disable": "重试关闭",
+        "notice.telemetry_title": "允许分享使用与兼容性数据吗？",
+        "notice.telemetry_optional": "是否分享由你决定。拒绝后仍可照常使用 Aether。",
+        "notice.telemetry_decline": "拒绝，以后不再提示",
+        "notice.telemetry_accept": "同意分享",
+        "notice.telemetry_decline_error": "数据分享仍处于关闭状态，但无法保存拒绝选项。",
         "settings.check_update": "检查更新",
         "settings.check_update_desc": "检测最新版本与功能改进",
         "settings.check_update_action": "检查",
@@ -925,6 +943,19 @@ const UI_TEXT := {
         "settings.legal": "隱私與免責協議",
         "settings.legal_desc": "查看目前版本的隱私政策、使用規則、風險提示與免責聲明",
         "settings.legal_open": "閱讀協議",
+        "settings.section.privacy": "隱私權",
+        "settings.telemetry": "傳送使用與相容性資料",
+        "settings.telemetry_desc": "開啟後，Aether 團隊會收到以下資料，用於改善應用程式和排查問題。\n• 使用情形：隨機安裝 ID、啟動次數及前景使用時間，協助了解應用程式的使用情形。\n• 裝置相容性：作業系統、處理器架構、記憶體範圍和顯示卡系列，協助找出受影響的裝置。\n• 版本問題：應用程式版本、組建號碼和發行管道，協助找出引入問題的版本。\n• 遊戲相容性：引擎、啟動結果、前景遊玩時間，以及玩過或啟動失敗的遊戲顯示名稱，協助找出受影響的遊戲。\n• 效能與故障：畫面更新率、記憶體用量峰值、載入時間和錯誤碼，協助排查卡頓和故障。\n\n遊戲沒有標題時，顯示名稱可能是檔案或資料夾名稱。不會傳送完整路徑、網址、日誌或檔案內容。\n\n分享預設關閉。你可以隨時關閉分享，停止收集和傳送，並清除裝置上的安裝 ID 和未傳送的資料。",
+        "settings.telemetry_unavailable": "此版本未設定資料接收服務，無法啟用。",
+        "settings.telemetry_enable_error": "無法開啟資料收集。此選項仍處於關閉狀態。",
+        "settings.telemetry_revoke_error": "本次執行已停止收集，但無法儲存關閉狀態。請重試。",
+        "settings.telemetry_cleanup_error": "已停止收集並清除待傳送資料，但無法刪除本機安裝識別碼。",
+        "settings.telemetry_retry_disable": "重試關閉",
+        "notice.telemetry_title": "允許分享使用與相容性資料嗎？",
+        "notice.telemetry_optional": "是否分享由你決定。拒絕後仍可照常使用 Aether。",
+        "notice.telemetry_decline": "拒絕，以後不再提示",
+        "notice.telemetry_accept": "同意分享",
+        "notice.telemetry_decline_error": "資料分享仍處於關閉狀態，但無法儲存拒絕選項。",
         "settings.check_update": "檢查更新",
         "settings.check_update_desc": "檢測最新版本與功能改進",
         "settings.check_update_action": "檢查",
@@ -1367,6 +1398,19 @@ You can find it any time under Settings → QQ Group.",
         "settings.legal": "Privacy & Disclaimer",
         "settings.legal_desc": "Read the current privacy policy, terms of use, risk notice, and disclaimer",
         "settings.legal_open": "Read",
+        "settings.section.privacy": "Privacy",
+        "settings.telemetry": "Share usage and compatibility data",
+        "settings.telemetry_desc": "If you turn sharing on, the Aether team receives the following data to improve the app and diagnose problems.\n• App usage: A random installation ID, launch counts, and time in the foreground help us understand how the app is used.\n• Device compatibility: The operating system, processor architecture, memory range, and graphics family help identify affected devices.\n• Release issues: The app version, build number, and release channel help identify which version introduced a problem.\n• Game compatibility: The engine, launch outcome, time played in the foreground, and displayed titles of games played or that failed to launch help identify affected games.\n• Performance and failures: Frame rate, peak memory use, loading time, and error codes help diagnose slowdowns and failures.\n\nIf a game has no title, its displayed title may be a file or folder name. The app excludes full paths, URLs, logs, and file contents.\n\nSharing is off by default. You can turn it off anytime to stop collection and sending and clear the installation ID and unsent data from this device.",
+        "settings.telemetry_unavailable": "This build has no telemetry service configured.",
+        "settings.telemetry_enable_error": "Couldn’t turn on data sharing. The setting is still off.",
+        "settings.telemetry_revoke_error": "Data sharing stopped for this session, but the app couldn’t save your choice. Try again.",
+        "settings.telemetry_cleanup_error": "Data sharing stopped and unsent data was cleared. The app couldn’t remove the local installation ID.",
+        "settings.telemetry_retry_disable": "Retry turning off",
+        "notice.telemetry_title": "Share usage and compatibility data?",
+        "notice.telemetry_optional": "Sharing is optional. You can use Aether as usual if you decline.",
+        "notice.telemetry_decline": "Decline and don’t ask again",
+        "notice.telemetry_accept": "Agree to share",
+        "notice.telemetry_decline_error": "Sharing is off. The app couldn’t save your choice to stop asking.",
         "settings.check_update": "Check for Updates",
         "settings.check_update_desc": "Check for the latest version and improvements",
         "settings.check_update_action": "Check",
@@ -1778,6 +1822,19 @@ You can find it any time under Settings → QQ Group.",
         "settings.legal": "プライバシーと免責事項",
         "settings.legal_desc": "現在のプライバシーポリシー、利用条件、リスクおよび免責事項を確認します",
         "settings.legal_open": "読む",
+        "settings.section.privacy": "プライバシー",
+        "settings.telemetry": "利用状況と互換性データを送信",
+        "settings.telemetry_desc": "共有を有効にすると、Aether チームはアプリの改善と問題の調査のために以下のデータを受け取ります。\n• アプリの利用状況：ランダムなインストール ID、起動回数、フォアグラウンドでの利用時間から、利用状況を把握します。\n• 端末の互換性：OS、CPU アーキテクチャ、メモリ容量の範囲、GPU の系列から、影響を受ける端末を特定します。\n• バージョンの問題：アプリのバージョン、ビルド番号、配信チャンネルから、問題が発生したバージョンを特定します。\n• ゲームの互換性：エンジン、起動結果、フォアグラウンドでのプレイ時間、遊んだゲームや起動に失敗したゲームの表示名から、影響を受けるゲームを特定します。\n• パフォーマンスと不具合：フレームレート、最大メモリ使用量、読み込み時間、エラーコードから、動作の遅延や不具合を調査します。\n\nゲームにタイトルがない場合、ファイル名やフォルダ名が表示名になることがあります。完全なパス、URL、ログ、ファイルの内容は送信されません。\n\n共有は初期状態でオフです。いつでも共有をオフにでき、収集と送信が停止し、端末内のインストール ID と未送信データが削除されます。",
+        "settings.telemetry_unavailable": "このビルドではデータの送信先が設定されていません。",
+        "settings.telemetry_enable_error": "データの送信を有効にできませんでした。設定はオフのままです。",
+        "settings.telemetry_revoke_error": "今回の利用中のデータ送信は停止しましたが、設定を保存できませんでした。もう一度お試しください。",
+        "settings.telemetry_cleanup_error": "データの送信を停止し、未送信データを消去しました。端末内のインストール ID は削除できませんでした。",
+        "settings.telemetry_retry_disable": "オフにする操作を再試行",
+        "notice.telemetry_title": "利用状況と互換性データの送信を許可しますか？",
+        "notice.telemetry_optional": "データの送信は任意です。拒否しても Aether を通常どおり使えます。",
+        "notice.telemetry_decline": "拒否して今後表示しない",
+        "notice.telemetry_accept": "同意して送信を許可",
+        "notice.telemetry_decline_error": "データの送信はオフのままですが、今後表示しない設定を保存できませんでした。",
         "settings.check_update": "アップデートを確認",
         "settings.check_update_desc": "最新バージョンと機能改善を確認します",
         "settings.check_update_action": "確認",
@@ -2187,6 +2244,19 @@ You can find it any time under Settings → QQ Group.",
         "settings.legal": "개인정보 및 면책 조항",
         "settings.legal_desc": "현재 개인정보 처리방침, 이용 조건, 위험 고지 및 면책 조항을 확인합니다",
         "settings.legal_open": "읽기",
+        "settings.section.privacy": "개인정보",
+        "settings.telemetry": "사용 및 호환성 데이터 공유",
+        "settings.telemetry_desc": "공유를 켜면 Aether 팀은 앱을 개선하고 문제를 조사하기 위해 다음 데이터를 받습니다.\n• 앱 사용 현황: 무작위 설치 ID, 실행 횟수, 앱을 화면에 띄워 사용한 시간으로 사용 현황을 파악합니다.\n• 기기 호환성: 운영체제, 프로세서 아키텍처, 메모리 용량 범위, 그래픽 카드 계열로 문제가 발생한 기기를 파악합니다.\n• 버전 문제: 앱 버전, 빌드 번호, 배포 채널로 문제가 발생한 버전을 찾습니다.\n• 게임 호환성: 게임 엔진, 실행 결과, 게임을 화면에 띄워 플레이한 시간, 플레이했거나 실행에 실패한 게임의 표시 이름으로 문제가 발생한 게임을 찾습니다.\n• 성능 및 오류: 프레임률, 최대 메모리 사용량, 로딩 시간, 오류 코드로 성능 저하와 오류를 조사합니다.\n\n게임에 제목이 없으면 파일 또는 폴더 이름이 표시 이름일 수 있습니다. 전체 경로, URL, 로그, 파일 내용은 전송하지 않습니다.\n\n공유는 기본적으로 꺼져 있습니다. 언제든 공유를 끄면 수집과 전송을 중단하고 기기의 설치 ID와 전송하지 않은 데이터를 삭제합니다.",
+        "settings.telemetry_unavailable": "이 빌드에는 데이터 수신 서비스가 설정되어 있지 않습니다.",
+        "settings.telemetry_enable_error": "데이터 공유를 켤 수 없습니다. 설정은 꺼진 상태입니다.",
+        "settings.telemetry_revoke_error": "이번 실행 중에는 데이터 공유를 중단했지만 설정을 저장하지 못했습니다. 다시 시도해 주세요.",
+        "settings.telemetry_cleanup_error": "데이터 공유를 중단하고 전송하지 않은 데이터를 지웠습니다. 로컬 설치 ID는 삭제하지 못했습니다.",
+        "settings.telemetry_retry_disable": "끄기 다시 시도",
+        "notice.telemetry_title": "사용 및 호환성 데이터를 공유할까요?",
+        "notice.telemetry_optional": "데이터 공유는 선택 사항입니다. 거부해도 Aether를 평소처럼 사용할 수 있습니다.",
+        "notice.telemetry_decline": "거부하고 다시 묻지 않기",
+        "notice.telemetry_accept": "공유에 동의",
+        "notice.telemetry_decline_error": "데이터 공유는 꺼져 있습니다. 다시 묻지 않도록 설정을 저장하지 못했습니다.",
         "settings.check_update": "업데이트 확인",
         "settings.check_update_desc": "최신 버전 및 개선 사항을 확인합니다",
         "settings.check_update_action": "확인",
@@ -2627,6 +2697,19 @@ You can find it any time under Settings → QQ Group.",
         "settings.legal": "Privacidad y exención de responsabilidad",
         "settings.legal_desc": "Lee la política de privacidad, las condiciones de uso, el aviso de riesgos y la exención de responsabilidad vigentes",
         "settings.legal_open": "Leer",
+        "settings.section.privacy": "Privacidad",
+        "settings.telemetry": "Compartir datos de uso y compatibilidad",
+        "settings.telemetry_desc": "Si activas el envío, el equipo de Aether recibe estos datos para mejorar la app e investigar problemas.\n• Uso de la app: Un ID de instalación aleatorio, el número de aperturas y el tiempo de uso en primer plano ayudan a conocer cómo se usa la app.\n• Compatibilidad de dispositivos: El sistema operativo, la arquitectura del procesador, el intervalo de memoria y la familia de la tarjeta gráfica ayudan a identificar los dispositivos afectados.\n• Problemas de versión: La versión, el número de compilación y el canal de distribución ayudan a identificar en qué versión apareció un problema.\n• Compatibilidad de juegos: El motor, el resultado del inicio, el tiempo de juego en primer plano y los nombres visibles de los juegos abiertos o que no se pudieron iniciar ayudan a identificar los juegos afectados.\n• Rendimiento y fallos: La frecuencia de imagen, el pico de memoria, el tiempo de carga y los códigos de error ayudan a investigar lentitud y fallos.\n\nSi un juego no tiene título, el nombre visible puede ser el de un archivo o una carpeta. La app no envía rutas completas, URL, registros ni contenido de archivos.\n\nEl envío está desactivado de forma predeterminada. Puedes desactivarlo en cualquier momento para detener la recogida y el envío y borrar el ID de instalación y los datos pendientes de este dispositivo.",
+        "settings.telemetry_unavailable": "Esta compilación no tiene configurado un servicio de recepción de datos.",
+        "settings.telemetry_enable_error": "No se pudo activar el envío de datos. La opción sigue desactivada.",
+        "settings.telemetry_revoke_error": "Se detuvo el envío de datos en esta sesión, pero no se pudo guardar tu elección. Inténtalo de nuevo.",
+        "settings.telemetry_cleanup_error": "Se detuvo el envío y se borraron los datos pendientes. No se pudo eliminar el ID de instalación local.",
+        "settings.telemetry_retry_disable": "Volver a intentar desactivar",
+        "notice.telemetry_title": "¿Compartir datos de uso y compatibilidad?",
+        "notice.telemetry_optional": "Compartir datos es opcional. Si no aceptas, puedes seguir usando Aether con normalidad.",
+        "notice.telemetry_decline": "Rechazar y no volver a preguntar",
+        "notice.telemetry_accept": "Aceptar compartir datos",
+        "notice.telemetry_decline_error": "El envío está desactivado. No se pudo guardar tu elección de no volver a preguntar.",
         "settings.check_update": "Buscar actualizaciones",
         "settings.check_update_desc": "Comprueba si hay una versión más reciente con mejoras",
         "settings.check_update_action": "Buscar",
@@ -3059,6 +3142,9 @@ var dirty_settings := false
 var settings_animate_next := true
 var settings_compact_layout := false
 var settings_draft := {}
+var telemetry_enabled := false
+var telemetry_prompt_dismissed := false
+var telemetry_preference_error := ""
 var settings_relayout_pending := false
 var settings_relayout_scroll_vertical := 0
 var detail_relayout_pending := false
@@ -3137,6 +3223,12 @@ var frame_enhancement_custom_chain := PackedStringArray([
 var game_render_overrides: Dictionary = {}
 var game_render_root := ""
 var game_running := false
+var telemetry: Telemetry
+var telemetry_engine := ""
+var telemetry_game_name := ""
+var telemetry_launch_msec := -1
+var telemetry_app_paused := false
+var telemetry_app_focused := true
 var game_storage_busy := false
 var runtime_dialog_input: LineEdit = null
 var runtime_form_dialog: RefCounted = null
@@ -4735,6 +4827,82 @@ func _layout_shell(window_size: Vector2) -> void:
     shell_content.offset_top = header_height if compact else bar_height
     shell_content.offset_right = 0.0
     shell_content.offset_bottom = -dock_height if compact else 0.0
+
+func _telemetry_preference_path() -> String:
+    return TELEMETRY_PREFERENCE_FILE
+
+func _load_telemetry_preference() -> void:
+    telemetry_enabled = false
+    telemetry_prompt_dismissed = false
+    var cfg := ConfigFile.new()
+    if cfg.load(_telemetry_preference_path()) != OK:
+        return
+    var dismissed: Variant = cfg.get_value("telemetry", "prompt_dismissed", false)
+    telemetry_prompt_dismissed = dismissed is bool and dismissed
+    var endpoint := _telemetry_endpoint()
+    if endpoint.is_empty():
+        return
+    var enabled: Variant = cfg.get_value("telemetry", "enabled", false)
+    var notice: Variant = cfg.get_value("telemetry", "notice_version", 0)
+    var recipient: Variant = cfg.get_value("telemetry", "recipient", "")
+    telemetry_enabled = enabled is bool and enabled \
+        and notice is int and notice == TELEMETRY_NOTICE_VERSION \
+        and recipient is String and recipient == endpoint.sha256_text()
+
+func _save_telemetry_preference(enabled: bool, endpoint: String = "", allow_delete: bool = true) -> bool:
+    var cfg := ConfigFile.new()
+    cfg.set_value("telemetry", "enabled", enabled)
+    cfg.set_value("telemetry", "prompt_dismissed", telemetry_prompt_dismissed)
+    if enabled:
+        cfg.set_value("telemetry", "notice_version", TELEMETRY_NOTICE_VERSION)
+        cfg.set_value("telemetry", "recipient", endpoint.sha256_text())
+    var path := ProjectSettings.globalize_path(_telemetry_preference_path())
+    var staging := "%s.%d.tmp" % [path, OS.get_process_id()]
+    var file := FileAccess.open(staging, FileAccess.WRITE)
+    if file != null:
+        var written := file.store_string(cfg.encode_to_text())
+        file.flush()
+        written = written and file.get_error() == OK
+        file.close()
+        if written and DirAccess.rename_absolute(staging, path) == OK:
+            return true
+        DirAccess.remove_absolute(staging)
+    if not enabled and allow_delete:
+        # A missing preference also means off. Attempt to revoke by deletion
+        # if the storage policy prevents replacing the file.
+        var result := DirAccess.remove_absolute(path)
+        return result == OK or result == ERR_FILE_NOT_FOUND or result == ERR_DOES_NOT_EXIST
+    return false
+
+func _set_telemetry_preference(enabled: bool) -> bool:
+    telemetry_preference_error = ""
+    if not enabled:
+        telemetry_enabled = false
+        telemetry_prompt_dismissed = true
+        var cleared := telemetry == null or telemetry.set_consent(false)
+        _telemetry_end_engine()
+        if not _save_telemetry_preference(false):
+            telemetry_preference_error = "settings.telemetry_revoke_error"
+        elif not cleared:
+            telemetry_preference_error = "settings.telemetry_cleanup_error"
+        return false
+
+    var endpoint := _telemetry_endpoint()
+    if endpoint.is_empty() or telemetry == null:
+        telemetry_preference_error = "settings.telemetry_unavailable"
+        return telemetry_enabled
+    # The collector queues work on opt-in and sends on its timer. Finish
+    # persisting the preference synchronously before returning to the event loop.
+    telemetry_enabled = telemetry.set_consent(true) and _save_telemetry_preference(true, endpoint)
+    if not telemetry_enabled:
+        telemetry.set_consent(false)
+        telemetry_preference_error = "settings.telemetry_enable_error"
+    return telemetry_enabled
+
+func _telemetry_settings_status() -> String:
+    if not telemetry_preference_error.is_empty():
+        return _t(telemetry_preference_error)
+    return _t("settings.telemetry_unavailable") if _telemetry_endpoint().is_empty() or telemetry == null else ""
 
 func _load_shell_settings() -> void:
     game_detection_override = "auto"
@@ -6662,6 +6830,9 @@ func _rebuild_settings_view() -> void:
     var storage_rows := _settings_section(flow, _t("cache.storage"), animate_page, 0.15, ICON_SETTINGS)
     _add_settings_row(storage_rows, _settings_cache_row())
 
+    var privacy_rows := _settings_section(flow, _t("settings.section.privacy"), animate_page, 0.16, ICON_HELP)
+    _add_settings_row(privacy_rows, _settings_telemetry_row())
+
     var advanced_rows := _settings_section(flow, _t("settings.section.advanced"), animate_page, 0.16, ICON_SETTINGS)
     var advanced_disclosure = AetherDisclosure.new()
     advanced_disclosure.setup(ui_tokens, ui_motion, _t("settings.advanced_desc"), _load_ui_icon(ICON_CHEVRON_RIGHT), advanced_tool_expanded)
@@ -6684,7 +6855,7 @@ func _rebuild_settings_view() -> void:
             ui_motion.cascade_children(advanced_content, 0.03, 0.04, 12)
     )
 
-    var groups: Array = [interface_rows, render_rows, compatibility_rows, diagnostic_rows, storage_rows, advanced_rows]
+    var groups: Array = [interface_rows, render_rows, compatibility_rows, diagnostic_rows, storage_rows, privacy_rows, advanced_rows]
     if _iap_supported_platform():
         var purchase_rows := _settings_section(flow, _t("settings.section.purchases"), animate_page, 0.20, ICON_ADD)
         _add_settings_row(purchase_rows, _settings_iap_product_row())
@@ -8287,6 +8458,90 @@ func _settings_row(title: String, subtitle: String, control: Control, stack_cont
 func _settings_toggle_row(title: String, subtitle: String, initial: bool, key: String) -> Control:
     var toggle := _settings_switch(initial, key)
     return _settings_row(title, subtitle, toggle, false)
+
+func _settings_telemetry_row() -> Control:
+    var toggle = AetherSwitch.new()
+    toggle.name = "TelemetryConsentSwitch"
+    toggle.setup(ui_tokens, ui_motion, telemetry_enabled)
+    var panel := _settings_row_shell(settings_compact_layout)
+    var stack := VBoxContainer.new()
+    stack.add_theme_constant_override("separation", 10)
+    panel.add_child(stack)
+    var header := HBoxContainer.new()
+    header.name = "TelemetryConsentHeader"
+    header.add_theme_constant_override("separation", 12)
+    stack.add_child(header)
+    var title := Label.new()
+    title.text = _t("settings.telemetry")
+    title.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+    title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+    title.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+    title.add_theme_font_override("font", DISPLAY_FONT)
+    title.add_theme_font_size_override("font_size", 15)
+    title.add_theme_color_override("font_color", ui_tokens.text_primary)
+    header.add_child(title)
+    panel.set_meta("row_title", title)
+    toggle.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+    header.add_child(toggle)
+    var status := _dialog_body_label("", 12)
+    stack.add_child(status)
+    var retry := _pill_button(_t("settings.telemetry_retry_disable"))
+    retry.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
+    stack.add_child(retry)
+    stack.add_child(_telemetry_disclosure(func(text: String) -> Label: return _dialog_body_label(text, 13)))
+    _bind_telemetry_switch(toggle, status, retry, func(value: bool): toggle._sync(value, true))
+    return panel
+
+func _telemetry_disclosure(make_label: Callable, include_optional_intro: bool = false) -> VBoxContainer:
+    var disclosure := VBoxContainer.new()
+    disclosure.name = "TelemetryDisclosure"
+    disclosure.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+    disclosure.add_theme_constant_override("separation", 9)
+    if include_optional_intro:
+        disclosure.add_child(make_label.call(_t("notice.telemetry_optional")))
+    var copy := _t("settings.telemetry_desc").split("\n\n", false)
+    for paragraph in copy:
+        var lines := VBoxContainer.new()
+        lines.add_theme_constant_override("separation", 4)
+        disclosure.add_child(lines)
+        for line in paragraph.split("\n", false):
+            if not line.begins_with("• "):
+                lines.add_child(make_label.call(line))
+                continue
+            # Keep the marker out of the text so wrapping cannot orphan it.
+            var item := HBoxContainer.new()
+            item.add_theme_constant_override("separation", 6)
+            lines.add_child(item)
+            var bullet: Label = make_label.call("•")
+            bullet.autowrap_mode = TextServer.AUTOWRAP_OFF
+            bullet.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
+            bullet.size_flags_vertical = Control.SIZE_SHRINK_BEGIN
+            item.add_child(bullet)
+            item.add_child(make_label.call(line.substr(2)))
+    return disclosure
+
+func _bind_telemetry_switch(toggle: Button, status: Label, retry: Button, sync_switch: Callable) -> void:
+    toggle.accessibility_name = _t("settings.telemetry")
+    toggle.accessibility_description = _t("settings.telemetry_desc")
+    status.name = "TelemetryConsentStatus"
+    retry.name = "TelemetryConsentRetry"
+    var refresh := func():
+        toggle.disabled = _telemetry_endpoint().is_empty() or telemetry == null
+        status.text = _telemetry_settings_status()
+        status.visible = not status.text.is_empty()
+        retry.visible = telemetry_preference_error in ["settings.telemetry_revoke_error", "settings.telemetry_cleanup_error"]
+        if toggle.button_pressed != telemetry_enabled:
+            toggle.set_pressed_no_signal(telemetry_enabled)
+            sync_switch.call(telemetry_enabled)
+    toggle.toggled.connect(func(value: bool):
+        _set_telemetry_preference(value)
+        refresh.call()
+    )
+    retry.pressed.connect(func():
+        _set_telemetry_preference(false)
+        refresh.call()
+    )
+    refresh.call()
 
 func _settings_cache_row() -> Control:
     var button := _pill_button(_t("cache.clear_all"))
@@ -11564,6 +11819,7 @@ func _open_tyrano_game(game: Dictionary) -> void:
     tyrano_view = TyranoPlayerView.new()
     add_child(tyrano_view)
     tyrano_view.setup(self)
+    _connect_view_telemetry(tyrano_view, RUNTIME_TYRANO, game)
     tyrano_view.game_ready.connect(func():
         if active_game_started_msec == 0:
             _begin_active_game_session(String(game.get("path", "")))
@@ -11577,6 +11833,7 @@ func _open_tyrano_game(game: Dictionary) -> void:
     )
     var error: String = tyrano_view.open_entry(game)
     if not error.is_empty():
+        _telemetry_engine_result(false, "view_load_failed")
         tyrano_view.close()
         _show_message(error)
         return
@@ -11593,6 +11850,7 @@ func _open_renpy_player(entry: Dictionary) -> void:
     renpy_view = RenpyPlayerView.new()
     add_child(renpy_view)
     renpy_view.setup(self)
+    _connect_view_telemetry(renpy_view, RUNTIME_RENPY, entry)
     renpy_view.game_ready.connect(func():
         var library_path := String(entry.get("path", ""))
         if active_game_path == library_path and active_game_started_msec > 0:
@@ -11610,6 +11868,7 @@ func _open_renpy_player(entry: Dictionary) -> void:
     )
     var error: String = renpy_view.open_entry(entry)
     if not error.is_empty():
+        _telemetry_engine_result(false, "view_load_failed")
         renpy_view.close()
         _show_message(error)
         return
@@ -11623,6 +11882,7 @@ func _open_flash_player(entry: Dictionary) -> void:
     flash_view = FlashPlayerView.new()
     add_child(flash_view)
     flash_view.setup(self)
+    _connect_view_telemetry(flash_view, "flash", entry)
     flash_view.closed.connect(func():
         flash_view = null
         _set_game_runtime_orientation(false)
@@ -11631,6 +11891,7 @@ func _open_flash_player(entry: Dictionary) -> void:
     )
     var error: String = flash_view.open_entry(entry)
     if not error.is_empty():
+        _telemetry_engine_result(false, "view_load_failed")
         flash_view.close()
         _show_message(error)
         return
@@ -13360,6 +13621,8 @@ func _start_selected_game_after_iap() -> void:
         _start_selected_game_after_entitlements()
         return
     if player == null:
+        _telemetry_begin_engine(selected_runtime_kind, selected_game)
+        _telemetry_engine_result(false, "runtime_unavailable")
         return
     # Released runtimes, development artifacts and Android/Linux releases do not
     # use the Apple-only beta entitlement flow.
@@ -13372,6 +13635,8 @@ func _start_selected_game_after_iap() -> void:
             and current_player_runtime_kind != RUNTIME_KIRIKIRI
             and not _switch_runtime_player(RUNTIME_KIRIKIRI)
         ):
+            _telemetry_begin_engine(selected_runtime_kind, selected_game)
+            _telemetry_engine_result(false, "runtime_unavailable")
             return
         _start_selected_game_after_entitlements()
         return
@@ -13446,8 +13711,10 @@ func _start_selected_game_after_save_sync() -> void:
     if library_path.is_empty():
         return
     if not _ensure_android_storage_permission_for_path(library_path):
-        return
+        return # A pending permission prompt is not an engine attempt.
     if not _mount_web_game(selected_game):
+        _telemetry_begin_engine(String(selected_game.get("engine", "unknown")), selected_game)
+        _telemetry_engine_result(false, "mount_failed")
         return
     active_runtime_kind = _game_runtime_kind(library_path)
     if active_runtime_kind == RUNTIME_TYRANO:
@@ -13456,7 +13723,9 @@ func _start_selected_game_after_save_sync() -> void:
     if active_runtime_kind == RUNTIME_RENPY:
         _open_renpy_player(selected_game)
         return
+    _telemetry_begin_engine(active_runtime_kind, selected_game)
     if not _switch_runtime_player(active_runtime_kind):
+        _telemetry_engine_result(false, "runtime_unavailable")
         return
     var launch_uses_directory := GameLaunchEntry.runtime_uses_directory(
         active_runtime_kind
@@ -13467,6 +13736,7 @@ func _start_selected_game_after_save_sync() -> void:
         and not raw_launch_file.is_empty()
         and not GameLaunchEntry.is_supported_file(raw_launch_file)
     ):
+        _telemetry_engine_result(false, "entry_invalid")
         _show_system_alert(
             _t("message.launch_file_unsupported"),
             _t("alert.warning_title")
@@ -13478,6 +13748,7 @@ func _start_selected_game_after_save_sync() -> void:
         and not raw_launch_file.is_empty()
         and relative_launch_file.is_empty()
     ):
+        _telemetry_engine_result(false, "entry_invalid")
         _show_system_alert(
             _t("message.launch_file_outside_game"),
             _t("alert.warning_title")
@@ -13492,6 +13763,7 @@ func _start_selected_game_after_save_sync() -> void:
         and not relative_launch_file.is_empty()
         and not FileAccess.file_exists(launch_path)
     ):
+        _telemetry_engine_result(false, "entry_missing")
         _show_system_alert(
             _t("message.launch_file_missing", [relative_launch_file]),
             _t("alert.warning_title")
@@ -13594,6 +13866,7 @@ func _return_to_library_after_runtime_exit() -> void:
     if runtime_exit_cleanup_pending:
         return
     runtime_exit_cleanup_pending = true
+    _telemetry_end_engine()
     if runtime_form_dialog != null:
         runtime_form_dialog = null
         modal_layer.set_meta("runtime_platform_dialog", false)
@@ -13643,6 +13916,63 @@ func _return_to_library_after_runtime_exit() -> void:
     _show_home()
     _fit_full_rects()
     runtime_exit_cleanup_pending = false
+
+func _telemetry_endpoint() -> String:
+    return TelemetryBuild.get_endpoint()
+
+func _initialize_telemetry() -> void:
+    var metadata := TelemetryBuild.get_metadata()
+    telemetry = Telemetry.new()
+    telemetry.name = "Telemetry"
+    add_child(telemetry)
+    telemetry.memory_sampler = _telemetry_memory_bytes
+    var endpoint := _telemetry_endpoint()
+    telemetry.configure(endpoint, metadata.app_version, metadata.app_build, metadata.channel)
+    telemetry.set_foreground(telemetry_app_focused and not telemetry_app_paused)
+    var consent := telemetry_enabled and not endpoint.is_empty()
+    telemetry_enabled = telemetry.set_consent(consent) and consent
+
+func _telemetry_memory_bytes() -> int:
+    if is_instance_valid(player) and player.has_method("get_telemetry_memory_bytes"):
+        return int(player.get_telemetry_memory_bytes())
+    return 0
+
+func _telemetry_begin_engine(engine: String, game: Dictionary) -> void:
+    _telemetry_end_engine()
+    if telemetry == null or not telemetry_enabled:
+        return
+    telemetry_engine = engine
+    # Send only the displayed name. The collector rejects path-like titles.
+    telemetry_game_name = String(game.get("name", "")) if engine == "flash" else _game_display_title(game)
+    telemetry_launch_msec = Time.get_ticks_msec()
+
+func _telemetry_engine_result(success: bool, error_code: String = "") -> void:
+    if telemetry_launch_msec < 0:
+        return
+    var elapsed := Time.get_ticks_msec() - telemetry_launch_msec
+    telemetry_launch_msec = -1
+    telemetry.engine_started(telemetry_engine, telemetry_game_name, success, elapsed, error_code)
+    if not success:
+        _telemetry_end_engine()
+
+func _telemetry_engine_error(error_code: String) -> void:
+    if telemetry_launch_msec >= 0:
+        _telemetry_engine_result(false, error_code)
+    elif not telemetry_engine.is_empty():
+        telemetry.engine_error(telemetry_engine, telemetry_game_name, error_code)
+
+func _telemetry_end_engine() -> void:
+    if telemetry != null and not telemetry_engine.is_empty():
+        telemetry.engine_stopped()
+    telemetry_engine = ""
+    telemetry_game_name = ""
+    telemetry_launch_msec = -1
+
+func _connect_view_telemetry(view, engine: String, game: Dictionary) -> void:
+    view.launch_requested.connect(func(): _telemetry_begin_engine(engine, game))
+    view.game_ready.connect(func(): _telemetry_engine_result(true))
+    view.playback_failed.connect(_telemetry_engine_error)
+    view.closed.connect(_telemetry_end_engine)
 
 func _ready() -> void:
     var vndb_resolver := VNDBCoverResolver.new()
@@ -13718,6 +14048,8 @@ func _ready() -> void:
         ProjectSettings.get_setting(SETTINGS_KEY, PlaybackBackend.AUTOMATIC)
     ))
     _load_shell_settings()
+    _load_telemetry_preference()
+    _initialize_telemetry()
     _apply_host_frame_rate_limit()
     _apply_shell_runtime_settings()
     _configure_runtime_diagnostics()
@@ -15107,7 +15439,7 @@ func _continue_ready_after_legal_gate() -> void:
     if _show_next_required_legal_document():
         return
     legal_gate_completed = true
-    call_deferred("_maybe_show_notice")
+    call_deferred("_maybe_show_startup_notices")
     call_deferred("_refresh_games_after_web_local_restore")
     call_deferred("_auto_start_web_dev_game")
 
@@ -15614,6 +15946,9 @@ func _restart_app() -> void:
     var pid: int = OS.create_process(executable, arguments)
     if pid < 0:
         return
+    _telemetry_end_engine()
+    if telemetry != null:
+        telemetry.checkpoint()
     get_tree().quit()
 
 
@@ -16958,6 +17293,7 @@ func _exit_tree() -> void:
     var sync := get_node_or_null("GameSaveSync")
     if sync != null:
         sync.stop()
+    _telemetry_end_engine()
     _finalize_active_game_session()
     _stop_wa2_audio()
 
@@ -17012,6 +17348,7 @@ func _process(delta: float) -> void:
             var previous_startup_state := cached_startup_state
             cached_startup_state = player.get_startup_state()
             if cached_startup_state == STARTUP_SUCCEEDED and previous_startup_state != STARTUP_SUCCEEDED:
+                _telemetry_engine_result(true)
                 _configure_mobile_window()
             startup_state = cached_startup_state
             if startup_state != previous_startup_state:
@@ -17081,6 +17418,8 @@ func _process(delta: float) -> void:
                         perf_log_file.flush()
                     _return_to_library_after_runtime_exit()
                     return
+                _telemetry_engine_error("tick_failed")
+                _telemetry_end_engine()
                 render_errors += 1
                 var tick_error_line := "Tick failed: %s %s" % [
                     tick_result_name,
@@ -17148,6 +17487,7 @@ func _process(delta: float) -> void:
                 _append_log("Game exited during startup: %s" % startup_error_message)
                 _return_to_library_after_runtime_exit()
                 return
+            _telemetry_engine_result(false, "startup_failed")
             if diagnostic_session != null:
                 diagnostic_session.record("godot", "lifecycle", "error", "game_startup_failed", 0, {
                     "error": startup_error_message,
@@ -17610,6 +17950,21 @@ func _log_input_trace(delta: float, tick_ms: float, update_ms: float) -> void:
     input_trace_present_holds = 0
 
 func _notification(what: int) -> void:
+    match what:
+        NOTIFICATION_APPLICATION_FOCUS_OUT:
+            telemetry_app_focused = false
+        NOTIFICATION_APPLICATION_FOCUS_IN:
+            telemetry_app_focused = true
+        NOTIFICATION_APPLICATION_PAUSED:
+            telemetry_app_paused = true
+        NOTIFICATION_APPLICATION_RESUMED:
+            telemetry_app_paused = false
+    if what in [NOTIFICATION_APPLICATION_FOCUS_OUT, NOTIFICATION_APPLICATION_FOCUS_IN,
+            NOTIFICATION_APPLICATION_PAUSED, NOTIFICATION_APPLICATION_RESUMED] and telemetry != null:
+        telemetry.set_foreground(telemetry_app_focused and not telemetry_app_paused)
+    if what == NOTIFICATION_WM_CLOSE_REQUEST and telemetry != null:
+        _telemetry_end_engine()
+        telemetry.checkpoint()
     if what == NOTIFICATION_WM_MOUSE_ENTER or what == NOTIFICATION_WM_MOUSE_EXIT:
         runtime_pointer_in_window = what == NOTIFICATION_WM_MOUSE_ENTER
         _sync_runtime_cursor()
@@ -17756,6 +18111,9 @@ func _exit_game_for_go_back() -> void:
     _return_to_library_after_runtime_exit()
 
 func _quit_app_for_go_back() -> void:
+    _telemetry_end_engine()
+    if telemetry != null:
+        telemetry.checkpoint()
     if player != null:
         if video_playing:
             _store_active_video_progress()
@@ -17788,6 +18146,7 @@ func _pause_game_for_lifecycle(reason: String) -> void:
     _clear_game_input_capture()
     var result: int = ENGINE_RESULT_OK if _mobile_window_owns_lifecycle() else int(player.pause())
     if result != ENGINE_RESULT_OK:
+        _telemetry_engine_error("pause_failed")
         render_errors += 1
         _log_lifecycle_line("app_pause_failed reason=%s result=%s error=\"%s\"" % [
             reason,
@@ -17808,6 +18167,7 @@ func _resume_game_for_lifecycle(reason: String) -> void:
         return
     var result: int = ENGINE_RESULT_OK if _mobile_window_owns_lifecycle() else int(player.resume())
     if result != ENGINE_RESULT_OK:
+        _telemetry_engine_error("resume_failed")
         render_errors += 1
         _log_lifecycle_line("app_resume_failed reason=%s result=%s error=\"%s\"" % [
             reason,
@@ -17931,6 +18291,7 @@ func _on_open_game() -> void:
         game_path.text = path
     _write_probe_marker("open_game path=%s" % path)
     if path.is_empty():
+        _telemetry_engine_result(false, "entry_missing")
         render_errors += 1
         _append_log("Game path is empty.")
         return
@@ -17939,7 +18300,10 @@ func _on_open_game() -> void:
     if game_virtual_controls != null:
         game_virtual_controls.set_layout_profiles(_virtual_button_layouts(game_render_root))
     var detected_runtime := _game_runtime_kind(path)
+    if telemetry_launch_msec >= 0:
+        telemetry_engine = detected_runtime
     if not _switch_runtime_player(detected_runtime):
+        _telemetry_engine_result(false, "runtime_unavailable")
         render_errors += 1
         _clear_game_render_overrides()
         return
@@ -17957,6 +18321,7 @@ func _on_open_game() -> void:
         device_probe_enabled = device_probe_enabled or not auto_probe_clicks.is_empty()
 
     if not _ensure_player_initialized(_game_runtime_root(path)):
+        _telemetry_engine_result(false, "init_failed")
         _clear_game_render_overrides()
         return
 
@@ -17984,6 +18349,7 @@ func _on_open_game() -> void:
             _append_log("YU-RIS startup entry: %s" % startup_script)
     var result: int = int(player.open_game(path, async_open, startup_script))
     if result != ENGINE_RESULT_OK:
+        _telemetry_engine_result(false, "open_failed")
         render_errors += 1
         cached_startup_state = STARTUP_FAILED
         _write_probe_marker("open_game_failed result=%s error=%s" % [
@@ -21432,6 +21798,86 @@ func _finish_notice_choice(error: Error) -> void:
 func _seconds_until_local_midnight() -> int:
     var now := Time.get_time_dict_from_system()
     return 86400 - (int(now.hour) * 3600 + int(now.minute) * 60 + int(now.second))
+
+func _startup_notices_suppressed() -> bool:
+    return DisplayServer.get_name() == "headless" or not OS.get_environment("AETHERKIRI_CAPTURE_UI").is_empty()
+
+func _maybe_show_startup_notices() -> void:
+    if _startup_notices_suppressed():
+        return
+    if _should_offer_telemetry_at_startup() and is_instance_valid(modal_layer):
+        # Allow an already active modal to finish without replacing it.
+        for _i in range(15):
+            if not modal_layer.visible:
+                break
+            await get_tree().create_timer(0.3).timeout
+        if not modal_layer.visible and _should_offer_telemetry_at_startup():
+            _show_telemetry_consent_notice()
+            await modal_layer.visibility_changed
+    # Let the previous modal clear its animation state before staging the next.
+    call_deferred("_maybe_show_notice")
+
+func _should_offer_telemetry_at_startup() -> bool:
+    return legal_gate_completed and _next_required_legal_document().is_empty() \
+        and not telemetry_enabled and not telemetry_prompt_dismissed and telemetry != null \
+        and not _telemetry_endpoint().is_empty() \
+        and (OS.get_name() != "Web" or OS.is_userfs_persistent()) \
+        and not game_running and not video_playing \
+        and not _is_renpy_active() and not _is_tyrano_active() and not _is_flash_active()
+
+func _show_telemetry_consent_notice() -> void:
+    var dialog := _modal_dialog(Vector2(680, 540), 0.46)
+    dialog.name = "TelemetryConsentNotice"
+    var box := _modal_stack(dialog, _t("notice.telemetry_title"), ICON_HELP)
+    var scroll := ScrollContainer.new()
+    scroll.name = "TelemetryConsentNoticeScroll"
+    scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+    scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
+    scroll.focus_mode = Control.FOCUS_ALL
+    box.add_child(scroll)
+    scroll.grab_focus()
+    var body := _telemetry_disclosure(func(text: String) -> Label: return _dialog_body_label(text, 14), true)
+    body.name = "TelemetryConsentNoticeDisclosure"
+    scroll.add_child(body)
+    var status := _dialog_body_label("", 13)
+    status.name = "TelemetryConsentNoticeError"
+    status.size_flags_vertical = Control.SIZE_SHRINK_BEGIN
+    status.hide()
+    box.add_child(status)
+
+    var buttons := BoxContainer.new()
+    buttons.add_theme_constant_override("separation", 8)
+    buttons.vertical = dialog.size.x < 540.0
+    dialog.resized.connect(func(): buttons.vertical = dialog.size.x < 540.0)
+    box.add_child(buttons)
+    var decline := _secondary_dialog_button(_t("notice.telemetry_decline"), Vector2(0, 44))
+    decline.name = "DeclineTelemetryConsent"
+    decline.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+    buttons.add_child(decline)
+    var agree := _secondary_dialog_button(_t("notice.telemetry_accept"), Vector2(0, 44))
+    agree.name = "AcceptTelemetryConsent"
+    agree.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+    buttons.add_child(agree)
+    decline.pressed.connect(func():
+        telemetry_prompt_dismissed = true
+        if not _save_telemetry_preference(false, "", false):
+            telemetry_prompt_dismissed = false
+            status.text = _t("notice.telemetry_decline_error")
+            status.show()
+            return
+        decline.disabled = true
+        agree.disabled = true
+        _dismiss_modal()
+    )
+    agree.pressed.connect(func():
+        if not _set_telemetry_preference(true):
+            status.text = _telemetry_settings_status()
+            status.show()
+            return
+        decline.disabled = true
+        agree.disabled = true
+        _dismiss_modal()
+    )
 
 func _maybe_show_notice() -> void:
     if DisplayServer.get_name() == "headless" or not OS.get_environment("AETHERKIRI_CAPTURE_UI").is_empty():

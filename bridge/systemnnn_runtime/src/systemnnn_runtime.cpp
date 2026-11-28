@@ -1,6 +1,7 @@
 #include "systemnnn_runtime.h"
 #include "engine_runtime_provider.h"
 #include "emberfall/sdl_presentation.hpp"
+#include "emberfall/sdl_settings.hpp"
 #include "emberfall/system_progress.hpp"
 #include "save_bank.h"
 #include <SDL.h>
@@ -16,6 +17,7 @@ namespace {
 namespace fs = std::filesystem;
 using namespace emberfall::scene;
 using emberfall::sdl::Presentation;
+using emberfall::sdl::SettingsPage;
 using emberfall::sdl::GameText;
 using emberfall::sdl::Config;
 using emberfall::sdl::Button;
@@ -84,6 +86,10 @@ public:
         if (exit_) throw std::runtime_error("Runtime requested termination");
         if (!ticket_.empty()) return;
         if (movie_ && PollMovie()) return;
+        if (settings_) {
+            if (const auto *frame = settings_->Frame(ms)) PublishPixels(*frame);
+            return;
+        }
         if (menu_ == Menu::None) {
             if (title_) {
                 presentation_->UpdateTitle(*game_, input_, ms);
@@ -122,11 +128,13 @@ public:
             (paused ? api->pause : api->play)(api->user_data, movie_);
         }
         input_ = {};
+        if (settings_) settings_->Point(SettingsPage::Pointer::Cancel, -1, -1);
         if (game_) { game_->set_ctrl_skip(false); game_->reset_frame_pacing(); }
     }
 
     void Input(const engine_input_event_t &event) {
         if (paused_ || !game_) return;
+        if (settings_) { SettingsInput(event); return; }
         if (event.type == ENGINE_INPUT_EVENT_POINTER_MOVE || event.type == ENGINE_INPUT_EVENT_POINTER_DOWN ||
             event.type == ENGINE_INPUT_EVENT_POINTER_UP) {
             input_.mouse_x = int(std::clamp(event.x, -32768.0, 32768.0));
@@ -171,6 +179,7 @@ public:
             {"runtime", "systemnnn"}, {"mode", title_ ? "title" : "story"}, {"wait", int(state.wait)},
             {"script", state.script}, {"word", state.word}, {"message", state.dialogue.message_id},
             {"audio_peak", audio.peak}, {"audio_frames", audio.nonzero_frames}, {"menu", int(menu_)},
+            {"settings_page", settings_ ? settings_->page() : 0},
             {"saves", saves_->directory.string()}, {"visible_characters", game_->visible_text()},
             {"text_complete", game_->text_complete()}
         }.dump(-1, ' ', false, nlohmann::json::error_handler_t::replace);
@@ -308,6 +317,16 @@ private:
     }
 
     void SetMenu(Menu menu) {
+        if (settings_) {
+            SaveProgress();
+            remembered_settings_page_ = settings_->page();
+            settings_.reset();
+            input_ = {};
+        }
+        if (menu == Menu::Settings) {
+            game_->set_ctrl_skip(false);
+            settings_ = SettingsPage::Open(*game_, *presentation_, remembered_settings_page_);
+        }
         menu_ = menu;
         if (menu == Menu::Extras) {
             gallery_ = game_->unlocked_pictures();
@@ -321,6 +340,45 @@ private:
         buttons_.clear();
         selection_ = 0;
         pressed_ = -1;
+    }
+
+    void SettingsInput(const engine_input_event_t &event) {
+        using Pointer = SettingsPage::Pointer;
+        using Key = SettingsPage::Key;
+        SettingsPage::Action action = SettingsPage::Action::None;
+        const int x = int(std::clamp(event.x, -32768.0, 32768.0));
+        const int y = int(std::clamp(event.y, -32768.0, 32768.0));
+        switch (event.type) {
+        case ENGINE_INPUT_EVENT_POINTER_DOWN:
+            if (event.button != 1) settings_->Point(Pointer::Down, x, y);
+            break;
+        case ENGINE_INPUT_EVENT_POINTER_MOVE:
+            settings_->Point(Pointer::Move, x, y);
+            break;
+        case ENGINE_INPUT_EVENT_POINTER_UP:
+            if (event.modifiers & ENGINE_INPUT_MODIFIER_POINTER_CANCEL) settings_->Point(Pointer::Cancel, x, y);
+            else if (event.button == 1) action = SettingsPage::Action::Close;
+            else action = settings_->Point(Pointer::Up, x, y);
+            break;
+        case ENGINE_INPUT_EVENT_BACK: action = SettingsPage::Action::Close; break;
+        case ENGINE_INPUT_EVENT_KEY_DOWN:
+            switch (event.key_code) {
+            case 27: action = SettingsPage::Action::Close; break;
+            case 9: action = settings_->Press(event.modifiers & 1 ? Key::Previous : Key::Next); break;
+            case 38: action = settings_->Press(Key::Previous); break;
+            case 40: action = settings_->Press(Key::Next); break;
+            case 37: action = settings_->Press(Key::Left); break;
+            case 39: action = settings_->Press(Key::Right); break;
+            case 13: case 32:
+                if (!(event.modifiers & 0x80)) action = settings_->Press(Key::Confirm);
+                break;
+            }
+            break;
+        }
+        if (action == SettingsPage::Action::Close) SetMenu(Menu::None);
+        if ((action == SettingsPage::Action::Windowed || action == SettingsPage::Action::Fullscreen) && host_.platform_request)
+            host_.platform_request(host_.user_data, "runtime_window_mode",
+                action == SettingsPage::Action::Fullscreen ? "fullscreen" : "windowed");
     }
 
     void Back() {
@@ -450,7 +508,6 @@ private:
     void Publish(const Surface &surface) {
         width = surface.width; height = surface.height;
         buttons_ = Buttons();
-        const auto *rgb = surface.rgb.data();
         Surface overlay;
         if (!buttons_.empty()) {
             overlay = surface;
@@ -461,10 +518,15 @@ private:
                     {(int(width)-image.canvas_width)/2, (int(height)-image.canvas_height)/2});
             }
             presentation_->PaintButtons(overlay, buttons_, selection_);
-            rgb = overlay.rgb.data();
-        }
+            PublishPixels(overlay);
+        } else PublishPixels(surface);
+    }
+
+    void PublishPixels(const Surface &surface) {
+        width = surface.width;
+        height = surface.height;
         rgba.resize(size_t(width)*height*4);
-        if (SDL_ConvertPixels(width, height, SDL_PIXELFORMAT_RGB24, rgb, width*3,
+        if (SDL_ConvertPixels(width, height, SDL_PIXELFORMAT_RGB24, surface.rgb.data(), width*3,
                               SDL_PIXELFORMAT_RGBA32, rgba.data(), width*4) != 0)
             throw std::runtime_error(SDL_GetError());
         ++serial;
@@ -537,6 +599,8 @@ private:
     SessionOptions options_;
     std::unique_ptr<GameSession> game_;
     std::unique_ptr<Presentation> presentation_;
+    std::unique_ptr<SettingsPage> settings_;
+    int remembered_settings_page_ = 1;
     SDL_AudioDeviceID audio_ = 0;
     bool audio_initialized_ = false, paused_ = false, title_ = false, exit_ = false, dirty_ = true;
     Menu menu_ = Menu::None;

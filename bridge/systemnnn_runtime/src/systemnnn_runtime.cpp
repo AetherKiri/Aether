@@ -2,6 +2,9 @@
 #include "engine_runtime_provider.h"
 #include "emberfall/sdl_presentation.hpp"
 #include "emberfall/sdl_settings.hpp"
+#include "emberfall/sdl_startup.hpp"
+#include "emberfall/sdl_system_menu.hpp"
+#include "emberfall/sdl_story_pages.hpp"
 #include "emberfall/system_progress.hpp"
 #include "save_bank.h"
 #include <SDL.h>
@@ -16,16 +19,19 @@ namespace aether::systemnnn {
 namespace {
 namespace fs = std::filesystem;
 using namespace emberfall::scene;
+using emberfall::render::Surface;
+using emberfall::sdl::Button;
+using emberfall::sdl::Config;
+using emberfall::sdl::GameText;
 using emberfall::sdl::Presentation;
 using emberfall::sdl::SettingsPage;
-using emberfall::sdl::GameText;
-using emberfall::sdl::Config;
-using emberfall::sdl::Button;
-using emberfall::render::Surface;
+using emberfall::sdl::Startup;
+using emberfall::sdl::StoryControl;
+using emberfall::sdl::SystemAction;
+using emberfall::sdl::TitleAction;
 using Mode = nnn::RuntimeMode;
 
-enum class Menu { None, System, Save, Load, Overwrite, Settings, Backlog, Extras, Notice };
-constexpr int slots_per_page = 6;
+enum class Menu { None, System, Save, Load, Settings = 5, Backlog, Extras, Notice };
 
 class Runtime {
 public:
@@ -58,6 +64,7 @@ public:
 #endif
         saves_ = std::make_unique<SaveBank>(root_);
         presentation_ = std::make_unique<Presentation>(root_, font);
+        game_notice_ = std::make_unique<emberfall::sdl::GameNotice>(root_);
         options_.queue_audio_events = false;
         options_.audio.sample_rate = 48000;
         options_.filename_encoder = GameText::Filename;
@@ -73,10 +80,17 @@ public:
         saves_->Configure(*game_, root_);
         const auto global = saves_->directory / "emberfall-sdl.progress";
         if (fs::exists(global)) emberfall::sdl::RestoreSystemProgress(*game_->runtime(), SaveBank::Read(global));
+        game_->apply_runtime_parameters();
         previous_progress_ = emberfall::sdl::SystemProgress(*game_->runtime());
         progress_loaded_ = true;
-        if (!entry || !*entry) EnterTitle();
-        else { title_ = false; presentation_->ResetStory(); }
+        if (!entry || !*entry) {
+            startup_ = std::make_unique<Startup>(*game_);
+            options_.runtime = game_->runtime();
+            options_.save_layout = game_->runtime_ref().save_layout;
+        } else {
+            title_ = false;
+            presentation_->ResetStory();
+        }
         OpenAudio();
         Tick(0);
     }
@@ -85,13 +99,53 @@ public:
         if (paused_) return;
         if (exit_) throw std::runtime_error("Runtime requested termination");
         if (!ticket_.empty()) return;
-        if (movie_ && PollMovie()) return;
+        if (movie_) {
+            if (PollMovie())
+                return;
+            if (startup_)
+                startup_->MovieFinished();
+        }
+        if (startup_) {
+            if (const auto *surface = startup_->Tick(ms, input_))
+                PublishPixels(*surface);
+            if (startup_->stage() == Startup::Stage::Movie) {
+                if (OpenMovie(startup_->movie(), startup_->movie_skippable()))
+                    return;
+                startup_->MovieFinished();
+            }
+            if (startup_->stage() != Startup::Stage::Title)
+                return;
+            startup_.reset();
+            ShowTitle();
+        }
         if (settings_) {
             if (const auto *frame = settings_->Frame(ms)) PublishPixels(*frame);
             return;
         }
-        if (menu_ == Menu::None) {
+        if (click_wait_ms_) {
+            if (click_wait_ms_ > ms)
+                click_wait_ms_ -= ms;
+            else {
+                click_wait_ms_ = 0;
+                Confirm(true);
+                if (exit_ || settings_)
+                    return;
+            }
+        }
+        if (system_menu_ || slots_page_ || log_page_) {
+            const auto &surface = system_menu_  ? system_menu_->Frame(*presentation_, ms, input_)
+                                  : slots_page_ ? slots_page_->Frame(*presentation_, ms, input_, selection_)
+                                                : log_page_->Frame(*presentation_, ms, input_);
+            presentation_->AdvanceButtons(ms, game_->frame_ms(), selection_,
+                                          click_wait_ms_ ? selection_ : pressed_);
+            Publish(surface);
+            input_.advance = false;
+            return;
+        }
+        dirty_ = game_notice_->Tick(*game_, ms) || dirty_;
+        if (menu_ == Menu::None && !click_wait_ms_) {
             if (title_) {
+                dirty_ = dirty_ || !presentation_->TitleReady();
                 presentation_->UpdateTitle(*game_, input_, ms);
                 dirty_ = dirty_ || game_->needs_redraw();
             } else {
@@ -100,6 +154,12 @@ public:
                 const auto &state = game_->step_frame({ms, game_->pace(ms)}, input_);
                 if (state.wait == Wait::Error) throw std::runtime_error(state.error);
                 if (game_->take_system_save_request()) SaveProgress();
+                if (const auto notice = game_->take_notice())
+                    game_notice_->Show(*game_, notice);
+                if (state.wait == Wait::Dialogue && state.dialogue.sequence != checkpoint_sequence_) {
+                    checkpoint_sequence_ = state.dialogue.sequence;
+                    game_->capture_backlog_jump(++journal_cursor_);
+                }
                 if (state.wait == Wait::Movie) StartMovie(state.movie);
                 if (state.wait == Wait::Ended) {
                     if (state.end_reason == EndReason::Exit) { Exit(); return; }
@@ -109,6 +169,9 @@ public:
         }
         input_.advance = false;
         input_.choice = 0;
+        const int pressed = click_wait_ms_ ? selection_ : pressed_;
+        presentation_->AdvanceButtons(ms, game_->frame_ms(), selection_, pressed);
+        dirty_ = dirty_ || presentation_->AnimatedButtons(buttons_, selection_, pressed);
         if (title_) {
             if (!dirty_) return;
             Publish(presentation_->TitleSurface(*game_));
@@ -133,8 +196,40 @@ public:
     }
 
     void Input(const engine_input_event_t &event) {
-        if (paused_ || !game_) return;
+        if (paused_ || !game_ || click_wait_ms_)
+            return;
+        if (log_page_ && event.type == ENGINE_INPUT_EVENT_POINTER_SCROLL) {
+            if (event.delta_y)
+                log_page_->Scroll(event.delta_y > 0 ? -1 : 1);
+            return;
+        }
+        if (startup_) {
+            const bool activate = (event.type == ENGINE_INPUT_EVENT_POINTER_UP &&
+                                   !(event.modifiers & ENGINE_INPUT_MODIFIER_POINTER_CANCEL)) ||
+                                  event.type == ENGINE_INPUT_EVENT_BACK ||
+                                  (event.type == ENGINE_INPUT_EVENT_KEY_DOWN && !(event.modifiers & 0x80) &&
+                                   (event.key_code == 13 || event.key_code == 27 || event.key_code == 32));
+            if (activate) {
+                if (movie_) {
+                    if (movie_skippable_) {
+                        CloseMovie();
+                        startup_->MovieFinished();
+                    }
+                } else
+                    startup_->Skip();
+            }
+            return;
+        }
         if (settings_) { SettingsInput(event); return; }
+        if (title_ && menu_ == Menu::None && !presentation_->TitleReady()) {
+            if ((event.type == ENGINE_INPUT_EVENT_POINTER_UP &&
+                 !(event.modifiers & ENGINE_INPUT_MODIFIER_POINTER_CANCEL)) ||
+                event.type == ENGINE_INPUT_EVENT_KEY_DOWN) {
+                presentation_->SkipTitleEntrance();
+                dirty_ = true;
+            }
+            return;
+        }
         if (event.type == ENGINE_INPUT_EVENT_POINTER_MOVE || event.type == ENGINE_INPUT_EVENT_POINTER_DOWN ||
             event.type == ENGINE_INPUT_EVENT_POINTER_UP) {
             input_.mouse_x = int(std::clamp(event.x, -32768.0, 32768.0));
@@ -144,12 +239,16 @@ public:
             if (event.type == ENGINE_INPUT_EVENT_POINTER_DOWN) {
                 pressed_ = index;
                 input_.held = true;
+                dirty_ = true;
             } else if (event.type == ENGINE_INPUT_EVENT_POINTER_UP) {
                 const bool valid = input_.held && !(event.modifiers & ENGINE_INPUT_MODIFIER_POINTER_CANCEL);
                 input_.held = false;
                 if (valid && event.button == 1) Back();
                 else if (valid && (buttons_.empty() || (index >= 0 && pressed_ == index))) Confirm();
+                else if (valid && index < 0 && pressed_ < 0 && IsDialogue())
+                    AdvanceDialogue();
                 pressed_ = -1;
+                dirty_ = true;
             }
             return;
         }
@@ -162,8 +261,14 @@ public:
         case 27: Back(); break;
         case 37: case 38: Move(-1); break;
         case 39: case 40: Move(1); break;
-        case 0x74: if (CanSave()) TrySlot(true, saves_->quick); break; // F5
-        case 0x78: if (fs::is_regular_file(saves_->Slot(saves_->quick))) TrySlot(false, saves_->quick); break; // F9
+        case 0x74:
+            if (CanSave())
+                TrySlot(true, saves_->quick, true);
+            break; // F5
+        case 0x78:
+            if (fs::is_regular_file(saves_->Slot(saves_->quick)))
+                TrySlot(false, saves_->quick, true);
+            break; // F9
         default:
             if (event.key_code >= '1' && event.key_code <= '9' && size_t(event.key_code - '1') < buttons_.size()) {
                 selection_ = event.key_code - '1'; Confirm();
@@ -175,14 +280,49 @@ public:
         if (!game_) return R"({"runtime":"systemnnn","mode":"android-player"})";
         const auto &state = game_->state();
         auto audio = game_->audio().stats();
-        return nlohmann::json{
-            {"runtime", "systemnnn"}, {"mode", title_ ? "title" : "story"}, {"wait", int(state.wait)},
-            {"script", state.script}, {"word", state.word}, {"message", state.dialogue.message_id},
-            {"audio_peak", audio.peak}, {"audio_frames", audio.nonzero_frames}, {"menu", int(menu_)},
-            {"settings_page", settings_ ? settings_->page() : 0},
-            {"saves", saves_->directory.string()}, {"visible_characters", game_->visible_text()},
-            {"text_complete", game_->text_complete()}
-        }.dump(-1, ' ', false, nlohmann::json::error_handler_t::replace);
+        nlohmann::json log_voice, log_jump;
+        if (log_page_)
+            for (const auto &button : log_page_->buttons()) {
+                if (button.value < 0)
+                    continue;
+                auto &sample = button.value % 2 ? log_jump : log_voice;
+                if (sample.is_null())
+                    sample = {{"x", button.bounds.x},
+                              {"y", button.bounds.y},
+                              {"w", button.bounds.width},
+                              {"h", button.bounds.height}};
+            }
+        return nlohmann::json{{"runtime", "systemnnn"},
+                              {"mode", startup_ ? startup_->name()
+                                       : title_ ? "title"
+                                                : "story"},
+                              {"wait", int(state.wait)},
+                              {"script", state.script},
+                              {"word", state.word},
+                              {"message", state.dialogue.message_id},
+                              {"backlog_voice_button", log_voice},
+                              {"backlog_jump_button", log_jump},
+                              {"audio_plays", audio.plays},
+                              {"voice_frames", audio.voice_frames},
+                              {"audio_peak", audio.peak},
+                              {"audio_frames", audio.nonzero_frames},
+                              {"menu", int(menu_)},
+                              {"settings_page", settings_ ? settings_->page() : 0},
+                              {"slot_page", slots_page_ ? slots_page_->page() : 0},
+                              {"overwrite_slot", slots_page_ ? slots_page_->overwrite() : -1},
+                              {"backlog_first", log_page_ ? log_page_->first() : 0},
+                              {"backlog_rows", log_page_ ? log_page_->rows() : 0},
+                              {"ui_hidden", dialogue_hidden_},
+                              {"skip_active", game_->skip_active()},
+                              {"auto_mode", game_->get_system_parameter(nnn::NNNPARAM_AUTOMODE)},
+                              {"system_menu_original", bool(system_menu_)},
+                              {"return_title_dialog", system_menu_ && system_menu_->confirming()},
+                              {"notice_number", game_notice_ ? game_notice_->number() : 0},
+                              {"title_ready", title_ && presentation_->TitleReady()},
+                              {"saves", saves_->directory.string()},
+                              {"visible_characters", game_->visible_text()},
+                              {"text_complete", game_->text_complete()}}
+            .dump(-1, ' ', false, nlohmann::json::error_handler_t::replace);
     }
 
     engine_result_t PlayerClosed(std::string_view operation, std::string_view ticket) {
@@ -218,9 +358,17 @@ private:
         options_.runtime = game_->runtime();
         options_.save_layout = game_->runtime_ref().save_layout;
         presentation_->ResetStory();
+        system_menu_.reset();
+        slots_page_.reset();
+        log_page_.reset();
+        checkpoint_sequence_ = UINT64_MAX;
+        menu_suspended_audio_ = false;
+        game_notice_->Clear();
         buttons_.clear();
         menu_ = Menu::None;
         title_ = false;
+        dialogue_hidden_ = false;
+        selection_ = pressed_ = -1;
         dirty_ = true;
     }
 
@@ -228,16 +376,21 @@ private:
         options_.runtime = game_->runtime();
         options_.save_layout = game_->runtime_ref().save_layout;
         auto candidate = NewGame();
-        presentation_->StartTitle(*candidate);
         Replace(candidate);
+        ShowTitle();
+    }
+
+    void ShowTitle() {
+        presentation_->StartTitle(*game_);
         title_ = true;
         bool has_saves = false;
         for (const auto &item : fs::directory_iterator(saves_->directory)) {
             const auto name = nnn::game_config::ascii_lower(item.path().filename().string());
             if (name.size() > 4 && name.substr(name.size()-4) == ".sav") { has_saves = true; break; }
         }
-        title_buttons_ = presentation_->TitleButtons(*game_, has_saves);
-        selection_ = 0;
+        title_buttons_ = presentation_->TitleButtons(*game_, has_saves, saves_->LastSlot() >= 0);
+        selection_ = -1;
+        dirty_ = true;
     }
 
     void StartStory() {
@@ -276,7 +429,7 @@ private:
         previous_progress_.swap(bytes);
     }
 
-    void TrySlot(bool save, int index) {
+    void TrySlot(bool save, int index, bool quick = false) {
         try {
             const auto path = saves_->Slot(index);
             if (save) {
@@ -292,7 +445,15 @@ private:
                 candidate->load_pc_save_candidate(bytes, title_ ? nullptr : game_.get());
                 Replace(candidate);
             }
+            saves_->Remember(index);
+            if (save && slots_page_ && !quick) {
+                slots_page_->Refresh();
+                dirty_ = true;
+                return;
+            }
             SetMenu(Menu::None);
+            if (quick && !title_)
+                game_notice_->Quick(*game_, save);
         } catch (const std::exception &ex) {
             notice_ = ex.what();
             SetMenu(Menu::Notice);
@@ -301,8 +462,8 @@ private:
 
     int Hit(int x, int y) const {
         for (size_t i = 0; i < buttons_.size(); ++i) {
-            const auto r = buttons_[i].bounds;
-            if (x >= r.x && x < r.x+r.width && y >= r.y && y < r.y+r.height) return int(i);
+            if (buttons_[i].Contains(x, y))
+                return int(i);
         }
         return -1;
     }
@@ -317,6 +478,24 @@ private:
     }
 
     void SetMenu(Menu menu) {
+        slots_page_.reset();
+        log_page_.reset();
+        if (menu == Menu::Save || menu == Menu::Load) {
+            slots_page_ = std::make_unique<emberfall::sdl::SlotsPage>(
+                *game_, menu == Menu::Save, saves_->quick, saves_->LastSlot(),
+                [this](int slot) -> std::optional<nnn::snapshot::Bytes> {
+                    auto path = saves_->Slot(slot);
+                    if (!fs::is_regular_file(path))
+                        return {};
+                    return SaveBank::Read(path);
+                });
+        }
+        if (menu == Menu::Backlog)
+            log_page_ = std::make_unique<emberfall::sdl::BacklogPage>(*game_, *presentation_);
+        if (menu != Menu::None)
+            game_notice_->Clear();
+        if (system_menu_)
+            system_menu_.reset();
         if (settings_) {
             SaveProgress();
             remembered_settings_page_ = settings_->page();
@@ -326,6 +505,17 @@ private:
         if (menu == Menu::Settings) {
             game_->set_ctrl_skip(false);
             settings_ = SettingsPage::Open(*game_, *presentation_, remembered_settings_page_);
+        }
+        if (menu == Menu::System && !title_) {
+            system_menu_ = emberfall::sdl::SystemMenu::Open(*game_, CanSave());
+            if (system_menu_) {
+                game_->audio().suspend_script_audio();
+                menu_suspended_audio_ = true;
+            }
+        }
+        if (menu == Menu::None && menu_suspended_audio_) {
+            game_->audio().restart_loop_script_audio();
+            menu_suspended_audio_ = false;
         }
         menu_ = menu;
         if (menu == Menu::Extras) {
@@ -338,7 +528,7 @@ private:
         }
         dirty_ = true;
         buttons_.clear();
-        selection_ = 0;
+        selection_ = menu == Menu::None ? -1 : 0;
         pressed_ = -1;
     }
 
@@ -382,6 +572,16 @@ private:
     }
 
     void Back() {
+        if (slots_page_ && slots_page_->BackOverlay()) {
+            selection_ = pressed_ = -1;
+            dirty_ = true;
+            return;
+        }
+        if (dialogue_hidden_) {
+            dialogue_hidden_ = false;
+            dirty_ = true;
+            return;
+        }
         if (movie_) { if (movie_skippable_) CloseMovie(); return; }
         if (menu_ != Menu::None) { SetMenu(Menu::None); return; }
         if (!title_ && game_->state().wait == Wait::Modal && game_->state().modal) {
@@ -392,55 +592,209 @@ private:
         dirty_ = true;
     }
 
-    void Confirm() {
+    void Confirm(bool committed = false) {
         if (movie_) { if (movie_skippable_) CloseMovie(); return; }
+        if (IsDialogue() && (selection_ < 0 || buttons_.empty() || !game_->text_complete() || dialogue_hidden_)) {
+            AdvanceDialogue();
+            return;
+        }
+        if (title_ && menu_ == Menu::None && selection_ < 0)
+            selection_ = 0;
         if (buttons_.empty()) {
             if (!title_ && menu_ == Menu::None) input_.advance = game_->request_advance();
             return;
         }
         if (selection_ < 0 || size_t(selection_) >= buttons_.size() || !buttons_[selection_].enabled) return;
-        const int value = buttons_[selection_].value;
+        const auto &button = buttons_[selection_];
+        const int value = button.value;
+        if (!committed && (menu_ == Menu::None || system_menu_) && button.art) {
+            if (button.sound > 0)
+                game_->audio().play_system_se(button.sound - 1);
+            if (button.voice > 0)
+                game_->audio().play_button_voice(button.voice - 1);
+            click_wait_ms_ = uint64_t(button.click_frames) * game_->frame_ms();
+            if (click_wait_ms_) {
+                dirty_ = true;
+                return;
+            }
+        }
         if (menu_ == Menu::None) {
             if (title_) {
                 switch (value) {
                 case 0: StartStory(); break;
-                case 1: slot_page_ = 0; SetMenu(Menu::Load); break;
+                case 1:
+                    SetMenu(Menu::Load);
+                    break;
                 case 2: SetMenu(Menu::Settings); break;
                 case 3: SetMenu(Menu::Extras); break;
                 case 4: Exit(); break;
+                case int(TitleAction::LastLoad): {
+                    const int last = saves_->LastSlot();
+                    if (last >= 0)
+                        TrySlot(false, last);
+                    break;
+                }
+                case int(TitleAction::Website):
+                    if (host_.platform_request)
+                        host_.platform_request(host_.user_data, "runtime_open_url",
+                                               presentation_->Website().c_str());
+                    break;
                 default: StartStory(); break;
                 }
+            } else if (IsDialogue() ||
+                       ((game_->state().wait == Wait::Draw || game_->state().wait == Wait::Overlap) &&
+                        !game_->state().modal)) {
+                StoryAction(static_cast<StoryControl>(value));
             } else if (const auto &modal = game_->state().modal) {
                 game_->act_modal(modal->request, 1, value);
-            } else input_.choice = unsigned(value);
-        } else if (menu_ == Menu::Save || menu_ == Menu::Load) {
-            if (value == -1 || value == -2) { slot_page_ += value == -1 ? -1 : 1; selection_ = 0; }
-            else if (value == -3) SetMenu(Menu::None);
-            else if (menu_ == Menu::Save && fs::exists(saves_->Slot(value))) {
-                overwrite_ = value; SetMenu(Menu::Overwrite);
-            } else TrySlot(menu_ == Menu::Save, value);
+            } else
+                input_.choice = unsigned(value);
+        } else if (slots_page_) {
+            int slot = -1;
+            if (slots_page_->Select(value, slot))
+                SetMenu(Menu::None);
+            else if (slot >= 0)
+                TrySlot(menu_ == Menu::Save, slot);
+            selection_ = pressed_ = -1;
+        } else if (log_page_) {
+            if (log_page_->Select(value)) {
+                presentation_->ResetStory();
+                SetMenu(Menu::None);
+            }
+            selection_ = pressed_ = -1;
         } else if (menu_ == Menu::Extras && value != 2 && !gallery_.empty()) {
             const int next = std::clamp(gallery_index_ + (value == 0 ? -1 : 1), 0, int(gallery_.size()) - 1);
             gallery_picture_ = game_->ui_texture(gallery_[next]);
             gallery_index_ = next;
-        } else if (menu_ == Menu::Overwrite) {
-            if (value == 0) TrySlot(true, overwrite_);
-            else SetMenu(Menu::Save);
+        } else if (system_menu_) {
+            switch (static_cast<SystemAction>(value)) {
+            case SystemAction::Save:
+                SetMenu(Menu::Save);
+                break;
+            case SystemAction::Load:
+                SetMenu(Menu::Load);
+                break;
+            case SystemAction::Settings:
+                SetMenu(Menu::Settings);
+                break;
+            case SystemAction::Backlog:
+                SetMenu(Menu::Backlog);
+                break;
+            case SystemAction::Hide:
+                SetMenu(Menu::None);
+                HideDialogue();
+                break;
+            case SystemAction::Skip:
+                SetMenu(Menu::None);
+                game_->set_skip_active(true);
+                break;
+            case SystemAction::Auto:
+                SetMenu(Menu::None);
+                game_->set_system_parameter(nnn::NNNPARAM_AUTOMODE, 1);
+                break;
+            case SystemAction::Resume:
+            case SystemAction::CancelTitle:
+                SetMenu(Menu::None);
+                break;
+            case SystemAction::Title:
+                if (system_menu_->AskTitle()) {
+                    pressed_ = selection_ = -1;
+                    break;
+                }
+                [[fallthrough]];
+            case SystemAction::ConfirmTitle:
+                EnterTitle();
+                break;
+            }
         } else if (menu_ == Menu::System) {
             static constexpr Menu pages[]{Menu::None, Menu::Save, Menu::Load, Menu::Backlog, Menu::Settings};
-            if (value < 5) { slot_page_ = 0; SetMenu(pages[value]); }
-            else if (value == 5) EnterTitle();
+            if (value < 5) {
+                SetMenu(pages[value]);
+            } else if (value == 5)
+                EnterTitle();
             else Exit();
         } else if (menu_ == Menu::Settings && value < 3) {
             const auto parameter = value == 0 ? nnn::NNNPARAM_AUTOMODE : nnn::NNNPARAM_TOTALVOLUME;
             int setting = game_->get_system_parameter(parameter);
             game_->set_system_parameter(parameter, value == 0 ? !setting : std::clamp(setting + (value == 1 ? -10 : 10), 0, 100));
             game_->apply_runtime_parameters();
-        } else SetMenu(Menu::None);
+        } else
+            SetMenu(Menu::None);
+        dirty_ = true;
+    }
+
+    bool IsDialogue() const { return !title_ && menu_ == Menu::None && game_->state().wait == Wait::Dialogue; }
+    void AdvanceDialogue() {
+        StopAutoAndSkip();
+        if (dialogue_hidden_) {
+            dialogue_hidden_ = false;
+            dirty_ = true;
+        } else
+            input_.advance = game_->request_advance();
+    }
+    void StopAutoAndSkip() {
+        if (game_->get_system_parameter(nnn::NNNPARAM_AUTOMODE))
+            game_->set_system_parameter(nnn::NNNPARAM_AUTOMODE, 0);
+        if (game_->skip_active())
+            game_->set_skip_active(false);
+    }
+    void HideDialogue() {
+        StopAutoAndSkip();
+        game_notice_->Clear();
+        dialogue_hidden_ = true;
+    }
+    void StoryAction(StoryControl action) {
+        switch (action) {
+        case StoryControl::Menu:
+            SetMenu(Menu::System);
+            break;
+        case StoryControl::QuickSave:
+            if (CanSave())
+                TrySlot(true, saves_->quick, true);
+            break;
+        case StoryControl::QuickLoad:
+            if (fs::is_regular_file(saves_->Slot(saves_->quick)))
+                TrySlot(false, saves_->quick, true);
+            break;
+        case StoryControl::Settings:
+            SetMenu(Menu::Settings);
+            break;
+        case StoryControl::Backlog:
+            SetMenu(Menu::Backlog);
+            break;
+        case StoryControl::Save:
+            if (CanSave()) {
+                SetMenu(Menu::Save);
+            }
+            break;
+        case StoryControl::Load:
+            SetMenu(Menu::Load);
+            break;
+        case StoryControl::Auto:
+            game_->set_system_parameter(nnn::NNNPARAM_AUTOMODE,
+                                        !game_->get_system_parameter(nnn::NNNPARAM_AUTOMODE));
+            break;
+        case StoryControl::Skip:
+            game_->set_skip_active(!game_->skip_active());
+            break;
+        case StoryControl::Hide:
+            HideDialogue();
+            break;
+        case StoryControl::FilmSkip:
+            game_->request_film_skip();
+            break;
+        }
+        selection_ = -1;
         dirty_ = true;
     }
 
     std::vector<Button> Buttons() {
+        if (slots_page_)
+            return slots_page_->buttons();
+        if (log_page_)
+            return log_page_->buttons();
+        if (system_menu_)
+            return system_menu_->buttons();
         std::vector<std::string> labels;
         std::vector<int> ids;
         if (menu_ == Menu::None) {
@@ -460,28 +814,14 @@ private:
                 for (const auto &row : state.modal->rows) {
                     labels.push_back(presentation_->text.Decode(row.label, true)); ids.push_back(row.id);
                 }
-            }
-        } else if (menu_ == Menu::Save || menu_ == Menu::Load) {
-            for (int slot = slot_page_*slots_per_page; slot < std::min(saves_->count,(slot_page_+1)*slots_per_page); ++slot) {
-                const auto path = saves_->Slot(slot);
-                labels.push_back(std::to_string(slot+1) + (fs::is_regular_file(path) ? "   " + path.filename().string() : "   —"));
-                ids.push_back(slot);
-            }
-            if (slot_page_ > 0) { labels.emplace_back("Previous page"); ids.push_back(-1); }
-            if ((slot_page_+1)*slots_per_page < saves_->count) { labels.emplace_back("Next page"); ids.push_back(-2); }
-            labels.emplace_back("Back"); ids.push_back(-3);
+            } else if (!dialogue_hidden_)
+                return presentation_->StoryButtons(*game_);
         } else if (menu_ == Menu::System) labels = {"Resume", "Save", "Load", "Backlog", "Settings", "Title", "Exit"};
         else if (menu_ == Menu::Settings) labels = {
             game_->get_system_parameter(nnn::NNNPARAM_AUTOMODE) ? "Auto advance: On" : "Auto advance: Off",
             "Volume −", "Volume + (" + std::to_string(game_->get_system_parameter(nnn::NNNPARAM_TOTALVOLUME)) + "%)", "Back"};
-        else if (menu_ == Menu::Overwrite) labels = {"Overwrite slot " + std::to_string(overwrite_+1), "Cancel"};
         else if (menu_ == Menu::Notice) labels = {notice_, "Back"};
-        else if (menu_ == Menu::Backlog) {
-            const auto &log = game_->backlog();
-            for (size_t i = log.size() > 6 ? log.size()-6 : 0; i < log.size(); ++i)
-                labels.push_back(presentation_->text.Decode(log[i].text, log[i].configuration_text));
-            labels.emplace_back("Back");
-        } else if (menu_ == Menu::Extras) {
+        else if (menu_ == Menu::Extras) {
             if (gallery_.empty()) labels = {"No pictures unlocked", "Back"};
             else {
                 auto items = presentation_->Rows({"Previous", std::to_string(gallery_index_ + 1) + "/" +
@@ -506,10 +846,15 @@ private:
     }
 
     void Publish(const Surface &surface) {
+        if (dialogue_hidden_ && IsDialogue()) {
+            buttons_.clear();
+            PublishPixels(game_->scene_surface());
+            return;
+        }
         width = surface.width; height = surface.height;
         buttons_ = Buttons();
         Surface overlay;
-        if (!buttons_.empty()) {
+        if (!buttons_.empty() || game_notice_->number()) {
             overlay = surface;
             if (gallery_picture_) {
                 const auto &image = *gallery_picture_;
@@ -517,9 +862,12 @@ private:
                 emberfall::render::paint_texture(overlay, image, {0,0,image.canvas_width,image.canvas_height},
                     {(int(width)-image.canvas_width)/2, (int(height)-image.canvas_height)/2});
             }
-            presentation_->PaintButtons(overlay, buttons_, selection_);
+            presentation_->PaintButtons(overlay, buttons_, selection_, click_wait_ms_ ? selection_ : pressed_,
+                                        title_ && menu_ == Menu::None);
+            game_notice_->Paint(overlay);
             PublishPixels(overlay);
-        } else PublishPixels(surface);
+        } else
+            PublishPixels(surface);
     }
 
     void PublishPixels(const Surface &surface) {
@@ -551,19 +899,25 @@ private:
             auto token = nnn::game_config::name_token(line,cursor);
             if (!token) break;
             const auto path = nnn::resource::find_file(nnn::resource::find_directory(root_,"movie"), std::string(*token), GameText::Filename);
-            const auto *api = Media();
-            if (path.empty() || !api || !api->open || !api->play) break;
-            if (api->open(api->user_data, path.c_str(), &movie_) != ENGINE_RESULT_OK) break;
-            api->set_volume(api->user_data, movie_, game_->audio().movie_gain());
-            if (api->play(api->user_data, movie_) != ENGINE_RESULT_OK) CloseMovie();
-            else {
-                Config config(nnn::game_config::read(root_,"init","printMovie.xtx"));
-                movie_skippable_ = config.integer("noSkipFlag",0) == 0;
-                movie_serial_ = UINT64_MAX;
+            Config config(nnn::game_config::read(root_, "init", "printMovie.xtx"));
+            if (OpenMovie(path, config.integer("noSkipFlag", 0) == 0))
                 return;
-            }
         }
         if (host_.log) host_.log(host_.user_data, ENGINE_RUNTIME_LOG_WARNING, "systemnnn", "Movie unavailable in this host");
+    }
+    bool OpenMovie(const fs::path &path, bool skippable) {
+        const auto *api = Media();
+        if (path.empty() || !api || !api->open || !api->play ||
+            api->open(api->user_data, path.c_str(), &movie_) != ENGINE_RESULT_OK)
+            return false;
+        api->set_volume(api->user_data, movie_, game_->audio().movie_gain());
+        if (api->play(api->user_data, movie_) != ENGINE_RESULT_OK) {
+            CloseMovie();
+            return false;
+        }
+        movie_serial_ = UINT64_MAX;
+        movie_skippable_ = skippable;
+        return true;
     }
     bool PollMovie() {
         const auto *api = Media();
@@ -600,11 +954,21 @@ private:
     std::unique_ptr<GameSession> game_;
     std::unique_ptr<Presentation> presentation_;
     std::unique_ptr<SettingsPage> settings_;
+    std::unique_ptr<Startup> startup_;
+    std::unique_ptr<emberfall::sdl::SlotsPage> slots_page_;
+    std::unique_ptr<emberfall::sdl::BacklogPage> log_page_;
+    uint64_t checkpoint_sequence_ = UINT64_MAX;
+    unsigned journal_cursor_ = 0;
+    std::unique_ptr<emberfall::sdl::SystemMenu> system_menu_;
+    std::unique_ptr<emberfall::sdl::GameNotice> game_notice_;
+    bool menu_suspended_audio_ = false;
+    bool dialogue_hidden_ = false;
+    uint64_t click_wait_ms_ = 0;
     int remembered_settings_page_ = 1;
     SDL_AudioDeviceID audio_ = 0;
     bool audio_initialized_ = false, paused_ = false, title_ = false, exit_ = false, dirty_ = true;
     Menu menu_ = Menu::None;
-    int selection_ = 0, pressed_ = -1, slot_page_ = 0, overwrite_ = 0;
+    int selection_ = 0, pressed_ = -1;
     std::string notice_;
     std::vector<Button> buttons_, title_buttons_;
     std::vector<std::string> gallery_;

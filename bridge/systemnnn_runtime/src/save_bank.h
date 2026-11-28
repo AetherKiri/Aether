@@ -37,6 +37,27 @@ public:
         return file.empty() ? directory / name : file;
     }
 
+    int LastSlot() const {
+        for (const char *name : {".last-slot", ".last-slot.bak"}) {
+            if (!std::filesystem::is_regular_file(std::filesystem::symlink_status(directory / name)))
+                continue;
+            std::ifstream file(directory / name, std::ios::binary);
+            unsigned char bytes[8];
+            if (!file.read(reinterpret_cast<char *>(bytes), 8) || file.peek() != EOF || bytes[0] != 'L' ||
+                bytes[1] != 'S' || bytes[2] != 'T' || bytes[3] != '2')
+                continue;
+            const uint32_t slot =
+                (uint32_t(bytes[4]) << 24) | (uint32_t(bytes[5]) << 16) | (uint32_t(bytes[6]) << 8) | bytes[7];
+            if (slot < unsigned(std::max(count, quick + 1)) && std::filesystem::is_regular_file(Slot(int(slot))))
+                return int(slot);
+        }
+        return -1;
+    }
+
+    void Remember(int slot) const {
+        Write(directory / ".last-slot", {'L', 'S', 'T', '2', 0, 0, uint8_t(unsigned(slot) >> 8), uint8_t(slot)});
+    }
+
     static std::vector<uint8_t> Read(const std::filesystem::path &path) {
         if (!std::filesystem::is_regular_file(std::filesystem::symlink_status(path)))
             throw std::runtime_error("Save slot is unavailable");

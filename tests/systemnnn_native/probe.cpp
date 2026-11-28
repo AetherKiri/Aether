@@ -62,6 +62,18 @@ void Key(engine_handle_t handle, int code) {
     Check(handle, engine_send_input(handle, &e));
 }
 
+void ReachTitle(engine_handle_t handle) {
+    for (int i = 0; i < 450; ++i) {
+        Check(handle, engine_tick(handle, 40));
+        const auto state = Info(handle);
+        if (state.at("mode") == "title" && state.at("title_ready") == true)
+            return;
+        if (i % 12 == 0)
+            Key(handle, 13);
+    }
+    throw std::runtime_error("Startup did not reach the interactive title: " + Info(handle).dump());
+}
+
 void Open(RuntimeSession &session, const fs::path &root, const fs::path &work, const fs::path &font, bool explicit_id) {
     engine_create_desc_t desc{}; desc.struct_size = sizeof(desc); desc.api_version = ENGINE_API_VERSION;
     desc.writable_path_utf8 = work.c_str(); desc.cache_path_utf8 = work.c_str();
@@ -108,6 +120,7 @@ int main(int argc, char **argv) try {
     Require(aether::game_detection::DetectGame(root.string()).engine == "systemnnn", "Wrong runtime detected");
     Open(session, root, work, font, false);
     auto handle = session.handle();
+    ReachTitle(handle);
     for (int i = 0; i < 70; ++i) Check(handle, engine_tick(handle, 40));
     auto frame = Frame(handle, work/"title.ppm");
     const auto title_info = Info(handle);
@@ -138,6 +151,7 @@ int main(int argc, char **argv) try {
     Check(handle, session.Close());
     Open(session, root, work, font, true);
     handle = session.handle();
+    ReachTitle(handle);
     Key(handle, 0x78);
     Check(handle, engine_tick(handle, 0));
     Require(Info(handle).at("mode") == "story" && Info(handle).at("wait") == 3 && Position(Info(handle)) == saved,

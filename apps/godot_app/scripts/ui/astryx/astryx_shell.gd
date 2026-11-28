@@ -2285,6 +2285,8 @@ func _detail_content() -> void:
     var actions := _vbox(8)
     info.add_child(actions)
     var launch := _button(_text("开始游戏", "Start game", "ゲームを開始", "開始遊戲", "Iniciar juego"), host._start_selected_game, "primary", "AstryxLaunchGame")
+    var mod_service = host.get_node_or_null("XSystemTools")
+    launch.disabled = mod_service != null and mod_service.busy
     launch.icon = load("res://assets/ui/astryx/play.svg")
     launch.icon_alignment = HORIZONTAL_ALIGNMENT_LEFT
     launch.expand_icon = true
@@ -2293,11 +2295,19 @@ func _detail_content() -> void:
     actions.add_child(launch)
     _collapsible(info, "information", _text("游戏信息", "Game information", "ゲーム情報", "遊戲資訊", "Información del juego"), _detail_information.bind(game, runtime))
     _collapsible(info, "rendering", _text("画面与渲染", "Graphics & rendering", "画面とレンダリング", "畫面與渲染", "Gráficos y renderizado"), _game_render_settings.bind(game))
-    _collapsible(info, "virtual_buttons", _text("游戏控制", "Game controls", "ゲーム操作", "遊戲控制", "Controles del juego"), _virtual_button_row.bind(game))
+    _collapsible(info, "virtual_buttons", _text("游戏控制", "Game controls", "ゲーム操作", "遊戲控制", "Controles del juego"), _detail_game_controls.bind(game, runtime))
     _collapsible(info, "saves", _text("存档", "Saves", "セーブデータ", "存檔", "Partidas guardadas"), _detail_save_actions.bind(game, runtime))
     _collapsible(info, "cache", _text("缓存", "Cache", "キャッシュ", "快取", "Caché"), _detail_cache_actions.bind(game, runtime))
     _collapsible(info, "cover", _text("封面", "Cover", "カバー", "封面", "Portada"), _detail_cover_actions.bind(game))
     info.add_child(_divider())
+
+func _detail_game_controls(section: Control, game: Dictionary, runtime: String) -> void:
+    _virtual_button_row(section, game)
+    if runtime in ["xsystem4", "xsystem35"]:
+        section.add_child(_divider())
+        var mods := preload("res://scripts/ui/xsystem_mod_list.gd").new()
+        section.add_child(mods)
+        mods.setup(host, host._game_runtime_root(String(game.get("path", ""))))
 
 func _detail_cache_actions(section: Control, game: Dictionary, runtime: String) -> void:
     _cache_actions(section, host._game_cache_paths(game, runtime), func(done: Callable): host._clear_game_cache(game, done), false)

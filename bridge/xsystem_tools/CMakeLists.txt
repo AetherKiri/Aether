@@ -1,0 +1,30 @@
+find_package(LibArchive REQUIRED)
+find_package(nlohmann_json CONFIG REQUIRED)
+# FindLibArchive does not carry the dependencies of vcpkg's static archive.
+find_package(ZLIB REQUIRED)
+find_package(BZip2 REQUIRED)
+find_package(LibXml2 REQUIRED)
+find_package(Iconv REQUIRED)
+find_package(lz4 CONFIG REQUIRED)
+find_package(zstd CONFIG REQUIRED)
+find_package(LibLZMA QUIET)
+find_library(AETHER_MODS_B2_LIBRARY NAMES b2 libb2)
+add_library(aether_xsystem_tools STATIC mod_manager.cpp)
+target_compile_features(aether_xsystem_tools PUBLIC cxx_std_17)
+set_target_properties(aether_xsystem_tools PROPERTIES POSITION_INDEPENDENT_CODE ON)
+target_include_directories(aether_xsystem_tools PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}")
+target_link_libraries(aether_xsystem_tools PRIVATE LibArchive::LibArchive nlohmann_json::nlohmann_json
+    ZLIB::ZLIB BZip2::BZip2 LibXml2::LibXml2 Iconv::Iconv lz4::lz4 zstd::libzstd)
+if(TARGET LibLZMA::LibLZMA)
+    target_link_libraries(aether_xsystem_tools PRIVATE LibLZMA::LibLZMA)
+endif()
+if(AETHER_MODS_B2_LIBRARY)
+    # Both archives export the BLAKE2b reference functions. Match the engine's
+    # link order so libb2 supplies RAR5's BLAKE2sp helpers without pulling in a
+    # second copy of the BLAKE2b implementation needed by sodium.
+    find_package(unofficial-sodium CONFIG QUIET)
+    if(TARGET unofficial-sodium::sodium)
+        target_link_libraries(aether_xsystem_tools PRIVATE unofficial-sodium::sodium)
+    endif()
+    target_link_libraries(aether_xsystem_tools PRIVATE "${AETHER_MODS_B2_LIBRARY}")
+endif()

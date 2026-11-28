@@ -368,6 +368,8 @@ namespace aetherkiri::xsystem4 {
                     session_font = font;
                     hooks.fixed_encoding = encoding == "auto" ? 0 : (selected_encoding == "gbk" ? 2 : 1);
                 }
+                const std::string modifier_config = (fs::u8path(saves) / "modifier_config.json").u8string();
+                modifier_api_set_config_path(modifier_config.c_str());
                 const int result = xsystem4_host_run(
                     &hooks, root.c_str(), saves.c_str(), session_font.c_str(),
                     selected_encoding.c_str());
@@ -811,7 +813,14 @@ namespace aetherkiri::xsystem4 {
             if(self.report_modifier_state) {
                 if(active_runtime.load() != p) return ENGINE_RESULT_INVALID_STATE;
                 std::unique_ptr<char, decltype(&std::free)> state(modifier_api_get_live_state_json(), &std::free);
-                return Copy(state ? state.get() : "{}", out, size, written);
+                std::string json = state ? state.get() : "{}";
+                const std::string game = modifier_api_current_game();
+                if(!json.empty() && json.front() == '{') {
+                    json.insert(1, "\"game\":\"" + game + "\",\"locks\":" +
+                        std::to_string(modifier_api_get_game_lock_mask(game.c_str())) +
+                        (json.size() > 2 ? "," : ""));
+                }
+                return Copy(json, out, size, written);
             }
             std::lock_guard<std::mutex> guard(self.mutex);
             return Copy("runtime=xsystem4 native-library frames=" +

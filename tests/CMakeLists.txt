@@ -12,6 +12,11 @@ configure_file(test_config.h.in test_config.h)
 
 if(AETHERKIRI_INTERNAL_ENABLED AND
    COMMAND aetherinternal_add_artemis_tests)
+    # The private test suite also builds when the KiriKiri2 runtime is off.
+    if(NOT TARGET aether_openal_device_follower)
+        add_subdirectory("${AETHERKIRI_KRKR_DIR}/core/sound/openal"
+            "${CMAKE_BINARY_DIR}/packages/AetherKrkr/core/sound/openal")
+    endif()
     aetherinternal_add_artemis_tests(
         "${CMAKE_SOURCE_DIR}/bridge/krkr2_runtime/src/artemis_lua_symbol_prefix.h")
 endif()

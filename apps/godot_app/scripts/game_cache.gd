@@ -175,6 +175,6 @@ static func clear(locations: PackedStringArray) -> Dictionary:
             return {"error": error, "bytes": int(measure(locations).bytes)}
     return measure(locations)
 
-static func delete_with_cache(path: String, library_root: String, locations: PackedStringArray) -> Error:
+static func delete_with_cache(path: String, library_root: String, locations: PackedStringArray, owned_relative: String = "") -> Error:
     var result := int(clear(locations).error)
-    return Storage.delete_game(path, library_root) if result == OK else result
+    return Storage.delete_game(path, library_root, owned_relative) if result == OK else result

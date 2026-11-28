@@ -43,6 +43,34 @@ so Neutral's component overrides retain their intended cascade priority.
 
 ## Reference compositions
 
+- Games and archives share one library grid (two columns on iPhone, three on
+  landscape iPad) and one list. An archive has a themed box icon in its cover
+  area, with the filename and size below the cover or beside the thumbnail.
+  Search includes filenames. Recently Played shows games with launch history.
+  Dragging from a cover scrolls the library. Tapping an archive in either view
+  opens a centered Astryx `Dialog` with a preferred width of 480 px.
+  Its scrollable body holds the destination, layout, and existing-file selectors.
+  The footer keeps the projected output and confirmation in view. The plan follows
+  AetherUnzip’s [single-archive confirmation](../../packages/AetherUnzip/apps/AetherUnzip/Features/ExtractionPlanSheet.swift).
+
+  - The destination starts at the game directory. The location menu also offers
+    the archive’s folder, the documents location when external storage is available,
+    a distinct last-used destination, and a folder picker. The browser picker
+    and file conflicts use local preview data.
+  - Smart Extraction keeps a shared top folder, groups loose entries, or places a
+    single file directly. Direct preserves the archive structure. Separate Folder
+    wraps it in an archive-named directory. Remove Top Folder is available for
+    archives with files inside one common root. A new folder takes a numbered
+    name if the original name is occupied.
+  - Open `月光手札.zip` and choose Direct in the game directory to see the existing
+    `Moonlight/data.xp3`. Keep Both adds a suffix, Skip retains the existing file,
+    Stop allows a retry with different options, and Replace shows an overwrite
+    warning and the **解压并替换** action. The preview remembers successful outputs.
+  - Confirm `海边的来信.7z` to enter its sample password `aether`. Password errors
+    and retries retain the plan. The multipart RAR demonstrates a missing volume.
+    Cancel stops an extraction. Backdrop taps dismiss the confirmation and results.
+    Password entry and active extraction require an explicit dismissal.
+
 - Settings: Astryx `pages/settings-sidebar/page.tsx`, with the template's icon
   category sidebar, a single column of setting rows, current-value summaries,
   and inline Edit links revealing original Selector/SegmentedControl/Slider
@@ -184,6 +212,7 @@ directory:
 
 ```sh
 godot --headless --path apps/godot_app --script res://tests/astryx_shell_test.gd
+godot --headless --path apps/godot_app --script res://tests/astryx_archive_dialog_test.gd
 godot --headless --path apps/godot_app --script res://tests/astryx_typography_test.gd
 godot --headless --path apps/godot_app --script res://tests/game_render_config_test.gd
 godot --headless --path apps/godot_app --script res://tests/game_text_config_test.gd

@@ -1,7 +1,7 @@
 import Foundation
 
 @main struct GameImportStoreTests {
-    static func check(_ value: Bool) { precondition(value) }
+    static func check(_ value: Bool, line: UInt = #line) { precondition(value, "GameImportStore assertion at line \(line)") }
     static func main() throws {
         let fm = FileManager.default
         let root = fm.temporaryDirectory.appendingPathComponent("AetherImportTests-" + UUID().uuidString)
@@ -49,6 +49,18 @@ import Foundation
         try GameImportStore.copyTree(source, to: oldJob.appendingPathComponent("payload"), cancelled: { false }, progress: { _ in })
         try JSONEncoder().encode(GameImportStore.Job(name: "旧版导入")).write(to: oldJob.appendingPathComponent(GameImportStore.metadataName))
         try check(GameImportStore.promote(oldJob, into: games).lastPathComponent == "旧版导入")
+        let media = root.appendingPathComponent("配布.mp4")
+        let bytes = Data([0x50, 0x4b, 0x03, 0x04])
+        try bytes.write(to: media)
+        let temporary = try GameImportStore.receiveTemporaryFile(media, suggestedName: nil, into: incoming,
+                                                                 cancelled: { false }, progress: { _ in })
+        try check(GameImportStore.pending(in: incoming).contains { $0.lastPathComponent == temporary.lastPathComponent })
+        let original = try GameImportStore.importDirect(media, into: games)
+        let second = try GameImportStore.promote(temporary, into: games)
+        check(second.lastPathComponent == "配布 (2).mp4")
+        try check(Data(contentsOf: original) == bytes && Data(contentsOf: second) == bytes)
+        check(!fm.fileExists(atPath: temporary.path))
+
         let xp3 = source.appendingPathComponent("data.xp3")
         try check(GameImportStore.importDirect(xp3, into: games).lastPathComponent == "data.xp3")
         try check(GameImportStore.importDirect(xp3, into: games).lastPathComponent == "data (2).xp3")

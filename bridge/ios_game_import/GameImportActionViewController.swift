@@ -48,7 +48,7 @@ final class GameImportActionViewController: UIViewController, @unchecked Sendabl
         guard !started else { return }
         started = true
         spinner.startAnimating()
-        status.text = text("import.preparing", "Receiving the game folder…")
+        status.text = text("import.preparing", "Receiving shared items…")
         let providers = (extensionContext?.inputItems as? [NSExtensionItem] ?? []).flatMap { $0.attachments ?? [] }
         DispatchQueue.global(qos: .userInitiated).async { self.receive(providers) }
     }
@@ -77,21 +77,19 @@ final class GameImportActionViewController: UIViewController, @unchecked Sendabl
         var received = 0
         var lastError: Error?
         do {
-            guard !providers.isEmpty else { throw GameImportStore.failure("No game folder was shared.") }
+            guard !providers.isEmpty else { throw GameImportStore.failure("No files or folders were shared.") }
             let incoming = try GameImportStore.sharedRoot()
             for provider in providers {
                 if isCancelled() { break }
                 let semaphore = DispatchSemaphore(value: 0)
                 let name = provider.suggestedName
-                let finish: (URL?, Error?) -> Void = { url, error in
+                let finish: (URL?, Bool, Error?) -> Void = { url, inPlace, error in
                     defer { semaphore.signal() }
                     do {
                         if let error { throw error }
                         guard let url else { throw GameImportStore.failure("The sharing app did not provide a file URL.") }
-                        // Retain only an in-place source bookmark. The host copies
-                        // directly to Games when the user returns to Aether.
-                        _ = try GameImportStore.receive(url, suggestedName: name, into: incoming,
-                            cancelled: { self.isCancelled() }, progress: { bytes in
+                        let receive = inPlace ? GameImportStore.receive : GameImportStore.receiveTemporaryFile
+                        _ = try receive(url, name, incoming, { self.isCancelled() }, { bytes in
                                 DispatchQueue.main.async {
                                     self.status.text = "\(name ?? url.lastPathComponent)\n\(String(format: "%.1f MB", Double(bytes) / 1_048_576))"
                                 }
@@ -99,27 +97,22 @@ final class GameImportActionViewController: UIViewController, @unchecked Sendabl
                         received += 1
                     } catch { lastError = error }
                 }
-                let fileType = provider.registeredTypeIdentifiers.first {
-                    UTType($0)?.conforms(to: .folder) == true || UTType($0)?.conforms(to: .directory) == true ||
-                        $0 == "org.aether.xp3"
-                }
+                let types = provider.registeredTypeIdentifiers
+                let folderType = types.first { UTType($0)?.conforms(to: .directory) == true }
+                let dataType = types.first { UTType($0)?.conforms(to: .data) == true && $0 != UTType.fileURL.identifier }
                 let progress: Progress?
-                if let type = fileType {
-                    progress = provider.loadInPlaceFileRepresentation(forTypeIdentifier: type) { url, inPlace, error in
-                        guard inPlace else {
-                            finish(nil, error ?? GameImportStore.failure("This provider cannot share the folder in place. Open the folder in Files and send it to Aether from there."))
-                            return
-                        }
-                        finish(url, error)
-                    }
-                } else if provider.hasItemConformingToTypeIdentifier(UTType.fileURL.identifier) {
+                if folderType == nil && provider.hasItemConformingToTypeIdentifier(UTType.fileURL.identifier) {
                     provider.loadItem(forTypeIdentifier: UTType.fileURL.identifier, options: nil) { item, error in
                         let url = (item as? URL) ?? (item as? Data).flatMap { URL(dataRepresentation: $0, relativeTo: nil) }
-                        finish(url, error)
+                        finish(url, true, error)
                     }
                     progress = nil
+                } else if let type = folderType ?? dataType {
+                    progress = provider.loadInPlaceFileRepresentation(forTypeIdentifier: type) { url, inPlace, error in
+                        finish(url, inPlace, error)
+                    }
                 } else {
-                    throw GameImportStore.failure(NSLocalizedString("import.unsupported", value: "Select a complete game folder or an XP3 archive.", comment: ""))
+                    throw GameImportStore.failure(NSLocalizedString("import.unsupported", value: "Select a game folder or an archive file.", comment: ""))
                 }
                 stateLock.lock()
                 providerProgress = progress
@@ -140,9 +133,9 @@ final class GameImportActionViewController: UIViewController, @unchecked Sendabl
                 self.extensionContext?.cancelRequest(withError: CocoaError(.userCancelled))
             } else if let error {
                 self.status.text = "\(self.text("import.failed", "Could not finish importing."))\n\(error.localizedDescription)"
-                if count > 0 { self.status.text! += "\n" + self.text("import.open_aether", "Open Aether to add the folders already received to Games.") }
+                if count > 0 { self.status.text! += "\n" + self.text("import.open_aether", "Open Aether to add the received items to Games.") }
             } else {
-                self.status.text = String(format: self.text("import.received", "Received %d folder(s). Open Aether to add them to Games automatically."), count)
+                self.status.text = String(format: self.text("import.received", "Received %d item(s). Open Aether to add them to Games automatically."), count)
             }
         }
     }

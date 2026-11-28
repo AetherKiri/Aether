@@ -1,7 +1,6 @@
 import Foundation
 
-/// Shared import metadata and bounded copying. Game bytes are written only by
-/// the host, directly into a visible work folder underneath Documents/Games.
+/// Shared import metadata and bounded copying for in-place and temporary provider URLs.
 enum GameImportStore {
     typealias Progress = (_ bytes: Int64) -> Void
     static let fileManager = FileManager.default
@@ -11,6 +10,7 @@ enum GameImportStore {
         var name: String
         var destination: String?
         var sourceBookmark: Data?
+        var temporaryFile: Bool?
     }
 
     static func failure(_ message: String) -> NSError {
@@ -41,11 +41,11 @@ enum GameImportStore {
     }
 
     static func sourceName(_ source: URL, suggestedName: String?) throws -> String {
-        guard source.isFileURL else { throw failure("Only local game folders and XP3 archives can be imported.") }
-        let values = try source.resourceValues(forKeys: [.isDirectoryKey, .isSymbolicLinkKey])
+        guard source.isFileURL else { throw failure("Select a local game folder or file.") }
+        let values = try source.resourceValues(forKeys: [.isDirectoryKey, .isRegularFileKey, .isSymbolicLinkKey])
         guard values.isSymbolicLink != true,
-              values.isDirectory == true || source.pathExtension.lowercased() == "xp3" else {
-            throw failure(NSLocalizedString("import.unsupported", value: "Select a complete game folder or an XP3 archive.", comment: ""))
+              values.isDirectory == true || values.isRegularFile == true else {
+            throw failure(NSLocalizedString("import.unsupported", value: "Select a game folder or an archive file.", comment: ""))
         }
         let name = suggestedName.flatMap { validName($0) ? $0 : nil } ?? source.lastPathComponent
         guard validName(name) else { throw failure("The game folder name is invalid.") }
@@ -122,6 +122,26 @@ enum GameImportStore {
         } catch { try? fileManager.removeItem(at: job); throw error }
     }
 
+    // Temporary provider URLs expire as soon as the provider callback returns.
+    // Copy only those files into the app group before acknowledging the share.
+    static func receiveTemporaryFile(_ source: URL, suggestedName: String?, into incoming: URL,
+                                     cancelled: () -> Bool, progress: Progress) throws -> URL {
+        guard try source.resourceValues(forKeys: [.isRegularFileKey]).isRegularFile == true else {
+            throw failure(NSLocalizedString("import.unsupported", value: "Select a game folder or an archive file.", comment: ""))
+        }
+        let name = try sourceName(source, suggestedName: suggestedName)
+        let id = UUID().uuidString
+        let job = incoming.appendingPathComponent("Receiving-" + id, isDirectory: true)
+        let ready = incoming.appendingPathComponent(id, isDirectory: true)
+        try fileManager.createDirectory(at: job, withIntermediateDirectories: true)
+        do {
+            try copyTree(source, to: job.appendingPathComponent("payload"), cancelled: cancelled, progress: progress)
+            try JSONEncoder().encode(Job(name: name, temporaryFile: true)).write(to: job.appendingPathComponent(metadataName), options: .atomic)
+            try fileManager.moveItem(at: job, to: ready)
+            return ready
+        } catch { try? fileManager.removeItem(at: job); throw error }
+    }
+
     static let workPrefix = "Importing-"
     static let workMarker = "aether-import-in-progress.json"
 
@@ -146,7 +166,7 @@ enum GameImportStore {
             guard !cancelled() else { throw CocoaError(.userCancelled) }
             var number = 1
             while true {
-                let destination = games.appendingPathComponent(uniqueName(name, in: games, number: number))
+                let destination = games.appendingPathComponent(uniqueName(name, in: games, number: number, isFile: try source.resourceValues(forKeys: [.isRegularFileKey]).isRegularFile == true))
                 if fileManager.fileExists(atPath: destination.path) { number += 1; continue }
                 do {
                     // Same parent filesystem: publish by rename, without copying.
@@ -176,6 +196,13 @@ enum GameImportStore {
     static func cleanLegacyPartials(in incoming: URL) throws {
         guard fileManager.fileExists(atPath: incoming.path) else { return }
         for entry in try fileManager.contentsOfDirectory(at: incoming, includingPropertiesForKeys: nil) {
+            if entry.lastPathComponent.hasPrefix("Receiving-"),
+               UUID(uuidString: String(entry.lastPathComponent.dropFirst("Receiving-".count))) != nil {
+                let payload = entry.appendingPathComponent("payload")
+                let date = try? (fileManager.fileExists(atPath: payload.path) ? payload : entry)
+                    .resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate
+                if let date, date.timeIntervalSinceNow < -86400 { try fileManager.removeItem(at: entry) }
+            }
             if entry.lastPathComponent.hasPrefix(".partial-"), UUID(uuidString: String(entry.lastPathComponent.dropFirst(9))) != nil {
                 try fileManager.removeItem(at: entry)
             }
@@ -197,14 +224,14 @@ enum GameImportStore {
     static func pending(in incoming: URL) throws -> [URL] {
         guard fileManager.fileExists(atPath: incoming.path) else { return [] }
         return try fileManager.contentsOfDirectory(at: incoming, includingPropertiesForKeys: nil)
-            .filter { UUID(uuidString: $0.lastPathComponent) != nil }
+            .filter { UUID(uuidString: $0.lastPathComponent) != nil && fileManager.fileExists(atPath: $0.appendingPathComponent(metadataName).path) }
             .sorted { $0.lastPathComponent < $1.lastPathComponent }
     }
 
-    static func uniqueName(_ name: String, in games: URL, number: Int = 1) -> String {
+    static func uniqueName(_ name: String, in games: URL, number: Int = 1, isFile: Bool = false) -> String {
         if number == 1 { return name }
         let url = URL(fileURLWithPath: name)
-        if name.lowercased().hasSuffix(".xp3") {
+        if (isFile || name.lowercased().hasSuffix(".xp3")) && !url.pathExtension.isEmpty {
             return "\(url.deletingPathExtension().lastPathComponent) (\(number)).\(url.pathExtension)"
         }
         return "\(name) (\(number))"
@@ -214,7 +241,8 @@ enum GameImportStore {
     /// directories or retain completed payloads in the shared container.
     static func promote(_ jobURL: URL, into games: URL, cancelled: () -> Bool = { false }, progress: Progress = { _ in }) throws -> URL {
         guard UUID(uuidString: jobURL.lastPathComponent) != nil else { throw failure("Invalid import job.") }
-        let job = try JSONDecoder().decode(Job.self, from: Data(contentsOf: jobURL.appendingPathComponent(metadataName)))
+        let metadata = jobURL.appendingPathComponent(metadataName)
+        var job = try JSONDecoder().decode(Job.self, from: Data(contentsOf: metadata))
         guard validName(job.name), job.destination.map(validName) ?? true else { throw failure("Invalid import name.") }
         if let bookmark = job.sourceBookmark {
             var stale = false
@@ -224,6 +252,25 @@ enum GameImportStore {
             return destination
         }
         let payload = jobURL.appendingPathComponent("payload")
+        if job.temporaryFile == true, fileManager.fileExists(atPath: payload.path) {
+            guard !cancelled() else { throw CocoaError(.userCancelled) }
+            try fileManager.createDirectory(at: games, withIntermediateDirectories: true)
+            var number = 1
+            while true {
+                let name = uniqueName(job.name, in: games, number: number, isFile: true)
+                let destination = games.appendingPathComponent(name)
+                job.destination = name
+                try JSONEncoder().encode(job).write(to: metadata, options: .atomic)
+                do {
+                    try fileManager.moveItem(at: payload, to: destination)
+                } catch let error as CocoaError where error.code == .fileWriteFileExists {
+                    number += 1
+                    continue
+                }
+                try fileManager.removeItem(at: jobURL)
+                return destination
+            }
+        }
         let oldWork = games.appendingPathComponent(".aether-import-" + jobURL.lastPathComponent)
         if fileManager.fileExists(atPath: payload.path) {
             if fileManager.fileExists(atPath: oldWork.path) { try fileManager.removeItem(at: oldWork) }

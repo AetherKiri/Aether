@@ -1,7 +1,7 @@
 {
   "name": "libarchive",
-  "version": "3.7.7",
-  "port-version": 0,
+  "version": "3.8.11",
+  "port-version": 2,
   "description": "Library for reading and writing streaming archives",
   "homepage": "https://www.libarchive.org",
   "license": null,
@@ -15,5 +15,23 @@
       "name": "vcpkg-cmake",
       "host": true
     }
-  ]
+  ],
+  "features": {
+    "aether-unzip": {
+      "description": "Patched archive readers for the AetherUnzip C API, including encrypted 7z and RAR5",
+      "supports": "osx | ios | android",
+      "dependencies": [
+        "bzip2",
+        "libiconv",
+        "liblzma",
+        "lz4",
+        "zlib",
+        "zstd",
+        {
+          "name": "openssl",
+          "platform": "android"
+        }
+      ]
+    }
+  }
 }

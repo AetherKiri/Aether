@@ -36,6 +36,7 @@ git submodule update --init --recursive --depth 1 \
     packages/AetherMinori \
     packages/AetherCMVS \
     packages/AetherEntisGLS \
+    packages/AetherUnzip \
     packages/AetherSiglus \
     packages/AetherONScripterYuri \
     packages/psdfile \

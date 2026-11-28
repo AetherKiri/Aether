@@ -21,6 +21,13 @@ THIRD-PARTY AND UPSTREAM COMPONENTS
 This distribution includes code from upstream and other projects.
 Their copyright notices and licenses are preserved below.
 
+Aether uses the AetherUnzip core on iOS, macOS and Android. AetherUnzip is
+licensed under GPL-3.0-only. Its source, license, libarchive patches and
+notices are included in the packages/AetherUnzip submodule. The 7z and RAR5
+AES helper notices are in packages/AetherUnzip/third_party/libarchive-aether-helpers.txt.
+Upstream source: https://github.com/AetherKiri/AetherUnzip
+
+
 ----------------------------------------------------------------------------
 Ruffle
 ----------------------------------------------------------------------------

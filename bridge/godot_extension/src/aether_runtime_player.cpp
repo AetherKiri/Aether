@@ -1,3 +1,6 @@
+#if defined(AETHERKIRI_WITH_ARCHIVE_IMPORT)
+void register_aether_archive_reader();
+#endif
 #include "engine_api.h"
 #ifdef AETHERKIRI_WITH_XSYSTEM_TOOLS
 #include "mod_manager.h"
@@ -14615,6 +14618,9 @@ void InitializeAetherRuntime(ModuleInitializationLevel level) {
             ResultToString(shader_result));
     }
     ClassDB::register_class<AetherRuntimePlayer>();
+#if defined(AETHERKIRI_WITH_ARCHIVE_IMPORT)
+    ::register_aether_archive_reader();
+#endif
 #if defined(AETHERKIRI_HOST_FLASH)
     RegisterAetherFlashPlayer();
 #endif

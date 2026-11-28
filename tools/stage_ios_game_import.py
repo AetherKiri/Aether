@@ -88,7 +88,7 @@ def stage(project):
                  if t.get("CFBundleTypeName") != "Aether Game"]
         types.append({"CFBundleTypeName": "Aether Game", "CFBundleTypeRole": "Editor",
                       "LSHandlerRank": "Alternate",
-                      "LSItemContentTypes": ["public.folder", "public.directory", "org.aether.xp3"]})
+                      "LSItemContentTypes": ["public.folder", "public.directory", "public.data", "org.aether.xp3"]})
         info["CFBundleDocumentTypes"] = types
         imported = [t for t in info.get("UTImportedTypeDeclarations", [])
                     if t.get("UTTypeIdentifier") != "org.aether.xp3"]
@@ -116,6 +116,7 @@ def stage(project):
     write_plist(extension_dir / "GameImport.entitlements", {GROUP_KEY: [group]})
     matching = ('ANY $attachment.registeredTypeIdentifiers UTI-CONFORMS-TO "public.directory" OR '
                 'ANY $attachment.registeredTypeIdentifiers UTI-CONFORMS-TO "public.file-url" OR '
+                'ANY $attachment.registeredTypeIdentifiers UTI-CONFORMS-TO "public.data" OR '
                 'ANY $attachment.registeredTypeIdentifiers UTI-CONFORMS-TO "org.aether.xp3"')
     predicate = ('extensionItems.@count > 0 AND SUBQUERY(extensionItems, $item, '
                  '$item.attachments.@count > 0 AND $item.attachments.@count <= 20 AND '

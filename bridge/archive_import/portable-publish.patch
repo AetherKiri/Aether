@@ -1,0 +1,13 @@
+--- extract.c
++++ extract.c
+@@ -8,0 +9 @@
++#include "archive_publish.h"
+@@ -30,7 +31 @@
+-#ifdef __APPLE__
+-    if (!renameatx_np(parent, temporary, parent, name, RENAME_EXCL)) return AU_OK;
+-    if (errno == ENOTSUP || errno == EINVAL)
+-#endif
+-    {
+-        if (!linkat(parent, temporary, parent, name, 0)) return AU_OK;
+-    }
++    if (!aether_archive_rename_exclusive(parent, temporary, parent, name)) return AU_OK;

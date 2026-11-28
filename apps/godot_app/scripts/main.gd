@@ -157,6 +157,48 @@ const STYLE_MODES := [STYLE_DARK, STYLE_CLASSIC, STYLE_WARM_DARK, STYLE_WARM_LIG
 const IOS_UI_SCALE_MODES := ["compact", "comfortable", "standard"]
 const UI_TEXT := {
     LANG_ZH_HANS: {
+        "archive.kind": "压缩包",
+        "archive.import": "导入压缩文件",
+        "archive.extract": "解压",
+        "archive.password": "密码",
+        "archive.inspecting": "正在识别…",
+        "archive.extracting": "正在解压…",
+        "archive.done": "已解压至 ",
+        "archive.bad_password": "密码不正确，请重试。",
+        "archive.unknown": "无法识别此压缩文件。",
+        "archive.damaged": "压缩文件不完整或已损坏。",
+        "archive.missing": "找不到所需的文件，请检查分卷是否齐全。",
+        "archive.no_space": "可用空间不足。",
+        "archive.io": "无法读写文件。请检查压缩包和目标文件夹的访问权限。",
+        "archive.target": "目标位置",
+        "archive.games": "游戏目录",
+        "archive.source": "压缩包所在目录",
+        "archive.documents": "文稿目录",
+        "archive.last": "上次使用的目录",
+        "archive.choose": "选择文件夹…",
+        "archive.unavailable": "无法写入这个位置，请选择本机可访问的文件夹。",
+        "archive.layout": "解压布局",
+        "archive.smart": "智能解压",
+        "archive.direct": "直接解压",
+        "archive.folder": "独立文件夹",
+        "archive.strip": "去除顶层目录",
+        "archive.smart_help": "自动整理游戏目录和重复嵌套，单个普通文件直接放入目标位置。",
+        "archive.direct_help": "保留包内路径，将内容写入目标位置。",
+        "archive.folder_help": "新建与压缩包同名的文件夹，保留包内结构。",
+        "archive.strip_help": "移除最外层目录，将其中的内容直接写入目标位置。",
+        "archive.policy": "同名文件",
+        "archive.keep": "保留两者",
+        "archive.skip": "跳过",
+        "archive.stop": "停止解压",
+        "archive.replace": "替换",
+        "archive.replace_warning": "目标位置的同名文件会被覆盖。",
+        "archive.numbered": "新建文件夹如遇重名会自动编号。",
+        "archive.preview": "预计输出位置",
+        "archive.nested": "解开内层压缩包后确定最终游戏文件夹。",
+        "archive.confirm_replace": "解压并替换",
+        "archive.unlock": "读取目录",
+        "archive.conflict": "遇到同名文件，已停止解压。",
+        "archive.retry": "重试",
         "renpy.menu": "菜单",
         "renpy.keys": "虚拟按键",
         "renpy.loading": "正在启动 Ren’Py…",
@@ -601,6 +643,48 @@ const UI_TEXT := {
         "loading.translation_model_detail": "首次加载可能出现短暂卡顿，请耐心等待。"
     },
     LANG_ZH_HANT: {
+        "archive.kind": "壓縮檔",
+        "archive.import": "匯入壓縮檔",
+        "archive.extract": "解壓縮",
+        "archive.password": "密碼",
+        "archive.inspecting": "正在辨識…",
+        "archive.extracting": "正在解壓縮…",
+        "archive.done": "已解壓縮至 ",
+        "archive.bad_password": "密碼不正確，請重試。",
+        "archive.unknown": "無法辨識此壓縮檔。",
+        "archive.damaged": "壓縮檔不完整或已損毀。",
+        "archive.missing": "找不到所需的檔案，請確認分卷是否齊全。",
+        "archive.no_space": "可用空間不足。",
+        "archive.io": "無法讀寫檔案。請檢查壓縮檔與目標資料夾的存取權限。",
+        "archive.target": "目標位置",
+        "archive.games": "遊戲目錄",
+        "archive.source": "壓縮檔所在目錄",
+        "archive.documents": "文件目錄",
+        "archive.last": "上次使用的目錄",
+        "archive.choose": "選擇檔案夾…",
+        "archive.unavailable": "無法寫入此位置，請選擇本機可存取的檔案夾。",
+        "archive.layout": "解壓佈局",
+        "archive.smart": "智慧解壓",
+        "archive.direct": "直接解壓",
+        "archive.folder": "獨立檔案夾",
+        "archive.strip": "移除頂層目錄",
+        "archive.smart_help": "自動整理遊戲目錄與重複巢狀結構，單一一般檔案直接放入目標位置。",
+        "archive.direct_help": "保留封裝內路徑，將內容寫入目標位置。",
+        "archive.folder_help": "建立與壓縮檔同名的檔案夾，保留內部結構。",
+        "archive.strip_help": "移除最外層目錄，將其中內容直接寫入目標位置。",
+        "archive.policy": "同名檔案",
+        "archive.keep": "保留兩者",
+        "archive.skip": "略過",
+        "archive.stop": "停止解壓",
+        "archive.replace": "取代",
+        "archive.replace_warning": "目標位置的同名檔案將被覆寫。",
+        "archive.numbered": "新建檔案夾若遇同名將自動編號。",
+        "archive.preview": "預計輸出位置",
+        "archive.nested": "解開內層壓縮檔後確定最終遊戲檔案夾。",
+        "archive.confirm_replace": "解壓並取代",
+        "archive.unlock": "讀取目錄",
+        "archive.conflict": "遇到同名檔案，已停止解壓。",
+        "archive.retry": "重試",
         "renpy.menu": "選單",
         "renpy.keys": "虛擬按鍵",
         "renpy.loading": "正在啟動 Ren’Py…",
@@ -1043,6 +1127,48 @@ const UI_TEXT := {
         "loading.translation_model_detail": "首次載入可能會短暫停頓，請耐心等候。"
     },
     LANG_EN: {
+        "archive.kind": "Archive",
+        "archive.import": "Import archive",
+        "archive.extract": "Extract",
+        "archive.password": "Password",
+        "archive.inspecting": "Identifying archive…",
+        "archive.extracting": "Extracting…",
+        "archive.done": "Extracted to ",
+        "archive.bad_password": "Incorrect password. Try again.",
+        "archive.unknown": "Unrecognized archive format.",
+        "archive.damaged": "The archive is incomplete or damaged.",
+        "archive.missing": "A required file is missing. Check that all volumes are present.",
+        "archive.no_space": "There is not enough free space.",
+        "archive.io": "Couldn’t read or write a file. Check access to the archive and destination folder.",
+        "archive.target": "Destination",
+        "archive.games": "Games",
+        "archive.source": "Archive’s folder",
+        "archive.documents": "Documents",
+        "archive.last": "Last used folder",
+        "archive.choose": "Choose folder…",
+        "archive.unavailable": "Choose a writable folder on this device.",
+        "archive.layout": "Layout",
+        "archive.smart": "Smart extraction",
+        "archive.direct": "Extract directly",
+        "archive.folder": "Separate folder",
+        "archive.strip": "Remove top folder",
+        "archive.smart_help": "Organize the game folder and remove redundant wrappers. A single ordinary file goes directly into the destination.",
+        "archive.direct_help": "Preserve archive paths inside the destination.",
+        "archive.folder_help": "Create a folder named after the archive and preserve its contents.",
+        "archive.strip_help": "Remove the shared top folder and extract its contents directly.",
+        "archive.policy": "Existing files",
+        "archive.keep": "Keep both",
+        "archive.skip": "Skip",
+        "archive.stop": "Stop",
+        "archive.replace": "Replace",
+        "archive.replace_warning": "Existing files with the same name will be overwritten.",
+        "archive.numbered": "New folders receive a number if the name is already in use.",
+        "archive.preview": "Expected output",
+        "archive.nested": "The game folder name is determined after opening the inner archive.",
+        "archive.confirm_replace": "Extract and replace",
+        "archive.unlock": "Read archive",
+        "archive.conflict": "An existing file conflicts with this extraction.",
+        "archive.retry": "Retry",
         "renpy.menu": "Menu",
         "renpy.keys": "Virtual keys",
         "renpy.loading": "Starting Ren’Py…",
@@ -1487,6 +1613,48 @@ You can find it any time under Settings → QQ Group.",
         "loading.translation_model_detail": "The first load may pause briefly. Please wait."
     },
     LANG_JA: {
+        "archive.kind": "アーカイブ",
+        "archive.import": "圧縮ファイルを追加",
+        "archive.extract": "展開",
+        "archive.password": "パスワード",
+        "archive.inspecting": "形式を確認中…",
+        "archive.extracting": "展開中…",
+        "archive.done": "展開先 ",
+        "archive.bad_password": "パスワードが違います。もう一度入力してください。",
+        "archive.unknown": "書庫形式を認識できません。",
+        "archive.damaged": "書庫が不完全または破損しています。",
+        "archive.missing": "必要なファイルがありません。分割ファイルがすべて揃っているか確認してください。",
+        "archive.no_space": "空き容量が足りません。",
+        "archive.io": "ファイルを読み書きできません。アーカイブと展開先のアクセス権を確認してください。",
+        "archive.target": "展開先",
+        "archive.games": "ゲームフォルダー",
+        "archive.source": "アーカイブのフォルダー",
+        "archive.documents": "書類",
+        "archive.last": "前回のフォルダー",
+        "archive.choose": "フォルダーを選択…",
+        "archive.unavailable": "この端末で書き込めるフォルダーを選んでください。",
+        "archive.layout": "展開方法",
+        "archive.smart": "スマート展開",
+        "archive.direct": "直接展開",
+        "archive.folder": "個別のフォルダー",
+        "archive.strip": "最上位フォルダーを除く",
+        "archive.smart_help": "ゲームフォルダーの重複した階層を整理します。単一の通常ファイルは展開先に直接置きます。",
+        "archive.direct_help": "アーカイブ内の構造を保って展開します。",
+        "archive.folder_help": "アーカイブ名のフォルダーを作り、中の構造を保ちます。",
+        "archive.strip_help": "共通の最上位フォルダーを除き、中身を直接展開します。",
+        "archive.policy": "同名ファイル",
+        "archive.keep": "両方残す",
+        "archive.skip": "スキップ",
+        "archive.stop": "停止",
+        "archive.replace": "置き換える",
+        "archive.replace_warning": "展開先の同名ファイルを上書きします。",
+        "archive.numbered": "新規フォルダーは同名の場合に連番が付きます。",
+        "archive.preview": "出力先のプレビュー",
+        "archive.nested": "内側のアーカイブを開くとゲームフォルダー名が分かります。",
+        "archive.confirm_replace": "展開して置き換える",
+        "archive.unlock": "内容を読み込む",
+        "archive.conflict": "同名ファイルがあるため展開を停止しました。",
+        "archive.retry": "再試行",
         "renpy.menu": "メニュー",
         "renpy.keys": "仮想キー",
         "renpy.loading": "Ren’Py を起動中…",
@@ -1896,6 +2064,48 @@ You can find it any time under Settings → QQ Group.",
         "loading.translation_model_detail": "初回の読み込みは一時的に停止することがあります。しばらくお待ちください。"
     },
     LANG_KO: {
+        "archive.kind": "압축 파일",
+        "archive.import": "압축 파일 가져오기",
+        "archive.extract": "압축 풀기",
+        "archive.password": "암호",
+        "archive.inspecting": "형식 확인 중…",
+        "archive.extracting": "압축 해제 중…",
+        "archive.done": "압축 해제 위치 ",
+        "archive.bad_password": "비밀번호가 올바르지 않습니다. 다시 입력해 주세요.",
+        "archive.unknown": "압축 형식을 인식할 수 없습니다.",
+        "archive.damaged": "압축 파일이 불완전하거나 손상되었습니다.",
+        "archive.missing": "필요한 파일이 없습니다. 분할 파일이 모두 있는지 확인해 주세요.",
+        "archive.no_space": "저장 공간이 부족합니다.",
+        "archive.io": "파일을 읽거나 쓸 수 없습니다. 압축 파일과 대상 폴더의 접근 권한을 확인하세요.",
+        "archive.target": "대상 폴더",
+        "archive.games": "게임 폴더",
+        "archive.source": "압축 파일 폴더",
+        "archive.documents": "문서",
+        "archive.last": "마지막 폴더",
+        "archive.choose": "폴더 선택…",
+        "archive.unavailable": "이 기기에서 쓸 수 있는 폴더를 선택하세요.",
+        "archive.layout": "압축 해제 방식",
+        "archive.smart": "스마트 압축 해제",
+        "archive.direct": "바로 풀기",
+        "archive.folder": "별도 폴더",
+        "archive.strip": "최상위 폴더 제거",
+        "archive.smart_help": "게임 폴더의 중복된 계층을 정리합니다. 일반 파일 하나는 대상 폴더에 바로 풉니다.",
+        "archive.direct_help": "대상 폴더에 압축 파일의 경로를 유지합니다.",
+        "archive.folder_help": "압축 파일 이름으로 폴더를 만들고 내부 구조를 유지합니다.",
+        "archive.strip_help": "공통 최상위 폴더를 제거하고 내용을 바로 풉니다.",
+        "archive.policy": "같은 이름의 파일",
+        "archive.keep": "둘 다 유지",
+        "archive.skip": "건너뛰기",
+        "archive.stop": "중지",
+        "archive.replace": "바꾸기",
+        "archive.replace_warning": "대상 폴더의 같은 이름 파일을 덮어씁니다.",
+        "archive.numbered": "새 폴더의 이름이 겹치면 번호를 붙입니다.",
+        "archive.preview": "예상 출력 위치",
+        "archive.nested": "내부 압축 파일을 연 후 게임 폴더 이름이 정해집니다.",
+        "archive.confirm_replace": "압축 해제 및 바꾸기",
+        "archive.unlock": "목록 읽기",
+        "archive.conflict": "같은 이름의 파일이 있어 압축 해제를 중지했습니다.",
+        "archive.retry": "다시 시도",
         "renpy.menu": "메뉴",
         "renpy.keys": "가상 키",
         "renpy.loading": "Ren’Py 시작 중…",
@@ -2305,6 +2515,48 @@ You can find it any time under Settings → QQ Group.",
         "loading.translation_model_detail": "처음 불러올 때 잠시 멈출 수 있습니다. 기다려 주세요."
     },
     LANG_ES: {
+        "archive.kind": "Archivo comprimido",
+        "archive.import": "Importar archivo comprimido",
+        "archive.extract": "Extraer",
+        "archive.password": "Contraseña",
+        "archive.inspecting": "Identificando el archivo…",
+        "archive.extracting": "Extrayendo…",
+        "archive.done": "Extraído en ",
+        "archive.bad_password": "Contraseña incorrecta. Vuelve a intentarlo.",
+        "archive.unknown": "No se reconoce el formato del archivo.",
+        "archive.damaged": "El archivo está incompleto o dañado.",
+        "archive.missing": "Falta un archivo necesario. Comprueba que estén todos los volúmenes.",
+        "archive.no_space": "No hay suficiente espacio libre.",
+        "archive.io": "No se pudo leer o escribir un archivo. Comprueba el acceso al archivo y a la carpeta de destino.",
+        "archive.target": "Destino",
+        "archive.games": "Juegos",
+        "archive.source": "Carpeta del archivo",
+        "archive.documents": "Documentos",
+        "archive.last": "Última carpeta",
+        "archive.choose": "Elegir carpeta…",
+        "archive.unavailable": "Elige una carpeta del dispositivo con permiso de escritura.",
+        "archive.layout": "Organización",
+        "archive.smart": "Extracción inteligente",
+        "archive.direct": "Extraer directamente",
+        "archive.folder": "Carpeta independiente",
+        "archive.strip": "Quitar carpeta superior",
+        "archive.smart_help": "Organiza la carpeta del juego y elimina niveles redundantes. Un único archivo normal se extrae directamente.",
+        "archive.direct_help": "Conserva las rutas del archivo en el destino.",
+        "archive.folder_help": "Crea una carpeta con el nombre del archivo y conserva su estructura.",
+        "archive.strip_help": "Quita la carpeta superior común y extrae su contenido directamente.",
+        "archive.policy": "Archivos existentes",
+        "archive.keep": "Conservar ambos",
+        "archive.skip": "Omitir",
+        "archive.stop": "Detener",
+        "archive.replace": "Reemplazar",
+        "archive.replace_warning": "Los archivos con el mismo nombre se sobrescribirán.",
+        "archive.numbered": "Si la carpeta nueva ya existe, se añade un número.",
+        "archive.preview": "Ruta prevista",
+        "archive.nested": "El nombre de la carpeta se determina al abrir el archivo interior.",
+        "archive.confirm_replace": "Extraer y reemplazar",
+        "archive.unlock": "Leer archivo",
+        "archive.conflict": "Un archivo existente impide la extracción.",
+        "archive.retry": "Reintentar",
         "renpy.menu": "Menú",
         "renpy.keys": "Teclas virtuales",
         "renpy.loading": "Iniciando Ren’Py…",
@@ -2982,6 +3234,8 @@ var hero_source_texture: Texture2D
 var hero_overlay: Control
 var hero_hidden_target: CanvasItem
 var hero_transition_id := 0
+const ARCHIVE_IMPORT_SERVICE := preload("res://scripts/archive_import.gd")
+var archive_import: ARCHIVE_IMPORT_SERVICE
 var known_games: Array[Dictionary] = []
 var game_library_loading := false
 var vndb_cover_queue: Array[Dictionary] = []
@@ -6198,7 +6452,7 @@ func _sync_home_subtitle_text() -> void:
     if not is_instance_valid(home_subtitle_label):
         return
     var searching := not _current_home_search_query().is_empty()
-    var total := known_games.size()
+    var total := known_games.size() + archive_import.entries.size()
     if home_library_mode != "game":
         total = _active_file_library().search_entries().size() if searching else _active_file_library().entries.size()
     var visible := home_filtered_video_count if home_library_mode != "game" else home_filtered_game_count
@@ -11165,8 +11419,6 @@ func _on_refresh_or_import() -> void:
         return
     if OS.get_name() == "Android":
         _android_storage_permission_log("add_game_click")
-    if not _ensure_android_storage_permission_for_import():
-        return
     _show_import_picker()
 
 func _show_import_picker() -> void:
@@ -11177,6 +11429,10 @@ func _show_import_picker() -> void:
         _dismiss_modal(func(): _open_import_dialog())
     )
     box.add_child(dir_button)
+    if archive_import.available():
+        var file_button := _detail_action(ICON_PAGE, _t("archive.import"))
+        file_button.pressed.connect(func(): _dismiss_modal(func(): _open_import_dialog(true)))
+        box.add_child(file_button)
     var cancel := _secondary_dialog_button(_t("dialog.cancel"), Vector2(108, 44))
     cancel.size_flags_horizontal = Control.SIZE_SHRINK_END
     cancel.pressed.connect(_dismiss_modal)
@@ -11429,12 +11685,13 @@ func _show_web_import_picker() -> void:
     cancel.pressed.connect(_dismiss_modal)
     box.add_child(cancel)
 
-func _open_import_dialog() -> void:
-    if not _ensure_android_storage_permission_for_import():
+func _open_import_dialog(archive: bool = false) -> void:
+    # The system picker grants access to a selected archive, including cloud documents.
+    if not archive and not _ensure_android_storage_permission_for_import():
         return
     var dialog := _create_file_dialog(
-        _t("dialog.select_game_dir"),
-        FileDialog.FILE_MODE_OPEN_DIR,
+        _t("archive.import" if archive else "dialog.select_game_dir"),
+        FileDialog.FILE_MODE_OPEN_FILE if archive else FileDialog.FILE_MODE_OPEN_DIR,
         PackedStringArray()
     )
     if OS.get_name() == "macOS":
@@ -11446,11 +11703,148 @@ func _open_import_dialog() -> void:
             _remember_import_directory(path)
     )
     dialog.file_selected.connect(func(path: String):
-        if _add_game_path(path):
+        var imported := archive_import.import_file(path) if archive else _add_game_path(path)
+        if imported:
             _remember_import_directory(path)
     )
     add_child(dialog)
     dialog.popup_centered(Vector2i(900, 640))
+
+func _on_archive_extracted(game_root: String) -> void:
+    if not game_root.is_empty() and _path_exists(game_root) and game_root != archive_import.games_folder():
+        var games := _load_game_list()
+        var game: Dictionary = {}
+        for entry in games:
+            if String(entry.path) == game_root:
+                game = entry
+                break
+        if game.is_empty():
+            game = _game_info_from_path(game_root)
+            games.append(game)
+        if FileAccess.file_exists(game_root):
+            game["archiveFileEntry"] = true
+        var library := archive_import.games_folder().trim_suffix("/") + "/"
+        var owned := String(archive_import.state.get("owned_root", ""))
+        if owned.begins_with(library) and (game_root == owned or game_root.begins_with(owned + "/")):
+            game["archiveOwnedRelative"] = owned.trim_prefix(library)
+        _save_game_list(_dedupe_games(games))
+    _refresh_games()
+
+func _archive_choice(parent: VBoxContainer, key: String, selected: Callable) -> OptionButton:
+    var row := HBoxContainer.new()
+    parent.add_child(row)
+    var label := _dialog_body_label(_t("archive." + key))
+    label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+    row.add_child(label)
+    var choice := OptionButton.new()
+    choice.accessibility_name = label.text
+    choice.fit_to_longest_item = false
+    choice.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+    row.add_child(choice)
+    choice.item_selected.connect(func(index: int): selected.call(choice.get_item_metadata(index)))
+    return choice
+
+func _archive_choices(choice: OptionButton, values: Dictionary, current: String) -> void:
+    if choice.get_meta("choices", {}) != values:
+        choice.clear()
+        for value in values:
+            choice.add_item(String(values[value]))
+            choice.set_item_metadata(choice.item_count - 1, value)
+        choice.set_meta("choices", values)
+    choice.select(values.keys().find(current))
+
+func _open_classic_archive(path: String) -> void:
+    if archive_import.state.phase == "importing":
+        return
+    var dialog := ConfirmationDialog.new()
+    dialog.title = _t("archive.extract")
+    dialog.dialog_hide_on_ok = false
+    dialog.cancel_button_text = _t("dialog.cancel")
+    var scroll := ScrollContainer.new()
+    scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+    dialog.add_child(scroll)
+    var content := VBoxContainer.new()
+    content.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+    scroll.add_child(content)
+    var label := _dialog_body_label(path.get_file())
+    content.add_child(label)
+    var form := VBoxContainer.new()
+    content.add_child(form)
+    var select_dir := func(dir: String):
+        archive_import.state.message = ""
+        if not archive_import.choose_destination(dir):
+            archive_import.state.message = _t("archive.unavailable")
+            archive_import.changed.emit()
+    var location := _archive_choice(form, "target", func(dir: String):
+        if dir == "@choose":
+            archive_import.changed.emit()
+            archive_import.pick_folder(select_dir)
+        else:
+            select_dir.call(dir)
+    )
+    var layout := _archive_choice(form, "layout", archive_import.set_layout)
+    var conflict := _archive_choice(form, "policy", archive_import.set_conflict)
+    var preview := _dialog_body_label("")
+    form.add_child(preview)
+    var password := LineEdit.new()
+    password.secret = true
+    password.placeholder_text = _t("archive.password")
+    content.add_child(password)
+    var update := func():
+        var s: Dictionary = archive_import.state
+        var phase := String(s.phase)
+        password.visible = phase == "password"
+        form.visible = phase in ["ready", "password"]
+        if form.visible:
+            _archive_choices(location, archive_import.location_options(), archive_import.destination_dir)
+            var modes := {}
+            for key in archive_import.LAYOUTS:
+                if key != "strip" or s.get("placement", {}).get("can_strip", false):
+                    modes[key] = _t("archive." + key)
+            _archive_choices(layout, modes, archive_import.layout)
+            var policies := {}
+            for key in archive_import.CONFLICTS:
+                policies[key] = _t("archive." + key)
+            _archive_choices(conflict, policies, archive_import.conflict)
+            preview.text = _t("archive.preview") + "\n" + archive_import.output_preview()
+            if archive_import.conflict == "replace":
+                preview.text += "\n" + _t("archive.replace_warning")
+        dialog.get_ok_button().disabled = phase not in ["password", "ready", "done", "error"] or (password.visible and password.text.is_empty())
+        dialog.ok_button_text = _t("archive.confirm_replace" if archive_import.conflict == "replace" else "archive.extract")
+        match phase:
+            "inspecting": label.text = _t("archive.inspecting")
+            "extracting": label.text = _t("archive.extracting") + (" %d%%" % roundi(s.progress * 100) if s.progress >= 0 else "")
+            "done":
+                label.text = _t("archive.done") + String(s.destination)
+                dialog.ok_button_text = _t("dialog.ok")
+            "idle": dialog.hide()
+            _:
+                label.text = "%s\n%s" % [s.name, s.message if not String(s.message).is_empty() else s.format]
+                if phase == "password" and s.get("locked_catalog", false):
+                    dialog.ok_button_text = _t("archive.unlock")
+                elif phase == "error":
+                    dialog.ok_button_text = _t("archive.retry")
+    archive_import.changed.connect(update)
+    password.text_changed.connect(func(_text: String): update.call())
+    dialog.confirmed.connect(func():
+        if archive_import.state.phase == "done":
+            dialog.hide()
+        elif archive_import.state.phase == "error":
+            archive_import.inspect(path)
+        else:
+            var value := password.text
+            password.clear()
+            archive_import.extract(value)
+    )
+    dialog.visibility_changed.connect(func():
+        if not dialog.visible:
+            archive_import.changed.disconnect(update)
+            archive_import.dismiss()
+            dialog.queue_free()
+    )
+    add_child(dialog)
+    dialog.popup_centered_clamped(Vector2i(470, 400), 0.9)
+    archive_import.inspect(path)
 
 func _load_last_import_directory() -> String:
     var cfg := ConfigFile.new()
@@ -11473,6 +11867,7 @@ func _game_library_is_loading() -> bool:
     return game_library_loading and known_games.is_empty()
 
 func _refresh_games() -> void:
+    archive_import.refresh()
     var initial_refresh := game_library_loading
     var initial_games := known_games.duplicate(true) if initial_refresh else []
     var loaded_games := _load_game_list()
@@ -11512,7 +11907,8 @@ func _rebuild_game_cards(animate_cards: bool = false) -> void:
     for game in known_games:
         if _game_matches_home_search(game, query):
             filtered_games.append(game)
-    home_filtered_game_count = filtered_games.size()
+    var items := _library_with_archives(filtered_games, query)
+    home_filtered_game_count = items.size()
     var astryx := _astryx_shell_controller()
     if astryx != null:
         astryx.library_revision += 1
@@ -11522,11 +11918,11 @@ func _rebuild_game_cards(animate_cards: bool = false) -> void:
     for child in game_list.get_children():
         game_list.remove_child(child)
         child.queue_free()
-    for game in filtered_games:
-        game_list.add_child(_game_card(game))
-    if animate_cards and not filtered_games.is_empty():
+    for item in items:
+        game_list.add_child(_game_card(item))
+    if animate_cards and home_filtered_game_count > 0:
         home_cards_animated_once = true
-    if not filtered_games.is_empty():
+    if home_filtered_game_count > 0:
         call_deferred("_cascade_grid", game_list)
     _sync_home_header_text()
     _apply_home_library_visibility()
@@ -12238,11 +12634,18 @@ func _scan_ios_games_dir(existing: Array[Dictionary]) -> Array[Dictionary]:
     var by_entry := _games_by_library_entry(existing, root)
     var normalized_root := root.simplify_path().trim_suffix("/")
     var next: Array[Dictionary] = []
+    var archive_parents := {}
     for game in existing:
         var existing_path := String(game.get("path", "")).simplify_path()
-        if not existing_path.begins_with(normalized_root + "/") \
-                and _path_exists(existing_path):
+        if not _path_exists(existing_path):
+            continue
+        if not existing_path.begins_with(normalized_root + "/"):
             next.append(game)
+        elif game.has("archiveOwnedRelative"):
+            var relative := existing_path.trim_prefix(normalized_root + "/")
+            if relative.contains("/") or FileAccess.file_exists(existing_path):
+                next.append(game)
+                archive_parents[relative.get_slice("/", 0)] = true
     var dir := DirAccess.open(root)
     if dir == null:
         return next
@@ -12251,7 +12654,7 @@ func _scan_ios_games_dir(existing: Array[Dictionary]) -> Array[Dictionary]:
     while not entry.is_empty():
         if not entry.begins_with("."):
             var path := root.path_join(entry)
-            if (dir.current_is_dir() or entry.to_lower().ends_with(".xp3")) and not FileAccess.file_exists(path.path_join("aether-import-in-progress.json")):
+            if dir.current_is_dir() and (not archive_parents.has(entry) or by_entry.has(entry)) and not FileAccess.file_exists(path.path_join("aether-import-in-progress.json")):
                 var game: Dictionary = by_entry.get(entry, _game_info_from_path(path))
                 game["path"] = path
                 next.append(game)
@@ -12264,6 +12667,8 @@ func _games_by_library_entry(existing: Array[Dictionary], root: String) -> Dicti
     for game in existing:
         var existing_path := String(game.get("path", "")).simplify_path()
         if existing_path.begins_with(normalized_root + "/"):
+            if game.has("archiveOwnedRelative") and existing_path.get_base_dir() != normalized_root:
+                continue
             by_entry[existing_path.get_file()] = game
     return by_entry
 
@@ -12368,6 +12773,16 @@ func _dedupe_games(games: Array[Dictionary]) -> Array[Dictionary]:
         seen[path] = true
         result.append(game)
     return result
+
+func _library_with_archives(games: Array[Dictionary], query: String) -> Array[Dictionary]:
+    if archive_import == null or archive_import.entries.is_empty():
+        return games
+    var items := games.duplicate()
+    var needle := query.strip_edges()
+    for source in archive_import.entries:
+        if needle.is_empty() or String(source.name).containsn(needle):
+            items.append(source.merged({"archive_source": true}))
+    return _sorted_games(items) if items.size() > games.size() else games
 
 func _sorted_games(games: Array[Dictionary]) -> Array[Dictionary]:
     games.sort_custom(func(a: Dictionary, b: Dictionary) -> bool:
@@ -12961,6 +13376,11 @@ func _remove_game(path: String) -> void:
             return
     elif _game_removal_platform() == "iOS":
         var resolved := _resolve_game_path(path)
+        var owned := ""
+        for entry in _load_game_list():
+            if String(entry.path) == path:
+                owned = String(entry.get("archiveOwnedRelative", ""))
+                break
         game_storage_busy = true
         await _game_save_sync().cancel_for_storage()
         if player != null and player.is_initialized():
@@ -12969,7 +13389,7 @@ func _remove_game(path: String) -> void:
         var locations := _game_cache_paths({"path": path})
         var completed := {"done": false, "error": OK}
         _game_cache_jobs().submit(func():
-            return {"error": preload("res://scripts/game_cache.gd").delete_with_cache(resolved, "user://Games", locations)}
+            return {"error": preload("res://scripts/game_cache.gd").delete_with_cache(resolved, "user://Games", locations, owned)}
         , func(value: Dictionary):
             completed.error = value.error
             completed.done = true
@@ -12981,7 +13401,7 @@ func _remove_game(path: String) -> void:
         if result != OK:
             _show_message(_t("message.game_delete_failed", [error_string(result)]))
             return
-        deleted_directory = GameLibraryStorage.deletion_target(resolved, "user://Games")
+        deleted_directory = GameLibraryStorage.deletion_target(resolved, "user://Games", owned)
     var games := _load_game_list()
     var next: Array[Dictionary] = []
     for game in games:
@@ -13000,6 +13420,7 @@ func _remove_game(path: String) -> void:
         _show_message(_t("message.builtin_delete_failed", [error_string(builtin_delete_result)]))
 
 func _game_card(game: Dictionary) -> Button:
+    var archive := bool(game.get("archive_source", false))
     var button := Button.new()
     button.custom_minimum_size = _home_card_minimum_size(home_compact_layout)
     button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -13007,13 +13428,24 @@ func _game_card(game: Dictionary) -> Button:
     button.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
     button.text = ""
     _style_home_card_button(button, home_compact_layout)
-    button.set_meta("game_path", String(game.get("path", "")))
-    button.pressed.connect(func(): _open_game_detail_with_iap(game, button))
-    var tint := _cover_tint(game)
-    if home_compact_layout:
-        _build_compact_game_card(button, game)
+    var poster: Control
+    var caption: VBoxContainer
+    var tint: Color = ui_tokens.accent
+    if archive:
+        button.accessibility_name = String(game.name)
+        button.pressed.connect(_open_classic_archive.bind(String(game.path)))
+        poster = _card_poster(button, {}, "res://assets/ui/astryx/archive.svg")
+        caption = _card_caption(button, String(game.name), String.humanize_size(int(game.size)), _t("archive.kind"))
     else:
-        _build_desktop_game_card(button, game)
+        button.set_meta("game_path", String(game.get("path", "")))
+        button.pressed.connect(func(): _open_game_detail_with_iap(game, button))
+        tint = _cover_tint(game)
+        poster = _card_poster(button, game, ICON_GAMEPAD)
+        caption = _card_caption(button, _game_display_title(game), _game_subtitle(game), _game_type_label(String(game.get("type", "Directory"))))
+    if home_compact_layout:
+        _build_compact_game_card(button, poster, caption)
+    else:
+        _build_desktop_game_card(button, poster, caption)
     _bind_card_motion(button, tint)
     return button
 
@@ -13034,19 +13466,17 @@ func _style_home_card_button(button: Button, compact: bool) -> void:
 # play history underneath. Hover lifts the poster, zooms the art and slides a
 # signal-colour bar in under the title.
 
-func _build_desktop_game_card(button: Button, game: Dictionary) -> Control:
+func _build_desktop_game_card(button: Button, poster: Control, caption: VBoxContainer) -> void:
     var column := VBoxContainer.new()
     column.mouse_filter = Control.MOUSE_FILTER_IGNORE
     column.set_anchors_preset(Control.PRESET_FULL_RECT)
     column.add_theme_constant_override("separation", 10)
     button.add_child(column)
-    var poster := _card_poster(button, game, ICON_GAMEPAD)
     poster.size_flags_vertical = Control.SIZE_EXPAND_FILL
     column.add_child(poster)
-    column.add_child(_card_caption(button, _game_display_title(game), _game_subtitle(game), _game_type_label(String(game.get("type", "Directory")))))
-    return poster
+    column.add_child(caption)
 
-func _build_compact_game_card(button: Button, game: Dictionary) -> void:
+func _build_compact_game_card(button: Button, poster: Control, caption: VBoxContainer) -> void:
     var row := HBoxContainer.new()
     row.mouse_filter = Control.MOUSE_FILTER_IGNORE
     row.set_anchors_preset(Control.PRESET_FULL_RECT)
@@ -13056,10 +13486,8 @@ func _build_compact_game_card(button: Button, game: Dictionary) -> void:
     row.offset_bottom = -8
     row.add_theme_constant_override("separation", 14)
     button.add_child(row)
-    var poster := _card_poster(button, game, ICON_GAMEPAD)
     poster.custom_minimum_size = Vector2(HOME_ROW_COVER_WIDTH, 0)
     row.add_child(poster)
-    var caption := _card_caption(button, _game_display_title(game), _game_subtitle(game), _game_type_label(String(game.get("type", "Directory"))))
     caption.size_flags_horizontal = Control.SIZE_EXPAND_FILL
     caption.alignment = BoxContainer.ALIGNMENT_CENTER
     row.add_child(caption)
@@ -13665,6 +14093,10 @@ func _return_to_library_after_runtime_exit() -> void:
     runtime_exit_cleanup_pending = false
 
 func _ready() -> void:
+    archive_import = ARCHIVE_IMPORT_SERVICE.new()
+    add_child(archive_import)
+    archive_import.extracted.connect(_on_archive_extracted)
+    archive_import.entries_changed.connect(_rebuild_game_cards)
     var vndb_resolver := VNDBCoverResolver.new()
     vndb_resolver.name = "VNDBCoverResolver"
     add_child(vndb_resolver)

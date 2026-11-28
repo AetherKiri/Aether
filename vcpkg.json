@@ -74,6 +74,15 @@
     "jxrlib",
     "libarchive",
     {
+      "name": "libarchive",
+      "features": ["aether-unzip"],
+      "platform": "osx | ios | android"
+    },
+    {
+      "name": "brotli",
+      "platform": "osx | ios | android"
+    },
+    {
       "name": "libb2",
       "platform": "osx"
     },

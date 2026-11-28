@@ -104,6 +104,7 @@ func host_state() -> Dictionary:
             and not app.game_view.visible and not app.viewport.visible,
         "route": app.shell_route,
         "library_mode": app.home_library_mode,
+        "window_mode": int(app.get_window().mode) if app.is_inside_tree() and DisplayServer.has_feature(DisplayServer.FEATURE_SUBWINDOWS) else -1,
         "game_running": app.game_running,
         "frame_texture_cleared": app.viewport.texture == null,
         "engine_initialized": app.player != null and app.player.is_initialized(),
@@ -147,14 +148,22 @@ func launch_from_library(game_path: String) -> bool:
         return false
     return await app._probe_wait_startup(config)
 
+func present_for_readback() -> void:
+    app.queue_redraw()
+    if OS.get_name() == "macOS":
+        # A covered macOS window can keep processing input without another automatic draw.
+        await app.get_tree().process_frame
+        RenderingServer.force_draw(true)
+    else:
+        await RenderingServer.frame_post_draw
+
 func check_frame(action: Dictionary, label: String) -> bool:
     if not app.game_running or not app.player.is_initialized() or app.viewport.texture == null:
         record({"event": "failed", "label": label, "reason": "game frame unavailable", "state": state()})
         return false
     # Read the actual Godot output after presentation as well as the provider
     # pixels. Only numerical evidence and hashes are saved, never images.
-    app.queue_redraw()
-    await RenderingServer.frame_post_draw
+    await present_for_readback()
     var frame: Dictionary = app.player.read_frame_rgba()
     var frame_source := str(action.get("frame_source", "provider"))
     var media: Dictionary = {}
@@ -229,8 +238,7 @@ func sample_frame_region(action: Dictionary, label: String) -> bool:
     var region := Rect2i(int(coords[0]), int(coords[1]), int(coords[2]), int(coords[3]))
     var measured := {}
     for i in range(frames):
-        app.queue_redraw()
-        await RenderingServer.frame_post_draw
+        await present_for_readback()
         if not app.game_running or app.viewport.texture == null:
             record({"event": "failed", "label": label, "reason": "presentation unavailable", "frame": i})
             return false

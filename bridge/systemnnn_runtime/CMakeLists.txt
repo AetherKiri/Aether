@@ -1,0 +1,21 @@
+set(_systemnnn_dir "${CMAKE_SOURCE_DIR}/packages/AetherSystemNNN")
+if(NOT EXISTS "${_systemnnn_dir}/platform/scene/CMakeLists.txt")
+    message(FATAL_ERROR "Initialize the packages/AetherSystemNNN submodule to enable SystemNNN")
+endif()
+
+# Limit the upstream test and tool configuration to this directory.
+set(BUILD_TESTING OFF)
+set(CMAKE_POSITION_INDEPENDENT_CODE ON)
+set(NNN_USE_SYSTEM_IMAGE_LIBS ON)
+add_subdirectory("${_systemnnn_dir}/platform/scene" emberfall EXCLUDE_FROM_ALL)
+add_subdirectory("${_systemnnn_dir}/platform/sdl" sdl EXCLUDE_FROM_ALL)
+find_package(nlohmann_json CONFIG REQUIRED)
+add_library(aether_systemnnn_runtime STATIC src/systemnnn_runtime.cpp)
+target_include_directories(aether_systemnnn_runtime PUBLIC include)
+target_compile_features(aether_systemnnn_runtime PRIVATE cxx_std_17)
+target_link_libraries(aether_systemnnn_runtime PRIVATE engine_api emberfall-sdl nlohmann_json::nlohmann_json)
+
+if(ANDROID AND BUILD_GODOT_EXTENSION)
+    set(EMBERFALL_USE_SYSTEM_FFMPEG ON)
+    add_subdirectory("${_systemnnn_dir}/platform/android/player" android-player)
+endif()

@@ -45,6 +45,9 @@ static func inspect(path: String) -> Dictionary:
     elif not renpy_directory.is_empty():
         result.engine = RUNTIME_RENPY
         result.signals.append("renpy-game-directory")
+    elif is_systemnnn_directory(root):
+        result.engine = "systemnnn"
+        result.signals.append("systemnnn-sys-spt")
     elif is_n2system_directory(root):
         result.engine = RUNTIME_N2SYSTEM
         result.signals.append("n2system-profile-or-npa")
@@ -420,6 +423,15 @@ static func _is_mages_package(files: PackedStringArray) -> bool:
         or files.has("chara.mpk")
         or files.has("model.mpk")
     )
+
+static func is_systemnnn_directory(root: String) -> bool:
+    if FileAccess.file_exists(root.path_join("spt/sys.spt")):
+        return true
+    for folder in DirAccess.get_directories_at(root):
+        if folder.to_lower() == "spt" and _file_names(root.path_join(folder)).has("sys.spt"):
+            return true
+    return false
+
 
 static func is_n2system_directory(root: String) -> bool:
     # An explicit Aether profile opts this directory into NitroSharp. Generic

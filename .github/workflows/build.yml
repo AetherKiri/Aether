@@ -163,7 +163,7 @@ jobs:
           git submodule update --init --depth 1 packages/AetherSiglus
           git submodule update --init --depth 1 packages/AetherMinori
           git -c url.https://github.com/.insteadOf=git@github.com: submodule update --init --depth 1 packages/AetherCMVS
-          git submodule update --init --depth 1 packages/AetherEntisGLS
+          git submodule update --init --depth 1 packages/AetherEntisGLS packages/AetherSystemNNN
           git submodule update --init --depth 1 packages/AetherKrkr
           git submodule update --init --depth 1 packages/AetherMAGES
           git submodule update --init --recursive --depth 1 packages/AetherN2System
@@ -578,7 +578,7 @@ jobs:
           git submodule update --init --depth 1 packages/AetherSiglus
           git submodule update --init --depth 1 packages/AetherMinori
           git -c url.https://github.com/.insteadOf=git@github.com: submodule update --init --depth 1 packages/AetherCMVS
-          git submodule update --init --depth 1 packages/AetherEntisGLS
+          git submodule update --init --depth 1 packages/AetherEntisGLS packages/AetherSystemNNN
           git submodule update --init --depth 1 packages/AetherKrkr
           git submodule update --init --depth 1 packages/AetherMAGES
           git submodule update --init --recursive --depth 1 packages/AetherN2System
@@ -971,7 +971,7 @@ jobs:
           git submodule update --init --depth 1 packages/AetherSiglus
           git submodule update --init --depth 1 packages/AetherMinori
           git -c url.https://github.com/.insteadOf=git@github.com: submodule update --init --depth 1 packages/AetherCMVS
-          git submodule update --init --depth 1 packages/AetherEntisGLS
+          git submodule update --init --depth 1 packages/AetherEntisGLS packages/AetherSystemNNN
           git submodule update --init --depth 1 packages/AetherKrkr
           git submodule update --init --depth 1 packages/AetherMAGES
           git submodule update --init --recursive --depth 1 packages/AetherN2System
@@ -1436,7 +1436,7 @@ jobs:
           git submodule update --init --depth 1 packages/AetherSiglus
           git submodule update --init --depth 1 packages/AetherMinori
           git -c url.https://github.com/.insteadOf=git@github.com: submodule update --init --depth 1 packages/AetherCMVS
-          git submodule update --init --depth 1 packages/AetherEntisGLS
+          git submodule update --init --depth 1 packages/AetherEntisGLS packages/AetherSystemNNN
           git submodule update --init --depth 1 packages/AetherKrkr
           git submodule update --init --depth 1 packages/AetherMAGES
           git submodule update --init --recursive --depth 1 packages/AetherN2System

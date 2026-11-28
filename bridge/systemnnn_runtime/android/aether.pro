@@ -1,0 +1,1 @@
+-keep class org.aether.systemnnn.PlayerLauncher { *; }

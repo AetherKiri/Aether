@@ -263,6 +263,14 @@ static func resolve(root: String, engine: String, game: Dictionary, user_root: S
     var local := root.path_join("savedata")
     var banks := {"main": _bank(local)}
     match engine:
+        "systemnnn":
+            var folder := "sav"
+            if not DirAccess.dir_exists_absolute(root.path_join(folder)):
+                for entry in DirAccess.get_directories_at(root):
+                    if entry.to_lower() == "sav":
+                        folder = entry
+                        break
+            banks.main = _bank(root.path_join(folder))
         "renpy":
             var legacy: String = preload("res://scripts/renpy_save_storage.gd").legacy_storage_path(root)
             banks.main = _bank(_existing(local, legacy))

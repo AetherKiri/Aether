@@ -1,8 +1,6 @@
 # Native runtime host
 
-`aether_native_host` is a C++ library for frontend adapters. It owns one native
-engine session handle at a time and registers ONScripterYuri when that provider
-is built.
+`aether_native_host` is a C++ library for frontend adapters. It owns one native engine session at a time and registers ONScripterYuri and SystemNNN when their providers are built. The library exposes the available native session capabilities and applies the per-runtime host selection before engine initialization. See [SystemNNN playback](../systemnnn_runtime/README.md) for the game-local save contract and native probe.
 
 Create a `RuntimeSession` with an `engine_create_desc_t`, configure and open the
 game through the existing engine API, then call `Close()` to release the handle

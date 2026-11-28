@@ -47,8 +47,10 @@ extern "C" void AetherInternalRegisterWa2Runtime(void);
 #if defined(AETHERKIRI_WITH_ONSCRIPTER)
 #include "onscripter_runtime.h"
 #endif
-#if defined(AETHERKIRI_WITH_ONS_NATIVE_HOST)
+#if defined(AETHERKIRI_WITH_NATIVE_HOST)
 #include "aether/native_host/runtime_session.h"
+#elif defined(AETHERKIRI_WITH_SYSTEMNNN_PROVIDER)
+#include "systemnnn_runtime.h"
 #endif
 #if defined(AETHERKIRI_WITH_SIGLUS)
 #include "siglus_runtime.h"
@@ -10254,9 +10256,19 @@ public:
         destroy_engine();
     }
 
-    bool has_ons_native_host() const {
-#if defined(AETHERKIRI_WITH_ONS_NATIVE_HOST)
-        return true;
+    bool has_ons_native_host() const { return has_native_host("onscripter"); }
+
+    bool has_native_host(const String &runtime) const {
+#if defined(AETHERKIRI_WITH_NATIVE_HOST)
+        return aether::native_host::SupportsRuntime(runtime.utf8().get_data());
+#else
+        return false;
+#endif
+    }
+
+    bool uses_native_session(const String &runtime, const String &selection, bool prerelease) const {
+#if defined(AETHERKIRI_WITH_NATIVE_HOST)
+        return aether::native_host::UseNativeSession(runtime.utf8().get_data(), selection.utf8().get_data(), prerelease);
 #else
         return false;
 #endif
@@ -10266,8 +10278,8 @@ public:
         if (handle_ == nullptr) {
             return "";
         }
-#if defined(AETHERKIRI_WITH_ONS_NATIVE_HOST)
-        if (ons_session_.handle() != nullptr) {
+#if defined(AETHERKIRI_WITH_NATIVE_HOST)
+        if (native_session_.handle() != nullptr) {
             return "native";
         }
 #endif
@@ -10275,7 +10287,7 @@ public:
     }
 
     bool initialize_engine(const String &writable_path, const String &cache_path,
-                           bool use_ons_native_host = false) {
+                           bool use_native_host = false) {
         if (handle_ != nullptr) {
             AndroidBridgeLog("event=initialize_engine_already_initialized runtime=%s",
                              runtime_id_.utf8().get_data());
@@ -10360,10 +10372,10 @@ public:
         mages_cache_path_ = cache_path;
 
         engine_result_t result;
-#if defined(AETHERKIRI_WITH_ONS_NATIVE_HOST)
-        if (use_ons_native_host) {
-            result = ons_session_.Create(desc);
-            handle_ = ons_session_.handle();
+#if defined(AETHERKIRI_WITH_NATIVE_HOST)
+        if (use_native_host) {
+            result = native_session_.Create(desc);
+            handle_ = native_session_.handle();
         } else
 #endif
         {
@@ -10420,9 +10432,9 @@ public:
         }
         release_frame_texture();
         engine_result_t result;
-#if defined(AETHERKIRI_WITH_ONS_NATIVE_HOST)
-        if (ons_session_.handle() != nullptr) {
-            result = ons_session_.Close();
+#if defined(AETHERKIRI_WITH_NATIVE_HOST)
+        if (native_session_.handle() != nullptr) {
+            result = native_session_.Close();
         } else
 #endif
         {
@@ -13108,8 +13120,10 @@ void main() {
 protected:
     static void _bind_methods() {
         ClassDB::bind_method(D_METHOD("initialize_engine", "writable_path", "cache_path",
-                                      "use_ons_native_host"),
+                                      "use_native_host"),
                              &AetherRuntimePlayer::initialize_engine, DEFVAL(false));
+        ClassDB::bind_method(D_METHOD("uses_native_session", "runtime", "selection", "prerelease"), &AetherRuntimePlayer::uses_native_session);
+        ClassDB::bind_method(D_METHOD("has_native_host", "runtime"), &AetherRuntimePlayer::has_native_host);
         ClassDB::bind_method(D_METHOD("has_ons_native_host"),
                              &AetherRuntimePlayer::has_ons_native_host);
         ClassDB::bind_method(D_METHOD("get_engine_host"),
@@ -14430,8 +14444,8 @@ private:
 #endif
     }
 
-#if defined(AETHERKIRI_WITH_ONS_NATIVE_HOST)
-    aether::native_host::RuntimeSession ons_session_;
+#if defined(AETHERKIRI_WITH_NATIVE_HOST)
+    aether::native_host::RuntimeSession native_session_;
 #endif
     engine_handle_t handle_ = nullptr;
     engine_media_handle_t media_ = nullptr;
@@ -14554,7 +14568,12 @@ void InitializeAetherRuntime(ModuleInitializationLevel level) {
 #if defined(AETHERKIRI_INTERNAL_FRAME_EFFECTS)
     RegisterAetherInternalFrameEffects();
 #endif
-#if defined(AETHERKIRI_WITH_ONSCRIPTER)
+#if defined(AETHERKIRI_WITH_NATIVE_HOST)
+    aether::native_host::RegisterProviders();
+#elif defined(AETHERKIRI_WITH_SYSTEMNNN_PROVIDER)
+    aether::systemnnn::RegisterProvider();
+#endif
+#if defined(AETHERKIRI_WITH_ONSCRIPTER) && !defined(AETHERKIRI_WITH_NATIVE_HOST)
     aetherkiri::onscripter::RegisterRuntimeProvider();
 #endif
 #if defined(AETHERKIRI_WITH_SYSTEM3)

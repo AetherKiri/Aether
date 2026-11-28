@@ -52,6 +52,12 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
 ----------------------------------------------------------------------------
+SystemNNN-Emberfall
+----------------------------------------------------------------------------
+
+SystemNNN-Emberfall is a port by PorisRora distributed under GPL-2.0-only. Source, the full license and component notices are included in [AetherSystemNNN](packages/AetherSystemNNN), [LICENSE](packages/AetherSystemNNN/LICENSE) and [THIRD_PARTY_NOTICES.md](packages/AetherSystemNNN/THIRD_PARTY_NOTICES.md).
+
+----------------------------------------------------------------------------
 AetherN2System / NitroSharp
 ----------------------------------------------------------------------------
 Source: https://github.com/AetherKiri/AetherN2System

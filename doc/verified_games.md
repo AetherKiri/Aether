@@ -2,7 +2,7 @@
 
 [简体中文](verified_games.zh-CN.md)
 
-Last updated: 2026-11-21
+Last updated: 2026-11-28
 
 This document tracks games that have been manually smoke-tested with
 AetherKiri. It is a compatibility notebook, not a guarantee that every route,
@@ -20,6 +20,9 @@ movie, plugin path, or save state in a title has been exhaustively validated.
 
 | Game | Verified platforms / builds | Verified scope | Result | Verifier | Notes |
 | --- | --- | --- | --- | --- | --- |
+| 獄淫の尖塔 | macOS arm64 Debug and Android 15 ARM64 emulator | Title, dialogue advancement, game-local PC slots, bidirectional save transfer and Android player exit | Flow verified | Native host, library probe and Android player | Android restored the first line from a macOS quicksave. macOS restored the second line from an Android manual slot. |
+| 鏖殺ノ乙女 | macOS arm64 Debug | 1280×720 title and dialogue, input, PCM audio, reopening and switching hosts | Flow verified | Native host and library probe | Both hosts used the same PC slot in the game directory. |
+| Dead End Aegis (Simplified and Traditional Chinese) | macOS arm64 Debug | Independent detection, title and Chinese dialogue, audio, input, reopening and switching hosts | Flow verified | Native host and library probe | The two editions kept separate game-local sav directories. |
 | Hakoniwa Logic (Steam Chinese edition) | macOS arm64 Debug app | Chinese opening, portraits, save/load, settings, story choice, animation and zoom transition | Flow verified | JSON regression probe | Both choice buttons cleared after 1,092 lines. All 144 CG entries opened and all 21 replays reached dialogue and returned. |
 | 夕凪荘のS級の彼女たち | macOS arm64 Debug app | Japanese opening, character cut-in and portrait, archived voice, save/load, settings and route selection | Flow verified | JSON regression probe | All four route controls cleared after selection. An earned replay survived restart and played with its original voice. |
 | 星空TeaPartyえくすとら | macOS arm64 Debug app | Chinese translation, opening movie, portrait, settings, save/load and animated masks | Flow verified | JSON regression probe | All 114 CG entries across 10 pages opened and matched the original artwork. Two variants of the first entry were compared. All 18 replays reached dialogue and returned. |

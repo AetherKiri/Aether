@@ -157,3 +157,7 @@ endif()
 if(TARGET aether_system3_runtime)
     include("${CMAKE_CURRENT_SOURCE_DIR}/system3_native/contracts.cmake")
 endif()
+
+if(TARGET aether_xsystem4_runtime OR TARGET aether_xsystem35_runtime)
+    add_subdirectory(xsystem_mods_native)
+endif()

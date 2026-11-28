@@ -1,4 +1,7 @@
 #include "engine_api.h"
+#ifdef AETHERKIRI_WITH_XSYSTEM_TOOLS
+#include "mod_manager.h"
+#endif
 #include "runtime_host_extension.h"
 #include "game_detection_adapter.h"
 #include "engine_options.h"
@@ -11409,6 +11412,16 @@ public:
         return output;
     }
 
+    String manage_xsystem_mods(const String &game_root, const String &operation, const String &argument) {
+#ifdef AETHERKIRI_WITH_XSYSTEM_TOOLS
+        auto result = aether::xsystem::mod_operation(
+            game_root.utf8().get_data(), operation.utf8().get_data(), argument.utf8().get_data());
+        return String::utf8(result.c_str());
+#else
+        return "{\"ok\":false,\"error\":\"unsupported_platform\"}";
+#endif
+    }
+
     String get_plugin_debug_info() {
         if (handle_ == nullptr) {
             return String();
@@ -13184,6 +13197,8 @@ protected:
                              &AetherRuntimePlayer::get_memory_stats);
         ClassDB::bind_method(D_METHOD("get_plugin_debug_info"),
                              &AetherRuntimePlayer::get_plugin_debug_info);
+        ClassDB::bind_method(D_METHOD("manage_xsystem_mods", "game_root", "operation", "argument"),
+                             &AetherRuntimePlayer::manage_xsystem_mods);
         ClassDB::bind_method(D_METHOD("get_frame_texture_backend"),
                              &AetherRuntimePlayer::get_frame_texture_backend);
         ClassDB::bind_method(D_METHOD("is_frame_enhancement_built"),

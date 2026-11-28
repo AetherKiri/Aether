@@ -2,6 +2,8 @@ extends Control
 
 const APP_DISPLAY_NAME := "Aether"
 const PlaybackBackend = preload("res://scripts/playback_backend.gd")
+const XSystemTools = preload("res://scripts/xsystem_tools.gd")
+const XSystemModifierView = preload("res://scripts/ui/xsystem_modifier_view.gd")
 const BACKENDS := PlaybackBackend.VALUES
 const SETTINGS_KEY := "aether_kiri/render_backend"
 const GAME_PATH_KEY := "aether_kiri/game_path"
@@ -3720,6 +3722,7 @@ func _build_ui() -> void:
     game_virtual_controls.virtual_controls_requested.connect(
         _on_game_virtual_controls_requested
     )
+    game_virtual_controls.modifier_requested.connect(_open_xsystem_modifier)
     game_virtual_controls.input_mode_changed.connect(
         _on_game_virtual_input_mode_changed
     )
@@ -9704,6 +9707,9 @@ func _detail_tools(game: Dictionary) -> FlowContainer:
     tools.add_theme_constant_override("v_separation", 8)
     tools.add_child(_detail_launch_button())
     var detail_runtime := _game_runtime_kind(String(game.get("path", "")))
+    if XSystemTools.supports(detail_runtime):
+        tools.add_child(_secondary_dialog_button(XSystemTools.text(self, "MOD 管理", "MOD manager")))
+        tools.get_child(-1).pressed.connect(_show_xsystem_mod_manager.bind(game))
     var encodings := GameTextConfig.encodings(detail_runtime)
     if encodings.size() > 1 and detail_runtime != "rfvp":
         var encoding := OptionButton.new()
@@ -13321,6 +13327,20 @@ func _mask_corner_pixel(image: Image, x: int, y: int, center: Vector2, radius: f
 
 func _start_selected_game() -> void:
     if game_storage_busy:
+        return
+    var mod_service = get_node_or_null("XSystemTools")
+    if mod_service != null and mod_service.busy:
+        _show_game_import_notice(XSystemTools.text(self, "正在处理 MOD，请完成后再启动游戏。", "Wait for the MOD operation to finish before launching."), 2500)
+        return
+    var mod_root := _game_runtime_root(String(selected_game.get("path", "")))
+    if FileAccess.file_exists(mod_root.path_join(".aether-mods/pending.json")):
+        var launch_path := String(selected_game.get("path", ""))
+        _xsystem_tools().request(mod_root, "list", "", func(result: Dictionary):
+            if result.get("ok", false) and String(selected_game.get("path", "")) == launch_path:
+                _start_selected_game()
+            elif not result.get("ok", false):
+                _show_message(XSystemTools.error_text(self, String(result.get("error", ""))))
+        )
         return
     var save_transfer = get_node_or_null("GameSaveTransfer")
     if save_transfer != null and save_transfer.busy:
@@ -19438,16 +19458,59 @@ func _virtual_button_layouts(game_path_value: String = "", default_pad_mode: Str
         "profiles": shared.profiles + local.profiles,
     }
 
+func _xsystem_tools():
+    var service = get_node_or_null("XSystemTools")
+    if service == null:
+        service = XSystemTools.new()
+        service.name = "XSystemTools"
+        add_child(service)
+        service.setup(self)
+        service.changed.connect(func(_game_root: String):
+            var launch := find_child("AstryxLaunchGame", true, false) as Button
+            if launch != null:
+                launch.disabled = service.busy
+        )
+    return service
+
+func _show_xsystem_mod_manager(game: Dictionary) -> void:
+    if game_running or not XSystemTools.supports(_game_runtime_kind(String(game.get("path", "")))):
+        return
+    var dialog := _modal_dialog(Vector2(680, 560), 0.44, false)
+    var box := VBoxContainer.new()
+    dialog.add_child(box)
+    var scroll := ScrollContainer.new()
+    scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
+    scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+    box.add_child(scroll)
+    var manager := preload("res://scripts/ui/xsystem_mod_list.gd").new()
+    manager.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+    scroll.add_child(manager)
+    manager.setup(self, _game_runtime_root(String(game.get("path", ""))))
+    var done := _secondary_dialog_button(XSystemTools.text(self, "完成", "Done"))
+    done.pressed.connect(_dismiss_modal)
+    box.add_child(done)
+
+func _open_xsystem_modifier() -> void:
+    if not game_running or not XSystemTools.supports(active_runtime_kind) or not _can_forward_game_input():
+        return
+    _clear_game_input_capture()
+    var dialog := _modal_dialog(Vector2(720, 680), 0.44, false)
+    var modifier := XSystemModifierView.new()
+    dialog.add_child(modifier)
+    modifier.setup(self)
+
 func _sync_game_virtual_controls() -> void:
     if game_virtual_controls == null:
         return
     _apply_game_virtual_control_preferences()
+    var has_modifier := game_running and XSystemTools.supports(active_runtime_kind)
+    game_virtual_controls.set_modifier_available(has_modifier, XSystemTools.text(self, "修改器", "Modifier"))
     game_virtual_controls.set_enabled(
         _should_enable_game_virtual_controls(
-            _is_touch_platform(),
+            _is_touch_platform() or has_modifier,
             _can_forward_game_input(),
             app_lifecycle_paused,
-            game_view != null and game_view.visible
+            game_view != null and game_view.visible and (modal_layer == null or not modal_layer.visible)
         )
     )
 

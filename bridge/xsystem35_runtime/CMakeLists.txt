@@ -15,8 +15,12 @@ find_package(Threads REQUIRED)
 find_package(Iconv REQUIRED)
 find_package(uchardet CONFIG REQUIRED)
 
+enable_language(ASM)
 set(generated "${CMAKE_CURRENT_BINARY_DIR}/generated")
 file(MAKE_DIRECTORY "${generated}")
+set(soundfont "${AETHERKIRI_XSYSTEM35_DIR}/soundfonts/TimGM6mb.sf2")
+configure_file(src/embedded_soundfont.S.in "${generated}/embedded_soundfont.S" @ONLY)
+set_source_files_properties("${generated}/embedded_soundfont.S" PROPERTIES OBJECT_DEPENDS "${soundfont}")
 set(PACKAGE xsystem35)
 set(XSYSTEM35_VERSION 2.20.0)
 set(XSYSTEM35_SDL_VERSION 2)
@@ -39,6 +43,8 @@ file(GLOB sources CONFIGURE_DEPENDS "${AETHERKIRI_XSYSTEM35_DIR}/src/*.c")
 list(FILTER sources EXCLUDE REGEX "(_test|src_tests|nanojpeg|debug[^/]*|midi\.[^/]*|mixer\.[^/]*|pcm\.[^/]*|bgm\.[^/]*|cdrom\.emscripten)\\.c$")
 list(APPEND sources
     "${AETHERKIRI_XSYSTEM35_DIR}/src/microui/microui.c"
+    "${generated}/embedded_soundfont.S"
+    "${AETHERKIRI_XSYSTEM35_DIR}/src/midi.tsf.c"
     "${AETHERKIRI_XSYSTEM35_DIR}/src/midi.sdlmixer.c"
     "${AETHERKIRI_XSYSTEM35_DIR}/src/mixer.sdl2mixer.c"
     "${AETHERKIRI_XSYSTEM35_DIR}/src/pcm.sdlmixer.c"
@@ -50,9 +56,9 @@ foreach(line IN LISTS module_lines)
     list(APPEND modules "${AETHERKIRI_XSYSTEM35_DIR}/modules/${relative}")
 endforeach()
 add_library(aether_xsystem35_core STATIC ${sources} ${modules} "${generated}/nls_catalog.h")
-target_compile_definitions(aether_xsystem35_core PRIVATE XSYSTEM35_EMBEDDED SDL_MAIN_HANDLED _DEFAULT_SOURCE)
+target_compile_definitions(aether_xsystem35_core PRIVATE XSYSTEM35_EMBEDDED XSYSTEM35_BUNDLED_SOUNDFONT SDL_MAIN_HANDLED _DEFAULT_SOURCE)
 target_compile_options(aether_xsystem35_core PRIVATE -Wno-pointer-sign
-    -include "${AETHERKIRI_XSYSTEM35_DIR}/src/embedded_io.h")
+    "$<$<COMPILE_LANGUAGE:C>:-include;${AETHERKIRI_XSYSTEM35_DIR}/src/embedded_io.h>")
 target_include_directories(aether_xsystem35_core PRIVATE "${generated}"
     "${AETHERKIRI_XSYSTEM35_DIR}/src" "${AETHERKIRI_XSYSTEM35_DIR}/modules"
     "${AETHERKIRI_XSYSTEM35_DIR}/modules/lib")

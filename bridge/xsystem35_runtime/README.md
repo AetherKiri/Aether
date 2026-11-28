@@ -116,3 +116,10 @@ other platforms remain unverified. No game assets are included.
 The exported macOS Debug app was also checked with its Metal Godot renderer:
 RanceIV map navigation and Chinese dialogue, and Rance5D new game and Chinese
 dialogue. Both use the same Aether window and production provider.
+
+
+## Gamepad and runtime controls
+
+The host accepts gamepad mappings through `gamepad_config` and running-game actions through `modifier_action`. Setting `modifier_state` to `1` returns the engine's live JSON through `get_plugin_debug_info`. Set it to `0` to read runtime diagnostics.
+
+Use `modifier_lock_mask` for the active game. MIDI playback can use the bundled TimGM6mb bank through TinySoundFont.

@@ -74,10 +74,11 @@ void Status(const char *error = nullptr) {
     cJSON_AddNumberToObject(json, "height", frame.height);
     cJSON_AddNumberToObject(json, "serial", double(frame.frame_serial));
     cJSON_AddStringToObject(json, "error", error ? error : "");
-    char debug[4096]{};
+    std::vector<char> debug(4096);
     uint32_t written = 0;
-    provider->get_plugin_debug_info(player, debug, sizeof(debug), &written);
-    cJSON_AddStringToObject(json, "runtime", debug);
+    while(provider->get_plugin_debug_info(player, debug.data(), uint32_t(debug.size()), &written) == ENGINE_RESULT_INVALID_ARGUMENT && debug.size() < 32 * 1024 * 1024)
+        debug.resize(debug.size() * 2);
+    cJSON_AddStringToObject(json, "runtime", debug.data());
     char *text = cJSON_PrintUnformatted(json);
     Atomic(output / "status.json", text);
     cJSON_free(text);
@@ -118,6 +119,14 @@ bool Command(cJSON *json) {
         return false;
     if(action == "capture")
         Capture(String(json, "name", "frame"));
+    else if(action == "option") {
+        auto key = String(json, "key");
+        auto value = String(json, "value");
+        engine_option_t option{};
+        option.key_utf8 = key.c_str();
+        option.value_utf8 = value.c_str();
+        Check(provider->set_option(player, &option));
+    }
     else if(action == "pause")
         Check(provider->pause(player));
     else if(action == "resume")

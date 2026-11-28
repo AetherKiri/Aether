@@ -3,10 +3,14 @@
 #include "shader_resources.h"
 extern "C" {
 #include "embedded.h"
+#include "modifier_api.h"
+#include "input.h"
 #include "input.h"
 void xsystem4_audio_pause(bool paused);
 }
 #include <algorithm>
+#include <charconv>
+#include <cstdlib>
 #include <atomic>
 #include <chrono>
 #include <condition_variable>
@@ -35,7 +39,8 @@ namespace aetherkiri::xsystem4 {
         bool LooksLikeGame(const char *path) {
             if(!path || !*path)
                 return false;
-            bool ini = false, ain = false;
+            bool ini = false, ain = false, chs_ini = false, chs_table = false;
+            bool alt_ini = false, alt_script = false, chs_script = false;
             std::error_code error;
             for(const auto &file :
                 fs::directory_iterator(fs::u8path(path), error)) {
@@ -43,9 +48,16 @@ namespace aetherkiri::xsystem4 {
                     continue;
                 auto name = Lower(file.path().filename().u8string());
                 ini |= name == "system40.ini" || name == "alicestart.ini";
-                ain |= Lower(file.path().extension().u8string()) == ".ain";
+                auto ext = Lower(file.path().extension().u8string());
+                ain |= ext == ".ain";
+                chs_ini |= name == "alicestart.chs";
+                chs_table |= name == "chs.tbl";
+                chs_script |= ext == ".chs" && name != "alicestart.chs";
+                alt_ini |= name == "alicestart2.ini";
+                alt_script |= name == "haru_c.ain";
             }
-            return !error && ini && ain;
+            return !error && ((ini && ain) || (alt_ini && alt_script) ||
+                              (chs_ini && chs_table && (ain || chs_script)));
         }
         std::string GameIdentity(const std::string &root) {
             uint64_t value = 14695981039346656037ull;
@@ -169,6 +181,7 @@ namespace aetherkiri::xsystem4 {
             std::string writable, root, saves, font, error, encoding = "auto",
                                                             selected_encoding;
             std::mutex mutex, input_mutex;
+            std::atomic<bool> report_modifier_state{ false };
             std::condition_variable condition;
             std::thread worker;
             std::atomic<bool> stopping{ false }, paused{ false };
@@ -353,7 +366,10 @@ namespace aetherkiri::xsystem4 {
                 {
                     std::lock_guard<std::mutex> guard(mutex);
                     session_font = font;
+                    hooks.fixed_encoding = encoding == "auto" ? 0 : (selected_encoding == "gbk" ? 2 : 1);
                 }
+                const std::string modifier_config = (fs::u8path(saves) / "modifier_config.json").u8string();
+                modifier_api_set_config_path(modifier_config.c_str());
                 const int result = xsystem4_host_run(
                     &hooks, root.c_str(), saves.c_str(), session_font.c_str(),
                     selected_encoding.c_str());
@@ -538,6 +554,46 @@ namespace aetherkiri::xsystem4 {
                     return ENGINE_RESULT_INVALID_ARGUMENT;
                 std::lock_guard<std::mutex> guard(self.mutex);
                 self.encoding = value;
+                return ENGINE_RESULT_OK;
+            }
+            if(key == "modifier_state") {
+                if(value != "0" && value != "1") return ENGINE_RESULT_INVALID_ARGUMENT;
+                self.report_modifier_state = value == "1";
+                return ENGINE_RESULT_OK;
+            }
+            if(key.rfind("modifier_", 0) == 0 || key == "gamepad_config") {
+                if(active_runtime.load() != p) return ENGINE_RESULT_INVALID_STATE;
+            }
+            if(key == "modifier_action" || key == "gamepad_config") {
+                if(value.empty()) return ENGINE_RESULT_INVALID_ARGUMENT;
+                if(key == "gamepad_config")
+                    input_set_gamepad_config_json(value.c_str());
+                else
+                    modifier_api_apply_live_action(value.c_str());
+                return ENGINE_RESULT_OK;
+            }
+            if(key.compare(0, 19, "modifier_lock_mask.") == 0 && key.size() > 19) {
+                int mask = 0;
+                auto parsed = std::from_chars(value.data(), value.data() + value.size(), mask);
+                if(parsed.ec != std::errc{} || parsed.ptr != value.data() + value.size() || mask < 0)
+                    return ENGINE_RESULT_INVALID_ARGUMENT;
+                modifier_api_set_game_lock_mask(key.c_str() + 19, mask);
+                return ENGINE_RESULT_OK;
+            }
+            if(key == "modifier_ctrl_skip") {
+                if(value != "0" && value != "1") return ENGINE_RESULT_INVALID_ARGUMENT;
+                modifier_api_set_ctrl_skip(value == "1");
+                return ENGINE_RESULT_OK;
+            }
+            if(key == "modifier_font_scale" || key == "modifier_scrollbar_scale") {
+                int percent = 0;
+                auto parsed = std::from_chars(value.data(), value.data() + value.size(), percent);
+                if(parsed.ec != std::errc{} || parsed.ptr != value.data() + value.size() || percent <= 0)
+                    return ENGINE_RESULT_INVALID_ARGUMENT;
+                if(key == "modifier_font_scale")
+                    modifier_api_set_ui_scale(percent, modifier_api_get_scrollbar_scale());
+                else
+                    modifier_api_set_ui_scale(modifier_api_get_font_scale(), percent);
                 return ENGINE_RESULT_OK;
             }
             if(key == "fps_limit") {
@@ -754,6 +810,18 @@ namespace aetherkiri::xsystem4 {
             if(!p)
                 return ENGINE_RESULT_INVALID_ARGUMENT;
             auto &self = *static_cast<Runtime *>(p);
+            if(self.report_modifier_state) {
+                if(active_runtime.load() != p) return ENGINE_RESULT_INVALID_STATE;
+                std::unique_ptr<char, decltype(&std::free)> state(modifier_api_get_live_state_json(), &std::free);
+                std::string json = state ? state.get() : "{}";
+                const std::string game = modifier_api_current_game();
+                if(!json.empty() && json.front() == '{') {
+                    json.insert(1, "\"game\":\"" + game + "\",\"locks\":" +
+                        std::to_string(modifier_api_get_game_lock_mask(game.c_str())) +
+                        (json.size() > 2 ? "," : ""));
+                }
+                return Copy(json, out, size, written);
+            }
             std::lock_guard<std::mutex> guard(self.mutex);
             return Copy("runtime=xsystem4 native-library frames=" +
                             std::to_string(self.serial.load()) + " encoding=" +

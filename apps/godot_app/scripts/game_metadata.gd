@@ -48,7 +48,7 @@ static func inspect(path: String) -> Dictionary:
     elif is_n2system_directory(root):
         result.engine = RUNTIME_N2SYSTEM
         result.signals.append("n2system-profile-or-npa")
-    elif (files.has("system40.ini") or files.has("alicestart.ini")) and _has_extension(files, "ain"):
+    elif _has_system4_game(files):
         result.engine = RUNTIME_XSYSTEM4
         result.signals.append("system4-ain-ini")
     elif _has_suffix(files, "sa.ald") or files.has("adisk.ald"):
@@ -369,6 +369,21 @@ static func _has_prefix(values: PackedStringArray, prefix: String) -> bool:
     for value in values:
         if value.begins_with(prefix):
             return true
+    return false
+
+static func _has_system4_game(files: PackedStringArray) -> bool:
+    var has_script := _has_extension(files, "ain")
+    if files.has("system40.ini") or files.has("alicestart.ini"):
+        if has_script:
+            return true
+    if files.has("alicestart2.ini") and files.has("haru_c.ain"):
+        return true
+    if files.has("alicestart.chs") and files.has("chs.tbl"):
+        if has_script:
+            return true
+        for name in files:
+            if name != "alicestart.chs" and name.ends_with(".chs"):
+                return true
     return false
 
 static func _has_extension(values: PackedStringArray, extension: String) -> bool:

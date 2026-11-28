@@ -11,6 +11,12 @@
         }                                                                      \
     } while(0)
 
+/* This core-only fixture reads CHS.TBL from its working directory. */
+const char *xsystem35_host_path(const char *path, int write) {
+    (void)write;
+    return path;
+}
+
 int main(void) {
     const char *gbk = "\xd6\xd0\xce\xc4\xb2\xe2\xca\xd4";
     char *utf8 = codeconv(UTF8, GBK, gbk);

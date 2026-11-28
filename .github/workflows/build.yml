@@ -1153,6 +1153,8 @@ jobs:
         run: |
           set -euo pipefail
           "$GODOT_BIN" --headless --path apps/godot_app --script res://tests/playback_backend_test.gd
+          "$GODOT_BIN" --headless --path apps/godot_app --script res://tests/xsystem_tools_test.gd
+          "$GODOT_BIN" --headless --path apps/godot_app --script res://tests/xsystem_mod_bridge_test.gd
           for backend in "Native Session" "Godot"; do
             AETHERKIRI_RENDER_BACKEND="$backend" "$GODOT_BIN" --headless \
               --path apps/godot_app \
@@ -1635,6 +1637,8 @@ jobs:
         run: |
           set -euo pipefail
           "$GODOT_BIN" --headless --path apps/godot_app --script res://tests/playback_backend_test.gd
+          "$GODOT_BIN" --headless --path apps/godot_app --script res://tests/xsystem_tools_test.gd
+          "$GODOT_BIN" --headless --path apps/godot_app --script res://tests/xsystem_mod_bridge_test.gd
           for backend in "Native Session" "Godot"; do
             AETHERKIRI_RENDER_BACKEND="$backend" timeout 120 "$GODOT_BIN" --headless \
               --path apps/godot_app --script res://scripts/smoke_test.gd

@@ -11,6 +11,7 @@ signal pointer_button_requested(
 signal pointer_scroll_requested(delta_y: float, screen_position: Vector2)
 signal keyboard_requested
 signal virtual_controls_requested
+signal modifier_requested
 signal input_mode_changed(mode: String)
 signal menu_open_changed(open: bool)
 signal layout_profile_changed
@@ -61,6 +62,8 @@ const COMPUTER_USE_CURSOR_OUTLINE := Color(0.68, 0.78, 0.84, 0.96)
 var menu_button: Button
 var keyboard_button: Button
 var virtual_controls_button: Button
+var modifier_button: Button
+var _modifier_available := false
 var input_mode_button: Button
 var profile_button: Button
 var escape_button: Button
@@ -161,17 +164,22 @@ func setup(tokens, preview_parent: Control = null) -> void:
         "VirtualControlsButton", "Control Pad"
     )
     virtual_controls_button.tooltip_text = "Show controls, layout and input mode"
+    modifier_button = _create_action_button("ModifierButton", "Modifier")
+    modifier_button.add_theme_font_override("font", SELECTOR_FONT)
+    modifier_button.pressed.connect(_request_modifier)
     menu_button.pressed.connect(_toggle_menu)
     keyboard_button.pressed.connect(_request_keyboard)
     virtual_controls_button.pressed.connect(show_virtual_controls)
     _root.add_child(menu_button)
     _root.add_child(keyboard_button)
     _root.add_child(virtual_controls_button)
+    _root.add_child(modifier_button)
 
     _apply_edge_menu_style(menu_button)
     _attach_edge_menu_icon(menu_button)
     _apply_menu_option_style(keyboard_button)
     _apply_menu_option_style(virtual_controls_button)
+    _apply_menu_option_style(modifier_button)
 
     profile_button = _create_pad_selector("ProfileButton", _cycle_profile)
     input_mode_button = _create_pad_selector("InputModeButton", _toggle_input_mode)
@@ -227,8 +235,21 @@ func setup(tokens, preview_parent: Control = null) -> void:
     _interactive_controls.append(menu_button)
     _interactive_controls.append(keyboard_button)
     _interactive_controls.append(virtual_controls_button)
+    _interactive_controls.append(modifier_button)
     set_layout_profiles(Layouts.empty_book(false))
     set_enabled(false)
+
+func set_modifier_available(available: bool, caption: String = "Modifier") -> void:
+    if modifier_button == null:
+        return
+    if _modifier_available == available and modifier_button.text == caption:
+        return
+    _modifier_available = available
+    modifier_button.text = caption
+    modifier_button.accessibility_name = caption
+    if _safe_rect.has_area():
+        layout(_safe_rect.size, _safe_rect)
+    _sync_visibility()
 
 func set_enabled(enabled: bool) -> void:
     if _enabled == enabled:
@@ -746,7 +767,7 @@ func set_layout_profile(profile: Dictionary) -> void:
             _caps.erase(id)
             _root.remove_child(button)
             button.queue_free()
-    for system_control in [cursor_handle, profile_button, input_mode_button, menu_button, keyboard_button, virtual_controls_button]:
+    for system_control in [cursor_handle, profile_button, input_mode_button, menu_button, keyboard_button, virtual_controls_button, modifier_button]:
         system_control.move_to_front()
     _sync_direction_labels()
     _apply_keyboard_controls_opacity()
@@ -776,7 +797,7 @@ func _configure_cap(button: Button, action: String) -> void:
         button.set_meta("scroll_delta_y", 1.0 if action == "wheel_up" else -1.0)
 
 func _system_control_at(point: Vector2) -> bool:
-    for control in [menu_button, profile_button, input_mode_button, keyboard_button, virtual_controls_button]:
+    for control in [menu_button, profile_button, input_mode_button, keyboard_button, virtual_controls_button, modifier_button]:
         if control.visible and control.get_global_rect().has_point(point):
             return true
     return false
@@ -1098,14 +1119,17 @@ func _layout_edge_menu_icon() -> void:
 func _layout_menu_options(diameter: float, gap: float) -> void:
     var option_size := Vector2(maxf(108.0, diameter * 2.15), menu_button.size.y)
     var option_x := menu_button.position.x - option_size.x - gap
-    var options_height := option_size.y * 2.0 + gap
+    var buttons: Array[Button] = [keyboard_button, virtual_controls_button]
+    if _modifier_available:
+        buttons.append(modifier_button)
+    var options_height := option_size.y * buttons.size() + gap * (buttons.size() - 1)
     var options_top := clampf(
         menu_button.position.y,
         _safe_rect.position.y,
         _safe_rect.end.y - options_height
     )
     var option_y := options_top
-    for button in [keyboard_button, virtual_controls_button]:
+    for button in buttons:
         button.position = Vector2(option_x, option_y)
         button.size = option_size
         option_y += option_size.y + gap
@@ -1269,6 +1293,17 @@ func _toggle_menu() -> void:
         _menu_open = not _menu_open
     _sync_visibility()
 
+func _request_modifier() -> void:
+    if not _enabled or not _menu_button_enabled or not _modifier_available:
+        return
+    release_all()
+    _reset_cursor_touch_gesture()
+    _mouse_mode_blocked_touch_indices.clear()
+    _menu_open = false
+    _panel_open = false
+    _sync_visibility()
+    modifier_requested.emit()
+
 func _request_keyboard() -> void:
     if not _enabled or not _menu_button_enabled:
         return
@@ -1326,6 +1361,7 @@ func _sync_visibility() -> void:
     menu_button.visible = controls_visible and not _layout_preview
     keyboard_button.visible = controls_visible and _menu_open
     virtual_controls_button.visible = controls_visible and _menu_open
+    modifier_button.visible = controls_visible and _menu_open and _modifier_available
     var panel_visible := controls_visible and _panel_open
     var mouse_only := _input_mode == INPUT_MODE_MOUSE_ONLY
     var show_virtual_mouse := panel_visible and not is_touch_mode()

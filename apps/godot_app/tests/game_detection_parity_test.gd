@@ -44,6 +44,8 @@ func _initialize() -> void:
         ["ons-data", "onscripter", {"nscript.dat": "", "data.xp3": ""}],
         ["ons-prefix", "onscripter", {"OnScript.NT3": "", "Gameexe.ini": ""}],
         ["system4", "xsystem4", {"SYSTEM40.INI": "", "game.AIN": "", "somethingSA.ALD": "", "0.txt": ""}],
+        ["system4-chs", "xsystem4", {"AliceStart.CHS": "", "CHS.TBL": "", "story.CHS": ""}],
+        ["system4-haru", "xsystem4", {"AliceStart2.ini": "", "haru_c.ain": ""}],
         ["system4-ali", "xsystem4", {"AliceStart.INI": "", "game.AIN": ""}],
         ["system4-incomplete", "kirikiri", {"game.AIN": ""}],
         ["system35-scenario", "xsystem35", {"packSA.ALD": "", "adisk.dat": "", "acg.dat": ""}],

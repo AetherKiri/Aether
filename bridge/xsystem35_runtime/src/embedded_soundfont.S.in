@@ -1,0 +1,17 @@
+/* Make the same GM bank available to the embedded player on every host. */
+#ifdef __APPLE__
+.section __TEXT,__const
+#define LABEL(name) _##name
+#else
+.section .rodata
+#define LABEL(name) name
+#endif
+.balign 4
+.globl LABEL(xsystem35_soundfont_start)
+.globl LABEL(xsystem35_soundfont_end)
+LABEL(xsystem35_soundfont_start):
+.incbin "@soundfont@"
+LABEL(xsystem35_soundfont_end):
+#if defined(__ELF__)
+.section .note.GNU-stack,"",%progbits
+#endif

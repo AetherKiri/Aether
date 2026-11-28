@@ -525,6 +525,53 @@ bool HasScriptMarker(const fs::path &root) {
     return false;
 }
 
+fs::path FindRedirectedScript(const fs::path &root) {
+    std::error_code error;
+    if (!fs::is_regular_file(root / "nscript.dat", error)) {
+        return {};
+    }
+
+    const fs::path patch_path = root / "nscript_patch.dll";
+    constexpr std::uintmax_t kMaxPatchSize = 4u * 1024u * 1024u;
+    const auto size = fs::file_size(patch_path, error);
+    if (error || size < 2 || size > kMaxPatchSize) {
+        return {};
+    }
+    std::ifstream patch_file(patch_path, std::ios::binary);
+    std::string patch(static_cast<size_t>(size), '\0');
+    if (!patch_file.read(patch.data(), static_cast<std::streamsize>(size)) ||
+        patch.compare(0, 2, "MZ") != 0 ||
+        patch.find("CreateFileA redirect ") == std::string::npos) {
+        return {};
+    }
+
+    // These patches store their relative directory as a NUL-terminated
+    // string with a trailing backslash. Match a complete sibling directory
+    // name so an unrelated nested script or a partial match cannot override it.
+    fs::path redirected;
+    for (fs::directory_iterator it(root, error), end; !error && it != end;
+         it.increment(error)) {
+        const fs::path &candidate = it->path();
+        std::string marker(1, '\0');
+        marker += candidate.filename().u8string();
+        marker.push_back('\\');
+        marker.push_back('\0');
+        if (patch.find(marker) == std::string::npos) {
+            continue;
+        }
+        const fs::path script = candidate / "nscript.dat";
+        std::error_code script_error;
+        if (!fs::is_regular_file(script, script_error)) {
+            continue;
+        }
+        if (!redirected.empty()) {
+            return {};
+        }
+        redirected = script;
+    }
+    return error ? fs::path{} : redirected;
+}
+
 struct PresentationAspectRatio {
     uint32_t width = 0;
     uint32_t height = 0;
@@ -658,6 +705,19 @@ std::string Utf8FromCodepoint(uint32_t codepoint) {
 }
 
 } // namespace
+
+extern "C" std::FILE *aetherkiri_onscripter_open_redirected_script(
+    const char *archive_path) {
+    const fs::path script = FindRedirectedScript(fs::u8path(archive_path));
+    if (script.empty()) {
+        return nullptr;
+    }
+#if defined(_WIN32)
+    return _wfopen(script.c_str(), L"rb");
+#else
+    return std::fopen(script.c_str(), "rb");
+#endif
+}
 
 extern "C" [[noreturn]] void aetherkiri_onscripter_host_exit(
     int code, const char *source_file, int source_line) {
@@ -1283,9 +1343,8 @@ struct Runtime::Impl final : EmbeddedMovieHost {
                 ons->setFontFile(font.u8string().c_str());
             }
 
-            // ScriptHandler opens the initial 0.txt/nscript.dat relative to
-            // cwd even when --root is set. Limit that upstream behavior to
-            // the synchronous script-read window, then restore Godot's cwd.
+            // Keep relative archive opens during initialization in the game
+            // directory, then restore Godot's working directory.
             {
                 std::lock_guard<std::mutex> cwd_lock(
                     g_current_directory_mutex);

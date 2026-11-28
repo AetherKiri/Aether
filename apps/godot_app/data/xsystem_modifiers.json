@@ -1,0 +1,4997 @@
+{
+  "codes": [
+    {
+      "code": "灌注Eins陈谢谢喵",
+      "label": "关闭主播模式"
+    },
+    {
+      "code": "界徐盛",
+      "label": "解禁全部作弊码限制"
+    },
+    {
+      "code": "whosyourdaddy",
+      "label": "击杀当前敌人"
+    },
+    {
+      "code": "血量全满",
+      "label": "战斗中我方血量全满"
+    },
+    {
+      "code": "重开",
+      "label": "重新开始当前战斗"
+    },
+    {
+      "code": "打败哈尼王",
+      "label": "开启兰斯世界模式"
+    },
+    {
+      "code": "111",
+      "label": "遗物图鉴全展示"
+    },
+    {
+      "code": "panzer",
+      "label": "获得游戏管理者卡牌"
+    },
+    {
+      "code": "餐券10",
+      "label": "增加10张餐券（受 MOD 上限限制）"
+    },
+    {
+      "code": "部队点数up10",
+      "label": "增加10点部队点数"
+    },
+    {
+      "code": "exp道具",
+      "label": "获得1个EXP道具"
+    },
+    {
+      "code": "难度up4",
+      "label": "难度+4"
+    },
+    {
+      "code": "4000flag200",
+      "label": "等级上限额外+200"
+    },
+    {
+      "code": "1505flag1",
+      "label": "开启装备解封模式"
+    },
+    {
+      "code": "1522flag1",
+      "label": "重置任务技能状态"
+    },
+    {
+      "code": "2222flag0",
+      "label": "清空敌方盾与复生"
+    },
+    {
+      "code": "2233flag0",
+      "label": "清空敌方自动恢复次数"
+    },
+    {
+      "code": "Lv42 兰斯卡牌追加",
+      "label": "追加指定卡牌模板"
+    },
+    {
+      "code": "技能识别",
+      "label": "识别正中间角色技能编号"
+    },
+    {
+      "code": "装备识别",
+      "label": "识别当前武器与防具代码"
+    },
+    {
+      "code": "梗概关闭",
+      "label": "关闭梗概模式"
+    }
+  ],
+  "games": [
+    {
+      "actions": [
+        {
+          "label": "全卡牌与角色强化",
+          "action": {
+            "setCardCount": 99,
+            "cardAtkBonus": 999,
+            "cardHpBonus": 999,
+            "setCharStar": 5,
+            "setCharExp": 999999
+          }
+        },
+        {
+          "label": "宝箱 100% 掉落",
+          "action": {
+            "perFindTreasure": 999,
+            "treasureNotGetCount": 99,
+            "rareLuck": 999
+          }
+        }
+      ],
+      "codes": true,
+      "id": "rance10",
+      "locks": [
+        {
+          "bit": 1,
+          "label": "锁定我方满生命"
+        },
+        {
+          "bit": 2,
+          "label": "锁定无限AP"
+        },
+        {
+          "bit": 4,
+          "label": "锁定999连击加成"
+        },
+        {
+          "bit": 8,
+          "label": "锁定战斗回合为1"
+        },
+        {
+          "bit": 16,
+          "label": "敌方1血秒杀"
+        },
+        {
+          "bit": 32,
+          "label": "敌方0攻击0防御"
+        },
+        {
+          "bit": 64,
+          "label": "全员蓄力必暴连击"
+        },
+        {
+          "bit": 128,
+          "label": "技能无限使用次数"
+        },
+        {
+          "bit": 256,
+          "label": "无限悔棋打火机"
+        },
+        {
+          "bit": 512,
+          "label": "资源不低于999"
+        },
+        {
+          "bit": 1024,
+          "label": "宝箱100%掉落"
+        }
+      ],
+      "name": "Rance X",
+      "panels": [
+        {
+          "label": "资源与回合",
+          "fields": [
+            {
+              "key": "turn",
+              "label": "回合",
+              "state": "turn"
+            },
+            {
+              "key": "difficulty",
+              "label": "难度",
+              "state": "difficulty"
+            },
+            {
+              "key": "foodTicket",
+              "label": "食券",
+              "state": "foodTicket"
+            },
+            {
+              "key": "honor",
+              "label": "勋章",
+              "state": "honor"
+            },
+            {
+              "key": "friendPoint",
+              "label": "友情点",
+              "state": "friendPoint"
+            },
+            {
+              "key": "totalExp",
+              "label": "累计经验",
+              "state": "totalExp"
+            },
+            {
+              "key": "partyRank",
+              "label": "部队等级",
+              "state": "partyRank"
+            },
+            {
+              "key": "itemStar",
+              "label": "装备星级",
+              "state": "itemStar"
+            },
+            {
+              "key": "hannyZippo",
+              "label": "悔棋次数",
+              "state": "hannyZippo"
+            }
+          ],
+          "battle": false
+        },
+        {
+          "label": "部队与属性",
+          "fields": [
+            {
+              "key": "partyHp",
+              "label": "当前 HP",
+              "state": "partyHp"
+            },
+            {
+              "key": "partyMaxHp",
+              "label": "最大 HP",
+              "state": "partyMaxHp"
+            },
+            {
+              "key": "partyAvailCount",
+              "label": "出击人数",
+              "state": "partyAvailCount"
+            },
+            {
+              "key": "partyIsFixStatus",
+              "label": "固定属性（0/1）",
+              "state": "partyIsFixStatus"
+            },
+            {
+              "key": "partyAtk",
+              "label": "部队攻击力",
+              "state": "partyAtk"
+            },
+            {
+              "key": "atkPerPhys",
+              "label": "物攻加成 %",
+              "state": "atkPerPhys"
+            },
+            {
+              "key": "atkPerMag",
+              "label": "魔攻加成 %",
+              "state": "atkPerMag"
+            },
+            {
+              "key": "defPerPhys",
+              "label": "物防加成 %",
+              "state": "defPerPhys"
+            },
+            {
+              "key": "defPerMag",
+              "label": "魔防加成 %",
+              "state": "defPerMag"
+            },
+            {
+              "key": "perCrit",
+              "label": "暴击率 %",
+              "state": "perCrit"
+            },
+            {
+              "key": "perMulti",
+              "label": "连击率 %",
+              "state": "perMulti"
+            },
+            {
+              "key": "perExpUp",
+              "label": "经验加成 %",
+              "state": "perExpUp"
+            },
+            {
+              "key": "perFindTreasure",
+              "label": "宝箱掉落率 %",
+              "state": "perFindTreasure"
+            }
+          ],
+          "battle": false
+        },
+        {
+          "label": "四国与人口",
+          "fields": [
+            {
+              "key": "humanCount",
+              "label": "存活人口",
+              "state": "humanCount"
+            },
+            {
+              "key": "humanDead",
+              "label": "死亡人口",
+              "state": "humanDead"
+            },
+            {
+              "key": "seaPlayerArmy",
+              "label": "船团兵力",
+              "state": "seaPlayerArmy"
+            },
+            {
+              "key": "leazasPArmy",
+              "label": "利萨斯我军",
+              "state": "leazasPArmy"
+            },
+            {
+              "key": "helmanPArmy",
+              "label": "赫尔曼我军",
+              "state": "helmanPArmy"
+            },
+            {
+              "key": "zethPArmy",
+              "label": "赛斯我军",
+              "state": "zethPArmy"
+            },
+            {
+              "key": "freeCitiesPArmy",
+              "label": "自由都市我军",
+              "state": "freeCitiesPArmy"
+            },
+            {
+              "key": "leazasEArmy",
+              "label": "利萨斯魔军",
+              "state": "leazasEArmy"
+            },
+            {
+              "key": "helmanEArmy",
+              "label": "赫尔曼魔军",
+              "state": "helmanEArmy"
+            },
+            {
+              "key": "zethEArmy",
+              "label": "赛斯魔军",
+              "state": "zethEArmy"
+            },
+            {
+              "key": "freeCitiesEArmy",
+              "label": "自由都市魔军",
+              "state": "freeCitiesEArmy"
+            }
+          ],
+          "battle": false
+        },
+        {
+          "label": "卡牌与角色",
+          "fields": [
+            {
+              "key": "setCardCount",
+              "label": "全卡牌叠卡数",
+              "state": "setCardCount"
+            },
+            {
+              "key": "cardAtkBonus",
+              "label": "全卡牌攻击加成",
+              "state": "cardAtkBonus"
+            },
+            {
+              "key": "cardHpBonus",
+              "label": "全卡牌生命加成",
+              "state": "cardHpBonus"
+            },
+            {
+              "key": "setCharStar",
+              "label": "全角色星级",
+              "state": "setCharStar"
+            },
+            {
+              "key": "setCharExp",
+              "label": "全角色经验",
+              "state": "setCharExp"
+            }
+          ],
+          "battle": false
+        },
+        {
+          "label": "战斗数值",
+          "fields": [
+            {
+              "key": "battleAp",
+              "label": "AP",
+              "state": "battleAp"
+            },
+            {
+              "key": "battleCombo",
+              "label": "连击",
+              "state": "battleCombo"
+            },
+            {
+              "key": "battleRound",
+              "label": "战斗回合",
+              "state": "battleRound"
+            }
+          ],
+          "battle": true
+        }
+      ],
+      "battle_actions": [
+        {
+          "label": "敌方 HP 设为 1",
+          "action": {
+            "killEnemy": true
+          }
+        },
+        {
+          "label": "敌方攻防清零",
+          "action": {
+            "weakenEnemy": true
+          }
+        },
+        {
+          "label": "我方生命回满",
+          "action": {
+            "refillPartyHp": true
+          }
+        },
+        {
+          "label": "AP 99 · 连击 999 · 回合 1",
+          "action": {
+            "battleAp": 99,
+            "battleCombo": 999,
+            "battleRound": 1
+          }
+        },
+        {
+          "label": "全员蓄力并重置技能",
+          "action": {
+            "cureAndBoostLeaders": true
+          }
+        }
+      ],
+      "engine": "xsystem4"
+    },
+    {
+      "actions": [
+        {
+          "action": {
+            "ddCheatAddMoney": 1000000
+          },
+          "label": "资金增加 100 万"
+        },
+        {
+          "action": {
+            "ddCheatAddMoney": 10000000
+          },
+          "label": "资金增加 1000 万"
+        },
+        {
+          "action": {
+            "ddCheatMaxMoney": true
+          },
+          "label": "资金拉满 9.99 亿并回满调教点"
+        },
+        {
+          "action": {
+            "ddCheatExpandMansion": true
+          },
+          "label": "扩建店面单间上限至 10 间并扩充调教点上限"
+        },
+        {
+          "action": {
+            "ddCheatHeldItems99": true
+          },
+          "label": "当前已持有消耗品与徽章数量补满 99"
+        },
+        {
+          "action": {
+            "ddCheatAllItemsBadges99": true
+          },
+          "label": "解锁全消耗品与全 31 种正式徽章各 99 个"
+        },
+        {
+          "action": {
+            "ddCheatPartyFullHeal": true
+          },
+          "label": "在籍战斗成员全员 HP·MP·怒气回满"
+        },
+        {
+          "action": {
+            "ddCheatPartyLv99": true
+          },
+          "label": "已入队战斗成员一键满级 Lv99"
+        },
+        {
+          "action": {
+            "ddCheatPartySuperBoost": true
+          },
+          "label": "已入队成员全能力永久强化并满好感度"
+        },
+        {
+          "action": {
+            "ddCheatPartyRank6Weapons": true
+          },
+          "label": "全员装备专属六阶毕业武器"
+        },
+        {
+          "action": {
+            "ddCheatWorkersHeal": true
+          },
+          "label": "全体春销人材精神避孕药回满并治愈崩溃怀孕"
+        },
+        {
+          "action": {
+            "ddCheatWorkersMaxStats": true
+          },
+          "label": "全体春销人材一键 SS 评级·UR 稀有度·四维拉满"
+        }
+      ],
+      "codes": false,
+      "id": "dohnadohna",
+      "locks": [
+        {
+          "bit": 1,
+          "label": "战斗锁定我方全员满HP"
+        },
+        {
+          "bit": 2,
+          "label": "战斗锁定我方全员满MP"
+        },
+        {
+          "bit": 4,
+          "label": "战斗锁定我方全员满怒气VP"
+        },
+        {
+          "bit": 8,
+          "label": "战斗敌方全员1血秒杀"
+        },
+        {
+          "bit": 16,
+          "label": "无限资金 · 保底99999999"
+        },
+        {
+          "bit": 32,
+          "label": "无限调教点 · TP不减"
+        },
+        {
+          "bit": 64,
+          "label": "人材满精神满避孕药且不崩溃不怀孕"
+        },
+        {
+          "bit": 128,
+          "label": "春销营业配对倒计时锁定不减"
+        }
+      ],
+      "name": "ドーナドーナ",
+      "engine": "xsystem4",
+      "readonly": [
+        {
+          "key": "money",
+          "label": "资金"
+        },
+        {
+          "key": "turn",
+          "label": "回合"
+        },
+        {
+          "key": "tp",
+          "label": "调教点"
+        },
+        {
+          "key": "tpMax",
+          "label": "调教点上限"
+        },
+        {
+          "key": "workerLimit",
+          "label": "单间上限"
+        },
+        {
+          "key": "workerCount",
+          "label": "店面人数"
+        },
+        {
+          "key": "garageCount",
+          "label": "待机人数"
+        },
+        {
+          "key": "heldItemKinds",
+          "label": "持有消耗品种类"
+        },
+        {
+          "key": "heldBadgeKinds",
+          "label": "持有徽章种类"
+        },
+        {
+          "key": "battleTurn",
+          "label": "战斗回合"
+        },
+        {
+          "key": "allyCount",
+          "label": "我方人数"
+        },
+        {
+          "key": "enemyCount",
+          "label": "敌方人数"
+        },
+        {
+          "key": "enemyTotalHp",
+          "label": "敌方总 HP"
+        }
+      ]
+    },
+    {
+      "actions": [
+        {
+          "action": {
+            "evCheatAddMoney": 100000
+          },
+          "label": "所持金增加 10 万"
+        },
+        {
+          "action": {
+            "evCheatAddMoney": 1000000
+          },
+          "label": "所持金增加 100 万"
+        },
+        {
+          "action": {
+            "evCheatMaxMoney": true
+          },
+          "label": "所持金拉满 99999999"
+        },
+        {
+          "action": {
+            "evCheatPartyFullHeal": true
+          },
+          "label": "出战角色全员满 HP 与满 5 BP"
+        },
+        {
+          "action": {
+            "evCheatPartySkillP999": true
+          },
+          "label": "出战角色技能点全部补满 999"
+        },
+        {
+          "action": {
+            "evCheatPartyBoost": true
+          },
+          "label": "出战角色一键暴走强化 9999 HP 与 999 四维"
+        },
+        {
+          "action": {
+            "evCheatTriggerEncounter": true
+          },
+          "label": "立即触发下次移动遇敌"
+        },
+        {
+          "action": {
+            "evCheatClearEncounter": true
+          },
+          "label": "清空当前遇敌危险度至安全状态"
+        }
+      ],
+      "codes": false,
+      "id": "evenicle",
+      "locks": [
+        {
+          "bit": 1,
+          "label": "禁止随机遇敌 · 安全步数锁定满值"
+        },
+        {
+          "bit": 2,
+          "label": "我方全员满 HP 锁定"
+        },
+        {
+          "bit": 4,
+          "label": "无限技能点 · SkillP 至少 99"
+        },
+        {
+          "bit": 8,
+          "label": "无限 BP · 战斗 BP 满 5 格"
+        },
+        {
+          "bit": 16,
+          "label": "战斗敌方全员 1 血秒杀"
+        },
+        {
+          "bit": 32,
+          "label": "无限所持金 · 保底 9999999"
+        }
+      ],
+      "name": "イブニクル",
+      "engine": "xsystem4",
+      "readonly": [
+        {
+          "key": "money",
+          "label": "所持金"
+        },
+        {
+          "key": "encountNow",
+          "label": "遇敌危险度"
+        },
+        {
+          "key": "encountMax",
+          "label": "遇敌危险度上限"
+        },
+        {
+          "key": "enemyCount",
+          "label": "敌方人数"
+        },
+        {
+          "key": "enemyTotalHp",
+          "label": "敌方总 HP"
+        }
+      ]
+    },
+    {
+      "actions": [
+        {
+          "action": {
+            "evCheatAddMoney": 100000
+          },
+          "label": "所持金增加 10 万"
+        },
+        {
+          "action": {
+            "evCheatAddMoney": 1000000
+          },
+          "label": "所持金增加 100 万"
+        },
+        {
+          "action": {
+            "evCheatMaxMoney": true
+          },
+          "label": "所持金拉满 99999999"
+        },
+        {
+          "action": {
+            "evCheatPartyFullHeal": true
+          },
+          "label": "出战角色全员满 HP 与满 5 BP"
+        },
+        {
+          "action": {
+            "evCheatPartySkillP999": true
+          },
+          "label": "出战角色技能点全部补满 999"
+        },
+        {
+          "action": {
+            "evCheatPartyBoost": true
+          },
+          "label": "出战角色一键暴走强化 9999 HP 与 999 四维"
+        },
+        {
+          "action": {
+            "evCheatTriggerEncounter": true
+          },
+          "label": "立即触发下次移动遇敌"
+        },
+        {
+          "action": {
+            "evCheatClearEncounter": true
+          },
+          "label": "清空当前遇敌危险度至安全状态"
+        }
+      ],
+      "codes": false,
+      "id": "eveniclerance",
+      "locks": [
+        {
+          "bit": 1,
+          "label": "禁止随机遇敌 · 安全步数锁定满值"
+        },
+        {
+          "bit": 2,
+          "label": "我方全员满 HP 锁定"
+        },
+        {
+          "bit": 4,
+          "label": "无限技能点 · SkillP 至少 99"
+        },
+        {
+          "bit": 8,
+          "label": "无限 BP · 战斗 BP 满 5 格"
+        },
+        {
+          "bit": 16,
+          "label": "战斗敌方全员 1 血秒杀"
+        },
+        {
+          "bit": 32,
+          "label": "无限所持金 · 保底 9999999"
+        }
+      ],
+      "name": "イブニクル ランス",
+      "engine": "xsystem4",
+      "readonly": [
+        {
+          "key": "money",
+          "label": "所持金"
+        },
+        {
+          "key": "encountNow",
+          "label": "遇敌危险度"
+        },
+        {
+          "key": "encountMax",
+          "label": "遇敌危险度上限"
+        },
+        {
+          "key": "enemyCount",
+          "label": "敌方人数"
+        },
+        {
+          "key": "enemyTotalHp",
+          "label": "敌方总 HP"
+        }
+      ]
+    },
+    {
+      "actions": [
+        {
+          "action": {
+            "evCheatAddMoney": 100000
+          },
+          "label": "所持金增加 10 万"
+        },
+        {
+          "action": {
+            "evCheatAddMoney": 1000000
+          },
+          "label": "所持金增加 100 万"
+        },
+        {
+          "action": {
+            "evCheatMaxMoney": true
+          },
+          "label": "所持金拉满 99999999"
+        },
+        {
+          "action": {
+            "evCheatPartyFullHeal": true
+          },
+          "label": "出战角色全员满 HP 与满 5 BP"
+        },
+        {
+          "action": {
+            "evCheatPartySkillP999": true
+          },
+          "label": "出战角色技能点全部补满 999"
+        },
+        {
+          "action": {
+            "evCheatPartyBoost": true
+          },
+          "label": "出战角色一键暴走强化 9999 HP 与 999 四维"
+        },
+        {
+          "action": {
+            "evCheatTriggerEncounter": true
+          },
+          "label": "立即触发下次移动遇敌"
+        },
+        {
+          "action": {
+            "evCheatClearEncounter": true
+          },
+          "label": "清空当前遇敌危险度至安全状态"
+        }
+      ],
+      "codes": false,
+      "id": "eveniclegaiden",
+      "locks": [
+        {
+          "bit": 1,
+          "label": "禁止随机遇敌 · 安全步数锁定满值"
+        },
+        {
+          "bit": 2,
+          "label": "我方全员满 HP 锁定"
+        },
+        {
+          "bit": 4,
+          "label": "无限技能点 · SkillP 至少 99"
+        },
+        {
+          "bit": 8,
+          "label": "无限 BP · 战斗 BP 满 5 格"
+        },
+        {
+          "bit": 16,
+          "label": "战斗敌方全员 1 血秒杀"
+        },
+        {
+          "bit": 32,
+          "label": "无限所持金 · 保底 9999999"
+        }
+      ],
+      "name": "イブニクル 外伝",
+      "engine": "xsystem4",
+      "readonly": [
+        {
+          "key": "money",
+          "label": "所持金"
+        },
+        {
+          "key": "encountNow",
+          "label": "遇敌危险度"
+        },
+        {
+          "key": "encountMax",
+          "label": "遇敌危险度上限"
+        },
+        {
+          "key": "enemyCount",
+          "label": "敌方人数"
+        },
+        {
+          "key": "enemyTotalHp",
+          "label": "敌方总 HP"
+        }
+      ]
+    },
+    {
+      "actions": [
+        {
+          "action": {
+            "srAddGold": 100000
+          },
+          "label": "金钱 +10 万"
+        },
+        {
+          "action": {
+            "srAddGold": 1000000
+          },
+          "label": "金钱 +100 万"
+        },
+        {
+          "action": {
+            "srGold": 999999
+          },
+          "label": "金钱设为 999999"
+        },
+        {
+          "action": {
+            "srRefillAp": true
+          },
+          "label": "补满行动次数"
+        },
+        {
+          "action": {
+            "srAp": 9,
+            "srApMax": 9
+          },
+          "label": "行动次数设为 9"
+        },
+        {
+          "action": {
+            "srSatisfaction": 999
+          },
+          "label": "满足度设为 999"
+        },
+        {
+          "action": {
+            "srTroopLimit": 9999
+          },
+          "label": "兵数上限设为 9999"
+        },
+        {
+          "action": {
+            "srResetAllActions": true
+          },
+          "label": "重置我方行动"
+        },
+        {
+          "action": {
+            "srHealAllTroops": true
+          },
+          "label": "我方回满兵力与技数"
+        },
+        {
+          "action": {
+            "srBoostAllParty": true
+          },
+          "label": "全军一键强化"
+        }
+      ],
+      "characters": {
+        "boost": {
+          "atk": 99,
+          "def": 99,
+          "intel": 99,
+          "love": 99,
+          "resetAction": 1,
+          "spd": 99,
+          "troops": 9999,
+          "troopsMax": 9999
+        },
+        "fields": [
+          {
+            "key": "troops",
+            "label": "当前兵力",
+            "state": "troops"
+          },
+          {
+            "key": "troopsMax",
+            "label": "最大兵力",
+            "state": "troopsMax"
+          },
+          {
+            "key": "atk",
+            "label": "攻击",
+            "state": "atk"
+          },
+          {
+            "key": "def",
+            "label": "防御",
+            "state": "def"
+          },
+          {
+            "key": "intel",
+            "label": "智力",
+            "state": "intel"
+          },
+          {
+            "key": "spd",
+            "label": "速度",
+            "state": "spd"
+          },
+          {
+            "key": "love",
+            "label": "好感度",
+            "state": "love"
+          },
+          {
+            "key": "wazaNow",
+            "label": "当前技数",
+            "state": "wazaNow"
+          },
+          {
+            "key": "wazaMax",
+            "label": "最大技数",
+            "state": "wazaMax"
+          },
+          {
+            "key": "resetAction",
+            "label": "重置行动（1）",
+            "state": "resetAction"
+          }
+        ],
+        "prefix": "sr"
+      },
+      "codes": false,
+      "id": "sengokurance",
+      "locks": [
+        {
+          "bit": 1,
+          "label": "无限金钱"
+        },
+        {
+          "bit": 2,
+          "label": "无限行动次数"
+        },
+        {
+          "bit": 4,
+          "label": "最大满足度"
+        },
+        {
+          "bit": 8,
+          "label": "我方满兵力与技数"
+        },
+        {
+          "bit": 16,
+          "label": "敌方 1 兵"
+        },
+        {
+          "bit": 32,
+          "label": "我方无限行动"
+        }
+      ],
+      "name": "战国兰斯",
+      "resource_title": "资源与行动",
+      "resources": [
+        {
+          "key": "srGold",
+          "label": "金钱",
+          "state": "gold"
+        },
+        {
+          "key": "srAp",
+          "label": "行动次数",
+          "state": "ap"
+        },
+        {
+          "key": "srApMax",
+          "label": "行动上限",
+          "state": "apMax"
+        },
+        {
+          "key": "srSatisfaction",
+          "label": "满足度",
+          "state": "satisfaction"
+        },
+        {
+          "key": "srTroopLimit",
+          "label": "兵数上限",
+          "state": "troopLimit"
+        }
+      ],
+      "battle_actions": [
+        {
+          "action": {
+            "srBattle1HpEnemies": true
+          },
+          "label": "敌方兵力设为 1"
+        },
+        {
+          "action": {
+            "srHealAllTroops": true
+          },
+          "label": "我方回满兵力与技数"
+        },
+        {
+          "action": {
+            "srResetAllActions": true
+          },
+          "label": "重置我方行动"
+        }
+      ],
+      "engine": "xsystem4"
+    },
+    {
+      "actions": [
+        {
+          "action": {
+            "r01AddGold": 10000
+          },
+          "label": "金钱 +1 万"
+        },
+        {
+          "action": {
+            "r01AddGold": 100000
+          },
+          "label": "金钱 +10 万"
+        },
+        {
+          "action": {
+            "r01Gold": 999999
+          },
+          "label": "金钱设为 999999"
+        },
+        {
+          "action": {
+            "r01HealFull": true
+          },
+          "label": "恢复满 HP"
+        },
+        {
+          "action": {
+            "r01MaxChipCap": true
+          },
+          "label": "最大芯片容量"
+        },
+        {
+          "action": {
+            "r01Hp": 999,
+            "r01Level": 50,
+            "r01Luck": 99,
+            "r01MaxHp": 999,
+            "r01MaxLevelCap": 999
+          },
+          "label": "兰斯一键强化"
+        },
+        {
+          "action": {
+            "r01UnlockGallery": true
+          },
+          "label": "解锁鉴赏"
+        }
+      ],
+      "codes": false,
+      "id": "rance01",
+      "locks": [
+        {
+          "bit": 1,
+          "label": "锁定满 HP"
+        },
+        {
+          "bit": 2,
+          "label": "敌方 1 HP"
+        },
+        {
+          "bit": 4,
+          "label": "无限金钱"
+        },
+        {
+          "bit": 8,
+          "label": "100% 掉落"
+        },
+        {
+          "bit": 16,
+          "label": "免疫异常状态"
+        }
+      ],
+      "name": "Rance 01",
+      "resource_action": {
+        "action": {
+          "r01HealFull": true,
+          "r01MaxChipCap": true
+        },
+        "label": "扩充芯片并回满 HP"
+      },
+      "resource_title": "数值与芯片",
+      "resources": [
+        {
+          "key": "r01Gold",
+          "label": "金钱",
+          "state": "gold"
+        },
+        {
+          "key": "r01Level",
+          "label": "等级",
+          "state": "level"
+        },
+        {
+          "key": "r01MaxLevelCap",
+          "label": "等级上限",
+          "state": "maxLevel"
+        },
+        {
+          "key": "r01Exp",
+          "label": "经验",
+          "state": "exp"
+        },
+        {
+          "key": "r01Hp",
+          "label": "当前 HP",
+          "state": "hp"
+        },
+        {
+          "key": "r01MaxHp",
+          "label": "最大 HP",
+          "state": "maxHp"
+        },
+        {
+          "key": "r01Luck",
+          "label": "幸运",
+          "state": "luck"
+        }
+      ],
+      "engine": "xsystem4"
+    },
+    {
+      "actions": [
+        {
+          "action": {
+            "r02AddGold": 10000
+          },
+          "label": "金钱 +1 万"
+        },
+        {
+          "action": {
+            "r02Gold": 999999
+          },
+          "label": "金钱设为 999999"
+        },
+        {
+          "action": {
+            "r02SupplyItems": true
+          },
+          "label": "补满消耗品"
+        },
+        {
+          "action": {
+            "r02HealAll": true
+          },
+          "label": "全员回满 HP 与 SP"
+        },
+        {
+          "action": {
+            "r02CharEdit": {
+              "atk": 500,
+              "def": 500,
+              "eva": 100,
+              "fullHeal": true,
+              "hit": 200,
+              "hp": 999,
+              "hpMax": 999,
+              "know": 500,
+              "luck": 99,
+              "lv": 50,
+              "sp": 200,
+              "spMax": 200,
+              "target": -1
+            }
+          },
+          "label": "全员一键强化"
+        },
+        {
+          "action": {
+            "r02UnlockGallery": true
+          },
+          "label": "解锁鉴赏"
+        }
+      ],
+      "characters": {
+        "boost": {
+          "atk": 500,
+          "def": 500,
+          "eva": 100,
+          "fullHeal": true,
+          "hit": 200,
+          "hp": 999,
+          "hpMax": 999,
+          "know": 500,
+          "luck": 99,
+          "lv": 50,
+          "sp": 200,
+          "spMax": 200
+        },
+        "fields": [
+          {
+            "key": "lv",
+            "label": "等级",
+            "state": "lv"
+          },
+          {
+            "key": "exp",
+            "label": "经验",
+            "state": "exp"
+          },
+          {
+            "key": "hp",
+            "label": "当前 HP",
+            "state": "hp"
+          },
+          {
+            "key": "hpMax",
+            "label": "最大 HP",
+            "state": "hpMax"
+          },
+          {
+            "key": "sp",
+            "label": "当前 SP",
+            "state": "sp"
+          },
+          {
+            "key": "spMax",
+            "label": "最大 SP",
+            "state": "spMax"
+          },
+          {
+            "key": "atk",
+            "label": "攻击",
+            "state": "atk"
+          },
+          {
+            "key": "def",
+            "label": "防御",
+            "state": "def"
+          },
+          {
+            "key": "know",
+            "label": "魔力知性",
+            "state": "know"
+          },
+          {
+            "key": "hit",
+            "label": "命中",
+            "state": "hit"
+          },
+          {
+            "key": "eva",
+            "label": "回避",
+            "state": "eva"
+          },
+          {
+            "key": "luck",
+            "label": "幸运",
+            "state": "luck"
+          }
+        ],
+        "prefix": "r02"
+      },
+      "codes": false,
+      "id": "rance02",
+      "locks": [
+        {
+          "bit": 1,
+          "label": "我方满 HP 与 SP"
+        },
+        {
+          "bit": 2,
+          "label": "敌方一击必杀"
+        },
+        {
+          "bit": 4,
+          "label": "无限金钱"
+        },
+        {
+          "bit": 8,
+          "label": "无限消耗品"
+        }
+      ],
+      "name": "Rance 02",
+      "resource_action": {
+        "action": {
+          "r02HealAll": true,
+          "r02SupplyItems": true
+        },
+        "label": "补满道具并回血"
+      },
+      "resource_title": "金币与因果律",
+      "resources": [
+        {
+          "key": "r02Gold",
+          "label": "金钱",
+          "state": "gold"
+        },
+        {
+          "key": "r02Karma",
+          "label": "因果律",
+          "state": "karma"
+        }
+      ],
+      "engine": "xsystem4"
+    },
+    {
+      "actions": [
+        {
+          "action": {
+            "r03AddGold": 10000
+          },
+          "label": "金钱 +1 万"
+        },
+        {
+          "action": {
+            "r03AddGold": 100000
+          },
+          "label": "金钱 +10 万"
+        },
+        {
+          "action": {
+            "r03Gold": 9999999
+          },
+          "label": "金钱设为 9999999"
+        },
+        {
+          "action": {
+            "r03HealAllParty": true
+          },
+          "label": "全员回血并清除冷却"
+        },
+        {
+          "action": {
+            "r03MaxAllExp": true
+          },
+          "label": "全员满经验"
+        },
+        {
+          "action": {
+            "r03CharEdit": {
+              "dex": 999,
+              "hp": 9999,
+              "hpMax": 9999,
+              "lv": 99,
+              "mind": 999,
+              "str": 999,
+              "target": -1
+            }
+          },
+          "label": "全员一键强化"
+        }
+      ],
+      "characters": {
+        "boost": {
+          "dex": 999,
+          "hp": 9999,
+          "hpMax": 9999,
+          "lv": 99,
+          "mind": 999,
+          "str": 999
+        },
+        "fields": [
+          {
+            "key": "hp",
+            "label": "当前 HP",
+            "state": "hp"
+          },
+          {
+            "key": "hpMax",
+            "label": "最大 HP",
+            "state": "hpMax"
+          },
+          {
+            "key": "lv",
+            "label": "等级",
+            "state": "lv"
+          },
+          {
+            "key": "exp",
+            "label": "经验",
+            "state": "exp"
+          },
+          {
+            "key": "str",
+            "label": "物理",
+            "state": "str"
+          },
+          {
+            "key": "mind",
+            "label": "魔法",
+            "state": "mind"
+          },
+          {
+            "key": "dex",
+            "label": "灵巧",
+            "state": "dex"
+          }
+        ],
+        "prefix": "r03"
+      },
+      "codes": false,
+      "id": "rance03",
+      "locks": [
+        {
+          "bit": 1,
+          "label": "无限体力"
+        },
+        {
+          "bit": 2,
+          "label": "技能零冷却"
+        },
+        {
+          "bit": 4,
+          "label": "无限道具"
+        },
+        {
+          "bit": 8,
+          "label": "100% 掉落"
+        },
+        {
+          "bit": 16,
+          "label": "敌方一击必杀"
+        }
+      ],
+      "name": "Rance 03",
+      "resource_title": "所持金",
+      "resources": [
+        {
+          "key": "r03Gold",
+          "label": "金钱",
+          "state": "gold"
+        }
+      ],
+      "engine": "xsystem4"
+    },
+    {
+      "actions": [
+        {
+          "action": {
+            "r08AddGold": 10000
+          },
+          "label": "金钱 +1 万"
+        },
+        {
+          "action": {
+            "r08AddGold": 100000
+          },
+          "label": "金钱 +10 万"
+        },
+        {
+          "action": {
+            "r08Gold": 9999999
+          },
+          "label": "金钱设为 9999999"
+        },
+        {
+          "action": {
+            "r08HealAllParty": true
+          },
+          "label": "全员回血并刷新技能"
+        },
+        {
+          "action": {
+            "r08MagnumMax": true
+          },
+          "label": "魔剑满蓄力"
+        },
+        {
+          "action": {
+            "r08CharEdit": {
+              "atk": 999,
+              "crt": 100,
+              "def": 999,
+              "eva": 99,
+              "fullHeal": true,
+              "hit": 999,
+              "hp": 9999,
+              "hpMax": 9999,
+              "lv": 99,
+              "mag": 999,
+              "res": 999,
+              "skillPts": 99,
+              "spd": 999,
+              "target": -1
+            }
+          },
+          "label": "全员一键强化"
+        }
+      ],
+      "characters": {
+        "boost": {
+          "atk": 999,
+          "crt": 100,
+          "def": 999,
+          "eva": 99,
+          "fullHeal": true,
+          "hit": 999,
+          "hp": 9999,
+          "hpMax": 9999,
+          "lv": 99,
+          "mag": 999,
+          "res": 999,
+          "skillPts": 99,
+          "spd": 999
+        },
+        "fields": [
+          {
+            "key": "hp",
+            "label": "当前 HP",
+            "state": "hp"
+          },
+          {
+            "key": "hpMax",
+            "label": "最大 HP",
+            "state": "hpMax"
+          },
+          {
+            "key": "lv",
+            "label": "等级",
+            "state": "lv"
+          },
+          {
+            "key": "lvMax",
+            "label": "等级上限",
+            "state": "lvMax"
+          },
+          {
+            "key": "exp",
+            "label": "经验",
+            "state": "exp"
+          },
+          {
+            "key": "atk",
+            "label": "攻击",
+            "state": "atk"
+          },
+          {
+            "key": "mag",
+            "label": "魔力",
+            "state": "mag"
+          },
+          {
+            "key": "def",
+            "label": "物防",
+            "state": "def"
+          },
+          {
+            "key": "res",
+            "label": "魔防",
+            "state": "res"
+          },
+          {
+            "key": "spd",
+            "label": "速度",
+            "state": "spd"
+          },
+          {
+            "key": "hit",
+            "label": "命中",
+            "state": "hit"
+          },
+          {
+            "key": "eva",
+            "label": "回避",
+            "state": "eva"
+          },
+          {
+            "key": "crt",
+            "label": "必杀率",
+            "state": "crt"
+          },
+          {
+            "key": "skillPts",
+            "label": "技能点",
+            "state": "skillPts"
+          }
+        ],
+        "prefix": "r08"
+      },
+      "codes": false,
+      "id": "rance08",
+      "locks": [
+        {
+          "bit": 1,
+          "label": "我方满 HP"
+        },
+        {
+          "bit": 2,
+          "label": "敌方一击必杀"
+        },
+        {
+          "bit": 4,
+          "label": "无限技能次数"
+        },
+        {
+          "bit": 8,
+          "label": "魔剑满蓄力"
+        },
+        {
+          "bit": 16,
+          "label": "无限金钱"
+        }
+      ],
+      "name": "Rance 08",
+      "resource_title": "资源修改",
+      "resources": [
+        {
+          "key": "r08Gold",
+          "label": "金钱",
+          "state": "gold"
+        },
+        {
+          "key": "r08Fame",
+          "label": "声望",
+          "state": "fame"
+        },
+        {
+          "key": "r08FameMax",
+          "label": "声望上限",
+          "state": "fameMax"
+        }
+      ],
+      "engine": "xsystem4"
+    },
+    {
+      "actions": [
+        {
+          "action": {
+            "r09AddGold": 10000
+          },
+          "label": "金钱 +1 万"
+        },
+        {
+          "action": {
+            "r09Gold": 999999
+          },
+          "label": "金钱设为 999999"
+        },
+        {
+          "action": {
+            "r09SeimaPoint": 9999,
+            "r09SeimaStone": 999
+          },
+          "label": "圣魔点 9999 · 圣魔石 999"
+        },
+        {
+          "action": {
+            "r09HealAllParty": true
+          },
+          "label": "全员回满 HP 与护盾"
+        },
+        {
+          "action": {
+            "r09MaxAllSkillUp": true
+          },
+          "label": "全员技能强化拉满"
+        },
+        {
+          "action": {
+            "r09CharEdit": {
+              "armoredMax": 999,
+              "atkMax": 9999,
+              "atkMin": 5000,
+              "critical": 100,
+              "evadeMax": 999,
+              "fendMax": 999,
+              "fullHeal": true,
+              "hp": 9999,
+              "hpMax": 9999,
+              "magic": 9999,
+              "move": 12,
+              "resist": 999,
+              "speed": 999,
+              "target": -1
+            }
+          },
+          "label": "全员一键强化"
+        }
+      ],
+      "characters": {
+        "boost": {
+          "armoredMax": 999,
+          "atkMax": 9999,
+          "atkMin": 5000,
+          "critical": 100,
+          "evadeMax": 999,
+          "fendMax": 999,
+          "fullHeal": true,
+          "hp": 9999,
+          "hpMax": 9999,
+          "magic": 9999,
+          "move": 12,
+          "resist": 999,
+          "speed": 999
+        },
+        "fields": [
+          {
+            "key": "hp",
+            "label": "当前 HP",
+            "state": "hp"
+          },
+          {
+            "key": "hpMax",
+            "label": "最大 HP",
+            "state": "hpMax"
+          },
+          {
+            "key": "atkMin",
+            "label": "最小破坏力",
+            "state": "atkMin"
+          },
+          {
+            "key": "atkMax",
+            "label": "最大破坏力",
+            "state": "atkMax"
+          },
+          {
+            "key": "magic",
+            "label": "魔力",
+            "state": "magic"
+          },
+          {
+            "key": "resist",
+            "label": "异常耐性",
+            "state": "resist"
+          },
+          {
+            "key": "move",
+            "label": "移动力",
+            "state": "move"
+          },
+          {
+            "key": "range",
+            "label": "射程",
+            "state": "range"
+          },
+          {
+            "key": "critical",
+            "label": "必杀率",
+            "state": "critical"
+          },
+          {
+            "key": "speed",
+            "label": "行动速度",
+            "state": "speed"
+          },
+          {
+            "key": "evadeMax",
+            "label": "回避上限",
+            "state": "evadeMax"
+          },
+          {
+            "key": "fendMax",
+            "label": "招架上限",
+            "state": "fendMax"
+          },
+          {
+            "key": "armoredMax",
+            "label": "装甲上限",
+            "state": "armoredMax"
+          },
+          {
+            "key": "skillBonus",
+            "label": "技能强化点",
+            "state": "skillBonus"
+          }
+        ],
+        "prefix": "r09"
+      },
+      "codes": false,
+      "id": "rance09",
+      "locks": [
+        {
+          "bit": 1,
+          "label": "我方无伤满 HP"
+        },
+        {
+          "bit": 2,
+          "label": "敌方一击必杀"
+        },
+        {
+          "bit": 4,
+          "label": "无限行动"
+        },
+        {
+          "bit": 8,
+          "label": "金币必掉"
+        },
+        {
+          "bit": 16,
+          "label": "无限资源"
+        }
+      ],
+      "name": "Rance 09",
+      "resource_title": "资源修改",
+      "resources": [
+        {
+          "key": "r09Gold",
+          "label": "军资金",
+          "state": "gold"
+        },
+        {
+          "key": "r09SeimaPoint",
+          "label": "圣魔点",
+          "state": "seimaPoint"
+        },
+        {
+          "key": "r09SeimaStone",
+          "label": "圣魔石",
+          "state": "seimaStone"
+        }
+      ],
+      "engine": "xsystem4"
+    },
+    {
+      "actions": [
+        {
+          "action": {
+            "addGold": 100000
+          },
+          "label": "金钱 +10 万"
+        },
+        {
+          "action": {
+            "gold": 9999999
+          },
+          "label": "金钱设为 9999999"
+        },
+        {
+          "action": {
+            "cheat": "fullHeal"
+          },
+          "label": "恢复满 HP"
+        },
+        {
+          "action": {
+            "cheat": "enemy1Hp"
+          },
+          "label": "敌方 HP 设为 1"
+        },
+        {
+          "action": {
+            "cheat": "maxItems"
+          },
+          "label": "补满消耗品"
+        },
+        {
+          "action": {
+            "exCharEdit": {
+              "ap": 99,
+              "apMax": 99,
+              "atk": 999,
+              "def": 999,
+              "eva": 100,
+              "fullHeal": true,
+              "hit": 200,
+              "hp": 9999,
+              "hpMax": 9999,
+              "lv": 99,
+              "lvMax": 99,
+              "mag": 999,
+              "res": 999,
+              "target": -1
+            }
+          },
+          "label": "全员一键强化"
+        }
+      ],
+      "characters": {
+        "boost": {
+          "ap": 99,
+          "apMax": 99,
+          "atk": 999,
+          "def": 999,
+          "eva": 100,
+          "fullHeal": true,
+          "hit": 200,
+          "hp": 9999,
+          "hpMax": 9999,
+          "lv": 99,
+          "lvMax": 99,
+          "mag": 999,
+          "res": 999
+        },
+        "fields": [
+          {
+            "key": "lv",
+            "label": "等级",
+            "state": "lv"
+          },
+          {
+            "key": "lvMax",
+            "label": "等级上限",
+            "state": "lvMax"
+          },
+          {
+            "key": "hp",
+            "label": "当前 HP",
+            "state": "hp"
+          },
+          {
+            "key": "hpMax",
+            "label": "最大 HP",
+            "state": "hpMax"
+          },
+          {
+            "key": "ap",
+            "label": "行动点",
+            "state": "ap"
+          },
+          {
+            "key": "apMax",
+            "label": "行动上限",
+            "state": "apMax"
+          },
+          {
+            "key": "exp",
+            "label": "经验",
+            "state": "exp"
+          },
+          {
+            "key": "atk",
+            "label": "攻击",
+            "state": "atk"
+          },
+          {
+            "key": "def",
+            "label": "防御",
+            "state": "def"
+          },
+          {
+            "key": "mag",
+            "label": "魔力",
+            "state": "mag"
+          },
+          {
+            "key": "res",
+            "label": "魔防",
+            "state": "res"
+          },
+          {
+            "key": "hit",
+            "label": "命中",
+            "state": "hit"
+          },
+          {
+            "key": "eva",
+            "label": "回避",
+            "state": "eva"
+          }
+        ],
+        "prefix": "ex"
+      },
+      "codes": false,
+      "id": "rance06",
+      "locks": [
+        {
+          "bit": 1,
+          "label": "无限金钱"
+        },
+        {
+          "bit": 2,
+          "label": "我方满 HP 与行动力"
+        },
+        {
+          "bit": 4,
+          "label": "敌方 1 HP"
+        },
+        {
+          "bit": 8,
+          "label": "无限消耗品"
+        },
+        {
+          "bit": 16,
+          "label": "最高幸运"
+        }
+      ],
+      "name": "Rance 06",
+      "resource_title": "资源修改",
+      "resources": [
+        {
+          "key": "gold",
+          "label": "金钱",
+          "state": "gold"
+        },
+        {
+          "key": "luck",
+          "label": "幸运",
+          "state": "luck"
+        }
+      ],
+      "engine": "xsystem4"
+    },
+    {
+      "actions": [
+        {
+          "action": {
+            "addGold": 100000
+          },
+          "label": "金钱 +10 万"
+        },
+        {
+          "action": {
+            "gold": 99999999
+          },
+          "label": "金钱设为 99999999"
+        },
+        {
+          "action": {
+            "cheat": "fullHeal"
+          },
+          "label": "恢复满 HP"
+        },
+        {
+          "action": {
+            "cheat": "enemy1Hp"
+          },
+          "label": "敌方 HP 设为 1"
+        },
+        {
+          "action": {
+            "cheat": "maxItems"
+          },
+          "label": "补满消耗品"
+        },
+        {
+          "action": {
+            "exCharEdit": {
+              "atk": 999,
+              "bp": 5,
+              "def": 999,
+              "fullHeal": true,
+              "hp": 9999,
+              "hpMax": 9999,
+              "lv": 99,
+              "mag": 999,
+              "skillP": 999,
+              "spd": 999,
+              "target": -1
+            }
+          },
+          "label": "全员一键强化"
+        }
+      ],
+      "characters": {
+        "boost": {
+          "atk": 999,
+          "bp": 5,
+          "def": 999,
+          "fullHeal": true,
+          "hp": 9999,
+          "hpMax": 9999,
+          "lv": 99,
+          "mag": 999,
+          "skillP": 999,
+          "spd": 999
+        },
+        "fields": [
+          {
+            "key": "lv",
+            "label": "等级",
+            "state": "lv"
+          },
+          {
+            "key": "hp",
+            "label": "当前 HP",
+            "state": "hp"
+          },
+          {
+            "key": "hpMax",
+            "label": "最大 HP",
+            "state": "hpMax"
+          },
+          {
+            "key": "atk",
+            "label": "攻击",
+            "state": "atk"
+          },
+          {
+            "key": "mag",
+            "label": "魔力",
+            "state": "mag"
+          },
+          {
+            "key": "def",
+            "label": "防御",
+            "state": "def"
+          },
+          {
+            "key": "spd",
+            "label": "速度",
+            "state": "spd"
+          },
+          {
+            "key": "exp",
+            "label": "经验",
+            "state": "exp"
+          },
+          {
+            "key": "skillP",
+            "label": "技能点",
+            "state": "skillP"
+          },
+          {
+            "key": "bp",
+            "label": "BP",
+            "state": "bp"
+          }
+        ],
+        "prefix": "ex"
+      },
+      "codes": false,
+      "id": "evenicle2",
+      "locks": [
+        {
+          "bit": 1,
+          "label": "禁止随机遇敌"
+        },
+        {
+          "bit": 2,
+          "label": "我方满 HP"
+        },
+        {
+          "bit": 4,
+          "label": "无限技能点"
+        },
+        {
+          "bit": 8,
+          "label": "无限 BP"
+        },
+        {
+          "bit": 16,
+          "label": "敌方 1 HP"
+        },
+        {
+          "bit": 32,
+          "label": "无限金钱"
+        }
+      ],
+      "name": "Evenicle 2",
+      "resource_title": "资源修改",
+      "resources": [
+        {
+          "key": "gold",
+          "label": "所持金",
+          "state": "gold"
+        }
+      ],
+      "engine": "xsystem4"
+    },
+    {
+      "actions": [
+        {
+          "action": {
+            "addGold": 100000
+          },
+          "label": "金钱 +10 万"
+        },
+        {
+          "action": {
+            "gold": 99999999
+          },
+          "label": "金钱设为 99999999"
+        },
+        {
+          "action": {
+            "cheat": "fullHeal"
+          },
+          "label": "恢复满 HP"
+        },
+        {
+          "action": {
+            "cheat": "enemy1Hp"
+          },
+          "label": "敌方 HP 设为 1"
+        },
+        {
+          "action": {
+            "cheat": "maxItems"
+          },
+          "label": "补满消耗品"
+        },
+        {
+          "action": {
+            "exCharEdit": {
+              "atk": 999,
+              "bp": 5,
+              "def": 999,
+              "fullHeal": true,
+              "hp": 9999,
+              "hpMax": 9999,
+              "lv": 99,
+              "mag": 999,
+              "skillP": 999,
+              "spd": 999,
+              "target": -1
+            }
+          },
+          "label": "全员一键强化"
+        }
+      ],
+      "characters": {
+        "boost": {
+          "atk": 999,
+          "bp": 5,
+          "def": 999,
+          "fullHeal": true,
+          "hp": 9999,
+          "hpMax": 9999,
+          "lv": 99,
+          "mag": 999,
+          "skillP": 999,
+          "spd": 999
+        },
+        "fields": [
+          {
+            "key": "lv",
+            "label": "等级",
+            "state": "lv"
+          },
+          {
+            "key": "hp",
+            "label": "当前 HP",
+            "state": "hp"
+          },
+          {
+            "key": "hpMax",
+            "label": "最大 HP",
+            "state": "hpMax"
+          },
+          {
+            "key": "atk",
+            "label": "攻击",
+            "state": "atk"
+          },
+          {
+            "key": "mag",
+            "label": "魔力",
+            "state": "mag"
+          },
+          {
+            "key": "def",
+            "label": "防御",
+            "state": "def"
+          },
+          {
+            "key": "spd",
+            "label": "速度",
+            "state": "spd"
+          },
+          {
+            "key": "exp",
+            "label": "经验",
+            "state": "exp"
+          },
+          {
+            "key": "skillP",
+            "label": "技能点",
+            "state": "skillP"
+          },
+          {
+            "key": "bp",
+            "label": "BP",
+            "state": "bp"
+          }
+        ],
+        "prefix": "ex"
+      },
+      "codes": false,
+      "id": "evenicle2rance",
+      "locks": [
+        {
+          "bit": 1,
+          "label": "禁止随机遇敌"
+        },
+        {
+          "bit": 2,
+          "label": "我方满 HP"
+        },
+        {
+          "bit": 4,
+          "label": "无限技能点"
+        },
+        {
+          "bit": 8,
+          "label": "无限 BP"
+        },
+        {
+          "bit": 16,
+          "label": "敌方 1 HP"
+        },
+        {
+          "bit": 32,
+          "label": "无限金钱"
+        }
+      ],
+      "name": "Evenicle 2 Rance",
+      "resource_title": "资源修改",
+      "resources": [
+        {
+          "key": "gold",
+          "label": "所持金",
+          "state": "gold"
+        }
+      ],
+      "engine": "xsystem4"
+    },
+    {
+      "actions": [
+        {
+          "action": {
+            "addGold": 100000
+          },
+          "label": "金钱 +10 万"
+        },
+        {
+          "action": {
+            "gold": 9999999
+          },
+          "label": "金钱设为 9999999"
+        },
+        {
+          "action": {
+            "cheat": "fullHeal"
+          },
+          "label": "恢复满 HP"
+        },
+        {
+          "action": {
+            "exCharEdit": {
+              "atk": 999,
+              "eva": 200,
+              "fullHeal": true,
+              "hit": 200,
+              "hp": 9999,
+              "hpMax": 9999,
+              "love": 100,
+              "lv": 99,
+              "target": -1,
+              "vit": 999,
+              "vitMax": 999
+            }
+          },
+          "label": "全员一键强化"
+        }
+      ],
+      "characters": {
+        "boost": {
+          "atk": 999,
+          "eva": 200,
+          "fullHeal": true,
+          "hit": 200,
+          "hp": 9999,
+          "hpMax": 9999,
+          "love": 100,
+          "lv": 99,
+          "vit": 999,
+          "vitMax": 999
+        },
+        "fields": [
+          {
+            "key": "lv",
+            "label": "等级",
+            "state": "lv"
+          },
+          {
+            "key": "exp",
+            "label": "经验",
+            "state": "exp"
+          },
+          {
+            "key": "hp",
+            "label": "当前 HP",
+            "state": "hp"
+          },
+          {
+            "key": "hpMax",
+            "label": "最大 HP",
+            "state": "hpMax"
+          },
+          {
+            "key": "vit",
+            "label": "当前精力",
+            "state": "vit"
+          },
+          {
+            "key": "vitMax",
+            "label": "最大精力",
+            "state": "vitMax"
+          },
+          {
+            "key": "atk",
+            "label": "攻击",
+            "state": "atk"
+          },
+          {
+            "key": "hit",
+            "label": "命中",
+            "state": "hit"
+          },
+          {
+            "key": "eva",
+            "label": "回避",
+            "state": "eva"
+          },
+          {
+            "key": "love",
+            "label": "好感度",
+            "state": "love"
+          }
+        ],
+        "prefix": "ex"
+      },
+      "codes": false,
+      "id": "daibanchou",
+      "locks": [
+        {
+          "bit": 1,
+          "label": "无限金钱"
+        },
+        {
+          "bit": 2,
+          "label": "部下满体力与精力"
+        },
+        {
+          "bit": 4,
+          "label": "部下满忠诚度"
+        },
+        {
+          "bit": 8,
+          "label": "锁定回合为 1"
+        }
+      ],
+      "name": "大番长",
+      "resource_title": "资源修改",
+      "resources": [
+        {
+          "key": "gold",
+          "label": "金钱",
+          "state": "gold"
+        },
+        {
+          "key": "turn",
+          "label": "回合",
+          "state": "turn"
+        }
+      ],
+      "engine": "xsystem4"
+    },
+    {
+      "actions": [
+        {
+          "action": {
+            "addResource": 100000
+          },
+          "label": "资源 +10 万"
+        },
+        {
+          "action": {
+            "addTechnology": 100000
+          },
+          "label": "技术 +10 万"
+        },
+        {
+          "action": {
+            "resource": 9999999,
+            "technology": 9999999
+          },
+          "label": "资源与技术拉满"
+        },
+        {
+          "action": {
+            "cheat": "fullHeal"
+          },
+          "label": "全员满血并重置行动"
+        },
+        {
+          "action": {
+            "cheat": "unlockShips"
+          },
+          "label": "解锁全部战舰"
+        },
+        {
+          "action": {
+            "exCharEdit": {
+              "atk": 999,
+              "fullHeal": true,
+              "hp": 9999,
+              "hpMax": 9999,
+              "lv": 99,
+              "scout": 999,
+              "target": -1
+            }
+          },
+          "label": "全员一键强化"
+        }
+      ],
+      "characters": {
+        "boost": {
+          "atk": 999,
+          "fullHeal": true,
+          "hp": 9999,
+          "hpMax": 9999,
+          "lv": 99,
+          "scout": 999
+        },
+        "fields": [
+          {
+            "key": "lv",
+            "label": "等级",
+            "state": "lv"
+          },
+          {
+            "key": "exp",
+            "label": "经验",
+            "state": "exp"
+          },
+          {
+            "key": "hp",
+            "label": "当前 HP",
+            "state": "hp"
+          },
+          {
+            "key": "hpMax",
+            "label": "最大 HP",
+            "state": "hpMax"
+          },
+          {
+            "key": "atk",
+            "label": "攻击",
+            "state": "atk"
+          },
+          {
+            "key": "scout",
+            "label": "索敌",
+            "state": "scout"
+          }
+        ],
+        "prefix": "ex"
+      },
+      "codes": false,
+      "id": "daiteikoku",
+      "locks": [
+        {
+          "bit": 1,
+          "label": "无限资源"
+        },
+        {
+          "bit": 2,
+          "label": "无限技术"
+        },
+        {
+          "bit": 4,
+          "label": "我方提督满 HP"
+        },
+        {
+          "bit": 8,
+          "label": "我方无限行动"
+        },
+        {
+          "bit": 16,
+          "label": "我方星域满治安"
+        }
+      ],
+      "name": "大帝国",
+      "resource_title": "资源修改",
+      "resources": [
+        {
+          "key": "resource",
+          "label": "资源",
+          "state": "resource"
+        },
+        {
+          "key": "technology",
+          "label": "技术",
+          "state": "technology"
+        }
+      ],
+      "engine": "xsystem4"
+    },
+    {
+      "actions": [
+        {
+          "action": {
+            "addGold": 100000
+          },
+          "label": "金钱 +10 万"
+        },
+        {
+          "action": {
+            "gold": 9999999
+          },
+          "label": "金钱设为 9999999"
+        },
+        {
+          "action": {
+            "cheat": "enemy1Hp"
+          },
+          "label": "敌方 HP 设为 1"
+        },
+        {
+          "action": {
+            "cheat": "maxItems"
+          },
+          "label": "补满消耗品"
+        },
+        {
+          "action": {
+            "exCharEdit": {
+              "atk": 999,
+              "boostBase": 1,
+              "def": 999,
+              "eva": 100,
+              "hp": 9999,
+              "love": 999,
+              "lv": 99,
+              "mag": 999,
+              "res": 999,
+              "target": -1
+            }
+          },
+          "label": "全员一键强化"
+        }
+      ],
+      "characters": {
+        "boost": {
+          "atk": 999,
+          "boostBase": 1,
+          "def": 999,
+          "eva": 100,
+          "hp": 9999,
+          "love": 999,
+          "lv": 99,
+          "mag": 999,
+          "res": 999
+        },
+        "fields": [
+          {
+            "key": "lv",
+            "label": "等级",
+            "state": "lv"
+          },
+          {
+            "key": "hp",
+            "label": "当前 HP",
+            "state": "hp"
+          },
+          {
+            "key": "atk",
+            "label": "攻击",
+            "state": "atk"
+          },
+          {
+            "key": "def",
+            "label": "防御",
+            "state": "def"
+          },
+          {
+            "key": "mag",
+            "label": "魔力",
+            "state": "mag"
+          },
+          {
+            "key": "res",
+            "label": "魔防",
+            "state": "res"
+          },
+          {
+            "key": "eva",
+            "label": "回避",
+            "state": "eva"
+          },
+          {
+            "key": "love",
+            "label": "好感度",
+            "state": "love"
+          }
+        ],
+        "prefix": "ex"
+      },
+      "codes": false,
+      "id": "galzoo",
+      "locks": [
+        {
+          "bit": 1,
+          "label": "无限金钱"
+        },
+        {
+          "bit": 2,
+          "label": "敌方 1 HP"
+        },
+        {
+          "bit": 4,
+          "label": "100% 掉落"
+        },
+        {
+          "bit": 8,
+          "label": "禁止随机遇敌"
+        },
+        {
+          "bit": 16,
+          "label": "无限消耗品"
+        }
+      ],
+      "name": "萌兽岛",
+      "resource_title": "资源修改",
+      "resources": [
+        {
+          "key": "gold",
+          "label": "金钱",
+          "state": "gold"
+        },
+        {
+          "key": "exp",
+          "label": "经验",
+          "state": "exp"
+        }
+      ],
+      "engine": "xsystem4"
+    },
+    {
+      "actions": [
+        {
+          "action": {
+            "addGold": 100000
+          },
+          "label": "金钱 +10 万"
+        },
+        {
+          "action": {
+            "gold": 9999999
+          },
+          "label": "金钱设为 9999999"
+        },
+        {
+          "action": {
+            "cheat": "fullHeal"
+          },
+          "label": "恢复满 HP"
+        },
+        {
+          "action": {
+            "cheat": "enemy1Hp"
+          },
+          "label": "敌方 HP 设为 1"
+        },
+        {
+          "action": {
+            "cheat": "maxItems"
+          },
+          "label": "补满消耗品"
+        },
+        {
+          "action": {
+            "cheat": "boostAll"
+          },
+          "label": "全能力强化"
+        }
+      ],
+      "codes": false,
+      "id": "toushin3",
+      "locks": [
+        {
+          "bit": 1,
+          "label": "无限金钱"
+        },
+        {
+          "bit": 2,
+          "label": "锁定满 HP"
+        },
+        {
+          "bit": 4,
+          "label": "敌方 1 HP"
+        },
+        {
+          "bit": 8,
+          "label": "禁止随机遇敌"
+        },
+        {
+          "bit": 16,
+          "label": "无限消耗品"
+        }
+      ],
+      "name": "斗神都市 III",
+      "resource_title": "资源修改",
+      "resources": [
+        {
+          "key": "gold",
+          "label": "金钱",
+          "state": "gold"
+        },
+        {
+          "key": "lv",
+          "label": "等级",
+          "state": "lv"
+        },
+        {
+          "key": "hp",
+          "label": "当前 HP",
+          "state": "hp"
+        },
+        {
+          "key": "hpMax",
+          "label": "最大 HP",
+          "state": "hpMax"
+        },
+        {
+          "key": "atk",
+          "label": "攻击",
+          "state": "atk"
+        },
+        {
+          "key": "def",
+          "label": "防御",
+          "state": "def"
+        },
+        {
+          "key": "hit",
+          "label": "命中",
+          "state": "hit"
+        },
+        {
+          "key": "eva",
+          "label": "回避",
+          "state": "eva"
+        },
+        {
+          "key": "exp",
+          "label": "经验",
+          "state": "exp"
+        }
+      ],
+      "engine": "xsystem4"
+    },
+    {
+      "actions": [
+        {
+          "action": {
+            "addGold": 100000
+          },
+          "label": "金钱 +10 万"
+        },
+        {
+          "action": {
+            "gold": 9999999
+          },
+          "label": "金钱设为 9999999"
+        },
+        {
+          "action": {
+            "cheat": "fullHeal"
+          },
+          "label": "恢复满 HP"
+        },
+        {
+          "action": {
+            "cheat": "enemy1Hp"
+          },
+          "label": "敌方 HP 设为 1"
+        },
+        {
+          "action": {
+            "exCharEdit": {
+              "atk": 999,
+              "def": 999,
+              "eva": 200,
+              "fullHeal": true,
+              "hit": 200,
+              "hp": 9999,
+              "hpMax": 9999,
+              "lv": 99,
+              "move": 15,
+              "target": -1
+            }
+          },
+          "label": "全员一键强化"
+        }
+      ],
+      "characters": {
+        "boost": {
+          "atk": 999,
+          "def": 999,
+          "eva": 200,
+          "fullHeal": true,
+          "hit": 200,
+          "hp": 9999,
+          "hpMax": 9999,
+          "lv": 99,
+          "move": 15
+        },
+        "fields": [
+          {
+            "key": "lv",
+            "label": "等级",
+            "state": "lv"
+          },
+          {
+            "key": "exp",
+            "label": "经验",
+            "state": "exp"
+          },
+          {
+            "key": "hp",
+            "label": "当前 HP",
+            "state": "hp"
+          },
+          {
+            "key": "hpMax",
+            "label": "最大 HP",
+            "state": "hpMax"
+          },
+          {
+            "key": "atk",
+            "label": "攻击",
+            "state": "atk"
+          },
+          {
+            "key": "def",
+            "label": "防御",
+            "state": "def"
+          },
+          {
+            "key": "hit",
+            "label": "命中",
+            "state": "hit"
+          },
+          {
+            "key": "eva",
+            "label": "回避",
+            "state": "eva"
+          },
+          {
+            "key": "move",
+            "label": "移动力",
+            "state": "move"
+          }
+        ],
+        "prefix": "ex"
+      },
+      "codes": false,
+      "id": "bladebriders",
+      "locks": [
+        {
+          "bit": 1,
+          "label": "无限金钱"
+        },
+        {
+          "bit": 2,
+          "label": "我方满 HP"
+        },
+        {
+          "bit": 4,
+          "label": "敌方 1 HP"
+        },
+        {
+          "bit": 8,
+          "label": "无限行动次数"
+        },
+        {
+          "bit": 16,
+          "label": "开启成长加成"
+        }
+      ],
+      "name": "武想少女",
+      "resource_title": "资源修改",
+      "resources": [
+        {
+          "key": "gold",
+          "label": "金钱",
+          "state": "gold"
+        },
+        {
+          "key": "ap",
+          "label": "行动点",
+          "state": "ap"
+        }
+      ],
+      "engine": "xsystem4"
+    },
+    {
+      "actions": [
+        {
+          "action": {
+            "addGold": 100000
+          },
+          "label": "金钱 +10 万"
+        },
+        {
+          "action": {
+            "gold": 999999
+          },
+          "label": "金钱设为 999999"
+        },
+        {
+          "action": {
+            "cheat": "fullHeal"
+          },
+          "label": "恢复满 HP"
+        },
+        {
+          "action": {
+            "exCharEdit": {
+              "atk": 999,
+              "fullHeal": true,
+              "hit": 999,
+              "hp": 9999,
+              "hpMax": 9999,
+              "lv": 99,
+              "mag": 999,
+              "spd": 999,
+              "target": -1
+            }
+          },
+          "label": "全员一键强化"
+        }
+      ],
+      "characters": {
+        "boost": {
+          "atk": 999,
+          "fullHeal": true,
+          "hit": 999,
+          "hp": 9999,
+          "hpMax": 9999,
+          "lv": 99,
+          "mag": 999,
+          "spd": 999
+        },
+        "fields": [
+          {
+            "key": "lv",
+            "label": "等级",
+            "state": "lv"
+          },
+          {
+            "key": "hp",
+            "label": "当前 HP",
+            "state": "hp"
+          },
+          {
+            "key": "hpMax",
+            "label": "最大 HP",
+            "state": "hpMax"
+          },
+          {
+            "key": "exp",
+            "label": "经验",
+            "state": "exp"
+          },
+          {
+            "key": "atk",
+            "label": "攻击",
+            "state": "atk"
+          },
+          {
+            "key": "spd",
+            "label": "速度",
+            "state": "spd"
+          },
+          {
+            "key": "hit",
+            "label": "命中",
+            "state": "hit"
+          },
+          {
+            "key": "mag",
+            "label": "魔力",
+            "state": "mag"
+          }
+        ],
+        "prefix": "ex"
+      },
+      "codes": false,
+      "id": "yorugakuru",
+      "locks": [
+        {
+          "bit": 1,
+          "label": "无限金钱"
+        },
+        {
+          "bit": 2,
+          "label": "我方满 HP"
+        },
+        {
+          "bit": 4,
+          "label": "免疫异常状态"
+        },
+        {
+          "bit": 8,
+          "label": "开启休闲增益"
+        }
+      ],
+      "name": "夜来了！",
+      "resource_title": "资源修改",
+      "resources": [
+        {
+          "key": "gold",
+          "label": "金钱",
+          "state": "gold"
+        }
+      ],
+      "engine": "xsystem4"
+    },
+    {
+      "actions": [
+        {
+          "action": {
+            "gold": 9999999
+          },
+          "label": "金钱设为 9999999"
+        },
+        {
+          "action": {
+            "cheat": "fullHeal"
+          },
+          "label": "恢复满 HP"
+        },
+        {
+          "action": {
+            "cheat": "enemy1Hp"
+          },
+          "label": "敌方 HP 设为 1"
+        },
+        {
+          "action": {
+            "exCharEdit": {
+              "atk": 999,
+              "def": 999,
+              "fullHeal": true,
+              "hit": 999,
+              "hp": 9999,
+              "hpMax": 9999,
+              "lv": 99,
+              "mag": 999,
+              "res": 999,
+              "target": -1
+            }
+          },
+          "label": "全员一键强化"
+        }
+      ],
+      "characters": {
+        "boost": {
+          "atk": 999,
+          "def": 999,
+          "fullHeal": true,
+          "hit": 999,
+          "hp": 9999,
+          "hpMax": 9999,
+          "lv": 99,
+          "mag": 999,
+          "res": 999
+        },
+        "fields": [
+          {
+            "key": "lv",
+            "label": "等级",
+            "state": "lv"
+          },
+          {
+            "key": "hp",
+            "label": "当前 HP",
+            "state": "hp"
+          },
+          {
+            "key": "hpMax",
+            "label": "最大 HP",
+            "state": "hpMax"
+          },
+          {
+            "key": "atk",
+            "label": "攻击",
+            "state": "atk"
+          },
+          {
+            "key": "def",
+            "label": "防御",
+            "state": "def"
+          },
+          {
+            "key": "mag",
+            "label": "魔力",
+            "state": "mag"
+          },
+          {
+            "key": "res",
+            "label": "魔防",
+            "state": "res"
+          },
+          {
+            "key": "hit",
+            "label": "命中",
+            "state": "hit"
+          }
+        ],
+        "prefix": "ex"
+      },
+      "codes": false,
+      "id": "waidonyo",
+      "locks": [
+        {
+          "bit": 1,
+          "label": "我方满 HP"
+        },
+        {
+          "bit": 2,
+          "label": "无限金钱"
+        },
+        {
+          "bit": 4,
+          "label": "敌方 1 HP"
+        }
+      ],
+      "name": "猫娘大冒险",
+      "resource_title": "资源修改",
+      "resources": [
+        {
+          "key": "gold",
+          "label": "金钱",
+          "state": "gold"
+        }
+      ],
+      "engine": "xsystem4"
+    },
+    {
+      "actions": [
+        {
+          "action": {
+            "addGold": 100000
+          },
+          "label": "金钱 +10 万"
+        },
+        {
+          "action": {
+            "gold": 9999999
+          },
+          "label": "金钱设为 9999999"
+        },
+        {
+          "action": {
+            "cheat": "fullHeal"
+          },
+          "label": "恢复满 HP"
+        },
+        {
+          "action": {
+            "cheat": "maxItems"
+          },
+          "label": "补满消耗品"
+        },
+        {
+          "action": {
+            "exCharEdit": {
+              "atk": 999,
+              "def": 999,
+              "fullHeal": true,
+              "hp": 9999,
+              "hpMax": 9999,
+              "mag": 999,
+              "spd": 999,
+              "target": -1
+            }
+          },
+          "label": "全员一键强化"
+        }
+      ],
+      "characters": {
+        "boost": {
+          "atk": 999,
+          "def": 999,
+          "fullHeal": true,
+          "hp": 9999,
+          "hpMax": 9999,
+          "mag": 999,
+          "spd": 999
+        },
+        "fields": [
+          {
+            "key": "hp",
+            "label": "当前 HP",
+            "state": "hp"
+          },
+          {
+            "key": "hpMax",
+            "label": "最大 HP",
+            "state": "hpMax"
+          },
+          {
+            "key": "atk",
+            "label": "攻击",
+            "state": "atk"
+          },
+          {
+            "key": "def",
+            "label": "防御",
+            "state": "def"
+          },
+          {
+            "key": "mag",
+            "label": "魔力",
+            "state": "mag"
+          },
+          {
+            "key": "spd",
+            "label": "速度",
+            "state": "spd"
+          }
+        ],
+        "prefix": "ex"
+      },
+      "codes": false,
+      "id": "sanbiki",
+      "locks": [
+        {
+          "bit": 1,
+          "label": "无限金钱"
+        },
+        {
+          "bit": 2,
+          "label": "我方满 HP"
+        },
+        {
+          "bit": 4,
+          "label": "最高幸运"
+        },
+        {
+          "bit": 8,
+          "label": "无限消耗品"
+        }
+      ],
+      "name": "三匹的野望",
+      "resource_title": "资源修改",
+      "resources": [
+        {
+          "key": "gold",
+          "label": "金钱",
+          "state": "gold"
+        },
+        {
+          "key": "luck",
+          "label": "幸运",
+          "state": "luck"
+        }
+      ],
+      "engine": "xsystem4"
+    },
+    {
+      "actions": [
+        {
+          "action": {
+            "cheat": "fullHeal"
+          },
+          "label": "重置我方行动"
+        },
+        {
+          "action": {
+            "exCharEdit": {
+              "atk": 999,
+              "fullHeal": true,
+              "hp": 9999,
+              "hpMax": 9999,
+              "love": 100,
+              "lv": 99,
+              "target": -1
+            }
+          },
+          "label": "全员一键强化"
+        }
+      ],
+      "characters": {
+        "boost": {
+          "atk": 999,
+          "fullHeal": true,
+          "hp": 9999,
+          "hpMax": 9999,
+          "love": 100,
+          "lv": 99
+        },
+        "fields": [
+          {
+            "key": "lv",
+            "label": "等级",
+            "state": "lv"
+          },
+          {
+            "key": "hp",
+            "label": "当前 HP",
+            "state": "hp"
+          },
+          {
+            "key": "hpMax",
+            "label": "最大 HP",
+            "state": "hpMax"
+          },
+          {
+            "key": "atk",
+            "label": "攻击",
+            "state": "atk"
+          },
+          {
+            "key": "love",
+            "label": "好感度",
+            "state": "love"
+          },
+          {
+            "key": "exp",
+            "label": "经验",
+            "state": "exp"
+          }
+        ],
+        "prefix": "ex"
+      },
+      "codes": false,
+      "id": "dorapeko",
+      "locks": [
+        {
+          "bit": 1,
+          "label": "我方满 HP"
+        },
+        {
+          "bit": 2,
+          "label": "锁定高爱情度"
+        },
+        {
+          "bit": 4,
+          "label": "我方无限行动"
+        }
+      ],
+      "name": "饥饿的龙",
+      "resource_title": "资源修改",
+      "resources": [],
+      "engine": "xsystem4"
+    },
+    {
+      "actions": [
+        {
+          "action": {
+            "addGold": 100000
+          },
+          "label": "金钱 +10 万"
+        },
+        {
+          "action": {
+            "gold": 9999999
+          },
+          "label": "金钱设为 9999999"
+        },
+        {
+          "action": {
+            "quota": 0
+          },
+          "label": "上缴额度清零"
+        },
+        {
+          "action": {
+            "cheat": "fullHeal"
+          },
+          "label": "恢复满 HP"
+        },
+        {
+          "action": {
+            "cheat": "unlockItems"
+          },
+          "label": "解锁全部商品"
+        },
+        {
+          "action": {
+            "exCharEdit": {
+              "hp": 100,
+              "skill": 999,
+              "target": -1,
+              "visual": 999
+            }
+          },
+          "label": "全员一键强化"
+        }
+      ],
+      "characters": {
+        "boost": {
+          "hp": 100,
+          "skill": 999,
+          "visual": 999
+        },
+        "fields": [
+          {
+            "key": "hp",
+            "label": "当前 HP",
+            "state": "hp"
+          },
+          {
+            "key": "skill",
+            "label": "技巧",
+            "state": "skill"
+          },
+          {
+            "key": "visual",
+            "label": "魅力",
+            "state": "visual"
+          }
+        ],
+        "prefix": "ex"
+      },
+      "codes": false,
+      "id": "haruurare",
+      "locks": [
+        {
+          "bit": 1,
+          "label": "无限金钱"
+        },
+        {
+          "bit": 2,
+          "label": "我方满 HP"
+        },
+        {
+          "bit": 4,
+          "label": "最高信用度"
+        }
+      ],
+      "name": "春风物语",
+      "resource_title": "资源修改",
+      "resources": [
+        {
+          "key": "gold",
+          "label": "金钱",
+          "state": "gold"
+        },
+        {
+          "key": "credit",
+          "label": "信用点数",
+          "state": "credit"
+        },
+        {
+          "key": "quota",
+          "label": "上缴额度",
+          "state": "quota"
+        }
+      ],
+      "engine": "xsystem4"
+    },
+    {
+      "actions": [
+        {
+          "action": {
+            "cheat": "fullHeal"
+          },
+          "label": "恢复满 HP"
+        },
+        {
+          "action": {
+            "cheat": "weakenEnemy"
+          },
+          "label": "敌方攻防清零"
+        }
+      ],
+      "characters": {
+        "boost": {
+          "fert": 0,
+          "hp": 999,
+          "star": 99
+        },
+        "fields": [
+          {
+            "key": "hp",
+            "label": "防卫值",
+            "state": "hp"
+          },
+          {
+            "key": "star",
+            "label": "星级",
+            "state": "star"
+          },
+          {
+            "key": "fert",
+            "label": "受孕槽",
+            "state": "fert"
+          }
+        ],
+        "prefix": "ex"
+      },
+      "codes": false,
+      "id": "oyakorankan",
+      "locks": [
+        {
+          "bit": 1,
+          "label": "满爱情防卫值"
+        },
+        {
+          "bit": 2,
+          "label": "满星级评价"
+        },
+        {
+          "bit": 4,
+          "label": "清空受孕槽"
+        },
+        {
+          "bit": 8,
+          "label": "敌方能力清零"
+        }
+      ],
+      "name": "母女乱馆",
+      "resource_title": "资源修改",
+      "resources": [],
+      "engine": "xsystem4"
+    },
+    {
+      "actions": [
+        {
+          "action": {
+            "addGold": 100000
+          },
+          "label": "金钱 +10 万"
+        },
+        {
+          "action": {
+            "gold": 9999999
+          },
+          "label": "金钱设为 9999999"
+        },
+        {
+          "action": {
+            "cheat": "fullHeal"
+          },
+          "label": "全员回满 HP 与 SP"
+        },
+        {
+          "action": {
+            "cheat": "weakenEnemy"
+          },
+          "label": "情敌精力清零"
+        },
+        {
+          "action": {
+            "cheat": "maxItems"
+          },
+          "label": "补满消耗品"
+        }
+      ],
+      "codes": false,
+      "id": "tsumashibori",
+      "locks": [
+        {
+          "bit": 1,
+          "label": "无限金钱"
+        },
+        {
+          "bit": 2,
+          "label": "我方满 HP 与 SP"
+        },
+        {
+          "bit": 4,
+          "label": "女主满好感零嫉妒"
+        },
+        {
+          "bit": 8,
+          "label": "情敌精力清零"
+        },
+        {
+          "bit": 16,
+          "label": "无限消耗品"
+        }
+      ],
+      "name": "榨精人妻",
+      "resource_title": "资源修改",
+      "resources": [
+        {
+          "key": "gold",
+          "label": "金钱",
+          "state": "gold"
+        },
+        {
+          "key": "hp",
+          "label": "当前 HP",
+          "state": "hp"
+        },
+        {
+          "key": "hpMax",
+          "label": "最大 HP",
+          "state": "hpMax"
+        },
+        {
+          "key": "sp",
+          "label": "当前 SP",
+          "state": "sp"
+        },
+        {
+          "key": "spMax",
+          "label": "最大 SP",
+          "state": "spMax"
+        },
+        {
+          "key": "lv",
+          "label": "等级",
+          "state": "lv"
+        },
+        {
+          "key": "exp",
+          "label": "经验",
+          "state": "exp"
+        }
+      ],
+      "engine": "xsystem4"
+    },
+    {
+      "actions": [
+        {
+          "action": {
+            "addGold": 100000
+          },
+          "label": "金钱 +10 万"
+        },
+        {
+          "action": {
+            "gold": 9999999
+          },
+          "label": "金钱设为 9999999"
+        },
+        {
+          "action": {
+            "cheat": "fullHeal"
+          },
+          "label": "恢复满 HP"
+        },
+        {
+          "action": {
+            "exCharEdit": {
+              "atk": 999,
+              "def": 999,
+              "fullHeal": true,
+              "hp": 9999,
+              "hpMax": 9999,
+              "lv": 99,
+              "mp": 999,
+              "mpMax": 999,
+              "target": -1
+            }
+          },
+          "label": "全员一键强化"
+        }
+      ],
+      "characters": {
+        "boost": {
+          "atk": 999,
+          "def": 999,
+          "fullHeal": true,
+          "hp": 9999,
+          "hpMax": 9999,
+          "lv": 99,
+          "mp": 999,
+          "mpMax": 999
+        },
+        "fields": [
+          {
+            "key": "lv",
+            "label": "等级",
+            "state": "lv"
+          },
+          {
+            "key": "exp",
+            "label": "经验",
+            "state": "exp"
+          },
+          {
+            "key": "hp",
+            "label": "当前 HP",
+            "state": "hp"
+          },
+          {
+            "key": "hpMax",
+            "label": "最大 HP",
+            "state": "hpMax"
+          },
+          {
+            "key": "mp",
+            "label": "当前 MP",
+            "state": "mp"
+          },
+          {
+            "key": "mpMax",
+            "label": "最大 MP",
+            "state": "mpMax"
+          },
+          {
+            "key": "atk",
+            "label": "攻击",
+            "state": "atk"
+          },
+          {
+            "key": "def",
+            "label": "防御",
+            "state": "def"
+          }
+        ],
+        "prefix": "ex"
+      },
+      "codes": false,
+      "id": "okusamajun",
+      "locks": [
+        {
+          "bit": 1,
+          "label": "无限金钱"
+        },
+        {
+          "bit": 2,
+          "label": "我方满 HP 与 MP"
+        }
+      ],
+      "name": "人妻管理员 纯爱篇",
+      "resource_title": "资源修改",
+      "resources": [
+        {
+          "key": "gold",
+          "label": "金钱",
+          "state": "gold"
+        }
+      ],
+      "engine": "xsystem4"
+    },
+    {
+      "actions": [
+        {
+          "action": {
+            "addGold": 100000
+          },
+          "label": "金钱 +10 万"
+        },
+        {
+          "action": {
+            "gold": 9999999
+          },
+          "label": "金钱设为 9999999"
+        },
+        {
+          "action": {
+            "cheat": "fullHeal"
+          },
+          "label": "恢复满 HP"
+        },
+        {
+          "action": {
+            "exCharEdit": {
+              "atk": 999,
+              "def": 999,
+              "fullHeal": true,
+              "hp": 9999,
+              "hpMax": 9999,
+              "lv": 99,
+              "mp": 999,
+              "mpMax": 999,
+              "target": -1
+            }
+          },
+          "label": "全员一键强化"
+        }
+      ],
+      "characters": {
+        "boost": {
+          "atk": 999,
+          "def": 999,
+          "fullHeal": true,
+          "hp": 9999,
+          "hpMax": 9999,
+          "lv": 99,
+          "mp": 999,
+          "mpMax": 999
+        },
+        "fields": [
+          {
+            "key": "lv",
+            "label": "等级",
+            "state": "lv"
+          },
+          {
+            "key": "exp",
+            "label": "经验",
+            "state": "exp"
+          },
+          {
+            "key": "hp",
+            "label": "当前 HP",
+            "state": "hp"
+          },
+          {
+            "key": "hpMax",
+            "label": "最大 HP",
+            "state": "hpMax"
+          },
+          {
+            "key": "mp",
+            "label": "当前 MP",
+            "state": "mp"
+          },
+          {
+            "key": "mpMax",
+            "label": "最大 MP",
+            "state": "mpMax"
+          },
+          {
+            "key": "atk",
+            "label": "攻击",
+            "state": "atk"
+          },
+          {
+            "key": "def",
+            "label": "防御",
+            "state": "def"
+          }
+        ],
+        "prefix": "ex"
+      },
+      "codes": false,
+      "id": "okusamantr",
+      "locks": [
+        {
+          "bit": 1,
+          "label": "无限金钱"
+        },
+        {
+          "bit": 2,
+          "label": "我方满 HP 与 MP"
+        }
+      ],
+      "name": "人妻管理员 NTR篇",
+      "resource_title": "资源修改",
+      "resources": [
+        {
+          "key": "gold",
+          "label": "金钱",
+          "state": "gold"
+        }
+      ],
+      "engine": "xsystem4"
+    },
+    {
+      "actions": [
+        {
+          "action": {
+            "addPeace": 50000
+          },
+          "label": "和平点 +50000"
+        },
+        {
+          "action": {
+            "cheat": "fullHeal"
+          },
+          "label": "Libido 全满"
+        },
+        {
+          "action": {
+            "cheat": "boostAll"
+          },
+          "label": "全能力强化"
+        }
+      ],
+      "codes": false,
+      "id": "escalayerreboot",
+      "locks": [
+        {
+          "bit": 1,
+          "label": "满能量与 Libido"
+        },
+        {
+          "bit": 2,
+          "label": "满和平点与爱情"
+        },
+        {
+          "bit": 4,
+          "label": "常驻 Boost 强化"
+        },
+        {
+          "bit": 8,
+          "label": "全能力强化"
+        }
+      ],
+      "name": "超昂天使 R",
+      "resource_title": "资源修改",
+      "resources": [
+        {
+          "key": "peace",
+          "label": "和平度",
+          "state": "peace"
+        },
+        {
+          "key": "love",
+          "label": "爱情度",
+          "state": "love"
+        },
+        {
+          "key": "libido",
+          "label": "Libido",
+          "state": "libido"
+        },
+        {
+          "key": "energy",
+          "label": "能量",
+          "state": "energy"
+        },
+        {
+          "key": "shield",
+          "label": "护盾",
+          "state": "shield"
+        },
+        {
+          "key": "atk",
+          "label": "攻击",
+          "state": "atk"
+        },
+        {
+          "key": "def",
+          "label": "防御",
+          "state": "def"
+        },
+        {
+          "key": "spd",
+          "label": "速度",
+          "state": "spd"
+        }
+      ],
+      "engine": "xsystem4"
+    },
+    {
+      "actions": [
+        {
+          "action": {
+            "gold": 12
+          },
+          "label": "魔石板拉满 (12)"
+        },
+        {
+          "action": {
+            "cheat": "fullHeal"
+          },
+          "label": "恢复满 HP"
+        },
+        {
+          "action": {
+            "cheat": "maxItems"
+          },
+          "label": "补满消耗品"
+        },
+        {
+          "action": {
+            "exCharEdit": {
+              "atk": 999,
+              "def": 999,
+              "energy": 100,
+              "hp": 9999,
+              "hpMax": 9999,
+              "love": 999,
+              "pollute": 0,
+              "spd": 999,
+              "target": -1
+            }
+          },
+          "label": "全员一键强化"
+        }
+      ],
+      "characters": {
+        "boost": {
+          "atk": 999,
+          "def": 999,
+          "energy": 100,
+          "hp": 9999,
+          "hpMax": 9999,
+          "love": 999,
+          "pollute": 0,
+          "spd": 999
+        },
+        "fields": [
+          {
+            "key": "hp",
+            "label": "当前 HP",
+            "state": "hp"
+          },
+          {
+            "key": "hpMax",
+            "label": "最大 HP",
+            "state": "hpMax"
+          },
+          {
+            "key": "atk",
+            "label": "攻击",
+            "state": "atk"
+          },
+          {
+            "key": "def",
+            "label": "防御",
+            "state": "def"
+          },
+          {
+            "key": "spd",
+            "label": "速度",
+            "state": "spd"
+          },
+          {
+            "key": "energy",
+            "label": "能量",
+            "state": "energy"
+          },
+          {
+            "key": "love",
+            "label": "好感度",
+            "state": "love"
+          },
+          {
+            "key": "pollute",
+            "label": "污染度",
+            "state": "pollute"
+          }
+        ],
+        "prefix": "ex"
+      },
+      "codes": false,
+      "id": "ixseal",
+      "locks": [
+        {
+          "bit": 1,
+          "label": "我方满 HP"
+        },
+        {
+          "bit": 2,
+          "label": "清除污染度"
+        },
+        {
+          "bit": 4,
+          "label": "锁定高爱情度"
+        },
+        {
+          "bit": 8,
+          "label": "无限魔石板"
+        }
+      ],
+      "name": "超昂神骑",
+      "resource_title": "资源修改",
+      "resources": [
+        {
+          "key": "gold",
+          "label": "魔石板",
+          "state": "gold"
+        },
+        {
+          "key": "energy",
+          "label": "能量",
+          "state": "energy"
+        }
+      ],
+      "engine": "xsystem4"
+    },
+    {
+      "actions": [
+        {
+          "action": {
+            "addGold": 100000
+          },
+          "label": "金钱 +10 万"
+        },
+        {
+          "action": {
+            "gold": 9999999
+          },
+          "label": "金钱设为 9999999"
+        },
+        {
+          "action": {
+            "cheat": "fullHeal"
+          },
+          "label": "全员回满 HP 与 SP"
+        },
+        {
+          "action": {
+            "cheat": "maxItems"
+          },
+          "label": "补满消耗品"
+        },
+        {
+          "action": {
+            "exCharEdit": {
+              "bp": 999,
+              "hp": 9999,
+              "lv": 99,
+              "sp": 999,
+              "target": -1
+            }
+          },
+          "label": "全员一键强化"
+        }
+      ],
+      "characters": {
+        "boost": {
+          "bp": 999,
+          "hp": 9999,
+          "lv": 99,
+          "sp": 999
+        },
+        "fields": [
+          {
+            "key": "lv",
+            "label": "等级",
+            "state": "lv"
+          },
+          {
+            "key": "exp",
+            "label": "经验",
+            "state": "exp"
+          },
+          {
+            "key": "bp",
+            "label": "BP",
+            "state": "bp"
+          },
+          {
+            "key": "hp",
+            "label": "当前 HP",
+            "state": "hp"
+          },
+          {
+            "key": "sp",
+            "label": "当前 SP",
+            "state": "sp"
+          }
+        ],
+        "prefix": "ex"
+      },
+      "codes": false,
+      "id": "pascha3",
+      "locks": [
+        {
+          "bit": 1,
+          "label": "无限金钱"
+        },
+        {
+          "bit": 2,
+          "label": "无限行动次数"
+        },
+        {
+          "bit": 4,
+          "label": "我方满 HP 与 SP"
+        },
+        {
+          "bit": 8,
+          "label": "锁定高爱情度"
+        },
+        {
+          "bit": 16,
+          "label": "无限消耗品"
+        }
+      ],
+      "name": "粉彩铃音 3",
+      "resource_title": "资源修改",
+      "resources": [
+        {
+          "key": "gold",
+          "label": "金钱",
+          "state": "gold"
+        },
+        {
+          "key": "ap",
+          "label": "行动点",
+          "state": "ap"
+        }
+      ],
+      "engine": "xsystem4"
+    },
+    {
+      "actions": [
+        {
+          "action": {
+            "cheat": "fullHeal"
+          },
+          "label": "补满行动次数"
+        },
+        {
+          "action": {
+            "cheat": "boostAll"
+          },
+          "label": "全能力强化"
+        }
+      ],
+      "codes": false,
+      "id": "haharanman",
+      "locks": [
+        {
+          "bit": 1,
+          "label": "无限行动次数"
+        },
+        {
+          "bit": 2,
+          "label": "满精神与恢复点"
+        },
+        {
+          "bit": 4,
+          "label": "免消耗与经验加成"
+        },
+        {
+          "bit": 8,
+          "label": "解除时段限制"
+        }
+      ],
+      "name": "母烂漫",
+      "resource_title": "资源修改",
+      "resources": [
+        {
+          "key": "ap",
+          "label": "行动点",
+          "state": "ap"
+        },
+        {
+          "key": "lv",
+          "label": "等级",
+          "state": "lv"
+        },
+        {
+          "key": "exp",
+          "label": "经验",
+          "state": "exp"
+        },
+        {
+          "key": "mental",
+          "label": "精神力",
+          "state": "mental"
+        },
+        {
+          "key": "refresh",
+          "label": "恢复点数",
+          "state": "refresh"
+        },
+        {
+          "key": "days",
+          "label": "剩余天数",
+          "state": "days"
+        }
+      ],
+      "engine": "xsystem4"
+    },
+    {
+      "actions": [
+        {
+          "action": {
+            "addGold": 100000
+          },
+          "label": "金钱 +10 万"
+        },
+        {
+          "action": {
+            "gold": 9999999
+          },
+          "label": "金钱设为 9999999"
+        },
+        {
+          "action": {
+            "cheat": "fullHeal"
+          },
+          "label": "回满精力并清除情敌"
+        },
+        {
+          "action": {
+            "cheat": "maxItems"
+          },
+          "label": "补满消耗品"
+        },
+        {
+          "action": {
+            "exCharEdit": {
+              "love": 999,
+              "lv": 99,
+              "rival": 0,
+              "target": -1
+            }
+          },
+          "label": "全员一键强化"
+        }
+      ],
+      "characters": {
+        "boost": {
+          "love": 999,
+          "lv": 99,
+          "rival": 0
+        },
+        "fields": [
+          {
+            "key": "lv",
+            "label": "等级",
+            "state": "lv"
+          },
+          {
+            "key": "love",
+            "label": "好感度",
+            "state": "love"
+          },
+          {
+            "key": "seed",
+            "label": "主角进度",
+            "state": "seed"
+          },
+          {
+            "key": "rival",
+            "label": "情敌值",
+            "state": "rival"
+          }
+        ],
+        "prefix": "ex"
+      },
+      "codes": false,
+      "id": "tsumamigui3",
+      "locks": [
+        {
+          "bit": 1,
+          "label": "无限金钱"
+        },
+        {
+          "bit": 2,
+          "label": "无限精力"
+        },
+        {
+          "bit": 4,
+          "label": "清除情敌痕迹"
+        },
+        {
+          "bit": 8,
+          "label": "无限消耗品"
+        }
+      ],
+      "name": "妻中蜜 3",
+      "resource_title": "资源修改",
+      "resources": [
+        {
+          "key": "gold",
+          "label": "金钱",
+          "state": "gold"
+        },
+        {
+          "key": "energy",
+          "label": "精力",
+          "state": "energy"
+        }
+      ],
+      "engine": "xsystem4"
+    },
+    {
+      "actions": [
+        {
+          "action": {
+            "cheat": "fullHeal"
+          },
+          "label": "补满消耗品"
+        },
+        {
+          "action": {
+            "cheat": "boostAll"
+          },
+          "label": "全能力强化"
+        }
+      ],
+      "codes": false,
+      "id": "maman",
+      "locks": [
+        {
+          "bit": 1,
+          "label": "无限道具"
+        },
+        {
+          "bit": 2,
+          "label": "满野性与心情"
+        },
+        {
+          "bit": 4,
+          "label": "锁定高爱情度"
+        }
+      ],
+      "name": "再婚妈妈",
+      "resource_title": "资源修改",
+      "resources": [
+        {
+          "key": "condom",
+          "label": "道具数",
+          "state": "condom"
+        },
+        {
+          "key": "wild",
+          "label": "野性度",
+          "state": "wild"
+        },
+        {
+          "key": "mcon",
+          "label": "恋母度",
+          "state": "mcon"
+        },
+        {
+          "key": "humor",
+          "label": "心情",
+          "state": "humor"
+        }
+      ],
+      "engine": "xsystem4"
+    },
+    {
+      "actions": [
+        {
+          "action": "esc_heal",
+          "label": "恢复满 HP"
+        },
+        {
+          "action": "esc_libido_max",
+          "label": "Libido 全满"
+        },
+        {
+          "action": "esc_enemy_onehit",
+          "label": "敌方 HP 设为 1"
+        },
+        {
+          "action": "esc_stats_boost",
+          "label": "全能力强化"
+        },
+        {
+          "action": "esc_atk_add=100",
+          "label": "攻击 +100"
+        },
+        {
+          "action": "esc_def_add=100",
+          "label": "防御 +100"
+        },
+        {
+          "action": "esc_rsp_add=50",
+          "label": "反应 +50"
+        },
+        {
+          "action": "esc_d2_set=0",
+          "label": "清除 D2 污染"
+        },
+        {
+          "action": "esc_peace_100",
+          "label": "和平度设为 100"
+        },
+        {
+          "action": "esc_love_max",
+          "label": "爱情与调教强化"
+        },
+        {
+          "action": "esc_unlock_gallery",
+          "label": "解锁鉴赏"
+        }
+      ],
+      "codes": false,
+      "engine": "xsystem35",
+      "id": "escalayer",
+      "locks": [
+        {
+          "bit": 1,
+          "label": "锁定满 HP"
+        },
+        {
+          "bit": 2,
+          "label": "锁定满 Libido"
+        },
+        {
+          "bit": 4,
+          "label": "敌方 1 HP"
+        },
+        {
+          "bit": 8,
+          "label": "锁定高爱情度"
+        }
+      ],
+      "name": "超昂天使",
+      "readonly": [
+        {
+          "key": "hp",
+          "label": "当前 HP"
+        },
+        {
+          "key": "hpMax",
+          "label": "最大 HP"
+        },
+        {
+          "key": "enemyHp",
+          "label": "敌方 HP"
+        },
+        {
+          "key": "atk",
+          "label": "攻击"
+        },
+        {
+          "key": "def",
+          "label": "防御"
+        },
+        {
+          "key": "rsp",
+          "label": "反应"
+        },
+        {
+          "key": "d2",
+          "label": "D2 污染"
+        },
+        {
+          "key": "peace",
+          "label": "和平度"
+        },
+        {
+          "key": "love",
+          "label": "爱情度"
+        }
+      ]
+    },
+    {
+      "actions": [
+        {
+          "action": "da_gold_add=10000",
+          "label": "资金 +10000"
+        },
+        {
+          "action": "da_gold_max",
+          "label": "资金拉满"
+        },
+        {
+          "action": "da_debt_zero",
+          "label": "债务清零"
+        },
+        {
+          "action": "da_hp_boost",
+          "label": "全员体力强化 999"
+        },
+        {
+          "action": "da_love_max",
+          "label": "忠诚与人气拉满"
+        },
+        {
+          "action": "da_security_max",
+          "label": "区域治安最佳"
+        },
+        {
+          "action": "da_items_unlock",
+          "label": "解锁全部特殊道具"
+        }
+      ],
+      "codes": false,
+      "engine": "xsystem35",
+      "id": "daiakuji",
+      "locks": [
+        {
+          "bit": 1,
+          "label": "无限金钱"
+        },
+        {
+          "bit": 2,
+          "label": "债务清零"
+        },
+        {
+          "bit": 4,
+          "label": "我方满 HP"
+        },
+        {
+          "bit": 8,
+          "label": "锁定满忠诚与人气"
+        }
+      ],
+      "name": "大恶司",
+      "readonly": [
+        {
+          "key": "gold",
+          "label": "金钱"
+        },
+        {
+          "key": "debt",
+          "label": "债务"
+        },
+        {
+          "key": "subsidy",
+          "label": "补助金"
+        },
+        {
+          "key": "popular",
+          "label": "人气"
+        },
+        {
+          "key": "hp",
+          "label": "当前 HP"
+        }
+      ]
+    },
+    {
+      "actions": [
+        {
+          "action": "r5d_heal",
+          "label": "恢复满 HP"
+        },
+        {
+          "action": "r5d_stats_boost",
+          "label": "全能力强化"
+        },
+        {
+          "action": "r5d_gold_exp",
+          "label": "补满金块与经验玉"
+        },
+        {
+          "action": "r5d_love_max",
+          "label": "女主好感度全满"
+        },
+        {
+          "action": "r5d_durability",
+          "label": "补满道具耐久"
+        }
+      ],
+      "codes": false,
+      "engine": "xsystem35",
+      "id": "rance5d",
+      "locks": [
+        {
+          "bit": 1,
+          "label": "我方满 HP"
+        },
+        {
+          "bit": 2,
+          "label": "无限行动次数"
+        },
+        {
+          "bit": 4,
+          "label": "道具满耐久"
+        },
+        {
+          "bit": 8,
+          "label": "金块与经验玉满额"
+        }
+      ],
+      "name": "Rance 5D",
+      "readonly": [
+        {
+          "key": "hp",
+          "label": "当前 HP"
+        },
+        {
+          "key": "hpMax",
+          "label": "最大 HP"
+        },
+        {
+          "key": "ap",
+          "label": "行动次数"
+        },
+        {
+          "key": "gold",
+          "label": "金块"
+        },
+        {
+          "key": "expOrb",
+          "label": "经验玉"
+        }
+      ]
+    },
+    {
+      "actions": [
+        {
+          "action": "tm1_stamina_max",
+          "label": "耐久力设为 999"
+        },
+        {
+          "action": "tm1_tech_max",
+          "label": "技巧等级全满"
+        },
+        {
+          "action": "tm1_heroine_max",
+          "label": "女主等级全满"
+        },
+        {
+          "action": "tm1_exp_add=500",
+          "label": "经验 +500"
+        }
+      ],
+      "codes": false,
+      "engine": "xsystem35",
+      "id": "tsumamigui",
+      "locks": [
+        {
+          "bit": 1,
+          "label": "无限体力"
+        },
+        {
+          "bit": 2,
+          "label": "技巧等级全满"
+        }
+      ],
+      "name": "妻中蜜",
+      "readonly": [
+        {
+          "key": "stamina",
+          "label": "耐久力"
+        },
+        {
+          "key": "lv",
+          "label": "等级"
+        },
+        {
+          "key": "exp",
+          "label": "经验"
+        },
+        {
+          "key": "kanaeLv",
+          "label": "香苗等级"
+        },
+        {
+          "key": "chihoLv",
+          "label": "千穗等级"
+        }
+      ]
+    },
+    {
+      "actions": [
+        {
+          "action": "kr_gold_add=1000",
+          "label": "资金 +1000"
+        },
+        {
+          "action": "kr_gold_max",
+          "label": "资金拉满"
+        },
+        {
+          "action": "kr_reset_actions",
+          "label": "重置我方行动"
+        }
+      ],
+      "codes": false,
+      "engine": "xsystem35",
+      "id": "kichikuou",
+      "locks": [
+        {
+          "bit": 1,
+          "label": "无限金钱"
+        },
+        {
+          "bit": 2,
+          "label": "我方无限行动"
+        }
+      ],
+      "name": "鬼畜王兰斯",
+      "readonly": [
+        {
+          "key": "gold",
+          "label": "金钱"
+        },
+        {
+          "key": "month",
+          "label": "月份"
+        },
+        {
+          "key": "week",
+          "label": "周"
+        }
+      ]
+    },
+    {
+      "actions": [
+        {
+          "action": "kn_gold_add=10000",
+          "label": "资金 +10000"
+        },
+        {
+          "action": "kn_gold_max",
+          "label": "资金拉满"
+        },
+        {
+          "action": "kn_items_max",
+          "label": "补满消耗品"
+        }
+      ],
+      "codes": false,
+      "engine": "xsystem35",
+      "id": "kaerunyo",
+      "locks": [
+        {
+          "bit": 1,
+          "label": "无限金钱"
+        },
+        {
+          "bit": 2,
+          "label": "无限道具"
+        }
+      ],
+      "name": "青蛙王国",
+      "readonly": [
+        {
+          "key": "gold",
+          "label": "金钱"
+        },
+        {
+          "key": "ropes",
+          "label": "捕获绳"
+        }
+      ]
+    }
+  ]
+}

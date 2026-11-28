@@ -107,6 +107,8 @@ func host_state() -> Dictionary:
         "game_running": app.game_running,
         "frame_texture_cleared": app.viewport.texture == null,
         "engine_initialized": app.player != null and app.player.is_initialized(),
+        "engine_host": app.player.get_engine_host()
+            if app.player != null and app.player.has_method("get_engine_host") else "",
         "player_instance_id": app.player.get_instance_id() if app.player != null else 0,
         "startup_state": app.cached_startup_state,
         "runtime": app.active_runtime_kind,

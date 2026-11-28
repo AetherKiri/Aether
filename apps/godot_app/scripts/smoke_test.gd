@@ -1,6 +1,8 @@
 extends SceneTree
 
 const ProbeConfig = preload("res://scripts/probe_config.gd")
+const PlaybackBackend = preload("res://scripts/playback_backend.gd")
+const AppUpdater = preload("res://scripts/app_updater.gd")
 const ONSCRIPTER_SCRIPT_MARKERS := [
     "0.txt",
     "00.txt",
@@ -96,10 +98,35 @@ func _initialize() -> void:
 
     var user_dir := OS.get_user_data_dir()
     var cache_dir := user_dir.path_join("cache")
-    if not player.initialize_engine(user_dir, cache_dir):
+    var backend := ProbeConfig.backend(config)
+    var check_ons_host := is_onscripter and OS.has_environment("AETHERKIRI_RENDER_BACKEND") \
+        and backend in [PlaybackBackend.NATIVE, PlaybackBackend.GODOT]
+    var version := OS.get_environment("AETHERKIRI_SIMULATE_VERSION").strip_edges()
+    if version.is_empty():
+        version = String(ProjectSettings.get_setting("application/config/version", ""))
+    var use_native_host := PlaybackBackend.uses_native_host(
+        backend, "onscripter" if is_onscripter else "", player, AppUpdater.is_prerelease(version)
+    )
+    if check_ons_host and backend == PlaybackBackend.NATIVE and not use_native_host:
+        printerr("ONS native host is unavailable")
+        quit(1)
+        return
+
+    var initialized: bool = player.initialize_engine(user_dir, cache_dir, true) \
+        if use_native_host else player.initialize_engine(user_dir, cache_dir)
+    if not initialized:
         printerr("initialize_engine failed: %s" % player.get_last_error())
         quit(1)
         return
+    if check_ons_host:
+        var expected_host := "native" if backend == PlaybackBackend.NATIVE else "legacy"
+        var actual_host: String = player.get_engine_host()
+        if actual_host != expected_host:
+            printerr("ONS host expected=%s actual=%s" % [expected_host, actual_host])
+            player.destroy_engine()
+            quit(1)
+            return
+        print("ONS session host: %s" % actual_host)
 
     var media_path := OS.get_environment("AETHERKIRI_SMOKE_MEDIA").strip_edges()
     if not await _smoke_media_bridge(player, media_path):
@@ -107,8 +134,7 @@ func _initialize() -> void:
         quit(1)
         return
 
-    var backend: String = ProbeConfig.backend(config)
-    player.set_render_backend(backend)
+    player.set_render_backend(PlaybackBackend.renderer(backend))
     if is_onscripter:
         var runtime_font := ProjectSettings.globalize_path(
             "res://assets/fonts/aetherkiri-runtime-cjk.otf"

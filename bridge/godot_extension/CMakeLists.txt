@@ -100,6 +100,7 @@ set(AETHERKIRI_GODOT_SOURCES
     src/mobile_window.cpp
     src/app_icon.cpp
     src/aether_runtime_player.cpp
+    src/game_detection_adapter.cpp
     src/frame_effect_host.cpp
     src/presentation/RuntimePresentationSprite.cpp
 )
@@ -120,6 +121,12 @@ elseif(IOS)
     add_library(aether_kiri_godot STATIC ${AETHERKIRI_GODOT_SOURCES})
 else()
     add_library(aether_kiri_godot SHARED ${AETHERKIRI_GODOT_SOURCES})
+endif()
+
+if(NOT (WEB OR EMSCRIPTEN))
+    add_subdirectory("${CMAKE_SOURCE_DIR}/bridge/xsystem_tools" "${CMAKE_BINARY_DIR}/bridge/xsystem_tools")
+    target_link_libraries(aether_kiri_godot PRIVATE aether_xsystem_tools)
+    target_compile_definitions(aether_kiri_godot PRIVATE AETHERKIRI_WITH_XSYSTEM_TOOLS=1)
 endif()
 
 if(AETHERKIRI_ENABLE_FLASH AND NOT (WEB OR EMSCRIPTEN))
@@ -334,7 +341,7 @@ endif()
 if(TARGET engine_api)
     target_link_libraries(aether_kiri_godot PRIVATE engine_api)
 endif()
-target_link_libraries(aether_kiri_godot PRIVATE spdlog::spdlog)
+target_link_libraries(aether_kiri_godot PRIVATE spdlog::spdlog aether_game_detection)
 if(TARGET aether_krkr2_runtime)
     # Phase 2d link flip: the KiriKiri runtime glue is linked by the Godot
     # extension host (not engine_api). The extension installs the legacy
@@ -349,6 +356,11 @@ if(TARGET aether_onscripter_runtime)
         aether_onscripter_runtime)
     target_compile_definitions(aether_kiri_godot PRIVATE
         AETHERKIRI_WITH_ONSCRIPTER=1)
+    if(AETHERKIRI_ONS_NATIVE_HOST_FOR_GODOT AND NOT BUILD_NATIVE_HOST_SHARED)
+        target_link_libraries(aether_kiri_godot PRIVATE aether_native_host)
+        target_compile_definitions(aether_kiri_godot PRIVATE
+            AETHERKIRI_WITH_ONS_NATIVE_HOST=1)
+    endif()
 endif()
 if(TARGET aether_system3_runtime)
     target_link_libraries(aether_kiri_godot PRIVATE aether_system3_runtime)
@@ -447,7 +459,10 @@ if(IOS)
         list(APPEND AETHERKIRI_IOS_ARCHIVES
             "$<TARGET_FILE:aether_minori_runtime>")
     endif()
-    set(_runtime_targets_to_bundle)
+    set(_runtime_targets_to_bundle aether_game_detection aether_xsystem_tools)
+    if(AETHERKIRI_ONS_NATIVE_HOST_FOR_GODOT AND NOT BUILD_NATIVE_HOST_SHARED)
+        list(APPEND _runtime_targets_to_bundle aether_native_host)
+    endif()
     if(TARGET aether_n2system_runtime)
         list(APPEND _runtime_targets_to_bundle aether_n2system_runtime aether_n2system_native_host)
     endif()

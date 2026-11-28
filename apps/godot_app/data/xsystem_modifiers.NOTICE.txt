@@ -1,0 +1,7 @@
+System4 and System3.5 modifier profile data
+
+The game profile data is adapted from ModifierBridge.swift,
+ModifierGamePanels.swift and ModifierView.swift by TomorrowX6 and contributors.
+Source: https://github.com/TomorrowX6/AliceHub/tree/82321df6738d876750af1b78ed3563decb47315d/ios/App
+License: GNU General Public License, version 2 (see xsystem_modifiers.LICENSE.txt).
+The Aether user interface and MOD transaction implementation are separate work.

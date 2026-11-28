@@ -1316,7 +1316,13 @@ func _opacity_slider() -> Control:
 
 func _render_settings() -> void:
     var fields := _section(_text("画面与渲染", "Graphics & rendering", "画面とレンダリング", "畫面與渲染", "Gráficos y renderizado"), _text("调整渲染方式、图像缩放和输出分辨率。", "Choose rendering, scaling and output resolution.", "描画方法、拡大処理、出力解像度を調整します。", "調整渲染方式、影像縮放與輸出解析度。", "Elige el renderizado, el escalado y la resolución de salida."))
-    _field(fields, _t("settings.render_backend"), _select("backend", host.BACKENDS))
+    var backend_labels: Array = []
+    for backend: String in host.BACKENDS:
+        backend_labels.append(host.PlaybackBackend.label(backend))
+    _field(
+        fields, _t("settings.render_backend"), _select("backend", host.BACKENDS, backend_labels),
+        _t("settings.render_backend_desc")
+    )
     _field(fields, _t("settings.surface_mode"), _select("surface_mode", ["game", "display"], ["Game Native", "Display Fit"]))
     var algorithms: Array = ["smooth", "linear", "nearest", "bicubic", "lanczos"]
     var algorithm_labels: Array = ["Smooth", "Linear", "Nearest", "Bicubic", "Lanczos"]
@@ -1643,6 +1649,11 @@ func _game_render_settings(parent: Control, game: Dictionary) -> void:
 
 func _compatibility_settings() -> void:
     var fields := _section(_text("运行时兼容性", "Runtime compatibility", "ランタイムの互換性", "執行階段相容性", "Compatibilidad del entorno de ejecución"), _t("settings.plugin_load_mode_desc"))
+    if host.player != null and host.player.has_method("inspect_game"):
+        var game_detection := _select(
+            "game_detection_override", host.GAME_DETECTION_OVERRIDES, host._game_detection_labels()
+        )
+        _field(fields, _t("settings.game_detection"), game_detection, _t("settings.game_detection_desc"))
     _field(fields, _t("settings.plugin_load_mode"), _select("plugin_load_mode", ["krkrsdl3", "aether_all"], [_t("settings.plugin_load.core"), _t("settings.plugin_load.all")]))
     _toggle(fields, _t("settings.mock"), _t("settings.mock_desc"), "mock_enabled")
     if host.player != null and host.player.has_method("is_text_translation_available") and host.player.is_text_translation_available():
@@ -2274,6 +2285,8 @@ func _detail_content() -> void:
     var actions := _vbox(8)
     info.add_child(actions)
     var launch := _button(_text("开始游戏", "Start game", "ゲームを開始", "開始遊戲", "Iniciar juego"), host._start_selected_game, "primary", "AstryxLaunchGame")
+    var mod_service = host.get_node_or_null("XSystemTools")
+    launch.disabled = mod_service != null and mod_service.busy
     launch.icon = load("res://assets/ui/astryx/play.svg")
     launch.icon_alignment = HORIZONTAL_ALIGNMENT_LEFT
     launch.expand_icon = true
@@ -2282,11 +2295,19 @@ func _detail_content() -> void:
     actions.add_child(launch)
     _collapsible(info, "information", _text("游戏信息", "Game information", "ゲーム情報", "遊戲資訊", "Información del juego"), _detail_information.bind(game, runtime))
     _collapsible(info, "rendering", _text("画面与渲染", "Graphics & rendering", "画面とレンダリング", "畫面與渲染", "Gráficos y renderizado"), _game_render_settings.bind(game))
-    _collapsible(info, "virtual_buttons", _text("游戏控制", "Game controls", "ゲーム操作", "遊戲控制", "Controles del juego"), _virtual_button_row.bind(game))
+    _collapsible(info, "virtual_buttons", _text("游戏控制", "Game controls", "ゲーム操作", "遊戲控制", "Controles del juego"), _detail_game_controls.bind(game, runtime))
     _collapsible(info, "saves", _text("存档", "Saves", "セーブデータ", "存檔", "Partidas guardadas"), _detail_save_actions.bind(game, runtime))
     _collapsible(info, "cache", _text("缓存", "Cache", "キャッシュ", "快取", "Caché"), _detail_cache_actions.bind(game, runtime))
     _collapsible(info, "cover", _text("封面", "Cover", "カバー", "封面", "Portada"), _detail_cover_actions.bind(game))
     info.add_child(_divider())
+
+func _detail_game_controls(section: Control, game: Dictionary, runtime: String) -> void:
+    _virtual_button_row(section, game)
+    if runtime in ["xsystem4", "xsystem35"]:
+        section.add_child(_divider())
+        var mods := preload("res://scripts/ui/xsystem_mod_list.gd").new()
+        section.add_child(mods)
+        mods.setup(host, host._game_runtime_root(String(game.get("path", ""))))
 
 func _detail_cache_actions(section: Control, game: Dictionary, runtime: String) -> void:
     _cache_actions(section, host._game_cache_paths(game, runtime), func(done: Callable): host._clear_game_cache(game, done), false)

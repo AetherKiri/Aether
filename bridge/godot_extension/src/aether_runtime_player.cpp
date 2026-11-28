@@ -1,5 +1,9 @@
 #include "engine_api.h"
+#ifdef AETHERKIRI_WITH_XSYSTEM_TOOLS
+#include "mod_manager.h"
+#endif
 #include "runtime_host_extension.h"
+#include "game_detection_adapter.h"
 #include "engine_options.h"
 #include "engine_runtime_provider.h"
 #if defined(AETHERKIRI_WITH_EXHIBIT)
@@ -42,6 +46,9 @@ extern "C" void AetherInternalRegisterWa2Runtime(void);
 #include "frame_effect_host.h"
 #if defined(AETHERKIRI_WITH_ONSCRIPTER)
 #include "onscripter_runtime.h"
+#endif
+#if defined(AETHERKIRI_WITH_ONS_NATIVE_HOST)
+#include "aether/native_host/runtime_session.h"
 #endif
 #if defined(AETHERKIRI_WITH_SIGLUS)
 #include "siglus_runtime.h"
@@ -10247,7 +10254,28 @@ public:
         destroy_engine();
     }
 
-    bool initialize_engine(const String &writable_path, const String &cache_path) {
+    bool has_ons_native_host() const {
+#if defined(AETHERKIRI_WITH_ONS_NATIVE_HOST)
+        return true;
+#else
+        return false;
+#endif
+    }
+
+    String get_engine_host() const {
+        if (handle_ == nullptr) {
+            return "";
+        }
+#if defined(AETHERKIRI_WITH_ONS_NATIVE_HOST)
+        if (ons_session_.handle() != nullptr) {
+            return "native";
+        }
+#endif
+        return "legacy";
+    }
+
+    bool initialize_engine(const String &writable_path, const String &cache_path,
+                           bool use_ons_native_host = false) {
         if (handle_ != nullptr) {
             AndroidBridgeLog("event=initialize_engine_already_initialized runtime=%s",
                              runtime_id_.utf8().get_data());
@@ -10331,7 +10359,16 @@ public:
         desc.cache_path_utf8 = cache_utf8.get_data();
         mages_cache_path_ = cache_path;
 
-        const engine_result_t result = engine_create(&desc, &handle_);
+        engine_result_t result;
+#if defined(AETHERKIRI_WITH_ONS_NATIVE_HOST)
+        if (use_ons_native_host) {
+            result = ons_session_.Create(desc);
+            handle_ = ons_session_.handle();
+        } else
+#endif
+        {
+            result = engine_create(&desc, &handle_);
+        }
         last_result_ = ResultToString(result);
         last_error_ = LastError(handle_);
         if (result == ENGINE_RESULT_OK) {
@@ -10382,7 +10419,15 @@ public:
             return;
         }
         release_frame_texture();
-        const engine_result_t result = engine_destroy(handle_);
+        engine_result_t result;
+#if defined(AETHERKIRI_WITH_ONS_NATIVE_HOST)
+        if (ons_session_.handle() != nullptr) {
+            result = ons_session_.Close();
+        } else
+#endif
+        {
+            result = engine_destroy(handle_);
+        }
         BridgeFlush();
         if (result != ENGINE_RESULT_OK) {
             last_result_ = ResultToString(result);
@@ -11308,6 +11353,9 @@ public:
                          " godot_driver=" + server->get_current_rendering_driver_name() +
                          " rd_gpu=" + String(SupportsGodotRenderingDeviceGpu() ? "1" : "0");
         }
+        if (runtime_id_ == "onscripter") {
+            godot_info += " session_host=" + get_engine_host();
+        }
         godot_info += " source_query_ms=" + String::num(source_query_ms_, 6) +
                       " present_copy_ms=" + String::num(present_copy_ms_, 6);
         return String::utf8(buffer) + godot_info + GetGodotGpuBridgeDebugInfo();
@@ -11362,6 +11410,16 @@ public:
                     RenderingServer::RENDERING_INFO_VIDEO_MEM_USED));
         }
         return output;
+    }
+
+    String manage_xsystem_mods(const String &game_root, const String &operation, const String &argument) {
+#ifdef AETHERKIRI_WITH_XSYSTEM_TOOLS
+        auto result = aether::xsystem::mod_operation(
+            game_root.utf8().get_data(), operation.utf8().get_data(), argument.utf8().get_data());
+        return String::utf8(result.c_str());
+#else
+        return "{\"ok\":false,\"error\":\"unsupported_platform\"}";
+#endif
     }
 
     String get_plugin_debug_info() {
@@ -13031,6 +13089,14 @@ void main() {
 #endif
     }
 
+    Dictionary inspect_game(const String &path, const String &probe_root) const {
+        return aether::godot_host::InspectGame(path, probe_root);
+    }
+
+    String inspect_special_game(const String &path, const String &runtime) const {
+        return aether::godot_host::InspectSpecialGame(path, runtime);
+    }
+
     int64_t probe_runtime(const String &runtime_id,
                           const String &game_root_path) const {
         const CharString runtime_utf8 = runtime_id.utf8();
@@ -13041,8 +13107,13 @@ void main() {
 
 protected:
     static void _bind_methods() {
-        ClassDB::bind_method(D_METHOD("initialize_engine", "writable_path", "cache_path"),
-                             &AetherRuntimePlayer::initialize_engine);
+        ClassDB::bind_method(D_METHOD("initialize_engine", "writable_path", "cache_path",
+                                      "use_ons_native_host"),
+                             &AetherRuntimePlayer::initialize_engine, DEFVAL(false));
+        ClassDB::bind_method(D_METHOD("has_ons_native_host"),
+                             &AetherRuntimePlayer::has_ons_native_host);
+        ClassDB::bind_method(D_METHOD("get_engine_host"),
+                             &AetherRuntimePlayer::get_engine_host);
         ClassDB::bind_method(D_METHOD("destroy_engine"),
                              &AetherRuntimePlayer::destroy_engine);
         ClassDB::bind_method(D_METHOD("is_initialized"),
@@ -13126,6 +13197,8 @@ protected:
                              &AetherRuntimePlayer::get_memory_stats);
         ClassDB::bind_method(D_METHOD("get_plugin_debug_info"),
                              &AetherRuntimePlayer::get_plugin_debug_info);
+        ClassDB::bind_method(D_METHOD("manage_xsystem_mods", "game_root", "operation", "argument"),
+                             &AetherRuntimePlayer::manage_xsystem_mods);
         ClassDB::bind_method(D_METHOD("get_frame_texture_backend"),
                              &AetherRuntimePlayer::get_frame_texture_backend);
         ClassDB::bind_method(D_METHOD("is_frame_enhancement_built"),
@@ -13230,6 +13303,10 @@ protected:
         ClassDB::bind_method(
             D_METHOD("native_launch_file_picker_take_result_json"),
             &AetherRuntimePlayer::native_launch_file_picker_take_result_json);
+        ClassDB::bind_method(D_METHOD("inspect_game", "path", "probe_root"),
+                             &AetherRuntimePlayer::inspect_game, DEFVAL(String()));
+        ClassDB::bind_method(D_METHOD("inspect_special_game", "path", "runtime"),
+                             &AetherRuntimePlayer::inspect_special_game);
         ClassDB::bind_method(D_METHOD("probe_runtime", "runtime_id", "game_root_path"),
                              &AetherRuntimePlayer::probe_runtime);
         ADD_SIGNAL(MethodInfo(
@@ -14353,6 +14430,9 @@ private:
 #endif
     }
 
+#if defined(AETHERKIRI_WITH_ONS_NATIVE_HOST)
+    aether::native_host::RuntimeSession ons_session_;
+#endif
     engine_handle_t handle_ = nullptr;
     engine_media_handle_t media_ = nullptr;
     std::size_t plugin_debug_buffer_capacity_ = 64u * 1024u;

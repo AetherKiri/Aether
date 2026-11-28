@@ -20,8 +20,14 @@ static void require(bool condition, const char *message) {
 static void *exported_function(const char *name) {
     for(struct static_hll_function *f = lib_AnteaterADVEngine.functions;
         f->name; ++f)
-        if(!strcmp(f->name, name))
-            return f->fun;
+        if(!strcmp(f->name, name)) {
+            if(!f->resolve)
+                return f->fun;
+            struct ain_library *lib = &ain->libraries[ain_get_library(ain, "AnteaterADVEngine")];
+            for(int i = 0; i < lib->nr_functions; ++i)
+                if(!strcmp(lib->functions[i].name, name))
+                    return f->resolve(&lib->functions[i]);
+        }
     require(false, "Missing Anteater export");
     return NULL;
 }

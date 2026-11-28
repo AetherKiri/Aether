@@ -16,21 +16,23 @@ if(AETHERKIRI_INTERNAL_ENABLED AND
         "${CMAKE_SOURCE_DIR}/bridge/krkr2_runtime/src/artemis_lua_symbol_prefix.h")
 endif()
 
-# The krkr2 engine test suites live in the engine repository (issue #241
-# Phase 2); this checkout owns their wiring. The runtime-neutral transform
-# hook TU is compiled directly into those standalone krkr2 tests, so pass
-# its path down to them. Out-of-tree sources need an explicit binary
-# directory; keep it mirroring the engine submodule location.
-set(KRKR2_TEXT_TRANSFORM_SOURCE
-    "${CMAKE_SOURCE_DIR}/abi/src/TextTransform.cpp")
-
-add_subdirectory("${AETHERKIRI_KRKR_DIR}/tests/plugins"
-    "${CMAKE_BINARY_DIR}/packages/AetherKrkr/tests/plugins")
-add_subdirectory("${AETHERKIRI_KRKR_DIR}/tests/tjs2"
-    "${CMAKE_BINARY_DIR}/packages/AetherKrkr/tests/tjs2")
-add_subdirectory("${AETHERKIRI_KRKR_DIR}/tests/sound"
-    "${CMAKE_BINARY_DIR}/packages/AetherKrkr/tests/sound")
+# The standalone KiriKiri tests compile the runtime-neutral transform hook.
+if(TARGET krkr2core)
+    set(KRKR2_TEXT_TRANSFORM_SOURCE
+        "${CMAKE_SOURCE_DIR}/abi/src/TextTransform.cpp")
+    add_subdirectory("${AETHERKIRI_KRKR_DIR}/tests/plugins"
+        "${CMAKE_BINARY_DIR}/packages/AetherKrkr/tests/plugins")
+    add_subdirectory("${AETHERKIRI_KRKR_DIR}/tests/tjs2"
+        "${CMAKE_BINARY_DIR}/packages/AetherKrkr/tests/tjs2")
+endif()
+# The OpenAL default output follower is also built without KiriKiri2, for
+# the Siglus and MAGES runtimes.
+if(TARGET aether_openal_device_follower)
+    add_subdirectory("${AETHERKIRI_KRKR_DIR}/tests/sound"
+        "${CMAKE_BINARY_DIR}/packages/AetherKrkr/tests/sound")
+endif()
 add_subdirectory(unit-tests/engine_api)
+add_subdirectory(unit-tests/game_detection)
 add_subdirectory(mobile_window)
 if(AETHERKIRI_INTERNAL_ENABLED)
     aetherinternal_add_runtime_tests("${CMAKE_SOURCE_DIR}")
@@ -160,4 +162,8 @@ endif()
 
 if(TARGET aether_system3_runtime)
     include("${CMAKE_CURRENT_SOURCE_DIR}/system3_native/contracts.cmake")
+endif()
+
+if(TARGET aether_xsystem4_runtime OR TARGET aether_xsystem35_runtime)
+    add_subdirectory(xsystem_mods_native)
 endif()

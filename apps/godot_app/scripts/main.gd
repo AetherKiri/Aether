@@ -1,7 +1,10 @@
 extends Control
 
 const APP_DISPLAY_NAME := "Aether"
-const BACKENDS := ["Godot Native", "GPU Bridge", "Debug CPU"]
+const PlaybackBackend = preload("res://scripts/playback_backend.gd")
+const XSystemTools = preload("res://scripts/xsystem_tools.gd")
+const XSystemModifierView = preload("res://scripts/ui/xsystem_modifier_view.gd")
+const BACKENDS := PlaybackBackend.VALUES
 const SETTINGS_KEY := "aether_kiri/render_backend"
 const GAME_PATH_KEY := "aether_kiri/game_path"
 const GAME_AUTO_COVER_SCANNED_FIELD := "_autoCoverScanned"
@@ -340,7 +343,7 @@ const UI_TEXT := {
         "language.ko": "한국어",
         "language.es": "Español",
         "settings.render_backend": "渲染管线",
-        "settings.render_backend_desc": "保存后生效；运行中切换需重启当前游戏",
+        "settings.render_backend_desc": "宿主选项均使用 Godot 渲染。自动宿主仅在预发布版为受支持的游戏启用原生预览。下次启动游戏时生效。",
         "settings.surface_mode": "画布尺寸",
         "settings.surface_mode_desc": "Game Native 按游戏基准画布运行；Display Fit 按设备显示尺寸运行",
         "settings.upscale": "缩放算法",
@@ -401,6 +404,11 @@ const UI_TEXT := {
         "settings.target_fps": "目标帧率",
         "settings.target_fps_desc": "限制 C++ 引擎 tick/render 频率；可选 60–144 FPS",
         "settings.plugin_load_mode": "插件加载模式",
+        "settings.game_detection": "游戏识别方式",
+        "settings.game_detection_desc": "自动模式在预发布版使用原生识别，在正式版使用旧版 Godot。下次识别时生效。",
+        "settings.game_detection_auto": "自动",
+        "settings.game_detection_native": "原生",
+        "settings.game_detection_legacy": "旧版 Godot",
         "settings.plugin_load_mode_desc": "核心模式只加载常用兼容插件；完整模式保留旧版全量注册",
         "settings.plugin_trace": "插件调用追踪",
         "settings.plugin_trace_desc": "将所有插件原生调用记录到 plugin_trace.log 用于调试",
@@ -779,7 +787,7 @@ const UI_TEXT := {
         "language.ko": "한국어",
         "language.es": "Español",
         "settings.render_backend": "渲染管線",
-        "settings.render_backend_desc": "儲存後生效；執行中切換需重新啟動目前遊戲",
+        "settings.render_backend_desc": "宿主選項均使用 Godot 繪圖。自動宿主只在預發行版本為支援的遊戲啟用原生預覽。下次啟動遊戲時生效。",
         "settings.surface_mode": "畫布尺寸",
         "settings.surface_mode_desc": "Game Native 依遊戲基準畫布執行；Display Fit 依裝置顯示尺寸執行",
         "settings.upscale": "縮放演算法",
@@ -840,6 +848,11 @@ const UI_TEXT := {
         "settings.target_fps": "目標幀率",
         "settings.target_fps_desc": "限制 C++ 引擎 tick/render 頻率；可選 60–144 FPS",
         "settings.plugin_load_mode": "外掛載入模式",
+        "settings.game_detection": "遊戲識別方式",
+        "settings.game_detection_desc": "自動模式在預發行版使用原生識別，在正式版使用舊版 Godot。下次識別時生效。",
+        "settings.game_detection_auto": "自動",
+        "settings.game_detection_native": "原生",
+        "settings.game_detection_legacy": "舊版 Godot",
         "settings.plugin_load_mode_desc": "核心模式只載入常用相容外掛；完整模式保留舊版全量註冊",
         "settings.plugin_trace": "外掛呼叫追蹤",
         "settings.plugin_trace_desc": "將所有外掛原生呼叫記錄到 plugin_trace.log 以便除錯",
@@ -1216,7 +1229,7 @@ You can find it any time under Settings → QQ Group.",
         "language.ko": "한국어",
         "language.es": "Español",
         "settings.render_backend": "Render Pipeline",
-        "settings.render_backend_desc": "Applies after saving; switching during play requires restarting the current game",
+        "settings.render_backend_desc": "Host choices use the Godot renderer. Automatic Host uses the native preview for supported games in prerelease builds. Applies on the next game launch.",
         "settings.surface_mode": "Canvas Size",
         "settings.surface_mode_desc": "Game Native uses the game's base canvas; Display Fit uses the device display size",
         "settings.upscale": "Scaling",
@@ -1277,6 +1290,11 @@ You can find it any time under Settings → QQ Group.",
         "settings.target_fps": "Target FPS",
         "settings.target_fps_desc": "Limit the C++ engine tick/render rate; choose 60–144 FPS",
         "settings.plugin_load_mode": "Plugin Load Mode",
+        "settings.game_detection": "Game Detection",
+        "settings.game_detection_desc": "Automatic uses native detection in prerelease builds and legacy Godot detection in stable builds. Applies on the next game detection.",
+        "settings.game_detection_auto": "Automatic",
+        "settings.game_detection_native": "Native",
+        "settings.game_detection_legacy": "Legacy Godot",
         "settings.plugin_load_mode_desc": "Core mode loads common compatibility plugins only; Full mode keeps the legacy registration path",
         "settings.plugin_trace": "Plugin Call Trace",
         "settings.plugin_trace_desc": "Write all native plugin calls to plugin_trace.log for debugging",
@@ -1622,7 +1640,7 @@ You can find it any time under Settings → QQ Group.",
         "language.ko": "한국어",
         "language.es": "Español",
         "settings.render_backend": "レンダリングパイプライン",
-        "settings.render_backend_desc": "保存後に反映されます。実行中の切り替えは現在のゲームの再起動が必要です",
+        "settings.render_backend_desc": "ホストの選択にかかわらず Godot レンダラーを使います。自動ホストはプレリリース版の対応ゲームでネイティブプレビューを使います。次回起動時に反映されます。",
         "settings.surface_mode": "キャンバスサイズ",
         "settings.surface_mode_desc": "Game Native はゲーム基準のキャンバス、Display Fit はデバイス表示サイズで実行します",
         "settings.upscale": "スケーリング",
@@ -1683,6 +1701,11 @@ You can find it any time under Settings → QQ Group.",
         "settings.target_fps": "目標 FPS",
         "settings.target_fps_desc": "C++ エンジンの tick/render 頻度を 60～144 FPS から選択します",
         "settings.plugin_load_mode": "プラグイン読み込みモード",
+        "settings.game_detection": "ゲームの識別方法",
+        "settings.game_detection_desc": "自動モードではプレリリース版でネイティブ識別、正式版で従来の Godot 識別を使います。次回の識別時から適用されます。",
+        "settings.game_detection_auto": "自動",
+        "settings.game_detection_native": "ネイティブ",
+        "settings.game_detection_legacy": "従来の Godot",
         "settings.plugin_load_mode_desc": "コアモードは一般的な互換プラグインのみ、完全モードは従来の全登録経路を使用します",
         "settings.plugin_trace": "プラグイン呼び出し追跡",
         "settings.plugin_trace_desc": "すべてのネイティブプラグイン呼び出しを plugin_trace.log に記録します",
@@ -2026,7 +2049,7 @@ You can find it any time under Settings → QQ Group.",
         "language.ko": "한국어",
         "language.es": "Español",
         "settings.render_backend": "렌더링 파이프라인",
-        "settings.render_backend_desc": "저장 후 적용됩니다. 실행 중 변경하려면 현재 게임을 다시 시작해야 합니다",
+        "settings.render_backend_desc": "호스트 옵션은 Godot 렌더러를 사용합니다. 자동 호스트는 시험판에서 지원되는 게임에 네이티브 미리보기를 사용합니다. 다음 게임 실행 시 적용됩니다.",
         "settings.surface_mode": "캔버스 크기",
         "settings.surface_mode_desc": "Game Native는 게임 기준 캔버스를 사용하고 Display Fit은 장치 표시 크기를 사용합니다",
         "settings.upscale": "스케일링",
@@ -2087,6 +2110,11 @@ You can find it any time under Settings → QQ Group.",
         "settings.target_fps": "목표 FPS",
         "settings.target_fps_desc": "C++ 엔진 tick/render 빈도를 60–144 FPS에서 선택합니다",
         "settings.plugin_load_mode": "플러그인 로드 모드",
+        "settings.game_detection": "게임 인식 방식",
+        "settings.game_detection_desc": "자동 모드는 시험판에서 네이티브 감지를, 정식판에서 기존 Godot 감지를 사용합니다. 다음 게임 감지부터 적용됩니다.",
+        "settings.game_detection_auto": "자동",
+        "settings.game_detection_native": "네이티브",
+        "settings.game_detection_legacy": "기존 Godot",
         "settings.plugin_load_mode_desc": "핵심 모드는 일반 호환 플러그인만 로드하고 전체 모드는 기존 전체 등록 방식을 유지합니다",
         "settings.plugin_trace": "플러그인 호출 추적",
         "settings.plugin_trace_desc": "모든 네이티브 플러그인 호출을 plugin_trace.log에 기록합니다",
@@ -2461,7 +2489,7 @@ You can find it any time under Settings → QQ Group.",
         "language.ko": "한국어",
         "language.es": "Español",
         "settings.render_backend": "Método de renderizado",
-        "settings.render_backend_desc": "Se aplica al guardar; si lo cambias durante una partida, tendrás que reiniciar el juego actual",
+        "settings.render_backend_desc": "Las opciones de host usan el renderizador de Godot. El host automático usa la vista previa nativa en juegos compatibles con versiones preliminares. Se aplica al volver a iniciar el juego.",
         "settings.surface_mode": "Tamaño del lienzo",
         "settings.surface_mode_desc": "Game Native usa el lienzo base del juego; Display Fit usa el tamaño de la pantalla del dispositivo",
         "settings.upscale": "Escalado",
@@ -2522,6 +2550,11 @@ You can find it any time under Settings → QQ Group.",
         "settings.target_fps": "FPS objetivo",
         "settings.target_fps_desc": "Limita la frecuencia de tick y renderizado del motor C++; elige entre 60 y 144 FPS",
         "settings.plugin_load_mode": "Modo de carga de plugins",
+        "settings.game_detection": "Detección de juegos",
+        "settings.game_detection_desc": "El modo automático usa la detección nativa en versiones preliminares y la de Godot anterior en versiones estables. Se aplica en la próxima detección.",
+        "settings.game_detection_auto": "Automático",
+        "settings.game_detection_native": "Nativa",
+        "settings.game_detection_legacy": "Godot anterior",
         "settings.plugin_load_mode_desc": "El modo básico solo carga los plugins de compatibilidad habituales; el modo completo mantiene la ruta de registro heredada",
         "settings.plugin_trace": "Traza de llamadas a plugins",
         "settings.plugin_trace_desc": "Escribe todas las llamadas a plugins nativos en plugin_trace.log para depurar",
@@ -2766,6 +2799,7 @@ const RUNTIME_YURIS := "yuris"
 const RUNTIME_SYSTEMC := "systemc"
 const RUNTIME_EXHIBIT := "exhibit"
 const RUNTIME_PLAYER_CLASS := "AetherRuntimePlayer"
+const GAME_DETECTION_OVERRIDES := ["auto", "native", "legacy"]
 const ONSCRIPTER_SCRIPT_MARKERS := [
     "0.txt",
     "00.txt",
@@ -2821,6 +2855,7 @@ const SETTINGS_DRAFT_KEYS := [
     "target_fps",
     "force_landscape",
     "plugin_load_mode",
+    "game_detection_override",
     "mock_enabled",
     "error_dialog_logs",
     "text_translation_model_path",
@@ -2953,7 +2988,7 @@ var vndb_cover_queue: Array[Dictionary] = []
 var vndb_cover_busy := false
 var known_videos: Array[Dictionary] = []
 var video_library := VideoLibrary.new(VIDEO_LIST_FILE, VIDEO_HIDDEN_FILE)
-var flash_library := VideoLibrary.new(FLASH_LIST_FILE, FLASH_HIDDEN_FILE, ["swf"])
+var flash_library := VideoLibrary.new(FLASH_LIST_FILE, FLASH_HIDDEN_FILE, ["swf"], _is_flash_game_file)
 var flash_view
 var tyrano_view
 var renpy_view
@@ -2976,6 +3011,7 @@ var frame_limit_enabled := false
 var target_fps := 80
 var plugin_trace := false
 var plugin_load_mode := "krkrsdl3"
+var game_detection_override := "auto"
 var mock_enabled := true
 var console_log_file := false
 var trace_log := false
@@ -3088,7 +3124,7 @@ var current_player_runtime_kind := RUNTIME_KIRIKIRI
 var builtin_demo = BuiltinDemo.new()
 var runtime_default_font_path := ""
 var runtime_font_dir_path := ""
-var selected_backend := "Godot Native"
+var selected_backend := PlaybackBackend.AUTOMATIC
 var upscale_algorithm := "bicubic"
 var frame_upscale_active := false
 var frame_upscale_source_texture: Texture2D
@@ -3686,6 +3722,7 @@ func _build_ui() -> void:
     game_virtual_controls.virtual_controls_requested.connect(
         _on_game_virtual_controls_requested
     )
+    game_virtual_controls.modifier_requested.connect(_open_xsystem_modifier)
     game_virtual_controls.input_mode_changed.connect(
         _on_game_virtual_input_mode_changed
     )
@@ -4703,6 +4740,7 @@ func _layout_shell(window_size: Vector2) -> void:
     shell_content.offset_bottom = -dock_height if compact else 0.0
 
 func _load_shell_settings() -> void:
+    game_detection_override = "auto"
     var cfg := ConfigFile.new()
     var env_style := _runtime_string("AETHERKIRI_STYLE_MODE", "")
     var env_translation_model_path := _runtime_string(
@@ -4840,6 +4878,10 @@ func _load_shell_settings() -> void:
     if not plugin_load_mode in ["krkrsdl3", "aether_all"]:
         plugin_load_mode = "krkrsdl3"
     mock_enabled = bool(cfg.get_value("developer", "mock_enabled", mock_enabled))
+    # The old draft saved resolved defaults alongside explicit choices.
+    var saved_detection_override := String(cfg.get_value("compatibility", "game_detection_override", "auto"))
+    if saved_detection_override in GAME_DETECTION_OVERRIDES:
+        game_detection_override = saved_detection_override
     error_dialog_logs = bool(cfg.get_value("developer", "error_dialog_logs", error_dialog_logs))
     legal_accepted_version = String(cfg.get_value("legal", "accepted_version", ""))
     legal_accepted_at = int(cfg.get_value("legal", "accepted_at", 0))
@@ -4871,8 +4913,12 @@ func _normalize_backend_name(value: String) -> String:
         return "Debug CPU"
     if key == "gpubridge":
         return "GPU Bridge"
-    if key == "godotnative":
-        return "Godot Native"
+    if key in ["native", "godotnative"]:
+        return PlaybackBackend.AUTOMATIC
+    if key == "nativesession":
+        return PlaybackBackend.NATIVE
+    if key == "godot":
+        return PlaybackBackend.GODOT
     return backend_name
 
 func _normalize_game_virtual_input_mode(value: String) -> String:
@@ -4926,6 +4972,8 @@ func _save_shell_settings() -> void:
         game_virtual_keyboard_opacity
     )
     cfg.set_value("developer", "plugin_load_mode", plugin_load_mode)
+    if game_detection_override != "auto":
+        cfg.set_value("compatibility", "game_detection_override", game_detection_override)
     cfg.set_value("developer", "mock_enabled", mock_enabled)
     cfg.set_value("developer", "error_dialog_logs", error_dialog_logs)
     cfg.set_value("legal", "accepted_version", legal_accepted_version)
@@ -4942,7 +4990,7 @@ func _save_shell_settings() -> void:
     _apply_frame_enhancement_settings()
     _apply_shell_runtime_settings()
     if diagnostic_session != null:
-        diagnostic_session.apply_preference(diagnostic_profile, player, selected_backend)
+        diagnostic_session.apply_preference(diagnostic_profile, player, PlaybackBackend.renderer(selected_backend))
         diagnostic_session.set_game_active(game_running)
     _sync_debug_console_state()
     dirty_settings = false
@@ -4978,6 +5026,7 @@ func _current_settings_snapshot() -> Dictionary:
         "target_fps": target_fps,
         "force_landscape": lock_landscape,
         "plugin_load_mode": plugin_load_mode,
+        "game_detection_override": game_detection_override,
         "mock_enabled": mock_enabled,
         "error_dialog_logs": error_dialog_logs,
         "text_translation_model_path": text_translation_model_path,
@@ -5131,7 +5180,7 @@ func _apply_settings_snapshot(snapshot: Dictionary) -> void:
 
     selected_backend = _normalize_backend_name(String(snapshot.get("backend", selected_backend)))
     if not selected_backend in BACKENDS:
-        selected_backend = "Godot Native"
+        selected_backend = PlaybackBackend.AUTOMATIC
 
     upscale_algorithm = String(snapshot.get("upscale_algorithm", upscale_algorithm))
     if not upscale_algorithm in ["smooth", "nearest", "linear", "bicubic", "lanczos", "metalfx_spatial"]:
@@ -5173,6 +5222,7 @@ func _apply_settings_snapshot(snapshot: Dictionary) -> void:
     if not plugin_load_mode in ["krkrsdl3", "aether_all"]:
         plugin_load_mode = "krkrsdl3"
     mock_enabled = bool(snapshot.get("mock_enabled", mock_enabled))
+    game_detection_override = String(snapshot.get("game_detection_override", game_detection_override))
     error_dialog_logs = bool(snapshot.get("error_dialog_logs", error_dialog_logs))
     text_translation_model_path = String(snapshot.get(
         "text_translation_model_path", text_translation_model_path
@@ -5204,8 +5254,8 @@ func _save_settings_draft() -> void:
             backend.select(backend_index)
         if player != null and player.is_initialized():
             if game_running:
-                restart_notice.text = "Restart current game session to apply renderer."
-                _append_log("Renderer change queued: %s" % selected_backend)
+                restart_notice.text = "Restart the game to apply playback settings."
+                _append_log("Playback settings change queued: %s" % PlaybackBackend.label(selected_backend))
             else:
                 _apply_backend(true)
 
@@ -6584,6 +6634,10 @@ func _rebuild_settings_view() -> void:
         _add_settings_row(render_rows, _settings_toggle_row(_t("settings.landscape"), _t("settings.landscape_desc"), _settings_draft_bool("force_landscape", lock_landscape), "landscape"))
 
     var compatibility_rows := _settings_section(flow, _t("settings.section.compatibility"), animate_page, 0.12, ICON_PLUGIN)
+    if player != null and player.has_method("inspect_game"):
+        _add_settings_row(compatibility_rows, _settings_row(
+            _t("settings.game_detection"), _t("settings.game_detection_desc"), _game_detection_segment(), stack_settings_controls
+        ))
     _add_settings_row(compatibility_rows, _settings_row(_t("settings.plugin_load_mode"), _t("settings.plugin_load_mode_desc"), _plugin_load_mode_select(), stack_settings_controls))
     if player != null and player.has_method("is_text_translation_available") and player.is_text_translation_available():
         _add_settings_row(compatibility_rows, _settings_action_row(
@@ -8844,17 +8898,31 @@ func _debug_overlay_select() -> Control:
     )
     return select
 
-func _backend_segment() -> Control:
-    var draft_backend := _normalize_backend_name(_settings_draft_string("backend", selected_backend))
+func _game_detection_labels() -> Array:
+    return GAME_DETECTION_OVERRIDES.map(func(mode: String): return _t("settings.game_detection_" + mode))
+
+func _game_detection_segment() -> Control:
     var segment = AetherSegmentedControl.new()
+    var draft_override := _settings_draft_string("game_detection_override", game_detection_override)
     segment.setup(
-        ui_tokens,
-        ui_motion,
-        PackedStringArray(["Godot Native", "Debug CPU"]),
-        1 if draft_backend == "Debug CPU" else 0
+        ui_tokens, ui_motion, PackedStringArray(_game_detection_labels()),
+        GAME_DETECTION_OVERRIDES.find(draft_override)
     )
     segment.item_selected.connect(func(index: int):
-        _select_backend("Debug CPU" if index == 1 else "Godot Native")
+        _set_settings_draft_value("game_detection_override", GAME_DETECTION_OVERRIDES[index])
+    )
+    return segment
+
+func _backend_segment() -> Control:
+    var draft_backend := _normalize_backend_name(_settings_draft_string("backend", selected_backend))
+    var choices := [PlaybackBackend.AUTOMATIC, PlaybackBackend.NATIVE, PlaybackBackend.GODOT, "Debug CPU"]
+    var labels := PackedStringArray()
+    for choice: String in choices:
+        labels.append(PlaybackBackend.label(choice))
+    var segment = AetherSegmentedControl.new()
+    segment.setup(ui_tokens, ui_motion, labels, maxi(0, choices.find(draft_backend)))
+    segment.item_selected.connect(func(index: int):
+        _select_backend(choices[index])
     )
     return segment
 
@@ -9639,6 +9707,9 @@ func _detail_tools(game: Dictionary) -> FlowContainer:
     tools.add_theme_constant_override("v_separation", 8)
     tools.add_child(_detail_launch_button())
     var detail_runtime := _game_runtime_kind(String(game.get("path", "")))
+    if XSystemTools.supports(detail_runtime):
+        tools.add_child(_secondary_dialog_button(XSystemTools.text(self, "MOD 管理", "MOD manager")))
+        tools.get_child(-1).pressed.connect(_show_xsystem_mod_manager.bind(game))
     var encodings := GameTextConfig.encodings(detail_runtime)
     if encodings.size() > 1 and detail_runtime != "rfvp":
         var encoding := OptionButton.new()
@@ -11093,7 +11164,7 @@ func _on_refresh_or_import() -> void:
         _show_web_import_picker()
         return
     if OS.get_name() == "Android":
-        _android_storage_permission_log("add_game_click target=/storage/emulated/0")
+        _android_storage_permission_log("add_game_click")
     if not _ensure_android_storage_permission_for_import():
         return
     _show_import_picker()
@@ -11650,7 +11721,7 @@ func _open_video_import_dialog() -> void:
             )
             return
     if home_library_mode == "flash":
-        if not _ensure_android_storage_permission_for_path("/storage/emulated/0", message_key):
+        if not _ensure_android_storage_permission_for_path(_android_primary_storage_root(), message_key):
             return
     elif not _ensure_android_storage_permission_for_import(true):
         return
@@ -12345,6 +12416,12 @@ func _android_external_storage_path_from_tree_uri(path: String) -> String:
         return path
     return _android_external_storage_path_from_document_id(path.substr(prefix.length()), path)
 
+func _android_primary_storage_root() -> String:
+    if OS.get_name() != "Android":
+        return ""
+    # Godot maps the shared desktop directory to Android's primary storage root.
+    return OS.get_system_dir(OS.SYSTEM_DIR_DESKTOP, true)
+
 func _android_launch_file_path(path: String) -> String:
     const EXTERNAL_STORAGE := "content://com.android.externalstorage.documents/"
     const DOWNLOADS := "content://com.android.providers.downloads.documents/document/"
@@ -12376,10 +12453,12 @@ func _android_external_storage_path_from_document_id(encoded_id: String, fallbac
     var volume_id := document_id.substr(0, separator)
     var relative_path := document_id.substr(separator + 1).trim_prefix("/")
     var volume_root := ""
-    if volume_id == "primary":
-        volume_root = "/storage/emulated/0"
-    elif volume_id == "home":
-        volume_root = "/storage/emulated/0/Documents"
+    if volume_id == "primary" or volume_id == "home":
+        volume_root = _android_primary_storage_root()
+        if volume_root.is_empty():
+            return fallback
+        if volume_id == "home":
+            volume_root = volume_root.path_join("Documents")
     elif (
         not volume_id.is_empty()
         and not volume_id.contains("/")
@@ -12427,13 +12506,9 @@ func _game_info_from_path(path: String) -> Dictionary:
     if name.to_lower().ends_with(".xp3"):
         name = name.substr(0, name.length() - 4)
     var default_cover_path := _discover_default_cover_path(path)
-    var metadata := GameMetadata.inspect(path)
+    var metadata := _inspect_game_metadata(path, _game_runtime_root(path))
     var detected_title := String(metadata.get("title", ""))
     var detected_engine := String(metadata.get("engine", RUNTIME_KIRIKIRI))
-    # Optional providers own their format detection. Persist that result at
-    # import as well as launch so directory runtimes never display a guessed
-    # Windows configuration utility as their startup file.
-    detected_engine = _probe_game_runtime_kind(_game_runtime_root(path), detected_engine)
     return {
         "name": detected_title if not detected_title.is_empty() else name,
         "path": path,
@@ -12456,8 +12531,42 @@ func _game_runtime_root(path: String) -> String:
         return resolved.get_base_dir()
     return resolved
 
+func _game_detection_mode() -> String:
+    if game_detection_override != "auto":
+        return game_detection_override
+    return "native" if AppUpdater.is_prerelease(_application_version_text()) else "legacy"
+
+func _uses_native_game_detection() -> bool:
+    return _game_detection_mode() == "native" and player != null and player.has_method("inspect_game")
+
+func _inspect_game_metadata(path: String, probe_root: String = "") -> Dictionary:
+    if _uses_native_game_detection():
+        var metadata: Dictionary = player.inspect_game(path, probe_root)
+        return GameMetadata.with_title_metadata(String(metadata.root), metadata, String(metadata.renpyDirectory))
+    var metadata := GameMetadata.inspect(path)
+    if not probe_root.is_empty():
+        metadata.engine = _probe_game_runtime_kind(probe_root, String(metadata.engine))
+    return metadata
+
+func _tyrano_entry_file(root: String) -> String:
+    if _uses_native_game_detection():
+        return String(player.inspect_special_game(root, RUNTIME_TYRANO))
+    return GameMetadata.tyrano_entry_file(root)
+
+func _renpy_game_directory(root: String) -> String:
+    if _uses_native_game_detection():
+        return String(player.inspect_special_game(root, RUNTIME_RENPY))
+    return GameMetadata.renpy_game_directory(root)
+
+func _is_flash_game_file(path: String) -> bool:
+    if _uses_native_game_detection():
+        return not String(player.inspect_special_game(path, "flash")).is_empty()
+    return FileAccess.file_exists(path) and path.get_extension().to_lower() == "swf"
+
 func _game_runtime_kind(path: String) -> String:
     var root := _game_runtime_root(path)
+    if _uses_native_game_detection():
+        return String(player.inspect_game(root, root).engine)
     var runtime_kind := String(
         GameMetadata.inspect(root).get("engine", RUNTIME_KIRIKIRI)
     )
@@ -12518,7 +12627,7 @@ func _backfill_game_metadata(games: Array[Dictionary]) -> bool:
                 and game.has("titleCandidates") and game.has("launchFile"):
             continue
         var configured_path := GameLaunchEntry.resolve(game)
-        var metadata := GameMetadata.inspect(configured_path if FileAccess.file_exists(configured_path) else path)
+        var metadata := _inspect_game_metadata(configured_path if FileAccess.file_exists(configured_path) else path)
         var engine := String(metadata.get("engine", RUNTIME_KIRIKIRI))
         if String(game.get("engine", "")).is_empty() or String(game.get("engine", "")) == RUNTIME_KIRIKIRI:
             if String(game.get("engine", "")) != engine:
@@ -13219,6 +13328,20 @@ func _mask_corner_pixel(image: Image, x: int, y: int, center: Vector2, radius: f
 func _start_selected_game() -> void:
     if game_storage_busy:
         return
+    var mod_service = get_node_or_null("XSystemTools")
+    if mod_service != null and mod_service.busy:
+        _show_game_import_notice(XSystemTools.text(self, "正在处理 MOD，请完成后再启动游戏。", "Wait for the MOD operation to finish before launching."), 2500)
+        return
+    var mod_root := _game_runtime_root(String(selected_game.get("path", "")))
+    if FileAccess.file_exists(mod_root.path_join(".aether-mods/pending.json")):
+        var launch_path := String(selected_game.get("path", ""))
+        _xsystem_tools().request(mod_root, "list", "", func(result: Dictionary):
+            if result.get("ok", false) and String(selected_game.get("path", "")) == launch_path:
+                _start_selected_game()
+            elif not result.get("ok", false):
+                _show_message(XSystemTools.error_text(self, String(result.get("error", ""))))
+        )
+        return
     var save_transfer = get_node_or_null("GameSaveTransfer")
     if save_transfer != null and save_transfer.busy:
         return
@@ -13612,7 +13735,7 @@ func _ready() -> void:
 
     selected_backend = _normalize_backend_name(_runtime_string(
         "AETHERKIRI_BACKEND",
-        ProjectSettings.get_setting(SETTINGS_KEY, "Godot Native")
+        ProjectSettings.get_setting(SETTINGS_KEY, PlaybackBackend.AUTOMATIC)
     ))
     _load_shell_settings()
     _apply_host_frame_rate_limit()
@@ -13622,7 +13745,7 @@ func _ready() -> void:
     if not env_backend.is_empty():
         selected_backend = _normalize_backend_name(env_backend)
     if not selected_backend in BACKENDS:
-        selected_backend = "Godot Native"
+        selected_backend = PlaybackBackend.AUTOMATIC
 
     if ui_motion.get_parent() == null:
         add_child(ui_motion)
@@ -13654,7 +13777,7 @@ func _ready() -> void:
     _setup_debug_console()
 
     for item in BACKENDS:
-        backend.add_item(item)
+        backend.add_item(PlaybackBackend.label(item))
 
     var index := BACKENDS.find(selected_backend)
     backend.select(max(index, 0))
@@ -13760,7 +13883,7 @@ func _format_monitor_bytes(value: int) -> String:
 func _diagnostic_marker_context() -> Dictionary:
     var memory := _runtime_memory_snapshot()
     var plugins := {}
-    var renderer := selected_backend
+    var renderer := PlaybackBackend.renderer(selected_backend)
     if player != null and player.is_initialized():
         var renderer_info := String(player.get_renderer_info())
         if not renderer_info.is_empty():
@@ -13800,7 +13923,7 @@ func _debug_console_snapshot() -> Dictionary:
     var session: Dictionary = diagnostic_session.status_snapshot() if diagnostic_session != null else {}
     var memory: Dictionary = _runtime_memory_snapshot()
     var plugins: Dictionary = {}
-    var renderer: String = selected_backend
+    var renderer: String = PlaybackBackend.renderer(selected_backend)
     var texture_backend: String = "-"
     if player != null and player.is_initialized():
         var renderer_info := String(player.get_renderer_info())
@@ -13901,7 +14024,7 @@ func _on_debug_copy_summary_requested() -> void:
     if diagnostic_session == null or not diagnostic_session.active:
         debug_console.show_result(_t("debug.result.unavailable"), true)
         return
-    DisplayServer.clipboard_set(diagnostic_session.summary_text({"renderer": selected_backend, "errors": render_errors}))
+    DisplayServer.clipboard_set(diagnostic_session.summary_text({"renderer": PlaybackBackend.renderer(selected_backend), "errors": render_errors}))
     debug_console.show_result(_t("debug.result.copied"))
 
 func _on_debug_slow_frame_requested() -> void:
@@ -13986,6 +14109,8 @@ func _switch_runtime_player(runtime_kind: String) -> bool:
         player != null
         and current_player_runtime_kind == normalized
         and player.is_initialized()
+        and bool(player.get_meta("aether_ons_native_host", false))
+            == _uses_native_session(normalized)
     ):
         return true
     if game_running:
@@ -14011,7 +14136,7 @@ func _switch_runtime_player(runtime_kind: String) -> bool:
     if diagnostic_session != null:
         if diagnostic_session.active:
             diagnostic_session.finish()
-        diagnostic_session.start(player, selected_backend)
+        diagnostic_session.start(player, PlaybackBackend.renderer(selected_backend))
     _append_log("Runtime selected: %s" % (
         "AliceSoft System 1/2/3"
         if normalized == RUNTIME_SYSTEM3
@@ -14092,7 +14217,15 @@ func _on_runtime_platform_request(operation: String, argument: String) -> void:
             OS.shell_open(argument)
         return
     if operation == "runtime_display_settings":
-        runtime_display_settings.open(self, last_texture_size, _effective_language_code(), runtime_display_state.aspect_mode)
+        var shortcuts := Callable()
+        if active_runtime_kind == RUNTIME_EXHIBIT:
+            shortcuts = func() -> void:
+                if player != null and active_runtime_kind == RUNTIME_EXHIBIT and game_running:
+                    player.submit_platform_response("exhibit_shortcut_editor", "")
+        runtime_display_settings.open(self, last_texture_size, _effective_language_code(), runtime_display_state.aspect_mode, shortcuts)
+        return
+    if operation == "exhibit_shortcut_file":
+        call_deferred("_choose_exhibit_shortcut_file", argument == "import")
         return
     if runtime_display_state.apply(operation, argument, get_window(), not _is_touch_platform()):
         softpal_aspect_mode = runtime_display_state.aspect_mode
@@ -14571,6 +14704,26 @@ func _save_requested_game_screenshot(requested_game: String) -> void:
             _append_log("Could not save the game screenshot: %s" % error_string(error))
         return
 
+func _choose_exhibit_shortcut_file(importing: bool) -> void:
+    if player == null or active_runtime_kind != RUNTIME_EXHIBIT or not game_running:
+        return
+    var game_path := active_game_path
+    var picker := FileDialog.new()
+    picker.use_native_dialog = true
+    picker.access = FileDialog.ACCESS_FILESYSTEM
+    picker.file_mode = FileDialog.FILE_MODE_OPEN_FILE if importing else FileDialog.FILE_MODE_SAVE_FILE
+    picker.filters = PackedStringArray(["*.rnf ; RNF"])
+    if not importing:
+        picker.current_file = "shortcut.user.rnf"
+    add_child(picker)
+    var finish := func(path: String) -> void:
+        if player != null and game_running and active_runtime_kind == RUNTIME_EXHIBIT and active_game_path == game_path:
+            player.submit_platform_response("exhibit_shortcut_file", path)
+        picker.queue_free()
+    picker.file_selected.connect(finish)
+    picker.canceled.connect(finish.bind(""))
+    picker.popup_centered_ratio(0.8)
+
 func _show_runtime_form(specification: Dictionary) -> void:
     if modal_layer == null or player == null:
         return
@@ -14767,12 +14920,18 @@ func _complete_runtime_dialog(result: int, input: LineEdit) -> void:
             ]
         )
 
+func _uses_native_session(runtime_kind: String) -> bool:
+    return PlaybackBackend.uses_native_host(
+        selected_backend, runtime_kind, player, AppUpdater.is_prerelease(_application_version_text())
+    )
+
 func _ensure_player_initialized(launch_root: String = "") -> bool:
     if player == null:
         return false
     var user_dir := OS.get_user_data_dir()
     var cache_dir := user_dir.path_join("cache")
     var wa2_flags := ""
+    var use_ons_native_host := _uses_native_session(current_player_runtime_kind)
     var local_provider_saves := not launch_root.is_empty() and cli_probe_script.is_empty() \
         and current_player_runtime_kind in [RUNTIME_RFVP, RUNTIME_SOFTPAL]
     if cli_probe_script == "res://scripts/runtime_regression_probe.gd":
@@ -14830,12 +14989,15 @@ func _ensure_player_initialized(launch_root: String = "") -> bool:
         if String(player.get_meta("aether_user_directory", "")) == user_dir \
             and String(player.get_meta("aether_cache_directory", "")) == cache_dir \
             and String(player.get_meta("aether_wa2_flags_directory", "")) == wa2_flags \
-            and bool(player.get_meta("aether_local_provider_saves", false)) == local_provider_saves:
+            and bool(player.get_meta("aether_local_provider_saves", false)) == local_provider_saves \
+            and bool(player.get_meta("aether_ons_native_host", false)) == use_ons_native_host:
             return true
         _stop_wa2_audio()
         player.destroy_engine()
     DirAccess.make_dir_recursive_absolute(cache_dir)
-    if not player.initialize_engine(user_dir, cache_dir):
+    var initialized: bool = player.initialize_engine(user_dir, cache_dir, true) \
+        if use_ons_native_host else player.initialize_engine(user_dir, cache_dir)
+    if not initialized:
         render_errors += 1
         var init_error_message := "Engine init failed: %s %s" % [
             player.get_last_result(),
@@ -14847,6 +15009,7 @@ func _ensure_player_initialized(launch_root: String = "") -> bool:
     player.set_meta("aether_cache_directory", cache_dir)
     player.set_meta("aether_wa2_flags_directory", wa2_flags)
     player.set_meta("aether_local_provider_saves", local_provider_saves)
+    player.set_meta("aether_ons_native_host", use_ons_native_host)
 
     var runtime_id := "auto"
     if current_player_runtime_kind in [
@@ -14936,7 +15099,7 @@ func _finish_ready_after_first_frame() -> void:
         _apply_backend(false)
         _apply_engine_options()
         _apply_frame_enhancement_settings()
-        diagnostic_session.start(player, selected_backend)
+        diagnostic_session.start(player, PlaybackBackend.renderer(selected_backend))
         _sync_debug_console_state()
     if not cli_probe_script.is_empty():
         if not engine_initialized:
@@ -15040,7 +15203,7 @@ func _ensure_android_storage_permission_for_import(video_import: bool = false) -
         if video_import
         else "message.android_storage_permission_required"
     )
-    return _ensure_android_storage_permission_for_path("/storage/emulated/0", message_key)
+    return _ensure_android_storage_permission_for_path(_android_primary_storage_root(), message_key)
 
 func _ensure_android_storage_permission_for_path(
     path: String,
@@ -15125,15 +15288,20 @@ func _android_path_needs_storage_permission(path: String) -> bool:
         return true
     if not normalized.begins_with("/storage/emulated/"):
         return false
-    var package_path := "/storage/emulated/0/Android/data/org.github.krkr2.aetherkiri/"
-    return not normalized.begins_with(package_path)
+    var app_external_files := OS.get_system_dir(OS.SYSTEM_DIR_DESKTOP, false)
+    if app_external_files.is_empty():
+        return true
+    var app_external_root := app_external_files.get_base_dir()
+    return normalized != app_external_root and not normalized.begins_with(app_external_root + "/")
 
 func _android_has_external_storage_permission() -> bool:
     if OS.get_name() != "Android":
         return true
     if player != null and player.has_method("android_has_external_storage_permission"):
         return bool(player.android_has_external_storage_permission())
-    for root in ["/storage/emulated/0", "/sdcard"]:
+    for root in [_android_primary_storage_root(), "/sdcard"]:
+        if root.is_empty():
+            continue
         var dir := DirAccess.open(root)
         if dir != null:
             return true
@@ -15599,6 +15767,9 @@ func _prepare_cli_probe_view(config: Dictionary) -> void:
     _fit_full_rects()
 
 func _probe_open_game(config: Dictionary, target_game_path: String, backend_env: String) -> bool:
+    selected_backend = _normalize_backend_name(ProbeConfig.backend(config, backend_env))
+    if not selected_backend in BACKENDS:
+        selected_backend = PlaybackBackend.AUTOMATIC
     var runtime_kind := _game_runtime_kind(target_game_path)
     if not _switch_runtime_player(runtime_kind):
         _write_probe_marker("probe_open_game runtime_switch_failed kind=%s" % runtime_kind)
@@ -15608,9 +15779,6 @@ func _probe_open_game(config: Dictionary, target_game_path: String, backend_env:
     active_runtime_kind = runtime_kind
     if GameLaunchEntry.runtime_uses_directory(runtime_kind):
         target_game_path = _game_runtime_root(target_game_path)
-    selected_backend = ProbeConfig.backend(config, backend_env)
-    if not selected_backend in BACKENDS:
-        selected_backend = "Godot Native"
     _write_probe_marker("probe_open_game backend=%s target=%s" % [selected_backend, target_game_path])
     _apply_backend(false)
     var fps_limit := ProbeConfig.int_value(config, "fps_limit", _runtime_int("AETHERKIRI_PROBE_FPS_LIMIT", 0))
@@ -17039,7 +17207,7 @@ func _process(delta: float) -> void:
         if (perf_panel == null or not perf_panel.visible) and not verbose_render_log:
             return
         var frame_ms := delta * 1000.0
-        var renderer: String = selected_backend
+        var renderer: String = PlaybackBackend.renderer(selected_backend)
         if game_running and startup_state == STARTUP_SUCCEEDED:
             renderer = String(player.get_renderer_info())
         var renderer_summary := _renderer_summary(renderer)
@@ -17628,7 +17796,9 @@ func _mobile_window_owns_lifecycle() -> bool:
         and mobile_window.handles_game_lifecycle()
 
 func _pause_game_for_lifecycle(reason: String) -> void:
-    _game_save_sync().flush()
+    var sync := get_node_or_null("GameSaveSync")
+    if sync != null:
+        sync.flush()
     game_text_input_suspended = true
     _deactivate_game_text_input()
     if not _is_touch_platform():
@@ -17682,14 +17852,15 @@ func _on_backend_selected(index: int) -> void:
     selected_backend = BACKENDS[index]
     ProjectSettings.set_setting(SETTINGS_KEY, selected_backend)
     if game_running:
-        restart_notice.text = "Restart current game session to apply renderer."
-        _append_log("Renderer change queued: %s" % selected_backend)
+        restart_notice.text = "Restart the game to apply playback settings."
+        _append_log("Playback settings change queued: %s" % PlaybackBackend.label(selected_backend))
         return
     _apply_backend(true)
 
 func _apply_backend(log_selection: bool) -> void:
     # WA2 supplies its native RGBA frame; keep the saved backend for other runtimes.
-    var session_backend := "Debug CPU" if current_player_runtime_kind == RUNTIME_WA2 else selected_backend
+    var session_backend := "Debug CPU" if current_player_runtime_kind == RUNTIME_WA2 \
+        else PlaybackBackend.renderer(selected_backend)
     var result: int = int(player.set_render_backend(session_backend))
     if result != ENGINE_RESULT_OK:
         render_errors += 1
@@ -17701,7 +17872,7 @@ func _apply_backend(log_selection: bool) -> void:
         return
     restart_notice.text = ""
     if log_selection:
-        _append_log("Renderer selected: %s" % selected_backend)
+        _append_log("Renderer selected: %s" % session_backend)
     if selected_backend == "GPU Bridge":
         _append_log("GPU Bridge imports the native GPU render target for display.")
     if selected_backend == "Debug CPU":
@@ -17741,8 +17912,8 @@ func _renderer_value(renderer: String, key: String) -> String:
 
 func _renderer_summary(renderer: String) -> String:
     if renderer.is_empty():
-        return selected_backend
-    var summary := selected_backend
+        return PlaybackBackend.renderer(selected_backend)
+    var summary := PlaybackBackend.renderer(selected_backend)
     if renderer.contains("backend=onscripter_yuri"):
         summary = "OnscripterYuri (Godot Texture)"
     elif renderer.contains("backend=system3"):
@@ -17816,7 +17987,7 @@ func _on_open_game() -> void:
     if diagnostic_session != null:
         # A natural in-game exit destroys the reusable native engine handle.
         # Start diagnostics again when the next title recreates that handle.
-        diagnostic_session.start(player, selected_backend)
+        diagnostic_session.start(player, PlaybackBackend.renderer(selected_backend))
     _sync_player_surface_size(true)
     cached_startup_state = STARTUP_RUNNING
     startup_poll_accum = STARTUP_POLL_INTERVAL
@@ -17861,7 +18032,8 @@ func _on_open_game() -> void:
         diagnostic_session.set_game_active(true)
         diagnostic_session.record("godot", "lifecycle", "info", "game_open_requested", 0, {
             "path": path,
-            "backend": selected_backend,
+            "backend": PlaybackBackend.renderer(selected_backend),
+            "session_host": player.get_engine_host() if player.has_method("get_engine_host") else "",
             "async": async_open,
         })
     _sync_debug_console_state()
@@ -17884,7 +18056,9 @@ func _on_open_game() -> void:
     startup_click_stream_done = false
     last_renderer_info_logged = ""
     restart_notice.text = "Starting..."
-    _append_log("Game launch requested with backend: %s" % selected_backend)
+    if player.has_method("get_engine_host"):
+        _append_log("Session host: %s" % player.get_engine_host())
+    _append_log("Game launch renderer: %s" % _renderer_summary(String(player.get_renderer_info())))
     _append_log("Surface mode: %s target=%dx%d texture=%dx%d" % [
         render_surface_mode,
         current_surface_size.x,
@@ -19284,16 +19458,59 @@ func _virtual_button_layouts(game_path_value: String = "", default_pad_mode: Str
         "profiles": shared.profiles + local.profiles,
     }
 
+func _xsystem_tools():
+    var service = get_node_or_null("XSystemTools")
+    if service == null:
+        service = XSystemTools.new()
+        service.name = "XSystemTools"
+        add_child(service)
+        service.setup(self)
+        service.changed.connect(func(_game_root: String):
+            var launch := find_child("AstryxLaunchGame", true, false) as Button
+            if launch != null:
+                launch.disabled = service.busy
+        )
+    return service
+
+func _show_xsystem_mod_manager(game: Dictionary) -> void:
+    if game_running or not XSystemTools.supports(_game_runtime_kind(String(game.get("path", "")))):
+        return
+    var dialog := _modal_dialog(Vector2(680, 560), 0.44, false)
+    var box := VBoxContainer.new()
+    dialog.add_child(box)
+    var scroll := ScrollContainer.new()
+    scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
+    scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+    box.add_child(scroll)
+    var manager := preload("res://scripts/ui/xsystem_mod_list.gd").new()
+    manager.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+    scroll.add_child(manager)
+    manager.setup(self, _game_runtime_root(String(game.get("path", ""))))
+    var done := _secondary_dialog_button(XSystemTools.text(self, "完成", "Done"))
+    done.pressed.connect(_dismiss_modal)
+    box.add_child(done)
+
+func _open_xsystem_modifier() -> void:
+    if not game_running or not XSystemTools.supports(active_runtime_kind) or not _can_forward_game_input():
+        return
+    _clear_game_input_capture()
+    var dialog := _modal_dialog(Vector2(720, 680), 0.44, false)
+    var modifier := XSystemModifierView.new()
+    dialog.add_child(modifier)
+    modifier.setup(self)
+
 func _sync_game_virtual_controls() -> void:
     if game_virtual_controls == null:
         return
     _apply_game_virtual_control_preferences()
+    var has_modifier := game_running and XSystemTools.supports(active_runtime_kind)
+    game_virtual_controls.set_modifier_available(has_modifier, XSystemTools.text(self, "修改器", "Modifier"))
     game_virtual_controls.set_enabled(
         _should_enable_game_virtual_controls(
-            _is_touch_platform(),
+            _is_touch_platform() or has_modifier,
             _can_forward_game_input(),
             app_lifecycle_paused,
-            game_view != null and game_view.visible
+            game_view != null and game_view.visible and (modal_layer == null or not modal_layer.visible)
         )
     )
 

@@ -3,11 +3,10 @@ if(NOT DEFINED AETHERKIRI_XSYSTEM4_DIR)
     get_filename_component(AETHERKIRI_XSYSTEM4_DIR "${CMAKE_CURRENT_LIST_DIR}/../../packages/AetherSystem4" ABSOLUTE)
 endif()
 if(NOT EXISTS "${AETHERKIRI_XSYSTEM4_DIR}/src/embedded.c")
-    message(FATAL_ERROR "Initialize packages/AetherSystem4 and its libsys4 submodule")
+    message(FATAL_ERROR "Initialize packages/AetherSystem4")
 endif()
 
 find_package(SDL2 CONFIG REQUIRED)
-find_package(SDL2_image CONFIG REQUIRED)
 find_package(Freetype REQUIRED)
 find_package(SndFile CONFIG REQUIRED)
 find_package(cglm CONFIG REQUIRED)
@@ -26,92 +25,8 @@ find_package(BISON REQUIRED)
 set(CMAKE_DISABLE_FIND_PACKAGE_libdeflate TRUE)
 add_subdirectory("${AETHERKIRI_XSYSTEM4_DIR}/subprojects/libsys4" "${CMAKE_CURRENT_BINARY_DIR}/libsys4")
 
-# libsys4 assumes a static TurboJPEG target, but Linux triplets export the
-# shared target. Adapt both the archive's direct and transitive dependencies.
-foreach(property LINK_LIBRARIES INTERFACE_LINK_LIBRARIES)
-    get_target_property(value sys4 ${property})
-    string(REPLACE "libjpeg-turbo::turbojpeg-static"
-        "$<IF:$<TARGET_EXISTS:libjpeg-turbo::turbojpeg>,libjpeg-turbo::turbojpeg,libjpeg-turbo::turbojpeg-static>"
-        value "${value}")
-    set_property(TARGET sys4 PROPERTY ${property} "${value}")
-endforeach()
-
 set(generated "${CMAKE_CURRENT_BINARY_DIR}/generated")
 file(MAKE_DIRECTORY "${generated}")
-file(READ "${AETHERKIRI_XSYSTEM4_DIR}/subprojects/libsys4/src/system.c" system_source)
-if(NOT system_source MATCHES "exit\\(code\\);")
-    message(FATAL_ERROR "libsys4 exit boundary changed")
-endif()
-string(REPLACE "exit(code);" "xsystem4_host_exit(code);" system_source "${system_source}")
-file(WRITE "${generated}/system.c" "#include \"embedded.h\"\n${system_source}")
-get_target_property(sys4_sources sys4 SOURCES)
-list(FILTER sys4_sources EXCLUDE REGEX "(^|/)src/system\\.c$")
-set_property(TARGET sys4 PROPERTY SOURCES "${sys4_sources};${generated}/system.c")
-target_include_directories(sys4 PRIVATE "${AETHERKIRI_XSYSTEM4_DIR}/include")
-# Keep the pinned upstream dependency unchanged; adapt its AFA reader in the
-# build directory, as with the embedded exit boundary above.
-set(afa_path "${AETHERKIRI_XSYSTEM4_DIR}/subprojects/libsys4/src/afa.c")
-set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${afa_path}")
-file(READ "${afa_path}" afa_source)
-set(afa_decompress "zlib_decompress_exact(table, ar->uncompressed_size, buf, ar->compressed_size)")
-set(afa_size "ar->compressed_size = LittleEndian_getDW((uint8_t*)buf, 32) - 16;")
-string(FIND "${afa_source}" "${afa_decompress}" afa_decompress_pos)
-string(FIND "${afa_source}" "${afa_size}" afa_size_pos)
-if(afa_decompress_pos LESS 0 OR afa_size_pos LESS 0)
-    message(FATAL_ERROR "libsys4 AFA index boundary changed")
-endif()
-string(REPLACE "${afa_decompress}" "aether_afa_decompress_index(f, ar, table, &buf)" afa_source "${afa_source}")
-string(REPLACE "${afa_size}" [=[
-	uint32_t info_size = LittleEndian_getDW((uint8_t*)buf, 32);
-	if (info_size < 16 || ar->data_start < 44 ||
-	    ar->data_start > ar->file_size || info_size - 16 > ar->data_start - 44) {
-		*error = ARCHIVE_BAD_ARCHIVE_ERROR;
-		return false;
-	}
-	ar->compressed_size = info_size - 16;]=] afa_source "${afa_source}")
-file(WRITE "${generated}/afa.c" "#include \"afa_index_compat.h\"\n${afa_source}")
-get_target_property(sys4_sources sys4 SOURCES)
-list(FILTER sys4_sources EXCLUDE REGEX "(^|/)src/afa\\.c$")
-set_property(TARGET sys4 PROPERTY SOURCES "${sys4_sources};${generated}/afa.c")
-target_include_directories(sys4 PRIVATE "${CMAKE_CURRENT_LIST_DIR}/src")
-set(cg_path "${AETHERKIRI_XSYSTEM4_DIR}/subprojects/libsys4/src/cg.c")
-set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${cg_path}")
-file(READ "${cg_path}" cg_source)
-set(cg_metrics_signature "bool cg_get_metrics_internal(uint8_t *buf, size_t buf_size, struct cg_metrics *dst)\n{")
-set(cg_load_signature "static struct cg *cg_load_internal(uint8_t *buf, size_t buf_size, struct archive *ar)\n{")
-foreach(signature cg_metrics_signature cg_load_signature)
-    string(FIND "${cg_source}" "${${signature}}" cg_signature_pos)
-    if(cg_signature_pos LESS 0)
-        message(FATAL_ERROR "libsys4 CG decode boundary changed")
-    endif()
-endforeach()
-string(REPLACE "${cg_metrics_signature}"
-    "${cg_metrics_signature}\n\tif (aether_tga_matches(buf, buf_size))\n\t\treturn aether_tga_metrics(buf, buf_size, dst);"
-    cg_source "${cg_source}")
-string(REPLACE "${cg_load_signature}"
-    "${cg_load_signature}\n\tif (aether_tga_matches(buf, buf_size))\n\t\treturn aether_tga_load(buf, buf_size);"
-    cg_source "${cg_source}")
-file(WRITE "${generated}/cg.c" "#include \"tga_compat.h\"\n${cg_source}")
-get_target_property(sys4_sources sys4 SOURCES)
-list(FILTER sys4_sources EXCLUDE REGEX "(^|/)src/cg\\.c$")
-set_property(TARGET sys4 PROPERTY SOURCES "${sys4_sources};${generated}/cg.c")
-# Preserve libsys4's ALD optimization workaround on Clang as well as GCC.
-set(ald_path "${AETHERKIRI_XSYSTEM4_DIR}/subprojects/libsys4/src/ald.c")
-set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${ald_path}")
-file(READ "${ald_path}" ald_source)
-set(ald_gcc_attribute "static int __attribute__((optimize(\"O0\"))) _ald_get")
-string(FIND "${ald_source}" "${ald_gcc_attribute}" ald_attribute_pos)
-if(CMAKE_C_COMPILER_ID MATCHES "Clang" AND NOT ald_attribute_pos EQUAL -1)
-    string(REPLACE "${ald_gcc_attribute}" "static int __attribute__((optnone)) _ald_get"
-        ald_source "${ald_source}")
-    file(CONFIGURE OUTPUT "${generated}/ald.c" CONTENT "${ald_source}" @ONLY)
-    get_target_property(sys4_sources sys4 SOURCES)
-    list(FILTER sys4_sources EXCLUDE REGEX "(^|/)src/ald\\.c$")
-    set_property(TARGET sys4 PROPERTY SOURCES "${sys4_sources};${generated}/ald.c")
-endif()
-target_link_libraries(sys4 PRIVATE
-    $<IF:$<TARGET_EXISTS:SDL2_image::SDL2_image>,SDL2_image::SDL2_image,SDL2_image::SDL2_image-static>)
-target_link_libraries(sys4 PRIVATE $<IF:$<TARGET_EXISTS:SDL2::SDL2>,SDL2::SDL2,SDL2::SDL2-static>)
 set_target_properties(sys4 PROPERTIES POSITION_INDEPENDENT_CODE ON)
 if(APPLE)
     # The INI lexer's 64 KiB scratch buffer is defined in one translation unit.
@@ -119,13 +34,6 @@ if(APPLE)
     set_property(SOURCE "${CMAKE_CURRENT_BINARY_DIR}/libsys4/ini_lexer.yy.c"
         TARGET_DIRECTORY sys4 APPEND PROPERTY COMPILE_OPTIONS -fno-common)
     find_library(core_foundation CoreFoundation REQUIRED)
-    # The GDExtension's mixed Swift/C++ link needs driver-neutral framework
-    # paths, rather than libsys4's standalone clang flag spelling.
-    foreach(property LINK_LIBRARIES INTERFACE_LINK_LIBRARIES)
-        get_target_property(value sys4 ${property})
-        string(REPLACE "-framework CoreFoundation" "${core_foundation}" value "${value}")
-        set_property(TARGET sys4 PROPERTY ${property} "${value}")
-    endforeach()
 endif()
 
 file(GLOB_RECURSE sources CONFIGURE_DEPENDS "${AETHERKIRI_XSYSTEM4_DIR}/src/*.c")

@@ -2,17 +2,40 @@ extends SceneTree
 
 const MAIN_SCRIPT := preload("res://scripts/main.gd")
 
+class AndroidApp extends MAIN_SCRIPT:
+    var primary_storage_root: String
+
+    func _android_primary_storage_root() -> String:
+        return primary_storage_root
+
 func _initialize() -> void:
-    var app = MAIN_SCRIPT.new()
+    var app := AndroidApp.new()
+    # The picker IDs must resolve relative to the root provided by Android.
+    for root in ["/test/shared-storage", "/test/profile/shared-storage"]:
+        app.primary_storage_root = root
+        if not _check_picker_paths(app, root):
+            app.ui_motion.free()
+            app.free()
+            quit(1)
+            return
+
+    app.ui_motion.free()
+    app.free()
+    print("ANDROID_TREE_URI_OK")
+    quit(0)
+
+func _check_picker_paths(app: AndroidApp, root: String) -> bool:
     var cases := {
+        "content://com.android.externalstorage.documents/tree/primary%3AGames":
+            root.path_join("Games"),
         "content://com.android.externalstorage.documents/tree/primary%3AGames%2FMyGame":
-            "/storage/emulated/0/Games/MyGame",
+            root.path_join("Games/MyGame"),
         "content://com.android.externalstorage.documents/tree/primary%3A":
-            "/storage/emulated/0",
+            root,
         "content://com.android.externalstorage.documents/tree/home%3AVNs%2FGame":
-            "/storage/emulated/0/Documents/VNs/Game",
+            root.path_join("Documents/VNs/Game"),
         "content://com.android.externalstorage.documents/tree/home%3A":
-            "/storage/emulated/0/Documents",
+            root.path_join("Documents"),
         "content://com.android.externalstorage.documents/tree/1234-ABCD%3AGames%2FMyGame":
             "/storage/1234-ABCD/Games/MyGame",
         "content://com.android.externalstorage.documents/tree/1234-ABCD%3A":
@@ -28,31 +51,26 @@ func _initialize() -> void:
                     uri, actual, cases[uri]
                 ]
             )
-            app.ui_motion.free()
-            app.free()
-            quit(1)
-            return
+            return false
 
     # Other document providers do not expose a real filesystem path. Leave
     # their URIs untouched so callers can reject them explicitly.
-    var unsupported := "content://com.android.providers.downloads.documents/tree/raw%3A%2Fstorage%2Femulated%2F0%2FDownload%2FGame"
+    var download_id := "raw:" + root.path_join("Download/Game")
+    var unsupported := "content://com.android.providers.downloads.documents/tree/" + download_id.uri_encode()
     if app._android_external_storage_path_from_tree_uri(unsupported) != unsupported:
         push_error("Non-ExternalStorageProvider tree URIs must remain untouched")
-        app.ui_motion.free()
-        app.free()
-        quit(1)
-        return
+        return false
 
     const LaunchEntry := preload("res://scripts/game_launch_entry.gd")
-    var root_path := "/storage/emulated/0/Games/游戏+ A"
+    var root_path := root.path_join("Games/游戏+ A")
     var file_cases := {
         "content://com.android.externalstorage.documents/document/primary%3AGames%2F%E6%B8%B8%E6%88%8F+%20A%2FGame.exe":
             "Game.exe",
         "content://com.android.externalstorage.documents/tree/primary%3AGames/document/primary%3AGames%2F%E6%B8%B8%E6%88%8F%2B%20A%2Fpatch%2Fdata.xp3":
             "patch/data.xp3",
-        "content://com.android.providers.downloads.documents/document/raw%3A%2Fstorage%2Femulated%2F0%2FGames%2F%E6%B8%B8%E6%88%8F%2B%20A%2FGame.exe":
+        "content://com.android.providers.downloads.documents/document/" + ("raw:" + root_path.path_join("Game.exe")).uri_encode():
             "Game.exe",
-        "file:///storage/emulated/0/Games/%E6%B8%B8%E6%88%8F%2B%20A/Game.exe":
+        "file://" + root + "/Games/%E6%B8%B8%E6%88%8F%2B%20A/Game.exe":
             "Game.exe",
         root_path.path_join("Game.exe"): "Game.exe",
         "content://com.android.externalstorage.documents/document/primary%3AGames%2FOther%2FGame.exe":
@@ -60,19 +78,12 @@ func _initialize() -> void:
         "content://com.android.externalstorage.documents/document/primary%3AGames%2F%E6%B8%B8%E6%88%8F%2B%20A%2F..%2FOther%2FGame.exe":
             "",
         "content://com.example.provider/document/Game.exe": "",
-        "content://com.example.fileprovider/root/storage/emulated/0/Games/%E6%B8%B8%E6%88%8F%2B%20A/launch.hcb": "",
+        "content://com.example.fileprovider/root" + root + "/Games/%E6%B8%B8%E6%88%8F%2B%20A/launch.hcb": "",
     }
     for uri in file_cases:
         var selected_path: String = app._android_launch_file_path(uri)
         var entry := LaunchEntry.relative_path_for_selection(root_path, selected_path)
         if entry != file_cases[uri]:
             push_error("Unexpected Android launch entry: %s -> %s (expected %s)" % [uri, entry, file_cases[uri]])
-            app.ui_motion.free()
-            app.free()
-            quit(1)
-            return
-
-    app.ui_motion.free()
-    app.free()
-    print("ANDROID_TREE_URI_OK")
-    quit(0)
+            return false
+    return true

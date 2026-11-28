@@ -443,8 +443,12 @@ jobs:
       - name: Verify exported APKs
         run: |
           set -euo pipefail
-          test -f out/godot/android/release/Aether-release.apk
+          release_apk=out/godot/android/release/Aether-release.apk
+          test -f "$release_apk"
           test -f out/godot/android/debug/Aether-debug.apk
+          grep -Fq -- '-DAETHERKIRI_WITH_ONS_NATIVE_HOST=1' \
+            out/android/arm64-v8a/release/compile_commands.json
+          unzip -p "$release_apk" lib/arm64-v8a/libaether_kiri_godot.so > /dev/null
 
       - name: Upload Release APK
         if: success()
@@ -750,6 +754,8 @@ jobs:
             out/godot/ios/release/Aether-Release-Unsigned.ipa \
             Payload/Aether.app/Aether > "$release_binary"
           test -s "$release_binary"
+          archive_members="$(xcrun ar -t apps/godot_app/bin/ios/release/libaether_kiri_godot.a)"
+          grep -Fx 'runtime_session.cpp.o' <<< "$archive_members"
           exported_symbols="$(xcrun nm -gjU "$release_binary")"
           if grep -E '^_engine_' <<< "$exported_symbols"; then
             echo "The private engine C ABI remains dynamically exported." >&2
@@ -1146,9 +1152,22 @@ jobs:
           AETHERKIRI_SMOKE_GAME: ${{ github.workspace }}/tests/fixtures/onscripter_smoke
         run: |
           set -euo pipefail
-          "$GODOT_BIN" --headless \
-            --path apps/godot_app \
-            --script res://scripts/smoke_test.gd
+          "$GODOT_BIN" --headless --path apps/godot_app --script res://tests/playback_backend_test.gd
+          "$GODOT_BIN" --headless --path apps/godot_app --script res://tests/xsystem_tools_test.gd
+          "$GODOT_BIN" --headless --path apps/godot_app --script res://tests/xsystem_mod_bridge_test.gd
+          for backend in "Native Session" "Godot"; do
+            AETHERKIRI_RENDER_BACKEND="$backend" "$GODOT_BIN" --headless \
+              --path apps/godot_app \
+              --script res://scripts/smoke_test.gd
+          done
+
+      - name: Compare native and legacy game detection
+        run: |
+          set -euo pipefail
+          log="$RUNNER_TEMP/game-detection-parity.log"
+          "$GODOT_BIN" --headless --path apps/godot_app \
+            --script res://tests/game_detection_parity_test.gd 2>&1 | tee "$log"
+          grep -E '^game_detection_parity_test: [0-9]+ filesystem cases, [0-9]+ provider cases, 0 failures$' "$log"
 
       - name: Test Astryx UI and session statistics
         run: |
@@ -1187,6 +1206,8 @@ jobs:
             -D BUILD_TOOLS=ON \
             -D BUILD_ENGINE_API=OFF \
             -D BUILD_GODOT_EXTENSION=OFF \
+            -D BUILD_NATIVE_HOST=ON \
+            -D AETHERKIRI_ENABLE_ONSCRIPTER=ON \
             -D AETHERKIRI_BUILD_ENTISGLS_TESTS=ON \
             -D AETHERKIRI_BUILD_SYSTEMC_TESTS=ON \
             -D AETHERKIRI_BUILD_ESCUDE_TESTS=ON \
@@ -1209,6 +1230,8 @@ jobs:
           inventory_file="${RUNNER_TEMP}/aetherkiri-test-inventory.json"
           ctest --test-dir "$test_build_dir" --show-only=json-v1 > "$inventory_file"
           required_suites=(
+            --require-executable aether-native-host-onscripter
+            --require-executable aether-game-detection-test
             --require-executable cmvs-provider-test
             --require-executable siglus-runtime-jpeg
             --require-executable mages-runtime-provider
@@ -1612,8 +1635,24 @@ jobs:
           AETHERKIRI_SMOKE_GAME: ${{ github.workspace }}/tests/fixtures/onscripter_smoke
           LD_LIBRARY_PATH: ${{ github.workspace }}/apps/godot_app/bin/linux/debug
         run: |
-          timeout 120 "$GODOT_BIN" --headless \
-            --path apps/godot_app --script res://scripts/smoke_test.gd
+          set -euo pipefail
+          "$GODOT_BIN" --headless --path apps/godot_app --script res://tests/playback_backend_test.gd
+          "$GODOT_BIN" --headless --path apps/godot_app --script res://tests/xsystem_tools_test.gd
+          "$GODOT_BIN" --headless --path apps/godot_app --script res://tests/xsystem_mod_bridge_test.gd
+          for backend in "Native Session" "Godot"; do
+            AETHERKIRI_RENDER_BACKEND="$backend" timeout 120 "$GODOT_BIN" --headless \
+              --path apps/godot_app --script res://scripts/smoke_test.gd
+          done
+
+      - name: Compare native and legacy game detection
+        env:
+          LD_LIBRARY_PATH: ${{ github.workspace }}/apps/godot_app/bin/linux/debug
+        run: |
+          set -euo pipefail
+          log="$RUNNER_TEMP/game-detection-parity.log"
+          "$GODOT_BIN" --headless --path apps/godot_app \
+            --script res://tests/game_detection_parity_test.gd 2>&1 | tee "$log"
+          grep -E '^game_detection_parity_test: [0-9]+ filesystem cases, [0-9]+ provider cases, 0 failures$' "$log"
 
       - name: Verify and package Linux applications
         env:

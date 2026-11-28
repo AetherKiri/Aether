@@ -25,11 +25,18 @@ class TestHost:
     func _choose_game_font(callback: Callable) -> void:
         font_callback = callback
     func _ready() -> void:
+        if archive_import == null:
+            archive_import = ARCHIVE_IMPORT_SERVICE.new()
         ui_motion.reduced_motion = true
         add_child(ui_motion)
         _apply_ui_font()
         _build_ui()
         _refresh_games()
+    func _exit_tree() -> void:
+        super._exit_tree()
+        # This fixture skips the host's normal ready path and its archive scanner.
+        if is_instance_valid(archive_import) and archive_import.get_parent() == null:
+            archive_import.free()
     func _process(_delta: float) -> void:
         pass
     func _refresh_games() -> void:

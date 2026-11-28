@@ -163,7 +163,7 @@ jobs:
           git submodule update --init --depth 1 packages/AetherSiglus
           git submodule update --init --depth 1 packages/AetherMinori
           git -c url.https://github.com/.insteadOf=git@github.com: submodule update --init --depth 1 packages/AetherCMVS
-          git submodule update --init --depth 1 packages/AetherEntisGLS
+          git submodule update --init --depth 1 packages/AetherEntisGLS packages/AetherUnzip
           git submodule update --init --depth 1 packages/AetherKrkr
           git submodule update --init --depth 1 packages/AetherMAGES
           git submodule update --init --recursive --depth 1 packages/AetherN2System
@@ -578,7 +578,7 @@ jobs:
           git submodule update --init --depth 1 packages/AetherSiglus
           git submodule update --init --depth 1 packages/AetherMinori
           git -c url.https://github.com/.insteadOf=git@github.com: submodule update --init --depth 1 packages/AetherCMVS
-          git submodule update --init --depth 1 packages/AetherEntisGLS
+          git submodule update --init --depth 1 packages/AetherEntisGLS packages/AetherUnzip
           git submodule update --init --depth 1 packages/AetherKrkr
           git submodule update --init --depth 1 packages/AetherMAGES
           git submodule update --init --recursive --depth 1 packages/AetherN2System
@@ -971,7 +971,7 @@ jobs:
           git submodule update --init --depth 1 packages/AetherSiglus
           git submodule update --init --depth 1 packages/AetherMinori
           git -c url.https://github.com/.insteadOf=git@github.com: submodule update --init --depth 1 packages/AetherCMVS
-          git submodule update --init --depth 1 packages/AetherEntisGLS
+          git submodule update --init --depth 1 packages/AetherEntisGLS packages/AetherUnzip
           git submodule update --init --depth 1 packages/AetherKrkr
           git submodule update --init --depth 1 packages/AetherMAGES
           git submodule update --init --recursive --depth 1 packages/AetherN2System
@@ -1185,6 +1185,10 @@ jobs:
             --script res://tests/virtual_button_editor_test.gd
           "$GODOT_BIN" --headless --path apps/godot_app \
             --script res://tests/astryx_navigation_test.gd
+          "$GODOT_BIN" --headless --path apps/godot_app \
+            --script res://tests/archive_import_test.gd
+          "$GODOT_BIN" --headless --path apps/godot_app \
+            --script res://tests/astryx_archive_dialog_test.gd
           "$GODOT_BIN" --headless --path apps/godot_app \
             --script res://tests/library_startup_test.gd
 
@@ -1436,7 +1440,7 @@ jobs:
           git submodule update --init --depth 1 packages/AetherSiglus
           git submodule update --init --depth 1 packages/AetherMinori
           git -c url.https://github.com/.insteadOf=git@github.com: submodule update --init --depth 1 packages/AetherCMVS
-          git submodule update --init --depth 1 packages/AetherEntisGLS
+          git submodule update --init --depth 1 packages/AetherEntisGLS packages/AetherUnzip
           git submodule update --init --depth 1 packages/AetherKrkr
           git submodule update --init --depth 1 packages/AetherMAGES
           git submodule update --init --recursive --depth 1 packages/AetherN2System

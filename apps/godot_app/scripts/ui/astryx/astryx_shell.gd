@@ -6,6 +6,7 @@ const SWITCH := preload("res://scripts/ui/astryx/astryx_switch.gd")
 const SCROLL := preload("res://scripts/ui/astryx/astryx_scroll.gd")
 const SHADERS := preload("res://scripts/ui/aether_shaders.gd")
 const COVER_PICKER := preload("res://scripts/ui/astryx/cover_picker.gd")
+const ARCHIVE_DIALOG := preload("res://scripts/ui/astryx/archive_dialog.gd")
 const BACKGROUND := preload("res://scripts/ui/astryx/astryx_background.gd")
 const SIDEBAR_EXPANDED_WIDTH := 260.0
 const NAV := [
@@ -13,7 +14,7 @@ const NAV := [
     ["videos", "video", "nav.videos"], ["flash", "flash", "nav.flash"],
     ["settings", "settings", "settings.title"],
 ]
-const GROUPS := ["interface", "render", "compatibility", "storage", "diagnostics", "about"]
+const GROUPS := ["interface", "render", "compatibility", "storage", "archive", "diagnostics", "about"]
 var controller
 var host
 var design
@@ -68,12 +69,43 @@ var outgoing_page: Control
 var outgoing_stage: Control
 var transition_blocker: Control
 var refresh_tween: Tween
+var archive_import: Node
+var archive_entries_hash := 0
+var archive_dialog: ARCHIVE_DIALOG
+var archive_toggle: Button
 
 func setup(owner_node: Node) -> void:
     controller = owner_node
     host = controller.host
     design = DESIGN.new(controller.draft_theme)
     sidebar_width = design.metric("rail_width")
+    archive_import = host.archive_import
+    if is_instance_valid(archive_import):
+        archive_entries_hash = archive_import.entries.hash()
+        archive_import.entries_changed.connect(_archives_changed)
+        archive_import.changed.connect(_sync_archive_toggle)
+
+func open_archive(path: String) -> void:
+    if path.is_empty() or not is_instance_valid(archive_import):
+        return
+    if archive_import.state.phase == "importing":
+        return
+    if is_instance_valid(archive_dialog) and not archive_dialog.is_queued_for_deletion() and archive_dialog.is_visible_in_tree() and not archive_dialog.closing:
+        archive_dialog.select_archive(path)
+        return
+    archive_dialog = ARCHIVE_DIALOG.new()
+    archive_dialog.open(self, archive_import, path)
+
+func _sync_archive_toggle() -> void:
+    if is_instance_valid(archive_toggle):
+        archive_toggle.button_pressed = archive_import.hide_extracted
+
+func _archives_changed() -> void:
+    var next_hash: int = archive_import.entries.hash()
+    if next_hash != archive_entries_hash:
+        archive_entries_hash = next_hash
+        if route == "library" and is_instance_valid(content):
+            refresh_content(true)
 
 func _ready() -> void:
     set_process(false)
@@ -370,7 +402,7 @@ func _discard_library_cache() -> void:
     cached_library = {}
 
 func _library_key() -> String:
-    return str([host.known_games.hash(), controller.library_revision, language,
+    return str([host.known_games.hash(), archive_entries_hash, controller.library_revision, language,
         controller.draft_theme, controller.library_display, size, sidebar_width, query, recent_only,
         host._game_library_is_loading()])
 
@@ -941,6 +973,7 @@ func _group_label(id: String) -> String:
         "compatibility": return _text("兼容性", "Compatibility", "互換性", "相容性", "Compatibilidad")
         "diagnostics": return _text("诊断", "Diagnostics", "診断", "診斷", "Diagnóstico")
         "storage": return _t("cache.storage")
+        "archive": return _text("解压", "Extraction", "展開", "解壓", "Extracción")
         _: return _text("关于", "About", "情報", "關於", "Acerca de")
 
 func _build_settings() -> void:
@@ -970,6 +1003,8 @@ func _build_settings() -> void:
         var items := _vbox(8)
         navigation.add_child(items)
         for id in GROUPS:
+            if id == "archive" and (not is_instance_valid(archive_import) or not archive_import.available()):
+                continue
             if id == "about":
                 var separator := _margin(0, 8, 0, 8)
                 items.add_child(separator)
@@ -1079,6 +1114,7 @@ func _settings_content() -> void:
         "compatibility": _compatibility_settings()
         "diagnostics": _diagnostic_settings()
         "storage": _storage_settings()
+        "archive": _archive_settings()
         "about": _about_settings()
 
 func _section(title: String, description: String) -> VBoxContainer:
@@ -1203,7 +1239,8 @@ func _option(node_name: String, options: Array, labels: Array, current, changed:
         select.set_item_metadata(index, options[index])
         if options[index] == current:
             selected = index
-    select.select(selected)
+    if select.item_count > 0:
+        select.select(selected)
     select.item_selected.connect(func(index: int): changed.call(select.get_item_metadata(index)))
     return select
 
@@ -1229,6 +1266,32 @@ func _switch_row(parent: Control, title: String, description: String, toggle: Bu
     toggle.size_flags_horizontal = Control.SIZE_SHRINK_END
     toggle.size_flags_vertical = Control.SIZE_SHRINK_CENTER
     row.add_child(toggle)
+
+func _archive_settings() -> void:
+    var caption := _text("隐藏已解压的压缩包", "Hide extracted archives", "展開済みのアーカイブを非表示", "隱藏已解壓的壓縮檔", "Ocultar los archivos ya extraídos")
+    var description := _text("解压成功后从游戏库隐藏，原文件保留在原位置。", "Hide the archive from your library after extraction. The original file stays in its current location.", "展開後はライブラリで非表示になります。元のファイルは元の場所に残ります。", "解壓成功後從遊戲庫隱藏，原檔保留在原來的位置。", "Al extraer el archivo se oculta de la biblioteca. El original se conserva en su ubicación actual.")
+    var row := _button("", func():
+        if is_instance_valid(archive_import):
+            archive_import.set_hide_extracted(not archive_import.hide_extracted)
+    , "quiet", "AstryxArchiveVisibility")
+    content.add_child(row)
+    row.accessibility_name = caption
+    row.accessibility_description = description
+    row.disabled = not is_instance_valid(archive_import)
+    row.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+    row.toggle_mode = true
+    row.button_pressed = archive_import.hide_extracted if not row.disabled else true
+    row.add_theme_stylebox_override("pressed", row.get_theme_stylebox("normal"))
+    row.add_theme_stylebox_override("hover_pressed", row.get_theme_stylebox("hover"))
+    archive_toggle = SWITCH.new()
+    archive_toggle.configure(row.button_pressed, design, _reduced_motion())
+    archive_toggle.toggled.connect(row.set_pressed_no_signal)
+    archive_toggle.focus_mode = Control.FOCUS_NONE
+    _switch_row(row, caption, description, archive_toggle)
+    var inset := row.get_child(0) as MarginContainer
+    inset.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+    inset.mouse_behavior_recursive = Control.MOUSE_BEHAVIOR_DISABLED
+    inset.minimum_size_changed.connect(func(): row.custom_minimum_size.y = maxf(56, inset.get_combined_minimum_size().y))
 
 func _virtual_button_row(parent: Control, game: Dictionary = {}) -> void:
     var edit := _setting_link(BUTTON_EDITOR.caption(self, "edit"),
@@ -1865,18 +1928,22 @@ func _library_content() -> void:
         recent_only = true
         refresh_content()
     , recent_only, "AstryxRecentGames"))
-    var games: Array = []
+    var games: Array[Dictionary] = []
     for game in host.known_games:
         if host._game_matches_home_search(game, query) and (not recent_only or int(game.get("lastPlayed", 0)) > 0):
             games.append(game)
     if recent_only:
         games.sort_custom(func(a, b): return int(a.get("lastPlayed", 0)) > int(b.get("lastPlayed", 0)))
+    var items: Array[Dictionary] = games if recent_only else host._library_with_archives(games, query)
     var loading: bool = host._game_library_is_loading()
-    var count := _label(_t("home.loading_title") if loading else _text("%d 部游戏", "%d games", "%d 本", "%d 部遊戲", "%d juegos") % games.size(), 12, true)
+    var summary := _text("%d 部游戏", "%d games", "%d 本", "%d 部遊戲", "%d juegos") % games.size()
+    if items.size() != games.size():
+        summary = _text("%d 项", "%d items", "%d 件", "%d 項", "%d elementos") % items.size()
+    var count := _label(_t("home.loading_title") if loading else summary, 12, true)
     count.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
     count.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
     bar.add_child(count)
-    if games.is_empty():
+    if items.is_empty():
         if loading:
             _empty(_t("home.loading_title"), "", "library")
         elif not query.is_empty():
@@ -1890,20 +1957,24 @@ func _library_content() -> void:
         var list := _vbox(4)
         list.name = "AstryxGameList"
         content.add_child(list)
-        for game in games:
-            list.add_child(_game_row(game))
+        for item in items:
+            list.add_child(_game_row(item, bool(item.get("archive_source", false))))
         _enter(list)
         return
     var grid := _grid()
     content.add_child(grid)
     var width := _card_width(grid.columns)
-    for game in games:
-        grid.add_child(_game_card(game, width))
+    for item in items:
+        grid.add_child(_game_card(item, width, bool(item.get("archive_source", false))))
     _enter(grid)
 
-func _game_row(game: Dictionary) -> Button:
-    var title: String = host._game_display_title(game)
-    var button := _button("", func(): host._open_game_detail_with_iap(game), "quiet", "AstryxGameRow")
+func _library_button(item: Dictionary, archive: bool, node_name: String) -> Button:
+    var action := open_archive.bind(String(item.path)) if archive else func(): host._open_game_detail_with_iap(item)
+    return _button("", action, "quiet", node_name)
+
+func _game_row(game: Dictionary, archive: bool = false) -> Button:
+    var title: String = game.name if archive else host._game_display_title(game)
+    var button := _library_button(game, archive, "AstryxArchiveRow" if archive else "AstryxGameRow")
     button.accessibility_name = title
     button.tooltip_text = title
     button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -1915,7 +1986,7 @@ func _game_row(game: Dictionary) -> Button:
     var row := _hbox(16)
     row.mouse_filter = Control.MOUSE_FILTER_IGNORE
     pad.add_child(row)
-    var cover := _cover(game, 72, true)
+    var cover := _cover(game, 72, true, archive)
     cover.custom_minimum_size.x = 54
     cover.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
     row.add_child(cover)
@@ -1927,10 +1998,18 @@ func _game_row(game: Dictionary) -> Button:
     heading.max_lines_visible = 2
     heading.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
     labels.add_child(heading)
-    labels.add_child(_game_history(game))
+    labels.add_child(_archive_info(game) if archive else _game_history(game))
     row.add_child(_icon("chevron_right", 18, "secondary"))
     pad.minimum_size_changed.connect(func(): button.custom_minimum_size.y = maxf(88, pad.get_combined_minimum_size().y))
     return button
+
+func _archive_info(entry: Dictionary) -> VBoxContainer:
+    var info := _vbox(2)
+    info.mouse_filter = Control.MOUSE_FILTER_IGNORE
+    info.add_child(_label(_t("archive.kind"), 12, true))
+    if int(entry.get("size", -1)) >= 0:
+        info.add_child(_label(String.humanize_size(int(entry.size)), 12, true))
+    return info
 
 func _game_history(game: Dictionary) -> VBoxContainer:
     var history := _vbox(2)
@@ -1971,10 +2050,9 @@ func _content_width() -> float:
 func _card_width(columns: int) -> float:
     return maxf(96, (_content_width() - (16 if phone else 24) * (columns - 1)) / columns)
 
-func _game_card(game: Dictionary, width: float) -> Button:
-    var title: String = host._game_display_title(game)
-    var button := _button("", func(): host._open_game_detail_with_iap(game), "quiet")
-    button.name = "AstryxGameCard"
+func _game_card(game: Dictionary, width: float, archive: bool = false) -> Button:
+    var title: String = game.name if archive else host._game_display_title(game)
+    var button := _library_button(game, archive, "AstryxArchiveCard" if archive else "AstryxGameCard")
     button.accessibility_name = title
     button.tooltip_text = title
     button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -1987,7 +2065,7 @@ func _game_card(game: Dictionary, width: float) -> Button:
     stack.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
     button.add_child(stack)
     var height := width * (4.0 / 3.0 if phone else 0.75)
-    var cover := _cover(game, height)
+    var cover := _cover(game, height, false, archive)
     cover.name = "AstryxCardCover"
     stack.add_child(cover)
     button.resized.connect(func():
@@ -2004,7 +2082,7 @@ func _game_card(game: Dictionary, width: float) -> Button:
     label.max_lines_visible = 2
     label.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
     text_stack.add_child(label)
-    text_stack.add_child(_game_history(game))
+    text_stack.add_child(_archive_info(game) if archive else _game_history(game))
     var feedback := preload("res://scripts/ui/astryx/astryx_card_feedback.gd").new()
     feedback.name = "AstryxCardFeedback"
     feedback.configure(button, design, _reduced_motion(), host._is_touch_platform())
@@ -2013,12 +2091,16 @@ func _game_card(game: Dictionary, width: float) -> Button:
     button.custom_minimum_size.y = stack.get_combined_minimum_size().y
     return button
 
-func _cover(game: Dictionary, height: float, thumbnail: bool = false) -> Control:
+func _cover(game: Dictionary, height: float, thumbnail: bool = false, archive: bool = false) -> Control:
     var cover := PanelContainer.new()
     cover.custom_minimum_size.y = height
     cover.mouse_filter = Control.MOUSE_FILTER_IGNORE
     cover.size_flags_horizontal = Control.SIZE_EXPAND_FILL
     cover.add_theme_stylebox_override("panel", design.box("subtle", 12))
+    if archive:
+        var mark := _icon("archive", 24 if thumbnail else 48, "secondary")
+        cover.add_child(mark)
+        return cover
     var texture: Texture2D = host._load_cover_texture(game)
     if texture != null:
         var image: TextureRect = host._rounded_cover_rect(texture, 12)

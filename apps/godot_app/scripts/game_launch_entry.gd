@@ -89,6 +89,8 @@ static func resolve(game: Dictionary) -> String:
     # Whitespace is legal at either end of a POSIX path.  Library paths come
     # from the native picker and must remain byte-for-byte intact.
     var game_path := _normalize_path(String(game.get("path", "")))
+    if game.get("archiveFileEntry", false):
+        return game_path
     var relative_path := configured_relative_path(game)
     if game_path.is_empty() or relative_path.is_empty():
         return game_path
@@ -103,7 +105,8 @@ static func resolve_for_runtime(
     # replace the root passed to a provider probe/open pair.
     if requires_game_root or runtime_uses_directory(runtime_kind):
         # Preserve valid trailing spaces from native file-picker paths.
-        return _normalize_path(String(game.get("path", "")))
+        var library_path := _normalize_path(String(game.get("path", "")))
+        return library_path.get_base_dir() if game.get("archiveFileEntry", false) else library_path
     if runtime_kind.to_lower() == "rfvp" and String(game.get(FIELD, "")).strip_edges().is_empty():
         var root := _normalize_path(String(game.get("path", "")))
         if DirAccess.dir_exists_absolute(root):

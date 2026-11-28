@@ -129,6 +129,13 @@ if(NOT (WEB OR EMSCRIPTEN))
     target_compile_definitions(aether_kiri_godot PRIVATE AETHERKIRI_WITH_XSYSTEM_TOOLS=1)
 endif()
 
+if(APPLE OR ANDROID)
+    add_subdirectory("${CMAKE_SOURCE_DIR}/bridge/archive_import" "${CMAKE_BINARY_DIR}/bridge/archive_import")
+    target_sources(aether_kiri_godot PRIVATE src/archive_reader.cpp)
+    target_link_libraries(aether_kiri_godot PRIVATE aether_archive_import)
+    target_compile_definitions(aether_kiri_godot PRIVATE AETHERKIRI_WITH_ARCHIVE_IMPORT=1)
+endif()
+
 if(AETHERKIRI_ENABLE_FLASH AND NOT (WEB OR EMSCRIPTEN))
     add_subdirectory("${CMAKE_SOURCE_DIR}/bridge/flash_runtime" "${CMAKE_BINARY_DIR}/bridge/flash_runtime")
     target_link_libraries(aether_kiri_godot PRIVATE aether_flash_native)
@@ -440,7 +447,7 @@ if(IOS)
         "$<TARGET_FILE:aether_kiri_godot_swift>")
     # Static archives do not include their dependencies. The settings loader
     # is shared by game hooks and standalone providers and must be bundled too.
-    foreach(_support_target IN ITEMS aether_game_hooks aether_game_text_settings)
+    foreach(_support_target IN ITEMS aether_game_hooks aether_game_text_settings aether_archive_import aetherunzip)
         if(TARGET ${_support_target})
             target_link_libraries(aether_kiri_godot PRIVATE ${_support_target})
             list(APPEND AETHERKIRI_IOS_ARCHIVES "$<TARGET_FILE:${_support_target}>")

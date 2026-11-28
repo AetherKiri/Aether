@@ -69,6 +69,7 @@ class IOSGameImportTests(unittest.TestCase):
         info = plistlib.loads((self.root / "Info.plist").read_bytes())
         self.assertEqual(len(info["CFBundleDocumentTypes"]), 2)
         self.assertIn("public.folder", info["CFBundleDocumentTypes"][1]["LSItemContentTypes"])
+        self.assertIn("public.data", info["CFBundleDocumentTypes"][1]["LSItemContentTypes"])
         self.assertEqual(info["AetherImportAppGroup"], self.group)
         cloud = "iCloud." + self.bundle
         self.assertEqual(info["AetherSaveCloudContainer"], cloud)

@@ -9,6 +9,7 @@ import {
   type ReactNode,
 } from "react";
 import { VirtualButtonEditor, VirtualButtonGamePreview } from "./VirtualButtonEditor";
+import { ArchiveDialog, useArchivePreview } from "./ArchiveDialog";
 import {
   emptyProfiles,
   loadProfileBooks,
@@ -67,6 +68,7 @@ import {
   BoltIcon,
   Cog6ToothIcon,
   FolderIcon,
+  ArchiveBoxIcon,
   PhotoIcon,
   ChevronRightIcon,
   ArrowLeftIcon,
@@ -145,7 +147,7 @@ const navigation: [Route, string, typeof BookOpenIcon][] = [
   ["flash", "Flash", BoltIcon],
   ["settings", "设置", Cog6ToothIcon],
 ];
-const groups = ["界面", "画面", "兼容性", "诊断", "关于"];
+const groups = ["界面", "画面", "兼容性", "解压", "诊断", "关于"];
 // The same stable values written by the Godot game settings presenter.
 const renderChoices = {
   upscale_algorithm: [
@@ -244,6 +246,7 @@ const groupIcons = [
   SwatchIcon,
   ComputerDesktopIcon,
   ShieldCheckIcon,
+  ArchiveBoxIcon,
   WrenchScrewdriverIcon,
   InformationCircleIcon,
 ];
@@ -463,6 +466,7 @@ function SaveFeedback({ feedback }: { feedback: { body: string } | null }) {
 }
 
 export function App() {
+  const archive = useArchivePreview();
   const phone = useMediaQuery("(max-width: 699px)");
   const [bottomNav, setBottomNav] = useState<HTMLDivElement | null>(null);
   const [bottomNavHeight, setBottomNavHeight] = useState(0);
@@ -778,7 +782,8 @@ export function App() {
     setCoverFiles((current) => ({ ...current, [selected.name]: "" }));
     setThumb(0);
   }
-  function coverPlaceholder(thumbnail = false) {
+  function coverPlaceholder(thumbnail = false, isArchive = false) {
+    const archiveIconSize = thumbnail ? 22 : phone ? 48 : 56;
     return (
       <Card
         variant="muted"
@@ -792,8 +797,18 @@ export function App() {
           vAlign="center"
           style={{ height: "100%" }}
         >
-          <Icon icon={BookOpenIcon} />
-          {!thumbnail && <Text color="secondary">未设置封面</Text>}
+          {isArchive ? (
+            <Icon
+              icon={ArchiveBoxIcon}
+              color="secondary"
+              style={{ width: archiveIconSize, height: archiveIconSize }}
+            />
+          ) : (
+            <>
+              <Icon icon={BookOpenIcon} />
+              {!thumbnail && <Text color="secondary">未设置封面</Text>}
+            </>
+          )}
         </VStack>
       </Card>
     );
@@ -1602,6 +1617,14 @@ export function App() {
                       )}
                     </SettingSection>
                   )}
+                  {group === "解压" && (
+                    <div style={settingsRowPadding}>
+                      <Switch label="隐藏已解压的压缩包"
+                        description="解压成功后从游戏库隐藏，原文件保留在原位置。"
+                        labelPosition="start" labelSpacing="spread" value={archive.hideExtracted}
+                        onChange={archive.setHideExtracted} />
+                    </div>
+                  )}
                   {group === "诊断" && (
                     <SettingSection
                       title="诊断与日志"
@@ -1687,13 +1710,45 @@ export function App() {
   }
 
   function library() {
-    const shown = games.filter(
-      (g) =>
-        !removedGames.includes(g.name) &&
-        titleFor(g).toLowerCase().includes(query.toLowerCase()) &&
-        (filter !== "recent" || g.lastPlayed > 0),
-    );
-    if (filter === "recent") shown.sort((a, b) => b.lastPlayed - a.lastPlayed);
+    const needle = query.trim().toLowerCase();
+    const archives = filter === "recent"
+      ? []
+      : archive.entries.filter((file) => file.name.toLowerCase().includes(needle));
+    const items = [
+      ...games
+        .filter((game) =>
+          !removedGames.includes(game.name) &&
+          titleFor(game).toLowerCase().includes(needle) &&
+          (filter !== "recent" || game.lastPlayed > 0),
+        )
+        .map((game) => ({
+          key: "game:" + game.name,
+          title: titleFor(game),
+          cover: coversFor(game)[0],
+          lastPlayed: game.lastPlayed,
+          archive: false,
+          description: gameHistory(game),
+          open: () => openGame(game),
+        })),
+      ...archives.map((file) => ({
+        key: "archive:" + file.name,
+        title: file.name,
+        cover: undefined,
+        lastPlayed: 0,
+        archive: true,
+        description: (
+          <VStack gap={0.5}>
+            <Text type="supporting" color="secondary">压缩包</Text>
+            <Text type="supporting" color="secondary">{file.size}</Text>
+          </VStack>
+        ),
+        open: () => archive.inspect(file),
+      })),
+    ].sort((a, b) => {
+      if (a.lastPlayed !== b.lastPlayed) return b.lastPlayed - a.lastPlayed;
+      if (a.title === b.title) return 0;
+      return a.title < b.title ? -1 : 1;
+    });
     return (
       <Layout
         height="fill"
@@ -1757,65 +1812,67 @@ export function App() {
                   </TabList>
                 </StackItem>
                 <Text type="supporting" color="secondary">
-                  {shown.length} 部游戏
+                  {items.length} {archives.length ? "项" : "部游戏"}
                 </Text>
               </HStack>
-              {filter === "recent" && shown.length === 0 && !query ? (
+              {filter === "recent" && items.length === 0 && !needle ? (
                 <Text color="secondary">开始一个游戏后，会在这里找到它。</Text>
-              ) : shown.length === 0 ? (
+              ) : items.length === 0 ? (
                 <Text color="secondary">没有找到相关游戏。</Text>
               ) : libraryDisplay === "list" ? (
                 <List density="balanced">
-                  {shown.map((g) => (
+                  {items.map((item) => (
                     <ListItem
-                      key={g.name}
+                      key={item.key}
                       label={
-                        <Text weight="semibold" maxLines={2}>
-                          {titleFor(g)}
+                        <Text weight="semibold" maxLines={2} wordBreak="break-word">
+                          {item.title}
                         </Text>
                       }
-                      description={gameHistory(g)}
+                      description={item.description}
                       startContent={
-                        coversFor(g).length > 0 ? (
+                        item.cover ? (
                           <img
                             className="library-thumbnail"
-                            src={coversFor(g)[0]}
+                            src={item.cover}
                             alt=""
                           />
                         ) : (
-                          coverPlaceholder(true)
+                          coverPlaceholder(true, item.archive)
                         )
                       }
                       endContent={<Icon icon={ChevronRightIcon} size="sm" />}
-                      onClick={() => openGame(g)}
+                      onClick={item.open}
                     />
                   ))}
                 </List>
               ) : (
                 <Grid columns={phone ? 2 : 3} gap={phone ? 4 : 6}>
-                  {shown.map((g) => (
+                  {items.map((item) => (
                     <ClickableCard
-                      key={g.name}
-                      label={titleFor(g)}
+                      key={item.key}
+                      label={item.title}
                       variant="transparent"
                       padding={0}
-                      onClick={() => openGame(g)}
+                      onClick={item.open}
                     >
                       <VStack gap={3}>
                         <AspectRatio ratio={phone ? 3 / 4 : 4 / 3}>
-                          {coversFor(g).length > 0 ? (
+                          {item.cover ? (
                             <img
                               className="poster"
-                              src={coversFor(g)[0]}
-                              alt={titleFor(g)}
+                              src={item.cover}
+                              alt=""
                             />
                           ) : (
-                            coverPlaceholder()
+                            coverPlaceholder(false, item.archive)
                           )}
                         </AspectRatio>
                         <VStack gap={1}>
-                          <Heading level={3}>{titleFor(g)}</Heading>
-                          {gameHistory(g)}
+                          <Heading level={3} maxLines={2} wordBreak="break-word">
+                            {item.title}
+                          </Heading>
+                          {item.description}
                         </VStack>
                       </VStack>
                     </ClickableCard>
@@ -2367,6 +2424,7 @@ export function App() {
               )
             }
           />
+          <ArchiveDialog archive={archive} />
           {gameplayPreview && (
             <VirtualButtonGamePreview
               initial={buttonBooks[selected.name] ?? emptyProfiles(true)}

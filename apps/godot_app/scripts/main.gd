@@ -2794,6 +2794,7 @@ const RUNTIME_ESCUDE := "escude"
 const RUNTIME_ENTISGLS := "entisgls"
 const RUNTIME_TYRANO := "tyranoscript"
 const RUNTIME_MAGES := "mages"
+const RUNTIME_SYSTEMNNN := "systemnnn"
 const RUNTIME_N2SYSTEM := "n2system"
 const RUNTIME_YURIS := "yuris"
 const RUNTIME_SYSTEMC := "systemc"
@@ -5346,6 +5347,8 @@ func _apply_engine_options() -> void:
     player.set_engine_option("export_scripts", "1" if effective_export_scripts else "0")
     # These are startup fallbacks. Reapplying them during a live session can
     # replace the game's explicitly selected font in native renderers.
+    if not game_running and OS.get_name() == "Android" and current_player_runtime_kind == RUNTIME_SYSTEMNNN:
+        player.set_engine_option("systemnnn.android_player", "1")
     if not game_running and not runtime_default_font_path.is_empty():
         player.set_engine_option("default_font", runtime_default_font_path)
     if not game_running and not runtime_font_dir_path.is_empty():
@@ -14090,6 +14093,7 @@ func _switch_runtime_player(runtime_kind: String) -> bool:
         RUNTIME_SIGLUS,
         RUNTIME_BGI,
         RUNTIME_MAGES,
+        RUNTIME_SYSTEMNNN,
         RUNTIME_N2SYSTEM,
         RUNTIME_XSYSTEM4,
         RUNTIME_XSYSTEM35,
@@ -14109,7 +14113,7 @@ func _switch_runtime_player(runtime_kind: String) -> bool:
         player != null
         and current_player_runtime_kind == normalized
         and player.is_initialized()
-        and bool(player.get_meta("aether_ons_native_host", false))
+        and bool(player.get_meta("aether_native_session", false))
             == _uses_native_session(normalized)
     ):
         return true
@@ -14164,6 +14168,8 @@ func _switch_runtime_player(runtime_kind: String) -> bool:
         if normalized == RUNTIME_BGI
         else "MAGES."
         if normalized == RUNTIME_MAGES
+        else "SystemNNN / Emberfall"
+        if normalized == RUNTIME_SYSTEMNNN
         else "N2System / NitroSharp"
         if normalized == RUNTIME_N2SYSTEM
         else "EntisGLS / Cotopha"
@@ -14201,10 +14207,29 @@ func _trace_runtime_platform_request(phase: String, operation: String, argument:
     ])
     perf_log_file.flush()
 
+func _finish_systemnnn_android(operation: String, ticket: String) -> void:
+    if is_instance_valid(player) and player.is_initialized():
+        if int(player.submit_platform_response(operation, ticket)) == ENGINE_RESULT_OK:
+            _return_to_library_after_runtime_exit()
+
 func _on_runtime_platform_request(operation: String, argument: String) -> void:
     if player == null:
         return
     _trace_runtime_platform_request("received", operation, argument)
+    if operation == "systemnnn_player" and OS.get_name() == "Android":
+        var request: Dictionary = JSON.parse_string(argument)
+        var android: Object = Engine.get_singleton("AndroidRuntime")
+        var launcher = JavaClassWrapper.wrap("org.aether.systemnnn.PlayerLauncher")
+        var ticket := String(request.ticket)
+        if launcher == null or android == null:
+            player.submit_platform_response("systemnnn_launch_failed", ticket)
+            return
+        var finished = android.createRunnableFromGodotCallable(func():
+            _finish_systemnnn_android.call_deferred("systemnnn_closed", ticket))
+        var failed = android.createRunnableFromGodotCallable(func():
+            _finish_systemnnn_android.call_deferred("systemnnn_launch_failed", ticket))
+        launcher.launch(android.getActivity(), String(request.path), finished, failed)
+        return
     if operation == "runtime_end":
         call_deferred("_return_to_library_after_runtime_exit")
         return
@@ -14931,7 +14956,7 @@ func _ensure_player_initialized(launch_root: String = "") -> bool:
     var user_dir := OS.get_user_data_dir()
     var cache_dir := user_dir.path_join("cache")
     var wa2_flags := ""
-    var use_ons_native_host := _uses_native_session(current_player_runtime_kind)
+    var use_native_host := _uses_native_session(current_player_runtime_kind)
     var local_provider_saves := not launch_root.is_empty() and cli_probe_script.is_empty() \
         and current_player_runtime_kind in [RUNTIME_RFVP, RUNTIME_SOFTPAL]
     if cli_probe_script == "res://scripts/runtime_regression_probe.gd":
@@ -14990,13 +15015,13 @@ func _ensure_player_initialized(launch_root: String = "") -> bool:
             and String(player.get_meta("aether_cache_directory", "")) == cache_dir \
             and String(player.get_meta("aether_wa2_flags_directory", "")) == wa2_flags \
             and bool(player.get_meta("aether_local_provider_saves", false)) == local_provider_saves \
-            and bool(player.get_meta("aether_ons_native_host", false)) == use_ons_native_host:
+            and bool(player.get_meta("aether_native_session", false)) == use_native_host:
             return true
         _stop_wa2_audio()
         player.destroy_engine()
     DirAccess.make_dir_recursive_absolute(cache_dir)
     var initialized: bool = player.initialize_engine(user_dir, cache_dir, true) \
-        if use_ons_native_host else player.initialize_engine(user_dir, cache_dir)
+        if use_native_host else player.initialize_engine(user_dir, cache_dir)
     if not initialized:
         render_errors += 1
         var init_error_message := "Engine init failed: %s %s" % [
@@ -15009,7 +15034,7 @@ func _ensure_player_initialized(launch_root: String = "") -> bool:
     player.set_meta("aether_cache_directory", cache_dir)
     player.set_meta("aether_wa2_flags_directory", wa2_flags)
     player.set_meta("aether_local_provider_saves", local_provider_saves)
-    player.set_meta("aether_ons_native_host", use_ons_native_host)
+    player.set_meta("aether_native_session", use_native_host)
 
     var runtime_id := "auto"
     if current_player_runtime_kind in [
@@ -15022,6 +15047,7 @@ func _ensure_player_initialized(launch_root: String = "") -> bool:
         RUNTIME_SIGLUS,
         RUNTIME_BGI,
         RUNTIME_MAGES,
+        RUNTIME_SYSTEMNNN,
         RUNTIME_N2SYSTEM,
         RUNTIME_XSYSTEM4,
         RUNTIME_XSYSTEM35,
@@ -15078,6 +15104,8 @@ func _ensure_player_initialized(launch_root: String = "") -> bool:
         if current_player_runtime_kind == RUNTIME_SIGLUS
         else "BGI/Ethornell"
         if current_player_runtime_kind == RUNTIME_BGI
+        else "SystemNNN / Emberfall"
+        if current_player_runtime_kind == RUNTIME_SYSTEMNNN
         else "N2System / NitroSharp"
         if current_player_runtime_kind == RUNTIME_N2SYSTEM
         else "EntisGLS / Cotopha"
@@ -17922,6 +17950,8 @@ func _renderer_summary(renderer: String) -> String:
         summary = "System 3.5/3.9 (Godot Texture)"
     elif renderer.contains("backend=xsystem4"):
         summary = "System 4 (Godot Texture)"
+    elif renderer.contains("backend=systemnnn"):
+        summary = "SystemNNN / Emberfall (RGBA)"
     elif renderer.contains("backend=n2system"):
         summary = "N2System / NitroSharp (Godot Texture)"
     elif renderer.contains("backend=godot_native"):

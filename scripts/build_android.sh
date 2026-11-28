@@ -437,6 +437,8 @@ build_abi() {
     fi
     cxx_runtime_path="$(find "$ANDROID_NDK_HOME/toolchains/llvm/prebuilt" \
         -path '*/sysroot/usr/lib/aarch64-linux-android/libc++_shared.so' -print -quit)"
+    python3 "$PROJECT_ROOT/tools/stage_systemnnn_android.py" \
+        --build-dir "$GODOT_APP_DIR/android/build" --native-manifest "$cmake_build_dir/runtime-libraries-$BUILD_TYPE_LOWER.txt"
     python3 "$PROJECT_ROOT/tools/stage_android_runtime_libraries.py" \
         --build-dir "$GODOT_APP_DIR/android/build" --source-dir "$godot_bin_dir" \
         --manifest "$cmake_build_dir/runtime-libraries-$BUILD_TYPE_LOWER.txt" --abi "$abi" \

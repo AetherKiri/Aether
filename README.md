@@ -41,6 +41,7 @@ Godot App Shell
             ├─ System35 Runtime ─── xsystem35 (AliceSoft)
             ├─ System3 Runtime ──── system3-sdl2 (AliceSoft System 1–3)
             ├─ EntisGLS Runtime ─── EntisGLS / Cotopha (public package)
+            ├─ SystemNNN Runtime ─── AetherSystemNNN / Emberfall
             ├─ N2System Runtime ──── AetherN2System / NitroSharp (experimental NativeAOT integration)
             ├─ Artemis Runtime ──── Artemis (private package)
             ├─ CatSystem2 Runtime ─ CatSystem2 (private package)
@@ -82,6 +83,7 @@ and **Debug CPU** is a diagnostic fallback only.
 - Public EntisGLS / Cotopha desktop runtime for traditional CSX scripts and NOA
   resources, with game-local `savedata/`. See the
   [provider scope and validation](https://github.com/AetherKiri/AetherEntisGLS/blob/aether/aether_runtime/README.md).
+- SystemNNN games use the Emberfall runtime, the upstream Android player and game-local PC save slots in `sav/`. See [native playback and controls](bridge/systemnnn_runtime/README.md).
 - Experimental NitroSharp / N2System runtime for desktop, Android, and iOS through the public [AetherN2System](https://github.com/AetherKiri/AetherN2System) submodule, with game-directory detection, an in-process NativeAOT host, plain and compressed NPA archives, and early NPS/PAK installations. Packaging includes native text, audio and video dependencies. Android startup and rendering have been tested on a device; iOS has compile verification only and has not been tested on a device. Persistent saves restore script execution, dialogue, scene and media state, with separate game/profile storage under the game’s `savedata/AetherN2System/` directory, shared settings, thumbnails and authored save-menu metadata. Read-only game directories fall back to app storage; existing app-private saves migrate without overwriting game-local saves. Legacy games can use the touch and keyboard save menu; F5/F9 provide quicksave and quickload. Saves use Aether’s own format. Some legacy system-menu operations remain unimplemented; individual game compatibility is still evolving. Web is not supported.
 - Export presets for macOS, iOS/iPadOS, Android, Web, and Linux.
 - A separate Flash library powered by native Ruffle, with sound, keyboard,
@@ -131,6 +133,7 @@ integration repository and the original upstream project.
 | AliceSoft System 3.5 / 3.9 | [AetherKiri/xsystem35-sdl2](https://github.com/AetherKiri/AetherSystem35) | [kichikuou/xsystem35-sdl2](https://github.com/kichikuou/xsystem35-sdl2) |
 | AliceSoft System 1–3 | [AetherKiri/system3-sdl2](https://github.com/AetherKiri/AetherSystem3) | [kichikuou/system3-sdl2](https://github.com/kichikuou/system3-sdl2) |
 | EntisGLS / Cotopha | [AetherKiri/EntisGLS-SDL3](https://github.com/AetherKiri/AetherEntisGLS) | [nL6DHZc3RhMnC/EntisGLS-SDL3](https://github.com/nL6DHZc3RhMnC/EntisGLS-SDL3) |
+| SystemNNN / Emberfall | [AetherKiri/AetherSystemNNN](https://github.com/AetherKiri/AetherSystemNNN) | [PorisRora/SystemNNN-Emberfall](https://github.com/PorisRora/SystemNNN-Emberfall) |
 | N2System / NitroSharp | [AetherKiri/AetherN2System](https://github.com/AetherKiri/AetherN2System) | [CommitteeOfZero/nitrosharp](https://github.com/CommitteeOfZero/nitrosharp) |
 
 ## Flash Library

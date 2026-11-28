@@ -21,6 +21,10 @@ static func renderer(selection: String) -> String:
 
 
 static func uses_native_host(selection: String, runtime: String, player: Object, prerelease: bool) -> bool:
+    if player != null and player.has_method("uses_native_session"):
+        return player.uses_native_session(runtime, selection, prerelease)
     var preview_requested := selection == NATIVE or (selection == AUTOMATIC and prerelease)
-    return preview_requested and runtime == "onscripter" and player != null \
+    if not preview_requested or player == null:
+        return false
+    return runtime == "onscripter" \
         and player.has_method("has_ons_native_host") and player.has_ons_native_host()

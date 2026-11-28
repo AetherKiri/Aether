@@ -39,6 +39,7 @@ Godot App Shell
             ├─ System35 Runtime ─── xsystem35（AliceSoft）
             ├─ System3 Runtime ──── system3-sdl2（AliceSoft System 1–3）
             ├─ EntisGLS Runtime ─── EntisGLS / Cotopha（公开 package）
+            ├─ SystemNNN Runtime ─── AetherSystemNNN / Emberfall
             ├─ N2System Runtime ──── AetherN2System / NitroSharp（实验性 NativeAOT 接入）
             ├─ Artemis Runtime ──── Artemis（私有 package）
             ├─ CatSystem2 Runtime ─ CatSystem2（私有 package）
@@ -74,6 +75,7 @@ Godot App Shell
 - 通过公开 EntisGLS / Cotopha Runtime 在桌面端运行传统 CSX 脚本并读取 NOA
   资源，存档位于游戏目录的 `savedata/`。参见
   [接入范围与验证说明](https://github.com/AetherKiri/AetherEntisGLS/blob/aether/aether_runtime/README.md)。
+- SystemNNN 游戏通过 `spt/sys.spt` 识别。Android 直接使用 Emberfall 播放器，桌面原生宿主调用同一套 C++ 引擎，PC 槽位保存在每款游戏自己的 `sav/`。见[接入与操作说明](bridge/systemnnn_runtime/README.md)。
 - 通过公开 [AetherN2System](https://github.com/AetherKiri/AetherN2System) submodule 实验性接入桌面、Android 和 iOS 的 NitroSharp / N2System 运行时，提供游戏目录识别、进程内 NativeAOT 宿主、普通及压缩 NPA 归档读取，以及早期 NPS/PAK 安装格式兼容。打包包含文字、音频和视频所需的原生依赖。Android 已完成真机启动与渲染验证；iOS 仅完成编译验证，尚未进行真机运行测试。持久化存读档可恢复脚本执行、对话、场景及媒体状态，优先写入游戏目录的 `savedata/AetherN2System/` 并按游戏和配置隔离，目录不可写时回退到应用存储；已有应用存档会迁入且不覆盖本地存档。支持公共设置、缩略图及原作存档菜单的说明文件。旧版游戏可使用触摸和键盘操作的存读档菜单，F5/F9 用于快速存档和读档；存档采用 Aether 自有格式。部分旧版系统菜单操作尚未实现，具体游戏兼容性仍在完善。Web 尚未支持。
 - 覆盖 macOS、iOS/iPadOS、Android、Web 与 Linux 的导出配置。
 - 独立的 Flash 分类，使用原生 Ruffle 播放，支持声音、键鼠、触摸以及视觉小说的虚拟按钮。
@@ -111,6 +113,7 @@ Aether 使用了以下引擎 fork。表中分别提供 Aether 接入仓库和原
 | AliceSoft System 3.5 / 3.9 | [AetherKiri/xsystem35-sdl2](https://github.com/AetherKiri/AetherSystem35) | [kichikuou/xsystem35-sdl2](https://github.com/kichikuou/xsystem35-sdl2) |
 | AliceSoft System 1–3 | [AetherKiri/system3-sdl2](https://github.com/AetherKiri/AetherSystem3) | [kichikuou/system3-sdl2](https://github.com/kichikuou/system3-sdl2) |
 | EntisGLS / Cotopha | [AetherKiri/EntisGLS-SDL3](https://github.com/AetherKiri/AetherEntisGLS) | [nL6DHZc3RhMnC/EntisGLS-SDL3](https://github.com/nL6DHZc3RhMnC/EntisGLS-SDL3) |
+| SystemNNN / Emberfall | [AetherKiri/AetherSystemNNN](https://github.com/AetherKiri/AetherSystemNNN) | [PorisRora/SystemNNN-Emberfall](https://github.com/PorisRora/SystemNNN-Emberfall) |
 | N2System / NitroSharp | [AetherKiri/AetherN2System](https://github.com/AetherKiri/AetherN2System) | [CommitteeOfZero/nitrosharp](https://github.com/CommitteeOfZero/nitrosharp) |
 
 ## Flash 播放

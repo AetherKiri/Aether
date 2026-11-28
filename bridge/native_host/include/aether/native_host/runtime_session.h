@@ -2,7 +2,13 @@
 
 #include "engine_api.h"
 
+#include <string_view>
+
 namespace aether::native_host {
+
+void RegisterProviders();
+bool SupportsRuntime(std::string_view runtime);
+bool UseNativeSession(std::string_view runtime, std::string_view selection, bool prerelease);
 
 // Owns an engine ABI handle. One native host session may be active in the
 // process at a time. The caller serializes operations on this session, and

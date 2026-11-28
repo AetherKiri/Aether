@@ -370,6 +370,15 @@ bool IsN2Profile(const Json &profile) {
            selected.value("designResolution", Json{}).is_string();
 }
 
+bool IsSystemNnnDirectory(const Files &files, const std::string &root) {
+    if (files.FileExists(Join(root, "spt/sys.spt"))) return true;
+    for (const auto &entry : files.List(root, false)) {
+        if (entry.directory && files.Lower(entry.name) == "spt" &&
+            Has(FileNames(files, Join(root, entry.name)), "sys.spt")) return true;
+    }
+    return false;
+}
+
 bool IsN2Directory(const Files &files, const std::string &root) {
     int npa = 0;
     int pak = 0;
@@ -549,6 +558,8 @@ Result Inspect(const Files &files, const std::string &path) {
     } else if (!renpy.empty()) {
         Match(result, "renpy", "renpy-game-directory");
         result.renpy_directory = renpy;
+    } else if (IsSystemNnnDirectory(files, root)) {
+        Match(result, "systemnnn", "systemnnn-sys-spt");
     } else if (IsN2Directory(files, root)) {
         Match(result, "n2system", "n2system-profile-or-npa");
     } else if (((Has(names, "system40.ini") || Has(names, "alicestart.ini")) && HasExtension(names, "ain")) ||

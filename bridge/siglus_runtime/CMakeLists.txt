@@ -73,8 +73,17 @@ target_link_libraries(aether_siglus_runtime PUBLIC
 # This is the same cross-platform output path the embedded Artemis runtime
 # uses (OpenAL Soft on iOS/Android/desktop), which avoids owning a second
 # SDL audio consumer alongside the krkrsdl3/ONS hosts.
+#
+# The default output follower is shared with KiriKiri2, which normally adds
+# it. Siglus does not require KiriKiri2, so add it here when KRKR2 is off.
+if(NOT TARGET aether_openal_device_follower)
+    add_subdirectory("${AETHERKIRI_KRKR_DIR}/core/sound/openal"
+        "${CMAKE_BINARY_DIR}/packages/AetherKrkr/core/sound/openal")
+endif()
 target_link_libraries(aether_siglus_runtime PRIVATE
     OpenAL::OpenAL
+    # Shared with KiriKiri2: one process-wide default output follower.
+    aether_openal_device_follower
     $<IF:$<TARGET_EXISTS:libjpeg-turbo::turbojpeg>,libjpeg-turbo::turbojpeg,libjpeg-turbo::turbojpeg-static>
 )
 

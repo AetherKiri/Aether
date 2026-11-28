@@ -11,6 +11,7 @@
 #include <mutex>
 #include <thread>
 
+#include "OpenALDeviceFollower.h"
 #include "siglus_ffi.h"
 
 #if defined(__ANDROID__)
@@ -125,6 +126,22 @@ namespace aetherkiri::siglus::audio {
             alSourcePlay(g_source);
 
             while(!g_stop.load(std::memory_order_relaxed)) {
+                // Follow system default output changes, e.g. headphones that
+                // connected after the game started. Reopening keeps the
+                // source and its queue; the state check below resumes it.
+                switch(aether_openal_poll_device(g_device)) {
+                    case AETHER_OPENAL_POLL_REOPENED:
+                        std::fprintf(
+                            stderr, "[siglus-audio] followed default output\n");
+                        break;
+                    case AETHER_OPENAL_POLL_FAILED:
+                        std::fprintf(
+                            stderr,
+                            "[siglus-audio] could not follow default output\n");
+                        break;
+                    case AETHER_OPENAL_POLL_IDLE:
+                        break;
+                }
                 if(g_paused.load(std::memory_order_acquire)) {
                     alSourcePause(g_source);
                     std::this_thread::sleep_for(std::chrono::milliseconds(8));
@@ -182,6 +199,7 @@ namespace aetherkiri::siglus::audio {
                 g_context = nullptr;
             }
             if(g_device != nullptr) {
+                aether_openal_untrack_device(g_device);
                 alcCloseDevice(g_device);
                 g_device = nullptr;
             }
@@ -236,6 +254,7 @@ namespace aetherkiri::siglus::audio {
             return false;
         }
         g_rate = rate;
+        aether_openal_track_device(g_device);
 
         // Preload the full ring so playback starts with the deepest possible
         // buffer, then hand the context to the pump thread.

@@ -14,7 +14,7 @@ func run() -> void:
     assert(not Form.valid({"width": 1, "height": 1, "items": [{"kind": "button", "id": "ok", "rect": [0, 0]}]}))
     var form := Form.new()
     form.build(panel, {
-        "title": "Native fixture", "width": 300, "height": 100,
+        "title": "Native fixture", "width": 300, "height": 100, "request_id": "session-17",
         "items": [
             {"kind": "label", "id": "label", "text": "Name", "rect": [5, 5, 35, 10]},
             {"kind": "select", "id": "name", "options": ["Alpha", "Beta"], "selected": 0, "rect": [45, 5, 65, 80]},
@@ -39,7 +39,7 @@ func run() -> void:
     form.buttons["1"].pressed.emit()
     form.buttons["2"].pressed.emit()
     assert(responses.size() == 1)
-    assert(responses[0] == {"result": "1", "values": {"name": 1, "body": "第一行\nSecond & <third>"}})
+    assert(responses[0] == {"result": "1", "values": {"name": 1, "body": "第一行\nSecond & <third>"}, "request_id": "session-17"})
     panel.free()
     print("runtime_form_dialog_test: PASS")
     quit(0)

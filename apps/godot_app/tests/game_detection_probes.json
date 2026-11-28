@@ -12,6 +12,7 @@
   {"name":"WA2", "scores":{"wa2":1}, "engine":"wa2", "score":1},
   {"name":"MAGES", "scores":{"mages":1}, "engine":"mages", "score":1},
   {"name":"N2System", "scores":{"n2system":1}, "engine":"n2system", "score":1},
+  {"name":"SystemNNN", "scores":{"systemnnn":100}, "engine":"systemnnn", "score":100},
   {"name":"All optional Providers absent", "scores":{}, "engine":"kirikiri", "score":0},
   {"name":"No Provider claims", "scores":{"exhibit":0,"systemc":0,"n2system":0}, "engine":"kirikiri", "score":0},
   {"name":"Threshold misses", "scores":{"escude":89,"entisgls":89,"advhd":89,"bgi":89}, "engine":"kirikiri", "score":0},

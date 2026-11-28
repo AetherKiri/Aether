@@ -2795,6 +2795,7 @@ const RUNTIME_ENTISGLS := "entisgls"
 const RUNTIME_TYRANO := "tyranoscript"
 const RUNTIME_MAGES := "mages"
 const RUNTIME_N2SYSTEM := "n2system"
+const RUNTIME_SYSTEMNNN := "systemnnn"
 const RUNTIME_YURIS := "yuris"
 const RUNTIME_SYSTEMC := "systemc"
 const RUNTIME_EXHIBIT := "exhibit"
@@ -5348,6 +5349,8 @@ func _apply_engine_options() -> void:
     # replace the game's explicitly selected font in native renderers.
     if not game_running and not runtime_default_font_path.is_empty():
         player.set_engine_option("default_font", runtime_default_font_path)
+        if current_player_runtime_kind == RUNTIME_SYSTEMNNN:
+            player.set_engine_option("systemnnn.font", runtime_default_font_path)
     if not game_running and not runtime_font_dir_path.is_empty():
         player.set_engine_option("font_dir", runtime_font_dir_path)
     if current_player_runtime_kind == "rfvp":
@@ -10838,7 +10841,7 @@ func _game_launch_entry_label(game: Dictionary) -> String:
 func _can_configure_launch_file(game: Dictionary, runtime: String = "") -> bool:
     return OS.get_name() != "Web" \
         and not builtin_demo.is_game(game) \
-        and (runtime if not runtime.is_empty() else _game_runtime_kind(String(game.get("path", "")))) not in [RUNTIME_ONSCRIPTER, RUNTIME_N2SYSTEM, RUNTIME_XSYSTEM4, RUNTIME_XSYSTEM35, RUNTIME_SYSTEM3] \
+        and (runtime if not runtime.is_empty() else _game_runtime_kind(String(game.get("path", "")))) not in [RUNTIME_ONSCRIPTER, RUNTIME_N2SYSTEM, RUNTIME_SYSTEMNNN, RUNTIME_XSYSTEM4, RUNTIME_XSYSTEM35, RUNTIME_SYSTEM3] \
         and String(game.get("type", "Directory")).to_lower() == "directory"
 
 func _set_launch_file_for_selected() -> void:
@@ -12612,6 +12615,8 @@ func _probe_game_runtime_kind(root: String, runtime_kind: String) -> String:
             return RUNTIME_MAGES
         if int(player.probe_runtime(RUNTIME_N2SYSTEM, root)) > 0:
             return RUNTIME_N2SYSTEM
+        if int(player.probe_runtime(RUNTIME_SYSTEMNNN, root)) > 0:
+            return RUNTIME_SYSTEMNNN
     return runtime_kind
 
 func _backfill_game_metadata(games: Array[Dictionary]) -> bool:
@@ -14091,6 +14096,7 @@ func _switch_runtime_player(runtime_kind: String) -> bool:
         RUNTIME_BGI,
         RUNTIME_MAGES,
         RUNTIME_N2SYSTEM,
+        RUNTIME_SYSTEMNNN,
         RUNTIME_XSYSTEM4,
         RUNTIME_XSYSTEM35,
         RUNTIME_SYSTEM3,
@@ -14164,6 +14170,8 @@ func _switch_runtime_player(runtime_kind: String) -> bool:
         if normalized == RUNTIME_BGI
         else "MAGES."
         if normalized == RUNTIME_MAGES
+        else "SystemNNN / Emberfall"
+        if normalized == RUNTIME_SYSTEMNNN
         else "N2System / NitroSharp"
         if normalized == RUNTIME_N2SYSTEM
         else "EntisGLS / Cotopha"
@@ -14961,6 +14969,9 @@ func _ensure_player_initialized(launch_root: String = "") -> bool:
             _show_message(message)
             return false
         wa2_flags = String(flags.path)
+    elif not launch_root.is_empty() and current_player_runtime_kind == RUNTIME_SYSTEMNNN:
+        user_dir = preload("res://scripts/game_save_locations.gd").systemnnn_user_directory(user_dir, launch_root)
+        cache_dir = user_dir.path_join("cache")
     elif current_player_runtime_kind == RUNTIME_SYSTEMC:
         var library_path := String(selected_game.get("path", ""))
         if not library_path.is_empty():
@@ -15023,6 +15034,7 @@ func _ensure_player_initialized(launch_root: String = "") -> bool:
         RUNTIME_BGI,
         RUNTIME_MAGES,
         RUNTIME_N2SYSTEM,
+        RUNTIME_SYSTEMNNN,
         RUNTIME_XSYSTEM4,
         RUNTIME_XSYSTEM35,
         RUNTIME_SYSTEM3,
@@ -15078,6 +15090,8 @@ func _ensure_player_initialized(launch_root: String = "") -> bool:
         if current_player_runtime_kind == RUNTIME_SIGLUS
         else "BGI/Ethornell"
         if current_player_runtime_kind == RUNTIME_BGI
+        else "SystemNNN / Emberfall"
+        if current_player_runtime_kind == RUNTIME_SYSTEMNNN
         else "N2System / NitroSharp"
         if current_player_runtime_kind == RUNTIME_N2SYSTEM
         else "EntisGLS / Cotopha"
@@ -17922,6 +17936,8 @@ func _renderer_summary(renderer: String) -> String:
         summary = "System 3.5/3.9 (Godot Texture)"
     elif renderer.contains("backend=xsystem4"):
         summary = "System 4 (Godot Texture)"
+    elif renderer.contains("backend=systemnnn"):
+        summary = "SystemNNN / Emberfall (Godot Texture)"
     elif renderer.contains("backend=n2system"):
         summary = "N2System / NitroSharp (Godot Texture)"
     elif renderer.contains("backend=godot_native"):

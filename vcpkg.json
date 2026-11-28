@@ -27,13 +27,18 @@
       "name": "dirent",
       "platform": "windows"
     },
-    "ffmpeg",
     {
       "name": "ffmpeg",
       "features": [
-        "bink2"
-      ],
-      "platform": "!emscripten"
+        "avcodec",
+        "avformat",
+        "swresample",
+        "swscale",
+        {
+          "name": "bink2",
+          "platform": "!emscripten"
+        }
+      ]
     },
     {
       "name": "sdl3",
@@ -101,10 +106,7 @@
       "name": "libogg",
       "platform": "android"
     },
-    {
-      "name": "libpng",
-      "platform": "!linux"
-    },
+    "libpng",
     "libvorbis",
     "libwebp",
     "lz4",
@@ -177,6 +179,7 @@
       "features": ["scanner"],
       "platform": "linux & !android"
     },
+    "zlib",
     "zstd"
   ],
   "overrides": [

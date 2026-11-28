@@ -33,6 +33,7 @@ git submodule update --init --recursive --depth 1 \
     packages/AetherKrkr \
     packages/AetherMAGES \
     packages/AetherN2System \
+    packages/AetherSystemNNN \
     packages/AetherMinori \
     packages/AetherCMVS \
     packages/AetherEntisGLS \

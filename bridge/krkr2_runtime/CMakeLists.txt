@@ -48,8 +48,8 @@ else()
 endif()
 
 # krkr2 link block (moved verbatim from the engine_api library, now abi/).
-if(WEB OR EMSCRIPTEN)
-    # The Web side module force-loads krkr2plugin once at the final link.
+if(WEB OR EMSCRIPTEN OR LINUX)
+    # The extension force-loads krkr2plugin once at the final link.
     # Keep this dependency normal here so CMake can repeat cyclic static
     # libs without whole-archive duplicate symbols.
     target_link_libraries(aether_krkr2_runtime PRIVATE krkr2core krkr2plugin)
@@ -60,16 +60,15 @@ else()
     target_link_libraries(aether_krkr2_runtime PRIVATE
         krkr2core ${_KRKR2PLUGIN_LINK_ITEM})
 
-    if(LINUX)
-        # The runtime modules have circular static-library dependencies.
-        # Re-scan them after all consumers have been seen so platform
-        # implementations from core_environ_module are retained.
-        target_link_libraries(aether_krkr2_runtime PRIVATE
-            "$<LINK_GROUP:RESCAN,core_base_module,core_environ_module,core_extension_module,core_plugin_module,core_movie_module,core_sound_module,core_visual_module,core_utils_module,tvpgl_simd,tjs2>"
-        )
-    endif()
     set_property(TARGET aether_krkr2_runtime
         PROPERTY LINK_LIBRARY_OVERRIDE_krkr2plugin WHOLE_ARCHIVE)
+endif()
+
+if(LINUX)
+    # Retain the circular runtime modules after all consumers have been seen.
+    target_link_libraries(aether_krkr2_runtime PRIVATE
+        "$<LINK_GROUP:RESCAN,core_base_module,core_environ_module,core_extension_module,core_plugin_module,core_movie_module,core_sound_module,core_visual_module,core_utils_module,tvpgl_simd,tjs2>"
+    )
 endif()
 
 if(BUILD_GPU_BRIDGE)

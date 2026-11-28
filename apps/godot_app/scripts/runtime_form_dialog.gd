@@ -6,6 +6,7 @@ var controls: Dictionary = {}
 var buttons: Dictionary = {}
 var completed: bool = false
 var callback: Callable
+var request_id: String = ""
 
 static func valid(specification: Dictionary) -> bool:
     for dimension in ["width", "height"]:
@@ -50,6 +51,7 @@ static func valid(specification: Dictionary) -> bool:
 func build(parent: Control, specification: Dictionary, on_complete: Callable) -> void:
     assert(valid(specification))
     callback = on_complete
+    request_id = String(specification.get("request_id", ""))
     var box := VBoxContainer.new()
     box.add_theme_constant_override("separation", 16)
     parent.add_child(box)
@@ -153,7 +155,10 @@ func submit(id: String) -> void:
     if completed or not buttons.has(id):
         return
     completed = true
-    callback.call({"result": id, "values": values()})
+    var response := {"result": id, "values": values()}
+    if not request_id.is_empty():
+        response["request_id"] = request_id
+    callback.call(response)
 
 func cancel() -> void:
     # IDCANCEL is the native dialog's cancellation result.

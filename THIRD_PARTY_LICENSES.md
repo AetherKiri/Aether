@@ -52,6 +52,19 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
 ----------------------------------------------------------------------------
+SystemNNN / Emberfall
+----------------------------------------------------------------------------
+Upstream: https://github.com/PorisRora/SystemNNN-Emberfall
+Integration fork: https://github.com/AetherKiri/AetherSystemNNN
+Copyright © 2026 PorisRora.
+
+The original author authorized AetherSystemNNN to distribute the Emberfall-owned
+code in its `aether` branch under GPL-3.0-or-later. The license and third-party
+notices are in `packages/AetherSystemNNN/LICENSE` and
+`packages/AetherSystemNNN/THIRD_PARTY_NOTICES.md`. See
+`doc/systemnnn_runtime.md` for the Aether build configuration.
+
+----------------------------------------------------------------------------
 AetherN2System / NitroSharp
 ----------------------------------------------------------------------------
 Source: https://github.com/AetherKiri/AetherN2System

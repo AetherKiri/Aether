@@ -89,6 +89,10 @@ static func _mages_profile(root: String) -> String:
                 return profile[0]
     return ""
 
+static func systemnnn_user_directory(base: String, root: String) -> String:
+    var normalized := ProjectSettings.globalize_path(root).simplify_path().trim_suffix("/")
+    return base.path_join("systemnnn_games").path_join(normalized.sha256_text())
+
 static func _native_bank(root: String, engine: String, base: String) -> Dictionary:
     match engine:
         "system3", "xsystem35", "xsystem4":
@@ -270,6 +274,8 @@ static func resolve(root: String, engine: String, game: Dictionary, user_root: S
             banks.main = _migrated_bank(local.path_join("tyranoscript"), tyrano_legacy_directory(root, base), for_write, ["local_storage.json"])
         "yuris":
             banks.main = _bank(_existing(local, base.path_join("yuris").path_join(root.sha256_text())))
+        "systemnnn":
+            banks.main = _bank(systemnnn_user_directory(base, root).path_join("systemnnn"))
         "systemc":
             var legacy := base.path_join("systemc_games").path_join(root.sha256_text().left(24)).path_join("systemc")
             banks.main = _bank(_existing(local, legacy))
